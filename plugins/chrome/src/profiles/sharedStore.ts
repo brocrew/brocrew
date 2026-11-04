@@ -22,7 +22,7 @@ import {
 import type { ProfileStore, ProfileRecord, HelperSwitch } from './store.js'
 import { durableJson, identity, ownerState, withSharedLock } from './sharedLock.js'
 import type { ProcessIdentity, Liveness } from './sharedLock.js'
-import type { SharedProfileAccess } from './sharedTypes.js'
+import type { SharedProfileAccess, SharedProfileAdmission } from './sharedTypes.js'
 import { readVolumeIdentity } from './volumeIdentity.js'
 export type ChromeState = 'ended' | 'live' | 'unknown'
 export class ProfileInUseElsewhereError extends ProfileStoreError {
@@ -446,6 +446,48 @@ export function createSharedProfileStore(
     })
   const migrationHolds = new Map<string, 'chrome-unknown'>()
   const pendingDisk = new Map<string, { release(): boolean | void }>()
+  const admissionSnapshot = (name: string): SharedProfileAdmission => {
+    const lp = localRecord(name)
+    const r = read()
+    if (lp) {
+      localAvailable(lp, r)
+      const p = localView(lp, r)
+      if (!localFallbackAllowed(migrationOf(r, lp)))
+        throw new ProfileStoreError('Profile migration is reserved.')
+      return {
+        profile: p,
+        identity: `local:${alias(lp)}`,
+        authorization: JSON.stringify([
+          o.workspaceId,
+          p.name,
+          p.createdAt,
+          p.authorizationEpoch ?? '',
+          r.workspaces[o.workspaceId]?.authorizationEpoch ?? 0,
+          p.enabled,
+          p.allowExtensions,
+          p.allowSettings,
+          p.allowSync,
+        ]),
+      }
+    }
+    const p = raw(r, name)
+    if (!supported(p, r))
+      throw new ProfileStoreError('Profile is reserved or requires a newer plugin.')
+    const profile = effective(p, r)
+    return {
+      profile,
+      identity: `shared:${p.id}`,
+      authorization: JSON.stringify([
+        p.id,
+        p.permissionRevision,
+        p.perWorkspace[o.workspaceId]?.accessEpoch ?? 0,
+        profile.enabled,
+        p.allowExtensions,
+        p.allowSettings,
+        p.allowSync,
+      ]),
+    }
+  }
   const shared: SharedProfileAccess = {
     acquire(name) {
       const pending = pendingDisk.get(name)
@@ -547,38 +589,9 @@ export function createSharedProfileStore(
         ? { name: alias(lp), identity: `local:${alias(lp)}` }
         : resolved(r.profiles.find((p) => p.name === name))
     },
+    admission: admissionSnapshot,
     authorization(name) {
-      const lp = localRecord(name)
-      const r = read()
-      if (lp) {
-        localAvailable(lp, r)
-        const p = localView(lp, r)
-        if (!localFallbackAllowed(migrationOf(r, lp)))
-          throw new ProfileStoreError('Profile migration is reserved.')
-        return JSON.stringify([
-          o.workspaceId,
-          p.name,
-          p.createdAt,
-          p.authorizationEpoch ?? '',
-          r.workspaces[o.workspaceId]?.authorizationEpoch ?? 0,
-          p.enabled,
-          p.allowExtensions,
-          p.allowSettings,
-          p.allowSync,
-        ])
-      }
-      const p = raw(r, name)
-      if (!supported(p, r))
-        throw new ProfileStoreError('Profile is reserved or requires a newer plugin.')
-      return JSON.stringify([
-        p.id,
-        p.permissionRevision,
-        p.perWorkspace[o.workspaceId]?.accessEpoch ?? 0,
-        effective(p, r).enabled,
-        p.allowExtensions,
-        p.allowSettings,
-        p.allowSync,
-      ])
+      return admissionSnapshot(name).authorization
     },
     view(name) {
       const r = read()

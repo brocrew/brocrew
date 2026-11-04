@@ -170,13 +170,16 @@ export async function restoreVisibleSession(deps: RestoreDeps): Promise<string[]
       }
       await browser.exclusive(p.name, async () => {
         const allowed = (): boolean => {
-          const current = store.get(p.name)
+          // One synchronous snapshot, renewed at each pre/post-await check. Never carry
+          // a volume observation, identity or permission result across awaited page work.
+          const snapshot = store.shared?.admission(p.name)
+          const current = snapshot ? snapshot.profile : store.get(p.name)
           return (
             current !== undefined &&
             current.enabled &&
             !current.temporary &&
-            (!store.shared || store.shared.identity(p.name) === resolved?.identity) &&
-            store.shared?.authorization(p.name) === admission.authorization &&
+            (!store.shared || snapshot?.identity === resolved?.identity) &&
+            snapshot?.authorization === admission.authorization &&
             (admission.generation === undefined ||
               browser.state(p.name)?.generation === admission.generation)
           )
