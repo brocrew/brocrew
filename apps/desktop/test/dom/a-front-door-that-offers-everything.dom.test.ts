@@ -463,6 +463,7 @@ describe('§3 · the choices are reachable from THIS screen, and they reach the 
       await selectConnection(asking.m, provider)
       expect((asking.m.q('model-picker-take') as HTMLButtonElement).disabled).toBe(true)
       expect(asking.m.all('model-picker-row')).toHaveLength(0)
+      expect(asking.m.q('model-picker-said').textContent).toContain('Asking')
     }
     expect(asking.m.all('model-picker-row')).toHaveLength(0)
     expect(asking.m.all('model-picker-effort-none')).toHaveLength(0)
@@ -486,17 +487,29 @@ describe('§3 · the choices are reachable from THIS screen, and they reach the 
     await type(refused.m, 'model-picker-add-name', 'gpt-5.6-terra')
     ;(refused.m.q('model-picker-add') as HTMLButtonElement).click()
     await settle()
-    const none = (m: Mounted): string => (m.q('model-picker-effort-none').textContent ?? '').trim()
-    expect(none(refused.m)).toBe('Codex could not be asked which efforts “gpt-5.6-terra” offers.')
+    expect(refused.m.all('model-picker-effort-none')).toHaveLength(0)
+    expect(refused.m.all('model-picker-effort')).toHaveLength(0)
+    expect(refused.m.q('model-picker-panel').textContent).not.toMatch(
+      /did not say|no effort levels/,
+    )
+    expect(
+      refused.m.q('model-picker-panel').querySelector('[data-model="gpt-5.6-terra"] input:checked'),
+    ).not.toBeNull()
+    expect((refused.m.q('model-picker-take') as HTMLButtonElement).disabled).toBe(false)
     refused.m.unmount()
 
-    // ⚑ The paired positive: with a list, the sentence IS about the provider's row, and says so.
+    // A listed model with no efforts keeps its selected row and can be taken without a level.
     const listed = open()
     listed.answers.value = { claude: REFUSED, codex: MEASURED_CLAUDE }
     await nextTick()
     await openPicker(listed.m)
     await draftRow(listed.m, 'codex', 'haiku')
-    expect(none(listed.m)).toBe('“haiku” has no effort levels.')
+    expect(listed.m.all('model-picker-effort-none')).toHaveLength(0)
+    expect(listed.m.all('model-picker-effort')).toHaveLength(0)
+    expect(
+      listed.m.q('model-picker-panel').querySelector('[data-model="haiku"] input:checked'),
+    ).not.toBeNull()
+    expect((listed.m.q('model-picker-take') as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('⛔ …from this screen, not from a settings surface a person has to know about', async () => {
