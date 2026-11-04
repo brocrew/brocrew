@@ -290,7 +290,7 @@ describe.skipIf(process.platform === 'win32')('first Settings startup catalogue 
     } finally {
       release()
     }
-    const [oldResult, retryResult] = await Promise.all([oldList, retry])
+    const [, retryResult] = await Promise.all([oldList, retry])
     expect(retryResult).toMatchObject([{ state: 'Available' }])
     expect(successor.refreshCatalogue).toHaveBeenCalledOnce()
   })
@@ -318,7 +318,7 @@ describe.skipIf(process.platform === 'win32')('first Settings startup catalogue 
       await refresh(...args)
       status = null
     })
-    const result = await f.controller.catalogue(true)
+    await f.controller.catalogue(true)
     expect(f.fetch).toHaveBeenCalledTimes(6)
     expect(f.peer.refreshCatalogue).toHaveBeenCalledOnce()
     expect(status).toBe(null)
