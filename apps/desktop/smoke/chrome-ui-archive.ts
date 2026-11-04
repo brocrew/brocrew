@@ -2,8 +2,11 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { readPluginArchive } from '../src/main/plugins/package-archive'
-import { parsePluginManifest } from '../src/main/plugins/package-schema'
-import { createPluginVerifier } from '../src/main/plugins/package-verifier'
+import { parsePluginManifest, type PluginManifest } from '../src/main/plugins/package-schema'
+import {
+  createPluginVerifier,
+  type VerifiedPluginPackage,
+} from '../src/main/plugins/package-verifier'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
 import {
   fictionalPublicKey,
@@ -16,6 +19,7 @@ export const ORIGINAL_CHROME_SHA =
 export function verifyChromeUiArchive(archive: Buffer, compression: 'tar' | 'tar.gz' = 'tar') {
   const files = readPluginArchive(archive, compression),
     manifest = parsePluginManifest(files.get('plugin.json')!)
+  if (manifest.format === 3) throw new Error('Expected a legacy UI archive')
   const release = {
     id: manifest.id,
     version: manifest.version,
@@ -30,12 +34,14 @@ export function verifyChromeUiArchive(archive: Buffer, compression: 'tar' | 'tar
     manifestSha256: pluginSha256(files.get('plugin.json')!),
   }
   const catalogue = signed({ format: 1, entries: [release] })
-  const verified = createPluginVerifier({
+  const checked = createPluginVerifier({
     pinnedPublicKey: fictionalPublicKey,
     target: { os: 'darwin', cpu: 'arm64' },
   })
     .verifyCatalogue(catalogue.bytes, catalogue.signature)
     .verifyPackage('chrome', manifest.version, archive)
+  if (checked.manifest.format === 3) throw new Error('Expected a legacy UI archive')
+  const verified = checked as VerifiedPluginPackage<PluginManifest>
   return { verified, release }
 }
 export function rebuildChromeUiArchive(

@@ -656,6 +656,7 @@ export function productionPluginController() {
               attempt = candidate
               peer = candidate
               const connection = await connectPluginSettings({
+                appVersion: options.appVersion,
                 path: join(options.root, 'person-control/person.sock'),
                 personKey,
                 root: options.root,

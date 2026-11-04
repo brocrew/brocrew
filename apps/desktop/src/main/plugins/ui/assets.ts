@@ -25,6 +25,7 @@ export class PluginUiAssets {
       !/^[a-f0-9-]{36}$/.test(viewId) ||
       !verified.compatibility.host ||
       !verified.compatibility.ui ||
+      verified.manifest.format === 3 ||
       !verified.manifest.ui
     )
       throw new Error('Plugin unavailable. Try again.')

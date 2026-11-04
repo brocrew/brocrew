@@ -8,7 +8,7 @@ import { PluginProposal, proposalFor } from '../../../src/main/plugins/lifecycle
 import { pluginSha256 } from '../../../src/main/plugins/package-digests'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { createRepoAwarePluginVerifier, type VerifiedPluginPackage } from '../../../src/main/plugins/package-verifier'
+import { createRepoAwarePluginVerifier, type VerifiedPluginPackage } from '../../legacy-plugin-verifier'
 import { PluginSupervisorError } from '../../../src/main/plugins/supervisor/protocol'
 import { downloadPluginArchive } from '../../../src/main/plugins/lifecycle/download'
 import { LifecycleEffects, type Effect } from '../../../src/main/plugins/lifecycle/files'

@@ -24,7 +24,11 @@ export async function whatsappBrokerBinding(
   refused: () => void | Promise<void>,
   diagnostic?: PluginToolDiagnostic,
 ) {
-  if (view.installation.pluginId !== 'whatsapp' || !view.package.compatibility.tools)
+  if (
+    view.installation.pluginId !== 'whatsapp' ||
+    !view.package.compatibility.tools ||
+    view.package.manifest.format === 3
+  )
     throw new Error('unavailable')
   const resources = view.package.manifest.permissions.resources
   const account = resources.find((one) => one.id === whatsappBrokerResourceId)

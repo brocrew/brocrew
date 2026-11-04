@@ -39,6 +39,7 @@ export async function bootstrapPluginLifecycle(options: {
     pinnedPublicKey,
     repoCatalogueSha256: repo?.catalogueSha256,
     target,
+    appVersion: repo?.appVersion,
   }).verifyCatalogue(catalogue.bytes, catalogue.signature)
   let repoList: { bytes: Uint8Array; sha256: string; appVersion: string } | undefined
   if (repo?.repoList) {
@@ -115,6 +116,7 @@ export async function bootstrapPluginLifecycle(options: {
         repoList,
         legacyRepoList,
         target,
+        appVersion: repo?.appVersion,
         catalogue,
         names: repo?.names ?? { chrome: 'Chrome' },
         refreshCatalogue: repo?.appVersion

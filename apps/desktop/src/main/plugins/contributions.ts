@@ -1,5 +1,4 @@
 import { z } from 'zod'
-import { pluginAdapter } from './lifecycle/adapters'
 import { verifiedPluginDigest, type VerifiedPluginPackage } from './package-verifier'
 import { hookSupport } from './hooks/definitions'
 import { PluginSupervisorError } from './supervisor/protocol'
@@ -10,30 +9,61 @@ const unavailable = (): never => {
 export function pluginContributions(pkg: VerifiedPluginPackage) {
   if (!verifiedPluginDigest(pkg) || !pkg.compatibility.host) return unavailable()
   const manifest = pkg.manifest
-  const adapter = pluginAdapter(manifest.id)
-  if (manifest.server && !adapter) return unavailable()
-  const executor =
-    manifest.format === 2
-      ? manifest.executor
-      : manifest.server
-        ? { kind: 'node' as const, entry: manifest.server.entry }
-        : undefined
-  if (!executor || executor.kind !== 'node') return unavailable()
+  const contract = pkg.contract
+  const declarations: {
+    id: string
+    kind: string
+    api: number
+    definition: unknown
+    supported: boolean
+  }[] = []
+  if (manifest.format === 3) {
+    for (const { id, ...definition } of manifest.ui ?? [])
+      declarations.push({ id, kind: 'ui.button', api: 1, definition, supported: false })
+    if (manifest.settings)
+      declarations.push({
+        id: 'settings',
+        kind: 'settings.page',
+        api: 1,
+        definition: {
+          title: manifest.name,
+          ...manifest.settings.page,
+          fields: manifest.settings.fields,
+        },
+        supported: false,
+      })
+    for (const { id, kind, api, invoke } of manifest.hooks ?? [])
+      declarations.push({ id, kind, api, definition: { invoke }, supported: false })
+    for (const { id, ...definition } of manifest.speech ?? [])
+      declarations.push({ id, kind: 'speech.transcribe', api: 1, definition, supported: false })
+    for (const { id, ...definition } of manifest.cleanup ?? [])
+      declarations.push({ id, kind: 'transcript.cleanup', api: 1, definition, supported: false })
+  }
   return Object.freeze({
-    executor: Object.freeze({ ...executor }),
-    tools: manifest.server && pkg.compatibility.tools ? adapter!.broker : null,
-    configuration: manifest.ui && pkg.compatibility.ui && adapter ? adapter : null,
-    cleanup: adapter?.uninstall ?? null,
-    hooks: Object.freeze((manifest.hooks ?? []).map(hookSupport)),
+    executor: contract.runtime,
+    runtime: contract.runtime,
+    mcp: contract.mcp,
+    tools: pkg.compatibility.tools ? contract.tools : null,
+    configuration: pkg.compatibility.ui ? (contract.settings ?? null) : null,
+    settings: pkg.compatibility.ui ? (contract.settings ?? null) : null,
+    cleanup: manifest.format === 3 ? (manifest.lifecycle.beforeRemove ?? null) : null,
+    declarations: Object.freeze(declarations.map((declaration) => Object.freeze(declaration))),
+    hooks: Object.freeze(
+      manifest.format === 3
+        ? (manifest.hooks ?? []).map((hook) =>
+            Object.freeze({ ...hook, supported: false as const }),
+          )
+        : (manifest.hooks ?? []).map(hookSupport),
+    ),
   })
 }
 const Identity = z.strictObject({
-  pluginId: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
+  pluginId: z.string().min(1),
   releaseDigest: z.string().regex(/^[a-f0-9]{64}$/),
-  installId: z.uuid(),
-  incarnation: z.uuid(),
-  runId: z.uuid(),
-  workspaceId: z.uuid(),
+  installId: z.string().min(1),
+  incarnation: z.string().min(1),
+  runId: z.string().min(1),
+  workspaceId: z.string().min(1),
   switchRevision: z.number().int().nonnegative().safe(),
 })
 export type ContributionIdentity = z.infer<typeof Identity>
@@ -64,8 +94,7 @@ export function createContributionRegistry() {
       )
         return unavailable()
       const contributions = pluginContributions(pkg)
-      const key = identity.workspaceId + '/' + identity.pluginId
-      if (!entries.has(key) && entries.size >= 512) return unavailable()
+      const key = JSON.stringify([identity.workspaceId, identity.pluginId])
       const before = entries.get(key)
       if (
         before &&
@@ -95,14 +124,14 @@ export function createContributionRegistry() {
     },
     revoke(pluginId: string) {
       for (const [key, entry] of entries)
-        if (key.endsWith('/' + pluginId)) {
+        if (entry.identity.pluginId === pluginId) {
           entry.revoke()
           entries.delete(key)
         }
     },
     detach(workspaceId: string) {
       for (const [key, entry] of entries)
-        if (key.startsWith(workspaceId + '/')) {
+        if (entry.identity.workspaceId === workspaceId) {
           entry.revoke()
           entries.delete(key)
         }

@@ -1,8 +1,15 @@
 import { createPrivateKey, createPublicKey, sign } from 'node:crypto'
 import { gzipSync } from 'node:zlib'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
-import type { PluginManifest, PluginRelease } from '../src/main/plugins/package-schema'
-import { createPluginVerifier } from '../src/main/plugins/package-verifier'
+import type {
+  AnyPluginManifest,
+  PluginManifest,
+  PluginRelease,
+} from '../src/main/plugins/package-schema'
+import {
+  createPluginVerifier,
+  type VerifiedPluginPackage,
+} from '../src/main/plugins/package-verifier'
 
 // Public deterministic test material, never a production key and never written to disk.
 const key = createPrivateKey({
@@ -146,13 +153,14 @@ export function tar(entries: readonly TarEntry[]): Buffer {
 export function packageFixture(
   options: {
     files?: Map<string, Buffer>
-    manifest?: PluginManifest
+    manifest?: AnyPluginManifest
     entries?: TarEntry[]
     compression?: 'tar' | 'tar.gz'
   } = {},
 ) {
   const files = options.files ?? payload()
   const manifest = options.manifest ?? manifestFor(files)
+  if (manifest.format === 3) throw new Error('Use a generic package fixture for format 3')
   const manifestBytes = Buffer.from(JSON.stringify(manifest))
   const plain = tar(
     options.entries ?? [
@@ -183,7 +191,9 @@ export function packageFixture(
 export const verifier = () =>
   createPluginVerifier({ pinnedPublicKey: fictionalPublicKey, target: { os: 'linux', cpu: 'x64' } })
 export function verified(fixture = packageFixture()) {
-  return verifier()
+  const result = verifier()
     .verifyCatalogue(fixture.bytes, fixture.signature)
     .verifyPackage(fixture.release.id, fixture.release.version, fixture.archive)
+  if (result.manifest.format === 3) throw new Error('Expected legacy package fixture')
+  return result as VerifiedPluginPackage<PluginManifest>
 }

@@ -7,6 +7,13 @@ import { strictPluginJson } from './strict-json'
 import { HookDeclaration } from './hooks/definitions'
 import { refusePlugin } from './verification-error'
 import { SHARED_DATA_FEATURE, SHARED_DATA_PERMISSION } from './shared-data-contract'
+import { GenericPluginManifestSchema, type AnyPluginManifest } from './generic-manifest'
+export { normalizePluginManifest } from './generic-manifest'
+export type {
+  AnyPluginManifest,
+  GenericPluginManifest,
+  NormalizedPluginManifest,
+} from './generic-manifest'
 
 const integer = z.number().int().nonnegative().safe()
 const version = SkillRelease.shape.version
@@ -286,12 +293,15 @@ export function parsePluginCatalogue(bytes: Uint8Array): PluginRelease[] {
   return entries
 }
 
-export function parsePluginManifest(bytes: Uint8Array): PluginManifest {
+export function parsePluginManifest(bytes: Uint8Array): AnyPluginManifest {
   const parsed = z
-    .union([manifest, versionedManifest])
+    .union([manifest, versionedManifest, GenericPluginManifestSchema])
     .safeParse(strictPluginJson(bytes, PLUGIN_LIMITS.manifestBytes))
   if (!parsed.success) refusePlugin('invalid')
   const result = parsed.data
+  if (result.format === 3) {
+    return result
+  }
   if (
     result.permissions.resources.some((resource) => resource.id === SHARED_DATA_PERMISSION) ||
     (result.sharedData === true &&

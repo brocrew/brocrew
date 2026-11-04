@@ -28,6 +28,7 @@ export class PluginPackageVault {
     private readonly key: KeyObject | null,
     private readonly target: PluginTarget,
     private readonly repoCatalogueSha256?: string,
+    private readonly appVersion?: string,
   ) {}
   private async checked(
     directory: string,
@@ -58,6 +59,7 @@ export class PluginPackageVault {
       pinnedPublicKey: this.key,
       repoCatalogueSha256: this.repoCatalogueSha256 ? pluginSha256(catalogue) : undefined,
       target: this.target,
+      appVersion: this.appVersion,
       // Cached unsigned metadata is never authority. The exact release comes from the
       // admitted list (stage) or authenticated installation record (load/removal).
       knownReleases: [

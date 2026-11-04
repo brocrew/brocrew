@@ -150,7 +150,11 @@ export async function openPluginConfigurationView(
   }
   const rpc = new PluginUiRpc({
     binding,
-    schemas: options.verified.manifest.ui!.methodSchemas,
+    schemas: (() => {
+      if (options.verified.manifest.format === 3)
+        throw new Error('Generic settings transport is not implemented by the legacy page host')
+      return options.verified.manifest.ui!.methodSchemas
+    })(),
     peer: options.peer,
     current: () => accepts(frame),
     now: () => performance.now(),

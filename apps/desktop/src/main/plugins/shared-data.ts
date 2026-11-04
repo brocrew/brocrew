@@ -88,7 +88,7 @@ export async function sharedDataEnvironment(
   input?: SharedDataOwner,
 ): Promise<Record<string, string>> {
   if (!verifiedPluginDigest(pkg) || !pkg.compatibility.host) throw new PluginHostError('package')
-  if (pkg.manifest.sharedData !== true || !input) return {}
+  if (pkg.manifest.format === 3 || pkg.manifest.sharedData !== true || !input) return {}
   if (!pkg.manifest.hostApi.requiredFeatures.includes(SHARED_DATA_FEATURE))
     throw new PluginHostError('package')
   const owner = checkedSharedDataOwner(input, hostRoot)

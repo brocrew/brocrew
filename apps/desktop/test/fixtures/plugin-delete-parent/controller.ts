@@ -8,11 +8,11 @@ import { PluginProposal, proposalFor } from './proposals'
 import { pluginSha256 } from '../../../src/main/plugins/lifecycle/../package-digests'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { createRepoAwarePluginVerifier, type VerifiedPluginPackage } from '../../../src/main/plugins/lifecycle/../package-verifier'
+import { createRepoAwarePluginVerifier, type VerifiedPluginPackage } from '../../legacy-plugin-verifier'
 import { PluginSupervisorError } from '../../../src/main/plugins/lifecycle/../supervisor/protocol'
 import { downloadPluginArchive } from '../../../src/main/plugins/lifecycle/./download'
 import { LifecycleEffects, type Effect } from '../../../src/main/plugins/lifecycle/./files'
-import { PluginPackageVault } from '../../../src/main/plugins/lifecycle/./vault'
+import { PluginPackageVault } from '../../legacy-plugin-vault'
 import type {
   LifecycleOptions,
   LifecycleRun,

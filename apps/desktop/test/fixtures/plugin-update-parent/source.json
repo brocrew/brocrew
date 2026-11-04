@@ -50,13 +50,13 @@
         "../../../src/main/plugins/lifecycle/adapters": "./adapters",
         "../../../src/main/plugins/lifecycle/proposals": "./proposals",
         "../../../src/main/plugins/package-digests": "../package-digests",
-        "../../../src/main/plugins/package-verifier": "../package-verifier",
         "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol",
         "../../../src/main/plugins/lifecycle/download": "./download",
         "./lifecycle-files": "./files",
-        "../../../src/main/plugins/lifecycle/vault": "./vault",
         "../../../src/main/plugins/lifecycle/types": "./types",
-        "../../../src/shared/plugin-settings": "../../../shared/plugin-settings"
+        "../../../src/shared/plugin-settings": "../../../shared/plugin-settings",
+        "../../legacy-plugin-verifier": "../package-verifier",
+        "../../legacy-plugin-vault": "./vault"
       }
     },
     {

@@ -81,7 +81,11 @@ export async function chromeBrokerBinding(
   refused: () => void | Promise<void> = () => console.warn(refusalMessage),
   diagnostic?: PluginToolDiagnostic,
 ) {
-  if (view.installation.pluginId !== 'chrome' || !view.package.compatibility.tools)
+  if (
+    view.installation.pluginId !== 'chrome' ||
+    !view.package.compatibility.tools ||
+    view.package.manifest.format === 3
+  )
     throw new Error('unavailable')
   const resources = view.package.manifest.permissions.resources
   const profiles = resources.find((one) => one.id === chromeBrokerResourceId)

@@ -117,6 +117,7 @@ export class PluginLifecycleController {
           options.pinnedPublicKey,
           options.target,
           options.repoCatalogueSha256,
+          options.appVersion ?? options.repoList?.appVersion,
         ),
       )
       const catalogue = controller.catalogue() // Complete verification before retaining provenance.
@@ -212,6 +213,7 @@ export class PluginLifecycleController {
         pinnedPublicKey: this.options.pinnedPublicKey,
         repoCatalogueSha256: next.repoCatalogueSha256,
         target: this.options.target,
+        appVersion: this.options.appVersion ?? this.options.repoList?.appVersion,
         knownReleases: this.pins(),
       }).verifyCatalogue(next.catalogue.bytes, next.catalogue.signature)
       if (pluginSha256(next.catalogue.bytes) !== expectedDigest) {
@@ -241,6 +243,7 @@ export class PluginLifecycleController {
       pinnedPublicKey: this.options.pinnedPublicKey,
       repoCatalogueSha256: this.options.repoCatalogueSha256,
       target: this.options.target,
+      appVersion: this.options.appVersion ?? this.options.repoList?.appVersion,
       knownReleases: this.pins(),
     }).verifyCatalogue(this.options.catalogue.bytes, this.options.catalogue.signature)
   }
@@ -636,7 +639,7 @@ export class PluginLifecycleController {
     install: Installation,
     checked: VerifiedPluginPackage,
   ): Promise<LifecycleRun> {
-    if (checked.manifest.skills.length !== 0) return refuse()
+    if (checked.manifest.format !== 3 && checked.manifest.skills.length !== 0) return refuse()
     const prior = this.runs.get(install.pluginId)
     if (prior) {
       if (prior.installId !== install.installId || prior.ended) return pending()
@@ -787,13 +790,15 @@ export class PluginLifecycleController {
               AbortSignal.timeout(30000),
             )
         const checked = preflight?.checked ?? catalogue.verifyPackage(id, release.version, bytes!)
-        if (checked.manifest.skills.length !== 0) return refuse()
+        if (checked.manifest.format !== 3 && checked.manifest.skills.length !== 0) return refuse()
         const state = this.options.state.inspect(),
           before = state.guards.find((one) => one.pluginId === id)
         if (
           before &&
-          (before.release.dataSchema < checked.manifest.dataCompatibility.minSchema ||
-            before.release.dataSchema > checked.manifest.dataCompatibility.maxSchema)
+          checked.manifest.format !== 3 &&
+          (before.release.dataSchema < (checked.contract.data.compatibility?.minSchema ?? 0) ||
+            before.release.dataSchema >
+              (checked.contract.data.compatibility?.maxSchema ?? Number.MAX_SAFE_INTEGER))
         )
           return refuse()
         if (!workspace.live) return refuse()
@@ -812,7 +817,7 @@ export class PluginLifecycleController {
               version: release.version,
               archiveSha256: release.archive.sha256,
               manifestSha256: release.manifestSha256,
-              dataSchema: checked.manifest.dataSchema,
+              dataSchema: checked.contract.data.schema,
             },
           },
         })
@@ -980,10 +985,12 @@ export class PluginLifecycleController {
             )
         const checked = preflight?.checked ?? catalogue.verifyPackage(id, release.version, bytes!)
         if (
-          checked.manifest.skills.length ||
-          checked.manifest.dataSchema !== before.release.dataSchema ||
-          before.release.dataSchema < checked.manifest.dataCompatibility.minSchema ||
-          before.release.dataSchema > checked.manifest.dataCompatibility.maxSchema
+          checked.manifest.format !== 3 &&
+          (checked.manifest.skills.length ||
+            checked.contract.data.schema !== before.release.dataSchema ||
+            before.release.dataSchema < (checked.contract.data.compatibility?.minSchema ?? 0) ||
+            before.release.dataSchema >
+              (checked.contract.data.compatibility?.maxSchema ?? Number.MAX_SAFE_INTEGER))
         )
           return refuse()
         // Cache the verified replacement durably before reserving an update. Recovery needs no download.
@@ -1010,7 +1017,7 @@ export class PluginLifecycleController {
               version: release.version,
               archiveSha256: release.archive.sha256,
               manifestSha256: release.manifestSha256,
-              dataSchema: checked.manifest.dataSchema,
+              dataSchema: checked.contract.data.schema,
             },
           },
         })
@@ -1576,6 +1583,7 @@ export class PluginLifecycleController {
       try {
         const view = this.screen(handle, id)
         if (
+          view.package.manifest.format === 3 ||
           !view.package.manifest.server ||
           !view.package.compatibility.tools ||
           !pluginContributions(view.package).tools

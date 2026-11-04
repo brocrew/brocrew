@@ -44,6 +44,7 @@ export interface LifecycleOptions {
   repoList?: { bytes: Uint8Array; sha256: string; appVersion: string }
   legacyRepoList?: { bytes: Uint8Array; sha256: string; appVersion: string }
   target: PluginTarget
+  appVersion?: string
   catalogue: { bytes: Uint8Array; signature: Uint8Array }
   /** Reviewed host-owned display names, never remote unreviewed text. */
   names: Readonly<Record<string, string>>

@@ -78,7 +78,7 @@ async function authenticatedHealth(
     ['/healthz', '', 401, 'GET'],
     ['/healthz', 'invalid', 401, 'GET'],
     ['/healthz', mcp, 401, 'GET'],
-    [adminPath + probe, mcp, 401, 'GET'],
+    ...(probe ? [[adminPath + probe, mcp, 401, 'GET'] as const] : []),
     [mcpPath, '', 401, 'POST'],
     [mcpPath, admin, 401, 'POST'],
     ['/healthz', admin, 200, 'GET'],
@@ -113,13 +113,15 @@ async function authenticatedHealth(
       if (body?.ok !== true || body.version !== version) throw new PluginHostError('ready')
     } else await response.body?.cancel()
   }
-  const adminResponse = await fetch(origin + adminPath + probe, {
-    headers: { Authorization: `Bearer ${admin}` },
-    redirect: 'manual',
-    signal: AbortSignal.timeout(1500),
-  })
-  await adminResponse.body?.cancel()
-  if (adminResponse.status !== 200) throw new PluginHostError('ready')
+  if (probe) {
+    const adminResponse = await fetch(origin + adminPath + probe, {
+      headers: { Authorization: `Bearer ${admin}` },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(1500),
+    })
+    await adminResponse.body?.cancel()
+    if (adminResponse.status !== 200) throw new PluginHostError('ready')
+  }
   const client = new Client({ name: 'brocrew-plugin-host', version: '1' }, { capabilities: {} })
   client.onerror = () => {}
   const transport = new StreamableHTTPClientTransport(new URL(origin + mcpPath), {
@@ -224,6 +226,8 @@ export function createPluginNodeHost(options: {
   async function launch(spec: PluginNodeStart): Promise<PluginNodeProcess> {
     const manifest = spec.package.manifest
     const hosted = pluginNodePolicy(spec.package)
+    // This legacy launcher does not implement format 3 transports.
+    if (manifest.format === 3 || !('entry' in hosted)) throw new PluginHostError('start')
     if (
       !spec.package.compatibility.host ||
       verifiedPluginDigest(spec.package) !== spec.releaseDigest ||

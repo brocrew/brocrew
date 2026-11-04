@@ -12,7 +12,9 @@ import {
   parsePluginManifest,
   PluginTarget,
   type PluginApiRange,
-  type PluginManifest,
+  type AnyPluginManifest,
+  normalizePluginManifest,
+  type NormalizedPluginManifest,
   type PluginRelease,
 } from './package-schema'
 import { PLUGIN_FRAMEWORK_FEATURES } from './hooks/definitions'
@@ -33,6 +35,7 @@ export interface PluginApiSupport {
 export interface PluginVerifierOptions {
   readonly pinnedPublicKey: KeyObject
   readonly target: PluginTarget
+  readonly appVersion?: string
   /** Persist these pins in the later installer; this pure verifier never writes them. */
   readonly knownReleases?: readonly PluginReleasePin[]
   readonly apiSupport?: {
@@ -45,8 +48,9 @@ const packages = new WeakMap<object, string>()
 export function verifiedPluginDigest(value: unknown): string | undefined {
   return value !== null && typeof value === 'object' ? packages.get(value) : undefined
 }
-export interface VerifiedPluginPackage {
-  readonly manifest: Readonly<PluginManifest>
+export interface VerifiedPluginPackage<M extends AnyPluginManifest = AnyPluginManifest> {
+  readonly manifest: Readonly<M>
+  readonly contract: Readonly<NormalizedPluginManifest>
   readonly compatibility: Readonly<{ host: boolean; tools: boolean; ui: boolean }>
   readonly filePaths: readonly string[]
   /** Copies keep callers from changing the bytes retained behind a verified result. */
@@ -57,6 +61,132 @@ export interface VerifiedPluginCatalogue {
   readonly entries: readonly Readonly<PluginRelease>[]
   readonly pins: readonly PluginReleasePin[]
   verifyPackage(id: string, version: string, downloaded: Uint8Array): VerifiedPluginPackage
+}
+
+export interface PluginPackageIntegrity {
+  sha256: string
+  bytes: number
+  compression?: 'tar' | 'tar.gz'
+}
+export interface DirectPluginVerifierOptions {
+  target: PluginTarget
+  appVersion: string
+  apiSupport?: PluginVerifierOptions['apiSupport']
+}
+
+/** A selected package's digest checks intact bytes, not its author's trust or identity. */
+export function verifyPluginPackage(
+  input: Uint8Array,
+  expected: PluginPackageIntegrity,
+  options: DirectPluginVerifierOptions,
+): VerifiedPluginPackage {
+  const target = PluginTarget.safeParse(options.target)
+  if (!target.success) refusePlugin('target')
+  const archive = Buffer.from(input)
+  verifyPluginDigest(
+    archive,
+    { size: expected.bytes, sha256: expected.sha256 },
+    PLUGIN_LIMITS.archiveBytes,
+  )
+  const files = readPluginArchive(archive, expected.compression ?? 'tar')
+  const manifestBytes = files.get('plugin.json')
+  if (!manifestBytes) refusePlugin('invalid')
+  const manifest = parsePluginManifest(manifestBytes)
+
+  return verifiedContents(
+    files,
+    manifest,
+    target.data,
+    options.apiSupport ?? defaultSupport(),
+    expected.sha256,
+    options.appVersion,
+  )
+}
+
+function checkAppVersion(manifest: AnyPluginManifest, appVersion: string | undefined): void {
+  if (manifest.format === 3 && manifest.minAppVersion) {
+    const actual = /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/.exec(appVersion ?? '')
+    if (!actual) refusePlugin('target')
+    const current = actual.slice(1).map(Number)
+    const minimum = manifest.minAppVersion.split('.').map(Number)
+    let meets = true
+    for (let i = 0; i < 3; i++) {
+      if (current[i] === minimum[i]) continue
+      meets = current[i]! > minimum[i]!
+      break
+    }
+    if (!meets) refusePlugin('target')
+  }
+}
+
+function defaultSupport() {
+  const api = { major: 1, minor: 0, features: [] as string[] }
+  return { host: { ...api, features: [...PLUGIN_FRAMEWORK_FEATURES] }, tools: api, ui: api }
+}
+
+function verifiedContents(
+  files: ReadonlyMap<string, Buffer>,
+  manifest: AnyPluginManifest,
+  target: PluginTarget,
+  support: NonNullable<PluginVerifierOptions['apiSupport']>,
+  digest: string,
+  appVersion?: string,
+): VerifiedPluginPackage {
+  if (!manifest.platforms.some((value) => value.os === target.os && value.cpu === target.cpu))
+    refusePlugin('target')
+  checkAppVersion(manifest, appVersion)
+  if (files.size !== manifest.files.length + 1) refusePlugin('digest')
+  for (const entry of manifest.files) {
+    const body = files.get(entry.path)
+    if (!body) refusePlugin('digest')
+    const size = 'bytes' in entry ? entry.bytes : entry.size
+    verifyPluginDigest(body, { size, sha256: entry.sha256 }, PLUGIN_LIMITS.expandedBytes)
+  }
+  if (manifest.format !== 3)
+    for (const skill of manifest.skills) {
+      const body = files.get(skill.path)
+      if (!body) refusePlugin('invalid')
+      const parsed = SkillRelease.safeParse({
+        ...skill,
+        body: decoded(body),
+        bytes: body.length,
+        sha256: manifest.files.find((value) => value.path === skill.path)?.sha256,
+      })
+      if (
+        !parsed.success ||
+        [parsed.data.body, parsed.data.description, parsed.data.reminder].some((text) =>
+          text.includes('\0'),
+        )
+      )
+        refusePlugin('invalid')
+      const front = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/
+        .exec(parsed.data.body)?.[1]
+        ?.split(/\r?\n/)
+        .filter((line) => line !== '')
+      if (
+        front?.length !== 2 ||
+        !front.includes(`name: ${skill.name}`) ||
+        !front.includes(`description: ${skill.description}`)
+      )
+        refusePlugin('invalid')
+    }
+  const host = manifest.format === 3 || compatible(manifest.hostApi, support.host)
+  const result: VerifiedPluginPackage = Object.freeze({
+    manifest: freeze(manifest),
+    contract: freeze(normalizePluginManifest(manifest)),
+    compatibility: Object.freeze({
+      host,
+      tools: host && (manifest.format === 3 || compatible(manifest.toolApi, support.tools)),
+      ui: host && (manifest.format === 3 || compatible(manifest.uiApi, support.ui)),
+    }),
+    filePaths: Object.freeze([...files.keys()]),
+    readFile(path: string) {
+      const body = files.get(path)
+      return body === undefined ? undefined : Uint8Array.from(body)
+    },
+  })
+  packages.set(result, digest)
+  return result
 }
 
 function freeze<T>(value: T): T {
@@ -82,33 +212,6 @@ function decoded(bytes: Buffer): string {
     return refusePlugin('invalid')
   }
 }
-function noInstallRecipes(path: string, bytes: Buffer): void {
-  const basename = path.split('/').at(-1)?.toLowerCase()
-  if (
-    basename === 'binding.gyp' ||
-    /\.(?:sh|bash|zsh|bat|cmd|ps1)$/i.test(path) ||
-    basename === 'makefile'
-  )
-    refusePlugin('install-hook')
-  if (basename !== 'package.json') return
-  const value = strictPluginJson(bytes, 1024 * 1024)
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) refusePlugin('invalid')
-  // Built dependencies may keep metadata, but no lifecycle/build command is admitted.
-  for (const key of ['scripts', 'hooks', 'gypfile']) {
-    if (Object.hasOwn(value, key)) {
-      const member: unknown = Reflect.get(value, key)
-      if (
-        key !== 'scripts' ||
-        member === null ||
-        typeof member !== 'object' ||
-        Array.isArray(member) ||
-        Object.keys(member).length !== 0
-      )
-        refusePlugin('install-hook')
-    }
-  }
-}
-
 /** All authority comes from one app-supplied public key and its exact signed descriptors. */
 export function createPluginVerifier(options: PluginVerifierOptions) {
   const signatures = pluginCatalogueSignatures(options.pinnedPublicKey)
@@ -219,60 +322,20 @@ function catalogueVerifier(
             (manifest.format === 2
               ? !release.authors ||
                 JSON.stringify(manifest.authors) !== JSON.stringify(release.authors)
-              : release.authors !== undefined) ||
+              : manifest.format === 1 && release.authors !== undefined) ||
             manifest.version !== release.version ||
-            manifest.sourceCommit !== release.sourceCommit ||
+            (manifest.format !== 3 && manifest.sourceCommit !== release.sourceCommit) ||
             JSON.stringify(manifest.platforms) !== JSON.stringify(release.platforms)
           )
             refusePlugin('invalid')
-          if (files.size !== manifest.files.length + 1) refusePlugin('digest')
-          for (const entry of manifest.files) {
-            const body = files.get(entry.path)
-            if (!body) refusePlugin('digest')
-            verifyPluginDigest(body, entry, PLUGIN_LIMITS.expandedBytes)
-            noInstallRecipes(entry.path, body)
-          }
-          for (const skill of manifest.skills) {
-            const body = files.get(skill.path)
-            if (!body) refusePlugin('invalid')
-            const parsed = SkillRelease.safeParse({
-              ...skill,
-              body: decoded(body),
-              bytes: body.length,
-              sha256: manifest.files.find((value) => value.path === skill.path)?.sha256,
-            })
-            if (
-              !parsed.success ||
-              [parsed.data.body, parsed.data.description, parsed.data.reminder].some((text) =>
-                text.includes('\0'),
-              )
-            )
-              refusePlugin('invalid')
-            const front = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/
-              .exec(parsed.data.body)?.[1]
-              ?.split(/\r?\n/)
-              .filter((line) => line !== '')
-            if (
-              front?.length !== 2 ||
-              !front.includes(`name: ${skill.name}`) ||
-              !front.includes(`description: ${skill.description}`)
-            )
-              refusePlugin('invalid')
-          }
-          const host = compatible(manifest.hostApi, support.host)
-          const result = Object.freeze({
-            manifest: freeze(manifest),
-            compatibility: Object.freeze({
-              host,
-              tools: host && compatible(manifest.toolApi, support.tools),
-              ui: host && compatible(manifest.uiApi, support.ui),
-            }),
-            filePaths: Object.freeze([...files.keys()]),
-            readFile(path: string) {
-              const body = files.get(path)
-              return body === undefined ? undefined : Uint8Array.from(body)
-            },
-          })
+          const result = verifiedContents(
+            files,
+            manifest,
+            target.data,
+            support,
+            release.archive.sha256,
+            options.appVersion,
+          )
           packages.set(result, release.archive.sha256)
           return result
         },

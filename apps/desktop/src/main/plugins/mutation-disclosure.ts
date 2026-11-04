@@ -1,5 +1,6 @@
 import { join } from 'node:path'
 import type { VerifiedPluginPackage } from './package-verifier'
+import type { PluginManifest } from './package-schema'
 import { verifiedPluginDigest } from './package-verifier'
 import { pluginSha256 } from './package-digests'
 import { GlobalPluginState } from './state/store'
@@ -14,8 +15,11 @@ import { SHARED_DATA_PERMISSION } from './shared-data-contract'
 /** Only a verified package can supply display metadata. This never executes or stages code. */
 export function releaseDisclosure(pkg: VerifiedPluginPackage): PluginReleaseDetails {
   if (!verifiedPluginDigest(pkg)) throw new Error('Unverified plugin disclosure')
-  const permissions = structuredClone(pkg.manifest.permissions)
-  if (pkg.manifest.sharedData === true)
+  const permissions: PluginManifest['permissions'] =
+    pkg.manifest.format === 3
+      ? { ...structuredClone(pkg.manifest.permissions), resources: [] }
+      : structuredClone(pkg.manifest.permissions)
+  if (pkg.manifest.format !== 3 && pkg.manifest.sharedData === true)
     permissions.resources.push({
       id: SHARED_DATA_PERMISSION,
       label:

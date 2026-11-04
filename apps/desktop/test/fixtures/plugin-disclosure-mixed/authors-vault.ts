@@ -5,7 +5,7 @@ import {
   createRepoAwarePluginVerifier,
   type VerifiedPluginCatalogue,
   type PluginReleasePin,
-} from '../../../src/main/plugins/package-verifier'
+} from '../../legacy-plugin-verifier'
 import type { PluginRelease, PluginTarget } from '../../../src/main/plugins/package-schema'
 import { PLUGIN_LIMITS, pluginSha256 } from '../../../src/main/plugins/package-digests'
 import {

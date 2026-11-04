@@ -53,6 +53,7 @@ export async function connectPluginSettings(options: {
   pinnedPublicKey: KeyObject | null
   repoCatalogueSha256?: string
   target: PluginTarget
+  appVersion?: string
   catalogue: { bytes: Uint8Array; signature: Uint8Array }
   projection: WorkspaceProjection
   propose(publicProposal: unknown, revision: number): void
@@ -69,6 +70,7 @@ export async function connectPluginSettings(options: {
     pinnedPublicKey: options.pinnedPublicKey,
     repoCatalogueSha256: options.repoCatalogueSha256,
     target: options.target,
+    appVersion: options.appVersion,
   }).verifyCatalogue(catalogueProof.bytes, catalogueProof.signature)
   let sourceFormat = (
     strictPluginJson(catalogueProof.bytes, PLUGIN_LIMITS.catalogueBytes) as { format: 1 | 2 }
@@ -96,6 +98,7 @@ export async function connectPluginSettings(options: {
     options.pinnedPublicKey,
     options.target,
     options.repoCatalogueSha256,
+    options.appVersion,
   )
   const screens = new Map<
     string,
@@ -553,6 +556,7 @@ export async function connectPluginSettings(options: {
                       if (pluginSha256(source.bytes) !== catalogueDigest) return failPolicy()
                       const verified = createRepoAwarePluginVerifier({
                         pinnedPublicKey: options.pinnedPublicKey,
+                        appVersion: options.appVersion,
                         repoCatalogueSha256:
                           options.pinnedPublicKey === null ? catalogueDigest : undefined,
                         target: options.target,
