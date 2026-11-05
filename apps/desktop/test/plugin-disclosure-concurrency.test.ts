@@ -63,7 +63,13 @@ const { displayRead, keepPluginRootPrivate } = require(process.argv[1]);
   process.send({ kind: 'done', descriptor });
 })().catch(error => { process.send({ kind: 'failed', code: error.code, message: error.message }); process.exitCode = 1; });
 `
-function message(child: ChildProcess): Promise<{ kind: string; descriptor?: unknown }> {
+function message(child: ChildProcess): Promise<{
+  kind: string
+  descriptor?: unknown
+  reads?: number
+  malformed?: number
+  errors?: Record<string, number>
+}> {
   return new Promise((resolve, reject) => {
     const done = (value: { kind: string; descriptor?: unknown }) => {
       clearTimeout(timer)
@@ -235,3 +241,104 @@ it('discriminates held snapshot readers from staged writer handles with native f
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+it.each([4096, 65536])(
+  'short asynchronous snapshot reads race replacement without partial bytes (%i payload bytes)',
+  async (payloadBytes) => {
+    const root = mkdtempSync(join(tmpdir(), 'fictional-snapshot-read-race-'))
+    closers.push(async () => rmSync(root, { recursive: true, force: true }))
+    const selected = join(root, 'installed-state.json')
+    const payload = 'x'.repeat(payloadBytes)
+    const snapshot = (generation: number) => Buffer.from(JSON.stringify({ generation, payload }))
+    writeFileSync(selected, snapshot(0), { flag: 'wx', mode: 0o600 })
+    const reader = `
+const fs = require('node:fs/promises');
+const selected = process.argv[1], payload = 'x'.repeat(Number(process.argv[2]));
+let stopping = false, reading = false, reads = 0, malformed = 0;
+const errors = {};
+process.on('message', message => { if (message.kind === 'stop') stopping = true; });
+async function read() {
+  while (!stopping) {
+    try {
+      const bytes = await fs.readFile(selected);
+      const value = JSON.parse(bytes);
+      if (!Number.isSafeInteger(value.generation) || value.generation < 0 || value.payload !== payload) malformed++;
+      reads++;
+      if (!reading) { reading = true; process.send({ kind: 'reading' }); }
+    } catch (error) {
+      const code = error.code ?? String(error);
+      errors[code] = (errors[code] ?? 0) + 1;
+    }
+  }
+}
+Promise.all(Array.from({ length: 4 }, read)).then(() => {
+  process.send({ kind: 'done', reads, malformed, errors }, () => process.disconnect());
+}).catch(error => {
+  process.send({ kind: 'failed', message: error.message }, () => process.disconnect());
+});
+`
+    const child = spawn(process.execPath, ['-e', reader, selected, String(payloadBytes)], {
+      env: { ...process.env, NODE_OPTIONS: '' },
+      stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+      windowsHide: true,
+    })
+    children.push(child)
+    let stderr = ''
+    child.stderr!.on('data', (bytes) => {
+      stderr += String(bytes)
+    })
+    expect(await message(child), stderr).toEqual({ kind: 'reading' })
+    const result = message(child)
+    const exited = once(child, 'exit')
+    const errors: Record<string, number> = {}
+    let published = 0
+    try {
+      for (let generation = 1; generation <= 320; generation++) {
+        const staged = join(root, `staged-${generation}.json`)
+        const fd = openSync(staged, 'wx', 0o600)
+        try {
+          writeFileSync(fd, snapshot(generation))
+          fsyncSync(fd)
+        } finally {
+          closeSync(fd)
+        }
+        try {
+          renameSync(staged, selected)
+          published++
+        } catch (failure) {
+          const code = (failure as NodeJS.ErrnoException).code ?? String(failure)
+          errors[code] = (errors[code] ?? 0) + 1
+        }
+        await new Promise<void>((resolve) => setImmediate(resolve))
+      }
+    } finally {
+      if (child.connected) child.send({ kind: 'stop' })
+    }
+    const observed = await result
+    await exited
+    console.info(
+      'native-short-read-race',
+      JSON.stringify({
+        node: process.version,
+        platform: process.platform,
+        payloadBytes,
+        published,
+        errors,
+        reader: observed,
+      }),
+    )
+    expect(observed.kind, stderr).toBe('done')
+    expect(observed.reads).toBeGreaterThan(0)
+    expect(observed.malformed).toBe(0)
+    expect(observed.errors).toEqual({})
+    expect(published + Object.values(errors).reduce((sum, count) => sum + count, 0)).toBe(320)
+    expect(Object.keys(errors).filter((code) => code !== 'EPERM')).toEqual([])
+    const final = JSON.parse(readFileSync(selected, 'utf8')) as {
+      generation: number
+      payload: string
+    }
+    expect(final.payload).toBe(payload)
+    expect(final.generation).toBeGreaterThanOrEqual(0)
+    expect(final.generation).toBeLessThanOrEqual(320)
+  },
+)
