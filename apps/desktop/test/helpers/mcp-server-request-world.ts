@@ -150,6 +150,11 @@ export function mcpRequestWorld() {
     turnWait: null as Promise<void> | null,
     /** The next send is taken as a turn its provider refuses on the login, then this clears. */
     refuseTheNextTurnOnItsLogin: false,
+    /**
+     * The next send is accepted, then its provider refuses the session's login and the session
+     * ends, with this cause; then this clears.
+     */
+    failTheNextTurnOnItsLogin: null as { cause: 'auth' | 'auth_stale'; onAKey?: true } | null,
     get db() {
       return db
     },
@@ -191,6 +196,12 @@ export function mcpRequestWorld() {
             if (world.refuseTheNextTurnOnItsLogin) {
               world.refuseTheNextTurnOnItsLogin = false
               await handle.runTurnRefusedOnItsLogin(args[0])
+              return
+            }
+            const refusal = world.failTheNextTurnOnItsLogin
+            if (refusal !== null) {
+              world.failTheNextTurnOnItsLogin = null
+              await handle.sendRefusedOnItsLogin(args[0], args[1], refusal)
               return
             }
             await send(...args)
@@ -291,6 +302,7 @@ export function mcpRequestWorld() {
       world.turnWait = null
       world.startFailure = null
       world.refuseTheNextTurnOnItsLogin = false
+      world.failTheNextTurnOnItsLogin = null
       for (const host of hosts) await host.closeAll()
       for (const server of servers) await server.close()
       db.close()
