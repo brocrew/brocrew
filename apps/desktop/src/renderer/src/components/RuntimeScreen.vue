@@ -1000,7 +1000,13 @@ async function show(target: Place, archive: LinkedHistoryReading | null): Promis
   }
 }
 
-let travelling = false
+/**
+ * Where a step is: `reading` until the place it goes to is on screen, then `drawing` while that
+ * page settles (its scroll and focus are put back).
+ */
+let travelling: 'reading' | 'drawing' | null = null
+/** A press made while a step was drawing, and the arrivals count it was made at. */
+let pressedWhileDrawing: { step: -1 | 1; at: number } | null = null
 
 /**
  * Whether a step read so far may now be taken: refused when the person went somewhere meanwhile,
@@ -1019,9 +1025,15 @@ const sentenceStart = (name: string): string =>
  * in the history where they were. A person who goes somewhere meanwhile keeps their move.
  */
 async function go(step: -1 | 1): Promise<void> {
-  // A press while a step is under way is that step's, and does nothing more.
-  if (travelling || aDialogIsOpen()) return
-  travelling = true
+  if (aDialogIsOpen()) return
+  // Once the reached place is on screen, a press is the next step, taken when this one is done.
+  if (travelling === 'drawing') {
+    pressedWhileDrawing ??= { step, at: arrivals }
+    return
+  }
+  // A press while a step is still reading is that step's, and does nothing more.
+  if (travelling !== null) return
+  travelling = 'reading'
   const startedAt = arrivals
   const looked: string[] = []
   try {
@@ -1053,6 +1065,7 @@ async function go(step: -1 | 1): Promise<void> {
         say(`${sentenceStart(one.place.name)} was deleted, so ${way} went past it.`)
       if (reached === undefined) return
       await show(reached.place, ready.archive)
+      travelling = 'drawing'
       await nextTick()
       await new Promise<void>((done) =>
         requestAnimationFrame(() => requestAnimationFrame(() => done())),
@@ -1071,9 +1084,13 @@ async function go(step: -1 | 1): Promise<void> {
       return
     }
   } finally {
-    travelling = false
+    travelling = null
     // A conversation opened for a step that didn't happen is let go again.
     for (const id of looked) if (id !== onScreenNow.value) store.forget(id)
+    const next = pressedWhileDrawing
+    pressedWhileDrawing = null
+    // A person who went somewhere after the press keeps that move instead.
+    if (next !== null && next.at === arrivals) void go(next.step)
   }
 }
 
