@@ -88,6 +88,8 @@ describe('Chrome generic bootstrap', () => {
   it('uses the actual platform release decision without writing shared storage when OFF', () => {
     const { root, env } = fixture()
     const shared = path.join(root, 'uncreated-shared')
+    const on = release.sharedProfilesReleased(process.platform, release.sharedProfilesRelease)
+    if (on) fs.mkdirSync(shared, { mode: 0o700 })
     const value = JSON.parse(env.BROCREW_PLUGIN_BOOTSTRAP)
     const config = loadConfig({
       BROCREW_PLUGIN_BOOTSTRAP: JSON.stringify({
@@ -96,7 +98,6 @@ describe('Chrome generic bootstrap', () => {
         priorOwner: { ownerId: '12345678-1234-5123-a123-123456789012', ownerLabel: 'fictional' },
       }),
     })
-    const on = release.sharedProfilesReleased(process.platform, release.sharedProfilesRelease)
     expect(!!config.shared).toBe(on)
     if (!on) expect(fs.existsSync(shared)).toBe(false)
   })
