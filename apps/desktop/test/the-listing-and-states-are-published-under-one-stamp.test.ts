@@ -67,6 +67,14 @@ describe('the listing and the states are published under one stamp', () => {
   })
 
   it('a listing that skipped a read is partial, naming every row of both halves', async () => {
+    // A conversation recorded with no provider ref to reopen: the unresumable half holds it.
+    world.store.create({
+      id: 'fictional-unresumable',
+      provider: 'claude',
+      cwd: world.folder,
+      approvalMode: 'ask',
+      profileId: 'fictional',
+    })
     await settled()
     world.store.setModel(giver, 'fictional-model')
     const read = world.store.routedRequestsOf.bind(world.store)
@@ -79,6 +87,8 @@ describe('the listing and the states are published under one stamp', () => {
     })
     const answer = await listing()
     expect(failedOnce).toBe(true)
+    expect(answer.resumable.map((row) => row.sessionId)).toContain(giver)
+    expect(answer.unresumable.map((row) => row.sessionId)).toContain('fictional-unresumable')
     expect(answer.published.covers).toEqual({
       population: 'listing',
       complete: false,
