@@ -1,13 +1,14 @@
 import { realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-/** Baseline selection, equivalent to the existing storage rootIdentity used by launch. */
+/** Pending-launch key only; preserve native case without changing storage/routing identity. */
 export function launchRootKey(selectedRoot: string): string {
-  let path = resolve(selectedRoot)
+  const path = resolve(selectedRoot)
   try {
-    path = realpathSync(path)
+    return JSON.stringify(['existing', realpathSync.native(path)])
   } catch (error) {
     if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') throw error
+    // A root removed after storage mkdir is not a proven alias. Recompute on the next selection.
+    return JSON.stringify(['missing', path])
   }
-  return process.platform === 'win32' ? path.toLowerCase() : path
 }
