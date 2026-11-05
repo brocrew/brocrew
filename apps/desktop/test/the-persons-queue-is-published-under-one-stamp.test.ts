@@ -4,7 +4,8 @@ import { aServiceWorld, RecordingSink, type AServiceWorld } from './helpers/a-se
 import { openDatabase } from '../src/main/db/connection'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeChangeMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
-import { PERSONS_PARTS, type PersonsQueue } from '../src/shared/persons-published'
+import { PERSONS_PARTS, PERSONS_ROW_KEY, type PersonsQueue } from '../src/shared/persons-published'
+import { acceptAnswer, emptyScope } from '../src/shared/data-version'
 
 /**
  * The person's queue is answered as one publication: all eight parts under one `{epoch, seq}`, each
@@ -210,6 +211,57 @@ describe('the person’s queue is published under one stamp', () => {
       refused: 'fictional failure',
       published: { epoch: host.currentEpoch(), seq: before.seq },
     })
+  })
+
+  it('two conversations asking with the same provider request id stay two rows, complete or partial', async () => {
+    const other = await world.aPersonOpens(host, 'helper')
+    for (const conversation of [giver, other]) {
+      for (const event of [
+        {
+          type: 'question_asked',
+          requestId: '0',
+          prompt: 'Which fictional option?',
+          questions: [{ id: 'part', prompt: 'Which option?', options: [] }],
+        },
+        { type: 'request_routed', requestId: '0', to: 'a-person' },
+      ])
+        world.store.append(
+          conversation,
+          world.store.nextOrdinal(conversation),
+          event as TranscriptEvent,
+          world.clock,
+        )
+    }
+    const keyOf = PERSONS_ROW_KEY.questions
+    const complete = await queue()
+    const keys = complete.questions!.rows.map(keyOf)
+    expect(keys.sort()).toEqual([`${giver}:0`, `${other}:0`].sort())
+    let held = acceptAnswer(
+      emptyScope(),
+      complete.published.seq,
+      true,
+      new Map(complete.questions!.rows.map((row) => [keyOf(row), row])),
+    )
+    expect(held.rows.size).toBe(2)
+    // A short read of the same rows names both in its coverage, and keeps both.
+    routed('fictional-move')
+    const read = world.store.questionsAPersonMustAnswer.bind(world.store)
+    vi.spyOn(world.store, 'questionsAPersonMustAnswer').mockImplementationOnce((...args) => ({
+      ...read(...args),
+      rowsUnread: 1,
+    }))
+    const partial = await queue()
+    const coverage = partial.published.covers.questions
+    expect(coverage.complete).toBe(false)
+    if (coverage.complete) return
+    expect([...coverage.ids].sort()).toEqual(expect.arrayContaining([`${giver}:0`, `${other}:0`]))
+    held = acceptAnswer(
+      held,
+      partial.published.seq,
+      false,
+      new Map(partial.questions!.rows.map((row) => [keyOf(row), row])),
+    )
+    expect([...held.rows.keys()]).toEqual(expect.arrayContaining([`${giver}:0`, `${other}:0`]))
   })
 
   it('the persons notice carries the stamp it was made at', async () => {
