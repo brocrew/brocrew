@@ -1,5 +1,6 @@
 import type { AppDatabase } from './connection'
 import type { TranscriptEvent } from '../../shared/runtime-ipc'
+import { DERIVED_TABLES, TRIGGER_WRITES } from './question-copies'
 
 /**
  * What a committed row says to the readers that keep something of it: its place, its type and the
@@ -320,13 +321,16 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
           const result = run(...args)
           if (result.changes === 0) return result
           const current = frames.at(-1)
-          const visible = stagedDepth === 0
+          // A derived table is never one a reader of what is shown sees.
+          const visible = stagedDepth === 0 && !DERIVED_TABLES.has(table)
+          // What the table's triggers write is written in this commit too.
+          const written = [table, ...(TRIGGER_WRITES.get(table) ?? [])]
           if (current !== undefined) {
-            current.tables.add(table)
+            for (const one of written) current.tables.add(one)
             if (visible) current.visibleTables.add(table)
           } else if (!db.inTransaction) {
             const alone = frame()
-            alone.tables.add(table)
+            for (const one of written) alone.tables.add(one)
             if (visible) alone.visibleTables.add(table)
             publish(alone)
           }

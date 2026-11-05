@@ -1184,6 +1184,8 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
           ),
   })
   knowledgeChanged = () => runtimeHost.agentKnowledgeChanged()
+  // Older questions' copies are filled in the background, a bounded slice at a time.
+  runtimeHost.fillQuestionCopies()
   return runtimeHost
 }
 

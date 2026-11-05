@@ -2271,6 +2271,15 @@ const REMEMBERED_WINDOW_READ_MISSES: ReadonlySet<WindowReadMiss> = new Set<Windo
   'worker-read-failed',
 ])
 
+/** Each slice filling question copies visits at most this many ledger rows, starting at `first`. */
+const COPY_SLICE_ROWS = { first: 200, least: 50, most: 2000 } as const
+/** And stops once it has visited this many payload bytes; the row that crosses it is its last. */
+const COPY_SLICE_BYTES = 256 * 1024
+/** What a slice aims to take; the row bound halves or doubles toward it. Not a preemption. */
+const COPY_SLICE_TARGET_MS = 4
+const COPY_BUSY_WAIT_MS = { least: 10, most: 1000 } as const
+const SAY_COPY_PROGRESS_EVERY_MS = 60_000
+
 /** How often each cause of a window read answered on the main thread is logged, at most. */
 const SAY_A_WINDOW_READ_MISS_EVERY_MS = 60_000
 
@@ -7947,6 +7956,11 @@ export class RuntimeHost implements LiveHost {
    * reads ({@link moveTheListing}, {@link moveThePersons}), and with nothing else.
    */
   private publicationSeq = 0
+  /** The row bound of the next slice filling question copies, adapted to its time target. */
+  private copySliceRows: number = COPY_SLICE_ROWS.first
+  /** The pause before a slice that found the write lock taken is tried again. */
+  private copyBusyWait: number = COPY_BUSY_WAIT_MS.least
+  private readonly copiesFilled = { visited: 0, matched: 0, saidAt: Number.NEGATIVE_INFINITY }
   /**
    * The earliest end of a wait on a time an incidents reading depended on. Once the clock passes
    * it, the next ask moves the queue's version and the sequence, so what it composes is newer.
@@ -38714,6 +38728,58 @@ export class RuntimeHost implements LiveHost {
    * Sticky, and safe because the only caller is the real shutdown in `app-lifetime.ts`, never
    * `window-all-closed`.
    */
+  /**
+   * Fills the copies of older questions, one bounded slice per job of the archive lane, so other
+   * archive work runs between slices. A slice that finds the write lock taken is tried again after a
+   * pause that doubles, and a slice that commits starts the next on the following turn. Progress is
+   * said at most once a minute until the fill is done.
+   */
+  fillQuestionCopies(): void {
+    if (this.archives.backgroundClosed) return
+    void this.archives
+      .background(async (cancelled) => {
+        if (cancelled()) return
+        const began = performance.now()
+        const slice = this.deps.store.fillQuestionCopies(this.copySliceRows, COPY_SLICE_BYTES)
+        const took = performance.now() - began
+        this.copiesFilled.visited += slice.visited
+        this.copiesFilled.matched += slice.matched
+        if (slice.state === 'filled') {
+          this.copySliceRows = Math.max(
+            COPY_SLICE_ROWS.least,
+            Math.min(
+              COPY_SLICE_ROWS.most,
+              took > COPY_SLICE_TARGET_MS ? this.copySliceRows / 2 : this.copySliceRows * 2,
+            ),
+          )
+          this.copyBusyWait = COPY_BUSY_WAIT_MS.least
+          this.sayHowTheCopiesStand()
+          this.nextCopySlice(0)
+        } else if (slice.state === 'busy') {
+          this.nextCopySlice(this.copyBusyWait)
+          this.copyBusyWait = Math.min(COPY_BUSY_WAIT_MS.most, this.copyBusyWait * 2)
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn(`runtime host could not fill question copies: ${errorMessage(error)}`)
+      })
+  }
+
+  /** The next slice, as a new job: this one never waits on it. */
+  private nextCopySlice(afterMs: number): void {
+    const timer = setTimeout(() => this.fillQuestionCopies(), afterMs)
+    if (typeof timer.unref === 'function') timer.unref()
+  }
+
+  private sayHowTheCopiesStand(): void {
+    const at = this.now()
+    if (at - this.copiesFilled.saidAt < SAY_COPY_PROGRESS_EVERY_MS) return
+    this.copiesFilled.saidAt = at
+    console.warn(
+      `question copies still filling: ${String(this.copiesFilled.visited)} rows visited, ${String(this.copiesFilled.matched)} copies written`,
+    )
+  }
+
   stopSweeping(): void {
     this.archives.rejectNewBackgroundWork()
   }
