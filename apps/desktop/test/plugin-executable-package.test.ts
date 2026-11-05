@@ -20,19 +20,68 @@ import { createPluginNodeHost } from '../src/main/plugins/node-host'
 import { preparePluginNodeRuntime } from '../src/main/plugins/node-runtime'
 import { tar } from './plugin-package-fixtures'
 
-const cleanup: (() => Promise<unknown>)[] = []
-afterEach(async () => {
-  const failures: unknown[] = []
-  for (const close of cleanup.splice(0).reverse()) {
+type Closer = () => unknown
+const cleanup: Closer[] = []
+afterEach(() => runClosers(cleanup.splice(0).reverse()))
+
+/**
+ * Runs every closer at once — each is started before any is awaited, so one held stop holds back
+ * nothing else — and throws every failure together, as it was thrown.
+ */
+async function runClosers(closers: readonly Closer[]): Promise<void> {
+  const settling = closers.map((close) => {
     try {
-      await close()
+      return Promise.resolve(close())
     } catch (error) {
-      failures.push(error)
+      return Promise.reject(error)
     }
-  }
-  if (failures.length)
+  })
+  const failures = (await Promise.allSettled(settling))
+    .filter((one): one is PromiseRejectedResult => one.status === 'rejected')
+    .map((one) => one.reason)
+  if (failures.length > 0)
     throw new AggregateError(failures, 'Fictional executable fixture cleanup failed')
-})
+}
+
+interface StoppableHost {
+  stop(): Promise<unknown>
+}
+
+/**
+ * Owns a fixture's root from the moment it exists: one closer is registered before setup awaits
+ * anything, and it waits for setup to settle. A setup that failed before any host existed leaves
+ * nothing running, so the root goes and the failure stays the test's. A host — however late it was
+ * made — is stopped first, and only a stop that returns exactly `{ exited: true }` lets the root go.
+ * A setup that never settles keeps the root.
+ */
+async function ownTheRoot<H extends StoppableHost>(
+  root: string,
+  setup: () => Promise<H>,
+  closers: Closer[] = cleanup,
+  remove: (root: string) => Promise<void> = (path) => removeAfterTheStop(path),
+): Promise<H> {
+  let outcome: { failed: unknown } | { host: StoppableHost } | undefined
+  let settle!: () => void
+  const settled = new Promise<void>((done) => (settle = done))
+  closers.push(async () => {
+    await settled
+    const ended = outcome!
+    if ('failed' in ended) return remove(root)
+    const receipt = await ended.host.stop()
+    expect(receipt).toStrictEqual({ exited: true })
+    await remove(root)
+  })
+  try {
+    const host = await setup()
+    outcome = { host }
+    return host
+  } catch (error) {
+    outcome = { failed: error }
+    throw error
+  } finally {
+    settle()
+  }
+}
 
 function fixture(processEntry = false, compressed = false) {
   const helper = 'helpers/fictional helper.mjs'
@@ -105,22 +154,33 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
 }
 
 /**
- * Removes a fixture once its host's stop has confirmed the exit (cleanup runs in reverse, so the
- * stop runs first). The retry covers the file system releasing a handle after that confirmed stop,
- * not cleanup of a process this app owns; who holds the handle is not known. The first refusal is
- * printed with its code, so a hold is seen rather than hidden.
+ * Removes a fixture once its host's stop has proven the exit ({@link ownTheRoot}). The retry covers
+ * the file system releasing a handle after that proven stop, not cleanup of a process this app owns;
+ * who holds the handle is not known. The first refusal is printed with its code, so a hold is seen
+ * rather than hidden.
  */
-async function removeAfterTheStop(root: string): Promise<void> {
+async function removeAfterTheStop(
+  root: string,
+  {
+    rm: remove = (path: string) => rm(path, { recursive: true, force: true }),
+    pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+    log = (said: string) => console.warn(said),
+  }: {
+    rm?: (path: string) => Promise<unknown>
+    pause?: (ms: number) => Promise<unknown>
+    log?: (said: string) => unknown
+  } = {},
+): Promise<void> {
   for (let attempt = 0; ; attempt += 1) {
     try {
-      await rm(root, { recursive: true, force: true })
+      await remove(root)
       return
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code
       if (attempt === 0)
-        console.warn(`fixture removal refused after a confirmed stop (${code}): ${String(error)}`)
+        log(`fixture removal refused after a proven stop (${code}): ${String(error)}`)
       if (attempt >= 20 || (code !== 'EBUSY' && code !== 'EPERM')) throw error
-      await new Promise((resolve) => setTimeout(resolve, 250))
+      await pause(250)
     }
   }
 }
@@ -129,24 +189,26 @@ async function hostFixture() {
   const root = await realpath(
     await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-executable-')),
   )
-  cleanup.push(() => removeAfterTheStop(root))
-  const resources = join(root, 'resources')
-  await mkdir(join(resources, 'plugin-node'), { recursive: true })
-  await copyFile(
-    process.execPath,
-    join(resources, 'plugin-node', process.platform === 'win32' ? 'node.exe' : 'node'),
-  )
-  await cp(new URL('../resources/plugin-host/', import.meta.url), join(resources, 'plugin-host'), {
-    recursive: true,
-  })
-  const runtime = await preparePluginNodeRuntime({
-    resourcesRoot: resources,
-    durableRoot: join(root, 'runtime'),
-  })
   const home = join(root, 'host')
-  const host = createPluginNodeHost({ root: home, runtime })
-  cleanup.push(async () => {
-    expect(await host.stop()).toEqual({ exited: true })
+  const host = await ownTheRoot(root, async () => {
+    const resources = join(root, 'resources')
+    await mkdir(join(resources, 'plugin-node'), { recursive: true })
+    await copyFile(
+      process.execPath,
+      join(resources, 'plugin-node', process.platform === 'win32' ? 'node.exe' : 'node'),
+    )
+    await cp(
+      new URL('../resources/plugin-host/', import.meta.url),
+      join(resources, 'plugin-host'),
+      {
+        recursive: true,
+      },
+    )
+    const runtime = await preparePluginNodeRuntime({
+      resourcesRoot: resources,
+      durableRoot: join(root, 'runtime'),
+    })
+    return createPluginNodeHost({ root: home, runtime })
   })
   return { root, home, host }
 }
@@ -366,8 +428,8 @@ describe('fixture cleanup only after a proven stop', () => {
         const code = codes.shift() ?? null
         if (code !== null) throw Object.assign(new Error(`fictional ${code}`), { code })
       })
-      const pause = vi.fn(async (_ms: number) => undefined)
-      const log = vi.fn((_said: string) => undefined)
+      const pause = vi.fn(async () => undefined)
+      const log = vi.fn(() => undefined)
       return { calls, rm, pause, log }
     }
 
