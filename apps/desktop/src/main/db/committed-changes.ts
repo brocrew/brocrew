@@ -10,7 +10,7 @@ export interface CommittedRow {
   readonly session: string
   readonly generation: number
   readonly ordinal: number
-  readonly type: TranscriptEvent['type']
+  readonly rowType: TranscriptEvent['type']
   /** A status row's state. */
   readonly state?: string
   /** A routed question's parent and where it went. */
@@ -34,7 +34,7 @@ export function committedRowOf(
     session,
     generation,
     ordinal,
-    type: event.type,
+    rowType: event.type,
     ...(event.type === 'status' ? { state: event.state } : {}),
     ...(event.type === 'request_routed'
       ? { ...(event.parent === undefined ? {} : { parent: event.parent }), to: event.to }

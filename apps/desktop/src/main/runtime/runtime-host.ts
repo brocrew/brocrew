@@ -954,7 +954,7 @@ import {
   // ⚑ **619 · the fold from a raised question's own parts to *what a person may press here*.**
   whatTheAskerOffered,
   // ⚑ **D-019 · a row the two wait reads select** — what drops a kept read (`waitAsLastRead`).
-  aWaitIsReadFrom,
+  aWaitReads,
 } from '../../shared/questions'
 import type {
   CardNobodyHolds,
@@ -10703,7 +10703,7 @@ export class RuntimeHost implements LiveHost {
    * Called for each row of each commit the store records ({@link heardACommit}), whichever door
    * wrote it, once it is committed. The launch's repairs are written before this host listens.
    *
-   *  - **a row its wait reads select** ({@link aWaitIsReadFrom}) — who owes it the next move may have
+   *  - **a row its wait reads select** ({@link aWaitReads}) — who owes it the next move may have
    *    moved, so what was kept of those reads is forgotten ({@link waitAsLastRead});
    *  - **a live fact** ({@link MOVES_A_LIVE_FACT}) — a status, a level, an ask against its rules;
    *  - ⚑ **F097 · a row that can move whether a piece it holds waits on the person who wrote to it**
@@ -10717,41 +10717,39 @@ export class RuntimeHost implements LiveHost {
    * ⛔ Any other row — the provider's text, tool calls, tokens — marks nothing.
    */
   private aRowWasWritten(conversation: string, event: CommittedRow): void {
+    const type = event.rowType
     if (
-      event.type === 'work_replied' ||
-      event.type === 'work_closed' ||
-      event.type === 'work_taken_back' ||
-      event.type === 'request_resolved' ||
-      event.type === 'question_withdrawn' ||
-      event.type === 'request_interrupted' ||
-      event.type === 'question_recipient_ended'
+      type === 'work_replied' ||
+      type === 'work_closed' ||
+      type === 'work_taken_back' ||
+      type === 'request_resolved' ||
+      type === 'question_withdrawn' ||
+      type === 'request_interrupted' ||
+      type === 'question_recipient_ended'
     )
       queueMicrotask(() => this.reconcileWork(new Set([conversation])))
-    if (MAY_FREE_A_SERVICE.has(event.type)) this.aServiceMayTakeItsNext(conversation)
+    if (MAY_FREE_A_SERVICE.has(type)) this.aServiceMayTakeItsNext(conversation)
     // 🔴 **W4.189 · a piece given or ended moves the grants a window is shown**, read again once
     // this stretch is over.
-    if (GRANTS_MAY_MOVE.has(event.type)) {
+    if (GRANTS_MAY_MOVE.has(type)) {
       const live = this.slots.get(conversation)?.session ?? null
       if (live !== null) {
         live.grants = undefined
         queueMicrotask(() => this.publishStateIfChanged(live))
       }
     }
-    if (aWaitIsReadFrom(event)) {
+    if (aWaitReads(type, event.state)) {
       this.waitAsLastRead.delete(conversation)
       this.stateMayHaveMoved(conversation)
       this.aCardMayHaveEnded(conversation)
-    } else if (
-      MOVES_A_LIVE_FACT.has(event.type) ||
-      MOVES_A_PIECE_THAT_WAITS_ON_WHO_WROTE.has(event.type)
-    ) {
+    } else if (MOVES_A_LIVE_FACT.has(type) || MOVES_A_PIECE_THAT_WAITS_ON_WHO_WROTE.has(type)) {
       this.stateMayHaveMoved(conversation)
     }
-    if (MOVES_ITS_NAME.has(event.type)) this.itsNameMayHaveMoved(conversation)
+    if (MOVES_ITS_NAME.has(type)) this.itsNameMayHaveMoved(conversation)
     // ⚑ **F036 · a question put to another conversation moves what THAT one owes** — routed to it
     // ({@link RequestRoutedEvent.parent}), or, for one already noted as owing, any row that moves
     // this asker's questions: an answer, a decline, a withdrawal, an ending.
-    if (event.type === 'request_routed' && event.parent !== undefined && event.to !== undefined) {
+    if (type === 'request_routed' && event.parent !== undefined && event.to !== undefined) {
       // ⚑ Kept up to date once seeded; before that, the seed reads this row. ⚑ Only a routing that
       // could be owed — one to a person never is ({@link SessionStore.whoRoutedToWhom}).
       if (this.routedTo !== null && event.to !== 'a-person') {
@@ -10763,18 +10761,18 @@ export class RuntimeHost implements LiveHost {
       if (event.to !== 'a-person') this.theAnswersItOwesMoved(this.theOneInItsPlace(event.parent))
     }
     // ⚑ …and its status: a provider's own question is owed only while its asker is parked on it.
-    if (aWaitIsReadFrom(event) || event.type === 'status') {
+    if (aWaitReads(type, event.state) || type === 'status') {
       for (const [answerer, askers] of this.owesTheAnswersOf) {
         if (askers.includes(conversation)) this.theAnswersItOwesMoved(answerer)
       }
     }
     // ⚑ **D-036 · a piece's row moves what its giver waits on** — the giver's own ledger took no
     // row that moves it.
-    if (MOVES_ITS_GIVERS_WAIT.has(event.type) && event.piece !== undefined)
+    if (MOVES_ITS_GIVERS_WAIT.has(type) && event.piece !== undefined)
       this.itsGiversWaitMayHaveMoved(event.piece)
     // ⚑ **D-036 · a replacement moves the work each of the two gave out**: the old one's is the new
     // one's now ({@link theIdsItStandsFor}), and the new one derived its first word before it was.
-    if (event.type === 'replaced_by' && event.replacedBy !== undefined) {
+    if (type === 'replaced_by' && event.replacedBy !== undefined) {
       this.refreshWorkerReadings(true)
       this.theWorkItGaveMoved(conversation)
       this.theWorkItGaveMoved(event.replacedBy)
