@@ -12,13 +12,19 @@ const PluginId = z.string().min(1).max(128)
 /** An owner that did not negotiate a named reply: every route it serves, and nothing else. */
 const Routes = z.array(z.strictObject(Route))
 /** The named reply: served routes by plugin, plugins still starting, plugins off. */
-const NamedRoutes = z.strictObject({
-  format: z.literal(2),
-  servers: z.array(z.strictObject({ ...Route, pluginId: PluginId })).max(32),
-  pending: z.array(PluginId),
-  none: z.array(PluginId),
-  unknown: z.boolean(),
-})
+const NamedRoutes = z
+  .strictObject({
+    format: z.literal(2),
+    servers: z.array(z.strictObject({ ...Route, pluginId: PluginId })).max(32),
+    pending: z.array(PluginId),
+    none: z.array(PluginId),
+    unknown: z.boolean(),
+  })
+  // Each plugin is named at most once: served, starting or off, never two of them.
+  .refine((reply) => {
+    const ids = [...reply.servers.map((one) => one.pluginId), ...reply.pending, ...reply.none]
+    return new Set(ids).size === ids.length
+  })
 
 /** Reads a reply in the format the lease that carried the request negotiated. */
 function parsed(reply: {

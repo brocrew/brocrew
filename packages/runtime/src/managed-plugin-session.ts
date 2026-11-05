@@ -31,13 +31,9 @@ function retained(
   if (plugins === undefined) return next.servers
   const served = new Set(next.servers.map((one) => one.pluginId))
   const off = new Set(plugins.none)
-  const starting = new Set(plugins.pending)
+  // Only an explicit off, or a new route for the same plugin, removes an attached route.
   const kept = previous.filter(
-    (one) =>
-      one.pluginId !== undefined &&
-      !served.has(one.pluginId) &&
-      !off.has(one.pluginId) &&
-      (plugins.unknown || starting.has(one.pluginId)),
+    (one) => one.pluginId !== undefined && !served.has(one.pluginId) && !off.has(one.pluginId),
   )
   return [...next.servers, ...kept.map((one) => ({ ...one, retained: true as const }))]
 }
