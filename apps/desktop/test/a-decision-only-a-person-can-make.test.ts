@@ -1086,9 +1086,11 @@ describe('403 · a decision only a person can make', () => {
         // the answer and the chain says today's name.
         const slug = store.identityOf(only)!.profileSlug
         expect(store.setAgentDisplayName(slug, 'Fictional Renamed')).toBe(true)
+        // Counted from after the rename, which other readers of the name also hear.
+        const before = counting.reads()
         const renamed = host.decisionsForAPerson()
         expect(renamed.rows).toHaveLength(3)
-        expect(counting.reads()).toBe(2)
+        expect(counting.reads() - before).toBe(1)
         expect(JSON.stringify(renamed.rows)).toContain('Fictional Renamed')
       } finally {
         counting.stop()
