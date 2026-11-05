@@ -24,6 +24,7 @@ import {
 import { genericUiFixture } from './plugin-ui-fixtures'
 import { mcpRequestWorld } from './helpers/mcp-server-request-world'
 import type { PluginBeforeTurnInput } from '../src/shared/plugin-contract'
+import { MCP_SERVER_REQUEST_TOLD } from '../src/shared/mcp-server-requests'
 
 const closes: (() => Promise<unknown>)[] = []
 afterEach(async () => {
@@ -504,6 +505,29 @@ describe.each(['claude', 'codex'] as const)(
           expect(part.text).not.toContain('Suggested file titles')
       }
       expect(w.sent().filter((text) => text.includes(held))).toEqual([words])
+      const approvalWords = MCP_SERVER_REQUEST_TOLD.approvedAndReopened(
+        requestId,
+        'fictional-notes',
+        external.url,
+        'every agent',
+        ['read_notes'],
+      )
+      const turns = w.turns()
+      const raw = JSON.stringify(turns)
+      expect(turns, raw).toHaveLength(1)
+      const [batch] = turns
+      if (!batch) throw new Error('The fictional batch was not recorded.')
+      expect(batch.text, raw).toBe(`${held}\n\n${approvalWords}`)
+      expect(batch.parts, raw).toEqual([
+        { text: held, humanInitiated: true },
+        {
+          text: approvalWords,
+          attribution: 'app_authored',
+          appNotice: 'an-mcp-server-request-decided',
+        },
+      ])
+      expect(old.origins).toEqual([])
+      expect(w.world.handles.get('writer')!.origins).toEqual([undefined])
       expect(w.turns().filter((event) => event.text === held)).toEqual([
         expect.objectContaining({ sent: words }),
       ])
