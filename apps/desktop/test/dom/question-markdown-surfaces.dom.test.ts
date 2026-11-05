@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
+import { userEvent } from 'vitest/browser'
 import type { MessagePathAsk, MessagePathTarget } from '../../src/shared/runtime-ipc'
 import type { UserInputItem } from '../../src/renderer/src/lib/transcript'
 import type { PathsHere } from '../../src/renderer/src/composables/useMessagePaths'
@@ -56,13 +57,18 @@ describe.each(['classic', 'crew-night', 'synthwave'] as const)(
       expect(waiting.q('question-more').getAttribute('aria-expanded')).toBe('false')
       const words = waiting.q('question-words')
       await expect.poll(() => words.querySelectorAll('[aria-label="Open file"]').length).toBe(1)
-      words.querySelector<HTMLButtonElement>('[aria-label="Open file"]')!.click()
+      await drawnReady()
+      const open = words.querySelector<HTMLButtonElement>('[aria-label="Open file"]')!
+      expect(notDrawn(open, waiting.host).map(describeClip)).toEqual([])
+      await userEvent.click(open)
       await expect.poll(() => card.querySelectorAll('[role="status"]').length).toBe(1)
       await drawnReady()
       const status = card.querySelector<HTMLElement>('[role="status"]')!
       expect(notDrawn(status, waiting.host).map(describeClip)).toEqual([])
       expect(opened).toHaveBeenCalledTimes(1)
-      words.querySelector<HTMLButtonElement>('[aria-label="Open file"]')!.click()
+      await drawnReady()
+      expect(notDrawn(open, waiting.host).map(describeClip)).toEqual([])
+      await userEvent.click(open)
       await expect.poll(() => opened.mock.calls.length).toBe(2)
       await expect.poll(() => card.querySelectorAll('[role="status"]').length).toBe(1)
       await drawnReady()
