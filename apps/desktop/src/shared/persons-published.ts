@@ -63,8 +63,10 @@ export type PersonsQueueAnswer = PersonsQueue | PersonsQueueRefused
 export const PERSONS_ROW_KEY: {
   readonly [P in PersonsPart]: (row: PersonsRow<P>) => string
 } = {
-  questions: (row) => row.request.requestId,
-  decisions: (row) => row.request.requestId,
+  // A provider's request id is its connection's own, so two conversations can share one: the
+  // asking conversation makes it distinct, as the live queue spells it.
+  questions: (row) => `${row.request.askedBy}:${row.request.requestId}`,
+  decisions: (row) => `${row.request.askedBy}:${row.request.requestId}`,
   instructionAsks: (row) => row.asked.askId,
   mcpServerRequests: (row) => row.requested.requestId,
   stalled: (row) => row.piece,
