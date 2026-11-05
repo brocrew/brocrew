@@ -13,21 +13,42 @@ async function sources(root: string): Promise<Array<[string, string]>> {
   return result
 }
 
-it('has no application-owned domain dispatcher, ledger reader or person proposal executor', async () => {
-  const root = fileURLToPath(new URL('../src/', import.meta.url))
+function domainViolations(files: Array<[string, string]>): string[] {
   const forbidden =
     /\b(?:pluginAdapter|requirePluginAdapter|PluginProfileLedger|ChromeProposal|WhatsAppProposal|chromeProfileIntent|profileRevision|applyProfile|PluginUiPeer|PluginUiRpc|proposeConfig|configure-ledger|proposalFor|ledgerV2|profileCalls|installedChromeOnWindows|admittedPluginTools|hasRemoteLogout|readAdminJson)\b|(?:chrome|whatsapp)-(?:apply|read|broker|policy)|\.admin\(|(?:(?:id|pluginId)\s*(?:===|==|!==|!=)\s*['"](?:chrome|whatsapp)['"]|['"](?:chrome|whatsapp)['"]\s*(?:===|==|!==|!=)\s*(?:[A-Za-z_$][\w$]*\.)*(?:id|pluginId))|\/v1\/(?:profiles|groups|status|uninstall)/
-  const violations = (await sources(root)).flatMap(([path, source]) =>
+  const violations = files.flatMap(([path, source]) =>
     source
       .split('\n')
-      .flatMap((line, index) => (forbidden.test(line) ? [`${path}:${index + 1}: ${line}`] : [])),
+      .flatMap((line, index) =>
+        forbidden.test(line) ? [`${path.replaceAll('\\', '/')}:${index + 1}: ${line}`] : [],
+      ),
   )
   // Historical declarations are decoded only in package-schema, never executable UI RPC.
-  expect(
-    violations.filter(
-      (line) => !/\/plugins\/package-schema\.ts:\d+:\s*proposeConfig: valueSchema,/.test(line),
-    ),
-  ).toEqual([])
+  return violations.filter(
+    (line) => !/\/plugins\/package-schema\.ts:\d+:\s*proposeConfig: valueSchema,/.test(line),
+  )
+}
+
+it('has no application-owned domain dispatcher, ledger reader or person proposal executor', async () => {
+  const root = fileURLToPath(new URL('../src/', import.meta.url))
+  expect(domainViolations(await sources(root))).toEqual([])
+})
+
+it.each(['/', '\\'])('keeps the domain guard sensitive with %s diagnostic paths', (separator) => {
+  const schema = ['fictional', 'plugins', 'package-schema.ts'].join(separator)
+  const other = ['fictional', 'plugins', 'other.ts'].join(separator)
+  expect(domainViolations([[schema, '  proposeConfig: valueSchema,']])).toEqual([])
+  expect(domainViolations([[schema, '  proposeConfig: otherSchema,']])).toEqual([
+    'fictional/plugins/package-schema.ts:1:   proposeConfig: otherSchema,',
+  ])
+  expect(domainViolations([[schema, '  proposeConfig: valueSchema,\napplyProfile()']])).toEqual([
+    'fictional/plugins/package-schema.ts:2: applyProfile()',
+  ])
+  expect(domainViolations([[other, '  proposeConfig: valueSchema,']])).toEqual([
+    'fictional/plugins/other.ts:1:   proposeConfig: valueSchema,',
+  ])
+  const source = String.raw`applyProfile('C:\fictional\data')`
+  expect(domainViolations([[other, source]])).toEqual([`fictional/plugins/other.ts:1: ${source}`])
 })
 
 it('has no test import of a retired production domain or executable unavailable fixture graph', async () => {

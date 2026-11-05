@@ -23,6 +23,7 @@ import { randomUUID } from 'node:crypto'
 const roots: string[] = []
 afterEach(async () => {
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
 })
 it('retains the failed phase through supervisor wrappers without exposing arbitrary messages', () => {
@@ -53,9 +54,87 @@ it.each(['blocked', 'draining'] as const)(
       expect(pluginStartupDiagnostic(error)?.stderr).toContain('Start > Power > Restart')
   },
 )
+it.each(['win32', 'darwin', 'linux'] as const)(
+  'adds fixed restart directions only on %s for fully eligible typed refusals',
+  (platform) => {
+    vi.stubGlobal('process', Object.create(process, { platform: { value: platform } }))
+    for (const phase of ['blocked', 'draining'] as const) {
+      const epoch = randomUUID()
+      const error = new PluginSupervisorError('cleanup-pending', {
+        ownerEpoch: epoch,
+        diagnostic: { phase, stage: 'recovery', probe: 'no-answer', reason: 'restart-required' },
+      })
+      const diagnostic = pluginStartupDiagnostic(error)!
+      expect(diagnostic).toEqual({
+        exitCode: null,
+        signal: null,
+        stderr: `phase=${phase} stage=recovery probe=no-answer reason=restart-required${platform === 'win32' ? '; Start > Power > Restart' : ''}`,
+      })
+      expect(PluginStartupDiagnosticSchema.safeParse(diagnostic).success).toBe(true)
+      expect(diagnostic.stderr).not.toContain(epoch)
+      expect(pluginUnavailableNotice(pluginStartupReason(error, 'service-start'))).toBe(
+        'Restart your computer, then reopen BroCrew.',
+      )
+    }
+  },
+)
+it.each([
+  ...(['attach-record', 'hello', 'detach', 'lease-lost'] as const).map((stage) => ({ stage })),
+  ...(['live', 'unknown'] as const).map((probe) => ({ probe })),
+  ...(
+    [
+      'duplicate-workspace',
+      'capacity',
+      'drain-timeout',
+      'proof-pending',
+      'released-owner-stalled',
+      'io',
+      'unknown',
+    ] as const
+  ).map((reason) => ({ reason })),
+])('does not advise restarting for a noneligible typed diagnostic %j', (override) => {
+  vi.stubGlobal('process', Object.create(process, { platform: { value: 'win32' } }))
+  const error = new PluginSupervisorError('cleanup-pending', {
+    ownerEpoch: randomUUID(),
+    diagnostic: {
+      phase: 'blocked',
+      stage: 'recovery',
+      probe: 'no-answer',
+      reason: 'restart-required',
+      ...override,
+    },
+  })
+  expect(pluginStartupReason(error, 'service-start')).toBe('cleanup-pending')
+  expect(pluginStartupDiagnostic(error)?.stderr).not.toContain('Start > Power > Restart')
+  expect(PluginStartupDiagnosticSchema.safeParse(pluginStartupDiagnostic(error)).success).toBe(true)
+})
+it.each([
+  'unavailable',
+  'busy',
+  'incompatible',
+  'unsupported',
+  'policy-refused',
+  'source-mismatch',
+  'network',
+] as const)('does not advise restarting for a typed %s refusal with a restart label', (code) => {
+  vi.stubGlobal('process', Object.create(process, { platform: { value: 'win32' } }))
+  const error = new PluginSupervisorError(code, {
+    ownerEpoch: randomUUID(),
+    diagnostic: {
+      phase: 'blocked',
+      stage: 'recovery',
+      probe: 'no-answer',
+      reason: 'restart-required',
+    },
+  })
+  expect(pluginStartupReason(error, 'service-start')).not.toBe('restart-required')
+  expect(pluginStartupDiagnostic(error)?.stderr).toContain('reason=proof-pending')
+  expect(pluginStartupDiagnostic(error)?.stderr).not.toContain('Start > Power > Restart')
+})
 it.each(['accepting', 'missing', 'unreadable', 'stopped'] as const)(
   'never projects a %s restart label into reboot advice',
   (phase) => {
+    vi.stubGlobal('process', Object.create(process, { platform: { value: 'win32' } }))
     const error = new PluginSupervisorError('cleanup-pending', {
       ownerEpoch: randomUUID(),
       diagnostic: { phase, stage: 'recovery', probe: 'no-answer', reason: 'restart-required' },
@@ -68,6 +147,7 @@ it.each(['accepting', 'missing', 'unreadable', 'stopped'] as const)(
 it.each(['blocked', 'draining'] as const)(
   'keeps an unproven typed %s restart diagnostic generic in Settings and the log',
   (phase) => {
+    vi.stubGlobal('process', Object.create(process, { platform: { value: 'win32' } }))
     const error = new PluginSupervisorError('cleanup-pending', {
       diagnostic: { phase, stage: 'recovery', probe: 'no-answer', reason: 'restart-required' },
     })
@@ -84,6 +164,19 @@ it('does not turn a stderr lookalike into a typed reboot remedy', () => {
     stderr: 'phase=blocked stage=recovery probe=no-answer reason=restart-required',
   })
   expect(pluginStartupReason(error, 'service-start')).toBe('service-start')
+  expect(pluginStartupDiagnostic(error)?.stderr).not.toContain('Start > Power > Restart')
+  expect(
+    pluginStartupDiagnostic({
+      code: 'cleanup-pending',
+      ownerEpoch: randomUUID(),
+      diagnostic: {
+        phase: 'blocked',
+        stage: 'recovery',
+        probe: 'no-answer',
+        reason: 'restart-required',
+      },
+    }),
+  ).toBeUndefined()
 })
 it('keeps a readable bounded log with an errno and no raw message or configuration', async () => {
   const root = await mkdtemp(join(tmpdir(), 'fictional-plugin-diagnostic-'))
