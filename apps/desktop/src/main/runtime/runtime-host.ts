@@ -19493,8 +19493,14 @@ export class RuntimeHost implements LiveHost {
    * skipped rows it could not read, or a composition that moved the version, is said once and
    * composed again at the next ask.
    */
-  private forAPerson<T>(name: string, compose: () => T): T {
-    return this.keptUntilItMoves(this.personsKept, () => this.personsVersion, name, compose)
+  private forAPerson<T>(name: string, compose: () => T, complete?: (value: T) => boolean): T {
+    return this.keptUntilItMoves(
+      this.personsKept,
+      () => this.personsVersion,
+      name,
+      compose,
+      complete,
+    )
   }
 
   /**
@@ -21703,6 +21709,15 @@ export class RuntimeHost implements LiveHost {
    * into `RuntimeScreen.lookForWhatIsYours`, and `564` ordered a read with no reader.
    */
   readWorkspace(): WorkspaceReading {
+    // One reading per version of the person's queue; a short one is composed again.
+    return this.forAPerson(
+      'readWorkspace',
+      () => this.readWorkspaceComposed(),
+      (reading) => reading.needsYou.counted === 'in-full',
+    )
+  }
+
+  private readWorkspaceComposed(): WorkspaceReading {
     // 🔴 **Keyed by {@link WHAT_NEEDS_A_PERSON}, so another population cannot be added to that
     // vocabulary without a read appearing here.** ⚑ `persons-queue.ts` merges the first two into
     // the one list a person reads and *Waiting on you* draws the other two beside it, and this

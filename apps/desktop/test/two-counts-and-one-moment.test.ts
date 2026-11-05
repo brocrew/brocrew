@@ -771,7 +771,8 @@ describe('567 · two counts and one moment', () => {
   /** ⛔ **The body of the read, prose stripped**, so a docblock quoting a call is not a call. */
   function bodyOfReadWorkspace(): string {
     const host_ = code(readFileSync(HOST_SRC, 'utf8'))
-    const at = host_.indexOf('readWorkspace(): WorkspaceReading {')
+    // The composing body; the public read keeps it once per version of the person's queue.
+    const at = host_.indexOf('readWorkspaceComposed(): WorkspaceReading {')
     expect(at).toBeGreaterThan(-1)
     return host_.slice(at, host_.indexOf('\n  }', at))
   }
