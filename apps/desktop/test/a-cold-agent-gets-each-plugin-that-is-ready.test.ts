@@ -183,12 +183,14 @@ describe('a cold agent gets each plugin that is ready', () => {
       expect(ids(routes.servers)).toEqual([fast])
       expect(routes.pending).toEqual([slow])
       expect(routes.none).toEqual([])
+      held.resolve(undefined as unknown as PluginMcpClient)
     },
   )
 
   it('a plugin whose route opening is held after it connected does not hold the other back', async () => {
     const w = await aWorkspace(['aster', 'zinnia'])
-    w.state.get('aster')!.open = new Promise<void>(() => {})
+    const held = deferred<void>()
+    w.state.get('aster')!.open = held.promise
     const reading = w.bridge.agentRoutes(lease(), request())
     w.commit('aster', { is: 'admitted' })
     await tick(20)
@@ -196,6 +198,7 @@ describe('a cold agent gets each plugin that is ready', () => {
     const routes = await reading
     expect(ids(routes.servers)).toEqual(['zinnia'])
     expect(routes.pending).toEqual(['aster'])
+    held.resolve()
   })
 
   it('one plugin failing fast does not end the read while another is still starting', async () => {
@@ -394,5 +397,46 @@ describe('a cold agent gets each plugin that is ready', () => {
     expect(ids(routes.servers)).toEqual(['zinnia'])
     expect(routes.pending).toEqual(['aster'])
     expect(performance.now() - started).toBeLessThan(1_000)
+  })
+
+  it('a release whose cleanup hangs never holds a later read of the same caller past its bound', async () => {
+    const w = await aWorkspace(['aster'], 200)
+    const l = lease()
+    const r = request()
+    w.commit('aster', { is: 'admitted' })
+    await w.bridge.agentRoutes(l, r)
+    const held = deferred<void>()
+    w.state.get('aster')!.close = held.promise
+    const releasing = w.bridge.agentRoutes(l, { ...r, release: true })
+    await tick(20)
+    const started = performance.now()
+    const later = await w.bridge.agentRoutes(l, r)
+    expect(performance.now() - started).toBeLessThan(1_000)
+    expect(later.servers).toEqual([])
+    held.resolve()
+    await releasing
+  })
+
+  it('close waits for a route still opening and for its late cleanup', async () => {
+    const w = await aWorkspace(['aster'], 100)
+    const opening = deferred<void>()
+    const cleanup = deferred<void>()
+    w.state.get('aster')!.open = opening.promise
+    w.state.get('aster')!.close = cleanup.promise
+    w.commit('aster', { is: 'admitted' })
+    expect((await w.bridge.agentRoutes(lease(), request())).pending).toEqual(['aster'])
+    let closed = false
+    const closing = w.bridge.close().then(() => {
+      closed = true
+    })
+    await tick(30)
+    expect(closed).toBe(false)
+    opening.resolve()
+    await tick(30)
+    expect(w.closed).toEqual(['aster'])
+    expect(closed).toBe(false)
+    cleanup.resolve()
+    await closing
+    expect(closed).toBe(true)
   })
 })
