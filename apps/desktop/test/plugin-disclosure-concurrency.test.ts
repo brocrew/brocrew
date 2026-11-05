@@ -315,7 +315,7 @@ Promise.all(Array.from({ length: 4 }, read)).then(() => {
       if (child.connected) child.send({ kind: 'stop' })
     }
     const observed = await result
-    await exited
+    const [code, signal] = await exited
     console.info(
       'native-short-read-race',
       JSON.stringify({
@@ -325,8 +325,11 @@ Promise.all(Array.from({ length: 4 }, read)).then(() => {
         published,
         errors,
         reader: observed,
+        readerExit: { code, signal },
       }),
     )
+    expect(code, stderr).toBe(0)
+    expect(signal).toBeNull()
     expect(observed.kind, stderr).toBe('done')
     expect(observed.reads).toBeGreaterThan(0)
     expect(observed.malformed).toBe(0)
