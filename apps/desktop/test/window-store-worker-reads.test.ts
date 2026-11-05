@@ -1014,6 +1014,8 @@ describe('canonical window worker folds and independent live-store reads', () =>
       await expect(executeRuntimeCommand(host, sink, { kind: 'listResumable' })).resolves.toEqual(
         host.resumableSessions(),
       )
+      // A commit moves the listing, so the next ask composes it again rather than sharing the last.
+      store.setApprovalMode('alpha', 'auto')
       vi.spyOn(store, 'resumable').mockImplementation(() => {
         throw new Error('the database is locked')
       })
