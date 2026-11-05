@@ -1030,6 +1030,7 @@ export async function journey(root) {
     )
     summary.counts.workspaces = 2
   } catch (error) {
+    console.error(error)
     summary.counts.failed = 1
     summary.failure = stepFailure(
       'journey',
@@ -1128,6 +1129,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       })
     } else await journey(process.argv[2])
   } catch (error) {
+    console.error(error)
     const failure = failureFor(process.argv[2] === 'probe' ? 'gui-probe' : 'journey', error)
     // Setup can fail before a child exists; even that refusal has a closed probe sub-step.
     printFailure(
