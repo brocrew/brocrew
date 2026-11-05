@@ -2241,6 +2241,19 @@ export interface WaitOnAsked {
 /** How far ahead a wait on a time may name. */
 const A_WAIT_ENDS_WITHIN_MS = 30 * 24 * 60 * 60 * 1000
 
+/**
+ * How long a window read the worker failed or was too busy for is answered on the main thread
+ * before the worker is asked again at the same writer stamp: doubled after each further failure
+ * there, up to the most. A write that moves the stamp asks again at once.
+ */
+const A_FAILED_WINDOW_READ_WAITS_MS = 1_000
+const A_FAILED_WINDOW_READ_WAITS_AT_MOST_MS = 30_000
+/** The worker's misses worth remembering at a stamp; a gone worker is its lifetime's to restart. */
+const REMEMBERED_WINDOW_READ_MISSES: ReadonlySet<WindowReadMiss> = new Set<WindowReadMiss>([
+  'worker-read-failed',
+  'worker-busy',
+])
+
 /** How often each cause of a window read answered on the main thread is logged, at most. */
 const SAY_A_WINDOW_READ_MISS_EVERY_MS = 60_000
 
@@ -8345,6 +8358,16 @@ export class RuntimeHost implements LiveHost {
   private windowIncidentsPending:
     { readonly stamp: WindowWriterStamp; readonly read: Promise<WindowReadResult> } | undefined
   private lastIncidentMainReadAt: number | undefined
+  /** A shared window read the worker failed, by kind: at which stamp, why, and until when. */
+  private readonly windowReadsFailed = new Map<
+    'routes' | 'incidents',
+    {
+      readonly stamp: WindowWriterStamp
+      readonly missed: WindowReadMiss
+      readonly wait: number
+      readonly until: number
+    }
+  >()
   private windowIncidentsKept:
     { readonly stamp: WindowWriterStamp; readonly result: WindowReadResult } | undefined
   /** Each cause of a window read answered on the main thread: how many, and when it was last said. */
@@ -19532,15 +19555,23 @@ export class RuntimeHost implements LiveHost {
       return answer()
     }
     if (this.launches.closed) throw new WindowReadUnavailable()
-    if (this.windowReadCallers >= WINDOW_READ_BOUNDS.callers)
-      return this.answeredOnTheMainThread('callers-full', answer)
+    const compose = (result: WindowReadResult): T => {
+      if (result.kind !== 'routes') throw new WindowReadMissed('worker-gone')
+      return this.windowRoutingReads.run(result, answer)
+    }
+    if (this.windowReadCallers >= WINDOW_READ_BOUNDS.callers) {
+      // Past the bound a caller joins the read already pending, and starts none of its own.
+      try {
+        return await this.freshWindowQuery({ kind: 'routes' }, compose, undefined, true)
+      } catch (error) {
+        if (!(error instanceof WindowReadMissed) || this.launches.closed) throw error
+        return this.answeredOnTheMainThread(error.missed, answer)
+      }
+    }
     this.windowReadCallers++
     let missed: WindowReadMiss
     try {
-      return await this.freshWindowQuery({ kind: 'routes' }, (result) => {
-        if (result.kind !== 'routes') throw new WindowReadMissed('worker-gone')
-        return this.windowRoutingReads.run(result, answer)
-      })
+      return await this.freshWindowQuery({ kind: 'routes' }, compose)
     } catch (error) {
       if (!(error instanceof WindowReadMissed) || this.launches.closed) throw error
       missed = error.missed
@@ -19590,10 +19621,11 @@ export class RuntimeHost implements LiveHost {
     query: WindowReadQuery,
     compose: (result: WindowReadResult) => T,
     signal?: AbortSignal,
+    joinOnly = false,
   ): Promise<T> {
     const reader = this.deps.windowReader
     if (reader === undefined) throw new WindowReadMissed('worker-gone')
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < (joinOnly ? 1 : 2); attempt++) {
       if (this.launches.closed) throw new WindowReadUnavailable()
       if (signal?.aborted === true) throw new WindowReadUnavailable()
       const before = this.sampleWindowWriter(query)
@@ -19608,15 +19640,29 @@ export class RuntimeHost implements LiveHost {
         this.deps.store.checkCommitted()
         return compose(kept.result)
       }
+      const kind = query.kind === 'incidents' ? 'incidents' : 'routes'
+      const failed = reusable ? this.windowReadsFailed.get(kind) : undefined
+      if (
+        failed !== undefined &&
+        sameWindowWriter(failed.stamp, before) &&
+        this.now() < failed.until
+      )
+        throw new WindowReadMissed(failed.missed)
       let pending: Promise<WindowReadResult>
       let origin = before
       if (reusable) {
         const key = query.kind === 'incidents' ? 'windowIncidentsPending' : 'windowRoutesPending'
         let shared = this[key]
+        if (shared === undefined && joinOnly) throw new WindowReadMissed('callers-full')
         if (shared === undefined) {
           shared = { stamp: before, read: reader.read(query) }
           this[key] = shared
           const owned = shared
+          // Settled before any caller's wait resumes, so they all find the failure remembered.
+          void owned.read.then(
+            () => this.windowReadsFailed.delete(kind),
+            (error: unknown) => this.rememberAFailedWindowRead(kind, owned.stamp, error),
+          )
           void owned.read
             .finally(() => {
               if (this[key] === owned) this[key] = undefined
@@ -19643,6 +19689,31 @@ export class RuntimeHost implements LiveHost {
       }
     }
     throw new WindowReadMissed('writer-moved')
+  }
+
+  /**
+   * Remembers a shared read the worker failed or was too busy for at `stamp`, so callers at that
+   * stamp are answered on the main thread until its wait passes, and the next asks again.
+   */
+  private rememberAFailedWindowRead(
+    kind: 'routes' | 'incidents',
+    stamp: WindowWriterStamp,
+    error: unknown,
+  ): void {
+    const missed = whyTheWorkerMissed(error, undefined)
+    if (!(missed instanceof WindowReadMissed) || !REMEMBERED_WINDOW_READ_MISSES.has(missed.missed))
+      return
+    const before = this.windowReadsFailed.get(kind)
+    const wait =
+      before !== undefined && sameWindowWriter(before.stamp, stamp)
+        ? Math.min(before.wait * 2, A_FAILED_WINDOW_READ_WAITS_AT_MOST_MS)
+        : A_FAILED_WINDOW_READ_WAITS_MS
+    this.windowReadsFailed.set(kind, {
+      stamp,
+      missed: missed.missed,
+      wait,
+      until: this.now() + wait,
+    })
   }
 
   /** Stop the caller's wait on abort; the worker still owns its native job until it settles. */
