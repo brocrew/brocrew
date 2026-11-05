@@ -183,29 +183,37 @@ describe.each([
     const insert = database.prepare('INSERT INTO records VALUES (?)')
     const select = database.prepare('SELECT id FROM records')
     let contender: PluginSqlite | undefined
-    const held = await holdPluginSqlite(path, children)
     try {
-      contender = open(path, { fileMustExist: true, timeout: 0 })
-      expect(() => contender!.exec('BEGIN EXCLUSIVE')).toThrow(
-        expect.objectContaining({ code: 'SQLITE_BUSY' }),
-      )
-      expect(() => contender!.prepare('SELECT id FROM records')).toThrow(
-        expect.objectContaining({ code: 'SQLITE_BUSY' }),
-      )
-      expect(() => insert.run(2)).toThrow(expect.objectContaining({ code: 'SQLITE_BUSY' }))
-      expect(() => select.get()).toThrow(expect.objectContaining({ code: 'SQLITE_BUSY' }))
-      expect(() => select.all()).toThrow(expect.objectContaining({ code: 'SQLITE_BUSY' }))
-      expect(database.transaction(() => insert.run(3))).toThrow(
-        expect.objectContaining({ code: 'SQLITE_BUSY' }),
-      )
-    } finally {
-      await held.release()
-      contender?.close()
-    }
-    try {
+      const held = await holdPluginSqlite(path, children)
+      try {
+        contender = open(path, { fileMustExist: true, timeout: 0 })
+        expect(() => contender!.exec('BEGIN EXCLUSIVE')).toThrow(
+          expect.objectContaining({ code: 'SQLITE_BUSY' }),
+        )
+        expect(() => contender!.prepare('SELECT id FROM records')).toThrow(
+          expect.objectContaining({ code: 'SQLITE_BUSY' }),
+        )
+        expect(() => insert.run(2)).toThrow(expect.objectContaining({ code: 'SQLITE_BUSY' }))
+        expect(() => select.get()).toThrow(expect.objectContaining({ code: 'SQLITE_BUSY' }))
+        expect(() => select.all()).toThrow(expect.objectContaining({ code: 'SQLITE_BUSY' }))
+        expect(database.transaction(() => insert.run(3))).toThrow(
+          expect.objectContaining({ code: 'SQLITE_BUSY' }),
+        )
+      } finally {
+        await held.release()
+      }
+      // The SAME contender survives failed first-use attempts, applies FULL, then acquires.
+      expect(() => contender!.exec('BEGIN EXCLUSIVE')).not.toThrow()
+      contender!.exec('ROLLBACK')
+      expect(contender!.prepare('PRAGMA synchronous').get()).toMatchObject({ synchronous: 2 })
+      expect(contender!.prepare('PRAGMA busy_timeout').get()).toMatchObject({ timeout: 0 })
+      expect(contender!.prepare('PRAGMA journal_mode').get()).toMatchObject({
+        journal_mode: 'delete',
+      })
       database.transaction(() => insert.run(4))()
       expect(select.all()).toEqual([{ id: 1 }, { id: 4 }])
     } finally {
+      contender?.close()
       database.close()
     }
   })
