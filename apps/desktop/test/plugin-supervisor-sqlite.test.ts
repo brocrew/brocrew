@@ -41,12 +41,14 @@ describe('standalone supervisor SQLite contract', () => {
       const insert = database.prepare('INSERT INTO operations (id, value) VALUES (?, ?)')
       insert.run('fictional-one', '{"status":"committed"}')
       insert.run('fictional-two', '{"status":"aborted"}')
-      expect(database.prepare('SELECT value FROM operations WHERE id = ?').get('absent'))
-        .toBeUndefined()
+      expect(
+        database.prepare('SELECT value FROM operations WHERE id = ?').get('absent'),
+      ).toBeUndefined()
       database.close()
       database = new SupervisorDatabase(path)
-      expect(database.prepare('SELECT value FROM operations WHERE id = ?').get('fictional-one'))
-        .toMatchObject({ value: '{"status":"committed"}' })
+      expect(
+        database.prepare('SELECT value FROM operations WHERE id = ?').get('fictional-one'),
+      ).toMatchObject({ value: '{"status":"committed"}' })
       expect(database.prepare('SELECT id FROM operations ORDER BY id').all()).toEqual([
         { id: 'fictional-one' },
         { id: 'fictional-two' },
@@ -108,7 +110,10 @@ describe('standalone supervisor SQLite contract', () => {
       root = join(scratch, 'p'),
       workspaceRoot = join(scratch, 'w')
     await mkdir(workspaceRoot)
-    const catalogue = { bytes: Buffer.from('{"format":3,"entries":[]}'), signature: Buffer.alloc(0) }
+    const catalogue = {
+      bytes: Buffer.from('{"format":3,"entries":[]}'),
+      signature: Buffer.alloc(0),
+    }
     const cataloguePath = join(scratch, 'catalogue.json'),
       personKey = 'a'.repeat(64),
       catalogueSha256 = createHash('sha256').update(catalogue.bytes).digest('hex')
@@ -116,6 +121,7 @@ describe('standalone supervisor SQLite contract', () => {
     const owner = await PluginSupervisor.start({ root, workspaceRoots: [workspaceRoot] })
     let lease: PluginWorkspaceLease | undefined
     let settings: Awaited<ReturnType<typeof connectPluginSettings>> | undefined
+    let service: Awaited<ReturnType<typeof bootstrapPluginLifecycle>> | undefined
     try {
       lease = await PluginWorkspaceLease.attach({
         root,
@@ -123,7 +129,7 @@ describe('standalone supervisor SQLite contract', () => {
         generation: randomUUID(),
         build: 'fictional-standalone-sqlite',
       })
-      const service = await bootstrapPluginLifecycle({
+      service = await bootstrapPluginLifecycle({
         root,
         workspaceRoots: [workspaceRoot],
         owner,
@@ -159,16 +165,21 @@ describe('standalone supervisor SQLite contract', () => {
       })
       expect(settings.host).toBeDefined()
       expect(await settings.catalogue()).toEqual([])
-      expect(JSON.parse(await readFile(join(root, 'state/installed-state.json'), 'utf8')))
-        .toMatchObject({ format: 2, active: [], pending: null })
+      expect(
+        JSON.parse(await readFile(join(root, 'state/installed-state.json'), 'utf8')),
+      ).toMatchObject({ format: 2, active: [], pending: null })
       expect(owner.acceptsStarts()).toBe(true)
     } finally {
       await settings?.close()
+      await service?.close()
       lease?.abandon()
       await owner.shutdown()
       await owner.closed
     }
-    const reopened = GlobalPluginState.open({ root: join(root, 'state'), workspaceRoots: [workspaceRoot] })
+    const reopened = GlobalPluginState.open({
+      root: join(root, 'state'),
+      workspaceRoots: [workspaceRoot],
+    })
     try {
       expect(reopened.exportActivation().entries).toEqual([])
       expect(reopened.inspect().pending).toBeNull()
