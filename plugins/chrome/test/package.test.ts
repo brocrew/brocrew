@@ -304,7 +304,7 @@ describe('private Chrome package', () => {
   })
 })
 
-// D3: cap enumeration BEFORE title work; retain clean URLs, bounded strings and generations.
+// Cap enumeration before title work; retain clean URLs, bounded strings and generations.
 it('snapshot caps rows before title work and bounds URL/title strings', async () => {
   const config = configured(),
     store = createProfileStore({ home: config.home })

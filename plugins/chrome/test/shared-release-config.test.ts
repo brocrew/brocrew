@@ -184,7 +184,7 @@ it('ON requires host capability and admits facade and rename migration together 
   expect(() => loadConfig({ ...env, BROCREW_PLUGIN_OWNER_ID: '../invalid' })).toThrow()
 })
 
-// D1 oracles are authored RED candidates; execution remains a Root-owned gate.
+// An unused shared owner must not affect local-only startup or retained bytes.
 it.each([
   { fallback: '../invalid', priorOwner: undefined },
   {
