@@ -14,7 +14,8 @@ export interface ManagedPluginAttachment {
    * Present only when the reply named each plugin: those still starting, those committed state
    * says are off, and whether the scope could be read at all. Without it, `servers` is the
    * complete set. With it, a route already attached for a plugin still starting or unknown stays;
-   * only an off plugin, or a new route for it, replaces it.
+   * only an off plugin, or a new route for it, replaces it. A route attached without a plugin
+   * stays until a route is served under its name.
    */
   readonly plugins?: {
     readonly pending: readonly string[]
@@ -30,10 +31,14 @@ function retained(
   const plugins = next.plugins
   if (plugins === undefined) return next.servers
   const served = new Set(next.servers.map((one) => one.pluginId))
+  const names = new Set(next.servers.map((one) => one.name))
   const off = new Set(plugins.none)
-  // Only an explicit off, or a new route for the same plugin, removes an attached route.
-  const kept = previous.filter(
-    (one) => one.pluginId !== undefined && !served.has(one.pluginId) && !off.has(one.pluginId),
+  // Only an explicit off, or a new route for the same plugin, removes an attached route. A route
+  // from a reply that named no plugin can be replaced only by a route served under its name.
+  const kept = previous.filter((one) =>
+    one.pluginId === undefined
+      ? !names.has(one.name)
+      : !served.has(one.pluginId) && !off.has(one.pluginId),
   )
   return [...next.servers, ...kept.map((one) => ({ ...one, retained: true as const }))]
 }
