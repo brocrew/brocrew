@@ -95,25 +95,38 @@ async function start(managedPluginMcp: readonly (typeof route & { retained?: tru
   return { wire, handle, events }
 }
 
+const configured = (wire: Wire) =>
+  JSON.stringify(wire.requests.find((one) => one.method === 'thread/start')?.params)
+
 it('a route kept while its plugin is starting is configured but never awaited before a turn', async () => {
   const kept = { ...route, name: 'plugin-aster', retained: true as const }
   const { wire, handle } = await start([kept])
   wire.discovery = () => new Promise<unknown>(() => {})
+  expect(configured(wire)).toContain('plugin-aster')
   await handle.send('fictional words')
   await tick()
   expect(wire.catalogsAtTurns).toHaveLength(1)
   expect(wire.requests.some((one) => one.method === 'mcpServerStatus/list')).toBe(false)
 })
 
-it('a served route beside a kept one is the only one awaited', async () => {
+it('a served route beside a kept one is the only one awaited, and the turn waits for it', async () => {
   const kept = { ...route, name: 'plugin-aster', retained: true as const }
   const { wire, handle } = await start([route, kept])
+  expect(configured(wire)).toContain('plugin-aster')
+  expect(configured(wire)).toContain(route.name)
   const asked: unknown[] = []
-  wire.discovery = async (params) => {
+  const reply = deferred<unknown>()
+  wire.discovery = (params) => {
     asked.push(params)
-    return ready(route.name)
+    return reply.promise
   }
   await handle.send('fictional words')
+  await tick()
+  expect(asked).toEqual([
+    { threadId: 'fictional-thread', serverName: route.name, detail: 'toolsAndAuthOnly' },
+  ])
+  expect(wire.catalogsAtTurns).toHaveLength(0)
+  reply.resolve(ready(route.name))
   await tick()
   expect(wire.catalogsAtTurns).toHaveLength(1)
   expect(JSON.stringify(asked)).not.toContain('plugin-aster')
