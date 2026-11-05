@@ -1101,3 +1101,75 @@ it('a successful mutation handover does not create cancellation revoke debt for 
   expect(h.controller.cleanForShutdown()).toBe(true)
   expect(revoke.mock.calls.filter(([id]) => id === A)).toHaveLength(calls)
 }, 15000)
+
+it('retries two publishers of one install independently and never treats the old true as the new acknowledgement', async () => {
+  const h = await setup()
+  const install = h.f.state.currentInstallation(A)!
+  const bInstall = h.f.state.currentInstallation(B)!
+  const old = projection(),
+    next = projection()
+  let oldConfirmed = false,
+    nextConfirmed = false,
+    retiring = false
+  const oldRevoke = vi.fn(async (id: string, installId: string) => {
+    if (id === A && retiring && !oldConfirmed) return false
+    const answer = await old.sink.revoke(id, installId)
+    if (answer && id === A && retiring) old.rows.delete(id)
+    return answer
+  })
+  const nextRevoke = vi.fn(async (id: string, installId: string) => {
+    if (id === A && retiring && !nextConfirmed) return false
+    const answer = await next.sink.revoke(id, installId)
+    if (answer && id === A && retiring) next.rows.delete(id)
+    return answer
+  })
+  releases.push(() => {
+    oldConfirmed = true
+    nextConfirmed = true
+  })
+  const handle = await h.attach({ ...old.sink, revoke: oldRevoke })
+  await accepted(h.controller, handle, A, install.installId)
+  await accepted(h.controller, handle, B, bInstall.installId)
+  const publisher: WorkspaceProjection = {
+    ...next.sink,
+    workspaceId: old.sink.workspaceId,
+    revoke: nextRevoke,
+  }
+  await h.controller.reconcileConsumer(handle, publisher)
+  await accepted(h.controller, handle, A, install.installId)
+  await accepted(h.controller, handle, B, bInstall.installId)
+  expect(old.rows.get(A)?.installId).toBe(install.installId)
+  expect(next.rows.get(A)?.installId).toBe(install.installId)
+  expect(h.controller.admitted(handle, A, install.installId)).toBe(true)
+  // Old publisher debt does not narrow this newly accepted consumer's admission.
+  expect(h.controller.cleanForShutdown()).toBe(false)
+  retiring = true
+  const oldCalls = oldRevoke.mock.calls.length,
+    nextCalls = nextRevoke.mock.calls.length
+  await expect(h.controller.detach(handle)).rejects.toMatchObject({ code: 'cleanup-pending' })
+  expect(oldRevoke.mock.calls.slice(oldCalls)).toContainEqual([A, install.installId])
+  expect(nextRevoke.mock.calls.slice(nextCalls)).toContainEqual([A, install.installId])
+  const snapshot = join(h.f.root, 'state', 'installed-state.json')
+  const selected = await readFile(snapshot)
+  oldConfirmed = true
+  const oldRetry = oldRevoke.mock.calls.length,
+    nextRetry = nextRevoke.mock.calls.length
+  await expect(h.controller.detach(handle)).rejects.toMatchObject({ code: 'cleanup-pending' })
+  expect(oldRevoke.mock.calls.slice(oldRetry)).toEqual([[A, install.installId]])
+  expect(nextRevoke.mock.calls.slice(nextRetry)).toEqual([[A, install.installId]])
+  expect(old.rows.has(A)).toBe(false)
+  expect(next.rows.get(A)?.installId).toBe(install.installId)
+  expect(h.controller.cleanForShutdown()).toBe(false)
+  expect((await h.controller.status()).cleanupPending).toContain(A)
+  nextConfirmed = true
+  const lastOld = oldRevoke.mock.calls.length,
+    lastNext = nextRevoke.mock.calls.length
+  await expect(h.controller.detach(handle)).resolves.toBeUndefined()
+  expect(oldRevoke).toHaveBeenCalledTimes(lastOld)
+  expect(nextRevoke.mock.calls.slice(lastNext)).toEqual([[A, install.installId]])
+  expect(next.rows.has(A)).toBe(false)
+  expect(h.controller.cleanForShutdown()).toBe(true)
+  expect(h.controller.contributions(h.otherPerson, A).current()).toBe(true)
+  expect(h.controller.contributions(h.otherPerson, B).current()).toBe(true)
+  expect(await readFile(snapshot)).toEqual(selected)
+}, 15000)
