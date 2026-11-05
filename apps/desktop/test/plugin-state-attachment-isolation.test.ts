@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -883,4 +883,221 @@ it('retains a failed partial-publication revoke after logical detach and retries
   expect(originalA.current()).toBe(true)
   expect(originalB.current()).toBe(true)
   expect(await readFile(snapshot)).toEqual(selected)
+}, 15000)
+
+async function accepted(
+  controller: Awaited<ReturnType<typeof setup>>['controller'],
+  handle: LifecycleWorkspace,
+  id: string,
+  installId: string,
+) {
+  const workspaceId = controller.hostWorkspace(handle)
+  const done = deferred<void>()
+  const check = () => {
+    if (controller.admitted(handle, id, installId)) done.resolve()
+  }
+  const unsubscribe = controller.onHostChanged((changed) => {
+    if (changed === workspaceId) check()
+  })
+  try {
+    check()
+    await bounded(done.promise, 'exact consumer receipt acceptance')
+  } finally {
+    unsubscribe()
+  }
+}
+
+it.each(['pending', 'failed'] as const)(
+  'retains a published %s binding on detach before its acknowledgement and retries only its old origin',
+  async (latch) => {
+    const h = await setup()
+    const install = h.f.state.currentInstallation(A)!
+    const bInstall = h.f.state.currentInstallation(B)!
+    const otherA = h.controller.contributions(h.otherPerson, A)
+    const otherB = h.controller.contributions(h.otherPerson, B)
+    const fresh = projection()
+    const entered = deferred<void>(),
+      hold = deferred<void>(),
+      returned = deferred<void>()
+    let published = false,
+      allowRevoke = false
+    releases.push(() => {
+      allowRevoke = true
+      hold.resolve()
+    })
+    const revoke = vi.fn(async (id: string, installId: string) => {
+      if (id === A && published && !allowRevoke) {
+        if (latch === 'failed') throw new Error('Fictional old-origin revoke failed')
+        return false
+      }
+      const confirmed = await fresh.sink.revoke(id, installId)
+      if (confirmed && id === A && published) fresh.rows.delete(id)
+      return confirmed
+    })
+    const reconcile = vi.fn(fresh.sink.reconcile)
+    const applied = vi.fn(
+      async (id: string, receipt: Parameters<WorkspaceProjection['applied']>[1]) => {
+        await fresh.sink.applied(id, receipt)
+        if (id === A && receipt) {
+          published = true
+          entered.resolve()
+          await hold.promise
+          returned.resolve()
+        }
+      },
+    )
+    const sink = { ...fresh.sink, revoke, reconcile, applied }
+    const old = await h.attach(sink)
+    await bounded(entered.promise, 'positive old-origin applied before acknowledgement')
+    await accepted(h.controller, old, B, bInstall.installId)
+    expect(fresh.rows.get(A)).toMatchObject({
+      installId: install.installId,
+      incarnation: install.incarnation,
+    })
+    expect(h.controller.consumerReceipts(old).some((one) => one.pluginId === A)).toBe(false)
+    expect(h.controller.admitted(old, A, install.installId)).toBe(false)
+    if (latch === 'failed') h.controller.cancelConsumer(old, sink)
+    expect(h.controller.consumerBindings(old)).toContainEqual({ pluginId: A, state: latch })
+    const beforeDetach = revoke.mock.calls.length
+    await expect(h.controller.detach(old)).rejects.toMatchObject({ code: 'cleanup-pending' })
+    expect(revoke.mock.calls.slice(beforeDetach)).toContainEqual([A, install.installId])
+    expect(() => h.controller.contributions(old, A)).toThrow()
+    expect(h.controller.cleanForShutdown()).toBe(false)
+    expect((await h.controller.status()).cleanupPending).toContain(A)
+
+    const next = projection()
+    const nextRevoke = vi.fn(next.sink.revoke)
+    const current = await h.attach({
+      ...next.sink,
+      workspaceId: sink.workspaceId,
+      revoke: nextRevoke,
+    })
+    await accepted(h.controller, current, A, install.installId)
+    await accepted(h.controller, current, B, bInstall.installId)
+    const oldView = h.controller.contributions(current, A)
+    await h.controller.setEnabled(current, A, false)
+    expect(oldView.current()).toBe(false)
+    await h.controller.setEnabled(current, A, true)
+    const currentA = h.controller.contributions(current, A)
+    const currentB = h.controller.contributions(current, B)
+    expect(currentA.current()).toBe(true)
+    expect(h.f.state.getEnabled(sink.workspaceId, A).revision).toBe(2)
+    expect(
+      h.controller.agentScope(sink.workspaceId).entries.find((one) => one.pluginId === A),
+    ).toMatchObject({
+      is: 'admitted',
+      installId: install.installId,
+      switchRevision: 2,
+    })
+    await expect(
+      h.controller.genericCallTool({
+        workspaceId: sink.workspaceId,
+        pluginId: A,
+        instanceId: currentA.identity.runId,
+        name: gather.tool,
+        arguments: gather.arguments,
+        requestId: randomUUID(),
+        origin: 'button',
+      }),
+    ).resolves.toHaveProperty('content')
+    expect(h.controller.cleanForShutdown()).toBe(false)
+    expect(fresh.rows.get(A)?.installId).toBe(install.installId)
+
+    const data = join(h.f.root, 'data', A, 'opaque.keep')
+    await mkdir(join(h.f.root, 'data', A), { recursive: true })
+    await writeFile(data, 'Fictional retained old-origin data')
+    const dataBefore = await readFile(data)
+    const snapshot = join(h.f.root, 'state', 'installed-state.json')
+    const selected = await readFile(snapshot)
+    const writes = vi.spyOn(h.f.state, 'recordProjection')
+    const starts = vi.spyOn(h.f.opts.runtime, 'start')
+    const removes = vi.spyOn(h.f.opts.runtime, 'removeCode')
+    const oldCalls = {
+      revoke: revoke.mock.calls.length,
+      reconcile: reconcile.mock.calls.length,
+      applied: applied.mock.calls.length,
+    }
+    const nextCalls = nextRevoke.mock.calls.length
+    hold.resolve()
+    await bounded(returned.promise, 'abandoned positive acknowledgement returned')
+    // Flush the abandoned continuation once; this is not a readiness retry.
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    expect(revoke).toHaveBeenCalledTimes(oldCalls.revoke)
+    expect(reconcile).toHaveBeenCalledTimes(oldCalls.reconcile)
+    expect(applied).toHaveBeenCalledTimes(oldCalls.applied)
+    expect(writes).not.toHaveBeenCalled()
+    expect(starts).not.toHaveBeenCalled()
+    expect(removes).not.toHaveBeenCalled()
+    expect((await h.controller.status()).cleanupPending).toContain(A)
+    expect(h.controller.cleanForShutdown()).toBe(false)
+    expect(currentA.current()).toBe(true)
+    expect(currentB.current()).toBe(true)
+    expect(otherA.current()).toBe(true)
+    expect(otherB.current()).toBe(true)
+    expect(await readFile(snapshot)).toEqual(selected)
+    expect(await readFile(data)).toEqual(dataBefore)
+
+    allowRevoke = true
+    const retry = revoke.mock.calls.length
+    await expect(h.controller.detach(old)).resolves.toBeUndefined()
+    expect(revoke.mock.calls.slice(retry)).toEqual([[A, install.installId]])
+    expect(nextRevoke).toHaveBeenCalledTimes(nextCalls)
+    expect(fresh.rows.has(A)).toBe(false)
+    expect(next.rows.get(A)?.installId).toBe(install.installId)
+    expect((await h.controller.status()).cleanupPending).not.toContain(A)
+    expect(h.controller.cleanForShutdown()).toBe(true)
+    expect(currentA.current()).toBe(true)
+    expect(currentB.current()).toBe(true)
+    expect(otherA.current()).toBe(true)
+    expect(otherB.current()).toBe(true)
+    expect(writes).not.toHaveBeenCalled()
+    expect(await readFile(snapshot)).toEqual(selected)
+    expect(await readFile(data)).toEqual(dataBefore)
+  },
+  15000,
+)
+
+it('a successful mutation handover does not create cancellation revoke debt for its superseded job', async () => {
+  const h = await setup()
+  const install = h.f.state.currentInstallation(A)!
+  const operation = h.f.state
+    .inspect()
+    .operations.find((one) => one.status === 'completed' && one.operation.next?.pluginId === A)!
+    .operation.request.operationId
+  const fresh = projection()
+  const entered = deferred<void>(),
+    hold = deferred<void>(),
+    returned = deferred<void>()
+  releases.push(() => hold.resolve())
+  let positives = 0
+  const revoke = vi.fn(fresh.sink.revoke)
+  const applied = vi.fn(
+    async (id: string, receipt: Parameters<WorkspaceProjection['applied']>[1]) => {
+      await fresh.sink.applied(id, receipt)
+      if (id === A && receipt && ++positives === 1) {
+        entered.resolve()
+        await hold.promise
+        returned.resolve()
+      }
+    },
+  )
+  const handle = await h.attach({ ...fresh.sink, revoke, applied })
+  await bounded(entered.promise, 'first mutation-target acknowledgement held')
+  await accepted(h.controller, handle, B, h.f.state.currentInstallation(B)!.installId)
+  const calls = revoke.mock.calls.filter(([id]) => id === A).length
+  await h.controller.install(handle, A, operation)
+  expect(fresh.rows.get(A)?.installId).toBe(install.installId)
+  expect(h.controller.admitted(handle, A, install.installId)).toBe(true)
+  expect(revoke.mock.calls.filter(([id]) => id === A)).toHaveLength(calls)
+  expect(h.controller.cleanForShutdown()).toBe(true)
+  expect((await h.controller.status()).cleanupPending).not.toContain(A)
+  const contribution = h.controller.contributions(handle, A)
+  const writes = vi.spyOn(h.f.state, 'recordProjection')
+  hold.resolve()
+  await bounded(returned.promise, 'superseded mutation acknowledgement returned')
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  expect(writes).not.toHaveBeenCalled()
+  expect(contribution.current()).toBe(true)
+  expect(h.controller.cleanForShutdown()).toBe(true)
+  expect(revoke.mock.calls.filter(([id]) => id === A)).toHaveLength(calls)
 }, 15000)
