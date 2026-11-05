@@ -4,14 +4,40 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import { FakeRuntime } from '@brobot2/runtime'
+import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import {
   aRealisticProfile,
+  EXTREME,
   OWNER,
   scaled,
   TYPICAL,
   type RealisticProfile,
 } from './fixtures/a-realistic-profile'
+
+function aHostOver(store: SessionStore, profile: RealisticProfile, folder: string): RuntimeHost {
+  return new RuntimeHost({
+    store,
+    archived: profile.archive(),
+    discoverSessions: NO_DISCOVERY,
+    nativeTranscriptPath: () => null,
+    exportDirectory: () => join(folder, 'exports'),
+    createRuntime: (provider) => new FakeRuntime(provider),
+    prepareProviderHome: (provider) => join(folder, 'homes', provider),
+    providerHomePath: (provider) => join(folder, 'homes', provider),
+    resolveCwd: (sessionId, requested) => requested ?? join(folder, 'scratch', sessionId),
+    newSessionId: () => `sess_${String(Math.random()).slice(2)}`,
+    readProviderConfig: (_provider, home) => ({
+      home,
+      homeEnv: 'CODEX_HOME',
+      model: 'm',
+      authNote: null,
+      files: [],
+    }),
+  })
+}
 
 /** The generator's own guards: the same seed writes the same rows, and the rows mean what it says. */
 describe('a realistic profile', () => {
@@ -39,6 +65,45 @@ describe('a realistic profile', () => {
     expect(again.digest).toBe(profile.digest)
     expect(other.digest).not.toBe(profile.digest)
     expect(profile.counts['question_asked']).toBe(size.questions)
+  })
+
+  it('writes every conversation as one that has started and can be resumed', () => {
+    expect(store.resumable().length).toBe(profile.live.length + profile.expected.archived.length)
+    expect(store.unresumable()).toEqual([])
+    // A host settles what its start finds open, so it reads its own copy of the same profile.
+    const copy = aRealisticProfile(join(directory, 'host.sqlite'), size, 7)
+    const other = openDatabase(copy.file)
+    try {
+      const host = aHostOver(createSessionStore(other), copy, directory)
+      expect(
+        host
+          .resumableSessions()
+          .map((one) => one.sessionId)
+          .sort(),
+      ).toEqual([...copy.live].sort())
+    } finally {
+      other.close()
+    }
+  })
+
+  it('at the extreme size, a host lists only the live conversations while the archived ones keep their routed history', () => {
+    const extreme = aRealisticProfile(join(directory, 'extreme.sqlite'), scaled(EXTREME, 0.02), 3)
+    const other = openDatabase(extreme.file)
+    try {
+      const its = createSessionStore(other)
+      const host = aHostOver(its, extreme, directory)
+      expect(extreme.expected.archived.length).toBeGreaterThan(0)
+      expect(
+        host
+          .resumableSessions()
+          .map((one) => one.sessionId)
+          .sort(),
+      ).toEqual([...extreme.live].sort())
+      const askers = new Set(its.whoRoutedToWhom().map((one) => one.asker))
+      expect(extreme.expected.archived.some((id) => askers.has(id))).toBe(true)
+    } finally {
+      other.close()
+    }
   })
 
   it('holds the open pieces it chose, owner by owner', () => {
