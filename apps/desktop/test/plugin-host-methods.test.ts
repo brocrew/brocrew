@@ -387,6 +387,7 @@ describe('before-turn titles', () => {
         },
       },
     }
+    expect(host.hasTitleHooks('workshop')).toBe(true)
     callTool.mockResolvedValue(result)
     expect(await host.beforeTurn(input, (id) => id === other.pluginId)).toEqual({
       pointers: [{ resourceId: 'guide', version: 'v1' }],
@@ -410,6 +411,7 @@ describe('before-turn titles', () => {
     live = false
     finish(result)
     expect(await held).toEqual({ pointers: [] })
+    expect(host.hasTitleHooks('workshop')).toBe(true)
     expect(host.snapshot('workshop').contributions.every((one) => one.state === 'active')).toBe(
       true,
     )
