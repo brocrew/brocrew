@@ -329,9 +329,13 @@ export function withManagedPluginAttachments(
                   throw new Error('the turn was stopped before its message could be sent')
                 // The same routes under new markers: which of them this turn may wait on.
                 if (next && signature(next) === signature(attachment)) attachment = next
-                inner.awaitManagedPlugins?.(
-                  attachment.servers.filter((one) => !one.retained).map((one) => one.name),
-                )
+                // The latest read decides what a turn may wait on, even when its routes could not
+                // be applied; the provider keeps only names it has configured. A read that failed
+                // says nothing new, so the set stays as it was.
+                if (next)
+                  inner.awaitManagedPlugins?.(
+                    next.servers.filter((one) => !one.retained).map((one) => one.name),
+                  )
                 pending = undefined
                 return inner.send(...args)
               } finally {

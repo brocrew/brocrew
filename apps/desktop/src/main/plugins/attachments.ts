@@ -15,8 +15,8 @@ const Routes = z.array(z.strictObject(Route))
 const NamedRoutes = z.strictObject({
   format: z.literal(2),
   servers: z.array(z.strictObject({ ...Route, pluginId: PluginId })).max(32),
-  pending: z.array(PluginId).max(128),
-  none: z.array(PluginId).max(128),
+  pending: z.array(PluginId),
+  none: z.array(PluginId),
   unknown: z.boolean(),
 })
 
