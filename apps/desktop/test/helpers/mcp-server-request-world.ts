@@ -32,6 +32,8 @@ export interface WorldHostOptions {
   readonly pluginContext?: ConstructorParameters<typeof RuntimeHost>[0]['pluginContext']
   /** How long a close waits for the provider to confirm it stopped. */
   readonly closeDrainTimeoutMs?: number
+  /** How a provider's sign-in is renewed, and what a renewed turn carries on with. */
+  readonly loginRenewal?: ConstructorParameters<typeof RuntimeHost>[0]['loginRenewal']
 }
 
 export class McpRequestSink implements RuntimeEventSink {
@@ -164,8 +166,8 @@ export function mcpRequestWorld() {
     },
     /**
      * A host over this world's store. `options` adds the plugin dependencies a real app wires
-     * (attachments, before-turn context, instruction source), picks the provider `open` uses, and
-     * can shorten how long a close waits for its provider.
+     * (attachments, before-turn context, instruction source), picks the provider `open` uses, can
+     * shorten how long a close waits for its provider, and can renew a provider's sign-in.
      */
     host(options: WorldHostOptions = {}): RuntimeHost {
       world.provider = options.provider ?? 'claude'
@@ -236,6 +238,7 @@ export function mcpRequestWorld() {
         ...(options.closeDrainTimeoutMs === undefined
           ? {}
           : { closeDrainTimeoutMs: options.closeDrainTimeoutMs }),
+        ...(options.loginRenewal === undefined ? {} : { loginRenewal: options.loginRenewal }),
         readProviderConfig: (_provider, home) => ({
           home,
           homeEnv: 'CLAUDE_CONFIG_DIR',
