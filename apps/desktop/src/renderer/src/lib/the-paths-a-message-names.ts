@@ -290,15 +290,6 @@ interface LocalLink {
   readonly label: string
 }
 
-/** The rendered entities markdown writes in an attribute, read back to the text. */
-function unescaped(value: string): string {
-  return value
-    .replace(/&quot;/g, '"')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-}
-
 /** Renderer placeholders delimit complete labels, independent of tags inside them. */
 function localLinksIn(html: string): LocalLink[] {
   const links: LocalLink[] = []
