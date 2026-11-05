@@ -195,23 +195,22 @@ export function childRun(program, args, env, cwd, abort, maximum, phase, output)
   }
   child.stdout.on('data', classify)
   child.stderr.on('data', classify)
-  // Fictional fixture errors are visible in the job log and retained verbatim beside the summary.
+  // Ordinary CI errors are visible, including preparation and its fictional tests.
+  child.stdout.on('data', (bytes) => process.stdout.write(bytes))
+  child.stderr.on('data', (bytes) => process.stderr.write(bytes))
+  // The two fixture invocations also retain verbatim output beside the summary.
   const captures = []
-  if (phase === 'cdp-fixture-tests') {
-    child.stdout.on('data', (bytes) => process.stdout.write(bytes))
-    child.stderr.on('data', (bytes) => process.stderr.write(bytes))
-    if (output)
-      for (const stream of ['stdout', 'stderr']) {
-        const file = fs.createWriteStream(output[stream], { flags: 'wx', mode: 0o600 })
-        captures.push(
-          new Promise((resolve, reject) => {
-            file.once('finish', resolve)
-            file.once('error', reject)
-          }),
-        )
-        child[stream].pipe(file)
-      }
-  }
+  if (output)
+    for (const stream of ['stdout', 'stderr']) {
+      const file = fs.createWriteStream(output[stream], { flags: 'wx', mode: 0o600 })
+      captures.push(
+        new Promise((resolve, reject) => {
+          file.once('finish', resolve)
+          file.once('error', reject)
+        }),
+      )
+      child[stream].pipe(file)
+    }
   const exit = new Promise((resolve, reject) => {
     child.once('exit', (code, signal) => {
       observedExit = { code, signal }
@@ -235,6 +234,10 @@ export function childRun(program, args, env, cwd, abort, maximum, phase, output)
       once: true,
     }),
   )
+  // Registration can await a census before wait() attaches. Observe early rejections immediately;
+  // keep the original promises rejected so wait() and the drain still receive the actual failure.
+  completed.catch(() => {})
+  cancelled.catch(() => {})
   return {
     child,
     exit,

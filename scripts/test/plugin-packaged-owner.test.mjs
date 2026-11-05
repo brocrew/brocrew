@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { PassThrough } from 'node:stream'
+import { PassThrough, Writable } from 'node:stream'
 import { finished } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -149,7 +149,7 @@ function fixture({ drained = true, failAt, rows = [] } = {}) {
     summary: () => JSON.parse(fs.readFileSync(path.join(control, 'summary.json'))),
   }
 }
-function outputFixture(maximum = 1000, stale = false) {
+function outputFixture(maximum = 1000, stale = false, { hold, phase = 'cdp-fixture-tests' } = {}) {
   const root = scratch(),
     control = scratch(),
     abort = new AbortController(),
@@ -164,7 +164,12 @@ function outputFixture(maximum = 1000, stale = false) {
       stdout: path.join(control, 'named48-stdout.log'),
       stderr: path.join(control, 'named48-stderr.log'),
     }
+  let release, enterHold
+  const holding = new Promise((resolve) => {
+    enterHold = resolve
+  })
   if (stale) fs.writeFileSync(output.stderr, 'prior output', { flag: 'wx' })
+  const frames = { ...diagnostics, ...matrix, ...pageState, ...providerState, ...pluginState }
   const begin = ownerSource.indexOf('export function childRun('),
     end = ownerSource.indexOf('export async function run(', begin)
   const run = Function(
@@ -172,14 +177,31 @@ function outputFixture(maximum = 1000, stale = false) {
     'fs',
     'process',
     'bounded',
-    ...Object.keys(diagnostics),
+    ...Object.keys(frames),
     'return (' + ownerSource.slice(begin, end).replace('export ', '') + ')',
   )(
     () => child,
     {
       ...fs,
       createWriteStream(...args) {
-        const file = fs.createWriteStream(...args)
+        let file
+        if (hold && args[0] === output[hold]) {
+          fs.writeFileSync(args[0], '', { flag: args[1].flags, mode: args[1].mode })
+          file = new Writable({
+            write(bytes, _encoding, done) {
+              try {
+                fs.appendFileSync(args[0], bytes)
+                done()
+              } catch (error) {
+                done(error)
+              }
+            },
+            final(done) {
+              release = done
+              enterHold()
+            },
+          })
+        } else file = fs.createWriteStream(...args)
         files.push(file)
         return file
       },
@@ -191,7 +213,7 @@ function outputFixture(maximum = 1000, stale = false) {
       ]),
     ),
     processes.bounded,
-    ...Object.values(diagnostics),
+    ...Object.values(frames),
   )
   const task = run(
     '/fictional/node',
@@ -200,10 +222,21 @@ function outputFixture(maximum = 1000, stale = false) {
     root,
     abort,
     maximum,
-    'cdp-fixture-tests',
-    output,
+    phase,
+    phase === 'cdp-fixture-tests' ? output : undefined,
   )
-  return { root, control, abort, visible, files, child, output, task }
+  return {
+    root,
+    control,
+    abort,
+    visible,
+    files,
+    child,
+    output,
+    task,
+    holding,
+    release: () => release(),
+  }
 }
 // Exercise actual owner stream handling with controlled exit and pipe events; no Mac/runtime credit.
 describe.skipIf(process.platform === 'win32')('ordinary fixture output artifacts', () => {
@@ -254,6 +287,90 @@ describe.skipIf(process.platform === 'win32')('ordinary fixture output artifacts
       expect(Buffer.concat(f.visible[stream])).toEqual(fs.readFileSync(f.output[stream]))
     removeFixture(f.root, { exited: true, processes: 0 }, [])
     expect(fs.readFileSync(f.output.stderr)).toEqual(stderr)
+  })
+  it.each(['stdout', 'stderr'])(
+    'waits for a held %s sink after native exit and pipe closure',
+    async (hold) => {
+      const f = outputFixture(1000, false, { hold })
+      let settled = false
+      const outcome = f.task.wait().then(
+        () => {
+          settled = true
+          return null
+        },
+        (error) => {
+          settled = true
+          return error
+        },
+      )
+      f.child.stdout.end('verbatim fictional stdout\n')
+      f.child.stderr.end('Error: verbatim fictional stderr stack\n')
+      f.child.emit('exit', 0, null)
+      f.child.emit('close')
+      await f.holding
+      await new Promise((resolve) => setImmediate(resolve))
+      expect(f.task.pipesClosed).toBe(true)
+      expect(settled).toBe(false)
+      f.release()
+      expect(await outcome).toBeNull()
+      for (const stream of ['stdout', 'stderr'])
+        expect(Buffer.concat(f.visible[stream])).toEqual(fs.readFileSync(f.output[stream]))
+    },
+  )
+  it.each(['capture-error', 'cancelled'])(
+    'observes an early %s during registration delay and still rejects later wait',
+    async (kind) => {
+      const unexpected = [],
+        onRejection = (error) => unexpected.push(error)
+      process.on('unhandledRejection', onRejection)
+      const f = outputFixture(1000, kind === 'capture-error')
+      try {
+        // Do not attach wait() or outputClosed until a complete event-loop turn after rejection.
+        if (kind === 'capture-error')
+          await new Promise((resolve) => f.files[1].once('error', resolve))
+        else f.abort.abort()
+        await new Promise((resolve) => setImmediate(resolve))
+        expect(unexpected).toEqual([])
+        const outcome = f.task.wait().catch((error) => error)
+        f.child.stdout.end('delayed wait stdout\n')
+        f.child.stderr.end('delayed wait stderr\n')
+        f.child.emit('exit', 0, null)
+        f.child.emit('close')
+        expect((await outcome).failure).toMatchObject({
+          phase: 'cdp-fixture-tests',
+          errorClass: kind === 'cancelled' ? 'cancelled' : 'thrown',
+        })
+      } finally {
+        process.off('unhandledRejection', onRejection)
+        f.child.stdout.end()
+        f.child.stderr.end()
+        f.child.emit('exit', 0, null)
+        f.child.emit('close')
+        await Promise.allSettled([f.task.outputClosed, ...f.files.map((file) => finished(file))])
+      }
+    },
+  )
+  it.each([
+    'runner-preflight',
+    'dependencies',
+    'dry-tests',
+    'prepare',
+    'probe-matrix',
+    'gui-probe',
+    'journey',
+  ])('shows ordinary %s stdout/stderr errors without fixture capture files', async (phase) => {
+    const f = outputFixture(1000, false, { phase })
+    const outcome = f.task.wait().catch((error) => error)
+    f.child.stdout.end('ordinary fictional stdout\n')
+    f.child.stderr.end('Error: ordinary fictional CI failure\n')
+    f.child.emit('exit', 9, null)
+    f.child.emit('close')
+    expect((await outcome).failure).toMatchObject({ phase, exitCode: 9 })
+    expect(Buffer.concat(f.visible.stdout).toString()).toBe('ordinary fictional stdout\n')
+    expect(Buffer.concat(f.visible.stderr).toString()).toBe(
+      'Error: ordinary fictional CI failure\n',
+    )
+    expect(f.files).toEqual([])
   })
   it('fails a stale output artifact without overwriting its bytes', async () => {
     const f = outputFixture(1000, true)
