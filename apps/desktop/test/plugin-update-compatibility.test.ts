@@ -39,6 +39,20 @@ afterEach(async () => {
   vi.unstubAllGlobals()
 })
 const snapshotRoot = fileURLToPath(new URL('./fixtures/plugin-update-parent/', import.meta.url))
+async function withDrain(controller: PluginLifecycleController, body: () => Promise<void>) {
+  const failures: unknown[] = []
+  try {
+    await body()
+  } catch (error) {
+    failures.push(error)
+  }
+  try {
+    await controller.drain()
+  } catch (error) {
+    failures.push(error)
+  }
+  if (failures.length) throw new AggregateError(failures, 'Compatibility body or drain failed')
+}
 it.each(parentSources.files)(
   'pins unavailable historical producer source as labelled read-only data $path',
   async (source) => {
@@ -318,7 +332,7 @@ describe.skipIf(process.platform === 'win32')(
           download,
           runtime: { ...f.opts.runtime, start, removeData, removeCode },
         })
-        try {
+        await withDrain(current, async () => {
           const handle = await current.attach(projection().sink)
           expect(state.inspect().pending).toBeNull()
           expect(state.exportActivation().entries[0]?.release).toMatchObject({
@@ -345,9 +359,7 @@ describe.skipIf(process.platform === 'win32')(
               join(f.root, 'package-vault', selected.release.archive.sha256, 'archive'),
             ),
           ).toEqual(selected.archive)
-        } finally {
-          await current.drain()
-        }
+        })
       },
     )
   },
@@ -429,7 +441,7 @@ describe.skipIf(process.platform === 'win32')(
           catalogue: signed({ format: 1, entries: [] }),
           runtime: { ...f.opts.runtime, removeData },
         })
-        try {
+        await withDrain(current, async () => {
           const handle = await current.attach(projection().sink)
           expect(
             current.screen(handle, 'fictional-bakery').package.readFile('plugin.json'),
@@ -442,9 +454,7 @@ describe.skipIf(process.platform === 'win32')(
           expect(download).not.toHaveBeenCalled()
           expect(fetch).not.toHaveBeenCalled()
           expect(removeData).not.toHaveBeenCalled()
-        } finally {
-          await current.drain()
-        }
+        })
       },
     )
   },

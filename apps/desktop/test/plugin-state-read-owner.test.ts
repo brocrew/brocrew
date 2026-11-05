@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import * as fs from 'node:fs'
+import fs from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'

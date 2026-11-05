@@ -243,7 +243,17 @@ describe.skipIf(process.platform === 'win32')(
         await store.withExclusive(async () => {
           expect(store.inspect()).toEqual(before)
         })
-        expect(other.inspect()).toEqual(before)
+        const observed = other.inspect()
+        for (const key of [
+          'rootId',
+          'epoch',
+          'sequence',
+          'guards',
+          'pending',
+          'reservation',
+        ] as const)
+          expect(observed[key]).toEqual(before[key])
+        expect(() => observed.operations).toThrow(expect.objectContaining({ code: 'busy' }))
         expect(() => other.setEnabled('fictional-workspace', 'fictional-plugin', false)).toThrow(
           expect.objectContaining({ code: 'busy' }),
         )

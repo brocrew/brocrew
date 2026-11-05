@@ -16,6 +16,7 @@ import {
 import { Command } from '../src/main/plugins/supervisor/protocol'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { sharedLifecycleWorkspaces } from '../src/main/plugins/lifecycle/workspaces'
+import { LifecycleEffects } from '../src/main/plugins/lifecycle/files'
 
 import { packageFixture, fictionalPublicKey, signed } from './plugin-package-fixtures'
 
@@ -331,11 +332,14 @@ describe.skipIf(process.platform === 'win32')(
     it('a cleanup with no unfinished operation takes no retry round of the state lock', async () => {
       let clock = 1_000_000
       let exit!: () => void
+      const stop = vi.fn(async () => {})
+      const removeData = vi.fn(async () => {})
       const f = await fixture({
         now: () => clock,
         runtime: {
           previousOwnerClean: async () => true,
           removeCode: async () => {},
+          removeData,
           async start() {
             return {
               runId: randomUUID(),
@@ -348,7 +352,7 @@ describe.skipIf(process.platform === 'win32')(
                 mcp: () => ({ url: '', headers: { Authorization: '' } }),
                 admin: () => ({ url: '', headers: { Authorization: '' } }),
               }),
-              stop: async () => {},
+              stop,
             }
           },
         },
@@ -359,10 +363,34 @@ describe.skipIf(process.platform === 'win32')(
         expect((await f.controller.status()).cleanupPending).toEqual(['chrome']),
       )
       clock += 5_000
+      const selected = join(f.root, 'state', 'installed-state.json')
+      const before = await readFile(selected)
       const lock = vi.spyOn(f.state, 'withExclusive')
-      await f.controller.status()
-      await f.controller.status()
-      expect(lock).toHaveBeenCalledTimes(2) // The two reads only.
+      const prepare = vi.spyOn(f.state, 'prepare')
+      const effect = vi.spyOn(LifecycleEffects.prototype, 'write')
+      const start = vi.spyOn(f.opts.runtime, 'start')
+      const removeCode = vi.spyOn(f.opts.runtime, 'removeCode')
+      const downloads = f.downloads()
+      try {
+        expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
+        expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
+        expect(f.state.inspect().pending).toBeNull()
+        expect(lock).not.toHaveBeenCalled()
+        expect(prepare).not.toHaveBeenCalled()
+        expect(effect).not.toHaveBeenCalled()
+        expect(start).not.toHaveBeenCalled()
+        expect(removeCode).not.toHaveBeenCalled()
+        expect(removeData).not.toHaveBeenCalled()
+        expect(stop).not.toHaveBeenCalled()
+        expect(f.downloads()).toBe(downloads)
+        expect(await readFile(selected)).toEqual(before)
+      } finally {
+        lock.mockRestore()
+        prepare.mockRestore()
+        effect.mockRestore()
+        start.mockRestore()
+        removeCode.mockRestore()
+      }
     })
     it('a removal left unfinished never blocks a drain, and the next owner finishes it', async () => {
       let stopFails = true
