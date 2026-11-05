@@ -1106,14 +1106,14 @@ export class PluginLifecycleController {
           (await this.bindingWait(workspace, binding, () =>
             this.vault.load(this.descriptor(install), []),
           ))
-        const acquiring = this.bindingAcquisitions.has(id)
+        const acquiring = this.bindingAcquisitions.get(id)
         binding.run ??= this.runs.get(id)
         // Registration can precede readiness; pending consumers still join that exact attempt.
         if (acquiring || !binding.run) {
           await this.bindingWait(
             workspace,
             binding,
-            () => this.acquireBindingRun(id, install, checked),
+            () => this.acquireBindingRun(id, install, checked, acquiring),
             false,
           )
           binding.run = this.runs.get(id)
@@ -1189,20 +1189,21 @@ export class PluginLifecycleController {
     id: string,
     install: Installation,
     checked: VerifiedPluginPackage,
+    captured?: { identity: string; block: symbol | undefined; work: Promise<LifecycleRun> },
   ): Promise<LifecycleRun> {
     if (this.draining || this.effectQueue.signal.aborted) return pending()
     const identity = JSON.stringify([install, this.options.state.readView().guard(id)])
     const block = this.blocks.get(id)
-    const prior = this.bindingAcquisitions.get(id)
+    const current = this.bindingAcquisitions.get(id)
+    const prior = captured ?? current
     if (prior) {
-      if (prior.identity !== identity || prior.block !== block) return pending()
+      if (
+        prior.identity !== identity ||
+        prior.block !== block ||
+        (current !== undefined && current !== prior)
+      )
+        return pending()
       return prior.work
-    }
-    // An earlier attempt may have settled between the caller's check and this guarded callback.
-    const running = this.runs.get(id)
-    if (running) {
-      if (running.installId !== install.installId || running.ended) return pending()
-      return Promise.resolve(running.run)
     }
     const work = this.effectQueue.restart(id, randomUUID(), () =>
       this.ensureRunning(install, checked),
