@@ -104,12 +104,32 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   return { pkg, helper, files, spec: { package: pkg, releaseDigest: verifiedPluginDigest(pkg)! } }
 }
 
+/**
+ * Removes a fixture once its host's stop has confirmed the exit (cleanup runs in reverse, so the
+ * stop runs first). The retry covers the file system releasing a handle after that confirmed stop,
+ * not cleanup of a process this app owns; who holds the handle is not known. The first refusal is
+ * printed with its code, so a hold is seen rather than hidden.
+ */
+async function removeAfterTheStop(root: string): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rm(root, { recursive: true, force: true })
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (attempt === 0)
+        console.warn(`fixture removal refused after a confirmed stop (${code}): ${String(error)}`)
+      if (attempt >= 20 || (code !== 'EBUSY' && code !== 'EPERM')) throw error
+      await new Promise((resolve) => setTimeout(resolve, 250))
+    }
+  }
+}
+
 async function hostFixture() {
   const root = await realpath(
     await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-executable-')),
   )
-  // Windows can hold a stopped process's executable open for a moment after it exits.
-  cleanup.push(() => rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }))
+  cleanup.push(() => removeAfterTheStop(root))
   const resources = join(root, 'resources')
   await mkdir(join(resources, 'plugin-node'), { recursive: true })
   await copyFile(
