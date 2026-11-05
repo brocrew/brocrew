@@ -1125,3 +1125,23 @@ it('a plugin a named reply leaves out, without saying it is off, keeps its attac
   expect(f.opened[0]!.handle.refreshManagedPlugins).toHaveBeenCalledWith([])
   await a.close()
 })
+it('a route kept while its scope could not be read is not awaited, and is awaited again once served', async () => {
+  const fern = { ...route, pluginId: 'fern' }
+  const f = fixture()
+  f.change({ revision: 'one', servers: [fern], plugins: { pending: [], none: [], unknown: false } })
+  const a = await f.runtime.start(initial)
+  const awaited = vi.fn()
+  Object.assign(f.opened[0]!.handle, { awaitManagedPlugins: awaited })
+  f.change({ revision: 'two', servers: [], plugins: { pending: [], none: [], unknown: true } })
+  await a.send('fictional words while unknown')
+  expect(awaited).toHaveBeenLastCalledWith([])
+  f.change({
+    revision: 'three',
+    servers: [fern],
+    plugins: { pending: [], none: [], unknown: false },
+  })
+  await a.send('fictional words once served')
+  expect(awaited).toHaveBeenLastCalledWith([route.name])
+  expect(f.raw.resume).not.toHaveBeenCalled()
+  await a.close()
+})

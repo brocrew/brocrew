@@ -183,10 +183,10 @@ it('a route served at launch that turns pending on the same handle stays configu
     plugins: { pending: [], none: [], unknown: false },
   }
   const held = deferred<unknown>()
-  let reads = 0
-  wire.discovery = () => {
-    reads++
-    return reads === 1
+  const asked: unknown[] = []
+  wire.discovery = (params) => {
+    asked.push(params)
+    return asked.length === 1
       ? Promise.resolve({
           data: [{ name: route.name, runtimeStatus: 'starting', toolsError: null }],
         })
@@ -194,6 +194,13 @@ it('a route served at launch that turns pending on the same handle stays configu
   }
   await handle.send('fictional words once it is back')
   await tick()
+  // The health read, then the turn's own discovery of the served route, both scoped to it.
+  const scoped = {
+    threadId: 'fictional-thread',
+    serverName: route.name,
+    detail: 'toolsAndAuthOnly',
+  }
+  expect(asked).toEqual([scoped, scoped])
   expect(wire.catalogsAtTurns).toHaveLength(2)
   held.resolve(ready(route.name))
   await tick()
