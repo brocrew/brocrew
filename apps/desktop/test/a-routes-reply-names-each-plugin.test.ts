@@ -104,4 +104,21 @@ describe('a routes reply names each plugin when both sides agreed to', () => {
     ).rejects.toThrow()
     await expect(parse(1, [{ ...server('aster') }])).rejects.toThrow()
   })
+
+  it('a named reply listing every plugin the catalogue holds as off still serves the ready one', async () => {
+    const none = Array.from({ length: 130 }, (_, n) => `fictional-${String(n)}`)
+    const read = await new WorkspacePluginAttachments(
+      {
+        agentRoutes: async () => ({
+          format: 2,
+          value: { format: 2, servers: [server('aster')], pending: [], none, unknown: false },
+        }),
+      },
+      'w',
+    )
+      .agent([])
+      .read()
+    expect(read.servers).toEqual([server('aster')])
+    expect(read.plugins?.none).toHaveLength(130)
+  })
 })

@@ -1072,3 +1072,38 @@ it('a plugin served again under a new route replaces the one kept while it was s
   expect(f.opened[0]!.handle.refreshManagedPlugins).toHaveBeenCalledWith([fresh])
   await a.close()
 })
+it('a turn may wait only on what the latest read served, even when its routes could not be applied', async () => {
+  const fern = { ...route, pluginId: 'fern' }
+  const aster = { ...route, name: 'plugin-aster', capability: 'c'.repeat(64), pluginId: 'aster' }
+  const f = fixture()
+  f.change({ revision: 'one', servers: [fern], plugins: { pending: [], none: [], unknown: false } })
+  const a = await f.runtime.start(initial)
+  const awaited = vi.fn()
+  Object.assign(f.opened[0]!.handle, { awaitManagedPlugins: awaited })
+  vi.mocked(f.raw.resume).mockRejectedValueOnce(new Error('fictional plugin unavailable'))
+  f.change({
+    revision: 'two',
+    servers: [aster],
+    plugins: { pending: ['fern'], none: [], unknown: false },
+  })
+  await a.send('fictional words')
+  expect(f.raw.resume).toHaveBeenCalledTimes(1)
+  expect(f.opened[0]!.send).toHaveBeenCalledWith('fictional words')
+  expect(awaited).toHaveBeenLastCalledWith(['plugin-aster'])
+  await a.close()
+})
+it('a read that fails says nothing new about what a turn may wait on', async () => {
+  const fern = { ...route, pluginId: 'fern' }
+  const f = fixture()
+  f.change({ revision: 'one', servers: [fern], plugins: { pending: [], none: [], unknown: false } })
+  const a = await f.runtime.start(initial)
+  const awaited = vi.fn()
+  Object.assign(f.opened[0]!.handle, { awaitManagedPlugins: awaited })
+  await a.send('first fictional turn')
+  expect(awaited).toHaveBeenCalledTimes(1)
+  vi.mocked(f.source.read).mockRejectedValueOnce(new Error('fictional read failure'))
+  await a.send('second fictional turn')
+  expect(f.opened[0]!.send).toHaveBeenCalledWith('second fictional turn')
+  expect(awaited).toHaveBeenCalledTimes(1)
+  await a.close()
+})

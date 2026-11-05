@@ -150,6 +150,7 @@ it('a route served at launch that turns pending on the same handle stays configu
     close: async () => {},
   }).start(location)
   handles.push(handle)
+  const saved = handle.ref
   await handle.send('fictional first words')
   await tick()
   expect(wire.catalogsAtTurns).toHaveLength(1)
@@ -171,6 +172,33 @@ it('a route served at launch that turns pending on the same handle stays configu
   expect(
     wire.requests.slice(before).filter((one) => one.method === 'mcpServerStatus/list'),
   ).toHaveLength(1)
-  expect(wire.requests.slice(before).some((one) => one.method === 'thread/resume')).toBe(false)
   expect(configured(wire)).toContain(route.name)
+  wire.finish()
+  await tick()
+
+  // Served again: the health read says nothing certain, and the turn waits for the route.
+  reply = {
+    revision: 'served-again',
+    servers: [fern],
+    plugins: { pending: [], none: [], unknown: false },
+  }
+  const held = deferred<unknown>()
+  let reads = 0
+  wire.discovery = () => {
+    reads++
+    return reads === 1
+      ? Promise.resolve({
+          data: [{ name: route.name, runtimeStatus: 'starting', toolsError: null }],
+        })
+      : held.promise
+  }
+  await handle.send('fictional words once it is back')
+  await tick()
+  expect(wire.catalogsAtTurns).toHaveLength(2)
+  held.resolve(ready(route.name))
+  await tick()
+  expect(wire.catalogsAtTurns).toHaveLength(3)
+  expect(wire.requests.filter((one) => one.method === 'thread/start')).toHaveLength(1)
+  expect(wire.requests.filter((one) => one.method === 'thread/resume')).toHaveLength(0)
+  expect(handle.ref).toEqual(saved)
 })
