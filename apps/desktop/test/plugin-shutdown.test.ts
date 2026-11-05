@@ -236,7 +236,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(f.controller.cleanForShutdown()).toBe(true)
       await expect(f.controller.drain()).resolves.toBeUndefined()
     })
-    it('drain waits for acknowledged cleanup of an already exited run', async () => {
+    it('trusted consumer closure releases an already exited run without waiting for its UI ack', async () => {
       const exit = deferred<void>(),
         ack = deferred<boolean>(),
         stopped = deferred<void>()
@@ -250,23 +250,24 @@ describe.skipIf(process.platform === 'win32')(
       exit.resolve()
       await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
       expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
+      expect(f.controller.cleanForShutdown()).toBe(false)
+      const selected = join(f.root, 'state', 'installed-state.json')
+      const before = await readFile(selected)
+      const applied = vi.spyOn(f.local.sink, 'applied')
+      const publish = vi.spyOn(f.state, 'recordProjection')
+      f.controller.consumersEnded()
       const draining = f.controller.drain()
-      let settled = false
-      void draining.then(
-        () => {
-          settled = true
-        },
-        () => {
-          settled = true
-        },
-      )
       try {
         await stopped.promise
-        await new Promise<void>((resolve) => setImmediate(resolve))
-        expect(settled).toBe(false)
-        ack.resolve(true)
         await expect(draining).resolves.toBeUndefined()
         expect(f.controller.cleanForShutdown()).toBe(true)
+        expect(await readFile(selected)).toEqual(before)
+        expect(revoke).toHaveBeenCalledOnce()
+        ack.resolve(true)
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        expect(applied).not.toHaveBeenCalled()
+        expect(publish).not.toHaveBeenCalled()
+        expect(await readFile(selected)).toEqual(before)
       } finally {
         ack.resolve(true)
         await draining.catch(() => undefined)
