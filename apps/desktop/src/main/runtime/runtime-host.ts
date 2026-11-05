@@ -21334,16 +21334,22 @@ export class RuntimeHost implements LiveHost {
 
   /** Reads historical incident facts off main before composing with the current live state. */
   async workIncidentsForWindow(): Promise<LedgerWalk<WorkIncident>> {
-    return this.incidentsForWindow(() => this.readWorkIncidentsForAPerson())
+    return this.incidentsForWindow(
+      () => this.readWorkIncidentsForAPerson(),
+      () => this.workIncidentsForAPerson(),
+    )
   }
 
   /**
-   * `compose`, an incidents reading, run on the worker's incident snapshot, or on the main thread
-   * where the worker does not serve it and the fallback is due.
+   * `compose`, an incidents reading, run on the worker's incident snapshot, or by `onMain` on the
+   * main thread where the worker does not serve it and the fallback is due.
    */
-  private async incidentsForWindow<T>(compose: () => T): Promise<T> {
+  private async incidentsForWindow<T>(
+    compose: () => T,
+    onMain: () => T = () => this.windowIncidentReads.run(compose),
+  ): Promise<T> {
     if (this.launches.closed) throw new WindowReadUnavailable()
-    if (this.deps.windowReader === undefined) return this.windowIncidentReads.run(compose)
+    if (this.deps.windowReader === undefined) return onMain()
     if (
       this.windowReadCallers >= WINDOW_READ_BOUNDS.callers ||
       this.windowIncidentsPending !== undefined
@@ -21371,7 +21377,7 @@ export class RuntimeHost implements LiveHost {
     )
       throw new WindowReadUnavailable()
     this.lastIncidentMainReadAt = at
-    return this.answeredOnTheMainThread(missed, () => this.windowIncidentReads.run(compose))
+    return this.answeredOnTheMainThread(missed, onMain)
   }
 
   /**
