@@ -59,58 +59,113 @@ export function markStale<V>(state: ScopeState<V>): ScopeState<V> {
   return { ...state, stale: true }
 }
 
+function clearedError<V>(state: ScopeState<V>, seq: number): ScopeState<V>['error'] {
+  return state.error !== null && seq >= state.error.seq ? null : state.error
+}
+
+/**
+ * A read's answer at `seq`. A complete answer older than or equal to the watermark is ignored as a
+ * whole, so it can never bring back what a newer complete answer removed. A complete answer removes
+ * only rows older than itself; a partial one never removes anything.
+ */
 export function acceptAnswer<V>(
   state: ScopeState<V>,
-  _seq: number,
-  _complete: boolean,
-  _entries: ReadonlyMap<string, V>,
+  seq: number,
+  complete: boolean,
+  entries: ReadonlyMap<string, V>,
 ): ScopeState<V> {
-  return state
+  if (complete && seq <= state.watermark) return state
+  const rows = new Map(state.rows)
+  if (complete) {
+    for (const [id, held] of state.rows) {
+      if (!entries.has(id) && held.seq < seq) rows.delete(id)
+    }
+  }
+  for (const [id, value] of entries) {
+    const held = state.rows.get(id)
+    const applies = held === undefined ? seq > state.watermark : seq >= held.seq
+    if (applies) rows.set(id, { seq, value })
+  }
+  return {
+    watermark: complete ? seq : state.watermark,
+    rows,
+    lastValid: Math.max(state.lastValid, seq),
+    error: clearedError(state, seq),
+    stale: complete ? false : state.stale,
+  }
 }
 
+/** A push at `seq` for the rows it names; it never removes, and never revives below the watermark. */
 export function acceptPush<V>(
   state: ScopeState<V>,
-  _seq: number,
-  _entries: ReadonlyMap<string, V>,
+  seq: number,
+  entries: ReadonlyMap<string, V>,
 ): ScopeState<V> {
-  return state
+  let rows: Map<string, Held<V>> | null = null
+  for (const [id, value] of entries) {
+    const held = state.rows.get(id)
+    const applies = held === undefined ? seq > state.watermark : seq > held.seq
+    if (!applies) continue
+    rows ??= new Map(state.rows)
+    rows.set(id, { seq, value })
+  }
+  return rows === null ? state : { ...state, rows }
 }
 
-export function acceptError<V>(
-  state: ScopeState<V>,
-  _seq: number,
-  _message: string,
-): ScopeState<V> {
-  return state
+/** A failed read at `seq`: it marks the scope unavailable only if nothing newer has answered. */
+export function acceptError<V>(state: ScopeState<V>, seq: number, message: string): ScopeState<V> {
+  if (seq <= state.lastValid) return state
+  if (state.error !== null && seq <= state.error.seq) return state
+  return { ...state, error: { seq, message } }
 }
 
 export type EpochDecision = 'hold' | 'accept' | 'drop' | 'advance'
 
+/**
+ * Whether a message from `incoming` may be applied while `current` is the publisher a handshake
+ * named. Before the handshake answers, messages are held. Another run is never adopted by arrival.
+ */
 export function epochDecision(
-  _current: PublicationEpoch | null,
-  _incoming: PublicationEpoch,
+  current: PublicationEpoch | null,
+  incoming: PublicationEpoch,
 ): EpochDecision {
-  return 'accept'
+  if (current === null) return 'hold'
+  if (incoming.run !== current.run || incoming.n < current.n) return 'drop'
+  return incoming.n === current.n ? 'accept' : 'advance'
 }
 
+/** What a scope becomes when the epoch advances: cleared for another workspace, stale otherwise. */
 export function scopeAfterAdvance<V>(
   state: ScopeState<V>,
-  _incoming: PublicationEpoch,
+  incoming: PublicationEpoch,
 ): ScopeState<V> {
-  return state
+  return incoming.reason === 'resync' ? markStale(state) : emptyScope<V>()
 }
 
+/**
+ * State pushes for conversations the listing does not hold yet, after a complete listing answer at
+ * `seq`: those it holds become rows, those older than it are dropped, and newer ones stay.
+ */
 export function settleStash<V>(
   stash: ReadonlyMap<string, Held<V>>,
-  _seq: number,
-  _holds: (id: string) => boolean,
+  seq: number,
+  holds: (id: string) => boolean,
 ): {
   readonly kept: ReadonlyMap<string, Held<V>>
   readonly promoted: ReadonlyMap<string, Held<V>>
 } {
-  return { kept: stash, promoted: new Map() }
+  const kept = new Map<string, Held<V>>()
+  const promoted = new Map<string, Held<V>>()
+  for (const [id, held] of stash) {
+    if (holds(id)) promoted.set(id, held)
+    else if (held.seq > seq) kept.set(id, held)
+  }
+  return { kept, promoted }
 }
 
-export function newerOf<V>(a: Held<V> | undefined, _b: Held<V> | undefined): Held<V> | undefined {
-  return a
+/** The newer of two stamped values for one field fed by two populations; the first wins a tie. */
+export function newerOf<V>(a: Held<V> | undefined, b: Held<V> | undefined): Held<V> | undefined {
+  if (a === undefined) return b
+  if (b === undefined) return a
+  return b.seq > a.seq ? b : a
 }
