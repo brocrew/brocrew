@@ -50,6 +50,19 @@ describe.each(['claude', 'codex'] as const)(
         .poll(() => world.ledger(id).find((event) => event.type === 'reopened'))
         .toMatchObject({ because: 'the-sign-in-was-renewed' })
       await expect.poll(() => world.sent.map((one) => one.text).join('\n')).toContain(CONTINUATION)
+      // The continuation's own durable row, said as the app's words after a renewed sign-in.
+      const continued = () =>
+        world
+          .ledger(id)
+          .filter(
+            (event) =>
+              event.type === 'user_turn' && event.appNotice === 'a-turn-continued-after-sign-in',
+          )
+      await expect.poll(() => continued().length).toBe(1)
+      expect(continued()).toEqual([expect.objectContaining({ text: CONTINUATION })])
+      expect(
+        world.ledger(id).filter((event) => event.type === 'user_turn' && event.carriesOn === true),
+      ).toEqual([])
 
       const ledger = world.ledger(id)
       const reopenedAt = ledger.findIndex((event) => event.type === 'reopened')
@@ -63,12 +76,16 @@ describe.each(['claude', 'codex'] as const)(
       expect(before.filter((event) => event.type === 'turn')).toEqual([
         expect.objectContaining({ state: 'failed', loginRefused: true }),
       ])
-      expect(failed.origins).toHaveLength(1)
+      // What each provider handle accepted, beside what world.sent says was attempted: the
+      // person's original on the refused life, and the app's own words, unstamped, on the renewed one.
+      expect(failed.origins).toEqual([{ kind: 'person' }])
       expect(renewal.renewRejected).toHaveBeenCalledTimes(1)
 
       const resumed = world.handles.get('writer')!
       expect(resumed).not.toBe(failed)
       expect(resumed.ref.sessionId).toBe(thread)
+      expect(resumed.origins).toHaveLength(1)
+      expect(resumed.origins[0]).toBeUndefined()
       expect(world.launches.at(-1)?.kind).toBe('resume')
       const texts = world.sent.map((one) => one.text)
       expect(texts.filter((one) => one.includes(ORIGINAL))).toHaveLength(1)

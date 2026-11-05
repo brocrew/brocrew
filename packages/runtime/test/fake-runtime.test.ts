@@ -332,6 +332,30 @@ describe('FakeRuntime — a turn refused on its login, fatally (sendRefusedOnIts
     })
   })
 
+  it('a closed handle refuses as send does, and records nothing', async () => {
+    const { handle, events, consumer } = await started()
+    await handle.close()
+    await consumer
+    await expect(
+      handle.sendRefusedOnItsLogin('fictional words', undefined, { cause: 'auth' }),
+    ).rejects.toThrow()
+    expect(handle.origins).toEqual([])
+    expect(events.some((event) => event.type === 'error')).toBe(false)
+  })
+
+  it('adopts the settings a person queued, at the turn it accepts, as send does', async () => {
+    const { handle, consumer } = await started()
+    await handle.setModel('fictional-model')
+    await handle.setPlanMode(true)
+    expect(handle.settings.model).toMatchObject({ requested: 'fictional-model' })
+    expect(handle.settings.model.effective).not.toBe('fictional-model')
+    expect(handle.settings.planMode).toEqual({ effective: false, requested: true })
+    await handle.sendRefusedOnItsLogin('fictional words', undefined, { cause: 'auth' })
+    await consumer
+    expect(handle.settings.model.effective).toBe('fictional-model')
+    expect(handle.settings.planMode.effective).toBe(true)
+  })
+
   it('a handle with a turn already running refuses as send does, and records nothing', async () => {
     const { handle, events, consumer } = await started()
     await handle.send('go')
