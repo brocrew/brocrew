@@ -189,6 +189,17 @@ describe('a commit is recorded once, after it commits', () => {
     expect(changes.filter((one) => !one.resync && one.staged.has('alpha'))).toHaveLength(2)
   })
 
+  it('a rebuild’s batch and discard still name their tables, as written out of sight', () => {
+    const generation = store.beginGeneration('alpha')
+    seen.length = 0
+    store.appendGeneration('alpha', generation, [{ ordinal: 0, event: text('rebuilt'), at: 5_000 }])
+    store.discardGeneration('alpha', generation, 100)
+    const changes = seen.map((one) => one.change)
+    if (changes.some((one) => one.resync)) throw new Error('a rebuild resynced')
+    expect(changes.flatMap((one) => (one.resync ? [] : [...one.tables]))).toContain('events')
+    expect(changes.flatMap((one) => (one.resync ? [] : [...one.visibleTables]))).toEqual([])
+  })
+
   it('a deleted tree is a whole change for each of its conversations', () => {
     store.deleteTheTree(['alpha'])
     const wholes = seen.flatMap((one) => (one.change.resync ? [] : [...one.change.whole]))

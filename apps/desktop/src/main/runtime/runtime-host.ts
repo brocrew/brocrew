@@ -5046,7 +5046,13 @@ const MOVES_WHAT_A_PERSON_IS_ASKED: ReadonlySet<TranscriptEvent['type']> = new S
   'work_interrupted',
   'work_restarted',
   'status',
+  // A level's end can leave a person's own turn's piece waiting on them.
+  'background_work',
+  'scheduled_work',
 ])
+
+/** The tables whose rows name who asks and who is asked, so a write to one moves the queue. */
+const NAMES_WHAT_A_PERSON_IS_ASKED: ReadonlySet<string> = new Set(['agent_identity'])
 
 const MOVES_ITS_GIVERS_WAIT: ReadonlySet<TranscriptEvent['type']> = new Set<
   TranscriptEvent['type']
@@ -10665,12 +10671,13 @@ export class RuntimeHost implements LiveHost {
         change.rows.length > 0 ||
         change.whole.size > 0 ||
         change.kept.length > 0 ||
-        change.tables.size > 0
+        change.visibleTables.size > 0
       )
         this.listingVersion++
       for (const row of change.rows) this.aRowWasWritten(row.session, row)
       if (
         change.whole.size > 0 ||
+        [...change.visibleTables].some((table) => NAMES_WHAT_A_PERSON_IS_ASKED.has(table)) ||
         change.rows.some(
           (row) =>
             MOVES_WHAT_A_PERSON_IS_ASKED.has(row.rowType) &&
@@ -37624,13 +37631,16 @@ export class RuntimeHost implements LiveHost {
     const kept = this.listingKept
     if (kept !== undefined && kept.at === this.listingVersion) return kept
     const at = this.listingVersion
-    const { stateOf, itsWork } = this.oneReadPerListing()
+    const { unread, stateOf, itsWork } = this.oneReadPerListing()
     const composed = {
       at,
       resumable: this.resumableHalf(stateOf, itsWork),
       unresumable: this.unresumableHalf(stateOf, itsWork),
     }
-    this.listingKept = this.listingVersion === at ? composed : undefined
+    // ⚑ A read it skipped may have failed only this once, so a listing that skipped one is said
+    // once and composed again at the next ask.
+    const complete = unread.count === 0 && unread.ledgersSkipped === 0
+    this.listingKept = this.listingVersion === at && complete ? composed : undefined
     return composed
   }
 
@@ -37737,6 +37747,8 @@ export class RuntimeHost implements LiveHost {
    * whose composition reads those same two memos.
    */
   private oneReadPerListing(): {
+    /** What this listing could not read: a listing that skipped anything is not kept. */
+    readonly unread: RowsUnread
     readonly stateOf: (sessionId: string) => AgentState
     readonly itsWork: (
       sessionId: string,
@@ -37751,6 +37763,7 @@ export class RuntimeHost implements LiveHost {
     const workOut = this.oneWorkOutReadPerAnswer(unread)
     const waiting = this.oneWaitReadPerAnswer(unread, ledger, workOut)
     return {
+      unread,
       stateOf: (sessionId) => {
         // ⚑ **D-019 · the window that asked holds this word now, not the last one pushed**, so the
         // next word derived for this row is pushed whatever it is ({@link stateSaid}).

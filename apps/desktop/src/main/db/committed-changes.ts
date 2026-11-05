@@ -59,6 +59,8 @@ export interface CommittedChange {
   readonly kept: readonly { readonly piece: string; readonly resource: string }[]
   /** The persistent tables the commit wrote, whatever else it says: a setter's, a note's. */
   readonly tables: ReadonlySet<string>
+  /** Those of {@link tables} written outside a staged scope, which a reader of what is shown sees. */
+  readonly visibleTables: ReadonlySet<string>
 }
 
 /** What was committed can't be told: every reader starts again. */
@@ -94,6 +96,7 @@ interface Frame {
   staged: Set<string>
   kept: { piece: string; resource: string }[]
   tables: Set<string>
+  visibleTables: Set<string>
   poisoned: boolean
 }
 
@@ -103,6 +106,7 @@ const frame = (): Frame => ({
   staged: new Set(),
   kept: [],
   tables: new Set(),
+  visibleTables: new Set(),
   poisoned: false,
 })
 
@@ -216,6 +220,7 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
         staged: done.staged,
         kept: done.kept,
         tables: done.tables,
+        visibleTables: done.visibleTables,
       })
     } else return
     drain()
@@ -228,6 +233,7 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
     for (const session of done.staged) into.staged.add(session)
     into.kept.push(...done.kept)
     for (const table of done.tables) into.tables.add(table)
+    for (const table of done.visibleTables) into.visibleTables.add(table)
     into.poisoned ||= done.poisoned
   }
 
@@ -302,10 +308,14 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
           const result = run(...args)
           if (result.changes === 0) return result
           const current = frames.at(-1)
-          if (current !== undefined) current.tables.add(table)
-          else if (!db.inTransaction) {
+          const visible = stagedDepth === 0
+          if (current !== undefined) {
+            current.tables.add(table)
+            if (visible) current.visibleTables.add(table)
+          } else if (!db.inTransaction) {
             const alone = frame()
             alone.tables.add(table)
+            if (visible) alone.visibleTables.add(table)
             publish(alone)
           }
           return result

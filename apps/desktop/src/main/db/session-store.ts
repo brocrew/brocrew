@@ -15606,12 +15606,14 @@ export function createSessionStore(
     discardGeneration(sessionId, generation, limit) {
       // Events first: `events.turn_id` is `ON DELETE SET NULL`, so taking the turns out from under
       // them would rewrite every row of a generation that is about to be deleted anyway.
-      return db.transaction(() => {
-        committed.staged(sessionId)
-        const events = deleteEventGeneration.run(sessionId, generation, limit)
-        if (events.changes > 0) return events.changes
-        return deleteTurnGeneration.run(sessionId, generation, limit).changes
-      })()
+      return db.transaction(() =>
+        committed.asStaged(() => {
+          committed.staged(sessionId)
+          const events = deleteEventGeneration.run(sessionId, generation, limit)
+          if (events.changes > 0) return events.changes
+          return deleteTurnGeneration.run(sessionId, generation, limit).changes
+        }),
+      )()
     },
 
     deadGenerations(sessionId) {
