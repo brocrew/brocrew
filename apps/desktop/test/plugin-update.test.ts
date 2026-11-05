@@ -206,6 +206,16 @@ describe.skipIf(process.platform === 'win32')(
         expect(await readFile(join(f.data, 'login'), 'utf8')).toBe('fictional-paired-phone')
       },
     )
+    it('refuses corrupt replacement bytes before stopping the old version', async () => {
+      const f = await setup()
+      await f.offer()
+      f.opts.download = async () => Buffer.from('fictional corrupt archive')
+      f.events.length = 0
+      await expect(f.controller.update(f.handle, 'whatsapp')).rejects.toThrow()
+      expect(f.events).not.toContain('stop')
+      expect(f.state.exportActivation().entries[0]?.release.version).toBe('0.1.0')
+      expect(f.state.inspect().pending).toBeNull()
+    })
     it('person control uses caller-selected source bytes and updates retained data while old Configure stays unavailable', async () => {
       const f = await setup(true)
       await f.controller.detach(f.handle)
