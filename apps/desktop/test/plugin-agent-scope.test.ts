@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import fs from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
 import { afterEach, expect, it, vi } from 'vitest'
 import type { AgentScope } from '../src/main/plugins/lifecycle/controller'
 import type { LifecycleOptions } from '../src/main/plugins/lifecycle/types'
@@ -9,7 +11,7 @@ import {
   fixture,
   projection,
 } from './plugin-lifecycle-fixtures'
-import { signed, tar } from './plugin-package-fixtures'
+import { manifestFor, packageFixture, signed, tar } from './plugin-package-fixtures'
 
 const A = 'fictional-garden',
   B = 'fictional-moss',
@@ -31,15 +33,44 @@ afterEach(async () => {
     }
   } finally {
     vi.restoreAllMocks()
+    syncBuiltinESMExports()
     await cleanupLifecycleFixtures()
   }
   if (errors.length) throw new AggregateError(errors, 'Agent scope fixture cleanup failed')
 })
 
-function packaged(id: string, tools = true) {
+function packaged(id: string) {
   const target = {
     os: process.platform as 'darwin' | 'linux' | 'win32',
     cpu: process.arch as 'arm64' | 'x64',
+  }
+  if (id === C) {
+    const pkg = packageFixture({
+      manifest: {
+        ...manifestFor(),
+        format: 2,
+        id,
+        authors: ['fictional-gardeners'],
+        platforms: [target],
+        executor: { kind: 'node', entry: 'dist/recipe.mjs' },
+        server: null,
+        toolApi: null,
+        ui: null,
+        uiApi: null,
+        skills: [],
+        serviceTemplates: [],
+        hooks: [
+          {
+            id: 'titles',
+            kind: 'turn.context.titles',
+            api: 1,
+            optional: true,
+            inputs: ['resource-titles'],
+          },
+        ],
+      },
+    })
+    return { archive: pkg.archive, release: pkg.release }
   }
   const files = new Map([
     ['main.cjs', Buffer.from('// Fictional runtime; never executed.')],
@@ -60,9 +91,8 @@ function packaged(id: string, tools = true) {
       sha256: pluginSha256(bytes),
     })),
     runtime: { kind: 'node', entry: 'main.cjs' },
-    ...(tools
-      ? { mcp: { transport: 'stdio' }, tools: { source: 'mcp', inventory: 'tools.json' } }
-      : {}),
+    mcp: { transport: 'stdio' },
+    tools: { source: 'mcp', inventory: 'tools.json' },
     lifecycle: { stop: { signal: 'SIGTERM' }, dataOnRemove: 'keep' },
     data: { schema: 1 },
   }
@@ -90,7 +120,7 @@ function packaged(id: string, tools = true) {
 }
 
 async function setup() {
-  const packages = new Map([A, B, C].map((id) => [id, packaged(id, id !== C)]))
+  const packages = new Map([A, B, C].map((id) => [id, packaged(id)]))
   const runs: Array<{
     id: string
     runId: string
@@ -113,25 +143,28 @@ async function setup() {
   })
   const f = await fixture(
     {
-      catalogue: signed({ format: 1, entries: [...packages.values()].map((one) => one.release) }),
+      catalogue: signed({ format: 3, entries: [...packages.values()].map((one) => one.release) }),
       download: async (release) => packages.get(release.id)!.archive,
       runtime: { start, previousOwnerClean: async () => true, removeCode: async () => {} },
     },
     false,
     A,
   )
+  const releaseSnapshot = f.state.retainOwnerReadSnapshot()
+  closers.push(async () => releaseSnapshot())
   closers.push(async () => {
     f.controller.consumersEnded()
     await f.controller.drain()
   })
   return { ...f, runs, start, workspaceId: f.local.sink.workspaceId }
 }
-type Fixture = Awaited<ReturnType<typeof setup>>
 const entry = (scope: AgentScope, id: string) => scope.entries.find((one) => one.pluginId === id)!
 
 // A completion wake must itself observe the published receipt and an admitted view.
 function completion(scopes: AgentScope[], id: string) {
-  return scopes.find((scope) => entry(scope, id)?.is === 'admitted')
+  const scope = scopes.find((scope) => entry(scope, id)?.is === 'admitted')
+  if (!scope) throw new Error('No admitted receipt at completion wake')
+  return scope
 }
 
 it('captures sorted disjoint facts once without starting, waiting, writing or eagerly reading a connection', async () => {
@@ -142,10 +175,13 @@ it('captures sorted disjoint facts once without starting, waiting, writing or ea
   const calls = f.runs.map((run) => run.ready.mock.calls.length)
   const read = vi.spyOn(f.state, 'readView'),
     write = vi.spyOn(f.state, 'withExclusive')
+  const readFile = vi.spyOn(fs, 'readFileSync')
+  syncBuiltinESMExports()
   const starts = f.start.mock.calls.length
   const scope = f.controller.agentScope(f.workspaceId)
   expect(read).toHaveBeenCalledOnce()
   expect(write).not.toHaveBeenCalled()
+  expect(readFile).not.toHaveBeenCalled()
   expect(f.start).toHaveBeenCalledTimes(starts)
   expect(f.runs.map((run) => run.ready.mock.calls.length)).toEqual(calls)
   expect(scope.workspaceId).toBe(f.workspaceId)
@@ -219,9 +255,12 @@ it('publishes each independent receipt before its completion wake, with B still 
   await f.controller.install(f.handle, B)
   const fresh = projection(),
     held = deferred<void>(),
+    heldA = deferred<void>(),
+    enteredA = deferred<void>(),
     entered = deferred<void>(),
     done = deferred<void>()
   releases.push(() => held.resolve())
+  releases.push(() => heldA.resolve())
   const scopes: AgentScope[] = []
   const unsubscribe = f.controller.onHostChanged((workspaceId) => {
     if (workspaceId !== fresh.sink.workspaceId) return
@@ -236,6 +275,10 @@ it('publishes each independent receipt before its completion wake, with B still 
   const handle = await f.controller.attach({
     ...fresh.sink,
     async applied(id, receipt) {
+      if (id === A && receipt) {
+        enteredA.resolve()
+        await heldA.promise
+      }
       if (id === B && receipt) {
         entered.resolve()
         await held.promise
@@ -243,11 +286,13 @@ it('publishes each independent receipt before its completion wake, with B still 
       await fresh.sink.applied(id, receipt)
     },
   })
+  await Promise.all([entered.promise, enteredA.promise])
   const before = f.controller.agentScope(fresh.sink.workspaceId)
   expect(entry(before, A)).toMatchObject({ is: 'pending', why: 'not-projected' })
   // A planted early wake cannot pass the same completion oracle.
-  expect(completion([before], A)).toBeUndefined()
-  await Promise.all([entered.promise, done.promise])
+  expect(() => completion([before], A)).toThrow('No admitted receipt')
+  heldA.resolve()
+  await done.promise
   expect(completion(scopes, A)).toBeDefined()
   expect(entry(f.controller.agentScope(fresh.sink.workspaceId), B)).toMatchObject({
     is: 'pending',
@@ -308,6 +353,25 @@ it('uses one captured sequence even if a committed choice changes during capture
   expect(entry(f.controller.agentScope(f.workspaceId), A)).toMatchObject({
     is: 'off',
     why: 'disabled',
+  })
+})
+
+it('keeps a mismatched retained package pending instead of claiming a committed block or no tools', async () => {
+  const f = await setup()
+  await f.controller.install(f.handle, A)
+  const captured = f.state.readView()
+  vi.spyOn(f.state, 'readView').mockReturnValueOnce({
+    ...captured,
+    currentInstallation(id) {
+      const active = captured.currentInstallation(id)
+      return active && id === A
+        ? { ...active, release: { ...active.release, archiveSha256: '0'.repeat(64) } }
+        : active
+    },
+  })
+  expect(entry(f.controller.agentScope(f.workspaceId), A)).toMatchObject({
+    is: 'pending',
+    why: 'not-ready',
   })
 })
 
