@@ -60,8 +60,9 @@ export function fixtureAppEnvironment(root, app) {
 }
 export function buildEnvironment(root, pnpm) {
   if (!path.isAbsolute(pnpm)) throw new Error('Declared package manager required')
+  const [shimDirectory, ...remainder] = fixtureEnvironment(root).PATH.split(':')
   return {
-    PATH: `${fixtureEnvironment(root).PATH}:${path.dirname(pnpm)}`,
+    PATH: [shimDirectory, path.dirname(pnpm), ...remainder].join(':'),
     CSC_IDENTITY_AUTO_DISCOVERY: 'false',
   }
 }

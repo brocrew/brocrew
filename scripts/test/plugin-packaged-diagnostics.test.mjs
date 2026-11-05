@@ -754,19 +754,54 @@ describe.skipIf(process.platform === 'win32')('safe packaged gate failure diagno
   })
   it('makes the declared package manager available to nested build collectors without inheriting PATH', async () => {
     const root = scratch(),
-      tools = path.join(root, 'declared-tools')
-    fs.mkdirSync(tools)
+      tools = path.join(root, 'declared-tools'),
+      inherited = path.join(root, 'inherited-tools'),
+      empty = path.join(root, 'empty-tools'),
+      previousPath = process.env.PATH,
+      hadPath = Object.hasOwn(process.env, 'PATH')
+    for (const directory of [tools, inherited, empty]) fs.mkdirSync(directory)
     const pnpm = path.join(tools, 'pnpm')
     fs.writeFileSync(pnpm, '#!/bin/sh\nprintf fictional-package-manager\n', { mode: 0o700 })
-    const clean = fixtureEnvironment(root)
-    await expect(command('/usr/bin/which', ['pnpm'], root)).rejects.toThrow()
-    const explicit = buildEnvironment(root, pnpm)
-    expect(explicit.PATH.split(':')).toEqual([...clean.PATH.split(':'), tools])
-    await expect(command('/usr/bin/env', ['pnpm'], root, explicit)).resolves.toBe(
-      'fictional-package-manager',
+    fs.writeFileSync(
+      path.join(inherited, 'pnpm'),
+      '#!/bin/sh\nprintf fictional-inherited-package-manager\n',
+      { mode: 0o700 },
     )
-    expect(explicit.CSC_IDENTITY_AUTO_DISCOVERY).toBe('false')
-    expect(() => buildEnvironment(root, 'pnpm')).toThrow()
+    fs.writeFileSync(
+      path.join(tools, 'security'),
+      '#!/bin/sh\nprintf fictional-competing-security\n',
+      { mode: 0o700 },
+    )
+    vi.stubEnv('PATH', inherited)
+    try {
+      const clean = fixtureEnvironment(root)
+      fs.writeFileSync(path.join(root, 'bin/security'), '#!/usr/bin/false\n', { mode: 0o700 })
+      // Missing pnpm is deterministic only in this explicitly empty owned PATH.
+      await expect(command('/usr/bin/which', ['pnpm'], root, { PATH: empty })).rejects.toThrow()
+      const childPath = await command(
+        process.execPath,
+        ['-e', 'process.stdout.write(process.env.PATH)'],
+        root,
+      )
+      expect(childPath).toBe(clean.PATH)
+      expect(childPath.split(':')).not.toContain(inherited)
+      const explicit = buildEnvironment(root, pnpm)
+      expect(explicit.CSC_IDENTITY_AUTO_DISCOVERY).toBe('false')
+      expect(() => buildEnvironment(root, 'pnpm')).toThrow()
+      await expect(command('/usr/bin/env', ['security'], root, explicit)).rejects.toMatchObject({
+        failure: { phase: 'prepare', errorClass: 'child-exit', exitCode: 1, signal: null },
+      })
+      const [shimDirectory, ...remainder] = clean.PATH.split(':')
+      // Structural priority RED is independent of whether this host co-locates Node and pnpm.
+      expect(explicit.PATH.split(':')).toEqual([shimDirectory, tools, ...remainder])
+      await expect(command('/usr/bin/env', ['pnpm'], root, explicit)).resolves.toBe(
+        'fictional-package-manager',
+      )
+    } finally {
+      vi.unstubAllEnvs()
+      expect(process.env.PATH).toBe(previousPath)
+      expect(Object.hasOwn(process.env, 'PATH')).toBe(hadPath)
+    }
   })
   it('the build-only seam refuses the working checkout before changing any input', async () => {
     const root = scratch()
