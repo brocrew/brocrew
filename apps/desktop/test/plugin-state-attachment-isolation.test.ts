@@ -2137,3 +2137,194 @@ it.each(['effect first', 'exit first'] as const)(
     }
   },
 )
+
+function holdSettlementAcquisition(queue: PluginEffectQueue, sink: WorkspaceProjection) {
+  const entered = deferred<void>(),
+    release = deferred<void>()
+  const originalConsumer = queue.consumer,
+    originalApplied = sink.applied
+  const facts = { arms: 0, reservations: 0, entries: 0, callbacks: 0 }
+  let armed = false,
+    reserved = false
+  const calls: {
+    receiver: PluginEffectQueue
+    gated: boolean
+    work: Promise<unknown>
+    outcome: Promise<WorkOutcome<unknown>>
+  }[] = []
+  const callbackOutcomes: Promise<WorkOutcome<unknown>>[] = []
+  const consumer = vi.spyOn(queue, 'consumer').mockImplementation(function <T>(
+    this: PluginEffectQueue,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    const gated = armed && !reserved
+    if (gated) {
+      reserved = true
+      facts.reservations++
+    }
+    // Only this callback is delayed; the queue still owns its original consumer result.
+    const supplied = gated
+      ? () => {
+          armed = false
+          facts.entries++
+          entered.resolve()
+          const work = release.promise.then(() => {
+            facts.callbacks++
+            return run()
+          })
+          callbackOutcomes.push(observedOutcome(work))
+          return work
+        }
+      : run
+    const work = originalConsumer.bind(this)(supplied)
+    calls.push({ receiver: this, gated, work, outcome: observedOutcome(work) })
+    return work
+  })
+  const applied = vi.spyOn(sink, 'applied').mockImplementation(function (
+    this: WorkspaceProjection,
+    ...args: Parameters<WorkspaceProjection['applied']>
+  ) {
+    const work = originalApplied.apply(this, args)
+    if (args[0] === A && args[1] === null) {
+      facts.arms++
+      armed = true
+    }
+    return work
+  })
+  let stopped = false
+  const stop = () => {
+    release.resolve()
+    if (stopped) return
+    stopped = true
+    coldRemovers.delete(stop)
+    const failures: unknown[] = []
+    for (const restore of [() => applied.mockRestore(), () => consumer.mockRestore()]) {
+      try {
+        restore()
+      } catch (error) {
+        failures.push(error)
+      }
+    }
+    if (failures.length)
+      throw new AggregateError(failures, 'Settlement observer restoration failed')
+  }
+  coldRemovers.add(stop)
+  releases.push(() => release.resolve())
+  return {
+    entered: entered.promise,
+    release: () => release.resolve(),
+    facts,
+    calls,
+    consumer,
+    applied,
+    stop,
+    async settled() {
+      await Promise.all(calls.map((call) => call.outcome))
+      await Promise.all(callbackOutcomes)
+    },
+  }
+}
+
+it.each(['fulfilled', 'rejected'] as const)(
+  'retains the %s attempt after settlement before a deferred consumer acquisition',
+  async (settlement) => {
+    const failure = new Error('Fictional deferred readiness rejection')
+    const model = coldModel({
+      readiness: 'held',
+      error: settlement === 'rejected' ? failure : undefined,
+    })
+    const h = await regressionController([model])
+    const queue = observeColdQueue(h.queue),
+      ensuring = observeEnsureRun(h.controller)
+    const pair = await coldPair(h, model)
+    await model.readyEntered.promise
+    const firstApplied = vi.spyOn(pair.first.sink, 'applied')
+    const gate = holdSettlementAcquisition(h.queue, pair.second.sink)
+    const secondTerminal = terminalConsumer(h.controller, pair.second.sink.workspaceId)
+    let b: LifecycleWorkspace | undefined
+    try {
+      b = await h.attach(pair.second.sink)
+      secondTerminal.capture(b)
+      await gate.entered
+      expect(gate.facts).toEqual({ arms: 1, reservations: 1, entries: 1, callbacks: 0 })
+      expect(pair.observation.calls).toHaveLength(1)
+      expect(h.controller.consumerBindings(b).find((one) => one.pluginId === A)?.state).toBe(
+        'pending',
+      )
+      expect(h.controller.consumerReceipts(b)).toEqual([])
+      expect(gate.applied.mock.calls.filter(([, receipt]) => receipt !== null)).toHaveLength(0)
+
+      model.readiness.resolve()
+      const firstOutcome = await pair.observation.calls[0]!.outcome
+      expect(firstOutcome.is).toBe(settlement)
+      if (settlement === 'rejected' && firstOutcome.is === 'rejected')
+        expect(firstOutcome.error).toBe(failure)
+      if (settlement === 'fulfilled' && firstOutcome.is === 'fulfilled')
+        expect(firstOutcome.value).toBe(model.run)
+      expect(await pair.firstTerminal.work).toBe(settlement === 'fulfilled' ? 'ready' : 'failed')
+      expect(pair.observation.calls).toHaveLength(1)
+      expect(gate.facts.callbacks).toBe(0)
+      expect(h.controller.consumerBindings(b).find((one) => one.pluginId === A)?.state).toBe(
+        'pending',
+      )
+      expect(h.controller.admitted(b, A, h.selected.installId)).toBe(false)
+      expect(h.controller.consumerReceipts(b)).toEqual([])
+      expect(gate.applied.mock.calls.filter(([, receipt]) => receipt !== null)).toHaveLength(0)
+
+      gate.release()
+      const terminal = await secondTerminal.work
+      // Own failure must be checked before promise identity can mask a publication bypass.
+      if (settlement === 'rejected') {
+        expect(terminal).toBe('failed')
+        for (const handle of [pair.a, b]) {
+          expect(h.controller.admitted(handle, A, h.selected.installId)).toBe(false)
+          expect(h.controller.consumerReceipts(handle)).toEqual([])
+        }
+        expect(firstApplied.mock.calls.filter(([, receipt]) => receipt !== null)).toHaveLength(0)
+        expect(gate.applied.mock.calls.filter(([, receipt]) => receipt !== null)).toHaveLength(0)
+      } else {
+        expect(terminal).toBe('ready')
+        assertOwnReady(h, pair.a)
+        assertOwnReady(h, b)
+      }
+      expect(pair.observation.calls).toHaveLength(2)
+      const secondOutcome = await pair.observation.calls[1]!.outcome
+      expect(secondOutcome.is).toBe(settlement)
+      if (settlement === 'rejected' && secondOutcome.is === 'rejected')
+        expect(secondOutcome.error).toBe(failure)
+      if (settlement === 'fulfilled' && secondOutcome.is === 'fulfilled')
+        expect(secondOutcome.value).toBe(model.run)
+      expect(gate.facts).toEqual({ arms: 1, reservations: 1, entries: 1, callbacks: 1 })
+      for (const [index, call] of gate.calls.entries()) {
+        expect(call.receiver).toBe(h.queue)
+        expect(gate.consumer.mock.results[index]?.value).toBe(call.work)
+      }
+      expect(gate.calls.filter((call) => call.gated)).toHaveLength(1)
+      expect(queue.calls).toHaveLength(1)
+      expect(ensuring.observer).toHaveBeenCalledOnce()
+      expect(h.start).toHaveBeenCalledOnce()
+      expect(model.ready).toHaveBeenCalledOnce()
+      await assertColdDurable(h)
+      assertAcquisitionIdentity(h, pair.observation)
+      expect(pair.observation.calls[1]!.work).toBe(pair.observation.calls[0]!.work)
+    } finally {
+      model.readiness.resolve()
+      gate.release()
+      try {
+        await pair.firstTerminal.work
+        if (b) await secondTerminal.work
+        await Promise.all(pair.observation.calls.map((call) => call.outcome))
+        await gate.settled()
+        await Promise.all(queue.calls.map((call) => call.outcome))
+      } finally {
+        for (const stop of [gate.stop, secondTerminal.stop, pair.stop, ensuring.stop, queue.stop]) {
+          try {
+            stop()
+          } catch (error) {
+            coldCleanupFailures.push(error)
+          }
+        }
+      }
+    }
+  },
+)
