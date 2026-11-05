@@ -212,8 +212,23 @@ async function switchServices(event: Event): Promise<void> {
  * see {@link theirConversations}. ⛔ `null` is *the list has not answered yet*.
  */
 const held = computed(() => new Set(props.held))
+/** Every agent's shelf, from one pass over the list; again each minute, as a limit's words age. */
+const shelves = computed(() => {
+  void minute.value
+  const rows = new Map<string, ListedConversation[]>()
+  for (const row of props.conversations ?? []) {
+    const theirs = rows.get(row.identity)
+    if (theirs) theirs.push(row)
+    else rows.set(row.identity, [row])
+  }
+  return new Map(
+    [...rows].map(([slug, theirs]) => [slug, theirConversations(theirs, slug, held.value)!]),
+  )
+})
+const NO_SHELF: NonNullable<ReturnType<typeof theirConversations>> = []
 function shelfOf(slug: string): ReturnType<typeof theirConversations> {
-  return theirConversations(props.conversations, slug, held.value)
+  if (!props.conversations) return null
+  return shelves.value.get(slug) ?? NO_SHELF
 }
 
 function workersOf(slug: string) {
