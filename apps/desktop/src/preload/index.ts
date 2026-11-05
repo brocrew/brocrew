@@ -1,13 +1,6 @@
 import { providerSetupBridge } from './provider-setup'
-import type {
-  MethodLibrary,
-  MethodBody,
-  MethodChangeResult,
-  MethodHistoryResult,
-} from '../shared/saved-method-library'
 import type { RulesBaseline } from '../shared/agent-rules'
-import type { InstructionUnread } from '../shared/own-instructions'
-import type { OwnNotesReading, OwnNotesWrite, OwnNotesUnread } from '../shared/own-notes'
+import type { OwnNotesWrite } from '../shared/own-notes'
 import {
   RECOVERY_RETENTION_CHANNELS,
   type RetainedRecoveryCopy,
@@ -77,14 +70,6 @@ import type { StalledWork } from '../shared/stalled-work'
 import type { StoppedWorkForAPerson } from '../shared/stopped-work'
 import type { WorkIncident } from '../shared/work-incidents'
 import type { WaitingOnWhoWrote } from '../shared/waiting-on-who-wrote'
-import type { AgentRemoved } from '../shared/agent-roster'
-import type { ArchiveOutcome, DeleteOutcome, DeleteVerdict } from '../shared/conversation-archive'
-import type { AgentModelChoice, ModelChoiceSaved } from '../shared/model-choice'
-import type {
-  WorkClosedByAPerson,
-  WorkRetitled,
-  WorkTakenBackByAPerson,
-} from '../shared/piece-called'
 import type { WhoCalledWhom } from '../shared/who-called-whom'
 import type { WorkspaceReading } from '../shared/workspace-reading'
 import type { WhatIsBeingDone } from '../shared/what-is-being-done'
@@ -103,16 +88,7 @@ import {
   RUNTIME_LIVENESS_CHANNEL,
   RUNTIME_STATES_CHANNEL,
   type AdoptionReport,
-  type ApiKeyChanged,
-  type ApiKeyCheck,
-  type ApiKeyStatus,
-  type ProviderResources,
   type ProvidersChangedMessage,
-  type ProviderUsageReading,
-  type ProviderVersion,
-  type KeptRuleRemoved,
-  type KeptRules,
-  type ProviderSetup,
   type RuntimeStatesMessage,
   type ProcessMemory,
   type AnswerAck,
@@ -162,7 +138,6 @@ import {
   type LibraryQuery,
   type Provider,
   type ProviderCapabilityMap,
-  type ModelList,
   type ProviderConfigInfo,
   type RespondPermissionInput,
   type ResumableSessionInfo,
@@ -177,6 +152,8 @@ import {
   type AnswerActionInput,
   type RuntimeBridge,
   type RuntimeCommand,
+  type RuntimeCommandKind,
+  type RuntimeCommandResult,
   type RuntimeEventMessage,
   type SendInput,
   type CancelQueuedMessageInput,
@@ -193,19 +170,14 @@ import {
   type CwdVerdict,
   type AgentIdentities,
   type AgentIdentity,
-  type AgentProviderSet,
   type NewAgent,
 } from '../shared/runtime-ipc'
-import type { AgentInstructionsReading, InstructionAskWaiting } from '../shared/own-instructions'
+import type { InstructionAskWaiting } from '../shared/own-instructions'
 import type {
-  AgentMemoryAmended,
-  AgentMemoryReading,
   MemoryAmendmentAsked,
   MemoryUndoAsked,
   MemoryCheckAsked,
-  MemoryChecked,
 } from '../shared/agent-memory'
-import type { WhatTheModelGot, WhatThisAgentWasGiven } from '../shared/what-this-agent-was-given'
 
 /**
  * Minimal typed IPC bridge. contextIsolation is on, so contextBridge is what
@@ -221,97 +193,93 @@ import type { WhatTheModelGot, WhatThisAgentWasGiven } from '../shared/what-this
 
 if (process.isMainFrame) themeBeforePaint(ipcRenderer)
 
-function command(payload: RuntimeCommand): Promise<unknown> {
-  return ipcRenderer.invoke(RUNTIME_COMMAND_CHANNEL, payload)
+/**
+ * Send one command; it answers what `RuntimeCommandResults` says that command answers, the
+ * same map main's dispatch is checked against, so a reply typed one way on one side and another way
+ * on the other does not typecheck. The one cast is the wire's own: `invoke` answers `any`.
+ */
+function command<K extends RuntimeCommandKind>(
+  payload: Extract<RuntimeCommand, { kind: K }> & { kind: K },
+): Promise<RuntimeCommandResult<K>> {
+  return ipcRenderer.invoke(RUNTIME_COMMAND_CHANNEL, payload) as Promise<RuntimeCommandResult<K>>
 }
 
 const runtime: RuntimeBridge = Object.freeze({
-  skills: (request: SkillsRequest): Promise<SkillsReply> =>
-    command({ kind: 'skills', request }) as Promise<SkillsReply>,
+  skills: (request: SkillsRequest): Promise<SkillsReply> => command({ kind: 'skills', request }),
   // 🔴 **716 · one verb, two answers** — an input that asks for its refusal ANSWERED
   // (`answerARefusal`, `710` F-7) is handed over whole, and the bridge's signature types what comes
   // back. ⚑ Still the literal this preload builds, around a primitive it did not.
   createSession: ((input: CreateSessionInput & { readonly answerARefusal?: true }) =>
     command({ kind: 'createSession', ...input })) as RuntimeBridge['createSession'],
 
-  send: (input: SendInput): Promise<void> => command({ kind: 'send', ...input }) as Promise<void>,
+  send: (input: SendInput): Promise<void> => command({ kind: 'send', ...input }),
   sendInterrupting: (input: SendInput): Promise<void> =>
-    command({ kind: 'sendInterrupting', ...input }) as Promise<void>,
+    command({ kind: 'sendInterrupting', ...input }),
   queueMessage: (input: SendInput): Promise<QueueOutcome> =>
-    command({ kind: 'queueMessage', ...input }) as Promise<QueueOutcome>,
+    command({ kind: 'queueMessage', ...input }),
   cancelQueuedMessage: (input: CancelQueuedMessageInput): Promise<void> =>
-    command({ kind: 'cancelQueuedMessage', ...input }) as Promise<void>,
+    command({ kind: 'cancelQueuedMessage', ...input }),
   takeBackAndStop: (input: CancelQueuedMessageInput): Promise<void> =>
-    command({ kind: 'takeBackAndStop', ...input }) as Promise<void>,
+    command({ kind: 'takeBackAndStop', ...input }),
 
   respondPermission: (input: RespondPermissionInput): Promise<ProviderAnswerAck> =>
-    command({ kind: 'respondPermission', ...input }) as Promise<ProviderAnswerAck>,
+    command({ kind: 'respondPermission', ...input }),
 
   resolveLink: (target: string): Promise<LinkResolution> =>
-    command({ kind: 'resolveLink', target }) as Promise<LinkResolution>,
+    command({ kind: 'resolveLink', target }),
   decideMoveRequest: (input: DecideMoveRequestInput): Promise<MoveRequestAck> =>
-    command({ kind: 'decideMoveRequest', ...input }) as Promise<MoveRequestAck>,
+    command({ kind: 'decideMoveRequest', ...input }),
   respondUserInput: (input: RespondUserInputInput): Promise<ProviderAnswerAck> =>
-    command({ kind: 'respondUserInput', ...input }) as Promise<ProviderAnswerAck>,
+    command({ kind: 'respondUserInput', ...input }),
   /** A person's answer to a to-do an agent asked of them. */
   answerAction: (input: AnswerActionInput): Promise<AnswerAck> =>
-    command({ kind: 'answerAction', ...input }) as Promise<AnswerAck>,
+    command({ kind: 'answerAction', ...input }),
 
-  interrupt: (input: SessionInput): Promise<void> =>
-    command({ kind: 'interrupt', ...input }) as Promise<void>,
+  interrupt: (input: SessionInput): Promise<void> => command({ kind: 'interrupt', ...input }),
 
   stopBackgroundWork: (input: StopBackgroundWorkInput): Promise<boolean> =>
-    command({ kind: 'stopBackgroundWork', ...input }) as Promise<boolean>,
+    command({ kind: 'stopBackgroundWork', ...input }),
 
-  close: (input: SessionInput): Promise<void> =>
-    command({ kind: 'close', ...input }) as Promise<void>,
+  close: (input: SessionInput): Promise<void> => command({ kind: 'close', ...input }),
 
   refreshConfig: (input: SessionInput): Promise<ProviderConfigInfo> =>
-    command({ kind: 'refreshConfig', ...input }) as Promise<ProviderConfigInfo>,
+    command({ kind: 'refreshConfig', ...input }),
 
   setApprovalMode: (input: SetApprovalModeInput): Promise<ApprovalModeDisclosure> =>
-    command({ kind: 'setApprovalMode', ...input }) as Promise<ApprovalModeDisclosure>,
+    command({ kind: 'setApprovalMode', ...input }),
   endPlanMode: (input: EndPlanModeInput): Promise<void> =>
-    command({ kind: 'endPlanMode', ...input }) as Promise<void>,
+    command({ kind: 'endPlanMode', ...input }),
   setSessionSetting: (input: SetSessionSettingInput): Promise<SessionSettingChanged> =>
-    command({ kind: 'setSessionSetting', ...input }) as Promise<SessionSettingChanged>,
+    command({ kind: 'setSessionSetting', ...input }),
 
-  listResumable: (): Promise<ResumableSessionInfo[]> =>
-    command({ kind: 'listResumable' }) as Promise<ResumableSessionInfo[]>,
-  listUnresumable: (): Promise<UnresumableSessionInfo[]> =>
-    command({ kind: 'listUnresumable' }) as Promise<UnresumableSessionInfo[]>,
-  adoptSessions: (): Promise<AdoptionReport> =>
-    command({ kind: 'adoptSessions' }) as Promise<AdoptionReport>,
+  listResumable: (): Promise<ResumableSessionInfo[]> => command({ kind: 'listResumable' }),
+  listUnresumable: (): Promise<UnresumableSessionInfo[]> => command({ kind: 'listUnresumable' }),
+  adoptSessions: (): Promise<AdoptionReport> => command({ kind: 'adoptSessions' }),
   // 633 · ⚑ `{ kind, ...input }` like every verb beside it, and the payload is primitives — a slug,
   // a kind word, and for one kind a STRING the renderer composed. ⛔ **`body` is the largest thing
   // this app puts on the wire**, and it is still a primitive: `the-bridge-that-clones-nothing.test.ts`
   // files it as `plain-by-construction` on both halves of `363`'s question.
   exportSession: (input: ExportAsked): Promise<ExportedSession> =>
-    command({ kind: 'exportSession', ...input }) as Promise<ExportedSession>,
+    command({ kind: 'exportSession', ...input }),
   /** ⛔ The other half of the loop (214 §1) — a bundle brought back, or the reason it was not. */
   importBundleFile: (input: { path: string }): Promise<ImportedBundle> =>
-    command({ kind: 'importBundleFile', ...input }) as Promise<ImportedBundle>,
+    command({ kind: 'importBundleFile', ...input }),
 
-  resume: (input: ResumeInput): Promise<ResumedSession> =>
-    command({ kind: 'resume', ...input }) as Promise<ResumedSession>,
+  resume: (input: ResumeInput): Promise<ResumedSession> => command({ kind: 'resume', ...input }),
   /** ⚑ **D-017b** — draw one conversation in this window, whether or not anything runs it; starts nothing. */
-  look: (input: LookInput): Promise<ResumedSession> =>
-    command({ kind: 'look', ...input }) as Promise<ResumedSession>,
-  stopLooking: (input: SessionInput): Promise<void> =>
-    command({ kind: 'stopLooking', ...input }) as Promise<void>,
+  look: (input: LookInput): Promise<ResumedSession> => command({ kind: 'look', ...input }),
+  stopLooking: (input: SessionInput): Promise<void> => command({ kind: 'stopLooking', ...input }),
   /** ⚑ **D-017b** — a person's message from a conversation's view and the start it causes, in one act. */
   startAndSend: (input: StartAndSendInput): Promise<FirstMessageAnswer> =>
-    command({ kind: 'startAndSend', ...input }) as Promise<FirstMessageAnswer>,
+    command({ kind: 'startAndSend', ...input }),
   cancelLaunch: (input: LaunchInput): Promise<boolean> =>
-    command({ kind: 'cancelLaunch', ...input }) as Promise<boolean>,
-  attachOpen: (): Promise<ResumedSession[]> =>
-    command({ kind: 'attachOpen' }) as Promise<ResumedSession[]>,
+    command({ kind: 'cancelLaunch', ...input }),
+  attachOpen: (): Promise<ResumedSession[]> => command({ kind: 'attachOpen' }),
   /** Take over a conversation nobody owns (336) — the other side of a session created with no window. */
-  claim: (input: SessionInput): Promise<ResumedSession> =>
-    command({ kind: 'claim', ...input }) as Promise<ResumedSession>,
+  claim: (input: SessionInput): Promise<ResumedSession> => command({ kind: 'claim', ...input }),
   /** Hand a conversation back to nobody (523) — the inverse of the claim above. */
   release: (input: SessionInput): Promise<ReleasedSession> =>
-    command({ kind: 'release', ...input }) as Promise<ReleasedSession>,
+    command({ kind: 'release', ...input }),
   /**
    * What a PERSON has been left holding (398, criterion 11) — every routed question a deadline has
    * already escalated, with the chain that says who is waiting on whom.
@@ -320,7 +288,7 @@ const runtime: RuntimeBridge = Object.freeze({
    * `respondUserInput` on the child, where the card is.
    */
   questionsForAPerson: (): Promise<LedgerWalk<PersonsQuestion>> =>
-    command({ kind: 'questionsForAPerson' }) as Promise<LedgerWalk<PersonsQuestion>>,
+    command({ kind: 'questionsForAPerson' }),
   /**
    * What only a person may settle (403) — every open routed request that never travelled, with
    * the one hop that names the conversation frozen on it.
@@ -329,7 +297,7 @@ const runtime: RuntimeBridge = Object.freeze({
    * that was never anybody else's to answer are two populations with two guarantees.
    */
   decisionsForAPerson: (): Promise<LedgerWalk<PersonsDecision>> =>
-    command({ kind: 'decisionsForAPerson' }) as Promise<LedgerWalk<PersonsDecision>>,
+    command({ kind: 'decisionsForAPerson' }),
   /**
    * Which providers have walled, and when work comes back (533) — every limit still standing,
    * folded to one row per provider and window before it crosses.
@@ -340,9 +308,8 @@ const runtime: RuntimeBridge = Object.freeze({
    * an agent that is stuck.
    */
   limitsForAPerson: (): Promise<LedgerWalk<ProviderLimitSeen>> =>
-    command({ kind: 'limitsForAPerson' }) as Promise<LedgerWalk<ProviderLimitSeen>>,
-  readLimitsDisplay: (): Promise<LimitsDisplayAnswer> =>
-    command({ kind: 'readLimitsDisplay' }) as Promise<LimitsDisplayAnswer>,
+    command({ kind: 'limitsForAPerson' }),
+  readLimitsDisplay: (): Promise<LimitsDisplayAnswer> => command({ kind: 'readLimitsDisplay' }),
   onLimitsDisplayChanged: (listener: (message: LimitsDisplayChanged) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, message: LimitsDisplayChanged): void =>
       listener(message)
@@ -355,30 +322,28 @@ const runtime: RuntimeBridge = Object.freeze({
    * conversation that gave it out was not running, which `555` §3.1 measured is told to nobody.
    */
   stalledWorkForAPerson: (): Promise<LedgerWalk<StalledWork>> =>
-    command({ kind: 'stalledWorkForAPerson' }) as Promise<LedgerWalk<StalledWork>>,
+    command({ kind: 'stalledWorkForAPerson' }),
   /** Work whose holder stopped with it, its giver told: to look at or hand back. */
   stoppedWorkForAPerson: (): Promise<LedgerWalk<StoppedWorkForAPerson>> =>
-    command({ kind: 'stoppedWorkForAPerson' }) as Promise<LedgerWalk<StoppedWorkForAPerson>>,
+    command({ kind: 'stoppedWorkForAPerson' }),
   /** The open pieces no other list shows a person, with what is wrong with each. */
   workIncidentsForAPerson: (): Promise<LedgerWalk<WorkIncident>> =>
-    command({ kind: 'workIncidentsForAPerson' }) as Promise<LedgerWalk<WorkIncident>>,
+    command({ kind: 'workIncidentsForAPerson' }),
   /**
    * ⚑ **F097 · the work whose agent answered a person and waits on their next words** — owed by a
    * person, so *Waiting on you* lists it and the rail's badge counts it.
    */
   waitingOnWhoWroteForAPerson: (): Promise<LedgerWalk<WaitingOnWhoWrote>> =>
-    command({ kind: 'waitingOnWhoWroteForAPerson' }) as Promise<LedgerWalk<WaitingOnWhoWrote>>,
+    command({ kind: 'waitingOnWhoWroteForAPerson' }),
   /**
    * ⚑ **D-017 · R19 — every ask against an identity's instructions nobody has answered**, whichever
    * conversation made it: *Waiting on you* reads it here, never from the conversations it holds.
    */
   instructionAsksForAPerson: (): Promise<readonly InstructionAskWaiting[]> =>
-    command({ kind: 'instructionAsksForAPerson' }) as Promise<readonly InstructionAskWaiting[]>,
+    command({ kind: 'instructionAsksForAPerson' }),
   /** Every agent's request to register an MCP server that waits on a person. */
   mcpServerRequestsForAPerson: (): Promise<readonly McpServerRequestForAPerson[]> =>
-    command({ kind: 'mcpServerRequestsForAPerson' }) as Promise<
-      readonly McpServerRequestForAPerson[]
-    >,
+    command({ kind: 'mcpServerRequestsForAPerson' }),
   /**
    * The work this conversation gave out (508) — every piece, wherever it went, with the walk that
    * says how many ledgers were read and how many rows could not be.
@@ -390,7 +355,7 @@ const runtime: RuntimeBridge = Object.freeze({
     command({
       kind: 'workGivenBy',
       sessionId: input.sessionId,
-    }) as Promise<LedgerWalk<WorkGivenOut>>,
+    }),
   /**
    * Who called whom, for one conversation (543) — who started it, what it started, and what work
    * passed between them, in ids that name CONVERSATIONS.
@@ -402,7 +367,7 @@ const runtime: RuntimeBridge = Object.freeze({
     command({
       kind: 'whoCalledWhom',
       sessionId: input.sessionId,
-    }) as Promise<WhoCalledWhom>,
+    }),
   /**
    * Two counts and one moment (567) — how much is open and how much needs a person, as of one
    * stated moment.
@@ -411,8 +376,7 @@ const runtime: RuntimeBridge = Object.freeze({
    * field for a call site to build or hand over, so there is nothing here a reactive value could
    * ride in on.
    */
-  readWorkspace: (): Promise<WorkspaceReading> =>
-    command({ kind: 'readWorkspace' }) as Promise<WorkspaceReading>,
+  readWorkspace: (): Promise<WorkspaceReading> => command({ kind: 'readWorkspace' }),
   /**
    * What each conversation this app is running was last told it is doing (575) — the whole live
    * population, as of one stated moment.
@@ -421,8 +385,7 @@ const runtime: RuntimeBridge = Object.freeze({
    * of agents would have been an ARRAY, which is a payload to clone and a bound somebody owes, and
    * the answer is the whole population precisely so no caller has to name one.
    */
-  whatIsBeingDone: (): Promise<WhatIsBeingDone> =>
-    command({ kind: 'whatIsBeingDone' }) as Promise<WhatIsBeingDone>,
+  whatIsBeingDone: (): Promise<WhatIsBeingDone> => command({ kind: 'whatIsBeingDone' }),
   /**
    * 🔴 **What each conversation this app is running is WAITING ON** (621) — the whole population,
    * as of one stated moment.
@@ -433,7 +396,7 @@ const runtime: RuntimeBridge = Object.freeze({
   whatEachConversationIsWaitingOn: (): Promise<WhatEachConversationIsWaitingOn> =>
     command({
       kind: 'whatEachConversationIsWaitingOn',
-    }) as Promise<WhatEachConversationIsWaitingOn>,
+    }),
   /**
    * 🔴 **The whole forest, from the person down** (637) — every conversation this app placed, where
    * each one hangs, and the work each one holds.
@@ -441,8 +404,7 @@ const runtime: RuntimeBridge = Object.freeze({
    * ⛔ **`nothing` on `HOW_EACH_VERB_IS_BUILT`, for the two lines above's reasons exactly**: no
    * fields at all, so there is no payload to clone and no array a caller could make unbounded.
    */
-  theWholeForest: (): Promise<TheWholeForest> =>
-    command({ kind: 'theWholeForest' }) as Promise<TheWholeForest>,
+  theWholeForest: (): Promise<TheWholeForest> => command({ kind: 'theWholeForest' }),
   /**
    * 🔴 **D-018 · the memory each running conversation's provider process holds** — for a person's
    * agent card, and never an agent's.
@@ -450,8 +412,7 @@ const runtime: RuntimeBridge = Object.freeze({
    * ⛔ **`nothing` on `HOW_EACH_VERB_IS_BUILT`, for the lines above's reasons exactly**: no fields
    * at all, so there is no payload to clone and no pid a caller could name.
    */
-  processMemory: (): Promise<ProcessMemory> =>
-    command({ kind: 'processMemory' }) as Promise<ProcessMemory>,
+  processMemory: (): Promise<ProcessMemory> => command({ kind: 'processMemory' }),
   /**
    * What the ledger recorded inside a window a person chose (438) — one reading over every
    * conversation an agent of this app holds, every line carrying whether the engine watched it or an
@@ -462,138 +423,123 @@ const runtime: RuntimeBridge = Object.freeze({
       kind: 'recentActivity',
       from: input.from,
       to: input.to,
-    }) as Promise<RecentActivityReading>,
+    }),
   digest: (from: number, to: number): Promise<DigestReading> =>
-    command({ kind: 'digest', from, to }) as Promise<DigestReading>,
+    command({ kind: 'digest', from, to }),
 
   listLibrary: (input: LibraryQuery): Promise<LibraryPage> =>
-    command({ kind: 'listLibrary', ...input }) as Promise<LibraryPage>,
+    command({ kind: 'listLibrary', ...input }),
   /** Fill in one recorded conversation's prior messages from its own provider file (119). */
   importRecordedSession: (input: SessionInput): Promise<ImportedRecording> =>
-    command({ kind: 'importRecordedSession', ...input }) as Promise<ImportedRecording>,
+    command({ kind: 'importRecordedSession', ...input }),
   importUserHomeSession: (input: {
     provider: Provider
     providerSessionId: string
-  }): Promise<ImportedFromHome> =>
-    command({ kind: 'importUserHomeSession', ...input }) as Promise<ImportedFromHome>,
+  }): Promise<ImportedFromHome> => command({ kind: 'importUserHomeSession', ...input }),
   rebuildLedger: (input: SessionInput): Promise<RebuiltLedger> =>
-    command({ kind: 'rebuildLedger', ...input }) as Promise<RebuiltLedger>,
+    command({ kind: 'rebuildLedger', ...input }),
 
   readWorkflowOutput: (input: SessionInput & { taskId: string }): Promise<WorkflowOutputResult> =>
-    command({ kind: 'readWorkflowOutput', ...input }) as Promise<WorkflowOutputResult>,
+    command({ kind: 'readWorkflowOutput', ...input }),
   // 356. One file the provider reported, read on request so it can open on the app's own paper.
   readInstructionSource: (
     input: SessionInput & { index: number },
-  ): Promise<InstructionSourceResult> =>
-    command({ kind: 'readInstructionSource', ...input }) as Promise<InstructionSourceResult>,
+  ): Promise<InstructionSourceResult> => command({ kind: 'readInstructionSource', ...input }),
   // 356. Reveal a path in the file manager. ⛔ The renderer names the row; main holds the string.
   revealPath: (input: SessionInput & { target: SessionPathTarget }): Promise<RevealResult> =>
-    command({ kind: 'revealPath', ...input }) as Promise<RevealResult>,
+    command({ kind: 'revealPath', ...input }),
   // 733. One config file, read on request so it can open on the app's own paper — by its NAME.
   readConfigFile: (input: SessionInput & { name: string }): Promise<ConfigFileResult> =>
-    command({ kind: 'readConfigFile', ...input }) as Promise<ConfigFileResult>,
+    command({ kind: 'readConfigFile', ...input }),
   readCommandOutput: (input: SessionInput & { toolCallId: string }): Promise<CommandTail | null> =>
-    command({ kind: 'readCommandOutput', ...input }) as Promise<CommandTail | null>,
+    command({ kind: 'readCommandOutput', ...input }),
   readToolAnswer: (input: SessionInput & { toolCallId: string }): Promise<ToolAnswer | null> =>
-    command({ kind: 'readToolAnswer', ...input }) as Promise<ToolAnswer | null>,
+    command({ kind: 'readToolAnswer', ...input }),
   // 510. One resource, for the person whose row names it (D-016). ⛔ No session and no path — the
   // renderer hands back the id it drew, and main finds the file inside `resourcesRoot`.
   readResource: (input: { resourceId: string }): Promise<ResourceReading> =>
-    command({ kind: 'readResource', ...input }) as Promise<ResourceReading>,
+    command({ kind: 'readResource', ...input }),
   // D-032. A kept picture or PDF, and the same file shown in Finder — by the id alone, which is all
   // their strict schemas take.
   drawResource: (input: { resourceId: string }): Promise<ResourceDrawing> =>
-    command({ kind: 'drawResource', resourceId: input.resourceId }) as Promise<ResourceDrawing>,
+    command({ kind: 'drawResource', resourceId: input.resourceId }),
   revealResource: (input: { resourceId: string }): Promise<ResourceReveal> =>
-    command({ kind: 'revealResource', resourceId: input.resourceId }) as Promise<ResourceReveal>,
+    command({ kind: 'revealResource', resourceId: input.resourceId }),
   // Paths a message wrote, named by their text: main resolves, opens or shows them.
   resolveMessagePaths: (input: MessagePathAsk): Promise<MessagePath[]> =>
     command({
       kind: 'resolveMessagePaths',
       sessionId: input.sessionId,
       texts: [...input.texts],
-    }) as Promise<MessagePath[]>,
+    }),
   openMessagePath: (input: MessagePathTarget): Promise<OpenMessagePathResult> =>
     command({
       kind: 'openMessagePath',
       sessionId: input.sessionId,
       text: input.text,
-    }) as Promise<OpenMessagePathResult>,
+    }),
   revealMessagePath: (input: MessagePathTarget): Promise<RevealResult> =>
     command({
       kind: 'revealMessagePath',
       sessionId: input.sessionId,
       text: input.text,
-    }) as Promise<RevealResult>,
+    }),
   // D-026. The files kept in one scope, for a person — a tree, one conversation or one piece.
   filesKept: (input: FilesKeptScope): Promise<FilesKept> =>
-    command({ kind: 'filesKept', ...input }) as Promise<FilesKept>,
+    command({ kind: 'filesKept', ...input }),
   filesLibrary: (request: import('../shared/files-library').FilesLibraryRequest) =>
-    command({ kind: 'filesLibrary', request }) as Promise<
-      import('../shared/files-library').FilesLibraryResult
-    >,
+    command({ kind: 'filesLibrary', request }),
   teamProfileGraph: (request: import('../shared/team-profile-graph').TeamProfileGraphRequest) =>
-    command({ kind: 'teamProfileGraph', request }) as Promise<
-      import('../shared/team-profile-graph').TeamProfileGraphResult
-    >,
+    command({ kind: 'teamProfileGraph', request }),
   searchWork: (input: {
     conversation: string
     query: import('../shared/work-search').WorkSearchQuery
-  }) =>
-    command({ kind: 'searchWork', ...input }) as Promise<
-      import('../shared/work-search').WorkSearchResult
-    >,
+  }) => command({ kind: 'searchWork', ...input }),
   readChildWork: (input: SessionInput & ChildWorkInput): Promise<ChildWorkResult> =>
-    command({ kind: 'readChildWork', ...input }) as Promise<ChildWorkResult>,
+    command({ kind: 'readChildWork', ...input }),
   readChildState: (input: SessionInput & { agentId: string }): Promise<ChildStateResult> =>
-    command({ kind: 'readChildState', ...input }) as Promise<ChildStateResult>,
+    command({ kind: 'readChildState', ...input }),
   sendToChild: (
     input: SessionInput & { agentId: string; text: string },
-  ): Promise<ChildSendResult> =>
-    command({ kind: 'sendToChild', ...input }) as Promise<ChildSendResult>,
+  ): Promise<ChildSendResult> => command({ kind: 'sendToChild', ...input }),
   earlierHistory: (input: EarlierHistoryInput): Promise<HistoryWindow> =>
-    command({ kind: 'earlierHistory', ...input }) as Promise<HistoryWindow>,
+    command({ kind: 'earlierHistory', ...input }),
   latestHistory: (input: SessionInput): Promise<HistoryWindow> =>
-    command({ kind: 'latestHistory', ...input }) as Promise<HistoryWindow>,
-  capabilities: (): Promise<ProviderCapabilityMap> =>
-    command({ kind: 'capabilities' }) as Promise<ProviderCapabilityMap>,
+    command({ kind: 'latestHistory', ...input }),
+  capabilities: (): Promise<ProviderCapabilityMap> => command({ kind: 'capabilities' }),
   providerConnections: (): Promise<readonly ProviderConnection[]> =>
-    command({ kind: 'providerConnections' }) as Promise<readonly ProviderConnection[]>,
+    command({ kind: 'providerConnections' }),
   // Which profiles exist (167) — the launcher's menu. Re-asked after a launch, because starting a
   // session in a name that was typed is what brings that profile into existence.
-  profiles: (): Promise<string[]> => command({ kind: 'profiles' }) as Promise<string[]>,
+  profiles: (): Promise<string[]> => command({ kind: 'profiles' }),
   // Would the launch accept this folder (203). The typed half of 076 §3's picker — `chooseCwd`
   // answers for a folder that was CHOSEN, and until now nothing answered for one that was typed.
-  checkCwd: (path: string): Promise<CwdVerdict> =>
-    command({ kind: 'checkCwd', path }) as Promise<CwdVerdict>,
+  checkCwd: (path: string): Promise<CwdVerdict> => command({ kind: 'checkCwd', path }),
   // ⚑ **`plain-by-construction` on both halves** (419, and 363's two questions): this wrapper builds
   // the outer literal itself, and every field it did NOT build — the slug, the display name and the
   // provider — is a `string | null`. ⛔ A fourth field of some other shape would make it
   // `handed-over`, and `the-bridge-that-clones-nothing.test.ts` is where somebody has to say so.
   createAgent: (input: NewAgent): Promise<AgentIdentity> =>
-    command({ kind: 'createAgent', ...input }) as Promise<AgentIdentity>,
+    command({ kind: 'createAgent', ...input }),
   // ⚑ **The capability door** (355). A person's read and a person's two writes; the main side
   // refuses all three unless the channel they arrived on declares a person behind it (349).
-  agentIdentities: (): Promise<AgentIdentities> =>
-    command({ kind: 'agentIdentities' }) as Promise<AgentIdentities>,
+  agentIdentities: (): Promise<AgentIdentities> => command({ kind: 'agentIdentities' }),
   // 433 · ⚑ `{ kind, ...input }` like every configuration verb beside it, and the payload is two
   // primitives — a slug and a word or null — so `the-bridge-that-clones-nothing.test.ts` files it
   // as `plain-by-construction` on both halves of `363`'s question.
   setAgentProvider: (input: { profileId: string; provider: Provider | null }) =>
-    command({ kind: 'setAgentProvider', ...input }) as Promise<AgentProviderSet | null>,
+    command({ kind: 'setAgentProvider', ...input }),
   // 558 · ⚑ `{ kind, ...input }` and the payload is two primitives — a slug and a string or null —
   // so it is `plain-by-construction` on both halves of `363`'s question, exactly as its neighbour
   // above is.
   setAgentDisplayName: (input: { profileId: string; displayName: string | null }) =>
-    command({ kind: 'setAgentDisplayName', ...input }) as Promise<AgentIdentity | null>,
+    command({ kind: 'setAgentDisplayName', ...input }),
   // D-016 · commit 7 · R4 · ⚑ `{ kind, ...input }` and two primitives — a label or id and a title —
   // so it is `plain-by-construction` on both halves of `363`'s question, as its neighbour above is.
   retitleWork: (input: { piece: string; title: string }) =>
-    command({ kind: 'retitleWork', ...input }) as Promise<WorkRetitled>,
-  takeBackWork: (input: { piece: string }) =>
-    command({ kind: 'takeBackWork', ...input }) as Promise<WorkTakenBackByAPerson>,
-  closeWork: (input: { piece: string }) =>
-    command({ kind: 'closeWork', ...input }) as Promise<WorkClosedByAPerson>,
+    command({ kind: 'retitleWork', ...input }),
+  takeBackWork: (input: { piece: string }) => command({ kind: 'takeBackWork', ...input }),
+  closeWork: (input: { piece: string }) => command({ kind: 'closeWork', ...input }),
   // 677 · ⚑ `{ kind, ...input }` and the payload is four primitives — a slug, a provider word or null,
   // and two strings or null — so it is `plain-by-construction` on both halves of `363`'s question,
   // exactly as `setAgentProvider` above is. ⚠️ Flat on purpose: a nested `choice` object here would
@@ -603,65 +549,53 @@ const runtime: RuntimeBridge = Object.freeze({
     provider: Provider | null
     model: string | null
     effort: string | null
-  }) => command({ kind: 'setAgentModelAndEffort', ...input }) as Promise<ModelChoiceSaved>,
+  }) => command({ kind: 'setAgentModelAndEffort', ...input }),
   // 677 · ⚑ One primitive, built here — `agentInstructions`' shape.
   agentModelAndEffort: (input: { profileId: string }) =>
-    command({ kind: 'agentModelAndEffort', ...input }) as Promise<AgentModelChoice | null>,
+    command({ kind: 'agentModelAndEffort', ...input }),
   // ⚑ **D-042 · the model list's three doors** — each payload built here, so
   // `plain-by-construction` on both halves: each spreads its primitives (`{ kind, ...input }`).
   modelList: (input: { provider: Provider; profileId?: string }) =>
-    command({ kind: 'modelList', ...input }) as Promise<ModelList>,
+    command({ kind: 'modelList', ...input }),
   addHandAddedModel: (input: { provider: Provider; model: string }) =>
-    command({ kind: 'addHandAddedModel', ...input }) as Promise<readonly string[]>,
+    command({ kind: 'addHandAddedModel', ...input }),
   deleteHandAddedModel: (input: { provider: Provider; model: string }) =>
-    command({ kind: 'deleteHandAddedModel', ...input }) as Promise<readonly string[]>,
-  apiKeyStatus: (input: { provider: Provider }) =>
-    command({ kind: 'apiKeyStatus', ...input }) as Promise<ApiKeyStatus>,
+    command({ kind: 'deleteHandAddedModel', ...input }),
+  apiKeyStatus: (input: { provider: Provider }) => command({ kind: 'apiKeyStatus', ...input }),
   setApiKey: (input: { provider: Provider; key: string }) =>
-    command({ kind: 'setApiKey', ...input }) as Promise<ApiKeyChanged>,
-  removeApiKey: (input: { provider: Provider }) =>
-    command({ kind: 'removeApiKey', ...input }) as Promise<ApiKeyChanged>,
-  checkApiKey: (input: { provider: Provider }) =>
-    command({ kind: 'checkApiKey', ...input }) as Promise<ApiKeyCheck>,
-  providerVersions: () =>
-    command({ kind: 'providerVersions' }) as Promise<Readonly<Record<Provider, ProviderVersion>>>,
-  keptRules: () => command({ kind: 'keptRules' }) as Promise<KeptRules>,
+    command({ kind: 'setApiKey', ...input }),
+  removeApiKey: (input: { provider: Provider }) => command({ kind: 'removeApiKey', ...input }),
+  checkApiKey: (input: { provider: Provider }) => command({ kind: 'checkApiKey', ...input }),
+  providerVersions: () => command({ kind: 'providerVersions' }),
+  keptRules: () => command({ kind: 'keptRules' }),
   removeKeptRule: (input: { provider: Provider; file: string; kept: string }) =>
     command({
       kind: 'removeKeptRule',
       provider: input.provider,
       file: input.file,
       kept: input.kept,
-    }) as Promise<KeptRuleRemoved>,
-  providerSetup: () =>
-    command({ kind: 'providerSetup' }) as Promise<Readonly<Record<Provider, ProviderSetup | null>>>,
-  providerUsage: () =>
-    command({ kind: 'providerUsage' }) as Promise<
-      Readonly<Record<Provider, readonly ProviderUsageReading[]>>
-    >,
-  providerResources: () =>
-    command({ kind: 'providerResources' }) as Promise<
-      Readonly<Record<Provider, ProviderResources>>
-    >,
+    }),
+  providerSetup: () => command({ kind: 'providerSetup' }),
+  providerUsage: () => command({ kind: 'providerUsage' }),
+  providerResources: () => command({ kind: 'providerResources' }),
   // 558 · ⚑ One primitive, built here. The ANSWER is a union with a `held` array in one arm, and
   // that is on the way back — which `the-bridge-that-clones-nothing.test.ts` does not ask about,
   // because its question is who builds what goes THROUGH the door.
-  removeAgent: (input: { profileId: string }) =>
-    command({ kind: 'removeAgent', ...input }) as Promise<AgentRemoved>,
+  removeAgent: (input: { profileId: string }) => command({ kind: 'removeAgent', ...input }),
   // One primitive each, built here; the answers carry arrays, on the way back.
   archiveConversation: (input: { sessionId: string }) =>
-    command({ kind: 'archiveConversation', ...input }) as Promise<ArchiveOutcome>,
+    command({ kind: 'archiveConversation', ...input }),
   restoreConversation: (input: { sessionId: string }) =>
-    command({ kind: 'restoreConversation', ...input }) as Promise<ArchiveOutcome>,
+    command({ kind: 'restoreConversation', ...input }),
   checkDeleteConversation: (input: { sessionId: string }) =>
-    command({ kind: 'checkDeleteConversation', ...input }) as Promise<DeleteVerdict>,
+    command({ kind: 'checkDeleteConversation', ...input }),
   // The ticked ids are copied into a plain array here, so nothing but strings crosses the door.
   deleteConversation: (input: { sessionId: string; parts: string[] }) =>
     command({
       kind: 'deleteConversation',
       sessionId: input.sessionId,
       parts: [...input.parts],
-    }) as Promise<DeleteOutcome>,
+    }),
   // 582 · ⚑ `{ kind, ...input }` and the payload is three primitives — a slug, a string and an
   // optional number — so it is `plain-by-construction` on both halves of `363`'s question, exactly
   // as `setAgentDisplayName` above is.
@@ -670,31 +604,31 @@ const runtime: RuntimeBridge = Object.freeze({
     text: string
     broughtBack?: number
     baseline?: RulesBaseline
-  }) => command({ kind: 'instructAgent', ...input }) as Promise<AgentInstructionsReading | null>,
+  }) => command({ kind: 'instructAgent', ...input }),
   // 582 · ⚑ One primitive, built here. The ANSWER carries arrays, and that is on the way back —
   // which `the-bridge-that-clones-nothing.test.ts` does not ask about, for `removeAgent`'s reason.
   agentInstructions: (input: { profileId: string }) =>
-    command({ kind: 'agentInstructions', ...input }) as Promise<AgentInstructionsReading>,
+    command({ kind: 'agentInstructions', ...input }),
   agentMethods: (input: Parameters<RuntimeBridge['agentMethods']>[0]) =>
     command({
       kind: 'agentMethods',
       profileId: input.profileId,
       offset: input.offset,
       limit: input.limit,
-    }) as Promise<MethodLibrary | null>,
+    }),
   agentMethodBody: (input: Parameters<RuntimeBridge['agentMethodBody']>[0]) =>
     command({
       kind: 'agentMethodBody',
       profileId: input.profileId,
       key: input.key,
-    }) as Promise<MethodBody | null>,
+    }),
   agentMethodChanges: (input: Parameters<RuntimeBridge['agentMethodChanges']>[0]) =>
     command({
       kind: 'agentMethodChanges',
       profileId: input.profileId,
       offset: input.offset,
       limit: input.limit,
-    }) as Promise<MethodHistoryResult>,
+    }),
   removeAgentMethod: (input: Parameters<RuntimeBridge['removeAgentMethod']>[0]) =>
     command({
       kind: 'removeAgentMethod',
@@ -706,13 +640,13 @@ const runtime: RuntimeBridge = Object.freeze({
         indexState: input.selection.indexState,
         indexFingerprint: input.selection.indexFingerprint,
       },
-    }) as Promise<MethodChangeResult>,
+    }),
   undoAgentMethod: (input: Parameters<RuntimeBridge['undoAgentMethod']>[0]) =>
     command({
       kind: 'undoAgentMethod',
       profileId: input.profileId,
       changeId: input.changeId,
-    }) as Promise<MethodChangeResult>,
+    }),
   checkInterruptedAgentMethods: (
     input: Parameters<RuntimeBridge['checkInterruptedAgentMethods']>[0],
   ) =>
@@ -720,33 +654,32 @@ const runtime: RuntimeBridge = Object.freeze({
       kind: 'checkInterruptedAgentMethods',
       profileId: input.profileId,
       confirmed: input.confirmed,
-    }) as Promise<MethodChangeResult>,
-  agentOwnNotes: (input: { profileId: string }) =>
-    command({ kind: 'agentOwnNotes', ...input }) as Promise<OwnNotesReading | null>,
+    }),
+  agentOwnNotes: (input: { profileId: string }) => command({ kind: 'agentOwnNotes', ...input }),
   agentOwnNotesUnread: (input: { profileId: string }) =>
-    command({ kind: 'agentOwnNotesUnread', ...input }) as Promise<OwnNotesUnread>,
+    command({ kind: 'agentOwnNotesUnread', ...input }),
   saveOwnNotes: (input: { profileId: string } & OwnNotesWrite) =>
-    command({ kind: 'saveOwnNotes', ...input }) as Promise<OwnNotesReading | null>,
+    command({ kind: 'saveOwnNotes', ...input }),
   undoOwnNotes: (input: { profileId: string; expectedVersion: number }) =>
-    command({ kind: 'undoOwnNotes', ...input }) as Promise<OwnNotesReading | null>,
+    command({ kind: 'undoOwnNotes', ...input }),
   markOwnNotesSeen: (input: { profileId: string; throughVersion: number }) =>
-    command({ kind: 'markOwnNotesSeen', ...input }) as Promise<boolean>,
+    command({ kind: 'markOwnNotesSeen', ...input }),
   agentRulesUnread: (input: { profileId: string }) =>
-    command({ kind: 'agentRulesUnread', ...input }) as Promise<InstructionUnread>,
+    command({ kind: 'agentRulesUnread', ...input }),
   undoAgentRules: (input: { profileId: string; expectedVersion: number }) =>
-    command({ kind: 'undoAgentRules', ...input }) as Promise<AgentInstructionsReading | null>,
+    command({ kind: 'undoAgentRules', ...input }),
   markAgentRulesSeen: (input: { profileId: string; throughVersion: number }) =>
-    command({ kind: 'markAgentRulesSeen', ...input }) as Promise<boolean>,
+    command({ kind: 'markAgentRulesSeen', ...input }),
   // 625 · ⚑ One primitive, built here. The ANSWER carries arrays, and that is on the way back —
   // which `the-bridge-that-clones-nothing.test.ts` does not ask about, for `removeAgent`'s reason.
   agentMemory: (input: { profileId: string; offset?: number; limit?: number }) =>
-    command({ kind: 'agentMemory', ...input }) as Promise<AgentMemoryReading>,
+    command({ kind: 'agentMemory', ...input }),
   // F093 · ⚑ One primitive, built here, like `look`; the answer carries arrays, on the way back.
   whatThisAgentWasGiven: (sessionId: string) =>
-    command({ kind: 'whatThisAgentWasGiven', sessionId }) as Promise<WhatThisAgentWasGiven>,
+    command({ kind: 'whatThisAgentWasGiven', sessionId }),
   // F093 · C9 d · ⚑ One primitive and a number, built here; the answer carries arrays, on the way back.
   whatTheModelGot: (sessionId: string, ordinal: number) =>
-    command({ kind: 'whatTheModelGot', sessionId, ordinal }) as Promise<WhatTheModelGot>,
+    command({ kind: 'whatTheModelGot', sessionId, ordinal }),
   // 625 · ⚑ `{ kind, ...input }` like every configuration verb beside it, and the payload is four
   // primitives — a slug, a provider word, an entry string and an act word, plus the text — so
   // `the-bridge-that-clones-nothing.test.ts` files it as `plain-by-construction` on both halves of
@@ -763,31 +696,30 @@ const runtime: RuntimeBridge = Object.freeze({
       text: input.text,
       fingerprint: input.fingerprint,
       confirmed: input.confirmed,
-    }) as Promise<AgentMemoryAmended | null>,
+    }),
   undoAgentMemory: (input: MemoryUndoAsked) =>
     command({
       kind: 'undoAgentMemory',
       profileId: input.profileId,
       sourceId: input.sourceId,
       confirmed: input.confirmed,
-    }) as Promise<AgentMemoryAmended | null>,
+    }),
   checkInterruptedMemory: (input: MemoryCheckAsked) =>
     command({
       kind: 'checkInterruptedMemory',
       profileId: input.profileId,
       confirmed: input.confirmed,
-    }) as Promise<MemoryChecked | null>,
+    }),
   // 582 · ⚑ Two primitives, built here.
   decideInstruction: (input: { askId: string; approve: boolean }) =>
-    command({ kind: 'decideInstruction', ...input }) as Promise<AnswerAck>,
+    command({ kind: 'decideInstruction', ...input }),
   decideMcpServerRequest: (input: { requestId: string; approve: boolean }) =>
-    command({ kind: 'decideMcpServerRequest', ...input }) as Promise<AnswerAck>,
+    command({ kind: 'decideMcpServerRequest', ...input }),
   setCapabilities: (input: {
     profileId: string
     grant: CapabilityGrant
     externalMcpServerIds: readonly string[]
-  }): Promise<AgentIdentity | null> =>
-    command({ kind: 'setCapabilities', ...input }) as Promise<AgentIdentity | null>,
+  }): Promise<AgentIdentity | null> => command({ kind: 'setCapabilities', ...input }),
   // ⚑ **516 · the registry's two writes** (HO-040 §4.2). `{ kind, ...input }` like every
   // configuration verb beside them, and both payloads are strings — so
   // `the-bridge-that-clones-nothing.test.ts` files them as `plain-by-construction` on both halves of
@@ -797,20 +729,17 @@ const runtime: RuntimeBridge = Object.freeze({
     url: string
     /** ⚑ **524 · a literal out of a closed vocabulary** — still a primitive, so `363`'s answer holds. */
     reach: ExternalMcpServerReach
-  }): Promise<ExternalMcpServerRow> =>
-    command({ kind: 'registerExternalMcpServer', ...input }) as Promise<ExternalMcpServerRow>,
+  }): Promise<ExternalMcpServerRow> => command({ kind: 'registerExternalMcpServer', ...input }),
   removeExternalMcpServer: (input: { serverId: string }): Promise<boolean> =>
-    command({ kind: 'removeExternalMcpServer', ...input }) as Promise<boolean>,
+    command({ kind: 'removeExternalMcpServer', ...input }),
   setSpawningEnabled: (input: { enabled: boolean }): Promise<{ spawningEnabled: boolean }> =>
-    command({ kind: 'setSpawningEnabled', ...input }) as Promise<{ spawningEnabled: boolean }>,
+    command({ kind: 'setSpawningEnabled', ...input }),
   setServicesOn: (input: { on: boolean }): Promise<{ servicesOn: boolean }> =>
-    command({ kind: 'setServicesOn', ...input }) as Promise<{ servicesOn: boolean }>,
+    command({ kind: 'setServicesOn', ...input }),
   setDefaultApprovalMode: (input: {
     mode: 'ask' | 'auto'
   }): Promise<{ defaultApprovalMode: 'ask' | 'auto' }> =>
-    command({ kind: 'setDefaultApprovalMode', ...input }) as Promise<{
-      defaultApprovalMode: 'ask' | 'auto'
-    }>,
+    command({ kind: 'setDefaultApprovalMode', ...input }),
 
   onLiveness: (listener: (message: SessionLivenessMessage) => void): (() => void) => {
     const forward = (_event: IpcRendererEvent, message: SessionLivenessMessage): void =>
@@ -822,18 +751,17 @@ const runtime: RuntimeBridge = Object.freeze({
   },
 
   checkProviderAuth: (input: CheckProviderAuthInput): Promise<AuthState> =>
-    command({ kind: 'checkProviderAuth', ...input }) as Promise<AuthState>,
+    command({ kind: 'checkProviderAuth', ...input }),
   reprovisionProviderHomes: (input: {
     provider: Provider
     statusOnly?: boolean
-  }): Promise<ProviderHomesReprovision> =>
-    command({ kind: 'reprovisionProviderHomes', ...input }) as Promise<ProviderHomesReprovision>,
+  }): Promise<ProviderHomesReprovision> => command({ kind: 'reprovisionProviderHomes', ...input }),
   reprovisionProviderAuth: (input: ProviderProfileInput): Promise<ReprovisionOutcome> =>
-    command({ kind: 'reprovisionProviderAuth', ...input }) as Promise<ReprovisionOutcome>,
+    command({ kind: 'reprovisionProviderAuth', ...input }),
   signInProvider: (input: ProviderProfileInput): Promise<ProviderSignInResult> =>
-    command({ kind: 'signInProvider', ...input }) as Promise<ProviderSignInResult>,
+    command({ kind: 'signInProvider', ...input }),
   cancelProviderSignIn: (input: ProviderProfileInput): Promise<void> =>
-    command({ kind: 'cancelProviderSignIn', ...input }) as Promise<void>,
+    command({ kind: 'cancelProviderSignIn', ...input }),
 
   onEvent: (listener: (message: RuntimeEventMessage) => void): (() => void) => {
     const forward = (_event: IpcRendererEvent, message: RuntimeEventMessage): void =>

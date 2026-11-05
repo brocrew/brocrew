@@ -292,8 +292,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "`aPersonIsBehindIt`, which `setCapabilities` and `createAgent` both read — is absent from "
         "the newest one, and only *no toolset publishes it* is left",
         [(IPC,
-          "      requireAPerson(sink, command.kind)\n      return host.setAgentProvider(command.profileId, command.provider)",
-          "      return host.setAgentProvider(command.profileId, command.provider)")],
+          # ⚑ **each command's answer is checked against its result type · re-anchored in place, not retired** — each case's answer is now checked against the command's result type, so its return ends with a satisfies check and is wrapped to fit; the plant still does the same thing
+          "      requireAPerson(sink, command.kind)\n      return host.setAgentProvider(\n",
+          "      return host.setAgentProvider(\n")],
     ),
     (
         "M13 · ⚠️ the quit door lets it through · a person told their choice took effect in the "

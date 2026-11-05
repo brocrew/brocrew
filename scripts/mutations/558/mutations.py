@@ -393,9 +393,9 @@ MUTATIONS = [
         [
             (
                 IPC,
-                "      requireAPerson(sink, command.kind)\n"
-                "      return host.setAgentDisplayName(command.profileId, command.displayName)\n",
-                "      return host.setAgentDisplayName(command.profileId, command.displayName)\n",
+                # ⚑ **each command's answer is checked against its result type · re-anchored in place, not retired** — each case's answer is now checked against the command's result type, so its return ends with a satisfies check and is wrapped to fit; the plant still does the same thing
+                "      requireAPerson(sink, command.kind)\n      return host.setAgentDisplayName(\n",
+                "      return host.setAgentDisplayName(\n",
             )
         ],
     ),
@@ -405,8 +405,9 @@ MUTATIONS = [
         [
             (
                 IPC,
-                "      requireAPerson(sink, command.kind)\n      return host.removeAgent(command.profileId)\n",
-                "      return host.removeAgent(command.profileId)\n",
+                # ⚑ **each command's answer is checked against its result type · re-anchored in place, not retired** — each case's answer is now checked against the command's result type, so its return ends with a satisfies check and is wrapped to fit; the plant still does the same thing
+                "      requireAPerson(sink, command.kind)\n      return host.removeAgent(command.profileId) satisfies Answer<'removeAgent'>\n",
+                "      return host.removeAgent(command.profileId) satisfies Answer<'removeAgent'>\n",
             )
         ],
     ),

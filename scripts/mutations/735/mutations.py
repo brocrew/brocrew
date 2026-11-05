@@ -372,7 +372,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M27 · the window's door drops the launch key — the pane's Cancel finds no launch to stop · "
         f"killed by `{KILLER}`",
-        [(IPC, "        command.launchKey ?? null,\n      )\n", "        null,\n      )\n")],
+        # ⚑ **each command's answer is checked against its result type · re-anchored in place, not retired** — each case's answer is now checked against the command's result type, so its return ends with a satisfies check and is wrapped to fit; the plant still does the same thing
+        [(IPC, "        command.launchKey ?? null,\n      )) satisfies Answer<'startAndSend'>\n", "        null,\n      )) satisfies Answer<'startAndSend'>\n")],
     ),
     (
         f"M28 · the wire STRIPS the launch key — `102`'s dead Cancel, on the new verb · killed by `{KILLER}`",

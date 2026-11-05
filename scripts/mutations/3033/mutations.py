@@ -168,9 +168,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "answers a channel no person is behind, with the agent's instructions and the provider's "
         f"record of each message · killed by `{WHAT}` and `{TURN}`",
         [(IPC,
-          "      requireAPerson(sink, command.kind)\n"
-          "      return host.whatTheModelGot(command.sessionId, command.ordinal)\n",
-          "      return host.whatTheModelGot(command.sessionId, command.ordinal)\n")],
+          # ⚑ **each command's answer is checked against its result type · re-anchored in place, not retired** — each case's answer is now checked against the command's result type, so its return ends with a satisfies check and is wrapped to fit; the plant still does the same thing
+          "      requireAPerson(sink, command.kind)\n      return host.whatTheModelGot(\n",
+          "      return host.whatTheModelGot(\n")],
     ),
     # it('refuses every database-reaching command once a quit has begun, and asks the host nothing'),
     # and it('⛔ read only, and reached by a window only inside the person’s own read')

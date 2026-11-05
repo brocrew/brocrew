@@ -1207,7 +1207,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M166 · the wire treats an ABSENT claim flag as a press (`claim !== false`) - a look sent with no flag takes a conversation no window holds - killed by a-look-takes-what-a-press-may-take-and-nothing-else.test.ts — killed by `a-look-takes-what-a-press-may-take-and-nothing-else.test.ts`",
         [
-            (IPC, "host.look(command.sessionId, sink, command.claim === true)", "host.look(command.sessionId, sink, command.claim !== false)"),
+            # ⚑ **each command's answer is checked against its result type · re-anchored in place, not retired** — each case's answer is now checked against the command's result type, so its return ends with a satisfies check and is wrapped to fit; the plant still does the same thing
+            (IPC, "        command.claim === true,\n", "        command.claim !== false,\n"),
         ],
     ),
     (

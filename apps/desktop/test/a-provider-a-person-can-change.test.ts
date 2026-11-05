@@ -583,7 +583,9 @@ describe('433 §A · the provider a person can change', () => {
       expect(ipc).toMatch(
         /case 'setAgentProvider':[\s\S]{0,600}requireAPerson\(sink, command\.kind\)/,
       )
-      expect(ipc).toContain('host.setAgentProvider(command.profileId, command.provider)')
+      expect(ipc).toMatch(
+        /host\.setAgentProvider\(\s*command\.profileId,\s*command\.provider,?\s*\)/,
+      )
       expect(/\b(setProvider|changeProvider|switchProvider|swapProvider)\b/i.test(ipc)).toBe(false)
       // ⛔ **The payload names an identity and carries no session**, which is the intersection
       // `a-front-door-that-asks-nothing.test.ts` §1's third test requires to stay empty.

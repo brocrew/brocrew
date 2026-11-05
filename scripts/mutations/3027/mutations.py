@@ -126,9 +126,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M10 · 🔴 the one read (an agent's memory verbatim, its own instructions) is open to an "
         f"agent channel · killed by `{READ}`",
         [(IPC,
-          "      requireAPerson(sink, command.kind)\n"
-          "      return host.whatThisAgentWasGiven(command.sessionId)\n",
-          "      return host.whatThisAgentWasGiven(command.sessionId)\n")],
+          # ⚑ **each command's answer is checked against its result type · re-anchored in place, not retired** — each case's answer is now checked against the command's result type, so its return ends with a satisfies check and is wrapped to fit; the plant still does the same thing
+          "      requireAPerson(sink, command.kind)\n      return host.whatThisAgentWasGiven(command.sessionId) satisfies Answer<'whatThisAgentWasGiven'>\n",
+          "      return host.whatThisAgentWasGiven(command.sessionId) satisfies Answer<'whatThisAgentWasGiven'>\n")],
     ),
     (
         "M11 · a refused file is counted in the sizes and the total · killed by "

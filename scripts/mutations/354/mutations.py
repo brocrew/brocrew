@@ -260,8 +260,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         [
             (
                 IPC,
-                "      return await host.cancelQueuedMessage(command.sessionId, command.messageId, sink)",
-                "      return await host.cancelQueuedMessage(command.sessionId, 'msg_whatever', sink)",
+                # ⚑ **each command's answer is checked against its result type · re-anchored in place, not retired** — each case's answer is now checked against the command's result type, so its return ends with a satisfies check and is wrapped to fit; the plant still does the same thing
+                "      return (await host.cancelQueuedMessage(\n        command.sessionId,\n        command.messageId,\n",
+                "      return (await host.cancelQueuedMessage(\n        command.sessionId,\n        'msg_whatever',\n",
             )
         ],
     ),

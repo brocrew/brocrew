@@ -290,7 +290,8 @@ MUTATIONS = [
     (
         "M23 · ⛔ 203 M10, moved · the IPC door stops naming the CALLER on `send` — the shape of the "
         "whole 203 defect, one verb at a time",
-        [(IPC, "      return await host.send(command.sessionId, command.text, sink, command.attachments)", "      return await host.send(command.sessionId, command.text, undefined as never, command.attachments)")],
+        # ⚑ **each command's answer is checked against its result type · re-anchored in place, not retired** — each case's answer is now checked against the command's result type, so its return ends with a satisfies check and is wrapped to fit; the plant still does the same thing
+        [(IPC, "      return (await host.send(\n        command.sessionId,\n        command.text,\n        sink,\n", "      return (await host.send(\n        command.sessionId,\n        command.text,\n        undefined as never,\n")],
     ),
     (
         "M24 · ⛔ 203 M30, moved · ordinary `send` stops asking whether the session can take a turn",

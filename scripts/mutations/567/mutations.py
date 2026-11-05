@@ -266,8 +266,9 @@ MUTATIONS = [
             # Source-only re-anchor, NOT VERIFIED: keep the worker snapshot wrapper; the plant still adds await at the door, outside composition.
             (
                 IPC,
-                "      return host.readForWindow(() => {\n        return host.readWorkspace()\n      })\n",
-                "      return await host.readForWindow(() => {\n        return host.readWorkspace()\n      })\n",
+                # ⚑ **each command's answer is checked against its result type · re-anchored in place, not retired** — each case's answer is now checked against the command's result type, so its return ends with a satisfies check and is wrapped to fit; the plant still does the same thing
+                "      return host.readForWindow(() => {\n        return host.readWorkspace()\n      }) satisfies Answer<'readWorkspace'>\n",
+                "      return await host.readForWindow(() => {\n        return host.readWorkspace()\n      }) satisfies Answer<'readWorkspace'>\n",
             )
         ],
     ),
