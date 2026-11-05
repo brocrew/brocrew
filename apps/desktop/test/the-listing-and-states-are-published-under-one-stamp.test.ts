@@ -101,7 +101,9 @@ describe('the listing and the states are published under one stamp', () => {
     pushed = []
     host.releaseSession(helper, other)
     await vi.waitFor(() => expect(pushed.length).toBeGreaterThan(0))
-    const push = pushed.at(-1)!
+    const last = pushed.at(-1)!
+    if (last.published === undefined) throw new Error('the push carried no stamp')
+    const push = { ...last, published: last.published }
     expect(push.published.epoch).toEqual(host.currentEpoch())
     expect(push.published.seq).toBeGreaterThan(before.published.seq)
     const after = await listing()
