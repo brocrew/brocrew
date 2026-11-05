@@ -1966,7 +1966,7 @@ export class PluginLifecycleController {
         if (this.draining || this.effectQueue.signal.aborted || !ownsRun()) return pending()
         stopped()
         // Consumer cleanup is attempted, but an acknowledgement is not process admission.
-        await this.revoke(install).catch(() => undefined)
+        await this.revoke(install, true).catch(() => undefined)
         if (this.draining || this.effectQueue.signal.aborted || !ownsRun()) return pending()
         this.runs.delete(id)
         this.attempted.delete(id)
@@ -2007,7 +2007,7 @@ export class PluginLifecycleController {
     if (this.localOperations.has(operationId)) return
     if ((await this.options.runtime.previousOwnerClean()) !== true) return pending()
   }
-  private async revoke(install: Installation): Promise<void> {
+  private async revoke(install: Installation, waitForCurrentOnly = false): Promise<void> {
     const results = await Promise.allSettled(
       [...this.workspaces.values()]
         .filter((one) => one.live)
@@ -2028,8 +2028,10 @@ export class PluginLifecycleController {
             install.pluginId,
             (workspace.consumerRevisions.get(install.pluginId) ?? 0) + 1,
           )
-          const revoked = await Promise.allSettled(
-            targets.map(async ({ origin, obligations, installId }) => {
+          const attempts = targets.map(({ origin, obligations, installId }) => ({
+            origin,
+            installId,
+            work: (async () => {
               if (
                 (await bounded(() =>
                   this.effectQueue.consumer(() => origin.revoke(install.pluginId, installId)),
@@ -2051,7 +2053,18 @@ export class PluginLifecycleController {
                 }),
               )
               await this.effectQueue.consumer(() => origin.applied(install.pluginId, null))
-            }),
+            })(),
+          }))
+          // Restart waits for its current publisher; old origins remain independently retriable.
+          void Promise.allSettled(attempts.map((one) => one.work))
+          const revoked = await Promise.allSettled(
+            attempts
+              .filter(
+                (one) =>
+                  !waitForCurrentOnly ||
+                  (one.origin === publisher && one.installId === install.installId),
+              )
+              .map((one) => one.work),
           )
           if (revoked.some((one) => one.status !== 'fulfilled')) return pending()
         }),
