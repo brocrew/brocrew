@@ -1,4 +1,4 @@
-/** Actual Settings→preload→IPC→isolated Chrome UI. Fictional lifecycle and RPC peer only. */
+/** Actual Settings→preload→IPC→isolated Chrome UI. Fictional lifecycle and tool replies only. */
 import { app, BrowserWindow, ipcMain, protocol, WebContentsView, nativeTheme } from 'electron'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -71,6 +71,31 @@ async function run() {
           { id: 'chrome', name: 'Chrome', state: installed ? 'Running' : 'Available', installed },
           { id: 'fictional-maps', name: 'Fictional Maps', state: 'Available', installed: false },
         ],
+        inspectPackage: async (input) => {
+          assert.equal(input, 'chrome')
+          return {
+            id: 'chrome',
+            name: 'Chrome',
+            ref: fixture.ref,
+            manifest: fixture.manifest,
+            details: {
+              version: fixture.manifest.version,
+              digest: fixture.binding.releaseDigest,
+              manifestSha256: fixture.manifestSha256,
+              authors: fixture.manifest.authors,
+              permissions: {
+                ...fixture.manifest.permissions,
+                resources: [],
+              },
+            },
+          }
+        },
+        applyPackage: async (ref, action) => {
+          assert.deepEqual(ref, fixture.ref)
+          assert.equal(action, 'install')
+          installs++
+          installed = true
+        },
         install: async () => {
           installs++
           installed = true
@@ -83,15 +108,19 @@ async function run() {
           ...fixture,
           current: () => true,
           onInvalidate: () => () => {},
-          propose: () => {},
-          peer: {
-            read: async (_p, _r, binding) => {
-              check(binding.pluginId === 'chrome')
+          tools: {
+            current: () => installed,
+            callTool: async (tool, args, requestId, signal) => {
+              check(tool === 'configuration_snapshot')
+              assert.deepEqual(args, {})
+              assert.equal(typeof requestId, 'string')
+              assert.equal(signal.aborted, false)
               reads++
-              return FICTIONAL_CHROME
+              return {
+                status: 'result',
+                result: { content: [{ type: 'text', text: JSON.stringify(FICTIONAL_CHROME) }] },
+              }
             },
-            subscribe: async () => () => {},
-            proposeConfig: async () => ({ resources: [] }),
           },
         }),
       }
@@ -110,7 +139,16 @@ async function run() {
       )
       if (theme === 'classic') {
         await owner.webContents.executeJavaScript(
-          `document.querySelector('[data-plugin="chrome"] [data-cy="plugin-install"]').click()`,
+          `document.querySelector('[data-plugin="chrome"] [data-cy="plugin-review-install"]').click()`,
+        )
+        await wait(() =>
+          owner.webContents.executeJavaScript(
+            `!!document.querySelector('[data-plugin="chrome"] [data-cy="plugin-review-confirm"]')`,
+          ),
+        )
+        check(installs === 0 && !installed)
+        await owner.webContents.executeJavaScript(
+          `document.querySelector('[data-plugin="chrome"] [data-cy="plugin-review-confirm"]').click()`,
         )
         await wait(() =>
           owner.webContents.executeJavaScript(
@@ -118,7 +156,6 @@ async function run() {
           ),
         )
         check(installs === 1 && installed)
-        owner.showInactive()
         await new Promise((resolve) => setTimeout(resolve, 250))
         step++
         writeFileSync(

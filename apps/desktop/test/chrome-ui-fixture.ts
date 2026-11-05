@@ -1,41 +1,60 @@
-import { verifyChromeUiArchive } from '../smoke/chrome-ui-archive'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import type { PluginManifest } from '../src/main/plugins/package-schema'
-import { inventory, packageFixture, verified } from './plugin-package-fixtures'
-/** Package UI is copied from 6f9aa9213. This fixture has an INERT server and fictional target/data. */
+import { parsePluginManifest } from '../src/main/plugins/package-schema'
+import { readPluginArchive } from '../src/main/plugins/package-archive'
+import { verifyPluginPackage } from '../src/main/plugins/package-verifier'
+import { pluginSha256 } from '../src/main/plugins/package-digests'
+import { tar } from './plugin-package-fixtures'
+/** Uses current package UI bytes with an INERT server and fictional target/data when no archive is supplied. */
 export function chromeUiFixture(root = resolve(__dirname, '../../../plugins/chrome')) {
-  if (process.env.BROBOT_CHROME_TEST_ARCHIVE) {
-    const { verified, release } = verifyChromeUiArchive(
-      readFileSync(process.env.BROBOT_CHROME_TEST_ARCHIVE),
-    )
-    return {
-      verified,
-      binding: {
-        pluginId: 'chrome',
-        releaseDigest: release.archive.sha256,
-        installId: 'fictional-install',
-        incarnation: 'fictional-incarnation',
-        leaseId: 'fictional-lease',
-      },
+  let archive: Buffer
+  if (process.env.BROBOT_CHROME_TEST_ARCHIVE)
+    archive = readFileSync(process.env.BROBOT_CHROME_TEST_ARCHIVE)
+  else {
+    const manifest = parsePluginManifest(readFileSync(resolve(root, 'manifest-template.json')))
+    if (manifest.format !== 3) throw new Error('Generic Chrome UI package required')
+    const files = new Map<string, Buffer>([
+      [manifest.runtime.entry, Buffer.from('export const fictional = true;\n')],
+      ['tools.json', Buffer.from('{"tools":[]}')],
+    ])
+    for (const file of ['ui/index.html', 'ui/style.css', 'ui/app.js'])
+      files.set(file, readFileSync(resolve(root, file)))
+    const prepared = {
+      ...manifest,
+      platforms: [{ os: 'linux' as const, cpu: 'x64' as const }],
+      files: [...files].map(([path, bytes]) => ({
+        path,
+        bytes: bytes.length,
+        sha256: pluginSha256(bytes),
+      })),
     }
+    archive = tar([
+      { path: 'plugin.json', body: Buffer.from(JSON.stringify(prepared)) },
+      ...[...files].map(([path, body]) => ({ path, body })),
+    ])
   }
-  const manifest: PluginManifest = JSON.parse(
-    readFileSync(resolve(root, 'manifest-template.json'), 'utf8'),
+  const manifestBytes = readPluginArchive(archive, 'tar').get('plugin.json')!
+  const manifest = parsePluginManifest(manifestBytes)
+  if (manifest.format !== 3 || manifest.id !== 'chrome')
+    throw new Error('Generic Chrome UI package required')
+  const digest = pluginSha256(archive)
+  const verified = verifyPluginPackage(
+    archive,
+    { sha256: digest, bytes: archive.length, compression: 'tar' },
+    { target: manifest.platforms[0]!, appVersion: '1.0.0' },
   )
-  const files = new Map<string, Buffer>([
-    ['server.mjs', Buffer.from('export const fictional = true;\n')],
-  ])
-  for (const file of ['ui/index.html', 'ui/style.css', 'ui/app.js'])
-    files.set(file, readFileSync(resolve(root, file)))
-  manifest.platforms = [{ os: 'linux', cpu: 'x64' }]
-  manifest.files = inventory(files)
-  const fixture = packageFixture({ files, manifest })
   return {
-    verified: verified(fixture),
+    verified,
+    manifest,
+    manifestSha256: pluginSha256(manifestBytes),
+    ref: {
+      source: 'https://fictional.example.invalid/chrome.tar',
+      sha256: digest,
+      bytes: archive.length,
+    },
     binding: {
       pluginId: 'chrome',
-      releaseDigest: fixture.release.archive.sha256,
+      releaseDigest: digest,
       installId: 'fictional-install',
       incarnation: 'fictional-incarnation',
       leaseId: 'fictional-lease',

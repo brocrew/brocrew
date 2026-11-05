@@ -10,7 +10,7 @@ import {
   type PluginConfigurationView,
 } from '../src/main/plugins/ui/host'
 import { PLUGIN_SCHEME } from '../src/main/plugins/ui/assets'
-import { uiFixture } from '../test/plugin-ui-fixtures'
+import { genericUiFixture } from '../test/plugin-ui-fixtures'
 import { guardedAppIpc } from '../src/main/app-ipc'
 import { isPluginSender } from '../src/main/plugins/ui/senders'
 
@@ -40,7 +40,7 @@ async function run() {
   checkpoint()
   installPluginUiRpc(ipcMain)
   let appCalls = 0,
-    peerCalls = 0
+    toolCalls = 0
   guardedAppIpc(ipcMain).handle('app:fictional-probe', () => {
     appCalls++
     return 'private app data'
@@ -54,27 +54,31 @@ async function run() {
   async function create() {
     phase = 3
     checkpoint()
-    const f = uiFixture()
+    const f = genericUiFixture()
     let revoke = () => {},
       live = true
     const host = await openPluginConfigurationView({
       verified: f.verified,
       binding: f.binding,
-      peer: {
-        read: async (_payload, _revision, binding) => {
-          peerCalls++
-          assert.equal(binding.pluginId, 'fictional-bakery')
-          return { loaves: 2 }
+      tools: {
+        current: () => live,
+        callTool: async (tool, args, requestId, signal) => {
+          toolCalls++
+          assert.equal(tool, 'fictional_loaves')
+          assert.deepEqual(args, { shelf: 'birch' })
+          assert.equal(requestId, 'own')
+          assert.equal(signal.aborted, false)
+          return {
+            status: 'result',
+            result: { content: [{ type: 'text', text: '{"loaves":2}' }] },
+          }
         },
-        subscribe: async () => () => {},
-        proposeConfig: async () => ({ resources: [] }),
       },
       current: () => live,
       onInvalidate: (stop) => {
         revoke = stop
         return () => {}
       },
-      propose: () => {},
     })
     phase = 4
     checkpoint()
@@ -107,16 +111,19 @@ async function run() {
   const reply = await wc.executeJavaScript(`new Promise((resolve,reject)=>{
     const timeout=setTimeout(()=>reject(new Error('fictional DOM bridge unanswered')),5000);
     addEventListener('message',event=>{if(event.source===window && event.data.requestId==='own' && typeof event.data.ok==='boolean'){clearTimeout(timeout);resolve(event.data)}});
-    postMessage({channel:'brocrew-plugin-ui:v1',requestId:'own',method:'read',payload:{},configRevision:0},location.origin);
+    postMessage({channel:'brocrew-plugin-tools:v1',requestId:'own',method:'callTool',params:{tool:'fictional_loaves',arguments:{shelf:'birch'}}},location.origin);
   })`)
   assert.deepEqual(reply, {
-    channel: 'brocrew-plugin-ui:v1',
+    channel: 'brocrew-plugin-tools:v1',
     requestId: 'own',
     ok: true,
-    data: { loaves: 2 },
+    data: {
+      status: 'result',
+      result: { content: [{ type: 'text', text: '{"loaves":2}' }] },
+    },
   })
   count++
-  check(peerCalls === 1)
+  check(toolCalls === 1)
   check(
     await wc.executeJavaScript(
       `(()=>{const script=document.createElement('script');script.textContent='window.fictionalInlineRan=true';document.head.append(script);return typeof window.fictionalInlineRan==='undefined'})()`,
@@ -134,9 +141,9 @@ async function run() {
     ),
   )
   await wc.executeJavaScript(
-    `postMessage({channel:'brocrew-plugin-ui:v1',requestId:'foreign',method:'app:fictional-probe',payload:{},configRevision:0},location.origin)`,
+    `postMessage({channel:'brocrew-plugin-tools:v1',requestId:'foreign',method:'app:fictional-probe',params:{tool:'fictional_loaves',arguments:{}}},location.origin)`,
   )
-  check(appCalls === 0 && peerCalls === 1)
+  check(appCalls === 0 && toolCalls === 1)
   const c = await create()
   const windowsBefore = BrowserWindow.getAllWindows().length
   const cContents = c.host.view.webContents
