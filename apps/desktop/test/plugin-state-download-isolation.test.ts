@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { cleanupLifecycleFixtures, deferred, fixture } from './plugin-lifecycle-fixtures'
@@ -60,4 +61,39 @@ it('computes B prepare after an unrelated choice commits during the actual contr
     'fictional-fern',
     'fictional-moss',
   ])
+})
+
+it('aborts a held controller download at drain before preparing an operation', async () => {
+  const f = await fixture({}, false, 'fictional-fern')
+  const entered = deferred<AbortSignal>(),
+    release = deferred<void>()
+  f.opts.download = async (_release, signal) => {
+    entered.resolve(signal)
+    // An inert downloader deliberately ignores abort until the test releases it.
+    await release.promise
+    return f.pkg.archive
+  }
+  const operation = randomUUID()
+  const bytes = await readFile(join(f.root, 'state/installed-state.json')).catch(() => null)
+  const installing = f.controller.install(f.handle, 'fictional-fern', operation).then(
+    () => true,
+    () => false,
+  )
+  const signal = await entered.promise
+  try {
+    await f.controller.drain()
+    expect(signal.aborted).toBe(true)
+    expect(await installing).toBe(false)
+    expect(f.state.inspect().pending).toBeNull()
+    expect(f.state.operation(operation)).toBeUndefined()
+    expect(f.starts()).toBe(0)
+    expect(await readFile(join(f.root, 'state/installed-state.json')).catch(() => null)).toEqual(
+      bytes,
+    )
+  } finally {
+    release.resolve()
+    await installing
+  }
+  expect(f.state.currentInstallation('fictional-fern')).toBeNull()
+  expect(f.state.operation(operation)).toBeUndefined()
 })

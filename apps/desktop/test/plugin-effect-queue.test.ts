@@ -71,14 +71,16 @@ it('the actual owner lease remains held until its queued filesystem effect settl
   const owner = await PluginSupervisor.start({ root, workspaceRoots: [], drainWithin: 1000 })
   owners.push(owner)
   const queue = new PluginEffectQueue()
-  owner.bindLifecycleEffects(() => queue.close())
+  owner.bindLifecycleEffects(queue)
   const entered = deferred<void>(),
     release = deferred<void>(),
     effect = vi.fn(async () => {
       entered.resolve()
       await release.promise
     })
-  const work = queue.mutate('fictional-birch', randomUUID(), 'uninstall', effect)
+  const work = queue.mutate('fictional-birch', randomUUID(), 'uninstall', () =>
+    queue.effect('fictional-birch', effect),
+  )
   await entered.promise
   let closed = false
   void owner.closed.then(() => {
@@ -94,6 +96,7 @@ it('the actual owner lease remains held until its queued filesystem effect settl
     release.resolve()
     await work
     await closing
+    await owner.closed
   }
   const successor = await PluginSupervisor.start({ root, workspaceRoots: [] })
   owners.push(successor)
