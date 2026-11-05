@@ -905,7 +905,7 @@ describe('canonical window worker folds and independent live-store reads', () =>
     const direct = host.questionsForAPerson()
     expect(await settled).toEqual(callers.map(() => ({ status: 'fulfilled', value: direct })))
     read.mockImplementation(async () => engine.read({ kind: 'routes' }))
-    // The failure is remembered at its stamp; a write moves the writer, and the worker is asked again.
+    // A worker that answered nothing is gone, which is not remembered, so the next ask tries again.
     row('alpha', 'request_escalated', { type: 'request_escalated', requestId: 'first' })
     expect((await host.readForWindow(() => host.questionsForAPerson())).rows).toHaveLength(1)
     expect(read).toHaveBeenCalledTimes(2)
