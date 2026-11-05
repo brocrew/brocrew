@@ -2225,6 +2225,23 @@ accepted = drive(module, [
 ])
 checked = drive(module, ["--check"])
 
+# 5b · a product edit that keeps every anchor changes only a file hash, which is provenance.
+(source / "epsilon.txt").write_text("epsilon-one\nepsilon-note\n")
+byte_edit = drive(module, ["--check"])
+# 5c · a hand edit to the report's words, or to its table and path inventory, still fails.
+report_text = module.REPORT.read_text()
+module.REPORT.write_text(report_text.replace("what they are now", "what they were", 1))
+claim_edit = drive(module, ["--check"])
+tick = chr(96)
+module.REPORT.write_text(report_text.replace(
+    "| 902 | " + tick + "src/epsilon.txt" + tick + " |", "| 902 | " + tick + "src/zeta.txt" + tick + " |", 1))
+inventory_edit = drive(module, ["--check"])
+module.REPORT.write_text(report_text)
+# 5d · the same edit with the anchor gone still fails as a retirement.
+(source / "epsilon.txt").write_text("epsilon-gone\n")
+anchor_gone = drive(module, ["--check"])
+(source / "epsilon.txt").write_text("epsilon-one\n")
+
 # 6 · the other direction: a row that stops being retired is announced, and written.
 (source / "beta.txt").write_text("beta-one\n")
 healed = drive(module, [])
@@ -2251,6 +2268,10 @@ print(json.dumps({
     "withCheck": with_check,
     "accepted": accepted,
     "checked": checked,
+    "byteEdit": byte_edit,
+    "claimEdit": claim_edit,
+    "inventoryEdit": inventory_edit,
+    "anchorGone": anchor_gone,
     "healed": healed,
     "strongSame": strong_same,
     "weakened": weakened,
@@ -2367,6 +2388,22 @@ describeOnPosix('a retirement is announced, never absorbed (528, HO-050 §3)', (
     expect(fixture.checked.output).toContain(
       '4 retired, each recorded with the reason it stopped matching',
     )
+  })
+
+  it('a product edit that keeps every anchor passes `--check`; the report and a lost anchor still fail', () => {
+    const fixture = retirement()
+
+    expect(fixture.byteEdit.output).not.toContain('does not match')
+    expect(fixture.byteEdit.status).toBe(0)
+
+    expect(fixture.claimEdit.status).toBe(1)
+    expect(fixture.claimEdit.output).toContain('CENSUS.md does not match')
+    expect(fixture.inventoryEdit.status).toBe(1)
+    expect(fixture.inventoryEdit.output).toContain('CENSUS.md does not match')
+
+    expect(fixture.anchorGone.status).toBe(1)
+    expect(fixture.anchorGone.output).toContain('mutation rows went stale since CENSUS.md')
+    expect(fixture.anchorGone.output).toContain('902 M1')
   })
 
   it('⚠️ a row that stops being retired is announced too, and writes — the verdict it carries was never re-taken', () => {
