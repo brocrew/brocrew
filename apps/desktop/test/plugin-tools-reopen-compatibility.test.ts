@@ -7,7 +7,6 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
-import { TurnInProgress } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import type { LoginRenewalOperations } from '../src/main/providers/auth-types'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
@@ -939,108 +938,39 @@ describe.each(['claude', 'codex'] as const)(
     it('leaves inactive title preparation off direct, queued and interrupt handoffs on the public world', async () => {
       const w = await connected(provider, false, 'ask')
       await w.f.controller.setTitlesEnabled(w.f.handle, 'fictional-bakery', false)
-      const handle = w.world.handles.get('writer')!
-      const send = handle.send.bind(handle)
-      function clone<T>(value: T): T | undefined {
-        try {
-          return structuredClone(value)
-        } catch {
-          return undefined
-        }
-      }
-      function snapshot() {
-        try {
-          return clone({
-            status: handle.status(),
-            settings: handle.settings,
-            approval: handle.approval,
-            folders: handle.workFolders,
-            origins: handle.origins,
-          })
-        } catch {
-          return undefined
-        }
-      }
-      type Phase = 'direct' | 'queued-input' | 'interrupt/flush' | 'replacement'
-      let phase: Phase = 'direct'
-      type Observation = {
-        phase: Phase
-        text: string
-        origin: Parameters<typeof send>[1]
-        before: ReturnType<typeof snapshot>
-        afterCall?: ReturnType<typeof snapshot>
-        settled?: ReturnType<typeof snapshot>
-        outcome: 'pending' | 'resolved' | 'rejected' | 'threw'
-        error?: { name: string; message: string; turnInProgress: boolean }
-      }
-      const observations: Observation[] = []
-      function settled(record: Observation, outcome: Observation['outcome'], error?: unknown) {
-        try {
-          record.outcome = outcome
-          record.settled = snapshot()
-          if (outcome === 'rejected' || outcome === 'threw')
-            record.error = {
-              name: error instanceof Error ? error.name : typeof error,
-              message: error instanceof Error ? error.message : String(error),
-              turnInProgress: error instanceof TurnInProgress,
-            }
-        } catch {
-          // Observing a handover never changes its result.
-        }
-      }
-      vi.spyOn(handle, 'send').mockImplementation((...args) => {
-        const record: Observation = {
-          phase,
-          text: args[0],
-          origin: clone(args[1]),
-          before: snapshot(),
-          outcome: 'pending',
-        }
-        observations.push(record)
-        let completion: ReturnType<typeof send>
-        try {
-          completion = send(...args)
-        } catch (error) {
-          settled(record, 'threw', error)
-          throw error
-        }
-        record.afterCall = snapshot()
-        void completion.then(
-          () => settled(record, 'resolved'),
-          (error: unknown) => settled(record, 'rejected', error),
-        )
-        return completion
-      })
       await w.host.send(w.id, 'Fictional inactive direct words.', w.world.window)
       await expect.poll(() => w.world.handles.get('writer')!.status()).toBe('waiting_permission')
-      phase = 'queued-input'
-      await w.host.send(w.id, 'Fictional inactive queued words.', w.world.window)
-      phase = 'interrupt/flush'
+      const queued = await w.host.queueMessage(
+        w.id,
+        'Fictional inactive queued words.',
+        w.world.window,
+      )
+      expect(queued).toMatchObject({ outcome: 'queued' })
+      if (queued.outcome !== 'queued') throw new Error('The fictional message was not held.')
+      expect(w.sent()).toHaveLength(1)
+      expect(w.world.handles.get('writer')!.origins).toEqual([{ kind: 'person' }])
+      expect(w.turns().map((event) => event.text)).toEqual(['Fictional inactive direct words.'])
+      expect(
+        w.world
+          .ledger(w.id)
+          .filter(
+            (event) => event.type === 'message_queued' && event.messageId === queued.messageId,
+          ),
+      ).toEqual([expect.objectContaining({ text: 'Fictional inactive queued words.' })])
+      expect(
+        w.world
+          .ledger(w.id)
+          .filter(
+            (event) => event.type === 'message_unqueued' && event.messageId === queued.messageId,
+          ),
+      ).toEqual([])
       await w.host.interrupt(w.id, w.world.window)
       await expect.poll(() => w.sent().length).toBe(2)
       await expect.poll(() => w.world.handles.get('writer')!.status()).toBe('waiting_permission')
-      phase = 'replacement'
       await w.host.sendInterrupting(w.id, 'Fictional inactive replacement words.', w.world.window)
       const accepted = w.world.handles.get('writer')!.origins
       const durable = w.turns().map((event) => event.text)
-      const delivery = JSON.stringify({
-        attempted: w.sent(),
-        accepted,
-        durable,
-        observations,
-        launches: w.world.launches.map(({ kind, profile, options }) => ({
-          kind,
-          profile,
-          approvalMode: options.approvalMode,
-          model: options.model,
-          reasoningEffort: options.reasoningEffort,
-          planMode: options.planMode,
-          planModeEnded: options.planModeEnded,
-        })),
-        queueRows: w.world
-          .ledger(w.id)
-          .filter((event) => event.type === 'message_queued' || event.type === 'message_unqueued'),
-      })
+      const delivery = JSON.stringify({ attempted: w.sent(), accepted, durable })
       expect(accepted, delivery).toEqual([
         { kind: 'person' },
         { kind: 'person' },
@@ -1052,6 +982,13 @@ describe.each(['claude', 'codex'] as const)(
         'Fictional inactive replacement words.',
       ])
       expect(w.sent(), delivery).toHaveLength(3)
+      expect(
+        w.world
+          .ledger(w.id)
+          .filter(
+            (event) => event.type === 'message_unqueued' && event.messageId === queued.messageId,
+          ),
+      ).toEqual([expect.objectContaining({ reason: 'sent' })])
       expect(w.sent().every((text) => !text.includes('Suggested file titles'))).toBe(true)
       expect(w.seen).toHaveLength(0)
       expect(w.world.handles.get('writer')!.origins).toHaveLength(3)
