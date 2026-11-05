@@ -4,6 +4,7 @@ import { createConnection } from 'node:net'
 import { isAbsolute, join } from 'node:path'
 import { z } from 'zod'
 import { SupervisorStorage } from './storage'
+import { launchRootKey } from './launch-identity'
 import { isWithinOrSame } from '../private-files'
 import { workspacePluginRoot } from '../root-selection'
 import {
@@ -183,7 +184,7 @@ export class PluginWorkspaceLease {
         const until = performance.now() + OWNER_LAUNCH_MS
         try {
           await Promise.race([
-            serializedLaunch(storage!.rootIdentity, options.launch),
+            serializedLaunch(launchRootKey(storage!.root), options.launch),
             new Promise<never>((_, reject) => {
               timer = setTimeout(
                 () => reject(new PluginSupervisorError('unavailable')),
