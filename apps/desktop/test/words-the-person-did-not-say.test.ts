@@ -641,7 +641,8 @@ describe('413 · words the person did not say', () => {
       // the one handover itself so the frame and the stamp read the same `from`. ⚠️ **Re-aimed,
       // not weakened** (standing rule 26): a door is still a call site, but three of them are
       // `this.handToProvider(`. The go-ahead and login continuation share the app's stamped
-      // send. Both handovers return the provider's promise without adding an async wrapper.
+      // send, which waits only for title preparation when titles are active; with them off, the
+      // provider's send is called at once, as before.
       const composing = code.match(/await this\.handToProvider\(/g) ?? []
       const sending =
         code.match(/return session\.handle\.send\(text, this\.stampFor\(null, \[\]\)\)/g) ?? []
@@ -651,7 +652,7 @@ describe('413 · words the person did not say', () => {
       expect(code).toContain('await this.sendTheAppsWords(session, text)')
       expect(code).toContain('await this.sendTheAppsWords(session, continuation.text)')
       expect(code).toContain(
-        'private sendTheAppsWords(session: HostedSession, text: string): Promise<void>',
+        'private async sendTheAppsWords(session: HostedSession, text: string): Promise<void>',
       )
       expect(code.match(/await session\.handle\.send\(/g) ?? []).toHaveLength(0)
       expect(code).toContain('return session.handle.send(words, this.stampFor(from, handed))')
