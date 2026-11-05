@@ -1292,3 +1292,113 @@ it.each(['false', 'held'] as const)(
   },
   15000,
 )
+
+it.each(['revoke', 'clear'] as const)(
+  'an old publisher held in %s cannot clear a newer binding that reuses the same sink',
+  async (boundary) => {
+    const h = await setup()
+    const install = h.f.state.currentInstallation(A)!
+    const originalRun = h.controller.contributions(h.person, A)
+    const local = projection()
+    const handle = await h.attach(local.sink)
+    await accepted(h.controller, handle, A, install.installId)
+    await accepted(h.controller, handle, B, h.f.state.currentInstallation(B)!.installId)
+    const alternate = projection()
+    const positiveEntered = deferred<void>(),
+      positiveHold = deferred<void>(),
+      positiveReturned = deferred<void>(),
+      cleanupEntered = deferred<void>(),
+      cleanupHold = deferred<void>(),
+      cleanupReturned = deferred<void>()
+    let firstPositive = true,
+      retiring = false,
+      firstRevoke = true,
+      firstClear = true
+    releases.push(() => {
+      positiveHold.resolve()
+      cleanupHold.resolve()
+    })
+    const revoke = vi.fn(async (id: string, installId: string) => {
+      const result = await alternate.sink.revoke(id, installId)
+      if (id === A && retiring) {
+        // The old revoke's side effect precedes its held acknowledgement.
+        alternate.rows.delete(id)
+        if (firstRevoke) {
+          firstRevoke = false
+          if (boundary === 'revoke') {
+            cleanupEntered.resolve()
+            await cleanupHold.promise
+            cleanupReturned.resolve()
+          }
+        }
+      }
+      return result
+    })
+    const reconcile = vi.fn(async (change: Parameters<WorkspaceProjection['reconcile']>[0]) => {
+      await alternate.sink.reconcile(change)
+      if (change.pluginId === A && !change.receipt && retiring && firstClear) {
+        firstClear = false
+        if (boundary === 'clear') {
+          await alternate.sink.applied(A, null)
+          cleanupEntered.resolve()
+          await cleanupHold.promise
+          cleanupReturned.resolve()
+        }
+      }
+    })
+    const applied = vi.fn(
+      async (id: string, receipt: Parameters<WorkspaceProjection['applied']>[1]) => {
+        await alternate.sink.applied(id, receipt)
+        if (id === A && receipt && firstPositive) {
+          firstPositive = false
+          positiveEntered.resolve()
+          await positiveHold.promise
+          positiveReturned.resolve()
+        }
+      },
+    )
+    const publisher: WorkspaceProjection = {
+      ...alternate.sink,
+      workspaceId: local.sink.workspaceId,
+      revoke,
+      reconcile,
+      applied,
+    }
+    await h.controller.reconcileConsumer(handle, publisher)
+    await bounded(positiveEntered.promise, 'old same-origin positive publication')
+    await accepted(h.controller, handle, B, h.f.state.currentInstallation(B)!.installId)
+    retiring = true
+    await bounded(
+      h.controller.restartPluginTools(A, originalRun.identity.runId, () => {}),
+      'replacement before old same-origin cleanup acknowledgement',
+    )
+    await bounded(cleanupEntered.promise, 'old same-origin cleanup held after its side effect')
+    expect(alternate.rows.has(A)).toBe(false)
+    await h.controller.reconcileConsumer(handle, publisher)
+    await accepted(h.controller, handle, A, install.installId)
+    const replacement = h.controller.contributions(handle, A)
+    const newRow = alternate.rows.get(A)!
+    expect(newRow.installId).toBe(install.installId)
+    expect(replacement.identity.runId).not.toBe(originalRun.identity.runId)
+    expect(replacement.current()).toBe(true)
+    const snapshot = join(h.f.root, 'state', 'installed-state.json')
+    const selected = await readFile(snapshot)
+    const writes = vi.spyOn(h.f.state, 'recordProjection')
+    const callbacks = [reconcile.mock.calls.length, applied.mock.calls.length]
+    cleanupHold.resolve()
+    positiveHold.resolve()
+    await bounded(cleanupReturned.promise, 'old same-origin cleanup returned')
+    await bounded(positiveReturned.promise, 'old same-origin positive acknowledgement returned')
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    expect([reconcile.mock.calls.length, applied.mock.calls.length]).toEqual(callbacks)
+    expect(writes).not.toHaveBeenCalled()
+    expect(alternate.rows.get(A)).toBe(newRow)
+    expect(h.controller.admitted(handle, A, install.installId)).toBe(true)
+    expect(replacement.current()).toBe(true)
+    expect(h.controller.contributions(h.otherPerson, B).current()).toBe(true)
+    expect(await readFile(snapshot)).toEqual(selected)
+    await h.controller.detach(handle)
+    expect(h.controller.cleanForShutdown()).toBe(true)
+  },
+  15000,
+)
