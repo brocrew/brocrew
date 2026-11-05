@@ -7895,6 +7895,11 @@ export class RuntimeHost implements LiveHost {
         readonly unresumable: UnresumableSessionInfo[]
       }
     | undefined
+  /** What each conversation waits on, and the forest, each kept at the listing's version. */
+  private readonly listingAnswersKept = new Map<
+    string,
+    { readonly at: number; readonly value: unknown }
+  >()
   /**
    * The person's queue's version: advanced by every announcement — which a commit holding a row
    * the queue reads makes — and every state move, so an answer kept at one version is the answer at
@@ -19463,14 +19468,42 @@ export class RuntimeHost implements LiveHost {
    * composed again at the next ask.
    */
   private forAPerson<T>(name: string, compose: () => T): T {
+    return this.keptUntilItMoves(this.personsKept, () => this.personsVersion, name, compose)
+  }
+
+  /**
+   * One answer that reads what the listing reads, composed once per {@link listingVersion} and
+   * shared by every caller at that version, like {@link forAPerson}.
+   */
+  private atTheListing<T>(name: string, compose: () => T, complete?: (value: T) => boolean): T {
+    return this.keptUntilItMoves(
+      this.listingAnswersKept,
+      () => this.listingVersion,
+      name,
+      compose,
+      complete,
+    )
+  }
+
+  /**
+   * `compose`'s answer, kept in `kept` at the version it was composed at and reused until that
+   * version moves. Another connection's commit is checked for first. An answer that skipped rows it
+   * could not read, or a composition that moved the version, is not kept.
+   */
+  private keptUntilItMoves<T>(
+    kept: Map<string, { readonly at: number; readonly value: unknown }>,
+    version: () => number,
+    name: string,
+    compose: () => T,
+    complete: (value: T) => boolean = everyRowWasRead,
+  ): T {
     this.deps.store.checkCommitted()
-    const kept = this.personsKept.get(name)
-    if (kept !== undefined && kept.at === this.personsVersion) return kept.value as T
-    const at = this.personsVersion
+    const one = kept.get(name)
+    if (one !== undefined && one.at === version()) return one.value as T
+    const at = version()
     const value = compose()
-    if (this.personsVersion === at && everyRowWasRead(value))
-      this.personsKept.set(name, { at, value })
-    else this.personsKept.delete(name)
+    if (version() === at && complete(value)) kept.set(name, { at, value })
+    else kept.delete(name)
     return value
   }
 
@@ -21787,6 +21820,12 @@ export class RuntimeHost implements LiveHost {
    * to a conversation.
    */
   whatEachConversationIsWaitingOn(): WhatEachConversationIsWaitingOn {
+    return this.atTheListing('whatEachConversationIsWaitingOn', () =>
+      this.whatEachConversationIsWaitingOnComposed(),
+    )
+  }
+
+  private whatEachConversationIsWaitingOnComposed(): WhatEachConversationIsWaitingOn {
     // ⚑ **ONE memo for the whole answer** — see {@link oneWaitReadPerAnswer}. ⛔ Built OUTSIDE the
     // walk, because a memo built per row is three reads per conversation however many times the
     // conversation appears.
@@ -21947,6 +21986,14 @@ export class RuntimeHost implements LiveHost {
    * to a conversation.
    */
   theWholeForest(): TheWholeForest {
+    return this.atTheListing(
+      'theWholeForest',
+      () => this.theWholeForestComposed(),
+      (forest) => everyRowWasRead(forest.nodes),
+    )
+  }
+
+  private theWholeForestComposed(): TheWholeForest {
     // ⚑ **The bound is passed, not defaulted** — see {@link SessionStore.everyPlacedConversation}.
     // ⛔ One constant, on the wire, where `WALK_COVERS` already spells it for a person.
     // Archived conversations are left out of the walk and of its count alike.
