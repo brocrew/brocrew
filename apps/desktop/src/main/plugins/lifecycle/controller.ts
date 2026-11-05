@@ -117,6 +117,49 @@ export interface PreparedPluginMutation {
   installId: string | null
 }
 
+export interface AgentAttachmentView {
+  readonly package: VerifiedPluginPackage
+  readonly connection: ReturnType<LifecycleRun['ready']>
+  readonly installation: Readonly<Installation>
+  readonly workspaceId: string
+  readonly runId: string
+  readonly exited: Promise<void>
+  current(): boolean
+}
+/** Enabled is the captured workspace setting, independently of route or session availability. */
+export type AgentScopeEntry =
+  | {
+      readonly pluginId: string
+      readonly enabled: boolean
+      readonly installId: string
+      readonly runId: string
+      readonly switchRevision: number
+      readonly is: 'admitted'
+      readonly view: AgentAttachmentView
+    }
+  | {
+      readonly pluginId: string
+      readonly enabled: boolean
+      readonly installId: string | null
+      readonly switchRevision: number
+      readonly is: 'pending'
+      readonly why:
+        'starting' | 'restarting' | 'not-ready' | 'not-projected' | 'bind-failed' | 'run-ended'
+    }
+  | {
+      readonly pluginId: string
+      readonly enabled: boolean
+      readonly switchRevision: number
+      readonly is: 'off'
+      readonly why: 'disabled' | 'not-installed' | 'no-agent-tools'
+    }
+export interface AgentScope {
+  readonly workspaceId: string
+  /** Informational committed sequence; each view validates only its own lifetime tuple. */
+  readonly revision: number
+  readonly entries: readonly AgentScopeEntry[]
+}
+
 /** One instance per exclusively owned supervisor. Settings/person authority is never an agent API. */
 export class PluginLifecycleController {
   private genericTools?: PluginToolService
@@ -218,6 +261,14 @@ export class PluginLifecycleController {
       } catch {
         /* Observers do not own bindings. */
       }
+    }
+  }
+  private agentScopeChanged(): void {
+    const seen = new Set<string>()
+    for (const workspace of this.workspaces.values()) {
+      if (!workspace.live || seen.has(workspace.sink.workspaceId)) continue
+      seen.add(workspace.sink.workspaceId)
+      this.bindingChanged(workspace)
     }
   }
   hostWorkspace(handle: LifecycleWorkspace): string {
@@ -331,6 +382,7 @@ export class PluginLifecycleController {
     this.syncHostWorkspace(workspace)
     if (!this.hostOwners.has(id))
       this.hostRegistry.setEnabled(workspace.sink.workspaceId, id, value.enabled, value.revision)
+    this.bindingChanged(workspace)
     return value
   }
   async setTitlesEnabled(handle: LifecycleWorkspace, id: string, enabled: boolean) {
@@ -648,6 +700,7 @@ export class PluginLifecycleController {
     for (const workspace of this.workspaces.values()) this.cancelBinding(workspace, id)
     const token = Symbol()
     this.blocks.set(id, token)
+    this.agentScopeChanged()
     try {
       this.options.deny(id)
     } catch {
@@ -861,6 +914,7 @@ export class PluginLifecycleController {
         this.retrying = undefined
         this.retryDelay = Math.min(this.retryDelay * 2, 60_000)
         this.retryAt = 0
+        this.agentScopeChanged()
       })
   }
   private acceptReceipt(
@@ -1142,6 +1196,7 @@ export class PluginLifecycleController {
     workspace.views.clear()
     workspace.contributionHandles.clear()
     this.detachWorkspaceIfUnused(workspace.sink.workspaceId)
+    this.bindingChanged(workspace)
     if (this.effectQueue.signal.aborted) return
     for (const receipt of workspace.receipts.values()) {
       const obligations = workspace.revocations.get(receipt.pluginId) ?? new Set<string>()
@@ -1528,6 +1583,7 @@ export class PluginLifecycleController {
         }
       })
       if (this.blocks.get(id) === token) this.blocks.delete(id)
+      this.agentScopeChanged()
     } catch (error) {
       if (
         error instanceof PluginSupervisorError &&
@@ -1537,6 +1593,7 @@ export class PluginLifecycleController {
       if (!this.cleanup.has(id) && !this.options.state.inspect().pending) {
         if (this.blocks.get(id) === token) this.blocks.delete(id)
       }
+      this.agentScopeChanged()
       if (selected) throw error
       return refuse()
     }
@@ -1696,6 +1753,7 @@ export class PluginLifecycleController {
         await this.finishUpdate(effect, operation.next!)
       })
       if (this.blocks.get(id) === token) this.blocks.delete(id)
+      this.agentScopeChanged()
     } catch (error) {
       if (
         error instanceof PluginSupervisorError &&
@@ -1704,6 +1762,7 @@ export class PluginLifecycleController {
         throw error
       if (!this.options.state.inspect().pending && this.blocks.get(id) === token)
         this.blocks.delete(id)
+      this.agentScopeChanged()
       if (selected) throw error
       return refuse()
     }
@@ -1868,6 +1927,7 @@ export class PluginLifecycleController {
       })
       .finally(() => {
         if (this.toolRestarts.get(id)?.work === work) this.toolRestarts.delete(id)
+        this.agentScopeChanged()
       })
     this.toolRestarts.set(id, { runId, work })
     return work
@@ -2137,6 +2197,7 @@ export class PluginLifecycleController {
     // Cohort receipts clear in the reserved completion. Any older/offline receipt is only a
     // cleanup obligation: the tombstone already invalidates it, never authority to reactivate.
     this.clearCleanup(install.pluginId)
+    this.agentScopeChanged()
     if (generic) return outcome!
     if (deleteData) return { data: 'deleted', logout: logout ?? 'unconfirmed' }
   }
@@ -2251,10 +2312,12 @@ export class PluginLifecycleController {
         outcome = await this.remove(id, operationId, null, workspace.sink.workspaceId)
       })
       if (this.blocks.get(id) === token) this.blocks.delete(id)
+      this.agentScopeChanged()
       return outcome
     } catch {
       if (absent) {
         if (!this.cleanup.has(id) && this.blocks.get(id) === token) this.blocks.delete(id)
+        this.agentScopeChanged()
         return refuse()
       }
       this.addCleanup(id, 'effect')
@@ -2417,6 +2480,100 @@ export class PluginLifecycleController {
       pluginId,
       installId,
     }))
+  }
+
+  /** One owner-retained committed read supplies facts and views without warming a connection. */
+  agentScope(workspaceId: string): AgentScope {
+    if (this.draining || this.effectQueue.signal.aborted) return pending()
+    const read = this.options.state.readView()
+    const operation = read.pending()
+    if (operation?.request.consent.action === 'global-restore') return pending()
+    const consumers = [...this.workspaces.values()].filter(
+      (one) => one.live && one.sink.workspaceId === workspaceId,
+    )
+    if (!consumers.length) return refuse()
+    const catalogueIds = this.admittedCatalogues.get(this.catalogueIdentity())
+    if (!catalogueIds) return refuse()
+    const ids = new Set([
+      ...catalogueIds,
+      ...read.inspect().guards.map((one) => one.pluginId),
+      ...this.runs.keys(),
+      ...consumers.flatMap((one) => [...one.bindings.keys(), ...one.receipts.keys()]),
+    ])
+    const entries = [...ids].sort().map((pluginId): AgentScopeEntry => {
+      const choice = read.getEnabled(workspaceId, pluginId)
+      const base = { pluginId, enabled: choice.enabled, switchRevision: choice.revision }
+      const active = this.current(pluginId, read)
+      const run = this.runs.get(pluginId)
+      const pendingEntry = (
+        why: Extract<AgentScopeEntry, { is: 'pending' }>['why'],
+      ): AgentScopeEntry =>
+        Object.freeze({
+          ...base,
+          is: 'pending',
+          why,
+          installId:
+            active?.installId ??
+            (operation?.next?.pluginId === pluginId ? operation.next.installId : null),
+        })
+      if (!choice.enabled) return Object.freeze({ ...base, is: 'off', why: 'disabled' })
+      // A pending install/removal temporarily hides selection; it is never committed absence.
+      if (operation?.request.consent.pluginId === pluginId) return pendingEntry('starting')
+      if (!active) {
+        if (this.blocks.has(pluginId)) return pendingEntry('starting')
+        return Object.freeze({ ...base, is: 'off', why: 'not-installed' })
+      }
+      if (this.toolRestarts.has(pluginId)) return pendingEntry('restarting')
+      if (run?.ended) return pendingEntry('run-ended')
+      if (this.blocks.has(pluginId)) return pendingEntry('not-ready')
+      if (!run || run.installId !== active.installId) return pendingEntry('starting')
+      if (verifiedPluginDigest(run.package) !== active.release.archiveSha256)
+        return pendingEntry('not-ready')
+      if (!run.package.contract.tools || !run.package.contract.mcp)
+        return Object.freeze({ ...base, is: 'off', why: 'no-agent-tools' })
+      if (!run.package.compatibility.host || !run.package.compatibility.tools)
+        return pendingEntry('not-ready')
+      if (!this.admittedWorkspace(workspaceId, pluginId, active.installId, read)) {
+        return pendingEntry(
+          consumers.some((one) => one.bindings.get(pluginId)?.state === 'failed')
+            ? 'bind-failed'
+            : 'not-projected',
+        )
+      }
+      const generation = this.workspaceGenerations.get(workspaceId) ?? 0
+      const view: AgentAttachmentView = Object.freeze({
+        package: run.package,
+        get connection() {
+          return run.run.ready()
+        },
+        installation: active,
+        workspaceId,
+        runId: run.run.runId,
+        exited: run.run.exited,
+        current: () => {
+          try {
+            const latest = this.options.state.readView()
+            return (
+              (this.workspaceGenerations.get(workspaceId) ?? 0) === generation &&
+              latest.getEnabled(workspaceId, pluginId).revision === choice.revision &&
+              this.runs.get(pluginId) === run &&
+              this.current(pluginId, latest)?.incarnation === active.incarnation &&
+              this.admittedWorkspace(workspaceId, pluginId, active.installId, latest)
+            )
+          } catch {
+            return false
+          }
+        },
+      })
+      return Object.freeze({
+        ...base,
+        is: 'admitted',
+        installId: active.installId,
+        runId: run.run.runId,
+        view,
+      })
+    })
+    return Object.freeze({ workspaceId, revision: read.sequence, entries: Object.freeze(entries) })
   }
 
   /** Private supervisor view uses the canonical receipt published by any healthy consumer. */
