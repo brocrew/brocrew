@@ -82,6 +82,14 @@ const server=http.createServer((req,res)=>{
 server.listen(0,'127.0.0.1',()=>process.stdout.write(JSON.stringify({type:'brocrew-plugin-ready',api:1,mcp:{url:'http://127.0.0.1:'+server.address().port+'/fictional-mcp'}})+'\n'));
 process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
 `
+const oneCopySource = `import {openSync,unlinkSync} from 'node:fs';
+const active=process.env.BROCREW_PLUGIN_DATA+'/active-runtime';
+try { openSync(active,'wx'); } catch (error) {
+ fs.writeFileSync(process.env.BROCREW_PLUGIN_DATA+'/startup-error.json',JSON.stringify({pid:process.pid,code:error.code}));
+ throw error;
+}
+process.on('SIGTERM',()=>{unlinkSync(active);process.exit(0)});
+${stdioSource}`
 function fixture(
   options: {
     id?: string
@@ -267,11 +275,7 @@ describe('generic plugin process runner', () => {
       ownerId: '0c6462db-745c-405e-a826-3bc49852cdad',
       ownerLabel: 'Fictional workspaces',
     }
-    const source = `import {openSync,unlinkSync} from 'node:fs';
-const active=process.env.BROCREW_PLUGIN_DATA+'/active-runtime';
-openSync(active,'wx');
-process.on('SIGTERM',()=>{unlinkSync(active);process.exit(0)});
-${stdioSource}`
+    const source = oneCopySource
     const spec = fixture({ source })
     const install = join(root, 'one-installation')
     const first = await context({ root: install, sharedDataOwner, readyMs: 10000 })
@@ -311,6 +315,60 @@ ${stdioSource}`
     expect(await run.stop()).toEqual({ exited: true })
     await expect(replacement).resolves.toHaveProperty('client')
     expect((await otherReady.client!.listTools()).tools).toHaveLength(1)
+  })
+  it('restarts the same installation after forced managed-process death with a stale marker left intact', async () => {
+    const { host, home } = await context()
+    const source = oneCopySource.replace(
+      'if(args?.exit) return process.exit(7);',
+      `if(args?.exit) {
+        fs.writeFileSync(process.env.BROCREW_PLUGIN_DATA+'/forced-death.json',JSON.stringify({pid:process.pid,signal:'SIGKILL'}));
+        return process.kill(process.pid,'SIGKILL');
+      }`,
+    )
+    const spec = fixture({ source })
+    const first = await host.start(spec)
+    const ready = await first.ready()
+    expect(() => process.kill(ready.serverPid, 0)).not.toThrow()
+    await expect(
+      ready.client!.callTool({ name: 'orchard.echo', arguments: { exit: true } }),
+    ).rejects.toThrow()
+    expect(await first.exited).toEqual({ exited: true })
+    expect(() => process.kill(ready.serverPid, 0)).toThrowError(
+      expect.objectContaining({ code: 'ESRCH' }),
+    )
+    const data = join(home, 'data', 'fictional-orchard')
+    expect(JSON.parse(await readFile(join(data, 'forced-death.json'), 'utf8'))).toEqual({
+      pid: ready.serverPid,
+      signal: 'SIGKILL',
+    })
+    const marker = join(data, 'active-runtime')
+    const stale = Buffer.from('fictional legacy marker retained after forced death')
+    await writeFile(marker, stale)
+    const second = await host.start(spec)
+    let startupFailure: unknown = null
+    try {
+      const replacement = await second.ready()
+      expect(replacement.serverPid).not.toBe(ready.serverPid)
+      expect((await replacement.client!.listTools()).tools).toHaveLength(1)
+    } catch (error) {
+      try {
+        startupFailure = JSON.parse(await readFile(join(data, 'startup-error.json'), 'utf8'))
+      } catch {
+        // A missing fixture error record leaves the original readiness error visible.
+      }
+      throw Object.assign(
+        new Error(
+          'Same-install restart failed after verified managed exit: ' +
+            JSON.stringify(startupFailure),
+          { cause: error },
+        ),
+        {
+          startupFailure,
+        },
+      )
+    }
+    expect(startupFailure).toBeNull()
+    expect(await readFile(marker)).toEqual(stale)
   })
   it.each([false, true])(
     'recovered retirement waits for its guardian and preserves missing explicit-removal facts (lost=%s)',
