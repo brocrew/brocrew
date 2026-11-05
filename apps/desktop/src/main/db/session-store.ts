@@ -7323,7 +7323,7 @@ export function createSessionStore(
   )
   // Keep replacement insertion order across generations and require an existing target.
   const selectReplacements = db.prepare(
-    `SELECT session_id, payload FROM events INDEXED BY events_fold_idx
+    `SELECT session_id, payload FROM events INDEXED BY events_kind_owner_idx
       WHERE ${FOLD_TERM} AND type = 'replaced_by' AND json_valid(payload)
         AND EXISTS (SELECT 1 FROM provider_session
                      WHERE provider_session.id = json_extract(events.payload, '$.sessionId'))
@@ -7334,7 +7334,7 @@ export function createSessionStore(
   const selectNewestScheduleLevels = db.prepare(
     `WITH levels AS MATERIALIZED (
        SELECT session_id, created_at, generation, ordinal, payload
-         FROM events INDEXED BY events_fold_idx
+         FROM events INDEXED BY events_kind_owner_idx
         WHERE ${FOLD_TERM} AND type = 'scheduled_work'
           AND CASE WHEN json_valid(payload) THEN json_type(payload, '$.jobs') = 'array' ELSE 1 END
      ), candidates AS MATERIALIZED (
@@ -7861,14 +7861,14 @@ export function createSessionStore(
   let selectConversationsByCopy: AppStatement | undefined
   /** ⚑ **F026** — {@link SessionStore.theDecisionOn}'s one row, by the fold's own index. */
   const selectLatestMoveOffer = db.prepare(
-    `SELECT payload FROM events INDEXED BY events_fold_idx
+    `SELECT payload FROM events INDEXED BY events_kind_owner_idx
       WHERE ${FOLD_TERM} AND session_id = ? AND generation = ? AND type = 'question_asked'
         AND CASE WHEN json_valid(payload) THEN json_type(payload, '$.move') END = 'object'
       ORDER BY ordinal DESC LIMIT 1`,
   )
   const selectTheDecisionOn = db.prepare(
     `SELECT payload FROM events
-        INDEXED BY events_fold_idx
+        INDEXED BY events_kind_owner_idx
       WHERE ${FOLD_TERM} AND session_id = ? AND generation = ?
         AND type = 'user_decision'
         AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.requestId') END = ?

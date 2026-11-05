@@ -72,7 +72,9 @@ describe('F071 · the ledger folds read through their own index', () => {
       const reads = throughTheIndex()
       expect(reads).toHaveLength(23)
       const kindReads = reads.filter((sql) => sql.includes('events_kind_owner_idx'))
-      expect(kindReads).toHaveLength(9)
+      // Four single-type reads seek their type on it: replacements, schedule levels, the
+      // decision on a request and the latest move offer.
+      expect(kindReads).toHaveLength(13)
       expect(
         kindReads.filter((sql) => sql.includes("json_remove(payload, '$.sent', '$.given')")),
       ).toHaveLength(2)
@@ -132,18 +134,12 @@ describe('F071 · the ledger folds read through their own index', () => {
           .filter((detail) => /^(SEARCH|SCAN) (events|e)(?: |$)/.test(detail))
         expect(plan.length, sql.slice(0, 120)).toBeGreaterThan(0)
         for (const detail of plan) {
-          if (sql.includes('events_kind_owner_idx')) {
+          if (sql.includes('AS first_listed') && detail.startsWith('SEARCH e ')) {
+            // The schedule levels' compaction time reads its conversation's own index.
+            expect(detail, sql.slice(0, 120)).toMatch(/^SEARCH e USING INDEX events_session_idx /)
+          } else if (sql.includes('events_kind_owner_idx')) {
             expect(detail, sql.slice(0, 120)).toMatch(
               /^SEARCH (events|e) USING (?:COVERING )?INDEX events_kind_owner_idx /,
-            )
-          } else if (sql.includes('AS first_listed') && detail.startsWith('SEARCH e ')) {
-            expect(detail, sql.slice(0, 120)).toMatch(/^SEARCH e USING INDEX events_session_idx /)
-          } else if (
-            sql.includes('AS first_listed') ||
-            sql.startsWith('SELECT session_id, payload FROM events INDEXED')
-          ) {
-            expect(detail, sql.slice(0, 120)).toMatch(
-              /^(SEARCH|SCAN) events USING INDEX events_fold_idx(?: |$)/,
             )
           } else {
             expect(detail, sql.slice(0, 120)).toMatch(
