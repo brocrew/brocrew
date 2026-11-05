@@ -1125,6 +1125,42 @@ it('a plugin a named reply leaves out, without saying it is off, keeps its attac
   expect(f.opened[0]!.handle.refreshManagedPlugins).toHaveBeenCalledWith([])
   await a.close()
 })
+it('a route from a reply that named no plugin stays while a named reply cannot speak for it', async () => {
+  const f = fixture(true)
+  f.change({ revision: 'one', servers: [route] })
+  const a = await f.runtime.start(initial)
+  const refresh = f.opened[0]!.handle.refreshManagedPlugins!
+  const awaited = vi.fn()
+  Object.assign(f.opened[0]!.handle, { awaitManagedPlugins: awaited })
+  f.change({ revision: 'two', servers: [], plugins: { pending: [], none: [], unknown: true } })
+  await a.send('fictional words while unknown')
+  f.change({
+    revision: 'three',
+    servers: [],
+    plugins: { pending: ['fern'], none: ['aster'], unknown: false },
+  })
+  await a.send('fictional words while starting')
+  expect(refresh).not.toHaveBeenCalled()
+  expect(f.raw.resume).not.toHaveBeenCalled()
+  expect(awaited).toHaveBeenLastCalledWith([])
+  // The same address, now served under its plugin: nothing to change, and it is awaited again.
+  const fern = { ...route, pluginId: 'fern' }
+  f.change({ revision: 'four', servers: [fern], plugins: { pending: [], none: [], unknown: true } })
+  await a.send('fictional words once named')
+  expect(refresh).not.toHaveBeenCalled()
+  expect(f.raw.resume).not.toHaveBeenCalled()
+  expect(awaited).toHaveBeenLastCalledWith([route.name])
+  // Named now, it goes as any named route does: when its plugin is off.
+  f.change({
+    revision: 'five',
+    servers: [],
+    plugins: { pending: [], none: ['fern'], unknown: false },
+  })
+  await a.send('fictional words once off')
+  expect(refresh).toHaveBeenCalledWith([])
+  expect(f.opened[0]!.send).toHaveBeenCalledTimes(4)
+  await a.close()
+})
 it('a route kept while its scope could not be read is not awaited, and is awaited again once served', async () => {
   const fern = { ...route, pluginId: 'fern' }
   const f = fixture()
