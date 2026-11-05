@@ -698,13 +698,32 @@ describe('canonical window worker folds and independent live-store reads', () =>
     }
   })
 
-  it('retries a failed read instead of retaining a failure', async () => {
+  it('a failed read is remembered at its writer stamp, and retried once its wait has passed', async () => {
+    let clock = 1_000_000
+    const read = vi.fn(async (query: WindowReadQuery) => engine.read(query))
+    read.mockRejectedValueOnce(new WindowReadUnavailable('failed'))
+    const { host } = hostWith({ read, close: async () => {} }, false, { now: () => clock })
+    anotherQuestion()
+    const first = await host.readForWindow(() => host.questionsForAPerson())
+    // The same stamp within the wait: answered without asking the worker again.
+    for (let one = 0; one < 5; one++)
+      expect(await host.readForWindow(() => host.questionsForAPerson())).toEqual(first)
+    expect(read).toHaveBeenCalledOnce()
+    // Once the wait has passed, one ask tries the worker again, and its answer is current.
+    clock += 60_000
+    expect(await host.readForWindow(() => host.questionsForAPerson())).toEqual(first)
+    expect(read).toHaveBeenCalledTimes(2)
+  })
+
+  it('a failed read is retried at once when the writer moves', async () => {
     const read = vi.fn(async (query: WindowReadQuery) => engine.read(query))
     read.mockRejectedValueOnce(new WindowReadUnavailable('failed'))
     const { host } = hostWith({ read, close: async () => {} })
     anotherQuestion()
-    const first = await host.readForWindow(() => host.questionsForAPerson())
-    expect(await host.readForWindow(() => host.questionsForAPerson())).toEqual(first)
+    await host.readForWindow(() => host.questionsForAPerson())
+    expect(read).toHaveBeenCalledOnce()
+    row('alpha', 'request_escalated', { type: 'request_escalated', requestId: 'first' })
+    expect((await host.readForWindow(() => host.questionsForAPerson())).rows).toHaveLength(1)
     expect(read).toHaveBeenCalledTimes(2)
   })
 
@@ -790,7 +809,7 @@ describe('canonical window worker folds and independent live-store reads', () =>
     },
   )
 
-  it('bounds shared callers, answers the excess on the main thread, and releases permits', async () => {
+  it('callers past the bound join the pending read, and permits are released', async () => {
     let finish!: (answer: WindowReadResult) => void
     const read = vi.fn(
       () =>
@@ -803,26 +822,21 @@ describe('canonical window worker folds and independent live-store reads', () =>
     const callers = Array.from({ length: WINDOW_READ_BOUNDS.callers }, () =>
       host.readForWindow(() => host.questionsForAPerson()),
     )
-    let overflow = 'waiting'
-    const excess = host
-      .readForWindow(() => host.questionsForAPerson())
-      .then(
-        (answer) => {
-          expect(answer).toEqual(host.questionsForAPerson())
-          overflow = 'accepted'
-        },
-        () => {
-          overflow = 'rejected'
-        },
-      )
+    const mainThread = vi.spyOn(
+      host as unknown as { answeredOnTheMainThread: (...args: unknown[]) => unknown },
+      'answeredOnTheMainThread',
+    )
+    const excess = Array.from({ length: 4 }, () =>
+      host.readForWindow(() => host.questionsForAPerson()),
+    )
     await new Promise<void>((resolve) => setImmediate(resolve))
-    try {
-      expect(overflow).toBe('accepted')
-      expect(read).toHaveBeenCalledOnce()
-    } finally {
-      finish(engine.read({ kind: 'routes' }))
-      await Promise.all([...callers, excess])
-    }
+    expect(read).toHaveBeenCalledOnce()
+    finish(engine.read({ kind: 'routes' }))
+    const answers = await Promise.all([...callers, ...excess])
+    for (const answer of answers) expect(answer).toEqual(answers[0])
+    expect(answers[0]!.rows).toHaveLength(1)
+    expect(mainThread).not.toHaveBeenCalled()
+    mainThread.mockRestore()
     row('alpha', 'request_escalated', { type: 'request_escalated', requestId: 'first' })
     const next = host.readForWindow(() => host.questionsForAPerson())
     expect(read).toHaveBeenCalledTimes(2)
@@ -848,6 +862,8 @@ describe('canonical window worker folds and independent live-store reads', () =>
     const direct = host.questionsForAPerson()
     expect(await settled).toEqual(callers.map(() => ({ status: 'fulfilled', value: direct })))
     read.mockImplementation(async () => engine.read({ kind: 'routes' }))
+    // The failure is remembered at its stamp; a write moves the writer, and the worker is asked again.
+    row('alpha', 'request_escalated', { type: 'request_escalated', requestId: 'first' })
     expect((await host.readForWindow(() => host.questionsForAPerson())).rows).toHaveLength(1)
     expect(read).toHaveBeenCalledTimes(2)
   })
@@ -881,24 +897,18 @@ describe('canonical window worker folds and independent live-store reads', () =>
       return Object.fromEntries(Object.entries(answer).filter(([key]) => key !== 'readAt'))
     }
 
-    it('every caller permit held: the next read answers at once, and the worker is asked once', async () => {
+    it('every caller permit held: the next read joins the pending one, and the worker is asked once', async () => {
       const worker = aWorkerThatHangs()
       const { host } = hostWith({ read: worker.read, close: async () => {} })
       const callers = Array.from({ length: WINDOW_READ_BOUNDS.callers }, () =>
         host.readForWindow(() => host.questionsForAPerson()),
       )
-      try {
-        expect(await host.readForWindow(() => host.questionsForAPerson())).toEqual(
-          host.questionsForAPerson(),
-        )
-        expect(worker.read).toHaveBeenCalledOnce()
-        expect(said()).toEqual([
-          'window read answered on the main thread: callers-full (1 since launch)',
-        ])
-      } finally {
-        worker.finish()
-        await Promise.all(callers)
-      }
+      const next = host.readForWindow(() => host.questionsForAPerson())
+      worker.finish()
+      expect(await next).toEqual(host.questionsForAPerson())
+      await Promise.all(callers)
+      expect(worker.read).toHaveBeenCalledOnce()
+      expect(said()).toEqual([])
     })
 
     /**
