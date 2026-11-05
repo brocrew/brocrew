@@ -7938,6 +7938,11 @@ export class RuntimeHost implements LiveHost {
    * reads ({@link moveTheListing}, {@link moveThePersons}), and with nothing else.
    */
   private publicationSeq = 0
+  /**
+   * The earliest end of a wait on a time an incidents reading depended on. Once the clock passes
+   * it, the next ask moves the queue's version and the sequence, so what it composes is newer.
+   */
+  private nextTimeBoundary = Number.POSITIVE_INFINITY
   private readonly personsKept = new Map<string, { readonly at: number; readonly value: unknown }>()
   /** Stops {@link heardACommit} being called, once this host closes. */
   private stopHearingCommits: () => void = () => undefined
@@ -21414,11 +21419,20 @@ export class RuntimeHost implements LiveHost {
   /** The incidents, with the sequence, the time and the live facts they are exact at. */
   private stampedIncidents(): StampedIncidents {
     this.deps.store.checkCommitted()
+    this.aTimeBoundaryPassed()
     const seq = this.publicationSeq
     const holders = new Set<string>()
     const boundary = { next: Number.POSITIVE_INFINITY }
     const walk = this.readWorkIncidentsForAPerson(holders, boundary)
+    this.nextTimeBoundary = Math.min(this.nextTimeBoundary, boundary.next)
     return { walk, seq, validUntil: boundary.next, holders, live: this.incidentsLiveFacts(holders) }
+  }
+
+  /** Moves the queue once the clock has passed a wait on a time a reading depended on. */
+  private aTimeBoundaryPassed(): void {
+    if (this.now() < this.nextTimeBoundary) return
+    this.nextTimeBoundary = Number.POSITIVE_INFINITY
+    this.moveThePersons()
   }
 
   private personsQueueAssembled(incidents: StampedIncidents | null): PersonsQueueAnswer {
@@ -21434,6 +21448,7 @@ export class RuntimeHost implements LiveHost {
     }
     for (let attempt = 0; attempt < 2; attempt++) {
       this.deps.store.checkCommitted()
+      this.aTimeBoundaryPassed()
       const seq = this.publicationSeq
       const parts: Omit<PersonsQueue, 'published'> = {
         questions: part(() => this.questionsForAPerson()),
