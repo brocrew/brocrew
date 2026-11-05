@@ -5899,7 +5899,7 @@ export class CodexSessionHandle implements SessionHandle {
   ): Promise<readonly string[] | undefined> {
     if (!this._ref || this.status() !== 'idle') return undefined
     const scope = this.managedPluginObservationScope()
-    const version = this.managedPluginObservationVersion
+    const version = ++this.managedPluginObservationVersion
     const checked = this.managedPluginsChecked
     // Until this reading settles, the next explicit turn must observe for itself.
     this.managedPluginsChecked = undefined
