@@ -52,10 +52,15 @@ interface PluginState {
   switchRevision: number
   binding?: Promise<PluginMcpClient>
   open?: Promise<void>
+  close?: Promise<void>
 }
 
 /** Two plugins with their own committed state, connection and route opening, in one workspace. */
-async function aWorkspace(ids: readonly string[], answerWithinMs = 400) {
+async function aWorkspace(
+  ids: readonly string[],
+  answerWithinMs = 400,
+  attached: Promise<void> = Promise.resolve(),
+) {
   const f = await pluginProviderFixture()
   cleanup.push(() => f.close())
   const state = new Map<string, PluginState>(
@@ -116,7 +121,10 @@ async function aWorkspace(ids: readonly string[], answerWithinMs = 400) {
       listeners.add(listener)
       return () => listeners.delete(listener)
     }),
-    attach: vi.fn(async (_sink: WorkspaceProjection) => ({}) as LifecycleWorkspace),
+    attach: vi.fn(async (_sink: WorkspaceProjection) => {
+      await attached
+      return {} as LifecycleWorkspace
+    }),
     detach: vi.fn(async () => {}),
   }
   const bridge = createLifecycleAgentBridge({
@@ -130,8 +138,9 @@ async function aWorkspace(ids: readonly string[], answerWithinMs = 400) {
       opened.push(broker.binding.pluginId)
       return {
         server: route.server,
-        close: () => {
+        close: async () => {
           closed.push(broker.binding.pluginId)
+          await state.get(broker.binding.pluginId)!.close
           return route.close()
         },
       }
@@ -324,5 +333,66 @@ describe('a cold agent gets each plugin that is ready', () => {
       unknown: true,
     })
     expect(ids((await w.bridge.agentRoutes(l, r)).servers)).toEqual(['aster'])
+  })
+
+  it('an attachment that never settles leaves the scope unknown within the answer bound', async () => {
+    const held = deferred<void>()
+    const w = await aWorkspace(['aster'], 150, held.promise)
+    const started = performance.now()
+    const routes = await w.bridge.agentRoutes(lease(), request())
+    expect(routes).toMatchObject({ servers: [], pending: [], none: [], unknown: true })
+    expect(performance.now() - started).toBeLessThan(1_000)
+    held.resolve()
+  })
+
+  it('closing a stale route never holds the answer back', async () => {
+    const w = await aWorkspace(['aster', 'zinnia'], 300)
+    const l = lease()
+    const r = request()
+    w.commit('aster', { is: 'admitted' })
+    w.commit('zinnia', { is: 'admitted' })
+    expect(ids((await w.bridge.agentRoutes(l, r)).servers)).toEqual(['aster', 'zinnia'])
+    const held = deferred<void>()
+    w.state.get('aster')!.close = held.promise
+    w.commit('aster', { runId: 'run-aster-2' })
+    const started = performance.now()
+    const routes = await w.bridge.agentRoutes(l, r)
+    expect(performance.now() - started).toBeLessThan(1_000)
+    expect(ids(routes.servers)).toContain('zinnia')
+    expect(w.closed).toContain('aster')
+    held.resolve()
+  })
+
+  it('a served name the caller now uses for another server opens again under a free one', async () => {
+    const w = await aWorkspace(['aster'], 300)
+    const l = lease()
+    const r = request()
+    w.commit('aster', { is: 'admitted' })
+    const first = await w.bridge.agentRoutes(l, r)
+    const name = first.servers[0]!.name
+    const second = await w.bridge.agentRoutes(l, {
+      ...r,
+      occupied: [...r.occupied, name.toUpperCase()],
+    })
+    expect(ids(second.servers)).toEqual(['aster'])
+    expect(second.servers[0]!.name.toLowerCase()).not.toBe(name.toLowerCase())
+    expect(w.closed).toEqual(['aster'])
+  })
+
+  it('a plugin that failed and then comes back under a new switch revision is served in the same read', async () => {
+    const w = await aWorkspace(['aster', 'zinnia'], 2_000)
+    const failing = deferred<PluginMcpClient>()
+    w.state.get('zinnia')!.binding = failing.promise
+    const started = performance.now()
+    const reading = w.bridge.agentRoutes(lease(), request())
+    w.commit('zinnia', { is: 'admitted' })
+    failing.reject(new Error('fictional bind failure'))
+    await tick(30)
+    w.state.get('zinnia')!.binding = undefined
+    w.commit('zinnia', { switchRevision: 1 })
+    const routes = await reading
+    expect(ids(routes.servers)).toEqual(['zinnia'])
+    expect(routes.pending).toEqual(['aster'])
+    expect(performance.now() - started).toBeLessThan(1_000)
   })
 })
