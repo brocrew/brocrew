@@ -58,7 +58,7 @@ function fixture(initial: PluginCard = fir) {
   function hold(kind: PluginSettingsRequest['kind']) {
     let resolve!: (reply: PluginSettingsReply) => void
     let reject!: (error: Error) => void
-    let defaultReply: PluginSettingsReply = { ok: false, error: 'Fictional cancelled read.' }
+    let defaultReply: PluginSettingsReply = { ok: false, error: 'Plugin unavailable. Try again.' }
     const promise = new Promise<PluginSettingsReply>((yes, no) => {
       resolve = yes
       reject = no
@@ -200,7 +200,7 @@ it.each(['refused', 'disconnected'] as const)(
     const first = f.hold('status')
     f.wake()
     await vi.waitFor(() => expect(first.entered).toBe(true))
-    if (failure === 'refused') first.release({ ok: false, error: 'Fictional status refused.' })
+    if (failure === 'refused') first.release({ ok: false, error: 'Plugin unavailable. Try again.' })
     else first.reject()
     await settle()
     expect(f.count('status')).toBe(1)
