@@ -24,6 +24,16 @@ import { RuntimeHost, type RuntimeEventSink } from '../../src/main/runtime/runti
 import { resolveSessionCwd } from '../../src/main/runtime/scratch-cwd'
 import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 
+/** The real app's plugin dependencies, each optional, as RuntimeHost takes them. */
+export interface WorldHostOptions {
+  readonly provider?: Provider
+  readonly plugins?: ConstructorParameters<typeof RuntimeHost>[0]['plugins']
+  readonly pluginAttachments?: ConstructorParameters<typeof RuntimeHost>[0]['pluginAttachments']
+  readonly pluginContext?: ConstructorParameters<typeof RuntimeHost>[0]['pluginContext']
+  /** How long a close waits for the provider to confirm it stopped. */
+  readonly closeDrainTimeoutMs?: number
+}
+
 export class McpRequestSink implements RuntimeEventSink {
   alive = true
   readonly messages: RuntimeEventMessage[] = []
@@ -133,6 +143,7 @@ export function mcpRequestWorld() {
     sent,
     handles,
     startWait: null as Promise<void> | null,
+    provider: 'claude' as Provider,
     startFailure: null as Error | null,
     turnWait: null as Promise<void> | null,
     get db() {
@@ -151,7 +162,13 @@ export function mcpRequestWorld() {
       servers.push(s)
       return s
     },
-    host(): RuntimeHost {
+    /**
+     * A host over this world's store. `options` adds the plugin dependencies a real app wires
+     * (attachments, before-turn context, instruction source), picks the provider `open` uses, and
+     * can shorten how long a close waits for its provider.
+     */
+    host(options: WorldHostOptions = {}): RuntimeHost {
+      world.provider = options.provider ?? 'claude'
       class RecordingRuntime extends FakeRuntime {
         private async note(
           kind: 'start' | 'resume',
@@ -211,6 +228,14 @@ export function mcpRequestWorld() {
         resolveCwd: (session, asked) => resolveSessionCwd(folder, session, asked),
         newSessionId: () => `fictional-session-${++counter}`,
         now: () => clock++,
+        ...(options.plugins === undefined ? {} : { plugins: options.plugins }),
+        ...(options.pluginAttachments === undefined
+          ? {}
+          : { pluginAttachments: options.pluginAttachments }),
+        ...(options.pluginContext === undefined ? {} : { pluginContext: options.pluginContext }),
+        ...(options.closeDrainTimeoutMs === undefined
+          ? {}
+          : { closeDrainTimeoutMs: options.closeDrainTimeoutMs }),
         readProviderConfig: (_provider, home) => ({
           home,
           homeEnv: 'CLAUDE_CONFIG_DIR',
@@ -224,7 +249,10 @@ export function mcpRequestWorld() {
     },
     open(host: RuntimeHost, profile = 'writer', approvalMode: 'ask' | 'auto' = 'auto') {
       return host
-        .createSession({ provider: 'claude', profileId: profile, cwd: work, approvalMode }, window)
+        .createSession(
+          { provider: world.provider, profileId: profile, cwd: work, approvalMode },
+          window,
+        )
         .then(({ sessionId }) => sessionId)
     },
     ledger(id: string) {

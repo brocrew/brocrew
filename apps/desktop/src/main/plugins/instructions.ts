@@ -7,7 +7,8 @@ export interface PluginInstructionEntry {
   readonly name?: string
   readonly description?: string
   readonly state: PluginState
-  readonly tools: 'all agents' | 'none'
+  /** The person's setting for this workspace; absent when it is not known. */
+  readonly tools?: 'all agents' | 'none'
   readonly service: string | null
 }
 export interface PluginInstructionSource {
@@ -43,9 +44,9 @@ export function readPluginInstructions(
           (entry.name === undefined || line(entry.name, 128)) &&
           (entry.description === undefined || line(entry.description, 240)) &&
           PLUGIN_STATES.includes(entry.state) &&
-          ['all agents', 'none'].includes(entry.tools) &&
+          (entry.tools === undefined || ['all agents', 'none'].includes(entry.tools)) &&
           (entry.service === null || line(entry.service, 128)) &&
-          (entry.state !== 'Available' || (entry.tools === 'none' && entry.service === null)),
+          (entry.state !== 'Available' || entry.service === null),
       ) ||
       new Set(entries.map((entry) => entry.id)).size !== entries.length
     )
@@ -63,7 +64,7 @@ export function pluginInstructionParagraphs(
     PLUGIN_TRUST,
     ...entries.map(
       (entry) =>
-        `Plugins: ${entry.name ?? entry.id} — ${entry.state}; tools: ${entry.tools}; service: ${entry.service ?? 'none'}.${entry.description === undefined ? '' : ` ${entry.description}`}`,
+        `Plugins: ${entry.name ?? entry.id} — ${entry.state};${entry.tools === undefined ? '' : ` tools: ${entry.tools};`} service: ${entry.service ?? 'none'}.${entry.description === undefined ? '' : ` ${entry.description}`}`,
     ),
   ]
 }

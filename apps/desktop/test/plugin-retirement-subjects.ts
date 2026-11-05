@@ -73,7 +73,9 @@ export async function chromeSubject() {
   const store = createProfileStore({ home }),
     browser = new FakeBrowser(store.dirOf),
     tabs = new TabRegistry()
-  const open = vi.fn(async (_name: string) => {})
+  const open = vi.fn(async (_name: string) => {
+    void _name
+  })
   const deps = { store, browser, tabs, opener: { open } }
   const tools = createConfigurationTools(deps)
   return {

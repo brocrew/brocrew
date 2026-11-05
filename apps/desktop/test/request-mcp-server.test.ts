@@ -9,6 +9,8 @@ import {
 } from './helpers/mcp-server-request-world'
 
 const REACHES = 'Read fictional notes and search their titles.'
+/** Real time, for I/O while a test runs on fake timers. */
+const realSetTimeout = globalThis.setTimeout
 
 // Exercise the real tool, command, ledger and provider options without a provider process.
 describe('the person decides an agent’s MCP server request', () => {
@@ -1433,3 +1435,253 @@ describe('the person decides an agent’s MCP server request', () => {
     ])
   })
 })
+
+/**
+ * An approved server and a sign-in reopen at the same time, on both providers. A conversation whose
+ * sign-in moved is reopened for the words held for it; an approval that lands meanwhile is carried
+ * by that one reopen whenever the start reads the server, and asks for one more only when the new
+ * life does not have it.
+ */
+describe.each(['claude', 'codex'] as const)(
+  '%s · an approved server meets a sign-in reopen',
+  (provider) => {
+    let world: McpRequestWorld
+    let host: RuntimeHost
+    let asker: string
+    afterEach(async () => {
+      vi.useRealTimers()
+      vi.restoreAllMocks()
+      await world.cleanup()
+    })
+    const begin = async (options: { closeDrainTimeoutMs?: number } = {}) => {
+      world = mcpRequestWorld()
+      host = world.host({ provider, ...options })
+      asker = await world.open(host)
+    }
+    const ask = async (url: string) => {
+      const tool = agentToolsFor(host, asker).tools.find(
+        (one) => one.name === 'request_mcp_server',
+      )!
+      const answer = await tool.call({
+        name: 'fictional-notes',
+        url,
+        reaches: REACHES,
+        who_gets_it: 'everyone',
+      })
+      expect(answer.structured).toMatchObject({ outcome: 'ok' })
+      return answer.structured!.request as string
+    }
+    const decide = (requestId: string) =>
+      executeRuntimeCommand(host, world.window, {
+        kind: 'decideMcpServerRequest',
+        requestId,
+        approve: true,
+      })
+    const ending = (id: string) =>
+      world
+        .ledger(asker)
+        .filter((event) => event.type === 'mcp_server_request_settled' && event.requestId === id)
+    const reopens = () =>
+      world
+        .ledger(asker)
+        .filter((event) => event.type === 'reopened')
+        .map((event) => (event as { because?: string }).because ?? 'no reason')
+    const sentTexts = () =>
+      world.sent.filter((one) => one.profile === 'writer').map((one) => one.text)
+    const carries = (launch: number, url: string) =>
+      world.launches[launch]?.options.externalMcp?.servers?.some(
+        (one) => one.name === 'fictional-notes' && one.url === url,
+      ) === true
+    const quiet = (ms = 120) => new Promise((resolve) => setTimeout(resolve, ms))
+    /** The live handle's sign-in reads as moved on; a later life starts on the current one. */
+    const itsSignInMoves = () => {
+      const handle = world.handles.get('writer')!
+      Object.defineProperty(handle, 'checkSignIn', {
+        value: async () => true,
+        configurable: true,
+      })
+      return handle
+    }
+    /** The handle's provider does not confirm it stopped until the gate opens. */
+    const holdItsExit = (handle: ReturnType<typeof itsSignInMoves>) => {
+      const exit = world.gate()
+      let closing = false
+      const close = handle.close.bind(handle)
+      Object.defineProperty(handle, 'close', {
+        value: () => {
+          closing = true
+          return close()
+        },
+        configurable: true,
+      })
+      Object.defineProperty(handle, 'awaitProcessExit', {
+        value: () => exit.promise,
+        configurable: true,
+      })
+      return { exit, closing: () => closing }
+    }
+    const HELD = 'Fictional words held for the reopen.'
+
+    it('approved while the moved sign-in’s close is under way: one reopen, said as the sign-in, carrying the server and the notice', async () => {
+      await begin()
+      const server = await world.server()
+      const id = await ask(server.url)
+      const held = holdItsExit(itsSignInMoves())
+      await host.send(asker, HELD, world.window)
+      await expect.poll(held.closing).toBe(true)
+      expect(await decide(id)).toMatchObject({ outcome: 'taken' })
+      expect(ending(id)).toMatchObject([{ ending: 'approved' }])
+      held.exit.release()
+      await expect.poll(() => world.launches.length).toBe(2)
+      await expect.poll(() => sentTexts().join('\n')).toContain(HELD)
+      await expect.poll(() => sentTexts().join('\n')).toContain(`The person approved request ${id}`)
+      await quiet()
+      expect(world.launches).toHaveLength(2)
+      expect(carries(1, server.url)).toBe(true)
+      expect(reopens()).toEqual(['the-sign-in-moved-on'])
+      expect(sentTexts().filter((text) => text.includes(HELD))).toHaveLength(1)
+    })
+
+    it('approved after the moved sign-in’s close, before its start: the same one reopen', async () => {
+      await begin({ closeDrainTimeoutMs: 40 })
+      const server = await world.server()
+      const id = await ask(server.url)
+      const held = holdItsExit(itsSignInMoves())
+      await host.send(asker, HELD, world.window)
+      await expect.poll(held.closing).toBe(true)
+      // The close let go of the conversation; its start waits for the provider to confirm it stopped.
+      await quiet(150)
+      expect(host.resumableSessions().find((row) => row.sessionId === asker)?.running).toBe(
+        'not-running',
+      )
+      expect(world.launches).toHaveLength(1)
+      expect(await decide(id)).toMatchObject({ outcome: 'taken' })
+      expect(ending(id)).toMatchObject([{ ending: 'approved' }])
+      held.exit.release()
+      await expect.poll(() => world.launches.length).toBe(2)
+      await expect.poll(() => sentTexts().join('\n')).toContain(HELD)
+      await expect.poll(() => sentTexts().join('\n')).toContain(`The person approved request ${id}`)
+      await quiet()
+      expect(world.launches).toHaveLength(2)
+      expect(carries(1, server.url)).toBe(true)
+      expect(reopens()).toEqual(['the-sign-in-moved-on'])
+      expect(sentTexts().filter((text) => text.includes(HELD))).toHaveLength(1)
+    })
+
+    it('a press while the moved sign-in’s start is under way past its wait decides nothing', async () => {
+      await begin()
+      const server = await world.server()
+      const id = await ask(server.url)
+      itsSignInMoves()
+      const start = world.gate()
+      world.startWait = start.promise
+      await host.send(asker, HELD, world.window)
+      await expect.poll(() => world.launches.length).toBe(2)
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      let answer: Awaited<ReturnType<typeof decide>> | undefined
+      const press = decide(id).then((said) => (answer = said))
+      for (let step = 0; step < 60 && answer === undefined; step += 1) {
+        await vi.advanceTimersByTimeAsync(1_000)
+        await new Promise((resolve) => realSetTimeout(resolve, 5))
+      }
+      vi.useRealTimers()
+      await press
+      expect(answer).toEqual({
+        outcome: 'refused',
+        stillOpen: true,
+        reason:
+          'the conversation that asked is starting right now, so nothing was decided. Press it again in a moment.',
+      })
+      expect(world.store.externalMcpServers()).toEqual([])
+      expect(world.store.externalMcpServersFor('writer')).toEqual([])
+      expect(ending(id)).toEqual([])
+      expect(world.store.mcpServerRequestsWaiting().map((one) => one.requested.requestId)).toEqual([
+        id,
+      ])
+      world.startWait = null
+      start.release()
+      await expect.poll(() => sentTexts().join('\n')).toContain(HELD)
+      await quiet()
+      expect(world.launches).toHaveLength(2)
+      expect(reopens()).toEqual(['the-sign-in-moved-on'])
+      expect(sentTexts().join('\n')).not.toContain(`request ${id}`)
+      expect(world.store.mcpServerRequestsWaiting()).toHaveLength(1)
+    })
+
+    it('approved once the moved sign-in’s start has arrived without the server: exactly one more reopen, which carries it', async () => {
+      await begin()
+      const server = await world.server()
+      const id = await ask(server.url)
+      itsSignInMoves()
+      const start = world.gate()
+      world.startWait = start.promise
+      await host.send(asker, HELD, world.window)
+      await expect.poll(() => world.launches.length).toBe(2)
+      expect(carries(1, server.url)).toBe(false)
+      const press = decide(id)
+      await expect.poll(() => server.requests).toBeGreaterThan(0)
+      await quiet(25)
+      expect(ending(id)).toEqual([])
+      world.startWait = null
+      start.release()
+      expect(await press).toMatchObject({ outcome: 'taken' })
+      await expect.poll(() => world.launches.length).toBe(3)
+      await expect.poll(() => sentTexts().join('\n')).toContain(`The person approved request ${id}`)
+      await quiet()
+      expect(world.launches).toHaveLength(3)
+      expect(carries(2, server.url)).toBe(true)
+      expect(reopens()).toEqual(['the-sign-in-moved-on', 'no reason'])
+      expect(sentTexts().filter((text) => text.includes(HELD))).toHaveLength(1)
+    })
+
+    it('a refused login while the approved reopen waits on its turn: the renewed sign-in’s reopen carries the server and the notice', async () => {
+      await begin()
+      const server = await world.server()
+      const id = await ask(server.url)
+      const handle = itsSignInMoves()
+      const turn = world.gate()
+      world.turnWait = turn.promise
+      void handle.runTurnRefusedOnItsLogin('Fictional work refused on its login.')
+      await expect.poll(() => handle.status()).toBe('working')
+      expect(await decide(id)).toMatchObject({ outcome: 'taken' })
+      expect(world.launches).toHaveLength(1)
+      world.turnWait = null
+      turn.release()
+      await expect.poll(() => world.launches.length).toBe(2)
+      await expect.poll(() => sentTexts().join('\n')).toContain(`The person approved request ${id}`)
+      await quiet()
+      expect(world.launches).toHaveLength(2)
+      expect(carries(1, server.url)).toBe(true)
+      expect(reopens()).toEqual(['the-sign-in-was-renewed'])
+    })
+
+    it('words the person took back before the approved reopen are never sent', async () => {
+      await begin()
+      const server = await world.server()
+      const id = await ask(server.url)
+      const turn = world.gate()
+      world.turnWait = turn.promise
+      await host.send(asker, 'Fictional work already in progress.', world.window)
+      await expect.poll(() => world.handles.get('writer')!.status()).toBe('working')
+      expect(await decide(id)).toMatchObject({ outcome: 'taken' })
+      const queued = await host.queueMessage(asker, 'Fictional words taken back.', world.window)
+      expect(queued.outcome).toBe('queued')
+      if (queued.outcome !== 'queued') throw new Error('the words were not held')
+      await host.cancelQueuedMessage(asker, queued.messageId, world.window)
+      world.turnWait = null
+      turn.release()
+      await expect.poll(() => world.launches.length).toBe(2)
+      await expect.poll(() => sentTexts().join('\n')).toContain(`The person approved request ${id}`)
+      await quiet()
+      expect(world.launches).toHaveLength(2)
+      expect(carries(1, server.url)).toBe(true)
+      expect(sentTexts().join('\n')).not.toContain('Fictional words taken back.')
+      expect(
+        world
+          .ledger(asker)
+          .filter((event) => event.type === 'user_turn')
+          .map((event) => JSON.stringify(event)),
+      ).not.toContainEqual(expect.stringContaining('Fictional words taken back.'))
+    })
+  },
+)

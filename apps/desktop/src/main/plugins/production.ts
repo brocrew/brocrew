@@ -78,6 +78,8 @@ export function productionPluginController() {
   const hostListeners = new Set<() => void>()
   let hostGeneration = 0
   let hostNeedsNotification = false
+  /** Whether {@link hostSnapshot} is a reading the owner gave, so its settings may be stated. */
+  let hostSettingsKnown = false
   const hostChanged = () => {
     for (const listener of hostListeners) listener()
   }
@@ -85,6 +87,7 @@ export function productionPluginController() {
     hostGeneration++
     hostNeedsNotification = false
     hostSnapshot = { contributions: [], notifications: [], plugins: [] }
+    hostSettingsKnown = false
     hostChanged()
   }
   async function refreshHost(notify = false): Promise<PluginHostSnapshot> {
@@ -93,13 +96,20 @@ export function productionPluginController() {
       generation = ++hostGeneration
     if (!connection || ended || cleanupUncertain)
       return { contributions: [], notifications: [], plugins: [] }
-    const snapshot = (await connection?.host?.snapshot()) ?? {
-      contributions: [],
-      notifications: [],
-      plugins: [],
+    const current = () =>
+      connected === connection && hostGeneration === generation && !ended && !cleanupUncertain
+    let read: PluginHostSnapshot | undefined
+    try {
+      read = await connection?.host?.snapshot()
+    } catch (error) {
+      // The newest reading failed: the settings it would have carried are not known.
+      if (current()) hostSettingsKnown = false
+      throw error
     }
-    if (connected === connection && hostGeneration === generation && !ended && !cleanupUncertain) {
+    const snapshot = read ?? { contributions: [], notifications: [], plugins: [] }
+    if (current()) {
       hostSnapshot = snapshot
+      hostSettingsKnown = read !== undefined && Array.isArray(read.plugins)
       if (hostNeedsNotification) {
         hostNeedsNotification = false
         hostChanged()
@@ -186,9 +196,7 @@ export function productionPluginController() {
   const markUnavailable = () => {
     clearHost()
     startupCatalogueVerifiedAt = undefined
-    entries =
-      entries?.map((one) => ({ ...one, state: 'Unavailable', tools: 'none', service: null })) ??
-      null
+    entries = entries?.map((one) => ({ ...one, state: 'Unavailable', service: null })) ?? null
     clearInterval(timer)
   }
   const recover = (): boolean => {
@@ -325,7 +333,6 @@ export function productionPluginController() {
         name: names[card.id] ?? card.id,
         description: catalogueEntries!.entries.find((one) => one.id === card.id)?.description,
         state: card.state,
-        tools: card.state === 'Running' && !card.toolsUnavailable ? 'all agents' : 'none',
         service: card.state === 'Running' ? (names[card.id] ?? card.id) : null,
       }))
       return cards
@@ -334,9 +341,7 @@ export function productionPluginController() {
       startupCatalogueVerifiedAt = undefined
       failed('catalogue-response', error)
       // Preserve a still-live channel for explicit retry/quit to detach with its acknowledgments.
-      entries =
-        entries?.map((one) => ({ ...one, state: 'Unavailable', tools: 'none', service: null })) ??
-        null
+      entries = entries?.map((one) => ({ ...one, state: 'Unavailable', service: null })) ?? null
       throw new PluginStartupError(failure, error)
     }
   }
@@ -589,7 +594,19 @@ export function productionPluginController() {
           .finally(() => {
             refresh = undefined
           })
-      return ended ? null : entries
+      if (ended || entries === null) return null
+      // The person's setting for this workspace, as the owner last gave it; unknown says nothing.
+      const settings = hostSettingsKnown
+        ? new Map((hostSnapshot.plugins ?? []).map((one) => [one.pluginId, one.enabled]))
+        : new Map<string, boolean>()
+      return entries.map((entry): PluginInstructionEntry => {
+        const rest: Omit<PluginInstructionEntry, 'tools'> & {
+          tools?: PluginInstructionEntry['tools']
+        } = { ...entry }
+        delete rest.tools
+        const enabled = settings.get(entry.id)
+        return enabled === undefined ? rest : { ...rest, tools: enabled ? 'all agents' : 'none' }
+      })
     },
     refreshFailed: () => refreshFailed,
     catalogue(refreshList = false): Promise<PluginCard[]> {
@@ -729,7 +746,6 @@ export function productionPluginController() {
               name: one.name,
               description: one.description,
               state: 'Unavailable',
-              tools: 'none',
               service: null,
             }))
           phase = 'storage'
@@ -875,8 +891,10 @@ export function productionPluginController() {
               }
               connected = connection
               connection.host?.onChanged(() => {
+                const generation = hostGeneration + 1
                 void refreshHost(true).catch(() => {
-                  if (connected === connection) clearHost()
+                  // Only the newest reading's failure clears; an older one cannot erase a newer.
+                  if (connected === connection && hostGeneration === generation) clearHost()
                 })
               })
               await refreshHost(true)

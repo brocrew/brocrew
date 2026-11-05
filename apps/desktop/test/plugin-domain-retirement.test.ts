@@ -200,6 +200,7 @@ it.each([
     const effects = await LifecycleEffects.open(f.root, false)
     const pending = (await effects.read(operationId))!
     const { legacyRemovalOutcome: _ignored, ...facts } = pending
+    void _ignored
     await effects.write({
       ...facts,
       ...(saved === undefined ? {} : { legacyRemovalOutcome: saved }),

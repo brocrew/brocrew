@@ -10,6 +10,37 @@ import { RejectedSessionLaunch } from './rejected-session-launch'
 export interface ManagedPluginAttachment {
   readonly revision: string
   readonly servers: readonly ManagedPluginMcpServer[]
+  /**
+   * Present only when the reply named each plugin: those still starting, those committed state
+   * says are off, and whether the scope could be read at all. Without it, `servers` is the
+   * complete set. With it, a route already attached for a plugin still starting or unknown stays;
+   * only an off plugin, or a new route for it, replaces it. A route attached without a plugin
+   * stays until a route is served under its name.
+   */
+  readonly plugins?: {
+    readonly pending: readonly string[]
+    readonly none: readonly string[]
+    readonly unknown: boolean
+  }
+}
+/** The routes to keep configured: a partial reply keeps what it could not speak for. */
+function retained(
+  previous: readonly ManagedPluginMcpServer[],
+  next: ManagedPluginAttachment,
+): readonly ManagedPluginMcpServer[] {
+  const plugins = next.plugins
+  if (plugins === undefined) return next.servers
+  const served = new Set(next.servers.map((one) => one.pluginId))
+  const names = new Set(next.servers.map((one) => one.name))
+  const off = new Set(plugins.none)
+  // Only an explicit off, or a new route for the same plugin, removes an attached route. A route
+  // from a reply that named no plugin can be replaced only by a route served under its name.
+  const kept = previous.filter((one) =>
+    one.pluginId === undefined
+      ? !names.has(one.name)
+      : !served.has(one.pluginId) && !off.has(one.pluginId),
+  )
+  return [...next.servers, ...kept.map((one) => ({ ...one, retained: true as const }))]
 }
 export interface ManagedPluginAttachmentSource {
   read(): Promise<ManagedPluginAttachment>
@@ -63,7 +94,19 @@ export function withManagedPluginAttachments(
       if (next.revision.length > 256 || next.servers.length > 32)
         throw new Error('Plugin unavailable. Try again.')
       managedPluginHttpServers(next.servers)
-      return { revision: next.revision, servers: next.servers.map((one) => ({ ...one })) }
+      return {
+        revision: next.revision,
+        servers: retained(attachment.servers, next).map((one) => ({ ...one })),
+        ...(next.plugins === undefined
+          ? {}
+          : {
+              plugins: {
+                pending: [...next.plugins.pending],
+                none: [...next.plugins.none],
+                unknown: next.plugins.unknown,
+              },
+            }),
+      }
     }
     try {
       attachment = await read(options.signal)
@@ -285,6 +328,15 @@ export function withManagedPluginAttachments(
                 }
                 if (closed || wait.signal.aborted)
                   throw new Error('the turn was stopped before its message could be sent')
+                // The same routes under new markers: which of them this turn may wait on.
+                if (next && signature(next) === signature(attachment)) attachment = next
+                // The latest read decides what a turn may wait on, even when its routes could not
+                // be applied; the provider keeps only names it has configured. A read that failed
+                // says nothing new, so the set stays as it was.
+                if (next)
+                  inner.awaitManagedPlugins?.(
+                    next.servers.filter((one) => !one.retained).map((one) => one.name),
+                  )
                 pending = undefined
                 return inner.send(...args)
               } finally {

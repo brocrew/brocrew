@@ -811,6 +811,12 @@ export interface SessionHandle {
     servers: readonly ManagedPluginMcpServer[],
     reconnect?: readonly string[],
   ): Promise<void>
+  /**
+   * The configured managed servers a turn may wait on: those the latest reply served. A server
+   * kept only while its plugin is starting stays configured and is not awaited. Absent means the
+   * provider never waits before a turn.
+   */
+  awaitManagedPlugins?(names: readonly string[]): void
   /** Fresh failed managed-server names; empty means ready, undefined means unknown. */
   managedPluginHealth?(
     servers: readonly ManagedPluginMcpServer[],

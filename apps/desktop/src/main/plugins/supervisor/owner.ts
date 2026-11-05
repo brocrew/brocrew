@@ -8,6 +8,7 @@ import {
   OWNER_LIMITS,
   OWNER_WIRE,
   OWNER_RECOVERY,
+  AGENT_ROUTES_FORMAT_2,
   pack,
   PluginSupervisorError,
   refuse,
@@ -110,6 +111,11 @@ export class PluginSupervisor {
   private effectDrain?: { beginClose(): void; settled(): Promise<void> }
   private agentBridge?: {
     routes(
+      lease: Readonly<WorkspaceLease>,
+      request: Extract<Command, { kind: 'agent-routes' }>,
+    ): Promise<unknown>
+    /** The reply naming each plugin, for a lease that negotiated it. */
+    agentRoutes?(
       lease: Readonly<WorkspaceLease>,
       request: Extract<Command, { kind: 'agent-routes' }>,
     ): Promise<unknown>
@@ -280,8 +286,15 @@ export class PluginSupervisor {
           )
             refuse()
           const bridge = this.agentBridge
-          void bridge
-            .routes(Object.freeze({ ...lease }), command)
+          const named =
+            command.format === 2 && lease.features.includes(AGENT_ROUTES_FORMAT_2)
+              ? bridge.agentRoutes?.bind(bridge)
+              : undefined
+          if (command.format === 2 && named === undefined) refuse()
+          void (named ?? bridge.routes.bind(bridge))(Object.freeze({ ...lease }), command)
+            .then((value) =>
+              named === undefined ? value : { format: 2, ...(value as Record<string, unknown>) },
+            )
             .then((value) => {
               if (!this.valid(lease.id, lease.epoch)) refuse()
               socket.end(

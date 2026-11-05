@@ -5919,17 +5919,32 @@ export class CodexSessionHandle implements SessionHandle {
     return failed
   }
 
+  /** Set before each turn by the managed session; until then, the served routes it was given. */
+  private managedPluginsAwaited?: readonly string[]
+
+  awaitManagedPlugins(names: readonly string[]): void {
+    const configured = new Set(this.managedPluginMcp?.map((server) => server.name))
+    this.managedPluginsAwaited = names.filter((name) => configured.has(name))
+  }
+
+  private awaitedManagedPlugins(): readonly string[] {
+    return (
+      this.managedPluginsAwaited ??
+      this.managedPluginMcp?.filter((server) => !server.retained).map((server) => server.name) ??
+      []
+    )
+  }
+
   private managedPluginObservationScope(): string {
-    return JSON.stringify([
-      this._ref?.sessionId,
-      this.managedPluginMcp?.map((server) => server.name).sort(),
-    ])
+    return JSON.stringify([this._ref?.sessionId, [...this.awaitedManagedPlugins()].sort()])
   }
 
   private startAfterManagedPlugins(localId: CodexTurn['localId'], dispatch: () => void): void {
     this.managedPluginObservationVersion++
     const scope = this.managedPluginObservationScope()
-    if (this.managedPluginsChecked === scope || !this.managedPluginMcp?.length) {
+    // A route kept while its plugin is starting is configured but never awaited here.
+    const served = this.awaitedManagedPlugins()
+    if (this.managedPluginsChecked === scope || !served.length) {
       dispatch()
       return
     }
@@ -5938,7 +5953,7 @@ export class CodexSessionHandle implements SessionHandle {
     void waitForManagedPluginTools(
       this.transport,
       this._ref!.sessionId,
-      this.managedPluginMcp.map((server) => server.name),
+      served,
       waiting.controller.signal,
     ).then((outcome) => {
       if (this.managedPluginWait !== waiting) return
