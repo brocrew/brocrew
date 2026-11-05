@@ -2,9 +2,6 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
-import { EventEmitter } from 'node:events'
-import { PassThrough, Writable } from 'node:stream'
-import { finished } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as processes from '../gates/plugin-packaged/processes.mjs'
@@ -94,14 +91,13 @@ function fixture({ drained = true, failAt, rows = [] } = {}) {
     removeFixture,
     console: { log: (line) => lines.push(line) },
     printFailure: (value) => lines.push(JSON.stringify(value)),
-    childRun(program, args, env, cwd, abort, maximum, phase, output) {
+    childRun(program, args, env, cwd, abort, maximum, phase) {
       launches.push({
         program,
         args,
         env,
         cwd,
         phase,
-        output,
         aborted: abort.signal.aborted,
         maximum,
       })
@@ -149,262 +145,6 @@ function fixture({ drained = true, failAt, rows = [] } = {}) {
     summary: () => JSON.parse(fs.readFileSync(path.join(control, 'summary.json'))),
   }
 }
-function outputFixture(maximum = 1000, stale = false, { hold, phase = 'cdp-fixture-tests' } = {}) {
-  const root = scratch(),
-    control = scratch(),
-    abort = new AbortController(),
-    visible = { stdout: [], stderr: [] },
-    files = [],
-    child = Object.assign(new EventEmitter(), {
-      stdout: new PassThrough(),
-      stderr: new PassThrough(),
-      kill: vi.fn(),
-    }),
-    output = {
-      stdout: path.join(control, 'named48-stdout.log'),
-      stderr: path.join(control, 'named48-stderr.log'),
-    }
-  let release, enterHold
-  const holding = new Promise((resolve) => {
-    enterHold = resolve
-  })
-  if (stale) fs.writeFileSync(output.stderr, 'prior output', { flag: 'wx' })
-  const frames = { ...diagnostics, ...matrix, ...pageState, ...providerState, ...pluginState }
-  const begin = ownerSource.indexOf('export function childRun('),
-    end = ownerSource.indexOf('export async function run(', begin)
-  const run = Function(
-    'spawn',
-    'fs',
-    'process',
-    'bounded',
-    ...Object.keys(frames),
-    'return (' + ownerSource.slice(begin, end).replace('export ', '') + ')',
-  )(
-    () => child,
-    {
-      ...fs,
-      createWriteStream(...args) {
-        let file
-        if (hold && args[0] === output[hold]) {
-          fs.writeFileSync(args[0], '', { flag: args[1].flags, mode: args[1].mode })
-          file = new Writable({
-            write(bytes, _encoding, done) {
-              try {
-                fs.appendFileSync(args[0], bytes)
-                done()
-              } catch (error) {
-                done(error)
-              }
-            },
-            final(done) {
-              release = done
-              enterHold()
-            },
-          })
-        } else file = fs.createWriteStream(...args)
-        files.push(file)
-        return file
-      },
-    },
-    Object.fromEntries(
-      ['stdout', 'stderr'].map((stream) => [
-        stream,
-        { write: (bytes) => visible[stream].push(Buffer.from(bytes)) },
-      ]),
-    ),
-    processes.bounded,
-    ...Object.values(frames),
-  )
-  const task = run(
-    '/fictional/node',
-    ['fictional.mjs'],
-    {},
-    root,
-    abort,
-    maximum,
-    phase,
-    phase === 'cdp-fixture-tests' ? output : undefined,
-  )
-  return {
-    root,
-    control,
-    abort,
-    visible,
-    files,
-    child,
-    output,
-    task,
-    holding,
-    release: () => release(),
-  }
-}
-// Exercise actual owner stream handling with controlled exit and pipe events; no Mac/runtime credit.
-describe.skipIf(process.platform === 'win32')('ordinary fixture output artifacts', () => {
-  it.each([
-    { code: 0, signal: null },
-    { code: 7, signal: null },
-    { code: null, signal: 'SIGTERM' },
-  ])('retains visible bytes after exit and requires pipe closure for %j', async (exit) => {
-    const f = outputFixture()
-    let settled = false
-    const outcome = f.task.wait().then(
-      () => {
-        settled = true
-        return null
-      },
-      (error) => {
-        settled = true
-        return error
-      },
-    )
-    const stdout = Buffer.from('fictional body output ü\n'),
-      stderr = Buffer.from(
-        'AssertionError: fictional body or afterEach error\n  at /fictional/suite.mjs:54:3\n',
-      )
-    f.child.stdout.write(stdout)
-    f.child.emit('exit', exit.code, exit.signal)
-    f.child.stderr.end(stderr)
-    f.child.stdout.end('late stdout after exit\n')
-    await Promise.all(f.files.map((file) => finished(file)))
-    expect(settled).toBe(false)
-    expect(f.task.result).toEqual(exit)
-    expect(f.task.pipesClosed).toBe(false)
-    f.child.emit('close')
-    const error = await outcome
-    if (exit.code === 0) expect(error).toBeNull()
-    else
-      expect(error.failure).toMatchObject({
-        phase: 'cdp-fixture-tests',
-        exitCode: exit.code,
-        signal: exit.signal,
-      })
-    expect(f.task.pipesClosed).toBe(true)
-    expect(fs.readFileSync(f.output.stdout)).toEqual(
-      Buffer.concat([stdout, Buffer.from('late stdout after exit\n')]),
-    )
-    expect(fs.readFileSync(f.output.stderr)).toEqual(stderr)
-    for (const stream of ['stdout', 'stderr'])
-      expect(Buffer.concat(f.visible[stream])).toEqual(fs.readFileSync(f.output[stream]))
-    removeFixture(f.root, { exited: true, processes: 0 }, [])
-    expect(fs.readFileSync(f.output.stderr)).toEqual(stderr)
-  })
-  it.each(['stdout', 'stderr'])(
-    'waits for a held %s sink after native exit and pipe closure',
-    async (hold) => {
-      const f = outputFixture(1000, false, { hold })
-      let settled = false
-      const outcome = f.task.wait().then(
-        () => {
-          settled = true
-          return null
-        },
-        (error) => {
-          settled = true
-          return error
-        },
-      )
-      f.child.stdout.end('verbatim fictional stdout\n')
-      f.child.stderr.end('Error: verbatim fictional stderr stack\n')
-      f.child.emit('exit', 0, null)
-      f.child.emit('close')
-      await f.holding
-      await new Promise((resolve) => setImmediate(resolve))
-      expect(f.task.pipesClosed).toBe(true)
-      expect(settled).toBe(false)
-      f.release()
-      expect(await outcome).toBeNull()
-      for (const stream of ['stdout', 'stderr'])
-        expect(Buffer.concat(f.visible[stream])).toEqual(fs.readFileSync(f.output[stream]))
-    },
-  )
-  it.each(['capture-error', 'cancelled'])(
-    'observes an early %s during registration delay and still rejects later wait',
-    async (kind) => {
-      const unexpected = [],
-        onRejection = (error) => unexpected.push(error)
-      process.on('unhandledRejection', onRejection)
-      const f = outputFixture(1000, kind === 'capture-error')
-      try {
-        // Do not attach wait() or outputClosed until a complete event-loop turn after rejection.
-        if (kind === 'capture-error')
-          await new Promise((resolve) => f.files[1].once('error', resolve))
-        else f.abort.abort()
-        await new Promise((resolve) => setImmediate(resolve))
-        expect(unexpected).toEqual([])
-        const outcome = f.task.wait().catch((error) => error)
-        f.child.stdout.end('delayed wait stdout\n')
-        f.child.stderr.end('delayed wait stderr\n')
-        f.child.emit('exit', 0, null)
-        f.child.emit('close')
-        expect((await outcome).failure).toMatchObject({
-          phase: 'cdp-fixture-tests',
-          errorClass: kind === 'cancelled' ? 'cancelled' : 'thrown',
-        })
-      } finally {
-        process.off('unhandledRejection', onRejection)
-        f.child.stdout.end()
-        f.child.stderr.end()
-        f.child.emit('exit', 0, null)
-        f.child.emit('close')
-        await Promise.allSettled([f.task.outputClosed, ...f.files.map((file) => finished(file))])
-      }
-    },
-  )
-  it.each([
-    'runner-preflight',
-    'dependencies',
-    'dry-tests',
-    'prepare',
-    'probe-matrix',
-    'gui-probe',
-    'journey',
-  ])('shows ordinary %s stdout/stderr errors without fixture capture files', async (phase) => {
-    const f = outputFixture(1000, false, { phase })
-    const outcome = f.task.wait().catch((error) => error)
-    f.child.stdout.end('ordinary fictional stdout\n')
-    f.child.stderr.end('Error: ordinary fictional CI failure\n')
-    f.child.emit('exit', 9, null)
-    f.child.emit('close')
-    expect((await outcome).failure).toMatchObject({ phase, exitCode: 9 })
-    expect(Buffer.concat(f.visible.stdout).toString()).toBe('ordinary fictional stdout\n')
-    expect(Buffer.concat(f.visible.stderr).toString()).toBe(
-      'Error: ordinary fictional CI failure\n',
-    )
-    expect(f.files).toEqual([])
-  })
-  it('fails a stale output artifact without overwriting its bytes', async () => {
-    const f = outputFixture(1000, true)
-    const outcome = f.task.wait().catch((error) => error)
-    f.child.stdout.end('stdout')
-    f.child.stderr.end('new stderr')
-    f.child.emit('exit', 0, null)
-    f.child.emit('close')
-    expect((await outcome).failure.phase).toBe('cdp-fixture-tests')
-    expect(fs.readFileSync(f.output.stderr, 'utf8')).toBe('prior output')
-    await Promise.allSettled(f.files.map((file) => finished(file)))
-  })
-  it.each(['cancelled', 'timeout'])(
-    'keeps captured errors and rejects %s before the later drain closes pipes',
-    async (kind) => {
-      const f = outputFixture(kind === 'timeout' ? 1 : 1000)
-      const outcome = f.task.wait().catch((error) => error)
-      f.child.stderr.write('fictional native error before drain\n')
-      if (kind === 'cancelled') f.abort.abort()
-      expect((await outcome).failure.errorClass).toBe(kind)
-      expect(f.task.pipesClosed).toBe(false)
-      f.child.stdout.end()
-      f.child.stderr.end('late drain output\n')
-      f.child.emit('exit', null, 'SIGTERM')
-      f.child.emit('close')
-      await f.task.outputClosed
-      await Promise.all(f.files.map((file) => finished(file)))
-      expect(fs.readFileSync(f.output.stderr, 'utf8')).toBe(
-        'fictional native error before drain\nlate drain output\n',
-      )
-    },
-  )
-})
-
 describe.skipIf(process.platform === 'win32')(
   'hosted runner session and best-effort cleanup',
   () => {
@@ -596,7 +336,7 @@ describe.skipIf(process.platform === 'win32')(
         expect(fs.existsSync(f.root)).toBe(!drained)
       },
     )
-    it('uses ordinary whole-file reporters, visible retained streams and the original shared deadline', async () => {
+    it('uses ordinary whole-file reporters and the original shared fixture deadline', async () => {
       const f = fixture()
       let elapsed = 0
       f.io.performance = { now: () => elapsed }
@@ -636,16 +376,6 @@ describe.skipIf(process.platform === 'win32')(
         'scripts',
         'scripts/test/plugin-packaged-browser.test.mjs',
       ])
-      expect(commands.map((row) => row.output)).toEqual([
-        {
-          stdout: path.join(f.control, 'named48-stdout.log'),
-          stderr: path.join(f.control, 'named48-stderr.log'),
-        },
-        {
-          stdout: path.join(f.control, 'browser-fixture-stdout.log'),
-          stderr: path.join(f.control, 'browser-fixture-stderr.log'),
-        },
-      ])
       expect(
         commands.every((row) => row.program.endsWith('/Contents/Resources/plugin-node/node')),
       ).toBe(true)
@@ -684,48 +414,6 @@ describe.skipIf(process.platform === 'win32')(
         expect(fs.readFileSync(nativeFile, 'utf8')).toBe(raw)
       },
     )
-    it('an ordinary whole48 cancellation waits for captured streams during the existing drain', async () => {
-      const f = fixture()
-      let closeOutput,
-        enterDrain,
-        written = false
-      const outputClosed = new Promise((resolve) => {
-          closeOutput = resolve
-        }),
-        draining = new Promise((resolve) => {
-          enterDrain = resolve
-        }),
-        launch = f.io.childRun,
-        writeSummary = f.io.writeSummary
-      f.io.childRun = (...args) => {
-        const task = launch(...args)
-        if (args[1].includes('scripts/test/plugin-packaged-provider.test.mjs')) {
-          task.outputClosed = outputClosed
-          task.wait = async () => {
-            throw diagnostics.failureError('cdp-fixture-tests', {}, 'cancelled')
-          }
-        }
-        return task
-      }
-      f.io.bestEffortDrain = async (_root, endLeaders) => {
-        enterDrain()
-        await endLeaders()
-        return { drained: true, boundary: 'hosted-vm-teardown' }
-      }
-      f.io.writeSummary = (...args) => {
-        written = true
-        writeSummary(...args)
-      }
-      const result = ownerFunction('run', f.io)(f.control, '/fictional/node22', '/fictional/pnpm')
-      await draining
-      await Promise.resolve()
-      expect(written).toBe(false)
-      closeOutput()
-      expect(await result).toBe(false)
-      expect(written).toBe(true)
-      expect(f.summary().failure.errorClass).toBe('cancelled')
-      expect(f.launches.filter((row) => row.phase === 'cdp-fixture-tests')).toHaveLength(1)
-    })
     it('keeps a failed-drain count when the later always drain succeeds, without changing the journey result', async () => {
       const f = fixture({ drained: false })
       expect(

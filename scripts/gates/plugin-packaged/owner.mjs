@@ -124,7 +124,7 @@ export async function initialize(env = process.env) {
   })
   return control
 }
-export function childRun(program, args, env, cwd, abort, maximum, phase, output) {
+function childRun(program, args, env, cwd, abort, maximum, phase) {
   if (abort.signal.aborted) throw new Error('Gate cancelled')
   const child = spawn(program, args, {
     env,
@@ -198,19 +198,6 @@ export function childRun(program, args, env, cwd, abort, maximum, phase, output)
   // Ordinary CI errors are visible, including preparation and its fictional tests.
   child.stdout.on('data', (bytes) => process.stdout.write(bytes))
   child.stderr.on('data', (bytes) => process.stderr.write(bytes))
-  // The two fixture invocations also retain verbatim output beside the summary.
-  const captures = []
-  if (output)
-    for (const stream of ['stdout', 'stderr']) {
-      const file = fs.createWriteStream(output[stream], { flags: 'wx', mode: 0o600 })
-      captures.push(
-        new Promise((resolve, reject) => {
-          file.once('finish', resolve)
-          file.once('error', reject)
-        }),
-      )
-      child[stream].pipe(file)
-    }
   const exit = new Promise((resolve, reject) => {
     child.once('exit', (code, signal) => {
       observedExit = { code, signal }
@@ -227,21 +214,18 @@ export function childRun(program, args, env, cwd, abort, maximum, phase, output)
         resolve()
       }),
     ),
-    ...captures,
   ]).then(([result]) => result)
   const cancelled = new Promise((_, reject) =>
     abort.signal.addEventListener('abort', () => reject(new Error('Gate cancelled')), {
       once: true,
     }),
   )
-  // Registration can await a census before wait() attaches. Observe early rejections immediately;
-  // keep the original promises rejected so wait() and the drain still receive the actual failure.
+  // Registration can await a census before wait() attaches; preserve and observe early failures.
   completed.catch(() => {})
   cancelled.catch(() => {})
   return {
     child,
     exit,
-    outputClosed: output ? completed : exit,
     get result() {
       return observedExit
     },
@@ -306,21 +290,7 @@ export async function run(control, node22, pnpm) {
   })
   async function start(step, program, args, maximum = 420000, environment = env) {
     phase = step
-    const output =
-      step === 'cdp-fixture-tests'
-        ? Object.fromEntries(
-            ['stdout', 'stderr'].map((stream) => [
-              stream,
-              path.join(
-                control,
-                (args.includes('scripts/test/plugin-packaged-provider.test.mjs')
-                  ? 'named48'
-                  : 'browser-fixture') + `-${stream}.log`,
-              ),
-            ]),
-          )
-        : undefined
-    const child = childRun(program, args, environment, repo, abort, maximum, step, output)
+    const child = childRun(program, args, environment, repo, abort, maximum, step)
     children.push(child)
     // The matrix drains each app while it remains alive. Do not admit its own owner as a target.
     if (child.child.pid && step !== 'probe-matrix') await registerChild(root, child.child)
@@ -335,7 +305,7 @@ export async function run(control, node22, pnpm) {
   }
   async function endLeaders() {
     await Promise.allSettled(children.map((child) => stopApp(child, 500)))
-    await bounded(Promise.all(children.map((child) => child.outputClosed ?? child.exit)), 1500)
+    await bounded(Promise.all(children.map((child) => child.exit)), 1500)
   }
   try {
     await start('runner-preflight', meta.node, [

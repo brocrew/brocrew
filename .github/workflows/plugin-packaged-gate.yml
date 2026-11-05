@@ -36,11 +36,13 @@ jobs:
         run: node scripts/gates/plugin-packaged/owner.mjs init
       - name: Build, measure V0–V4, and exercise the packaged app under the independent owner
         shell: bash
-        run: node scripts/gates/plugin-packaged/owner.mjs run "$PLUGIN_GATE_CONTROL" "$PLUGIN_GATE_NODE22" "$(command -v pnpm)"
+        run: |
+          set -o pipefail
+          node scripts/gates/plugin-packaged/owner.mjs run "$PLUGIN_GATE_CONTROL" "$PLUGIN_GATE_NODE22" "$(command -v pnpm)" 2>&1 | tee "$PLUGIN_GATE_CONTROL/fixture-output.log"
       - name: Best-effort drain; hosted VM teardown is the final boundary
         if: always() && env.PLUGIN_GATE_CONTROL != ''
         run: node scripts/gates/plugin-packaged/owner.mjs clean "$PLUGIN_GATE_CONTROL"
-      - name: Keep summary, native Vitest JSON and fixture stdout/stderr
+      - name: Keep summary, native Vitest JSON and combined owner output
         if: always() && env.PLUGIN_GATE_CONTROL != ''
         uses: actions/upload-artifact@v4
         with:
@@ -48,9 +50,6 @@ jobs:
           path: |
             ${{ env.PLUGIN_GATE_CONTROL }}/summary.json
             ${{ env.PLUGIN_GATE_CONTROL }}/named48-native.json
-            ${{ env.PLUGIN_GATE_CONTROL }}/named48-stdout.log
-            ${{ env.PLUGIN_GATE_CONTROL }}/named48-stderr.log
-            ${{ env.PLUGIN_GATE_CONTROL }}/browser-fixture-stdout.log
-            ${{ env.PLUGIN_GATE_CONTROL }}/browser-fixture-stderr.log
+            ${{ env.PLUGIN_GATE_CONTROL }}/fixture-output.log
           if-no-files-found: error
           retention-days: 7
