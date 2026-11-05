@@ -44,6 +44,7 @@ const refuse = (): never => {
 const pending = (): never => {
   throw new PluginSupervisorError('cleanup-pending')
 }
+type CleanupReason = 'consumer' | 'process' | 'effect'
 async function bounded<T>(work: () => Promise<T>, ms = 20000): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
@@ -158,12 +159,14 @@ export class PluginLifecycleController {
   private readonly attempted = new Set<string>()
   private readonly localOperations = new Set<string>()
   private readonly admittedCatalogues = new Map<string, readonly string[]>()
-  private readonly cleanup = new Set<string>()
+  private readonly cleanup = new Map<string, Set<CleanupReason>>()
+  private readonly starting = new Set<Promise<Running>>()
   private preparedMutationPolicy?: Readonly<{ revision: number; required: boolean }>
   private get catalogueRevision(): number {
     return this.preparedMutationPolicy?.revision ?? 0
   }
   private draining = false
+  private consumerAuthorityEnded = false
   private drained = false
   private drainWork: Promise<void> | undefined
   private retrying: Promise<void> | undefined
@@ -186,6 +189,19 @@ export class PluginLifecycleController {
     })
   }
   private readonly bindingListeners = new Set<(workspaceId: string) => void>()
+  private addCleanup(id: string, reason: CleanupReason): void {
+    const reasons = this.cleanup.get(id) ?? new Set<CleanupReason>()
+    reasons.add(reason)
+    this.cleanup.set(id, reasons)
+  }
+  private clearCleanup(id: string, reason?: CleanupReason): void {
+    if (reason === undefined) this.cleanup.delete(id)
+    else {
+      const reasons = this.cleanup.get(id)
+      reasons?.delete(reason)
+      if (!reasons?.size) this.cleanup.delete(id)
+    }
+  }
   onHostChanged(listener: (workspaceId: string) => void): () => void {
     this.bindingListeners.add(listener)
     const detach = this.hostRegistry.onChanged(listener)
@@ -802,7 +818,7 @@ export class PluginLifecycleController {
         }),
         cleanupPending: [
           ...new Set([
-            ...this.cleanup,
+            ...this.cleanup.keys(),
             ...[...this.workspaces.values()]
               .filter((one) => one.live)
               .flatMap((one) => [...one.consumerBlocks]),
@@ -1167,69 +1183,91 @@ export class PluginLifecycleController {
     pluginNodePolicy(checked)
     this.attempted.add(install.pluginId)
     let startedOwner: PluginHostOwner | undefined
-    const run = await this.options.runtime
-      .start({
-        package: checked,
-        releaseDigest: install.release.archiveSha256,
-        legacyConfiguration: {
-          directory: join(
-            this.options.root,
-            'profile-apply',
-            pluginSha256(Buffer.from(install.installId)),
-          ),
-          floor: join(this.options.root, 'profile-apply', install.installId + '.floor'),
-        },
-        ...previous,
-        onStarted: async (owner) => {
-          startedOwner = owner
-          await this.attachHostOwner(owner, checked)
-        },
-        hostRequest: (owner, envelope, signal) => this.handleHostRequest(owner, envelope, signal),
+    // Adoption belongs to allocation, so drain sees the returned run before this settles.
+    const allocation = Promise.resolve()
+      .then(() => {
+        if (this.draining || this.effectQueue.signal.aborted) return pending()
+        return this.options.runtime.start({
+          package: checked,
+          releaseDigest: install.release.archiveSha256,
+          legacyConfiguration: {
+            directory: join(
+              this.options.root,
+              'profile-apply',
+              pluginSha256(Buffer.from(install.installId)),
+            ),
+            floor: join(this.options.root, 'profile-apply', install.installId + '.floor'),
+          },
+          ...previous,
+          onStarted: async (owner) => {
+            if (this.draining || this.effectQueue.signal.aborted) return
+            startedOwner = owner
+            await this.attachHostOwner(owner, checked)
+          },
+          hostRequest: (owner, envelope, signal) => this.handleHostRequest(owner, envelope, signal),
+        })
+      })
+      .then((run) => {
+        const running: Running = {
+          run,
+          installId: install.installId,
+          package: checked,
+          ended: false,
+        }
+        this.runs.set(install.pluginId, running)
+        const ended = (proven: boolean) => {
+          if (this.runs.get(install.pluginId) !== running) return
+          if (proven) running.exitProven = true
+          if (running.ended) return
+          running.ended = true
+          // Intentional exits belong to the drain; unexpected exits must also revoke consumers.
+          if (this.draining && proven) return
+          const repairable =
+            !this.blocks.has(install.pluginId) ||
+            this.blocks.get(install.pluginId) === this.toolRestartBlocks.get(install.pluginId)
+          const token = this.block(install.pluginId)
+          if (repairable) this.toolRestartBlocks.set(install.pluginId, token)
+          this.addCleanup(install.pluginId, proven ? 'consumer' : 'process')
+          if (proven) {
+            try {
+              this.options.onHostExit?.(install.pluginId, run.runId)
+            } catch {
+              /* Wakeup is not authority. */
+            }
+          }
+          running.revocation = this.revoke(install).then(() => {
+            if (
+              proven &&
+              this.runs.get(install.pluginId) === running &&
+              this.blocks.get(install.pluginId) === token
+            )
+              this.clearCleanup(install.pluginId, 'consumer')
+          })
+          void running.revocation.catch(() => undefined)
+        }
+        void run.exited
+          .then(
+            () => ended(true),
+            () => ended(false),
+          )
+          .catch(() => undefined)
+        return running
       })
       .catch((error) => {
         if (startedOwner) this.invalidateHost(startedOwner.pluginId, startedOwner.runId)
         throw error
       })
+    this.starting.add(allocation)
+    let running: Running
+    try {
+      running = await allocation
+    } finally {
+      this.starting.delete(allocation)
+    }
+    const { run } = running
+    if (this.draining || this.effectQueue.signal.aborted) return pending()
     if (this.hostOwners.get(install.pluginId)?.owner.runId !== run.runId)
       await this.attachHostOwner({ pluginId: install.pluginId, runId: run.runId }, checked)
-    const running: Running = { run, installId: install.installId, package: checked, ended: false }
-    this.runs.set(install.pluginId, running)
-    const ended = (proven: boolean) => {
-      if (this.runs.get(install.pluginId) !== running) return
-      if (proven) running.exitProven = true
-      if (running.ended) return
-      running.ended = true
-      // Intentional exits belong to the drain; unexpected exits must also revoke consumers.
-      if (this.draining && proven) return
-      const repairable =
-        !this.blocks.has(install.pluginId) ||
-        this.blocks.get(install.pluginId) === this.toolRestartBlocks.get(install.pluginId)
-      const token = this.block(install.pluginId)
-      if (repairable) this.toolRestartBlocks.set(install.pluginId, token)
-      this.cleanup.add(install.pluginId)
-      if (proven) {
-        try {
-          this.options.onHostExit?.(install.pluginId, run.runId)
-        } catch {
-          /* Wakeup is not authority. */
-        }
-      }
-      running.revocation = this.revoke(install).then(() => {
-        if (
-          proven &&
-          this.runs.get(install.pluginId) === running &&
-          this.blocks.get(install.pluginId) === token
-        )
-          this.cleanup.delete(install.pluginId)
-      })
-      void running.revocation.catch(() => undefined)
-    }
-    void run.exited
-      .then(
-        () => ended(true),
-        () => ended(false),
-      )
-      .catch(() => undefined)
     // On Windows a start first opens the job keeper, which can take two minutes on a cold machine;
     // the host bounds that open and the readiness after it (node-host.ts).
     const connection = await bounded(
@@ -1710,7 +1748,7 @@ export class PluginLifecycleController {
     this.effectQueue.commit(effect.pluginId, () => this.options.state.complete(effect.operationId))
     for (const [one, receipt] of receipts) this.acceptReceipt(one, install.pluginId, receipt)
     for (const one of this.workspaces.values()) if (one.live) this.syncHostWorkspace(one)
-    this.cleanup.delete(install.pluginId)
+    this.clearCleanup(install.pluginId)
     this.options.fault?.('activated')
   }
   private async project(workspace: Workspace, install: Installation): Promise<void> {
@@ -1767,7 +1805,7 @@ export class PluginLifecycleController {
           return refuse()
         const token = this.block(id)
         this.toolRestartBlocks.set(id, token)
-        this.cleanup.add(id)
+        this.addCleanup(id, 'process')
         running.ended = true
         if (!running.exitProven) {
           try {
@@ -1810,7 +1848,7 @@ export class PluginLifecycleController {
               .map((one) => this.project(one, install)),
           )
         })
-        this.cleanup.delete(id)
+        this.clearCleanup(id)
         if (this.blocks.get(id) === token) this.blocks.delete(id)
         if (this.toolRestartBlocks.get(id) === token) this.toolRestartBlocks.delete(id)
       })
@@ -1923,6 +1961,20 @@ export class PluginLifecycleController {
     this.effectQueue.beginClose()
     for (const workspace of this.workspaces.values())
       for (const id of workspace.bindings.keys()) this.cancelBinding(workspace, id)
+  }
+  /** Trusted bootstrap only, after person channels and agent route authority are closed. */
+  consumersEnded(): void {
+    if (this.consumerAuthorityEnded) return
+    this.consumerAuthorityEnded = true
+    this.beginDrain()
+    for (const workspace of this.workspaces.values()) {
+      workspace.live = false
+      workspace.views.clear()
+      workspace.contributionHandles.clear()
+    }
+    for (const id of this.hostOwners.keys()) this.invalidateHost(id)
+    for (const workspace of this.workspaces.values())
+      this.detachWorkspaceIfUnused(workspace.sink.workspaceId)
   }
   private async removeFiles(install: Installation, operationId: string): Promise<void> {
     const operation = this.options.state.operation(operationId)?.operation
@@ -2041,7 +2093,7 @@ export class PluginLifecycleController {
       this.revoke(install),
     ])
     if (results.some((one) => one.status !== 'fulfilled')) {
-      this.cleanup.add(install.pluginId)
+      this.addCleanup(install.pluginId, 'effect')
       return pending()
     }
     this.assertOperation(effect, install)
@@ -2070,7 +2122,7 @@ export class PluginLifecycleController {
     }
     // Cohort receipts clear in the reserved completion. Any older/offline receipt is only a
     // cleanup obligation: the tombstone already invalidates it, never authority to reactivate.
-    this.cleanup.delete(install.pluginId)
+    this.clearCleanup(install.pluginId)
     if (generic) return outcome!
     if (deleteData) return { data: 'deleted', logout: logout ?? 'unconfirmed' }
   }
@@ -2191,7 +2243,7 @@ export class PluginLifecycleController {
         if (!this.cleanup.has(id) && this.blocks.get(id) === token) this.blocks.delete(id)
         return refuse()
       }
-      this.cleanup.add(id)
+      this.addCleanup(id, 'effect')
       return pending()
     }
   }
@@ -2206,7 +2258,7 @@ export class PluginLifecycleController {
         this.revoke(entry),
       ])
       if (results.some((one) => one.status !== 'fulfilled')) {
-        this.cleanup.add(entry.pluginId)
+        this.addCleanup(entry.pluginId, 'effect')
         return pending()
       }
       await this.removeFiles(entry, effect.operationId)
@@ -2217,7 +2269,7 @@ export class PluginLifecycleController {
       await this.remove(entry.pluginId, randomUUID(), effect.operationId)
     }
     await this.writeEffect({ ...effect, phase: 'aborted', offlineCleanup: true })
-    this.cleanup.delete(entry.pluginId)
+    this.clearCleanup(entry.pluginId)
   }
   private async recover(target?: string): Promise<PluginRemovalOutcome | void> {
     let outcome: PluginRemovalOutcome | void = undefined
@@ -2238,7 +2290,7 @@ export class PluginLifecycleController {
       if (current?.installId !== next.installId) continue // An old operation cannot undo a reinstall.
       const token = this.block(next.pluginId)
       if (!effect && record.status !== 'prepared') {
-        this.cleanup.add(next.pluginId)
+        this.addCleanup(next.pluginId, 'effect')
         continue
       }
       const pendingEffect: Effect = effect ?? {
@@ -2252,7 +2304,7 @@ export class PluginLifecycleController {
         compensates: null,
       }
       if ((await this.options.runtime.previousOwnerClean()) !== true) {
-        this.cleanup.add(next.pluginId)
+        this.addCleanup(next.pluginId, 'process')
         continue
       }
       if (pendingEffect.action === 'install') await this.unwind(pendingEffect)
@@ -2272,6 +2324,7 @@ export class PluginLifecycleController {
     this.beginDrain()
     // The supervisor bounds its caller's wait while retaining this exact cleanup barrier.
     this.drainWork ??= (async () => {
+      await Promise.allSettled([...this.starting])
       const results = await Promise.allSettled(
         [...this.runs.values()].map(async (running) => {
           const [, exit] = await Promise.allSettled([
@@ -2284,6 +2337,14 @@ export class PluginLifecycleController {
       )
       await this.effectQueue.settled()
       if (results.some((one) => one.status !== 'fulfilled')) return pending()
+      if (this.consumerAuthorityEnded) {
+        for (const workspace of this.workspaces.values()) {
+          workspace.revocations.clear()
+          workspace.consumerBlocks.clear()
+          workspace.receipts.clear()
+        }
+        for (const id of this.cleanup.keys()) this.clearCleanup(id, 'consumer')
+      }
       // Once nothing holds the state, a removal or install left unfinished stays in the journal.
       this.drained = true
       if (!this.cleanForShutdown()) return pending()
@@ -2291,21 +2352,20 @@ export class PluginLifecycleController {
     return this.drainWork
   }
   /**
-   * Never release supervisor ownership while a mutation or unproved consumer cleanup survives.
-   * After a drain, the journal's one unfinished removal or install is not one, even when one of
-   * its plugin's consumers never acknowledged the revoke: every run's exit is proven, the owner
-   * checks again only after closing every person channel and agent route, a consumer's only ways
-   * to reach the plugin, and the next owner's start finishes the operation. Any other plugin's
-   * cleanup still refuses.
+   * Consumer cleanup retires only after the trusted channel/route mark and proven drain.
+   * Physical and durable-effect failures remain obligations. The journal keeps an unfinished
+   * removal or install for recovery after all starts, exits and tracked effects have settled.
    */
   cleanForShutdown(): boolean {
     const pending = this.options.state.inspect().pending
     const leftover = this.drained ? pending?.next?.pluginId : undefined
     return (
       this.effectQueue.idle &&
+      this.starting.size === 0 &&
+      (!this.draining || this.drained) &&
       (pending === null || leftover !== undefined) &&
       [
-        ...this.cleanup,
+        ...this.cleanup.keys(),
         ...[...this.workspaces.values()]
           .filter((one) => one.live)
           .flatMap((one) => [...one.consumerBlocks]),

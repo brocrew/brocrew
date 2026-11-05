@@ -62,7 +62,10 @@ export async function createSupervisorLifecycle(options: {
     closing ??= (async () => {
       // Cleanup is attempted independently; only real process handles belong to physical drain.
       bridge.endConsumers()
-      await Promise.allSettled([agents.close(), bridge.close(), controller.drain()])
+      const agentClosing = agents.close()
+      const personClosing = bridge.close()
+      controller.consumersEnded()
+      await Promise.allSettled([agentClosing, personClosing, controller.drain()])
     })()
     return closing
   }
