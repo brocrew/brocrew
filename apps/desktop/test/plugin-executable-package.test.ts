@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   chmod,
   copyFile,
@@ -214,4 +214,193 @@ describe('ordinary packaged executable metadata', () => {
     expect(await readFile(path, 'utf8')).toBe('fictional changed helper bytes')
     if (process.platform !== 'win32') expect((await stat(path)).mode & 0o777).toBe(0o400)
   }, 180000)
+})
+
+describe('fixture cleanup only after a proven stop', () => {
+  const ROOT = '/fictional/executable-root'
+  const deferred = <T = void>() => {
+    let resolve!: (value: T) => void
+    let reject!: (error: unknown) => void
+    const promise = new Promise<T>((done, fail) => {
+      resolve = done
+      reject = fail
+    })
+    return { promise, resolve, reject }
+  }
+  /** A stop that says it was entered, then waits for its gate. */
+  const heldStop = () => {
+    const entered = deferred()
+    const gate = deferred<unknown>()
+    const stop = vi.fn(() => {
+      entered.resolve()
+      return gate.promise
+    })
+    return { entered, gate, stop }
+  }
+  const removing = () => {
+    const removed: string[] = []
+    return { removed, remove: async (root: string) => void removed.push(root) }
+  }
+  /** An independent closer that says it finished. */
+  const independent = () => {
+    const done = deferred()
+    return { done, close: async () => done.resolve() }
+  }
+  const failuresOf = async (running: Promise<void>): Promise<unknown[]> => {
+    try {
+      await running
+      return []
+    } catch (error) {
+      return (error as AggregateError).errors
+    }
+  }
+
+  it('a held stop blocks neither an independent closer nor anything but its own removal', async () => {
+    const closers: (() => unknown)[] = []
+    const { entered, gate, stop } = heldStop()
+    const { removed, remove } = removing()
+    const other = independent()
+    await ownTheRoot(ROOT, async () => ({ stop }), closers, remove)
+    const running = runClosers([...closers, other.close])
+    await entered.promise
+    await other.done.promise
+    expect(removed).toEqual([])
+    gate.resolve({ exited: true })
+    await running
+    expect(removed).toEqual([ROOT])
+  })
+
+  it('a rejected stop keeps the root and its error, and the other closer still runs', async () => {
+    const closers: (() => unknown)[] = []
+    const failure = new Error('fictional stop failed')
+    const { removed, remove } = removing()
+    const other = independent()
+    await ownTheRoot(ROOT, async () => ({ stop: () => Promise.reject(failure) }), closers, remove)
+    expect(await failuresOf(runClosers([...closers, other.close]))).toEqual([failure])
+    await other.done.promise
+    expect(removed).toEqual([])
+  })
+
+  it.each([[{ exited: false }], [{ exited: 'yes' }], [{ exited: true, extra: 1 }], [undefined]])(
+    'a stop that does not prove its exit keeps the root: %j',
+    async (receipt) => {
+      const closers: (() => unknown)[] = []
+      const { removed, remove } = removing()
+      await ownTheRoot(ROOT, async () => ({ stop: async () => receipt }), closers, remove)
+      expect(await failuresOf(runClosers(closers))).toHaveLength(1)
+      expect(removed).toEqual([])
+    },
+  )
+
+  it('a proven stop removes the root once', async () => {
+    const closers: (() => unknown)[] = []
+    const { removed, remove } = removing()
+    await ownTheRoot(ROOT, async () => ({ stop: async () => ({ exited: true }) }), closers, remove)
+    await runClosers(closers)
+    expect(removed).toEqual([ROOT])
+  })
+
+  describe('while setup is held', () => {
+    const held = () => {
+      const closers: (() => unknown)[] = []
+      const entered = deferred()
+      const gate = deferred<{ stop(): Promise<unknown> }>()
+      const { removed, remove } = removing()
+      const owning = ownTheRoot(
+        ROOT,
+        () => {
+          entered.resolve()
+          return gate.promise
+        },
+        closers,
+        remove,
+      )
+      const other = independent()
+      const running = runClosers([...closers, other.close])
+      return { entered, gate, removed, owning, other, running }
+    }
+
+    it('nothing is removed until setup settles, and a setup that fails with no host removes the root', async () => {
+      const { entered, gate, removed, owning, other, running } = held()
+      await entered.promise
+      await other.done.promise
+      expect(removed).toEqual([])
+      const failure = new Error('fictional setup failed')
+      gate.reject(failure)
+      await expect(owning).rejects.toBe(failure)
+      await running
+      expect(removed).toEqual([ROOT])
+    })
+
+    it('a host created late is stopped and proven before the root goes', async () => {
+      const { entered, gate, removed, owning, other, running } = held()
+      await entered.promise
+      await other.done.promise
+      const stop = vi.fn(async () => {
+        expect(removed).toEqual([])
+        return { exited: true }
+      })
+      gate.resolve({ stop })
+      await owning
+      await running
+      expect(stop).toHaveBeenCalledTimes(1)
+      expect(removed).toEqual([ROOT])
+    })
+
+    it('a host created late that does not prove its exit keeps the root', async () => {
+      const { entered, gate, removed, owning, other, running } = held()
+      await entered.promise
+      await other.done.promise
+      gate.resolve({ stop: async () => ({ exited: false }) })
+      await owning
+      expect(await failuresOf(running)).toHaveLength(1)
+      expect(removed).toEqual([])
+    })
+  })
+
+  describe('the removal after a proven stop', () => {
+    const refusing = (codes: (string | null)[]) => {
+      const calls: string[] = []
+      const rm = vi.fn(async (path: string) => {
+        calls.push(path)
+        const code = codes.shift() ?? null
+        if (code !== null) throw Object.assign(new Error(`fictional ${code}`), { code })
+      })
+      const pause = vi.fn(async (_ms: number) => undefined)
+      const log = vi.fn((_said: string) => undefined)
+      return { calls, rm, pause, log }
+    }
+
+    it('EBUSY twice is logged once, paused twice and then removed', async () => {
+      const seams = refusing(['EBUSY', 'EBUSY', null])
+      await removeAfterTheStop(ROOT, seams)
+      expect(seams.rm).toHaveBeenCalledTimes(3)
+      expect(seams.log).toHaveBeenCalledTimes(1)
+      expect(seams.pause.mock.calls).toEqual([[250], [250]])
+    })
+
+    it('EPERM is retried the same way', async () => {
+      const seams = refusing(['EPERM', null])
+      await removeAfterTheStop(ROOT, seams)
+      expect(seams.rm).toHaveBeenCalledTimes(2)
+      expect(seams.log).toHaveBeenCalledTimes(1)
+      expect(seams.pause.mock.calls).toEqual([[250]])
+    })
+
+    it('a hold that never ends is given up after twenty pauses, with its error', async () => {
+      const seams = refusing(Array.from({ length: 30 }, () => 'EBUSY'))
+      await expect(removeAfterTheStop(ROOT, seams)).rejects.toMatchObject({ code: 'EBUSY' })
+      expect(seams.rm).toHaveBeenCalledTimes(21)
+      expect(seams.pause).toHaveBeenCalledTimes(20)
+      expect(seams.log).toHaveBeenCalledTimes(1)
+    })
+
+    it('another refusal is not retried', async () => {
+      const seams = refusing(['ENOTDIR'])
+      await expect(removeAfterTheStop(ROOT, seams)).rejects.toMatchObject({ code: 'ENOTDIR' })
+      expect(seams.rm).toHaveBeenCalledTimes(1)
+      expect(seams.pause).not.toHaveBeenCalled()
+      expect(seams.log).toHaveBeenCalledTimes(1)
+    })
+  })
 })
