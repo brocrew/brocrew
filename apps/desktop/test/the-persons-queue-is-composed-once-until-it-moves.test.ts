@@ -132,7 +132,7 @@ describe('the person’s queue is composed once until it moves', () => {
     expect(host.waitingOnWhoWroteForAPerson()).toBe(recovered)
   })
 
-  it('a rebuild’s cleanup that takes out an ask the queue saw composes it again, and other cleanup does not', async () => {
+  it('a rebuild’s cleanup that takes out an ask composes the queue, listing and waits again, and other cleanup does not', async () => {
     const asked = () => host.instructionAsksForAPerson().map((one) => one.asked.askId)
     // An ask in a generation nobody shows, which the replay over every generation still reads.
     const stale = world.store.beginGeneration(giver)
@@ -158,12 +158,19 @@ describe('the person’s queue is composed once until it moves', () => {
     routed('fictional-before-cleanup')
     await quiet()
     expect(asked()).toContain('iprop_fictional')
-    const asks = host.instructionAsksForAPerson()
-    // A batch holding no such row keeps the queue shared.
+    // The listing and the waits read the same asks (through the cards), so they move with it.
+    const kept = () => [
+      host.instructionAsksForAPerson(),
+      host.resumableSessions(),
+      host.whatEachConversationIsWaitingOn(),
+    ]
+    const before = kept()
+    // A batch holding no such row keeps every one of them shared.
     world.store.discardGeneration(giver, plain, 100)
-    expect(host.instructionAsksForAPerson()).toBe(asks)
-    // The batch that takes the ask out composes the queue again, without it.
+    kept().forEach((answer, at) => expect(answer).toBe(before[at]))
+    // The batch that takes the ask out composes each of them again, and the queue says it no more.
     world.store.discardGeneration(giver, stale, 100)
+    kept().forEach((answer, at) => expect(answer).not.toBe(before[at]))
     expect(asked()).not.toContain('iprop_fictional')
   })
 
