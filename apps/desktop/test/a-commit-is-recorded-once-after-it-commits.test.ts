@@ -14,7 +14,8 @@ const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db
 /**
  * The store records what each commit wrote, once, after the commit: the ledger rows with the facts
  * that move other conversations, whole changes, staged rebuilds and kept files. A rollback records
- * nothing, and a write from another connection is caught as one resync.
+ * nothing, and a commit that can't be told — another connection's, or writes made after SQLite ended
+ * a transaction under its caller — is one resync.
  */
 describe('a commit is recorded once, after it commits', () => {
   let folder: string
@@ -194,9 +195,13 @@ describe('a commit is recorded once, after it commits', () => {
     expect(wholes).toEqual([['alpha', 'deleted']])
   })
 
-  it('a setter outside any transaction is recorded by its table', () => {
-    store.setModel('alpha', 'fictional-model')
-    const tables = seen.flatMap((one) => (one.change.resync ? [] : [...one.change.tables]))
-    expect(tables).toContain('provider_session')
+  it('writes made after SQLite ended the transaction under its caller are one resync', () => {
+    const outer = db.transaction(() => {
+      db.exec('ROLLBACK')
+      store.append('alpha', 0, text('committed on its own'), 5_000)
+    })
+    expect(() => outer()).toThrow()
+    expect(store.events('alpha')).toHaveLength(1)
+    expect(seen.map((one) => one.change.resync)).toEqual([true])
   })
 })
