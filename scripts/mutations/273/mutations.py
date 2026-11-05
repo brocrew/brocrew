@@ -84,12 +84,14 @@ REOPEN_LIST = "apps/desktop/src/renderer/src/components/ResumableSessions.vue"
 CHECK = "scripts/app-closes-check.mjs"
 
 # Re-anchored in place: the door also answers the stamped queue's refusal at its stamp; removing
-# the whole door is the same defect.
+# the whole door is the same defect. It also answers the stamped listing's refusal.
 DOOR = (
     "  if (host.closing && DURING_A_QUIT[command.kind] === 'refused') {\n"
     "    // The stamped queue says its refusal at its stamp, so a window can order it; nothing is read.\n"
     "    if (command.kind === 'personsQueue')\n"
     "      return host.personsQueueRefused(refusedDuringAQuit(command.kind))\n"
+    "    if (command.kind === 'listConversations')\n"
+    "      return host.listingRefused(refusedDuringAQuit(command.kind))\n"
     "    throw new Error(refusedDuringAQuit(command.kind))\n"
     "  }\n"
 )
