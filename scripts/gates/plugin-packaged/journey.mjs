@@ -3,6 +3,7 @@ import path from 'node:path'
 import { createServer } from 'node:http'
 import { spawn } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
+import { isDeepStrictEqual } from 'node:util'
 import { attach, press } from '../../lib/update-rehearsal-app.mjs'
 import { HIDDEN_LAUNCH_ARG } from '../../lib/hidden-launch.mjs'
 import { privateFolder, fixtureEnvironment, fixtureAppEnvironment, command } from './prepare.mjs'
@@ -28,6 +29,7 @@ import { serveFixture, createProviderTurn, browserEvidence, waitTabs } from './b
 import { fixtureTitle } from './fake-browser.mjs'
 import { providerState, printProviderState } from './provider-state.mjs'
 import { providerErrorCategory } from './browser-journey.mjs'
+import { prepareCandidateCache } from './release.mjs'
 // Kept in sync with the scripted provider; ordinary prompts retain the normal FakeRuntime behavior.
 const openPrompt = 'Use Chrome to open the fern fixture page and read its title.'
 const closePrompt = 'Use Chrome to close the fern fixture tab.'
@@ -41,11 +43,385 @@ export function readOwned(file, maximum = 32 * 1024) {
     if (!info.isFile() || info.uid !== process.getuid() || info.nlink !== 1 || info.size > maximum)
       throw new Error('Invalid owned gate entry')
     const bytes = fs.readFileSync(fd)
-    if (bytes.length !== info.size) throw new Error('Owned gate entry changed')
+    const after = fs.fstatSync(fd),
+      named = fs.lstatSync(file)
+    if (
+      bytes.length !== info.size ||
+      after.size !== info.size ||
+      after.mtimeMs !== info.mtimeMs ||
+      after.ctimeMs !== info.ctimeMs ||
+      named.dev !== info.dev ||
+      named.ino !== info.ino ||
+      named.isSymbolicLink()
+    )
+      throw new Error('Owned gate entry changed')
     return bytes
   } finally {
     fs.closeSync(fd)
   }
+}
+const observationFailure = () => {
+  throw new Error('Incomplete install observation')
+}
+const exactKeys = (value, names) =>
+  value !== null &&
+  typeof value === 'object' &&
+  !Array.isArray(value) &&
+  Object.keys(value).length === names.length &&
+  names.every((name) => Object.hasOwn(value, name))
+const uuid = (value) =>
+  typeof value === 'string' &&
+  /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(value)
+const integer = (value) => Number.isSafeInteger(value) && value >= 0
+const hash = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value)
+// JSON.parse alone loses duplicate keys. Validate the bounded JSON grammar before decoding it.
+export function observationJson(bytes) {
+  const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+  let at = 0
+  const space = () => {
+    while (/[\t\n\r ]/.test(text[at] ?? 'x')) at++
+  }
+  const string = () => {
+    const start = at++
+    while (at < text.length) {
+      const char = text[at++]
+      if (char === '"') return JSON.parse(text.slice(start, at))
+      if (char === '\\') at++
+    }
+    return observationFailure()
+  }
+  const value = (depth = 0) => {
+    if (depth > 64) return observationFailure()
+    space()
+    if (text[at] === '{') {
+      at++
+      space()
+      const keys = new Set()
+      if (text[at] === '}') {
+        at++
+        return
+      }
+      while (at < text.length) {
+        space()
+        if (text[at] !== '"') return observationFailure()
+        const key = string()
+        if (keys.has(key)) return observationFailure()
+        keys.add(key)
+        space()
+        if (text[at++] !== ':') return observationFailure()
+        value(depth + 1)
+        space()
+        const end = text[at++]
+        if (end === '}') return
+        if (end !== ',') return observationFailure()
+      }
+    } else if (text[at] === '[') {
+      at++
+      space()
+      if (text[at] === ']') {
+        at++
+        return
+      }
+      while (at < text.length) {
+        value(depth + 1)
+        space()
+        const end = text[at++]
+        if (end === ']') return
+        if (end !== ',') return observationFailure()
+      }
+    } else if (text[at] === '"') {
+      string()
+      return
+    } else {
+      const token = text
+        .slice(at)
+        .match(/^(?:true|false|null|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)/)?.[0]
+      if (!token) return observationFailure()
+      at += token.length
+      return
+    }
+    return observationFailure()
+  }
+  value()
+  space()
+  if (at !== text.length) return observationFailure()
+  return JSON.parse(text)
+}
+function observedDirectory(root, folder) {
+  const relative = path.relative(root, folder)
+  if (relative.startsWith('..') || path.isAbsolute(relative)) return observationFailure()
+  const stat = fs.lstatSync(folder)
+  if (
+    !stat.isDirectory() ||
+    stat.isSymbolicLink() ||
+    stat.uid !== process.getuid() ||
+    stat.mode & 0o077 ||
+    fs.realpathSync(folder) !== folder
+  )
+    return observationFailure()
+  if (folder !== root) observedDirectory(root, path.dirname(folder))
+  return folder
+}
+function releaseState(value) {
+  return (
+    exactKeys(value, ['version', 'archiveSha256', 'manifestSha256', 'dataSchema']) &&
+    typeof value.version === 'string' &&
+    value.version.length > 0 &&
+    hash(value.archiveSha256) &&
+    hash(value.manifestSha256) &&
+    integer(value.dataSchema)
+  )
+}
+function installationState(value) {
+  return (
+    exactKeys(value, [
+      'pluginId',
+      'installId',
+      'incarnation',
+      'lifecycleSequence',
+      'releaseRevision',
+      'configRevision',
+      'release',
+      'phase',
+    ]) &&
+    value.pluginId === 'chrome' &&
+    uuid(value.installId) &&
+    uuid(value.incarnation) &&
+    integer(value.lifecycleSequence) &&
+    value.lifecycleSequence >= 1 &&
+    integer(value.releaseRevision) &&
+    value.releaseRevision >= 1 &&
+    integer(value.configRevision) &&
+    releaseState(value.release) &&
+    ['prepared', 'active', 'removed'].includes(value.phase)
+  )
+}
+/** Current format2 writer schema, restricted to this fresh single-plugin/single-workspace interval. */
+export function validateInstallSnapshot(value) {
+  if (
+    !exactKeys(value, [
+      'format',
+      'rootId',
+      'epoch',
+      'sequence',
+      'installations',
+      'active',
+      'recentOperations',
+      'pending',
+      'projections',
+      'workspaceEnabled',
+      'workspaceTitlesEnabled',
+    ]) ||
+    value.format !== 2 ||
+    !uuid(value.rootId) ||
+    !uuid(value.epoch) ||
+    !integer(value.sequence) ||
+    value.pending !== null
+  )
+    return observationFailure()
+  for (const key of [
+    'installations',
+    'active',
+    'recentOperations',
+    'projections',
+    'workspaceEnabled',
+    'workspaceTitlesEnabled',
+  ])
+    if (!Array.isArray(value[key]) || value[key].length > 1) return observationFailure()
+  if (value.workspaceEnabled.length || value.workspaceTitlesEnabled.length)
+    return observationFailure()
+  if (!value.installations.every(installationState) || !value.active.every(installationState))
+    return observationFailure()
+  for (const row of value.recentOperations) {
+    if (!exactKeys(row, ['operation', 'status']) || row.status !== 'completed')
+      return observationFailure()
+    const op = row.operation,
+      req = op?.request,
+      consent = req?.consent
+    if (
+      !exactKeys(op, ['request', 'allocated', 'next']) ||
+      !exactKeys(req, ['operationId', 'consent', 'snapshot', 'workspaces']) ||
+      !uuid(req.operationId) ||
+      req.snapshot !== null ||
+      !Array.isArray(req.workspaces) ||
+      req.workspaces.length !== 1 ||
+      !uuid(req.workspaces[0]) ||
+      !exactKeys(consent, [
+        'action',
+        'pluginId',
+        'at',
+        'expectedSequence',
+        'expectedInstallId',
+        'release',
+      ]) ||
+      consent.action !== 'install' ||
+      consent.pluginId !== 'chrome' ||
+      !integer(consent.at) ||
+      !integer(consent.expectedSequence) ||
+      consent.expectedInstallId !== null ||
+      !releaseState(consent.release) ||
+      !exactKeys(op.allocated, ['installId', 'incarnation', 'epoch']) ||
+      !Object.values(op.allocated).every(uuid) ||
+      !installationState(op.next)
+    )
+      return observationFailure()
+  }
+  for (const receipt of value.projections)
+    if (
+      !exactKeys(receipt, [
+        'format',
+        'rootId',
+        'workspaceId',
+        'epoch',
+        'pluginId',
+        'installId',
+        'incarnation',
+        'lifecycleSequence',
+        'releaseRevision',
+        'configRevision',
+        'skills',
+        'bindings',
+      ]) ||
+      receipt.format !== 1 ||
+      !['rootId', 'workspaceId', 'epoch', 'installId', 'incarnation'].every((key) =>
+        uuid(receipt[key]),
+      ) ||
+      receipt.pluginId !== 'chrome' ||
+      !['lifecycleSequence', 'releaseRevision', 'configRevision'].every((key) =>
+        integer(receipt[key]),
+      ) ||
+      !Array.isArray(receipt.skills) ||
+      receipt.skills.length ||
+      !Array.isArray(receipt.bindings) ||
+      receipt.bindings.length
+    )
+      return observationFailure()
+  return value
+}
+export function observeInstallState(root, global) {
+  ownedRoot(root)
+  observedDirectory(root, global)
+  observedDirectory(root, path.join(global, 'state'))
+  const file = path.join(global, 'state/installed-state.json')
+  const bytes = readOwned(file, 1024 * 1024),
+    snapshot = validateInstallSnapshot(observationJson(bytes))
+  if (!readOwned(file, 1024 * 1024).equals(bytes)) return observationFailure()
+  return snapshot
+}
+export function emptyInstallBaseline(snapshot) {
+  validateInstallSnapshot(snapshot)
+  if (
+    snapshot.sequence !== 0 ||
+    [
+      'installations',
+      'active',
+      'recentOperations',
+      'projections',
+      'workspaceEnabled',
+      'workspaceTitlesEnabled',
+    ].some((key) => snapshot[key].length)
+  )
+    return observationFailure()
+  return snapshot
+}
+export function sameInstallState(before, after) {
+  validateInstallSnapshot(before)
+  validateInstallSnapshot(after)
+  if (!isDeepStrictEqual(before, after)) return observationFailure()
+  return true
+}
+export function firstInstallState(baseline, completed, workspace, proof) {
+  emptyInstallBaseline(baseline)
+  validateInstallSnapshot(completed)
+  if (
+    proof?.cacheVerified !== true ||
+    proof.pristine !== true ||
+    !hash(proof.ref?.sha256) ||
+    !hash(proof.manifestSha256) ||
+    !integer(proof.manifest?.data?.schema)
+  )
+    return observationFailure()
+  if (
+    completed.rootId !== baseline.rootId ||
+    completed.epoch !== baseline.epoch ||
+    completed.sequence !== baseline.sequence + 2 ||
+    completed.recentOperations.length !== 1 ||
+    completed.active.length !== 1 ||
+    completed.installations.length !== 1 ||
+    completed.projections.length !== 1
+  )
+    return observationFailure()
+  const op = completed.recentOperations[0].operation,
+    next = op.next,
+    req = op.request
+  const expectedRelease = {
+    version: proof.manifest.version,
+    archiveSha256: proof.ref.sha256,
+    manifestSha256: proof.manifestSha256,
+    dataSchema: proof.manifest.data.schema,
+  }
+  const workspaceHash = digest(Buffer.from(workspace))
+  const workspaceId = `${workspaceHash.slice(0, 8)}-${workspaceHash.slice(8, 12)}-5${workspaceHash.slice(13, 16)}-a${workspaceHash.slice(17, 20)}-${workspaceHash.slice(20, 32)}`
+  if (
+    req.consent.expectedSequence !== baseline.sequence ||
+    !isDeepStrictEqual(req.workspaces, [workspaceId]) ||
+    !isDeepStrictEqual(req.consent.release, expectedRelease) ||
+    !isDeepStrictEqual(next.release, expectedRelease) ||
+    next.phase !== 'prepared' ||
+    next.installId !== op.allocated.installId ||
+    next.incarnation !== op.allocated.incarnation ||
+    next.lifecycleSequence !== 1 ||
+    next.releaseRevision !== 1 ||
+    next.configRevision !== 0
+  )
+    return observationFailure()
+  const active = { ...next, phase: 'active' }
+  const receipt = {
+    format: 1,
+    rootId: baseline.rootId,
+    workspaceId,
+    epoch: baseline.epoch,
+    pluginId: 'chrome',
+    installId: next.installId,
+    incarnation: next.incarnation,
+    lifecycleSequence: 1,
+    releaseRevision: 1,
+    configRevision: 0,
+    skills: [],
+    bindings: [],
+  }
+  if (
+    !isDeepStrictEqual(completed.active, [active]) ||
+    !isDeepStrictEqual(completed.installations, [active]) ||
+    !isDeepStrictEqual(completed.projections, [receipt])
+  )
+    return observationFailure()
+  return completed
+}
+export function observeRunNames(root, global) {
+  ownedRoot(root)
+  observedDirectory(root, global)
+  const host = path.join(global, 'host')
+  try {
+    fs.lstatSync(host)
+  } catch (error) {
+    if (error.code === 'ENOENT') return []
+    throw error
+  }
+  observedDirectory(root, host)
+  const folder = path.join(host, 'runs')
+  try {
+    fs.lstatSync(folder)
+  } catch (error) {
+    if (error.code === 'ENOENT') return []
+    throw error
+  }
+  observedDirectory(root, folder)
+  const names = fs.readdirSync(folder).sort()
+  if (names.length > 128 || names.some((name) => !uuid(name))) return observationFailure()
+  for (const name of names) observedDirectory(root, path.join(folder, name))
+  if (!isDeepStrictEqual(names, fs.readdirSync(folder).sort())) return observationFailure()
+  return names
 }
 async function freePort() {
   const server = createServer()
@@ -58,10 +434,18 @@ export function stageRelease(root, appData, variant = 'valid') {
   ownedRoot(root)
   const release = path.join(root, 'release')
   const catalogue = JSON.parse(readOwned(path.join(release, 'catalogue.json')))
-  if (variant === 'foreign')
-    catalogue.entries[0].targets[0].url = 'https://example.invalid/foreign.tar.gz'
+  if (
+    catalogue.format !== 3 ||
+    catalogue.entries.length !== 1 ||
+    catalogue.entries[0].id !== 'chrome'
+  )
+    throw new Error('Invalid release catalogue')
+  const target = catalogue.entries[0].targets.find(
+    (one) => one.os === 'darwin' && one.cpu === 'arm64',
+  )
+  if (!target) throw new Error('Missing release target')
+  if (variant === 'alternate') target.url = 'https://example.invalid/alternate-chrome.tar.gz'
   else if (!['valid', 'tampered'].includes(variant)) throw new Error('Invalid release fixture')
-  const target = catalogue.entries[0].targets[0]
   const destination = privateFolder(path.join(appData, 'repo-fixture'))
   privateFolder(path.join(destination, 'archives'))
   const archive = Buffer.from(
@@ -74,6 +458,10 @@ export function stageRelease(root, appData, variant = 'valid') {
   fs.writeFileSync(path.join(destination, 'archives', target.sha256 + '.tar.gz'), archive, {
     mode: 0o600,
   })
+  return {
+    ref: { source: target.url, sha256: target.sha256, bytes: target.bytes },
+    archivePath: path.join(destination, 'archives', target.sha256 + '.tar.gz'),
+  }
 }
 async function startApp(root, plan, workspace, global, processes, diagnose = false) {
   if (plan.argv?.length !== 1 || plan.argv[0] !== HIDDEN_LAUNCH_ARG)
@@ -150,6 +538,49 @@ async function installed(run, wanted) {
       (wanted ? card.state === 'Running' : card.state !== 'Unavailable')
     )
   }, 90_000)
+}
+export function matchesInspection(inspection, proof) {
+  return (
+    proof?.cacheVerified === true &&
+    proof.pristine === true &&
+    isDeepStrictEqual(inspection?.ref, proof.ref) &&
+    isDeepStrictEqual(inspection?.manifest, proof.manifest) &&
+    inspection?.id === proof.manifest.id &&
+    inspection?.details?.version === proof.manifest.version &&
+    inspection?.details?.digest === proof.ref.sha256 &&
+    inspection?.details?.manifestSha256 === proof.manifestSha256 &&
+    isDeepStrictEqual(inspection?.details?.authors, proof.manifest.authors)
+  )
+}
+export async function inspectCandidate(run, proof) {
+  const answer = await run.cdp.evaluate(
+    "return await window.api.plugins.request({kind:'inspect',id:'chrome'})",
+  )
+  if (answer?.ok !== true || !matchesInspection(answer.inspection, proof))
+    throw new Error('Inspected candidate differs')
+  return answer.inspection
+}
+export async function reviewInstall(run, proof, beforeConfirm = async () => {}) {
+  await inspectCandidate(run, proof)
+  await press(run.cdp, '[data-plugin="chrome"] [data-cy="plugin-review-install"]')
+  await waitFor(async () => {
+    const shown = await run.cdp.evaluate(`
+      const row=document.querySelector('[data-plugin="chrome"]');
+      const detail=row?.querySelector('[data-cy="plugin-review-details"]');
+      const values=[...(detail?.querySelectorAll('p > bdi')??[])].map(one=>one.textContent);
+      const confirm=detail?.querySelector('[data-cy="plugin-review-confirm"]');
+      return {version:values[0],authors:values[1],source:values[2],confirm:Boolean(confirm&&!confirm.disabled)};
+    `)
+    return (
+      shown?.confirm === true &&
+      shown.version === proof.manifest.version &&
+      shown.authors === proof.manifest.authors.join(', ') &&
+      shown.source === proof.ref.source
+    )
+  })
+  await beforeConfirm()
+  await press(run.cdp, '[data-plugin="chrome"] [data-cy="plugin-review-confirm"]')
+  return true
 }
 async function configure(run) {
   await press(run.cdp, '[data-plugin="chrome"] [data-cy="plugin-configure"]')
@@ -268,8 +699,7 @@ export async function journey(root) {
     views = []
   const plan = JSON.parse(readOwned(path.join(root, 'plan.json')))
   const global = privateFolder(path.join(root, 'g')),
-    badGlobal = privateFolder(path.join(root, 'b')),
-    foreignGlobal = privateFolder(path.join(root, 'f'))
+    badGlobal = privateFolder(path.join(root, 'b'))
   const workspaceA = privateFolder(path.join(root, 'wa')),
     workspaceB = privateFolder(path.join(root, 'wb'))
   let step = 'packaged'
@@ -299,43 +729,79 @@ export async function journey(root) {
       'bundledSupervisor',
       fs.lstatSync(path.join(resources, 'plugin-supervisor/entry.cjs')).isFile(),
     )
-    for (const [variant, badRoot, key] of [
-      ['foreign', foreignGlobal, 'foreignUrlRefused'],
-      ['tampered', badGlobal, 'tamperedArchiveRefused'],
-    ]) {
-      step = variant === 'foreign' ? 'foreign-refusal' : 'tampered-refusal'
-      stageRelease(root, plan.appData, variant)
-      const bad = await startApp(
-        root,
-        plan,
-        privateFolder(path.join(root, 'w-' + variant)),
-        badRoot,
-        processes,
-      )
-      // Both operations await the actual load. Neither an absent card nor a timing gap passes.
-      const availability = await bad.cdp.evaluate(
-        "return await window.api.plugins.request({kind:'availability'})",
-      )
-      const refused = await bad.cdp.evaluate(
-        "return await window.api.plugins.request({kind:'install',id:'chrome'})",
-      )
-      const cards = await bad.cdp.evaluate("return await window.api.plugins.request({kind:'list'})")
-      const expectedAvailability = true
-      requireCheck(
-        summary,
-        key,
-        availability?.ok === true &&
-          availability.available === expectedAvailability &&
-          refused?.ok === false &&
-          (cards?.ok === false || cards.cards.every((card) => card.installed === false)) &&
-          !fs.existsSync(path.join(badRoot, 'host/runs')),
-      )
-      await stopApp(bad)
-    }
-    step = 'install'
-    stageRelease(root, plan.appData)
+    step = 'tampered-refusal'
+    const tampered = stageRelease(root, plan.appData, 'tampered')
+    if (fs.existsSync(path.join(badGlobal, 'package-vault')))
+      throw new Error('Tamper cache was not fresh')
+    const opaqueProfile = privateFolder(path.join(badGlobal, 'host/data/chrome/profiles/fern'))
+    const opaqueDownloads = privateFolder(path.join(badGlobal, 'host/data/chrome/downloads'))
+    const badMarker = path.join(opaqueProfile, 'fern-gate-retained'),
+      badDownload = path.join(opaqueDownloads, 'fern-kept.txt')
+    fs.writeFileSync(badMarker, 'fictional-owned-profile-data\n', { flag: 'wx', mode: 0o600 })
+    fs.writeFileSync(badDownload, 'fictional-kept-download\n', { flag: 'wx', mode: 0o600 })
+    const noBrowser = () =>
+      !fs
+        .readdirSync(root)
+        .some(
+          (name) =>
+            /^cdp-\d+\.json$/.test(name) ||
+            name === 'provider-proof.json' ||
+            name === 'fake-browser.json',
+        )
+    if (!noBrowser() || fs.existsSync(path.join(badGlobal, 'state')))
+      throw new Error('Tamper baseline not empty')
+    const bad = await startApp(
+      root,
+      plan,
+      privateFolder(path.join(root, 'w-tampered')),
+      badGlobal,
+      processes,
+    )
+    const availability = await bad.cdp.evaluate(
+      "return await window.api.plugins.request({kind:'availability'})",
+    )
+    const badBaseline = emptyInstallBaseline(observeInstallState(root, badGlobal))
+    const badRuns = observeRunNames(root, badGlobal)
+    const refused = await bad.cdp.evaluate(
+      `return await window.api.plugins.request({kind:'inspect',package:${JSON.stringify({ ...tampered.ref, source: tampered.archivePath })}})`,
+    )
+    const cards = await bad.cdp.evaluate("return await window.api.plugins.request({kind:'list'})")
+    sameInstallState(badBaseline, observeInstallState(root, badGlobal))
+    requireCheck(
+      summary,
+      'tamperedArchiveRefused',
+      availability?.ok === true &&
+        availability.available === true &&
+        refused?.ok === false &&
+        refused.detail === 'The package files do not match the selected bytes.' &&
+        cards?.ok === true &&
+        Array.isArray(cards.cards) &&
+        cards.cards.every((card) => card.installed === false) &&
+        badRuns.length === 0 &&
+        observeRunNames(root, badGlobal).length === 0 &&
+        !fs.existsSync(path.join(badGlobal, 'package-vault', tampered.ref.sha256)) &&
+        !fs.existsSync(path.join(badGlobal, 'host/data/chrome/profiles.json')) &&
+        noBrowser() &&
+        readOwned(badMarker).equals(Buffer.from('fictional-owned-profile-data\n')) &&
+        readOwned(badDownload).equals(Buffer.from('fictional-kept-download\n')),
+    )
+    await stopApp(bad)
+    step = 'alternate-source-acceptance'
+    const alternate = stageRelease(root, plan.appData, 'alternate')
+    await prepareCandidateCache(root, path.join(resources, 'plugin-node/node'))
+    const proof = observationJson(
+      readOwned(path.join(root, 'proof/candidate-cache.json'), 4 * 1024 * 1024),
+    )
+    if (
+      proof.cacheVerified !== true ||
+      proof.pristine !== true ||
+      !isDeepStrictEqual(alternate.ref, proof.ref) ||
+      !isDeepStrictEqual(fs.readdirSync(global).sort(), ['package-vault'])
+    )
+      throw new Error('Incomplete candidate cache proof')
     let a = await startApp(root, plan, workspaceA, global, processes)
     await plugins(a)
+    const baseline = emptyInstallBaseline(observeInstallState(root, global))
     requireCheck(summary, 'drawsWindow', await draws(a))
     requireCheck(
       summary,
@@ -344,9 +810,18 @@ export async function journey(root) {
         'return Boolean(document.querySelector(\'[data-cy="settings-tab-plugins"]\'))',
       ),
     )
-    // Exactly one install press. No bridge install call is used for the successful path.
-    await press(a.cdp, '[data-plugin="chrome"] [data-cy="plugin-install"]')
+    step = 'install'
+    const reviewed = await reviewInstall(a, proof, async () =>
+      sameInstallState(baseline, observeInstallState(root, global)),
+    )
     await installed(a, true)
+    const completed = firstInstallState(
+      baseline,
+      observeInstallState(root, global),
+      workspaceA,
+      proof,
+    )
+    const unchanged = () => sameInstallState(completed, observeInstallState(root, global))
     requireCheck(summary, 'installed', true)
     step = 'profile-create'
     let view = await configure(a)
@@ -362,6 +837,7 @@ export async function journey(root) {
     await switchOnProfile(view)
     await enabledProfile(view)
     requireCheck(summary, 'profileEnabled', true)
+    unchanged()
     step = 'provider-start'
     await closeView(a, view)
     fixtureServer = await serveFixture(root)
@@ -428,6 +904,22 @@ export async function journey(root) {
       readOwned(marker).equals(Buffer.from('fictional-owned-profile-data\n')) &&
       readOwned(download).equals(Buffer.from('fictional-kept-download\n')) &&
       digest(readOwned(profileFile)) === pin
+    step = 'alternate-source-acceptance'
+    unchanged()
+    const runs = observeRunNames(root, global)
+    if (runs.length !== 1) throw new Error('Initial physical run not unique')
+    const status = await a.cdp.evaluate("return await window.api.plugins.request({kind:'list'})")
+    await inspectCandidate(a, proof)
+    unchanged()
+    if (
+      status?.ok !== true ||
+      !status.cards?.some(
+        (card) => card.id === 'chrome' && card.installed === true && card.state === 'Running',
+      ) ||
+      !isDeepStrictEqual(runs, observeRunNames(root, global)) ||
+      !retained()
+    )
+      throw new Error('Metadata replay or changed retained data')
     step = 'restart-stop'
     await closeView(a, view)
     await stopApp(a)
@@ -447,6 +939,20 @@ export async function journey(root) {
       'restartRetained',
       retained() &&
         (await view.evaluate('return Boolean(document.querySelector(\'[data-profile="fern"]\'))')),
+    )
+    step = 'alternate-source-acceptance'
+    unchanged()
+    const restartedRuns = observeRunNames(root, global)
+    await inspectCandidate(a, proof)
+    unchanged()
+    requireCheck(
+      summary,
+      'alternateSourceAccepted',
+      reviewed === true &&
+        proof.cacheVerified === true &&
+        proof.pristine === true &&
+        retained() &&
+        isDeepStrictEqual(restartedRuns, observeRunNames(root, global)),
     )
     step = 'concurrent'
     await closeView(a, view)
@@ -469,7 +975,7 @@ export async function journey(root) {
     await installed(a, false)
     const keptWhileAbsent = retained()
     step = 'reinstall'
-    await press(a.cdp, '[data-plugin="chrome"] [data-cy="plugin-install"]')
+    await reviewInstall(a, proof)
     await installed(a, true)
     view = await configure(a)
     views.push(view)

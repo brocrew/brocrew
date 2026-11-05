@@ -10,6 +10,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
+import { bootstrapEnv, withBootstrap } from './ordinary-package-fixture.js'
 import { loadConfig } from '../src/config.js'
 import { createConfiguredProfileStore } from '../src/index.js'
 import { createProfileStore } from '../src/profiles/store.js'
@@ -27,15 +28,13 @@ function fixture() {
   const home = join(root, 'local')
   mkdirSync(home)
   mkdirSync(join(root, 'shared'))
-  const auth = join(root, 'auth.json')
-  writeFileSync(auth, JSON.stringify({ mcpToken: 'm'.repeat(64), adminToken: 'a'.repeat(64) }), {
-    mode: 0o600,
-  })
   return {
-    BROCREW_CHROME_DATA: home,
-    BROCREW_CHROME_AUTH: auth,
-    BROCREW_CHROME_SHARED: join(root, 'shared'),
-    BROCREW_PLUGIN_OWNER_ID: '11111111-1111-4111-8111-111111111111',
+    home,
+    shared: join(root, 'shared'),
+    env: {
+      ...bootstrapEnv(home, { sharedDataDirectory: join(root, 'shared') }),
+      BROCREW_PLUGIN_OWNER_ID: '11111111-1111-4111-8111-111111111111',
+    },
   }
 }
 
@@ -47,7 +46,7 @@ it('ships an immutable release signal for qualified Mac and Windows only', () =>
   for (const platform of ['linux', 'unknown'])
     expect(release.sharedProfilesReleased(platform, release.sharedProfilesRelease)).toBe(false)
   expect(release.sharedProfilesReleased('darwin')).toBe(false)
-  expect(!!loadConfig(fixture()).shared).toBe(['darwin', 'win32'].includes(process.platform))
+  expect(!!loadConfig(fixture().env).shared).toBe(['darwin', 'win32'].includes(process.platform))
 })
 
 it.each([
@@ -78,10 +77,10 @@ it.each([
     .spyOn(release, 'sharedProfilesReleased')
     .mockImplementation((platform) => released(platform, signal))
   const expected = released(process.platform, signal)
-  expect(!!loadConfig(fixture()).shared).toBe(expected)
+  expect(!!loadConfig(fixture().env).shared).toBe(expected)
   expect(
     loadConfig({
-      ...fixture(),
+      ...fixture().env,
       BROCREW_PLUGIN_OWNER_ID: '22222222-2222-4222-8222-222222222222',
     }).shared !== undefined,
   ).toBe(expected)
@@ -101,7 +100,7 @@ it.each([
 ])('owner receipts and environment release claims cannot enable migration: %s', (receipt) => {
   vi.spyOn(release, 'sharedProfilesReleased').mockReturnValue(false)
   const env = {
-    ...fixture(),
+    ...fixture().env,
     BROCREW_CHROME_MIGRATION_QUALIFICATION: receipt,
     BROCREW_CHROME_SHARED_PROFILES_RELEASE: JSON.stringify({
       format: 1,
@@ -110,16 +109,16 @@ it.each([
     }),
   }
   expect(loadConfig(env).shared).toBeUndefined()
-  expect(loadConfig({ ...env, BROCREW_CHROME_SHARED: undefined }).shared).toBeUndefined()
+  expect(loadConfig(withBootstrap(env, { sharedDataDirectory: undefined })).shared).toBeUndefined()
 })
 
 it('OFF preserves the original local names, list, storage and profile bytes with no shared writes', () => {
   vi.spyOn(release, 'sharedProfilesReleased').mockReturnValue(false)
-  const env = fixture()
-  const local = createProfileStore({ home: env.BROCREW_CHROME_DATA })
+  const { env, home, shared } = fixture()
+  const local = createProfileStore({ home: home })
   local.create('fern', 'panel')
   local.create('local-legacy', 'panel')
-  const file = join(env.BROCREW_CHROME_DATA, 'profiles.json')
+  const file = join(home, 'profiles.json')
   const metadata = readFileSync(file)
   const dir = local.dirOf('fern')
   writeFileSync(join(dir, 'fictional-sign-in'), 'still-here')
@@ -132,13 +131,13 @@ it('OFF preserves the original local names, list, storage and profile bytes with
   expect(readFileSync(file)).toEqual(metadata)
   expect(readFileSync(join(dir, 'fictional-sign-in'), 'utf8')).toBe('still-here')
   expect(store.create('cedar', 'panel').name).toBe('cedar')
-  expect(existsSync(join(env.BROCREW_CHROME_SHARED, 'registry.json'))).toBe(false)
-  expect(existsSync(join(env.BROCREW_CHROME_SHARED, 'profiles'))).toBe(false)
+  expect(existsSync(join(shared, 'registry.json'))).toBe(false)
+  expect(existsSync(join(shared, 'profiles'))).toBe(false)
   expect(
     createConfiguredProfileStore({
       ...loadConfig(env),
       shared: {
-        root: env.BROCREW_CHROME_SHARED,
+        root: shared,
         workspaceId: env.BROCREW_PLUGIN_OWNER_ID,
         workspaceLabel: 'QA Alpha',
         migrationApproved: true,
@@ -148,7 +147,7 @@ it('OFF preserves the original local names, list, storage and profile bytes with
 })
 it('OFF ignores unused shared environment fields exactly as the local-only plugin does', () => {
   vi.spyOn(release, 'sharedProfilesReleased').mockReturnValue(false)
-  const env = fixture()
+  const { env } = fixture()
   expect(
     loadConfig({
       ...env,
@@ -159,8 +158,8 @@ it('OFF ignores unused shared environment fields exactly as the local-only plugi
 })
 it('ON requires host capability and admits facade and rename migration together on fictional folders', () => {
   vi.spyOn(release, 'sharedProfilesReleased').mockReturnValue(true)
-  const env = fixture()
-  const local = createProfileStore({ home: env.BROCREW_CHROME_DATA })
+  const { env, home, shared } = fixture()
+  const local = createProfileStore({ home: home })
   local.create('fern', 'panel')
   const source = local.dirOf('fern')
   const before = statSync(source).ino
@@ -175,11 +174,83 @@ it('ON requires host capability and admits facade and rename migration together 
   expect(store.shared).toBeDefined()
   expect(admitted).toHaveBeenCalledOnce()
   expect(store.get('fern')).toBeDefined()
-  expect(store.dirOf('fern')).toBe(join(env.BROCREW_CHROME_SHARED, 'profiles', 'fern'))
+  expect(store.dirOf('fern')).toBe(join(shared, 'profiles', 'fern'))
   expect(statSync(store.dirOf('fern')).ino).toBe(before)
   expect(existsSync(source)).toBe(false)
   expect(
-    createConfiguredProfileStore(loadConfig({ ...env, BROCREW_CHROME_SHARED: undefined })).shared,
+    createConfiguredProfileStore(loadConfig(withBootstrap(env, { sharedDataDirectory: undefined })))
+      .shared,
   ).toBeUndefined()
   expect(() => loadConfig({ ...env, BROCREW_PLUGIN_OWNER_ID: '../invalid' })).toThrow()
 })
+
+// An unused shared owner must not affect local-only startup or retained bytes.
+it.each([
+  { fallback: '../invalid', priorOwner: undefined },
+  {
+    fallback: '11111111-1111-4111-8111-111111111111',
+    priorOwner: { ownerId: '../invalid', ownerLabel: 'fictional' },
+  },
+])(
+  'OFF ignores only the unused shared owner UUID and preserves local bytes: %j',
+  ({ fallback, priorOwner }) => {
+    vi.spyOn(release, 'sharedProfilesReleased').mockReturnValue(false)
+    const { env, home, shared } = fixture()
+    const local = createProfileStore({ home })
+    local.create('fern', 'panel')
+    const file = join(home, 'profiles.json')
+    const before = readFileSync(file)
+    const opaque = join(local.dirOf('fern'), 'Cookies')
+    writeFileSync(opaque, 'opaque fictional account')
+    const inode = statSync(local.dirOf('fern')).ino
+    const config = loadConfig({
+      ...withBootstrap(env, { priorOwner }),
+      BROCREW_PLUGIN_OWNER_ID: fallback,
+    })
+    const store = createConfiguredProfileStore(config)
+    expect(config.home).toBe(home)
+    expect(config.shared).toBeUndefined()
+    expect(store.shared).toBeUndefined()
+    expect(store.dirOf('fern')).toBe(local.dirOf('fern'))
+    expect(statSync(store.dirOf('fern')).ino).toBe(inode)
+    expect(readFileSync(file)).toEqual(before)
+    expect(readFileSync(opaque, 'utf8')).toBe('opaque fictional account')
+    expect(existsSync(join(shared, 'registry.json'))).toBe(false)
+    expect(existsSync(join(shared, 'profiles'))).toBe(false)
+  },
+)
+it.each([
+  { priorOwner: undefined },
+  { priorOwner: { ownerId: '../invalid', ownerLabel: 'fictional' } },
+])('ON still rejects an invalid shared UUID before storage effects: %j', (extra) => {
+  vi.spyOn(release, 'sharedProfilesReleased').mockReturnValue(true)
+  const { env, home, shared } = fixture()
+  expect(() =>
+    loadConfig({ ...withBootstrap(env, extra), BROCREW_PLUGIN_OWNER_ID: '../invalid' }),
+  ).toThrow('identity')
+  expect(existsSync(join(home, 'files'))).toBe(false)
+  expect(existsSync(join(shared, 'profiles'))).toBe(false)
+  expect(existsSync(join(shared, 'registry.json'))).toBe(false)
+})
+it.each([false, true])(
+  'release %s still rejects malformed declared bootstrap paths and owner shapes before effects',
+  (on) => {
+    vi.spyOn(release, 'sharedProfilesReleased').mockReturnValue(on)
+    for (const extra of [
+      { dataDirectory: 'relative' },
+      { sharedDataDirectory: 'relative' },
+      { sharedDataDirectory: 1 },
+      { priorOwner: null },
+      { priorOwner: [] },
+      { priorOwner: { ownerId: 1, ownerLabel: 'fictional' } },
+      { priorOwner: { ownerId: '11111111-1111-4111-8111-111111111111' } },
+      { legacyConfiguration: { directory: 'relative', floor: '/fictional' } },
+    ]) {
+      const { env, home, shared } = fixture()
+      expect(() => loadConfig(withBootstrap(env, extra))).toThrow('Plugin unavailable')
+      expect(existsSync(join(home, 'files'))).toBe(false)
+      expect(existsSync(join(shared, 'registry.json'))).toBe(false)
+      expect(existsSync(join(shared, 'profiles'))).toBe(false)
+    }
+  },
+)

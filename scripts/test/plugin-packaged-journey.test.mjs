@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { isDeepStrictEqual } from 'node:util'
 import { describe, expect, it } from 'vitest'
 import { enabledProfile } from '../gates/plugin-packaged/cdp.mjs'
 import {
@@ -12,13 +13,135 @@ import {
 import { printFailure, stepFailure } from '../gates/plugin-packaged/diagnostics.mjs'
 import { providerState, printProviderState } from '../gates/plugin-packaged/provider-state.mjs'
 import { unknownPluginState } from '../gates/plugin-packaged/plugin-state.mjs'
+import {
+  matchesInspection,
+  inspectCandidate,
+  emptyInstallBaseline,
+  firstInstallState,
+  sameInstallState,
+  observationJson,
+} from '../gates/plugin-packaged/journey.mjs'
 
 const source = fs.readFileSync(
   new URL('../gates/plugin-packaged/journey.mjs', import.meta.url),
   'utf8',
 )
+const roles = { tamper: 1, main: 2, restart: 3, concurrent: 4 }
+function logicalFixture(workspace = '/fictional/root/wa') {
+  const ids = Array.from(
+    { length: 6 },
+    (_, i) =>
+      `${i + 1}`.repeat(8) +
+      '-' +
+      `${i + 1}`.repeat(4) +
+      '-4' +
+      `${i + 1}`.repeat(3) +
+      '-8' +
+      `${i + 1}`.repeat(3) +
+      '-' +
+      `${i + 1}`.repeat(12),
+  )
+  const [rootId, epoch, installId, incarnation, operationId, allocatedEpoch] = ids
+  const h = digest(Buffer.from(workspace)),
+    workspaceId = `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`
+  const proof = {
+    cacheVerified: true,
+    pristine: true,
+    ref: {
+      source: 'https://example.invalid/alternate-chrome.tar.gz',
+      sha256: 'a'.repeat(64),
+      bytes: 17,
+    },
+    manifestSha256: 'b'.repeat(64),
+    manifest: { id: 'chrome', version: '1.0.0', authors: ['fictional'], data: { schema: 1 } },
+  }
+  const release = {
+    version: '1.0.0',
+    archiveSha256: proof.ref.sha256,
+    manifestSha256: proof.manifestSha256,
+    dataSchema: 1,
+  }
+  const baseline = {
+    format: 2,
+    rootId,
+    epoch,
+    sequence: 0,
+    installations: [],
+    active: [],
+    recentOperations: [],
+    pending: null,
+    projections: [],
+    workspaceEnabled: [],
+    workspaceTitlesEnabled: [],
+  }
+  const next = {
+    pluginId: 'chrome',
+    installId,
+    incarnation,
+    lifecycleSequence: 1,
+    releaseRevision: 1,
+    configRevision: 0,
+    release,
+    phase: 'prepared',
+  }
+  const operation = {
+    request: {
+      operationId,
+      consent: {
+        action: 'install',
+        pluginId: 'chrome',
+        at: 1,
+        expectedSequence: 0,
+        expectedInstallId: null,
+        release,
+      },
+      snapshot: null,
+      workspaces: [workspaceId],
+    },
+    allocated: { installId, incarnation, epoch: allocatedEpoch },
+    next,
+  }
+  const active = { ...next, phase: 'active' }
+  const receipt = {
+    format: 1,
+    rootId,
+    workspaceId,
+    epoch,
+    pluginId: 'chrome',
+    installId,
+    incarnation,
+    lifecycleSequence: 1,
+    releaseRevision: 1,
+    configRevision: 0,
+    skills: [],
+    bindings: [],
+  }
+  const completed = {
+    ...structuredClone(baseline),
+    sequence: 2,
+    installations: [structuredClone(active)],
+    active: [structuredClone(active)],
+    recentOperations: [{ operation, status: 'completed' }],
+    projections: [receipt],
+  }
+  return { baseline, completed, proof }
+}
+
 // Exercise orchestration with inert dependencies: no app, provider, endpoint or real data.
-function fixture(fail, { corrupt = false, snapshotFails = false, missingRoute = false } = {}) {
+function fixture(
+  fail,
+  {
+    corrupt = false,
+    snapshotFails = false,
+    missingRoute = false,
+    acceptance = true,
+    replay = false,
+    wrongRef = false,
+    unknownTamper = false,
+    tamperEffects = false,
+    unexpectedRun = false,
+  } = {},
+) {
   const body = source
     .slice(source.indexOf('export async function journey('), source.indexOf('if (process.argv[1]'))
     .replace('export ', '')
@@ -26,7 +149,10 @@ function fixture(fail, { corrupt = false, snapshotFails = false, missingRoute = 
   const calls = [],
     lines = [],
     files = new Map()
-  let starts = 0
+  let starts = 0,
+    selected = false,
+    inspections = 0
+  const logical = logicalFixture(path.join('/fictional/root', 'wa'))
   let providerClosed = false
   const check = (step) => {
     calls.push(step)
@@ -36,14 +162,58 @@ function fixture(fail, { corrupt = false, snapshotFails = false, missingRoute = 
     number,
     evaluate: async (text) => {
       if (text.includes("kind:'availability'")) return { ok: true, available: true }
-      if (text.includes("kind:'install'")) return { ok: false }
-      if (text.includes("kind:'list'")) return { ok: true, cards: [] }
+      if (text.includes("kind:'inspect'"))
+        return { ok: false, detail: 'The package files do not match the selected bytes.' }
+      if (text.includes("kind:'list'"))
+        return {
+          ok: true,
+          cards:
+            number === roles.tamper ? [] : [{ id: 'chrome', installed: true, state: 'Running' }],
+        }
       return true
     },
     send: async () => {},
     close() {},
   })
   const io = {
+    isDeepStrictEqual,
+    observationJson,
+    emptyInstallBaseline,
+    firstInstallState,
+    sameInstallState,
+    observeInstallState: (_root, global) => {
+      if (global.replaceAll('\\', '/').endsWith('/b')) {
+        if (unknownTamper) throw new Error('Unknown tamper state')
+        const value = structuredClone(logical.baseline)
+        if (tamperEffects) value.sequence = 2
+        return value
+      }
+      const value = structuredClone(selected ? logical.completed : logical.baseline)
+      if (replay && starts >= roles.restart) value.sequence += 2
+      return value
+    },
+    observeRunNames: (_root, global) =>
+      global.replaceAll('\\', '/').endsWith('/b') || !selected
+        ? []
+        : unexpectedRun && inspections > 1
+          ? ['first', 'extra']
+          : ['first'],
+    prepareCandidateCache: async () => {
+      check('cache-prepare')
+      files.set('/fictional/root/proof/candidate-cache.json', JSON.stringify(logical.proof))
+    },
+    inspectCandidate: async () => {
+      inspections++
+      if (wrongRef) throw new Error('Inspected candidate differs')
+    },
+    reviewInstall: async (run, _proof, beforeConfirm = async () => {}) => {
+      await io.inspectCandidate(run)
+      calls.push({ review: 'inspect/review', role: run.number })
+      await beforeConfirm()
+      selected = true
+      calls.push({ review: 'confirm', role: run.number })
+      return acceptance
+    },
     providerState,
     printProviderState: (value) => printProviderState(value, (line) => lines.push(line)),
     providerErrorCategory: () => (missingRoute ? 'route-absent' : 'other'),
@@ -95,7 +265,7 @@ function fixture(fail, { corrupt = false, snapshotFails = false, missingRoute = 
       expect(root).toBe('/fictional/root')
       expect(global).toBe(path.join('/fictional/root', 'g'))
       expect(workspace).toBe(path.join('/fictional/root', 'wa'))
-      expect(port).toBe(12004)
+      expect(port).toBe(12000 + roles.restart)
       return {
         ...unknownPluginState(),
         rowPresent: true,
@@ -119,6 +289,8 @@ function fixture(fail, { corrupt = false, snapshotFails = false, missingRoute = 
     fs: {
       lstatSync: () => ({ isFile: () => true }),
       existsSync: () => false,
+      readdirSync: (folder) =>
+        folder.replaceAll('\\', '/') === '/fictional/root/g' ? ['package-vault'] : [],
       writeFileSync: (file, bytes) => files.set(file.replaceAll('\\', '/'), bytes),
     },
     readOwned: (named) => {
@@ -131,15 +303,18 @@ function fixture(fail, { corrupt = false, snapshotFails = false, missingRoute = 
         return '{"windowDrawn":true,"fakeBrowserStarted":true}'
       }
       if (file.endsWith('/profiles.json'))
-        return Buffer.from(corrupt && starts >= 4 ? 'changed' : 'retained')
+        return Buffer.from(corrupt && starts >= roles.restart ? 'changed' : 'retained')
       return Buffer.from(files.get(file))
     },
-    stageRelease() {},
+    stageRelease: () => ({
+      ref: logical.proof.ref,
+      archivePath: '/fictional/root/a/repo-fixture/archives/archive.tar.gz',
+    }),
     startApp: async (_root, plan, workspace, global, processes) => {
       const number = ++starts
       calls.push({ start: number, plan, workspace, global })
-      if (number === 4) check('restart-start')
-      if (number === 5) check('concurrent')
+      if (number === roles.restart) check('restart-start')
+      if (number === roles.concurrent) check('concurrent')
       const run = {
         number,
         port: 12000 + number,
@@ -151,18 +326,18 @@ function fixture(fail, { corrupt = false, snapshotFails = false, missingRoute = 
       return run
     },
     plugins: async (run) => {
-      if (run.number === 4) check('restart-draw')
+      if (run.number === roles.restart) check('restart-draw')
     },
     draws: async () => true,
     installed: async (run, wanted) => {
-      if (run.number === 4) {
+      if (run.number === roles.restart) {
         const count = (installedCounts.get(run.number) ?? 0) + 1
         installedCounts.set(run.number, count)
         check(wanted ? (count === 1 ? 'restart-installed' : 'reinstall') : 'uninstall')
       }
     },
     configure: async (run) => {
-      if (run.number === 4) check('restart-profile')
+      if (run.number === roles.restart) check('restart-profile')
       return page(run.number)
     },
     press: async () => {},
@@ -175,7 +350,7 @@ function fixture(fail, { corrupt = false, snapshotFails = false, missingRoute = 
     },
     closeView: async () => {},
     stopApp: async (run) => {
-      if (run.number === 3 && !run.stopped) check('restart-stop')
+      if (run.number === roles.main && !run.stopped) check('restart-stop')
       run.stopped = true
     },
   }
@@ -183,20 +358,221 @@ function fixture(fail, { corrupt = false, snapshotFails = false, missingRoute = 
   return { run: () => journey('/fictional/root'), calls, lines, files }
 }
 describe('packaged restart journey without a native launch', () => {
+  it('accounts exactly sequence0 to sequence2 and refuses hidden replay despite byte-identical retained package data', () => {
+    const { baseline, completed, proof } = logicalFixture()
+    expect(emptyInstallBaseline(baseline)).toBe(baseline)
+    expect(firstInstallState(baseline, completed, '/fictional/root/wa', proof)).toBe(completed)
+    expect(sameInstallState(completed, structuredClone(completed))).toBe(true)
+    for (const change of [
+      (value) => {
+        value.sequence = 4
+      },
+      (value) => {
+        value.recentOperations[0].operation.request.operationId =
+          '77777777-7777-4777-8777-777777777777'
+      },
+      (value) => {
+        value.recentOperations[0].operation.request.consent.expectedSequence = 1
+      },
+      (value) => {
+        value.recentOperations = []
+      },
+      (value) => {
+        value.recentOperations.push(structuredClone(value.recentOperations[0]))
+      },
+      (value) => {
+        value.recentOperations[0].status = 'aborted'
+      },
+      (value) => {
+        value.pending = value.recentOperations[0].operation
+      },
+      (value) => {
+        value.recentOperations[0].operation.request.consent.action = 'global-restore'
+      },
+      (value) => {
+        value.rootId = '77777777-7777-4777-8777-777777777777'
+      },
+      (value) => {
+        value.epoch = '77777777-7777-4777-8777-777777777777'
+      },
+      (value) => {
+        value.active[0].installId = '77777777-7777-4777-8777-777777777777'
+      },
+      (value) => {
+        value.active[0].incarnation = '77777777-7777-4777-8777-777777777777'
+      },
+      (value) => {
+        value.installations[0].release.archiveSha256 = 'c'.repeat(64)
+      },
+      (value) => {
+        value.projections[0].workspaceId = '77777777-7777-4777-8777-777777777777'
+      },
+      (value) => {
+        value.projections[0].configRevision = 1
+      },
+      (value) => {
+        value.projections[0].skills = ['invented']
+      },
+      (value) => {
+        value.workspaceEnabled = [{ workspaceId: 'unexpected' }]
+      },
+      (value) => {
+        value.unobserved = true
+      },
+    ]) {
+      const changed = structuredClone(completed)
+      change(changed)
+      expect(() => sameInstallState(completed, changed)).toThrow()
+    }
+    const extra = structuredClone(completed)
+    extra.sequence++
+    expect(() => firstInstallState(baseline, extra, '/fictional/root/wa', proof)).toThrow()
+    const wrong = structuredClone(completed)
+    wrong.recentOperations[0].operation.allocated.installId = '77777777-7777-4777-8777-777777777777'
+    expect(() => firstInstallState(baseline, wrong, '/fictional/root/wa', proof)).toThrow()
+  })
+  it.each([
+    'acceptance',
+    'replay',
+    'wrong-ref',
+    'unknown-tamper',
+    'tamper-effects',
+    'unexpected-run',
+  ])(
+    'cannot earn ordinary acceptance after %s, even with unchanged fictional retained bytes',
+    async (kind) => {
+      const options = {
+        acceptance: kind !== 'acceptance',
+        replay: kind === 'replay',
+        wrongRef: kind === 'wrong-ref',
+        unknownTamper: kind === 'unknown-tamper',
+        tamperEffects: kind === 'tamper-effects',
+        unexpectedRun: kind === 'unexpected-run',
+      }
+      const summary = await fixture(undefined, options).run()
+      expect(summary.passed).toBe(false)
+      expect(summary.checks.alternateSourceAccepted).toBe(false)
+      if (['unknown-tamper', 'tamper-effects'].includes(kind))
+        expect(summary.checks.tamperedArchiveRefused).toBe(false)
+      expect(safeReport(summary)).toBe(true)
+    },
+  )
+  it('checks the returned public ref, full manifest and disclosed authors/version before accepting review', async () => {
+    const proof = {
+      cacheVerified: true,
+      pristine: true,
+      ref: {
+        source: 'https://example.invalid/alternate-chrome.tar.gz',
+        sha256: 'a'.repeat(64),
+        bytes: 17,
+      },
+      manifest: { id: 'chrome', version: '1.0.0', authors: ['fictional'], files: [] },
+      manifestSha256: 'b'.repeat(64),
+    }
+    const inspection = {
+      id: 'chrome',
+      ref: proof.ref,
+      manifest: proof.manifest,
+      details: {
+        version: '1.0.0',
+        authors: ['fictional'],
+        digest: proof.ref.sha256,
+        manifestSha256: proof.manifestSha256,
+      },
+    }
+    expect(matchesInspection(inspection, proof)).toBe(true)
+    for (const change of [
+      { ref: { ...proof.ref, source: 'https://example.invalid/other' } },
+      { ref: { ...proof.ref, sha256: 'b'.repeat(64) } },
+      { ref: { ...proof.ref, bytes: 18 } },
+      { manifest: { ...proof.manifest, files: [{ path: 'extra' }] } },
+      { details: { ...inspection.details, version: '2.0.0' } },
+      { details: { ...inspection.details, authors: ['other'] } },
+      { details: { ...inspection.details, digest: 'c'.repeat(64) } },
+      { details: { ...inspection.details, manifestSha256: 'c'.repeat(64) } },
+    ]) {
+      const bad = { ...inspection, ...change }
+      expect(matchesInspection(bad, proof)).toBe(false)
+      await expect(
+        inspectCandidate(
+          {
+            cdp: {
+              evaluate: async (body) => {
+                expect(body).toContain("kind:'inspect'")
+                return { ok: true, inspection: bad }
+              },
+            },
+          },
+          proof,
+        ),
+      ).rejects.toThrow('Inspected candidate differs')
+    }
+    expect(matchesInspection(inspection, { ...proof, cacheVerified: false })).toBe(false)
+  })
+  it('uses the actual review-details and confirm controls once, with no direct successful install request', async () => {
+    const body = source
+      .slice(
+        source.indexOf('export async function reviewInstall('),
+        source.indexOf('async function configure('),
+      )
+      .replace('export ', '')
+    for (const mismatch of [false, true]) {
+      const calls = []
+      const proof = {
+        ref: { source: 'https://example.invalid/alternate-chrome.tar.gz' },
+        manifest: { version: '1.0.0', authors: ['fictional'] },
+      }
+      const review = Function(
+        'inspectCandidate',
+        'press',
+        'waitFor',
+        'return (' + body + ')',
+      )(
+        async () => calls.push('inspect'),
+        async (_cdp, selector) => calls.push(selector),
+        async (test) => {
+          if (!(await test())) throw new Error('Review not ready')
+        },
+      )
+      const run = {
+        cdp: {
+          evaluate: async () => ({
+            confirm: true,
+            version: '1.0.0',
+            authors: 'fictional',
+            source: mismatch ? 'https://example.invalid/other' : proof.ref.source,
+          }),
+        },
+      }
+      const work = review(run, proof, async () => calls.push('baseline'))
+      if (mismatch) {
+        await expect(work).rejects.toThrow('Review not ready')
+        expect(calls).toHaveLength(2)
+      } else {
+        await work
+        expect(calls).toEqual([
+          'inspect',
+          '[data-plugin="chrome"] [data-cy="plugin-review-install"]',
+          'baseline',
+          '[data-plugin="chrome"] [data-cy="plugin-review-confirm"]',
+        ])
+      }
+    }
+  })
   it('reuses the exact plan and roots, and waits for enabled profiles after restart and reinstall', async () => {
     const f = fixture()
     const summary = await f.run()
     expect(summary.passed).toBe(true)
     const starts = f.calls.filter((one) => typeof one === 'object' && one.start)
-    expect(starts[3].plan).toBe(starts[2].plan)
-    expect(starts[3].workspace).toBe(starts[2].workspace)
-    expect(starts[3].global).toBe(starts[2].global)
-    expect(starts[4].workspace).not.toBe(starts[3].workspace)
-    expect(starts[4].global).toBe(starts[3].global)
+    expect(starts[roles.restart - 1].plan).toBe(starts[roles.main - 1].plan)
+    expect(starts[roles.restart - 1].workspace).toBe(starts[roles.main - 1].workspace)
+    expect(starts[roles.restart - 1].global).toBe(starts[roles.main - 1].global)
+    expect(starts[roles.concurrent - 1].workspace).not.toBe(starts[roles.restart - 1].workspace)
+    expect(starts[roles.concurrent - 1].global).toBe(starts[roles.restart - 1].global)
     expect(f.calls.filter((one) => typeof one === 'object' && one.enabled)).toEqual([
-      { enabled: 3 },
-      { enabled: 4 },
-      { enabled: 4 },
+      { enabled: roles.main },
+      { enabled: roles.restart },
+      { enabled: roles.restart },
     ])
     expect(summary.checks.restartRetained).toBe(true)
     expect(summary.checks.reinstallRetained).toBe(true)
@@ -221,6 +597,8 @@ describe('packaged restart journey without a native launch', () => {
     const f = fixture(step)
     const summary = await f.run()
     expect(summary.passed).toBe(false)
+    if (!['concurrent', 'uninstall', 'reinstall', 'fake-browser'].includes(step))
+      expect(summary.checks.alternateSourceAccepted).toBe(false)
     expect(summary.failure).toEqual({
       phase: 'journey',
       step,
@@ -269,6 +647,7 @@ describe('packaged restart journey without a native launch', () => {
     expect(summary.passed).toBe(false)
     expect(summary.failure.step).toBe('restart-profile')
     expect(summary.checks.restartRetained).toBe(false)
+    expect(summary.checks.alternateSourceAccepted).toBe(false)
     expect(summary.checks.concurrentWorkspaces).toBe(false)
   })
   it('does not replace the journey failure if its page observation fails', async () => {

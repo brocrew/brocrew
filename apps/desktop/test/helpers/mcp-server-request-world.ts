@@ -32,6 +32,8 @@ export interface WorldHostOptions {
   readonly pluginContext?: ConstructorParameters<typeof RuntimeHost>[0]['pluginContext']
   /** How long a close waits for the provider to confirm it stopped. */
   readonly closeDrainTimeoutMs?: number
+  /** How a provider's sign-in is renewed, and what a renewed turn carries on with. */
+  readonly loginRenewal?: ConstructorParameters<typeof RuntimeHost>[0]['loginRenewal']
 }
 
 export class McpRequestSink implements RuntimeEventSink {
@@ -146,6 +148,13 @@ export function mcpRequestWorld() {
     provider: 'claude' as Provider,
     startFailure: null as Error | null,
     turnWait: null as Promise<void> | null,
+    /** The next send is taken as a turn its provider refuses on the login, then this clears. */
+    refuseTheNextTurnOnItsLogin: false,
+    /**
+     * The next send is accepted, then its provider refuses the session's login and the session
+     * ends, with this cause; then this clears.
+     */
+    failTheNextTurnOnItsLogin: null as { cause: 'auth' | 'auth_stale'; onAKey?: true } | null,
     get db() {
       return db
     },
@@ -164,8 +173,8 @@ export function mcpRequestWorld() {
     },
     /**
      * A host over this world's store. `options` adds the plugin dependencies a real app wires
-     * (attachments, before-turn context, instruction source), picks the provider `open` uses, and
-     * can shorten how long a close waits for its provider.
+     * (attachments, before-turn context, instruction source), picks the provider `open` uses, can
+     * shorten how long a close waits for its provider, and can renew a provider's sign-in.
      */
     host(options: WorldHostOptions = {}): RuntimeHost {
       world.provider = options.provider ?? 'claude'
@@ -184,6 +193,17 @@ export function mcpRequestWorld() {
           const send = handle.send.bind(handle)
           handle.send = async (...args: Parameters<typeof send>) => {
             sent.push({ profile, text: args[0] })
+            if (world.refuseTheNextTurnOnItsLogin) {
+              world.refuseTheNextTurnOnItsLogin = false
+              await handle.runTurnRefusedOnItsLogin(args[0])
+              return
+            }
+            const refusal = world.failTheNextTurnOnItsLogin
+            if (refusal !== null) {
+              world.failTheNextTurnOnItsLogin = null
+              await handle.sendRefusedOnItsLogin(args[0], args[1], refusal)
+              return
+            }
             await send(...args)
           }
           const events = handle.events.bind(handle)
@@ -236,6 +256,7 @@ export function mcpRequestWorld() {
         ...(options.closeDrainTimeoutMs === undefined
           ? {}
           : { closeDrainTimeoutMs: options.closeDrainTimeoutMs }),
+        ...(options.loginRenewal === undefined ? {} : { loginRenewal: options.loginRenewal }),
         readProviderConfig: (_provider, home) => ({
           home,
           homeEnv: 'CLAUDE_CONFIG_DIR',
@@ -280,6 +301,8 @@ export function mcpRequestWorld() {
       world.startWait = null
       world.turnWait = null
       world.startFailure = null
+      world.refuseTheNextTurnOnItsLogin = false
+      world.failTheNextTurnOnItsLogin = null
       for (const host of hosts) await host.closeAll()
       for (const server of servers) await server.close()
       db.close()

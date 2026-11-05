@@ -216,7 +216,8 @@ MUTATIONS = [
             # ⚑ **W4.136 · re-anchored in place, not retired** — F033 gave handToProvider the piece the words drive, between the piece they carry and who sent them
             # ⚑ **W4.147 · re-anchored in place, not retired** — F088 gave handToProvider the piece an agent's note or follow-up names, after the piece the words drive, and prettier put the call on one argument per line; same rule, same plant: the queued send still hands null as the origin
             # ⚑ **W4.475 · re-anchored in place, not retired** — Source-only, NOT VERIFIED. The queued send now also hands handToProvider its turn row, for whose turn it is; the same plant still hands null as the origin. No plant or table run.
-            (HOST, "        handing,\n        drives,\n        about,\n        this.originOf(by),\n        turn,\n      )", "        handing,\n        drives,\n        about,\n        null,\n        turn,\n      )"),
+            # ⚑ **the title-hook census repair · re-anchored in place, not retired** — Optional title preparation added the title context to this call (and to the composition); same rule, same plant. Verified RED with verify_row.
+            (HOST, "        handing,\n        drives,\n        about,\n        this.originOf(by),\n        turn,\n        undefined,\n        undefined,\n        titleContext,\n      )", "        handing,\n        drives,\n        about,\n        null,\n        turn,\n        undefined,\n        undefined,\n        titleContext,\n      )"),
         ],
     ),
     (
@@ -236,8 +237,9 @@ MUTATIONS = [
                 # ⚑ **W4.136 · re-anchored in place, not retired** — F033 gave handToProvider the piece the words drive (null here), so the origin is one argument later
                 # ⚑ **W4.147 · re-anchored in place, not retired** — F088 gave handToProvider the piece an agent's note or follow-up names, after the piece the words drive, and prettier put the call on one argument per line; same rule, same plant (null here): the interrupting door still hands null as the origin
                 # ⚑ **W4.475 · re-anchored in place, not retired** — Source-only, NOT VERIFIED. The interrupting handover now also hands over its turn row; the same plant still hands null as the origin. No plant or table run.
-                "        null,\n        null,\n        null,\n        this.originOf(by),\n        turn,\n        decided,\n      )",
-                "        null,\n        null,\n        null,\n        null,\n        turn,\n        decided,\n      )",
+                # ⚑ **the title-hook census repair · re-anchored in place, not retired** — Optional title preparation added the title context to this call (and to the composition); same rule, same plant. Verified RED with verify_row.
+                "        null,\n        null,\n        null,\n        this.originOf(by),\n        turn,\n        decided,\n        undefined,\n        titleContext,\n      )",
+                "        null,\n        null,\n        null,\n        null,\n        turn,\n        decided,\n        undefined,\n        titleContext,\n      )",
             )
         ],
     ),
@@ -287,7 +289,8 @@ MUTATIONS = [
             # ⚑ **W4.136 · re-anchored in place, not retired** — F033: where the sender stands is also told the piece the words drive, to name the sender by it
             # ⚑ **W4.147 · re-anchored in place, not retired** — F088: where the sender stands is also told the piece the words name, to say which piece the message is about; the plant still composes without the sender frame
             # ⚑ Re-anchored in place, not retired — a request a person moved here now carries a line saying so in front of their words, inside the frame; the plant still composes without the sender frame.
-            (HOST, "      messageNamingItsSender(\n        messageWithHandedPaths(this.withWhereItWasMovedFrom(text, authorship.movedFrom), handed),\n        from,\n        (sender) => this.whereTheSenderStands(sender, session.id, handing, drives, about),\n        interrupting,\n      ),\n", "      messageWithHandedPaths(this.withWhereItWasMovedFrom(text, authorship.movedFrom), handed),\n"),
+            # ⚑ **the title-hook census repair · re-anchored in place, not retired** — Optional title preparation added the title context to this call (and to the composition); same rule, same plant. Verified RED with verify_row.
+            (HOST, "      messageNamingItsSender(\n        messageWithHandedPaths(\n          withPluginTitles(this.withWhereItWasMovedFrom(text, authorship.movedFrom), titleContext),\n          handed,\n        ),\n        from,\n        (sender) => this.whereTheSenderStands(sender, session.id, handing, drives, about),\n        interrupting,\n      ),\n", "      messageWithHandedPaths(\n        withPluginTitles(this.withWhereItWasMovedFrom(text, authorship.movedFrom), titleContext),\n        handed,\n      ),\n"),
         ],
     ),
     (
@@ -301,8 +304,9 @@ MUTATIONS = [
                 # ⚑ **T-003 · re-anchored in place, not retired** — D-011 split the call over lines; the row still builds the frame from the RECEIVING session. Re-verified RED alone.
                 # ⚑ **W4.78 · re-anchored in place, not retired** — ec9ac862 reflowed messageNamingItsSender over lines (new `interrupting` argument); the plant still builds the frame from the RECEIVING session instead of `from`. ACallerWithAnId still has who/caller/profile/aPersonIsBehindIt. Killer: the sender-line assertions (e.g. 'names WHO sent it', 'a person's typed turn says a person sent it').
                 # ⚑ Re-anchored in place, not retired — the words framed now carry a moved request's line in front; the plant still builds the frame from the RECEIVING session.
-                "        messageWithHandedPaths(this.withWhereItWasMovedFrom(text, authorship.movedFrom), handed),\n        from,\n",
-                "        messageWithHandedPaths(this.withWhereItWasMovedFrom(text, authorship.movedFrom), handed),\n        {\n          who: 'a-caller-with-an-id',\n          caller: session.id,\n          profile: session.profileId,\n          aPersonIsBehindIt: false,\n        },\n",
+                # ⚑ **the title-hook census repair · re-anchored in place, not retired** — Optional title preparation added the title context to this call (and to the composition); same rule, same plant. Verified RED with verify_row.
+                "          withPluginTitles(this.withWhereItWasMovedFrom(text, authorship.movedFrom), titleContext),\n          handed,\n        ),\n        from,\n",
+                "          withPluginTitles(this.withWhereItWasMovedFrom(text, authorship.movedFrom), titleContext),\n          handed,\n        ),\n        {\n          who: 'a-caller-with-an-id',\n          caller: session.id,\n          profile: session.profileId,\n          aPersonIsBehindIt: false,\n        },\n",
             )
         ],
     ),
@@ -532,7 +536,8 @@ MUTATIONS = [
             # ⚑ **W4.136 · re-anchored in place, not retired** — F033 gave handToProvider the piece the words drive, between the piece they carry and who sent them
             # ⚑ **W4.147 · re-anchored in place, not retired** — F088 gave handToProvider the piece an agent's note or follow-up names, after the piece the words drive, and prettier put the call on one argument per line; same rule, same plant: the plant still adds an origin invented from carriedFor (it shares its anchor with M8; apply each alone)
             # ⚑ **W4.475 · re-anchored in place, not retired** — Source-only, NOT VERIFIED. The queued send now also hands handToProvider its turn row; the same plant still adds an origin invented from carriedFor (it shares its anchor with M8; apply each alone). No plant or table run.
-            (HOST, "        handing,\n        drives,\n        about,\n        this.originOf(by),\n        turn,\n      )", "        handing,\n        drives,\n        about,\n        this.originOf(by) ??\n          (facts.carriedFor === undefined\n            ? null\n            : { who: 'a-caller-with-an-id' as const, caller: facts.carriedFor, profile: null, aPersonIsBehindIt: false }),\n        turn,\n      )"),
+            # ⚑ **the title-hook census repair · re-anchored in place, not retired** — Optional title preparation added the title context to this call (and to the composition); same rule, same plant. Verified RED with verify_row.
+            (HOST, "        handing,\n        drives,\n        about,\n        this.originOf(by),\n        turn,\n        undefined,\n        undefined,\n        titleContext,\n      )", "        handing,\n        drives,\n        about,\n        this.originOf(by) ??\n          (facts.carriedFor === undefined\n            ? null\n            : { who: 'a-caller-with-an-id' as const, caller: facts.carriedFor, profile: null, aPersonIsBehindIt: false }),\n        turn,\n        undefined,\n        undefined,\n        titleContext,\n      )"),
         ],
     ),
 ]

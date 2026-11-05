@@ -9,6 +9,34 @@ import { deriveProviderHome } from '../../../apps/desktop/src/main/runtime/provi
 import { fixtureTitle, fixtureText } from './fake-browser.mjs'
 import { providerErrors } from './provider-state.mjs'
 
+// The runner inherits this ordinary package input during start. Never leak it into another case.
+export async function withFixtureBrowser(executable, start) {
+  const key = 'BROCREW_CHROME_EXECUTABLE'
+  const had = Object.hasOwn(process.env, key),
+    before = process.env[key]
+  process.env[key] = executable
+  try {
+    return await start()
+  } finally {
+    if (had) process.env[key] = before
+    else delete process.env[key]
+  }
+}
+
+// Attempt every owned close, but retain all scratch if any lifetime is still unknown.
+export async function closeFixtureResources(closers, roots, remove = fs.rmSync) {
+  const errors = []
+  for (const close of [...closers].reverse()) {
+    try {
+      await close()
+    } catch (error) {
+      errors.push(error)
+    }
+  }
+  if (errors.length) throw new AggregateError(errors, 'Fixture cleanup incomplete')
+  for (const root of roots) remove(root, { recursive: true, force: true })
+}
+
 function refused(category) {
   const error = new Error('Fixture provider refused')
   error.providerCategory = category
@@ -133,7 +161,12 @@ export function scriptedHandle(handle, options, directory, connect = brokerClien
         tabId = opened.tabId
         proof.opened = true
         save()
-        const read = await tool('snapshot', { tabId, mode: 'text', timeoutMs: 5000 })
+        const read = await tool('snapshot', {
+          profile: 'fern',
+          tabId,
+          mode: 'text',
+          timeoutMs: 5000,
+        })
         if (!read.includes(`title: ${fixtureTitle}`) || !read.includes(fixtureText))
           throw refused('snapshot')
         proof.read = true
@@ -147,7 +180,7 @@ export function scriptedHandle(handle, options, directory, connect = brokerClien
         save()
       } else {
         if (!tabId) throw new Error('No fixture tab')
-        const closed = JSON.parse(await tool('close_tab', { tabId }))
+        const closed = JSON.parse(await tool('close_tab', { profile: 'fern', tabId }))
         if (closed.ok !== true) throw new Error('Fixture close failed')
         tabId = undefined
         proof.closed = true

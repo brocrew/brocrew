@@ -4,14 +4,21 @@ import path from 'node:path'
 import os from 'node:os'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { loadConfig } from '../src/config.js'
 import { startAgentChrome, VERSION } from '../src/app.js'
 import { createProfileStore } from '../src/profiles/store.js'
 import { HELPER_FILES } from '../src/browser/brocrewHelper.js'
 import { silentLogger } from '../src/logger.js'
 import { FakeBrowser, FakePage, asPage } from './fakes.js'
+import {
+  bootstrapEnv,
+  connectPackage,
+  personMetadata,
+  resultJson,
+  resultText,
+} from './ordinary-package-fixture.js'
+import { TabRegistry } from '../src/tabs.js'
+import { configurationSnapshot } from '../src/configuration.js'
 
 vi.mock('playwright-core', () => ({
   chromium: {
@@ -25,6 +32,8 @@ vi.mock('playwright-core', () => ({
 }))
 const cleanup: Array<() => void | Promise<void>> = []
 afterEach(async () => {
+  vi.useRealTimers()
+  vi.restoreAllMocks()
   for (const fn of cleanup.splice(0).reverse()) await fn()
 })
 const temporary = () => {
@@ -35,10 +44,7 @@ const temporary = () => {
 const mcpToken = 'fictional-mcp-'.repeat(8)
 const adminToken = 'fictional-person-'.repeat(8)
 function configured() {
-  const home = temporary()
-  const authPath = path.join(home, 'fixture-auth.json')
-  fs.writeFileSync(authPath, JSON.stringify({ mcpToken, adminToken }), { mode: 0o600 })
-  return loadConfig({ BROCREW_CHROME_DATA: home, BROCREW_CHROME_AUTH: authPath })
+  return loadConfig(bootstrapEnv(temporary()))
 }
 async function boot(start = startAgentChrome) {
   const config = configured(),
@@ -58,9 +64,28 @@ async function boot(start = startAgentChrome) {
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
-    return { status: response.status, body: await response.json() }
+    const text = await response.text()
+    return { status: response.status, text }
   }
-  return { config, store, browser, server, url, request }
+  const client = await connectPackage(url, config.token)
+  cleanup.push(() => client.close())
+  const configure = (
+    profile: string,
+    action: string,
+    extra: Record<string, unknown> = {},
+    origin = 'settings.page',
+  ) =>
+    client.callTool({
+      name: 'configure_profile',
+      arguments: { profile, action, ...extra },
+      _meta: { ...personMetadata, origin },
+    })
+  const snapshot = async () => {
+    const result = await client.callTool({ name: 'configuration_snapshot', arguments: {} })
+    expect(result.isError).not.toBe(true)
+    return resultJson(result)
+  }
+  return { config, store, browser, server, url, request, client, configure, snapshot }
 }
 describe('private Chrome package', () => {
   it('derives the server version from release metadata and contains no literal server-version fallback', () => {
@@ -78,7 +103,7 @@ describe('private Chrome package', () => {
     }
     inspect('plugins/chrome/src')
   })
-  it('the built archive reports exactly its manifest version in authenticated health and MCP initialization', async () => {
+  it('the built archive reports exactly its manifest version in authenticated MCP initialization', async () => {
     const artifact = process.env.BROCREW_CHROME_TEST_ARTIFACT
     expect(artifact, 'Build a fresh artifact and set BROCREW_CHROME_TEST_ARTIFACT').toBeTruthy()
     // One build writes its package at the artifact's root; the release writes one per target.
@@ -99,27 +124,20 @@ describe('private Chrome package', () => {
         expect(createHash('sha256').update(bytes).digest('hex')).toBe(file.sha256)
         expect(manifest.files).toContainEqual({
           path: `helper/${file.name}`,
-          type: 'file',
-          size: bytes.length,
+          bytes: bytes.length,
           sha256: file.sha256,
         })
       }
       const built = await import(pathToFileURL(path.join(folder, 'server.mjs')).href)
-      const { url, request } = await boot(built.startAgentChrome)
-      const health = await request('/healthz', adminToken)
-      expect(health.status).toBe(200)
-      expect.soft(health.body).toMatchObject({ ok: true, version: manifest.version })
-      const client = new Client({ name: 'fictional-release-version', version: '1' })
-      cleanup.push(() => client.close())
-      await client.connect(
-        new StreamableHTTPClientTransport(new URL(url + '/mcp'), {
-          requestInit: { headers: { Authorization: `Bearer ${mcpToken}` } },
-        }),
-      )
+      const { client, request, config } = await boot(built.startAgentChrome)
       expect(client.getServerVersion()?.version).toBe(manifest.version)
+      expect(JSON.parse(fs.readFileSync(path.join(folder, 'package.json'), 'utf8')).version).toBe(
+        manifest.version,
+      )
+      expect((await request('/healthz', config.token)).status).toBe(404)
     }
   })
-  it('requires explicit private paths and distinct private auth, with no workspace fallback', () => {
+  it('requires an explicit retained private path and fresh token with no workspace fallback', () => {
     expect(() => loadConfig({})).toThrow('Plugin unavailable')
     expect(() => loadConfig({ BROCREW_CHROME_DATA: 'relative' })).toThrow('Plugin unavailable')
     const config = configured()
@@ -128,14 +146,15 @@ describe('private Chrome package', () => {
     if (process.platform !== 'win32')
       for (const dir of [config.home, config.workspace, config.downloadsRoot])
         expect(fs.statSync(dir).mode & 0o777).toBe(0o700)
-    fs.writeFileSync(config.authPath, JSON.stringify({ mcpToken, adminToken: mcpToken }))
-    expect(() =>
-      loadConfig({ BROCREW_CHROME_DATA: config.home, BROCREW_CHROME_AUTH: config.authPath }),
-    ).toThrow('Plugin unavailable')
+    const reopened = loadConfig(bootstrapEnv(config.home))
+    expect(reopened.home).toBe(config.home)
+    expect(reopened.token).not.toBe(config.token)
+    expect(config.token).toMatch(/^[a-f0-9]{64}$/)
   })
   it('accepts only an absolute host-selected browser executable', () => {
     const config = configured()
-    const env = { BROCREW_CHROME_DATA: config.home, BROCREW_CHROME_AUTH: config.authPath }
+    const env = bootstrapEnv(config.home)
+    const before = fs.readdirSync(config.home)
     expect(
       loadConfig({ ...env, BROCREW_CHROME_EXECUTABLE: path.join(config.home, 'fictional-browser') })
         .browser?.executablePath,
@@ -143,42 +162,68 @@ describe('private Chrome package', () => {
     expect(() =>
       loadConfig({ ...env, BROCREW_CHROME_EXECUTABLE: 'fictional-relative-browser' }),
     ).toThrow('Plugin unavailable')
+    expect(fs.readdirSync(config.home)).toEqual(before)
   })
-  it('refuses a linked auth file and a world-readable auth file without quoting it', () => {
-    const config = configured(),
-      link = path.join(config.home, 'linked.json')
-    fs.symlinkSync(config.authPath, link)
-    expect(() =>
-      loadConfig({ BROCREW_CHROME_DATA: config.home, BROCREW_CHROME_AUTH: link }),
-    ).toThrow('Plugin unavailable')
-    if (process.platform !== 'win32') {
-      fs.chmodSync(config.authPath, 0o644)
-      expect(() =>
-        loadConfig({ BROCREW_CHROME_DATA: config.home, BROCREW_CHROME_AUTH: config.authPath }),
-      ).toThrow('Plugin unavailable')
+  it('ignores linked world-readable and malformed legacy auth files without reading or quoting them', () => {
+    const home = temporary(),
+      auth = path.join(home, 'legacy-auth.json'),
+      link = path.join(home, 'linked.json')
+    const legacy = JSON.stringify({ mcpToken, adminToken })
+    fs.writeFileSync(auth, legacy, { mode: 0o644 })
+    fs.symlinkSync(auth, link)
+    const read = vi.spyOn(fs, 'readFileSync')
+    for (const legacyPath of [link, auth]) {
+      const config = loadConfig({ ...bootstrapEnv(home), BROCREW_CHROME_AUTH: legacyPath })
+      expect(config.token).not.toBe(mcpToken)
+      expect(config.token).not.toBe(adminToken)
+      expect(read.mock.calls.some(([file]) => [link, auth].includes(String(file)))).toBe(false)
     }
+    fs.writeFileSync(auth, 'malformed fictional legacy credentials')
+    expect(loadConfig({ ...bootstrapEnv(home), BROCREW_CHROME_AUTH: auth }).home).toBe(home)
+    expect(() => loadConfig({ BROCREW_PLUGIN_BOOTSTRAP: '{', BROCREW_CHROME_AUTH: auth })).toThrow(
+      'Plugin unavailable. Try again.',
+    )
+    read.mockRestore()
+    expect(fs.readFileSync(auth, 'utf8')).toBe('malformed fictional legacy credentials')
+    expect(fs.lstatSync(link).isSymbolicLink()).toBe(true)
   })
-  it('authenticates health and admin separately from tools, and refuses browser origins', async () => {
-    const { request } = await boot()
-    expect((await request('/healthz')).status).toBe(401)
-    expect((await request('/v1/profiles', mcpToken)).status).toBe(401)
-    expect((await request('/v1/tabs', mcpToken)).status).toBe(401)
+  it('authenticates MCP, refuses browser origins and leaves retired admin routes absent', async () => {
+    const { request, config, client, store, browser } = await boot()
+    expect((await request('/mcp', undefined, {})).status).toBe(401)
     expect((await request('/mcp', adminToken, {})).status).toBe(401)
-    expect((await request('/healthz', adminToken)).status).toBe(200)
+    expect((await request('/mcp', config.token, {}, 'https://fictional.invalid')).status).toBe(403)
+    for (const endpoint of ['/healthz', '/v1/profiles', '/v1/tabs'])
+      expect((await request(endpoint, config.token)).status).toBe(404)
+    expect((await client.listTools()).tools.some((tool) => tool.name === 'configure_profile')).toBe(
+      true,
+    )
     expect(
-      (await request('/v1/profiles', adminToken, undefined, 'https://fictional.invalid')).status,
-    ).toBe(403)
+      (
+        await client.callTool({
+          name: 'configure_profile',
+          arguments: { profile: 'fern', action: 'create-profile' },
+        })
+      ).isError,
+    ).toBe(true)
+    for (const origin of ['agent', 'automatic']) {
+      const denied = await client.callTool({
+        name: 'configure_profile',
+        arguments: { profile: 'fern', action: 'create-profile' },
+        _meta: { ...personMetadata, origin },
+      })
+      expect(denied.isError).toBe(true)
+    }
+    expect(store.list()).toEqual([])
+    expect(browser.launches).toEqual([])
   })
   it('only the person enables profiles and opens windows; tool discovery and use work with fakes', async () => {
-    const { request, browser, url } = await boot()
-    expect((await request('/v1/profiles', mcpToken, { name: 'fern' })).status).toBe(401)
-    expect((await request('/v1/profiles', adminToken, { name: 'fern' })).status).toBe(201)
-    const client = new Client({ name: 'fictional-agent', version: '1.0.0' })
-    const transport = new StreamableHTTPClientTransport(new URL(url + '/mcp'), {
-      requestInit: { headers: { authorization: `Bearer ${mcpToken}` } },
-    })
-    await client.connect(transport)
-    cleanup.push(() => client.close())
+    const { configure, browser, client, store } = await boot()
+    expect((await configure('fern', 'create-profile', {}, 'agent')).isError).toBe(true)
+    expect(store.get('fern')).toBeUndefined()
+    expect(browser.launches).toEqual([])
+    const created = await configure('fern', 'create-profile')
+    expect(created.isError).not.toBe(true)
+    expect(resultJson(created)).toEqual({ profile: 'fern', completed: true })
     const tools = await client.listTools()
     expect(tools.tools.some((tool) => tool.name === 'open_tab')).toBe(true)
     const refused = await client.callTool({
@@ -187,16 +232,14 @@ describe('private Chrome package', () => {
     })
     expect(JSON.stringify(refused)).toContain('not enabled')
     expect(browser.launches).toHaveLength(0)
-    expect((await request('/v1/profiles/fern/flags', adminToken, { enabled: true })).status).toBe(
-      200,
-    )
+    expect((await configure('fern', 'set-enabled', { enabled: true })).isError).not.toBe(true)
     const result = await client.callTool({
       name: 'open_tab',
       arguments: { profile: 'fern', url: 'https://fictional.invalid/' },
     })
     expect(JSON.stringify(result)).toContain('t')
     expect(browser.launches).toEqual([{ profile: 'fern', mode: 'headless' }])
-    expect((await request('/v1/profiles/fern/open', adminToken, {})).status).toBe(202)
+    expect((await configure('fern', 'open-window')).isError).not.toBe(true)
     expect(browser.launches.at(-1)).toEqual({ profile: 'fern', mode: 'visible' })
     const duringWindow = await client.callTool({
       name: 'open_tab',
@@ -204,38 +247,51 @@ describe('private Chrome package', () => {
     })
     expect(JSON.stringify(duringWindow)).toContain('https://fictional.invalid/shared')
     browser.endWindow('fern')
-    expect((await request('/v1/profiles/fern/flags', adminToken, { enabled: false })).status).toBe(
-      200,
-    )
+    expect((await configure('fern', 'set-enabled', { enabled: false })).isError).not.toBe(true)
     expect(browser.state('fern')).toBeNull()
   })
   it('only the person turns the BroCrew helper on, and only in an enabled profile', async () => {
-    const { request, browser, store } = await boot()
+    const { configure, browser, store, snapshot, client } = await boot()
     store.create('birch', 'panel')
     store.setHelper('birch', 'off')
-    expect((await request('/v1/profiles/birch/helper', mcpToken, {})).status).toBe(401)
-    expect((await request('/v1/profiles/birch/helper', adminToken, {})).status).toBe(409)
+    expect(
+      (
+        await client.callTool({
+          name: 'configure_profile',
+          arguments: { profile: 'birch', action: 'helper-on' },
+        })
+      ).isError,
+    ).toBe(true)
+    expect((await configure('birch', 'helper-on', {}, 'agent')).isError).toBe(true)
+    expect(browser.helperTurnedOn).toEqual([])
+    const disabled = await configure('birch', 'helper-on')
+    expect(disabled.isError).toBe(true)
+    expect(resultText(disabled)).toBe('Enable this profile first, then turn the helper on.')
+    expect(browser.helperTurnedOn).toEqual([])
     expect(store.get('birch')?.helper).toBe('off')
     store.setFlags('birch', { enabled: true })
-    expect((await request('/v1/profiles/birch/helper', adminToken, { on: true })).status).toBe(400)
-    const turned = await request('/v1/profiles/birch/helper', adminToken, {})
-    expect(turned.status).toBe(200)
-    expect(turned.body).toMatchObject({ profile: { name: 'birch', helperOff: false } })
+    expect((await configure('birch', 'helper-on', { on: true })).isError).toBe(true)
+    expect(browser.helperTurnedOn).toEqual([])
+    const turned = await configure('birch', 'helper-on')
+    expect(turned.isError).not.toBe(true)
+    expect(resultJson(turned)).toEqual({ profile: 'birch', completed: true })
+    expect((await snapshot()).profiles).toContainEqual(
+      expect.objectContaining({ name: 'birch', helperOff: false }),
+    )
     // Recorded first, so it holds even while this profile is closed.
     expect(store.get('birch')?.helper).toBe('turning-on')
     expect(browser.helperTurnedOn).toEqual(['birch'])
   })
   it('returns bounded typed tabs, excludes expired generations and strips URL credentials/query', async () => {
-    const { request, browser, server, store } = await boot()
+    const { snapshot, browser, server, store } = await boot()
     store.create('willow', 'panel')
     store.setFlags('willow', { enabled: true })
     const { generation } = await browser.ensure('willow', 'headless')
     const page = new FakePage()
     page.urlValue = 'https://fictional:madeup@fictional.invalid/path?q=private#part'
     server.tabs.add('willow', generation, asPage(page))
-    const reply = await request('/v1/tabs', adminToken)
-    expect(reply.status).toBe(200)
-    expect(reply.body.tabs).toEqual([
+    const reply = await snapshot()
+    expect(reply.tabs).toEqual([
       {
         id: expect.any(String),
         profile: 'willow',
@@ -244,6 +300,66 @@ describe('private Chrome package', () => {
       },
     ])
     await browser.close('willow')
-    expect((await request('/v1/tabs', adminToken)).body.tabs).toEqual([])
+    expect((await snapshot()).tabs).toEqual([])
   })
+})
+
+// Cap enumeration before title work; retain clean URLs, bounded strings and generations.
+it('snapshot caps rows before title work and bounds URL/title strings', async () => {
+  const config = configured(),
+    store = createProfileStore({ home: config.home })
+  store.create('willow', 'panel')
+  const browser = new FakeBrowser(store.dirOf),
+    tabs = new TabRegistry()
+  const { generation } = await browser.ensure('willow', 'headless')
+  const titles = []
+  const stale = new FakePage()
+  const staleTitle = vi.spyOn(stale, 'title')
+  tabs.add('willow', generation - 1, asPage(stale))
+  for (let i = 0; i < 205; i++) {
+    const page = new FakePage()
+    page.urlValue =
+      'https://fictional:secret@fictional.invalid/' + 'u'.repeat(2100) + '?private#fragment'
+    const title = vi.spyOn(page, 'title').mockResolvedValue('t'.repeat(600))
+    titles.push(title)
+    tabs.add('willow', generation, asPage(page))
+  }
+  const result = await configurationSnapshot({ store, browser, tabs })
+  expect(result.tabs).toHaveLength(200)
+  expect(result.tabs).toEqual(
+    Array.from({ length: 200 }, () => ({
+      id: expect.any(String),
+      profile: 'willow',
+      url: ('https://fictional.invalid/' + 'u'.repeat(2100)).slice(0, 2048),
+      title: 't'.repeat(512),
+    })),
+  )
+  expect(staleTitle).not.toHaveBeenCalled()
+  for (const title of titles.slice(0, 200)) expect(title).toHaveBeenCalledOnce()
+  for (const title of titles.slice(200)) expect(title).not.toHaveBeenCalled()
+})
+it('snapshot gives a never-settling title exactly the existing 250ms empty fallback', async () => {
+  const config = configured(),
+    store = createProfileStore({ home: config.home })
+  store.create('willow', 'panel')
+  const browser = new FakeBrowser(store.dirOf),
+    tabs = new TabRegistry()
+  const { generation } = await browser.ensure('willow', 'headless')
+  const page = new FakePage()
+  page.urlValue = 'https://fictional.invalid/'
+  vi.spyOn(page, 'title').mockImplementation(() => new Promise<string>(() => {}))
+  tabs.add('willow', generation, asPage(page))
+  vi.useFakeTimers()
+  let settled = false
+  const pending = configurationSnapshot({ store, browser, tabs }).then((result) => {
+    settled = true
+    return result
+  })
+  await vi.advanceTimersByTimeAsync(249)
+  expect(settled).toBe(false)
+  await vi.advanceTimersByTimeAsync(1)
+  expect(settled).toBe(true)
+  expect((await pending).tabs).toEqual([
+    { id: expect.any(String), profile: 'willow', url: 'https://fictional.invalid/', title: '' },
+  ])
 })

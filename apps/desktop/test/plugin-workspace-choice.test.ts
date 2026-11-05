@@ -4,11 +4,47 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
+import type { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
+import type { LifecycleWorkspace } from '../src/main/plugins/lifecycle/types'
 import { cleanupLifecycleFixtures, fixture, projection } from './plugin-lifecycle-fixtures'
 
 const roots: string[] = [],
   stores: GlobalPluginState[] = []
+async function accepted(
+  controller: PluginLifecycleController,
+  handle: LifecycleWorkspace,
+  id: string,
+  installId: string,
+) {
+  const workspaceId = controller.hostWorkspace(handle)
+  let resolve!: () => void, reject!: (error: unknown) => void
+  const ready = new Promise<void>((yes, no) => {
+    resolve = yes
+    reject = no
+  })
+  const check = () => {
+    try {
+      if (controller.admitted(handle, id, installId)) resolve()
+    } catch (error) {
+      reject(error)
+    }
+  }
+  const stop = controller.onHostChanged((changed) => {
+    if (changed === workspaceId) check()
+  })
+  receiptSubscriptions.add(stop)
+  try {
+    check()
+    await ready
+  } finally {
+    receiptSubscriptions.delete(stop)
+    stop()
+  }
+}
+const receiptSubscriptions = new Set<() => void>()
 afterEach(async () => {
+  for (const stop of receiptSubscriptions) stop()
+  receiptSubscriptions.clear()
   for (const state of stores.splice(0)) state.close()
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
   await cleanupLifecycleFixtures()
@@ -147,7 +183,8 @@ it('gates only the disabled workspace and never revives a callback across off/on
   const before = f.controller.agentAttachments(workspaceId)[0]!
   expect(before.current()).toBe(true)
   const second = projection()
-  await f.controller.attach(second.sink)
+  const secondHandle = await f.controller.attach(second.sink)
+  await accepted(f.controller, secondHandle, id, f.state.currentInstallation(id)!.installId)
   f.state.setEnabled(workspaceId, id, false)
   expect(f.controller.agentAttachments(workspaceId)).toEqual([])
   expect(before.current()).toBe(false)

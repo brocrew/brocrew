@@ -12,6 +12,7 @@ import {
 } from './plugin-lifecycle-fixtures'
 import { packageFixture, signed } from './plugin-package-fixtures'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
+import type { LifecycleWorkspace } from '../src/main/plugins/lifecycle/types'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
@@ -33,12 +34,46 @@ beforeEach(() => {
     }),
   )
 })
+const receiptSubscriptions = new Set<() => void>()
 afterEach(async () => {
+  for (const stop of receiptSubscriptions) stop()
+  receiptSubscriptions.clear()
   await cleanupLifecycleFixtures()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
 })
 const snapshotRoot = fileURLToPath(new URL('./fixtures/plugin-update-parent/', import.meta.url))
+async function accepted(
+  controller: PluginLifecycleController,
+  handle: LifecycleWorkspace,
+  id: string,
+  installId: string,
+) {
+  const workspaceId = controller.hostWorkspace(handle)
+  let resolve!: () => void, reject!: (error: unknown) => void
+  const ready = new Promise<void>((yes, no) => {
+    resolve = yes
+    reject = no
+  })
+  const check = () => {
+    try {
+      if (controller.admitted(handle, id, installId)) resolve()
+    } catch (error) {
+      reject(error)
+    }
+  }
+  const stop = controller.onHostChanged((changed) => {
+    if (changed === workspaceId) check()
+  })
+  receiptSubscriptions.add(stop)
+  try {
+    check()
+    await ready
+  } finally {
+    receiptSubscriptions.delete(stop)
+    stop()
+  }
+}
 async function withDrain(controller: PluginLifecycleController, body: () => Promise<void>) {
   const failures: unknown[] = []
   try {
@@ -335,6 +370,12 @@ describe.skipIf(process.platform === 'win32')(
         })
         await withDrain(current, async () => {
           const handle = await current.attach(projection().sink)
+          await accepted(
+            current,
+            handle,
+            'fictional-bakery',
+            state.currentInstallation('fictional-bakery')!.installId,
+          )
           expect(state.inspect().pending).toBeNull()
           expect(state.exportActivation().entries[0]?.release).toMatchObject({
             version: expectedVersion,
@@ -444,6 +485,7 @@ describe.skipIf(process.platform === 'win32')(
         })
         await withDrain(current, async () => {
           const handle = await current.attach(projection().sink)
+          await accepted(current, handle, 'fictional-bakery', install.installId)
           expect(
             current.screen(handle, 'fictional-bakery').package.readFile('plugin.json'),
           ).toEqual(Uint8Array.from(f.pkg.manifestBytes))

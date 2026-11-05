@@ -137,6 +137,62 @@ function fixture({ drained = true, failAt, rows = [] } = {}) {
 describe.skipIf(process.platform === 'win32')(
   'hosted runner session and best-effort cleanup',
   () => {
+    it('cannot make missing ordinary acceptance or stale fact records pass during either cleanup result', async () => {
+      for (const drained of [true, false])
+        for (const old of [false, true]) {
+          const f = fixture({ drained })
+          const summary = f.summary()
+          summary.checks.alternateSourceAccepted = false
+          if (old) {
+            delete summary.checks.alternateSourceAccepted
+            summary.checks.foreignUrlRefused = true
+          }
+          summary.passed = true
+          fs.writeFileSync(path.join(f.control, 'summary.json'), JSON.stringify(summary))
+          const read = f.io.readSummary
+          f.io.readSummary = () => {
+            const value = read()
+            f.io.safeSummary(value)
+            return value
+          }
+          if (old)
+            await expect(ownerFunction('clean', f.io)(f.control)).rejects.toThrow('Unsafe summary')
+          else {
+            await ownerFunction('clean', f.io)(f.control)
+            expect(f.summary().passed).toBe(false)
+            expect(f.summary().checks.alternateSourceAccepted).toBe(false)
+          }
+        }
+    })
+    it('retains the new journey failure through run and always cleanup ahead of a generic command failure', async () => {
+      const f = fixture()
+      const expected = diagnostics.stepFailure(
+        'journey',
+        'alternate-source-acceptance',
+        {},
+        'assertion',
+      )
+      fs.writeFileSync(
+        path.join(f.root, 'command-failure.json'),
+        JSON.stringify(diagnostics.failureFor('prepare', {}, 'thrown')),
+        { mode: 0o600 },
+      )
+      const launch = f.io.childRun
+      f.io.childRun = (...args) => {
+        const task = launch(...args)
+        if (args[6] === 'journey')
+          task.wait = async () => {
+            throw diagnostics.failureError('journey', { failure: expected })
+          }
+        return task
+      }
+      expect(
+        await ownerFunction('run', f.io)(f.control, '/fictional/node22', '/fictional/pnpm'),
+      ).toBe(false)
+      await ownerFunction('clean', f.io)(f.control)
+      expect(f.summary().failure).toEqual(expected)
+      expect(f.summary().passed).toBe(false)
+    })
     it('preserves the journey step and page state through cleanup, ahead of a nested command receipt', async () => {
       const f = fixture()
       const expected = diagnostics.stepFailure('journey', 'restart-profile', {}, 'assertion')

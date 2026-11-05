@@ -8,7 +8,8 @@ import { createSupervisorLifecycle } from '../src/main/plugins/lifecycle/supervi
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import type { createPluginNodeHost, PluginNodeProcess } from '../src/main/plugins/node-host'
 import { fictionalPublicKey, manifestFor, packageFixture, signed } from './plugin-package-fixtures'
-import type { LifecycleRuntime } from '../src/main/plugins/lifecycle/types'
+import type { LifecycleRuntime, LifecycleWorkspace } from '../src/main/plugins/lifecycle/types'
+import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import {
   cleanupLifecycleFixtures,
   deferred,
@@ -18,7 +19,41 @@ import {
 } from './plugin-lifecycle-fixtures'
 
 const closes: (() => Promise<unknown>)[] = []
+async function accepted(
+  controller: PluginLifecycleController,
+  handle: LifecycleWorkspace,
+  id: string,
+  installId: string,
+) {
+  const workspaceId = controller.hostWorkspace(handle)
+  let resolve!: () => void, reject!: (error: unknown) => void
+  const ready = new Promise<void>((yes, no) => {
+    resolve = yes
+    reject = no
+  })
+  const check = () => {
+    try {
+      if (controller.admitted(handle, id, installId)) resolve()
+    } catch (error) {
+      reject(error)
+    }
+  }
+  const stop = controller.onHostChanged((changed) => {
+    if (changed === workspaceId) check()
+  })
+  receiptSubscriptions.add(stop)
+  try {
+    check()
+    await ready
+  } finally {
+    receiptSubscriptions.delete(stop)
+    stop()
+  }
+}
+const receiptSubscriptions = new Set<() => void>()
 afterEach(async () => {
+  for (const stop of receiptSubscriptions) stop()
+  receiptSubscriptions.clear()
   for (const close of closes.splice(0).reverse()) await close().catch(() => undefined)
   await cleanupLifecycleFixtures()
 })
@@ -104,18 +139,50 @@ describe.skipIf(process.platform === 'win32')(
       const sink = projection()
       // Same stable workspace ID on reopen; no app, browser or provider is launched.
       const stableSink = { ...sink.sink, workspaceId: f.local.sink.workspaceId }
-      const client = await connectPluginSettings({
-        path: service.path,
-        personKey: 'a'.repeat(64),
-        root: f.root,
-        pinnedPublicKey: fictionalPublicKey,
-        target: f.opts.target,
-        catalogue: f.opts.catalogue,
-        download: f.opts.download,
-        projection: stableSink,
-      })
-      closes.push(() => client.close())
-      return { owner, lease, service, client, fake, sink: { ...sink, sink: stableSink } }
+      const handles: LifecycleWorkspace[] = []
+      const originalAttach = PluginLifecycleController.prototype.attach
+      const observing = vi
+        .spyOn(PluginLifecycleController.prototype, 'attach')
+        .mockImplementation(function (
+          this: PluginLifecycleController,
+          ...args: Parameters<PluginLifecycleController['attach']>
+        ) {
+          return originalAttach.apply(this, args).then((handle) => {
+            if (
+              args[0].workspaceId === stableSink.workspaceId &&
+              service.controller.hostWorkspace(handle) === stableSink.workspaceId
+            )
+              handles.push(handle)
+            return handle
+          })
+        })
+      let client: Awaited<ReturnType<typeof connectPluginSettings>>
+      try {
+        client = await connectPluginSettings({
+          path: service.path,
+          personKey: 'a'.repeat(64),
+          root: f.root,
+          pinnedPublicKey: fictionalPublicKey,
+          target: f.opts.target,
+          catalogue: f.opts.catalogue,
+          download: f.opts.download,
+          projection: stableSink,
+        })
+        closes.push(() => client.close())
+        expect(handles).toHaveLength(1)
+      } finally {
+        observing.mockRestore()
+      }
+      return {
+        owner,
+        lease,
+        service,
+        client,
+        fake,
+        sink: { ...sink, sink: stableSink },
+        accepted: (id: string) =>
+          accepted(service.controller, handles[0]!, id, state.currentInstallation(id)!.installId),
+      }
     }
     async function phase(root: string) {
       return JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase
@@ -147,6 +214,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(f.state.exportActivation().entries[0]?.installId).toBe(installed.installId)
       const state = reopenLifecycleFixture(f)
       const second = await attached(f, state)
+      await second.accepted('chrome')
       expect(await second.client.catalogue()).toMatchObject([{ installed: true, state: 'Running' }])
       expect(second.fake.runs).toHaveLength(1)
       expect(state.exportActivation().entries[0]?.installId).toBe(installed.installId)
@@ -297,35 +365,81 @@ describe.skipIf(process.platform === 'win32')(
       await f.controller.install(f.handle, 'chrome')
       const snapshot = join(f.root, 'state', 'installed-state.json'),
         selected = await readFile(snapshot)
+      const installation = f.state.currentInstallation('chrome')!
+      type Revoke = (install: typeof installation, currentOnly?: boolean) => Promise<void>
+      const originalRevoke = Reflect.get(f.controller, 'revoke') as Revoke
+      const captured = deferred<{ work: Promise<void> }>()
+      const observing = vi
+        .spyOn(f.controller as unknown as { revoke: Revoke }, 'revoke')
+        .mockImplementation(function (
+          this: PluginLifecycleController,
+          ...args: Parameters<Revoke>
+        ) {
+          const work = originalRevoke.apply(this, args)
+          if (
+            this === f.controller &&
+            args[0].pluginId === 'chrome' &&
+            args[0].installId === installation.installId &&
+            args[1] === undefined
+          )
+            captured.resolve({ work })
+          return work
+        })
       const revoke = vi.spyOn(f.local.sink, 'revoke').mockImplementation(() => ack.promise)
       const applied = vi.spyOn(f.local.sink, 'applied')
+      const oldReconcile = vi.spyOn(f.local.sink, 'reconcile')
+      const writes = vi.spyOn(f.state, 'recordProjection')
       const reconcile = vi.fn(async () => {
         throw new Error('fictional newer cleanup failure')
       })
-      exit.resolve()
-      await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
-      await f.controller.reconcileConsumer(f.handle, {
-        ...f.local.sink,
-        revoke: async () => true,
-        reconcile,
-      })
-      await vi.waitFor(() =>
+      try {
+        exit.resolve()
+        const { work } = await captured.promise
+        await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
+        expect(observing).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ pluginId: 'chrome', installId: installation.installId }),
+        )
+        expect(observing.mock.contexts[0]).toBe(f.controller)
+        expect(observing.mock.results[0]!.value).toBe(work)
+        await f.controller.reconcileConsumer(f.handle, {
+          ...f.local.sink,
+          revoke: async () => true,
+          reconcile,
+        })
+        await vi.waitFor(() =>
+          expect(f.controller.consumerBindings(f.handle)).toContainEqual({
+            pluginId: 'chrome',
+            state: 'failed',
+          }),
+        )
+        expect(reconcile).toHaveBeenCalledExactlyOnceWith({
+          pluginId: 'chrome',
+          before: null,
+          receipt: null,
+        })
+        expect(await readFile(snapshot)).toEqual(selected)
+        ack.resolve(true)
+        await work
+        expect(observing).toHaveBeenCalledOnce()
+        expect(oldReconcile).not.toHaveBeenCalled()
+        expect(applied).not.toHaveBeenCalled()
+        expect(writes).not.toHaveBeenCalled()
         expect(f.controller.consumerBindings(f.handle)).toContainEqual({
           pluginId: 'chrome',
           state: 'failed',
-        }),
-      )
-      expect(reconcile).toHaveBeenCalledExactlyOnceWith({
-        pluginId: 'chrome',
-        before: null,
-        receipt: null,
-      })
-      expect(await readFile(snapshot)).toEqual(selected)
-      ack.resolve(true)
-      await vi.waitFor(() => expect(applied).toHaveBeenCalledWith('chrome', null))
-      expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
-      expect(f.controller.cleanForShutdown()).toBe(false)
-      expect(await readFile(snapshot)).toEqual(selected)
+        })
+        expect(reconcile).toHaveBeenCalledExactlyOnceWith({
+          pluginId: 'chrome',
+          before: null,
+          receipt: null,
+        })
+        expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
+        expect(f.controller.cleanForShutdown()).toBe(false)
+        expect(await readFile(snapshot)).toEqual(selected)
+      } finally {
+        ack.resolve(true)
+        observing.mockRestore()
+      }
     })
     it('a proven crash drains the shared owner and its successor starts while another plugin stays running', async () => {
       const f = await fixture()
@@ -367,6 +481,7 @@ describe.skipIf(process.platform === 'win32')(
         expect(await phase(f.root)).toBe('stopped')
         const state = reopenLifecycleFixture(f)
         const second = await attached(f, state)
+        await Promise.all(['chrome', 'whatsapp'].map((id) => second.accepted(id)))
         expect(await second.client.catalogue()).toMatchObject([
           { id: 'chrome', installed: true, state: 'Running' },
           { id: 'whatsapp', installed: true, state: 'Running' },
@@ -406,6 +521,7 @@ describe.skipIf(process.platform === 'win32')(
         expect(first.service.controller.cleanForShutdown()).toBe(true)
         const state = reopenLifecycleFixture(f)
         const second = await attached(f, state)
+        await second.accepted('chrome')
         expect(await second.client.catalogue()).toMatchObject([{ state: 'Running' }])
         await second.client.close()
         expect(await second.lease.close()).toBe(true)
@@ -431,6 +547,7 @@ describe.skipIf(process.platform === 'win32')(
         await expect(first.client.catalogue()).rejects.toThrow()
         const state = reopenLifecycleFixture(f)
         const second = await attached(f, state)
+        await second.accepted('chrome')
         expect(await second.client.catalogue()).toMatchObject([{ state: 'Running' }])
         await second.client.close()
         expect(await second.lease.close()).toBe(true)

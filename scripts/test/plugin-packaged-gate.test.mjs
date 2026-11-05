@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   checks,
   digest,
@@ -15,10 +15,16 @@ import {
   requireCheck,
   requireCI,
   safeReport,
+  safeChecks,
 } from '../gates/plugin-packaged/contract.mjs'
 import { assertNormalPluginBuild, GATE_BUILD_MARKER } from '../check-no-plugin-gate-inputs.mjs'
 import { initialize, requireHosted } from '../gates/plugin-packaged/owner.mjs'
-import { stageRelease } from '../gates/plugin-packaged/journey.mjs'
+import {
+  stageRelease,
+  observeInstallState,
+  observationJson,
+  validateInstallSnapshot,
+} from '../gates/plugin-packaged/journey.mjs'
 import { fixtureEnvironment, removeFixture } from '../gates/plugin-packaged/prepare.mjs'
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const desktopRequire = createRequire(path.join(repository, 'apps/desktop/package.json'))
@@ -39,6 +45,112 @@ function scratch() {
 const read = (name) => fs.readFileSync(path.join(repository, name), 'utf8')
 // The Mac gate fixtures require POSIX ownership and descriptor paths.
 describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => {
+  it('requires real owned stable format2 bytes, rejecting missing, linked, duplicate-key, malformed, oversized and changing observations', () => {
+    const root = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'fictional-install-observation-')),
+    )
+    fs.chmodSync(root, 0o700)
+    fs.writeFileSync(path.join(root, 'fixture-owned'), 'packaged-plugin-gate\n', { mode: 0o600 })
+    const global = path.join(root, 'g'),
+      state = path.join(global, 'state'),
+      file = path.join(state, 'installed-state.json')
+    fs.mkdirSync(global, { mode: 0o700 })
+    fs.mkdirSync(state, { mode: 0o700 })
+    const baseline = {
+        format: 2,
+        rootId: '11111111-1111-4111-8111-111111111111',
+        epoch: '22222222-2222-4222-8222-222222222222',
+        sequence: 0,
+        installations: [],
+        active: [],
+        recentOperations: [],
+        pending: null,
+        projections: [],
+        workspaceEnabled: [],
+        workspaceTitlesEnabled: [],
+      },
+      bytes = JSON.stringify(baseline)
+    let spy
+    try {
+      expect(() => observeInstallState(root, global)).toThrow()
+      fs.writeFileSync(file, bytes, { mode: 0o600 })
+      expect(observeInstallState(root, global)).toEqual(baseline)
+      for (const bad of [
+        '{',
+        bytes.replace('"sequence":0', '"sequence":0,"sequence":0'),
+        bytes.replace('"sequence":0', '"sequence":"0"'),
+        Buffer.alloc(1024 * 1024 + 1),
+      ]) {
+        fs.writeFileSync(file, bad)
+        expect(() => observeInstallState(root, global)).toThrow()
+      }
+      fs.unlinkSync(file)
+      fs.writeFileSync(path.join(root, 'other'), bytes, { mode: 0o600 })
+      fs.symlinkSync(path.join(root, 'other'), file)
+      expect(() => observeInstallState(root, global)).toThrow()
+      fs.unlinkSync(file)
+      fs.writeFileSync(file, bytes, { mode: 0o600 })
+      const read = fs.readFileSync
+      let changed = false
+      spy = vi.spyOn(fs, 'readFileSync').mockImplementation((...args) => {
+        const result = read(...args)
+        if (typeof args[0] === 'number' && !changed) {
+          changed = true
+          fs.renameSync(file, file + '.old')
+          fs.writeFileSync(file, bytes, { mode: 0o600 })
+        }
+        return result
+      })
+      expect(() => observeInstallState(root, global)).toThrow()
+      expect(changed).toBe(true)
+      expect(() => observationJson(Buffer.from('{"outer":{"id":1,"i\\u0064":2}}'))).toThrow()
+      expect(() => validateInstallSnapshot({ ...baseline, recentOperations: undefined })).toThrow()
+    } finally {
+      spy?.mockRestore()
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+  it('requires exactly sixteen boolean facts and cannot replace ordinary acceptance with an obsolete or optimistic fact', () => {
+    expect(checks).toEqual([
+      'packagedArm64',
+      'bundledNode',
+      'bundledSupervisor',
+      'pluginsTab',
+      'installed',
+      'profileCreated',
+      'profileEnabled',
+      'restartRetained',
+      'concurrentWorkspaces',
+      'reinstallRetained',
+      'tamperedArchiveRefused',
+      'alternateSourceAccepted',
+      'fakeBrowserOnly',
+      'drawsWindow',
+      'agentBrowserAction',
+      'liveTabs',
+    ])
+    const summary = report()
+    for (const key of checks) summary.checks[key] = true
+    summary.coverage.agentBrowserActions = true
+    summary.coverage.liveTabs = true
+    expect(finish(summary).passed).toBe(true)
+    for (const change of ['old-only', 'both', 'missing', 'extra', 'nonboolean', 'false']) {
+      const bad = structuredClone(summary)
+      if (change === 'old-only') {
+        delete bad.checks.alternateSourceAccepted
+        bad.checks.foreignUrlRefused = true
+      }
+      if (change === 'both') bad.checks.foreignUrlRefused = true
+      if (change === 'missing') delete bad.checks.installed
+      if (change === 'extra') bad.checks.optimistic = true
+      if (change === 'nonboolean') bad.checks.alternateSourceAccepted = 1
+      if (change === 'false') bad.checks.alternateSourceAccepted = false
+      expect(finish(bad).passed).toBe(false)
+      expect(safeChecks(bad.checks)).toBe(change === 'false')
+      expect(safeReport(bad)).toBe(change === 'false')
+    }
+    expect(() => requireCheck(report(), 'foreignUrlRefused', true)).toThrow()
+  })
   it('requires a hosted Mac, the BroCrew repository and a packaged-gate ref', () => {
     const env = {
       RUNNER_ENVIRONMENT: 'github-hosted',
@@ -108,7 +220,7 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     expect(projected.entry).not.toContain('providerModules[provider].createRuntime(')
     expect(projected.entry).not.toContain('providerModules[provider].home.prepare(profileId)')
     expect(projected.entry).toContain('fixtureSource: "/private/tmp/fictional/a/repo-fixture"')
-    expect(projected.entry).toContain('browserExecutable: "/private/tmp/fictional/browser"')
+    expect(projected.entry).not.toContain('browserExecutable:')
     expect(projected.entry).toContain('app.setPath(\'appData\', "/private/tmp/fictional/a")')
     expect(projected.entry).toContain(
       'return preparePackagedGateHome("/private/tmp/fictional", userData, provider, profileId)',
@@ -287,19 +399,22 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     expect(safeReport({ ...summary, secret: 'fictional' })).toBe(false)
     expect(() => requireCheck(summary, 'installed', false)).toThrow()
   })
-  it('stages the unsigned list and exact archive pins; refusal variants alter only their intended bytes', () => {
+  it('stages full format3 rows and exact archive pins; alternate-source and tamper variants change only their intended inputs', () => {
     const root = scratch(),
       appData = path.join(root, 'a')
     fs.mkdirSync(appData)
     fs.mkdirSync(path.join(root, 'release'))
     const archive = Buffer.from('fictional archive bytes')
     const list = {
-      format: 1,
+      format: 3,
       entries: [
         {
           id: 'chrome',
+          authors: ['fictional'],
           targets: [
             {
+              os: 'darwin',
+              cpu: 'arm64',
               url: 'https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v1/chrome.tar.gz',
               sha256: digest(archive),
               bytes: archive.length,
@@ -319,18 +434,22 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     stageRelease(root, appData, 'tampered')
     expect(fs.readFileSync(stagedArchive).equals(archive)).toBe(false)
     expect(JSON.parse(fs.readFileSync(path.join(staged, 'catalogue.json')))).toEqual(list)
-    stageRelease(root, appData, 'foreign')
+    stageRelease(root, appData, 'alternate')
     expect(fs.readFileSync(stagedArchive).equals(archive)).toBe(true)
     expect(
       JSON.parse(fs.readFileSync(path.join(staged, 'catalogue.json'))).entries[0].targets[0].url,
-    ).toBe('https://example.invalid/foreign.tar.gz')
+    ).toBe('https://example.invalid/alternate-chrome.tar.gz')
+    const alternate = structuredClone(list)
+    alternate.entries[0].targets[0].url = 'https://example.invalid/alternate-chrome.tar.gz'
+    expect(JSON.parse(fs.readFileSync(path.join(staged, 'catalogue.json')))).toEqual(alternate)
+    expect(() => stageRelease(root, appData, 'foreign')).toThrow('Invalid release fixture')
     expect(fs.readdirSync(staged).sort()).toEqual(['archives', 'catalogue.json'])
     for (const file of ['prepare.mjs', 'release.mjs', 'journey.mjs'])
       expect(read('scripts/gates/plugin-packaged/' + file)).not.toMatch(
         /generateKeyPair|sign-plugin|fixture-sign|catalogue\.sig|createPrivateKey/,
       )
   })
-  it('uses the landed adapter and host policy to refuse foreign URLs and changed archive bytes', async () => {
+  it('uses the actual ordinary adapter to accept another source for identical pinned bytes and separately refuse changed bytes', async () => {
     const root = scratch(),
       input = path.join(root, 'input'),
       archive = Buffer.from('fictional unsigned archive')
@@ -346,10 +465,11 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
       manifestSha256: 'a'.repeat(64),
     }
     const list = {
-      format: 1,
+      format: 3,
       entries: [
         {
           id: 'chrome',
+          authors: ['fictional'],
           name: 'Fictional browser',
           description: 'Fictional offline package.',
           version: '1.0.0',
@@ -388,16 +508,24 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     changed[0] ^= 1
     fs.writeFileSync(archivePath, changed)
     await expect(adapter.localPluginArchive(input, loaded.releases[0])).rejects.toThrow()
-    target.url = 'https://example.invalid/foreign.tar.gz'
+    target.url = 'https://example.invalid/alternate-chrome.tar.gz'
     fs.writeFileSync(path.join(input, 'catalogue.json'), JSON.stringify(list))
-    await expect(
-      adapter.loadRepoPluginList({
-        root: path.join(root, 'foreign'),
-        fixtureSource: input,
-        target: { os: 'darwin', cpu: 'arm64' },
-        appVersion: '1.0.0',
-      }),
-    ).rejects.toThrow()
-    expect(fs.existsSync(path.join(root, 'foreign/repo-catalogues'))).toBe(false)
+    const alternate = await adapter.loadRepoPluginList({
+      root: path.join(root, 'alternate'),
+      fixtureSource: input,
+      target: { os: 'darwin', cpu: 'arm64' },
+      appVersion: '1.0.0',
+    })
+    expect(alternate.releases).toEqual(
+      loaded.releases.map((one) => ({ ...one, archive: { ...one.archive, url: target.url } })),
+    )
+    await expect(adapter.localPluginArchive(input, alternate.releases[0])).rejects.toThrow()
+    fs.writeFileSync(archivePath, archive)
+    expect((await adapter.localPluginArchive(input, alternate.releases[0])).equals(archive)).toBe(
+      true,
+    )
+    for (const folder of ['g', 'alternate'])
+      for (const effect of ['state', 'host/runs', 'host/data'])
+        expect(fs.existsSync(path.join(root, folder, effect))).toBe(false)
   })
 })

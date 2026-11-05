@@ -10,6 +10,7 @@ import {
 } from './plugin-lifecycle-fixtures'
 import { packageFixture } from './plugin-package-fixtures'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
+import type { LifecycleWorkspace } from '../src/main/plugins/lifecycle/types'
 import { newerPluginVersion } from '../src/main/plugins/catalogue/newer-version'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
@@ -19,10 +20,44 @@ import { observeInstalled } from './plugin-installed-observation'
 import { LifecycleEffects } from '../src/main/plugins/lifecycle/files'
 import { PluginProfileLedger as HistoricalLedger } from './fixtures/plugin-encoder-820/profile-ledger'
 
+const receiptSubscriptions = new Set<() => void>()
 afterEach(async () => {
+  for (const stop of receiptSubscriptions) stop()
+  receiptSubscriptions.clear()
   await cleanupLifecycleFixtures()
   vi.unstubAllGlobals()
 })
+async function accepted(
+  controller: PluginLifecycleController,
+  handle: LifecycleWorkspace,
+  id: string,
+  installId: string,
+) {
+  const workspaceId = controller.hostWorkspace(handle)
+  let resolve!: () => void, reject!: (error: unknown) => void
+  const ready = new Promise<void>((yes, no) => {
+    resolve = yes
+    reject = no
+  })
+  const check = () => {
+    try {
+      if (controller.admitted(handle, id, installId)) resolve()
+    } catch (error) {
+      reject(error)
+    }
+  }
+  const stop = controller.onHostChanged((changed) => {
+    if (changed === workspaceId) check()
+  })
+  receiptSubscriptions.add(stop)
+  try {
+    check()
+    await ready
+  } finally {
+    receiptSubscriptions.delete(stop)
+    stop()
+  }
+}
 async function setup(repo = false) {
   const f = await fixture({}, false, 'whatsapp')
   const old = packageFixture({ manifest: { ...f.pkg.manifest, version: '0.1.0' } })
@@ -162,6 +197,7 @@ describe.skipIf(process.platform === 'win32')(
         })
         const local = projection()
         const handle = await recovered.attach(local.sink)
+        await accepted(recovered, handle, 'whatsapp', before.installId)
         expect(state.inspect().pending).toBeNull()
         expect(state.exportActivation().entries).toHaveLength(1)
         const current = state.exportActivation().entries[0]!

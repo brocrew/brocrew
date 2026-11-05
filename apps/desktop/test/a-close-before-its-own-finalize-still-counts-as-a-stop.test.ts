@@ -118,14 +118,16 @@ describe('M55 · a Close counts as a stop before its own finalize', () => {
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) => {
         const inner = new FakeRuntime(provider, { sessions })
-        const thisLaunch = ++launches
-        const retirement = thisLaunch === 1 ? retiring : thisLaunch === 2 ? replacement : undefined
         const bind = <T extends object>(target: T, prop: string | symbol): unknown => {
           const value = Reflect.get(target, prop) as unknown
           return typeof value === 'function' ? value.bind(target) : value
         }
-        const held = thisLaunch === 1 ? heldRetirement : undefined
+        // A runtime is also made to read a provider's models; only a start or a resume is a launch.
         const wrap = <H extends object>(handle: H): H => {
+          const thisLaunch = ++launches
+          const retirement =
+            thisLaunch === 1 ? retiring : thisLaunch === 2 ? replacement : undefined
+          const held = thisLaunch === 1 ? heldRetirement : undefined
           if (sent) {
             const real = handle as unknown as SessionHandle
             const send = real.send.bind(real)

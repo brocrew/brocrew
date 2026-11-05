@@ -199,7 +199,7 @@ describe.runIf(process.platform === 'win32')('the plugin host on Windows', () =>
     })
   })
   it.each([false, true])(
-    'secures a plugin root (existing: %s) under a parent a sandbox group can read, preserving parent and workspace ACLs',
+    'creates or reuses an ordinary plugin root (existing: %s), preserving inherited access, data, parent and workspace ACLs',
     async (existing) => {
       const parent = await privateParent()
       roots.push(parent)
@@ -212,23 +212,36 @@ describe.runIf(process.platform === 'win32')('the plugin host on Windows', () =>
       const workspace = join(parent, 'workspace'),
         root = join(parent, 'plugins')
       mkdirSync(workspace)
-      if (existing) mkdirSync(root)
+      const ordinary = join(parent, 'ordinary')
+      mkdirSync(ordinary)
+      const ordinaryBefore = await windowsAccessLists.read(ordinary)
+      const sentinel = Buffer.from([0, 255, 17, 128, 10])
+      if (existing) {
+        mkdirSync(root)
+        writeFileSync(join(root, 'opaque.bin'), sentinel)
+      }
+      const rootBefore = existing ? await windowsAccessLists.read(root) : undefined
       const parentBefore = await windowsAccessLists.read(parent)
       const workspaceBefore = await windowsAccessLists.read(workspace)
       const user = await windowsAccessLists.userSid()
       const machine = await windowsAccessLists.machineSid()
       expect(othersLetIn(accessEntries(parentBefore, machine), user)).toContain(sandbox)
       await keepPluginRootPrivate(root)
-      mkdirSync(join(root, 'state'))
-      for (const folder of [root, join(root, 'state')])
-        expect(
-          othersLetIn(
-            accessEntries(await windowsAccessLists.read(folder), machine, {
-              includeInheritOnly: true,
-            }),
-            user,
-          ),
-        ).toEqual([])
+      expect(lstatSync(root).isDirectory()).toBe(true)
+      expect(await windowsAccessLists.read(root)).toBe(rootBefore ?? ordinaryBefore)
+      expect(
+        othersLetIn(accessEntries(await windowsAccessLists.read(root), machine), user),
+      ).toContain(sandbox)
+      expect(readdirSync(root)).toEqual(existing ? ['opaque.bin'] : [])
+      if (existing) expect(readFileSync(join(root, 'opaque.bin'))).toEqual(sentinel)
+      const state = join(root, 'state')
+      mkdirSync(state)
+      writeFileSync(join(root, 'written.bin'), sentinel)
+      writeFileSync(join(state, 'written.bin'), sentinel)
+      expect(readFileSync(join(root, 'written.bin'))).toEqual(sentinel)
+      expect(readFileSync(join(state, 'written.bin'))).toEqual(sentinel)
+      if (existing) expect(readFileSync(join(root, 'opaque.bin'))).toEqual(sentinel)
+      expect(await windowsAccessLists.read(root)).toBe(rootBefore ?? ordinaryBefore)
       expect(await windowsAccessLists.read(parent)).toBe(parentBefore)
       expect(await windowsAccessLists.read(workspace)).toBe(workspaceBefore)
       expect(isInsideCheckedRoot(join(root, 'state'))).toBe(true)

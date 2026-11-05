@@ -82,14 +82,16 @@ export function loadConfig(env: Record<string, string | undefined>): AgentChrome
   let shared: AgentChromeConfig['shared']
   if (sharedRoot !== undefined) {
     if (typeof sharedRoot !== 'string' || !path.isAbsolute(sharedRoot)) return invalid()
-    // This is the historical installation/root owner, never a requesting app workspace.
-    const workspaceId = (priorOwner?.ownerId ?? env.BROCREW_PLUGIN_OWNER_ID) as string | undefined
-    if (
-      !workspaceId ||
-      !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(workspaceId)
-    )
-      throw new ConfigError('Shared Chrome workspace identity is invalid.')
     if (sharedProfilesReleased(process.platform, sharedProfilesRelease)) {
+      // This is the historical installation/root owner, never a requesting app workspace.
+      const workspaceId = (priorOwner?.ownerId ?? env.BROCREW_PLUGIN_OWNER_ID) as string | undefined
+      if (
+        !workspaceId ||
+        !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+          workspaceId,
+        )
+      )
+        throw new ConfigError('Shared Chrome workspace identity is invalid.')
       shared = {
         root: sharedRoot,
         workspaceId,

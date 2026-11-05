@@ -457,6 +457,41 @@ export class FakeSessionHandle implements SessionHandle {
   }
 
   async send(text: string, origin?: TurnProvenance): Promise<void> {
+    const turnId = this.admit(origin)
+    void this.driveTurn(text, turnId).catch((error: unknown) => this.fatal(String(error)))
+  }
+
+  /**
+   * A turn accepted as {@link send} accepts one, whose words the provider never answers: it refuses
+   * the login the session runs on and the session ends. One error says why — `auth` for a refused
+   * sign-in, `auth_stale` for one gone stale, with `onAKey` when it was a saved key — and the
+   * session machine writes the terminal for an error already said. Nothing else is emitted.
+   */
+  async sendRefusedOnItsLogin(
+    text: string,
+    origin: TurnProvenance | undefined,
+    refusal: { readonly cause: 'auth' | 'auth_stale'; readonly onAKey?: true },
+  ): Promise<void> {
+    this.admit(origin)
+    const onAKey = refusal.onAKey === true ? { onAKey: true as const } : {}
+    this.settleRequests()
+    this.push({
+      type: 'error',
+      message: 'The provider refused the sign-in this session runs on.',
+      fatal: true,
+      cause: refusal.cause,
+      ...onAKey,
+    })
+    this.machine.fatalAfterReportedError({ loginRefused: true, ...onAKey })
+    this.terminated = true
+    this.queue.close()
+  }
+
+  /**
+   * A turn admitted: begun, its origin recorded and its settings adopted. Throws the machine's own
+   * refusal when no turn can begin, and then records nothing.
+   */
+  private admit(origin: TurnProvenance | undefined): number {
     const turnId = this.machine.beginTurn()
     // ⚑ **Which half of the `null` it was, as a type** (650) — the double refuses the way both
     // real adapters do, because it is what the host's classification is tested against.
@@ -472,7 +507,7 @@ export class FakeSessionHandle implements SessionHandle {
     this.efforts.adopt()
     this.plan.adopt()
     this.folders.adopt()
-    void this.driveTurn(text, turnId).catch((error: unknown) => this.fatal(String(error)))
+    return turnId
   }
 
   /** A fatal session error: settle pending requests, then errored + close. */

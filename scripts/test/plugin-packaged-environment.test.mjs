@@ -23,10 +23,11 @@ describe('minimal hosted GUI metadata fence', () => {
       const matrix = fixtureAppEnvironment(root, app)
       const journey = fixtureEnvironment(
         root,
-        {},
+        { BROCREW_CHROME_EXECUTABLE: path.join(root, 'fake-browser') },
         path.join(app, 'Contents/Resources/plugin-node/node'),
       )
       expect(matrix).toEqual(journey)
+      expect(matrix.BROCREW_CHROME_EXECUTABLE).toBe(path.join(root, 'fake-browser'))
       expect(matrix.PATH).toContain(path.join(app, 'Contents/Resources/plugin-node'))
       expect(matrix.PATH).not.toBe(
         fixtureEnvironment(root, {}, '/fictional/runner-node/bin/node').PATH,
@@ -46,6 +47,7 @@ describe('minimal hosted GUI metadata fence', () => {
       PATH: '/fictional/bin',
       NODE_OPTIONS: 'madeup-loader',
       GH_TOKEN: 'fictional-secret',
+      BROCREW_CHROME_EXECUTABLE: '/fictional/inherited-browser',
     }
     expect(hostedSystemEnvironment(source, 'darwin', 'arm64')).toEqual({
       __CF_USER_TEXT_ENCODING: '0x1F5:0:0',
