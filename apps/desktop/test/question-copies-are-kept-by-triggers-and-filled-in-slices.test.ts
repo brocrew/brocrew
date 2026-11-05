@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import { ensureQuestionCopies } from '../src/main/db/question-copies'
 import { committedChangesOf, type Committed } from '../src/main/db/committed-changes'
 import { howTheDatabaseFits } from '../src/main/db/newer-database'
 import { deleteTheTree } from '../src/main/db/conversation-tree'
@@ -168,13 +169,26 @@ describe('question copies are kept by triggers and filled in slices', () => {
     expect(store.conversationsHoldingACopyOf('A')).toEqual([])
   })
 
-  it('a fill said done over a copy table that lost every row starts again at the next open', () => {
+  it('a copy table that went missing while its fill was said done starts the fill again at open', () => {
     question('alpha', 'first')
     fillToTheEnd()
-    db.exec('DELETE FROM question_copy')
+    db.exec('DROP TABLE question_copy')
     reopen()
     expect(progress().done).toBe(0)
     expect(store.conversationsHoldingACopyOf('first')).toEqual(['alpha'])
+  })
+
+  it('opening reads no ledger row to decide whether the copies are whole', () => {
+    for (let i = 0; i < 50; i++) question('alpha', undefined)
+    fillToTheEnd()
+    const prepare = db.prepare.bind(db)
+    const read: string[] = []
+    vi.spyOn(db, 'prepare').mockImplementation((sql: string) => {
+      if (/\bFROM\s+events\b/i.test(sql)) read.push(sql)
+      return prepare(sql)
+    })
+    ensureQuestionCopies(db)
+    expect(read).toEqual([])
   })
 
   it('a missing index over a filled table is not rebuilt: the ledger query answers', () => {
