@@ -4,6 +4,7 @@ import { userEvent } from 'vitest/browser'
 import type { MessagePathAsk, MessagePathTarget } from '../../src/shared/runtime-ipc'
 import type { UserInputItem } from '../../src/renderer/src/lib/transcript'
 import type { PathsHere } from '../../src/renderer/src/composables/useMessagePaths'
+import MarkdownWords from '../../src/renderer/src/components/MarkdownWords.vue'
 import UserInputCard from '../../src/renderer/src/components/UserInputCard.vue'
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
@@ -27,6 +28,36 @@ afterEach(() => {
 describe.each(['classic', 'crew-night', 'synthwave'] as const)(
   'shared question prose in %s',
   (theme) => {
+    it('shows only a file label while tooltip, accessible name, Copy and Open retain its path', async () => {
+      if (theme !== 'classic') wearTheme(theme)
+      const path = '/work/sample/notes.md'
+      const bare = '/work/sample/bare.md'
+      const press = vi.fn(async () => null)
+      const copy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+      const paths: PathsHere = {
+        sessionId: 'sess_glint',
+        words: { canOpen: true, fileManager: 'Finder' },
+        known: (text) => ({ text, found: true, absolute: text, name: text, kind: 'file', opens: true }),
+        ask: vi.fn(),
+        press,
+      }
+      const m = mount(MarkdownWords, { text: `Read [the **notes**](${path}); then ${bare}.`, paths })
+      const words = m.host.querySelector<HTMLElement>('.md-chat')!
+      expect(words.textContent).toBe(`Read the notes; then ${bare}.`)
+      const label = words.querySelector<HTMLElement>('.message-path-label')!
+      expect(label.title).toBe(path)
+      expect(label.getAttribute('aria-label')).toBe(path)
+      expect(label.querySelector('strong')?.textContent).toBe('notes')
+      const controls = label.closest('.message-path')!
+      controls.querySelector<HTMLButtonElement>('[aria-label="Copy path"]')!.click()
+      await expect.poll(() => copy.mock.calls.length).toBe(1)
+      expect(copy).toHaveBeenCalledWith(path)
+      controls.querySelector<HTMLButtonElement>('[aria-label="Open file"]')!.click()
+      await expect.poll(() => press.mock.calls.length).toBe(1)
+      expect(press).toHaveBeenCalledWith(path)
+      expect(m.all('message-path-text').at(-1)?.textContent).toBe(bare)
+    })
+
     it('draws a failed file press outside a long folded question', async () => {
       if (theme !== 'classic') wearTheme(theme)
       const opened = vi.fn(async () => ({ ok: false, reason: 'failed' }))
