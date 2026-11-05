@@ -2519,7 +2519,10 @@ export class PluginLifecycleController {
       if (!choice.enabled) return Object.freeze({ ...base, is: 'off', why: 'disabled' })
       // A pending install/removal temporarily hides selection; it is never committed absence.
       if (operation?.request.consent.pluginId === pluginId) return pendingEntry('starting')
-      if (!active) return Object.freeze({ ...base, is: 'off', why: 'not-installed' })
+      if (!active) {
+        if (this.blocks.has(pluginId)) return pendingEntry('starting')
+        return Object.freeze({ ...base, is: 'off', why: 'not-installed' })
+      }
       if (this.toolRestarts.has(pluginId)) return pendingEntry('restarting')
       if (run?.ended) return pendingEntry('run-ended')
       if (this.blocks.has(pluginId)) return pendingEntry('not-ready')
