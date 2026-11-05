@@ -480,7 +480,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M44 · ⚑ **the conversations arm stops reading the workspace** — "
         "killed by `reads-per-act.test.ts`",
-        [(SCREEN, "      void readTheWorkspace()\n", "")],
+        # ⚑ **the persons notice · re-anchored in place, not retired** — The persons arm also reads the workspace, so the anchor carries the conversations arm's own comment line above its call; same plant. Verified with verify_row.
+        [(SCREEN, "      // claiming a population nobody measured (`534`'s own rule, and `567` §5's reading of it).\n      void readTheWorkspace()\n", "      // claiming a population nobody measured (`534`'s own rule, and `567` §5's reading of it).\n")],
     ),
     (
         "M45 · 🔴 **stopped work never reaches Waiting on you** · the page mounts the queue for requests "
