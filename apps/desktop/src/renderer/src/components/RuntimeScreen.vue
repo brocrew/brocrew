@@ -2974,6 +2974,15 @@ async function readTheWork(): Promise<void> {
   work.value = work.value?.conversation === asked ? { ...work.value, answered: false } : null
 }
 
+// A conversation left is read no more: its band and files go with it, so coming back reads them
+// afresh and a reply still in flight for it lands nowhere. Registered before the reads below, so
+// the next conversation's reads begin after it.
+watch(activeId, () => {
+  projection.castAsked(null)
+  projection.castRead(null)
+  projection.filesRead(null, null)
+})
+
 // ⚑ **Opening a conversation re-reads immediately** — a list just opened is read, never one left
 // from before; every move after that is pushed (W4.74).
 watch(activeId, () => void readTheWork())
