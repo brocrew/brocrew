@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import Database from 'better-sqlite3'
+import { openPluginSqlite, type PluginSqlite } from '../sqlite-contract'
 import {
   closeSync,
   existsSync,
@@ -111,7 +111,7 @@ export class PluginStateDisk {
   readonly root: string
   private lock?: PluginFence
   private closed = false
-  private archive?: Database.Database
+  private archive?: PluginSqlite
   constructor(
     private readonly options: PluginDiskOptions,
     _create = false,
@@ -143,10 +143,10 @@ export class PluginStateDisk {
   loadForObservation(): LifecycleState {
     return this.load()
   }
-  private historyDatabase(): Database.Database {
+  private historyDatabase(): PluginSqlite {
     if (this.readOnly) refuseState('conflict')
     if (!this.archive) {
-      this.archive = new Database(join(this.root, 'operations.sqlite'), { timeout: 0 })
+      this.archive = openPluginSqlite(join(this.root, 'operations.sqlite'), { timeout: 0 })
       this.archive.exec(
         'CREATE TABLE IF NOT EXISTS operations (id TEXT PRIMARY KEY, sequence INTEGER NOT NULL, value TEXT NOT NULL, status TEXT NOT NULL)',
       )
@@ -173,7 +173,7 @@ export class PluginStateDisk {
   }
   operationHistory(view: LifecycleState): OperationRecord[] {
     if (!existsSync(join(this.root, 'operations.sqlite'))) return [...view.operations.values()]
-    const read = (database: Database.Database) => {
+    const read = (database: PluginSqlite) => {
       const rows = database
         .prepare(
           "SELECT value FROM operations WHERE status <> 'prepared' AND sequence <= ? ORDER BY sequence, id",
@@ -189,7 +189,7 @@ export class PluginStateDisk {
       return [...records.values()]
     }
     if (this.closed) {
-      const database = new Database(join(this.root, 'operations.sqlite'), {
+      const database = openPluginSqlite(join(this.root, 'operations.sqlite'), {
         readonly: true,
         fileMustExist: true,
       })

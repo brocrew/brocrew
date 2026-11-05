@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3'
+import { openPluginSqlite, type PluginSqlite } from '../sqlite-contract'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { statSync } from 'node:fs'
 import { PluginStateError, refuseState } from './format'
@@ -26,7 +26,7 @@ export class PluginFence {
   private closed = false
   private constructor(
     private readonly identity: string,
-    private readonly db: Database.Database,
+    private readonly db: PluginSqlite,
   ) {}
 
   static acquire(path: string, existingOnly = false): PluginFence {
@@ -42,7 +42,7 @@ export class PluginFence {
       existing.refs++
       return existing
     }
-    const db = new Database(path, { timeout: 0, fileMustExist: existingOnly })
+    const db = openPluginSqlite(path, { timeout: 0, fileMustExist: existingOnly })
     try {
       const stat = statSync(path, { bigint: true })
       identity = `${stat.dev}:${stat.ino}`

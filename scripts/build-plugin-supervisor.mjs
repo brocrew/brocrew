@@ -8,7 +8,7 @@ export async function buildPluginSupervisor(
   out = resolve(root, 'apps/desktop/resources/plugin-supervisor/entry.cjs'),
 ) {
   const { build } = req(req.resolve('esbuild', { paths: [req.resolve('vite')] }))
-  await build({
+  const result = await build({
     absWorkingDir: root,
     entryPoints: [resolve(root, 'apps/desktop/src/main/plugins/supervisor/entry.ts')],
     outfile: out,
@@ -17,17 +17,27 @@ export async function buildPluginSupervisor(
     format: 'cjs',
     bundle: true,
     legalComments: 'eof',
+    metafile: true,
     plugins: [
       {
         name: 'standalone-node-sqlite',
         setup(builder) {
-          builder.onResolve({ filter: /^better-sqlite3$/ }, () => ({
+          builder.onResolve({ filter: /(?:^|\/)sqlite-contract$/ }, () => ({
             path: resolve(root, 'apps/desktop/src/main/plugins/supervisor/sqlite-adapter.ts'),
           }))
         },
       },
     ],
   })
+  const inputs = Object.keys(result.metafile.inputs)
+  if (inputs.some((input) => input.includes('better-sqlite3') || /\.node$/.test(input)))
+    throw new Error('Standalone supervisor must not include a native SQLite module')
+  const external = Object.values(result.metafile.outputs).flatMap((output) => output.imports)
+  if (external.some((input) => input.path === 'better-sqlite3' || /\.node$/.test(input.path)))
+    throw new Error('Standalone supervisor must not import a native SQLite module')
+  if (!external.some((input) => input.path === 'node:sqlite'))
+    throw new Error('Standalone supervisor must use node:sqlite')
+  return result.metafile
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url))
   await buildPluginSupervisor()

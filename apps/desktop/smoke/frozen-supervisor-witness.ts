@@ -21,6 +21,7 @@ import { pluginStartupDiagnostic } from '../src/main/plugins/startup-failure'
 import type { PluginSettingsReply } from '../src/shared/plugin-settings'
 import { PLUGIN_PAGE_CHANNEL } from '../src/shared/plugin-page'
 import { liveGroupMembers } from '../resources/plugin-host/process-groups.mjs'
+export { sqliteBootstrapCases } from './plugin-sqlite-bootstrap'
 
 const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex')
 const id = 'fictional-lantern'

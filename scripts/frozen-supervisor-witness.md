@@ -14,6 +14,15 @@ provider turns/adapters, native Chrome/WhatsApp, accounts, whole Electron, signe
 `.app`/`.dmg`, packaged app replacement/handover, guardian SIGKILL or Windows. All
 whole-app and W4 gates remain pending.
 
+The standalone builder replaces the narrow `plugins/sqlite-contract.ts` module with
+the Node SQLite backend. It rejects a metafile containing native SQLite inputs/imports
+or missing `node:sqlite`. Preparation retains `supervisor-metafile.json` in the frozen
+inventory. The source driver uses the same contract substitution; there is no global
+replacement of every `better-sqlite3` import. The separate shared contract suite lives
+in `apps/desktop/test/plugin-supervisor-sqlite.test.ts` and exercises both app/native and
+standalone backends, including a second-process writer and real node-host retirement.
+Its execution is separate from this once-built artifact journey.
+
 ## Preparation, performed once by the integration owner after independent review
 
 Use a clean checkout of the exact reviewed integrated commit. The two new source files
@@ -84,6 +93,20 @@ beside the run result. They remain UNRUN until the integration owner runs the co
 Each execution allocates a new short `/tmp/fl-*` fictional global/workspace/data root;
 there is no root-selection argument, live root discovery, credentials, plugin installs
 in personal roots, GUI, provider or network access. The sequence is:
+
+Before the main package journey, three additional fictional roots exercise the actual
+frozen owner through the same launcher: fresh state; a compact saved snapshot with
+`recentOperations` and its original archive retained aside, requiring history import;
+and state with an existing archive containing older operations. Seeded operations are
+aborted fictional installs written through the real state API and matching completed
+effect markers, so no package is selected to start. Each owner must reach `accepting`,
+answer the real person/Settings client, reject a second actual launcher as busy, and
+exit normally. Source-side observation then checks `operation(id)` and closed-state
+history through the readonly/existing-only backend. Runtime/entry copies and spawn
+argv for every one of these owners receive the same exact frozen-byte checks as the
+main journey. The run retains `sqlite-bootstrap.json` separately, and failures retain
+the production launcher's bounded diagnostic when attachment fails. These checks do
+not loosen the existing attachment/exit deadlines. The main journey remains:
 
 1. Launch through the real launcher, attach the real workspace lease/person client,
    and prove a second actual artifact process gets the owner's `busy` refusal.

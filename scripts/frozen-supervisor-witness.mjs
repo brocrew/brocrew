@@ -32,6 +32,7 @@ const sourceNames = [
   'scripts/build-plugin-supervisor.mjs',
   'scripts/prepare-plugin-node.mjs',
   'apps/desktop/smoke/frozen-supervisor-witness.ts',
+  'apps/desktop/smoke/plugin-sqlite-bootstrap.ts',
   'package.json',
   'apps/desktop/package.json',
   'pnpm-lock.yaml',
@@ -102,6 +103,21 @@ async function checkDurable(directory, plan) {
     flattenedRuntime(plan),
     'Durable runtime path set or bytes changed',
   )
+}
+async function checkOwnerCopies(root, records, plan) {
+  const runtimes = await readdir(join(root, 'runtimes'))
+  assert.equal(runtimes.length, 1)
+  await checkDurable(join(root, 'runtimes', runtimes[0]), plan)
+  const entryHash = plan.frozen['resources/plugin-supervisor/entry.cjs'].sha256
+  for (const record of records) {
+    assert.equal(
+      record.command,
+      join(root, 'runtimes', runtimes[0], NODE_TARGETS[plan.target].file),
+    )
+    assert.equal(record.argv[0], join(root, 'supervisor-entries', entryHash, 'entry.cjs'))
+    assert.equal(sha(await readFile(record.argv[0])), entryHash)
+  }
+  return runtimes[0]
 }
 async function controls(directory, plan, evidence) {
   // All mutations stay on a new copy, never the once-prepared artifact or a running root.
@@ -228,7 +244,8 @@ if (mode === 'prepare') {
   await checkRuntime(resources, target)
   await mkdir(join(resources, 'plugin-supervisor'))
   // The ACTUAL packaging build, called exactly once for this fresh directory.
-  await buildPluginSupervisor(join(resources, 'plugin-supervisor/entry.cjs'))
+  const ownerMetafile = await buildPluginSupervisor(join(resources, 'plugin-supervisor/entry.cjs'))
+  await save(join(out, 'supervisor-metafile.json'), ownerMetafile)
   const { build, version: esbuildVersion } = req(
     req.resolve('esbuild', { paths: [req.resolve('vite')] }),
   )
@@ -246,7 +263,7 @@ if (mode === 'prepare') {
       {
         name: 'source-driver-boundary',
         setup(builder) {
-          builder.onResolve({ filter: /^better-sqlite3$/ }, () => ({
+          builder.onResolve({ filter: /(?:^|\/)sqlite-contract$/ }, () => ({
             path: join(root, 'apps/desktop/src/main/plugins/supervisor/sqlite-adapter.ts'),
           }))
           // The source Settings card validator is exercised; mounting Electron is forbidden here.
@@ -353,13 +370,34 @@ const connect=net.Socket.prototype.connect;net.Socket.prototype.connect=function
     return child
   }
   syncBuiltinESMExports()
-  let answer
+  let answer,
+    bootstrapSpawns = []
   try {
     await controls(out, plan, evidence)
     await checkFrozen(out, plan)
     // Apply the same no-network policy to the app-side driver, not just its child.
     await import(pathToFileURL(join(out, 'network-forbidden.mjs')).href)
-    answer = await req(join(out, 'app-source-driver.cjs')).witness({
+    const driver = req(join(out, 'app-source-driver.cjs'))
+    const sqliteBootstrap = await driver.sqliteBootstrapCases({
+      root: runRoot,
+      resources,
+      spawns,
+      entryHash: plan.frozen['resources/plugin-supervisor/entry.cjs'].sha256,
+    })
+    for (const proof of sqliteBootstrap) {
+      const records = spawns.slice(...proof.spawnRange)
+      assert.equal(records.length, 2)
+      await checkOwnerCopies(proof.root, records, plan)
+    }
+    await save(join(evidence, 'sqlite-bootstrap.json'), {
+      passed: true,
+      sourceSha: plan.sourceSha,
+      sourceTree: plan.sourceTree,
+      cases: sqliteBootstrap,
+      spawnArgv: spawns.map(({ command, argv, child }) => ({ command, argv, pid: child.pid })),
+    })
+    bootstrapSpawns = spawns.splice(0)
+    answer = await driver.witness({
       root: runRoot,
       resources,
       refs: plan.refs,
@@ -367,19 +405,7 @@ const connect=net.Socket.prototype.connect;net.Socket.prototype.connect=function
       entryHash: plan.frozen['resources/plugin-supervisor/entry.cjs'].sha256,
     })
     // Durable runtime and entry copies must match every shipped resource byte.
-    const runtime = await readdir(join(runRoot, 'p/runtimes'))
-    assert.equal(runtime.length, 1)
-    await checkDurable(join(runRoot, 'p/runtimes', runtime[0]), plan)
-    for (const record of spawns) {
-      assert.equal(
-        record.command,
-        join(runRoot, 'p/runtimes', runtime[0], NODE_TARGETS[target].file),
-      )
-      assert.equal(
-        sha(await readFile(record.argv[0])),
-        plan.frozen['resources/plugin-supervisor/entry.cjs'].sha256,
-      )
-    }
+    const runtimeId = await checkOwnerCopies(join(runRoot, 'p'), spawns, plan)
     await checkFrozen(out, plan)
     assert.deepEqual(
       await sourceFiles(),
@@ -390,7 +416,8 @@ const connect=net.Socket.prototype.connect;net.Socket.prototype.connect=function
       ...answer,
       sourceSha: plan.sourceSha,
       sourceTree: plan.sourceTree,
-      runtimeId: runtime[0],
+      runtimeId,
+      sqliteBootstrap,
       runtimeVersion: NODE_VERSION,
       driverRuntime: {
         executable: process.execPath,
@@ -411,7 +438,8 @@ const connect=net.Socket.prototype.connect;net.Socket.prototype.connect=function
       fictionalRoot: runRoot,
       error: String(error?.stack ?? error),
       causes: String(error?.cause?.stack ?? error?.cause ?? ''),
-      capturedOwners: spawns.map(({ child }) => ({
+      launchDiagnostic: error?.launchDiagnostic ?? null,
+      capturedOwners: [...bootstrapSpawns, ...spawns].map(({ child }) => ({
         pid: child.pid,
         exitCode: child.exitCode,
         signal: child.signalCode,

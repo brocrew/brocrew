@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import Database from 'better-sqlite3'
+import { openPluginSqlite, type PluginSqlite } from './sqlite-contract'
 import { pluginNodePolicy } from './node-policy'
 export { pluginNodePolicy } from './node-policy'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -626,11 +626,11 @@ export function createPluginNodeHost(options: {
   async function retire(id: string, remove: (root: string) => Promise<void>): Promise<void> {
     if (starts.has(id) || retiring.has(id)) throw new PluginHostError('cleanup')
     retiring.add(id)
-    let database: Database.Database | undefined
+    let database: PluginSqlite | undefined
     try {
       const root = await privateRoot(options.root)
       const slots = await privateChild(root, 'process-slots')
-      database = new Database(join(slots, `${id}.sqlite`), { timeout: 0 })
+      database = openPluginSqlite(join(slots, `${id}.sqlite`), { timeout: 0 })
       for (;;) {
         try {
           database.exec('BEGIN EXCLUSIVE')
