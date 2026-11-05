@@ -55,6 +55,11 @@ export interface CommittedChange {
   readonly whole: ReadonlyMap<string, WholeChange>
   /** Sessions a rebuild wrote into a generation nobody reads yet. */
   readonly staged: ReadonlySet<string>
+  /**
+   * The sessions a staged write took rows out of that a read over every generation still sees, so
+   * a reader of those rows reads them again although nothing shown moved.
+   */
+  readonly stagedRemovedSeen: ReadonlySet<string>
   /** Files kept on a piece. */
   readonly kept: readonly { readonly piece: string; readonly resource: string }[]
   /** The persistent tables the commit wrote, whatever else it says: a setter's, a note's. */
@@ -78,6 +83,8 @@ export interface CommittedChanges {
   appended(row: CommittedRow): void
   whole(session: string, why: WholeChange): void
   staged(session: string): void
+  /** A staged write removed rows of `session` that a read over every generation sees. */
+  stagedRemovedSeen(session: string): void
   kept(piece: string, resource: string): void
   /** Runs `write` with its appends recorded as part of a whole change, not row by row. */
   asAWhole<T>(write: () => T): T
@@ -94,6 +101,7 @@ interface Frame {
   rows: CommittedRow[]
   whole: Map<string, WholeChange>
   staged: Set<string>
+  stagedRemovedSeen: Set<string>
   kept: { piece: string; resource: string }[]
   tables: Set<string>
   visibleTables: Set<string>
@@ -104,6 +112,7 @@ const frame = (): Frame => ({
   rows: [],
   whole: new Map(),
   staged: new Set(),
+  stagedRemovedSeen: new Set(),
   kept: [],
   tables: new Set(),
   visibleTables: new Set(),
@@ -158,6 +167,7 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
       appended: () => undefined,
       whole: () => undefined,
       staged: () => undefined,
+      stagedRemovedSeen: () => undefined,
       kept: () => undefined,
       asAWhole: (write) => write(),
       asStaged: (write) => write(),
@@ -218,6 +228,7 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
         rows: done.rows,
         whole: done.whole,
         staged: done.staged,
+        stagedRemovedSeen: done.stagedRemovedSeen,
         kept: done.kept,
         tables: done.tables,
         visibleTables: done.visibleTables,
@@ -231,6 +242,7 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
     for (const [session, why] of done.whole)
       if (!into.whole.has(session)) into.whole.set(session, why)
     for (const session of done.staged) into.staged.add(session)
+    for (const session of done.stagedRemovedSeen) into.stagedRemovedSeen.add(session)
     into.kept.push(...done.kept)
     for (const table of done.tables) into.tables.add(table)
     for (const table of done.visibleTables) into.visibleTables.add(table)
@@ -344,6 +356,9 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
     },
     staged(session) {
       frames.at(-1)?.staged.add(session)
+    },
+    stagedRemovedSeen(session) {
+      frames.at(-1)?.stagedRemovedSeen.add(session)
     },
     kept(piece, resource) {
       frames.at(-1)?.kept.push({ piece, resource })

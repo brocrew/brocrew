@@ -9562,6 +9562,18 @@ export function createSessionStore(
     `DELETE FROM events WHERE rowid IN
        (SELECT rowid FROM events WHERE session_id = ? AND generation = ? LIMIT ?)`,
   )
+  /**
+   * Whether a generation still holds a row of a type read across every generation
+   * (`selectInstructionAsks`, `selectMcpServerRequests`), each served by its type's partial index.
+   */
+  const generationHoldsRowsReadInEvery = db.prepare(
+    `SELECT EXISTS (SELECT 1 FROM events
+                     WHERE type IN ('instruction_proposed', 'instruction_settled')
+                       AND session_id = ? AND generation = ?)
+         OR EXISTS (SELECT 1 FROM events
+                     WHERE type IN ('mcp_server_requested', 'mcp_server_request_settled')
+                       AND session_id = ? AND generation = ?) AS holds`,
+  )
   const deleteTurnGeneration = db.prepare(
     `DELETE FROM turn WHERE rowid IN
        (SELECT rowid FROM turn WHERE session_id = ? AND generation = ? LIMIT ?)`,
@@ -15609,7 +15621,15 @@ export function createSessionStore(
       return db.transaction(() =>
         committed.asStaged(() => {
           committed.staged(sessionId)
+          // A batch that may take out such a row moves their readers; any other stays quiet.
+          const seen = generationHoldsRowsReadInEvery.get(
+            sessionId,
+            generation,
+            sessionId,
+            generation,
+          ) as { holds: number }
           const events = deleteEventGeneration.run(sessionId, generation, limit)
+          if (seen.holds === 1 && events.changes > 0) committed.stagedRemovedSeen(sessionId)
           if (events.changes > 0) return events.changes
           return deleteTurnGeneration.run(sessionId, generation, limit).changes
         }),

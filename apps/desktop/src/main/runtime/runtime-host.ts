@@ -10691,6 +10691,7 @@ export class RuntimeHost implements LiveHost {
       for (const row of change.rows) this.aRowWasWritten(row.session, row)
       if (
         change.whole.size > 0 ||
+        change.stagedRemovedSeen.size > 0 ||
         [...change.visibleTables].some((table) => NAMES_WHAT_A_PERSON_IS_ASKED.has(table)) ||
         change.rows.some(
           (row) =>
