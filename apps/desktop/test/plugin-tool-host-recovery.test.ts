@@ -6,9 +6,26 @@ afterEach(cleanupLifecycleFixtures)
 type Recovery = {
   restartPluginTools(pluginId: string, runId: string, stopped: () => void): Promise<void>
 }
+async function recoveryFixture(id: string) {
+  const f = await fixture({}, false, id)
+  const start = f.opts.runtime.start.bind(f.opts.runtime)
+  f.opts.runtime.start = async (spec) => {
+    const run = await start(spec)
+    const exited = deferred<void>()
+    return {
+      ...run,
+      exited: exited.promise,
+      async stop() {
+        await run.stop()
+        exited.resolve()
+      },
+    }
+  }
+  return f
+}
 
 it('retains the selected process until its stop completes, then reprojects the same installation', async () => {
-  const f = await fixture({}, false, 'fictional-orchard')
+  const f = await recoveryFixture('fictional-orchard')
   const start = f.opts.runtime.start.bind(f.opts.runtime)
   const stopping = deferred<void>(),
     entered = deferred<void>(),
@@ -54,7 +71,7 @@ it('retains the selected process until its stop completes, then reprojects the s
 })
 
 it('does not create a second running copy when the selected process fails to stop', async () => {
-  const f = await fixture({}, false, 'fictional-orchard')
+  const f = await recoveryFixture('fictional-orchard')
   let runId = ''
   const start = f.opts.runtime.start.bind(f.opts.runtime)
   f.opts.runtime.start = async (spec) => {
@@ -76,7 +93,7 @@ it('does not create a second running copy when the selected process fails to sto
 })
 
 it('refuses the wrong plugin ID and restarts the selected unfamiliar plugin', async () => {
-  const f = await fixture({}, false, 'fictional-meadow')
+  const f = await recoveryFixture('fictional-meadow')
   let runId = ''
   const start = f.opts.runtime.start.bind(f.opts.runtime)
   f.opts.runtime.start = async (spec) => {
@@ -99,7 +116,7 @@ it('refuses the wrong plugin ID and restarts the selected unfamiliar plugin', as
 })
 
 it('coalesces a restart by plugin ID and does not require a UI cleanup acknowledgement', async () => {
-  const f = await fixture({}, false, 'fictional-orchard')
+  const f = await recoveryFixture('fictional-orchard')
   await f.controller.install(f.handle, 'fictional-orchard')
   f.local.failRevoke()
   const stopped = vi.fn()
