@@ -37,6 +37,7 @@ async function builtInventory(
     view: AgentAttachmentView
     inventory: Inventory
     authored: Inventory['tools']
+    documentation: Inventory['tools']
     source: Client
     store: ProfileStore
     browser: FakeBrowser
@@ -165,6 +166,7 @@ async function builtInventory(
       view,
       inventory,
       authored,
+      documentation: authored,
       source,
       store,
       browser,
@@ -179,8 +181,10 @@ async function builtInventory(
         const result = await routes()
         expect(result.unknown).toBe(false)
         expect(result.pending).toEqual([])
+        expect(result.none).toEqual([])
         expect(result.servers).toHaveLength(1)
         const route = result.servers[0]!
+        expect(route.pluginId).toBe('chrome')
         const client = new Client({ name: 'fictional-built-agent', version: '1' })
         clients.push(client)
         await client.connect(
@@ -314,7 +318,20 @@ describe('Chrome release fixture', () => {
     }
   })
   it('binds the complete authored inventory exactly through retained client and provider route', async () => {
-    await builtInventory(async ({ view, inventory, authored, agent, source, store }) => {
+    await builtInventory(async (fixture) => {
+      const { view, inventory, authored, documentation, home, agent, source, store } = fixture
+      for (const [name, placeholder, root] of [
+        ['upload_file', '{roots}', path.join(home, 'files')],
+        ['download', '{downloads}', path.join(home, 'downloads')],
+        ['install_extension', '{roots}', path.join(home, 'files')],
+      ] as const) {
+        const documented = documentation.find((tool) => tool.name === name)!
+        expect(documented.description).toContain(placeholder)
+        expect(inventory.tools.find((tool) => tool.name === name)).toEqual({
+          ...documented,
+          description: documented.description!.replace(placeholder, () => root),
+        })
+      }
       expect(inventory.tools).toEqual(authored)
       expect(await pluginMcpClient(view)).toBe(source)
       expect((await (await pluginMcpClient(view)).listTools()).tools).toEqual(authored)
@@ -532,6 +549,15 @@ describe('Chrome release fixture', () => {
     const manifestBytes = fs.readFileSync(path.join(root, 'package/plugin.json'))
     expect(hash(manifestBytes)).toBe(release.manifestSha256)
     const manifest = JSON.parse(manifestBytes.toString())
+    const manifestFiles = new Map<string, { path: string; bytes: number; sha256: string }>()
+    for (const entry of manifest.files) {
+      expect(manifestFiles.has(entry.path), `Duplicate manifest path: ${entry.path}`).toBe(false)
+      manifestFiles.set(entry.path, entry)
+    }
+    expect(manifestFiles.size).toBe(manifest.files.length)
+    expect([...manifestFiles.keys()].sort()).toEqual(
+      checked.filePaths.filter((name) => name !== 'plugin.json').sort(),
+    )
     expect([...checked.filePaths].sort()).toEqual(
       ['plugin.json', ...manifest.files.map((file: { path: string }) => file.path)].sort(),
     )
@@ -552,7 +578,9 @@ describe('Chrome release fixture', () => {
       expect(fs.lstatSync(file).isSymbolicLink()).toBe(false)
       expect(fs.lstatSync(file).isFile()).toBe(true)
       const bytes = fs.readFileSync(file)
-      expect(Buffer.from(checked.readFile(name)!)).toEqual(bytes)
+      const verified = Buffer.from(checked.readFile(name)!)
+      expect(verified.length).toBe(bytes.length)
+      expect(verified).toEqual(bytes)
       if (name !== 'plugin.json')
         expect(manifest.files).toContainEqual({
           path: name,
