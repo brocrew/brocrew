@@ -20,7 +20,10 @@ import { observeInstalled } from './plugin-installed-observation'
 import { LifecycleEffects } from '../src/main/plugins/lifecycle/files'
 import { PluginProfileLedger as HistoricalLedger } from './fixtures/plugin-encoder-820/profile-ledger'
 
+const receiptSubscriptions = new Set<() => void>()
 afterEach(async () => {
+  for (const stop of receiptSubscriptions) stop()
+  receiptSubscriptions.clear()
   await cleanupLifecycleFixtures()
   vi.unstubAllGlobals()
 })
@@ -46,10 +49,12 @@ async function accepted(
   const stop = controller.onHostChanged((changed) => {
     if (changed === workspaceId) check()
   })
+  receiptSubscriptions.add(stop)
   try {
     check()
     await ready
   } finally {
+    receiptSubscriptions.delete(stop)
     stop()
   }
 }

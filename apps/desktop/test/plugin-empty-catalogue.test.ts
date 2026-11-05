@@ -40,14 +40,19 @@ async function accepted(
   const stop = controller.onHostChanged((changed) => {
     if (changed === workspaceId) check()
   })
+  receiptSubscriptions.add(stop)
   try {
     check()
     await ready
   } finally {
+    receiptSubscriptions.delete(stop)
     stop()
   }
 }
+const receiptSubscriptions = new Set<() => void>()
 afterEach(async () => {
+  for (const stop of receiptSubscriptions) stop()
+  receiptSubscriptions.clear()
   try {
     for (const close of closers.splice(0).reverse()) await close()
   } finally {

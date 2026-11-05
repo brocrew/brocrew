@@ -34,7 +34,10 @@ beforeEach(() => {
     }),
   )
 })
+const receiptSubscriptions = new Set<() => void>()
 afterEach(async () => {
+  for (const stop of receiptSubscriptions) stop()
+  receiptSubscriptions.clear()
   await cleanupLifecycleFixtures()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
@@ -62,10 +65,12 @@ async function accepted(
   const stop = controller.onHostChanged((changed) => {
     if (changed === workspaceId) check()
   })
+  receiptSubscriptions.add(stop)
   try {
     check()
     await ready
   } finally {
+    receiptSubscriptions.delete(stop)
     stop()
   }
 }

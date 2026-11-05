@@ -32,14 +32,19 @@ async function accepted(
   const stop = controller.onHostChanged((changed) => {
     if (changed === workspaceId) check()
   })
+  receiptSubscriptions.add(stop)
   try {
     check()
     await ready
   } finally {
+    receiptSubscriptions.delete(stop)
     stop()
   }
 }
+const receiptSubscriptions = new Set<() => void>()
 afterEach(async () => {
+  for (const stop of receiptSubscriptions) stop()
+  receiptSubscriptions.clear()
   for (const state of stores.splice(0)) state.close()
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
   await cleanupLifecycleFixtures()
