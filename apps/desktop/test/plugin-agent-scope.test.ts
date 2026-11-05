@@ -187,10 +187,11 @@ it('captures sorted disjoint facts once without starting, waiting, writing or ea
   expect(scope.workspaceId).toBe(f.workspaceId)
   expect(scope.entries.map((one) => one.pluginId)).toEqual([A, B, C])
   expect(new Set(scope.entries.map((one) => one.pluginId)).size).toBe(scope.entries.length)
-  expect(entry(scope, B)).toMatchObject({ is: 'off', why: 'disabled' })
-  expect(entry(scope, C)).toMatchObject({ is: 'off', why: 'not-installed' })
+  expect(entry(scope, B)).toMatchObject({ is: 'off', why: 'disabled', enabled: false })
+  expect(entry(scope, C)).toMatchObject({ is: 'off', why: 'not-installed', enabled: true })
   const a = entry(scope, A)
   expect(a.is).toBe('admitted')
+  expect(a.enabled).toBe(true)
   if (a.is !== 'admitted') throw new Error('A must have its canonical receipt')
   expect(a.installId).toBe(a.view.installation.installId)
   expect(a.runId).toBe(a.view.runId)
@@ -206,6 +207,7 @@ it('reports an exact verified package without agent tools as off', async () => {
   expect(entry(f.controller.agentScope(f.workspaceId), C)).toMatchObject({
     is: 'off',
     why: 'no-agent-tools',
+    enabled: true,
   })
 })
 
@@ -244,6 +246,7 @@ it('keeps a pending selection and an ephemeral deny out of committed none', asyn
   expect(entry(f.controller.agentScope(f.workspaceId), A)).toMatchObject({
     is: 'pending',
     why: 'starting',
+    enabled: true,
   })
   release.resolve()
   await installing
@@ -324,6 +327,7 @@ it('keeps a failed consumer pending while a healthy peer can publish the canonic
   expect(entry(f.controller.agentScope(fresh.sink.workspaceId), A)).toMatchObject({
     is: 'pending',
     why: 'bind-failed',
+    enabled: true,
   })
   const ready = deferred<void>()
   const unsubscribe = f.controller.onHostChanged((id) => {
@@ -348,6 +352,7 @@ it('uses one captured sequence even if a committed choice changes during capture
   const scope = f.controller.agentScope(f.workspaceId)
   expect(spy).toHaveBeenCalledOnce()
   expect(scope.revision).toBe(captured.sequence)
+  expect(entry(scope, A).enabled).toBe(true)
   const a = entry(scope, A)
   expect(a.is).toBe('admitted')
   if (a.is !== 'admitted') throw new Error('Captured A was admitted')
@@ -356,6 +361,7 @@ it('uses one captured sequence even if a committed choice changes during capture
   expect(entry(f.controller.agentScope(f.workspaceId), A)).toMatchObject({
     is: 'off',
     why: 'disabled',
+    enabled: false,
   })
 })
 
