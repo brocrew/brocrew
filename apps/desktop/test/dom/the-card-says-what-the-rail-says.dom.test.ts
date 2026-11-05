@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import {
-  useWhoCalledWhom,
-  type RailSays,
-} from '../../src/renderer/src/composables/useWhoCalledWhom'
+import type { RailSays } from '../../src/renderer/src/lib/agent-state'
 import { facetsOfState } from '../../src/renderer/src/lib/agent-state'
 import { DRAWER_W_MAX, DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { agentStateWords, type AgentState } from '../../src/shared/agent-state'
@@ -11,6 +8,7 @@ import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/questions'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import type { WhatIsBeingDone } from '../../src/shared/what-is-being-done'
 import { META, drawerProps, mount, unmountAll } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * # 🔴 UI-001 · the right panel's agents say what the rail says
@@ -34,10 +32,9 @@ afterEach(() => {
   unmountAll()
   // ⛔ **The channel is a window-level singleton**, so a row left behind would be the next test's
   // premise.
-  const cast = useWhoCalledWhom()
-  cast.reading.value = null
-  cast.goTo.value = null
-  cast.railSays.value = null
+  heldWorkspace.cast(null)
+  heldWorkspace.door.value = null
+  heldWorkspace.railSays.value = null
 })
 
 const NOW = Date.now()
@@ -105,9 +102,8 @@ function show(
   identities: unknown = null,
   width: number = DRAWER_W_MIN,
 ) {
-  const cast = useWhoCalledWhom()
-  cast.reading.value = { conversation: META.sessionId, read, answered: true, atWork: AT_WORK }
-  cast.railSays.value = rail
+  heldWorkspace.cast({ conversation: META.sessionId, read, answered: true, atWork: AT_WORK })
+  heldWorkspace.railSays.value = rail
   const drawer = mount(SessionDrawer as never, drawerProps({ identities }), {
     width,
     height: 900,

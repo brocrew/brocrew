@@ -2,10 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, reactive } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import WorkingTogether from '../../src/renderer/src/components/WorkingTogether.vue'
-import {
-  useWhoCalledWhom,
-  type RailSays,
-} from '../../src/renderer/src/composables/useWhoCalledWhom'
+import type { RailSays } from '../../src/renderer/src/lib/agent-state'
 import { facetsOfState } from '../../src/renderer/src/lib/agent-state'
 import type { WhoCalledWhom } from '../../src/shared/who-called-whom'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
@@ -26,6 +23,7 @@ import { BODY_WAS_CUT } from '../../src/renderer/src/lib/outgoing-card'
 import { assertDrawn, drawnReady, lineCount } from './drawn'
 import { EXCHANGE_AT, questionFixture } from './agent-card-facts.fixture'
 import { META, mount, paneProps, permission, record, unmountAll, visible } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 const NOW = Date.now()
 const CURRENT = {
@@ -38,11 +36,10 @@ afterEach(() => {
   unmountAll()
   vi.useRealTimers()
   vi.restoreAllMocks()
-  const cast = useWhoCalledWhom()
-  cast.railSays.value = null
-  cast.reading.value = null
-  cast.forest.value = null
-  cast.goTo.value = null
+  heldWorkspace.railSays.value = null
+  heldWorkspace.cast(null)
+  heldWorkspace.reset()
+  heldWorkspace.door.value = null
   delete (window as { api?: unknown }).api
 })
 
@@ -615,7 +612,6 @@ describe('Child chips carry the rail’s provider stop and its full explanation'
   it.each(['claude', 'codex'] as const)(
     'reads %s current, unavailable and cleared words without changing the ordinary plate',
     async (provider) => {
-      const cast = useWhoCalledWhom()
       const reading: WhoCalledWhom = {
         conversation: META.sessionId,
         parent: null,
@@ -659,7 +655,7 @@ describe('Child chips carry the rail’s provider stop and its full explanation'
             },
           ],
         ])
-      cast.railSays.value = rail(`${providerWord} limit`, detail)
+      heldWorkspace.railSays.value = rail(`${providerWord} limit`, detail)
       const m = mount(
         WorkingTogether,
         {
@@ -692,7 +688,10 @@ describe('Child chips carry the rail’s provider stop and its full explanation'
       chip.focus()
       expect(document.activeElement).toBe(chip)
       expect(chip.getAttribute('aria-description')).toBe(detail)
-      cast.railSays.value = rail('Limit unavailable', 'The current limit status could not be read.')
+      heldWorkspace.railSays.value = rail(
+        'Limit unavailable',
+        'The current limit status could not be read.',
+      )
       await nextTick()
       expect(read(word())).toBe('Limit unavailable')
       await drawnReady()
@@ -707,7 +706,7 @@ describe('Child chips carry the rail’s provider stop and its full explanation'
       expect(visible(profile)).toBe(true)
       assertDrawn(profile, 'the retained child profile', m.host)
       expect(word().title).not.toContain('Stopped')
-      cast.railSays.value = rail('idle')
+      heldWorkspace.railSays.value = rail('idle')
       await nextTick()
       expect(read(word())).toBe('idle')
       expect(chip.getAttribute('aria-description')).toBeNull()

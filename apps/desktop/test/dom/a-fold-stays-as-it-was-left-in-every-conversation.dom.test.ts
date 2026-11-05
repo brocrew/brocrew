@@ -3,10 +3,10 @@ import { userEvent } from 'vitest/browser'
 import { defineComponent, h, nextTick, ref } from 'vue'
 import type { RuntimeEvent } from '@brobot2/runtime'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 import type { KeptFile } from '../../src/shared/runtime-ipc'
 import { META, drawerProps, mount, unmountAll, visible, type Mounted } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * The Agent panel's four folds: Current task, Files, the still-running block and the scheduled-jobs
@@ -39,7 +39,7 @@ beforeEach(() => {
 afterEach(() => {
   unmountAll()
   vi.unstubAllGlobals()
-  useWhoCalledWhom().cardFiles.value = null
+  heldWorkspace.cardFiles(null)
 })
 
 const OTHER = 'sess_another_conversation'
@@ -76,11 +76,11 @@ function busy(id: string) {
 }
 
 function filesFor(conversation: string): void {
-  useWhoCalledWhom().cardFiles.value = {
+  heldWorkspace.cardFiles({
     conversation,
     files: [fileOf(conversation)],
     answered: true,
-  }
+  })
 }
 
 /** The panel on one conversation, with a way to show it another. */

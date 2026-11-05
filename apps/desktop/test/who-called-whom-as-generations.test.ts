@@ -397,16 +397,17 @@ describe('§4 · RuntimeScreen follows the change, and routes every press to the
     const body = screen.slice(start, screen.indexOf('\n}\n', start))
     // ⚑ **UI-004** — the rail's rows (`668`'s `live` plate for a held conversation is one of them),
     // so the Graph moves on D-019's push. ⛔ And no second derivation in the fold.
-    expect(body).toMatch(/said:\s*cast\.railSays\.value/)
+    expect(body).toMatch(/said:\s*projection\.railSays\(\)/)
     expect(body).not.toMatch(/recordFacets\(/)
     // ⚑ **D-006** · the rail derives a held conversation's row from its record, the wait and where
     // the work it holds stands — both off the screen's one reading of the waits
     const rail = code(readFileSync(join(COMPONENTS, 'SideRail.vue'), 'utf8'))
+    expect(rail).toMatch(/const wait = projection\.waitOf\(record\.sessionId\)/)
     expect(rail).toMatch(
       // ⚑ F036 · and who waits on its answer, off the host's state of it (`whoItOwesIn`).
-      /recordFacets\(\s*record,\s*theWaitIn\(props\.waiting, record\.sessionId\),\s*theWorkIn\(props\.waiting, record\.sessionId\),\s*whoItOwesIn\(host\?\.state\),?\s*\)/,
+      /recordFacets\(\s*record,\s*wait\.wait,\s*wait\.work,[\s\S]{0,200}?whoItOwesIn\(host\?\.state\),?\s*\)/,
     )
-    expect(screen).toMatch(/:waiting="conversationWaits"/)
+    expect(screen).toMatch(/projection\.waitsRead\(reading\)/)
   })
 
   it('🔴 a node’s press reaches the one open — the conversation in its full view', () => {

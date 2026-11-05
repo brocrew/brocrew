@@ -3,7 +3,6 @@ import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, shallowRef } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import TeamForest from '../../src/renderer/src/components/TeamForest.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import {
   createFilesLibrary,
   provideFilesLibrary,
@@ -13,13 +12,13 @@ import { keptFileLibraryReplies } from '../fixtures/kept-file-library-replies'
 import type { KeptFile, AgentIdentity } from '../../src/shared/runtime-ipc'
 import { conv, forestDrawn, task, viewOf } from './forest-fixture'
 import { META, mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 // Every negative below is paired with a reading of the same surface.
 afterEach(async () => {
   unmountAll()
-  const cast = useWhoCalledWhom()
-  cast.treeFiles.value = null
-  cast.goTo.value = null
+  heldWorkspace.files(null)
+  heldWorkspace.door.value = null
   await page.viewport(1200, 808)
 })
 
@@ -73,8 +72,7 @@ const FILES = [
 const read = (el: Element): string => (el.textContent ?? '').replace(/\s+/g, ' ').trim()
 
 async function graph(files: readonly KeptFile[] | null, over: Record<string, unknown> = {}) {
-  useWhoCalledWhom().treeFiles.value =
-    files === null ? null : { conversation: ID, files, answered: true }
+  heldWorkspace.files(files === null ? null : { conversation: ID, files, answered: true })
   await page.viewport(1200, 808)
   const shown = shallowRef(record([], ID))
   let library!: FilesLibraryController
@@ -135,7 +133,7 @@ describe('Graph file counts retain their own scope and explicitly enter the work
   it('a Graph count enters the exact task with subtasks off and clears query/kind/role while retaining view/sort', async () => {
     const band: string[] = [],
       opened: string[] = []
-    useWhoCalledWhom().goTo.value = (id) => opened.push(id)
+    heldWorkspace.door.value = (id) => opened.push(id)
     const m = await graph([...FILES, kept('res_c', 'work_9', 'W1.9', 'c')], {
       'onUpdate:drawerTab': (tab: string) => band.push(tab),
       onToggleDrawer: () => band.push('toggle'),

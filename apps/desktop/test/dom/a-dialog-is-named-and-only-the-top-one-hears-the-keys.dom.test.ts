@@ -4,11 +4,11 @@ import { defineComponent, h, nextTick, ref } from 'vue'
 import CanonicalDocumentOverlay from '../../src/renderer/src/components/CanonicalDocumentOverlay.vue'
 import OverlayHost from '../../src/renderer/src/components/OverlayHost.vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
 import type { KeptFile, ResourceReading } from '../../src/shared/runtime-ipc'
 import { META, drawerProps, mount, unmountAll } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * The shared dialog layer, as a keyboard and a screen reader meet it: every host has a name, only
@@ -24,7 +24,7 @@ beforeEach(() => {
 
 afterEach(() => {
   unmountAll()
-  useWhoCalledWhom().cardFiles.value = null
+  heldWorkspace.cardFiles(null)
 })
 
 /** A key at the window, where `OverlayHost` listens. */
@@ -114,11 +114,11 @@ const file = (resourceId: string, title: string): KeptFile => ({
 
 describe('the agent card’s popup is named in the app’s words', () => {
   it('"View all" opens a dialog a screen reader calls "All files"', async () => {
-    useWhoCalledWhom().cardFiles.value = {
+    heldWorkspace.cardFiles({
       conversation: META.sessionId,
       files: [file('res_results', 'Results')],
       answered: true,
-    }
+    })
     const m = mount(SessionDrawer as never, drawerProps({ canOpenDocument: true }), {
       width: DRAWER_W_MIN,
       height: 900,

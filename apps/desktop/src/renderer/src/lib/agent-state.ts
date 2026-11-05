@@ -122,7 +122,7 @@ export type Needing = (typeof NEEDINGS)[number]
  */
 /**
  * ⚑ **One rail row's plate and word** — what the rail draws for a conversation, and so what every
- * other surface drawing that conversation draws (`TheCast.railSays`; UI-001, UI-004). ⚑ Here, beside
+ * other surface drawing that conversation draws (the projection's `railSays`; UI-001, UI-004). ⚑ Here, beside
  * the plate's own type, so a fold in `lib/` can take it without reaching into a composable.
  */
 export interface RailSays {

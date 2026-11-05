@@ -2,8 +2,6 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
-import { conversationList } from '../../src/renderer/src/lib/conversation-list'
 import { clockTime } from '../../src/shared/clock'
 import type { ResumableSessionInfo } from '../../src/shared/runtime-ipc'
 import type { WaitOn } from '../../src/shared/tasks'
@@ -11,6 +9,7 @@ import type { WorkEdge } from '../../src/shared/who-called-whom'
 import { drawnReady } from './drawn'
 import { META, mount, paneProps, record, unmountAll } from './harness'
 import { identities, NOW, workerRows } from './parallel-workers-fixture'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * A conversation that holds a piece with a typed wait says that wait on its own page — in its
@@ -20,12 +19,10 @@ import { identities, NOW, workerRows } from './parallel-workers-fixture'
 const STATUS = 'Plan shared; coaching week in progress. Waiting on the next check-in.'
 const AT = NOW + 3_600_000
 
-const cast = useWhoCalledWhom()
-
 afterEach(async () => {
   unmountAll()
-  cast.listedConversations.value = null
-  cast.reading.value = null
+  heldWorkspace.reset()
+  heldWorkspace.cast(null)
   await page.viewport(1200, 808)
 })
 
@@ -74,7 +71,7 @@ const given: WorkEdge = {
 async function ownPage(on: WaitOn | null, agentName?: string, untyped = false) {
   const walk = <Row>(rows: Row[], kind: string) =>
     ({ rows, walk: kind, ledgers: rows.length, rowsUnread: 0 }) as never
-  cast.reading.value = {
+  heldWorkspace.cast({
     conversation: META.sessionId,
     read: {
       conversation: META.sessionId,
@@ -86,12 +83,9 @@ async function ownPage(on: WaitOn | null, agentName?: string, untyped = false) {
     },
     answered: true,
     atWork: null,
-  }
-  cast.listedConversations.value = conversationList({
-    resumable: [holder(on, agentName, untyped)],
-    unresumable: [],
-    identities: identities(1).identities,
   })
+  heldWorkspace.identities.value = identities(1).identities
+  heldWorkspace.list([holder(on, agentName, untyped)])
   await page.viewport(1400, 900)
   const m = mount(
     ConversationPane,

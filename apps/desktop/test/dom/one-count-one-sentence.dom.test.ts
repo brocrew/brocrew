@@ -6,7 +6,6 @@ import SessionWork from '../../src/renderer/src/components/SessionWork.vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import PersonsQueue from '../../src/renderer/src/components/PersonsQueue.vue'
 import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { forestView } from '../../src/renderer/src/lib/the-forest'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
@@ -22,6 +21,7 @@ import type { WorkGivenOut } from '../../src/shared/tasks'
 import type { ForestNode, TheWholeForest } from '../../src/shared/the-whole-forest'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import { META, drawerProps, mount, unmountAll, visible } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * # 🔴 678 · F-R18 — one count, one sentence, read as TEXT on every surface that draws it
@@ -168,9 +168,8 @@ const answer = (gave: number, took: number): WhoCalledWhom => ({
 })
 
 function band(read: WhoCalledWhom) {
-  const cast = useWhoCalledWhom()
-  cast.reading.value = { conversation: META.sessionId, read, answered: true, atWork: null }
-  cast.goTo.value = null
+  heldWorkspace.cast({ conversation: META.sessionId, read, answered: true, atWork: null })
+  heldWorkspace.door.value = null
   return mount(SessionDrawer as never, drawerProps({ identities: null }), {
     width: DRAWER_W_MIN,
     height: 900,

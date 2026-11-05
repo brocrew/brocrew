@@ -242,6 +242,6 @@ describe('570 §3 · what the rail stopped doing, and where each part of it went
     // is removed. `oneSpelling` and `agentName`’s fallback still consult that roster;
     // dropping it would put the shared `brobot-workspace` directory name back on every row.
     expect(rail).toContain('agentName(meta.profileId, props.agents?.identities ?? null)')
-    expect(rail).toContain('identities: props.agents?.identities ?? null,')
+    expect(rail).toContain('identities: () => props.agents?.identities ?? null,')
   })
 })

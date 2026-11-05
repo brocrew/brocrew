@@ -2,11 +2,11 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import { fullTime } from '../../src/renderer/src/lib/clock'
 import type { ProvidersChangedMessage, ProviderUsageReading } from '../../src/shared/runtime-ipc'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { conv, forestOf } from './forest-fixture'
 import { unmountAll, type Mounted } from './harness'
 import { usageCards } from './usage-cards'
 import { drawnReady } from './drawn'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * The title bar's usage cards say each provider's usage, one cell per window: the provider and
@@ -17,11 +17,7 @@ import { drawnReady } from './drawn'
 afterEach(() => {
   unmountAll()
   delete (window as { api?: unknown }).api
-  const cast = useWhoCalledWhom()
-  cast.runningConversations.value = null
-  cast.forest.value = null
-  cast.processMemory.value = new Map()
-  cast.memoryUnmeasured.value = null
+  heldWorkspace.reset()
 })
 
 const MIN = 60_000
@@ -322,9 +318,8 @@ describe('the agents running now, and the memory they hold', () => {
   ])
 
   it('🔴 how many agents run, by provider, and the memory their processes hold', async () => {
-    const cast = useWhoCalledWhom()
-    cast.forest.value = FOREST
-    cast.runningConversations.value = [
+    heldWorkspace.forest(FOREST)
+    heldWorkspace.running([
       { sessionId: 'sess_a', provider: 'claude', state: { is: 'idle' } },
       { sessionId: 'sess_b', provider: 'claude', state: { is: 'active' } },
       {
@@ -332,14 +327,16 @@ describe('the agents running now, and the memory they hold', () => {
         provider: 'codex',
         state: { is: 'in-the-background', what: 'read the menu' },
       },
-    ]
-    cast.processMemory.value = new Map([
-      ['sess_a', 300 * MB],
-      ['sess_b', 200 * MB],
-      ['sess_c', 100 * MB],
-      // A figure for a conversation the forest says is not running is not added in.
-      ['sess_d', 900 * MB],
     ])
+    heldWorkspace.memory(
+      new Map([
+        ['sess_a', 300 * MB],
+        ['sess_b', 200 * MB],
+        ['sess_c', 100 * MB],
+        // A figure for a conversation the forest says is not running is not added in.
+        ['sess_d', 900 * MB],
+      ]),
+    )
     m = await shelf(both(Date.now()))
     expect(value('agents')).toBe('Claude 2 (1 working) Codex 1 (1 working)')
     expect(value('memory')).toBe('600 MB')
@@ -352,14 +349,13 @@ describe('the agents running now, and the memory they hold', () => {
 
   it('🔴 where main could not measure memory, the block says so as the agent cards do', async () => {
     const said = 'BroBot can’t measure its agents’ memory and CPU on Windows yet.'
-    const cast = useWhoCalledWhom()
-    cast.forest.value = FOREST
-    cast.runningConversations.value = [
+    heldWorkspace.forest(FOREST)
+    heldWorkspace.running([
       { sessionId: 'sess_a', provider: 'claude', state: { is: 'idle' } },
       { sessionId: 'sess_b', provider: 'claude', state: { is: 'active' } },
       { sessionId: 'sess_c', provider: 'codex', state: { is: 'idle' } },
-    ]
-    cast.memoryUnmeasured.value = said
+    ])
+    heldWorkspace.memory(new Map(), said)
     m = await shelf(both(Date.now()))
     // The count does not need the memory reading.
     expect(value('agents')).toBe('Claude 2 (1 working) Codex 1 (none working)')
@@ -381,8 +377,8 @@ describe('the agents running now, and the memory they hold', () => {
   })
 
   it('⚑ none running: no agents, nothing held', async () => {
-    useWhoCalledWhom().forest.value = forestOf([conv('sess_a', null)])
-    useWhoCalledWhom().runningConversations.value = []
+    heldWorkspace.forest(forestOf([conv('sess_a', null)]))
+    heldWorkspace.running([])
     m = await shelf(both(Date.now()))
     expect(value('agents')).toBe('0')
     expect(value('memory')).toBe('0 MB')

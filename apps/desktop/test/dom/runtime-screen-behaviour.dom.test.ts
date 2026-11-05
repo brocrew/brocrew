@@ -16,7 +16,6 @@ import RuntimeScreen from '../../src/renderer/src/components/RuntimeScreen.vue'
 import { createSessionStore, type SessionStore } from '../../src/renderer/src/lib/session-store'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
 import { createModelLists } from '../../src/renderer/src/lib/model-lists'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
 import {
   forgetProfileSignIns,
@@ -31,6 +30,7 @@ import { drawnReady } from './drawn'
 import { conv, forestOf, forestDrawn } from './forest-fixture'
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
 import { mount, unmountAll, META } from './harness'
+import { heldWorkspace, testWorkspace } from '../workspace-fixture'
 
 // Provider setup has its own tests; this screen fixture never enters sign-in.
 vi.mock('../../src/renderer/src/components/ProviderSetupAtLaunch.vue', () => ({
@@ -178,7 +178,7 @@ beforeEach(() => {
   runtime.latestHistory.mockReset()
   changeListeners.clear()
   runtime.whoCalledWhom.mockReset().mockRejectedValue(new Error('No relationship reading supplied'))
-  useWhoCalledWhom().reading.value = null
+  heldWorkspace.cast(null)
   useOverlays().close()
   localStorage.clear()
   useAttentionSignals().value = true
@@ -829,14 +829,14 @@ it.each(['activity', 'forest'] as const)(
       expect(screen.all('cast-loading')).toHaveLength(0)
       expect(screen.all('cast-not-read')).toHaveLength(0)
       expect(screen.q('cast-sub-agents').querySelector('.count')?.textContent).toBe('(1)')
-      expect(useWhoCalledWhom().reading.value?.answered).toBe(true)
+      expect(testWorkspace().cast()?.answered).toBe(true)
       expect(runtime.whoCalledWhom).toHaveBeenCalledTimes(1)
     } finally {
       activity.resolve({ readAt: 3, conversations: [] })
       forest.resolve({ readAt: 3, nodes: forestWalk(), conversations: 0, heldByNoAgent: 0 })
     }
     await expect
-      .poll(() => useWhoCalledWhom().reading.value?.atWork?.readAt)
+      .poll(() => testWorkspace().cast()?.atWork?.readAt)
       .toBe(slow === 'activity' ? 3 : 2)
   },
 )
@@ -880,13 +880,13 @@ it('ignores old graph and activity refinements after a newer relationship readin
       heldByNoAgent: 0,
     })
     changed({ what: 'work' })
-    await expect.poll(() => useWhoCalledWhom().reading.value?.atWork?.readAt).toBe(200)
+    await expect.poll(() => testWorkspace().cast()?.atWork?.readAt).toBe(200)
     expect(screen.q('cast-sub-agents').querySelector('.count')?.textContent).toBe('(2)')
     oldActivity.resolve({ readAt: 100, conversations: [] })
     oldForest.resolve({ readAt: 100, nodes: forestWalk(), conversations: 0, heldByNoAgent: 0 })
     await drawnReady()
-    expect(useWhoCalledWhom().forest.value?.readAt).toBe(200)
-    expect(useWhoCalledWhom().reading.value?.atWork?.readAt).toBe(200)
+    expect(testWorkspace().forest()?.readAt).toBe(200)
+    expect(testWorkspace().cast()?.atWork?.readAt).toBe(200)
   } finally {
     oldActivity.resolve({ readAt: 100, conversations: [] })
     oldForest.resolve({ readAt: 100, nodes: forestWalk(), conversations: 0, heldByNoAgent: 0 })
@@ -914,31 +914,29 @@ it.each(['B', 'A'] as const)(
       await expect.poll(() => readsA).toBe(1)
       expect(screen.all('cast-loading')).toHaveLength(1)
       screen.q('open-session-fictional-target').click()
-      await expect.poll(() => useWhoCalledWhom().loadingFor.value).toBe('fictional-target')
+      await expect.poll(() => testWorkspace().castLoadingFor()).toBe('fictional-target')
       answerB.resolve(b)
-      await expect
-        .poll(() => useWhoCalledWhom().reading.value?.conversation)
-        .toBe('fictional-target')
+      await expect.poll(() => testWorkspace().cast()?.conversation).toBe('fictional-target')
       expect(count()).toBe('(2)')
       if (arrival === 'B') {
         firstA.resolve(a1)
         await drawnReady()
-        expect(useWhoCalledWhom().reading.value?.conversation).toBe('fictional-target')
-        expect(useWhoCalledWhom().reading.value?.read.readAt).toBe(200)
+        expect(testWorkspace().cast()?.conversation).toBe('fictional-target')
+        expect(testWorkspace().cast()?.read.readAt).toBe(200)
         expect(count()).toBe('(2)')
       }
       screen.q('open-session-fictional-source').click()
       await expect.poll(() => readsA).toBe(2)
       expect(screen.all('cast-loading')).toHaveLength(1)
       secondA.resolve(a2)
-      await expect.poll(() => useWhoCalledWhom().reading.value?.read.readAt).toBe(300)
+      await expect.poll(() => testWorkspace().cast()?.read.readAt).toBe(300)
       expect(count()).toBe('(3)')
       if (arrival === 'A') {
         firstA.resolve(a1)
         await drawnReady()
       }
-      expect(useWhoCalledWhom().reading.value?.conversation).toBe('fictional-source')
-      expect(useWhoCalledWhom().reading.value?.read.readAt).toBe(300)
+      expect(testWorkspace().cast()?.conversation).toBe('fictional-source')
+      expect(testWorkspace().cast()?.read.readAt).toBe(300)
       expect(count()).toBe('(3)')
       expect(runtime.whoCalledWhom.mock.calls.map(([input]) => input.sessionId)).toEqual([
         'fictional-source',
@@ -957,7 +955,7 @@ it.each(['B', 'A'] as const)(
 )
 
 it('keeps Graph unread until the independent forest arrives, then draws the current tree', async () => {
-  useWhoCalledWhom().forest.value = null
+  heldWorkspace.reset()
   const forest = deferred<Awaited<ReturnType<RuntimeBridge['theWholeForest']>>>()
   const complete = forestOf([
     conv('fictional-source', null, { identity: 'editor' }),
@@ -968,7 +966,7 @@ it('keeps Graph unread until the independent forest arrives, then draws the curr
   const screen = await panelScreen()
   try {
     await expect.poll(() => screen.all('cast-sub-agents').length).toBe(1)
-    expect(useWhoCalledWhom().forest.value).toBeNull()
+    expect(testWorkspace().forest()).toBeNull()
     screen.q('main-tab-graph').click()
     await forestDrawn()
     expect(screen.all('forest-not-read')).toHaveLength(1)
@@ -1023,15 +1021,15 @@ it('reads the two file lists once per conversation opening, including mount', as
 it('retries a failed paired file read on the next work notice', async () => {
   await screenWithLink()
   await expect.poll(() => runtime.filesKept.mock.calls.length).toBe(1)
-  const previous = useWhoCalledWhom().treeFiles.value?.files
+  const previous = testWorkspace().treeFiles()?.files
   runtime.filesKept.mockRejectedValueOnce(new Error('fictional read failure'))
   changed({ what: 'work' })
-  await expect.poll(() => useWhoCalledWhom().treeFiles.value?.answered).toBe(false)
+  await expect.poll(() => testWorkspace().treeFiles()?.answered).toBe(false)
   expect(runtime.filesKept.mock.calls).toHaveLength(2)
-  expect(useWhoCalledWhom().treeFiles.value?.files).toEqual(previous)
+  expect(testWorkspace().treeFiles()?.files).toEqual(previous)
   changed({ what: 'work' })
   await expect.poll(() => runtime.filesKept.mock.calls.length).toBe(3)
-  await expect.poll(() => useWhoCalledWhom().treeFiles.value?.answered).toBe(true)
+  await expect.poll(() => testWorkspace().treeFiles()?.answered).toBe(true)
 })
 
 function deferredAttentionRead<T>() {

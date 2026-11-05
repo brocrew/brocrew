@@ -3,7 +3,6 @@ import { computed, ref } from 'vue'
 import AgentBookButton from './AgentBookButton.vue'
 import type { AgentIdentities } from '../../../shared/runtime-ipc'
 import type { WhatIsBeingDone } from '../../../shared/what-is-being-done'
-import type { WorkEdge } from '../../../shared/who-called-whom'
 import type { AgentStore } from '../lib/agent-store'
 import { AGENT_REMOVAL_MEANS } from '../../../shared/agent-roster'
 import { activityWords, STANDING_TONE } from '../lib/agent-state'
@@ -23,7 +22,7 @@ import {
   type TeamFilter,
   type TeamMemberView,
 } from '../lib/team-roster'
-import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
+import { useWorkspace } from '../composables/useWorkspace'
 import { useAgentStore } from '../composables/useAgentStore'
 import { useMinuteClock } from '../composables/useMinuteClock'
 import AgentState from './AgentState.vue'
@@ -49,17 +48,7 @@ import { noProviderSavedSays } from '../lib/front-door-words'
  * the moment anything else mounts the component
  * ([[a-number-can-survive-the-death-of-its-derivation]]).
  */
-const cast = useWhoCalledWhom()
-const workByHolder = computed(() => {
-  const holders = new Map<string, WorkEdge[]>()
-  for (const node of cast.forest.value?.nodes.rows ?? []) {
-    if (node.node !== 'a-task') continue
-    const pieces = holders.get(node.work.to)
-    if (pieces) pieces.push(node.work)
-    else holders.set(node.work.to, [node.work])
-  }
-  return holders
-})
+const workspace = useWorkspace()
 const props = withDefaults(
   defineProps<{
     agents: AgentIdentities | null
@@ -466,7 +455,7 @@ function pressForest(row: ForestRow): void {
                     v-for="piece in workerSubtitles(
                       row.conversation,
                       row.namingPiece,
-                      workByHolder.get(row.conversation) ?? [],
+                      workspace.piecesHeldBy(row.conversation),
                     )"
                     :key="piece.key"
                     class="team-worker-piece"

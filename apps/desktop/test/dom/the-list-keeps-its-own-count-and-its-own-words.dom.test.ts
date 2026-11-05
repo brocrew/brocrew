@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/questions'
 import type { AgentIdentity } from '../../src/shared/runtime-ipc'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import { META, allTasks, drawerProps, mount, unmountAll } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * 🔴 **`TaskList.vue`'s own arithmetic and its own words** — the half of `547`/`631` that
@@ -33,9 +33,8 @@ afterEach(() => {
   unmountAll()
   // ⛔ **The channel is a window-level singleton**, so a reading left behind would be the next
   // test's premise.
-  const cast = useWhoCalledWhom()
-  cast.reading.value = null
-  cast.goTo.value = null
+  heldWorkspace.cast(null)
+  heldWorkspace.door.value = null
 })
 
 /** ⚑ A stable instant, so every age below is a fact about the fixture rather than about the clock. */
@@ -96,12 +95,12 @@ interface Shown {
 }
 
 async function show(over: Shown) {
-  const cast = useWhoCalledWhom()
-  cast.reading.value =
+  heldWorkspace.cast(
     over.read === null
       ? null
-      : { conversation: META.sessionId, read: over.read, answered: true, atWork: null }
-  cast.goTo.value = null
+      : { conversation: META.sessionId, read: over.read, answered: true, atWork: null },
+  )
+  heldWorkspace.door.value = null
   // ⚑ **The drawer alone** — its Current task is the one surface that draws `TaskList`, so these
   // are its rules as a person meets them.
   const m = mount(SessionDrawer as never, drawerProps({ identities: over.identities ?? null }), {

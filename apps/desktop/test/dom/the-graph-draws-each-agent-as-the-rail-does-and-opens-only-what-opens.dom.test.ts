@@ -2,10 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, shallowReactive, type Component } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import {
-  useWhoCalledWhom,
-  type RailSays,
-} from '../../src/renderer/src/composables/useWhoCalledWhom'
+import type { RailSays } from '../../src/renderer/src/lib/agent-state'
 import {
   facetsOfState,
   recordFacets,
@@ -25,6 +22,7 @@ import type { ForestNode } from '../../src/shared/the-whole-forest'
 import { assertClippedButTold, assertDrawn, drawnReady } from './drawn'
 import { conv, forestDrawn, task, viewOf } from './forest-fixture'
 import { META, mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * # ⚑ The graph draws what this window holds as the rail does, and opens only what opens
@@ -44,9 +42,9 @@ import { META, mount, paneProps, record, unmountAll, visible, type Mounted } fro
  *
  * - 🔴 **LOST in 3d53e6af — not moved, and pinned nowhere**: *"a read that did not answer says so
  *   under the graph — and an answered read does not"*. The *This may not be current* line went with
- *   `ConversationGraph.vue` and nothing replaced it. The tab draws `cast.forest`, which
- *   `RuntimeScreen.readTheCast` keeps on a refusal (`if (grown !== null …) cast.forest.value =
- *   grown`), and `ForestView` carries no *answered*: the Graph tab draws the last forest it had and
+ *   `ConversationGraph.vue` and nothing replaced it. The tab draws the workspace's forest, which
+ *   `RuntimeScreen.readTheCast` keeps on a refusal (`if (grown !== null …)
+ *   projection.forestRead(grown)`), and `ForestView` carries no *answered*: the Graph tab draws the last forest it had and
  *   says NOTHING. ⛔ The Team page does the opposite on purpose — its `theForest` is *"NOT kept on a
  *   refusal"*, because *"a stale TREE reads as this is the shape of your work"* (641 §5.5).
  *   ⚠️ Neither neighbour covers it: the main-panel file's *"a forest not read yet draws one quiet
@@ -86,14 +84,12 @@ import { META, mount, paneProps, record, unmountAll, visible, type Mounted } fro
 
 afterEach(() => {
   unmountAll()
-  const cast = useWhoCalledWhom()
-  cast.reading.value = null
-  cast.goTo.value = null
+  heldWorkspace.cast(null)
+  heldWorkspace.door.value = null
   // ⛔ **The channel is a window-level singleton**, so a rail or a choice left behind would be the
   // next test's premise.
-  cast.railSays.value = null
-  cast.forest.value = null
-  cast.processMemory.value = new Map()
+  heldWorkspace.railSays.value = null
+  heldWorkspace.reset()
 })
 
 const NOW = Date.now()
@@ -215,10 +211,9 @@ interface Shown {
 async function show(over: Shown = {}): Promise<Mounted> {
   // ⚑ W4.183 · the drawer docks up to 560px now, so the graph needs this much room to sit at zoom 1.
   await page.viewport(1300, 808)
-  const cast = useWhoCalledWhom()
-  cast.railSays.value = over.rail ?? null
+  heldWorkspace.railSays.value = over.rail ?? null
   const opened = over.opened ?? []
-  cast.goTo.value = (conversation) => opened.push(conversation)
+  heldWorkspace.door.value = (conversation) => opened.push(conversation)
   const m = mount(
     ConversationPane,
     paneProps({
@@ -337,14 +332,13 @@ describe('the graph draws each conversation as the rail does, and opens only wha
       expect(one.querySelector('[data-cy="agent-avatar"]')).toBeNull()
       expect(one.querySelector('[data-cy="forest-says"]'), `${name} said a word`).toBeNull()
     }
-    expect(useWhoCalledWhom().railSays.value?.has('sess_arjun')).toBe(false)
+    expect(heldWorkspace.railSays.value?.has('sess_arjun')).toBe(false)
   })
 
   it('🔴 a push the rail hears moves the card on the same mount — the forest is not read again', async () => {
     const held = heldHere('sess_ana', [said('Inspecting the window states.'), WORKING])
-    const cast = useWhoCalledWhom()
-    cast.railSays.value = new Map([['sess_ana', held.rail]])
-    cast.goTo.value = () => undefined
+    heldWorkspace.railSays.value = new Map([['sess_ana', held.rail]])
+    heldWorkspace.door.value = () => undefined
     await page.viewport(1200, 808)
     // ⚑ The forest as it was read, ONCE — only the rail's rows move below, as a push moves them.
     const rows = ROWS()
@@ -353,7 +347,7 @@ describe('the graph draws each conversation as the rail does, and opens only wha
       setup: () => () =>
         h(ConversationPane as Component, {
           ...base,
-          forest: viewOf(rows, IDS, cast.railSays.value),
+          forest: viewOf(rows, IDS, heldWorkspace.railSays.value),
         }),
     })
     const m = mount(Screen, {}, { width: 1200, height: 808 })
@@ -363,7 +357,7 @@ describe('the graph draws each conversation as the rail does, and opens only wha
     expect(plateOf(ana).dataset.doing).toBe('working')
     expect(saysOf(ana)).toBe(held.rail.word)
     // ⚑ The rail hears Ana go idle.
-    cast.railSays.value = new Map([
+    heldWorkspace.railSays.value = new Map([
       ['sess_ana', { facets: { doing: 'idle', being: 'live' }, word: 'idle' } satisfies RailSays],
     ])
     await nextTick()
@@ -473,7 +467,7 @@ describe('the graph draws each conversation as the rail does, and opens only wha
   })
 
   /**
-   * ⚑ **UI-006 · a press SELECTS the agent** (F045) — the one door, `cast.goTo`, which opens its
+   * ⚑ **UI-006 · a press SELECTS the agent** (F045) — the one door, the screen's conversation door, which opens its
    * conversation; the task lines on a card are words, and a click on one is a click on the card.
    */
   it('🔴 every node says its press opens its conversation, and a task line is words and presses its card', async () => {
@@ -784,7 +778,7 @@ describe('the graph draws each conversation as the rail does, and opens only wha
     )
     const Wrapper = defineComponent({ setup: () => () => h(ConversationPane, state as never) })
     await page.viewport(1200, 808)
-    useWhoCalledWhom().goTo.value = () => undefined
+    heldWorkspace.door.value = () => undefined
     const m = mount(Wrapper, {}, { width: 1200, height: 808 })
     await nextTick()
     await toGraph(m)

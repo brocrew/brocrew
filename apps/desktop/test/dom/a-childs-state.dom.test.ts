@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/questions'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import type { ConversationAtWork, WhatIsBeingDone } from '../../src/shared/what-is-being-done'
 import { META, drawerProps, mount, unmountAll } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * 🔴 **632 · what a person SEES on a child avatar** — the half the node suite cannot reach.
@@ -90,9 +90,8 @@ const atWorkRow = (
 })
 
 function draw(atWork: WhatIsBeingDone | null) {
-  const cast = useWhoCalledWhom()
-  cast.reading.value = { conversation: PARENT, read, answered: true, atWork }
-  cast.goTo.value = null
+  heldWorkspace.cast({ conversation: PARENT, read, answered: true, atWork })
+  heldWorkspace.door.value = null
   return mount(SessionDrawer as never, drawerProps({ identities: null }), {
     width: DRAWER_W_MIN,
     height: 900,

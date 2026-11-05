@@ -123,7 +123,7 @@ describe('§1 · no re-read of the work on a clock', () => {
     const castAt = GLANCE.indexOf('void readTheCast()')
     const guard = GLANCE.slice(GLANCE.lastIndexOf('if (', castAt), castAt)
     expect(guard, 'the glance re-reads the band whether or not it answered').toContain(
-      '!cast.reading.value.answered',
+      '!band.answered',
     )
 
     const forest = linesWith(GLANCE, 'readWhoIsWorking()')

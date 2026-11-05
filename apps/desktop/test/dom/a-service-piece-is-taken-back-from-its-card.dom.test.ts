@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { TAKE_BACK, takeBackThrough } from '../../src/renderer/src/lib/take-back'
 import type { WorkTakenBackByAPerson } from '../../src/shared/piece-called'
 import type { AgentIdentity, TranscriptEvent } from '../../src/shared/runtime-ipc'
@@ -18,6 +17,7 @@ import {
   visible,
   type Mounted,
 } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * A person takes back the piece a service is on, from that piece's card on the giver's page. The
@@ -81,7 +81,7 @@ const edge = (mayTakeItBack: boolean): WorkEdge => ({
 function castWith(gave: WorkEdge[]): void {
   const walk = <Row>(rows: Row[], kind: string) =>
     ({ rows, walk: kind, ledgers: rows.length, rowsUnread: 0 }) as never
-  useWhoCalledWhom().reading.value = {
+  heldWorkspace.cast({
     conversation: META.sessionId,
     read: {
       conversation: META.sessionId,
@@ -93,12 +93,12 @@ function castWith(gave: WorkEdge[]): void {
     },
     answered: true,
     atWork: null,
-  }
+  })
 }
 
 afterEach(async () => {
   unmountAll()
-  useWhoCalledWhom().reading.value = null
+  heldWorkspace.cast(null)
   await page.viewport(1200, 808)
 })
 

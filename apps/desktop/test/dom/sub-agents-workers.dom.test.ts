@@ -2,13 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import WorkingTogether from '../../src/renderer/src/components/WorkingTogether.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import {
   type AgentFacets,
   type RailSays,
   facetsOfState,
 } from '../../src/renderer/src/lib/agent-state'
-import { conversationList } from '../../src/renderer/src/lib/conversation-list'
 import type { CastReading } from '../../src/renderer/src/lib/working-together'
 import type { WorkEdge } from '../../src/shared/who-called-whom'
 import { forestOf, task } from './forest-fixture'
@@ -24,15 +22,14 @@ import {
   panelReading,
   panelWork,
 } from './sub-agents-workers-fixture'
+import { heldWorkspace, testWorkspace } from '../workspace-fixture'
 
-const cast = useWhoCalledWhom()
 afterEach(() => {
   unmountAll()
   localStorage.removeItem('brobot2.subAgents.latestFirst')
   localStorage.removeItem('brobot2.subAgents.showIdle')
-  cast.listedConversations.value = null
-  cast.forest.value = null
-  cast.railSays.value = null
+  heldWorkspace.reset()
+  heldWorkspace.railSays.value = null
   delete (window as { api?: unknown }).api
 })
 async function settle() {
@@ -62,7 +59,7 @@ async function band(width = 360, reading: CastReading = panelReading(), canOpen 
   return Object.assign(m, { opened })
 }
 function listed(rows = panelRows()) {
-  cast.listedConversations.value = conversationList({ resumable: rows, unresumable: [] })
+  heldWorkspace.list(rows, [])
 }
 
 describe('Sub agents: distinct parallel workers and their pieces', () => {
@@ -92,7 +89,7 @@ describe('Sub agents: distinct parallel workers and their pieces', () => {
   )
 
   it('does not infer a worker number from identity or card position', async () => {
-    cast.listedConversations.value = null
+    heldWorkspace.reset()
     const m = await band()
     expect(m.q('cast-tile-name-ada-worker-2').textContent).toBe('Ada')
     expect(m.all('cast-tile-owner-ada-worker-2')).toHaveLength(0)
@@ -130,16 +127,18 @@ describe('Sub agents: distinct parallel workers and their pieces', () => {
       title: 'Read another menu',
       state: 'stalled',
     }
-    cast.forest.value = forestOf([
-      task('ada-worker-2', work[1]!.piece, work[1]!.label, work[1]!.title, OWNER),
-      task(
-        'ada-worker-2',
-        'from-other-giver',
-        'W91.1',
-        'Check the ingredient notes',
-        'other-giver',
-      ),
-    ])
+    heldWorkspace.forest(
+      forestOf([
+        task('ada-worker-2', work[1]!.piece, work[1]!.label, work[1]!.title, OWNER),
+        task(
+          'ada-worker-2',
+          'from-other-giver',
+          'W91.1',
+          'Check the ingredient notes',
+          'other-giver',
+        ),
+      ]),
+    )
     const rows = panelRows()
     rows[1] = { ...rows[1]!, named: { ...rows[1]!.named!, more: 2 } }
     listed(rows)
@@ -191,15 +190,13 @@ describe('Sub agents: distinct parallel workers and their pieces', () => {
       { width: 251.68, height: 1000 },
     )
     await settle()
-    expect(
-      cast.listedConversations.value?.find((row) => row.sessionId === 'ada-worker-2')?.worker,
-    ).toEqual(rows[1]!.worker)
+    expect(testWorkspace().conversation('ada-worker-2')?.worker).toEqual(rows[1]!.worker)
     const m = await band()
     expect(m.q('cast-tile-name-ada-worker-2').textContent).toBe('Ada · W90.2')
     expect(listResumable).toHaveBeenCalledTimes(1)
     expect(listUnresumable).toHaveBeenCalledTimes(1)
     rail.unmount()
-    expect(cast.listedConversations.value).toBeNull()
+    expect(testWorkspace().listed()).toBeNull()
   })
 })
 
@@ -250,7 +247,7 @@ describe('Sub agents view preferences', () => {
       named: { ...row.named!, ended: 'answered' as const },
     }))
     listed(rows)
-    cast.railSays.value = new Map(
+    heldWorkspace.railSays.value = new Map(
       IDS.map((id) => [
         id,
         {
@@ -275,7 +272,7 @@ describe('Sub agents view preferences', () => {
     expect(m.all('cast-tile-name-ada-worker-4')).toHaveLength(0)
     expect(m.q('cast-idle-hidden').textContent).toBe('3 idle hidden')
     assertDrawn(m.q('cast-idle-hidden'), 'hidden idle count', m.host)
-    cast.listedConversations.value = null
+    heldWorkspace.reset()
     await settle()
     expect(m.all('cast-tile-name-ada-worker-2')).toHaveLength(0)
     expect(m.q('cast-idle-hidden').textContent).toBe('3 idle hidden')
@@ -296,7 +293,7 @@ describe('Sub agents view preferences', () => {
       named: { ...row.named!, ended: 'answered' as const },
     }))
     listed(rows)
-    cast.railSays.value = new Map(
+    heldWorkspace.railSays.value = new Map(
       IDS.map((id) => [
         id,
         { facets: id === 'ada-worker-2' ? facets : facetsOfState({ is: 'idle' }), word: 'idle' },
@@ -326,7 +323,7 @@ describe('Sub agents view preferences', () => {
         named: { ...row.named!, ended: 'answered' as const },
       })),
     )
-    cast.railSays.value = new Map(
+    heldWorkspace.railSays.value = new Map(
       IDS.map((id) => [id, { facets: facetsOfState({ is: 'idle' }), word: 'idle' }]),
     )
     localStorage.setItem('brobot2.subAgents.showIdle', 'false')
@@ -343,7 +340,7 @@ describe('Sub agents view preferences', () => {
   it.each([320, 380])('moves a long worker state below the complete name at %s', async (width) => {
     listed()
     const word = 'waiting on an answer from another conversation'
-    cast.railSays.value = new Map(
+    heldWorkspace.railSays.value = new Map(
       IDS.map((id) => [
         id,
         { facets: { doing: 'idle' as const, waiting: 'waiting-on-an-answer' as const }, word },
@@ -360,7 +357,7 @@ describe('Sub agents view preferences', () => {
     expect(state.title).toBe(word)
     expect(lineCount(state)).toBeLessThanOrEqual(2)
     assertDrawn(state, 'the two-line state within the worker card', card)
-    cast.railSays.value = new Map(
+    heldWorkspace.railSays.value = new Map(
       IDS.map((id) => [id, { facets: facetsOfState({ is: 'active' }), word: 'active' }]),
     )
     await settle()
@@ -376,7 +373,7 @@ describe('Sub agents view preferences', () => {
     'keeps the name and lone state dot together before a rail row arrives, worker metadata=%s',
     async (workerKnown) => {
       if (workerKnown) listed()
-      cast.railSays.value = new Map<string, RailSays>()
+      heldWorkspace.railSays.value = new Map<string, RailSays>()
       const m = await band(320)
       const name = m.q('cast-tile-name-ada-worker-2')
       const card = name.closest<HTMLElement>('.agent-chip')!

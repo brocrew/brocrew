@@ -3,7 +3,6 @@ import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import TeamForest from '../../src/renderer/src/components/TeamForest.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { facetsOfState, type RailSays } from '../../src/renderer/src/lib/agent-state'
 import { agentStateWords, type AgentState } from '../../src/shared/agent-state'
 import { DRAWER_W_MAX, DRAWER_W_MIN, TRANSCRIPT_MIN } from '../../src/renderer/src/lib/drawer'
@@ -22,6 +21,7 @@ import { conv, forestDrawn, forestOf } from './forest-fixture'
 import type { WhatIsBeingDone } from '../../src/shared/what-is-being-done'
 import { assertClippedButTold, assertDrawn, describeCarrier, drawnReady, sweep } from './drawn'
 import { META, drawerProps, mount, unmountAll, type Mounted } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * 🔴 **547 · the first picture of who called whom** — `540` §7 slice 1's renderer half, drawn in a
@@ -54,10 +54,9 @@ afterEach(() => {
   // ⛔ **The channel is a window-level singleton**, so a reading left behind would be the next
   // test's premise. ⚠️ Reset to the cold state rather than to an empty band — they are different
   // facts and this file asserts about both.
-  const cast = useWhoCalledWhom()
-  cast.reading.value = null
-  cast.goTo.value = null
-  cast.railSays.value = null
+  heldWorkspace.cast(null)
+  heldWorkspace.door.value = null
+  heldWorkspace.railSays.value = null
 })
 
 /** ⚑ A stable instant, so every age below is a fact about the fixture rather than about the clock. */
@@ -238,8 +237,7 @@ function beside(drawer: Mounted, graph: Mounted): Mounted & { drawer: Mounted; g
 }
 
 async function show(over: Shown) {
-  const cast = useWhoCalledWhom()
-  cast.reading.value =
+  heldWorkspace.cast(
     over.read === null
       ? null
       : {
@@ -247,9 +245,10 @@ async function show(over: Shown) {
           read: over.read,
           answered: over.answered ?? true,
           atWork: over.atWork ?? null,
-        }
-  cast.goTo.value = over.press ? (conversation) => over.press!.push(conversation) : null
-  cast.railSays.value = over.rail ?? null
+        },
+  )
+  heldWorkspace.door.value = over.press ? (conversation) => over.press!.push(conversation) : null
+  heldWorkspace.railSays.value = over.rail ?? null
   const drawer = mount(
     SessionDrawer as never,
     drawerProps({ identities: over.identities ?? null }),
@@ -991,7 +990,7 @@ describe('§3 · four children, no fact about where any of them is, and the pres
    * ⚠️ **`WorkingTogether` still declares `canOpen` and no longer reads it.** The old per-card
    * press was drawn through `pressableAs(card, canOpen)`; the task row that replaced it is a
    * `<button>` under `v-if="view.tasks.length"` alone — so a band whose screen supplied no `goTo`
-   * draws a control whose click reaches `cast.goTo.value?.(…)` and does nothing. ⛔ **That is the
+   * draws a control whose click reaches the screen's door and does nothing. ⛔ **That is the
    * shape `SessionPanel`'s own comment calls *the thing this codebase keeps deleting*.**
    *
    * 🔴 **Written to the RULE and not to the build**, and two prose claims say the rule is in force:
@@ -1633,13 +1632,12 @@ describe('§7 · what the band deliberately does not say', () => {
 
   /** ⛔ **A read for another conversation is the same absence as no read at all.** */
   it('⛔ an answer about a different conversation draws nothing', async () => {
-    const cast = useWhoCalledWhom()
-    cast.reading.value = {
+    heldWorkspace.cast({
       conversation: 'sess_somebody_else',
       read: answer({ children: walk([spawn()], 'every-conversation-this-one-spawned') }),
       answered: true,
       atWork: null,
-    }
+    })
     const m = mount(SessionDrawer as never, drawerProps(), { width: DRAWER_W_MIN, height: 900 })
     expect(m.q('cast-not-read')).toBeTruthy()
     expect(m.all('cast-card')).toHaveLength(0)

@@ -497,7 +497,7 @@ describe('what RuntimeScreen hands the pane, read as text', () => {
     expect(pane).toContain('@take-it-over="activeId && openConversation(activeId)"')
     // The word it hands is its row's state, in the one list, and null while the list names nothing.
     const listed = slice(screen, 'const listedStateOfActive = computed(', '\n)\n')
-    expect(listed).toContain('rail.value?.listedOf(active.value.sessionId)?.state ?? null')
+    expect(listed).toContain('projection.conversation(active.value.sessionId)?.state ?? null')
   })
 
   it('hands the link scope the resolver and opening door, and the archive its retained page', async () => {
@@ -545,7 +545,7 @@ describe('what RuntimeScreen hands the pane, read as text', () => {
     expect(again).toContain('listed.inAnotherWindow === toldItWasElsewhere')
     expect(again).toContain("void store.look(sessionId, 'again')")
     // It is asked after the list refreshes, which is when the row can have moved.
-    expect(screen).toContain('void rail.value?.refreshResumable().then(lookAgainIfItMoved)')
+    expect(screen).toContain('void readTheList().then(lookAgainIfItMoved)')
 
     // A recorded conversation is held only while it is on screen.
     const leaves = slice(screen, 'watch(onScreenNow, (_now, was) => {', '\n)\n')

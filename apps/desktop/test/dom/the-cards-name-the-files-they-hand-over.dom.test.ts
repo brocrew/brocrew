@@ -4,7 +4,6 @@ import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import FileRows from '../../src/renderer/src/components/FileRows.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { fullTime } from '../../src/renderer/src/lib/clock'
 import { clockTime } from '../../src/shared/clock'
 import type {
@@ -17,6 +16,7 @@ import type { WorkReport } from '../../src/shared/tasks'
 import type { WorkEdge } from '../../src/shared/who-called-whom'
 import { assertClippedButTold, assertDrawn, drawnReady } from './drawn'
 import { META, mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * # ⚑ The cards where files change hands name each file, one row each
@@ -38,9 +38,8 @@ import { META, mount, paneProps, record, unmountAll, visible, type Mounted } fro
 
 afterEach(async () => {
   unmountAll()
-  const cast = useWhoCalledWhom()
-  cast.treeFiles.value = null
-  cast.reading.value = null
+  heldWorkspace.files(null)
+  heldWorkspace.cast(null)
   await page.viewport(1200, 808)
 })
 
@@ -181,8 +180,9 @@ async function pane(
   files: readonly KeptFile[] | null,
   over: Record<string, unknown> = {},
 ): Promise<Mounted> {
-  useWhoCalledWhom().treeFiles.value =
-    files === null ? null : { conversation: META.sessionId, files, answered: true }
+  heldWorkspace.files(
+    files === null ? null : { conversation: META.sessionId, files, answered: true },
+  )
   await page.viewport(1200, 808)
   const m = mount(
     ConversationPane,
@@ -231,7 +231,7 @@ const edge = (label: string, givenAt: number): WorkEdge => ({
 function castWith(gave: WorkEdge[], took: WorkEdge[]): void {
   const walk = <Row>(rows: Row[], kind: string) =>
     ({ rows, walk: kind, ledgers: rows.length, rowsUnread: 0 }) as never
-  useWhoCalledWhom().reading.value = {
+  heldWorkspace.cast({
     conversation: META.sessionId,
     read: {
       conversation: META.sessionId,
@@ -243,7 +243,7 @@ function castWith(gave: WorkEdge[], took: WorkEdge[]): void {
     },
     answered: true,
     atWork: null,
-  }
+  })
 }
 
 async function opens(m: Mounted, row: HTMLElement, name: string): Promise<void> {
@@ -363,11 +363,11 @@ describe('the cards where files change hands name each file', () => {
       'res_later',
     ])
     expect(m.all('file-row')).toHaveLength(0)
-    useWhoCalledWhom().treeFiles.value = {
+    heldWorkspace.files({
       conversation: META.sessionId,
       files: [FOUND],
       answered: true,
-    }
+    })
     await nextTick()
     await drawnReady()
     expect(rowsIn(m.q('work-report')).map((row) => row.dataset.document)).toEqual(['res_found'])

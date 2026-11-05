@@ -33,7 +33,8 @@ import { PROVIDER_NAME } from '../../../shared/runtime-ipc'
 import { DEFAULT_CONVERSATION_PROVIDER } from '@brobot2/shared'
 import { stopJoinsThatAsk } from '../lib/stop-unanswered'
 import type { PickedModel } from '../lib/model-lists'
-import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
+import { useConversationDoor } from '../composables/useConversationDoor'
+import { useWorkspace } from '../composables/useWorkspace'
 import { aGiverWaitsOnPurposeSays, ownWaitSaid } from '../lib/conversation-list'
 import { useProfileSignIn, type ProfileSignIn } from '../composables/useProfileSignIn'
 import { useProviderSetup } from '../composables/useProviderSetup'
@@ -613,28 +614,19 @@ const ownAgent = computed((): string | null => {
 })
 
 /**
- * 🔴 **The one channel that is not a prop** — the screen's who-called-whom read (`547`).
- *
- * ## ⛔ Why this reaches a singleton when everything else here arrives as a prop
- *
- * ⚠️ **`547` wrote the reason down before this file could act on it.** Its brief §1.1 put
- * `ConversationPane.vue` out of bounds while `545` was inside it, and this file is the only hop
- * between `RuntimeScreen` — which owns every poll that feeds a surface it mounts — and the drawer
- * that draws the band. ⚑ So the poll stayed where the convention puts it and only the TRANSPORT
- * moved, into `useWhoCalledWhom`. **That is `547` F5, and it is still open**: the repair is a prop
- * on this component and one binding on `<SessionDrawer>`, and it needs `RuntimeScreen.vue`, which
- * `550` is in. ⛔ **Not taken here** (551 §5), and this pane and the drawer move together the day
- * it is.
+ * The screen's door into another conversation, and the workspace projection it provides: the band's
+ * reading and the files on this conversation's tree come from there, read by the screen.
  */
-const cast = useWhoCalledWhom()
+const conversationDoor = useConversationDoor()
+const workspace = useWorkspace()
 
 /**
  * ⚑ **UI-002 · the files on this conversation's tree**, for the Files tab — the screen's read
- * (`TheCast.treeFiles`). ⛔ `null` while the read is about another conversation, as {@link gaveOut}
+ * (`treeFiles`). ⛔ `null` while the read is about another conversation, as {@link gaveOut}
  * guards: a person can open two conversations inside one round trip.
  */
 const treeFiles = computed(() => {
-  const read = cast.treeFiles.value
+  const read = workspace.treeFiles()
   return read !== null && read.conversation === props.record.sessionId ? read : null
 })
 
@@ -646,25 +638,21 @@ const treeFiles = computed(() => {
  * reading's gives are not this one's.
  */
 const gaveOut = computed(() => {
-  const reading = cast.reading.value
+  const reading = workspace.cast()
   return reading?.conversation === props.record.sessionId ? reading.read.workGivenOut.rows : null
 })
 
 /** Whom this conversation waits on while a piece it gave waits on purpose, and why. */
 const waitsOnPurpose = computed(() =>
-  aGiverWaitsOnPurposeSays(gaveOut.value ?? [], cast.listedConversations.value),
+  aGiverWaitsOnPurposeSays(gaveOut.value ?? [], workspace.conversation),
 )
 
 /** What this conversation says of its own typed wait, in the words its giver's page uses. */
-const ownWait = computed(() =>
-  ownWaitSaid(
-    cast.listedConversations.value?.find((row) => row.sessionId === props.record.sessionId),
-  ),
-)
+const ownWait = computed(() => ownWaitSaid(workspace.conversation(props.record.sessionId)))
 
 /** ⚑ **UI-002 · the work this conversation was given**, by {@link gaveOut}'s guard — see `RelayedEntry`. */
 const takenIn = computed(() => {
-  const reading = cast.reading.value
+  const reading = workspace.cast()
   return reading?.conversation === props.record.sessionId ? reading.read.workTakenIn.rows : null
 })
 
@@ -676,7 +664,7 @@ const takenIn = computed(() => {
  * only after the claim has landed. ⚑ **UI-006 · a press on the Graph selects through it.**
  */
 function goToConversation(conversation: string): void {
-  cast.goTo.value?.(conversation)
+  conversationDoor.value?.(conversation)
 }
 
 /**
@@ -1768,7 +1756,7 @@ async function openResource(resourceId: string): Promise<void> {
   // viewer's header can say its title, who, for which piece and when (`07` §3).
   const row =
     treeFiles.value?.files.find((file) => file.resourceId === resourceId) ??
-    cast.cardFiles.value?.files.find((file) => file.resourceId === resourceId) ??
+    workspace.cardFiles()?.files.find((file) => file.resourceId === resourceId) ??
     null
   await documentOverlay.value?.open(resourceId, row)
 }

@@ -34,7 +34,8 @@ import type { TranscriptState } from '../lib/transcript'
 import type { TranscriptMode } from '../lib/transcript-mode'
 import type { WindowState } from '../lib/transcript-window'
 import type { WorkGivenOutReading } from '../lib/work-given-out'
-import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
+import { useConversationDoor } from '../composables/useConversationDoor'
+import { useWorkspace } from '../composables/useWorkspace'
 import EventStream from './EventStream.vue'
 import SessionChanges from './SessionChanges.vue'
 import SessionInfo from './SessionInfo.vue'
@@ -281,15 +282,16 @@ const who = computed(() => whoIsIn(props.session, props.identities))
  * ⚠️ **`goTo` is `null` in every render test**, because no screen mounted the drawer — so the band
  * draws its cards and offers no press, which is `118`'s rule rather than a test affordance.
  */
-const cast = useWhoCalledWhom()
+const conversationDoor = useConversationDoor()
+const workspace = useWorkspace()
 
 /**
  * ⚑ **UI-002 · the files of the agent the card draws** — the screen reads them for the conversation
- * on screen, the selected agent (`TheCast.cardFiles`). ⛔ Only while they are ITS files: a read
+ * on screen, the selected agent (the projection's `cardFiles`). ⛔ Only while they are ITS files: a read
  * taken for the last one, or not taken yet, draws nothing.
  */
 const cardFilesRead = computed(() => {
-  const read = cast.cardFiles.value
+  const read = workspace.cardFiles()
   return read !== null && read.conversation === props.session.sessionId ? read : null
 })
 
@@ -488,10 +490,10 @@ function steer(event: KeyboardEvent, at: number): DrawerTab | null {
         :fixed="props.fixed"
         :recorded="props.recorded"
         :on-reveal-path="props.onRevealPath"
-        :cast="cast.reading.value"
+        :cast="workspace.cast()"
         :conversation="props.session.sessionId"
         :identities="props.identities"
-        :can-open-conversation="cast.goTo.value !== null"
+        :can-open-conversation="conversationDoor !== null"
         :can-stop-background-work="props.canStopBackgroundWork ?? false"
         :on-stop-background-work="props.onStopBackgroundWork"
         @navigate="(itemId) => emit('navigate', itemId)"
@@ -509,7 +511,7 @@ function steer(event: KeyboardEvent, at: number): DrawerTab | null {
           props.capabilities?.[props.session.provider]?.reprovisionAuth ?? null
         "
         @compact-now="(intent) => emit('compactNow', intent)"
-        @open-conversation="(conversation) => cast.goTo.value?.(conversation)"
+        @open-conversation="(conversation) => conversationDoor?.(conversation)"
         @open-document="(resourceId) => emit('openDocument', resourceId)"
         @open-inputs="emit('openInputs')"
         @open-book="(profile) => emit('openBook', profile)"

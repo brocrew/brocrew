@@ -12,8 +12,8 @@ import { WORK_FILE_GROUPS, type WorkFileGroup } from '../../../shared/work-file-
  */
 
 /**
- * ⚑ **One scope's answer, for the conversation it was asked about** — `TheCast.treeFiles` and
- * `TheCast.cardFiles`. ⚠️ `answered: false` is *the newest read did not answer*: `files` are then
+ * ⚑ **One scope's answer, for the conversation it was asked about** — the projection's `treeFiles` and
+ * the projection's `cardFiles`. ⚠️ `answered: false` is *the newest read did not answer*: `files` are then
  * the last ones that did, for this same conversation.
  */
 export interface FilesRead {

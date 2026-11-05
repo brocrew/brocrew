@@ -58,20 +58,36 @@ export type WaitReading =
   | { readonly known: 'not-in-the-reading' }
   | { readonly known: 'read'; readonly waiting: ConversationWait | null }
 
-/**
- * ⛔ **The three absences, told apart** — see {@link WaitReading}.
- *
- * ⚑ **Linear in the reading and called once per row**, which is what the rail can afford: the
- * population is the conversations this app is RUNNING, the same list the rail is already drawing.
- * ⚠️ A map built per render would be a second shape to keep in step with a reading that is
- * replaced whole on every tick.
- */
+/** Each reading's rows by conversation, built once per reading: a reading is never changed. */
+const rowsByConversation = new WeakMap<
+  WhatEachConversationIsWaitingOn,
+  ReadonlyMap<string, ConversationWaiting>
+>()
+
+/** One conversation's row of a reading, found by its key rather than by a search of the reading. */
+function rowOf(
+  reading: WhatEachConversationIsWaitingOn | null,
+  conversation: string,
+): ConversationWaiting | undefined {
+  if (reading === null) return undefined
+  let rows = rowsByConversation.get(reading)
+  if (rows === undefined) {
+    const index = new Map<string, ConversationWaiting>()
+    for (const row of reading.conversations)
+      if (!index.has(row.conversation)) index.set(row.conversation, row)
+    rows = index
+    rowsByConversation.set(reading, rows)
+  }
+  return rows.get(conversation)
+}
+
+/** ⛔ **The three absences, told apart** — see {@link WaitReading}. */
 export function waitReadingFor(
   reading: WhatEachConversationIsWaitingOn | null,
   conversation: string,
 ): WaitReading {
   if (reading === null) return { known: 'nobody-has-looked' }
-  const row = reading.conversations.find((each) => each.conversation === conversation)
+  const row = rowOf(reading, conversation)
   if (row === undefined) return { known: 'not-in-the-reading' }
   return { known: 'read', waiting: theWaitAsTheHostOwesIt(row) }
 }
@@ -111,7 +127,7 @@ export function whoseAnswerIn(
   reading: WhatEachConversationIsWaitingOn | null,
   conversation: string,
 ): string | null {
-  const row = reading?.conversations.find((each) => each.conversation === conversation)
+  const row = rowOf(reading, conversation)
   return row?.waitingOnTheAnswerOf ?? null
 }
 
@@ -123,7 +139,7 @@ export function whoseWorkIn(
   reading: WhatEachConversationIsWaitingOn | null,
   conversation: string,
 ): readonly string[] {
-  const row = reading?.conversations.find((each) => each.conversation === conversation)
+  const row = rowOf(reading, conversation)
   return row?.waitingOnTheWorkOf ?? []
 }
 
@@ -136,7 +152,7 @@ export function stoppedWorkIn(
   reading: WhatEachConversationIsWaitingOn | null,
   conversation: string,
 ): readonly StoppedPiece[] {
-  const row = reading?.conversations.find((each) => each.conversation === conversation)
+  const row = rowOf(reading, conversation)
   return (row?.stoppedWork ?? []).map(({ label, holder, at }) => ({ label, holder, at }))
 }
 
@@ -148,7 +164,7 @@ export function whenItsWaitsBeganIn(
   reading: WhatEachConversationIsWaitingOn | null,
   conversation: string,
 ): { readonly answer: number | null; readonly work: number | null } {
-  const row = reading?.conversations.find((each) => each.conversation === conversation)
+  const row = rowOf(reading, conversation)
   return { answer: row?.waitingOnTheAnswerSince ?? null, work: row?.waitingOnTheWorkSince ?? null }
 }
 
@@ -197,7 +213,7 @@ export function theWorkIn(
   reading: WhatEachConversationIsWaitingOn | null,
   conversation: string,
 ): HeldWork | undefined {
-  const row = reading?.conversations.find((each) => each.conversation === conversation)
+  const row = rowOf(reading, conversation)
   return row?.work ?? undefined
 }
 

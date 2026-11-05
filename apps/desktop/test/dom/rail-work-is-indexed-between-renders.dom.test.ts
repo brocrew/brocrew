@@ -1,19 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { defineComponent, h, nextTick, reactive, ref } from 'vue'
+import { defineComponent, h, nextTick, ref } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import PromptComposer from '../../src/renderer/src/components/PromptComposer.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { SessionRecord } from '../../src/renderer/src/lib/session-record'
 import type { ForestTask } from '../../src/shared/the-whole-forest'
 import { workerRows } from './parallel-workers-fixture'
 import { panelWork } from './sub-agents-workers-fixture'
 import { forestOf } from './forest-fixture'
 import { mount, unmountAll } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
-const cast = useWhoCalledWhom()
 afterEach(() => {
   unmountAll()
-  cast.forest.value = null
+  heldWorkspace.reset()
   Reflect.deleteProperty(window, 'api')
   localStorage.clear()
 })
@@ -48,7 +47,7 @@ describe('Worker titles in a large conversation rail', () => {
         to: rows[index % rows.length]!.sessionId,
       },
     }))
-    cast.forest.value = forestOf(nodes)
+    heldWorkspace.forest(forestOf(nodes))
     visits = 0
     const active = ref(rows[0]!.sessionId)
     const draft = ref('')
@@ -106,7 +105,7 @@ describe('Worker titles in a large conversation rail', () => {
     Reflect.set(window, 'api', {
       runtime: { listResumable: async () => rows, listUnresumable: async () => [] },
     })
-    cast.forest.value = null
+    heldWorkspace.reset()
     const view = mount(SideRail, { open: [], activeId: null, place: null }, { width: 251.68 })
     await settled()
     const first = view.q(`open-session-${rows[0]!.sessionId}`)
@@ -119,22 +118,30 @@ describe('Worker titles in a large conversation rail', () => {
       givenBy: { is: 'the-person' },
       work: { ...panelWork()[0]!, piece, label: piece, title, to: rows[0]!.sessionId, givenAt },
     })
+    const older = extra('W91.2', 'Older recipe', 1)
     const newer = extra('W91.3', 'Newer recipe', 2)
-    const changing = reactive({ ...newer, work: { ...newer.work } })
-    cast.forest.value = forestOf([extra('W91.2', 'Older recipe', 1), changing])
+    heldWorkspace.forest(forestOf([older, newer]))
     await nextTick()
     expect(
       [...first.querySelectorAll('.rail-worker-piece')].map((node) => node.textContent),
     ).toEqual(['Recipe', 'W91.3 · Newer recipe', 'W91.2 · Older recipe'])
-    changing.work.title = 'Changed recipe'
+    // Every forest read is a fresh answer: one that retitles a piece, then one that moves it.
+    heldWorkspace.forest(
+      forestOf([older, { ...newer, work: { ...newer.work, title: 'Changed recipe' } }]),
+    )
     await nextTick()
     expect(first.textContent).toContain('Changed recipe')
     expect(first.textContent).not.toContain('Newer recipe')
-    changing.work.to = rows[2]!.sessionId
+    heldWorkspace.forest(
+      forestOf([
+        older,
+        { ...newer, work: { ...newer.work, title: 'Changed recipe', to: rows[2]!.sessionId } },
+      ]),
+    )
     await nextTick()
     expect(first.textContent).not.toContain('Changed recipe')
     expect(first.textContent).toContain('and 1 more')
-    cast.forest.value = null
+    heldWorkspace.forest(forestOf([]))
     await nextTick()
     expect(first.textContent).not.toContain('Older recipe')
     expect(first.textContent).toContain('and 2 more')

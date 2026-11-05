@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { AgentFacets } from '../../src/renderer/src/lib/agent-state'
 import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
@@ -21,6 +20,7 @@ import {
   visible,
   type Mounted,
 } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * # ⚑ The agent card says the work a person gave it, what it is waiting on, and what it holds
@@ -50,13 +50,12 @@ import {
 
 afterEach(() => {
   unmountAll()
-  const cast = useWhoCalledWhom()
-  cast.reading.value = null
-  cast.goTo.value = null
-  cast.railSays.value = null
-  cast.processMemory.value = new Map()
-  cast.cardFiles.value = null
-  cast.treeFiles.value = null
+  heldWorkspace.cast(null)
+  heldWorkspace.door.value = null
+  heldWorkspace.railSays.value = null
+  heldWorkspace.reset()
+  heldWorkspace.cardFiles(null)
+  heldWorkspace.files(null)
 })
 
 const NOW = Date.now()
@@ -150,10 +149,10 @@ interface Shown {
  * which is not an empty walk. ⚠️ The drawer is handed `named` the way the pane hands it.
  */
 function show(read: WhoCalledWhom | null, over: Shown = {}): Mounted {
-  const cast = useWhoCalledWhom()
-  cast.reading.value =
-    read === null ? null : { conversation: META.sessionId, read, answered: true, atWork: null }
-  cast.goTo.value = over.goTo ?? null
+  heldWorkspace.cast(
+    read === null ? null : { conversation: META.sessionId, read, answered: true, atWork: null },
+  )
+  heldWorkspace.door.value = over.goTo ?? null
   return mount(
     SessionDrawer as never,
     drawerProps({
@@ -423,13 +422,12 @@ describe('the agent card says the work a person gave it', () => {
   })
 
   it('🔴 UI-008 · in the pane, the root a person gave reaches the open drawer’s card — ⛔ and a pane told of none draws the quiet box', async () => {
-    const cast = useWhoCalledWhom()
-    cast.reading.value = {
+    heldWorkspace.cast({
       conversation: META.sessionId,
       read: answer(),
       answered: true,
       atWork: null,
-    }
+    })
     await page.viewport(1200, 808)
     const m = mount(
       ConversationPane,
@@ -515,12 +513,11 @@ describe('the agent card says what its process holds', () => {
   const MIB = 1024 ** 2
 
   it('⚑ D-018 · the run strip draws the memory of a conversation whose process runs, and of no other', async () => {
-    const cast = useWhoCalledWhom()
     const memoryOf = (host: HTMLElement): HTMLElement | null =>
       host.querySelector<HTMLElement>('[data-cy="card-run-memory"]')
 
     // ⛔ Another conversation's figure is not this one's.
-    cast.processMemory.value = new Map([['sess_other', 900 * MIB]])
+    heldWorkspace.memory(new Map([['sess_other', 900 * MIB]]))
     const other = show(null)
     await drawnReady()
     expect(visible(other.q('session-bot')), 'the card did not draw').toBe(true)
@@ -528,7 +525,7 @@ describe('the agent card says what its process holds', () => {
     unmountAll()
 
     // ⛔ …and nor is the absence of any figure.
-    cast.processMemory.value = new Map()
+    heldWorkspace.reset()
     const empty = show(null)
     await drawnReady()
     expect(visible(empty.q('session-bot')), 'the card did not draw').toBe(true)
@@ -536,7 +533,7 @@ describe('the agent card says what its process holds', () => {
     unmountAll()
 
     // ⚑ The control, the same card one fact over: the map holds THIS conversation.
-    cast.processMemory.value = new Map([[META.sessionId, 300 * MIB]])
+    heldWorkspace.memory(new Map([[META.sessionId, 300 * MIB]]))
     const mine = show(null)
     await drawnReady()
     const item = memoryOf(mine.host)!
@@ -549,7 +546,7 @@ describe('the agent card says what its process holds', () => {
     unmountAll()
 
     // ⚑ A measured zero is a figure; an absent one is not.
-    cast.processMemory.value = new Map([[META.sessionId, 0]])
+    heldWorkspace.memory(new Map([[META.sessionId, 0]]))
     const zero = show(null)
     await drawnReady()
     expect(said(memoryOf(zero.host)!)).toBe('0 MB')

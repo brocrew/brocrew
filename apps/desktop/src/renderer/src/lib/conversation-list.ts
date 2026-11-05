@@ -91,29 +91,47 @@ export interface ConversationListInput {
  */
 export function conversationList(input: ConversationListInput): ListedConversation[] {
   const identities = input.identities ?? null
-  const rows: ListedConversation[] = []
-  const add = (row: ResumableSessionInfo | UnresumableSessionInfo): void => {
-    rows.push({
-      ...mergeProviderBlock(row, input.providerSaid?.get(row.sessionId)),
-      ...(row.worker ? { worker: row.worker } : {}),
-      ...(row.waitingOnPurpose ? { waitingOnPurpose: row.waitingOnPurpose } : {}),
-      sessionId: row.sessionId,
-      provider: row.provider,
-      label: agentName(row.profileId, identities),
-      identity: foldProfileName(row.profileId ?? DEFAULT_PROFILE_ID),
-      place: basenameOf(row.cwd) || null,
-      state: input.said?.get(row.sessionId) ?? row.state,
-      named: row.named,
-      inAnotherWindow: row.running === 'in-a-window',
-      updatedAt: row.updatedAt,
-    })
+  return listedRowsOf(input).map((row) =>
+    listedRow(
+      row,
+      identities,
+      input.said?.get(row.sessionId),
+      input.providerSaid?.get(row.sessionId),
+    ),
+  )
+}
+
+/** The host rows the list draws, newest first: a person's own conversations are not among them. */
+export function listedRowsOf(
+  input: Pick<ConversationListInput, 'resumable' | 'unresumable'>,
+): (ResumableSessionInfo | UnresumableSessionInfo)[] {
+  return [
+    ...input.resumable,
+    ...input.unresumable.filter((row) => !row.foundInUserHome && !row.restoredFromBundle),
+  ].sort((one, other) => other.updatedAt - one.updatedAt)
+}
+
+/** One row of {@link conversationList}, from the host's row and what was said of it since. */
+export function listedRow(
+  row: ResumableSessionInfo | UnresumableSessionInfo,
+  identities: readonly AgentIdentity[] | null,
+  said: AgentState | undefined,
+  providerSaid: ProviderBlockFacts | undefined,
+): ListedConversation {
+  return {
+    ...mergeProviderBlock(row, providerSaid),
+    ...(row.worker ? { worker: row.worker } : {}),
+    ...(row.waitingOnPurpose ? { waitingOnPurpose: row.waitingOnPurpose } : {}),
+    sessionId: row.sessionId,
+    provider: row.provider,
+    label: agentName(row.profileId, identities),
+    identity: foldProfileName(row.profileId ?? DEFAULT_PROFILE_ID),
+    place: basenameOf(row.cwd) || null,
+    state: said ?? row.state,
+    named: row.named,
+    inAnotherWindow: row.running === 'in-a-window',
+    updatedAt: row.updatedAt,
   }
-  for (const row of input.resumable) add(row)
-  for (const row of input.unresumable) {
-    if (row.foundInUserHome || row.restoredFromBundle) continue
-    add(row)
-  }
-  return rows.sort((one, other) => other.updatedAt - one.updatedAt)
 }
 
 /**
@@ -248,14 +266,14 @@ function firstSentence(line: string): string {
  */
 export function aGiverWaitsOnPurposeSays(
   gave: readonly WorkEdge[],
-  listed: readonly ListedConversation[] | null,
+  listedRow: (conversation: string) => ListedConversation | undefined,
 ): { readonly says: string; readonly whole: string } | null {
   const open = gave.filter(
     (piece) => Object.hasOwn(TASK_IS_OPEN, piece.state) && TASK_IS_OPEN[piece.state],
   )
   const piece = open.find((one) => one.state === 'waiting-on-purpose')
   if (piece === undefined) return null
-  const holder = listed?.find((row) => row.sessionId === piece.to)
+  const holder = listedRow(piece.to)
   const name = holder?.label ?? piece.toIdentity ?? 'another agent'
   const others = new Set(open.map((one) => one.to))
   others.delete(piece.to)

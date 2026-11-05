@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { createSSRApp, h } from 'vue'
+import { createSSRApp, h, type App } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import ConversationPane from '../src/renderer/src/components/ConversationPane.vue'
 import SideRail from '../src/renderer/src/components/SideRail.vue'
@@ -29,6 +29,7 @@ import type {
   WhatEachConversationIsWaitingOn,
 } from '../src/shared/tasks'
 import type { WhatIsBeingDone } from '../src/shared/what-is-being-done'
+import { testWorkspace, withTestWorkspace } from './workspace-fixture'
 
 /**
  * 🔴 **D-006 · F018 — a finished agent and a stuck one both read "idle".**
@@ -228,19 +229,30 @@ describe('D-006 §2 · which of two true things the one slot says', () => {
   })
 })
 
+/** An app given the test's projection, as the screen gives every surface it mounts. */
+function provided<T extends App>(app: T): T {
+  withTestWorkspace(app)
+  return app
+}
+
 describe('D-006 §3 · the rail and the header draw it', () => {
-  const rail = (reading: WhatEachConversationIsWaitingOn | null): Promise<string> =>
-    renderToString(
-      createSSRApp({
-        render: () =>
-          h(SideRail as never, {
-            open: ['sess_ayo', 'sess_bo', 'sess_cam'].map(idleConversation),
-            activeId: 'sess_ayo',
-            place: null,
-            waiting: reading,
-          }),
-      }),
+  /** The rail, over a workspace whose waits reading is `reading`. */
+  const rail = (reading: WhatEachConversationIsWaitingOn): Promise<string> => {
+    testWorkspace().reset()
+    testWorkspace().waitsRead(reading)
+    return renderToString(
+      provided(
+        createSSRApp({
+          render: () =>
+            h(SideRail as never, {
+              open: ['sess_ayo', 'sess_bo', 'sess_cam'].map(idleConversation),
+              activeId: 'sess_ayo',
+              place: null,
+            }),
+        }),
+      ),
     )
+  }
 
   it('🔴 the rail rows tell the finished agent from the stuck one — and without the work, they did not', async () => {
     const told = await rail(F018)
@@ -291,9 +303,9 @@ describe('D-006 §3 · the rail and the header draw it', () => {
       'utf8',
     )
     // ⚑ **The positive control**: the wait's own line, which the work's sits beside.
-    expect(screen).toContain(':waiting="theWaitIn(conversationWaits, active.sessionId)"')
-    expect(screen).toContain(':held-work="theWorkIn(conversationWaits, active.sessionId)"')
-    expect(screen).toContain('theWorkIn(conversationWaits.value, record.sessionId)')
+    expect(screen).toContain(':waiting="projection.waitOf(active.sessionId).wait"')
+    expect(screen).toContain(':held-work="projection.waitOf(active.sessionId).work"')
+    expect(screen).toContain('waits: projection.waits(),')
   })
 })
 

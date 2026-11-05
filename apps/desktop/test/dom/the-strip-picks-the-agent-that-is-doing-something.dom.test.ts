@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { DRAWER_W_MAX, DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/questions'
@@ -8,6 +7,7 @@ import type { AgentIdentity } from '../../src/shared/runtime-ipc'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import type { WhatIsBeingDone } from '../../src/shared/what-is-being-done'
 import { META, drawerProps, mount, unmountAll } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * 🔴 **The strip's own layout** — how a chip is drawn, and the box it sits in.
@@ -24,14 +24,13 @@ import { META, drawerProps, mount, unmountAll } from './harness'
 
 afterEach(() => {
   unmountAll()
-  useWhoCalledWhom().memoryUnmeasured.value = null
-  useWhoCalledWhom().railSays.value = null
+  heldWorkspace.reset()
+  heldWorkspace.railSays.value = null
   // ⛔ **The channel is a window-level singleton**, so a reading left behind would be the next
   // test's premise. ⚠️ Reset to the cold state rather than to an empty band — they are different
   // facts and this file asserts about both.
-  const cast = useWhoCalledWhom()
-  cast.reading.value = null
-  cast.goTo.value = null
+  heldWorkspace.cast(null)
+  heldWorkspace.door.value = null
 })
 
 /** ⚑ A stable instant, so every age below is a fact about the fixture rather than about the clock. */
@@ -105,8 +104,7 @@ interface Shown {
 }
 
 function show(over: Shown) {
-  const cast = useWhoCalledWhom()
-  cast.reading.value =
+  heldWorkspace.cast(
     over.read === null
       ? null
       : {
@@ -114,8 +112,9 @@ function show(over: Shown) {
           read: over.read,
           answered: over.answered ?? true,
           atWork: over.atWork ?? null,
-        }
-  cast.goTo.value = over.press ? (conversation) => over.press!.push(conversation) : null
+        },
+  )
+  heldWorkspace.door.value = over.press ? (conversation) => over.press!.push(conversation) : null
   return mount(SessionDrawer as never, drawerProps({ identities: over.identities ?? null }), {
     width: over.width ?? DRAWER_W_MIN,
     height: 900,
@@ -241,7 +240,7 @@ describe('W4.203 · an idle or ended sub-agent says what it last reported', () =
     const memory = (m: ReturnType<typeof show>): HTMLElement =>
       m.q('cast-tile-telemetry-sess_ali').querySelector<HTMLElement>('.chip-metric.memory')!
 
-    useWhoCalledWhom().memoryUnmeasured.value = said
+    heldWorkspace.memory(new Map(), said)
     const unmeasured = show({ read: answer({ children }), width: DRAWER_W_MAX })
     expect(memory(unmeasured).textContent?.trim()).toBe('not measured')
     expect(memory(unmeasured).title).toBe(`Memory (RAM): ${said}`)
@@ -249,7 +248,7 @@ describe('W4.203 · an idle or ended sub-agent says what it last reported', () =
     unmountAll()
 
     // The control: the processes were read and this one holds none.
-    useWhoCalledWhom().memoryUnmeasured.value = null
+    heldWorkspace.reset()
     const stopped = show({ read: answer({ children }), width: DRAWER_W_MAX })
     expect(memory(stopped).textContent?.trim()).toBe('not running')
     expect(memory(stopped).title).toBe('Memory (RAM): Not running now.')
@@ -260,8 +259,7 @@ describe('W4.203 · an idle or ended sub-agent says what it last reported', () =
       [spawn({ conversation: 'sess_ali' }), spawn({ conversation: 'sess_amara' })],
       'every-conversation-this-one-spawned',
     )
-    const cast = useWhoCalledWhom()
-    cast.railSays.value = new Map([
+    heldWorkspace.railSays.value = new Map([
       ['sess_ali', { facets: { doing: 'working' }, word: 'working' }],
       ['sess_amara', { facets: { doing: 'idle' }, word: 'idle' }],
     ])

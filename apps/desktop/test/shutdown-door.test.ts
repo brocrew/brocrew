@@ -724,22 +724,27 @@ describe('the closing announcement has more than one reader (273 §2)', () => {
     // `console.error`s every rejected `ipcMain.handle` with a stack, so a refused refresh still
     // prints. These are the two surfaces `RuntimeScreen`'s open-list watcher drives, and they are
     // the two commands `272` caught.
-    for (const component of ['components/SideRail.vue', 'components/ResumableSessions.vue']) {
-      const source = read(component)
-      expect(source, `${component} does not read the closing flag`).toContain(
-        "from '../lib/app-closing'",
-      )
-      expect(source, `${component} does not return early`).toMatch(
-        /if \(appClosing\.value\) return/,
-      )
-      // ⛔ **BEFORE the ask, not after it**, which is the whole of the guard. Checked as an ordering
-      // over the source rather than as a pattern, because a guard written under the `await` matches
-      // every regex above and stops nothing at all.
-      expect(source.indexOf('if (appClosing.value) return')).toBeLessThan(
-        source.indexOf('window.api.runtime.listResumable()'),
-      )
-      expect(source.indexOf('window.api.runtime.listResumable()')).toBeGreaterThan(-1)
-    }
+    // The rail's list is read by the workspace, which is handed the flag and returns before it asks.
+    const rail = read('components/SideRail.vue')
+    expect(rail).toContain("from '../lib/app-closing'")
+    expect(rail).toContain('projection.readList(providerBlocks.value, appClosing.value)')
+    const workspace = read('composables/useWorkspace.ts')
+    expect(workspace.indexOf('if (closing) return')).toBeGreaterThan(-1)
+    expect(workspace.indexOf('if (closing) return')).toBeLessThan(
+      workspace.indexOf('bridge.listResumable()'),
+    )
+    const library = read('components/ResumableSessions.vue')
+    expect(library, 'the library does not read the closing flag').toContain(
+      "from '../lib/app-closing'",
+    )
+    expect(library, 'the library does not return early').toMatch(/if \(appClosing\.value\) return/)
+    // ⛔ **BEFORE the ask, not after it**, which is the whole of the guard. Checked as an ordering
+    // over the source rather than as a pattern, because a guard written under the `await` matches
+    // every regex above and stops nothing at all.
+    expect(library.indexOf('if (appClosing.value) return')).toBeLessThan(
+      library.indexOf('window.api.runtime.listResumable()'),
+    )
+    expect(library.indexOf('window.api.runtime.listResumable()')).toBeGreaterThan(-1)
   })
 
   it('the flag is still a REF, so a template unwraps it rather than testing an object', () => {

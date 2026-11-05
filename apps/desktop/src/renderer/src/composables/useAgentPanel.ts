@@ -13,7 +13,7 @@ import { agentPanel, type AgentPanel } from '../lib/agent-panel'
 import type { TranscriptState } from '../lib/transcript'
 import type { CastReading } from '../lib/working-together'
 import { useMinuteClock } from './useMinuteClock'
-import { useWhoCalledWhom } from './useWhoCalledWhom'
+import { useWorkspace } from './useWorkspace'
 
 /**
  * 🔴 **The agent panel's facts and acts** — see {@link agentPanel} for the facts and their contract.
@@ -81,7 +81,7 @@ const REVEAL_SAYS: Readonly<Record<string, string>> = {
 }
 
 export function useAgentPanel(sources: AgentPanelSources): AgentPanelActs {
-  const cast = useWhoCalledWhom()
+  const workspace = useWorkspace()
   const minute = useMinuteClock()
   const fileFilter = ref('')
   const briefOpen = ref(false)
@@ -102,10 +102,10 @@ export function useAgentPanel(sources: AgentPanelSources): AgentPanelActs {
       named: sources.named(),
       cast: sources.cast(),
       identities: sources.identities(),
-      forest: cast.forest.value,
-      railSays: cast.railSays.value,
-      processMemory: cast.processMemory.value,
-      memoryUnmeasured: cast.memoryUnmeasured.value,
+      forest: workspace.forest(),
+      railSays: workspace.railSays(),
+      processMemory: workspace.memory(),
+      memoryUnmeasured: workspace.memoryUnmeasured(),
       files: sources.files(),
       fileFilter: fileFilter.value,
       fileTiles: FILE_TILES,

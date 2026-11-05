@@ -3,7 +3,6 @@ import { defineComponent, h, nextTick, reactive, ref } from 'vue'
 import { page } from 'vitest/browser'
 import AppTitleBar from '../../src/renderer/src/components/AppTitleBar.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { AgentState } from '../../src/shared/agent-state'
 import type {
   Provider,
@@ -14,16 +13,13 @@ import type {
 import { conv, forestOf } from './forest-fixture'
 import { assertDrawn, drawnReady, inkRects, lineCount } from './drawn'
 import { mount, unmountAll, type Mounted } from './harness'
+import { heldWorkspace, testWorkspace } from '../workspace-fixture'
 
 const original = { width: window.innerWidth, height: window.innerHeight }
 afterEach(async () => {
   unmountAll()
   delete (window as { api?: unknown }).api
-  const cast = useWhoCalledWhom()
-  cast.runningConversations.value = null
-  cast.forest.value = null
-  cast.processMemory.value = new Map()
-  cast.memoryUnmeasured.value = null
+  heldWorkspace.reset()
   await page.viewport(original.width, original.height)
 })
 
@@ -160,8 +156,8 @@ describe('working counts in the title bar', () => {
       [noRef, outside, restored],
     )
     expect(text(m)).toContain(expected)
-    expect(useWhoCalledWhom().runningConversations.value).toHaveLength(8)
-    expect(useWhoCalledWhom().forest.value).toBeNull()
+    expect(testWorkspace().running()).toHaveLength(8)
+    expect(testWorkspace().forest()).toBeNull()
   })
 
   it('says zero working for idle, person waits, agent waits, schedules and holds', async () => {
@@ -179,9 +175,11 @@ describe('working counts in the title bar', () => {
     ]
     const { m } = await windowWith(rows)
     expect(text(m)).toContain('6 agents · 0 working')
-    expect(useWhoCalledWhom().runningConversations.value?.map((one) => one.state.is)).toEqual(
-      rows.map((one) => one.state.is),
-    )
+    expect(
+      testWorkspace()
+        .running()
+        ?.map((one) => one.state.is),
+    ).toEqual(rows.map((one) => one.state.is))
   })
 
   it('a read with no running conversations gives real zeros', async () => {
@@ -281,7 +279,7 @@ describe('working counts in the title bar', () => {
     const first = await windowWith()
     expect(text(first.m)).toContain(expected)
     unmountAll()
-    expect(useWhoCalledWhom().runningConversations.value).toBeNull()
+    expect(testWorkspace().running()).toBeNull()
     const next = await windowWith([row('new', 'codex', { is: 'active' })])
     expect(text(next.m)).toContain('1 agents · 1 working')
   })
@@ -314,13 +312,14 @@ describe('working counts in the title bar', () => {
 
   it('puts each provider’s working subset in the popup and keeps memory detail', async () => {
     const rows = mixed()
-    const cast = useWhoCalledWhom()
-    cast.forest.value = forestOf(
-      rows.map((one) =>
-        conv(one.sessionId, null, { running: one.running, provider: one.provider }),
+    heldWorkspace.forest(
+      forestOf(
+        rows.map((one) =>
+          conv(one.sessionId, null, { running: one.running, provider: one.provider }),
+        ),
       ),
     )
-    cast.processMemory.value = new Map(rows.map((one) => [one.sessionId, 100 * 1024 * 1024]))
+    heldWorkspace.memory(new Map(rows.map((one) => [one.sessionId, 100 * 1024 * 1024])))
     const { m } = await windowWith(rows)
     m.q('app-usage').click()
     await nextTick()
@@ -383,13 +382,14 @@ describe('working counts in the title bar', () => {
             ? { is: 'idle' as const }
             : one.state,
       }))
-      const cast = useWhoCalledWhom()
-      cast.forest.value = forestOf(
-        rows.map((one) =>
-          conv(one.sessionId, null, { running: one.running, provider: one.provider }),
+      heldWorkspace.forest(
+        forestOf(
+          rows.map((one) =>
+            conv(one.sessionId, null, { running: one.running, provider: one.provider }),
+          ),
         ),
       )
-      cast.processMemory.value = new Map(rows.map((one) => [one.sessionId, 100 * 1024 * 1024]))
+      heldWorkspace.memory(new Map(rows.map((one) => [one.sessionId, 100 * 1024 * 1024])))
       const now = Date.now()
       const { m } = await windowWith(rows, [], () => Promise.resolve(rows), {
         claude: [

@@ -3,11 +3,11 @@ import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import TeamForest from '../../src/renderer/src/components/TeamForest.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { ForestRow } from '../../src/renderer/src/lib/the-forest'
 import type { AgentIdentity, KeptFile } from '../../src/shared/runtime-ipc'
 import { conv, forestDrawn, task, viewOf } from './forest-fixture'
 import { META, mount, paneProps, unmountAll, visible, type Mounted } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * # 🔴 UI-005 · a card on the Graph can be pressed — and a press never pans
@@ -28,9 +28,8 @@ import { META, mount, paneProps, unmountAll, visible, type Mounted } from './har
 
 afterEach(async () => {
   unmountAll()
-  const cast = useWhoCalledWhom()
-  cast.treeFiles.value = null
-  cast.goTo.value = null
+  heldWorkspace.files(null)
+  heldWorkspace.door.value = null
   await page.viewport(1200, 808)
 })
 
@@ -100,13 +99,12 @@ async function doubleAt(el: Element): Promise<void> {
 }
 
 async function graph(opened: string[] = [], band: string[] = []): Promise<Mounted> {
-  const cast = useWhoCalledWhom()
-  cast.goTo.value = (conversation) => opened.push(conversation)
-  cast.treeFiles.value = {
+  heldWorkspace.door.value = (conversation) => opened.push(conversation)
+  heldWorkspace.files({
     conversation: ID,
     files: [kept('work_5', 'W1.5')],
     answered: true,
-  }
+  })
   await page.viewport(1200, 808)
   const m = mount(
     ConversationPane,

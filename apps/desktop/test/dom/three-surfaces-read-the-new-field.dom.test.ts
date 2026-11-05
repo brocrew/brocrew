@@ -8,6 +8,7 @@ import { STANDING_LABEL } from '../../src/renderer/src/lib/agent-state'
 import type { CreatedSession } from '../../src/shared/runtime-ipc'
 import type { ConversationWait, WhatEachConversationIsWaitingOn } from '../../src/shared/tasks'
 import { mount, unmountAll, visible, type Mounted } from './harness'
+import { testWorkspace } from '../workspace-fixture'
 
 /**
  * 🔴 **636 · the word a person actually reads on the two surfaces `HO-095` §5.1 names** — the rail
@@ -94,11 +95,9 @@ async function rail(
       listUnresumable: () => Promise.resolve([]),
     },
   }
-  const m = mount(
-    SideRail,
-    { open, activeId: null, place: null, waiting },
-    { width: 251.68, height: 900 },
-  )
+  testWorkspace().reset()
+  if (waiting !== null) testWorkspace().waitsRead(waiting)
+  const m = mount(SideRail, { open, activeId: null, place: null }, { width: 251.68, height: 900 })
   await new Promise((resolve) => setTimeout(resolve, 0))
   await nextTick()
   return m

@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import TeamForest from '../../src/renderer/src/components/TeamForest.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { DRAWER_W_MIN, DRAWER_W_MAX } from '../../src/renderer/src/lib/drawer'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/questions'
@@ -11,6 +10,7 @@ import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-ca
 import { assertDrawn, cutsOf, drawnReady } from './drawn'
 import { conv, forestDrawn, task, viewOf } from './forest-fixture'
 import { META, drawerProps, mount, unmountAll, visible } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * # ⚑ The agent card draws its current task
@@ -26,9 +26,8 @@ import { META, drawerProps, mount, unmountAll, visible } from './harness'
 
 afterEach(() => {
   unmountAll()
-  const cast = useWhoCalledWhom()
-  cast.reading.value = null
-  cast.goTo.value = null
+  heldWorkspace.cast(null)
+  heldWorkspace.door.value = null
 })
 
 const NOW = Date.now()
@@ -98,8 +97,7 @@ const briefed = (brief: string) => {
 }
 
 function show(read: WhoCalledWhom, state = createTranscript(), width = DRAWER_W_MIN) {
-  const cast = useWhoCalledWhom()
-  cast.reading.value = { conversation: META.sessionId, read, answered: true, atWork: null }
+  heldWorkspace.cast({ conversation: META.sessionId, read, answered: true, atWork: null })
   return mount(SessionDrawer as never, drawerProps({ state, shown: state }), {
     width,
     height: 900,

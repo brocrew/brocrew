@@ -3,7 +3,6 @@ import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { fullTime } from '../../src/renderer/src/lib/clock'
 import { FILES_DID_NOT_ANSWER } from '../../src/renderer/src/lib/files-kept'
@@ -11,6 +10,7 @@ import { clockTime } from '../../src/shared/clock'
 import type { KeptFile, ResourceReading } from '../../src/shared/runtime-ipc'
 import { assertClippedButTold, assertDrawn, drawnReady } from './drawn'
 import { META, drawerProps, mount, paneProps, unmountAll, visible, type Mounted } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * # ⚑ The agent card lists the files its agent added
@@ -32,10 +32,9 @@ import { META, drawerProps, mount, paneProps, unmountAll, visible, type Mounted 
 
 afterEach(() => {
   unmountAll()
-  const cast = useWhoCalledWhom()
-  cast.reading.value = null
-  cast.cardFiles.value = null
-  cast.treeFiles.value = null
+  heldWorkspace.cast(null)
+  heldWorkspace.cardFiles(null)
+  heldWorkspace.files(null)
 })
 
 const T0 = new Date(2026, 8, 30, 19, 30).getTime()
@@ -97,8 +96,9 @@ function show(
   answered = true,
 ): { m: Mounted; opened: string[] } {
   const opened: string[] = []
-  useWhoCalledWhom().cardFiles.value =
-    files === null ? null : { conversation: forConversation, files, answered }
+  heldWorkspace.cardFiles(
+    files === null ? null : { conversation: forConversation, files, answered },
+  )
   const m = mount(
     SessionDrawer as never,
     drawerProps({
@@ -244,11 +244,11 @@ describe('the agent card lists the files its agent added', () => {
       text: '# Open findings',
       bytes: 15,
     })
-    useWhoCalledWhom().cardFiles.value = {
+    heldWorkspace.cardFiles({
       conversation: META.sessionId,
       files: FILES,
       answered: true,
-    }
+    })
     await page.viewport(1200, 808)
     const m = mount(
       ConversationPane,

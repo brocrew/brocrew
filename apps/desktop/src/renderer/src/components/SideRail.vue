@@ -1,24 +1,9 @@
 <script setup lang="ts">
 import { chordKeys, chordSaid, platformHere } from '../lib/this-computer'
 import crewMark from '../assets/brocrew-mark.svg'
-import {
-  computed,
-  onBeforeUnmount,
-  onMounted,
-  nextTick,
-  ref,
-  shallowRef,
-  useId,
-  watch,
-  watchEffect,
-  type Ref,
-} from 'vue'
-import type {
-  ResumableSessionInfo,
-  RuntimeStatesMessage,
-  UnresumableSessionInfo,
-} from '../../../shared/runtime-ipc'
-import { agentStateWords, type AgentState as OneState } from '../../../shared/agent-state'
+import { computed, onBeforeUnmount, onMounted, nextTick, ref, useId, watch, type Ref } from 'vue'
+import type { RuntimeStatesMessage } from '../../../shared/runtime-ipc'
+import { agentStateWords } from '../../../shared/agent-state'
 import {
   facetsOfState,
   NEEDS_YOU,
@@ -31,7 +16,6 @@ import {
 } from '../lib/agent-state'
 import { appClosing } from '../lib/app-closing'
 import {
-  conversationList,
   conversationTitle,
   groupWorkers,
   workerLabel,
@@ -46,30 +30,20 @@ import { OPEN_IN_ANOTHER_WINDOW } from '../lib/taking-over'
 import type { PaletteAgent, PaletteNavigation, PaletteOpenRow } from '../lib/command-palette'
 import type { AgentIdentities } from '../../../shared/runtime-ipc'
 import { liveSignalView } from '../lib/live-signal'
-// 🔴 **636 · the one wait each row is in, out of the reading that covers every conversation** —
-// see {@link SideRail.waiting}, and {@link theWaitIn} for the three absences it narrows.
-import {
-  theWaitIn,
-  whoItOwesIn,
-  theWorkIn,
-  whatTheWaitsCouldNotRead,
-  whoseAnswerIn,
-  whoseWorkIn,
-  stoppedWorkIn,
-} from '../lib/conversation-waits'
+import { whoItOwesIn, whatTheWaitsCouldNotRead } from '../lib/conversation-waits'
 import { ROWS_UNREAD_LEAD } from '../lib/rows-unread'
-import type { WhatEachConversationIsWaitingOn } from '../../../shared/tasks'
 import type { ProviderLimitsView } from '../lib/persons-queue'
 import { providerLimitDisplay } from '../lib/provider-limit-status'
 import { createProviderBlockStore, type ProviderBlockStore } from '../lib/provider-limit-facts'
 import { useMinuteClock } from '../composables/useMinuteClock'
-import { useWhoCalledWhom, type RailSays } from '../composables/useWhoCalledWhom'
+import type { RailSays } from '../lib/agent-state'
+import { useWorkspace } from '../composables/useWorkspace'
+import { sameValue } from '../lib/workspace-projection'
 import type { WorkspaceReading } from '../../../shared/workspace-reading'
-import type { WorkEdge } from '../../../shared/who-called-whom'
 import type { AppInfo } from '@brobot2/shared'
 import { profileItRunsAs, whereItWorks } from '../lib/session-record'
 import { agentName } from '../../../shared/runtime-ipc'
-import { readableError, type SessionRecord } from '../lib/session-record'
+import type { SessionRecord } from '../lib/session-record'
 import { useSpawnSafety } from '../lib/spawn-safety'
 import {
   RAIL_SECTION_REMEMBERED,
@@ -185,34 +159,6 @@ const props = withDefaults(
      * nothing while both providers had walled.
      */
     limits?: ProviderLimitsView | null
-    /**
-     * 🔴 **What every conversation this app is RUNNING is waiting on** (636, `621` §5.1 ·
-     * `HO-095` §5.1 · `HO-096` §4) — `store.whatEachConversationIsWaitingOn()`, the door `621`
-     * built and left with no reader.
-     *
-     * ## ⛔ Why the rail cannot derive it and a poll has to hand it over
-     *
-     * ⚠️ **`recordFacets` reads five facets off `record.control`, which is THIS window's fold of
-     * each conversation's own ledger.** ⛔ A child's `work_replied` is written into the CHILD's
-     * ledger, so — `RuntimeScreen`'s own note — *"the conversation that gave the work is told
-     * nothing at all when the work moves."* ⚑ **No window can derive this from its own stream**,
-     * which is `621` §4's measurement and the reason this is a reading rather than a fold.
-     *
-     * ## ⚑ Passed IN, exactly like {@link SideRail.workspace} and {@link SideRail.limits}
-     *
-     * ⛔ **`617`'s shape, copied rather than re-invented** (the brief's own instruction): the
-     * cadence lives in `RuntimeScreen` beside the queue's and the live signal's, and reaching for
-     * a store here would make the rail unmountable without one — which is the constraint
-     * `the-counts-nobody-can-see.dom.test.ts` measures this column at 208px under.
-     *
-     * ## ⚠️ `null` is *nobody has looked*, and it is NOT *nothing is waiting*
-     *
-     * ⛔ **Three absences reach a row and {@link theWaitIn} is the only place they are collapsed**
-     * — see {@link WaitReading}. ⚑ A row whose wait was not read draws the word its five live
-     * facets were already producing; **the absence never becomes `idle`**, because `idle` is what
-     * the DOING says and the DOING is a fact this app holds.
-     */
-    waiting?: WhatEachConversationIsWaitingOn | null
     /** Collapsed to its icons, and each conversation to its avatar and work label. */
     collapsed?: boolean
   }>(),
@@ -225,7 +171,6 @@ const props = withDefaults(
     workspaceFolder: null,
     appVersion: null,
     limits: null,
-    waiting: null,
   },
 )
 
@@ -397,130 +342,40 @@ const liveSignal = computed(() => liveSignalView(props.workspace, props.limits, 
    with the conversations this window holds drawn from their own records beside it.
    --------------------------------------------------------------------------- */
 
-const hostResumable = ref<ResumableSessionInfo[]>([])
-const hostUnresumable = ref<UnresumableSessionInfo[]>([])
-/** Whether the list has ever looked. Until it has, it has no count to give — not a count of 0. */
-const looked = ref(false)
-const listError = ref<string | null>(null)
-
 /**
- * 🔴 **D-019 · what main said an agent is doing since the list was asked** — each conversation's
- * last state on `runtime:states` ({@link hearStates}), with the list read it arrived after. The
- * list's rows draw it over their own `state`, so every surface drawing the host's state — these
- * rows, the cards under the strip, the palette, the Team shelf and the plate of a view drawn from
- * its ledger — changes the moment the push lands, and nothing is asked.
- *
- * ⛔ **A pushed state gives way only to a list read ASKED AFTER IT ARRIVED.** Main derives a read's
- * answer when the read reaches it, so a push that arrived before the read was asked is older than
- * that answer and the read wins; one that arrived while the read was in flight may be newer than
- * the half of the answer it raced (`listResumable` and `listUnresumable` are two replies), so it
- * stands until a later read lands.
+ * ⚑ **D-017b · the ONE list**, the window's workspace projection: the host's two reads, folded by
+ * `conversation-list.ts`, with what main said of each conversation since the list was asked. This
+ * rail reads it and starts its first read; what each row draws is derived below.
  */
-const said = shallowRef<ReadonlyMap<string, { readonly state: OneState; readonly after: number }>>(
-  new Map(),
-)
+const projection = useWorkspace()
 const localProviderBlocks = createProviderBlockStore()
 const providerBlocks = computed(() => props.providerBlocks ?? localProviderBlocks)
-/**
- * ⚑ How many list reads this rail has begun — the number {@link said} dates each push by. ⚠️ A
- * read the quit stops is counted too, which moves nothing: main pushes nothing once a quit begins.
- */
-let readsAsked = 0
+/** Whether the list has ever looked. Until it has, it has no count to give — not a count of 0. */
+const looked = computed(() => projection.listed() !== null)
+const listError = computed(() => projection.listError())
+/** Every conversation the host lists, newest first — see {@link conversationList}. */
+const listed = computed(() => projection.listed() ?? [])
 
 /**
- * ⚑ **D-019 · main said what some agents are doing now** — the screen hands every message on
- * `runtime:states` here. ⚠️ A conversation the list does not name yet is kept too, because the read
- * already in flight may name it; a read asked after it names it in its own answer.
- *
  * ⚑ **D-026 · a message that moved no state leaves the list as it was** — files kept, alone: the
- * rail draws no files, and a copy of what it heard would redraw every row for nothing.
+ * rail draws no files.
  */
 function hearStates(message: RuntimeStatesMessage): void {
   if (message.moved.length === 0) return
-  const next = new Map(said.value)
-  for (const moved of message.moved) {
-    next.set(moved.conversation, { state: moved.state, after: readsAsked })
-  }
-  said.value = next
+  projection.hearStates(message)
   if (!props.providerBlocks) localProviderBlocks.acceptMany(message.moved)
 }
 
-/** Every conversation the host lists, newest first — see {@link conversationList}. */
-const listed = computed(() =>
-  conversationList({
-    resumable: hostResumable.value,
-    unresumable: hostUnresumable.value,
-    // ⚑ **449 · the same roster `TeamWorkspace` draws from**, so one identity is named once in this
-    // window. ⛔ `null` before the read lands is a real state and the fold says less rather than
-    // something else.
-    identities: props.agents?.identities ?? null,
-    // 🔴 **D-019 · and what main said of each since** — see {@link said}.
-    said: new Map([...said.value].map(([conversation, heard]) => [conversation, heard.state])),
-    providerSaid: providerBlocks.value.snapshot(),
-  }),
-)
+const refreshListed = (): Promise<void> =>
+  projection.readList(providerBlocks.value, appClosing.value)
 
-const cast = useWhoCalledWhom()
-// Index the forest once per reading, rather than walking it for every row on every render.
-const workByHolder = computed(() => {
-  const holders = new Map<string, WorkEdge[]>()
-  for (const node of cast.forest.value?.nodes.rows ?? []) {
-    if (node.node !== 'a-task') continue
-    const pieces = holders.get(node.work.to)
-    if (pieces) pieces.push(node.work)
-    else holders.set(node.work.to, [node.work])
-  }
-  return holders
+const unwire = projection.wire({
+  identities: () => props.agents?.identities ?? null,
+  providerSaid: () => providerBlocks.value.snapshot(),
+  railSays: () => says.value,
 })
-watchEffect(() => {
-  cast.listedConversations.value = looked.value ? listed.value : null
-  if (!looked.value) {
-    cast.runningConversations.value = null
-    return
-  }
-  const live = new Map(
-    [...hostResumable.value, ...hostUnresumable.value]
-      .filter((row) => row.running !== 'not-running')
-      .map((row) => [row.sessionId, row.provider]),
-  )
-  cast.runningConversations.value = listed.value.flatMap(({ sessionId, state }) => {
-    const provider = live.get(sessionId)
-    return provider === undefined ? [] : [{ sessionId, provider, state }]
-  })
-})
-onBeforeUnmount(() => {
-  cast.listedConversations.value = null
-  cast.runningConversations.value = null
-})
-
-async function refreshListed(): Promise<void> {
-  // ⚑ **D-019 · numbered before either half is asked** — see {@link said}.
-  readsAsked += 1
-  const asked = readsAsked
-  const providerReadAt = providerBlocks.value.beginRead()
-  // 🔴 **Not while the app is closing** (273 §2, from `272` finding 1). The quit ends every
-  // conversation and each ending announces; `272` measured these re-reads landing on a database the
-  // quit had already shut. ⚑ Main refuses them too; this is the half that means an ordinary quit
-  // prints nothing at all. ⚠️ **Leaves the list exactly as it was**: there is nobody to report to.
-  if (appClosing.value) return
-  listError.value = null
-  try {
-    const [resumable, unresumable] = await Promise.all([
-      window.api.runtime.listResumable(),
-      window.api.runtime.listUnresumable(),
-    ])
-    if (asked !== readsAsked) return
-    providerBlocks.value.acceptListed([...resumable, ...unresumable], providerReadAt)
-    hostResumable.value = resumable
-    hostUnresumable.value = unresumable
-    // ⛔ **D-019 · every push that arrived before this read was asked gives way to its answer.**
-    said.value = new Map([...said.value].filter(([, heard]) => heard.after >= asked))
-    looked.value = true
-  } catch (cause) {
-    if (asked !== readsAsked) return
-    listError.value = readableError(cause)
-  }
-}
+// The projection belongs to the screen: a rail that goes takes back only the inputs it lent.
+onBeforeUnmount(unwire)
 
 onMounted(refreshListed)
 
@@ -612,33 +467,26 @@ interface RailRow extends PaletteOpenRow {
  * (a launch whose row is being written) goes first.
  */
 const rows = computed<RailRow[]>(() => {
-  const byHost = new Map(listed.value.map((row) => [row.sessionId, row]))
   const shown = props.onScreen
   const drawn = new Map<string, { row: RailRow; at: number }>()
   // ⚑ **Fed here** — the fold is the present.
   for (const record of props.open) {
-    const host = byHost.get(record.sessionId)
+    const host = projection.conversation(record.sessionId)
     const worker = host?.worker
     // 🔴 **636 · the sixth facet, and it is the one this record cannot hold** — see
     // {@link SideRail.waiting}. 🔴 **D-006 · and where the work it holds stands**, off the same
     // reading. ⚑ **D-017 · R19 — the wait carries who owes it the next move, as the host read it.**
+    const wait = projection.waitOf(record.sessionId)
     const facets = recordFacets(
       record,
-      theWaitIn(props.waiting, record.sessionId),
-      theWorkIn(props.waiting, record.sessionId),
+      wait.wait,
+      wait.work,
       // ⚑ **F036 · who waits on its answer** — the host's own state of it, pushed to its listed row.
       whoItOwesIn(host?.state),
     )
     const limit = providerLimitDisplay(
       providerBlocks.value.get(record.sessionId) ?? record.meta,
-      stateHere(
-        record,
-        facets,
-        whoseAnswerIn(props.waiting, record.sessionId),
-        whoseWorkIn(props.waiting, record.sessionId),
-        {},
-        stoppedWorkIn(props.waiting, record.sessionId),
-      ),
+      stateHere(record, facets, wait.answerFrom, wait.workWith, {}, wait.stoppedWork),
       railMinute.value,
     )
     const standing = standingOf(facets)
@@ -661,14 +509,7 @@ const rows = computed<RailRow[]>(() => {
           purpose?.word ??
           standingWord(
             facets,
-            stateHere(
-              record,
-              facets,
-              whoseAnswerIn(props.waiting, record.sessionId),
-              whoseWorkIn(props.waiting, record.sessionId),
-              {},
-              stoppedWorkIn(props.waiting, record.sessionId),
-            ),
+            stateHere(record, facets, wait.answerFrom, wait.workWith, {}, wait.stoppedWork),
           ),
         label: workerLabel(who(record), worker, host?.named),
         // 🔴 **D-016 · commit 7 · R2 — the work that names it is the host's**, off the row already
@@ -727,7 +568,7 @@ const rows = computed<RailRow[]>(() => {
  */
 const waitsShort = computed(() =>
   whatTheWaitsCouldNotRead(
-    props.waiting ?? null,
+    projection.waits(),
     props.open.map((record) => record.sessionId),
   ),
 )
@@ -897,6 +738,38 @@ function fromPalette(action: PaletteNavigation): void {
   emit('newConversation')
 }
 
+/**
+ * Each row's plate and word, by conversation, with the model and effort the host's row names. An
+ * entry that says what it said before is the same object, and so is the whole map when no entry
+ * moved, so a card drawn from it is not drawn again for another row's change.
+ */
+let saidBefore: ReadonlyMap<string, RailSays> = new Map()
+const says = computed((): ReadonlyMap<string, RailSays> => {
+  const host = new Map(projection.hostRows().map((one) => [one.sessionId, one]))
+  let moved = rows.value.length !== saidBefore.size
+  const next = new Map(
+    rows.value.map((row) => {
+      const one = host.get(row.sessionId)
+      const model = one?.reported?.model ?? one?.model ?? null
+      const effort = one?.reported?.effort ?? one?.reasoningEffort ?? null
+      const fresh: RailSays = {
+        facets: row.facets,
+        word: row.word,
+        ...(row.detail ? { detail: row.detail } : {}),
+        ...(model === null ? {} : { model }),
+        ...(effort === null ? {} : { effort }),
+      }
+      const old = saidBefore.get(row.sessionId)
+      if (old !== undefined && sameValue(old, fresh)) return [row.sessionId, old]
+      moved = true
+      return [row.sessionId, fresh]
+    }),
+  )
+  if (!moved) return saidBefore
+  saidBefore = next
+  return next
+})
+
 defineExpose({
   /**
    * 🔴 **Ask the list again** (151) — and since `534` the screen calls this because the HOST said
@@ -922,38 +795,18 @@ defineExpose({
    * the conversation with, as its row here does.
    */
   listedOf: (sessionId: string): ListedConversation | null =>
-    listed.value.find((row) => row.sessionId === sessionId) ?? null,
+    projection.conversation(sessionId) ?? null,
   /**
    * ⚑ **D-016 · every conversation the host lists, or `null` before the list has answered** — the
    * Team page draws each agent's conversations from it, so an agent's shelf and this rail are one
    * list. ⛔ `null` is *not read yet*, never *none*.
    */
-  theOneList: computed(() => (looked.value ? listed.value : null)),
+  theOneList: computed(() => projection.listed()),
   /**
    * ⚑ **UI-001 · each row's plate and word, by conversation** — what the right panel draws for an
    * agent under the strip, so a card and its row here cannot say two things.
    */
-  says: computed((): ReadonlyMap<string, RailSays> => {
-    // ⚑ W4.162 · and the model and effort the host's row names, for the agent panel's cards.
-    const host = new Map(hostResumable.value.map((one) => [one.sessionId, one]))
-    return new Map(
-      rows.value.map((row) => {
-        const one = host.get(row.sessionId)
-        const model = one?.reported?.model ?? one?.model ?? null
-        const effort = one?.reported?.effort ?? one?.reasoningEffort ?? null
-        return [
-          row.sessionId,
-          {
-            facets: row.facets,
-            word: row.word,
-            ...(row.detail ? { detail: row.detail } : {}),
-            ...(model === null ? {} : { model }),
-            ...(effort === null ? {} : { effort }),
-          },
-        ]
-      }),
-    )
-  }),
+  says,
 })
 
 const platform = platformHere()
@@ -1359,7 +1212,7 @@ const platform = platformHere()
                       v-for="piece in workerSubtitles(
                         row.sessionId,
                         row.named,
-                        workByHolder.get(row.sessionId) ?? [],
+                        projection.piecesHeldBy(row.sessionId),
                       )"
                       :key="piece.key"
                       class="rail-worker-piece"

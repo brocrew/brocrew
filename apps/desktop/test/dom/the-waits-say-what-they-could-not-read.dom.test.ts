@@ -11,6 +11,7 @@ import type { WhatEachConversationIsWaitingOn } from '../../src/shared/tasks'
 import type { ForestNode, TheWholeForest } from '../../src/shared/the-whole-forest'
 import { assertDrawn, drawnReady } from './drawn'
 import { mount, unmountAll, type Mounted } from './harness'
+import { testWorkspace } from '../workspace-fixture'
 
 /**
  * # 🔴 685 · §2.3 — the waits reading's unread rows, on the rail and on the Team page (`676` F-R18a)
@@ -65,14 +66,11 @@ async function rail(
       listUnresumable: () => Promise.resolve([]),
     },
   }
+  testWorkspace().reset()
+  if (waiting !== null) testWorkspace().waitsRead(waiting)
   const m = mount(
     SideRail,
-    {
-      open: [conversation('sess_a'), conversation('sess_b')],
-      activeId: null,
-      place: null,
-      waiting,
-    },
+    { open: [conversation('sess_a'), conversation('sess_b')], activeId: null, place: null },
     { width, height: 900 },
   )
   await new Promise((resolve) => setTimeout(resolve, 0))

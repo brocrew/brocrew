@@ -12,7 +12,6 @@ import {
 import AgentInstructionsSheet from '../../src/renderer/src/components/AgentInstructionsSheet.vue'
 import AgentBookButton from '../../src/renderer/src/components/AgentBookButton.vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { DRAWER_TABS, type DrawerTab } from '../../src/renderer/src/lib/drawer'
 import {
   applyEvent,
@@ -23,6 +22,7 @@ import type { CreatedSession } from '../../src/shared/runtime-ipc'
 import type { WhoCalledWhom } from '../../src/shared/who-called-whom'
 import { CAPABILITY_FIXTURE } from '../provider-capability-fixture'
 import { META, drawerProps, mount, toldProps, unmountAll } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * **The tab-flow table, checked against the app it describes** (097, from 083 §5.6).
@@ -44,9 +44,8 @@ import { META, drawerProps, mount, toldProps, unmountAll } from './harness'
 
 afterEach(() => {
   unmountAll()
-  const cast = useWhoCalledWhom()
-  cast.reading.value = null
-  cast.goTo.value = null
+  heldWorkspace.cast(null)
+  heldWorkspace.door.value = null
 })
 
 /**
@@ -218,13 +217,12 @@ function keptHere(): TranscriptState {
 const Harness = defineComponent({
   setup() {
     const tab = ref<DrawerTab>('open')
-    const cast = useWhoCalledWhom()
     // ⚑ **632 · no reading of what each conversation is doing** — this file is about the TABS, and
     // a band with none draws the faceless plate it drew before `632`.
-    cast.reading.value = { conversation: META.sessionId, read: CAST, answered: true, atWork: null }
+    heldWorkspace.cast({ conversation: META.sessionId, read: CAST, answered: true, atWork: null })
     // ⚑ **A press is supplied**, because `cast-press` is a hook the drawer really mounts and a band
     // with no screen above it draws none (`118`).
-    cast.goTo.value = () => {}
+    heldWorkspace.door.value = () => {}
     return () =>
       h(SessionDrawer as never, {
         ...drawerProps({

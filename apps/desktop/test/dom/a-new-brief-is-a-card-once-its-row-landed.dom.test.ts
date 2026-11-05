@@ -1,11 +1,11 @@
 import { expandAgentCards } from './harness'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { BODY_WAS_CUT, NEW_BRIEF_MARK } from '../../src/renderer/src/lib/outgoing-card'
 import type { TranscriptEvent, WorkSentEvent } from '../../src/shared/runtime-ipc'
 import { drawnReady } from './drawn'
 import { mount, paneProps, record, unmountAll, visible } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * # 🔴 D-047 · a new brief given with `update_work`, drawn as a card — once its row landed
@@ -21,12 +21,12 @@ import { mount, paneProps, record, unmountAll, visible } from './harness'
  */
 
 beforeEach(() => {
-  useWhoCalledWhom().reading.value = null
+  heldWorkspace.cast(null)
 })
 
 afterEach(() => {
   unmountAll()
-  useWhoCalledWhom().reading.value = null
+  heldWorkspace.cast(null)
 })
 
 const inventory: TranscriptEvent = {

@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import WorkingTogether from '../../src/renderer/src/components/WorkingTogether.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { AgentPanelSubAgent } from '../../src/renderer/src/lib/agent-panel'
 import { DRAWER_W_MAX } from '../../src/renderer/src/lib/drawer'
 import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/questions'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import { META, mount, unmountAll } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * # Two sub-agent chips in one row are one height
@@ -29,11 +29,10 @@ import { META, mount, unmountAll } from './harness'
 afterEach(() => {
   unmountAll()
   // The channel is a window-level singleton: a row left behind would be the next test's premise.
-  const cast = useWhoCalledWhom()
-  cast.reading.value = null
-  cast.goTo.value = null
-  cast.railSays.value = null
-  cast.forest.value = null
+  heldWorkspace.cast(null)
+  heldWorkspace.door.value = null
+  heldWorkspace.railSays.value = null
+  heldWorkspace.reset()
 })
 
 const NOW = Date.now()
@@ -82,7 +81,7 @@ const ANAS: AgentPanelSubAgent = {
 
 async function band(): Promise<HTMLElement> {
   // No rail above the band, so neither chip says a state word: the two differ by telemetry alone.
-  useWhoCalledWhom().railSays.value = null
+  heldWorkspace.railSays.value = null
   const m = mount(
     WorkingTogether,
     {

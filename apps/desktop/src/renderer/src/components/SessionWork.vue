@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { WORK_SEARCH_WORDS } from '../../../shared/work-search-words'
-import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
+import { useConversationDoor } from '../composables/useConversationDoor'
 import WorkSearchDialog from './WorkSearchDialog.vue'
 import { workSearchQuery, type WorkSearchQuery } from '../../../shared/work-search'
 import type { AgentIdentity } from '../../../shared/runtime-ipc'
@@ -73,7 +73,7 @@ const props = defineProps<{
  */
 const minute = useMinuteClock()
 const searchOpen = ref(false)
-const cast = useWhoCalledWhom()
+const conversationDoor = useConversationDoor()
 watch(
   () => props.conversation,
   () => {
@@ -110,13 +110,13 @@ const view = computed(() =>
     <WorkSearchDialog
       v-if="searchOpen"
       :conversation="props.conversation"
-      :can-open="cast.goTo.value !== null"
+      :can-open="conversationDoor !== null"
       :search="searchWork"
       @close="searchOpen = false"
       @open-work="
         (hit) => {
           searchOpen = false
-          cast.goTo.value?.(hit.owner.conversation)
+          conversationDoor?.(hit.owner.conversation)
         }
       "
     />

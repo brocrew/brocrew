@@ -5,7 +5,6 @@ import { defineComponent, h, nextTick, ref } from 'vue'
 import CanonicalDocumentViewer from '../../src/renderer/src/components/CanonicalDocumentViewer.vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { useStickToBottom } from '../../src/renderer/src/composables/useStickToBottom'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import {
   BODY_WAS_CUT,
   outgoingCard,
@@ -32,6 +31,7 @@ import type {
 import type { WorkEdge } from '../../src/shared/who-called-whom'
 import { drawnReady } from './drawn'
 import { META, mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * # 🔴 UI-011 and its neighbours: a cut brief opens to its whole, and a card lists only its own files
@@ -144,7 +144,7 @@ const edge = (label: string, givenAt: number): WorkEdge => ({
 function castWith(gave: WorkEdge[], took: WorkEdge[], conversation: string = META.sessionId): void {
   const walk = <Row>(rows: Row[], kind: string) =>
     ({ rows, walk: kind, ledgers: rows.length, rowsUnread: 0 }) as never
-  useWhoCalledWhom().reading.value = {
+  heldWorkspace.cast({
     conversation,
     read: {
       conversation,
@@ -156,7 +156,7 @@ function castWith(gave: WorkEdge[], took: WorkEdge[], conversation: string = MET
     },
     answered: true,
     atWork: null,
-  }
+  })
 }
 
 const kept = (over: Partial<KeptFile> & Pick<KeptFile, 'resourceId' | 'label'>): KeptFile => ({
@@ -232,9 +232,8 @@ let scrollTopWas: PropertyDescriptor | null = null
 
 afterEach(async () => {
   unmountAll()
-  const cast = useWhoCalledWhom()
-  cast.treeFiles.value = null
-  cast.reading.value = null
+  heldWorkspace.files(null)
+  heldWorkspace.cast(null)
   if (scrollTopWas !== null) Object.defineProperty(Element.prototype, 'scrollTop', scrollTopWas)
   scrollTopWas = null
   await page.viewport(1200, 808)
@@ -334,7 +333,7 @@ describe('the cut note on a give card, drawn', () => {
     unmountAll()
 
     // ⛔ One fact over: a cast that was not read — the plain words and no press of either kind.
-    useWhoCalledWhom().reading.value = null
+    heldWorkspace.cast(null)
     const unread = await pane(gives(LONG_BRIEF), { held: [] })
     expect(read(unread.m.q('outgoing-cut'))).toBe(BODY_WAS_CUT)
     expect(unread.m.all('outgoing-read-whole')).toHaveLength(0)
@@ -589,8 +588,9 @@ async function paneOver(
   files: readonly KeptFile[] | null,
   events: TranscriptEvent[] = [],
 ): Promise<Mounted> {
-  useWhoCalledWhom().treeFiles.value =
-    files === null ? null : { conversation: META.sessionId, files, answered: true }
+  heldWorkspace.files(
+    files === null ? null : { conversation: META.sessionId, files, answered: true },
+  )
   await page.viewport(1200, 808)
   const m = mount(
     ConversationPane,

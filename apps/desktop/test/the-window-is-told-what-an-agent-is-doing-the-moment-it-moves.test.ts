@@ -159,14 +159,6 @@ function once(marker: string, file: string, source: string): number {
   return at
 }
 
-/** A top-level function, from its signature to (not including) the `}` that closes it. */
-function functionOf(signature: string, file: string, source: string): string {
-  const at = once(signature, file, source)
-  const end = source.indexOf('\n}', at)
-  expect(end, `${signature} has no closing brace at column zero`).toBeGreaterThan(at)
-  return source.slice(at, end)
-}
-
 /** From a marker that is in the source once, to (not including) the first `closing` after it. */
 function sliceOf(marker: string, closing: string, file: string, source: string): string {
   const at = once(marker, file, source)
@@ -640,96 +632,102 @@ describe('D-019 · the rail draws what main pushed over the row’s own state', 
 // ─── The race guard ────────────────────────────────────────────────────────────────────────────
 
 /**
- * ⚑ **The rail's list read, and the one guard that lets a push outlive it.** A push is stamped
- * `after: readsAsked`, a read numbers itself `asked = readsAsked` before either half is asked, and
- * when it lands it keeps every push with `after >= asked`: a push heard while THIS read was in
- * flight has `after === asked` and is newer than half of its answer.
+ * ⚑ **The list read, and the one guard that lets a push outlive it.** A push is stamped
+ * `after: readsAsked`; a read takes its ticket (`listAsked`) before either half is asked, and when
+ * it lands (`listAnswered`) it keeps every push with `after >= ticket`: a push heard while THIS
+ * read was in flight has `after === ticket` and is newer than half of its answer.
  *
- * Returns what is wrong with `fn` (the body of `refreshListed`) and `whole` (the rail's whole code),
- * so a broken guard is a list, not a boolean, and a plant says which clause it broke.
+ * `read` is the body of the workspace's `readList`, `answered` that of the projection's
+ * `listAnswered`, `whole` the projection's whole code. Returns what is wrong, so a broken guard is
+ * a list, not a boolean, and a plant says which clause it broke.
  */
-function raceGuardBroken(fn: string, whole: string): string[] {
+function raceGuardBroken(read: string, answered: string, whole: string): string[] {
   const broken: string[] = []
-  const numbers = fn.indexOf('readsAsked += 1')
-  const asked = fn.indexOf('const asked = readsAsked')
-  const listsResumable = fn.indexOf('window.api.runtime.listResumable()')
-  if (numbers < 0) broken.push('the read never numbers itself')
-  if (asked < 0) broken.push('the read never takes its own number')
+  const ticket = read.indexOf('const ticket = projection.listAsked()')
+  const listsResumable = read.indexOf('bridge.listResumable()')
+  if (ticket < 0) broken.push('the read never takes its ticket')
   if (listsResumable < 0) broken.push('the read never asks the host')
-  if (numbers >= 0 && asked >= 0 && numbers > asked)
-    broken.push('it takes its number before it counts')
-  if (asked >= 0 && listsResumable >= 0 && asked > listsResumable)
-    broken.push('it asks the host before it takes its number')
+  if (ticket >= 0 && listsResumable >= 0 && ticket > listsResumable)
+    broken.push('it asks the host before it takes its ticket')
+  const catchAt = read.indexOf('catch (cause)')
+  if (catchAt < 0) broken.push('the read has no catch')
+  // A failed read gives no answer for a push to yield to.
+  else if (/\b(said|listAnswered|statesMoved)\b/.test(read.slice(catchAt)))
+    broken.push('the catch arm touches what was said')
 
   const filter =
-    /said\.value = new Map\(\[\.\.\.said\.value\]\.filter\(\(\[, (\w+)\]\) => \1\.after >= asked\)\)/g
-  const statements = fn.match(filter) ?? []
+    /new Map\(\[\.\.\.said\.value\]\.filter\(\(\[, (\w+)\]\) => \1\.after >= ticket\)\)/g
+  const statements = answered.match(filter) ?? []
   if (statements.length !== 1) {
     broken.push(`the filter with the comparison \`>=\` is here ${String(statements.length)} times`)
   }
-  const at = fn.search(filter)
-  const tryAt = fn.indexOf('try {')
-  const catchAt = fn.indexOf('catch (cause)')
-  const unresumableAt = fn.indexOf('hostUnresumable.value = unresumable')
-  const lookedAt = fn.indexOf('looked.value = true')
-  if (tryAt < 0 || catchAt < 0) broken.push('the read has no try/catch to be inside of')
+  const at = answered.search(filter)
+  const stale = answered.indexOf('if (ticket !== readsAsked) return false')
+  const unresumableAt = answered.indexOf('unresumable.value = nextUnresumable')
+  const lookedAt = answered.indexOf('looked.value = true')
+  if (stale < 0) broken.push('a read asked before the newest is not dropped')
   if (at >= 0) {
-    if (!(tryAt >= 0 && tryAt < at && (catchAt < 0 || at < catchAt)))
-      broken.push('the filter is not inside the try')
+    if (!(stale >= 0 && stale < at)) broken.push('the filter runs for a read that was dropped')
     if (!(unresumableAt >= 0 && unresumableAt < at))
       broken.push('the filter does not follow the list it answers')
     if (!(lookedAt > at)) broken.push('the filter does not precede `looked`')
   }
-  // A failed read gives no answer for a push to yield to.
-  if (catchAt >= 0 && /\bsaid\b/.test(fn.slice(catchAt)))
-    broken.push('the catch arm touches what was said')
 
   const writes =
     whole.match(/\breadsAsked\s*(?:\+\+|--|[-+*/]?=(?!=))|(?:\+\+|--)\s*readsAsked\b/g) ?? []
-  if (writes.length !== 2) broken.push(`readsAsked is written ${String(writes.length)} times`)
+  // Declared, numbered by each read, and moved past by a reset so a read in flight is dropped.
+  if (writes.length !== 3) broken.push(`readsAsked is written ${String(writes.length)} times`)
   if (!/let readsAsked = 0/.test(whole)) broken.push('readsAsked is not declared at 0')
   return broken
 }
 
 describe('D-019 · a list read numbers itself before it is asked', () => {
-  const file = 'renderer/src/components/SideRail.vue'
+  const reader = 'renderer/src/composables/useWorkspace.ts'
+  const file = 'renderer/src/lib/workspace-projection.ts'
+  const readerCode = code(reader, readFileSync(join(SRC, reader), 'utf8'))
   const whole = code(file, readFileSync(join(SRC, file), 'utf8'))
-  const real = functionOf('async function refreshListed(): Promise<void> {', file, whole)
+  const read = sliceOf('async readList(providerBlocks, closing) {', '\n    },', reader, readerCode)
+  const answered = sliceOf(
+    'listAnswered(ticket, nextResumable, nextUnresumable) {',
+    '\n    },',
+    file,
+    whole,
+  )
 
   it('a read numbers itself before it is asked, and only a push heard after that number outlives its answer', () => {
-    // The control: the body was found, and it is the read that asks both halves of the host.
-    expect(real).toContain('window.api.runtime.listResumable()')
-    expect(real).toContain('window.api.runtime.listUnresumable()')
-    expect(raceGuardBroken(real, whole)).toEqual([])
+    // The control: the bodies were found, and the read asks both halves of the host.
+    expect(read).toContain('bridge.listResumable()')
+    expect(read).toContain('bridge.listUnresumable()')
+    expect(raceGuardBroken(read, answered, whole)).toEqual([])
 
     // A read that landed LATER than the push keeps a push heard while it was in flight, so the
     // comparison is `>=` and not `>`.
-    expect(real).toContain('.after >= asked')
-    expect(real).not.toContain('.after > asked')
+    expect(answered).toContain('.after >= ticket')
+    expect(answered).not.toContain('.after > ticket')
 
     // PLANTS (standing rule 12): each copy breaks one clause and the predicate reports it.
-    const strictly = real.replace('.after >= asked', '.after > asked')
-    expect(strictly).not.toBe(real)
-    expect(raceGuardBroken(strictly, whole)).not.toEqual([])
+    const strictly = answered.replace('.after >= ticket', '.after > ticket')
+    expect(strictly).not.toBe(answered)
+    expect(raceGuardBroken(read, strictly, whole)).not.toEqual([])
 
-    const late = real
-      .replace('readsAsked += 1\n', '')
+    const late = read
+      .replace('const ticket = projection.listAsked()\n', '')
       .replace(
-        'hostResumable.value = resumable',
-        'readsAsked += 1\n    hostResumable.value = resumable',
+        'if (projection.listAnswered(',
+        'const ticket = projection.listAsked()\n        if (projection.listAnswered(',
       )
-    expect(late).not.toBe(real)
-    expect(raceGuardBroken(late, whole)).not.toEqual([])
+    expect(late).not.toBe(read)
+    expect(raceGuardBroken(late, answered, whole)).not.toEqual([])
 
-    const inTheCatch = real.replace(
-      'listError.value = readableError(cause)',
-      'listError.value = readableError(cause)\n    said.value = new Map()',
+    const inTheCatch = read.replace(
+      'projection.listRefused(ticket, readableError(cause))',
+      'projection.listRefused(ticket, readableError(cause))\n        projection.statesMoved([])',
     )
-    expect(inTheCatch).not.toBe(real)
-    expect(raceGuardBroken(inTheCatch, whole)).not.toEqual([])
+    expect(inTheCatch).not.toBe(read)
+    expect(raceGuardBroken(inTheCatch, answered, whole)).not.toEqual([])
 
     const aThirdWrite = `${whole}\nreadsAsked = 0\n`
-    expect(raceGuardBroken(real, aThirdWrite)).not.toEqual([])
+    expect(raceGuardBroken(read, answered, aThirdWrite)).not.toEqual([])
   })
 })
 

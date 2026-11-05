@@ -1,11 +1,11 @@
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { drawerProps, META } from '../../test/dom/harness'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import { defineComponent, h, type Component } from 'vue'
 import { hiddenDrawerTabs } from '../../src/renderer/src/lib/developer-views'
 import { CAPABILITY_FIXTURE } from '../../test/provider-capability-fixture'
+import { heldWorkspace } from '../../test/workspace-fixture'
 
 /**
  * 🎨 **The right panel** — the agent's card with its Sub agents and tasks, as the `right-panel` and
@@ -145,8 +145,7 @@ export function setTheCast(): void {
   window.api = {
     runtime: { listResumable: async () => [], listUnresumable: async () => [] },
   } as never
-  const cast = useWhoCalledWhom()
-  cast.reading.value = {
+  heldWorkspace.cast({
     conversation: META.sessionId,
     read: READ,
     answered: true,
@@ -173,8 +172,8 @@ export function setTheCast(): void {
         },
       ],
     } as never,
-  }
-  cast.railSays.value = new Map([
+  })
+  heldWorkspace.railSays.value = new Map([
     [
       'sess_ada',
       {
@@ -194,12 +193,14 @@ export function setTheCast(): void {
       },
     ],
   ]) as never
-  cast.processMemory.value = new Map([
-    [META.sessionId, 442_000_000],
-    ['sess_ada', 310_000_000],
-  ])
-  cast.goTo.value = () => {}
-  cast.cardFiles.value = { conversation: META.sessionId, files: FILES, answered: true } as never
+  heldWorkspace.memory(
+    new Map([
+      [META.sessionId, 442_000_000],
+      ['sess_ada', 310_000_000],
+    ]),
+  )
+  heldWorkspace.door.value = () => {}
+  heldWorkspace.cardFiles({ conversation: META.sessionId, files: FILES, answered: true } as never)
 }
 
 /** ⚑ The conversation's own events, with their times, as the ledger replays them. */

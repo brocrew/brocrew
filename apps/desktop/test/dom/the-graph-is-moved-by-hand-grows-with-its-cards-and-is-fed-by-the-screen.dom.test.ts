@@ -3,12 +3,12 @@ import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, shallowRef } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import TeamForest from '../../src/renderer/src/components/TeamForest.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { ForestView } from '../../src/renderer/src/lib/the-forest'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { AgentIdentity, TranscriptEvent } from '../../src/shared/runtime-ipc'
 import { conv, forestDrawn, task, viewOf } from './forest-fixture'
 import { mount, paneProps, record, unmountAll, type Mounted } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * # ⚑ The Graph is moved by hand, grows with its cards, and is fed by the screen
@@ -36,11 +36,10 @@ const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
 
 afterEach(async () => {
   unmountAll()
-  const cast = useWhoCalledWhom()
   // ⛔ **The channel is a window-level singleton**, so a door left behind would be the next test's.
-  cast.goTo.value = null
-  cast.railSays.value = null
-  cast.forest.value = null
+  heldWorkspace.door.value = null
+  heldWorkspace.railSays.value = null
+  heldWorkspace.reset()
   await page.viewport(ORIGINAL.width, ORIGINAL.height)
 })
 
@@ -248,8 +247,7 @@ describe('the Graph is moved by hand, grows with its cards, and is fed by the sc
       )
 
       // (a) The conversation pane, on its Graph tab.
-      const cast = useWhoCalledWhom()
-      cast.goTo.value = () => undefined
+      heldWorkspace.door.value = () => undefined
       const said = {
         type: 'assistant_message',
         text: 'Checking the graph.',
@@ -327,7 +325,7 @@ describe('the Graph is moved by hand, grows with its cards, and is fed by the sc
       expect(pane).toContain(':forest="readConversationForest"')
       expect(screen).toContain('const readConversationForest = () => conversationForestView.value')
       expect(graphFold).toContain(
-        'foldTheForest(cast.forest.value, cast.reading.value?.atWork ?? null)',
+        'foldTheForest(projection.forest(), projection.cast()?.atWork ?? null)',
       )
       // ⚑ The Team page is handed its own, folded off its own read.
       expect(team).toContain(':forest="theForestView"')
@@ -336,8 +334,8 @@ describe('the Graph is moved by hand, grows with its cards, and is fed by the sc
       // ⛔ The two are not crossed: each declaration reads its own source, beside the containment above.
       expect(graphFold).not.toContain('theForest.value')
       expect(graphFold).not.toContain('beingDone.value')
-      expect(teamFold).not.toContain('cast.forest')
-      expect(teamFold).not.toContain('cast.reading')
+      expect(teamFold).not.toContain('projection.forest')
+      expect(teamFold).not.toContain('projection.cast()')
     })
   })
 })

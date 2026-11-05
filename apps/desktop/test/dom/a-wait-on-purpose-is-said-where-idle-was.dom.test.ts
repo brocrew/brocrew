@@ -5,7 +5,6 @@ import ConversationPane from '../../src/renderer/src/components/ConversationPane
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
 import WorkingTogether from '../../src/renderer/src/components/WorkingTogether.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { RailSays } from '../../src/renderer/src/lib/agent-state'
 import { conversationList } from '../../src/renderer/src/lib/conversation-list'
 import type { ResumableSessionInfo } from '../../src/shared/runtime-ipc'
@@ -14,6 +13,7 @@ import type { WorkEdge } from '../../src/shared/who-called-whom'
 import { assertClippedButTold, assertDrawn, drawnReady } from './drawn'
 import { META, mount, paneProps, record, unmountAll } from './harness'
 import { activity, identities, NOW, store, workerRows } from './parallel-workers-fixture'
+import { heldWorkspace, testWorkspace } from '../workspace-fixture'
 
 /**
  * A helper whose piece is marked waiting on purpose reads so wherever it read "idle" — the rail, its
@@ -26,13 +26,11 @@ const STATUS =
 const FIRST = 'Plan written and shared; coaching week in progress…'
 const HOLDER = 'recipe-1'
 
-const cast = useWhoCalledWhom()
-
 afterEach(async () => {
   unmountAll()
-  cast.listedConversations.value = null
-  cast.railSays.value = null
-  cast.reading.value = null
+  heldWorkspace.reset()
+  heldWorkspace.railSays.value = null
+  heldWorkspace.cast(null)
   delete (window as { api?: unknown }).api
   await page.viewport(1200, 808)
 })
@@ -111,7 +109,7 @@ const give = (state: TaskState): WorkEdge => ({
 function castFor(state: TaskState, marked: boolean): void {
   const walk = <Row>(rows: Row[], kind: string) =>
     ({ rows, walk: kind, ledgers: rows.length, rowsUnread: 0 }) as never
-  cast.reading.value = {
+  heldWorkspace.cast({
     conversation: META.sessionId,
     read: {
       conversation: META.sessionId,
@@ -123,24 +121,21 @@ function castFor(state: TaskState, marked: boolean): void {
     },
     answered: true,
     atWork: null,
-  }
-  cast.listedConversations.value = conversationList({
-    resumable: [holder(marked)],
-    unresumable: [],
-    identities: identities(1).identities,
   })
+  heldWorkspace.identities.value = identities(1).identities
+  heldWorkspace.list([holder(marked)], [])
 }
 
 describe('the Sub agents card', () => {
   const card = async (marked: boolean) => {
     // The card says what the rail says of the agent: the rail is read first, as on the screen.
     const r = await rail(marked)
-    cast.railSays.value = r.vm.says as ReadonlyMap<string, RailSays>
+    heldWorkspace.railSays.value = r.vm.says as ReadonlyMap<string, RailSays>
     castFor(marked ? 'waiting-on-purpose' : 'working', marked)
     const m = mount(
       WorkingTogether,
       {
-        reading: cast.reading.value,
+        reading: testWorkspace().cast(),
         conversation: META.sessionId,
         identities: identities(1).identities,
         canOpen: true,

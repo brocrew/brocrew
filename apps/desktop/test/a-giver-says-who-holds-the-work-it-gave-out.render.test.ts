@@ -64,6 +64,7 @@ import type {
   WhatEachConversationIsWaitingOn,
 } from '../src/shared/tasks'
 import { proseSpans } from './lib/prose-spans'
+import { testWorkspace, withTestWorkspace } from './workspace-fixture'
 
 /**
  * # D-036 · a giver says who holds the work it gave out
@@ -397,20 +398,22 @@ const aReading = (...rows: ConversationWaiting[]): WhatEachConversationIsWaiting
   rowsUnread: 0,
 })
 
-const markup = (component: unknown, props: Record<string, unknown>): Promise<string> =>
-  renderToString(createSSRApp({ render: () => h(component as never, props) }))
+const markup = (component: unknown, props: Record<string, unknown>): Promise<string> => {
+  const app = createSSRApp({ render: () => h(component as never, props) })
+  withTestWorkspace(app)
+  return renderToString(app)
+}
 
 /** What a person reads: this repo's templates carry their reasoning inline, as comments. */
 const visible = (html: string): string => html.replace(/<!--[\s\S]*?-->/g, '')
 
 describe('§5 · the rail row of a conversation this window is fed says who holds the work', () => {
-  const rail = (waiting?: WhatEachConversationIsWaitingOn | null): Promise<string> =>
-    markup(SideRail, {
-      open: [openRecord()],
-      activeId: 'sess_brobot',
-      place: null,
-      ...(waiting === undefined ? {} : { waiting }),
-    })
+  /** The rail, over a workspace whose waits reading is `waiting`, or that has read none. */
+  const rail = (waiting?: WhatEachConversationIsWaitingOn): Promise<string> => {
+    testWorkspace().reset()
+    if (waiting !== undefined) testWorkspace().waitsRead(waiting)
+    return markup(SideRail, { open: [openRecord()], activeId: 'sess_brobot', place: null })
+  }
 
   /** The words on the row: the small line under the name, which carries the standing it is drawn in. */
   const rowWord = (html: string): string => {
@@ -554,17 +557,16 @@ describe('§7 · the screen hands the names to the pane and to the palette’s w
   }
   /** The palette's call, as four arguments: the record, its facets, the answerer and the holders. */
   const PALETTE_CALL =
-    /stateHere\(\s*record,\s*facets,\s*whoseAnswerIn\(conversationWaits\.value, record\.sessionId\),\s*whoseWorkIn\(conversationWaits\.value, record\.sessionId\),\s*\{\},\s*stoppedWorkIn\(conversationWaits\.value, record\.sessionId\),?\s*\)/
-  const THE_PANE_GETS_THE_HOLDERS = ':work-with="whoseWorkIn(conversationWaits, active.sessionId)"'
-  const THE_PANE_GETS_THE_ANSWERER =
-    ':answer-from="whoseAnswerIn(conversationWaits, active.sessionId)"'
+    /const wait = projection\.waitOf\(record\.sessionId\)[\s\S]*?stateHere\(\s*record,\s*facets,\s*wait\.answerFrom,\s*wait\.workWith,\s*\{\},\s*wait\.stoppedWork,?\s*\)/
+  const THE_PANE_GETS_THE_HOLDERS = ':work-with="projection.waitOf(active.sessionId).workWith"'
+  const THE_PANE_GETS_THE_ANSWERER = ':answer-from="projection.waitOf(active.sessionId).answerFrom"'
 
   it('🔴 the pane is handed the holders and the palette’s stateHere gets them as its fourth argument', () => {
     // ⚑ The pairs first: the same slices carry the answerer, the third argument of the same call,
     // so each slice is known to find real text before the holders are asked of it.
     expect(paneTag(source)).toContain(THE_PANE_GETS_THE_ANSWERER)
     expect(countOf(/stateHere\(/, source), 'one palette call').toBe(1)
-    expect(countOf(/whoseAnswerIn\(conversationWaits\.value, record\.sessionId\)/, source)).toBe(1)
+    expect(countOf(/wait\.answerFrom/, source)).toBe(1)
 
     expect(paneTag(source)).toContain(THE_PANE_GETS_THE_HOLDERS)
     expect(source).toMatch(PALETTE_CALL)
@@ -576,10 +578,7 @@ describe('§7 · the screen hands the names to the pane and to the palette’s w
     expect(paneTag(withoutThePaneProp)).not.toContain(THE_PANE_GETS_THE_HOLDERS)
     expect(paneTag(withoutThePaneProp)).toContain(THE_PANE_GETS_THE_ANSWERER)
 
-    const withoutTheFourthArgument = source.replace(
-      /,\s*whoseWorkIn\(conversationWaits\.value, record\.sessionId\)/,
-      '',
-    )
+    const withoutTheFourthArgument = source.replace(/,\s*wait\.workWith/, '')
     expect(withoutTheFourthArgument).not.toBe(source)
     expect(withoutTheFourthArgument).not.toMatch(PALETTE_CALL)
   })

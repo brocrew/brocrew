@@ -248,8 +248,11 @@ const note = computed(() =>
  * What this can never do is point at a DIFFERENT row while the person was not looking — that was
  * the index's failure, and it is why {@link cursorId} is an id.
  */
-const current = computed<PaletteCommand | null>(
-  () => shown.value.find((row) => row.id === cursorId.value) ?? shown.value[0] ?? null,
+const current = computed<PaletteCommand | null>(() =>
+  // Closed, it has no cursor, and the list it would search is not built.
+  showing.value
+    ? (shown.value.find((row) => row.id === cursorId.value) ?? shown.value[0] ?? null)
+    : null,
 )
 
 /** Typing starts again from the top; the row set genuinely changed because they changed it. */

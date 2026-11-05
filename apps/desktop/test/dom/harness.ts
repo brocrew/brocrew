@@ -19,6 +19,7 @@ import type { DrawerFit, DrawerTab } from '../../src/renderer/src/lib/drawer'
  */
 import '../../src/renderer/src/assets/base.css'
 import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
+import { withTestWorkspace } from '../workspace-fixture'
 
 /* ------------------------------------------------------------------ mounting */
 
@@ -65,6 +66,7 @@ export function mount(
   document.body.append(host)
 
   const app = createApp(component, props)
+  withTestWorkspace(app)
   install?.(app)
   // ⚠️ **Registered BEFORE the mount, because a mount can throw.** The host is already in the
   // document by this line; if `app.mount` raised and cleanup were registered after it, the div

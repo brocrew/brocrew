@@ -237,17 +237,9 @@ import { THE_BRIEF_IS_FURTHER_BACK } from '../lib/outgoing-card'
 // 🔴 **636 · the reading `621` built and left with no reader** — see {@link readWhatIsWaiting}.
 // ⚠️ **This file is `631`'s and the edit is deliberately four small ones**; the response document
 // names every line so the merge can be sequenced rather than discovered.
-import {
-  theWaitIn,
-  theWorkIn,
-  whenItOwedIn,
-  whenItsWaitsBeganIn,
-  whoItOwesIn,
-  whoseAnswerIn,
-  whoseWorkIn,
-  stoppedWorkIn,
-} from '../lib/conversation-waits'
-import type { WhatEachConversationIsWaitingOn } from '../../../shared/tasks'
+import { whenItOwedIn, whoItOwesIn } from '../lib/conversation-waits'
+import { provideWorkspace } from '../composables/useWorkspace'
+import { provideConversationDoor } from '../composables/useConversationDoor'
 import type { WhatIsBeingDone } from '../../../shared/what-is-being-done'
 import type { TheWholeForest } from '../../../shared/the-whole-forest'
 import { forestView } from '../lib/the-forest'
@@ -261,7 +253,6 @@ import { filesReadFor } from '../lib/files-kept'
 import { createFilesLibrary, provideFilesLibrary } from '../composables/useFilesLibrary'
 import { createTeamProfileGraph, provideTeamProfileGraph } from '../composables/useTeamProfileGraph'
 import FilesLibraryPreview from './FilesLibraryPreview.vue'
-import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
 import { MAX_DIGEST_SPAN_MS } from '../../../shared/digest'
 import type { RecentActivityReading } from '../../../shared/recent-activity'
 import {
@@ -326,6 +317,18 @@ import ProviderSetupAtLaunch from './ProviderSetupAtLaunch.vue'
  * around it is true.
  */
 const store = useSessionStore()
+/**
+ * The window's workspace projection: the listed conversations, their states and waits, the forest,
+ * the band, the files and the process figures. This screen owns the reads that feed it and provides
+ * it to every surface it mounts.
+ */
+const projection = provideWorkspace()
+/**
+ * The screen's one door into a conversation, given to every surface it mounts. `null` until the
+ * screen is mounted and after it goes, so nothing presses into a screen that is not there.
+ */
+const conversationDoor = shallowRef<((conversation: string) => void) | null>(null)
+provideConversationDoor(conversationDoor)
 /**
  * The overlay layer. It sits ON TOP of whatever surface is showing rather than being another value
  * of `place` — an overlay is a question about the thing behind it, and closing it has to give that
@@ -797,10 +800,7 @@ const SCREEN_NAME: Readonly<Record<string, string>> = {
 }
 
 function conversationName(sessionId: string): string {
-  // Read here rather than through `cast`: the watch below first runs before `cast` is declared.
-  const row = useWhoCalledWhom().listedConversations.value?.find(
-    (one) => one.sessionId === sessionId,
-  )
+  const row = projection.conversation(sessionId)
   return row === undefined ? 'a conversation' : conversationTitle(row.label, row.named)
 }
 
@@ -2256,13 +2256,8 @@ function respond(requestId: string, response: UserInputResponse): void {
   if (activeId.value) void store.respondUserInput(activeId.value, requestId, response)
 }
 
-/**
- * ⛔ **`null` until the first reading lands** (636) — *nobody has looked*, which every surface
- * draws as nothing at all rather than as *nothing is waiting*. See `WaitReading`, where the
- * three absences are told apart. ⚑ **Declared above {@link needsYou}**, whose words read it (D-017 · R19)
- * and which a watch reads as soon as the screen is set up.
- */
-const conversationWaits = ref<WhatEachConversationIsWaitingOn | null>(null)
+/** Reads the host's list again, into the projection; the rail started the first read. */
+const readTheList = (): Promise<void> => projection.readList(store.providerBlocks, appClosing.value)
 
 /**
  * ⛔ **Everything that needs the user, across every open conversation** (205, from 195 H3).
@@ -2280,23 +2275,17 @@ const needsYou = computed<AttentionRequest[]>(() =>
     (record) => {
       // ⚑ **D-017 · R11** — in the ONE state's words (`stateHere`), as the rail row says them: off
       // the same reading, so who owes it the next move is the host's verdict here too (R19).
+      const wait = projection.waitOf(record.sessionId)
       const facets = recordFacets(
         record,
-        theWaitIn(conversationWaits.value, record.sessionId),
-        theWorkIn(conversationWaits.value, record.sessionId),
-        // ⚑ **F036** — who waits on its answer, off the host's state of it (the rail's listed row).
-        whoItOwesIn(rail.value?.listedOf(record.sessionId)?.state),
+        wait.wait,
+        wait.work,
+        // ⚑ **F036** — who waits on its answer, off the host's state of it (its listed row).
+        whoItOwesIn(projection.conversation(record.sessionId)?.state),
       )
       return standingWord(
         facets,
-        stateHere(
-          record,
-          facets,
-          whoseAnswerIn(conversationWaits.value, record.sessionId),
-          whoseWorkIn(conversationWaits.value, record.sessionId),
-          {},
-          stoppedWorkIn(conversationWaits.value, record.sessionId),
-        ),
+        stateHere(record, facets, wait.answerFrom, wait.workWith, {}, wait.stoppedWork),
       )
     },
     // ⚑ **714 · R41** — the identity each waiting row's conversation runs as
@@ -2770,7 +2759,7 @@ const readTheWorkspace = oneReadAtATime(readTheWorkspaceOnce)
  */
 async function readWhatIsWaiting(): Promise<void> {
   const reading = await store.whatEachConversationIsWaitingOn()
-  if (reading !== null) conversationWaits.value = reading
+  projection.waitsRead(reading)
 }
 
 /** The time window Recent activity reads, as the person chose it. */
@@ -2873,7 +2862,7 @@ const theForestView = computed(() => foldTheForest(theForest.value, beingDone.va
  * Fold the conversation's Graph tab from the same forest as the Team page. {@link readTheCast} supplies the polled forest and what each running conversation was last told.
  */
 const conversationForestView = computed(() =>
-  foldTheForest(cast.forest.value, cast.reading.value?.atWork ?? null),
+  foldTheForest(projection.forest(), projection.cast()?.atWork ?? null),
 )
 const readConversationForest = () => conversationForestView.value
 
@@ -2883,14 +2872,14 @@ function foldTheForest(forest: TheWholeForest | null, atWork: WhatIsBeingDone | 
     forest,
     atWork,
     // ⛔ **Already on this screen and ungated** — `636`'s reading, reused rather than read again.
-    waits: conversationWaits.value,
+    waits: projection.waits(),
     identities: agentStore.identities.value?.identities ?? null,
     held: new Set(store.live.value.map((record) => record.sessionId)),
     // 🔴 **UI-004 · every card is the rail's row** — the rail's plate and the rail's word, on D-019's
     // push, so the Graph and the Team page change the moment the rail and the right panel do (668's
     // `live` was this for the conversations this window holds; the rail derives those the same way,
     // `recordFacets` on this screen's waits). See `ForestViewInput.said`.
-    said: cast.railSays.value,
+    said: projection.railSays(),
   })
 }
 
@@ -3021,7 +3010,6 @@ watch(surface, (now) => {
  * What no push carries (what each agent is doing at this moment, and its process's memory) is the
  * glance's ({@link glance}).
  */
-const cast = useWhoCalledWhom()
 /** ⛔ **Which read is the newest, because the conversation id alone cannot say** — `workRead`'s. */
 let castRead = 0
 
@@ -3035,36 +3023,36 @@ async function readTheCast(): Promise<void> {
   void readProcessMemory()
   castRead += 1
   const mine = castRead
-  cast.loadingFor.value = asked
+  projection.castAsked(asked)
   const answerPending = store.whoCalledWhom(asked)
   const doingPending = store.whatIsBeingDone()
   // The graph and activity refine the cards; neither holds up their first relationship reading.
   const forestPending = store.theWholeForest().then((grown) => {
     if (mine === castRead && asked === activeId.value && grown !== null) {
-      cast.forest.value = grown
+      projection.forestRead(grown)
     }
   })
   const answer = await answerPending
   if (mine !== castRead || asked !== activeId.value) return
-  cast.loadingFor.value = null
+  projection.castAsked(null)
   if (answer !== null) {
     // ⛔ **No `at` of this window's own.** `543` stamps `readAt` LAST over one synchronous aggregate
     // — the completion point `540` MI-19 said a single timestamp depended on — so a second instant
     // taken here would be a clock the band would have to choose between. ⚑ It also means a kept
     // last-good answer keeps its OWN timestamp, which is `547` §3.3's requirement for free.
-    cast.reading.value = { conversation: asked, read: answer, answered: true, atWork: null }
+    projection.castRead({ conversation: asked, read: answer, answered: true, atWork: null })
   } else {
     // A failed refresh keeps this conversation's last cards, without old activity words.
-    cast.reading.value =
-      cast.reading.value?.conversation === asked
-        ? { ...cast.reading.value, answered: false, atWork: null }
-        : null
+    const kept = projection.cast()
+    projection.castRead(
+      kept?.conversation === asked ? { ...kept, answered: false, atWork: null } : null,
+    )
   }
   const doing = await doingPending
   if (mine !== castRead || asked !== activeId.value) return
-  const reading = cast.reading.value
+  const reading = projection.cast()
   if (reading?.conversation === asked && reading.answered) {
-    cast.reading.value = { ...reading, atWork: doing }
+    projection.castRead({ ...reading, atWork: doing })
   }
   await forestPending
 }
@@ -3088,10 +3076,7 @@ watch(surface, (now) => {
  */
 async function readProcessMemory(): Promise<void> {
   const held = await store.processMemory()
-  cast.processMemory.value = new Map(
-    (held?.conversations ?? []).map((one) => [one.conversation, one.bytes]),
-  )
-  cast.memoryUnmeasured.value = held?.unmeasured ?? null
+  projection.memoryRead(held)
 }
 
 /**
@@ -3131,17 +3116,18 @@ async function glance(): Promise<void> {
   void readProcessMemory()
   // ⚑ Rows kept after a read that did not answer are asked again, whole.
   if (work.value?.conversation === asked && !work.value.answered) void readTheWork()
-  if (cast.reading.value?.conversation === asked && !cast.reading.value.answered) {
+  const band = projection.cast()
+  if (band?.conversation === asked && !band.answered) {
     void readTheCast()
     return
   }
   const doing = await store.whatIsBeingDone()
   // ⚑ The doing words refine the band's last reading, of this conversation only; ⛔ a refusal drops
   // them rather than keep a tool name from a minute ago (`632`, {@link readTheCast}).
-  const reading = cast.reading.value
+  const reading = projection.cast()
   if (mine !== glanceRead || asked !== activeId.value) return
   if (reading === null || reading.conversation !== asked) return
-  cast.reading.value = { ...reading, atWork: reading.answered ? doing : null }
+  projection.castRead({ ...reading, atWork: reading.answered ? doing : null })
 }
 
 /** ⚑ This window coming back to the front glances at once, rather than at the next tick. */
@@ -3189,8 +3175,10 @@ async function readTheFiles(): Promise<void> {
     // A failed read keeps the previous lists and allows the next refresh to retry.
   }
   if (asked !== activeId.value || mine !== filesRead) return
-  cast.treeFiles.value = filesReadFor(asked, tree, cast.treeFiles.value)
-  cast.cardFiles.value = filesReadFor(asked, added, cast.cardFiles.value)
+  projection.filesRead(
+    filesReadFor(asked, tree, projection.treeFiles()),
+    filesReadFor(asked, added, projection.cardFiles()),
+  )
 }
 
 watch([activeId, surface], () => void readTheFiles())
@@ -3232,7 +3220,7 @@ let listedLastTime: ReadonlySet<string> | null = null
 
 function lookAgainIfItMoved(): void {
   const sessionId = onScreenNow.value
-  const listedNow = rail.value?.theOneList?.map((row) => row.sessionId) ?? null
+  const listedNow = projection.listed()?.map((row) => row.sessionId) ?? null
   const before = listedLastTime
   if (listedNow !== null) listedLastTime = new Set(listedNow)
   // Archived or deleted from another window, or by an agent: the view reacts as to its own press,
@@ -3250,7 +3238,7 @@ function lookAgainIfItMoved(): void {
   if (sessionId === null) return
   const record = store.get(sessionId)
   if (record?.phase !== 'recorded' || record.meta === null) return
-  const listed = rail.value?.listedOf(sessionId) ?? null
+  const listed = projection.conversation(sessionId) ?? null
   if (listed === null) return
   const toldItWasElsewhere = record.meta.cannotTakeAMessage === HELD_ELSEWHERE
   if (
@@ -3268,14 +3256,14 @@ function lookAgainIfItMoved(): void {
  * thing (the row draws the same state). ⚑ `null` while the list has not named it.
  */
 const listedStateOfActive = computed(() =>
-  active.value === null ? null : (rail.value?.listedOf(active.value.sessionId)?.state ?? null),
+  active.value === null ? null : (projection.conversation(active.value.sessionId)?.state ?? null),
 )
 /** When each of the active conversation's waits began, as the host read them. */
 const waitsBeganOfActive = computed(() =>
   active.value === null
     ? {}
     : {
-        ...whenItsWaitsBeganIn(conversationWaits.value, active.value.sessionId),
+        ...projection.waitOf(active.value.sessionId).began,
         owes: whenItOwedIn(listedStateOfActive.value),
       },
 )
@@ -3286,7 +3274,7 @@ const waitsBeganOfActive = computed(() =>
  * the list names none.
  */
 const listedNamedOfActive = computed(() =>
-  active.value === null ? null : (rail.value?.listedOf(active.value.sessionId)?.named ?? null),
+  active.value === null ? null : (projection.conversation(active.value.sessionId)?.named ?? null),
 )
 
 /**
@@ -3309,7 +3297,7 @@ const retitleOfActive = computed(() => {
     try {
       const retitled = await window.api.runtime.retitleWork({ piece: named.label, title })
       if (!retitled.ok) return retitled.reason
-      await rail.value?.refreshResumable()
+      await readTheList()
       return null
     } catch (cause) {
       return readableError(cause)
@@ -3356,7 +3344,7 @@ onMounted(() => {
         authChangedFor(DEFAULT_PROFILE_ID, message.provider)
     })
   stopHearingStates = listenProviderStates(window.api.runtime, store, (message) => {
-    rail.value?.hearStates(message)
+    projection.hearStates(message)
     teamProfileGraph.markStale()
     // ⚑ **UI-002 · a file kept anywhere is read again at once** — see {@link readTheFiles}.
     if (message.kept.length > 0) {
@@ -3371,7 +3359,7 @@ onMounted(() => {
     conversations: () => {
       teamProfileGraph.markStale()
       filesLibrary.markStale()
-      void rail.value?.refreshResumable().then(lookAgainIfItMoved)
+      void readTheList().then(lookAgainIfItMoved)
       void library.value?.refreshResumable()
       // 🔴 **547 · and the band on the drawer's first tab**, which draws the SPAWN half of that
       // same announcement. ⛔ **`543` §5.3 measured that this is the half a push can carry**: a
@@ -3407,7 +3395,7 @@ onMounted(() => {
       // conversation**, which a give, a reply, a take-back, a close or a retitle moves and nothing
       // pushes. ⛔ Not for what each agent is doing, which arrives on its own
       // ({@link stopHearingStates}).
-      void rail.value?.refreshResumable()
+      void readTheList()
       // 🔴 **668 · the forest draws every task too** — the same reason as the `conversations` arm.
       void readWhoIsWorking()
       // 🔴 **638 · and the drawer's Work tab, which is the OTHER surface in this file drawing a
@@ -3462,7 +3450,7 @@ onMounted(() => {
   // claims the conversation when this window does not hold it and selects only after the claim has
   // landed (rule 18). ⛔ While this is null the band draws no press at all, which is what a drawer
   // mounted with no screen above it gets.
-  cast.goTo.value = (conversation) => void goToTheWork(conversation)
+  conversationDoor.value = (conversation) => void goToTheWork(conversation)
 })
 onUnmounted(() => {
   // ⛔ **534 · unsubscribed like every interval below.** The preload holds the listener on
@@ -3487,19 +3475,11 @@ onUnmounted(() => {
   document.removeEventListener('visibilitychange', glanceOnReturn)
   // ⛔ **Handed back, because the ref outlives this component under HMR** — a band left holding a
   // press into a screen that has been replaced would claim through a store nobody is listening to.
-  cast.goTo.value = null
+  conversationDoor.value = null
   castRead++
-  cast.loadingFor.value = null
-  // ⚑ **UI-001 · and the rail's rows with it** — a band left holding them would draw a replaced
-  // screen's words.
-  cast.railSays.value = null
-  // ⚑ **D-018 · and the process figures** — a card left holding them would draw a replaced
-  // screen's read.
-  cast.processMemory.value = new Map()
-  cast.memoryUnmeasured.value = null
-  // ⚑ **UI-002 · and the files** — a Files tab left holding them would draw a replaced screen's read.
-  cast.treeFiles.value = null
-  cast.cardFiles.value = null
+  // ⚑ **And the workspace** — its band, its files and every reading it holds, so a test or a hot
+  // reload that mounts another screen starts from nobody has looked.
+  projection.reset()
   // ⚠️ **Back to *nobody has answered*, not to *nothing is waiting*.** The module is a singleton
   // that outlives this component under HMR, and a stale list of rows pointing at conversations a
   // new store has never heard of is worse than no list.
@@ -3583,15 +3563,6 @@ watch(decided, (walked) => {
   for (const key of [...pressedWhereNobodyHolds.value.keys()]) {
     if (!listed.has(key)) pressedWhereNobodyHolds.value.delete(key)
   }
-})
-
-/**
- * ⚑ **UI-001 · what the rail says of each conversation, mirrored for the band** — the right panel's
- * cards draw an agent from its rail row, so the two say one thing, and a row this window is not fed
- * says the host's one state (`get_agent_status`'). ⚑ Followed, never re-derived.
- */
-watchEffect(() => {
-  cast.railSays.value = rail.value?.says ?? null
 })
 
 /**
@@ -4046,7 +4017,6 @@ onUnmounted(() => {
           :workspace-folder="info?.workspace ?? null"
           :app-version="info?.version ?? null"
           :limits="persons.limits.value"
-          :waiting="conversationWaits"
           :collapsed="railFold.collapsed.value"
           @fold="railFold.toggle()"
           @new-conversation="place = 'new'"
@@ -4122,7 +4092,7 @@ onUnmounted(() => {
             :store="agentStore"
             :being-done="beingDone"
             :held="store.live.value.map((record) => record.sessionId)"
-            :conversations="rail?.theOneList ?? null"
+            :conversations="projection.listed()"
             :forest="theForestView"
             @create="overlays.open({ kind: 'newAgent' })"
             @open="(profileSlug) => overlays.open({ kind: 'agentCapabilities', profileSlug })"
@@ -4172,11 +4142,11 @@ onUnmounted(() => {
             :pick-model="pickModelForActive"
             :capabilities="capabilities"
             :work="work"
-            :waiting="theWaitIn(conversationWaits, active.sessionId)"
-            :held-work="theWorkIn(conversationWaits, active.sessionId)"
-            :answer-from="whoseAnswerIn(conversationWaits, active.sessionId)"
-            :work-with="whoseWorkIn(conversationWaits, active.sessionId)"
-            :stopped-work="stoppedWorkIn(conversationWaits, active.sessionId)"
+            :waiting="projection.waitOf(active.sessionId).wait"
+            :held-work="projection.waitOf(active.sessionId).work"
+            :answer-from="projection.waitOf(active.sessionId).answerFrom"
+            :work-with="projection.waitOf(active.sessionId).workWith"
+            :stopped-work="projection.waitOf(active.sessionId).stoppedWork"
             :waits-began="waitsBeganOfActive"
             :listed-state="listedStateOfActive"
             :provider-block="active ? store.providerBlocks.get(active.sessionId) : null"
@@ -4255,7 +4225,7 @@ onUnmounted(() => {
                {@link launchChoices}, and `210` for the defect that makes it a rule. -->
           <NewConversation
             v-else
-            :recent="rail?.theOneList ?? null"
+            :recent="projection.listed()"
             @open="select"
             :busy="frontDoorLaunch.busy.value || store.isLaunching()"
             :error="store.launchError.value"

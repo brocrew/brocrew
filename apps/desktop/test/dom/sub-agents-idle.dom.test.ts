@@ -1,28 +1,25 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import WorkingTogether from '../../src/renderer/src/components/WorkingTogether.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
-import { conversationList } from '../../src/renderer/src/lib/conversation-list'
 import { mount, unmountAll } from './harness'
 import { assertDrawn, drawnReady } from './drawn'
 import { idlePanel, OWNER } from './sub-agents-idle-fixture'
+import { heldWorkspace } from '../workspace-fixture'
 
-const cast = useWhoCalledWhom()
 afterEach(() => {
   unmountAll()
   localStorage.removeItem('brobot2.subAgents.showIdle')
   localStorage.removeItem('brobot2.subAgents.latestFirst')
-  cast.railSays.value = null
-  cast.listedConversations.value = null
-  cast.forest.value = null
+  heldWorkspace.railSays.value = null
+  heldWorkspace.reset()
 })
 async function settle() {
   await nextTick()
   await drawnReady()
 }
 function supply(data: ReturnType<typeof idlePanel>) {
-  cast.listedConversations.value = conversationList({ resumable: data.rows, unresumable: [] })
-  cast.railSays.value = data.rail()
+  heldWorkspace.list(data.rows, [])
+  heldWorkspace.railSays.value = data.rail()
 }
 function show(data: ReturnType<typeof idlePanel>, canOpen = true) {
   supply(data)
@@ -149,7 +146,7 @@ it('retains an unread state without calling it idle or inventing an active total
   const view = show(data)
   const partial = new Map(data.rail())
   partial.delete('fictional-reader-2')
-  cast.railSays.value = partial
+  heldWorkspace.railSays.value = partial
   await settle()
   expect(cards(view)).toEqual(['fictional-reader-2'])
   expect(count(view)).toBe('(3)')

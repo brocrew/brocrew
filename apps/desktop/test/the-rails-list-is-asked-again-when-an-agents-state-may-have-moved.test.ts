@@ -77,7 +77,22 @@ const sourceOf = (file: string): Source => ({
 })
 
 const SCREEN = sourceOf('RuntimeScreen.vue')
-const RAIL = sourceOf('SideRail.vue')
+const WORKSPACE: Source = {
+  file: 'useWorkspace.ts',
+  code: code('useWorkspace.ts', read('renderer/src/composables/useWorkspace.ts')),
+}
+const PROJECTION: Source = {
+  file: 'workspace-projection.ts',
+  code: code('workspace-projection.ts', read('renderer/src/lib/workspace-projection.ts')),
+}
+
+/** A method of an object literal, from its signature to (not including) its closing `},`. */
+function methodOf(signature: string, where: Source): string {
+  const at = once(signature, where)
+  const end = where.code.indexOf('\n    },', at)
+  expect(end, `${signature} is never closed`).toBeGreaterThan(at)
+  return where.code.slice(at, end)
+}
 
 /** The index of a marker that is in the source exactly once. */
 function once(marker: string, where: Source = SCREEN): number {
@@ -130,7 +145,7 @@ function intervalOf(marker: string): string {
 }
 
 /** Where the rail's list is asked from this screen, however the call is awaited or chained. */
-const ASKS_THE_RAILS_LIST = /\brail\.value\?\.refreshResumable\(\)/g
+const ASKS_THE_RAILS_LIST = /\breadTheList\(\)/g
 
 describe('D-019 · the rail learns what an agent is doing from the push, not by asking its list again', () => {
   it('the screen hands every `runtime:states` message to the rail, and lets go of it on unmount', () => {
@@ -139,15 +154,15 @@ describe('D-019 · the rail learns what an agent is doing from the push, not by 
     const mount = hookAround('onMounted(() => {', 'stopListening = whenTheWorldMoves(')
     expect(mount).toContain('window.api.runtime.onChanged(')
 
-    // The whole message, handed to the rail's own door, unfiltered — and the one subscription.
+    // The whole message, handed to the workspace's own door, unfiltered — and the one subscription.
     // ⚑ **UI-002** — the listener is a block since the channel carries the files kept too (D-026):
-    // the rail still hears every message first and whole, and a message that kept a file reads the
-    // files again.
+    // the workspace still hears every message first and whole, and a message that kept a file
+    // reads the files again.
     const heard =
-      /^ {2}stopHearingStates = listenProviderStates\(window\.api\.runtime, store, \((\w+)\) => \{\n {4}rail\.value\?\.hearStates\(\1\)$/m.exec(
+      /^ {2}stopHearingStates = listenProviderStates\(window\.api\.runtime, store, \((\w+)\) => \{\n {4}projection\.hearStates\(\1\)$/m.exec(
         mount,
       )
-    expect(heard, 'the rail is not the first to hear each whole message').not.toBeNull()
+    expect(heard, 'the workspace is not the first to hear each whole message').not.toBeNull()
     expect(mount).toContain(
       `    if (${heard![1]!}.kept.length > 0) {\n      filesLibrary.markStale()\n      void readTheFiles()\n    }`,
     )
@@ -172,31 +187,29 @@ describe('D-019 · the rail learns what an agent is doing from the push, not by 
     expect(letGo[0]).toBeLessThan(letGo[1] ?? -1)
     expect(SCREEN.code.match(/\bstopHearingStates = /g)).toHaveLength(2)
 
-    // The rail's end: the door is exposed, and hearing asks nothing. The control is the rail's own
-    // list read, which does ask, so the absence below is measured against a reader that has it.
-    const exposed = hookAround('defineExpose({', '  refreshResumable: ', RAIL)
-    expect(exposed).toMatch(/^ {2}hearStates,$/m)
-    const asks = functionOf('async function refreshListed(): Promise<void> {', RAIL)
-    expect(asks).toContain('window.api.runtime.listResumable()')
-    expect(asks).toContain('window.api.runtime.listUnresumable()')
-    const hears = functionOf('function hearStates(message: RuntimeStatesMessage): void {', RAIL)
+    // The workspace's end: hearing asks nothing. The control is its own list read, which does ask,
+    // so the absence below is measured against a reader that has it.
+    const asks = methodOf('async readList(providerBlocks, closing) {', WORKSPACE)
+    expect(asks).toContain('bridge.listResumable()')
+    expect(asks).toContain('bridge.listUnresumable()')
+    const hears = methodOf('hearStates(message) {', WORKSPACE)
     expect(hears).toContain('message.moved')
-    expect(hears).not.toMatch(/window\.api|refreshListed|await/)
+    expect(hears).not.toMatch(/bridge|readList|await/)
 
     // …and it does fold: each state is set into a copy of what was heard before (so an earlier
     // push is kept), the copy is stored, and the one list is drawn over each heard state.
-    expect(hears).toMatch(/const next = new Map\(said\.value\)/)
-    expect(hears).toMatch(
-      /for \(const moved of message\.moved\) \{\s*next\.set\(moved\.conversation, \{ state: moved\.state, after: readsAsked \}\)\s*\}/,
+    const folds = methodOf('statesMoved(moved) {', PROJECTION)
+    expect(folds).toMatch(/const next = new Map\(said\.value\)/)
+    expect(folds).toMatch(
+      /for \(const one of moved\) next\.set\(one\.conversation, \{ state: one\.state, after: readsAsked \}\)/,
     )
-    expect(hears).toMatch(/said\.value = next\b/)
-    const drawn = RAIL.code.slice(
-      once('const listed = computed(', RAIL),
-      once('async function refreshListed(', RAIL),
+    expect(folds).toMatch(/said\.value = next\b/)
+    const drawn = PROJECTION.code.slice(
+      once('const listed = computed(', PROJECTION),
+      once('const byId = shared(', PROJECTION),
     )
-    expect(drawn).toMatch(
-      /\bsaid: new Map\(\[\.\.\.said\.value\]\.map\(\(\[(\w+), (\w+)\]\) => \[\1, \2\.state\]\)\)/,
-    )
+    expect(drawn).toMatch(/const heard = said\.value\.get\(host\.sessionId\)\?\.state/)
+    expect(drawn).toMatch(/listedRow\(host, identities, heard, provider\)/)
   })
 
   it('work moving still asks the rail’s list, for the work that names each conversation — and nothing asks it to learn a state', () => {
@@ -215,7 +228,7 @@ describe('D-019 · the rail learns what an agent is doing from the push, not by 
     expect(arm).not.toContain('readTheRoom')
 
     // The rail's list, asked once, as a bare statement: nothing waits on it here.
-    expect(arm).toMatch(/^\s*void rail\.value\?\.refreshResumable\(\)\s*$/m)
+    expect(arm).toMatch(/^\s*void readTheList\(\)\s*$/m)
     expect(arm.match(ASKS_THE_RAILS_LIST)).toHaveLength(1)
 
     // Every place the screen asks the rail's list, and none of them is a tick or the waits
@@ -242,7 +255,11 @@ describe('D-019 · the rail learns what an agent is doing from the push, not by 
     // not look*, and blanking on it would put every row back on its live facets.
     const fn = functionOf('async function readWhatIsWaiting(): Promise<void> {')
     expect(fn).toMatch(
-      /^async function readWhatIsWaiting\(\): Promise<void> \{\s*const reading = await store\.whatEachConversationIsWaitingOn\(\)\s*if \(reading !== null\) conversationWaits\.value = reading\s*$/,
+      /^async function readWhatIsWaiting\(\): Promise<void> \{\s*const reading = await store\.whatEachConversationIsWaitingOn\(\)\s*projection\.waitsRead\(reading\)\s*$/,
+    )
+    // The projection keeps the last reading when this one is `null`.
+    expect(methodOf('waitsRead(reading) {', PROJECTION)).toMatch(
+      /^waitsRead\(reading\) \{\s*if \(reading !== null\) waitsReading\.value = reading\s*$/,
     )
     // …and nothing is kept to compare the next reading with.
     expect(SCREEN.code).not.toMatch(/\bwaitsSeen\b/)
@@ -271,6 +288,6 @@ describe('D-019 · the rail learns what an agent is doing from the push, not by 
     expect(firstPass).toContain('void readWhatIsWaiting()')
 
     // The rail's list is not asked on the five seconds: what each agent is doing is pushed.
-    expect(call).not.toMatch(/\brail\b|refreshResumable/)
+    expect(call).not.toMatch(/\brail\b|refreshResumable|readTheList/)
   })
 })

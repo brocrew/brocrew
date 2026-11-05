@@ -2,10 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
-import {
-  useWhoCalledWhom,
-  type RailSays,
-} from '../../src/renderer/src/composables/useWhoCalledWhom'
+import type { RailSays } from '../../src/renderer/src/lib/agent-state'
 import { facetsOfState } from '../../src/renderer/src/lib/agent-state'
 import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { createSessionRecord } from '../../src/renderer/src/lib/session-record'
@@ -22,6 +19,7 @@ import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import type { WhatIsBeingDone } from '../../src/shared/what-is-being-done'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import { META, drawerProps, mount, permission, unmountAll, type Mounted } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * # 🔴 UI-001 · the rail row is what EVERY plate under the strip draws
@@ -45,11 +43,10 @@ afterEach(() => {
   unmountAll()
   // ⛔ **The channel is a window-level singleton**, so a row left behind would be the next test's
   // premise.
-  const cast = useWhoCalledWhom()
-  cast.reading.value = null
-  cast.goTo.value = null
-  cast.forest.value = null
-  cast.railSays.value = null
+  heldWorkspace.cast(null)
+  heldWorkspace.door.value = null
+  heldWorkspace.reset()
+  heldWorkspace.railSays.value = null
   delete stubbed().api
 })
 
@@ -113,9 +110,8 @@ const RAIL = new Map<string, RailSays>([
 
 /** ⚑ The right panel, over the band's one channel — the strip's chips are the agents under it. */
 function show(rail: ReadonlyMap<string, RailSays> | null, atWork: WhatIsBeingDone = AT_WORK) {
-  const cast = useWhoCalledWhom()
-  cast.reading.value = { conversation: META.sessionId, read: READ, answered: true, atWork }
-  cast.railSays.value = rail
+  heldWorkspace.cast({ conversation: META.sessionId, read: READ, answered: true, atWork })
+  heldWorkspace.railSays.value = rail
   return mount(SessionDrawer as never, drawerProps({ identities: null }), {
     width: DRAWER_W_MIN,
     height: 900,
@@ -443,55 +439,41 @@ const runtimeScreen = async (): Promise<string> =>
 /** How many times `needle` occurs in `text`. */
 const countOf = (text: string, needle: string): number => text.split(needle).length - 1
 
-/**
- * The `watchEffect(() => { … })` that holds `expression`: from the nearest opening before it to the
- * first close after it. The expression must be present, and once.
- */
-function watchEffectHolding(screen: string, expression: string): string {
-  const at = screen.indexOf(expression)
-  expect(at, `RuntimeScreen no longer holds ${expression}`).toBeGreaterThan(-1)
-  expect(countOf(screen, expression), `${expression} is written more than once`).toBe(1)
-  const from = screen.lastIndexOf('watchEffect(() => {', at)
-  expect(from, `${expression} is not inside a watchEffect`).toBeGreaterThan(-1)
-  const close = screen.indexOf('})', at)
-  expect(close, `${expression}'s watchEffect never closes`).toBeGreaterThan(at)
-  return screen.slice(from, close + 2).trim()
-}
-
-describe('the screen wires the rail’s rows to the band’s channel', () => {
-  it('🔴 the screen mirrors the rail’s says into the band’s channel, once, in a watchEffect', async () => {
+describe('the rail hands its rows to the workspace the band reads', () => {
+  it('🔴 the rail wires its says into the workspace, and the screen copies nothing', async () => {
     const screen = await runtimeScreen()
+    const rail = (
+      (await import('../../src/renderer/src/components/SideRail.vue?raw')) as { default: string }
+    ).default
 
-    const says = watchEffectHolding(screen, 'cast.railSays.value = rail.value?.says ?? null')
-    expect(says).toMatch(
-      /^watchEffect\(\(\) => \{\s*cast\.railSays\.value = rail\.value\?\.says \?\? null\s*\}\)$/,
-    )
-    // Two writers, and no third one that re-derives it: this one and the reset on unmount.
-    expect(countOf(screen, 'cast.railSays.value =')).toBe(2)
+    expect(countOf(rail, 'railSays: () => says.value')).toBe(1)
+    const wire = rail.lastIndexOf('workspace.wire({', rail.indexOf('railSays: () => says.value'))
+    expect(wire, 'the rail’s says are not wired into the workspace').toBeGreaterThan(-1)
+    // No second copy of the rows: the screen neither mirrors nor re-derives them.
+    expect(screen).not.toContain('railSays.value =')
+    expect(screen).not.toContain('rail.value?.says')
   })
 
-  it('⛔ the screen hands the rail’s rows back on unmount, beside the press it also hands back', async () => {
+  it('⛔ the screen hands the workspace back on unmount, beside the press it also hands back', async () => {
     const screen = await runtimeScreen()
 
-    const goTo = screen.indexOf('cast.goTo.value = null')
+    const goTo = screen.indexOf('conversationDoor.value = null')
     expect(goTo, 'RuntimeScreen no longer hands the press back').toBeGreaterThan(-1)
-    expect(countOf(screen, 'cast.goTo.value = null')).toBe(1)
+    expect(countOf(screen, 'conversationDoor.value = null')).toBe(1)
     const from = screen.lastIndexOf('onUnmounted(', goTo)
     expect(from, 'the press is not handed back in an onUnmounted').toBeGreaterThan(-1)
     const to = screen.indexOf('persons.forget()', goTo)
     expect(to, 'the unmount no longer ends in persons.forget()').toBeGreaterThan(goTo)
     const slice = screen.slice(from, to)
 
-    // The right handler: the one that also stops the glance (the band's own interval went with
-    // W4.74 — D-033 pushes every move of its work) and hands back the press.
+    // The right handler: the one that also stops the glance and hands back the press.
     expect(slice).toContain('clearInterval(glancing)')
-    expect(slice).toContain('cast.goTo.value = null')
+    expect(slice).toContain('conversationDoor.value = null')
 
-    // …and it hands the rows back, after the press, as a plain null.
-    const reset = slice.indexOf('cast.railSays.value = null')
-    expect(reset, 'the unmount does not hand the rail’s rows back').toBeGreaterThan(-1)
-    expect(reset).toBeGreaterThan(slice.indexOf('cast.goTo.value = null'))
-    // ⛔ Not a re-read of the dead ref.
+    // …and it resets the workspace, after the press.
+    const reset = slice.indexOf('projection.reset()')
+    expect(reset, 'the unmount does not reset the workspace').toBeGreaterThan(-1)
+    expect(reset).toBeGreaterThan(slice.indexOf('conversationDoor.value = null'))
     expect(slice).not.toContain('rail.value')
   })
 })

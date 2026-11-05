@@ -9,7 +9,6 @@ import type { QuestionCardReading } from '../../src/renderer/src/lib/question-ca
 import { applyEvent } from '../../src/renderer/src/lib/transcript'
 import { defineComponent, h } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
 import { mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
 import {
@@ -21,11 +20,12 @@ import {
   EXCHANGE_OTHER,
   EXCHANGE_WORDS,
 } from './agent-exchanges.fixture'
+import { heldWorkspace } from '../workspace-fixture'
 
 afterEach(() => {
   vi.restoreAllMocks()
   unmountAll()
-  useWhoCalledWhom().reading.value = null
+  heldWorkspace.cast(null)
 })
 function pane(events: TranscriptEvent[], onOpenConversation: (id: string) => void = () => {}) {
   return mount(

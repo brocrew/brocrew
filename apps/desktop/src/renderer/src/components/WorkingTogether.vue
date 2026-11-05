@@ -12,7 +12,7 @@ import {
   workerState,
 } from '../lib/conversation-list'
 import { useMinuteClock } from '../composables/useMinuteClock'
-import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
+import { useWorkspace } from '../composables/useWorkspace'
 import { NOT_MEASURED, NOT_RUNNING_NOW, type AgentPanelSubAgent } from '../lib/agent-panel'
 import { priorityDotToken, standingOf, type AgentFacets } from '../lib/agent-state'
 import {
@@ -116,19 +116,17 @@ const view = computed(() =>
 )
 
 /** ⚑ Every agent this conversation works with: the ones it spawned, then the others it gave work to. */
-const cast = useWhoCalledWhom()
+const workspace = useWorkspace()
 
 // ⚑ F094 · a replaced conversation is drawn as its stand-in (D-034's place map, from the forest).
 const allAgents = computed(() =>
   view.value
     ? inTheirPlace(
         [...view.value.children, ...view.value.others],
-        cast.forest.value,
+        workspace.forest(),
         props.identities,
       ).map((card) => {
-        const listed = cast.listedConversations.value?.find(
-          (row) => row.sessionId === card.conversation,
-        )
+        const listed = workspace.conversation(card.conversation)
         const worker = listed?.worker
         return worker
           ? {
@@ -143,7 +141,7 @@ const allAgents = computed(() =>
 const latestFirst = usePersistentToggle('brobot2.subAgents.latestFirst', false)
 const showIdle = usePersistentToggle('brobot2.subAgents.showIdle', true)
 function listedCard(card: CastCard) {
-  return cast.listedConversations.value?.find((row) => row.sessionId === card.conversation)
+  return workspace.conversation(card.conversation)
 }
 // Classify the same cards the panel names, without treating an unread state as idle.
 function hiddenWhenIdle(card: CastCard): boolean {
@@ -186,9 +184,10 @@ function subtitles(card: CastCard) {
 const piecesByConversation = computed(() => {
   const byConversation = new Map<string, WorkEdge[]>()
   if (!view.value || !props.reading) return byConversation
+  // The forest's pieces held by a card here, then the band's own reading over them.
   const edges = new Map<string, WorkEdge>()
-  for (const node of cast.forest.value?.nodes.rows ?? []) {
-    if (node.node === 'a-task') edges.set(node.work.piece, node.work)
+  for (const card of allAgents.value) {
+    for (const piece of workspace.piecesHeldBy(card.conversation)) edges.set(piece.piece, piece)
   }
   const read = props.reading.read
   for (const piece of [...read.workGivenOut.rows, ...read.workTakenIn.rows]) {
@@ -215,7 +214,7 @@ function asTheRailSays(
   conversation: string,
   own: AgentFacets,
 ): { facets: AgentFacets; word?: string; detail?: string } {
-  const rail = cast.railSays.value
+  const rail = workspace.railSays()
   if (rail === null) return { facets: own }
   return rail.get(conversation) ?? { facets: {} }
 }
@@ -274,7 +273,7 @@ function chipWord(card: CastCard): string | undefined {
     <!-- Place children directly below the parent without a redundant heading: the containing panel already identifies this conversation. -->
 
     <p
-      v-if="!view && cast.loadingFor.value === conversation"
+      v-if="!view && workspace.castLoadingFor() === conversation"
       class="quiet"
       role="status"
       data-cy="cast-loading"

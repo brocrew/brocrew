@@ -13,7 +13,8 @@ import { processMemoryWords } from '../lib/process-memory'
 import { resetWords, UNCONFIRMED_USAGE } from '../lib/usage-limit'
 import { useMinuteClock } from './useMinuteClock'
 import { useProviderUsage } from './useProviderUsage'
-import { useWhoCalledWhom, type RunningConversation } from './useWhoCalledWhom'
+import { useWorkspace } from './useWorkspace'
+import type { RunningConversation } from '../lib/workspace-projection'
 
 /**
  * Each provider's usage, window by window, and the agents running now with their memory: the cells
@@ -102,7 +103,7 @@ export function useUsageCells(
   readiness: () => Readonly<Partial<Record<Provider, boolean | null>>> | null = () => null,
 ): UsageCells {
   const usage = useProviderUsage()
-  const cast = useWhoCalledWhom()
+  const workspace = useWorkspace()
   const minute = useMinuteClock()
 
   /** Each provider's windows, as `[short, reading or null]`, in the order the cells draw them. */
@@ -149,18 +150,15 @@ export function useUsageCells(
 
   /** The agents running now and the memory their processes hold, or `null` before the forest. */
   const running = computed(() => {
-    const forest = cast.forest.value
+    const forest = workspace.forest()
     if (forest === null) return null
     const rows = forest.nodes.rows.filter(
       (node): node is ForestConversation =>
         node.node === 'a-conversation' && node.running !== 'not-running',
     )
     // Where main could measure no process, the memory says so as the agent cards do.
-    const unmeasured = cast.memoryUnmeasured.value
-    const bytes = rows.reduce(
-      (sum, node) => sum + (cast.processMemory.value.get(node.conversation) ?? 0),
-      0,
-    )
+    const unmeasured = workspace.memoryUnmeasured()
+    const bytes = rows.reduce((sum, node) => sum + (workspace.memoryOf(node.conversation) ?? 0), 0)
     return {
       rows,
       unmeasured,
@@ -169,7 +167,7 @@ export function useUsageCells(
   })
 
   const agentsNow = computed(() => {
-    const rows = cast.runningConversations.value
+    const rows = workspace.running()
     if (rows === null) return null
     const working = (row: RunningConversation): boolean =>
       row.state.is === 'active' || row.state.is === 'in-the-background'

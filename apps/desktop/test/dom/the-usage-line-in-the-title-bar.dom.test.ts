@@ -2,10 +2,10 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { nextTick } from 'vue'
 import AppTitleBar from '../../src/renderer/src/components/AppTitleBar.vue'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { ProviderUsageReading } from '../../src/shared/runtime-ipc'
 import { conv, forestOf } from './forest-fixture'
 import { mount, unmountAll, type Mounted } from './harness'
+import { heldWorkspace } from '../workspace-fixture'
 
 /**
  * The window's usage on one line in its title bar, for every screen: each provider's windows, the
@@ -19,11 +19,7 @@ const HOUR = 3_600_000
 afterEach(async () => {
   unmountAll()
   delete (window as { api?: unknown }).api
-  const cast = useWhoCalledWhom()
-  cast.runningConversations.value = null
-  cast.forest.value = null
-  cast.processMemory.value = new Map()
-  cast.memoryUnmeasured.value = null
+  heldWorkspace.reset()
   await page.viewport(ORIGINAL.width, ORIGINAL.height)
 })
 
@@ -56,20 +52,23 @@ const READ: Usage = (() => {
 
 describe('the usage line', () => {
   it('🔴 says each window’s use, then the agents and their memory, with the same words as its name', async () => {
-    const cast = useWhoCalledWhom()
-    cast.runningConversations.value = [
+    heldWorkspace.running([
       { sessionId: 'sess_a', provider: 'claude', state: { is: 'active' } },
       { sessionId: 'sess_b', provider: 'codex', state: { is: 'idle' } },
-    ]
-    cast.forest.value = forestOf([
-      conv('sess_a', null, { running: 'in-a-window' }),
-      conv('sess_b', 'sess_a', { running: 'unwatched', provider: 'codex' }),
-      conv('sess_c', 'sess_a', { running: 'not-running' }),
     ])
-    cast.processMemory.value = new Map([
-      ['sess_a', 600 * 1024 * 1024],
-      ['sess_b', 700 * 1024 * 1024],
-    ])
+    heldWorkspace.forest(
+      forestOf([
+        conv('sess_a', null, { running: 'in-a-window' }),
+        conv('sess_b', 'sess_a', { running: 'unwatched', provider: 'codex' }),
+        conv('sess_c', 'sess_a', { running: 'not-running' }),
+      ]),
+    )
+    heldWorkspace.memory(
+      new Map([
+        ['sess_a', 600 * 1024 * 1024],
+        ['sess_b', 700 * 1024 * 1024],
+      ]),
+    )
     const m = await bar(READ)
     const line = m.q('app-usage')
     const said = (line.textContent ?? '').trim()

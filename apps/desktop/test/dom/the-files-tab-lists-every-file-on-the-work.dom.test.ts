@@ -9,18 +9,18 @@ import {
   type FilesLibraryController,
   type LibraryApi,
 } from '../../src/renderer/src/composables/useFilesLibrary'
-import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { filesLibraryReplies } from '../fixtures/files-library-replies'
 import type { FilesLibraryResult } from '../../src/shared/files-library'
 import { mount, paneProps, record, unmountAll, visible } from './harness'
+import { heldWorkspace, testWorkspace } from '../workspace-fixture'
 
 // Standalone legacy list and work-search checks remain in legacy-kept-file-lists.dom.test.ts.
 // This suite exercises the workspace library through the actual conversation pane.
 // Every negative below is paired with a reading of the same surface.
 afterEach(() => {
   unmountAll()
-  useWhoCalledWhom().treeFiles.value = null
-  useWhoCalledWhom().cardFiles.value = null
+  heldWorkspace.files(null)
+  heldWorkspace.cardFiles(null)
 })
 
 async function pane(read?: LibraryApi, narrow = false) {
@@ -88,7 +88,7 @@ it('counts the complete workspace independently of the selected conversation tre
   const { m } = await pane()
   await vi.waitFor(() => expect(m.q('main-tab-files-count').textContent).toContain('16'))
   expect(m.all('library-file')).toHaveLength(16)
-  useWhoCalledWhom().treeFiles.value = { conversation: 'brobot', files: [], answered: true }
+  heldWorkspace.files({ conversation: 'brobot', files: [], answered: true })
   await nextTick()
   expect(m.q('main-tab-files-count').textContent).toContain('16')
   expect(m.all('library-file')).toHaveLength(16)
@@ -156,8 +156,8 @@ it('preserves library filters, loaded files, view and a pinned conversation acro
 it('opens a library representative directly without recovering it from old tree/card arrays', async () => {
   const { m, library, shown, selected } = await pane()
   await vi.waitFor(() => expect(m.all('library-file')).toHaveLength(16))
-  expect(useWhoCalledWhom().treeFiles.value).toBeNull()
-  expect(useWhoCalledWhom().cardFiles.value).toBeNull()
+  expect(testWorkspace().treeFiles()).toBeNull()
+  expect(testWorkspace().cardFiles()).toBeNull()
   const item = m
     .all('library-file')
     .find(
