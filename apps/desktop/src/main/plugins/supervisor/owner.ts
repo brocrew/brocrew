@@ -8,6 +8,7 @@ import {
   OWNER_LIMITS,
   OWNER_WIRE,
   OWNER_RECOVERY,
+  AGENT_ROUTES_FORMAT_2,
   pack,
   PluginSupervisorError,
   refuse,
@@ -285,7 +286,11 @@ export class PluginSupervisor {
           )
             refuse()
           const bridge = this.agentBridge
-          const named = undefined as typeof bridge.agentRoutes
+          const named =
+            command.format === 2 && lease.features.includes(AGENT_ROUTES_FORMAT_2)
+              ? bridge.agentRoutes?.bind(bridge)
+              : undefined
+          if (command.format === 2 && named === undefined) refuse()
           void (named ?? bridge.routes.bind(bridge))(Object.freeze({ ...lease }), command)
             .then((value) =>
               named === undefined ? value : { format: 2, ...(value as Record<string, unknown>) },

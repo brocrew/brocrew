@@ -22,7 +22,8 @@ export interface ManagedPluginAttachment {
     readonly unknown: boolean
   }
 }
-export function retained(
+/** The routes to keep configured: a partial reply keeps what it could not speak for. */
+function retained(
   previous: readonly ManagedPluginMcpServer[],
   next: ManagedPluginAttachment,
 ): readonly ManagedPluginMcpServer[] {
@@ -94,7 +95,7 @@ export function withManagedPluginAttachments(
       managedPluginHttpServers(next.servers)
       return {
         revision: next.revision,
-        servers: next.servers.map((one) => ({ ...one })),
+        servers: retained(attachment.servers, next).map((one) => ({ ...one })),
         ...(next.plugins === undefined
           ? {}
           : {
