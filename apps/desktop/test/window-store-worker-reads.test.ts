@@ -584,6 +584,23 @@ describe('canonical window worker folds and independent live-store reads', () =>
     )
   })
 
+  it('forty windows answered on the main thread share one composition of the queue', async () => {
+    const read = vi.fn(async (input: WindowReadQuery) => engine.read(input))
+    const { host } = hostWith({ read, close: async () => {} }, false, {
+      windowWriterStamp: undefined,
+      limitsWriterStamp: () => null,
+    })
+    anotherQuestion()
+    const direct = vi.spyOn(store, 'questionsAPersonMustAnswer')
+    const answers = await Promise.all(
+      Array.from({ length: 40 }, () => host.readForWindow(() => host.questionsForAPerson())),
+    )
+    expect(direct).toHaveBeenCalledOnce()
+    expect(read).not.toHaveBeenCalled()
+    for (const answer of answers) expect(answer).toBe(answers[0])
+    expect(answers[0]!.rows).toHaveLength(1)
+  })
+
   it('answers on the main thread when the writer moves under both tries', async () => {
     const read = vi.fn(async (query: WindowReadQuery) => {
       const answer = engine.read(query)
