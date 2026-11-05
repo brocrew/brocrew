@@ -283,7 +283,7 @@ export class PluginLifecycleController {
     return {
       contributions: snapshot.contributions.filter((one) => available(one.pluginId)),
       notifications: snapshot.notifications.filter((one) => available(one.pluginId)),
-      settingsViews: snapshot.settingsViews.filter(
+      settingsViews: (snapshot.settingsViews ?? []).filter(
         (one) => workspace.views.has(one.viewId) && available(one.pluginId),
       ),
       plugins: read.currentInstallations().map((install) => ({
@@ -350,7 +350,7 @@ export class PluginLifecycleController {
     const snapshot = this.hostRegistry.snapshot(id)
     const pluginId =
       input.kind === 'settings-close'
-        ? snapshot.settingsViews.find(
+        ? (snapshot.settingsViews ?? []).find(
             (one) => workspace.views.has(one.viewId) && one.viewId === input.viewId,
           )?.pluginId
         : [...snapshot.contributions, ...snapshot.notifications].find(
