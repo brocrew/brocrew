@@ -808,6 +808,7 @@ export class PluginLifecycleController {
     const prior = workspace.bindings.get(id)
     if (prior && prior !== binding) {
       this.cancelBinding(workspace, id)
+      // The mutation published this receipt; the superseded job no longer owns readiness.
       prior.state = 'ready'
     }
   }

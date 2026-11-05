@@ -252,7 +252,6 @@ export class PluginHost {
       (item) =>
         item.workspaceId === workspaceId &&
         item.kind === 'turn.context.titles' &&
-        current(item.pluginId) &&
         this.state(item) === 'active' &&
         this.titles.has(key(workspaceId, item.pluginId)),
     )
@@ -640,6 +639,7 @@ export class PluginHost {
       (item) =>
         item.workspaceId === input.workspaceId &&
         item.kind === 'turn.context.titles' &&
+        current(item.pluginId) &&
         this.state(item) === 'active' &&
         this.titles.has(key(input.workspaceId, item.pluginId)),
     )
