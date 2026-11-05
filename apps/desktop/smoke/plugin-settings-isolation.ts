@@ -63,6 +63,7 @@ async function run() {
         join(process.env.BROBOT_PLUGIN_SOURCE_ROOT!, 'plugins/chrome'),
       )
       let reads = 0,
+        inspections = 0,
         installed = theme !== 'classic',
         installs = 0,
         uninstalls = 0
@@ -72,7 +73,9 @@ async function run() {
           { id: 'fictional-maps', name: 'Fictional Maps', state: 'Available', installed: false },
         ],
         inspectPackage: async (input) => {
-          assert.equal(input, 'chrome')
+          if (inspections === 0) assert.equal(input, 'chrome')
+          else assert.deepEqual(input, fixture.ref)
+          inspections++
           return {
             id: 'chrome',
             name: 'Chrome',
@@ -93,6 +96,8 @@ async function run() {
         applyPackage: async (ref, action) => {
           assert.deepEqual(ref, fixture.ref)
           assert.equal(action, 'install')
+          assert.equal(inspections, 2)
+          assert.equal(installs, 0)
           installs++
           installed = true
         },
@@ -146,7 +151,7 @@ async function run() {
             `!!document.querySelector('[data-plugin="chrome"] [data-cy="plugin-review-confirm"]')`,
           ),
         )
-        check(installs === 0 && !installed)
+        check(inspections === 1 && installs === 0 && !installed)
         await owner.webContents.executeJavaScript(
           `document.querySelector('[data-plugin="chrome"] [data-cy="plugin-review-confirm"]').click()`,
         )
@@ -155,7 +160,7 @@ async function run() {
             `document.querySelector('[data-plugin="chrome"] [data-cy="plugin-state"]').textContent==='Running'`,
           ),
         )
-        check(installs === 1 && installed)
+        check(inspections === 2 && installs === 1 && installed)
         await new Promise((resolve) => setTimeout(resolve, 250))
         step++
         writeFileSync(

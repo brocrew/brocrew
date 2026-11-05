@@ -7,12 +7,14 @@ import { pluginSha256 } from '../src/main/plugins/package-digests'
 import { tar } from './plugin-package-fixtures'
 /** Uses current package UI bytes with an INERT server and fictional target/data when no archive is supplied. */
 export function chromeUiFixture(root = resolve(__dirname, '../../../plugins/chrome')) {
+  const archivePath = process.env.BROBOT_CHROME_TEST_ARCHIVE
+  const compression = archivePath?.endsWith('.gz') ? 'tar.gz' : 'tar'
   let archive: Buffer
-  if (process.env.BROBOT_CHROME_TEST_ARCHIVE)
-    archive = readFileSync(process.env.BROBOT_CHROME_TEST_ARCHIVE)
+  if (archivePath) archive = readFileSync(archivePath)
   else {
     const manifest = parsePluginManifest(readFileSync(resolve(root, 'manifest-template.json')))
-    if (manifest.format !== 3) throw new Error('Generic Chrome UI package required')
+    if (manifest.format !== 3 || manifest.runtime.kind !== 'node')
+      throw new Error('Generic Chrome node UI package required')
     const files = new Map<string, Buffer>([
       [manifest.runtime.entry, Buffer.from('export const fictional = true;\n')],
       ['tools.json', Buffer.from('{"tools":[]}')],
@@ -33,14 +35,14 @@ export function chromeUiFixture(root = resolve(__dirname, '../../../plugins/chro
       ...[...files].map(([path, body]) => ({ path, body })),
     ])
   }
-  const manifestBytes = readPluginArchive(archive, 'tar').get('plugin.json')!
+  const manifestBytes = readPluginArchive(archive, compression).get('plugin.json')!
   const manifest = parsePluginManifest(manifestBytes)
   if (manifest.format !== 3 || manifest.id !== 'chrome')
     throw new Error('Generic Chrome UI package required')
   const digest = pluginSha256(archive)
   const verified = verifyPluginPackage(
     archive,
-    { sha256: digest, bytes: archive.length, compression: 'tar' },
+    { sha256: digest, bytes: archive.length, compression },
     { target: manifest.platforms[0]!, appVersion: '1.0.0' },
   )
   return {
@@ -48,7 +50,7 @@ export function chromeUiFixture(root = resolve(__dirname, '../../../plugins/chro
     manifest,
     manifestSha256: pluginSha256(manifestBytes),
     ref: {
-      source: 'https://fictional.example.invalid/chrome.tar',
+      source: archivePath ?? 'https://fictional.example.invalid/chrome.tar',
       sha256: digest,
       bytes: archive.length,
     },
