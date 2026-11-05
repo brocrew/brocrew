@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs'
 import { fixture, projection, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
 import { repoListFor } from './plugin-repo-list-fixtures'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
+import type { LifecycleWorkspace } from '../src/main/plugins/lifecycle/types'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
 import { parseRepoPluginList } from '../src/main/plugins/catalogue/repo-list'
@@ -17,6 +18,35 @@ vi.mock('../src/main/plugins/lifecycle/supervisor', () => ({
   createSupervisorLifecycle: seam.start,
 }))
 const closers: Array<() => unknown | Promise<unknown>> = []
+async function accepted(
+  controller: PluginLifecycleController,
+  handle: LifecycleWorkspace,
+  id: string,
+  installId: string,
+) {
+  const workspaceId = controller.hostWorkspace(handle)
+  let resolve!: () => void, reject!: (error: unknown) => void
+  const ready = new Promise<void>((yes, no) => {
+    resolve = yes
+    reject = no
+  })
+  const check = () => {
+    try {
+      if (controller.admitted(handle, id, installId)) resolve()
+    } catch (error) {
+      reject(error)
+    }
+  }
+  const stop = controller.onHostChanged((changed) => {
+    if (changed === workspaceId) check()
+  })
+  try {
+    check()
+    await ready
+  } finally {
+    stop()
+  }
+}
 afterEach(async () => {
   try {
     for (const close of closers.splice(0).reverse()) await close()
@@ -119,19 +149,43 @@ async function restarted(appVersion: string, empty: boolean) {
     controller,
   })
   closers.push(() => bridge.close())
-  const client = await connectPluginSettings({
-    path: bridge.path,
-    personKey: 'e'.repeat(64),
-    root: f.root,
-    pinnedPublicKey: null,
-    repoCatalogueSha256: view.sha256,
-    target: f.opts.target,
-    catalogue: { bytes: view.bytes, signature: Buffer.alloc(0) },
-    download: f.opts.download,
-    projection: projection(f.events).sink,
+  const local = projection(f.events)
+  const handles: LifecycleWorkspace[] = []
+  const originalAttach = controller.attach
+  const observing = vi.spyOn(controller, 'attach').mockImplementation(function (
+    this: PluginLifecycleController,
+    ...args: Parameters<PluginLifecycleController['attach']>
+  ) {
+    return originalAttach.apply(this, args).then((handle) => {
+      if (this === controller && args[0].workspaceId === local.sink.workspaceId)
+        handles.push(handle)
+      return handle
+    })
   })
+  const connect = async () => {
+    const client = await connectPluginSettings({
+      path: bridge.path,
+      personKey: 'e'.repeat(64),
+      root: f.root,
+      pinnedPublicKey: null,
+      repoCatalogueSha256: view.sha256,
+      target: f.opts.target,
+      catalogue: { bytes: view.bytes, signature: Buffer.alloc(0) },
+      download: f.opts.download,
+      projection: local.sink,
+    })
+    closers.push(() => client.close())
+    expect(handles).toHaveLength(1)
+    await accepted(controller, handles[0]!, 'chrome', installedBefore.installId)
+    return client
+  }
+  let client: Awaited<ReturnType<typeof connectPluginSettings>>
+  try {
+    client = await connect()
+  } finally {
+    observing.mockRestore()
+  }
   recordGuards()
-  closers.push(() => client.close())
   // Every attach clears stale workspace consumers, including with admitted releases.
   // It then rebinds the same authenticated installation; absence must add no revocation.
   const startup = f.events.slice(cutoff)
@@ -280,6 +334,12 @@ it.each([false, true])(
     })
     const handle = await service.controller.attach(projection(f.events).sink)
     if (installed) {
+      await accepted(
+        service.controller,
+        handle,
+        'chrome',
+        f.state.currentInstallation('chrome')!.installId,
+      )
       expect((await service.controller.status()).cards).toMatchObject([
         { id: 'chrome', installed: true, state: 'Running' },
       ])

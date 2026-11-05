@@ -14,6 +14,7 @@ import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-cl
 import { PluginPageTools } from '../src/main/plugins/ui/tool-rpc'
 import { PLUGIN_PAGE_CHANNEL } from '../src/shared/plugin-page'
 import type { LifecycleWorkspace, WorkspaceProjection } from '../src/main/plugins/lifecycle/types'
+import type { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import type { ProjectionReceipt } from '../src/main/plugins/state/format'
 import { fictionalPublicKey, signed } from './plugin-package-fixtures'
 import {
@@ -23,6 +24,35 @@ import {
 } from './fixtures/third-plugin-acceptance'
 
 const cleanup: (() => Promise<unknown>)[] = []
+async function accepted(
+  controller: PluginLifecycleController,
+  handle: LifecycleWorkspace,
+  id: string,
+  installId: string,
+) {
+  const workspaceId = controller.hostWorkspace(handle)
+  let resolve!: () => void, reject!: (error: unknown) => void
+  const ready = new Promise<void>((yes, no) => {
+    resolve = yes
+    reject = no
+  })
+  const check = () => {
+    try {
+      if (controller.admitted(handle, id, installId)) resolve()
+    } catch (error) {
+      reject(error)
+    }
+  }
+  const stop = controller.onHostChanged((changed) => {
+    if (changed === workspaceId) check()
+  })
+  try {
+    check()
+    await ready
+  } finally {
+    stop()
+  }
+}
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close()
 })
@@ -406,6 +436,12 @@ describe.each(['stdio', 'streamable-http'] as const)(
       expect(f.state.getEnabled(f.ids[0]!, id).enabled).toBe(false)
       expect(f.state.getEnabled(f.ids[1]!, id).enabled).toBe(true)
       expect(session.service.controller.agentAttachments(f.ids[0]!)).toEqual([])
+      await accepted(
+        session.service.controller,
+        session.handles[1]!,
+        id,
+        f.state.currentInstallation(id)!.installId,
+      )
       expect((await call('pebble.read_settings', {}, 1)).structuredContent).toMatchObject({
         revision: 2,
         settings: { label: 'Opaque fictional basket', colour: 'fictional violet' },
@@ -413,6 +449,12 @@ describe.each(['stdio', 'streamable-http'] as const)(
         shared: sharedData,
       })
       await session.clients[0]!.host!.request({ kind: 'enabled', pluginId: id, enabled: true })
+      await accepted(
+        session.service.controller,
+        session.handles[0]!,
+        id,
+        f.state.currentInstallation(id)!.installId,
+      )
       expect(
         (await session.service.controller.genericListTools(scope())).map((tool) => tool.name),
       ).toContain('pebble.count')

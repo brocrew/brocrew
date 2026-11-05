@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as nodeHost from '../src/main/plugins/node-host'
 import { parsePluginManifest } from '../src/main/plugins/package-schema'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
+import type { LifecycleWorkspace } from '../src/main/plugins/lifecycle/types'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
 import { parseRepoPluginList } from '../src/main/plugins/catalogue/repo-list'
@@ -12,6 +13,35 @@ import { packageFixture, verified } from './plugin-package-fixtures'
 import { repoListFor } from './plugin-repo-list-fixtures'
 
 const closers: Array<() => Promise<unknown>> = []
+async function accepted(
+  controller: PluginLifecycleController,
+  handle: LifecycleWorkspace,
+  id: string,
+  installId: string,
+) {
+  const workspaceId = controller.hostWorkspace(handle)
+  let resolve!: () => void, reject!: (error: unknown) => void
+  const ready = new Promise<void>((yes, no) => {
+    resolve = yes
+    reject = no
+  })
+  const check = () => {
+    try {
+      if (controller.admitted(handle, id, installId)) resolve()
+    } catch (error) {
+      reject(error)
+    }
+  }
+  const stop = controller.onHostChanged((changed) => {
+    if (changed === workspaceId) check()
+  })
+  try {
+    check()
+    await ready
+  } finally {
+    stop()
+  }
+}
 afterEach(async () => {
   for (const close of closers.splice(0).reverse()) await close()
   vi.unstubAllGlobals()
@@ -124,6 +154,12 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
       ...projection().sink,
       workspaceId: f.receiver.sink.workspaceId,
     })
+    await accepted(
+      f.controller,
+      restored,
+      f.pkg.manifest.id,
+      f.state.currentInstallation(f.pkg.manifest.id)!.installId,
+    )
     expect(updated.current()).toBe(false)
     expect(get.call(f.controller, restored, f.pkg.manifest.id).current()).toBe(true)
   })
