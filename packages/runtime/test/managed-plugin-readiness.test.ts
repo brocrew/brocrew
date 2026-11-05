@@ -187,6 +187,16 @@ it.each(['refused', 'tools-error', 'timeout'] as const)(
     await handle.send('Fictional later turn after discovery recovered')
     await tick()
     expect(reread).toBe(true)
+    expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual(
+      Array.from({ length: 2 }, () => ({
+        method: 'mcpServerStatus/list',
+        params: {
+          threadId: saved!.sessionId,
+          serverName: route.name,
+          detail: 'toolsAndAuthOnly',
+        },
+      })),
+    )
     expect(wire.catalogsAtTurns).toEqual([[]])
     expect(handle.ref).toEqual(saved)
     expect(wire.requests.filter((one) => one.method === 'thread/start')).toHaveLength(1)
