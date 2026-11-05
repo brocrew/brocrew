@@ -24,9 +24,15 @@ import {
 } from './fixtures/third-plugin-acceptance'
 
 const cleanup: (() => Promise<unknown>)[] = []
-const traces: ReturnType<typeof boundaryTrace>[] = []
+interface BoundaryTrace {
+  step<T>(label: string, call: () => Promise<T>): Promise<T>
+  inspect<T>(get: () => T): T | { unavailable: true }
+  watch(get: () => unknown): void
+  dump(): void
+}
+const traces: BoundaryTrace[] = []
 let traceSequence = 0
-function boundaryTrace(transport: ThirdPluginTransport) {
+function boundaryTrace(transport: ThirdPluginTransport): BoundaryTrace {
   const traceId = ++traceSequence
   let sequence = 0
   const counts: Record<string, { entered: number; fulfilled: number; rejected: number }> = {}
