@@ -293,7 +293,8 @@ describe('marking what main found', () => {
     expect(source).not.toContain('href=')
     const pending = markPathsIn(source, () => undefined, MAC)
     expect(pending).not.toContain('<a')
-    expect(pending).toContain('<span class="message-path-text" data-cy="message-path-text"')
+    expect(pending).toContain('<span class="message-path-label" role="group"')
+    expect(pending).toContain('title="/tmp/report.md" aria-label="/tmp/report.md"')
     expect(pending).toContain('>/tmp/report.md</span>')
     expect(pending).not.toContain('<button')
     // A web link is still a link.
