@@ -126,9 +126,11 @@ export interface AgentAttachmentView {
   readonly exited: Promise<void>
   current(): boolean
 }
+/** Enabled is the captured workspace setting, independently of route or session availability. */
 export type AgentScopeEntry =
   | {
       readonly pluginId: string
+      readonly enabled: boolean
       readonly installId: string
       readonly runId: string
       readonly switchRevision: number
@@ -137,6 +139,7 @@ export type AgentScopeEntry =
     }
   | {
       readonly pluginId: string
+      readonly enabled: boolean
       readonly installId: string | null
       readonly switchRevision: number
       readonly is: 'pending'
@@ -145,6 +148,7 @@ export type AgentScopeEntry =
     }
   | {
       readonly pluginId: string
+      readonly enabled: boolean
       readonly switchRevision: number
       readonly is: 'off'
       readonly why: 'disabled' | 'not-installed' | 'no-agent-tools'
@@ -2498,7 +2502,7 @@ export class PluginLifecycleController {
     ])
     const entries = [...ids].sort().map((pluginId): AgentScopeEntry => {
       const choice = read.getEnabled(workspaceId, pluginId)
-      const base = { pluginId, switchRevision: choice.revision }
+      const base = { pluginId, enabled: choice.enabled, switchRevision: choice.revision }
       const active = this.current(pluginId, read)
       const run = this.runs.get(pluginId)
       const pendingEntry = (
