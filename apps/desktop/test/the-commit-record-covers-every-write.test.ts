@@ -82,7 +82,7 @@ describe('the commit record covers every write', () => {
           if (statSync(path).isDirectory()) walk(path)
           else if (path.endsWith('.ts')) {
             const count = execSites(readFileSync(path, 'utf8'))
-            if (count > 0) found[path.slice(mainRoot.length + 1)] = count
+            if (count > 0) found[path.slice(mainRoot.length + 1).replaceAll('\\', '/')] = count
           }
         }
       }
