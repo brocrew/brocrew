@@ -6,6 +6,7 @@ import { createSupervisedPluginHost } from '../supervisor/node-host'
 import type { createPluginNodeHost } from '../node-host'
 import { PluginLifecycleController } from './controller'
 import { servePersonPluginControl } from './person-control'
+import { PluginEffectQueue } from './effect-queue'
 import type { LifecycleOptions } from './types'
 
 /** Called in the exclusive supervisor process, never in a workspace renderer or agent handler. */
@@ -15,11 +16,16 @@ export async function createSupervisorLifecycle(options: {
   lifecycle: Omit<LifecycleOptions, 'runtime'>
   personKey: string
 }) {
+  const releaseReads = options.lifecycle.state.retainOwnerReadSnapshot()
+  void options.owner.closed.then(releaseReads)
+  const effectQueue = new PluginEffectQueue()
+  options.owner.bindLifecycleEffects(effectQueue)
   const host = createSupervisedPluginHost(options.owner, options.host)
   const consumer: { agents?: ReturnType<typeof createLifecycleAgentBridge> } = {}
   const controller = sharedLifecycleWorkspaces(
     await PluginLifecycleController.open({
       ...options.lifecycle,
+      effectQueue,
       toolsUnavailable: (id) => consumer.agents?.toolsUnavailable(id) ?? false,
       deny(id) {
         consumer.agents?.deny(id)

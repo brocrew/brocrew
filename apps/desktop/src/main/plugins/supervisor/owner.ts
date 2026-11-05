@@ -107,6 +107,7 @@ export class PluginSupervisor {
   private readonly children = new Set<OwnedPluginChild>()
   private readonly starting = new Set<Promise<OwnedPluginChild>>()
   private readonly sockets = new Set<Socket>()
+  private effectDrain?: { beginClose(): void; settled(): Promise<void> }
   private agentBridge?: {
     routes(
       lease: Readonly<WorkspaceLease>,
@@ -120,6 +121,11 @@ export class PluginSupervisor {
   bindAgentBridge(bridge: NonNullable<PluginSupervisor['agentBridge']>): void {
     if (this.agentBridge) refuse()
     this.agentBridge = bridge
+  }
+  /** Queued filesystem effects settle before this owner releases its lifetime transaction. */
+  bindLifecycleEffects(drain: { beginClose(): void; settled(): Promise<void> }): void {
+    if (this.effectDrain || !this.fence || this.record.phase !== 'accepting') refuse()
+    this.effectDrain = drain
   }
   /** Remaining wall-clock time in the owner's bounded cleanup, for trusted child teardown. */
   remainingDrainMs(): number {
@@ -458,6 +464,7 @@ export class PluginSupervisor {
     this.drainWork ??= (async () => {
       this.trace({ stage: 'child-proofs', state: 'waiting' })
       this.drainDeadline = performance.now() + (this.options.drainWithin ?? OWNER_LIMITS.cleanup)
+      this.effectDrain?.beginClose()
       notify(() => this.agentBridge?.close?.())
       // A host reserves before spawning and must return/register a handle for every physical
       // child it creates. A rejection with no handle is an ordinary plugin start failure.
@@ -473,6 +480,7 @@ export class PluginSupervisor {
         this.fail()
         return false
       }
+      await this.effectDrain?.settled()
       this.trace({ stage: 'child-proofs', state: 'complete' })
       this.trace({ stage: 'server.close', state: 'waiting' })
       await new Promise<void>((resolve) => this.server!.close(() => resolve()))

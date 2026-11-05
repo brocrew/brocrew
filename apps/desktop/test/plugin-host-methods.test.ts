@@ -353,6 +353,74 @@ describe('before-turn titles', () => {
       }),
     )
   })
+  it('scopes titles to the requesting consumer without disabling a healthy workspace peer', async () => {
+    const { host, request, callTool } = fixture()
+    const other = { pluginId: 'second-notes', runId: 'second-run' }
+    const contribution = {
+      contributionId: 'titles',
+      kind: 'turn.context.titles',
+      api: 1,
+      definition: { invoke: { tool: 'choose_titles' } },
+    }
+    await request('host.contributions.register', contribution)
+    host.attach(other)
+    host.setEnabled('workshop', other.pluginId, true)
+    host.setTitlesEnabled('workshop', owner.pluginId, true)
+    host.setTitlesEnabled('workshop', other.pluginId, true)
+    await host.request(
+      other,
+      {
+        api: 1,
+        workspaceId: 'workshop',
+        requestId: 'second-register',
+        method: 'host.contributions.register',
+        params: contribution,
+      } as PluginHostRequest,
+      new AbortController().signal,
+    )
+    const result: PluginToolCallResult = {
+      status: 'result',
+      result: {
+        content: [],
+        structuredContent: {
+          pointers: [{ resourceId: 'guide', version: 'v1' }],
+        },
+      },
+    }
+    expect(host.hasTitleHooks('workshop')).toBe(true)
+    callTool.mockResolvedValue(result)
+    expect(await host.beforeTurn(input, (id) => id === other.pluginId)).toEqual({
+      pointers: [{ resourceId: 'guide', version: 'v1' }],
+    })
+    expect(callTool).toHaveBeenCalledTimes(1)
+    expect(callTool.mock.calls[0]![0].pluginId).toBe(other.pluginId)
+    expect(host.snapshot('workshop').contributions.every((one) => one.state === 'active')).toBe(
+      true,
+    )
+    callTool.mockClear()
+    let finish!: (value: PluginToolCallResult) => void
+    let live = true
+    callTool.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+    const held = host.beforeTurn(input, (id) => id === owner.pluginId && live)
+    expect(callTool).toHaveBeenCalledTimes(1)
+    live = false
+    finish(result)
+    expect(await held).toEqual({ pointers: [] })
+    expect(host.hasTitleHooks('workshop')).toBe(true)
+    expect(host.snapshot('workshop').contributions.every((one) => one.state === 'active')).toBe(
+      true,
+    )
+    callTool.mockResolvedValue(result)
+    live = true
+    expect(await host.beforeTurn(input, (id) => id === owner.pluginId && live)).toEqual({
+      pointers: [{ resourceId: 'guide', version: 'v1' }],
+    })
+  })
   it('runs callbacks in parallel under one 500ms deadline and drops late/off results', async () => {
     vi.useFakeTimers()
     const { host, request, callTool } = fixture()

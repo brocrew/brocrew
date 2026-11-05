@@ -243,13 +243,16 @@ describe.skipIf(process.platform === 'win32')(
         await store.withExclusive(async () => {
           expect(store.inspect()).toEqual(before)
         })
-        expect(() => other.inspect()).toThrow(expect.objectContaining({ code: 'busy' }))
+        expect(other.inspect()).toEqual(before)
+        expect(() => other.setEnabled('fictional-workspace', 'fictional-plugin', false)).toThrow(
+          expect.objectContaining({ code: 'busy' }),
+        )
         await expect(other.withExclusive(async () => other.inspect())).rejects.toMatchObject({
           code: 'busy',
         })
       })
     })
-    it('queues async callers FIFO while synchronous unrelated callers refuse busy', async () => {
+    it('queues writers FIFO while unrelated readers observe the committed selection', async () => {
       const { options, disk } = fixture(),
         second = new PluginStateDisk(options)
       disks.push(second)
@@ -273,7 +276,7 @@ describe.skipIf(process.platform === 'win32')(
         order.push(3)
       })
       expect(order).toEqual([1])
-      expect(() => second.load()).toThrow(expect.objectContaining({ code: 'busy' }))
+      expect(second.load().pending).toBeNull()
       release()
       await Promise.all([a, b, c])
       expect(order).toEqual([1, 2, 3])

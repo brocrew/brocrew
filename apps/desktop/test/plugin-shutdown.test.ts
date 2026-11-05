@@ -303,13 +303,17 @@ describe.skipIf(process.platform === 'win32')(
       })
       exit.resolve()
       await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
-      await expect(
-        f.controller.reconcileConsumer(f.handle, {
-          ...f.local.sink,
-          revoke: async () => true,
-          reconcile,
+      await f.controller.reconcileConsumer(f.handle, {
+        ...f.local.sink,
+        revoke: async () => true,
+        reconcile,
+      })
+      await vi.waitFor(() =>
+        expect(f.controller.consumerBindings(f.handle)).toContainEqual({
+          pluginId: 'chrome',
+          state: 'failed',
         }),
-      ).rejects.toMatchObject({ code: 'cleanup-pending' })
+      )
       expect(reconcile).toHaveBeenCalledExactlyOnceWith({
         pluginId: 'chrome',
         before: null,

@@ -24,6 +24,10 @@ export class PluginFence {
   private active: Lease | null = null
   private readonly waiting: Waiting[] = []
   private closed = false
+  private snapshotReaders = 0
+  private publication = 0
+  private decodedPublication = -1
+  private snapshot: unknown
   private constructor(
     private readonly identity: string,
     private readonly db: PluginSqlite,
@@ -57,6 +61,34 @@ export class PluginFence {
   check(_path: string): void {
     void _path
     if (this.closed) refuseState('conflict')
+  }
+  /** Only a live supervisor owner retains a shared decoded selection. Observers read fresh. */
+  retainSnapshot(): () => void {
+    this.snapshotReaders++
+    let live = true
+    return () => {
+      if (!live) return
+      live = false
+      if (--this.snapshotReaders === 0) {
+        this.snapshot = undefined
+        this.decodedPublication = -1
+      }
+    }
+  }
+  published(): void {
+    this.publication++
+    this.snapshot = undefined
+    this.decodedPublication = -1
+  }
+  readSnapshot<T>(read: () => T): T {
+    if (this.snapshotReaders === 0) return read()
+    if (this.decodedPublication !== this.publication) {
+      this.snapshot = undefined
+      this.decodedPublication = -1
+      this.snapshot = read()
+      this.decodedPublication = this.publication
+    }
+    return this.snapshot as T
   }
   private nested(owner: object): boolean {
     return this.active?.owner === owner && this.context.getStore() === this.active.token
