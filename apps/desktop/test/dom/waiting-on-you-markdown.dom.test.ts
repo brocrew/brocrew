@@ -37,7 +37,7 @@ describe.each(['classic', 'crew-night'] as const)('Waiting on you markdown in %s
     await drawnReady()
     const punctuation = inkRects(group.lastChild as Text)
     expect(punctuation).toHaveLength(1)
-    expect(punctuation[0].top).toBeLessThan(code.getBoundingClientRect().bottom)
+    expect(punctuation[0]!.top).toBeLessThan(code.getBoundingClientRect().bottom)
     expect(context.textContent).toBe('Added: Added after review: read summary.md.')
     const filename = 'long-name-'.repeat(80) + 'summary.md'
     const narrow = mount(RequestMarkdown, { text: `Read \`${filename}\`.` }, { width: 180 })
