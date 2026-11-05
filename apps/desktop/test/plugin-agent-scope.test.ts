@@ -230,6 +230,64 @@ it('throws for a failed committed read, unknown workspace, restore exclusion and
   expect(() => f.controller.agentScope(f.workspaceId)).toThrow()
 })
 
+it('reports pending at synchronous install admission and throughout a held download before journal prepare', async () => {
+  const f = await setup()
+  const entered = deferred<void>(),
+    held = deferred<void>()
+  releases.push(() => held.resolve())
+  const original = f.opts.download!
+  const download = vi.fn<NonNullable<LifecycleOptions['download']>>(async (release, signal) => {
+    entered.resolve()
+    await held.promise
+    return original(release, signal)
+  })
+  f.opts.download = download
+  const prepare = vi.spyOn(f.state, 'prepare')
+  const wakes: AgentScope[] = []
+  const unsubscribe = f.controller.onHostChanged((workspaceId) => {
+    if (workspaceId === f.workspaceId) wakes.push(f.controller.agentScope(workspaceId))
+  })
+  closers.push(async () => unsubscribe())
+  expect(entry(f.controller.agentScope(f.workspaceId), A)).toMatchObject({
+    is: 'off',
+    why: 'not-installed',
+    enabled: true,
+  })
+  const installing = f.controller.install(f.handle, A)
+  void installing.catch(() => undefined)
+  // Mutation admission is synchronous; the queue has not started the download yet.
+  expect(wakes.length).toBeGreaterThan(0)
+  expect(wakes.map((scope) => entry(scope, A))).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ is: 'pending', why: 'starting', installId: null, enabled: true }),
+    ]),
+  )
+  expect(wakes.every((scope) => entry(scope, A).is === 'pending')).toBe(true)
+  expect(download).not.toHaveBeenCalled()
+  expect(entry(f.controller.agentScope(f.workspaceId), A)).toMatchObject({
+    is: 'pending',
+    why: 'starting',
+    enabled: true,
+  })
+  await entered.promise
+  expect(f.state.inspect().pending).toBeNull()
+  expect(prepare).not.toHaveBeenCalled()
+  expect(f.start).not.toHaveBeenCalled()
+  expect(entry(f.controller.agentScope(f.workspaceId), A)).toMatchObject({
+    is: 'pending',
+    why: 'starting',
+    installId: null,
+    enabled: true,
+  })
+  held.resolve()
+  await installing
+  expect(prepare).toHaveBeenCalledOnce()
+  expect(entry(f.controller.agentScope(f.workspaceId), A)).toMatchObject({
+    is: 'admitted',
+    enabled: true,
+  })
+})
+
 it('keeps a pending selection and an ephemeral deny out of committed none', async () => {
   const f = await setup()
   const entered = deferred<void>(),
