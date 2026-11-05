@@ -138,7 +138,18 @@ export class PluginStateDisk {
   }
   load(_keptActivations?: Set<string>): LifecycleState {
     void _keptActivations
-    return this.exclusive(() => readState(this.root))
+    return this.read((state) => structuredClone(state))
+  }
+  /** One synchronous selection; callers cannot retain its private maps for mutation. */
+  read<T>(select: (state: LifecycleState) => T): T {
+    this.check()
+    const read = () => readState(this.root)
+    return select(this.lock ? this.lock.readSnapshot(read) : read())
+  }
+  retainOwnerReadSnapshot(): () => void {
+    this.check()
+    if (!this.lock) refuseState('conflict')
+    return this.lock.retainSnapshot()
   }
   loadForObservation(): LifecycleState {
     return this.load()
@@ -235,6 +246,7 @@ export class PluginStateDisk {
       fsyncSync(fd)
       this.options.fault?.('staged')
       renameSync(temporary, join(this.root, 'installed-state.json'))
+      this.lock?.published()
       this.options.fault?.('published')
       if (process.platform !== 'win32') {
         const directory = openSync(this.root, 'r')
@@ -324,7 +336,13 @@ export class PluginStateDisk {
   append(previous: LifecycleState, event: JournalRecord['event']): void {
     this.exclusive(() => {
       const state = this.current(previous)
-      if (state.pending) refuseState('busy')
+      if (
+        state.pending &&
+        (event.kind !== 'projected' ||
+          state.pending.request.consent.action === 'global-restore' ||
+          state.pending.request.consent.pluginId === event.pluginId)
+      )
+        refuseState('busy')
       this.apply(state, event)
       this.save(state)
     })

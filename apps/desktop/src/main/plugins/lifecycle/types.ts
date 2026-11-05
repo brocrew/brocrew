@@ -5,6 +5,7 @@ import type { PluginRelease, PluginTarget } from '../package-schema'
 import type { GlobalPluginState } from '../state/store'
 import type { ProjectionReceipt, Installation } from '../state/format'
 import type { PluginNodeReady, PluginNodeStart } from '../node-host'
+import type { PluginEffectQueue } from './effect-queue'
 
 export interface LifecycleRun {
   readonly runId: string
@@ -35,6 +36,8 @@ export interface WorkspaceProjection {
   }): Promise<void>
 }
 export interface LifecycleOptions {
+  /** Constructed after the supervisor acquires its actual lifetime lease. */
+  effectQueue?: PluginEffectQueue
   root: string
   state: GlobalPluginState
   pinnedPublicKey: KeyObject | null

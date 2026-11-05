@@ -64,8 +64,62 @@ export class GlobalPluginState {
   withExclusive<T>(run: () => Promise<T>): Promise<T> {
     return this.disk.withExclusive(run)
   }
+  /** The supervisor retains this only while it holds its actual lifetime lease. */
+  retainOwnerReadSnapshot(): () => void {
+    return this.disk.retainOwnerReadSnapshot()
+  }
+  /** A view belongs to one synchronous decision and is reacquired after every await. */
+  readView() {
+    return this.disk.read((state) => {
+      const choice = (
+        field: 'workspaceEnabled' | 'workspaceTitlesEnabled',
+        workspace: string,
+        id: string,
+      ) => {
+        const row = state[field].get(workspacePluginKey(workspace, id))
+        return Object.freeze(
+          row
+            ? { enabled: row.enabled, revision: row.revision }
+            : { enabled: field === 'workspaceEnabled', revision: 0 },
+        )
+      }
+      const current = (id: string) => frozen(this.selected(state, id))
+      const projection = (workspace: string, id: string): Receipt | null => {
+        const install = current(id)
+        return install
+          ? frozen(
+              stateInput(
+                installationProjection(state.rootId, state.epoch, workspace, install),
+                ProjectionReceipt,
+              ),
+            )
+          : null
+      }
+      return Object.freeze({
+        sequence: state.sequence,
+        inspect: () => this.inspectView(state),
+        currentInstallation: current,
+        currentInstallations: () =>
+          frozen([...state.admitted.values()].filter((entry) => current(entry.pluginId))),
+        getEnabled: (workspace: string, id: string) => choice('workspaceEnabled', workspace, id),
+        getTitlesEnabled: (workspace: string, id: string) =>
+          choice('workspaceTitlesEnabled', workspace, id),
+        emptyProjection: projection,
+        matchesProjection(input: unknown, workspace: string) {
+          const parsed = ProjectionReceipt.safeParse(input)
+          return (
+            parsed.success &&
+            parsed.data.workspaceId === workspace &&
+            equalState(projection(workspace, parsed.data.pluginId), parsed.data)
+          )
+        },
+      })
+    })
+  }
   inspect() {
-    const state = this.disk.load()
+    return this.disk.read((state) => this.inspectView(state))
+  }
+  private inspectView(state: LifecycleState) {
     const current = frozen({
       rootId: state.rootId,
       epoch: state.epoch,
@@ -84,13 +138,13 @@ export class GlobalPluginState {
     })
   }
   getEnabled(workspaceId: string, pluginId: string): WorkspacePluginEnabled {
-    return this.workspaceChoice('workspaceEnabled', workspaceId, pluginId)
+    return this.readView().getEnabled(workspaceId, pluginId)
   }
   setEnabled(workspaceId: string, pluginId: string, enabled: boolean): WorkspacePluginEnabled {
     return frozen(this.disk.setWorkspaceChoice('workspaceEnabled', workspaceId, pluginId, enabled))
   }
   getTitlesEnabled(workspaceId: string, pluginId: string): WorkspacePluginEnabled {
-    return this.workspaceChoice('workspaceTitlesEnabled', workspaceId, pluginId)
+    return this.readView().getTitlesEnabled(workspaceId, pluginId)
   }
   setTitlesEnabled(
     workspaceId: string,
@@ -101,31 +155,13 @@ export class GlobalPluginState {
       this.disk.setWorkspaceChoice('workspaceTitlesEnabled', workspaceId, pluginId, enabled),
     )
   }
-  private workspaceChoice(
-    field: 'workspaceEnabled' | 'workspaceTitlesEnabled',
-    workspaceId: string,
-    pluginId: string,
-  ): WorkspacePluginEnabled {
-    const row = this.disk.load()[field].get(workspacePluginKey(workspaceId, pluginId))
-    return frozen(
-      row
-        ? { enabled: row.enabled, revision: row.revision }
-        : {
-            enabled: field === 'workspaceEnabled',
-            revision: 0,
-          },
-    )
-  }
-  /** A pending operation affects only its target, except for a global selection restore. */
   currentInstallation(pluginId: string) {
-    return frozen(this.selected(this.disk.load(), pluginId))
+    return this.readView().currentInstallation(pluginId)
   }
   currentInstallations() {
-    const state = this.disk.load()
-    return frozen(
-      [...state.admitted.values()].filter((entry) => this.selected(state, entry.pluginId)),
-    )
+    return this.readView().currentInstallations()
   }
+
   private selected(state: LifecycleState, pluginId: string) {
     const pending = state.pending?.request.consent
     if (pending && (pending.action === 'global-restore' || pending.pluginId === pluginId))
@@ -214,16 +250,9 @@ export class GlobalPluginState {
     return frozen(this.active(state))
   }
   emptyProjection(workspaceId: string, pluginId: string): Receipt | null {
-    const state = this.disk.load()
-    const current = this.selected(state, pluginId)
-    if (current === null) return null
-    return frozen(
-      stateInput(
-        installationProjection(state.rootId, state.epoch, workspaceId, current),
-        ProjectionReceipt,
-      ),
-    )
+    return this.readView().emptyProjection(workspaceId, pluginId)
   }
+
   /** Preview the workspace installation binding for a pending operation. */
   previewProjection(operationId: string, workspaceId: string): Receipt {
     const state = this.disk.load(),
@@ -248,7 +277,12 @@ export class GlobalPluginState {
   }
   recordProjection(workspaceId: string, pluginId: string, receipt: Receipt | null): void {
     const state = this.disk.load()
-    this.active(state)
+    if (
+      state.pending &&
+      (state.pending.request.consent.action === 'global-restore' ||
+        state.pending.request.consent.pluginId === pluginId)
+    )
+      refuseState('busy')
     const event = stateInput({ kind: 'projected', workspaceId, pluginId, receipt }, Event)
     if (event.kind !== 'projected') refuseState('conflict')
     if (receipt && (receipt.pluginId !== pluginId || !this.matchesProjection(receipt, workspaceId)))
@@ -259,11 +293,9 @@ export class GlobalPluginState {
   }
   /** Compare a workspace binding with the current installation. */
   matchesProjection(input: unknown, workspaceId: string): boolean {
-    const parsed = ProjectionReceipt.safeParse(input)
-    if (!parsed.success || parsed.data.workspaceId !== workspaceId) return false
-    const current = this.emptyProjection(workspaceId, parsed.data.pluginId)
-    return current !== null && equalState(current, parsed.data)
+    return this.readView().matchesProjection(input, workspaceId)
   }
+
   reconcileProjection(input: unknown, workspaceId: string, pluginId: string) {
     const before = ProjectionReceipt.safeParse(input)
     const receipt = this.emptyProjection(workspaceId, pluginId)
