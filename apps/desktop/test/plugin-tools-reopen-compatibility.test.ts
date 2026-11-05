@@ -436,15 +436,22 @@ describe.each(['claude', 'codex'] as const)(
       })
       const requestId = answer.structured!.request as string
       const old = w.world.handles.get('writer')!,
-        exit = w.world.gate()
+        exit = w.world.gate(),
+        closing = vi.fn()
+      const close = old.close.bind(old)
       Object.defineProperty(old, 'checkSignIn', { configurable: true, value: async () => true })
-      Object.defineProperty(old, 'awaitProcessExit', {
+      Object.defineProperty(old, 'close', {
         configurable: true,
-        value: () => exit.promise,
+        value: () => {
+          closing()
+          return close().then(() => exit.promise)
+        },
       })
       const held = 'Fictional words held for current plugin titles.'
       await w.host.send(w.id, held, w.world.window)
+      await expect.poll(() => closing.mock.calls.length).toBe(1)
       await expect.poll(() => old.status()).toBe('ended')
+      expect(w.world.launches).toHaveLength(1)
       expect(
         await executeRuntimeCommand(w.host, w.world.window, {
           kind: 'decideMcpServerRequest',
@@ -452,11 +459,19 @@ describe.each(['claude', 'codex'] as const)(
           approve: true,
         }),
       ).toMatchObject({ outcome: 'taken' })
+      expect(
+        w.world
+          .ledger(w.id)
+          .filter(
+            (event) => event.type === 'mcp_server_request_settled' && event.requestId === requestId,
+          ),
+      ).toEqual([expect.objectContaining({ ending: 'approved' })])
+      expect(w.world.launches).toHaveLength(1)
       exit.release()
       await expect.poll(() => w.sent().filter((text) => text.includes(held)).length).toBe(1)
       expect(w.world.launches).toHaveLength(2)
       expect(w.world.launches[1]!.options.externalMcp?.servers).toContainEqual(
-        expect.objectContaining({ url: external.url }),
+        expect.objectContaining({ name: 'fictional-notes', url: external.url }),
       )
       expect(w.world.launches[1]!.options.managedPluginMcp).toContainEqual(
         expect.objectContaining({ pluginId: 'fictional-bakery' }),
