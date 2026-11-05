@@ -102,6 +102,8 @@ SPAWN_RAILS = "apps/desktop/src/main/runtime/spawn-rails.ts"
 CONVERSATION_PANE_VUE = "apps/desktop/src/renderer/src/components/ConversationPane.vue"
 RUNTIME_SCREEN_VUE = "apps/desktop/src/renderer/src/components/RuntimeScreen.vue"
 SIDE_RAIL_VUE = "apps/desktop/src/renderer/src/components/SideRail.vue"
+# The list's ingestion and its refused reads moved out of SideRail.vue into the workspace projection.
+WORKSPACE_PROJECTION = "apps/desktop/src/renderer/src/lib/workspace-projection.ts"
 ATTENTION = "apps/desktop/src/renderer/src/lib/attention.ts"
 DIGEST_LIB = "apps/desktop/src/renderer/src/lib/digest.ts"
 ACTIVITY_LIB = "apps/desktop/src/renderer/src/lib/recent-activity.ts"
@@ -1291,7 +1293,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M184 · a failed re-read of the list wipes the rows an earlier read drew — killed by `the-one-list-says-what-the-host-says-newest-first.dom.test.ts`",
         [
-            (SIDE_RAIL_VUE, "    listError.value = readableError(cause)\n", "    listError.value = readableError(cause)\n    hostResumable.value = []\n    hostUnresumable.value = []\n"),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — a refused list read moved from SideRail.vue into `listRefused` in workspace-projection.ts; the plant wipes the host rows there as well as setting the error.
+            (WORKSPACE_PROJECTION, "      if (ticket === readsAsked) error.value = why\n", "      if (ticket === readsAsked) error.value = why\n      if (ticket === readsAsked) {\n        resumable.value = []\n        unresumable.value = []\n      }\n"),
         ],
     ),
     (

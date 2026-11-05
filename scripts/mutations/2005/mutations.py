@@ -117,7 +117,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # Killed by `the-graph-draws-each-agent-as-the-rail-does-and-opens-only-what-opens.dom.test.ts`,
         # `the-first-picture-of-who-called-whom.dom.test.ts`.
         [
-            (SESSION_DRAWER_VUE, ":can-open-conversation=\"cast.goTo.value !== null\"", ":can-open-conversation=\"true\""),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the band's press now comes through the provided conversation door, not `cast.goTo`.
+            (SESSION_DRAWER_VUE, ":can-open-conversation=\"conversationDoor !== null\"", ":can-open-conversation=\"true\""),
         ],
     ),
     (

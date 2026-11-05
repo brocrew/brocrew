@@ -32,6 +32,9 @@ QUESTION_CARD_VUE = "apps/desktop/src/renderer/src/components/QuestionCard.vue"
 RUNTIME_SCREEN_VUE = "apps/desktop/src/renderer/src/components/RuntimeScreen.vue"
 SESSION_BOT_VUE = "apps/desktop/src/renderer/src/components/SessionBot.vue"
 SIDE_RAIL_VUE = "apps/desktop/src/renderer/src/components/SideRail.vue"
+# The pushed states and the waits reading moved out of SideRail.vue and RuntimeScreen.vue into the
+# workspace projection.
+WORKSPACE_PROJECTION = "apps/desktop/src/renderer/src/lib/workspace-projection.ts"
 WORKING_TOGETHER_VUE = "apps/desktop/src/renderer/src/components/WorkingTogether.vue"
 QUESTION_CARD = "apps/desktop/src/renderer/src/lib/question-card.ts"
 TRANSCRIPT = "apps/desktop/src/renderer/src/lib/transcript.ts"
@@ -118,7 +121,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         [
             # ⚑ W4.162 · re-anchored in place, not retired — the entry now spreads the row's model and
             # effort beside its plate and word; the plant still hands the coarse standing word.
-            (SIDE_RAIL_VUE, "            word: row.word,\n", "            word: row.standing,\n"),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the rail's `says` moved out of defineExpose into its own computed, one indent shallower.
+            (SIDE_RAIL_VUE, "        word: row.word,\n", "        word: row.standing,\n"),
         ],
     ),
     (
@@ -126,19 +130,22 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         [
             # ⚑ W4.162 · re-anchored in place, not retired — the entry is built over several lines now;
             # the plant still keys it by the agent's name.
-            (SIDE_RAIL_VUE, "        return [\n          row.sessionId,\n", "        return [\n          row.label,\n"),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the rail's `says` moved into its own computed that keeps unchanged entries; the plant keys both of its returns by the agent's name.
+            (SIDE_RAIL_VUE, "      if (old !== undefined && sameValue(old, fresh)) return [row.sessionId, old]\n      moved = true\n      return [row.sessionId, fresh]", "      if (old !== undefined && sameValue(old, fresh)) return [row.label, old]\n      moved = true\n      return [row.label, fresh]"),
         ],
     ),
     (
         "M11 · 🔴 the screen stops handing the band the rail's rows · the right panel never learns what the rail says and draws the faceless plate for every agent in the running app — killed by `the-rail-row-is-what-every-plate-under-the-strip-draws.dom.test.ts` — killed by `the-rail-row-is-what-every-plate-under-the-strip-draws.dom.test.ts`",
         [
-            (RUNTIME_SCREEN_VUE, "cast.railSays.value = rail.value?.says ?? null", "cast.railSays.value = null"),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the screen no longer mirrors the rail's rows; the rail wires them into the workspace projection the band reads, in SideRail.vue. The plant wires none.
+            (SIDE_RAIL_VUE, "  railSays: () => says.value,", "  railSays: () => null,"),
         ],
     ),
     (
         "M12 · ⛔ the screen leaves the rail's rows in the band's channel when it goes · a replaced screen (HMR) or a re-mount draws the last screen's words for agents it has never heard of — killed by `the-rail-row-is-what-every-plate-under-the-strip-draws.dom.test.ts` — killed by `the-rail-row-is-what-every-plate-under-the-strip-draws.dom.test.ts`",
         [
-            (RUNTIME_SCREEN_VUE, "  cast.railSays.value = null\n", ""),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the screen no longer clears a band channel of its own; on unmount it resets the workspace projection, band, list and readings together. The plant drops the reset.
+            (RUNTIME_SCREEN_VUE, "  projection.reset()\n", ""),
         ],
     ),
     (
@@ -344,7 +351,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # (The label's mechanism, the waits re-read, went on purpose; the rule did not.) Killed by
         # `the-rails-list-is-asked-again-when-an-agents-state-may-have-moved.test.ts`.
         [
-            (SIDE_RAIL_VUE, "  said.value = next\n", ""),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — hearStates' write moved from SideRail.vue into `statesMoved` in workspace-projection.ts.
+            (WORKSPACE_PROJECTION, "      said.value = next\n", ""),
         ],
     ),
     (
@@ -396,7 +404,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # holds 2 rail asks, where the census expects 3. Killed by
         # `the-rails-list-is-asked-again-when-an-agents-state-may-have-moved.test.ts`.
         [
-            (RUNTIME_SCREEN_VUE, "      // ({@link stopHearingStates}).\n      void rail.value?.refreshResumable()\n", "      // ({@link stopHearingStates}).\n"),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the `work` arm now asks the list through `readTheList()` instead of the rail.
+            (RUNTIME_SCREEN_VUE, "      // ({@link stopHearingStates}).\n      void readTheList()\n", "      // ({@link stopHearingStates}).\n"),
         ],
     ),
     (
@@ -415,7 +424,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # the rail never hears a push while the files read stays wired and syntactically valid. Killed by
         # `the-rails-list-is-asked-again-when-an-agents-state-may-have-moved.test.ts`.
         [
-            (RUNTIME_SCREEN_VUE, "    rail.value?.hearStates(message)\n", ""),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the screen now hands each `runtime:states` message to the workspace projection instead of the rail.
+            (RUNTIME_SCREEN_VUE, "    projection.hearStates(message)\n", ""),
         ],
     ),
     (
@@ -434,7 +444,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # listedStateOfActive just above). Killed by
         # `the-rails-list-is-asked-again-when-an-agents-state-may-have-moved.test.ts`.
         [
-            (RUNTIME_SCREEN_VUE, "    rail.value?.hearStates(message)\n", "    if (active.value !== null) rail.value?.hearStates(message)\n"),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the screen now hands each `runtime:states` message to the workspace projection instead of the rail.
+            (RUNTIME_SCREEN_VUE, "    projection.hearStates(message)\n", "    if (active.value !== null) projection.hearStates(message)\n"),
         ],
     ),
     (
@@ -451,7 +462,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # rail's ask. Killed by
         # `the-rails-list-is-asked-again-when-an-agents-state-may-have-moved.test.ts`.
         [
-            (RUNTIME_SCREEN_VUE, "      // ({@link stopHearingStates}).\n      void rail.value?.refreshResumable()\n", "      // ({@link stopHearingStates}).\n      void library.value?.refreshResumable()\n"),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the `work` arm now asks the list through `readTheList()` instead of the rail.
+            (RUNTIME_SCREEN_VUE, "      // ({@link stopHearingStates}).\n      void readTheList()\n", "      // ({@link stopHearingStates}).\n      void library.value?.refreshResumable()\n"),
         ],
     ),
     (
@@ -467,7 +479,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # falls back to the word its live facets produce'. Killed by
         # `the-rails-list-is-asked-again-when-an-agents-state-may-have-moved.test.ts`.
         [
-            (RUNTIME_SCREEN_VUE, "  if (reading !== null) conversationWaits.value = reading\n", "  conversationWaits.value = reading\n"),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the waits reading moved from RuntimeScreen.vue into `waitsRead` in workspace-projection.ts, which keeps the last good one on null.
+            (WORKSPACE_PROJECTION, "      if (reading !== null) waitsReading.value = reading\n", "      waitsReading.value = reading\n"),
         ],
     ),
     (

@@ -382,10 +382,17 @@ export function createWorkspaceProjection(
       return holders as ReadonlyMap<string, readonly WorkEdge[]>
     },
     (next, last) => {
+      // A forest read is a fresh answer each time: a piece that says what it said keeps its
+      // object, and a holder whose pieces all kept theirs keeps its list.
       const kept = new Map(
         [...next].map(([holder, pieces]) => {
           const old = last?.get(holder)
-          return [holder, old !== undefined && sameElements(old, pieces) ? old : pieces] as const
+          const before = new Map((old ?? []).map((piece) => [piece.piece, piece]))
+          const shared = pieces.map((piece) => {
+            const was = before.get(piece.piece)
+            return was !== undefined && sameValue(was, piece) ? was : piece
+          })
+          return [holder, old !== undefined && sameElements(old, shared) ? old : shared] as const
         }),
       )
       return last !== undefined && sameEntries(last, kept) ? last : kept

@@ -1,5 +1,5 @@
 import type { AgentIdentityName } from '../../../shared/runtime-ipc'
-import { agentName, DEFAULT_PROFILE_ID, foldProfileName } from '../../../shared/runtime-ipc'
+import { namingFrom } from './roster-names'
 import type { LedgerWalkKind } from '../../../shared/questions'
 import { walkCovers } from '../../../shared/questions'
 import type {
@@ -316,15 +316,7 @@ export function forestView(input: ForestViewInput): ForestView | null {
 
   const atWork = input.atWork === null ? null : byConversation(input.atWork)
   // Resolve the roster once; row lookups keep the shared naming and fallback rules.
-  const names = new Map<string, string>()
-  for (const identity of input.identities ?? []) {
-    const slug = identity.slug
-    if (!names.has(slug)) names.set(slug, agentName(slug, [identity]))
-  }
-  const named = (identity: string | null): string => {
-    const slug = foldProfileName(identity ?? DEFAULT_PROFILE_ID)
-    return names.get(slug) ?? agentName(slug, null)
-  }
+  const named = namingFrom(input.identities)
 
   // ⛔ **Two passes, because the walk is HETEROGENEOUS and a task may precede nothing.** The rows
   // arrive as `[conversation, ...its tasks]` in `updated_at DESC` order, so a conversation's

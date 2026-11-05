@@ -211,8 +211,9 @@ MUTATIONS = [
         [
             (
                 PANE,
-                "  cast.goTo.value?.(conversation)",
-                "  cast.goTo.value?.(props.record.sessionId)",
+                # ⚑ **W4.1430.32 · re-anchored in place, not retired** — `cast.goTo` became the provided conversation door.
+                "  conversationDoor.value?.(conversation)",
+                "  conversationDoor.value?.(props.record.sessionId)",
             )
         ],
     ),

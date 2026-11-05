@@ -28,9 +28,12 @@ import type { TheWholeForest } from '../src/shared/the-whole-forest'
 
 let instance: Workspace | null = null
 
-/** The projection every test app is given. */
+/** The projection every test app is given, reading the test's rail words and roster. */
 export function testWorkspace(): Workspace {
-  instance ??= createWorkspace()
+  if (instance === null) {
+    instance = createWorkspace()
+    wireTheTest(instance)
+  }
   return instance
 }
 
@@ -47,14 +50,16 @@ const railSays = shallowRef<ReadonlyMap<string, RailSays> | null>(null)
 const identities = shallowRef<readonly AgentIdentity[] | null>(null)
 let unwire: (() => void) | null = null
 
-function wired() {
-  const workspace = testWorkspace()
-  unwire ??= workspace.wire({
+/** Lends the projection the test's rail words and roster, as a rail on screen would. */
+function wireTheTest(workspace: Workspace): void {
+  unwire?.()
+  unwire = workspace.wire({
     railSays: () => railSays.value,
     identities: () => identities.value,
   })
-  return workspace
 }
+
+const wired = testWorkspace
 
 export const heldWorkspace = {
   /** What the rail says of each conversation, as a rail on screen would. */
@@ -130,13 +135,13 @@ export const heldWorkspace = {
     }
     wired().memoryRead(held)
   },
-  /** Back to nobody has looked, with nothing wired. */
+  /** Back to nobody has looked, with the test's inputs lent again. */
   reset(): void {
     testWorkspace().reset()
     door.value = null
     railSays.value = null
     identities.value = null
-    unwire?.()
-    unwire = null
+    // A rail mounted in the test took these back when it went; lend them again.
+    wireTheTest(testWorkspace())
   },
 }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { nextTick, type App } from 'vue'
+import { createApp, nextTick, type App } from 'vue'
 import RuntimeScreen from '../../src/renderer/src/components/RuntimeScreen.vue'
 import { createSessionStore, type SessionStore } from '../../src/renderer/src/lib/session-store'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
@@ -12,7 +12,9 @@ import type {
   RuntimeStatesMessage,
 } from '../../src/shared/runtime-ipc'
 import { agentStateWords } from '../../src/shared/agent-state'
+import { aFakeBridge, type FakeBridge } from './fake-bridge'
 import { META, mount, unmountAll, type Mounted } from './harness'
+import { testWorkspace } from '../workspace-fixture'
 import {
   OWNER,
   REALISTIC,
@@ -52,11 +54,23 @@ vi.mock('../../src/renderer/src/composables/useModelLists', () => ({
 let data: WorkspaceAtScale
 let pushStates: ((message: RuntimeStatesMessage) => void) | null = null
 
+/** What one bridge verb answers. */
+type Answer<K extends keyof RuntimeBridge> = RuntimeBridge[K] extends (
+  ...args: never[]
+) => infer Reply
+  ? Awaited<Reply>
+  : never
+
+/** A read this fixture does not answer: the host refused it, as the store then says. */
+const notAnswered = (what: string): Promise<never> =>
+  Promise.reject(new Error(`No ${what} in this fixture.`))
+
 const emptyWalk = (walk: string) => ({ rows: [], walk, ledgers: 0, rowsUnread: 0 })
 
 const history = { entries: [], from: 0, hasOlder: false, turnAligned: true }
 
-function bridge(): RuntimeBridge {
+/** What the screen asks of the host, answered at the fixture's size. */
+function answers(): Partial<RuntimeBridge> {
   const agents: AgentIdentities = {
     identities: [...data.identities],
     use: [],
@@ -65,7 +79,7 @@ function bridge(): RuntimeBridge {
     defaultApprovalMode: 'ask',
     externalMcpServers: [],
   }
-  const known: Partial<Record<keyof RuntimeBridge, unknown>> = {
+  return {
     onEvent: () => () => {},
     onLiveness: () => () => {},
     onChanged: () => () => {},
@@ -88,47 +102,56 @@ function bridge(): RuntimeBridge {
     listUnresumable: async () => structuredClone(data.unresumable),
     agentIdentities: async () => agents,
     profiles: async () => [],
-    capabilities: async () => ({}),
+    capabilities: async () => ({}) as Answer<'capabilities'>,
     providerVersions: async () => ({
       claude: { version: null, reason: 'No version in this fixture.' },
       codex: { version: null, reason: 'No version in this fixture.' },
     }),
-    providerSetup: async () => ({}),
+    providerSetup: async () => ({}) as Answer<'providerSetup'>,
     providerUsage: async () => ({ claude: [], codex: [] }),
     providerResources: async () => ({
       claude: { running: 0, at: 1, rssBytes: 0, cpuPercent: 0 },
       codex: { running: 0, at: 1, rssBytes: 0, cpuPercent: 0 },
     }),
-    questionsForAPerson: async () => emptyWalk('every-conversation-that-routed'),
-    decisionsForAPerson: async () => emptyWalk('every-conversation-that-routed'),
-    stalledWorkForAPerson: async () => emptyWalk('every-conversation-that-routed'),
-    stoppedWorkForAPerson: async () => emptyWalk('every-conversation-that-routed'),
-    workIncidentsForAPerson: async () => emptyWalk('every-conversation-that-routed'),
-    waitingOnWhoWroteForAPerson: async () => emptyWalk('every-conversation-that-routed'),
+    questionsForAPerson: async () =>
+      emptyWalk('every-conversation-that-routed') as Answer<'questionsForAPerson'>,
+    decisionsForAPerson: async () =>
+      emptyWalk('every-conversation-that-routed') as Answer<'decisionsForAPerson'>,
+    stalledWorkForAPerson: async () =>
+      emptyWalk('every-conversation-that-routed') as Answer<'stalledWorkForAPerson'>,
+    stoppedWorkForAPerson: async () =>
+      emptyWalk('every-conversation-that-routed') as Answer<'stoppedWorkForAPerson'>,
+    workIncidentsForAPerson: async () =>
+      emptyWalk('every-conversation-that-routed') as Answer<'workIncidentsForAPerson'>,
+    waitingOnWhoWroteForAPerson: async () =>
+      emptyWalk('every-conversation-that-routed') as Answer<'waitingOnWhoWroteForAPerson'>,
     instructionAsksForAPerson: async () => [],
     mcpServerRequestsForAPerson: async () => [],
-    readLimitsDisplay: async () => null,
-    readWorkspace: async () => null,
+    readLimitsDisplay: () => notAnswered('limits'),
+    readWorkspace: () => notAnswered('workspace'),
+    // Reads this contract does not measure: the host refuses them, and each surface says so.
+    agentRulesUnread: () => notAnswered('rules'),
+    agentOwnNotesUnread: () => notAnswered('notes'),
+    filesKept: () => notAnswered('files'),
+    filesLibrary: () => notAnswered('files library'),
+    teamProfileGraph: () => notAnswered('team graph'),
+    workGivenBy: () => notAnswered('work given'),
     whatEachConversationIsWaitingOn: async () => structuredClone(data.waits),
     whatIsBeingDone: async () => structuredClone(data.atWork),
     theWholeForest: async () => structuredClone(data.forest),
     processMemory: async () => structuredClone(data.memory),
-    whoCalledWhom: async ({ sessionId }: { sessionId: string }) =>
-      sessionId === OWNER ? structuredClone(data.cast) : null,
+    whoCalledWhom: async ({ sessionId }) =>
+      sessionId === OWNER ? structuredClone(data.cast) : notAnswered('who called whom'),
   }
-  // Every other read answers as a host that did not answer, which each surface already says.
-  return new Proxy(known, {
-    get: (target, key: string) => target[key as keyof RuntimeBridge] ?? (async () => null),
-  }) as unknown as RuntimeBridge
 }
 
-beforeEach(() => {
-  data = workspaceAtScale()
-  pushStates = null
-  useOverlays().close()
-  localStorage.clear()
+let fake: FakeBridge
+
+/** Installs a bridge answering `answers()` and these overrides, and the stores that read it. */
+function useBridge(overrides: Partial<RuntimeBridge> = {}, options: { partial?: boolean } = {}) {
+  fake = aFakeBridge({ ...answers(), ...overrides }, options)
   window.api = {
-    runtime: bridge(),
+    runtime: fake.bridge,
     getAppInfo: async () => ({
       name: 'Fictional BroBot',
       windowTitle: 'Fictional BroBot',
@@ -143,13 +166,24 @@ beforeEach(() => {
   sessions = createSessionStore(window.api.runtime)
   agentStore = createAgentStore(window.api.runtime)
   modelLists = createModelLists(() => window.api.runtime)
+}
+
+beforeEach(() => {
+  data = workspaceAtScale()
+  pushStates = null
+  useOverlays().close()
+  localStorage.clear()
+  useBridge()
 })
 
 afterEach(() => {
+  const unexpected = [...fake.unexpected]
   unmountAll()
   sessions.dispose()
   useOverlays().close()
   localStorage.clear()
+  // Every read the screen made was one this test answered.
+  expect(unexpected.join(', ')).toBe('')
 })
 
 const settle = async (): Promise<void> => {
@@ -330,4 +364,88 @@ describe.each([
       stillChip,
     )
   }, 180_000)
+})
+
+describe('the screen owns the projection it provides', () => {
+  /** One reply held until the test lets it go. */
+  function held<T>(value: T) {
+    let release: () => void = () => {}
+    const answer = new Promise<T>((done) => {
+      release = () => done(value)
+    })
+    return { answer: () => answer, release: () => release() }
+  }
+
+  it('a test starts with nothing read, whatever the test before it left', () => {
+    expect(testWorkspace().listed()).toBeNull()
+    expect(testWorkspace().waits()).toBeNull()
+    expect(testWorkspace().cast()).toBeNull()
+    // Left for the next case, which must not see it.
+    testWorkspace().waitsRead(structuredClone(data.waits))
+  })
+
+  it('and the next one too', () => {
+    expect(testWorkspace().waits()).toBeNull()
+  })
+
+  it('the screen creates its own projection where nothing above it provides one', async () => {
+    const host = document.createElement('div')
+    host.style.width = '1440px'
+    host.style.height = '1000px'
+    document.body.append(host)
+    const app = createApp(RuntimeScreen)
+    try {
+      app.mount(host)
+      await expect
+        .poll(() => host.querySelectorAll(`[data-cy="open-session-${OWNER}"]`).length, {
+          timeout: 20_000,
+        })
+        .toBe(1)
+      // The rail drew from the screen's projection; the test's was never written.
+      expect(testWorkspace().listed()).toBeNull()
+    } finally {
+      app.unmount()
+      host.remove()
+    }
+  }, 60_000)
+
+  it('a read the screen asked writes nothing once the screen has gone', async () => {
+    const waits = held(structuredClone(data.waits))
+    const memory = held(structuredClone(data.memory))
+    const files = held({ ok: true as const, files: [], added: [] })
+    useBridge({
+      whatEachConversationIsWaitingOn: waits.answer,
+      processMemory: memory.answer,
+      filesKept: files.answer as never,
+    })
+    const m = await aConversationDrawnFromItsLedger()
+    const before = { waits: testWorkspace().waits(), memory: testWorkspace().memory() }
+    m.unmount()
+    // The screen's reset leaves nothing behind; the replies arrive after it.
+    expect(testWorkspace().listed()).toBeNull()
+    waits.release()
+    memory.release()
+    files.release()
+    await settle()
+    expect(testWorkspace().waits()).toBeNull()
+    expect(testWorkspace().memory().size).toBe(0)
+    expect(testWorkspace().treeFiles()).toBeNull()
+    expect(before.waits).toBeNull()
+  }, 60_000)
+})
+
+describe('a read the test did not answer', () => {
+  it('THE CONTROL — is named, though the screen goes on drawing as if the host had not answered', async () => {
+    const rest = Object.fromEntries(
+      Object.entries(answers()).filter(([verb]) => verb !== 'whatEachConversationIsWaitingOn'),
+    ) as Partial<RuntimeBridge>
+    fake = aFakeBridge(rest)
+    window.api = { ...window.api, runtime: fake.bridge } as Window['api']
+    sessions = createSessionStore(window.api.runtime)
+    const m = await aConversationDrawnFromItsLedger()
+    expect(m.all('cast-sub-agents')).toHaveLength(1)
+    expect(fake.unexpected).toContain('whatEachConversationIsWaitingOn')
+    // Answered here, so the file's own check passes.
+    fake = aFakeBridge(answers())
+  }, 60_000)
 })

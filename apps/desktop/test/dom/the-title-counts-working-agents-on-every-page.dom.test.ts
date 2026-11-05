@@ -279,6 +279,8 @@ describe('working counts in the title bar', () => {
     const first = await windowWith()
     expect(text(first.m)).toContain(expected)
     unmountAll()
+    // A reload is a new page, and a new page's projection has read nothing.
+    heldWorkspace.reset()
     expect(testWorkspace().running()).toBeNull()
     const next = await windowWith([row('new', 'codex', { is: 'active' })])
     expect(text(next.m)).toContain('1 agents · 1 working')

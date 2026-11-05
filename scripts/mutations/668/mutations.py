@@ -186,7 +186,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # is mounted by no test, so the killer is the source-read of foldTheForest in §4. Killed by
         # `who-called-whom-as-generations.test.ts`.
         [
-            (RUNTIMESCREEN, '    said: cast.railSays.value,\n', '    said: null,\n'),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the rail's rows now reach the forest through the workspace projection's `railSays`.
+            (RUNTIMESCREEN, "    said: projection.railSays(),\n", "    said: null,\n"),
         ],
     ),
     (

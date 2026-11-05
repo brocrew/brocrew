@@ -138,6 +138,43 @@ describe('an answer that moved nothing keeps every object it holds', () => {
   })
 })
 
+describe('a forest read again', () => {
+  it('keeps every holder’s pieces when only the time it was read moved', () => {
+    const data = workspaceAtScale()
+    const projection = projected(data)
+    const held = projection.piecesHeldBy(childId(4))
+    const other = projection.piecesHeldBy(childId(5))
+    projection.forestRead({ ...again(data.forest), readAt: data.forest.readAt + 30_000 })
+    expect(projection.forest()?.readAt).toBe(data.forest.readAt + 30_000)
+    expect(projection.piecesHeldBy(childId(4))).toBe(held)
+    expect(projection.piecesHeldBy(childId(5))).toBe(other)
+  })
+
+  it('renews only the holder whose piece moved, keeping its other pieces', () => {
+    const data = workspaceAtScale()
+    const projection = projected(data)
+    const held = projection.piecesHeldBy(childId(4))
+    const other = projection.piecesHeldBy(childId(5))
+    const moved = held[1]!.piece
+    const forest = again(data.forest)
+    const rows = forest.nodes.rows.map((node) =>
+      node.node === 'a-task' && node.work.piece === moved
+        ? { ...node, work: { ...node.work, title: 'A fictional retitled piece' } }
+        : node,
+    )
+    projection.forestRead({
+      ...forest,
+      readAt: forest.readAt + 30_000,
+      nodes: { ...forest.nodes, rows },
+    })
+    const after = projection.piecesHeldBy(childId(4))
+    expect(after).not.toBe(held)
+    expect(after[1]!.title).toBe('A fictional retitled piece')
+    expect(after[0]).toBe(held[0])
+    expect(projection.piecesHeldBy(childId(5))).toBe(other)
+  })
+})
+
 describe('an answer that moved one conversation renews only what holds it', () => {
   it('renews that row and the collections it is in, and keeps every other row', () => {
     const data = workspaceAtScale()

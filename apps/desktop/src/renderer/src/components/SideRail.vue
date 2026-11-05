@@ -809,6 +809,15 @@ defineExpose({
   says,
 })
 
+/** The parts that are present, joined: a missing part draws nothing, not an empty separator. */
+function joinPresent(separator: string, ...parts: readonly (string | null | undefined)[]): string {
+  let joined = ''
+  for (const part of parts) {
+    if (part) joined = joined === '' ? part : `${joined}${separator}${part}`
+  }
+  return joined
+}
+
 const platform = platformHere()
 </script>
 
@@ -1150,14 +1159,13 @@ const platform = platformHere()
                 :data-active="row.sessionId === onScreenId"
                 :aria-label="conversationTitle(row.label, row.named)"
                 :aria-description="
-                  [
+                  joinPresent(
+                    ' ',
                     row.worker
                       ? workerDescription(row.worker, props.agents?.identities ?? null)
                       : null,
                     row.detail,
-                  ]
-                    .filter(Boolean)
-                    .join(' ') || undefined
+                  ) || undefined
                 "
                 :aria-describedby="
                   row.opening
@@ -1166,15 +1174,14 @@ const platform = platformHere()
                 "
                 :title="
                   props.collapsed
-                    ? [
+                    ? joinPresent(
+                        '\n',
                         row.worker && row.named ? row.label : null,
                         conversationTitle(row.label, row.named),
                         row.worker
                           ? workerDescription(row.worker, props.agents?.identities ?? null)
                           : null,
-                      ]
-                        .filter(Boolean)
-                        .join('\n')
+                      )
                     : row.worker
                       ? workerDescription(row.worker, props.agents?.identities ?? null)
                       : undefined
@@ -1195,7 +1202,7 @@ const platform = platformHere()
                     :data-cy="row.worker ? `rail-worker-name-${row.sessionId}` : undefined"
                     :title="
                       row.worker
-                        ? [row.label, row.named?.title].filter(Boolean).join(' · ')
+                        ? joinPresent(' · ', row.label, row.named?.title)
                         : conversationTitle(row.label, row.named)
                     "
                     >{{ row.worker ? row.label : conversationTitle(row.label, row.named) }}</strong
@@ -1246,15 +1253,14 @@ const platform = platformHere()
                     :data-needing="row.facets.needing"
                     :data-place="row.place ?? undefined"
                     :title="
-                      [
+                      joinPresent(
+                        ' · ',
                         row.named ? row.label : null,
                         row.provider,
                         row.detail ?? row.word,
                         row.elsewhere ? OPEN_IN_ANOTHER_WINDOW : null,
                         row.place,
-                      ]
-                        .filter(Boolean)
-                        .join(' · ')
+                      )
                     "
                     ><template v-if="row.named && !row.worker"
                       ><span>{{ row.label }}</span> · </template

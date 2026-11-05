@@ -418,7 +418,8 @@ MUTATIONS: list[tuple[str, str, list[tuple[str, str, str]]]] = [
         # agentName(row.profileId, identities)` is still the line, so the plant puts the folder name
         # back as the label.
         [
-            (CONVERSATION_LIST, '      label: agentName(row.profileId, identities),', '      label: basenameOf(row.cwd) || row.sessionId,'),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — conversationList's row fold moved into `listedRow`, one indent shallower.
+            (CONVERSATION_LIST, "    label: agentName(row.profileId, identities),", "    label: basenameOf(row.cwd) || row.sessionId,"),
         ],
     ),
     (
@@ -428,8 +429,9 @@ MUTATIONS: list[tuple[str, str, list[tuple[str, str, str]]]] = [
         [
             (
                 RAIL,
-                "    identities: props.agents?.identities ?? null,",
-                "    identities: null,",
+                # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the rail now hands the roster to the workspace projection through `projection.wire`.
+                "  identities: () => props.agents?.identities ?? null,",
+                "  identities: () => null,",
             )
         ],
     ),

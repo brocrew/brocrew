@@ -674,7 +674,7 @@ describe('§4 · where the read is made, asked for and drawn', () => {
     // It really does the read and draws from it …
     expect(reading).toContain('await store.processMemory()')
     // The projection takes the answer whole, a refusal included: it draws no figure for `null`.
-    expect(reading).toContain('projection.memoryRead(held)')
+    expect(reading).toContain('whileHere(() => projection.memoryRead(held))')
     // … and a refusal draws nothing: an early return would keep the last figures, and a kept
     // figure could belong to a process that has since stopped.
     expect(reading).not.toMatch(/\breturn\b/)

@@ -314,7 +314,8 @@ MUTATIONS = [
         # `row`, not `session`. This plant makes a restored bundle (foundInUserHome false,
         # restoredFromBundle true) reach the list again.
         [
-            (CONVERSATION_LIST, '    if (row.foundInUserHome || row.restoredFromBundle) continue', '    if (row.foundInUserHome) continue'),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the drop moved from a loop in conversationList to the filter in `listedRowsOf`.
+            (CONVERSATION_LIST, "    ...input.unresumable.filter((row) => !row.foundInUserHome && !row.restoredFromBundle),", "    ...input.unresumable.filter((row) => !row.foundInUserHome),"),
         ],
     ),
     (
@@ -340,7 +341,8 @@ MUTATIONS = [
         # The plant deletes the whole guard line, so the adopted and restored rows come back. It is
         # the same edit as the old one with `session` renamed to `row`.
         [
-            (CONVERSATION_LIST, '    if (row.foundInUserHome || row.restoredFromBundle) continue\n', ''),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the drop moved from a loop in conversationList to the filter in `listedRowsOf`.
+            (CONVERSATION_LIST, "    ...input.unresumable.filter((row) => !row.foundInUserHome && !row.restoredFromBundle),", "    ...input.unresumable,"),
         ],
     ),
     (
@@ -351,7 +353,8 @@ MUTATIONS = [
         # the app-owned unresumable conversation (a real conversation started here whose ref can no
         # longer be read) vanishes from the list. Only the file and the variable name changed.
         [
-            (CONVERSATION_LIST, '    if (row.foundInUserHome || row.restoredFromBundle) continue', '    if (!row.foundInUserHome) continue'),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the drop moved from a loop in conversationList to the filter in `listedRowsOf`.
+            (CONVERSATION_LIST, "    ...input.unresumable.filter((row) => !row.foundInUserHome && !row.restoredFromBundle),", "    ...input.unresumable.filter((row) => row.foundInUserHome),"),
         ],
     ),
     (
@@ -363,7 +366,8 @@ MUTATIONS = [
         # valid and fails by behaviour, not by a type error. The test's own comment names this exact
         # re-derivation.
         [
-            (CONVERSATION_LIST, '    if (row.foundInUserHome || row.restoredFromBundle) continue', '    if (row.adoptedAt !== null && row.profileId === null) continue'),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the drop moved from a loop in conversationList to the filter in `listedRowsOf`.
+            (CONVERSATION_LIST, "    ...input.unresumable.filter((row) => !row.foundInUserHome && !row.restoredFromBundle),", "    ...input.unresumable.filter((row) => !(row.adoptedAt !== null && row.profileId === null)),"),
         ],
     ),
     (

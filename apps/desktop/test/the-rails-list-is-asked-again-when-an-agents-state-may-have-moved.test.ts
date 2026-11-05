@@ -255,7 +255,7 @@ describe('D-019 · the rail learns what an agent is doing from the push, not by 
     // not look*, and blanking on it would put every row back on its live facets.
     const fn = functionOf('async function readWhatIsWaiting(): Promise<void> {')
     expect(fn).toMatch(
-      /^async function readWhatIsWaiting\(\): Promise<void> \{\s*const reading = await store\.whatEachConversationIsWaitingOn\(\)\s*projection\.waitsRead\(reading\)\s*$/,
+      /^async function readWhatIsWaiting\(\): Promise<void> \{\s*const reading = await store\.whatEachConversationIsWaitingOn\(\)\s*whileHere\(\(\) => projection\.waitsRead\(reading\)\)\s*$/,
     )
     // The projection keeps the last reading when this one is `null`.
     expect(methodOf('waitsRead(reading) {', PROJECTION)).toMatch(

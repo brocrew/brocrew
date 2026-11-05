@@ -42,8 +42,9 @@ MUTATIONS = [
         [
             (
                 SCREEN,
-                "    cast.reading.value = { ...reading, atWork: doing }",
-                "    cast.reading.value = { ...reading, atWork: null }",
+                # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the band's reading moved into the workspace projection, written through `projection.castRead`.
+                "    projection.castRead({ ...reading, atWork: doing })",
+                "    projection.castRead({ ...reading, atWork: null })",
             )
         ],
     ),
@@ -54,8 +55,9 @@ MUTATIONS = [
         [
             (
                 SCREEN,
-                "      ? { ...cast.reading.value, answered: false, atWork: null }",
-                "      ? { ...cast.reading.value, answered: false }",
+                # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the band's reading moved into the workspace projection; a refused read keeps it as `kept`.
+                "kept?.conversation === asked ? { ...kept, answered: false, atWork: null } : null,",
+                "kept?.conversation === asked ? { ...kept, answered: false } : null,",
             )
         ],
     ),

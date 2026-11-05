@@ -107,9 +107,8 @@ SCROLL_INTO_VIEW = """watch(current, (row) => {
   })
 })"""
 OVERLAY_GUARD = "  if (modals.value > 0) {"
-CURSOR_BY_ID = """const current = computed<PaletteCommand | null>(
-  () => shown.value.find((row) => row.id === cursorId.value) ?? shown.value[0] ?? null,
-)"""
+# ⚑ **W4.1430.32 · re-anchored in place, not retired** — `current` now answers null while the palette is closed; the cursor lookup sits in its open branch.
+CURSOR_BY_ID = "    ? (shown.value.find((row) => row.id === cursorId.value) ?? shown.value[0] ?? null)"
 MOVE_BY_ID = """  const at = rows.findIndex((row) => row.id === current.value?.id)"""
 NOTE_COUNTS = """    open: inGroup(commands.value, 'conversations').length,
     closed: props.closedLooked ? inGroup(commands.value, 'closed').length : null,"""
@@ -334,8 +333,7 @@ MUTATIONS = [
             (
                 PANEL,
                 CURSOR_BY_ID,
-                "const current = computed<PaletteCommand | null>(\n"
-                "  () => shown.value[Number(cursorId.value ?? 0)] ?? null,\n)",
+                "    ? (shown.value[Number(cursorId.value ?? 0)] ?? null)",
             ),
             (PANEL, MOVE_BY_ID, "  const at = Number(cursorId.value ?? 0)"),
         ],

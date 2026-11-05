@@ -458,7 +458,8 @@ MUTATIONS = [
     (
         "M37 · ⛔ **the rail reads its line from nothing** · the reading the rows were drawn from is "
         "not the one asked — killed by `the-waits-say-what-they-could-not-read.dom.test.ts`",
-        [(RAIL, "    props.waiting ?? null,\n", "    null,\n")],
+        # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the rail's waits line now reads the workspace projection's waits reading, not a `waiting` prop.
+        [(RAIL, "    projection.waits(),\n", "    null,\n")],
     ),
     (
         "M38 · 🔴 **the forest drops the waits count** · the Team page's plates qualified by nothing — "

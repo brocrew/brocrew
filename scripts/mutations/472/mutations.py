@@ -355,7 +355,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "list, and what says so is a sentence about this window rather than about the project",
         # A failed relationship refresh drops the previous cards instead of keeping them.
         [
-            (SCREEN, '    cast.reading.value =\n      cast.reading.value?.conversation === asked\n        ? { ...cast.reading.value, answered: false, atWork: null }\n        : null\n', '    cast.reading.value = null\n'),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the band's reading moved into the workspace projection; a refused read keeps it through `projection.castRead`.
+            (SCREEN, "    projection.castRead(\n      kept?.conversation === asked ? { ...kept, answered: false, atWork: null } : null,\n    )\n", "    projection.castRead(null)\n"),
         ],
     ),
     (

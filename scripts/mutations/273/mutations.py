@@ -80,6 +80,8 @@ HOST = "apps/desktop/src/main/runtime/runtime-host.ts"
 CLOSING = "apps/desktop/src/renderer/src/lib/app-closing.ts"
 APP_VUE = "apps/desktop/src/renderer/src/App.vue"
 RAIL = "apps/desktop/src/renderer/src/components/SideRail.vue"
+# The rail's list read, and the closing guard over it, moved into the workspace composable.
+WORKSPACE = "apps/desktop/src/renderer/src/composables/useWorkspace.ts"
 REOPEN_LIST = "apps/desktop/src/renderer/src/components/ResumableSessions.vue"
 CHECK = "scripts/app-closes-check.mjs"
 
@@ -253,7 +255,8 @@ MUTATIONS = [
         # `refreshListed` with the `listError` / `looked` state. Only the neighbouring line changed
         # (`closedError.value = null` became `listError.value = null`). The plant removes the guard.
         [
-            (RAIL, '  if (appClosing.value) return\n  listError.value = null', '  listError.value = null'),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the rail's list read and its closing guard moved into `readList` in useWorkspace.ts, which the rail and the screen both call with the closing flag.
+            (WORKSPACE, "      if (closing) return\n", ""),
         ],
     ),
     (
@@ -304,7 +307,8 @@ MUTATIONS = [
         # the destructured names moved (`resumable, unresumable`). The plant moves the guard after
         # the await, which still matches every pattern scan but breaks the ordering assertion.
         [
-            (RAIL, '  if (appClosing.value) return\n  listError.value = null\n  try {\n    const [resumable, unresumable] = await Promise.all([\n      window.api.runtime.listResumable(),\n      window.api.runtime.listUnresumable(),\n    ])', '  listError.value = null\n  try {\n    const [resumable, unresumable] = await Promise.all([\n      window.api.runtime.listResumable(),\n      window.api.runtime.listUnresumable(),\n    ])\n    if (appClosing.value) return'),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the rail's list read moved into `readList` in useWorkspace.ts; the guard is `if (closing) return` over the two bridge reads, and the plant moves it under the await.
+            (WORKSPACE, "      if (closing) return\n      try {\n        const bridge = (\n          globalThis as {\n            api?: { runtime: Pick<RuntimeBridge, 'listResumable' | 'listUnresumable'> }\n          }\n        ).api!.runtime\n        const [resumable, unresumable] = await Promise.all([\n          bridge.listResumable(),\n          bridge.listUnresumable(),\n        ])\n", "      try {\n        const bridge = (\n          globalThis as {\n            api?: { runtime: Pick<RuntimeBridge, 'listResumable' | 'listUnresumable'> }\n          }\n        ).api!.runtime\n        const [resumable, unresumable] = await Promise.all([\n          bridge.listResumable(),\n          bridge.listUnresumable(),\n        ])\n        if (closing) return\n"),
         ],
     ),
     # ── the instrument ──────────────────────────────────────────────────────────────────────────

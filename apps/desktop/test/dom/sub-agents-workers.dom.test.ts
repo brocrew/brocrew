@@ -195,8 +195,9 @@ describe('Sub agents: distinct parallel workers and their pieces', () => {
     expect(m.q('cast-tile-name-ada-worker-2').textContent).toBe('Ada · W90.2')
     expect(listResumable).toHaveBeenCalledTimes(1)
     expect(listUnresumable).toHaveBeenCalledTimes(1)
+    // The list is the window's, not the rail's: a rail that goes leaves it for the next reader.
     rail.unmount()
-    expect(testWorkspace().listed()).toBeNull()
+    expect(testWorkspace().conversation('ada-worker-2')?.worker).toEqual(rows[1]!.worker)
   })
 })
 
@@ -272,7 +273,8 @@ describe('Sub agents view preferences', () => {
     expect(m.all('cast-tile-name-ada-worker-4')).toHaveLength(0)
     expect(m.q('cast-idle-hidden').textContent).toBe('3 idle hidden')
     assertDrawn(m.q('cast-idle-hidden'), 'hidden idle count', m.host)
-    heldWorkspace.reset()
+    // The list goes back to unread, while the rail still says what it said.
+    testWorkspace().reset()
     await settle()
     expect(m.all('cast-tile-name-ada-worker-2')).toHaveLength(0)
     expect(m.q('cast-idle-hidden').textContent).toBe('3 idle hidden')

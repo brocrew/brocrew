@@ -28,6 +28,9 @@ INDEX = "apps/desktop/src/main/index.ts"
 RUNTIME_HOST = "apps/desktop/src/main/runtime/runtime-host.ts"
 RUNTIME_SCREEN_VUE = "apps/desktop/src/renderer/src/components/RuntimeScreen.vue"
 SIDE_RAIL_VUE = "apps/desktop/src/renderer/src/components/SideRail.vue"
+# The pushed-state map, its fold into the list and the list read's prune moved out of SideRail.vue
+# into the workspace projection.
+WORKSPACE_PROJECTION = "apps/desktop/src/renderer/src/lib/workspace-projection.ts"
 CONVERSATION_LIST = "apps/desktop/src/renderer/src/lib/conversation-list.ts"
 QUESTIONS = "apps/desktop/src/shared/questions.ts"
 
@@ -78,13 +81,15 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M8 · 🔴 the rail drops a push that arrived while its list read was in flight · the older half of a two-reply answer overwrites the newer word and the row flips back — killed by `the-window-is-told-what-an-agent-is-doing-the-moment-it-moves.test.ts`",
         [
-            (SIDE_RAIL_VUE, "heard.after >= asked", "heard.after > asked"),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the prune moved from SideRail.vue into `listAnswered` in workspace-projection.ts, where the read's number is `ticket`.
+            (WORKSPACE_PROJECTION, "heard.after >= ticket", "heard.after > ticket"),
         ],
     ),
     (
         "M9 · 🔴 the list ignores what main pushed · every surface drawn from it keeps the row's own state until the next list read — killed by `the-window-is-told-what-an-agent-is-doing-the-moment-it-moves.test.ts`",
         [
-            (CONVERSATION_LIST, "state: input.said?.get(row.sessionId) ?? row.state,", "state: row.state,"),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — conversationList's row fold moved into `listedRow`, which takes the pushed state as `said`.
+            (CONVERSATION_LIST, "state: said ?? row.state,", "state: row.state,"),
         ],
     ),
     (
@@ -97,37 +102,43 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M11 · the one list ignores what main pushed and always draws the row's own state — killed by `the-rail-draws-what-main-pushed-over-the-list-it-read.dom.test.ts`",
         [
-            (CONVERSATION_LIST, "state: input.said?.get(row.sessionId) ?? row.state,", "state: row.state,"),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — conversationList's row fold moved into `listedRow`, which takes the pushed state as `said`.
+            (CONVERSATION_LIST, "state: said ?? row.state,", "state: row.state,"),
         ],
     ),
     (
         "M12 · the rail's `listed` hands `conversationList` an empty map instead of what main said — killed by `the-rail-draws-what-main-pushed-over-the-list-it-read.dom.test.ts`, `the-rails-list-is-asked-again-when-an-agents-state-may-have-moved.test.ts`",
         [
-            (SIDE_RAIL_VUE, "said: new Map([...said.value].map(([conversation, heard]) => [conversation, heard.state])),", "said: new Map(),"),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the rail no longer folds the list; the projection's `listed` in workspace-projection.ts reads each pushed state from `said` and hands it to `listedRow`. The plant hands none.
+            (WORKSPACE_PROJECTION, "const heard = said.value.get(host.sessionId)?.state", "const heard: AgentState | undefined = undefined"),
         ],
     ),
     (
         "M13 · hearStates writes into the map it already holds, so the ref is assigned the same object and nothing redraws — killed by `the-rail-draws-what-main-pushed-over-the-list-it-read.dom.test.ts`, `the-rails-list-is-asked-again-when-an-agents-state-may-have-moved.test.ts`",
         [
-            (SIDE_RAIL_VUE, "const next = new Map(said.value)", "const next = said.value as Map<string, { state: OneState; after: number }>"),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — hearStates' write moved from SideRail.vue into `statesMoved` in workspace-projection.ts.
+            (WORKSPACE_PROJECTION, "const next = new Map(said.value)", "const next = said.value as Map<string, { state: AgentState; after: number }>"),
         ],
     ),
     (
         "M14 · hearStates starts from an empty map, so a later message forgets every earlier push — killed by `the-rail-draws-what-main-pushed-over-the-list-it-read.dom.test.ts`, `the-rails-list-is-asked-again-when-an-agents-state-may-have-moved.test.ts`",
         [
-            (SIDE_RAIL_VUE, "const next = new Map(said.value)", "const next = new Map<string, { readonly state: OneState; readonly after: number }>()"),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — hearStates' write moved from SideRail.vue into `statesMoved` in workspace-projection.ts.
+            (WORKSPACE_PROJECTION, "const next = new Map(said.value)", "const next = new Map<string, { readonly state: AgentState; readonly after: number }>()"),
         ],
     ),
     (
         "M15 · a list read no longer gives way pushes older than its ask (the prune is gone) — killed by `the-rail-draws-what-main-pushed-over-the-list-it-read.dom.test.ts`",
         [
-            (SIDE_RAIL_VUE, "said.value = new Map([...said.value].filter(([, heard]) => heard.after >= asked))", "void asked"),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the prune moved from SideRail.vue into `listAnswered` in workspace-projection.ts, as a filter into `kept` that replaces `said` when it dropped a push.
+            (WORKSPACE_PROJECTION, "const kept = new Map([...said.value].filter(([, heard]) => heard.after >= ticket))\n      if (kept.size !== said.value.size) said.value = kept", "void ticket"),
         ],
     ),
     (
         "M16 · a push that arrived while the read was in flight is dropped by the prune (`>` for `>=`) — killed by `the-rail-draws-what-main-pushed-over-the-list-it-read.dom.test.ts`",
         [
-            (SIDE_RAIL_VUE, "heard.after >= asked", "heard.after > asked"),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the prune moved from SideRail.vue into `listAnswered` in workspace-projection.ts, where the read's number is `ticket`.
+            (WORKSPACE_PROJECTION, "heard.after >= ticket", "heard.after > ticket"),
         ],
     ),
     (
@@ -140,7 +151,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # refreshResumable ask and keeps `message` in scope, so the later `message.kept.length` line still
         # runs. Killed by `the-rails-list-is-asked-again-when-an-agents-state-may-have-moved.test.ts`.
         [
-            (RUNTIME_SCREEN_VUE, "    rail.value?.hearStates(message)\n", "    void rail.value?.refreshResumable()\n"),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the screen now hands each `runtime:states` message to the workspace projection, and asks the list through `readTheList()`.
+            (RUNTIME_SCREEN_VUE, "    projection.hearStates(message)\n", "    void readTheList()\n"),
         ],
     ),
     (
@@ -154,13 +166,15 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M19 · the waits reading asks the rail's list again after it lands — killed by `the-rails-list-is-asked-again-when-an-agents-state-may-have-moved.test.ts`",
         [
-            (RUNTIME_SCREEN_VUE, "if (reading !== null) conversationWaits.value = reading", "if (reading !== null) conversationWaits.value = reading\n  void rail.value?.refreshResumable()"),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the waits reading now lands through `projection.waitsRead`, and the list is asked through `readTheList()`.
+            (RUNTIME_SCREEN_VUE, "whileHere(() => projection.waitsRead(reading))", "whileHere(() => projection.waitsRead(reading))\n  void readTheList()"),
         ],
     ),
     (
         "M20 · the `work` arm no longer asks the rail's list, so a give, reply, take-back, close or retitle stops renaming the rail rows — killed by `the-rails-list-is-asked-again-when-an-agents-state-may-have-moved.test.ts`",
         [
-            (RUNTIME_SCREEN_VUE, "// ({@link stopHearingStates}).\n      void rail.value?.refreshResumable()", "// ({@link stopHearingStates})."),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the `work` arm now asks the list through `readTheList()` instead of the rail.
+            (RUNTIME_SCREEN_VUE, "// ({@link stopHearingStates}).\n      void readTheList()", "// ({@link stopHearingStates})."),
         ],
     ),
 ]

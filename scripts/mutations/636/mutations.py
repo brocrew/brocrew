@@ -146,7 +146,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
                 # (`theWorkIn`), one per line. The wait's slot is handed `undefined` rather than
                 # dropped, so the work stays in its own slot: the READ of the wait is what goes.
                 # Re-verified RED alone.
-                "      record,\n      theWaitIn(props.waiting, record.sessionId),\n",
+                # ⚑ **W4.1430.32 · re-anchored in place, not retired** — the rail no longer takes a `waiting` prop; each row reads its wait from `projection.waitOf`. The plant builds the row with no wait.
+                "      record,\n      wait.wait,\n",
                 "      record,\n      undefined,\n",
             )
         ],

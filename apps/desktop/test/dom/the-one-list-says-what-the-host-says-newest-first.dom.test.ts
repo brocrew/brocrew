@@ -558,7 +558,7 @@ describe('the screen wires the list to the conversation it is drawing', () => {
     )
     expect(slice).toMatch(/record\?\.phase !== 'recorded'[^)]*\) return/)
     // It runs after the list answers.
-    expect(screen).toContain('rail.value?.refreshResumable().then(lookAgainIfItMoved)')
+    expect(screen).toContain('void readTheList().then(lookAgainIfItMoved)')
     // …and a look takes nothing: no press of another kind hides in it.
     expect(slice).not.toMatch(/store\.(take|claim|resume|send|startAndSend)\b/)
   })
@@ -581,6 +581,6 @@ describe('the screen wires the list to the conversation it is drawing', () => {
     const start = screen.indexOf('const listedStateOfActive')
     expect(start).toBeGreaterThan(-1)
     const computed = screen.slice(start, screen.indexOf('\n)\n', start))
-    expect(computed).toContain('rail.value?.listedOf(active.value.sessionId)?.state ?? null')
+    expect(computed).toContain('projection.conversation(active.value.sessionId)?.state ?? null')
   })
 })

@@ -282,7 +282,8 @@ MUTATIONS = [
         # `basenameOf('')` hand a blank string through, which is exactly the blank-fact defect. The
         # anchor occurs once.
         [
-            (CONVERSATION_LIST, '      place: basenameOf(row.cwd) || null,', '      place: basenameOf(row.cwd),'),
+            # ⚑ **W4.1430.32 · re-anchored in place, not retired** — conversationList's row fold moved into `listedRow`, one indent shallower.
+            (CONVERSATION_LIST, "    place: basenameOf(row.cwd) || null,", "    place: basenameOf(row.cwd),"),
         ],
     ),
     (

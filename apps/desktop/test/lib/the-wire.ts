@@ -252,5 +252,22 @@ export function everythingOverTheWire<T>(stub: T, prefix = 'api', depth = 0): T 
       return answer(...carried)
     }
   }
-  return changed ? (wrapped as T) : stub
+  if (!changed) return stub
+  // A stub that answers names it does not own (a fake bridge's Proxy) keeps answering them, so the
+  // wire never turns a verb the stub would have refused into one that silently does not exist.
+  return (
+    isAnswerer(stub)
+      ? new Proxy(wrapped, {
+          get: (target, key) => (key in target ? Reflect.get(target, key) : Reflect.get(stub, key)),
+        })
+      : wrapped
+  ) as T
 }
+
+/** Whether a stub answers names beyond its own properties, as a fake bridge's Proxy does. */
+function isAnswerer(stub: object): boolean {
+  return typeof (stub as Record<string, unknown>)[ANSWERER_PROBE] === 'function'
+}
+
+/** A name no bridge has: a stub that hands back a function for it answers every name. */
+const ANSWERER_PROBE = '__no-such-verb__'

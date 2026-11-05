@@ -447,7 +447,7 @@ describe('the rail hands its rows to the workspace the band reads', () => {
     ).default
 
     expect(countOf(rail, 'railSays: () => says.value')).toBe(1)
-    const wire = rail.lastIndexOf('workspace.wire({', rail.indexOf('railSays: () => says.value'))
+    const wire = rail.lastIndexOf('projection.wire({', rail.indexOf('railSays: () => says.value'))
     expect(wire, 'the rail’s says are not wired into the workspace').toBeGreaterThan(-1)
     // No second copy of the rows: the screen neither mirrors nor re-derives them.
     expect(screen).not.toContain('railSays.value =')

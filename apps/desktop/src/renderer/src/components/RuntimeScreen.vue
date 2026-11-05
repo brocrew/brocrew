@@ -329,6 +329,12 @@ const projection = provideWorkspace()
  */
 const conversationDoor = shallowRef<((conversation: string) => void) | null>(null)
 provideConversationDoor(conversationDoor)
+/** Set when the screen goes: a read it asked that answers afterwards writes nothing. */
+let screenGone = false
+/** Writes what a read answered into the projection, unless the screen that asked has gone. */
+function whileHere(write: () => void): void {
+  if (!screenGone) write()
+}
 /**
  * The overlay layer. It sits ON TOP of whatever surface is showing rather than being another value
  * of `place` — an overlay is a question about the thing behind it, and closing it has to give that
@@ -2759,7 +2765,7 @@ const readTheWorkspace = oneReadAtATime(readTheWorkspaceOnce)
  */
 async function readWhatIsWaiting(): Promise<void> {
   const reading = await store.whatEachConversationIsWaitingOn()
-  projection.waitsRead(reading)
+  whileHere(() => projection.waitsRead(reading))
 }
 
 /** The time window Recent activity reads, as the person chose it. */
@@ -3076,7 +3082,7 @@ watch(surface, (now) => {
  */
 async function readProcessMemory(): Promise<void> {
   const held = await store.processMemory()
-  projection.memoryRead(held)
+  whileHere(() => projection.memoryRead(held))
 }
 
 /**
@@ -3476,7 +3482,10 @@ onUnmounted(() => {
   // ⛔ **Handed back, because the ref outlives this component under HMR** — a band left holding a
   // press into a screen that has been replaced would claim through a store nobody is listening to.
   conversationDoor.value = null
+  screenGone = true
   castRead++
+  filesRead++
+  glanceRead++
   // ⚑ **And the workspace** — its band, its files and every reading it holds, so a test or a hot
   // reload that mounts another screen starts from nobody has looked.
   projection.reset()

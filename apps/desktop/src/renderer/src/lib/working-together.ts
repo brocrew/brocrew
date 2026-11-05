@@ -1,4 +1,5 @@
 import { agentName, type AgentIdentity } from '../../../shared/runtime-ipc'
+import { namingFrom } from './roster-names'
 import { walkCovers, type LedgerWalk, type LedgerWalkKind } from '../../../shared/questions'
 import { TASK_IS_OPEN } from '../../../shared/tasks'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../../shared/who-called-whom'
@@ -513,6 +514,18 @@ function coverageOf(
   }
 }
 
+/** Each view's roster, read once for every name it draws. */
+const namings = new WeakMap<WorkingTogetherInput, (profileId: string | null) => string>()
+
+function nameIn(input: WorkingTogetherInput, profileId: string | null): string {
+  let named = namings.get(input)
+  if (named === undefined) {
+    named = namingFrom(input.identities ?? null)
+    namings.set(input, named)
+  }
+  return named(profileId)
+}
+
 function cardOf(
   edge: SpawnEdge,
   input: WorkingTogetherInput,
@@ -520,7 +533,7 @@ function cardOf(
 ): CastCard {
   return {
     conversation: edge.conversation,
-    name: agentName(edge.identity, input.identities ?? null),
+    name: nameIn(input, edge.identity),
     identity: edge.identity,
     // 🔴 **632 · the plate, from the reading's own row** — see {@link plateOf}.
     facets: plateOf(edge.running === 'not-running', atWork?.get(edge.conversation) ?? null),
@@ -538,7 +551,7 @@ function cardOf(
 function recipientCard(row: WorkEdge, input: WorkingTogetherInput): CastCard {
   return {
     conversation: row.to,
-    name: agentName(row.toIdentity, input.identities ?? null),
+    name: nameIn(input, row.toIdentity),
     identity: row.toIdentity,
     // ⛔ **632 · the faceless plate, and no reading is asked for it.** A {@link WorkEdge} names a
     // conversation the spawn walk never read, so this card holds no `running` — and asking
@@ -619,10 +632,7 @@ function workOf(row: WorkEdge, input: WorkingTogetherInput, at: number): CastWor
     from: row.from,
     // ⚑ **D-016 · commit 6 · a person gave it** — the window's one word for the person reading it,
     // never `agentName(null)`, which is BroBot.
-    fromName:
-      row.from === null
-        ? A_PERSON_ADDRESSED
-        : agentName(row.fromIdentity, input.identities ?? null),
+    fromName: row.from === null ? A_PERSON_ADDRESSED : nameIn(input, row.fromIdentity),
     given: agoWords(row.givenAt, at),
   }
 }

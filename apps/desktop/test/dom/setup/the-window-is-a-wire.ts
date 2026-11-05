@@ -27,7 +27,9 @@
  * and it now always cleans up, which is what it wanted in the first place.
  */
 
+import { afterEach } from 'vitest'
 import { everythingOverTheWire } from '../../lib/the-wire'
+import { heldWorkspace } from '../../workspace-fixture'
 
 /** ⚑ Exported so a test can assert the trap is ARMED rather than assert against a wire that is not. */
 export const THE_WIRE_IS_ARMED = 'window.api is wrapped by test/dom/setup/the-window-is-a-wire.ts'
@@ -59,4 +61,11 @@ Object.defineProperty(Object.getPrototypeOf(window) as object, 'api', {
       },
     })
   },
+})
+
+// Every test starts from a projection in which nothing has been read: the test app's projection is
+// shared by every app a test mounts, so what one test left must not reach the next. Registered
+// here, before any test file's hooks, it runs after them, once the test's apps are unmounted.
+afterEach(() => {
+  heldWorkspace.reset()
 })
