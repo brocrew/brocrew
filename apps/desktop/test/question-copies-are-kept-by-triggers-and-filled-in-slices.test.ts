@@ -8,6 +8,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { committedChangesOf, type Committed } from '../src/main/db/committed-changes'
 import { howTheDatabaseFits } from '../src/main/db/newer-database'
+import { deleteTheTree } from '../src/main/db/conversation-tree'
 import { buildLineage } from '../src/main/recovery/database-facts'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
@@ -294,7 +295,8 @@ describe('question copies are kept by triggers and filled in slices', () => {
     const heard: Committed[] = []
     const stop = committedChangesOf(db).listen((change) => heard.push(change))
     try {
-      db.prepare('DELETE FROM provider_session WHERE id = ?').run('gamma')
+      // Through the delete door the app uses, which takes the conversation's work first.
+      db.transaction(() => deleteTheTree(db, ['gamma']))()
       const deleted = heard.at(-1)
       if (deleted === undefined || deleted.resync) throw new Error('no change heard')
       expect(db.prepare('SELECT count(*) AS n FROM question_copy').get()).toEqual({ n: 0 })
