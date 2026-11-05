@@ -252,6 +252,7 @@ export class PluginHost {
       (item) =>
         item.workspaceId === workspaceId &&
         item.kind === 'turn.context.titles' &&
+        current(item.pluginId) &&
         this.state(item) === 'active' &&
         this.titles.has(key(workspaceId, item.pluginId)),
     )
@@ -631,7 +632,10 @@ export class PluginHost {
     this.changed(workspaceId)
     return { value: { dismissed: true } }
   }
-  async beforeTurn(input: PluginBeforeTurnInput): Promise<PluginBeforeTurnResult> {
+  async beforeTurn(
+    input: PluginBeforeTurnInput,
+    current: (pluginId: string) => boolean = () => true,
+  ): Promise<PluginBeforeTurnResult> {
     const hooks = [...this.contributions.values()].filter(
       (item) =>
         item.workspaceId === input.workspaceId &&
@@ -660,6 +664,7 @@ export class PluginHost {
       const call = { pluginId: item.pluginId, instanceId: item.owner.runId, requestId }
       pending.push(call)
       try {
+        if (!current(item.pluginId)) return
         const answer = await this.options.callTool({
           workspaceId: input.workspaceId,
           ...call,
@@ -681,6 +686,7 @@ export class PluginHost {
         })
         if (
           !accepting ||
+          !current(item.pluginId) ||
           this.contributions.get(item.handle) !== item ||
           this.state(item) !== 'active'
         )
@@ -730,6 +736,7 @@ export class PluginHost {
     const pointers = new Map<string, { resourceId: string; version: string }>()
     for (const { item, revision, titleRevision, pointers: chosen } of selected)
       if (
+        current(item.pluginId) &&
         this.contributions.get(item.handle) === item &&
         this.state(item) === 'active' &&
         revision === this.revisions.get(key(input.workspaceId, item.pluginId)) &&

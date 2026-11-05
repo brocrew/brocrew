@@ -98,6 +98,10 @@ export class GlobalPluginState {
       return Object.freeze({
         sequence: state.sequence,
         inspect: () => this.inspectView(state),
+        guard: (id: string) => frozen(state.guards.get(id) ?? null),
+        pending: () => frozen(state.pending),
+        projection: (workspace: string, id: string) =>
+          frozen(state.projections.get(`${workspace}/${id}`) ?? null),
         currentInstallation: current,
         currentInstallations: () =>
           frozen([...state.admitted.values()].filter((entry) => current(entry.pluginId))),
