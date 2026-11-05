@@ -457,6 +457,33 @@ export function createLifecycleAgentBridge(options: {
     })
     return run
   }
+  /**
+   * One read, queued behind this caller's earlier work. A read still queued when its bound passes
+   * answers unknown with the routes still open, and never runs; a release always runs.
+   */
+  function answered(lease: Readonly<WorkspaceLease>, request: Request): Promise<AgentRoutes> {
+    const asked = performance.now()
+    const caller = `${lease.id}:${request.incarnation}`
+    if (request.release) return chained(caller, () => readRoutes(lease, request, asked))
+    let expired = false
+    let started = false
+    const read = chained(caller, () => {
+      if (expired) return Promise.resolve(snapshot(caller, null))
+      started = true
+      return readRoutes(lease, request, asked)
+    })
+    let timer: ReturnType<typeof setTimeout> | undefined
+    // Only the wait in the queue is bounded here; a read that started keeps its own bound.
+    const queued = new Promise<AgentRoutes>((resolve) => {
+      timer = setTimeout(() => {
+        if (started) return
+        expired = true
+        resolve(snapshot(caller, null))
+      }, answerWithin)
+      timer.unref?.()
+    })
+    return Promise.race([read.finally(() => clearTimeout(timer)), queued])
+  }
   return {
     deny,
     revoke,
@@ -502,22 +529,18 @@ export function createLifecycleAgentBridge(options: {
     },
     /** One caller's routes; callers never wait on each other. */
     agentRoutes(lease: Readonly<WorkspaceLease>, request: Request) {
-      const asked = performance.now()
-      return chained(`${lease.id}:${request.incarnation}`, () => readRoutes(lease, request, asked))
+      return answered(lease, request)
     },
     /** The served routes alone, for a peer that reads the array reply. */
     async routes(lease: Readonly<WorkspaceLease>, request: Request) {
-      const asked = performance.now()
-      const answer = await chained(`${lease.id}:${request.incarnation}`, () =>
-        readRoutes(lease, request, asked),
-      )
+      const answer = await answered(lease, request)
       return answer.servers.map(({ pluginId: _pluginId, ...server }) => server)
     },
     async close() {
       // Every current and pending authority ends before the first await.
       closed = true
-      for (const id of [...entries.keys()]) deny(id)
       const opening = [...warmups.values()]
+      for (const id of [...entries.keys()]) deny(id)
       for (const warmup of opening) warmup.cancelled = true
       warmups.clear()
       await Promise.all([...chains.values(), ...opening.map((one) => one.done)])
