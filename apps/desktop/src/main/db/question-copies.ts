@@ -127,6 +127,8 @@ export function ensureQuestionCopies(
 ): void {
   if (db.readonly) return
   db.transaction(() => {
+    const hadCopies = present(db, 'table', 'question_copy')
+    const hadProgress = present(db, 'table', 'question_copy_progress')
     db.exec(TABLES)
     db.prepare('INSERT OR IGNORE INTO question_copy_progress (id) VALUES (1)').run()
     const restart = db.prepare(
@@ -137,17 +139,9 @@ export function ensureQuestionCopies(
     )
     for (const name of missing) db.exec(QUESTION_COPY_TRIGGERS[name]!)
     if (missing.length > 0) restart.run()
-    // A fill said done over a copy table that lost every row, while the ledger holds a keyed
-    // question, starts again. Both reads stop at their first row.
-    const lostEveryCopy = db
-      .prepare(
-        `SELECT (SELECT done FROM question_copy_progress WHERE id = 1) = 1
-            AND NOT EXISTS (SELECT 1 FROM question_copy)
-            AND EXISTS (SELECT 1 FROM events WHERE type = 'question_asked' AND ${key('events')} IS NOT NULL)
-            AS lost`,
-      )
-      .get() as { lost: number }
-    if (lostEveryCopy.lost === 1) restart.run()
+    // A copy table recreated beside a kept progress row starts its fill again: nothing it said is
+    // there now. Read from the schema alone, so it costs nothing at open.
+    if (!hadCopies && hadProgress) restart.run()
     if (!present(db, 'index', INDEX)) {
       const empty = db
         .prepare('SELECT NOT EXISTS (SELECT 1 FROM question_copy) AS empty')
