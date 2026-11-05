@@ -11,11 +11,12 @@ import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
 import { PluginWorkspaceLease } from '../src/main/plugins/supervisor/client'
 import { PluginPackageVault } from '../src/main/plugins/lifecycle/vault'
 import { createSupervisorLifecycle } from '../src/main/plugins/lifecycle/supervisor'
+import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { PluginPageTools } from '../src/main/plugins/ui/tool-rpc'
 import { PLUGIN_PAGE_CHANNEL } from '../src/shared/plugin-page'
 import type { PluginJsonObject, PluginToolCallResult } from '../src/shared/plugin-contract'
-import type { WorkspaceProjection } from '../src/main/plugins/lifecycle/types'
+import type { LifecycleWorkspace, WorkspaceProjection } from '../src/main/plugins/lifecycle/types'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
 import { fictionalPublicKey, signed } from './plugin-package-fixtures'
 import {
@@ -26,7 +27,10 @@ import {
 } from './fixtures/connected-package-migration'
 
 const cleanups: (() => Promise<unknown>)[] = []
+const receiptSubscriptions = new Set<() => void>()
 afterEach(async () => {
+  for (const stop of receiptSubscriptions) stop()
+  receiptSubscriptions.clear()
   try {
     for (const close of cleanups.splice(0).reverse()) await close()
   } finally {
@@ -52,6 +56,7 @@ interface ConnectedSession {
   service: Awaited<ReturnType<typeof createSupervisorLifecycle>>
   client: Awaited<ReturnType<typeof connectPluginSettings>>
   close(): Promise<void>
+  waitForOwnReceipt(): Promise<void>
   pages: PluginPageTools[]
 }
 async function events(path: string): Promise<Record<string, unknown>[]> {
@@ -273,16 +278,79 @@ async function fixture(
         return true
       },
     }
-    const client = await connectPluginSettings({
-      root,
-      path: service.path,
-      personKey: '7'.repeat(64),
-      projection,
-      pinnedPublicKey: fictionalPublicKey,
-      target,
-      appVersion: '1.0.0',
-      catalogue: signed({ format: 1, entries: [] }),
-    })
+    const handles: LifecycleWorkspace[] = []
+    const originalAttach = PluginLifecycleController.prototype.attach
+    const observing = vi
+      .spyOn(PluginLifecycleController.prototype, 'attach')
+      .mockImplementation(function (
+        this: PluginLifecycleController,
+        ...args: Parameters<PluginLifecycleController['attach']>
+      ) {
+        return originalAttach.apply(this, args).then((handle) => {
+          if (
+            args[0].workspaceId === workspaceId &&
+            service.controller.hostWorkspace(handle) === workspaceId
+          )
+            handles.push(handle)
+          return handle
+        })
+      })
+    let client: Awaited<ReturnType<typeof connectPluginSettings>>
+    try {
+      client = await connectPluginSettings({
+        root,
+        path: service.path,
+        personKey: '7'.repeat(64),
+        projection,
+        pinnedPublicKey: fictionalPublicKey,
+        target,
+        appVersion: '1.0.0',
+        catalogue: signed({ format: 1, entries: [] }),
+      })
+    } finally {
+      observing.mockRestore()
+    }
+    async function waitForOwnReceipt() {
+      const expected = state.currentInstallation(id)
+      if (!expected) throw new Error('Expected a selected package before consumer readiness')
+      const handle = handles[0]!
+      let resolve!: () => void, reject!: (error: unknown) => void
+      const ready = new Promise<void>((yes, no) => {
+        resolve = yes
+        reject = no
+      })
+      const check = () => {
+        try {
+          const current = state.currentInstallation(id)
+          if (
+            !current ||
+            current.installId !== expected.installId ||
+            current.incarnation !== expected.incarnation
+          )
+            throw new Error('Selected package changed before its consumer was ready')
+          if (
+            service.controller.admitted(handle, id, expected.installId) &&
+            service.controller
+              .consumerBindings(handle)
+              .some((one) => one.pluginId === id && one.state === 'ready')
+          )
+            resolve()
+        } catch (error) {
+          reject(error)
+        }
+      }
+      const stop = service.controller.onHostChanged((changed) => {
+        if (changed === workspaceId) check()
+      })
+      receiptSubscriptions.add(stop)
+      try {
+        check()
+        await ready
+      } finally {
+        receiptSubscriptions.delete(stop)
+        stop()
+      }
+    }
     const pages: PluginPageTools[] = []
     let closed = false
     const close = async () => {
@@ -296,7 +364,8 @@ async function fixture(
       expect(await owner.shutdown()).toBe(true)
     }
     emergency.close = close
-    const session = { service, client, pages, close }
+    expect(handles).toHaveLength(1)
+    const session = { service, client, pages, close, waitForOwnReceipt }
     sessions.push(session)
     return session
   }
@@ -625,6 +694,7 @@ describe('ordinary package migration through actual app and package code', () =>
       session = await f.start()
       expect(f.state.currentInstallation('chrome')?.installId).toBe(f.installId)
       expect(f.state.getTitlesEnabled(f.workspaceId, 'chrome').enabled).toBe(false)
+      await session.waitForOwnReceipt()
       updated = await configure(session, 'chrome')
       expect(jsonResult(await updated.invoke('configuration_snapshot'))).toMatchObject({
         profiles: [
@@ -748,6 +818,7 @@ describe('ordinary package migration through actual app and package code', () =>
       session = await f.start()
       expect(f.state.currentInstallation('whatsapp')?.installId).toBe(f.installId)
       expect(f.state.getTitlesEnabled(f.workspaceId, 'whatsapp').enabled).toBe(false)
+      await session.waitForOwnReceipt()
       page = await configure(session, 'whatsapp')
       expect(jsonResult(await page.invoke('whatsapp_settings'))).toMatchObject({
         read: true,
