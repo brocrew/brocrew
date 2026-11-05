@@ -493,13 +493,14 @@ describe('§3 · what RuntimeScreen asks, and what it keeps', () => {
   })
 
   it('⛔ a failed forest read keeps the last good one', () => {
-    // A failed graph refinement keeps the last good tree.
+    // The band's forest read is the band's: the projection keeps the last good tree for it on a
+    // refusal (its own test), where a Team read that did not answer draws none.
     const written = readTheCast
       .split('\n')
-      .filter((line) => line.includes('projection.forestRead('))
+      .filter((line) => line.includes('projection.forestAnswered('))
     expect(written).toHaveLength(1)
     expect(readTheCast).toContain(
-      'if (mine === castRead && asked === activeId.value && grown !== null) {\n      projection.forestRead(grown)',
+      "if (mine === castRead && asked === activeId.value) {\n      projection.forestAnswered('band', forestTicket, grown)",
     )
   })
 })

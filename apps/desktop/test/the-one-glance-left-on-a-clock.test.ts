@@ -130,7 +130,7 @@ describe('§1 · no re-read of the work on a clock', () => {
     expect(forest).toHaveLength(1)
     const forestAt = GLANCE.indexOf('void readWhoIsWorking()')
     expect(GLANCE.slice(GLANCE.lastIndexOf('if (', forestAt), forestAt)).toContain(
-      'theForest.value === null',
+      'projection.teamForest() === null',
     )
   })
 

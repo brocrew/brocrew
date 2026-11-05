@@ -327,14 +327,14 @@ describe('the Graph is moved by hand, grows with its cards, and is fed by the sc
       expect(graphFold).toContain(
         'foldTheForest(projection.forest(), projection.cast()?.atWork ?? null)',
       )
-      // ⚑ The Team page is handed its own, folded off its own read.
+      // ⚑ The Team page is handed its own, folded off the forest as Team's reads leave it.
       expect(team).toContain(':forest="theForestView"')
-      expect(teamFold).toContain('foldTheForest(theForest.value, beingDone.value)')
+      expect(teamFold).toContain('foldTheForest(projection.teamForest(), beingDone.value)')
 
-      // ⛔ The two are not crossed: each declaration reads its own source, beside the containment above.
-      expect(graphFold).not.toContain('theForest.value')
+      // ⛔ The two are not crossed: each declaration reads its own policy, beside the containment above.
+      expect(graphFold).not.toContain('teamForest')
       expect(graphFold).not.toContain('beingDone.value')
-      expect(teamFold).not.toContain('projection.forest')
+      expect(teamFold).not.toContain('projection.forest()')
       expect(teamFold).not.toContain('projection.cast()')
     })
   })

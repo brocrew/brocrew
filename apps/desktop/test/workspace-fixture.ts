@@ -121,8 +121,10 @@ export const heldWorkspace = {
       ),
     )
   },
+  /** A forest the band's read answered with. */
   forest(forest: TheWholeForest): void {
-    wired().forestRead(forest)
+    const workspace = wired()
+    workspace.forestAnswered('band', workspace.forestAsked('band'), forest)
   },
   waits(reading: WhatEachConversationIsWaitingOn): void {
     wired().waitsRead(reading)

@@ -23,7 +23,7 @@ The landing agent verified each row alone with `verify_row.py`. The table has no
 """
 
 WORKING_TOGETHER_VUE = "apps/desktop/src/renderer/src/components/WorkingTogether.vue"
-RUNTIME_SCREEN_VUE = "apps/desktop/src/renderer/src/components/RuntimeScreen.vue"
+WORKSPACE_PROJECTION = "apps/desktop/src/renderer/src/lib/workspace-projection.ts"
 
 MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
@@ -75,7 +75,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M4 · ⛔ a failed forest read blanks the row · `null` is written over the last good forest, so an open agent's sub-agents vanish for half a minute on any failed read — killed by `a-childs-state.test.ts`",
         [
-            (RUNTIME_SCREEN_VUE, "if (mine === castRead && asked === activeId.value && grown !== null)", "if (mine === castRead && asked === activeId.value)"),
+            # ⚑ **the forest's reads moved into the workspace projection · re-anchored in place, not retired** — the band's forest read now lands in the workspace projection, which keeps the last good forest on a read that did not answer; the plant writes the refusal's null over it, so a failed read blanks the row as before. Killed by `the-workspace-projection-keeps-what-did-not-move.test.ts`.
+            (WORKSPACE_PROJECTION, "if (forest !== null && ticket > forestHeldFrom) {", "if (ticket > forestHeldFrom) {"),
         ],
     ),
 ]

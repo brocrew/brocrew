@@ -50,6 +50,12 @@ export interface WaitOf {
   readonly began: { readonly answer: number | null; readonly work: number | null }
 }
 
+/**
+ * Who asked for a forest read. The Team page draws nothing after its own read was refused, as a
+ * stale tree claims a shape the work may no longer have; the band keeps its last good forest.
+ */
+export type ForestReader = 'team' | 'band'
+
 /** What the projection reads but never writes: the roster, provider facts and the rail's words. */
 export interface WorkspaceInputs {
   readonly identities: () => readonly AgentIdentity[] | null
@@ -78,7 +84,13 @@ export interface WorkspaceProjection {
   statesMoved(moved: readonly AgentStateMoved[]): void
   /** The waits reading; `null` (a read that did not answer) keeps the last good one. */
   waitsRead(reading: WhatEachConversationIsWaitingOn | null): void
-  forestRead(forest: TheWholeForest): void
+  /** Numbers a forest read for `reader` before it is asked. */
+  forestAsked(reader: ForestReader): number
+  /**
+   * A forest read's answer, or `null` for a read that did not answer. Only the reader's newest read
+   * counts, and a forest asked before the one held never replaces it.
+   */
+  forestAnswered(reader: ForestReader, ticket: number, forest: TheWholeForest | null): void
   /** The process figures; `null` draws none, as a figure is a live process's. */
   memoryRead(held: ProcessMemory | null): void
   /** Back to nobody has looked; a read already in flight is dropped when it lands. */
@@ -94,7 +106,10 @@ export interface WorkspaceProjection {
   ofIdentity(identity: string): readonly ListedConversation[]
   waits(): WhatEachConversationIsWaitingOn | null
   waitOf(id: string): WaitOf
+  /** The last forest any read gave. */
   forest(): TheWholeForest | null
+  /** The forest for the Team page: `null` until its newest read answers, and after a refusal. */
+  teamForest(): TheWholeForest | null
   /** Every piece a conversation holds, as the forest names them. */
   piecesHeldBy(id: string): readonly WorkEdge[]
   memory(): ReadonlyMap<string, number>
@@ -247,6 +262,12 @@ export function createWorkspaceProjection(
   >(new Map())
   const waitsReading = shallowRef<WhatEachConversationIsWaitingOn | null>(null)
   const forestReading = shallowRef<TheWholeForest | null>(null)
+  /** Whether each reader's newest forest read answered; absent until one lands. */
+  const forestAnsweredFor = shallowRef<ReadonlyMap<ForestReader, boolean>>(new Map())
+  /** Forest reads asked, the newest each reader asked, and the read the held forest came from. */
+  let forestsAsked = 0
+  let newestForestOf = new Map<ForestReader, number>()
+  let forestHeldFrom = 0
   const memoryReading = shallowRef<ReadonlyMap<string, number>>(new Map())
   const unmeasured = shallowRef<string | null>(null)
   const castReading = shallowRef<CastReading | null>(null)
@@ -427,8 +448,19 @@ export function createWorkspaceProjection(
     waitsRead(reading) {
       if (reading !== null) waitsReading.value = reading
     },
-    forestRead(forest) {
-      if (!sameValue(forestReading.value, forest)) forestReading.value = forest
+    forestAsked(reader) {
+      forestsAsked += 1
+      newestForestOf.set(reader, forestsAsked)
+      return forestsAsked
+    },
+    forestAnswered(reader, ticket, forest) {
+      if (newestForestOf.get(reader) !== ticket) return
+      if (forest !== null && ticket > forestHeldFrom) {
+        forestHeldFrom = ticket
+        if (!sameValue(forestReading.value, forest)) forestReading.value = forest
+      }
+      if (forestAnsweredFor.value.get(reader) !== (forest !== null))
+        forestAnsweredFor.value = new Map(forestAnsweredFor.value).set(reader, forest !== null)
     },
     memoryRead(held) {
       const next = new Map((held?.conversations ?? []).map((one) => [one.conversation, one.bytes]))
@@ -448,6 +480,9 @@ export function createWorkspaceProjection(
       said.value = new Map()
       waitsReading.value = null
       forestReading.value = null
+      forestAnsweredFor.value = new Map()
+      newestForestOf = new Map()
+      forestHeldFrom = 0
       memoryReading.value = new Map()
       unmeasured.value = null
     },
@@ -464,6 +499,7 @@ export function createWorkspaceProjection(
         ? NOBODY_HAS_LOOKED
         : (waitsById.value.get(id) ?? NOT_IN_THE_READING),
     forest: () => forestReading.value,
+    teamForest: () => (forestAnsweredFor.value.get('team') === true ? forestReading.value : null),
     piecesHeldBy: (id) => piecesByHolder.value.get(id) ?? NO_PIECES,
     memory: () => memoryReading.value,
     memoryOf: (id) => memoryReading.value.get(id),

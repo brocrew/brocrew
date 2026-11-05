@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { conversationList } from '../src/renderer/src/lib/conversation-list'
 import {
   createWorkspaceProjection,
+  type ForestReader,
   type WorkspaceProjection,
 } from '../src/renderer/src/lib/workspace-projection'
 import {
@@ -32,12 +33,21 @@ import {
 /** A deep copy, as a fresh bridge answer is: equal to the last one, sharing no object with it. */
 const again = <T>(value: T): T => structuredClone(value)
 
+/** One forest read by `reader` that answered with `forest`, or did not answer (`null`). */
+function forestFrom(
+  projection: WorkspaceProjection,
+  forest: Parameters<WorkspaceProjection['forestAnswered']>[2],
+  reader: ForestReader = 'band',
+): void {
+  projection.forestAnswered(reader, projection.forestAsked(reader), forest)
+}
+
 function projected(data: WorkspaceAtScale = workspaceAtScale()): WorkspaceProjection {
   const projection = createWorkspaceProjection({ identities: () => data.identities })
   const ticket = projection.listAsked()
   projection.listAnswered(ticket, again(data.resumable), again(data.unresumable))
   projection.waitsRead(again(data.waits))
-  projection.forestRead(again(data.forest))
+  forestFrom(projection, again(data.forest))
   projection.memoryRead(again(data.memory))
   return projection
 }
@@ -118,7 +128,7 @@ describe('an answer that moved nothing keeps every object it holds', () => {
     const pieces = projection.piecesHeldBy(childId(4))
     const forest = projection.forest()
     projection.waitsRead(again(data.waits))
-    projection.forestRead(again(data.forest))
+    forestFrom(projection, again(data.forest))
     projection.memoryRead(again(data.memory))
     expect(projection.waitOf(childId(4))).toBe(waitOfChild)
     expect(projection.waitOf(OWNER)).toBe(waitOfOwner)
@@ -144,7 +154,7 @@ describe('a forest read again', () => {
     const projection = projected(data)
     const held = projection.piecesHeldBy(childId(4))
     const other = projection.piecesHeldBy(childId(5))
-    projection.forestRead({ ...again(data.forest), readAt: data.forest.readAt + 30_000 })
+    forestFrom(projection, { ...again(data.forest), readAt: data.forest.readAt + 30_000 })
     expect(projection.forest()?.readAt).toBe(data.forest.readAt + 30_000)
     expect(projection.piecesHeldBy(childId(4))).toBe(held)
     expect(projection.piecesHeldBy(childId(5))).toBe(other)
@@ -162,7 +172,7 @@ describe('a forest read again', () => {
         ? { ...node, work: { ...node.work, title: 'A fictional retitled piece' } }
         : node,
     )
-    projection.forestRead({
+    forestFrom(projection, {
       ...forest,
       readAt: forest.readAt + 30_000,
       nodes: { ...forest.nodes, rows },
@@ -313,11 +323,52 @@ describe('the forest and the process figures', () => {
   })
 })
 
+describe('one forest, read by the band and by the Team page', () => {
+  it('a refused Team read hides Team’s tree and the band keeps it; a good one brings it back', () => {
+    const data = workspaceAtScale()
+    const projection = projected(data)
+    forestFrom(projection, again(data.forest), 'team')
+    const held = projection.forest()
+    expect(projection.teamForest()).toBe(held)
+
+    forestFrom(projection, null, 'team')
+    expect(projection.teamForest()).toBeNull()
+    expect(projection.forest()).toBe(held)
+
+    // An answer equal to the one held still answers Team's newest read.
+    forestFrom(projection, again(data.forest), 'team')
+    expect(projection.teamForest()).toBe(held)
+    expect(projection.forest()).toBe(held)
+  })
+
+  it('a superseded refusal changes neither, and an older forest never replaces a newer one', () => {
+    const data = workspaceAtScale()
+    const projection = createWorkspaceProjection()
+    const older = projection.forestAsked('team')
+    const band = projection.forestAsked('band')
+    const newer = projection.forestAsked('team')
+    const fresh = { ...again(data.forest), readAt: data.forest.readAt + 30_000 }
+    projection.forestAnswered('team', newer, fresh)
+    projection.forestAnswered('team', older, null)
+    expect(projection.teamForest()).toBe(fresh)
+    // The band's read was asked before the forest held, so its answer is history.
+    projection.forestAnswered('band', band, again(data.forest))
+    expect(projection.forest()).toBe(fresh)
+  })
+
+  it('an unread Team page draws no tree, whatever the band holds', () => {
+    const projection = projected()
+    expect(projection.forest()).not.toBeNull()
+    expect(projection.teamForest()).toBeNull()
+  })
+})
+
 describe('reset', () => {
   it('goes back to nobody has looked, and drops a read that was in flight', () => {
     const data = workspaceAtScale()
     const projection = projected(data)
     const inFlight = projection.listAsked()
+    const forestInFlight = projection.forestAsked('team')
     projection.reset()
     expect(projection.listed()).toBeNull()
     expect(projection.waits()).toBeNull()
@@ -325,6 +376,9 @@ describe('reset', () => {
     expect(projection.memoryOf(OWNER)).toBeUndefined()
     expect(projection.listAnswered(inFlight, again(data.resumable), [])).toBe(false)
     expect(projection.listed()).toBeNull()
+    projection.forestAnswered('team', forestInFlight, again(data.forest))
+    expect(projection.forest()).toBeNull()
+    expect(projection.teamForest()).toBeNull()
   })
 })
 

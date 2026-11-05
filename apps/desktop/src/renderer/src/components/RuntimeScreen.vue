@@ -2846,23 +2846,11 @@ watch(lastSeen.since, () => void readActivity())
  */
 const beingDone = ref<WhatIsBeingDone | null>(null)
 /**
- * Read the whole forest for the Team page's Graph tab.
- *
- * ⛔ **Read in the SAME call as {@link beingDone} and on the same tick**, which is `637` §5's
- * printed shape and the reason this screen does not grow a second interval: the docblock above
- * warns that *"a FASTER interval of its own would put TWO ages on one band"*, and a forest drawn
- * beside a doing word has exactly that hazard — two readings, two moments.
- *
- * ⚠️ **`null` is NOT kept on a refusal**, like its sibling and for its reason. ⚑ A stale TREE
- * reads as *this is the shape of your work*, which is a louder false claim than an absent one. `641` §5.5: *"`null` from the read draws we could not tell, never
- * an empty tree."*
+ * The Team page's Graph tab: the workspace's forest, read in the same call as {@link beingDone} so
+ * one page has one age. A refused Team read draws no tree rather than a stale one
+ * (`teamForest`), since a stale tree claims a shape the work may no longer have.
  */
-const theForest = ref<TheWholeForest | null>(null)
-/**
- * ⚑ **641 · the forest, folded for the drawing** — one derivation, and the window's own `held` is
- * what makes `hereIsOf`'s fourth navigation state reachable.
- */
-const theForestView = computed(() => foldTheForest(theForest.value, beingDone.value))
+const theForestView = computed(() => foldTheForest(projection.teamForest(), beingDone.value))
 
 /**
  * Fold the conversation's Graph tab from the same forest as the Team page. {@link readTheCast} supplies the polled forest and what each running conversation was last told.
@@ -2908,6 +2896,7 @@ function foldTheForest(forest: TheWholeForest | null, atWork: WhatIsBeingDone | 
  */
 async function readWhoIsWorkingOnce(): Promise<void> {
   if (surface.value !== 'team') return
+  const ticket = projection.forestAsked('team')
   // ⚑ **641 · ONE call for both** — `637` §5 prints this exact shape, and a second await here
   // would be a second moment for one page.
   const [doing, grown] = await Promise.all([store.whatIsBeingDone(), store.theWholeForest()])
@@ -2916,7 +2905,7 @@ async function readWhoIsWorkingOnce(): Promise<void> {
   // that does not keep its last good answer (see {@link beingDone}).
   if (surface.value !== 'team') return
   beingDone.value = doing
-  theForest.value = grown
+  projection.forestAnswered('team', ticket, grown)
 }
 const readWhoIsWorking = oneReadAtATime(readWhoIsWorkingOnce)
 
@@ -3033,9 +3022,10 @@ async function readTheCast(): Promise<void> {
   const answerPending = store.whoCalledWhom(asked)
   const doingPending = store.whatIsBeingDone()
   // The graph and activity refine the cards; neither holds up their first relationship reading.
+  const forestTicket = projection.forestAsked('band')
   const forestPending = store.theWholeForest().then((grown) => {
-    if (mine === castRead && asked === activeId.value && grown !== null) {
-      projection.forestRead(grown)
+    if (mine === castRead && asked === activeId.value) {
+      projection.forestAnswered('band', forestTicket, grown)
     }
   })
   const answer = await answerPending
@@ -3108,7 +3098,7 @@ async function glance(): Promise<void> {
   const mine = glanceRead
   if (surface.value === 'team') {
     // ⚑ A forest read that did not answer is asked again, whole.
-    if (theForest.value === null) {
+    if (projection.teamForest() === null) {
       void readWhoIsWorking()
       return
     }

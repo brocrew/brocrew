@@ -43,9 +43,8 @@ import { heldWorkspace } from '../workspace-fixture'
  * - 🔴 **LOST in 3d53e6af — not moved, and pinned nowhere**: *"a read that did not answer says so
  *   under the graph — and an answered read does not"*. The *This may not be current* line went with
  *   `ConversationGraph.vue` and nothing replaced it. The tab draws the workspace's forest, which
- *   `RuntimeScreen.readTheCast` keeps on a refusal (`if (grown !== null …)
- *   projection.forestRead(grown)`), and `ForestView` carries no *answered*: the Graph tab draws the last forest it had and
- *   says NOTHING. ⛔ The Team page does the opposite on purpose — its `theForest` is *"NOT kept on a
+ *   the projection keeps for the band on a refusal (`forest()`), and `ForestView` carries no *answered*: the Graph tab draws the last forest it had and
+ *   says NOTHING. ⛔ The Team page does the opposite on purpose — its `teamForest()` is *"NOT kept on a
  *   refusal"*, because *"a stale TREE reads as this is the shape of your work"* (641 §5.5).
  *   ⚠️ Neither neighbour covers it: the main-panel file's *"a forest not read yet draws one quiet
  *   line"* is a forest never read, and `the-forest-from-the-person-down`'s *"a read that could not

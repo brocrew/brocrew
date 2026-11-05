@@ -389,7 +389,7 @@ describe('§4 · RuntimeScreen follows the change, and routes every press to the
     // panel's Graph tab — so the rules below are read off that one function, and both views are
     // proved to be folded by it.
     expect(screen).toMatch(
-      /const theForestView = computed\(\(\) => foldTheForest\(theForest\.value, beingDone\.value\)\)/,
+      /const theForestView = computed\(\(\) => foldTheForest\(projection\.teamForest\(\), beingDone\.value\)\)/,
     )
     expect(screen).toMatch(/const conversationForestView = computed\(\(\) =>\s*foldTheForest\(/)
     const start = screen.indexOf('function foldTheForest(')
