@@ -66,7 +66,9 @@ checks the durable runtime copy against every packaged runtime/host file, hashes
 content-addressed supervisor copy, checks the actual captured spawn executable and
 argv, and retains the runtime id and spawn records. A test-only inherited preload
 throws on fetch/HTTP/HTTPS/TLS/TCP connections, permitting local Unix sockets. Production
-owner bytes are unchanged; the preload is separately hashed instrumentation.
+owner bytes are unchanged; the preload is separately hashed instrumentation. The
+inherited `--no-warnings` flag suppresses Node's own experimental notices so the
+production launcher's first-line diagnostic retains the actual busy refusal.
 
 Each execution allocates a new short `/tmp/fl-*` fictional global/workspace/data root;
 there is no root-selection argument, live root discovery, credentials, plugin installs

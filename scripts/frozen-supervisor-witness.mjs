@@ -194,7 +194,8 @@ const connect=net.Socket.prototype.connect;net.Socket.prototype.connect=function
     priorNodeOptions = process.env.NODE_OPTIONS
   // Never inject unreviewed ambient preload or inspector flags into the witness.
   assert.ok(!priorNodeOptions, 'Unset NODE_OPTIONS before running this witness')
-  process.env.NODE_OPTIONS = `--import=${pathToFileURL(join(out, 'network-forbidden.mjs')).href}`
+  // The launcher keeps the first stderr line. Node experimental notices must not hide busy.
+  process.env.NODE_OPTIONS = `--no-warnings --import=${pathToFileURL(join(out, 'network-forbidden.mjs')).href}`
   childProcess.spawn = function (command, argv, opts) {
     const child = originalSpawn(command, argv, opts)
     const exited = new Promise((resolve) =>
