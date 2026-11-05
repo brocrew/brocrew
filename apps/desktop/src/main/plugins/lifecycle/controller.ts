@@ -64,9 +64,10 @@ type RegisteredContribution = ReturnType<ReturnType<typeof createContributionReg
 interface Workspace {
   sink: WorkspaceProjection
   receipts: Map<string, ProjectionReceipt>
+  receiptPublishers: Map<string, WorkspaceProjection>
   // A consumer's failed-binding denies never own a process or durable effect.
   consumerBlocks: Set<string>
-  revocations: Map<string, Set<string>>
+  revocations: Map<string, Map<WorkspaceProjection, Set<string>>>
   views: Set<string>
   consumerRevisions: Map<string, number>
   bindings: Map<string, ConsumerBinding>
@@ -923,15 +924,65 @@ export class PluginLifecycleController {
     receipt: ProjectionReceipt,
     binding?: ConsumerBinding,
   ): void {
+    const publisher = binding?.sink ?? workspace.sink
     workspace.receipts.set(id, receipt)
-    if ((!binding || binding.revoked) && !workspace.revocations.get(id)?.size)
+    workspace.receiptPublishers.set(id, publisher)
+    if ((!binding || binding.revoked) && !workspace.revocations.get(id)?.get(publisher)?.size)
       workspace.consumerBlocks.delete(id)
     const prior = workspace.bindings.get(id)
     if (prior && prior !== binding) {
+      if (prior.sink !== publisher) this.retainPublished(workspace, prior)
       this.cancelBinding(workspace, id)
+      prior.bound = false
       // The mutation published this receipt; the superseded job no longer owns readiness.
       prior.state = 'ready'
     }
+  }
+  private retainRevoke(
+    workspace: Workspace,
+    id: string,
+    publisher: WorkspaceProjection,
+    installId: string,
+  ): Set<string> {
+    const publishers = workspace.revocations.get(id) ?? new Map<WorkspaceProjection, Set<string>>()
+    const installs = publishers.get(publisher) ?? new Set<string>()
+    installs.add(installId)
+    publishers.set(publisher, installs)
+    workspace.revocations.set(id, publishers)
+    return installs
+  }
+  private confirmRevoke(
+    workspace: Workspace,
+    id: string,
+    publisher: WorkspaceProjection,
+    installId: string,
+    installs: Set<string>,
+  ): void {
+    const publishers = workspace.revocations.get(id)
+    if (publishers?.get(publisher) !== installs) return
+    installs.delete(installId)
+    if (!installs.size) publishers.delete(publisher)
+    if (!publishers.size) workspace.revocations.delete(id)
+  }
+  private retainPublished(workspace: Workspace, binding: ConsumerBinding): void {
+    if (!binding.bound || !binding.selected) return
+    const receipt = workspace.receipts.get(binding.pluginId)
+    if (
+      receipt?.installId === binding.selected.installId &&
+      workspace.receiptPublishers.get(binding.pluginId) === binding.sink
+    )
+      return
+    this.retainRevoke(workspace, binding.pluginId, binding.sink, binding.selected.installId)
+  }
+  private retainReceipt(workspace: Workspace, id: string): void {
+    const receipt = workspace.receipts.get(id)
+    if (!receipt) return
+    this.retainRevoke(
+      workspace,
+      id,
+      workspace.receiptPublishers.get(id) ?? workspace.sink,
+      receipt.installId,
+    )
   }
   private cancelBinding(workspace: Workspace, id: string): void {
     workspace.bindingGenerations.set(id, (workspace.bindingGenerations.get(id) ?? 0) + 1)
@@ -993,8 +1044,14 @@ export class PluginLifecycleController {
     id: string,
     before: ProjectionReceipt | null,
   ): ConsumerBinding {
+    const previous = workspace.bindings.get(id)
+    // A different callback origin cannot acknowledge the publisher being replaced.
+    if (workspace.receiptPublishers.get(id) && workspace.receiptPublishers.get(id) !== sink)
+      this.retainReceipt(workspace, id)
+    if (previous && previous.sink !== sink) this.retainPublished(workspace, previous)
     this.cancelBinding(workspace, id)
     workspace.receipts.delete(id)
+    workspace.receiptPublishers.delete(id)
     workspace.consumerRevisions.set(id, (workspace.consumerRevisions.get(id) ?? 0) + 1)
     const read = this.options.state.readView()
     const guard = read.guard(id)
@@ -1014,28 +1071,27 @@ export class PluginLifecycleController {
       revoked: false,
     }
     workspace.bindings.set(id, binding)
+    for (const installId of [before?.installId, guard?.installId])
+      if (installId) this.retainRevoke(workspace, id, sink, installId)
     binding.task = Promise.resolve()
       .then(async () => {
-        const obligations = workspace.revocations.get(id) ?? new Set<string>()
-        for (const installId of [before?.installId, guard?.installId])
-          if (installId) obligations.add(installId)
-        workspace.revocations.set(id, obligations)
-        for (const installId of [...obligations]) {
+        const own = workspace.revocations.get(id)?.get(sink) ?? new Set<string>()
+        for (const installId of [...own]) {
           if (
             (await this.bindingWait(workspace, binding, () =>
               bounded(() => sink.revoke(id, installId)),
             )) !== true
           )
             return pending()
-          obligations.delete(installId)
+          this.confirmRevoke(workspace, id, sink, installId, own)
         }
-        if (!obligations.size) workspace.revocations.delete(id)
         binding.revoked = true
         await this.bindingWait(workspace, binding, () =>
           sink.reconcile({ pluginId: id, before, receipt: null }),
         )
         await this.bindingWait(workspace, binding, () => sink.applied(id, null))
         workspace.receipts.delete(id)
+        workspace.receiptPublishers.delete(id)
         const install = binding.selected
         if (!install) {
           binding.state = 'absent'
@@ -1101,10 +1157,9 @@ export class PluginLifecycleController {
         }
         // Only a partially published live binding needs compensation.
         if (!binding.bound) return false
-        const obligations = workspace.revocations.get(id) ?? new Set<string>()
         for (const installId of [before?.installId, guard?.installId, binding.selected?.installId])
-          if (installId) obligations.add(installId)
-        workspace.revocations.set(id, obligations)
+          if (installId) this.retainRevoke(workspace, id, sink, installId)
+        const obligations = workspace.revocations.get(id)?.get(sink) ?? new Set<string>()
         void (async () => {
           try {
             for (const installId of [...obligations]) {
@@ -1112,9 +1167,9 @@ export class PluginLifecycleController {
                 bounded(() => sink.revoke(id, installId)),
               )
               if (revoked !== true) return pending()
-              obligations.delete(installId)
+              this.confirmRevoke(workspace, id, sink, installId, obligations)
+              if (installId === binding.selected?.installId) binding.bound = false
             }
-            if (!obligations.size) workspace.revocations.delete(id)
             await this.bindingWait(workspace, binding, () =>
               sink.reconcile({ pluginId: id, before, receipt: null }),
             )
@@ -1149,6 +1204,7 @@ export class PluginLifecycleController {
     const workspace: Workspace = {
       sink,
       receipts: new Map(),
+      receiptPublishers: new Map(),
       consumerBlocks: new Set(),
       revocations: new Map(),
       views: new Set(),
@@ -1189,6 +1245,8 @@ export class PluginLifecycleController {
   async detach(handle: LifecycleWorkspace): Promise<void> {
     const workspace = this.workspaces.get(handle)
     if (!workspace) return
+    for (const binding of workspace.bindings.values()) this.retainPublished(workspace, binding)
+    for (const id of workspace.receipts.keys()) this.retainReceipt(workspace, id)
     workspace.live = false
     for (const id of workspace.bindings.keys()) this.cancelBinding(workspace, id)
     for (const viewId of workspace.views)
@@ -1198,22 +1256,22 @@ export class PluginLifecycleController {
     this.detachWorkspaceIfUnused(workspace.sink.workspaceId)
     this.bindingChanged(workspace)
     if (this.effectQueue.signal.aborted) return
-    for (const receipt of workspace.receipts.values()) {
-      const obligations = workspace.revocations.get(receipt.pluginId) ?? new Set<string>()
-      obligations.add(receipt.installId)
-      workspace.revocations.set(receipt.pluginId, obligations)
-    }
     workspace.receipts.clear()
+    workspace.receiptPublishers.clear()
     const results = await Promise.allSettled(
-      [...workspace.revocations].flatMap(([id, obligations]) =>
-        [...obligations].map(async (installId) => {
-          const revoked = await bounded(() =>
-            this.effectQueue.consumer(() => workspace.sink.revoke(id, installId)),
-          )
-          if (revoked !== true) return pending()
-          obligations.delete(installId)
-          if (!obligations.size) workspace.revocations.delete(id)
-        }),
+      [...workspace.revocations].flatMap(([id, publishers]) =>
+        [...publishers].flatMap(([publisher, obligations]) =>
+          [...obligations].map(async (installId) => {
+            const revoked = await bounded(() =>
+              this.effectQueue.consumer(() => publisher.revoke(id, installId)),
+            )
+            if (revoked !== true) return pending()
+            this.confirmRevoke(workspace, id, publisher, installId, obligations)
+            for (const binding of workspace.bindings.values())
+              if (binding.sink === publisher && binding.selected?.installId === installId)
+                binding.bound = false
+          }),
+        ),
       ),
     )
     if (results.some((one) => one.status !== 'fulfilled')) return pending()
@@ -1908,7 +1966,7 @@ export class PluginLifecycleController {
         if (this.draining || this.effectQueue.signal.aborted || !ownsRun()) return pending()
         stopped()
         // Consumer cleanup is attempted, but an acknowledgement is not process admission.
-        await this.revoke(install).catch(() => undefined)
+        await this.revoke(install, true).catch(() => undefined)
         if (this.draining || this.effectQueue.signal.aborted || !ownsRun()) return pending()
         this.runs.delete(id)
         this.attempted.delete(id)
@@ -1949,37 +2007,77 @@ export class PluginLifecycleController {
     if (this.localOperations.has(operationId)) return
     if ((await this.options.runtime.previousOwnerClean()) !== true) return pending()
   }
-  private async revoke(install: Installation): Promise<void> {
+  private async revoke(install: Installation, waitForCurrentOnly = false): Promise<void> {
     const results = await Promise.allSettled(
       [...this.workspaces.values()]
         .filter((one) => one.live)
         .map(async (workspace) => {
+          const binding = workspace.bindings.get(install.pluginId)
+          if (binding) this.retainPublished(workspace, binding)
+          this.retainReceipt(workspace, install.pluginId)
+          const publisher = workspace.receiptPublishers.get(install.pluginId) ?? workspace.sink
+          this.retainRevoke(workspace, install.pluginId, publisher, install.installId)
+          // Capture every old origin before an awaited callback can replace the binding.
+          const targets = [...(workspace.revocations.get(install.pluginId) ?? [])].flatMap(
+            ([origin, obligations]) =>
+              [...obligations].map((installId) => ({ origin, obligations, installId })),
+          )
           workspace.receipts.delete(install.pluginId)
+          workspace.receiptPublishers.delete(install.pluginId)
           workspace.consumerRevisions.set(
             install.pluginId,
             (workspace.consumerRevisions.get(install.pluginId) ?? 0) + 1,
           )
-          const obligations = workspace.revocations.get(install.pluginId) ?? new Set<string>()
-          obligations.add(install.installId)
-          workspace.revocations.set(install.pluginId, obligations)
-          if (
-            (await bounded(() =>
-              this.effectQueue.consumer(() =>
-                workspace.sink.revoke(install.pluginId, install.installId),
-              ),
-            )) !== true
+          const generation = workspace.bindingGenerations.get(install.pluginId)
+          const revision = workspace.consumerRevisions.get(install.pluginId)
+          const ownsCallbacks = () =>
+            workspace.live &&
+            workspace.bindingGenerations.get(install.pluginId) === generation &&
+            workspace.consumerRevisions.get(install.pluginId) === revision &&
+            !workspace.receipts.has(install.pluginId)
+          const attempts = targets.map(({ origin, obligations, installId }) => ({
+            origin,
+            installId,
+            work: (async () => {
+              if (
+                (await bounded(() =>
+                  this.effectQueue.consumer(() => origin.revoke(install.pluginId, installId)),
+                )) !== true
+              )
+                return pending()
+              this.confirmRevoke(workspace, install.pluginId, origin, installId, obligations)
+              if (
+                workspace.bindings.get(install.pluginId) === binding &&
+                binding?.sink === origin &&
+                binding.selected?.installId === installId
+              )
+                binding.bound = false
+              await this.effectQueue.consumer(async () => {
+                if (!ownsCallbacks()) return
+                await origin.reconcile({
+                  pluginId: install.pluginId,
+                  before: null,
+                  receipt: null,
+                })
+              })
+              await this.effectQueue.consumer(async () => {
+                if (!ownsCallbacks()) return
+                await origin.applied(install.pluginId, null)
+              })
+            })(),
+          }))
+          // Restart waits for its current publisher; old origins remain independently retriable.
+          void Promise.allSettled(attempts.map((one) => one.work))
+          const revoked = await Promise.allSettled(
+            attempts
+              .filter(
+                (one) =>
+                  !waitForCurrentOnly ||
+                  (one.origin === publisher && one.installId === install.installId),
+              )
+              .map((one) => one.work),
           )
-            return pending()
-          obligations.delete(install.installId)
-          if (!obligations.size) workspace.revocations.delete(install.pluginId)
-          await this.effectQueue.consumer(() =>
-            workspace.sink.reconcile({
-              pluginId: install.pluginId,
-              before: null,
-              receipt: null,
-            }),
-          )
-          await this.effectQueue.consumer(() => workspace.sink.applied(install.pluginId, null))
+          if (revoked.some((one) => one.status !== 'fulfilled')) return pending()
         }),
     )
     if (results.some((one) => one.status !== 'fulfilled')) return pending()
@@ -2032,6 +2130,8 @@ export class PluginLifecycleController {
   }
   beginDrain(): void {
     this.draining = true
+    for (const workspace of this.workspaces.values())
+      for (const binding of workspace.bindings.values()) this.retainPublished(workspace, binding)
     this.effectQueue.beginClose()
     for (const workspace of this.workspaces.values())
       for (const id of workspace.bindings.keys()) this.cancelBinding(workspace, id)
@@ -2419,6 +2519,8 @@ export class PluginLifecycleController {
           workspace.revocations.clear()
           workspace.consumerBlocks.clear()
           workspace.receipts.clear()
+          workspace.receiptPublishers.clear()
+          for (const binding of workspace.bindings.values()) binding.bound = false
         }
         for (const id of this.cleanup.keys()) this.clearCleanup(id, 'binding')
       }
@@ -2465,7 +2567,17 @@ export class PluginLifecycleController {
   cancelConsumer(handle: LifecycleWorkspace, sink: WorkspaceProjection): void {
     const workspace = this.workspace(handle)
     for (const [id, binding] of workspace.bindings)
-      if (binding.sink === sink) this.cancelBinding(workspace, id)
+      if (binding.sink === sink) {
+        this.retainPublished(workspace, binding)
+        if (workspace.receiptPublishers.get(id) === sink) {
+          this.retainReceipt(workspace, id)
+          workspace.receipts.delete(id)
+          workspace.receiptPublishers.delete(id)
+        }
+        this.cancelBinding(workspace, id)
+      }
+    this.syncHostWorkspace(workspace)
+    this.bindingChanged(workspace)
   }
   consumerBindings(handle: LifecycleWorkspace) {
     return [...this.workspace(handle).bindings.values()].map((binding) => ({

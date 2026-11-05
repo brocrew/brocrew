@@ -8,6 +8,7 @@ import {
   cleanupLifecycleFixtures,
   projection,
   reopenLifecycleFixture,
+  deferred,
 } from './plugin-lifecycle-fixtures'
 import { signed, tar } from './plugin-package-fixtures'
 import { pluginProviderFixture } from './fixtures/plugin-provider-fixture'
@@ -280,9 +281,23 @@ it('projects an installed generic package into the same provider and callback MC
   })
   restarted.bindGenericTools(restartedBridge)
   cleanup.push(() => restartedBridge.close())
-  await reopened.withExclusive(async () => {
-    reopened.setEnabled(workspaceId, manifest.id, true)
+  const receipt = deferred<void>()
+  const install = reopened.currentInstallation(manifest.id)!
+  const checkReceipt = () => {
+    if (restarted.admitted(restartedPerson, manifest.id, install.installId)) receipt.resolve()
+  }
+  const stopObserving = restarted.onHostChanged((changed) => {
+    if (changed === workspaceId) checkReceipt()
   })
+  cleanup.push(async () => stopObserving())
+  try {
+    await restarted.setEnabled(restartedPerson, manifest.id, true)
+    checkReceipt()
+    await receipt.promise
+  } finally {
+    stopObserving()
+  }
+  expect(reopened.getEnabled(workspaceId, manifest.id)).toEqual({ enabled: true, revision: 4 })
   const restartedView = restarted.agentAttachments(workspaceId)[0]!
   await expect(
     restarted.genericCallTool({

@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto'
-import { readFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -884,3 +884,521 @@ it('retains a failed partial-publication revoke after logical detach and retries
   expect(originalB.current()).toBe(true)
   expect(await readFile(snapshot)).toEqual(selected)
 }, 15000)
+
+async function accepted(
+  controller: Awaited<ReturnType<typeof setup>>['controller'],
+  handle: LifecycleWorkspace,
+  id: string,
+  installId: string,
+) {
+  const workspaceId = controller.hostWorkspace(handle)
+  const done = deferred<void>()
+  const check = () => {
+    if (controller.admitted(handle, id, installId)) done.resolve()
+  }
+  const unsubscribe = controller.onHostChanged((changed) => {
+    if (changed === workspaceId) check()
+  })
+  try {
+    check()
+    await bounded(done.promise, 'exact consumer receipt acceptance')
+  } finally {
+    unsubscribe()
+  }
+}
+
+it.each(['pending', 'failed'] as const)(
+  'retains a published %s binding on detach before its acknowledgement and retries only its old origin',
+  async (latch) => {
+    const h = await setup()
+    const install = h.f.state.currentInstallation(A)!
+    const bInstall = h.f.state.currentInstallation(B)!
+    const otherA = h.controller.contributions(h.otherPerson, A)
+    const otherB = h.controller.contributions(h.otherPerson, B)
+    const fresh = projection()
+    const entered = deferred<void>(),
+      hold = deferred<void>(),
+      returned = deferred<void>()
+    let published = false,
+      allowRevoke = false
+    releases.push(() => {
+      allowRevoke = true
+      hold.resolve()
+    })
+    const revoke = vi.fn(async (id: string, installId: string) => {
+      if (id === A && published && !allowRevoke) {
+        if (latch === 'failed') throw new Error('Fictional old-origin revoke failed')
+        return false
+      }
+      const confirmed = await fresh.sink.revoke(id, installId)
+      if (confirmed && id === A && published) fresh.rows.delete(id)
+      return confirmed
+    })
+    const reconcile = vi.fn(fresh.sink.reconcile)
+    const applied = vi.fn(
+      async (id: string, receipt: Parameters<WorkspaceProjection['applied']>[1]) => {
+        await fresh.sink.applied(id, receipt)
+        if (id === A && receipt) {
+          published = true
+          entered.resolve()
+          await hold.promise
+          returned.resolve()
+        }
+      },
+    )
+    const sink = { ...fresh.sink, revoke, reconcile, applied }
+    const old = await h.attach(sink)
+    await bounded(entered.promise, 'positive old-origin applied before acknowledgement')
+    await accepted(h.controller, old, B, bInstall.installId)
+    const oldB = h.controller.contributions(old, B)
+    expect(oldB.current()).toBe(true)
+    expect(fresh.rows.get(A)).toMatchObject({
+      installId: install.installId,
+      incarnation: install.incarnation,
+    })
+    expect(h.controller.consumerReceipts(old).some((one) => one.pluginId === A)).toBe(false)
+    expect(h.controller.admitted(old, A, install.installId)).toBe(false)
+    if (latch === 'failed') h.controller.cancelConsumer(old, sink)
+    expect(h.controller.consumerBindings(old)).toContainEqual({ pluginId: A, state: latch })
+    const beforeDetach = revoke.mock.calls.length
+    await expect(h.controller.detach(old)).rejects.toMatchObject({ code: 'cleanup-pending' })
+    expect(revoke.mock.calls.slice(beforeDetach)).toContainEqual([A, install.installId])
+    expect(() => h.controller.hostWorkspace(old)).toThrow()
+    expect(() => h.controller.contributions(old, A)).toThrow()
+    expect(() => h.controller.contributions(old, B)).toThrow()
+    expect(oldB.current()).toBe(false)
+    expect(h.controller.cleanForShutdown()).toBe(false)
+    expect((await h.controller.status()).cleanupPending).toContain(A)
+
+    const next = projection()
+    const nextRevoke = vi.fn(next.sink.revoke)
+    const current = await h.attach({
+      ...next.sink,
+      workspaceId: sink.workspaceId,
+      revoke: nextRevoke,
+    })
+    await accepted(h.controller, current, A, install.installId)
+    await accepted(h.controller, current, B, bInstall.installId)
+    const oldView = h.controller.contributions(current, A)
+    await h.controller.setEnabled(current, A, false)
+    expect(oldView.current()).toBe(false)
+    await h.controller.setEnabled(current, A, true)
+    const currentA = h.controller.contributions(current, A)
+    const currentB = h.controller.contributions(current, B)
+    expect(currentA.current()).toBe(true)
+    expect(h.f.state.getEnabled(sink.workspaceId, A).revision).toBe(2)
+    expect(
+      h.controller.agentScope(sink.workspaceId).entries.find((one) => one.pluginId === A),
+    ).toMatchObject({
+      is: 'admitted',
+      installId: install.installId,
+      switchRevision: 2,
+    })
+    await expect(
+      h.controller.genericCallTool({
+        workspaceId: sink.workspaceId,
+        pluginId: A,
+        instanceId: currentA.identity.runId,
+        name: gather.tool,
+        arguments: gather.arguments,
+        requestId: randomUUID(),
+        origin: 'button',
+      }),
+    ).resolves.toHaveProperty('content')
+    expect(h.controller.cleanForShutdown()).toBe(false)
+    expect(fresh.rows.get(A)?.installId).toBe(install.installId)
+
+    const data = join(h.f.root, 'data', A, 'opaque.keep')
+    await mkdir(join(h.f.root, 'data', A), { recursive: true })
+    await writeFile(data, 'Fictional retained old-origin data')
+    const dataBefore = await readFile(data)
+    const snapshot = join(h.f.root, 'state', 'installed-state.json')
+    const selected = await readFile(snapshot)
+    const writes = vi.spyOn(h.f.state, 'recordProjection')
+    const starts = vi.spyOn(h.f.opts.runtime, 'start')
+    const removes = vi.spyOn(h.f.opts.runtime, 'removeCode')
+    const oldCalls = {
+      revoke: revoke.mock.calls.length,
+      reconcile: reconcile.mock.calls.length,
+      applied: applied.mock.calls.length,
+    }
+    const nextCalls = nextRevoke.mock.calls.length
+    hold.resolve()
+    await bounded(returned.promise, 'abandoned positive acknowledgement returned')
+    // Flush the abandoned continuation once; this is not a readiness retry.
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    expect(() => h.controller.hostWorkspace(old)).toThrow()
+    expect(() => h.controller.contributions(old, A)).toThrow()
+    expect(() => h.controller.contributions(old, B)).toThrow()
+    expect(oldB.current()).toBe(false)
+    expect(revoke).toHaveBeenCalledTimes(oldCalls.revoke)
+    expect(reconcile).toHaveBeenCalledTimes(oldCalls.reconcile)
+    expect(applied).toHaveBeenCalledTimes(oldCalls.applied)
+    expect(writes).not.toHaveBeenCalled()
+    expect(starts).not.toHaveBeenCalled()
+    expect(removes).not.toHaveBeenCalled()
+    expect((await h.controller.status()).cleanupPending).toContain(A)
+    expect(h.controller.cleanForShutdown()).toBe(false)
+    expect(currentA.current()).toBe(true)
+    expect(currentB.current()).toBe(true)
+    expect(otherA.current()).toBe(true)
+    expect(otherB.current()).toBe(true)
+    expect(await readFile(snapshot)).toEqual(selected)
+    expect(await readFile(data)).toEqual(dataBefore)
+
+    allowRevoke = true
+    const retry = revoke.mock.calls.length
+    await expect(h.controller.detach(old)).resolves.toBeUndefined()
+    expect(revoke.mock.calls.slice(retry)).toEqual([[A, install.installId]])
+    expect(nextRevoke).toHaveBeenCalledTimes(nextCalls)
+    expect(fresh.rows.has(A)).toBe(false)
+    expect(next.rows.get(A)?.installId).toBe(install.installId)
+    expect((await h.controller.status()).cleanupPending).not.toContain(A)
+    expect(h.controller.cleanForShutdown()).toBe(true)
+    expect(currentA.current()).toBe(true)
+    expect(currentB.current()).toBe(true)
+    expect(otherA.current()).toBe(true)
+    expect(otherB.current()).toBe(true)
+    expect(writes).not.toHaveBeenCalled()
+    expect(await readFile(snapshot)).toEqual(selected)
+    expect(await readFile(data)).toEqual(dataBefore)
+  },
+  15000,
+)
+
+it('a successful mutation handover does not create cancellation revoke debt for its superseded job', async () => {
+  const h = await setup()
+  const install = h.f.state.currentInstallation(A)!
+  const operation = h.f.state
+    .inspect()
+    .operations.find((one) => one.status === 'completed' && one.operation.next?.pluginId === A)!
+    .operation.request.operationId
+  const fresh = projection()
+  const entered = deferred<void>(),
+    hold = deferred<void>(),
+    returned = deferred<void>()
+  releases.push(() => hold.resolve())
+  let positives = 0
+  const revoke = vi.fn(fresh.sink.revoke)
+  const applied = vi.fn(
+    async (id: string, receipt: Parameters<WorkspaceProjection['applied']>[1]) => {
+      await fresh.sink.applied(id, receipt)
+      if (id === A && receipt && ++positives === 1) {
+        entered.resolve()
+        await hold.promise
+        returned.resolve()
+      }
+    },
+  )
+  const handle = await h.attach({ ...fresh.sink, revoke, applied })
+  await bounded(entered.promise, 'first mutation-target acknowledgement held')
+  await accepted(h.controller, handle, B, h.f.state.currentInstallation(B)!.installId)
+  const calls = revoke.mock.calls.filter(([id]) => id === A).length
+  await h.controller.install(handle, A, operation)
+  expect(fresh.rows.get(A)?.installId).toBe(install.installId)
+  expect(h.controller.admitted(handle, A, install.installId)).toBe(true)
+  expect(revoke.mock.calls.filter(([id]) => id === A)).toHaveLength(calls)
+  expect(h.controller.cleanForShutdown()).toBe(true)
+  expect((await h.controller.status()).cleanupPending).not.toContain(A)
+  const contribution = h.controller.contributions(handle, A)
+  const writes = vi.spyOn(h.f.state, 'recordProjection')
+  hold.resolve()
+  await bounded(returned.promise, 'superseded mutation acknowledgement returned')
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  expect(writes).not.toHaveBeenCalled()
+  expect(contribution.current()).toBe(true)
+  expect(h.controller.cleanForShutdown()).toBe(true)
+  expect(revoke.mock.calls.filter(([id]) => id === A)).toHaveLength(calls)
+}, 15000)
+
+it('retries two publishers of one install independently and never treats the old true as the new acknowledgement', async () => {
+  const h = await setup()
+  const install = h.f.state.currentInstallation(A)!
+  const bInstall = h.f.state.currentInstallation(B)!
+  const old = projection(),
+    next = projection()
+  let oldConfirmed = false,
+    nextConfirmed = false,
+    retiring = false
+  const oldRevoke = vi.fn(async (id: string, installId: string) => {
+    if (id === A && retiring && !oldConfirmed) return false
+    const answer = await old.sink.revoke(id, installId)
+    if (answer && id === A && retiring) old.rows.delete(id)
+    return answer
+  })
+  const nextRevoke = vi.fn(async (id: string, installId: string) => {
+    if (id === A && retiring && !nextConfirmed) return false
+    const answer = await next.sink.revoke(id, installId)
+    if (answer && id === A && retiring) next.rows.delete(id)
+    return answer
+  })
+  releases.push(() => {
+    oldConfirmed = true
+    nextConfirmed = true
+  })
+  const handle = await h.attach({ ...old.sink, revoke: oldRevoke })
+  await accepted(h.controller, handle, A, install.installId)
+  await accepted(h.controller, handle, B, bInstall.installId)
+  const publisher: WorkspaceProjection = {
+    ...next.sink,
+    workspaceId: old.sink.workspaceId,
+    revoke: nextRevoke,
+  }
+  await h.controller.reconcileConsumer(handle, publisher)
+  await accepted(h.controller, handle, A, install.installId)
+  await accepted(h.controller, handle, B, bInstall.installId)
+  expect(old.rows.get(A)?.installId).toBe(install.installId)
+  expect(next.rows.get(A)?.installId).toBe(install.installId)
+  expect(h.controller.admitted(handle, A, install.installId)).toBe(true)
+  // Old publisher debt does not narrow this newly accepted consumer's admission.
+  expect(h.controller.cleanForShutdown()).toBe(false)
+  retiring = true
+  const oldCalls = oldRevoke.mock.calls.length,
+    nextCalls = nextRevoke.mock.calls.length
+  await expect(h.controller.detach(handle)).rejects.toMatchObject({ code: 'cleanup-pending' })
+  expect(oldRevoke.mock.calls.slice(oldCalls)).toContainEqual([A, install.installId])
+  expect(nextRevoke.mock.calls.slice(nextCalls)).toContainEqual([A, install.installId])
+  const snapshot = join(h.f.root, 'state', 'installed-state.json')
+  const selected = await readFile(snapshot)
+  oldConfirmed = true
+  const oldRetry = oldRevoke.mock.calls.length,
+    nextRetry = nextRevoke.mock.calls.length
+  await expect(h.controller.detach(handle)).rejects.toMatchObject({ code: 'cleanup-pending' })
+  expect(oldRevoke.mock.calls.slice(oldRetry)).toEqual([[A, install.installId]])
+  expect(nextRevoke.mock.calls.slice(nextRetry)).toEqual([[A, install.installId]])
+  expect(old.rows.has(A)).toBe(false)
+  expect(next.rows.get(A)?.installId).toBe(install.installId)
+  expect(h.controller.cleanForShutdown()).toBe(false)
+  expect((await h.controller.status()).cleanupPending).toContain(A)
+  nextConfirmed = true
+  const lastOld = oldRevoke.mock.calls.length,
+    lastNext = nextRevoke.mock.calls.length
+  await expect(h.controller.detach(handle)).resolves.toBeUndefined()
+  expect(oldRevoke).toHaveBeenCalledTimes(lastOld)
+  expect(nextRevoke.mock.calls.slice(lastNext)).toEqual([[A, install.installId]])
+  expect(next.rows.has(A)).toBe(false)
+  expect(h.controller.cleanForShutdown()).toBe(true)
+  expect(h.controller.contributions(h.otherPerson, A).current()).toBe(true)
+  expect(h.controller.contributions(h.otherPerson, B).current()).toBe(true)
+  expect(await readFile(snapshot)).toEqual(selected)
+}, 15000)
+
+it.each(['false', 'held'] as const)(
+  'global restart retains an alternate publisher with a %s revoke while its positive acknowledgement is held',
+  async (mode) => {
+    const h = await setup()
+    const install = h.f.state.currentInstallation(A)!
+    const beforeRun = h.controller.contributions(h.person, A)
+    const peerB = h.controller.contributions(h.otherPerson, B)
+    const local = projection()
+    const handle = await h.attach(local.sink)
+    await accepted(h.controller, handle, A, install.installId)
+    await accepted(h.controller, handle, B, h.f.state.currentInstallation(B)!.installId)
+    const alternate = projection()
+    const entered = deferred<void>(),
+      hold = deferred<void>(),
+      returned = deferred<void>(),
+      revokeHold = deferred<void>(),
+      revokeReturned = deferred<void>()
+    let published = false,
+      confirmed = false
+    releases.push(() => {
+      confirmed = true
+      hold.resolve()
+      revokeHold.resolve()
+    })
+    const revoke = vi.fn(async (id: string, installId: string) => {
+      if (id === A && published && !confirmed) {
+        if (mode === 'held') await revokeHold.promise
+        revokeReturned.resolve()
+        return false
+      }
+      const result = await alternate.sink.revoke(id, installId)
+      if (result && id === A && published) alternate.rows.delete(id)
+      return result
+    })
+    const applied = vi.fn(
+      async (id: string, receipt: Parameters<WorkspaceProjection['applied']>[1]) => {
+        await alternate.sink.applied(id, receipt)
+        if (id === A && receipt) {
+          published = true
+          entered.resolve()
+          await hold.promise
+          returned.resolve()
+        }
+      },
+    )
+    const reconcile = vi.fn(alternate.sink.reconcile)
+    await h.controller.reconcileConsumer(handle, {
+      ...alternate.sink,
+      workspaceId: local.sink.workspaceId,
+      revoke,
+      applied,
+      reconcile,
+    })
+    await bounded(entered.promise, 'alternate publisher applied before global restart')
+    await accepted(h.controller, handle, B, h.f.state.currentInstallation(B)!.installId)
+    expect(alternate.rows.get(A)?.installId).toBe(install.installId)
+    expect(h.controller.admitted(handle, A, install.installId)).toBe(false)
+    const calls = revoke.mock.calls.length
+    const stopped = vi.fn()
+    await bounded(
+      h.controller.restartPluginTools(A, beforeRun.identity.runId, stopped),
+      'global restart with refusing alternate publisher',
+    )
+    expect(stopped).toHaveBeenCalledTimes(1)
+    expect(revoke.mock.calls.slice(calls)).toContainEqual([A, install.installId])
+    expect((await h.controller.status()).cleanupPending).toContain(A)
+    expect(h.controller.cleanForShutdown()).toBe(false)
+    expect(alternate.rows.get(A)?.installId).toBe(install.installId)
+    expect(beforeRun.current()).toBe(false)
+    const replacement = h.controller.contributions(handle, A)
+    expect(replacement.current()).toBe(true)
+    expect(replacement.identity.runId).not.toBe(beforeRun.identity.runId)
+    expect(peerB.current()).toBe(true)
+    const snapshot = join(h.f.root, 'state', 'installed-state.json')
+    const selected = await readFile(snapshot)
+    const writes = vi.spyOn(h.f.state, 'recordProjection')
+    const oldCalls = [
+      revoke.mock.calls.length,
+      reconcile.mock.calls.length,
+      applied.mock.calls.length,
+    ]
+    hold.resolve()
+    await bounded(returned.promise, 'late alternate acknowledgement after global restart')
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    expect([
+      revoke.mock.calls.length,
+      reconcile.mock.calls.length,
+      applied.mock.calls.length,
+    ]).toEqual(oldCalls)
+    expect(writes).not.toHaveBeenCalled()
+    expect((await h.controller.status()).cleanupPending).toContain(A)
+    expect(replacement.current()).toBe(true)
+    expect(peerB.current()).toBe(true)
+    expect(await readFile(snapshot)).toEqual(selected)
+    revokeHold.resolve()
+    await bounded(revokeReturned.promise, 'old alternate revoke returned false')
+    await expect(h.controller.detach(handle)).rejects.toMatchObject({ code: 'cleanup-pending' })
+    confirmed = true
+    const retry = revoke.mock.calls.length
+    await expect(h.controller.detach(handle)).resolves.toBeUndefined()
+    expect(revoke.mock.calls.slice(retry)).toEqual([[A, install.installId]])
+    expect(alternate.rows.has(A)).toBe(false)
+    expect(h.controller.contributions(h.person, A).current()).toBe(true)
+    expect(peerB.current()).toBe(true)
+    expect(h.controller.cleanForShutdown()).toBe(true)
+    expect(await readFile(snapshot)).toEqual(selected)
+  },
+  15000,
+)
+
+it.each(['revoke', 'clear'] as const)(
+  'an old publisher held in %s cannot clear a newer binding that reuses the same sink',
+  async (boundary) => {
+    const h = await setup()
+    const install = h.f.state.currentInstallation(A)!
+    const originalRun = h.controller.contributions(h.person, A)
+    const local = projection()
+    const handle = await h.attach(local.sink)
+    await accepted(h.controller, handle, A, install.installId)
+    await accepted(h.controller, handle, B, h.f.state.currentInstallation(B)!.installId)
+    const alternate = projection()
+    const positiveEntered = deferred<void>(),
+      positiveHold = deferred<void>(),
+      positiveReturned = deferred<void>(),
+      cleanupEntered = deferred<void>(),
+      cleanupHold = deferred<void>(),
+      cleanupReturned = deferred<void>()
+    let firstPositive = true,
+      retiring = false,
+      firstRevoke = true,
+      firstClear = true
+    releases.push(() => {
+      positiveHold.resolve()
+      cleanupHold.resolve()
+    })
+    const revoke = vi.fn(async (id: string, installId: string) => {
+      const result = await alternate.sink.revoke(id, installId)
+      if (id === A && retiring) {
+        // The old revoke's side effect precedes its held acknowledgement.
+        alternate.rows.delete(id)
+        if (firstRevoke) {
+          firstRevoke = false
+          if (boundary === 'revoke') {
+            cleanupEntered.resolve()
+            await cleanupHold.promise
+            cleanupReturned.resolve()
+          }
+        }
+      }
+      return result
+    })
+    const reconcile = vi.fn(async (change: Parameters<WorkspaceProjection['reconcile']>[0]) => {
+      await alternate.sink.reconcile(change)
+      if (change.pluginId === A && !change.receipt && retiring && firstClear) {
+        firstClear = false
+        if (boundary === 'clear') {
+          await alternate.sink.applied(A, null)
+          cleanupEntered.resolve()
+          await cleanupHold.promise
+          cleanupReturned.resolve()
+        }
+      }
+    })
+    const applied = vi.fn(
+      async (id: string, receipt: Parameters<WorkspaceProjection['applied']>[1]) => {
+        await alternate.sink.applied(id, receipt)
+        if (id === A && receipt && firstPositive) {
+          firstPositive = false
+          positiveEntered.resolve()
+          await positiveHold.promise
+          positiveReturned.resolve()
+        }
+      },
+    )
+    const publisher: WorkspaceProjection = {
+      ...alternate.sink,
+      workspaceId: local.sink.workspaceId,
+      revoke,
+      reconcile,
+      applied,
+    }
+    await h.controller.reconcileConsumer(handle, publisher)
+    await bounded(positiveEntered.promise, 'old same-origin positive publication')
+    await accepted(h.controller, handle, B, h.f.state.currentInstallation(B)!.installId)
+    retiring = true
+    await bounded(
+      h.controller.restartPluginTools(A, originalRun.identity.runId, () => {}),
+      'replacement before old same-origin cleanup acknowledgement',
+    )
+    await bounded(cleanupEntered.promise, 'old same-origin cleanup held after its side effect')
+    expect(alternate.rows.has(A)).toBe(false)
+    await h.controller.reconcileConsumer(handle, publisher)
+    await accepted(h.controller, handle, A, install.installId)
+    const replacement = h.controller.contributions(handle, A)
+    const newRow = alternate.rows.get(A)!
+    expect(newRow.installId).toBe(install.installId)
+    expect(replacement.identity.runId).not.toBe(originalRun.identity.runId)
+    expect(replacement.current()).toBe(true)
+    const snapshot = join(h.f.root, 'state', 'installed-state.json')
+    const selected = await readFile(snapshot)
+    const writes = vi.spyOn(h.f.state, 'recordProjection')
+    const callbacks = [reconcile.mock.calls.length, applied.mock.calls.length]
+    cleanupHold.resolve()
+    positiveHold.resolve()
+    await bounded(cleanupReturned.promise, 'old same-origin cleanup returned')
+    await bounded(positiveReturned.promise, 'old same-origin positive acknowledgement returned')
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    expect([reconcile.mock.calls.length, applied.mock.calls.length]).toEqual(callbacks)
+    expect(writes).not.toHaveBeenCalled()
+    expect(alternate.rows.get(A)).toBe(newRow)
+    expect(h.controller.admitted(handle, A, install.installId)).toBe(true)
+    expect(replacement.current()).toBe(true)
+    expect(h.controller.contributions(h.otherPerson, B).current()).toBe(true)
+    expect(await readFile(snapshot)).toEqual(selected)
+    await h.controller.detach(handle)
+    expect(h.controller.cleanForShutdown()).toBe(true)
+  },
+  15000,
+)
