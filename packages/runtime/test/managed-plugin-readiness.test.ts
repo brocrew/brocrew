@@ -149,6 +149,62 @@ it('starts without a dead plugin and records one fixed line without provider err
   expect(warnings(events)).toHaveLength(1)
 })
 
+it.each(['refused', 'tools-error', 'timeout'] as const)(
+  'reobserves a %s first discovery on the same Codex thread before a later turn',
+  async (outcome) => {
+    const { wire, handle, events } = await start()
+    const first = deferred<unknown>()
+    wire.discovery = async () => {
+      if (outcome === 'refused') throw new Error('fictional-private-discovery-marker')
+      if (outcome === 'timeout') return first.promise
+      return {
+        data: [
+          {
+            name: route.name,
+            runtimeStatus: 'connected',
+            toolsError: 'fictional-private-discovery-marker',
+            tools: {},
+          },
+        ],
+      }
+    }
+    const saved = handle.ref
+    await handle.send('Fictional ordinary first turn')
+    await vi.advanceTimersByTimeAsync(outcome === 'timeout' ? MANAGED_PLUGIN_READY_WITHIN_MS : 0)
+    expect(wire.catalogsAtTurns).toEqual([[]])
+    expect(warnings(events)).toHaveLength(1)
+    expect(JSON.stringify(warnings(events))).not.toContain('fictional-private-discovery-marker')
+    wire.finish()
+    await tick()
+    expect(handle.status()).toBe('idle')
+
+    let reread = false
+    const recovered = deferred<unknown>()
+    wire.discovery = () => {
+      reread = true
+      return recovered.promise
+    }
+    await handle.send('Fictional later turn after discovery recovered')
+    await tick()
+    expect(reread).toBe(true)
+    expect(wire.catalogsAtTurns).toEqual([[]])
+    expect(handle.ref).toEqual(saved)
+    expect(wire.requests.filter((one) => one.method === 'thread/start')).toHaveLength(1)
+    expect(wire.requests.some((one) => one.method === 'thread/resume')).toBe(false)
+
+    // A late answer from a timed-out first observation cannot release the new turn.
+    first.resolve(ready())
+    await tick()
+    expect(wire.catalogsAtTurns).toEqual([[]])
+    wire.catalog = ['echo']
+    recovered.resolve(ready())
+    await tick()
+    expect(wire.catalogsAtTurns).toEqual([[], ['echo']])
+    expect(warnings(events)).toHaveLength(1)
+    expect(handle.ref).toEqual(saved)
+  },
+)
+
 it('bounds a never-settling discovery and does not dispatch again when it eventually answers', async () => {
   const { wire, handle, events } = await start()
   const discovery = deferred<unknown>()
