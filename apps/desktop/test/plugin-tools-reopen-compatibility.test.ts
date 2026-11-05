@@ -528,9 +528,7 @@ describe.each(['claude', 'codex'] as const)(
       ])
       expect(old.origins).toEqual([])
       expect(w.world.handles.get('writer')!.origins).toEqual([undefined])
-      expect(w.turns().filter((event) => event.text === held)).toEqual([
-        expect.objectContaining({ sent: words }),
-      ])
+      expect(batch.sent, raw).toBe(words)
       downloaded.release()
       expect(await settled).toBe(true)
     })
