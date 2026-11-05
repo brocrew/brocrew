@@ -59,16 +59,19 @@ function eligibleRebootAdvice(error: PluginSupervisorError): boolean {
 export function pluginStartupDiagnostic(error: unknown): PluginStartupDiagnostic | undefined {
   for (let depth = 0; depth < 6 && error && typeof error === 'object'; depth++) {
     if (error instanceof PluginSupervisorLaunchFailure) return error.diagnostic
-    if (error instanceof PluginSupervisorError && error.diagnostic)
+    if (error instanceof PluginSupervisorError && error.diagnostic) {
+      const eligible = eligibleRebootAdvice(error)
       return {
         exitCode: null,
         signal: null,
-        stderr: ownerDiagnosticLine(
-          error.diagnostic.reason === 'restart-required' && !eligibleRebootAdvice(error)
-            ? { ...error.diagnostic, reason: 'proof-pending' }
-            : error.diagnostic,
-        ),
+        stderr:
+          ownerDiagnosticLine(
+            error.diagnostic.reason === 'restart-required' && !eligible
+              ? { ...error.diagnostic, reason: 'proof-pending' }
+              : error.diagnostic,
+          ) + (eligible && process.platform === 'win32' ? '; Start > Power > Restart' : ''),
       }
+    }
     error = (error as { cause?: unknown }).cause
   }
   return undefined
