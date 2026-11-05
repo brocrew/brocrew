@@ -572,7 +572,9 @@ describe('638 · a change to a conversation’s work announces itself', () => {
       // waits for services, announced once after the services list is written.
       // ⚑ **+1**: `closeForAPerson` — a person's close of stopped work, announced once after its
       // `work_closed` row.
-      expect(host_.split("this.theWorldMoved('work')").length - 1).toBe(36)
+      // +1: `rebuildLedger` — a replaced ledger can take work away from its giver's drawer,
+      // announced once after the new generation is promoted.
+      expect(host_.split("this.theWorldMoved('work')").length - 1).toBe(37)
       for (const verb of [
         'private declineMoveOffersFromText(',
         'async decideMoveRequest(',
