@@ -435,15 +435,22 @@ describe.each(['claude', 'codex'] as const)(
       })
       const requestId = answer.structured!.request as string
       const old = w.world.handles.get('writer')!,
-        exit = w.world.gate()
+        exit = w.world.gate(),
+        closing = vi.fn()
+      const close = old.close.bind(old)
       Object.defineProperty(old, 'checkSignIn', { configurable: true, value: async () => true })
-      Object.defineProperty(old, 'awaitProcessExit', {
+      Object.defineProperty(old, 'close', {
         configurable: true,
-        value: () => exit.promise,
+        value: () => {
+          closing()
+          return close().then(() => exit.promise)
+        },
       })
       const held = 'Fictional words held for current plugin titles.'
       await w.host.send(w.id, held, w.world.window)
+      await expect.poll(() => closing.mock.calls.length).toBe(1)
       await expect.poll(() => old.status()).toBe('ended')
+      expect(w.world.launches).toHaveLength(1)
       expect(
         await executeRuntimeCommand(w.host, w.world.window, {
           kind: 'decideMcpServerRequest',
@@ -451,11 +458,19 @@ describe.each(['claude', 'codex'] as const)(
           approve: true,
         }),
       ).toMatchObject({ outcome: 'taken' })
+      expect(
+        w.world
+          .ledger(w.id)
+          .filter(
+            (event) => event.type === 'mcp_server_request_settled' && event.requestId === requestId,
+          ),
+      ).toEqual([expect.objectContaining({ ending: 'approved' })])
+      expect(w.world.launches).toHaveLength(1)
       exit.release()
       await expect.poll(() => w.sent().filter((text) => text.includes(held)).length).toBe(1)
       expect(w.world.launches).toHaveLength(2)
       expect(w.world.launches[1]!.options.externalMcp?.servers).toContainEqual(
-        expect.objectContaining({ url: external.url }),
+        expect.objectContaining({ name: 'fictional-notes', url: external.url }),
       )
       expect(w.world.launches[1]!.options.managedPluginMcp).toContainEqual(
         expect.objectContaining({ pluginId: 'fictional-bakery' }),
@@ -925,7 +940,30 @@ describe.each(['claude', 'codex'] as const)(
       await w.f.controller.setTitlesEnabled(w.f.handle, 'fictional-bakery', false)
       await w.host.send(w.id, 'Fictional inactive direct words.', w.world.window)
       await expect.poll(() => w.world.handles.get('writer')!.status()).toBe('waiting_permission')
-      await w.host.send(w.id, 'Fictional inactive queued words.', w.world.window)
+      const queued = await w.host.queueMessage(
+        w.id,
+        'Fictional inactive queued words.',
+        w.world.window,
+      )
+      expect(queued).toMatchObject({ outcome: 'queued' })
+      if (queued.outcome !== 'queued') throw new Error('The fictional message was not held.')
+      expect(w.sent()).toHaveLength(1)
+      expect(w.world.handles.get('writer')!.origins).toEqual([{ kind: 'person' }])
+      expect(w.turns().map((event) => event.text)).toEqual(['Fictional inactive direct words.'])
+      expect(
+        w.world
+          .ledger(w.id)
+          .filter(
+            (event) => event.type === 'message_queued' && event.messageId === queued.messageId,
+          ),
+      ).toEqual([expect.objectContaining({ text: 'Fictional inactive queued words.' })])
+      expect(
+        w.world
+          .ledger(w.id)
+          .filter(
+            (event) => event.type === 'message_unqueued' && event.messageId === queued.messageId,
+          ),
+      ).toEqual([])
       await w.host.interrupt(w.id, w.world.window)
       await expect.poll(() => w.sent().length).toBe(2)
       await expect.poll(() => w.world.handles.get('writer')!.status()).toBe('waiting_permission')
@@ -944,6 +982,13 @@ describe.each(['claude', 'codex'] as const)(
         'Fictional inactive replacement words.',
       ])
       expect(w.sent(), delivery).toHaveLength(3)
+      expect(
+        w.world
+          .ledger(w.id)
+          .filter(
+            (event) => event.type === 'message_unqueued' && event.messageId === queued.messageId,
+          ),
+      ).toEqual([expect.objectContaining({ reason: 'sent' })])
       expect(w.sent().every((text) => !text.includes('Suggested file titles'))).toBe(true)
       expect(w.seen).toHaveLength(0)
       expect(w.world.handles.get('writer')!.origins).toHaveLength(3)
