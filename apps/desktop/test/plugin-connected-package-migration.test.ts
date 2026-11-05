@@ -253,7 +253,6 @@ async function fixture(
       owner,
       host,
       personKey: '7'.repeat(64),
-      read: async () => null,
       lifecycle: {
         root,
         state,
@@ -283,9 +282,6 @@ async function fixture(
       target,
       appVersion: '1.0.0',
       catalogue: signed({ format: 1, entries: [] }),
-      propose: () => {
-        throw new Error('Configure must call the actual package MCP tools')
-      },
     })
     const pages: PluginPageTools[] = []
     let closed = false

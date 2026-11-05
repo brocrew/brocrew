@@ -242,9 +242,6 @@ export async function witness(options: {
         appVersion: '1.0.0',
         catalogue,
         projection,
-        propose: () => {
-          throw new Error('Unexpected app proposal')
-        },
         download: async () => {
           throw new Error('Network forbidden')
         },

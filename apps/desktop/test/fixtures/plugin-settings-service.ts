@@ -19,7 +19,6 @@ export async function startSettingsService(root: string) {
     root,
     key: 'fictional-settings-instance',
     controller,
-    read: async () => null,
   })
   const stop = async () => {
     await settings.close()
