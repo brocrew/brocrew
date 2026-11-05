@@ -3,16 +3,23 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { createRequire } from 'node:module'
+import { gzipSync } from 'node:zlib'
 import { afterEach, describe, expect, it } from 'vitest'
 import { failureFor, printFailure, safeFailure } from '../gates/plugin-packaged/diagnostics.mjs'
 import { stageProtocolDependencies } from '../gates/plugin-packaged/prepare.mjs'
+import { digest } from '../gates/plugin-packaged/contract.mjs'
+import { stageRelease } from '../gates/plugin-packaged/journey.mjs'
 import {
   listFor,
   releaseSourcePlan,
   stageReleaseDependencies,
+  cachePreparationSource,
 } from '../gates/plugin-packaged/release.mjs'
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+const desktopRequire = createRequire(path.join(repository, 'apps/desktop/package.json'))
+const { build } = createRequire(desktopRequire.resolve('electron-vite/package.json'))('esbuild')
 const roots = []
 afterEach(() => {
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true })
@@ -23,8 +30,146 @@ function scratch() {
   roots.push(root)
   return root
 }
+// A real unsigned format3 tar, containing inert bytes only. No source, signing or runtime stand-in.
+function candidateFixture(root) {
+  fs.chmodSync(root, 0o700)
+  fs.writeFileSync(path.join(root, 'fixture-owned'), 'packaged-plugin-gate\n', { mode: 0o600 })
+  const files = new Map([
+    ['server.mjs', Buffer.from('export const fictional = true\n')],
+    ['tools.json', Buffer.from('[]')],
+  ])
+  const manifest = {
+    format: 3,
+    id: 'chrome',
+    name: 'Fictional Chrome candidate',
+    description: 'Inert cache verification',
+    authors: ['fictional'],
+    version: '1.0.0',
+    platforms: [{ os: 'darwin', cpu: 'arm64' }],
+    sourceCommit: 'a'.repeat(40),
+    runtime: { kind: 'node', entry: 'server.mjs' },
+    mcp: { transport: 'stdio' },
+    tools: { source: 'mcp', inventory: 'tools.json' },
+    files: [...files].map(([name, body]) => ({
+      path: name,
+      bytes: body.length,
+      sha256: digest(body),
+    })),
+    data: { schema: 1 },
+  }
+  const manifestBytes = Buffer.from(JSON.stringify(manifest))
+  files.set('plugin.json', manifestBytes)
+  const blocks = []
+  for (const [name, body] of files) {
+    const header = Buffer.alloc(512)
+    header.write(name, 0, 100)
+    header.write('0000600\0', 100)
+    header.write('0000000\0', 108)
+    header.write('0000000\0', 116)
+    header.write(body.length.toString(8).padStart(11, '0') + '\0', 124)
+    header.write('00000000000\0', 136)
+    header.fill(32, 148, 156)
+    header[156] = 48
+    header.write('ustar\0', 257)
+    header.write('00', 263)
+    header.write(
+      [...header]
+        .reduce((a, b) => a + b, 0)
+        .toString(8)
+        .padStart(6, '0') + '\0 ',
+      148,
+    )
+    blocks.push(header, body, Buffer.alloc((512 - (body.length % 512)) % 512))
+  }
+  const archive = gzipSync(Buffer.concat([...blocks, Buffer.alloc(1024)]))
+  const entry = {
+    id: manifest.id,
+    name: manifest.name,
+    description: manifest.description,
+    authors: manifest.authors,
+    version: manifest.version,
+    sourceCommit: manifest.sourceCommit,
+    targets: [
+      {
+        os: 'darwin',
+        cpu: 'arm64',
+        url: 'https://github.com/brocrew/brocrew-plugin-chrome/releases/download/v1/chrome.tar.gz',
+        sha256: digest(archive),
+        bytes: archive.length,
+        compression: 'tar.gz',
+        manifestSha256: digest(manifestBytes),
+      },
+    ],
+  }
+  fs.mkdirSync(path.join(root, 'release'), { mode: 0o700 })
+  fs.mkdirSync(path.join(root, 'a'), { mode: 0o700 })
+  fs.mkdirSync(path.join(root, 'g'), { mode: 0o700 })
+  fs.mkdirSync(path.join(root, 'proof'), { mode: 0o700 })
+  fs.writeFileSync(path.join(root, 'release/catalogue.json'), JSON.stringify(listFor(entry)), {
+    mode: 0o600,
+  })
+  fs.writeFileSync(path.join(root, 'release/chrome-darwin-arm64.tar.gz'), archive, { mode: 0o600 })
+  return { archive, entry, manifest }
+}
 
 describe.skipIf(process.platform === 'win32')('release verifier module admission', () => {
+  it('uses the real verifier and vault for alternate-source cache bytes, with no installed/run/profile effects or fetch', async () => {
+    for (const tamper of [false, true]) {
+      const root = scratch(),
+        original = candidateFixture(root)
+      stageRelease(root, path.join(root, 'a'), 'alternate')
+      const cachedArchive = path.join(
+        root,
+        'a/repo-fixture/archives',
+        digest(original.archive) + '.tar.gz',
+      )
+      if (tamper) {
+        const bytes = fs.readFileSync(cachedArchive)
+        bytes[bytes.length - 1] ^= 1
+        fs.writeFileSync(cachedArchive, bytes)
+      }
+      const out = path.join(root, 'proof/cache.cjs')
+      await build({
+        stdin: { contents: cachePreparationSource(root), resolveDir: repository, loader: 'ts' },
+        bundle: true,
+        platform: 'node',
+        format: 'cjs',
+        outfile: out,
+        logLevel: 'silent',
+      })
+      const helper = createRequire(import.meta.url)(out)
+      const previous = globalThis.fetch
+      let fetched = 0
+      globalThis.fetch = async () => {
+        fetched++
+        throw new Error('Unexpected network attempt')
+      }
+      try {
+        if (tamper) {
+          await expect(helper.prepareCandidateCache()).rejects.toThrow()
+          expect(fs.readdirSync(path.join(root, 'g'))).toEqual([])
+          expect(fs.existsSync(path.join(root, 'proof/candidate-cache.json'))).toBe(false)
+        } else {
+          await helper.prepareCandidateCache()
+          const proof = JSON.parse(fs.readFileSync(path.join(root, 'proof/candidate-cache.json')))
+          expect(proof.manifest).toEqual(original.manifest)
+          expect(proof.ref).toEqual({
+            source: 'https://example.invalid/alternate-chrome.tar.gz',
+            sha256: digest(original.archive),
+            bytes: original.archive.length,
+          })
+          expect(proof.cacheVerified).toBe(true)
+          expect(proof.pristine).toBe(true)
+          expect(fs.readdirSync(path.join(root, 'g'))).toEqual(['package-vault'])
+        }
+        expect(fetched).toBe(0)
+        for (const name of ['state', 'host', 'profile-apply'])
+          expect(fs.existsSync(path.join(root, 'g', name))).toBe(false)
+      } finally {
+        globalThis.fetch = previous
+      }
+    }
+  })
   it('preserves the complete author-bearing producer row in a format3 catalogue', () => {
     const entry = {
       id: 'fictional-plugin',

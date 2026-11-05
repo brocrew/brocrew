@@ -73,6 +73,43 @@ function launcher({ delayedClose = false } = {}) {
 }
 
 describe.skipIf(process.platform === 'win32')('safe packaged gate failure diagnostics', () => {
+  it('keeps alternate-source acceptance failure across split late frames and zero exit, rejecting obsolete or raw packets', async () => {
+    const f = launcher({ delayedClose: true })
+    const task = f.run(
+      '/fictional/node',
+      [],
+      {},
+      '/fictional',
+      { signal: new AbortController().signal },
+      1000,
+      'journey',
+    )
+    const expected = diagnostics.stepFailure(
+      'journey',
+      'alternate-source-acceptance',
+      {},
+      'assertion',
+    )
+    const waiting = task.wait().catch((error) => error)
+    for (const bad of [
+      { ...expected, step: 'foreign-refusal' },
+      { ...expected, step: 'unknown' },
+      { ...expected, source: 'https://example.invalid/private' },
+      { ...expected, path: '/fictional/private' },
+    ]) {
+      expect(diagnostics.safeFailure(bad)).toBe(false)
+      f.child.stdout.emit('data', Buffer.from('gate-failure ' + JSON.stringify(bad) + '\n'))
+    }
+    f.child.stdout.emit('data', Buffer.from('gate-failure ' + 'x'.repeat(64 * 1024) + '\n'))
+    const frame = 'gate-failure ' + JSON.stringify(expected) + '\n'
+    f.child.stdout.emit('data', Buffer.from(frame.slice(0, 25)))
+    f.child.emit('exit', 0, null)
+    f.child.stdout.emit('data', Buffer.from(frame.slice(25)))
+    f.child.emit('close', 0, null)
+    expect((await waiting).failure).toEqual(expected)
+    expect(safeReport({ failure: expected })).toBe(true)
+    expect(() => diagnostics.stepFailure('journey', 'foreign-refusal', {})).toThrow()
+  })
   it('forwards only closed variant and selection frames, including split frames and late pipe bytes', async () => {
     const f = launcher({ delayedClose: true })
     const task = f.run(

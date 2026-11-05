@@ -15,6 +15,7 @@ import {
   requireCheck,
   requireCI,
   safeReport,
+  safeChecks,
 } from '../gates/plugin-packaged/contract.mjs'
 import { assertNormalPluginBuild, GATE_BUILD_MARKER } from '../check-no-plugin-gate-inputs.mjs'
 import { initialize, requireHosted } from '../gates/plugin-packaged/owner.mjs'
@@ -39,6 +40,47 @@ function scratch() {
 const read = (name) => fs.readFileSync(path.join(repository, name), 'utf8')
 // The Mac gate fixtures require POSIX ownership and descriptor paths.
 describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => {
+  it('requires exactly sixteen boolean facts and cannot replace ordinary acceptance with an obsolete or optimistic fact', () => {
+    expect(checks).toEqual([
+      'packagedArm64',
+      'bundledNode',
+      'bundledSupervisor',
+      'pluginsTab',
+      'installed',
+      'profileCreated',
+      'profileEnabled',
+      'restartRetained',
+      'concurrentWorkspaces',
+      'reinstallRetained',
+      'tamperedArchiveRefused',
+      'alternateSourceAccepted',
+      'fakeBrowserOnly',
+      'drawsWindow',
+      'agentBrowserAction',
+      'liveTabs',
+    ])
+    const summary = report()
+    for (const key of checks) summary.checks[key] = true
+    summary.coverage.agentBrowserActions = true
+    summary.coverage.liveTabs = true
+    expect(finish(summary).passed).toBe(true)
+    for (const change of ['old-only', 'both', 'missing', 'extra', 'nonboolean', 'false']) {
+      const bad = structuredClone(summary)
+      if (change === 'old-only') {
+        delete bad.checks.alternateSourceAccepted
+        bad.checks.foreignUrlRefused = true
+      }
+      if (change === 'both') bad.checks.foreignUrlRefused = true
+      if (change === 'missing') delete bad.checks.installed
+      if (change === 'extra') bad.checks.optimistic = true
+      if (change === 'nonboolean') bad.checks.alternateSourceAccepted = 1
+      if (change === 'false') bad.checks.alternateSourceAccepted = false
+      expect(finish(bad).passed).toBe(false)
+      expect(safeChecks(bad.checks)).toBe(change === 'false')
+      expect(safeReport(bad)).toBe(change === 'false')
+    }
+    expect(() => requireCheck(report(), 'foreignUrlRefused', true)).toThrow()
+  })
   it('requires a hosted Mac, the BroCrew repository and a packaged-gate ref', () => {
     const env = {
       RUNNER_ENVIRONMENT: 'github-hosted',
