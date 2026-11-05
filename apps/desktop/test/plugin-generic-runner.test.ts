@@ -11,6 +11,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
 import { createPluginNodeHost } from '../src/main/plugins/node-host'
@@ -82,13 +83,16 @@ const server=http.createServer((req,res)=>{
 server.listen(0,'127.0.0.1',()=>process.stdout.write(JSON.stringify({type:'brocrew-plugin-ready',api:1,mcp:{url:'http://127.0.0.1:'+server.address().port+'/fictional-mcp'}})+'\n'));
 process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
 `
-const oneCopySource = `import {openSync,unlinkSync} from 'node:fs';
-const active=process.env.BROCREW_PLUGIN_DATA+'/active-runtime';
-try { openSync(active,'wx'); } catch (error) {
- fs.writeFileSync(process.env.BROCREW_PLUGIN_DATA+'/startup-error.json',JSON.stringify({pid:process.pid,code:error.code}));
+const oneCopySource = `import {DatabaseSync} from 'node:sqlite';
+const witness=new DatabaseSync(process.env.BROCREW_PLUGIN_DATA+'/active-runtime.sqlite');
+try {
+ witness.exec('PRAGMA busy_timeout=0');
+ witness.exec('BEGIN EXCLUSIVE');
+} catch (error) {
+ fs.writeFileSync(process.env.BROCREW_PLUGIN_DATA+'/startup-error.json',JSON.stringify({pid:process.pid,runId:process.env.BROCREW_PLUGIN_RUN_ID,code:error.code,errcode:error.errcode}));
  throw error;
 }
-process.on('SIGTERM',()=>{unlinkSync(active);process.exit(0)});
+process.once('exit',()=>witness.close());
 ${stdioSource}`
 function fixture(
   options: {
@@ -317,7 +321,14 @@ describe('generic plugin process runner', () => {
     expect((await otherReady.client!.listTools()).tools).toHaveLength(1)
   })
   it('restarts the same installation after forced managed-process death with a stale marker left intact', async () => {
-    const { host, home } = await context()
+    const appData = join(root, 'forced-death-shared-data')
+    await mkdir(appData)
+    const sharedDataOwner = {
+      appData,
+      ownerId: '0c6462db-745c-405e-a826-3bc49852cdad',
+      ownerLabel: 'Fictional workspaces',
+    }
+    const { host, home } = await context({ sharedDataOwner })
     const source = oneCopySource.replace(
       'if(args?.exit) return process.exit(7);',
       `if(args?.exit) {
@@ -328,6 +339,42 @@ describe('generic plugin process runner', () => {
     const spec = fixture({ source })
     const first = await host.start(spec)
     const ready = await first.ready()
+    const data = join(home, 'data', 'fictional-orchard')
+    const peer = await context({ sharedDataOwner })
+    const other = await peer.host.start(spec)
+    const peerReady = await other.ready()
+    const peerData = join(peer.home, 'data', 'fictional-orchard')
+    const shared = join(appData, '@brobot2', 'shared', 'fictional-orchard')
+    expect(
+      (await ready.client!.callTool({ name: 'orchard.echo', arguments: { write: true } }))
+        .structuredContent,
+    ).toMatchObject({ data, shared })
+    expect(
+      (await peerReady.client!.callTool({ name: 'orchard.echo', arguments: { write: true } }))
+        .structuredContent,
+    ).toMatchObject({ data: peerData, shared })
+    const opaque = await readFile(join(data, 'opaque.bin'))
+    const peerOpaque = await readFile(join(peerData, 'opaque.bin'))
+    // This unmanaged fixture attempts real overlap without passing through the guardian mutex.
+    const overlap = spawnSync(process.execPath, ['--input-type=module', '-e', oneCopySource], {
+      env: {
+        ...process.env,
+        BROCREW_PLUGIN_DATA: data,
+        BROCREW_PLUGIN_RUN_ID: 'fictional-overlap',
+      },
+      input: '',
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 3000,
+    })
+    expect(overlap.error).toBeUndefined()
+    expect(overlap.status, overlap.stderr).toBe(1)
+    expect(JSON.parse(await readFile(join(data, 'startup-error.json'), 'utf8'))).toEqual({
+      pid: overlap.pid,
+      runId: 'fictional-overlap',
+      code: 'ERR_SQLITE_ERROR',
+      errcode: 5,
+    })
     expect(() => process.kill(ready.serverPid, 0)).not.toThrow()
     await expect(
       ready.client!.callTool({ name: 'orchard.echo', arguments: { exit: true } }),
@@ -336,7 +383,7 @@ describe('generic plugin process runner', () => {
     expect(() => process.kill(ready.serverPid, 0)).toThrowError(
       expect.objectContaining({ code: 'ESRCH' }),
     )
-    const data = join(home, 'data', 'fictional-orchard')
+    expect((await peerReady.client!.listTools()).tools).toHaveLength(1)
     expect(JSON.parse(await readFile(join(data, 'forced-death.json'), 'utf8'))).toEqual({
       pid: ready.serverPid,
       signal: 'SIGKILL',
@@ -352,7 +399,8 @@ describe('generic plugin process runner', () => {
       expect((await replacement.client!.listTools()).tools).toHaveLength(1)
     } catch (error) {
       try {
-        startupFailure = JSON.parse(await readFile(join(data, 'startup-error.json'), 'utf8'))
+        const failure = JSON.parse(await readFile(join(data, 'startup-error.json'), 'utf8'))
+        if (failure.runId === second.runId) startupFailure = failure
       } catch {
         // A missing fixture error record leaves the original readiness error visible.
       }
@@ -369,6 +417,9 @@ describe('generic plugin process runner', () => {
     }
     expect(startupFailure).toBeNull()
     expect(await readFile(marker)).toEqual(stale)
+    expect(await readFile(join(data, 'opaque.bin'))).toEqual(opaque)
+    expect(await readFile(join(peerData, 'opaque.bin'))).toEqual(peerOpaque)
+    expect((await peerReady.client!.listTools()).tools).toHaveLength(1)
   })
   it.each([false, true])(
     'recovered retirement waits for its guardian and preserves missing explicit-removal facts (lost=%s)',
