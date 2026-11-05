@@ -33781,11 +33781,11 @@ export class RuntimeHost implements LiveHost {
     }
     for (const entry of recorded.entries) {
       const session = this.slots.get(entry.sessionId)?.session
-      if (session != null) {
-        session.ordinal = Math.max(session.ordinal, entry.ordinal + 1)
-        this.aRowWasWritten(entry.sessionId, entry.event)
-        this.emitOurs(session, entry)
-      } else this.showTheWindowsLookingAt(entry.sessionId, entry)
+      if (session != null) session.ordinal = Math.max(session.ordinal, entry.ordinal + 1)
+      // A stopped source or destination is drawn from these rows too.
+      this.aRowWasWritten(entry.sessionId, entry.event)
+      if (session != null) this.emitOurs(session, entry)
+      else this.showTheWindowsLookingAt(entry.sessionId, entry)
     }
     if (recorded.queued !== null) {
       const queued = recorded.queued
@@ -37320,6 +37320,9 @@ export class RuntimeHost implements LiveHost {
       this.forgetTheConversations(tree)
       removed.push('records')
       this.endTheQuestions(sessionId, questions)
+      // Said at the commit: removing its kept files below can be slow, or fail.
+      this.theWorldMoved('conversations')
+      this.theWorldMoved('work')
       const root = this.deps.resourcesRoot?.() ?? null
       if (root !== null) {
         for (const { sha256, name } of deleted.filesNoOneNames) {
@@ -37333,8 +37336,6 @@ export class RuntimeHost implements LiveHost {
           `runtime host could not take deleted conversations out of the archive: ${errorMessage(error)}`,
         )
       }
-      this.theWorldMoved('conversations')
-      this.theWorldMoved('work')
       return { done: true, removed, left, recordsKept: null }
     } finally {
       this.linkAnswers.invalidate()
@@ -37982,6 +37983,7 @@ export class RuntimeHost implements LiveHost {
       },
     )
     const present = readable()
+    if (outcome === 'imported' || outcome === 'superseded') this.theWorldMoved('conversations')
     return { outcome, readable: present, note: failure ?? recordingNote(outcome, present) }
   }
 
@@ -38115,6 +38117,7 @@ export class RuntimeHost implements LiveHost {
     // Read back rather than assumed: the row and its ledger are the only proof the import landed,
     // and an outcome word is not one.
     const sessionId = this.deps.store.findByProviderRef(provider, providerSessionId)
+    if (sessionId !== null) this.theWorldMoved('conversations')
     return {
       outcome,
       sessionId,
@@ -38224,6 +38227,8 @@ export class RuntimeHost implements LiveHost {
       }
       // ⚑ **W4.203 · and its newest context reading** is the new generation's.
       this.contextAsLastRead.delete(sessionId)
+      // The listing reads the ledger it replaced: every window reads it again.
+      this.theWorldMoved('conversations')
     }
     return { outcome, status: this.status(sessionId) }
   }
@@ -43042,6 +43047,7 @@ export class RuntimeHost implements LiveHost {
         at: entry.at ?? bundle.meta.updatedAt,
       })),
     })
+    this.theWorldMoved('conversations')
     return { sessionId: id }
   }
 
