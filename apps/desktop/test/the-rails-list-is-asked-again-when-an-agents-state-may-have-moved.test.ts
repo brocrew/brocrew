@@ -260,14 +260,13 @@ describe('D-019 · the rail learns what an agent is doing from the push, not by 
 
     // The first reading exists too, on the first pass before the interval, so the waits are drawn
     // before the first tick.
-    const firstPass = SCREEN.code.slice(
-      SCREEN.code.indexOf('\n  void lookForWhatIsYours()\n'),
-      SCREEN.code.indexOf('looking = setInterval('),
-    )
-    expect(SCREEN.code.indexOf('\n  void lookForWhatIsYours()\n')).toBeGreaterThan(-1)
-    expect(SCREEN.code.indexOf('\n  void lookForWhatIsYours()\n')).toBe(
-      SCREEN.code.lastIndexOf('\n  void lookForWhatIsYours()\n'),
-    )
+    // A window seen again looks the same way, so the first pass is the look nearest the tick.
+    const tick = SCREEN.code.indexOf('looking = setInterval(')
+    const start = SCREEN.code.lastIndexOf('\n  void lookForWhatIsYours()\n', tick)
+    expect(start).toBeGreaterThan(-1)
+    const firstPass = SCREEN.code.slice(start, tick)
+    // The control: no line of the slice leaves the body that starts the tick.
+    expect(firstPass).not.toMatch(/\n\S/)
     expect(firstPass).toContain('void readWhatIsWaiting()')
 
     // The rail's list is not asked on the five seconds: what each agent is doing is pushed.

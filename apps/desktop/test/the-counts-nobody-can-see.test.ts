@@ -344,9 +344,9 @@ describe('§6 · the screen reads it on the cadence it already had, and invented
     ).toBe(0)
   })
 
-  it('🔴 it reads at mount, on the queue’s tick, and on `runtime:changed`’s `conversations`', () => {
-    // ⛔ **Three call sites, each sliced out of the region that owns it** — a bare count would pass
-    // over three calls stacked in one place.
+  it('🔴 it reads at mount, on the queue’s tick, when a hidden window is seen again, and on `runtime:changed`’s `conversations`', () => {
+    // ⛔ **Four call sites, each sliced out of the region that owns it** — a bare count would pass
+    // over four calls stacked in one place.
     const mounted = SCREEN_CODE.slice(SCREEN_CODE.indexOf('stopListening = whenTheWorldMoves'))
 
     const listener = mounted.slice(0, mounted.indexOf('agents:'))
@@ -365,13 +365,21 @@ describe('§6 · the screen reads it on the cadence it already had, and invented
       mounted.indexOf('LOOK_EVERY_MS)', mounted.indexOf('looking = setInterval')),
     )
     expect(tick, 'the tick does not re-read it').toContain('void readTheWorkspace()')
-    // ⛔ **Three call sites and no fourth**, so a call stacked somewhere the slices above cannot
+    // The tick skips a hidden window, which reads again the moment it is seen.
+    const seenAgain = SCREEN_CODE.slice(
+      SCREEN_CODE.indexOf('function lookOnReturn('),
+      SCREEN_CODE.indexOf('\n}\n', SCREEN_CODE.indexOf('function lookOnReturn(')),
+    )
+    expect(seenAgain, 'a window seen again does not re-read it').toContain(
+      'void readTheWorkspace()',
+    )
+    // ⛔ **Four call sites and no fifth**, so a call stacked somewhere the slices above cannot
     // see would show up as a count rather than pass unnoticed.
-    expect(callsTo(SCREEN_CODE, 'readTheWorkspace')).toBe(3)
-    // ⚑ **The floor that keeps the three a roster rather than a coincidence**: the screen names
+    expect(callsTo(SCREEN_CODE, 'readTheWorkspace')).toBe(4)
+    // ⚑ **The floor that keeps the four a roster rather than a coincidence**: the screen names
     // the function MORE times than it calls it — the declaration is one — so the matcher is
     // narrowing rather than matching every mention.
-    expect(SCREEN_CODE.split('readTheWorkspace').length - 1).toBeGreaterThan(3)
+    expect(SCREEN_CODE.split('readTheWorkspace').length - 1).toBeGreaterThan(4)
   })
 
   /**

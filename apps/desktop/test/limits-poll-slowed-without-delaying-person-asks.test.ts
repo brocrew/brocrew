@@ -133,6 +133,9 @@ function fixture() {
   const readTheWorkspace = vi.fn()
   const readWhatIsWaiting = vi.fn()
 
+  /** Whether the window is on screen, as the timer asks it. */
+  const seen = { now: true }
+
   function startTimer(): void {
     const timers = screen.match(/looking = setInterval\(\(\) => \{[\s\S]*?\}, LOOK_EVERY_MS\)/g)
     expect(timers).toHaveLength(1)
@@ -145,10 +148,11 @@ function fixture() {
       lookForWhatIsYours: look,
       readTheWorkspace,
       readWhatIsWaiting,
+      aPersonCanSeeThisWindow: () => seen.now,
     })
   }
 
-  return { state, store, look, startTimer, readTheWorkspace, readWhatIsWaiting }
+  return { state, store, look, startTimer, readTheWorkspace, readWhatIsWaiting, seen }
 }
 
 describe('limits polling without delaying person asks', () => {
@@ -167,7 +171,7 @@ describe('limits polling without delaying person asks', () => {
     expect(LIMITS_LOOK_EVERY_MS).toBe(30_000)
     const one = fixture()
     const mount = screen.slice(
-      screen.indexOf('onMounted(() => {'),
+      screen.lastIndexOf('onMounted(() => {', screen.indexOf('looking = setInterval')),
       screen.indexOf('looking = setInterval'),
     )
     expect(mount.match(/void lookForWhatIsYours\(\)/g)).toHaveLength(1)
@@ -181,6 +185,35 @@ describe('limits polling without delaying person asks', () => {
     for (const name of actionable) expect(one.store[name]).toHaveBeenCalledTimes(12)
     expect(one.readTheWorkspace).toHaveBeenCalledTimes(12)
     expect(one.readWhatIsWaiting).toHaveBeenCalledTimes(12)
+  })
+
+  it('a hidden window skips the look, and looks again the moment it is seen', async () => {
+    const one = fixture()
+    await one.look()
+    for (const name of actionable) one.store[name].mockClear()
+    one.seen.now = false
+    one.startTimer()
+    await vi.advanceTimersByTimeAsync(60_000)
+    for (const name of actionable) expect(one.store[name]).not.toHaveBeenCalled()
+    expect(one.readTheWorkspace).not.toHaveBeenCalled()
+    expect(one.readWhatIsWaiting).not.toHaveBeenCalled()
+
+    const from = screen.indexOf('function lookOnReturn(): void {')
+    expect(from, 'the screen has no look on return').toBeGreaterThan(-1)
+    const returning = screen.slice(from, screen.indexOf('\n}\n', from))
+    expect(returning).toContain('if (!aPersonCanSeeThisWindow()) return')
+    for (const read of [
+      'void lookForWhatIsYours()',
+      'void readTheWorkspace()',
+      'void readWhatIsWaiting()',
+    ])
+      expect(returning).toContain(read)
+    // Seen again, or brought to the front, the window looks at once.
+    expect(screen).toContain("document.addEventListener('visibilitychange', lookOnReturn)")
+    expect(screen).toContain("window.addEventListener('focus', lookOnReturn)")
+    one.seen.now = true
+    await vi.advanceTimersByTimeAsync(LOOK_EVERY_MS)
+    for (const name of actionable) expect(one.store[name]).toHaveBeenCalledTimes(1)
   })
 
   it.each(['answerWhereNobodyHolds', 'answerFromTheQueue', 'decideInstructionAsk'])(

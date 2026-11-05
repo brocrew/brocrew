@@ -3163,6 +3163,22 @@ async function glance(): Promise<void> {
   cast.reading.value = { ...reading, atWork: reading.answered ? doing : null }
 }
 
+/** Whether a person can see this window; a hidden one paints nothing its tick would read. */
+function aPersonCanSeeThisWindow(): boolean {
+  return document.visibilityState === 'visible'
+}
+
+/**
+ * A window seen again, or brought to the front, looks at once for what a person must answer, at the
+ * workspace and at the waits: its tick skipped them while it was hidden.
+ */
+function lookOnReturn(): void {
+  if (!aPersonCanSeeThisWindow()) return
+  void lookForWhatIsYours()
+  void readTheWorkspace()
+  void readWhatIsWaiting()
+}
+
 /** ⚑ This window coming back to the front glances at once, rather than at the next tick. */
 function glanceOnReturn(): void {
   if (document.visibilityState === 'visible' && document.hasFocus()) {
@@ -3463,6 +3479,8 @@ onMounted(() => {
   // line up — see {@link readWhatIsWaiting}.
   void readWhatIsWaiting()
   looking = setInterval(() => {
+    // A hidden window paints none of these; it looks again the moment it is seen (lookOnReturn).
+    if (!aPersonCanSeeThisWindow()) return
     void lookForWhatIsYours(true)
     void readTheWorkspace()
     void readWhatIsWaiting()
@@ -3477,6 +3495,8 @@ onMounted(() => {
   glancing = setInterval(() => void glance(), ROSTER_EVERY_MS)
   window.addEventListener('focus', glanceOnReturn)
   document.addEventListener('visibilitychange', glanceOnReturn)
+  window.addEventListener('focus', lookOnReturn)
+  document.addEventListener('visibilitychange', lookOnReturn)
   // 🔴 **The press, supplied rather than re-implemented** — `goToTheWork` is `506`'s door, which
   // claims the conversation when this window does not hold it and selects only after the claim has
   // landed (rule 18). ⛔ While this is null the band draws no press at all, which is what a drawer
@@ -3504,6 +3524,8 @@ onUnmounted(() => {
   if (glancing !== null) clearInterval(glancing)
   window.removeEventListener('focus', glanceOnReturn)
   document.removeEventListener('visibilitychange', glanceOnReturn)
+  window.removeEventListener('focus', lookOnReturn)
+  document.removeEventListener('visibilitychange', lookOnReturn)
   // ⛔ **Handed back, because the ref outlives this component under HMR** — a band left holding a
   // press into a screen that has been replaced would claim through a store nobody is listening to.
   cast.goTo.value = null
