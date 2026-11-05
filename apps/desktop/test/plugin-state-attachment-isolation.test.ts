@@ -6,8 +6,14 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { afterEach, expect, it, vi } from 'vitest'
 import { createLifecycleAgentBridge } from '../src/main/plugins/lifecycle/agent-bridge'
+import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
+import { PluginEffectQueue } from '../src/main/plugins/lifecycle/effect-queue'
+import type { VerifiedPluginPackage } from '../src/main/plugins/package-verifier'
+import type { Effect } from '../src/main/plugins/lifecycle/files'
 import type {
+  Installation,
   LifecycleOptions,
+  LifecycleRun,
   LifecycleWorkspace,
   WorkspaceProjection,
 } from '../src/main/plugins/lifecycle/types'
@@ -21,6 +27,7 @@ import {
   deferred,
   fixture,
   projection,
+  reopenLifecycleFixture,
 } from './plugin-lifecycle-fixtures'
 import { signed, tar } from './plugin-package-fixtures'
 
@@ -28,6 +35,8 @@ const A = 'fictional-garden'
 const B = 'fictional-moss'
 const gather = { tool: 'gather_petals', arguments: { basket: 'contribution' } }
 const modes = ['new workspace', 'new consumer'] as const
+const coldRemovers = new Set<() => void>()
+const coldCleanupFailures: unknown[] = []
 const releases: Array<() => void> = []
 const closers: Array<() => Promise<unknown>> = []
 type Fixture = Awaited<ReturnType<typeof fixture>>
@@ -47,9 +56,18 @@ async function bounded<T>(work: Promise<T>, label: string): Promise<T> {
 }
 
 afterEach(async () => {
+  for (const stop of coldRemovers) {
+    try {
+      stop()
+    } catch (error) {
+      coldCleanupFailures.push(error)
+    }
+  }
+  coldRemovers.clear()
   for (const release of releases.splice(0)) release()
   // Attempt every closer even if the regression invalidates a consumer or route.
   const failures: unknown[] = []
+  failures.push(...coldCleanupFailures.splice(0))
   try {
     for (const close of closers.splice(0).reverse()) {
       try {
@@ -1450,4 +1468,863 @@ it.each(['revoke', 'clear'] as const)(
     expect(h.controller.cleanForShutdown()).toBe(true)
   },
   15000,
+)
+
+// These controls model allocation, readiness and exact exits without launching a package process.
+function coldModel(
+  options: {
+    allocation?: 'held'
+    readiness?: 'held'
+    stop?: 'held'
+    exit?: 'held'
+    error?: Error
+  } = {},
+) {
+  const allocation = deferred<void>(),
+    readiness = deferred<void>(),
+    stopReply = deferred<void>()
+  const exited = deferred<void>(),
+    entered = deferred<void>(),
+    readyEntered = deferred<void>()
+  const stopEntered = deferred<void>()
+  if (!options.allocation) allocation.resolve()
+  if (!options.readiness) readiness.resolve()
+  if (!options.stop) stopReply.resolve()
+  releases.push(() => {
+    allocation.resolve()
+    readiness.resolve()
+    stopReply.resolve()
+  })
+  const connection: Awaited<ReturnType<LifecycleRun['ready']>> = {
+    serverPid: 404941,
+    origin: 'http://127.0.0.1:1',
+    mcp: () => ({ url: '', headers: { Authorization: '' } }),
+  }
+  const ready = vi.fn(async () => {
+    readyEntered.resolve()
+    await readiness.promise
+    if (options.error) throw options.error
+    return connection
+  })
+  const stop = vi.fn(async () => {
+    stopEntered.resolve()
+    await stopReply.promise
+    if (!options.exit) exited.resolve()
+  })
+  const run: LifecycleRun = { runId: randomUUID(), ready, stop, exited: exited.promise }
+  const start = vi.fn(async () => {
+    entered.resolve()
+    await allocation.promise
+    return run
+  })
+  return {
+    allocation,
+    readiness,
+    stopReply,
+    exited,
+    entered,
+    readyEntered,
+    stopEntered,
+    run,
+    ready,
+    stop,
+    start,
+  }
+}
+type ColdModel = ReturnType<typeof coldModel>
+type WorkOutcome<T> = { is: 'fulfilled'; value: T } | { is: 'rejected'; error: unknown }
+function observedOutcome<T>(work: Promise<T>): Promise<WorkOutcome<T>> {
+  return work.then(
+    (value): WorkOutcome<T> => ({ is: 'fulfilled', value }),
+    (error: unknown): WorkOutcome<T> => ({ is: 'rejected', error }),
+  )
+}
+async function regressionController(models: ColdModel[], holdDownload = false) {
+  const pkg = genericPackage(A),
+    seed = coldModel()
+  const seedRuntime: LifecycleOptions['runtime'] = {
+    start: seed.start,
+    previousOwnerClean: async () => true,
+    removeCode: async () => {},
+  }
+  const f = await fixture(
+    {
+      catalogue: signed({ format: 1, entries: [pkg.release] }),
+      download: async () => pkg.archive,
+      runtime: seedRuntime,
+    },
+    false,
+    A,
+  )
+  let seeded = false
+  const closeSeed = async () => {
+    if (seeded) return
+    try {
+      await f.controller.detach(f.handle)
+    } finally {
+      await f.controller.drain()
+    }
+    seeded = true
+  }
+  closers.push(closeSeed)
+  await f.controller.install(f.handle, A)
+  const selected = f.state.currentInstallation(A)!
+  const data = join(f.root, 'host', 'data', A, 'cold-regression.bin')
+  const bytes = Buffer.from([0, 255, 71, 128])
+  await mkdir(join(f.root, 'host', 'data', A), { recursive: true })
+  await writeFile(data, bytes)
+  await closeSeed()
+  await seed.exited.promise
+  expect(seed.start).toHaveBeenCalledOnce()
+  expect(seed.stop).toHaveBeenCalledOnce()
+  expect(f.controller.cleanForShutdown()).toBe(true)
+  const state = reopenLifecycleFixture(f),
+    queue = new PluginEffectQueue()
+  const downloadEntered = deferred<void>(),
+    downloadReturn = deferred<void>()
+  if (!holdDownload) downloadReturn.resolve()
+  releases.push(() => downloadReturn.resolve())
+  let next = 0
+  const start: LifecycleOptions['runtime']['start'] = vi.fn(async () => {
+    const model = models[next++]
+    if (!model) throw new Error('Unexpected fictional runtime allocation')
+    return model.start()
+  })
+  const controller = await PluginLifecycleController.open({
+    ...f.opts,
+    state,
+    effectQueue: queue,
+    runtime: { ...seedRuntime, start },
+    download: async () => {
+      downloadEntered.resolve()
+      await downloadReturn.promise
+      return pkg.archive
+    },
+  })
+  closers.push(async () => {
+    controller.beginDrain()
+    for (const model of models) model.exited.resolve()
+    await controller.drain()
+  })
+  const workspaces: string[] = []
+  async function attach(sink: WorkspaceProjection) {
+    const handle = await controller.attach(sink)
+    workspaces.push(sink.workspaceId)
+    closers.push(() => controller.detach(handle))
+    return handle
+  }
+  return {
+    controller,
+    queue,
+    workspaces,
+    state,
+    selected,
+    root: f.root,
+    data,
+    bytes,
+    start,
+    attach,
+    downloadEntered,
+    downloadReturn,
+  }
+}
+
+type Acquisition = (
+  id: string,
+  install: Installation,
+  checked: VerifiedPluginPackage,
+) => Promise<LifecycleRun>
+interface AcquisitionCall {
+  receiver: PluginLifecycleController
+  args: Parameters<Acquisition>
+  work?: Promise<LifecycleRun>
+  outcome: Promise<WorkOutcome<LifecycleRun>>
+}
+function observeAcquisition(controller: PluginLifecycleController) {
+  const name = 'acquireBindingRun'
+  const descriptor = Object.getOwnPropertyDescriptor(controller, name)
+  const original: Acquisition = Reflect.get(controller, name)
+  const calls: AcquisitionCall[] = []
+  const listeners = new Set<(call: AcquisitionCall) => void>()
+  const observer = vi.fn<Acquisition>(function (this: PluginLifecycleController, ...args) {
+    let work: Promise<LifecycleRun>
+    try {
+      work = original.apply(this, args)
+    } catch (error) {
+      const call: AcquisitionCall = {
+        receiver: this,
+        args,
+        outcome: Promise.resolve({ is: 'rejected', error }),
+      }
+      calls.push(call)
+      for (const listener of listeners) listener(call)
+      throw error
+    }
+    const call: AcquisitionCall = { receiver: this, args, work, outcome: observedOutcome(work) }
+    calls.push(call)
+    for (const listener of listeners) listener(call)
+    return work
+  })
+  expect(Reflect.set(controller, name, observer)).toBe(true)
+  let stopped = false
+  const stop = () => {
+    if (stopped) return
+    stopped = true
+    listeners.clear()
+    coldRemovers.delete(stop)
+    if (descriptor) Object.defineProperty(controller, name, descriptor)
+    else if (!Reflect.deleteProperty(controller, name))
+      throw new Error('Acquisition observer restoration failed')
+  }
+  coldRemovers.add(stop)
+  function next() {
+    const returned = deferred<AcquisitionCall>()
+    const receive = (call: AcquisitionCall) => returned.resolve(call)
+    listeners.add(receive)
+    const remove = () => {
+      listeners.delete(receive)
+      coldRemovers.delete(remove)
+    }
+    coldRemovers.add(remove)
+    return { work: returned.promise, stop: remove }
+  }
+  return { calls, observer, next, stop }
+}
+function terminalConsumer(controller: PluginLifecycleController, workspaceId: string) {
+  let handle: LifecycleWorkspace | undefined
+  const terminal = deferred<'ready' | 'failed' | { error: unknown }>()
+  const check = () => {
+    if (!handle) return
+    try {
+      const binding = controller.consumerBindings(handle).find((one) => one.pluginId === A)
+      if (binding?.state === 'ready' || binding?.state === 'failed') terminal.resolve(binding.state)
+    } catch (error) {
+      terminal.resolve({ error })
+    }
+  }
+  const remove = controller.onHostChanged((changed) => {
+    if (changed === workspaceId) check()
+  })
+  const stop = () => {
+    remove()
+    coldRemovers.delete(stop)
+  }
+  coldRemovers.add(stop)
+  return {
+    work: terminal.promise,
+    capture(value: LifecycleWorkspace) {
+      handle = value
+      check()
+    },
+    stop,
+  }
+}
+async function coldPair(h: Awaited<ReturnType<typeof regressionController>>, model: ColdModel) {
+  const observation = observeAcquisition(h.controller)
+  const first = projection(),
+    second = projection()
+  expect(first.sink.workspaceId).not.toBe(second.sink.workspaceId)
+  const firstTerminal = terminalConsumer(h.controller, first.sink.workspaceId)
+  const terminals = [firstTerminal]
+  const a = await h.attach(first.sink)
+  firstTerminal.capture(a)
+  await model.entered.promise
+  return {
+    observation,
+    first,
+    second,
+    a,
+    firstTerminal,
+    stop() {
+      for (const terminal of terminals) terminal.stop()
+      observation.stop()
+    },
+    async overlap() {
+      const returned = observation.next()
+      const terminal = terminalConsumer(h.controller, second.sink.workspaceId)
+      terminals.push(terminal)
+      const decision = Promise.race([
+        returned.work.then((call) => ({ is: 'returned' as const, call })),
+        terminal.work.then((state) => ({ is: 'terminal' as const, state })),
+      ])
+      const b = await h.attach(second.sink)
+      terminal.capture(b)
+      const result = await decision
+      returned.stop()
+      return { b, terminal, result }
+    },
+  }
+}
+function ownFacts(h: Awaited<ReturnType<typeof regressionController>>, handle: LifecycleWorkspace) {
+  const workspace = h.controller.hostWorkspace(handle)
+  const scope = h.controller.agentScope(workspace).entries.find((one) => one.pluginId === A)
+  return {
+    admitted: h.controller.admitted(handle, A, h.selected.installId),
+    receipts: h.controller.consumerReceipts(handle),
+    canonical: scope?.is,
+    current: scope?.is === 'admitted' && scope.view.current(),
+  }
+}
+function assertOwnReady(
+  h: Awaited<ReturnType<typeof regressionController>>,
+  handle: LifecycleWorkspace,
+) {
+  expect(ownFacts(h, handle)).toEqual({
+    admitted: true,
+    receipts: [{ pluginId: A, installId: h.selected.installId }],
+    canonical: 'admitted',
+    current: true,
+  })
+}
+async function assertColdDurable(h: Awaited<ReturnType<typeof regressionController>>) {
+  expect(h.state.currentInstallation(A)).toEqual(h.selected)
+  for (const workspace of h.workspaces)
+    expect(h.state.getEnabled(workspace, A)).toEqual({ enabled: true, revision: 0 })
+  expect(await readFile(h.data)).toEqual(h.bytes)
+}
+
+it('gives both own consumers receipts after overlapping one cold allocation', async () => {
+  const model = coldModel({ allocation: 'held' }),
+    h = await regressionController([model])
+  const pair = await coldPair(h, model)
+  try {
+    const other = await pair.overlap()
+    expect(other.result.is).toBe('returned')
+    model.allocation.resolve()
+    expect(await Promise.all([pair.firstTerminal.work, other.terminal.work])).toEqual([
+      'ready',
+      'ready',
+    ])
+    expect(pair.observation.calls).toHaveLength(2)
+    expect(pair.observation.calls[0]!.work).toBe(pair.observation.calls[1]!.work)
+    assertOwnReady(h, pair.a)
+    assertOwnReady(h, other.b)
+    expect(h.start).toHaveBeenCalledOnce()
+    expect(model.ready).toHaveBeenCalledOnce()
+    assertAcquisitionIdentity(h, pair.observation)
+    await assertColdDurable(h)
+  } finally {
+    model.allocation.resolve()
+    pair.stop()
+  }
+})
+
+it('joins pending readiness even after the cold run has been registered', async () => {
+  const model = coldModel({ readiness: 'held' }),
+    h = await regressionController([model])
+  const pair = await coldPair(h, model)
+  try {
+    await model.readyEntered.promise
+    const other = await pair.overlap()
+    expect(other.result.is).toBe('returned')
+    expect(h.controller.admitted(other.b, A, h.selected.installId)).toBe(false)
+    expect(h.controller.consumerReceipts(other.b)).toEqual([])
+    model.readiness.resolve()
+    expect(await Promise.all([pair.firstTerminal.work, other.terminal.work])).toEqual([
+      'ready',
+      'ready',
+    ])
+    expect(pair.observation.calls[0]!.work).toBe(pair.observation.calls[1]!.work)
+    assertOwnReady(h, pair.a)
+    assertOwnReady(h, other.b)
+    expect(h.start).toHaveBeenCalledOnce()
+    expect(model.ready).toHaveBeenCalledOnce()
+    assertAcquisitionIdentity(h, pair.observation)
+    await assertColdDurable(h)
+  } finally {
+    model.readiness.resolve()
+    pair.stop()
+  }
+})
+
+it('shares the original readiness rejection without publishing either own receipt', async () => {
+  const failure = new Error('Fictional shared readiness rejection')
+  const model = coldModel({ allocation: 'held', error: failure }),
+    h = await regressionController([model])
+  const pair = await coldPair(h, model)
+  try {
+    const other = await pair.overlap()
+    expect(other.result.is).toBe('returned')
+    model.allocation.resolve()
+    await model.readyEntered.promise
+    expect(await Promise.all([pair.firstTerminal.work, other.terminal.work])).toEqual([
+      'failed',
+      'failed',
+    ])
+    expect(pair.observation.calls).toHaveLength(2)
+    for (const call of pair.observation.calls) {
+      const outcome = await call.outcome
+      expect(outcome.is).toBe('rejected')
+      if (outcome.is === 'rejected') expect(outcome.error).toBe(failure)
+    }
+    expect(pair.observation.calls[0]!.work).toBe(pair.observation.calls[1]!.work)
+    for (const handle of [pair.a, other.b]) {
+      expect(h.controller.admitted(handle, A, h.selected.installId)).toBe(false)
+      expect(h.controller.consumerReceipts(handle)).toEqual([])
+    }
+    expect(h.start).toHaveBeenCalledOnce()
+    expect(model.ready).toHaveBeenCalledOnce()
+    assertAcquisitionIdentity(h, pair.observation)
+    await assertColdDurable(h)
+  } finally {
+    model.allocation.resolve()
+    pair.stop()
+  }
+})
+
+it('cancels one waiting consumer without cancelling another own cold admission', async () => {
+  const model = coldModel({ allocation: 'held' }),
+    h = await regressionController([model])
+  const pair = await coldPair(h, model)
+  const positive = vi.spyOn(pair.first.sink, 'applied')
+  try {
+    const other = await pair.overlap()
+    expect(other.result.is).toBe('returned')
+    await h.controller.detach(pair.a)
+    const before = positive.mock.calls.filter(([, receipt]) => receipt !== null).length
+    expect(before).toBe(0)
+    pair.firstTerminal.stop()
+    model.allocation.resolve()
+    expect(await other.terminal.work).toBe('ready')
+    assertOwnReady(h, other.b)
+    expect(positive.mock.calls.filter(([, receipt]) => receipt !== null)).toHaveLength(before)
+    expect(h.controller.admitted(pair.a, A, h.selected.installId)).toBe(false)
+    expect(h.start).toHaveBeenCalledOnce()
+    expect(model.stop).not.toHaveBeenCalled()
+    assertAcquisitionIdentity(h, pair.observation)
+    await assertColdDurable(h)
+  } finally {
+    model.allocation.resolve()
+    pair.stop()
+  }
+})
+
+type EnsureRun = (
+  install: Installation,
+  checked: VerifiedPluginPackage,
+  previous?: Pick<Effect, 'previousVersion' | 'previousDataSchema'>,
+) => Promise<LifecycleRun>
+function observeEnsureRun(controller: PluginLifecycleController) {
+  const name = 'ensureRunning',
+    descriptor = Object.getOwnPropertyDescriptor(controller, name)
+  const original: EnsureRun = Reflect.get(controller, name)
+  const observer = vi.fn<EnsureRun>(function (this: PluginLifecycleController, ...args) {
+    return original.apply(this, args)
+  })
+  expect(Reflect.set(controller, name, observer)).toBe(true)
+  let stopped = false
+  const stop = () => {
+    if (stopped) return
+    stopped = true
+    coldRemovers.delete(stop)
+    if (descriptor) Object.defineProperty(controller, name, descriptor)
+    else if (!Reflect.deleteProperty(controller, name))
+      throw new Error('Run observer restoration failed')
+  }
+  coldRemovers.add(stop)
+  return { observer, stop }
+}
+function observeColdQueue(queue: PluginEffectQueue) {
+  const original = queue.restart.bind(queue)
+  const calls: {
+    target: string
+    work: Promise<unknown>
+    outcome: Promise<WorkOutcome<unknown>>
+  }[] = []
+  const observer = vi.spyOn(queue, 'restart').mockImplementation(function <T>(
+    this: PluginEffectQueue,
+    target: string,
+    operation: string,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    const work = original(target, operation, run)
+    calls.push({ target, work, outcome: observedOutcome(work) })
+    return work
+  })
+  const stop = () => {
+    observer.mockRestore()
+    coldRemovers.delete(stop)
+  }
+  coldRemovers.add(stop)
+  return { calls, observer, stop }
+}
+function assertAcquisitionIdentity(
+  h: Awaited<ReturnType<typeof regressionController>>,
+  observation: ReturnType<typeof observeAcquisition>,
+) {
+  for (const [index, call] of observation.calls.entries()) {
+    expect(call.receiver).toBe(h.controller)
+    expect(call.args[0]).toBe(A)
+    expect(call.args[1].pluginId).toBe(A)
+    expect(call.args[1].installId).toBe(h.selected.installId)
+    expect(call.args[1].incarnation).toBe(h.selected.incarnation)
+    if (call.work) expect(observation.observer.mock.results[index]?.value).toBe(call.work)
+  }
+}
+
+it('refuses a stale blocked acquisition before another restart and preserves the queued update', async () => {
+  const old = coldModel({ allocation: 'held' }),
+    replacement = coldModel()
+  const h = await regressionController([old, replacement], true)
+  const queue = observeColdQueue(h.queue),
+    ensuring = observeEnsureRun(h.controller)
+  const pair = await coldPair(h, old)
+  const positives = [pair.first, pair.second].map((one) => vi.spyOn(one.sink, 'applied'))
+  let updateOutcome: Promise<WorkOutcome<void>> | undefined
+  let removeThird: (() => void) | undefined
+  try {
+    const other = await pair.overlap()
+    expect(other.result.is).toBe('returned')
+    const restartsBeforeC = queue.calls.length
+    const ensuresBeforeC = ensuring.observer.mock.calls.length
+    const update = h.controller.update(pair.a, A, randomUUID())
+    updateOutcome = observedOutcome(update)
+    const settleUpdate = updateOutcome
+    closers.push(async () => {
+      const outcome = await settleUpdate
+      if (outcome.is === 'rejected') throw outcome.error
+    })
+    const third = projection(),
+      returned = pair.observation.next()
+    const thirdTerminal = terminalConsumer(h.controller, third.sink.workspaceId)
+    removeThird = thirdTerminal.stop
+    const c = await h.attach(third.sink)
+    thirdTerminal.capture(c)
+    const decision = await returned.work
+    returned.stop()
+    expect(decision.work).not.toBe(pair.observation.calls[0]!.work)
+    expect(queue.calls).toHaveLength(restartsBeforeC)
+    expect(ensuring.observer).toHaveBeenCalledTimes(ensuresBeforeC)
+    const refused = await decision.outcome
+    expect(refused.is).toBe('rejected')
+    if (refused.is === 'rejected') expect(refused.error).toMatchObject({ code: 'cleanup-pending' })
+    expect(h.start).toHaveBeenCalledOnce()
+    expect(old.ready).not.toHaveBeenCalled()
+    old.allocation.resolve()
+    await h.downloadEntered.promise
+    const oldQueueResult = await queue.calls[0]!.outcome
+    const oldResults = await Promise.all(
+      pair.observation.calls.slice(0, 2).map((call) => call.outcome),
+    )
+    expect(oldResults).toHaveLength(2)
+    for (const outcome of [oldQueueResult, ...oldResults]) {
+      if (outcome.is === 'fulfilled') expect(outcome.value).toBe(old.run)
+      else expect(outcome.error).toMatchObject({ code: 'cleanup-pending' })
+    }
+    expect(
+      await Promise.all([pair.firstTerminal.work, other.terminal.work, thirdTerminal.work]),
+    ).toEqual(['failed', 'failed', 'failed'])
+    for (const handle of [pair.a, other.b, c]) {
+      expect(h.controller.admitted(handle, A, h.selected.installId)).toBe(false)
+      expect(h.controller.consumerReceipts(handle)).toEqual([])
+    }
+    for (const positive of positives)
+      expect(
+        positive.mock.calls.filter(([, receipt]) => receipt?.installId === h.selected.installId),
+      ).toEqual([])
+    expect(h.start).toHaveBeenCalledOnce()
+    expect(replacement.start).not.toHaveBeenCalled()
+    await assertColdDurable(h)
+    assertAcquisitionIdentity(h, pair.observation)
+    h.downloadReturn.resolve()
+    expect(await updateOutcome).toEqual({ is: 'fulfilled', value: undefined })
+    expect(h.state.currentInstallation(A)?.installId).toBe(h.selected.installId)
+    expect(h.state.currentInstallation(A)?.incarnation).not.toBe(h.selected.incarnation)
+    expect(await readFile(h.data)).toEqual(h.bytes)
+    expect(h.start).toHaveBeenCalledTimes(2)
+    expect(old.stop).toHaveBeenCalledOnce()
+    await old.exited.promise
+    expect(replacement.start).toHaveBeenCalledOnce()
+  } finally {
+    old.allocation.resolve()
+    h.downloadReturn.resolve()
+    if (updateOutcome) {
+      const outcome = await updateOutcome
+      if (outcome.is === 'rejected') coldCleanupFailures.push(outcome.error)
+    }
+    removeThird?.()
+    ensuring.stop()
+    queue.stop()
+    pair.stop()
+  }
+})
+
+it.each(['effect first', 'exit first'] as const)(
+  'drains a joined late allocation with independent exact proof barriers: %s',
+  async (order) => {
+    const model = coldModel({ allocation: 'held', stop: 'held', exit: 'held' })
+    const h = await regressionController([model]),
+      pair = await coldPair(h, model)
+    const effectReturn = deferred<void>(),
+      effectEntered = deferred<void>()
+    releases.push(() => effectReturn.resolve())
+    let draining: Promise<WorkOutcome<void>> | undefined
+    try {
+      const other = await pair.overlap()
+      expect(other.result.is).toBe('returned')
+      const write = h.queue.stage(async () => {
+        await writeFile(join(h.root, 'cold-stage-effect.bin'), Buffer.from([17, 0, 255]))
+        effectEntered.resolve()
+        await effectReturn.promise
+      })
+      const staged = observedOutcome(write)
+      await effectEntered.promise
+      await h.controller.detach(pair.a)
+      await h.controller.detach(other.b)
+      pair.firstTerminal.stop()
+      other.terminal.stop()
+      let finished = false
+      const drain = h.controller.drain()
+      draining = observedOutcome(drain)
+      void drain.then(
+        () => {
+          finished = true
+        },
+        () => {
+          finished = true
+        },
+      )
+      model.allocation.resolve()
+      await model.stopEntered.promise
+      // Stop is not allowed to mask either independent exit/effect necessity check.
+      model.stopReply.resolve()
+      expect(await model.stop.mock.results[0]!.value).toBeUndefined()
+      expect(model.stop).toHaveBeenCalledOnce()
+      const acquired = await Promise.all(pair.observation.calls.map((call) => call.outcome))
+      for (const outcome of acquired) {
+        expect(outcome.is).toBe('rejected')
+        if (outcome.is === 'rejected')
+          expect(outcome.error).toMatchObject({ code: 'cleanup-pending' })
+      }
+      expect(finished).toBe(false)
+      expect(h.controller.cleanForShutdown()).toBe(false)
+      if (order === 'effect first') {
+        effectReturn.resolve()
+        expect(await staged).toEqual({ is: 'fulfilled', value: undefined })
+        expect(h.queue.idle).toBe(true)
+        expect(finished).toBe(false)
+        expect(h.controller.cleanForShutdown()).toBe(false)
+        model.exited.resolve()
+      } else {
+        model.exited.resolve()
+        await model.exited.promise
+        expect(h.queue.idle).toBe(false)
+        expect(finished).toBe(false)
+        expect(h.controller.cleanForShutdown()).toBe(false)
+        effectReturn.resolve()
+      }
+      expect(await draining).toEqual({ is: 'fulfilled', value: undefined })
+      expect(await staged).toEqual({ is: 'fulfilled', value: undefined })
+      expect(h.controller.cleanForShutdown()).toBe(true)
+      expect(h.start).toHaveBeenCalledOnce()
+      expect(model.ready).not.toHaveBeenCalled()
+      expect(pair.first.rows.has(A)).toBe(false)
+      expect(pair.second.rows.has(A)).toBe(false)
+      expect(pair.observation.calls[0]!.work).toBe(pair.observation.calls[1]!.work)
+      assertAcquisitionIdentity(h, pair.observation)
+      await assertColdDurable(h)
+    } finally {
+      h.controller.beginDrain()
+      model.allocation.resolve()
+      model.stopReply.resolve()
+      model.exited.resolve()
+      effectReturn.resolve()
+      if (draining) {
+        const outcome = await draining
+        if (outcome.is === 'rejected') coldCleanupFailures.push(outcome.error)
+      }
+      pair.stop()
+    }
+  },
+)
+
+function holdSettlementAcquisition(queue: PluginEffectQueue, sink: WorkspaceProjection) {
+  const entered = deferred<void>(),
+    release = deferred<void>()
+  const originalConsumer = queue.consumer,
+    originalApplied = sink.applied
+  const facts = { arms: 0, reservations: 0, entries: 0, callbacks: 0 }
+  let armed = false,
+    reserved = false
+  const calls: {
+    receiver: PluginEffectQueue
+    gated: boolean
+    work: Promise<unknown>
+    outcome: Promise<WorkOutcome<unknown>>
+  }[] = []
+  const callbackOutcomes: Promise<WorkOutcome<unknown>>[] = []
+  const consumer = vi.spyOn(queue, 'consumer').mockImplementation(function <T>(
+    this: PluginEffectQueue,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    const gated = armed && !reserved
+    if (gated) {
+      reserved = true
+      facts.reservations++
+    }
+    // Only this callback is delayed; the queue still owns its original consumer result.
+    const supplied = gated
+      ? () => {
+          armed = false
+          facts.entries++
+          entered.resolve()
+          const work = release.promise.then(() => {
+            facts.callbacks++
+            return run()
+          })
+          callbackOutcomes.push(observedOutcome(work))
+          return work
+        }
+      : run
+    const work = originalConsumer.bind(this)(supplied)
+    calls.push({ receiver: this, gated, work, outcome: observedOutcome(work) })
+    return work
+  })
+  const applied = vi.spyOn(sink, 'applied').mockImplementation(function (
+    this: WorkspaceProjection,
+    ...args: Parameters<WorkspaceProjection['applied']>
+  ) {
+    const work = originalApplied.apply(this, args)
+    if (args[0] === A && args[1] === null) {
+      facts.arms++
+      armed = true
+    }
+    return work
+  })
+  let stopped = false
+  const stop = () => {
+    release.resolve()
+    if (stopped) return
+    stopped = true
+    coldRemovers.delete(stop)
+    const failures: unknown[] = []
+    for (const restore of [() => applied.mockRestore(), () => consumer.mockRestore()]) {
+      try {
+        restore()
+      } catch (error) {
+        failures.push(error)
+      }
+    }
+    if (failures.length)
+      throw new AggregateError(failures, 'Settlement observer restoration failed')
+  }
+  coldRemovers.add(stop)
+  releases.push(() => release.resolve())
+  return {
+    entered: entered.promise,
+    release: () => release.resolve(),
+    facts,
+    calls,
+    consumer,
+    applied,
+    stop,
+    async settled() {
+      await Promise.all(calls.map((call) => call.outcome))
+      await Promise.all(callbackOutcomes)
+    },
+  }
+}
+
+it.each(['fulfilled', 'rejected'] as const)(
+  'retains the %s attempt after settlement before a deferred consumer acquisition',
+  async (settlement) => {
+    const failure = new Error('Fictional deferred readiness rejection')
+    const model = coldModel({
+      readiness: 'held',
+      error: settlement === 'rejected' ? failure : undefined,
+    })
+    const h = await regressionController([model])
+    const queue = observeColdQueue(h.queue),
+      ensuring = observeEnsureRun(h.controller)
+    const pair = await coldPair(h, model)
+    await model.readyEntered.promise
+    const firstApplied = vi.spyOn(pair.first.sink, 'applied')
+    const gate = holdSettlementAcquisition(h.queue, pair.second.sink)
+    const secondTerminal = terminalConsumer(h.controller, pair.second.sink.workspaceId)
+    let b: LifecycleWorkspace | undefined
+    try {
+      b = await h.attach(pair.second.sink)
+      secondTerminal.capture(b)
+      await gate.entered
+      expect(gate.facts).toEqual({ arms: 1, reservations: 1, entries: 1, callbacks: 0 })
+      expect(pair.observation.calls).toHaveLength(1)
+      expect(h.controller.consumerBindings(b).find((one) => one.pluginId === A)?.state).toBe(
+        'pending',
+      )
+      expect(h.controller.consumerReceipts(b)).toEqual([])
+      expect(gate.applied.mock.calls.filter(([, receipt]) => receipt !== null)).toHaveLength(0)
+
+      model.readiness.resolve()
+      const firstOutcome = await pair.observation.calls[0]!.outcome
+      expect(firstOutcome.is).toBe(settlement)
+      if (settlement === 'rejected' && firstOutcome.is === 'rejected')
+        expect(firstOutcome.error).toBe(failure)
+      if (settlement === 'fulfilled' && firstOutcome.is === 'fulfilled')
+        expect(firstOutcome.value).toBe(model.run)
+      expect(await pair.firstTerminal.work).toBe(settlement === 'fulfilled' ? 'ready' : 'failed')
+      expect(pair.observation.calls).toHaveLength(1)
+      expect(gate.facts.callbacks).toBe(0)
+      expect(h.controller.consumerBindings(b).find((one) => one.pluginId === A)?.state).toBe(
+        'pending',
+      )
+      expect(h.controller.admitted(b, A, h.selected.installId)).toBe(false)
+      expect(h.controller.consumerReceipts(b)).toEqual([])
+      expect(gate.applied.mock.calls.filter(([, receipt]) => receipt !== null)).toHaveLength(0)
+
+      gate.release()
+      const terminal = await secondTerminal.work
+      // Own failure must be checked before promise identity can mask a publication bypass.
+      if (settlement === 'rejected') {
+        expect(terminal).toBe('failed')
+        for (const handle of [pair.a, b]) {
+          expect(h.controller.admitted(handle, A, h.selected.installId)).toBe(false)
+          expect(h.controller.consumerReceipts(handle)).toEqual([])
+        }
+        expect(firstApplied.mock.calls.filter(([, receipt]) => receipt !== null)).toHaveLength(0)
+        expect(gate.applied.mock.calls.filter(([, receipt]) => receipt !== null)).toHaveLength(0)
+      } else {
+        expect(terminal).toBe('ready')
+        assertOwnReady(h, pair.a)
+        assertOwnReady(h, b)
+      }
+      expect(pair.observation.calls).toHaveLength(2)
+      const secondOutcome = await pair.observation.calls[1]!.outcome
+      expect(secondOutcome.is).toBe(settlement)
+      if (settlement === 'rejected' && secondOutcome.is === 'rejected')
+        expect(secondOutcome.error).toBe(failure)
+      if (settlement === 'fulfilled' && secondOutcome.is === 'fulfilled')
+        expect(secondOutcome.value).toBe(model.run)
+      expect(gate.facts).toEqual({ arms: 1, reservations: 1, entries: 1, callbacks: 1 })
+      for (const [index, call] of gate.calls.entries()) {
+        expect(call.receiver).toBe(h.queue)
+        expect(gate.consumer.mock.results[index]?.value).toBe(call.work)
+      }
+      expect(gate.calls.filter((call) => call.gated)).toHaveLength(1)
+      expect(queue.calls).toHaveLength(1)
+      expect(ensuring.observer).toHaveBeenCalledOnce()
+      expect(h.start).toHaveBeenCalledOnce()
+      expect(model.ready).toHaveBeenCalledOnce()
+      await assertColdDurable(h)
+      assertAcquisitionIdentity(h, pair.observation)
+      expect(pair.observation.calls[1]!.work).toBe(pair.observation.calls[0]!.work)
+    } finally {
+      model.readiness.resolve()
+      gate.release()
+      try {
+        await pair.firstTerminal.work
+        if (b) await secondTerminal.work
+        await Promise.all(pair.observation.calls.map((call) => call.outcome))
+        await gate.settled()
+        await Promise.all(queue.calls.map((call) => call.outcome))
+      } finally {
+        for (const stop of [gate.stop, secondTerminal.stop, pair.stop, ensuring.stop, queue.stop]) {
+          try {
+            stop()
+          } catch (error) {
+            coldCleanupFailures.push(error)
+          }
+        }
+      }
+    }
+  },
 )
