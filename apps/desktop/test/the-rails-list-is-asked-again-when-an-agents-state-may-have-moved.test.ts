@@ -232,9 +232,9 @@ describe('D-019 · the rail learns what an agent is doing from the push, not by 
     expect(arm.match(ASKS_THE_RAILS_LIST)).toHaveLength(1)
 
     // Every place the screen asks the rail's list, and none of them is a tick or the waits
-    // reading: the `conversations` arm, this arm, and the retitle. The control: the library's
-    // list is asked too, and the pattern does not count it.
-    expect(SCREEN.code).toContain('void library.value?.refreshResumable()')
+    // reading: the `conversations` arm, this arm, and the retitle. The Sessions page's list draws
+    // the same read, so nothing asks it a second time.
+    expect(SCREEN.code).not.toContain('refreshResumable')
     const retitle = hookAround('const retitleOfActive = computed(', 'retitleWork(')
     const places = [SCREEN.code.slice(conversationsAt, workAt), arm, retitle]
     expect(places.map((place) => place.match(ASKS_THE_RAILS_LIST)?.length ?? 0)).toEqual([1, 1, 1])

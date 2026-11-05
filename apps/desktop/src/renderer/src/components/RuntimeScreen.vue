@@ -2896,7 +2896,9 @@ function foldTheForest(forest: TheWholeForest | null, atWork: WhatIsBeingDone | 
  * rather than kept as a line no mutation could make fail.
  */
 async function readWhoIsWorkingOnce(): Promise<void> {
-  if (surface.value !== 'team') return
+  // A read owed to a screen that has gone asks nothing: a ticket taken now would outrank the next
+  // screen's own read of a projection it is handed.
+  if (screenGone || surface.value !== 'team') return
   const ticket = projection.forestAsked('team')
   // ⚑ **641 · ONE call for both** — `637` §5 prints this exact shape, and a second await here
   // would be a second moment for one page.
@@ -2904,7 +2906,7 @@ async function readWhoIsWorkingOnce(): Promise<void> {
   // ⚑ **The person moved while it was in flight.** Writing it would leave the next screen holding
   // a reading taken for one nobody is looking at — and this ref is the ONE place on this screen
   // that does not keep its last good answer (see {@link beingDone}).
-  if (surface.value !== 'team') return
+  if (screenGone || surface.value !== 'team') return
   beingDone.value = doing
   projection.forestAnswered('team', ticket, grown)
 }
@@ -3326,9 +3328,8 @@ watch(surface, (now) => {
  * drop a subject we do not know, ask nothing during a quit, and a reader per subject by TYPE — and
  * this is the wiring, kept here because this component owns the two surfaces that draw the answers.
  *
- * ⚠️ **`refreshResumable` on BOTH surfaces, exactly as every retired call site did**: the rail and
- * the library fold the same two reads, and a channel that refreshed one of them would be the
- * disagreement `151` paired them to prevent.
+ * ⚑ The rail and the Sessions page's recorded list draw the one list read, so the `conversations`
+ * arm asks it once for both.
  */
 let stopListening: (() => void) | null = null
 let stopProviderFacts: (() => void) | null = null
@@ -3366,7 +3367,6 @@ onMounted(() => {
       teamProfileGraph.markStale()
       filesLibrary.markStale()
       void readTheList().then(lookAgainIfItMoved)
-      void library.value?.refreshResumable()
       // 🔴 **547 · and the band on the drawer's first tab**, which draws the SPAWN half of that
       // same announcement. ⛔ **`543` §5.3 measured that this is the half a push can carry**: a
       // child appears when a `provider_session` row is written, and `attachHeldSession` announces

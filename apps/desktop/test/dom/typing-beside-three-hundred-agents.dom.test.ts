@@ -9,6 +9,7 @@ import type {
   AgentIdentities,
   ResumedSession,
   RuntimeBridge,
+  RuntimeChangeMessage,
   RuntimeStatesMessage,
 } from '../../src/shared/runtime-ipc'
 import { agentStateWords } from '../../src/shared/agent-state'
@@ -431,6 +432,52 @@ describe('the screen owns the projection it provides', () => {
     expect(testWorkspace().treeFiles()).toBeNull()
     expect(before.waits).toBeNull()
   }, 60_000)
+
+  it('a Team read owed to a screen that has gone asks nothing, and the next screen reads its own', async () => {
+    // Every subscriber hears a notice, as main tells every window's listeners.
+    const listeners: ((message: RuntimeChangeMessage) => void)[] = []
+    const tell = (message: RuntimeChangeMessage) => {
+      for (const listener of listeners) listener(message)
+    }
+    const forests: (() => void)[] = []
+    let forestReads = 0
+    useBridge({
+      onChanged: (listener: (message: RuntimeChangeMessage) => void) => {
+        listeners.push(listener)
+        return () => {
+          const at = listeners.indexOf(listener)
+          if (at >= 0) listeners.splice(at, 1)
+        }
+      },
+      theWholeForest: () => {
+        forestReads += 1
+        return new Promise((done) => forests.push(() => done(structuredClone(data.forest))))
+      },
+    })
+    const first = mount(RuntimeScreen, {}, { width: 1440, height: 1000 })
+    await expect.poll(() => first.all('rail-team').length, { timeout: 20_000 }).toBe(1)
+    first.q('rail-team').click()
+    // The Team page's read is in the air, and the work moving owes it another.
+    await expect.poll(() => forestReads, { timeout: 20_000 }).toBe(1)
+    tell({ what: 'work' })
+    await settle()
+    expect(forestReads, 'two Team reads in the air at once').toBe(1)
+    first.unmount()
+    forests.shift()!()
+    await settle()
+    // The owed read never starts: no second ask, and nothing written for the next screen.
+    expect(forestReads).toBe(1)
+    expect(testWorkspace().forest()).toBeNull()
+    expect(testWorkspace().teamForest()).toBeNull()
+
+    // The control: a screen mounted after it asks for and takes in its own Team read.
+    const next = mount(RuntimeScreen, {}, { width: 1440, height: 1000 })
+    await expect.poll(() => next.all('rail-team').length, { timeout: 20_000 }).toBe(1)
+    next.q('rail-team').click()
+    await expect.poll(() => forestReads, { timeout: 20_000 }).toBe(2)
+    forests.shift()!()
+    await expect.poll(() => testWorkspace().teamForest(), { timeout: 20_000 }).not.toBeNull()
+  }, 90_000)
 })
 
 describe('a read the test did not answer', () => {

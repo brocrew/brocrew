@@ -280,11 +280,7 @@ const emit = defineEmits<{
   archived: [conversations: readonly string[]]
 }>()
 
-/** The recorded list, so the screen can ask it to re-read when the host says something moved. */
-const reopenList = ref<InstanceType<typeof ResumableSessions> | null>(null)
-
 defineExpose({
-  refreshResumable: (): void => void reopenList.value?.refresh(),
   /** Read the rows again: a conversation was archived or deleted from a sheet over this page. */
   reread: (): void => void load(),
 })
@@ -1412,7 +1408,6 @@ function size(bytes: number | null): string {
               what this app recorded — and lists all of it, whatever is in the box.
             </p>
             <ResumableSessions
-              ref="reopenList"
               :identities="props.identities"
               :provider-blocks="props.providerBlocks"
               @open="(sessionId) => emit('open', sessionId)"

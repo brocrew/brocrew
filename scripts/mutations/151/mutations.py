@@ -568,7 +568,8 @@ MUTATIONS = [
         [
             # ⚑ **W4.275 · re-anchored in place, not retired** — W4.275 · bcb7b529 moved the recorded-conversations band into its own column, so the mount is indented four spaces deeper; the plant still deletes the list instead of moving it.
             # ⚑ **the reopen list reads the window's one list · re-anchored in place, not retired** — the library now hands the recorded list the screen's provider store too; the plant still deletes the reopen list whole.
-            (LIB, "            <ResumableSessions\n              ref=\"reopenList\"\n              :identities=\"props.identities\"\n              :provider-blocks=\"props.providerBlocks\"\n              @open=\"(sessionId) => emit('open', sessionId)\"\n            />", ""),
+            # ⚑ **the recorded list is no longer reached through a ref · re-anchored in place, not retired** — the screen no longer reaches the recorded list through a ref, so the tag lost it; the plant still deletes the reopen list whole.
+            (LIB, "            <ResumableSessions\n              :identities=\"props.identities\"\n              :provider-blocks=\"props.providerBlocks\"\n              @open=\"(sessionId) => emit('open', sessionId)\"\n            />", ""),
         ],
     ),
 ]

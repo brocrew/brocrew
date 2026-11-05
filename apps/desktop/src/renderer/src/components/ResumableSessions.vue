@@ -195,8 +195,6 @@ async function importMessages(session: ResumableSessionInfo): Promise<void> {
   }
 }
 
-defineExpose({ refresh })
-
 /**
  * "3 adopted, 2 already known" — what the scan actually did, not just that it ran.
  *
