@@ -2028,6 +2028,13 @@ export class PluginLifecycleController {
             install.pluginId,
             (workspace.consumerRevisions.get(install.pluginId) ?? 0) + 1,
           )
+          const generation = workspace.bindingGenerations.get(install.pluginId)
+          const revision = workspace.consumerRevisions.get(install.pluginId)
+          const ownsCallbacks = () =>
+            workspace.live &&
+            workspace.bindingGenerations.get(install.pluginId) === generation &&
+            workspace.consumerRevisions.get(install.pluginId) === revision &&
+            !workspace.receipts.has(install.pluginId)
           const attempts = targets.map(({ origin, obligations, installId }) => ({
             origin,
             installId,
@@ -2045,14 +2052,18 @@ export class PluginLifecycleController {
                 binding.selected?.installId === installId
               )
                 binding.bound = false
-              await this.effectQueue.consumer(() =>
-                origin.reconcile({
+              await this.effectQueue.consumer(async () => {
+                if (!ownsCallbacks()) return
+                await origin.reconcile({
                   pluginId: install.pluginId,
                   before: null,
                   receipt: null,
-                }),
-              )
-              await this.effectQueue.consumer(() => origin.applied(install.pluginId, null))
+                })
+              })
+              await this.effectQueue.consumer(async () => {
+                if (!ownsCallbacks()) return
+                await origin.applied(install.pluginId, null)
+              })
             })(),
           }))
           // Restart waits for its current publisher; old origins remain independently retriable.
