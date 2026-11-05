@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { failureFor, printFailure, safeFailure } from '../gates/plugin-packaged/diagnostics.mjs'
 import { stageProtocolDependencies } from '../gates/plugin-packaged/prepare.mjs'
+import { listFor, releaseSourcePlan } from '../gates/plugin-packaged/release.mjs'
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const roots = []
@@ -20,6 +21,78 @@ function scratch() {
 }
 
 describe.skipIf(process.platform === 'win32')('release verifier module admission', () => {
+  it('preserves the complete author-bearing producer row in a format3 catalogue', () => {
+    const entry = {
+      id: 'fictional-plugin',
+      authors: [{ name: 'Fictional author', url: 'https://example.invalid/author' }],
+      version: '1.2.3',
+      sourceCommit: 'a'.repeat(40),
+      targets: [{ os: 'darwin', cpu: 'arm64', sha256: 'b'.repeat(64), bytes: 17 }],
+      manifestSha256: 'c'.repeat(64),
+    }
+    expect(listFor(entry)).toEqual({ format: 3, entries: [entry] })
+    expect(listFor(entry).entries[0]).toBe(entry)
+  })
+  it('plans the current producer and generated tests only after an actual canonical HTTPS origin', () => {
+    const root = scratch(),
+      node = path.join(root, 'node22/bin/node'),
+      commit = 'a'.repeat(40)
+    for (const origin of [
+      'git@github-jidma:brocrew/brocrew.git',
+      'git@github.com:brocrew/brocrew.git',
+      repository,
+      'https://example.invalid/brocrew/brocrew.git',
+      'https://github.com/brocrew/brocrew.git/extra',
+      '',
+    ])
+      expect(() => releaseSourcePlan(root, node, commit, origin)).toThrow('canonical HTTPS origin')
+    for (const origin of [
+      'https://github.com/brocrew/brocrew.git',
+      'https://github.com/brocrew/brocrew',
+    ]) {
+      const plan = releaseSourcePlan(root, node, commit, origin)
+      expect(plan.origin).toBe(origin)
+      expect(plan.build).toEqual({
+        program: node,
+        args: ['scripts/build-plugin-release.mjs', 'chrome', path.join(root, 'release')],
+        cwd: path.join(root, 'release-checkout'),
+        env: {
+          PATH: `${path.dirname(node)}:/usr/bin:/bin`,
+          BROCREW_MONOREPO_ROOT: path.join(root, 'release-checkout'),
+          BROCREW_PLUGIN_SOURCE_COMMIT: commit,
+        },
+      })
+      expect(plan.tests.args).toEqual([
+        'node_modules/vitest/vitest.mjs',
+        'run',
+        '--config',
+        'vitest.release.config.mts',
+      ])
+      expect(plan.tests.cwd).toBe(path.join(root, 'chrome-source'))
+      expect(plan.tests.env.BROCREW_PLUGIN_SOURCE_COMMIT).toBe(commit)
+      expect(plan.tests.env.BROCREW_CHROME_TEST_ARTIFACT).toBe(path.join(root, 'release'))
+      expect(JSON.stringify(plan)).not.toContain('scripts/release.mjs')
+    }
+    expect(() =>
+      releaseSourcePlan(root, node, 'short', 'https://github.com/brocrew/brocrew.git'),
+    ).toThrow('commit')
+    // The unmodified production CLI remains the authority for missing, extra, changed or linked inputs.
+    const producer = fs.readFileSync(
+      path.join(repository, 'scripts/build-plugin-release.mjs'),
+      'utf8',
+    )
+    expect(producer.match(/verifyPluginSource\(options\)/g)).toHaveLength(2)
+    const verifier = fs.readFileSync(path.join(repository, 'scripts/plugin-source.mjs'), 'utf8')
+    expect(verifier).toContain('The exported plugin file set differs from the canonical tree')
+    expect(verifier).toContain('The exported plugin bytes differ from the canonical tree')
+    const exporter = fs.readFileSync(
+      path.join(repository, 'scripts/export-chrome-plugin.mjs'),
+      'utf8',
+    )
+    expect(exporter).toContain('vitest.release.config.mts')
+    expect(exporter).toContain('release-test/*.test.ts')
+    expect(exporter).toContain('plugins/chrome/test/archive.test.ts')
+  })
   it('reuses the exact release dependency files for protocol controls and refuses stale or linked destinations', () => {
     const root = scratch()
     fs.writeFileSync(path.join(root, 'fixture-owned'), 'packaged-plugin-gate\n')

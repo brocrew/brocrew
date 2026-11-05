@@ -108,7 +108,7 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     expect(projected.entry).not.toContain('providerModules[provider].createRuntime(')
     expect(projected.entry).not.toContain('providerModules[provider].home.prepare(profileId)')
     expect(projected.entry).toContain('fixtureSource: "/private/tmp/fictional/a/repo-fixture"')
-    expect(projected.entry).toContain('browserExecutable: "/private/tmp/fictional/browser"')
+    expect(projected.entry).not.toContain('browserExecutable:')
     expect(projected.entry).toContain('app.setPath(\'appData\', "/private/tmp/fictional/a")')
     expect(projected.entry).toContain(
       'return preparePackagedGateHome("/private/tmp/fictional", userData, provider, profileId)',

@@ -19,6 +19,8 @@ import {
   scriptedHandle,
   brokerClient,
   preparePackagedGateHome,
+  withFixtureBrowser,
+  closeFixtureResources,
 } from '../gates/plugin-packaged/provider-fixture.mjs'
 import {
   serveFixture,
@@ -38,7 +40,9 @@ import {
 } from '../gates/plugin-packaged/provider-state.mjs'
 import { safeReport } from '../gates/plugin-packaged/contract.mjs'
 import { withManagedPluginAttachments } from '../../packages/runtime/src/managed-plugin-session.ts'
-import { fixtureTitle } from '../gates/plugin-packaged/fake-browser.mjs'
+import { fixtureTitle, fixtureText } from '../gates/plugin-packaged/fake-browser.mjs'
+const definitions = (tools) =>
+  tools.map((tool) => ({ ...tool })).sort((a, b) => a.name.localeCompare(b.name))
 const cleanup = [],
   roots = []
 const protocolInstalled = fs.existsSync(
@@ -57,6 +61,160 @@ function scratch() {
 describe.skipIf(process.platform === 'win32')(
   'a scripted provider using the installed Chrome tool protocol',
   () => {
+    it('sends exact named-profile arguments through the scripted open, read and close sequence', async () => {
+      const root = scratch(),
+        url = 'http://127.0.0.1:1234/fern',
+        calls = [],
+        sent = []
+      fs.writeFileSync(path.join(root, 'browser-fixture.json'), JSON.stringify({ url }))
+      const handle = scriptedHandle(
+        {
+          send: async (text) => {
+            sent.push(text)
+          },
+        },
+        {},
+        root,
+        async () => ({
+          close: async () => {},
+          callTool: async (input) => {
+            calls.push(input)
+            const expected = [
+              { name: 'open_tab', arguments: { profile: 'fern', url } },
+              {
+                name: 'snapshot',
+                arguments: { profile: 'fern', tabId: 't1', mode: 'text', timeoutMs: 5000 },
+              },
+              { name: 'close_tab', arguments: { profile: 'fern', tabId: 't1' } },
+            ][calls.length - 1]
+            expect(input).toEqual(expected)
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text:
+                    input.name === 'open_tab'
+                      ? JSON.stringify({ tabId: 't1', url, title: fixtureTitle })
+                      : input.name === 'snapshot'
+                        ? `title: ${fixtureTitle}\n${fixtureText}`
+                        : '{"ok":true}',
+                },
+              ],
+            }
+          },
+        }),
+      )
+      await handle.send(openPrompt)
+      await handle.send(`${closePrompt}\n\n${openPrompt}`)
+      expect(calls).toHaveLength(3)
+      expect(sent).toEqual([`Chrome title: ${fixtureTitle}`, 'Chrome fixture tab closed.'])
+    })
+    it('credits a returned isError as a broker response, never a successful action or title', async () => {
+      const root = scratch()
+      fs.writeFileSync(
+        path.join(root, 'browser-fixture.json'),
+        '{"url":"http://127.0.0.1:1234/fern"}',
+      )
+      let sent = false
+      const handle = scriptedHandle(
+        {
+          send: async () => {
+            sent = true
+          },
+        },
+        {},
+        root,
+        async () => ({
+          close: async () => {},
+          callTool: async () => ({ isError: true, content: [{ type: 'text', text: 'refused' }] }),
+        }),
+      )
+      await expect(handle.send(openPrompt)).rejects.toThrow()
+      expect(browserEvidence(root, fs.readFileSync)).toMatchObject({
+        toolCalled: true,
+        calls: 0,
+        titleReturned: false,
+      })
+      expect(sent).toBe(false)
+    })
+    it('compares every definition including unexercised tools, descriptions and full schemas', () => {
+      const inventory = [
+        {
+          name: 'open_tab',
+          description: 'Open',
+          inputSchema: { type: 'object' },
+          annotations: { readOnlyHint: false },
+        },
+        {
+          name: 'unexercised',
+          description: 'Discover',
+          inputSchema: {
+            type: 'object',
+            properties: { profile: { type: 'string' } },
+            required: ['profile'],
+          },
+        },
+      ]
+      expect(definitions(inventory.toReversed())).toEqual(definitions(inventory))
+      for (const changed of [
+        inventory.slice(0, 1),
+        [...inventory, { name: 'extra', inputSchema: {} }],
+        inventory.map((tool) =>
+          tool.name === 'unexercised' ? { ...tool, description: 'changed' } : tool,
+        ),
+        inventory.map((tool) =>
+          tool.name === 'unexercised' ? { ...tool, inputSchema: { type: 'object' } } : tool,
+        ),
+        inventory.map((tool) =>
+          tool.name === 'open_tab' ? { ...tool, annotations: { readOnlyHint: true } } : tool,
+        ),
+      ])
+        expect(definitions(changed)).not.toEqual(definitions(inventory))
+    })
+    it('restores the browser environment value or absence after successful or rejected setup', async () => {
+      const key = 'BROCREW_CHROME_EXECUTABLE',
+        before = process.env[key]
+      const had = Object.hasOwn(process.env, key)
+      try {
+        for (const previous of [undefined, '/fictional/previous'])
+          for (const reject of [false, true]) {
+            if (previous === undefined) delete process.env[key]
+            else process.env[key] = previous
+            const work = withFixtureBrowser('/fictional/owned-wrapper', async () => {
+              await Promise.resolve()
+              expect(process.env[key]).toBe('/fictional/owned-wrapper')
+              if (reject) throw new Error('fictional setup failure')
+              return true
+            })
+            if (reject) await expect(work).rejects.toThrow('fictional setup failure')
+            else expect(await work).toBe(true)
+            expect(Object.hasOwn(process.env, key)).toBe(previous !== undefined)
+            expect(process.env[key]).toBe(previous)
+          }
+      } finally {
+        if (had) process.env[key] = before
+        else delete process.env[key]
+      }
+    })
+    it('closes provider, attachments, bridge and host before deleting scratch, retaining it on unknown exit', async () => {
+      for (const exit of [true, false]) {
+        const order = []
+        const closers = ['host', 'bridge', 'attachments', 'provider'].map((name) => async () => {
+          order.push(name)
+          if (name === 'host' && !exit) throw new Error('Physical exit unproven')
+        })
+        const work = closeFixtureResources(closers, ['/fictional/owned'], () =>
+          order.push('remove'),
+        )
+        if (exit) {
+          await work
+          expect(order).toEqual(['provider', 'attachments', 'bridge', 'host', 'remove'])
+        } else {
+          await expect(work).rejects.toThrow('Fixture cleanup incomplete')
+          expect(order).toEqual(['provider', 'attachments', 'bridge', 'host'])
+        }
+      }
+    })
     it.each(providerSteps)(
       'reports the first missing %s witness, without paths or arbitrary fields',
       (step) => {
