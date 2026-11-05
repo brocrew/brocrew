@@ -1,4 +1,6 @@
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { openDatabase } from '../src/main/db/connection'
 import { aServiceWorld, RecordingSink, type AServiceWorld } from './helpers/a-service-world'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type {
@@ -82,6 +84,28 @@ describe('the listing and the states are published under one stamp', () => {
       complete: false,
       ids: idsOf(answer),
     })
+  })
+
+  it('a torn ask against an agent’s rules makes the listing and the waits short, and neither is kept', async () => {
+    await settled()
+    const other = openDatabase(join(world.folder, 'brobot2.sqlite'))
+    try {
+      other
+        .prepare(
+          `INSERT INTO events (id, session_id, generation, ordinal, type, payload, created_at)
+           VALUES ('evt_torn_ask', ?, 0, 90000, 'instruction_proposed', '{not json', ?)`,
+        )
+        .run(giver, world.clock)
+    } finally {
+      other.close()
+    }
+    const short = await listing()
+    expect(short.published.covers.complete).toBe(false)
+    const waits = host.whatEachConversationIsWaitingOn()
+    expect(waits.rowsUnread).toBeGreaterThanOrEqual(1)
+    // Neither is kept: each ask composes again.
+    expect(host.whatEachConversationIsWaitingOn()).not.toBe(waits)
+    expect(host.resumableSessions()).not.toBe(host.resumableSessions())
   })
 
   it('a listing that cannot be read at all is refused with the stamp it failed at', async () => {
