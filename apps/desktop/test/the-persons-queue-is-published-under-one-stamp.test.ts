@@ -51,6 +51,14 @@ describe('the person’s queue is published under one stamp', () => {
     if (!given.ok) throw new Error('the give was refused')
     return { helper: world.store.workById(given.piece)!.owner, piece: given.piece }
   }
+  /** Quiet: the helper's turn has settled, and nothing moves the stamp across a turn of the timers. */
+  const settled = async () => {
+    await vi.waitFor(async () => {
+      const first = (await queue()).published.seq
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      expect((await queue()).published.seq).toBe(first)
+    })
+  }
 
   beforeEach(async () => {
     world = aServiceWorld()
@@ -148,6 +156,7 @@ describe('the person’s queue is published under one stamp', () => {
 
   it('incidents composed before a commit are refused at assembly, and included with nothing between', async () => {
     await aHelperHoldingWork()
+    await settled()
     expect((await queue()).incidents).not.toBeNull()
     betweenIncidentsAndAssembly(() => routed('fictional-between'))
     const answer = await queue()
@@ -172,6 +181,7 @@ describe('the person’s queue is published under one stamp', () => {
       } as TranscriptEvent,
       world.clock,
     )
+    await settled()
     expect((await queue()).incidents).not.toBeNull()
     betweenIncidentsAndAssembly(() => {
       world.clock = at
@@ -181,6 +191,7 @@ describe('the person’s queue is published under one stamp', () => {
 
   it('incidents are refused when a live fact they read moves before assembly', async () => {
     const { helper } = await aHelperHoldingWork()
+    await settled()
     expect((await queue()).incidents).not.toBeNull()
     const held = (host as unknown as { heldAtAStop: Map<string, unknown[]> }).heldAtAStop
     betweenIncidentsAndAssembly(() => held.set(helper, [{}]))
