@@ -496,7 +496,7 @@ const CLAMPED: Readonly<Record<string, { readonly clamp: string; readonly recove
     recovery:
       '⚑ a PRESS — the whole description is one press away in the tool detail. Ranked 6 at `531`, cut 10–68 px on y.',
   },
-  'QuestionCard.vue · .words.folded': {
+  'QuestionCard.vue · .words.folded :deep(.md-chat)': {
     clamp: '4',
     recovery:
       '⚑ a PRESS — *more* beside the folded words draws the whole question (UI-009, F052), offered only when they overflow the four lines; and the conversation draws the same card unfolded, one press away on *Open the conversation*.',

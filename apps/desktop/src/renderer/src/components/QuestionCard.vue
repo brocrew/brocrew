@@ -176,8 +176,8 @@ const foldable = computed(
     props.fold === true && (unfolded.value || overflows.value || props.reading.context !== null),
 )
 function measure(): void {
-  const el = wordsEl.value
-  if (!folded.value || el === null) return
+  const el = wordsEl.value?.querySelector<HTMLElement>('.md-chat')
+  if (!folded.value || !el) return
   overflows.value = el.scrollHeight > el.clientHeight + 1
 }
 function toggle(): void {
@@ -262,9 +262,11 @@ watch(
     <p v-if="props.reading.wordsAreCut" class="aside" data-cy="question-cut">{{ BODY_WAS_CUT }}</p>
     <!-- ⚑ What the conversation that passed it up added — beside the words, never instead. -->
     <div v-if="props.reading.context && !folded" class="aside" data-cy="question-context">
-      <span class="lead">{{ ADDED_BESIDE }}</span
-      >{{ ' ' }}
-      <MarkdownWords :text="props.reading.context" :paths="props.paths ?? queuePaths" />
+      <MarkdownWords
+        :text="props.reading.context"
+        :lead="ADDED_BESIDE"
+        :paths="props.paths ?? queuePaths"
+      />
     </div>
     <button
       v-if="foldable"
@@ -491,7 +493,7 @@ watch(
   overflow-wrap: anywhere;
 }
 
-.lead {
+:deep(.md-lead) {
   font-weight: var(--fw-bold);
 }
 
@@ -504,7 +506,7 @@ watch(
   white-space: pre-wrap;
 }
 
-.words.folded {
+.words.folded :deep(.md-chat) {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
@@ -544,7 +546,7 @@ watch(
   margin: 0;
   color: var(--text-soft);
   font-size: var(--type-small);
-  white-space: pre-wrap;
+  white-space: normal;
 }
 
 .header {
@@ -721,7 +723,7 @@ watch(
   white-space: pre-wrap;
 }
 
-.queue-question [data-cy='question-context'] .lead {
+.queue-question [data-cy='question-context'] :deep(.md-lead) {
   display: block;
   margin-bottom: var(--space-2);
   color: var(--text-soft);
