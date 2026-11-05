@@ -15,6 +15,7 @@ import {
   WindowWorkerReader,
   type WindowReadWorker,
 } from '../src/main/db/window-worker-reader'
+import type { TranscriptEvent } from '../src/shared/runtime-ipc'
 import {
   WINDOW_READ_BOUNDS,
   WindowReadUnavailable,
@@ -526,12 +527,19 @@ describe('canonical window worker folds and independent live-store reads', () =>
       const fixtureRows = db.prepare('SELECT count(*) AS n FROM events').get()
       const direct = vi.spyOn(store, 'questionsAPersonMustAnswer')
       direct.mockClear()
+      // A main-thread answer is counted where it is decided; it reuses the answer composed at
+      // this version, since the busy writer writes nothing the queue reads.
+      const mainThread = vi.spyOn(
+        host as unknown as { answeredOnTheMainThread: (...args: unknown[]) => unknown },
+        'answeredOnTheMainThread',
+      )
       const began = performance.now()
       for (let i = 0; i < 20; i++)
         expect(await host.readForWindow(() => host.questionsForAPerson())).toEqual(expected)
-      const fallbacks = direct.mock.calls.length
+      const fallbacks = mainThread.mock.calls.length
       expect(reads).toBe(mode === 'before' ? 40 : 1)
       expect(fallbacks).toBe(mode === 'before' ? 20 : 0)
+      expect(direct).not.toHaveBeenCalled()
       measurements.push({
         mode,
         requests: 20,
@@ -547,6 +555,7 @@ describe('canonical window worker folds and independent live-store reads', () =>
         finalRows: db.prepare('SELECT count(*) AS n FROM events').get(),
       })
       direct.mockRestore()
+      mainThread.mockRestore()
       db.prepare('DELETE FROM events WHERE ordinal >= ?').run(floor)
       ordinal = floor
     }
@@ -566,8 +575,9 @@ describe('canonical window worker folds and independent live-store reads', () =>
     const expected = host.questionsForAPerson()
     const direct = vi.spyOn(store, 'questionsAPersonMustAnswer')
     direct.mockClear()
-    expect(await host.readForWindow(() => host.questionsForAPerson())).toEqual(expected)
-    expect(direct).toHaveBeenCalledOnce()
+    // Answered on the main thread, by the answer already composed at this version.
+    expect(await host.readForWindow(() => host.questionsForAPerson())).toBe(expected)
+    expect(direct).not.toHaveBeenCalled()
     expect(read).not.toHaveBeenCalled()
     expect(console.warn).toHaveBeenCalledWith(
       'window read answered on the main thread: writer-unsampled (1 since launch)',
@@ -641,10 +651,13 @@ describe('canonical window worker folds and independent live-store reads', () =>
     for (let i = 0; i < 50; i++)
       expect(await host.readForWindow(() => host.questionsForAPerson())).toEqual(first)
     expect(read).toHaveBeenCalledOnce()
-    row('alpha', 'assistant_delta', { type: 'assistant_delta', text: 'Fictional content' })
+    // Written through the store's own door, so the host hears each commit.
+    const written = (event: object) =>
+      store.append('alpha', store.nextOrdinal('alpha'), event as TranscriptEvent, 1000 + ordinal++)
+    written({ type: 'assistant_delta', text: 'Fictional content' })
     expect(await host.readForWindow(() => host.questionsForAPerson())).toEqual(first)
     expect(read).toHaveBeenCalledOnce()
-    row('alpha', 'request_resolved', { type: 'request_resolved', id: 'second' })
+    written({ type: 'request_resolved', id: 'second' })
     expect((await host.readForWindow(() => host.questionsForAPerson())).rows).toEqual([])
     expect(read).toHaveBeenCalledTimes(2)
   })

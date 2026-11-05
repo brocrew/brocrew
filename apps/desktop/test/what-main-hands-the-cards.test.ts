@@ -667,10 +667,19 @@ describe('671 · what main hands the cards', () => {
         listTasks: 0,
         stalled: 0,
       })
-      db.prepare(
-        `INSERT INTO events (id, session_id, generation, ordinal, type, payload, created_at)
-         VALUES ('evt_torn_q', ?, 0, 90000, 'user_input_request', '{not json', ?)`,
-      ).run(worker, tick())
+      // Written by another connection, as a torn row arrives from outside this app's own doors,
+      // so the host hears it before reusing an answer it composed.
+      const outside = openDatabase(join(userData, 'brobot2.sqlite'))
+      try {
+        outside
+          .prepare(
+            `INSERT INTO events (id, session_id, generation, ordinal, type, payload, created_at)
+             VALUES ('evt_torn_q', ?, 0, 90000, 'user_input_request', '{not json', ?)`,
+          )
+          .run(worker, tick())
+      } finally {
+        outside.close()
+      }
       // ⛔ **No fold on any of these walks selects this type** — `selectTaskEvents` does not — so the
       // only reads that meet the row are the wait reads composing the worker's OPEN task. ⚑ A count
       // of 1 on each surface is therefore that surface's WAIT READ counting into its own walk: the

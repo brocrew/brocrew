@@ -522,7 +522,7 @@ describe('734 · the queue names agents, not folders', () => {
       expect(said('count the rings')).toContain(second)
     })
 
-    it('⚑ §1.8 the roster is read ONCE per answer, however many agents it names — and again for the next', async () => {
+    it('⚑ §1.8 the roster is read ONCE per answer, however many agents it names — and again once a rename moves it', async () => {
       // ⚠️ **`oneNamingPerAnswer`'s docblock says so, and a memo nothing counts is a claim.** The
       // queue is polled every five seconds for the life of a window.
       const { pm } = await graceAndAda()
@@ -540,7 +540,15 @@ describe('734 · the queue names agents, not folders', () => {
         once.answer.rows.filter((one) => [bob, cleo].includes(one.request.askedBy)),
       ).toHaveLength(2)
       expect(once.reads).toBe(1)
-      expect(rosterReadsIn(() => host.decisionsForAPerson()).reads).toBe(1)
+      // The same answer is shared while nothing it reads moves; a rename moves it, and the next
+      // answer reads the roster once more and says the new name.
+      const shared = rosterReadsIn(() => host.decisionsForAPerson())
+      expect(shared.answer).toBe(once.answer)
+      expect(shared.reads).toBe(0)
+      expect(host.setAgentDisplayName('worker-g', 'Ben')).not.toBeNull()
+      const renamed = rosterReadsIn(() => host.decisionsForAPerson())
+      expect(renamed.reads).toBe(1)
+      expect(renamed.answer.rows.map((one) => one.sentence)).toContain('Ben waiting on you')
     })
   })
 

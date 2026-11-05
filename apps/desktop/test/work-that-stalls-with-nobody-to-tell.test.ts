@@ -798,7 +798,10 @@ describe('557 · work that stalls with nobody left to tell', () => {
         const body = source.slice(at, source.indexOf('\n  }\n', at) + 5)
         return body.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
       }
-      const reader = codeOf(hostSource, 'stalledWorkForAPerson(): LedgerWalk<StalledWork> {')
+      const reader = codeOf(
+        hostSource,
+        'stalledWorkForAPersonComposed(): LedgerWalk<StalledWork> {',
+      )
       const walk = codeOf(storeSource, 'stalledWorkNobodyWasToldAbout(counted) {')
       for (const [name, body] of [
         ['the host reader', reader],

@@ -341,7 +341,7 @@ describe('§3 · the two causes cannot be confused, because only one can reach a
    */
   it("🔴 the walk admits only questions the PARENT owes — `one.went.to === 'the-parent'`", () => {
     const host = withoutComments(readFileSync(HOST, 'utf8'))
-    const at = host.indexOf('questionsForAPerson(): LedgerWalk<PersonsQuestion>')
+    const at = host.indexOf('questionsForAPersonComposed(): LedgerWalk<PersonsQuestion>')
     expect(at).toBeGreaterThan(0)
     const body = host.slice(at, host.indexOf('\n  }\n', at))
     const FILTER = /REQUEST_IS_OPEN\[one\.state\] && one\.went\.to === 'the-parent'/
