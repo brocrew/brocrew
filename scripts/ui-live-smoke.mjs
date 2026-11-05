@@ -19572,7 +19572,7 @@ async function main() {
       //
       // ⚠️ **The prompt's own survival is a DIFFERENT mechanism and is still covered.** It is
       // `RuntimeScreen.vue`'s `drafts` book at `draftSlot(null)`, read back through
-      // `NewConversation.vue`'s exported `shouldRestoreDraft` — ⛔ **not `PromptComposer`'s**,
+      // `lib/drafts.ts`'s `shouldRestoreDraft` — ⛔ **not `PromptComposer`'s**,
       // which deliberately keeps no copy of its own (*"no second copy to drift out of sync"*).
       // It is tested in `apps/desktop/test/composer.render.test.ts`, the renderer project. ⚑ So
       // the one field of the four that still exists is measured where it can be measured cheaply,

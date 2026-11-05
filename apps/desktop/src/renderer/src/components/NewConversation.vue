@@ -2,36 +2,6 @@
 import type { LaunchRefusal } from '../../../shared/runtime-ipc'
 
 /**
- * Whether a launch attempt that just ended should hand the message back (015, re-keyed by 019).
- *
- * Exported and pure because it is the whole of a rule that is otherwise invisible: it fires on a
- * falling edge, only on failure, and only when there was something to give back. A watcher is not
- * reachable from a node/SSR test, so the decision lives here where it can be pinned — the same
- * seam the composer's send decision uses.
- */
-export function shouldRestoreDraft(input: {
-  busy: boolean
-  wasBusy: boolean
-  error: string | null
-  lastTried: string
-  /** What is in the box right now. Handing text back must never overwrite newer text. */
-  current: string
-}): boolean {
-  return (
-    input.wasBusy &&
-    !input.busy &&
-    input.error !== null &&
-    input.lastTried !== '' &&
-    // Never over the top of what is being typed NOW. This clause was written because the launch
-    // flag and the launch error were both SHARED with reopening a conversation, and this surface
-    // stays mounted through one — 100 gave the error its own ref and 102 made `busy` per gesture,
-    // so that particular door is closed; the rule stands on its own merit either way, and a
-    // hand-back that overwrote live typing would be 019's bug whatever opened it.
-    input.current === ''
-  )
-}
-
-/**
  * 🔴 **725 · `716` F-1 — whether the automatic sign-in check could say anything the refusal did not.**
  *
  * ⚑ **Main's own table, read as it is written** (`LAUNCH_REFUSALS`, `runtime-ipc.ts`): for a
@@ -45,8 +15,9 @@ export function shouldRestoreDraft(input: {
  * boxes — the refusal's sentence, and *"Could not check this profile’s sign-in"* with the same
  * shortage as its reason. One fact, said twice.
  *
- * ⚑ Exported and pure for {@link shouldRestoreDraft}'s reason: a watcher is not reachable from a
- * node test, and a seventh word added to main's table must be answered here, not guessed.
+ * ⚑ Exported and pure for `shouldRestoreDraft`'s reason (`lib/drafts.ts`): a watcher is not
+ * reachable from a node test, and a seventh word added to main's table must be answered here, not
+ * guessed.
  */
 export function theCheckCanSayMore(refusedAs: LaunchRefusal | null | undefined): boolean {
   return refusedAs == null || refusedAs === 'sign-in'
@@ -95,7 +66,7 @@ import type { LaunchChoices } from '../lib/launch-choices'
 import { theFormSends, type ModelLists, type PickedModel } from '../lib/model-lists'
 import { useModelLists } from '../composables/useModelLists'
 import { CHANGEABLE_LIVE_IN } from '../lib/front-door-words'
-import type { DraftHanding } from '../lib/drafts'
+import { shouldRestoreDraft, type DraftHanding } from '../lib/drafts'
 import type { SendBlock } from '../lib/composer-notice'
 import { readableError } from '../lib/session-record'
 import type { SendIntent } from '../lib/session-store'
@@ -499,7 +470,7 @@ const reprovisionCapability = computed<CapabilityStatus>(
  * this surface believes about a credential.
  *
  * ⚠️ **`busy`/`error` WERE shared with reopening a recorded conversation** (098 review finding 7) —
- * `shouldRestoreDraft` at the top of this file exists for the same reason. A failed reopen of a
+ * `shouldRestoreDraft` (`lib/drafts.ts`) exists for the same reason. A failed reopen of a
  * conversation on the OTHER provider would otherwise make this probe the launcher's selected one and
  * accuse it of a credential problem it does not have. ⚠️ **The stamp that used to make the answer
  * belong to a provider is gone** (417) — there is one provider here now — so this guard is the

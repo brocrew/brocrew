@@ -8,9 +8,8 @@ import PromptComposer, {
   sendIntentFor,
   sendKeyLabel,
 } from '../src/renderer/src/components/PromptComposer.vue'
-import { createAttachmentBook } from '../src/renderer/src/lib/drafts'
+import { createAttachmentBook, shouldRestoreDraft } from '../src/renderer/src/lib/drafts'
 import type { HandedPath } from '../src/shared/runtime-ipc'
-import { shouldRestoreDraft } from '../src/renderer/src/components/NewConversation.vue'
 import { firstMessageBelongsTo } from '../src/renderer/src/components/RuntimeScreen.vue'
 
 /**

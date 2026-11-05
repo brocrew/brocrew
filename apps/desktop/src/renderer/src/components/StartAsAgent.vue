@@ -12,7 +12,7 @@ import {
 import { useAgentStore } from '../composables/useAgentStore'
 import type { AgentStore } from '../lib/agent-store'
 import { YOLO_MEANS } from '../lib/approval-mode'
-import { shouldRestoreDraft } from './NewConversation.vue'
+import { shouldRestoreDraft } from '../lib/drafts'
 import PromptComposer from './PromptComposer.vue'
 import ModelPicker from './ModelPicker.vue'
 import type { ModelLists, PickedModel } from '../lib/model-lists'

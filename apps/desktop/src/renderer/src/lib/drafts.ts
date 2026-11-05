@@ -570,6 +570,30 @@ export function puttingItBack(draft: string, text: string): string {
 }
 
 /**
+ * Whether a launch attempt that just ended should hand the message back to the box.
+ *
+ * Only on the falling edge of a failed launch, only when something was tried, and never over text
+ * typed since: handing words back must not overwrite newer ones. The launcher and the start-as-agent
+ * sheet both follow this one rule, so it lives here rather than in either component.
+ */
+export function shouldRestoreDraft(input: {
+  busy: boolean
+  wasBusy: boolean
+  error: string | null
+  lastTried: string
+  /** What is in the box right now. */
+  current: string
+}): boolean {
+  return (
+    input.wasBusy &&
+    !input.busy &&
+    input.error !== null &&
+    input.lastTried !== '' &&
+    input.current === ''
+  )
+}
+
+/**
  * ⚑ **D-010 · and its files JOIN what is staged** — `restore`'s own rule (236 §5): what is staged
  * stays, the returned paths join it, one already there is not added twice, and the ceiling binds —
  * with how many did not fit returned, so the composer can say so ({@link attachmentsNotRestored}).
