@@ -59,19 +59,22 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M5 · A give no longer marks its giver: the giver's kept work-out read stays empty, so the window is never told it is waiting on its helper — killed by `a-giver-says-who-holds-the-work-it-gave-out.render.test.ts`",
         [
-            (RUNTIME_HOST, "    event.type === 'work_given' ||\n    event.type === 'work_replied' ||\n", "    event.type === 'work_replied' ||\n"),
+            # ⚑ **the commit record · re-anchored in place, not retired** — The giver's-wait check became a set of row types the commit record carries; same rule, same plant. Verified with verify_row.
+            (RUNTIME_HOST, ">(['work_given', 'work_replied', 'work_taken_back', 'work_closed'])", ">(['work_replied', 'work_taken_back', 'work_closed'])"),
         ],
     ),
     (
         "M6 · A reply no longer marks its giver: the giver keeps reading 'waiting on' a helper whose piece is answered — killed by `a-giver-says-who-holds-the-work-it-gave-out.render.test.ts`",
         [
-            (RUNTIME_HOST, "    event.type === 'work_replied' ||\n    event.type === 'work_taken_back' ||\n", "    event.type === 'work_taken_back' ||\n"),
+            # ⚑ **the commit record · re-anchored in place, not retired** — The giver's-wait check became a set of row types the commit record carries; same rule, same plant. Verified with verify_row.
+            (RUNTIME_HOST, ">(['work_given', 'work_replied', 'work_taken_back', 'work_closed'])", ">(['work_given', 'work_taken_back', 'work_closed'])"),
         ],
     ),
     (
         "M7 · A replacement no longer re-reads the work out of the old conversation and its stand-in: the stand-in keeps the empty read it derived while still starting and says idle for the work it inherited — killed by `a-giver-says-who-holds-the-work-it-gave-out.render.test.ts`",
         [
-            (RUNTIME_HOST, "      this.theWorkItGaveMoved(conversation)\n      this.theWorkItGaveMoved(event.sessionId)\n", ""),
+            # ⚑ **the commit record · re-anchored in place, not retired** — A replacement row's new conversation is read from the committed row's replacedBy; same rule, same plant. Verified with verify_row.
+            (RUNTIME_HOST, "      this.theWorkItGaveMoved(conversation)\n      this.theWorkItGaveMoved(event.replacedBy)\n", ""),
         ],
     ),
     (
