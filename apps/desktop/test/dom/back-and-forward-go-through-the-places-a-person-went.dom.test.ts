@@ -794,6 +794,27 @@ it('the conversation list refreshing while a step reads does not stop the step',
   await expect.poll(() => m.q('transcript').textContent).toContain('Words of A.')
 })
 
+it('Back pressed once the place a step reached is on screen takes the next step, on slow frames too', async () => {
+  const m = await visitedA('rail-team', hostSays('available'))
+  runtime.look.mockResolvedValueOnce(handed('recorded-a', 'Words of A.'))
+  const back = () => m.q('nav-back') as HTMLButtonElement
+  // A busy or slow computer draws its frames late; each one here comes 150 ms after it is asked.
+  const frames = vi
+    .spyOn(window, 'requestAnimationFrame')
+    .mockImplementation((frame) => window.setTimeout(() => frame(performance.now()), 150))
+  try {
+    back().click()
+    await expect.poll(() => m.q('transcript').textContent).toContain('Words of A.')
+    // What a person sees now: A, and Back offered to the conversation behind it.
+    expect(back().disabled).toBe(false)
+    expect(back().title).toContain('Back to')
+    back().click()
+    await expect.poll(() => m.all('message-link')[0]?.textContent).toBe('W9.1')
+  } finally {
+    frames.mockRestore()
+  }
+})
+
 it('another tab chosen while a step reads stops the step', async () => {
   const m = await visitedA('rail-team', hostSays('available'))
   runtime.look.mockResolvedValueOnce(handed('recorded-a', 'Words of A.'))
