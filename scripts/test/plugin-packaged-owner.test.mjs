@@ -2,6 +2,9 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
+import { EventEmitter } from 'node:events'
+import { PassThrough } from 'node:stream'
+import { finished } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as processes from '../gates/plugin-packaged/processes.mjs'
@@ -18,17 +21,6 @@ import {
   bestEffortDrain,
 } from '../gates/plugin-packaged/runner-processes.mjs'
 import { fixtureEnvironment, removeFixture } from '../gates/plugin-packaged/prepare.mjs'
-import {
-  inventory,
-  artifactNames,
-  testArguments,
-  sourcePaths,
-  dependencyPaths,
-  resourcePaths,
-  reconcileNative,
-  safeExecution,
-  retainNamed48,
-} from '../gates/plugin-packaged/named48.mjs'
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const ownerSource = fs.readFileSync(
   path.join(repository, 'scripts/gates/plugin-packaged/owner.mjs'),
@@ -82,7 +74,6 @@ function fixture({ drained = true, failAt, rows = [] } = {}) {
     fs,
     path,
     performance,
-    retainNamed48: () => true,
     fixtureEnvironment,
     requireHosted() {},
     readOwner: () => ({ root, node: '/fictional/node' }),
@@ -103,14 +94,14 @@ function fixture({ drained = true, failAt, rows = [] } = {}) {
     removeFixture,
     console: { log: (line) => lines.push(line) },
     printFailure: (value) => lines.push(JSON.stringify(value)),
-    childRun(program, args, env, cwd, abort, maximum, phase, echo) {
+    childRun(program, args, env, cwd, abort, maximum, phase, output) {
       launches.push({
         program,
         args,
         env,
         cwd,
         phase,
-        echo,
+        output,
         aborted: abort.signal.aborted,
         maximum,
       })
@@ -158,218 +149,142 @@ function fixture({ drained = true, failAt, rows = [] } = {}) {
     summary: () => JSON.parse(fs.readFileSync(path.join(control, 'summary.json'))),
   }
 }
-function fictionalNative(repo) {
-  return {
-    success: true,
-    numTotalTests: 48,
-    numPassedTests: 48,
-    numFailedTests: 0,
-    numPendingTests: 0,
-    numTodoTests: 0,
-    numFailedTestSuites: 0,
-    numPendingTestSuites: 0,
-    testResults: inventory.files.map((file) => ({
-      name: path.join(repo, file.path),
-      status: 'passed',
-      message: '',
-      assertionResults: file.assertions.map((row) => ({
-        ...row,
-        status: 'passed',
-        failureMessages: [],
-        meta: {},
-        tags: [],
-      })),
-    })),
-  }
-}
-function fictionalReceipt() {
+function outputFixture(maximum = 1000, stale = false) {
   const root = scratch(),
     control = scratch(),
-    repo = path.join(root, 'repo')
-  fs.mkdirSync(repo)
-  const sources = sourcePaths.map((name) => {
-    const bytes = fs.readFileSync(path.join(repository, name))
-    fs.mkdirSync(path.dirname(path.join(repo, name)), { recursive: true })
-    fs.writeFileSync(path.join(repo, name), bytes)
-    return { path: name, sha256: contract.digest(bytes) }
-  })
-  const value = {
-    format: 1,
-    source: { commit: 'a'.repeat(40), tree: 'b'.repeat(40), trackedClean: true, files: sources },
-    runtime: {
-      executable: resourcePaths[0],
-      sha256: 'c'.repeat(64),
-      platform: 'darwin',
-      arch: 'arm64',
-      version: 'v24.22.0',
-      execPathSha256: 'd'.repeat(64),
+    abort = new AbortController(),
+    visible = { stdout: [], stderr: [] },
+    files = [],
+    child = Object.assign(new EventEmitter(), {
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      kill: vi.fn(),
+    }),
+    output = {
+      stdout: path.join(control, 'named48-stdout.log'),
+      stderr: path.join(control, 'named48-stderr.log'),
+    }
+  if (stale) fs.writeFileSync(output.stderr, 'prior output', { flag: 'wx' })
+  const begin = ownerSource.indexOf('export function childRun('),
+    end = ownerSource.indexOf('export async function run(', begin)
+  const run = Function(
+    'spawn',
+    'fs',
+    'process',
+    'bounded',
+    ...Object.keys(diagnostics),
+    'return (' + ownerSource.slice(begin, end).replace('export ', '') + ')',
+  )(
+    () => child,
+    {
+      ...fs,
+      createWriteStream(...args) {
+        const file = fs.createWriteStream(...args)
+        files.push(file)
+        return file
+      },
     },
-    command: {
-      cwd: 'fixture/repo',
-      entry: 'scripts/gates/plugin-packaged/named48.mjs',
-      args: testArguments('<fixture-root>'),
-      actualArgvSha256: 'e'.repeat(64),
-      cliArgvSha256: 'e'.repeat(64),
-    },
-    dependencies: dependencyPaths.map((name) => ({
-      path: name,
-      sha256: 'f'.repeat(64),
-      version: '1.2.3',
-    })),
-    resources: resourcePaths.map((name) => ({ path: name, sha256: '0'.repeat(64) })),
-    exit: { code: 0, signal: null },
-  }
-  const native = fictionalNative(repo)
-  const save = () => {
-    fs.writeFileSync(path.join(root, 'named48-native.json'), JSON.stringify(native), {
-      mode: 0o600,
-    })
-    fs.writeFileSync(path.join(root, 'named48-process.json'), JSON.stringify(value), {
-      mode: 0o600,
-    })
-  }
-  save()
-  return { root, control, repo, value, native, save }
-}
-// Synthetic native inputs are reporting oracles only, never packaged/runtime acceptance evidence.
-describe.skipIf(process.platform === 'win32')('named48 reporting oracles', () => {
-  it('selects exactly the unchanged three whole files with the original scripts project and no guard flags', () => {
-    expect(inventory.files.map((file) => file.assertions.length)).toEqual([13, 8, 27])
-    expect(
-      new Set(
-        inventory.files.flatMap((file) => file.assertions.map((row) => file.path + row.fullName)),
-      ).size,
-    ).toBe(48)
-    expect(testArguments('/fictional-root')).toEqual([
-      'node_modules/vitest/vitest.mjs',
-      'run',
-      '--project',
-      'scripts',
-      ...inventory.files.map((file) => file.path),
-      '--reporter=json',
-      '--outputFile=/fictional-root/named48-native.json',
-    ])
-    for (const file of inventory.files)
-      expect(contract.digest(fs.readFileSync(path.join(repository, file.path)))).toBe(file.sha256)
-  })
-  it('projects actual known identities and statuses and excludes private native detail', () => {
-    const repo = '/fictional-repo',
-      native = fictionalNative(repo)
-    native.stdout = 'PRIVATE-OUTPUT'
-    native.testResults[0].private = 'PRIVATE-FILE'
-    native.testResults[0].assertionResults[0].meta = { private: 'PRIVATE-META' }
-    const projection = reconcileNative(native, repo)
-    expect(projection.complete).toBe(true)
-    expect(projection.counts).toMatchObject({ expected: 48, observed: 48, passed: 48 })
-    expect(JSON.stringify(projection)).not.toMatch(
-      /PRIVATE-|fictional-repo|failureMessages|meta|stdout/,
-    )
-    expect(projection.testResults[0].assertionResults[0]).toEqual({
-      ...inventory.files[0].assertions[0],
-      status: 'passed',
-    })
-  })
-  it.each(['failed', 'skipped', 'pending', 'todo', 'disabled'])(
-    'retains actual %s status even if aggregate/file success fields claim passed',
-    (status) => {
-      const native = fictionalNative('/fictional-repo')
-      native.testResults[0].assertionResults[0].status = status
-      const projection = reconcileNative(native, '/fictional-repo')
-      expect(projection.complete).toBe(false)
-      expect(projection.testResults[0].assertionResults[0].status).toBe(status)
-      expect(projection.counts[status]).toBe(1)
-    },
+    Object.fromEntries(
+      ['stdout', 'stderr'].map((stream) => [
+        stream,
+        { write: (bytes) => visible[stream].push(Buffer.from(bytes)) },
+      ]),
+    ),
+    processes.bounded,
+    ...Object.values(diagnostics),
   )
-  it.each([
-    'missing',
-    'extra',
-    'duplicate',
-    'file-extra',
-    'file-duplicate',
-    'load',
-    'runtime',
-    'unsafe-status',
-    'unsafe-file-status',
-    'unsafe-title',
-    'unsafe-ancestor',
-    'failure-text',
-    'aggregate',
-  ])('rejects full native %s input before removing unsafe detail', (kind) => {
-    const native = fictionalNative('/fictional-repo'),
-      file = native.testResults[0]
-    if (kind === 'missing') file.assertionResults.pop()
-    if (kind === 'extra')
-      file.assertionResults.push({ ...file.assertionResults[0], fullName: 'PRIVATE-EXTRA' })
-    if (kind === 'duplicate') file.assertionResults.push(file.assertionResults[0])
-    if (kind === 'file-extra') native.testResults.push({ ...file, name: '/PRIVATE-PATH' })
-    if (kind === 'file-duplicate') native.testResults.push(file)
-    if (kind === 'load') file.message = 'PRIVATE-LOAD-STACK'
-    if (kind === 'runtime') native.unhandledErrors = ['PRIVATE-RUNTIME-STACK']
-    if (kind === 'unsafe-status') file.assertionResults[0].status = 'PRIVATE-STATUS'
-    if (kind === 'unsafe-file-status') file.status = 'PRIVATE-STATUS'
-    if (kind === 'unsafe-title') file.assertionResults[0].title = 'PRIVATE-TITLE'
-    if (kind === 'unsafe-ancestor') file.assertionResults[0].ancestorTitles = ['PRIVATE-ANCESTOR']
-    if (kind === 'failure-text')
-      file.assertionResults[0].failureMessages = ['PRIVATE-FAILURE-STACK']
-    if (kind === 'aggregate') native.numFailedTestSuites = 1
-    const projection = reconcileNative(native, '/fictional-repo')
-    expect(projection.complete).toBe(false)
-    expect(JSON.stringify(projection)).not.toMatch(/PRIVATE-|fictional-repo/)
-  })
+  const task = run(
+    '/fictional/node',
+    ['fictional.mjs'],
+    {},
+    root,
+    abort,
+    maximum,
+    'cdp-fixture-tests',
+    output,
+  )
+  return { root, control, abort, visible, files, child, output, task }
+}
+// Exercise actual owner stream handling with controlled exit and pipe events; no Mac/runtime credit.
+describe.skipIf(process.platform === 'win32')('ordinary fixture output artifacts', () => {
   it.each([
     { code: 0, signal: null },
-    { code: 9, signal: null },
+    { code: 7, signal: null },
     { code: null, signal: 'SIGTERM' },
-  ])('owner exit %j remains authoritative and exports survive actual fixture removal', (exit) => {
-    const f = fictionalReceipt()
-    expect(safeExecution(f.value)).toBe(true)
-    expect(retainNamed48(f.root, f.control, exit)).toBe(exit.code === 0)
-    const before = artifactNames.map((name) => fs.readFileSync(path.join(f.control, name), 'utf8'))
-    const [projection, receipt] = before.map((bytes) => JSON.parse(bytes))
-    expect(receipt.exit).toEqual(exit)
-    expect(receipt.rawNativeSha256).toBe(
-      contract.digest(fs.readFileSync(path.join(f.root, 'named48-native.json'))),
+  ])('retains visible bytes after exit and requires pipe closure for %j', async (exit) => {
+    const f = outputFixture()
+    let settled = false
+    const outcome = f.task.wait().then(
+      () => {
+        settled = true
+        return null
+      },
+      (error) => {
+        settled = true
+        return error
+      },
     )
-    expect(receipt.projectionSha256).toBe(contract.digest(before[0]))
-    expect(projection.kind).toBe('sanitized native assertion projection')
-    expect(projection.rawNativeNotice).toBe(
-      'Provenance digest only. Raw bytes stay private and may be deleted by cleanup; no retained raw audit.',
+    const stdout = Buffer.from('fictional body output ü\n'),
+      stderr = Buffer.from(
+        'AssertionError: fictional body or afterEach error\n  at /fictional/suite.mjs:54:3\n',
+      )
+    f.child.stdout.write(stdout)
+    f.child.emit('exit', exit.code, exit.signal)
+    f.child.stderr.end(stderr)
+    f.child.stdout.end('late stdout after exit\n')
+    await Promise.all(f.files.map((file) => finished(file)))
+    expect(settled).toBe(false)
+    expect(f.task.result).toEqual(exit)
+    expect(f.task.pipesClosed).toBe(false)
+    f.child.emit('close')
+    const error = await outcome
+    if (exit.code === 0) expect(error).toBeNull()
+    else
+      expect(error.failure).toMatchObject({
+        phase: 'cdp-fixture-tests',
+        exitCode: exit.code,
+        signal: exit.signal,
+      })
+    expect(f.task.pipesClosed).toBe(true)
+    expect(fs.readFileSync(f.output.stdout)).toEqual(
+      Buffer.concat([stdout, Buffer.from('late stdout after exit\n')]),
     )
-    expect(before.join('')).not.toContain(f.root)
+    expect(fs.readFileSync(f.output.stderr)).toEqual(stderr)
+    for (const stream of ['stdout', 'stderr'])
+      expect(Buffer.concat(f.visible[stream])).toEqual(fs.readFileSync(f.output[stream]))
     removeFixture(f.root, { exited: true, processes: 0 }, [])
-    expect(
-      artifactNames.map((name) => fs.readFileSync(path.join(f.control, name), 'utf8')),
-    ).toEqual(before)
-    expect(fs.readdirSync(f.control).sort()).toEqual([...artifactNames, 'fixture-owned'].sort())
+    expect(fs.readFileSync(f.output.stderr)).toEqual(stderr)
   })
-  it.each([
-    'parse',
-    'unsafe-metadata',
-    'stale-export',
-    'source-changed',
-    'native-link',
-    'native-public',
-  ])('a %s receipt cannot produce successful fresh exports', (kind) => {
-    const f = fictionalReceipt()
-    if (kind === 'unsafe-metadata') {
-      f.value.runtime.version = 'PRIVATE-VERSION'
-      f.save()
-    }
-    if (kind === 'parse')
-      fs.writeFileSync(path.join(f.root, 'named48-native.json'), '{PRIVATE-PARSE')
-    if (kind === 'stale-export')
-      fs.writeFileSync(path.join(f.control, artifactNames[0]), 'PRIVATE-STALE')
-    if (kind === 'source-changed')
-      fs.appendFileSync(path.join(f.repo, sourcePaths[0]), '\n// changed')
-    if (kind === 'native-link') {
-      fs.renameSync(path.join(f.root, 'named48-native.json'), path.join(f.root, 'original'))
-      fs.symlinkSync(path.join(f.root, 'original'), path.join(f.root, 'named48-native.json'))
-    }
-    if (kind === 'native-public') fs.chmodSync(path.join(f.root, 'named48-native.json'), 0o644)
-    if (kind === 'source-changed')
-      expect(retainNamed48(f.root, f.control, { code: 0, signal: null })).toBe(false)
-    else expect(() => retainNamed48(f.root, f.control, { code: 0, signal: null })).toThrow()
+  it('fails a stale output artifact without overwriting its bytes', async () => {
+    const f = outputFixture(1000, true)
+    const outcome = f.task.wait().catch((error) => error)
+    f.child.stdout.end('stdout')
+    f.child.stderr.end('new stderr')
+    f.child.emit('exit', 0, null)
+    f.child.emit('close')
+    expect((await outcome).failure.phase).toBe('cdp-fixture-tests')
+    expect(fs.readFileSync(f.output.stderr, 'utf8')).toBe('prior output')
+    await Promise.allSettled(f.files.map((file) => finished(file)))
   })
+  it.each(['cancelled', 'timeout'])(
+    'keeps captured errors and rejects %s before the later drain closes pipes',
+    async (kind) => {
+      const f = outputFixture(kind === 'timeout' ? 1 : 1000)
+      const outcome = f.task.wait().catch((error) => error)
+      f.child.stderr.write('fictional native error before drain\n')
+      if (kind === 'cancelled') f.abort.abort()
+      expect((await outcome).failure.errorClass).toBe(kind)
+      expect(f.task.pipesClosed).toBe(false)
+      f.child.stdout.end()
+      f.child.stderr.end('late drain output\n')
+      f.child.emit('exit', null, 'SIGTERM')
+      f.child.emit('close')
+      await Promise.all(f.files.map((file) => finished(file)))
+      expect(fs.readFileSync(f.output.stderr, 'utf8')).toBe(
+        'fictional native error before drain\nlate drain output\n',
+      )
+    },
+  )
 })
 
 describe.skipIf(process.platform === 'win32')(
@@ -563,14 +478,14 @@ describe.skipIf(process.platform === 'win32')(
         expect(fs.existsSync(f.root)).toBe(!drained)
       },
     )
-    it('shares the original absolute fixture budget, hides only named48 output and retains before cleanup', async () => {
+    it('uses ordinary whole-file reporters, visible retained streams and the original shared deadline', async () => {
       const f = fixture()
       let elapsed = 0
       f.io.performance = { now: () => elapsed }
       const launch = f.io.childRun
       f.io.childRun = (...args) => {
         const task = launch(...args)
-        if (args[1][0] === 'scripts/gates/plugin-packaged/named48.mjs') {
+        if (args[1].includes('scripts/test/plugin-packaged-provider.test.mjs')) {
           const wait = task.wait
           task.wait = async () => {
             await wait()
@@ -579,19 +494,23 @@ describe.skipIf(process.platform === 'win32')(
         }
         return task
       }
-      const retained = []
-      f.io.retainNamed48 = (root, control, exit) => {
-        retained.push({ root, control, exit })
-        elapsed += 1000
-        return true
-      }
       expect(
         await ownerFunction('run', f.io)(f.control, '/fictional/node22', '/fictional/pnpm'),
       ).toBe(true)
       const commands = f.launches.filter((row) => row.phase === 'cdp-fixture-tests')
-      expect(commands.map((row) => row.maximum)).toEqual([420000, 319000])
-      expect(commands.map((row) => row.echo)).toEqual([false, true])
-      expect(commands[0].args).toEqual(['scripts/gates/plugin-packaged/named48.mjs', f.root])
+      expect(commands.map((row) => row.maximum)).toEqual([420000, 320000])
+      expect(commands[0].args).toEqual([
+        'node_modules/vitest/vitest.mjs',
+        'run',
+        '--project',
+        'scripts',
+        'scripts/test/plugin-packaged-gate.test.mjs',
+        'scripts/test/plugin-packaged-release.test.mjs',
+        'scripts/test/plugin-packaged-provider.test.mjs',
+        '--reporter=default',
+        '--reporter=json',
+        '--outputFile=' + path.join(f.control, 'named48-native.json'),
+      ])
       expect(commands[1].args).toEqual([
         'node_modules/vitest/vitest.mjs',
         'run',
@@ -599,35 +518,38 @@ describe.skipIf(process.platform === 'win32')(
         'scripts',
         'scripts/test/plugin-packaged-browser.test.mjs',
       ])
+      expect(commands.map((row) => row.output)).toEqual([
+        {
+          stdout: path.join(f.control, 'named48-stdout.log'),
+          stderr: path.join(f.control, 'named48-stderr.log'),
+        },
+        {
+          stdout: path.join(f.control, 'browser-fixture-stdout.log'),
+          stderr: path.join(f.control, 'browser-fixture-stderr.log'),
+        },
+      ])
       expect(
         commands.every((row) => row.program.endsWith('/Contents/Resources/plugin-node/node')),
       ).toBe(true)
-      expect(retained).toEqual([
-        { root: f.root, control: f.control, exit: { code: 0, signal: null } },
-      ])
       await ownerFunction('clean', f.io)(f.control)
       expect(fs.existsSync(f.root)).toBe(false)
-      expect(retained).toHaveLength(1)
     })
-    it.each(['nonzero', 'signal', 'receipt', 'budget', 'pipes'])(
-      'a named48 %s failure cannot launch browser work or become a pass during cleanup',
+    it.each(['nonzero', 'signal', 'budget'])(
+      'an ordinary whole48 %s failure cannot launch browser work or become a pass during cleanup',
       async (kind) => {
         const f = fixture()
-        let elapsed = 0,
-          retained = 0
+        const nativeFile = path.join(f.control, 'named48-native.json'),
+          raw = '{"success":true,"failureMessages":["fictional actual error stack"]}\n'
+        let elapsed = 0
         f.io.performance = { now: () => elapsed }
-        f.io.retainNamed48 = () => {
-          retained++
-          return kind !== 'receipt'
-        }
         const launch = f.io.childRun
         f.io.childRun = (...args) => {
           const task = launch(...args)
-          if (args[1][0] === 'scripts/gates/plugin-packaged/named48.mjs') {
-            task.pipesClosed = kind !== 'pipes'
+          if (args[1].includes('scripts/test/plugin-packaged-provider.test.mjs')) {
             if (kind === 'nonzero') task.result = { code: 9, signal: null }
             if (kind === 'signal') task.result = { code: null, signal: 'SIGTERM' }
             task.wait = async () => {
+              fs.writeFileSync(nativeFile, raw)
               if (kind === 'budget') elapsed = 420000
               if (['nonzero', 'signal'].includes(kind))
                 throw diagnostics.failureError('cdp-fixture-tests', task.result)
@@ -639,9 +561,9 @@ describe.skipIf(process.platform === 'win32')(
           await ownerFunction('run', f.io)(f.control, '/fictional/node22', '/fictional/pnpm'),
         ).toBe(false)
         expect(f.launches.filter((row) => row.phase === 'cdp-fixture-tests')).toHaveLength(1)
-        expect(retained).toBe(kind === 'pipes' ? 0 : 1)
         await ownerFunction('clean', f.io)(f.control)
         expect(f.summary().passed).toBe(false)
+        expect(fs.readFileSync(nativeFile, 'utf8')).toBe(raw)
       },
     )
     it('keeps a failed-drain count when the later always drain succeeds, without changing the journey result', async () => {

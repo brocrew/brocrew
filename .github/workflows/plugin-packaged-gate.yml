@@ -40,16 +40,17 @@ jobs:
       - name: Best-effort drain; hosted VM teardown is the final boundary
         if: always() && env.PLUGIN_GATE_CONTROL != ''
         run: node scripts/gates/plugin-packaged/owner.mjs clean "$PLUGIN_GATE_CONTROL"
-      # The projection retains known assertions/statuses only. Raw JSON stays private; its digest
-      # binds provenance, not retained/reconstructable raw bytes or an independent raw audit.
-      - name: Keep summary and sanitized native assertion projection (raw stays private)
+      - name: Keep summary, native Vitest JSON and fixture stdout/stderr
         if: always() && env.PLUGIN_GATE_CONTROL != ''
         uses: actions/upload-artifact@v4
         with:
           name: plugin-packaged-summary
           path: |
             ${{ env.PLUGIN_GATE_CONTROL }}/summary.json
-            ${{ env.PLUGIN_GATE_CONTROL }}/named48-native-projection.json
-            ${{ env.PLUGIN_GATE_CONTROL }}/named48-execution.json
+            ${{ env.PLUGIN_GATE_CONTROL }}/named48-native.json
+            ${{ env.PLUGIN_GATE_CONTROL }}/named48-stdout.log
+            ${{ env.PLUGIN_GATE_CONTROL }}/named48-stderr.log
+            ${{ env.PLUGIN_GATE_CONTROL }}/browser-fixture-stdout.log
+            ${{ env.PLUGIN_GATE_CONTROL }}/browser-fixture-stderr.log
           if-no-files-found: error
           retention-days: 7
