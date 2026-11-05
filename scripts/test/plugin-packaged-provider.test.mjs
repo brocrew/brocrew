@@ -43,6 +43,18 @@ import { withManagedPluginAttachments } from '../../packages/runtime/src/managed
 import { fixtureTitle, fixtureText } from '../gates/plugin-packaged/fake-browser.mjs'
 const definitions = (tools) =>
   tools.map((tool) => ({ ...tool })).sort((a, b) => a.name.localeCompare(b.name))
+// Author documentation retains templates; this fixture's host supplies these private folders.
+const expectedChromeRuntimeInventory = (authorInventory, pluginDataRoot) =>
+  authorInventory.map((tool) =>
+    typeof tool.description === 'string'
+      ? {
+          ...tool,
+          description: tool.description
+            .replace('{downloads}', () => path.join(pluginDataRoot, 'downloads'))
+            .replace('{roots}', () => path.join(pluginDataRoot, 'files')),
+        }
+      : { ...tool },
+  )
 const cleanup = [],
   roots = []
 const protocolInstalled = fs.existsSync(
@@ -168,6 +180,59 @@ describe.skipIf(process.platform === 'win32')(
         ),
       ])
         expect(definitions(changed)).not.toEqual(definitions(inventory))
+
+      const authorInventory = [
+        {
+          name: 'unexercised',
+          description: 'Save {downloads}; files {roots}; repeated {downloads} {roots}.',
+          inputSchema: {
+            type: 'object',
+            properties: { file: { type: 'string', description: '{roots}' } },
+          },
+          annotations: { readOnlyHint: false },
+          metadata: { template: '{downloads}' },
+        },
+        { name: 'without_description', inputSchema: {} },
+        { name: 'nonstring_description', description: null, inputSchema: {} },
+      ]
+      const originalAuthorInventory = structuredClone(authorInventory)
+      const expected = [
+        {
+          name: 'unexercised',
+          description:
+            'Save /fictional/$&/downloads; files /fictional/$&/files; repeated {downloads} {roots}.',
+          inputSchema: {
+            type: 'object',
+            properties: { file: { type: 'string', description: '{roots}' } },
+          },
+          annotations: { readOnlyHint: false },
+          metadata: { template: '{downloads}' },
+        },
+        { name: 'without_description', inputSchema: {} },
+        { name: 'nonstring_description', description: null, inputSchema: {} },
+      ]
+      expect(expectedChromeRuntimeInventory(authorInventory, '/fictional/$&')).toEqual(expected)
+      expect(authorInventory).toEqual(originalAuthorInventory)
+      for (const description of [
+        authorInventory[0].description,
+        'Save {downloads}; files /fictional/$&/files; repeated {downloads} {roots}.',
+        'Save /fictional/$&/downloads; files {roots}; repeated {downloads} {roots}.',
+        'Save /fictional/wrong/downloads; files /fictional/$&/files; repeated {downloads} {roots}.',
+        'Save /fictional/$&/downloads; files /fictional/wrong/files; repeated {downloads} {roots}.',
+        'Changed /fictional/$&/downloads; files /fictional/$&/files; repeated {downloads} {roots}.',
+      ])
+        expect(definitions([{ ...expected[0], description }, ...expected.slice(1)])).not.toEqual(
+          definitions(expected),
+        )
+      for (const changed of [
+        expected.slice(1),
+        [...expected, { name: 'extra', inputSchema: {} }],
+        [{ ...expected[0], name: 'renamed' }, ...expected.slice(1)],
+        [{ ...expected[0], inputSchema: { type: 'object' } }, ...expected.slice(1)],
+        [{ ...expected[0], annotations: { readOnlyHint: true } }, ...expected.slice(1)],
+        [{ ...expected[0], metadata: { template: '/fictional/$&/downloads' } }, ...expected.slice(1)],
+      ])
+        expect(definitions(changed)).not.toEqual(definitions(expected))
     })
     it('restores the browser environment value or absence after successful or rejected setup', async () => {
       const key = 'BROCREW_CHROME_EXECUTABLE',
@@ -523,16 +588,18 @@ describe.skipIf(process.platform === 'win32')(
             await client.close()
           }
         }
+        const pluginDataRoot = path.join(root, 'host', 'data', verified.manifest.id)
+        const authorInventory = JSON.parse(
+          Buffer.from(verified.readFile(verified.manifest.tools.inventory)).toString('utf8'),
+        )
+        expect(Array.isArray(authorInventory)).toBe(true)
+        const expectedInventory = expectedChromeRuntimeInventory(authorInventory, pluginDataRoot)
         // The runner owns this client. Route inventory clients below own only their own sessions.
         const inventory = await connection.client.listTools(undefined, { timeout: 1500 })
         expect(inventory.nextCursor).toBeUndefined()
         const advertised = inventory.tools
         expect(advertised.length).toBeGreaterThan(0)
-        const authorInventory = JSON.parse(
-          Buffer.from(verified.readFile(verified.manifest.tools.inventory)).toString('utf8'),
-        )
-        expect(Array.isArray(authorInventory)).toBe(true)
-        expect(definitions(advertised)).toEqual(definitions(authorInventory))
+        expect(definitions(advertised)).toEqual(definitions(expectedInventory))
         let live = true,
           enabled = true
         const installation = {
@@ -741,7 +808,7 @@ describe.skipIf(process.platform === 'win32')(
             .sort((a, b) => a.name.localeCompare(b.name))
         expect(projectedDefinitions(delivered)).toEqual(projectedDefinitions(advertised))
         expect(definitions(delivered)).toEqual(definitions(advertised))
-        expect(definitions(delivered)).toEqual(definitions(authorInventory))
+        expect(definitions(delivered)).toEqual(definitions(expectedInventory))
         const runtime = withManagedPluginAttachments(
           new PackagedGateRuntime('claude', root),
           attachments,
