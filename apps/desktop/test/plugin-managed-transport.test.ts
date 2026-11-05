@@ -10,8 +10,8 @@ const cleanup: Array<() => Promise<unknown>> = []
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close()
 })
-async function fixture() {
-  const f = await pluginProviderFixture()
+async function fixture(options: Parameters<typeof pluginProviderFixture>[0] = {}) {
+  const f = await pluginProviderFixture(options)
   cleanup.push(() => f.close())
   return f
 }
@@ -247,4 +247,83 @@ it('never reassigns a provider alias to a later tool that resembles the encoding
   await client.callTool({ name: oldAlias, arguments: {} })
   await client.callTool({ name: next[0]!.name, arguments: {} })
   expect(f.seen.map((call) => call.name)).toEqual([original, oldAlias])
+})
+
+// 8fe65ca8 continuity: completed results stay quiet; retained clients are not per-call streams.
+it.each([false, true])(
+  'keeps diagnostics quiet for completed provider calls with isError=%s and route teardown',
+  async (isError) => {
+    const reasons: string[] = []
+    const f = await fixture({ diagnostic: (reason) => reasons.push(reason) }),
+      route = await f.route('diagnostic-completed'),
+      client = await connect(route.server)
+    const retainedClose = vi.spyOn(f.client, 'close')
+    const result = {
+      content: [{ type: 'text' as const, text: 'fictional private page text' }],
+      structuredContent: { url: 'https://fictional.invalid/private-page' },
+      isError,
+      _meta: { credential: f.credential },
+    }
+    f.reply(result)
+    for (let n = 0; n < 2; n++) {
+      expect(
+        await client.callTool({
+          name: 'echo',
+          arguments: { profile: 'fern', privateArgument: 'fictional private argument' },
+        }),
+      ).toEqual(result)
+      expect(reasons).toEqual([])
+    }
+    expect(f.seen).toHaveLength(2)
+    expect(retainedClose).not.toHaveBeenCalled()
+    await client.close()
+    await route.close()
+    expect(retainedClose).not.toHaveBeenCalled()
+    expect(reasons).toEqual([])
+    retainedClose.mockRestore()
+  },
+)
+it('diagnoses a real retained-client transport failure with bounded reasons only', async () => {
+  const reasons: string[] = []
+  const f = await fixture({ diagnostic: (reason) => reasons.push(reason) }),
+    route = await f.route('diagnostic-transport-failure'),
+    client = await connect(route.server)
+  // Closing the actual downstream client leaves the provider route alive to observe failure.
+  await f.client.close()
+  await expect(
+    client.callTool({
+      name: 'echo',
+      arguments: {
+        pageText: 'fictional private page text',
+        url: 'https://fictional.invalid/private-page',
+        credential: f.credential,
+      },
+    }),
+  ).rejects.toMatchObject({
+    code: ErrorCode.InternalError,
+    message: 'MCP error -32603: Plugin call failed: transport.',
+  })
+  expect(f.seen).toEqual([])
+  expect(reasons).toContain('transport-call-failed')
+  expect(reasons.every((reason) => reason === 'transport-call-failed')).toBe(true)
+})
+it('diagnoses a genuine remote protocol error without retaining its private payload', async () => {
+  const reasons: string[] = []
+  const f = await fixture({ diagnostic: (reason) => reasons.push(reason) }),
+    route = await f.route('diagnostic-protocol-failure'),
+    client = await connect(route.server)
+  const message = `fictional raw error ${f.credential}`
+  const data = { pageText: 'fictional private page text', url: 'https://fictional.invalid/private' }
+  f.fail({ code: ErrorCode.InvalidParams, message, data })
+  await expect(
+    client.callTool({ name: 'echo', arguments: { privateArgument: 'fictional argument' } }),
+  ).rejects.toMatchObject({ code: ErrorCode.InvalidParams, data })
+  expect(f.seen).toHaveLength(1)
+  expect(reasons).toEqual(['downstream'])
+  f.fail()
+  expect(await client.callTool({ name: 'echo', arguments: {} })).toMatchObject({
+    content: [{ text: PLUGIN_MARKER }],
+  })
+  expect(f.seen).toHaveLength(2)
+  expect(reasons).toEqual(['downstream'])
 })

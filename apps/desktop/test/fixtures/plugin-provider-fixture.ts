@@ -1,3 +1,4 @@
+import type { PluginToolDiagnostic } from '../../src/main/plugins/tool-diagnostics'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
@@ -21,7 +22,9 @@ export function noPrivateCredential(value: unknown, secret: string): void {
     return item
   })
 }
-export async function pluginProviderFixture(options: { createBroker?: boolean } = {}) {
+export async function pluginProviderFixture(
+  options: { createBroker?: boolean; diagnostic?: PluginToolDiagnostic } = {},
+) {
   const credential = createPluginCredential()
   const seen: {
     name: string
@@ -88,6 +91,7 @@ export async function pluginProviderFixture(options: { createBroker?: boolean } 
           },
           client,
           isEnabled: (workspaceId) => enabled.has(workspaceId),
+          diagnostic: options.diagnostic,
         })
   const routes: Awaited<ReturnType<typeof openManagedPluginRoute>>[] = []
   return {
@@ -111,7 +115,12 @@ export async function pluginProviderFixture(options: { createBroker?: boolean } 
     },
     async route(_incarnation: string, workspaceId = 'fictional-workspace') {
       if (!broker) throw new Error('Provider route is not part of this fixture.')
-      const route = await openManagedPluginRoute(broker, { workspaceId, origin: 'agent' })
+      const route = await openManagedPluginRoute(
+        broker,
+        { workspaceId, origin: 'agent' },
+        () => true,
+        options.diagnostic,
+      )
       routes.push(route)
       return route
     },
