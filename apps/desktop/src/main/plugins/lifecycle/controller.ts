@@ -1107,10 +1107,7 @@ export class PluginLifecycleController {
           await this.bindingWait(
             workspace,
             binding,
-            () =>
-              this.effectQueue.restart(id, randomUUID(), () =>
-                this.ensureRunning(install, checked),
-              ),
+            () => this.acquireBindingRun(id, install, checked),
             false,
           )
           binding.run = this.runs.get(id)
@@ -1181,6 +1178,13 @@ export class PluginLifecycleController {
         return false
       })
     return binding
+  }
+  private acquireBindingRun(
+    id: string,
+    install: Installation,
+    checked: VerifiedPluginPackage,
+  ): Promise<LifecycleRun> {
+    return this.effectQueue.restart(id, randomUUID(), () => this.ensureRunning(install, checked))
   }
   /** A workspace can expose one ready plugin while an unrelated consumer binding is still pending. */
   async attach(sink: WorkspaceProjection, shared = false): Promise<LifecycleWorkspace> {
