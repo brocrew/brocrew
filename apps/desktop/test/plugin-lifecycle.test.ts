@@ -1,3 +1,4 @@
+import { snapshotPath } from './helpers/plugin-state-snapshot'
 import { genericUiFixture } from './plugin-ui-fixtures'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -425,7 +426,7 @@ describe.skipIf(process.platform === 'win32')(
         expect((await f.controller.status()).cleanupPending).toEqual(['chrome']),
       )
       clock += 5_000
-      const selected = join(f.root, 'state', 'installed-state.json')
+      const selected = snapshotPath(join(f.root, 'state'))
       const before = await readFile(selected)
       const lock = vi.spyOn(f.state, 'withExclusive')
       const prepare = vi.spyOn(f.state, 'prepare')
@@ -445,7 +446,7 @@ describe.skipIf(process.platform === 'win32')(
         expect(removeData).not.toHaveBeenCalled()
         expect(stop).not.toHaveBeenCalled()
         expect(f.downloads()).toBe(downloads)
-        expect(await readFile(selected)).toEqual(before)
+        expect(await readFile(snapshotPath(join(f.root, 'state')))).toEqual(before)
       } finally {
         lock.mockRestore()
         prepare.mockRestore()

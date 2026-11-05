@@ -1,3 +1,4 @@
+import { snapshotPath } from './helpers/plugin-state-snapshot'
 import { afterEach, expect, it, vi } from 'vitest'
 import { mkdir, writeFile, readdir, readFile, unlink, chmod, stat } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
@@ -314,7 +315,7 @@ it.each(['keep', 'remove'] as const)(
     const starts = f.starts()
     const state = reopenLifecycleFixture(f)
     const stopped = await PluginLifecycleController.open({ ...f.opts, state })
-    const selected = join(f.root, 'state', 'installed-state.json')
+    const selected = snapshotPath(join(f.root, 'state'))
     const before = await readFile(selected)
     const release = deferred<void>()
     const entered = deferred<void>()
@@ -354,7 +355,7 @@ it.each(['keep', 'remove'] as const)(
       })
       expect(load).toHaveBeenCalledTimes(1)
       expect(f.starts()).toBe(starts)
-      expect(await readFile(selected)).toEqual(before)
+      expect(await readFile(snapshotPath(join(f.root, 'state')))).toEqual(before)
       // An unavailable archive is unknown metadata, not permission to promise preservation.
       await chmod(join(f.root, 'package-vault', pkg.binding.releaseDigest), 0o700)
       await unlink(join(f.root, 'package-vault', pkg.binding.releaseDigest, 'archive'))
@@ -365,7 +366,7 @@ it.each(['keep', 'remove'] as const)(
       expect(load).toHaveBeenCalledTimes(2)
       await expect(reads[1]).rejects.toThrow()
       expect(f.starts()).toBe(starts)
-      expect(await readFile(selected)).toEqual(before)
+      expect(await readFile(snapshotPath(join(f.root, 'state')))).toEqual(before)
     } finally {
       release.resolve()
       await Promise.allSettled(reads)

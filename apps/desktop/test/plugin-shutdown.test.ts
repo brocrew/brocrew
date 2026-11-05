@@ -1,3 +1,4 @@
+import { snapshotPath } from './helpers/plugin-state-snapshot'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
@@ -319,7 +320,7 @@ describe.skipIf(process.platform === 'win32')(
       await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
       expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
       expect(f.controller.cleanForShutdown()).toBe(false)
-      const selected = join(f.root, 'state', 'installed-state.json')
+      const selected = snapshotPath(join(f.root, 'state'))
       const before = await readFile(selected)
       const applied = vi.spyOn(f.local.sink, 'applied')
       const publish = vi.spyOn(f.state, 'recordProjection')
@@ -329,13 +330,13 @@ describe.skipIf(process.platform === 'win32')(
         await stopped.promise
         await expect(draining).resolves.toBeUndefined()
         expect(f.controller.cleanForShutdown()).toBe(true)
-        expect(await readFile(selected)).toEqual(before)
+        expect(await readFile(snapshotPath(join(f.root, 'state')))).toEqual(before)
         expect(revoke).toHaveBeenCalledOnce()
         ack.resolve(true)
         await new Promise<void>((resolve) => setImmediate(resolve))
         expect(applied).not.toHaveBeenCalled()
         expect(publish).not.toHaveBeenCalled()
-        expect(await readFile(selected)).toEqual(before)
+        expect(await readFile(snapshotPath(join(f.root, 'state')))).toEqual(before)
       } finally {
         ack.resolve(true)
         await draining.catch(() => undefined)
@@ -363,7 +364,7 @@ describe.skipIf(process.platform === 'win32')(
         ack = deferred<boolean>()
       const f = await fixture({ runtime: exitingRuntime(exit.promise) })
       await f.controller.install(f.handle, 'chrome')
-      const snapshot = join(f.root, 'state', 'installed-state.json'),
+      const snapshot = snapshotPath(join(f.root, 'state')),
         selected = await readFile(snapshot)
       const installation = f.state.currentInstallation('chrome')!
       type Revoke = (install: typeof installation, currentOnly?: boolean) => Promise<void>
@@ -417,7 +418,7 @@ describe.skipIf(process.platform === 'win32')(
           before: null,
           receipt: null,
         })
-        expect(await readFile(snapshot)).toEqual(selected)
+        expect(await readFile(snapshotPath(join(f.root, 'state')))).toEqual(selected)
         ack.resolve(true)
         await work
         expect(observing).toHaveBeenCalledOnce()
@@ -435,7 +436,7 @@ describe.skipIf(process.platform === 'win32')(
         })
         expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
         expect(f.controller.cleanForShutdown()).toBe(false)
-        expect(await readFile(snapshot)).toEqual(selected)
+        expect(await readFile(snapshotPath(join(f.root, 'state')))).toEqual(selected)
       } finally {
         ack.resolve(true)
         observing.mockRestore()

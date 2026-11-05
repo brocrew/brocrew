@@ -1,3 +1,4 @@
+import { snapshotPath } from './helpers/plugin-state-snapshot'
 import fs from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -113,7 +114,7 @@ it.each(['EBUSY', 'EPERM'])(
   async (code) => {
     const f = await setup(),
       before = await f.snapshot()
-    const path = join(f.f.root, 'state', 'installed-state.json'),
+    const path = snapshotPath(join(f.f.root, 'state')),
       read = fs.readFileSync
     const fault = vi
       .spyOn(fs, 'readFileSync')
@@ -132,7 +133,7 @@ it.each(['EBUSY', 'EPERM'])(
 )
 it('repeated successful and malformed snapshot reads close every descriptor they open', async () => {
   const f = await setup(),
-    path = join(f.f.root, 'state', 'installed-state.json')
+    path = snapshotPath(join(f.f.root, 'state'))
   const selected = fs.readFileSync(path)
   const opened: number[] = [],
     open = fs.openSync
@@ -169,7 +170,7 @@ it('observes a copied snapshot without history or writer files and never repairs
     'writer-lock.sqlite-shm',
   ])
     await rm(join(state, name), { force: true })
-  const path = join(state, 'installed-state.json'),
+  const path = snapshotPath(state),
     selected = await fs.promises.readFile(path)
   let before = await disclosureTree(copy)
   expect(snapshot(copy)).toMatchObject({
@@ -190,7 +191,7 @@ it('observes a copied snapshot without history or writer files and never repairs
 })
 it('reads a multiply linked selected snapshot without writing through either name', async () => {
   const f = await setup(),
-    path = join(f.f.root, 'state', 'installed-state.json'),
+    path = snapshotPath(join(f.f.root, 'state')),
     alias = path + '.fictional-alias'
   fs.linkSync(path, alias)
   const before = await f.snapshot(),

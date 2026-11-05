@@ -1,3 +1,4 @@
+import { snapshotPath } from './helpers/plugin-state-snapshot'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -914,14 +915,14 @@ it('retains a failed partial-publication revoke after logical detach and retries
   expect(h.f.state.projections(fresh.sink.workspaceId).some((one) => one.pluginId === B)).toBe(
     false,
   )
-  const snapshot = join(h.f.root, 'state', 'installed-state.json')
+  const snapshot = snapshotPath(join(h.f.root, 'state'))
   const selected = await readFile(snapshot)
   await expect(h.controller.detach(handle)).rejects.toMatchObject({ code: 'cleanup-pending' })
   expect(a.current()).toBe(false)
   expect(h.controller.agentAttachments(fresh.sink.workspaceId)).toEqual([])
   expect((await h.controller.status()).cleanupPending).toContain(B)
   expect(h.controller.cleanForShutdown()).toBe(false)
-  expect(await readFile(snapshot)).toEqual(selected)
+  expect(await readFile(snapshotPath(join(h.f.root, 'state')))).toEqual(selected)
   const attempts = revoke.mock.calls.length
   allowRevoke = true
   await expect(h.controller.detach(handle)).resolves.toBeUndefined()
@@ -930,7 +931,7 @@ it('retains a failed partial-publication revoke after logical detach and retries
   expect(h.controller.cleanForShutdown()).toBe(true)
   expect(originalA.current()).toBe(true)
   expect(originalB.current()).toBe(true)
-  expect(await readFile(snapshot)).toEqual(selected)
+  expect(await readFile(snapshotPath(join(h.f.root, 'state')))).toEqual(selected)
 }, 15000)
 
 async function accepted(
@@ -1060,7 +1061,7 @@ it.each(['pending', 'failed'] as const)(
     await mkdir(join(h.f.root, 'data', A), { recursive: true })
     await writeFile(data, 'Fictional retained old-origin data')
     const dataBefore = await readFile(data)
-    const snapshot = join(h.f.root, 'state', 'installed-state.json')
+    const snapshot = snapshotPath(join(h.f.root, 'state'))
     const selected = await readFile(snapshot)
     const writes = vi.spyOn(h.f.state, 'recordProjection')
     const starts = vi.spyOn(h.f.opts.runtime, 'start')
@@ -1091,7 +1092,7 @@ it.each(['pending', 'failed'] as const)(
     expect(currentB.current()).toBe(true)
     expect(otherA.current()).toBe(true)
     expect(otherB.current()).toBe(true)
-    expect(await readFile(snapshot)).toEqual(selected)
+    expect(await readFile(snapshotPath(join(h.f.root, 'state')))).toEqual(selected)
     expect(await readFile(data)).toEqual(dataBefore)
 
     allowRevoke = true
@@ -1108,7 +1109,7 @@ it.each(['pending', 'failed'] as const)(
     expect(otherA.current()).toBe(true)
     expect(otherB.current()).toBe(true)
     expect(writes).not.toHaveBeenCalled()
-    expect(await readFile(snapshot)).toEqual(selected)
+    expect(await readFile(snapshotPath(join(h.f.root, 'state')))).toEqual(selected)
     expect(await readFile(data)).toEqual(dataBefore)
   },
   15000,
@@ -1206,7 +1207,7 @@ it('retries two publishers of one install independently and never treats the old
   await expect(h.controller.detach(handle)).rejects.toMatchObject({ code: 'cleanup-pending' })
   expect(oldRevoke.mock.calls.slice(oldCalls)).toContainEqual([A, install.installId])
   expect(nextRevoke.mock.calls.slice(nextCalls)).toContainEqual([A, install.installId])
-  const snapshot = join(h.f.root, 'state', 'installed-state.json')
+  const snapshot = snapshotPath(join(h.f.root, 'state'))
   const selected = await readFile(snapshot)
   oldConfirmed = true
   const oldRetry = oldRevoke.mock.calls.length,
@@ -1228,7 +1229,7 @@ it('retries two publishers of one install independently and never treats the old
   expect(h.controller.cleanForShutdown()).toBe(true)
   expect(h.controller.contributions(h.otherPerson, A).current()).toBe(true)
   expect(h.controller.contributions(h.otherPerson, B).current()).toBe(true)
-  expect(await readFile(snapshot)).toEqual(selected)
+  expect(await readFile(snapshotPath(join(h.f.root, 'state')))).toEqual(selected)
 }, 15000)
 
 it.each(['false', 'held'] as const)(
@@ -1304,7 +1305,7 @@ it.each(['false', 'held'] as const)(
     expect(replacement.current()).toBe(true)
     expect(replacement.identity.runId).not.toBe(beforeRun.identity.runId)
     expect(peerB.current()).toBe(true)
-    const snapshot = join(h.f.root, 'state', 'installed-state.json')
+    const snapshot = snapshotPath(join(h.f.root, 'state'))
     const selected = await readFile(snapshot)
     const writes = vi.spyOn(h.f.state, 'recordProjection')
     const oldCalls = [
@@ -1324,7 +1325,7 @@ it.each(['false', 'held'] as const)(
     expect((await h.controller.status()).cleanupPending).toContain(A)
     expect(replacement.current()).toBe(true)
     expect(peerB.current()).toBe(true)
-    expect(await readFile(snapshot)).toEqual(selected)
+    expect(await readFile(snapshotPath(join(h.f.root, 'state')))).toEqual(selected)
     revokeHold.resolve()
     await bounded(revokeReturned.promise, 'old alternate revoke returned false')
     await expect(h.controller.detach(handle)).rejects.toMatchObject({ code: 'cleanup-pending' })
@@ -1336,7 +1337,7 @@ it.each(['false', 'held'] as const)(
     expect(h.controller.contributions(h.person, A).current()).toBe(true)
     expect(peerB.current()).toBe(true)
     expect(h.controller.cleanForShutdown()).toBe(true)
-    expect(await readFile(snapshot)).toEqual(selected)
+    expect(await readFile(snapshotPath(join(h.f.root, 'state')))).toEqual(selected)
   },
   15000,
 )
@@ -1429,7 +1430,7 @@ it.each(['revoke', 'clear'] as const)(
     expect(newRow.installId).toBe(install.installId)
     expect(replacement.identity.runId).not.toBe(originalRun.identity.runId)
     expect(replacement.current()).toBe(true)
-    const snapshot = join(h.f.root, 'state', 'installed-state.json')
+    const snapshot = snapshotPath(join(h.f.root, 'state'))
     const selected = await readFile(snapshot)
     const writes = vi.spyOn(h.f.state, 'recordProjection')
     const callbacks = [reconcile.mock.calls.length, applied.mock.calls.length]
@@ -1444,7 +1445,7 @@ it.each(['revoke', 'clear'] as const)(
     expect(h.controller.admitted(handle, A, install.installId)).toBe(true)
     expect(replacement.current()).toBe(true)
     expect(h.controller.contributions(h.otherPerson, B).current()).toBe(true)
-    expect(await readFile(snapshot)).toEqual(selected)
+    expect(await readFile(snapshotPath(join(h.f.root, 'state')))).toEqual(selected)
     await h.controller.detach(handle)
     expect(h.controller.cleanForShutdown()).toBe(true)
   },

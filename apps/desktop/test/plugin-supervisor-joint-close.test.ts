@@ -1,3 +1,4 @@
+import { snapshotPath } from './helpers/plugin-state-snapshot'
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -429,7 +430,7 @@ it.each(['service first', 'last lease first'] as const)(
       expect.objectContaining({ arguments: { basket: 'before-close' } }),
     )
 
-    const statePath = join(f.root, 'state', 'installed-state.json')
+    const statePath = snapshotPath(join(f.root, 'state'))
     const effectPaths = (await readdir(join(f.root, 'lifecycle-effects')))
       .sort()
       .map((name) => join(f.root, 'lifecycle-effects', name))
@@ -575,6 +576,7 @@ it.each(['service first', 'last lease first'] as const)(
     expect((await service.controller.status()).cleanupPending).toEqual([])
     for (const handle of [healthyHandle, personHandle, agentHandle])
       expect(() => service.controller.hostWorkspace(handle)).toThrow()
+    expect(snapshotPath(join(f.root, 'state'))).toBe(statePath)
     const afterPhysical = await Promise.all(paths.map((path) => readFile(path)))
     expect(afterPhysical).toEqual(before)
     expect(applied).toHaveBeenCalledTimes(callbacks)
@@ -598,6 +600,7 @@ it.each(['service first', 'last lease first'] as const)(
     expect(service.controller.agentAttachments(workspaceId)).toEqual([])
     for (const handle of [healthyHandle, personHandle, agentHandle])
       expect(() => service.controller.hostWorkspace(handle)).toThrow()
+    expect(snapshotPath(join(f.root, 'state'))).toBe(statePath)
     expect(await Promise.all(paths.map((path) => readFile(path)))).toEqual(before)
     expect(host.removePackage).not.toHaveBeenCalled()
     expect(host.removeData).not.toHaveBeenCalled()

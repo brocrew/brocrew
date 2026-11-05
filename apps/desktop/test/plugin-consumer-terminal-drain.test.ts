@@ -1,3 +1,4 @@
+import { snapshotPath } from './helpers/plugin-state-snapshot'
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -75,7 +76,7 @@ it('ended consumer authority retires its UI obligation only after physical exit 
   })
   const f = await fixture({ runtime: r.host })
   await f.controller.install(f.handle, 'chrome')
-  const selected = join(f.root, 'state', 'installed-state.json')
+  const selected = snapshotPath(join(f.root, 'state'))
   const before = await readFile(selected)
   const data = join(f.root, 'host', 'data', 'chrome', 'sentinel')
   await mkdir(join(data, '..'), { recursive: true })
@@ -100,7 +101,7 @@ it('ended consumer authority retires its UI obligation only after physical exit 
     r.exit.resolve()
     await expect(draining).resolves.toBeUndefined()
     expect(f.controller.cleanForShutdown()).toBe(true)
-    expect(await readFile(selected)).toEqual(before)
+    expect(await readFile(snapshotPath(join(f.root, 'state')))).toEqual(before)
     expect(await readFile(data, 'utf8')).toBe('fictional retained login')
     await turn()
     expect(revoke).toHaveBeenCalledOnce()
@@ -123,13 +124,13 @@ it('ended consumer authority cannot retire an unproved process exit or failed st
   r.stop.mockRejectedValue(new Error('fictional stop failed'))
   const f = await fixture({ runtime: r.host })
   await f.controller.install(f.handle, 'chrome')
-  const selected = join(f.root, 'state', 'installed-state.json')
+  const selected = snapshotPath(join(f.root, 'state'))
   const before = await readFile(selected)
   f.controller.consumersEnded()
   fail()
   await expect(f.controller.drain()).rejects.toMatchObject({ code: 'cleanup-pending' })
   expect(f.controller.cleanForShutdown()).toBe(false)
-  expect(await readFile(selected)).toEqual(before)
+  expect(await readFile(snapshotPath(join(f.root, 'state')))).toEqual(before)
 })
 
 it('ended consumer authority does not discard a missing durable effect obligation', async () => {
@@ -141,7 +142,7 @@ it('ended consumer authority does not discard a missing durable effect obligatio
   await f.controller.drain()
   await unlink(join(f.root, 'lifecycle-effects', operationId + '.json'))
   const state = reopenLifecycleFixture(f)
-  const before = await readFile(join(f.root, 'state', 'installed-state.json'))
+  const before = await readFile(snapshotPath(join(f.root, 'state')))
   const current = await PluginLifecycleController.open({ ...f.opts, state })
   expect((await current.status()).cleanupPending).toEqual(['chrome'])
   current.consumersEnded()
@@ -149,7 +150,7 @@ it('ended consumer authority does not discard a missing durable effect obligatio
   expect(current.cleanForShutdown()).toBe(false)
   expect(state.inspect().pending).toBeNull()
   expect(state.operation(operationId)?.status).toBe('completed')
-  expect(await readFile(join(f.root, 'state', 'installed-state.json'))).toEqual(before)
+  expect(await readFile(snapshotPath(join(f.root, 'state')))).toEqual(before)
 })
 
 it('terminal drain includes a start allocation held before its run enters the controller map', async () => {
@@ -187,7 +188,7 @@ it('terminal drain includes a start allocation held before its run enters the co
   const applied = vi.spyOn(pendingConsumer.sink, 'applied')
   await current.attach(pendingConsumer.sink)
   await ackEntered.promise
-  const selected = join(f.root, 'state', 'installed-state.json')
+  const selected = snapshotPath(join(f.root, 'state'))
   const before = await readFile(selected)
   const published = vi.spyOn(state, 'recordProjection')
   current.consumersEnded()
@@ -211,7 +212,7 @@ it('terminal drain includes a start allocation held before its run enters the co
     expect(current.cleanForShutdown()).toBe(true)
     expect(r.host.start).toHaveBeenCalledOnce()
     expect(r.stop).toHaveBeenCalledOnce()
-    expect(await readFile(selected)).toEqual(before)
+    expect(await readFile(snapshotPath(join(f.root, 'state')))).toEqual(before)
     ack.resolve(true)
     await turn()
     expect(applied).not.toHaveBeenCalled()
@@ -243,7 +244,7 @@ it('a held start that rejects without a run cannot retain terminal consumer clea
   const current = await PluginLifecycleController.open({ ...f.opts, state, runtime: r.host })
   await current.attach(projection().sink)
   await entered.promise
-  const selected = join(f.root, 'state', 'installed-state.json')
+  const selected = snapshotPath(join(f.root, 'state'))
   const before = await readFile(selected)
   current.consumersEnded()
   const draining = current.drain()
@@ -261,7 +262,7 @@ it('a held start that rejects without a run cannot retain terminal consumer clea
     expect(current.cleanForShutdown()).toBe(true)
     expect(r.host.start).toHaveBeenCalledOnce()
     expect(r.stop).not.toHaveBeenCalled()
-    expect(await readFile(selected)).toEqual(before)
+    expect(await readFile(snapshotPath(join(f.root, 'state')))).toEqual(before)
   } finally {
     allocated.resolve()
     await draining.catch(() => undefined)
@@ -272,7 +273,7 @@ it('terminal drain retires a proven restart exit while its old consumer revoke i
   const r = runtime()
   const f = await fixture({ runtime: r.host })
   await f.controller.install(f.handle, 'chrome')
-  const selected = join(f.root, 'state', 'installed-state.json')
+  const selected = snapshotPath(join(f.root, 'state'))
   const before = await readFile(selected)
   const data = join(f.root, 'host', 'data', 'chrome', 'sentinel')
   await mkdir(join(data, '..'), { recursive: true })
@@ -302,7 +303,7 @@ it('terminal drain retires a proven restart exit while its old consumer revoke i
     expect(await restarting).toBe(false)
     expect(f.controller.cleanForShutdown()).toBe(true)
     expect(r.host.start).toHaveBeenCalledOnce()
-    expect(await readFile(selected)).toEqual(before)
+    expect(await readFile(snapshotPath(join(f.root, 'state')))).toEqual(before)
     expect(await readFile(data, 'utf8')).toBe('fictional restart data')
     ack.resolve(true)
     await turn()
@@ -312,7 +313,7 @@ it('terminal drain retires a proven restart exit while its old consumer revoke i
     expect(stopped).toHaveBeenCalledOnce()
     expect(r.host.removeCode).not.toHaveBeenCalled()
     expect(r.host.removeData).not.toHaveBeenCalled()
-    expect(await readFile(selected)).toEqual(before)
+    expect(await readFile(snapshotPath(join(f.root, 'state')))).toEqual(before)
   } finally {
     ack.resolve(true)
     r.exit.resolve()
@@ -326,7 +327,7 @@ it('restart and terminal drain keep the exact old process obligation until its a
   r.stop.mockImplementation(async () => stopEntered.resolve())
   const f = await fixture({ runtime: r.host })
   await f.controller.install(f.handle, 'chrome')
-  const selected = join(f.root, 'state', 'installed-state.json')
+  const selected = snapshotPath(join(f.root, 'state'))
   const before = await readFile(selected)
   const stopped = vi.fn()
   const revoke = vi.spyOn(f.local.sink, 'revoke')
@@ -362,7 +363,7 @@ it('restart and terminal drain keep the exact old process obligation until its a
     expect(revoke).not.toHaveBeenCalled()
     expect(published).not.toHaveBeenCalled()
     expect(r.host.start).toHaveBeenCalledOnce()
-    expect(await readFile(selected)).toEqual(before)
+    expect(await readFile(snapshotPath(join(f.root, 'state')))).toEqual(before)
   } finally {
     r.exit.resolve()
     await restarting

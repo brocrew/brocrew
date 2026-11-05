@@ -1,3 +1,4 @@
+import { snapshotPath } from './helpers/plugin-state-snapshot'
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -226,7 +227,7 @@ it('drain stops the retained run with an actual held beforeRemove request and re
     cleanupAttempted: true,
     cleanupResult: 'unconfirmed',
   })
-  const selected = await readFile(join(f.root, 'state/installed-state.json'))
+  const selected = await readFile(snapshotPath(join(f.root, 'state')))
   expect(await within(owner.shutdown())).toBe(true)
   await within(owner.closed)
   await within(f.controller.drain())
@@ -235,7 +236,7 @@ it('drain stops the retained run with an actual held beforeRemove request and re
   expect(calls).toHaveBeenCalledOnce()
   expect(removeCode).not.toHaveBeenCalled()
   expect(removeData).not.toHaveBeenCalled()
-  expect(await readFile(join(f.root, 'state/installed-state.json'))).toEqual(selected)
+  expect(await readFile(snapshotPath(join(f.root, 'state')))).toEqual(selected)
   expect(f.state.inspect().pending?.request.operationId).toBe(operation)
   expect(mcp.cancelled).toContain(operation)
   mcp.hold(false)
@@ -273,7 +274,7 @@ it('drain waits for removeData already in flight but refuses the subsequent comm
       }),
     ]),
   )
-  const selected = await readFile(join(f.root, 'state/installed-state.json'))
+  const selected = await readFile(snapshotPath(join(f.root, 'state')))
   let drained = false
   const draining = owner.shutdown().then(async () => {
     await owner.closed
@@ -292,7 +293,7 @@ it('drain waits for removeData already in flight but refuses the subsequent comm
   await within(draining)
   expect(await removal).toBe(false)
   expect(removeData).toHaveBeenCalledOnce()
-  expect(await readFile(join(f.root, 'state/installed-state.json'))).toEqual(selected)
+  expect(await readFile(snapshotPath(join(f.root, 'state')))).toEqual(selected)
 })
 it('a held consumer acknowledgement cannot retain drain or start deletion after closing', async () => {
   const { f, owner, removeCode, removeData } = await removalFixture()
@@ -319,7 +320,7 @@ it('a held consumer acknowledgement cannot retain drain or start deletion after 
     ]),
   )
   const writes = write.mock.calls.length
-  const selected = await readFile(join(f.root, 'state/installed-state.json'))
+  const selected = await readFile(snapshotPath(join(f.root, 'state')))
   await within(f.controller.drain())
   expect(await removal).toBe(false)
   expect(write).toHaveBeenCalledTimes(writes)
@@ -328,7 +329,7 @@ it('a held consumer acknowledgement cannot retain drain or start deletion after 
   ack.resolve()
   await Promise.resolve()
   expect(write).toHaveBeenCalledTimes(writes)
-  expect(await readFile(join(f.root, 'state/installed-state.json'))).toEqual(selected)
+  expect(await readFile(snapshotPath(join(f.root, 'state')))).toEqual(selected)
   expect(await within(owner.shutdown())).toBe(true)
   await within(owner.closed)
   const { state } = await recoverController(f)
@@ -365,7 +366,7 @@ it('drain retains an already started effect file write and prevents the cleanup 
       }),
     ]),
   )
-  const selected = await readFile(join(f.root, 'state/installed-state.json'))
+  const selected = await readFile(snapshotPath(join(f.root, 'state')))
   const writes = write.mock.calls.length
   let drained = false
   const draining = owner.shutdown().then(async () => {
@@ -386,7 +387,7 @@ it('drain retains an already started effect file write and prevents the cleanup 
   expect(mcp.seen).toEqual([])
   expect(removeCode).not.toHaveBeenCalled()
   expect(removeData).not.toHaveBeenCalled()
-  expect(await readFile(join(f.root, 'state/installed-state.json'))).toEqual(selected)
+  expect(await readFile(snapshotPath(join(f.root, 'state')))).toEqual(selected)
   expect(await (await LifecycleEffects.open(f.root, false)).read(operation)).toMatchObject({
     cleanupAttempted: true,
     cleanupResult: 'unconfirmed',

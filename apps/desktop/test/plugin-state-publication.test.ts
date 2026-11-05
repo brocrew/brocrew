@@ -316,3 +316,30 @@ it('records a cleanup error without rejecting an already committed lifecycle sav
   expect(observer(f.root).load().sequence).toBe(2)
   expect(warning).toHaveBeenCalled()
 })
+
+it('reports flat selection work as a fault backlog grows without opening history', () => {
+  const f = fixture(),
+    first = requireVersioned(f.root)[0]!,
+    bytes = fs.readFileSync(first.path)
+  const measurements: Array<{ files: number; milliseconds: number; bytes: number }> = []
+  let written = 1
+  for (const count of [4, 64, 512]) {
+    for (; written < count; written++)
+      fs.writeFileSync(
+        join(f.root, 'snapshots', String(written).padStart(16, '0') + '-cr.json'),
+        bytes,
+      )
+    const disk = observer(f.root),
+      started = performance.now()
+    expect(disk.load().sequence).toBe(0)
+    measurements.push({
+      files: count,
+      milliseconds: performance.now() - started,
+      bytes: count * bytes.length,
+    })
+  }
+  console.info(
+    'native-versioned-listing-cost',
+    JSON.stringify({ node: process.version, platform: process.platform, measurements }),
+  )
+}, 30000)

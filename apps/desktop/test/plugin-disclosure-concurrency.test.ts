@@ -1,3 +1,4 @@
+import { snapshotPath, snapshotFiles } from './helpers/plugin-state-snapshot'
 import { afterEach, expect, it } from 'vitest'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdir, writeFile, readFile } from 'node:fs/promises'
@@ -14,7 +15,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { once } from 'node:events'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, createHash } from 'node:crypto'
 import { PluginStateDisk } from '../src/main/plugins/state/disk'
 import { cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
 import { disclosureFixture } from './plugin-disclosure-fixtures'
@@ -45,10 +46,11 @@ const { displayRead, keepPluginRootPrivate } = require(process.argv[1]);
     return fd;
   };
   const read = fs.readSync;
-  let paused = false;
+  let paused = false, selectedFd;
+  const selectedBytes = [];
   fs.readSync = (fd, ...args) => {
     if (!paused && fs.fstatSync(fd).nlink === 1) {
-      paused = true;
+      paused = true; selectedFd = fd;
       process.send({ kind: 'paused', opened: opened.get(fd) });
       const gate = new Int32Array(new SharedArrayBuffer(4)), until = Date.now() + 15000;
       while (!fs.existsSync(process.argv[3])) {
@@ -56,16 +58,19 @@ const { displayRead, keepPluginRootPrivate } = require(process.argv[1]);
         Atomics.wait(gate, 0, 0, 10);
       }
     }
-    return read(fd, ...args);
+    const count = read(fd, ...args);
+    if (fd === selectedFd && count) selectedBytes.push(Buffer.from(args[0].subarray(args[1], args[1] + count)));
+    return count;
   };
   syncBuiltinESMExports();
   const descriptor = displayRead({ root: process.argv[2], workspaceRoots: [] }, 'chrome');
-  process.send({ kind: 'done', descriptor });
+  process.send({ kind: 'done', descriptor, snapshotSha256: require('node:crypto').createHash('sha256').update(Buffer.concat(selectedBytes)).digest('hex') });
 })().catch(error => { process.send({ kind: 'failed', code: error.code, message: error.message }); process.exitCode = 1; });
 `
 function message(child: ChildProcess): Promise<{
   kind: string
   descriptor?: unknown
+  snapshotSha256?: string
   reads?: number
   malformed?: number
   errors?: Record<string, number>
@@ -97,12 +102,15 @@ it('an atomic snapshot reader cannot block owner writes and reclaim', async () =
     'reader.cjs',
   )
   const root = join(f.f.root, 'state'),
+    heldPath = snapshotPath(root),
+    heldBytes = readFileSync(heldPath),
     release = join(folder, 'release')
   const child = spawn(process.execPath, ['-e', program, bundle, root, release], {
     env: { ...process.env, NODE_OPTIONS: '' },
     stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
   })
   children.push(child)
+  const exited = once(child, 'exit')
   let stderr = ''
   child.stderr!.on('data', (bytes) => {
     stderr += String(bytes)
@@ -110,7 +118,7 @@ it('an atomic snapshot reader cannot block owner writes and reclaim', async () =
   const first = await message(child)
   expect(first, stderr).toEqual({
     kind: 'paused',
-    opened: { path: join(root, 'installed-state.json'), flags: 'r' },
+    opened: { path: heldPath, flags: 'r' },
   })
   const result = message(child)
   const owner = new PluginStateDisk({ root, workspaceRoots: [f.f.workspace] })
@@ -145,18 +153,32 @@ it('an atomic snapshot reader cannot block owner writes and reclaim', async () =
       expect(f.f.state.inspect().guards.find((one) => one.pluginId === pluginId)?.phase).toBe(
         'active',
       )
-      const selected = JSON.parse(await readFile(join(root, 'installed-state.json'), 'utf8'))
+      const selected = JSON.parse(await readFile(snapshotPath(root), 'utf8'))
       expect(selected.pending).toBeNull()
       expect(selected.active.some((one: { pluginId: string }) => one.pluginId === pluginId)).toBe(
         true,
       )
     }
+    const retained = snapshotFiles(root)
+    console.info(
+      'native-disclosure-retention',
+      JSON.stringify({
+        node: process.version,
+        platform: process.platform,
+        files: retained.length,
+        bytes: retained.reduce((total, file) => total + readFileSync(file.path).length, 0),
+        directories: 1,
+        heldBytes: heldBytes.length,
+      }),
+    )
   } finally {
     owner.close()
     await writeFile(release, '')
   }
   const observed = await result
   expect(observed.kind, stderr).toBe('done')
+  expect(observed.snapshotSha256).toBe(createHash('sha256').update(heldBytes).digest('hex'))
+  expect(await exited).toEqual([0, null])
   expect(observed.descriptor).toEqual({
     version: '1.0.1',
     archiveSha256: f.first.release.archive.sha256,
@@ -165,6 +187,18 @@ it('an atomic snapshot reader cannot block owner writes and reclaim', async () =
   expect(
     f.f.state.inspect().guards.find((one) => one.pluginId === 'chrome')?.release.archiveSha256,
   ).toBe(f.first.release.archive.sha256)
+  for (let pass = 0; pass < 8; pass++)
+    f.f.state.setEnabled(f.f.workspace, 'chrome', pass % 2 === 0 ? false : true)
+  const afterRelease = snapshotFiles(root)
+  expect(afterRelease).toHaveLength(2)
+  console.info(
+    'native-disclosure-after-release',
+    JSON.stringify({
+      files: afterRelease.length,
+      bytes: afterRelease.reduce((total, file) => total + readFileSync(file.path).length, 0),
+      directories: 1,
+    }),
+  )
 }, 30000)
 
 it('discriminates held snapshot readers from staged writer handles with native file operations', () => {

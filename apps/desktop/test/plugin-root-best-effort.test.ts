@@ -1,3 +1,4 @@
+import { snapshotPath } from './helpers/plugin-state-snapshot'
 import {
   chmodSync,
   mkdirSync,
@@ -67,8 +68,8 @@ describe('plugin folders use ordinary filesystem access', () => {
     const state = GlobalPluginState.create({ root: join(f.root, 'state'), workspaceRoots: [] })
     stores.push(state)
     expect(state.inspect().sequence).toBe(0)
-    expect(readFileSync(join(target, 'state', 'installed-state.json'))).toEqual(
-      readFileSync(join(f.root, 'state', 'installed-state.json')),
+    expect(readFileSync(snapshotPath(join(target, 'state')))).toEqual(
+      readFileSync(snapshotPath(join(f.root, 'state'))),
     )
   })
 })

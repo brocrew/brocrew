@@ -1,3 +1,4 @@
+import { snapshotPath } from '../test/helpers/plugin-state-snapshot'
 // Source-side fixture setup and observations; every owner is the separate frozen production entry.
 import assert from 'node:assert/strict'
 import { randomUUID, createHash } from 'node:crypto'
@@ -201,9 +202,9 @@ export async function sqliteBootstrapCases(options: {
       assert.equal((await bounded(owner.exited, `${kind} owner exit`)).code, 0)
       // Observe the BUILT owner's output before any source state open can reclaim/import it.
       const archivePath = join(root, 'state/operations.sqlite'),
-        snapshotPath = join(root, 'state/installed-state.json')
+        selectedPath = snapshotPath(join(root, 'state'))
       const archiveBytes = await readFile(archivePath),
-        snapshotBytes = await readFile(snapshotPath)
+        snapshotBytes = await readFile(selectedPath)
       const archive = openPluginSqlite(archivePath, {
         readonly: true,
         fileMustExist: true,
@@ -235,7 +236,7 @@ export async function sqliteBootstrapCases(options: {
         'Readonly archive observation changed owner output',
       )
       assert.deepEqual(
-        await readFile(snapshotPath),
+        await readFile(selectedPath),
         snapshotBytes,
         'Readonly observation changed owner snapshot',
       )

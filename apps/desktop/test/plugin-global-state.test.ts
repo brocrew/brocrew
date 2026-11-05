@@ -1,3 +1,4 @@
+import { snapshotPath } from './helpers/plugin-state-snapshot'
 import { afterEach, describe, expect, it } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import {
@@ -291,7 +292,7 @@ describe('persistent plugin selection', () => {
   it('uses the selected file for read-only display without mutating it', () => {
     const f = fixture()
     install(f.store)
-    const file = join(f.root, 'installed-state.json'),
+    const file = snapshotPath(f.root),
       before = readFileSync(file)
     expect(GlobalPluginState.readInstalledPackage(f.options, 'fictional-bakery')).toEqual({
       version: '1.0.0',
@@ -301,10 +302,10 @@ describe('persistent plugin selection', () => {
     expect(GlobalPluginState.observeInstallations(f.options).installed).toEqual([
       'fictional-bakery',
     ])
-    expect(readFileSync(file)).toEqual(before)
+    expect(readFileSync(snapshotPath(f.root))).toEqual(before)
     expect(readdirSync(f.root).sort()).toEqual([
-      'installed-state.json',
       'operations.sqlite',
+      'snapshots',
       'writer-lock.sqlite',
     ])
   })
@@ -314,7 +315,7 @@ describe('persistent plugin selection', () => {
     const expected = f.store.exportActivation()
     writeFileSync(join(f.root, '.state-fictional'), '{')
     expect(f.open().exportActivation()).toEqual(expected)
-    writeFileSync(join(f.root, 'installed-state.json'), '{')
+    writeFileSync(snapshotPath(f.root), '{')
     expect(() => f.store.inspect()).toThrow(expect.objectContaining({ code: 'corrupt' }))
   })
   it('creates a missing state store despite old birth markers and accepts shared or workspace paths', () => {
@@ -325,7 +326,7 @@ describe('persistent plugin selection', () => {
     const store = GlobalPluginState.open({ root, workspaceRoots: [join(parent, 'workspace')] })
     stores.push(store)
     expect(store.inspect().sequence).toBe(0)
-    expect(existsSync(join(root, 'installed-state.json'))).toBe(true)
+    expect(existsSync(snapshotPath(root))).toBe(true)
   })
   it.each(['staged', 'published', 'durable'] as const)(
     'recovers an atomic completion interrupted at %s',

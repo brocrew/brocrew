@@ -7,6 +7,8 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  readdirSync,
+  lstatSync,
   renameSync,
   unlinkSync,
   writeFileSync,
@@ -82,12 +84,61 @@ function decodeSnapshot(bytes: Buffer): LifecycleState {
     )
   return state
 }
-function readState(root: string): LifecycleState {
+type Publication = { path: string; ordinal: string; cursor: string }
+const publicationName = /^(\d{16})-c(r|\d{16})\.json$/
+const lastOrdinal = 9999999999999999n
+function publications(root: string): Publication[] {
+  let entries
   try {
-    return decodeSnapshot(readFileSync(join(root, 'installed-state.json')))
+    entries = readdirSync(join(root, 'snapshots'), { withFileTypes: true })
   } catch (error) {
-    if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') throw error
-    return readLegacyPluginState(root)
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
+    throw error
+  }
+  const seen = new Set<string>()
+  return entries
+    .map((entry) => {
+      const match = publicationName.exec(entry.name)
+      if (!match || match[0] !== entry.name || !entry.isFile() || seen.has(match[1]!))
+        refuseState('corrupt')
+      seen.add(match[1]!)
+      return { path: join(root, 'snapshots', entry.name), ordinal: match[1]!, cursor: match[2]! }
+    })
+    .sort((a, b) => a.ordinal.localeCompare(b.ordinal))
+}
+function selectedBytes(root: string): { bytes?: Buffer; publication?: Publication } {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const publication = publications(root).at(-1)
+    if (publication) {
+      try {
+        return { bytes: readFileSync(publication.path), publication }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT' && attempt === 0) continue
+        throw error
+      }
+    }
+    try {
+      return { bytes: readFileSync(join(root, 'installed-state.json')) }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      return {}
+    }
+  }
+  return refuseState('corrupt')
+}
+function readState(root: string): LifecycleState {
+  const selected = selectedBytes(root)
+  return selected.bytes ? decodeSnapshot(selected.bytes) : readLegacyPluginState(root)
+}
+function prune(queue: Publication[]): void {
+  for (const publication of queue) {
+    try {
+      unlinkSync(publication.path)
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code !== 'ENOENT' && code !== 'EPERM' && code !== 'EBUSY')
+        console.warn('Plugin snapshot cleanup failed', error)
+    }
   }
 }
 /** Read-only display uses the same atomic selection as production, including old journal input. */
@@ -106,7 +157,7 @@ export function readInstalledPluginDescriptor(options: PluginDiskOptions, id: st
   }
 }
 
-/** One atomic selection file, with ordinary serialized writes across app copies. */
+/** Immutable selections, with ordinary serialized writes across app copies. */
 export class PluginStateDisk {
   readonly root: string
   private lock?: PluginFence
@@ -239,38 +290,78 @@ export class PluginStateDisk {
       workspaceEnabled: [...state.workspaceEnabled.values()],
       workspaceTitlesEnabled: [...state.workspaceTitlesEnabled.values()],
     })
-    const temporary = join(this.root, '.state-' + randomUUID())
+    const files = publications(this.root),
+      previous = files.at(-1)
+    if (previous) decodeSnapshot(readFileSync(previous.path))
+    const next = previous ? BigInt(previous.ordinal) + 1n : 0n
+    if (next > lastOrdinal) refuseState('limit')
+    const eligible = previous
+      ? files.filter((file) => file.ordinal < previous.ordinal).reverse()
+      : []
+    const cursor = previous?.cursor ?? 'r'
+    const ordered =
+      cursor === 'r'
+        ? eligible
+        : [
+            ...eligible.filter((file) => file.ordinal < cursor),
+            ...eligible.filter((file) => file.ordinal >= cursor),
+          ]
+    const queue = ordered.slice(0, 4),
+      nextCursor = queue.at(-1)?.ordinal ?? cursor
+    const folder = join(this.root, 'snapshots')
+    mkdirSync(folder, { recursive: true, mode: 0o700 })
+    const target = join(folder, next.toString().padStart(16, '0') + '-c' + nextCursor + '.json')
+    try {
+      lstatSync(target)
+      refuseState('conflict')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+    const temporary = join(this.root, '.installed-state-stage')
+    try {
+      unlinkSync(temporary)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
     const fd = openSync(temporary, 'wx', 0o600)
     try {
-      writeFileSync(fd, bytes)
-      fsyncSync(fd)
-      this.options.fault?.('staged')
-      renameSync(temporary, join(this.root, 'installed-state.json'))
+      try {
+        writeFileSync(fd, bytes)
+        fsyncSync(fd)
+        this.options.fault?.('staged')
+      } finally {
+        closeSync(fd)
+      }
+      renameSync(temporary, target)
       this.lock?.published()
       this.options.fault?.('published')
       if (process.platform !== 'win32') {
-        const directory = openSync(this.root, 'r')
-        try {
-          syncDirectory(directory)
-        } finally {
-          closeSync(directory)
+        for (const path of [folder, this.root]) {
+          const directory = openSync(path, 'r')
+          try {
+            syncDirectory(directory)
+          } finally {
+            closeSync(directory)
+          }
         }
       }
       this.options.fault?.('durable')
+      prune(queue)
     } finally {
-      closeSync(fd)
       try {
         unlinkSync(temporary)
       } catch {
-        // Unpublished temporary files are ignored on reopening.
+        // A later writer removes an abandoned stage before its exclusive open.
       }
     }
   }
   /** Opening imports a legacy selection once; old journals and all plugin data remain untouched. */
   reclaim(): void {
     this.exclusive(() => {
-      const exists = existsSync(join(this.root, 'installed-state.json'))
-      const state = readState(this.root)
+      const selected = selectedBytes(this.root)
+      const state = selected.bytes
+        ? decodeSnapshot(selected.bytes)
+        : readLegacyPluginState(this.root)
       if (state.sequence < 0)
         this.apply(state, { kind: 'created', rootId: randomUUID(), epoch: randomUUID() })
       const database = this.historyDatabase()
@@ -288,9 +379,9 @@ export class PluginStateDisk {
           )
       })()
       if (
-        exists &&
-        JSON.parse(readFileSync(join(this.root, 'installed-state.json'), 'utf8'))
-          .recentOperations !== undefined
+        selected.publication &&
+        selected.bytes &&
+        JSON.parse(selected.bytes.toString()).recentOperations !== undefined
       )
         return
       this.save(state)

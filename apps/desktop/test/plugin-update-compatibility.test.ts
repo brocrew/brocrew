@@ -1,7 +1,8 @@
+import { snapshotPath } from './helpers/plugin-state-snapshot'
 import { observeInstalled } from './plugin-installed-observation'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createHash, randomUUID } from 'node:crypto'
-import { readFile, readdir, mkdir, writeFile, unlink } from 'node:fs/promises'
+import { readFile, readdir, mkdir, writeFile, unlink, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -453,7 +454,7 @@ describe.skipIf(process.platform === 'win32')(
         await writeFile(join(vault, 'catalogue.json'), f.pkg.bytes)
         await writeFile(join(vault, 'catalogue.sig'), f.pkg.signature)
         const oldVault = await diskBytes(vault)
-        await unlink(join(root, 'installed-state.json'))
+        await rm(join(root, 'snapshots'), { recursive: true, force: true })
         expect(() =>
           GlobalPluginState.open({
             root,
@@ -467,10 +468,10 @@ describe.skipIf(process.platform === 'win32')(
         expect(state.exportActivation()).toEqual(selected)
         expect(state.operation(operation.request.operationId)?.status).toBe('completed')
         expect(state.inspect().pending).toBeNull()
-        const snapshot = await readFile(join(root, 'installed-state.json'))
+        const snapshot = await readFile(snapshotPath(root))
         expect(() => state.requireUpdateReader()).not.toThrow()
         state.requireUpdateReader()
-        expect(await readFile(join(root, 'installed-state.json'))).toEqual(snapshot)
+        expect(await readFile(snapshotPath(root))).toEqual(snapshot)
         const download = vi.fn(async () => {
           throw new Error('fictional offline migration')
         })

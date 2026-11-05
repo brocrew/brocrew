@@ -1,3 +1,4 @@
+import { snapshotPath } from './helpers/plugin-state-snapshot'
 import { randomUUID } from 'node:crypto'
 import {
   chmodSync,
@@ -134,7 +135,7 @@ describe('ordinary plugin state and old location migration', () => {
         .inspect()
         .operations.find((one) => one.operation.request.operationId === before.operationId)?.status,
     ).toBe('completed')
-    expect(existsSync(join(options.root, 'installed-state.json'))).toBe(true)
+    expect(existsSync(snapshotPath(options.root))).toBe(true)
     paths.forEach((name, index) =>
       expect(readFileSync(join(options.root, 'lifecycle-guard', name))).toEqual(bytes[index]),
     )
@@ -147,7 +148,7 @@ describe('ordinary plugin state and old location migration', () => {
     const reader = open(options)
     const input = { ...request(reader, 'update'), workspaces: [workspaceId] }
     reader.close()
-    rmSync(join(options.root, 'installed-state.json'))
+    rmSync(join(options.root, 'snapshots'), { recursive: true, force: true })
     const allocated = { installId: randomUUID(), incarnation: randomUUID(), epoch: randomUUID() }
     const operation = {
       request: input,

@@ -12,7 +12,7 @@ export function snapshotFiles(root: string): Array<{
   if (!existsSync(folder)) return []
   const files = readdirSync(folder).map((name) => {
     const match = /^(\d{16})-c(r|\d{16})\.json$/.exec(name)
-    if (!match) throw new Error('Unexpected snapshot fixture entry: ' + name)
+    if (!match || match[0] !== name) throw new Error('Unexpected snapshot fixture entry: ' + name)
     return { name, path: join(folder, name), ordinal: match[1]!, cursor: match[2]! }
   })
   return files.sort((a, b) => a.ordinal.localeCompare(b.ordinal))
