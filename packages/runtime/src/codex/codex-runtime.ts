@@ -5929,7 +5929,9 @@ export class CodexSessionHandle implements SessionHandle {
   private startAfterManagedPlugins(localId: CodexTurn['localId'], dispatch: () => void): void {
     this.managedPluginObservationVersion++
     const scope = this.managedPluginObservationScope()
-    if (this.managedPluginsChecked === scope || !this.managedPluginMcp?.length) {
+    // A route kept while its plugin is starting is configured but never awaited here.
+    const served = this.managedPluginMcp?.filter((server) => !server.retained) ?? []
+    if (this.managedPluginsChecked === scope || !served.length) {
       dispatch()
       return
     }
@@ -5938,7 +5940,7 @@ export class CodexSessionHandle implements SessionHandle {
     void waitForManagedPluginTools(
       this.transport,
       this._ref!.sessionId,
-      this.managedPluginMcp.map((server) => server.name),
+      served.map((server) => server.name),
       waiting.controller.signal,
     ).then((outcome) => {
       if (this.managedPluginWait !== waiting) return

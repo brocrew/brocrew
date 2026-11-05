@@ -39,7 +39,7 @@ function retained(
       !off.has(one.pluginId) &&
       (plugins.unknown || starting.has(one.pluginId)),
   )
-  return [...next.servers, ...kept]
+  return [...next.servers, ...kept.map((one) => ({ ...one, retained: true as const }))]
 }
 export interface ManagedPluginAttachmentSource {
   read(): Promise<ManagedPluginAttachment>
