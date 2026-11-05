@@ -1,4 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -799,4 +801,86 @@ it('returns a fresh handle and drains while every positive consumer acknowledgem
     [],
   )
   expect(h.controller.agentAttachments(fresh.sink.workspaceId)).toEqual([])
+}, 15000)
+
+it('keeps a contribution handle stable within one consumer and distinct from healthy peers', async () => {
+  const h = await setup()
+  const original = h.controller.contributions(h.person, A)
+  expect(h.controller.contributions(h.person, A)).toBe(original)
+  const other = h.controller.contributions(h.otherPerson, A)
+  expect(other).not.toBe(original)
+  const fresh = projection()
+  const shared = await h.attach({ ...fresh.sink, workspaceId: h.f.local.sink.workspaceId })
+  const peer = await h.ready(shared, A)
+  expect(peer).not.toBe(original)
+  expect(h.controller.contributions(shared, A)).toBe(peer)
+  expect(original.current()).toBe(true)
+  peer.revoke()
+  expect(peer.current()).toBe(false)
+  expect(original.current()).toBe(true)
+  const replacement = h.controller.contributions(shared, A)
+  expect(replacement).not.toBe(peer)
+  expect(h.controller.contributions(shared, A)).toBe(replacement)
+  await h.controller.setEnabled(shared, A, false)
+  expect(original.current()).toBe(false)
+  expect(replacement.current()).toBe(false)
+  expect(other.current()).toBe(true)
+  await h.controller.setEnabled(shared, A, true)
+  const enabled = await h.ready(h.person, A)
+  expect(enabled).not.toBe(original)
+  expect(h.controller.contributions(h.person, A)).toBe(enabled)
+  await h.controller.detach(shared)
+  expect(enabled.current()).toBe(true)
+  expect(h.controller.contributions(h.person, A)).toBe(enabled)
+}, 15000)
+
+it('retains a failed partial-publication revoke after logical detach and retries the exact install', async () => {
+  const h = await setup()
+  const fresh = projection()
+  const install = h.f.state.currentInstallation(B)!
+  const originalA = h.controller.contributions(h.person, A)
+  const originalB = h.controller.contributions(h.person, B)
+  let published = false
+  let allowRevoke = false
+  const revoke = vi.fn(async (id: string, installId: string) => {
+    if (id === B && published && !allowRevoke) return false
+    return fresh.sink.revoke(id, installId)
+  })
+  const applied = vi.fn(
+    async (id: string, receipt: Parameters<WorkspaceProjection['applied']>[1]) => {
+      await fresh.sink.applied(id, receipt)
+      if (id === B && receipt) {
+        published = true
+        throw new Error('Fictional acknowledgement failure after positive publication')
+      }
+    },
+  )
+  const handle = await h.attach({ ...fresh.sink, revoke, applied })
+  const a = await h.ready(handle, A)
+  await vi.waitFor(() => {
+    expect(published).toBe(true)
+    expect(revoke.mock.calls.filter(([id]) => id === B).length).toBeGreaterThanOrEqual(2)
+    expect(h.controller.consumerBindings(handle)).toContainEqual({ pluginId: B, state: 'failed' })
+  })
+  expect(fresh.rows.get(B)?.installId).toBe(install.installId)
+  expect(h.f.state.projections(fresh.sink.workspaceId).some((one) => one.pluginId === B)).toBe(
+    false,
+  )
+  const snapshot = join(h.f.root, 'state', 'installed-state.json')
+  const selected = await readFile(snapshot)
+  await expect(h.controller.detach(handle)).rejects.toMatchObject({ code: 'cleanup-pending' })
+  expect(a.current()).toBe(false)
+  expect(h.controller.agentAttachments(fresh.sink.workspaceId)).toEqual([])
+  expect((await h.controller.status()).cleanupPending).toContain(B)
+  expect(h.controller.cleanForShutdown()).toBe(false)
+  expect(await readFile(snapshot)).toEqual(selected)
+  const attempts = revoke.mock.calls.length
+  allowRevoke = true
+  await expect(h.controller.detach(handle)).resolves.toBeUndefined()
+  expect(revoke.mock.calls.slice(attempts)).toEqual([[B, install.installId]])
+  expect((await h.controller.status()).cleanupPending).not.toContain(B)
+  expect(h.controller.cleanForShutdown()).toBe(true)
+  expect(originalA.current()).toBe(true)
+  expect(originalB.current()).toBe(true)
+  expect(await readFile(snapshot)).toEqual(selected)
 }, 15000)
