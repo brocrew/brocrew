@@ -122,6 +122,22 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
         }
       }
       fs.writeFileSync(file, bytes, { mode: 0o600 })
+      const fixed = path.join(state, 'installed-state.json')
+      fs.writeFileSync(fixed, bytes, { mode: 0o600 })
+      const open = fs.openSync
+      let observedOpens = 0
+      const secondOpen = vi.spyOn(fs, 'openSync').mockImplementation((...args) => {
+        if (args[0] === file && ++observedOpens === 2) fs.unlinkSync(file)
+        return open(...args)
+      })
+      try {
+        expect(() => observeInstallState(root, global)).toThrow()
+        expect(observedOpens).toBe(2)
+      } finally {
+        secondOpen.mockRestore()
+      }
+      fs.unlinkSync(fixed)
+      fs.writeFileSync(file, bytes, { mode: 0o600 })
       const originalFolder = snapshots + '-original'
       fs.renameSync(snapshots, originalFolder)
       fs.symlinkSync(originalFolder, snapshots)

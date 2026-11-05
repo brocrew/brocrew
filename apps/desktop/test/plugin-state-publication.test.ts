@@ -165,10 +165,36 @@ it('refuses ordinal exhaustion before writing or opening a stage', () => {
 it('refuses corrupt newest bytes instead of choosing an older complete publication', () => {
   const f = fixture()
   requireVersioned(f.root)
+  const operationId = randomUUID()
+  f.store.prepare({
+    operationId,
+    consent: {
+      action: 'install',
+      pluginId: f.id,
+      at: 0,
+      expectedSequence: 0,
+      expectedInstallId: null,
+      release: {
+        version: '1.0.0',
+        archiveSha256: 'a'.repeat(64),
+        manifestSha256: 'b'.repeat(64),
+        dataSchema: 1,
+      },
+    },
+    snapshot: null,
+  })
+  f.store.complete(operationId)
+  const admitted = {
+    version: '1.0.0',
+    archiveSha256: 'a'.repeat(64),
+    manifestSha256: 'b'.repeat(64),
+  }
+  expect(GlobalPluginState.readInstalledPackage(f.options, f.id)).toEqual(admitted)
   f.publish()
   const files = snapshotFiles(f.root),
     old = fs.readFileSync(files[0]!.path)
   expect(files).toHaveLength(2)
+  expect(JSON.parse(old.toString()).active[0]).toMatchObject({ pluginId: f.id, release: admitted })
   fs.writeFileSync(files[1]!.path, '{fictional corrupt newest')
   expect(() => observer(f.root).load()).toThrow()
   expect(GlobalPluginState.readInstalledPackage(f.options, f.id)).toBeNull()
@@ -299,6 +325,43 @@ it('advances past four denied old files, wraps after fault bursts, and reclaims 
     }),
   )
 })
+
+it.each([false, true])(
+  'commits the independent descending plan and pins P (missed cleanup: %s)',
+  (missed) => {
+    let cut = false
+    const f = fixture((point) => {
+      if (cut && point === 'published') throw new Error('fictional planned cleanup cut')
+    })
+    const bytes = fs.readFileSync(requireVersioned(f.root)[0]!.path),
+      directory = join(f.root, 'snapshots')
+    const name = (id: number, cursor = 'r') =>
+      String(id).padStart(16, '0') + '-c' + cursor + '.json'
+    for (let id = 0; id < 9; id++) fs.writeFileSync(join(directory, name(id)), bytes)
+    const previous = join(directory, name(9, '0000000000000005'))
+    fs.writeFileSync(previous, bytes)
+    const unlink = fs.unlinkSync,
+      attempts: string[] = []
+    vi.spyOn(fs, 'unlinkSync').mockImplementation((path) => {
+      if (/^\d{16}-c/.test(basename(String(path)))) attempts.push(basename(String(path)))
+      return unlink(path)
+    })
+    syncBuiltinESMExports()
+    cut = missed
+    if (missed) expect(f.publish).toThrow('fictional planned cleanup cut')
+    else f.publish()
+    const tenth = join(directory, name(10, '0000000000000001'))
+    expect(fs.existsSync(tenth)).toBe(true)
+    expect(fs.readFileSync(previous)).toEqual(bytes)
+    expect(attempts).toEqual(missed ? [] : [name(4), name(3), name(2), name(1)])
+    attempts.length = 0
+    cut = false
+    f.publish()
+    expect(attempts).toEqual([name(0), name(9, '0000000000000005'), name(8), name(7)])
+    expect(fs.existsSync(join(directory, name(11, '0000000000000007')))).toBe(true)
+    expect(fs.readFileSync(tenth).length).toBeGreaterThan(0)
+  },
+)
 
 it('records a cleanup error without rejecting an already committed lifecycle save', () => {
   const f = fixture()

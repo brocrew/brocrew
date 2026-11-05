@@ -326,17 +326,18 @@ export function observeInstallState(root, global) {
   ownedRoot(root)
   for (let attempt = 0; attempt < 2; attempt++) {
     const file = observedSnapshotFile(root, global)
+    let bytes
     try {
-      const bytes = readOwned(file, 1024 * 1024),
-        snapshot = validateInstallSnapshot(observationJson(bytes))
-      if (observedSnapshotFile(root, global) !== file) return observationFailure()
-      if (!readOwned(file, 1024 * 1024).equals(bytes)) return observationFailure()
-      if (observedSnapshotFile(root, global) !== file) return observationFailure()
-      return snapshot
+      bytes = readOwned(file, 1024 * 1024)
     } catch (error) {
       if (error.code === 'ENOENT' && error.syscall === 'open' && attempt === 0) continue
       throw error
     }
+    const snapshot = validateInstallSnapshot(observationJson(bytes))
+    if (observedSnapshotFile(root, global) !== file) return observationFailure()
+    if (!readOwned(file, 1024 * 1024).equals(bytes)) return observationFailure()
+    if (observedSnapshotFile(root, global) !== file) return observationFailure()
+    return snapshot
   }
   return observationFailure()
 }
