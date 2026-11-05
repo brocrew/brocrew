@@ -325,10 +325,10 @@ describe('packaged GUI probe diagnostic steps without an app launch', () => {
     expect(result.stderr).toMatch(/\n\s+at requireCI /)
     const expected = {
       phase: 'journey',
-      step: 'bootstrap',
       errorClass: 'thrown',
       exitCode: null,
       signal: null,
+      step: 'bootstrap',
     }
     expect(result.stdout).toBe('gate-failure ' + JSON.stringify(expected) + '\n')
   })
