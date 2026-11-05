@@ -814,13 +814,18 @@ describe('on the page a long question folds at four lines', () => {
     await drawnReady()
     await settle()
 
-    const words = m.q('question-words')
-    expect(words.getAttribute('data-folded')).toBe('true')
+    const wordsBox = m.q('question-words')
+    const words = wordsBox.querySelector<HTMLElement>('.md-chat')!
+    expect(words).not.toBeNull()
+    expect(wordsBox.getAttribute('data-folded')).toBe('true')
     expect(words.scrollHeight).toBeGreaterThan(words.clientHeight)
     // ⚑ The clamp is four lines: the box is four line-steps tall, the step read off the ink itself.
-    const tops = [...new Set(inkRects(words).map((rect) => Math.round(rect.top)))].sort(
-      (a, b) => a - b,
-    )
+    const paragraph = words.querySelector('p')!
+    expect(paragraph).not.toBeNull()
+    expect(paragraph.firstChild?.nodeType).toBe(Node.TEXT_NODE)
+    const tops = [
+      ...new Set(inkRects(paragraph.firstChild as Text).map((rect) => Math.round(rect.top))),
+    ].sort((a, b) => a - b)
     expect(tops.length, 'the words are laid out in fewer than two lines').toBeGreaterThan(1)
     const step = tops[1]! - tops[0]!
     expect(Math.round(words.clientHeight / step)).toBe(4)
@@ -832,7 +837,7 @@ describe('on the page a long question folds at four lines', () => {
 
     await press(more)
     await settle()
-    expect(words.getAttribute('data-folded')).toBe('false')
+    expect(wordsBox.getAttribute('data-folded')).toBe('false')
     expect(said(more)).toBe('Show less')
     expect(more.getAttribute('aria-expanded')).toBe('true')
     expect(words.scrollHeight).toBeLessThanOrEqual(words.clientHeight)
@@ -840,7 +845,7 @@ describe('on the page a long question folds at four lines', () => {
 
     await press(more)
     await settle()
-    expect(words.getAttribute('data-folded')).toBe('true')
+    expect(wordsBox.getAttribute('data-folded')).toBe('true')
     expect(said(more)).toBe('Read full question')
     unmountAll()
 
