@@ -46,6 +46,7 @@ import { keptShippedSkills, prepareBuiltInSkills } from './skills/prepare-built-
 import { factoryTextOf, readTextPack } from './skills/text-pack'
 import { aStartAttemptsLog } from './start-attempts-log'
 import { broadcastRuntime } from './runtime/window-broadcast'
+import { changeNotices } from './runtime/change-notices'
 import { execFile, spawn } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, writeSync } from 'node:fs'
 import { inspect } from 'node:util'
@@ -81,7 +82,6 @@ import {
   PROVIDERS_CHANGED_CHANNEL,
   RUNTIME_CHANGED_CHANNEL,
   RUNTIME_STATES_CHANNEL,
-  type RuntimeChangeSubject,
 } from '../shared/runtime-ipc'
 import { buildBranches, buildIdentity, shownVersion } from './build-identity'
 import { LIMITS_DISPLAY_CHANGED_CHANNEL } from '../shared/limits-display'
@@ -1145,10 +1145,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     // ⚑ Sent by {@link sayWhatMovedToTheWindows}, one message per subject per turn of the loop: a
     // burst of wakes moves the same lists many times, and each message makes every window read them
     // again.
-    announce: (change) => {
-      if (movedSubjects.size === 0) setImmediate(sayWhatMovedToTheWindows)
-      movedSubjects.add(change.what)
-    },
+    announce: (change) => windowChangeNotices.announce(change),
     // 🔴 **D-019 · tell every window what the agents whose state moved are doing now, and which
     // files were kept** (D-026) — see `RUNTIME_STATES_CHANNEL`. ⚑ {@link sayWhatMovedToTheWindows}'s
     // loop, for its reasons: every window, each send guarded on its own, and both objects asked.
@@ -1249,27 +1246,24 @@ const CHOOSE_WORKSPACE_OPTIONS: OpenDialogOptions = {
  */
 const presentation = launchPresentation((name) => app.commandLine.hasSwitch(name))
 
-/** What moved since the windows were last told; told once the loop has finished its turn. */
-const movedSubjects = new Set<RuntimeChangeSubject>()
-
 /**
- * Tells every window what moved: every window rather than the focused one, each send guarded on its
- * own so a destroyed window cannot take the notice from the windows after it, and both objects
- * asked because a live `BrowserWindow` can hold a dead `webContents`.
+ * Tells every window what moved, once the loop has finished its turn: every window rather than the
+ * focused one, each send guarded on its own so a destroyed window cannot take the notice from the
+ * windows after it, and both objects asked because a live `BrowserWindow` can hold a dead
+ * `webContents`.
  */
-function sayWhatMovedToTheWindows(): void {
-  const moved = [...movedSubjects]
-  movedSubjects.clear()
-  for (const what of moved)
+const windowChangeNotices = changeNotices(
+  (message) =>
     broadcastRuntime(
       () => BrowserWindow.getAllWindows(),
       RUNTIME_CHANGED_CHANNEL,
-      { what },
+      message,
       (error) => console.error('BroCrew could not tell a window that something moved:', error),
       mainThreadWork,
       'window change broadcast',
-    )
-}
+    ),
+  (flush) => setImmediate(flush),
+)
 
 /** The main thread's work, timed as it runs, for the stall watch to name. */
 const mainThreadWork = new MainThreadWork()
