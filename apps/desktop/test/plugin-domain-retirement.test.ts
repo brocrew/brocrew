@@ -292,20 +292,62 @@ it.each(['keep', 'remove'] as const)(
     const starts = f.starts()
     const state = reopenLifecycleFixture(f)
     const stopped = await PluginLifecycleController.open({ ...f.opts, state })
-    expect(
-      (await stopped.status()).cards.find((card) => card.id === pkg.binding.pluginId),
-    ).toMatchObject({
-      installed: true,
-      uninstallDeletesData: policy === 'remove',
+    const selected = join(f.root, 'state', 'installed-state.json')
+    const before = await readFile(selected)
+    const release = deferred<void>()
+    const entered = deferred<void>()
+    const reads: Array<ReturnType<PluginPackageVault['load']>> = []
+    const originalLoad = PluginPackageVault.prototype.load
+    const load = vi.spyOn(PluginPackageVault.prototype, 'load').mockImplementation(function (
+      this: PluginPackageVault,
+      ...args: Parameters<PluginPackageVault['load']>
+    ) {
+      const verified = release.promise.then(() => originalLoad.apply(this, args))
+      reads.push(verified)
+      entered.resolve()
+      return verified
     })
-    expect(f.starts()).toBe(starts)
-    // An unavailable archive is unknown metadata, not permission to promise preservation.
-    await chmod(join(f.root, 'package-vault', pkg.binding.releaseDigest), 0o700)
-    await unlink(join(f.root, 'package-vault', pkg.binding.releaseDigest, 'archive'))
-    const unreadable = await PluginLifecycleController.open({ ...f.opts, state })
-    expect(
-      (await unreadable.status()).cards.find((card) => card.id === pkg.binding.pluginId),
-    ).not.toHaveProperty('uninstallDeletesData')
-    expect(f.starts()).toBe(starts)
+    try {
+      const initial = (await stopped.status()).cards.find(
+        (card) => card.id === pkg.binding.pluginId,
+      )
+      expect(initial).toMatchObject({ installed: true })
+      expect(initial).not.toHaveProperty('uninstallDeletesData')
+      await entered.promise
+      expect(load).toHaveBeenCalledTimes(1)
+      expect(load).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: pkg.binding.pluginId,
+          archive: { sha256: pkg.binding.releaseDigest },
+        }),
+        [],
+      )
+      release.resolve()
+      await reads[0]
+      expect(
+        (await stopped.status()).cards.find((card) => card.id === pkg.binding.pluginId),
+      ).toMatchObject({
+        installed: true,
+        uninstallDeletesData: policy === 'remove',
+      })
+      expect(load).toHaveBeenCalledTimes(1)
+      expect(f.starts()).toBe(starts)
+      expect(await readFile(selected)).toEqual(before)
+      // An unavailable archive is unknown metadata, not permission to promise preservation.
+      await chmod(join(f.root, 'package-vault', pkg.binding.releaseDigest), 0o700)
+      await unlink(join(f.root, 'package-vault', pkg.binding.releaseDigest, 'archive'))
+      const unreadable = await PluginLifecycleController.open({ ...f.opts, state })
+      expect(
+        (await unreadable.status()).cards.find((card) => card.id === pkg.binding.pluginId),
+      ).not.toHaveProperty('uninstallDeletesData')
+      expect(load).toHaveBeenCalledTimes(2)
+      await expect(reads[1]).rejects.toThrow()
+      expect(f.starts()).toBe(starts)
+      expect(await readFile(selected)).toEqual(before)
+    } finally {
+      release.resolve()
+      await Promise.allSettled(reads)
+      load.mockRestore()
+    }
   },
 )

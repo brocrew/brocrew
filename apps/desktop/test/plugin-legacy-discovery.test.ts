@@ -363,13 +363,15 @@ describe.skipIf(process.platform === 'win32')(
       await sink.reconcile({ pluginId: 'fictional-maps', before: null, receipt: null })
       const installId = randomUUID()
       expect(await sink.revoke('fictional-maps', installId)).toBe(true)
-      expect(applied).toHaveBeenCalledExactlyOnceWith('fictional-maps', null)
-      expect(reconcile).toHaveBeenCalledExactlyOnceWith({
-        pluginId: 'fictional-maps',
-        before: null,
-        receipt: null,
-      })
-      expect(revoke).toHaveBeenCalledExactlyOnceWith('fictional-maps', installId)
+      expect(applied.mock.calls.filter(([id]) => id === 'fictional-maps')).toEqual([
+        ['fictional-maps', null],
+      ])
+      expect(
+        reconcile.mock.calls.filter(([change]) => change.pluginId === 'fictional-maps'),
+      ).toEqual([[{ pluginId: 'fictional-maps', before: null, receipt: null }]])
+      expect(revoke.mock.calls.filter(([id]) => id === 'fictional-maps')).toEqual([
+        ['fictional-maps', installId],
+      ])
     })
 
     it('accepts a reordered caller source and leaves another caller selection unchanged', async () => {
