@@ -298,15 +298,48 @@ export function validateInstallSnapshot(value) {
       return observationFailure()
   return value
 }
+// Selection is independent of the application's selector and payload decoder.
+function observedSnapshotFile(root, global) {
+  const state = path.join(global, 'state'),
+    folder = path.join(state, 'snapshots')
+  observedDirectory(root, global)
+  observedDirectory(root, state)
+  try {
+    observedDirectory(root, folder)
+  } catch (error) {
+    if (error.code === 'ENOENT') return path.join(state, 'installed-state.json')
+    throw error
+  }
+  const seen = new Set(),
+    names = []
+  for (const entry of fs.readdirSync(folder, { withFileTypes: true })) {
+    const match = /^(\d{16})-c(r|\d{16})\.json$/.exec(entry.name)
+    if (!match || match[0] !== entry.name || !entry.isFile() || seen.has(match[1]))
+      return observationFailure()
+    seen.add(match[1])
+    names.push(entry.name)
+  }
+  names.sort()
+  return names.length ? path.join(folder, names.at(-1)) : path.join(state, 'installed-state.json')
+}
 export function observeInstallState(root, global) {
   ownedRoot(root)
-  observedDirectory(root, global)
-  observedDirectory(root, path.join(global, 'state'))
-  const file = path.join(global, 'state/installed-state.json')
-  const bytes = readOwned(file, 1024 * 1024),
-    snapshot = validateInstallSnapshot(observationJson(bytes))
-  if (!readOwned(file, 1024 * 1024).equals(bytes)) return observationFailure()
-  return snapshot
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const file = observedSnapshotFile(root, global)
+    let bytes
+    try {
+      bytes = readOwned(file, 1024 * 1024)
+    } catch (error) {
+      if (error.code === 'ENOENT' && error.syscall === 'open' && attempt === 0) continue
+      throw error
+    }
+    const snapshot = validateInstallSnapshot(observationJson(bytes))
+    if (observedSnapshotFile(root, global) !== file) return observationFailure()
+    if (!readOwned(file, 1024 * 1024).equals(bytes)) return observationFailure()
+    if (observedSnapshotFile(root, global) !== file) return observationFailure()
+    return snapshot
+  }
+  return observationFailure()
 }
 export function emptyInstallBaseline(snapshot) {
   validateInstallSnapshot(snapshot)

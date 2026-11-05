@@ -53,9 +53,11 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     fs.writeFileSync(path.join(root, 'fixture-owned'), 'packaged-plugin-gate\n', { mode: 0o600 })
     const global = path.join(root, 'g'),
       state = path.join(global, 'state'),
-      file = path.join(state, 'installed-state.json')
+      snapshots = path.join(state, 'snapshots'),
+      file = path.join(snapshots, '0000000000000000-cr.json')
     fs.mkdirSync(global, { mode: 0o700 })
     fs.mkdirSync(state, { mode: 0o700 })
+    fs.mkdirSync(snapshots, { mode: 0o700 })
     const baseline = {
         format: 2,
         rootId: '11111111-1111-4111-8111-111111111111',
@@ -75,6 +77,74 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
       expect(() => observeInstallState(root, global)).toThrow()
       fs.writeFileSync(file, bytes, { mode: 0o600 })
       expect(observeInstallState(root, global)).toEqual(baseline)
+      for (const name of [
+        'fictional-extra',
+        '0-cr.json',
+        '0000000000000001-cx.json',
+        '0000000000000001-cr.json\n',
+      ]) {
+        const extra = path.join(snapshots, name)
+        fs.writeFileSync(extra, bytes)
+        expect(() => observeInstallState(root, global)).toThrow()
+        fs.unlinkSync(extra)
+      }
+      const duplicate = path.join(snapshots, '0000000000000000-c0000000000000000.json')
+      fs.writeFileSync(duplicate, bytes)
+      expect(() => observeInstallState(root, global)).toThrow()
+      fs.unlinkSync(duplicate)
+      const hardlink = path.join(root, 'fictional-hardlink')
+      fs.linkSync(file, hardlink)
+      expect(() => observeInstallState(root, global)).toThrow()
+      fs.unlinkSync(hardlink)
+      const newer = path.join(snapshots, '0000000000000001-cr.json')
+      fs.writeFileSync(newer, '{fictional malformed newest')
+      expect(() => observeInstallState(root, global)).toThrow()
+      fs.unlinkSync(newer)
+      for (const disappearances of [1, 2]) {
+        fs.writeFileSync(file, bytes, { mode: 0o600 })
+        fs.writeFileSync(newer, bytes, { mode: 0o600 })
+        const open = fs.openSync
+        let removed = 0
+        const opening = vi.spyOn(fs, 'openSync').mockImplementation((...args) => {
+          const chosen = removed === 0 ? newer : file
+          if (removed < disappearances && args[0] === chosen) {
+            fs.unlinkSync(chosen)
+            removed++
+          }
+          return open(...args)
+        })
+        try {
+          if (disappearances === 1) expect(observeInstallState(root, global)).toEqual(baseline)
+          else expect(() => observeInstallState(root, global)).toThrow()
+          expect(removed).toBe(disappearances)
+        } finally {
+          opening.mockRestore()
+        }
+      }
+      fs.writeFileSync(file, bytes, { mode: 0o600 })
+      fs.writeFileSync(newer, bytes, { mode: 0o600 })
+      const open = fs.openSync
+      let observedOpens = 0,
+        fallbackOpens = 0
+      const secondOpen = vi.spyOn(fs, 'openSync').mockImplementation((...args) => {
+        if (args[0] === file) fallbackOpens++
+        if (args[0] === newer && ++observedOpens === 2) fs.unlinkSync(newer)
+        return open(...args)
+      })
+      try {
+        expect(() => observeInstallState(root, global)).toThrow()
+        expect(observedOpens).toBe(2)
+        expect(fallbackOpens).toBe(0)
+        expect(fs.readFileSync(file, 'utf8')).toBe(bytes)
+      } finally {
+        secondOpen.mockRestore()
+      }
+      const originalFolder = snapshots + '-original'
+      fs.renameSync(snapshots, originalFolder)
+      fs.symlinkSync(originalFolder, snapshots)
+      expect(() => observeInstallState(root, global)).toThrow()
+      fs.unlinkSync(snapshots)
+      fs.renameSync(originalFolder, snapshots)
       for (const bad of [
         '{',
         bytes.replace('"sequence":0', '"sequence":0,"sequence":0'),
@@ -510,6 +580,7 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     await expect(adapter.localPluginArchive(input, loaded.releases[0])).rejects.toThrow()
     target.url = 'https://example.invalid/alternate-chrome.tar.gz'
     fs.writeFileSync(path.join(input, 'catalogue.json'), JSON.stringify(list))
+    fs.mkdirSync(path.join(root, 'alternate'), { mode: 0o700 })
     const alternate = await adapter.loadRepoPluginList({
       root: path.join(root, 'alternate'),
       fixtureSource: input,

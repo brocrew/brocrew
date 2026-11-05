@@ -13,6 +13,7 @@ import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { WorkspacePluginAttachments } from '../src/main/plugins/attachments'
 import { createLifecycleAgentBridge } from '../src/main/plugins/lifecycle/agent-bridge'
+import { sharedLifecycleWorkspaces } from '../src/main/plugins/lifecycle/workspaces'
 import type { WorkspaceLease } from '../src/main/plugins/supervisor/owner'
 import {
   fixture,
@@ -131,9 +132,10 @@ async function connected(
       },
     }
   }
+  const controller = sharedLifecycleWorkspaces(f.controller)
   const bridge = createLifecycleAgentBridge({
     owner: { valid: () => true },
-    controller: f.controller,
+    controller,
     binding: async () => client,
   })
   f.controller.bindGenericTools(bridge)
@@ -198,7 +200,7 @@ async function connected(
   let person = f.handle
   if (pendingPerson) {
     const other = projection().sink
-    person = await f.controller.attach({
+    person = await controller.attach({
       ...other,
       workspaceId: f.local.sink.workspaceId,
       reconcile: async (change) => {
@@ -409,6 +411,7 @@ describe.each(['claude', 'codex'] as const)(
       const downloaded = w.world.gate(),
         entered = vi.fn()
       const download = w.f.opts.download
+      if (!download) throw new Error('The fictional fixture has no download callback.')
       w.f.opts.download = async (...args) => {
         entered()
         await downloaded.promise
@@ -461,6 +464,8 @@ describe.each(['claude', 'codex'] as const)(
       const words = w.sent().find((text) => text.includes(held))!
       expect(words).toContain('Canonical fictional recipe')
       expect(words).not.toContain('Untrusted plugin prose')
+      expect(words).toContain('Sent by')
+      expect(words).toContain('Suggested file titles')
       expect(words.indexOf('Sent by')).toBeLessThan(words.indexOf('Suggested file titles'))
       expect(w.started.filter((one) => one.pluginId === 'fictional-bakery')).toHaveLength(1)
       expect(w.started.filter((one) => one.pluginId === 'fictional-list')).toHaveLength(0)
@@ -478,7 +483,15 @@ describe.each(['claude', 'codex'] as const)(
       })
       await expect(w.route(0)).rejects.toThrow()
       expect(w.turns().filter((event) => JSON.stringify(event).includes(held))).toHaveLength(1)
-      expect(JSON.stringify(w.turns())).not.toContain('Suggested file titles')
+      for (const event of w.turns()) {
+        expect(event.text).not.toContain('Suggested file titles')
+        for (const part of event.parts ?? [])
+          expect(part.text).not.toContain('Suggested file titles')
+      }
+      expect(w.sent().filter((text) => text.includes(held))).toEqual([words])
+      expect(w.turns().filter((event) => event.text === held)).toEqual([
+        expect.objectContaining({ sent: words }),
+      ])
       downloaded.release()
       expect(await settled).toBe(true)
     })
@@ -579,7 +592,22 @@ describe.each(['claude', 'codex'] as const)(
       expect(w.sent().filter((text) => text.includes(D1_CONTINUATION))).toHaveLength(1)
       expect(w.sent().at(-1)).toContain('Canonical fictional recipe')
       expect(w.sent().at(-1)).not.toContain('Untrusted plugin prose')
-      expect(JSON.stringify(w.turns())).not.toContain('Suggested file titles')
+      for (const event of w.turns()) {
+        expect(event.text).not.toContain('Suggested file titles')
+        for (const part of event.parts ?? [])
+          expect(part.text).not.toContain('Suggested file titles')
+      }
+      const originalEnvelopes = w.sent().filter((text) => text.includes(D1_ORIGINAL))
+      expect(originalEnvelopes).toHaveLength(1)
+      expect(originalEnvelopes[0]).toContain('Canonical fictional recipe')
+      expect(originalEnvelopes[0]).toContain('Sent by')
+      expect(originalEnvelopes[0]).toContain('Suggested file titles')
+      expect(originalEnvelopes[0]!.indexOf('Sent by')).toBeLessThan(
+        originalEnvelopes[0]!.indexOf('Suggested file titles'),
+      )
+      expect(w.turns().filter((event) => event.text === D1_ORIGINAL)).toEqual([
+        expect.objectContaining({ sent: originalEnvelopes[0] }),
+      ])
       expect(w.seen).toHaveLength(2)
       expect(w.started).toHaveLength(1)
       expect(await w.route(1)).toMatchObject({
@@ -748,10 +776,12 @@ describe.each(['claude', 'codex'] as const)(
       expect(await w.route(0)).toMatchObject({
         content: [{ type: 'text', text: 'Fictional echo.' }],
       })
-      const input = {
+      const candidates = w.world.store.pluginTitleCandidates?.(w.piece.piece)
+      if (!candidates) throw new Error('The public world has no title candidate snapshot.')
+      const input: Omit<PluginBeforeTurnInput, 'workspaceId'> = {
         turnId: randomUUID(),
         pieceId: w.piece.piece,
-        candidates: w.world.store.pluginTitleCandidates!(w.piece.piece),
+        candidates: [...candidates],
       }
       expect(await w.f.controller.hostBeforeTurn(w.f.handle, input)).toEqual({
         pointers: [{ resourceId: w.resource.resource, version: 'd'.repeat(64) }],
@@ -794,6 +824,8 @@ describe.each(['claude', 'codex'] as const)(
       const batch = w.sent().find((text) => text.includes('Second fictional held words.'))!
       expect(batch).toContain('First fictional held words.')
       expect(batch.match(/Suggested file titles/g)).toHaveLength(1)
+      expect(batch).toContain('Sent by')
+      expect(batch).toContain('Suggested file titles')
       expect(batch.indexOf('Sent by')).toBeLessThan(batch.indexOf('Suggested file titles'))
       expect(w.seen).toHaveLength(before + 1)
       expect(w.seen.at(-1)!.context.candidates).toEqual([
@@ -810,11 +842,30 @@ describe.each(['claude', 'codex'] as const)(
         'turnId',
         'workspaceId',
       ])
-      expect(JSON.stringify(w.turns())).not.toContain('Suggested file titles')
+      for (const event of w.turns()) {
+        expect(event.text).not.toContain('Suggested file titles')
+        for (const part of event.parts ?? [])
+          expect(part.text).not.toContain('Suggested file titles')
+      }
+      expect(w.sent().filter((text) => text.includes('Second fictional held words.'))).toEqual([
+        batch,
+      ])
+      expect(batch).toContain('Canonical fictional recipe')
+      expect(
+        w.turns().filter((event) => event.text.includes('Second fictional held words.')),
+      ).toEqual([
+        expect.objectContaining({
+          sent: batch,
+          parts: [
+            expect.objectContaining({ text: 'First fictional held words.' }),
+            expect.objectContaining({ text: 'Second fictional held words.' }),
+          ],
+        }),
+      ])
       expect(w.world.handles.get('writer')!.origins.at(-1)).toEqual({ kind: 'person' })
     })
 
-    it('bypasses titles for a public provider command and for disabled title preferences without disabling A tools', async () => {
+    it('bypasses titles for a public Claude command, frames a Codex skill and honors disabled title preferences without disabling A tools', async () => {
       const w = await connected(provider)
       const handle = w.world.handles.get('writer')!,
         prefix = provider === 'claude' ? '/' : '$'
@@ -827,14 +878,42 @@ describe.each(['claude', 'codex'] as const)(
         'fictional/commands',
         prefix,
       )
+      await expect
+        .poll(
+          () =>
+            w.world
+              .ledger(w.id)
+              .filter(
+                (event) =>
+                  event.type === 'provider_commands' &&
+                  event.prefix === prefix &&
+                  event.commands.some((command) => command.name === 'fictional'),
+              ).length,
+        )
+        .toBe(1)
       await w.host.send(w.id, `${prefix}fictional`, w.world.window)
-      expect(w.sent()).toEqual([`${prefix}fictional`])
-      expect(w.seen).toHaveLength(0)
+      const hooks = provider === 'claude' ? 0 : 1
+      if (provider === 'claude') expect(w.sent()).toEqual(['/fictional'])
+      else {
+        expect(w.sent()).toHaveLength(1)
+        expect(w.sent()[0]).toContain('$fictional')
+        expect(w.sent()[0]).toContain('Canonical fictional recipe')
+        expect(w.sent()[0]).toContain('Sent by')
+        expect(w.sent()[0]).toContain('Suggested file titles')
+        expect(w.sent()[0]!.indexOf('Sent by')).toBeLessThan(
+          w.sent()[0]!.indexOf('Suggested file titles'),
+        )
+        expect(w.turns()).toEqual([
+          expect.objectContaining({ text: '$fictional', sent: w.sent()[0] }),
+        ])
+        expect(handle.origins).toEqual([{ kind: 'person' }])
+      }
+      expect(w.seen).toHaveLength(hooks)
       await w.idle()
       await w.f.controller.setTitlesEnabled(w.f.handle, 'fictional-bakery', false)
       await w.host.send(w.id, 'Fictional ordinary words without titles.', w.world.window)
       expect(w.sent().at(-1)).not.toContain('Suggested file titles')
-      expect(w.seen).toHaveLength(0)
+      expect(w.seen).toHaveLength(hooks)
       expect(w.world.launches[0]!.options.managedPluginMcp).toHaveLength(1)
       expect(w.f.state.getEnabled(w.f.local.sink.workspaceId, 'fictional-bakery').enabled).toBe(
         true,
@@ -851,7 +930,20 @@ describe.each(['claude', 'codex'] as const)(
       await expect.poll(() => w.sent().length).toBe(2)
       await expect.poll(() => w.world.handles.get('writer')!.status()).toBe('waiting_permission')
       await w.host.sendInterrupting(w.id, 'Fictional inactive replacement words.', w.world.window)
-      expect(w.sent()).toHaveLength(3)
+      const accepted = w.world.handles.get('writer')!.origins
+      const durable = w.turns().map((event) => event.text)
+      const delivery = JSON.stringify({ attempted: w.sent(), accepted, durable })
+      expect(accepted, delivery).toEqual([
+        { kind: 'person' },
+        { kind: 'person' },
+        { kind: 'person' },
+      ])
+      expect(durable, delivery).toEqual([
+        'Fictional inactive direct words.',
+        'Fictional inactive queued words.',
+        'Fictional inactive replacement words.',
+      ])
+      expect(w.sent(), delivery).toHaveLength(3)
       expect(w.sent().every((text) => !text.includes('Suggested file titles'))).toBe(true)
       expect(w.seen).toHaveLength(0)
       expect(w.world.handles.get('writer')!.origins).toHaveLength(3)
@@ -937,10 +1029,12 @@ describe.each(['claude', 'codex'] as const)(
       const pending = w.host.send(w.id, 'Fictional words during workspace detach.', w.world.window)
       await expect.poll(() => w.seen.length).toBe(1)
       await w.f.controller.detach(w.f.handle)
-      const input = {
+      const candidates = w.world.store.pluginTitleCandidates?.(w.piece.piece)
+      if (!candidates) throw new Error('The public world has no title candidate snapshot.')
+      const input: Omit<PluginBeforeTurnInput, 'workspaceId'> = {
         turnId: randomUUID(),
         pieceId: w.piece.piece,
-        candidates: w.world.store.pluginTitleCandidates!(w.piece.piece),
+        candidates: [...candidates],
       }
       expect(await w.f.controller.hostBeforeTurn(other, input)).toEqual({
         pointers: [{ resourceId: w.resource.resource, version: 'd'.repeat(64) }],

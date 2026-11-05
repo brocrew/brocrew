@@ -1,3 +1,4 @@
+import { snapshotPath } from './helpers/plugin-state-snapshot'
 import { randomUUID } from 'node:crypto'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -91,7 +92,7 @@ it('migrates absent choices to old auto-on behavior and titles off without infer
     workspaceId = randomUUID(),
     id = 'fictional .风筝'
   mutate(state, 'install', id)
-  const path = join(root, 'installed-state.json'),
+  const path = snapshotPath(root),
     saved = JSON.parse(readFileSync(path, 'utf8'))
   delete saved.workspaceEnabled
   delete saved.workspaceTitlesEnabled

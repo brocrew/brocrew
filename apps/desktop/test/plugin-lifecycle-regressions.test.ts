@@ -1,3 +1,4 @@
+import { snapshotPath } from './helpers/plugin-state-snapshot'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readdir, readFile, writeFile, unlink } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -149,9 +150,7 @@ describe('plugin lifecycle regressions', () => {
     const f = await fictionalFixture()
     for (let index = 0; index < 12; index++) {
       await f.controller.install(f.handle, 'fictional-bakery')
-      const selected = JSON.parse(
-        await readFile(join(f.root, 'state', 'installed-state.json'), 'utf8'),
-      )
+      const selected = JSON.parse(await readFile(snapshotPath(join(f.root, 'state')), 'utf8'))
       expect(selected.format).toBe(2)
       expect(selected.pending).toBeNull()
       expect(selected.active[0].pluginId).toBe('fictional-bakery')
@@ -160,8 +159,8 @@ describe('plugin lifecycle regressions', () => {
       expect(f.state.inspect().pending).toBeNull()
     }
     expect((await readdir(join(f.root, 'state'))).sort()).toEqual([
-      'installed-state.json',
       'operations.sqlite',
+      'snapshots',
       'writer-lock.sqlite',
     ])
     const state = reopenLifecycleFixture(f)

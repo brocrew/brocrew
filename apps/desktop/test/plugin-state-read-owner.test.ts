@@ -1,3 +1,4 @@
+import { snapshotPath } from './helpers/plugin-state-snapshot'
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
@@ -50,7 +51,7 @@ it('publication invalidates the shared owner snapshot even when stat tokens cann
   const f = fixture()
   releases.push(f.store.retainOwnerReadSnapshot())
   expect(f.store.getEnabled(f.workspace, f.id).enabled).toBe(true)
-  const keptStat = fs.statSync(join(f.root, 'installed-state.json'))
+  const keptStat = fs.statSync(snapshotPath(f.root))
   const stat = vi.spyOn(fs, 'statSync').mockReturnValue(keptStat)
   syncBuiltinESMExports()
   f.store.setEnabled(f.workspace, f.id, false)
@@ -72,14 +73,14 @@ it('a rename followed by a durability fault still exposes the published bytes to
   armed = true
   expect(() => f.store.setEnabled(f.workspace, f.id, false)).toThrow('fictional post-publication')
   expect(f.store.getEnabled(f.workspace, f.id)).toEqual({ enabled: false, revision: 1 })
-  expect(
-    JSON.parse(fs.readFileSync(join(f.root, 'installed-state.json'), 'utf8')).workspaceEnabled,
-  ).toEqual([{ workspaceId: f.workspace, pluginId: f.id, enabled: false, revision: 1 }])
+  expect(JSON.parse(fs.readFileSync(snapshotPath(f.root), 'utf8')).workspaceEnabled).toEqual([
+    { workspaceId: f.workspace, pluginId: f.id, enabled: false, revision: 1 },
+  ])
 })
 it('non-owner readers read fresh and never substitute an earlier valid snapshot for malformed bytes', () => {
   const f = fixture()
   expect(f.store.getEnabled(f.workspace, f.id).enabled).toBe(true)
-  const selected = join(f.root, 'installed-state.json')
+  const selected = snapshotPath(f.root)
   const value = JSON.parse(fs.readFileSync(selected, 'utf8'))
   value.workspaceEnabled = [
     { workspaceId: f.workspace, pluginId: f.id, enabled: false, revision: 1 },

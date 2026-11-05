@@ -1,3 +1,4 @@
+import { snapshotPath } from './helpers/plugin-state-snapshot'
 import { afterEach, describe, expect, it } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import Database from 'better-sqlite3'
@@ -117,11 +118,10 @@ describe('plugin state has no permanent history budget', () => {
       database.close()
     }
     expect(statSync(archive).size).toBeGreaterThan(32 * 1024 * 1024)
-    const file = join(f.root, 'installed-state.json')
     const sizes: number[] = []
     for (let index = 0; index < 24; index++) {
       install(f.store)
-      sizes.push(statSync(file).size)
+      sizes.push(statSync(snapshotPath(f.root)).size)
     }
     expect(Math.max(...sizes)).toBeLessThan(64 * 1024)
     expect(Math.max(...sizes) - Math.min(...sizes)).toBeLessThan(1024)
@@ -158,8 +158,8 @@ describe('plugin state has no permanent history budget', () => {
     expect(f.store.inspect().sequence).toBe(before)
     expect(f.reopen().exportActivation().entries[0]?.release).toEqual(release)
     expect(readdirSync(f.root).sort()).toEqual([
-      'installed-state.json',
       'operations.sqlite',
+      'snapshots',
       'writer-lock.sqlite',
     ])
   })
@@ -183,7 +183,7 @@ describe('plugin state has no permanent history budget', () => {
   it('keeps more than the old plugin and workspace projection capacities', () => {
     const f = fixture()
     install(f.store)
-    const file = join(f.root, 'installed-state.json'),
+    const file = snapshotPath(f.root),
       value = JSON.parse(readFileSync(file, 'utf8'))
     value.installations = Array.from({ length: 201 }, (_, index) => ({
       ...value.installations[0],
@@ -223,8 +223,8 @@ describe('plugin state has no permanent history budget', () => {
     next.complete(input.operationId)
     expect(next.inspect().reservation).toBeNull()
     expect(readdirSync(f.root).sort()).toEqual([
-      'installed-state.json',
       'operations.sqlite',
+      'snapshots',
       'writer-lock.sqlite',
     ])
   })

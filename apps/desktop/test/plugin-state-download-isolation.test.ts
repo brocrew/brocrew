@@ -1,3 +1,4 @@
+import { snapshotPath } from './helpers/plugin-state-snapshot'
 import { readFile } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
@@ -55,7 +56,7 @@ it('computes B prepare after an unrelated choice commits during the actual contr
     enabled: true,
     revision: 1,
   })
-  const bytes = JSON.parse(await readFile(join(f.root, 'state', 'installed-state.json'), 'utf8'))
+  const bytes = JSON.parse(await readFile(snapshotPath(join(f.root, 'state')), 'utf8'))
   expect(bytes.pending).toBeNull()
   expect(bytes.active.map((entry: { pluginId: string }) => entry.pluginId).sort()).toEqual([
     'fictional-fern',
@@ -74,7 +75,7 @@ it('aborts a held controller download at drain before preparing an operation', a
     return f.pkg.archive
   }
   const operation = randomUUID()
-  const bytes = await readFile(join(f.root, 'state/installed-state.json')).catch(() => null)
+  const bytes = await readFile(snapshotPath(join(f.root, 'state'))).catch(() => null)
   const installing = f.controller.install(f.handle, 'fictional-fern', operation).then(
     () => true,
     () => false,
@@ -87,9 +88,7 @@ it('aborts a held controller download at drain before preparing an operation', a
     expect(f.state.inspect().pending).toBeNull()
     expect(f.state.operation(operation)).toBeUndefined()
     expect(f.starts()).toBe(0)
-    expect(await readFile(join(f.root, 'state/installed-state.json')).catch(() => null)).toEqual(
-      bytes,
-    )
+    expect(await readFile(snapshotPath(join(f.root, 'state'))).catch(() => null)).toEqual(bytes)
   } finally {
     release.resolve()
     await installing

@@ -1,3 +1,4 @@
+import { snapshotPath } from './helpers/plugin-state-snapshot'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -307,9 +308,9 @@ describe('public bootstrap with the standalone SQLite contract substitution', ()
         })
         expect(settings.host).toBeDefined()
         expect(await settings.catalogue()).toEqual([])
-        expect(
-          JSON.parse(await readFile(join(root, 'state/installed-state.json'), 'utf8')),
-        ).toMatchObject({ format: 2, active: [], pending: null })
+        expect(JSON.parse(await readFile(snapshotPath(join(root, 'state')), 'utf8'))).toMatchObject(
+          { format: 2, active: [], pending: null },
+        )
         expect(owner.acceptsStarts()).toBe(true)
       } finally {
         await settings?.close()

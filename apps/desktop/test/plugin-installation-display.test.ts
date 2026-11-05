@@ -1,3 +1,4 @@
+import { snapshotPath } from './helpers/plugin-state-snapshot'
 import { afterEach, expect, it } from 'vitest'
 import { readdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -106,7 +107,7 @@ it.skipIf(process.platform === 'win32').each(['created', 'prepared'] as const)(
       expect(f.state.inspect().pending).not.toBeNull()
     }
     const options = { root: join(f.root, 'state'), workspaceRoots: [f.workspace] }
-    const snapshot = join(options.root, 'installed-state.json')
+    const snapshot = snapshotPath(options.root)
     const selected = await readFile(snapshot)
     await writeFile(snapshot, '{"format":')
     const before = await treeBytes(options.root)
