@@ -815,6 +815,34 @@ it('Back pressed once the place a step reached is on screen takes the next step,
   }
 })
 
+it('a Back pressed after going elsewhere while a step settles is the one taken, not one from before', async () => {
+  const m = await visitedA('rail-team', hostSays('available'))
+  runtime.look.mockResolvedValueOnce(handed('recorded-a', 'Words of A.'))
+  runtime.look.mockResolvedValueOnce(handed('recorded-a', 'Words of A.'))
+  const back = () => m.q('nav-back') as HTMLButtonElement
+  const frames = vi
+    .spyOn(window, 'requestAnimationFrame')
+    .mockImplementation((frame) => window.setTimeout(() => frame(performance.now()), 150))
+  try {
+    back().click()
+    await expect.poll(() => m.q('transcript').textContent).toContain('Words of A.')
+    // While A settles: Back, then Settings, then Back from Settings. Only the last is still meant.
+    back().click()
+    m.q('rail-settings').click()
+    await nextTick()
+    back().click()
+    await expect.poll(() => m.all('settings-screen').length).toBe(0)
+    expect(m.q('transcript').textContent).toContain('Words of A.')
+    // One step, from Settings to A: not on to the conversation behind A.
+    await expect
+      .poll(() => (m.q('nav-forward') as HTMLButtonElement).title)
+      .toBe('Forward to Settings (⌘])')
+    expect(m.all('message-link')).toHaveLength(0)
+  } finally {
+    frames.mockRestore()
+  }
+})
+
 it('another tab chosen while a step reads stops the step', async () => {
   const m = await visitedA('rail-team', hostSays('available'))
   runtime.look.mockResolvedValueOnce(handed('recorded-a', 'Words of A.'))
