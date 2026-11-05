@@ -216,6 +216,57 @@ describe.skipIf(process.platform === 'win32')('safe packaged gate failure diagno
     }
   })
 
+  it.each(['cdp-fixture-tests', 'dependencies', 'journey'])(
+    'keeps exact split streams through late pipe closure on a successful %s phase',
+    async (phase) => {
+      const originalStdout = process.stdout.write,
+        originalStderr = process.stderr.write,
+        stdout = [],
+        stderr = []
+      const stdoutWrite = vi.spyOn(process.stdout, 'write').mockImplementation((bytes) => {
+        stdout.push(String(bytes))
+        return true
+      })
+      const stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation((bytes) => {
+        stderr.push(String(bytes))
+        return true
+      })
+      try {
+        const { child, run } = launcher({ delayedClose: true })
+        const task = run(
+          '/fictional/node',
+          [],
+          {},
+          '/fictional',
+          { signal: new AbortController().signal },
+          1000,
+          phase,
+        )
+        let settled = false
+        const waiting = task.wait().then(() => {
+          settled = true
+        })
+        child.stdout.emit('data', Buffer.from('fictional stdout first\n'))
+        child.stderr.emit('data', Buffer.from('fictional stderr first\n'))
+        child.emit('exit', 0, null)
+        await new Promise((resolve) => setImmediate(resolve))
+        expect(settled).toBe(false)
+        child.stdout.emit('data', Buffer.from('fictional stdout late\n'))
+        child.stderr.emit('data', Buffer.from('fictional stderr late\n'))
+        child.emit('close', 0, null)
+        await expect(waiting).resolves.toBeUndefined()
+        expect(settled).toBe(true)
+        expect(stdout).toEqual(['fictional stdout first\n', 'fictional stdout late\n'])
+        expect(stderr).toEqual(['fictional stderr first\n', 'fictional stderr late\n'])
+      } finally {
+        stdoutWrite.mockRestore()
+        stderrWrite.mockRestore()
+        expect(process.stdout.write).toBe(originalStdout)
+        expect(process.stderr.write).toBe(originalStderr)
+      }
+    },
+  )
+
   it.each([
     ['EACCES', 'permission'],
     ['PermissionError: Permission denied', 'permission'],
