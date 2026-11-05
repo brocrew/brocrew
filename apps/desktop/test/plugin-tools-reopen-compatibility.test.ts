@@ -851,7 +851,20 @@ describe.each(['claude', 'codex'] as const)(
       await expect.poll(() => w.sent().length).toBe(2)
       await expect.poll(() => w.world.handles.get('writer')!.status()).toBe('waiting_permission')
       await w.host.sendInterrupting(w.id, 'Fictional inactive replacement words.', w.world.window)
-      expect(w.sent()).toHaveLength(3)
+      const accepted = w.world.handles.get('writer')!.origins
+      const durable = w.turns().map((event) => event.text)
+      const delivery = JSON.stringify({ attempted: w.sent(), accepted, durable })
+      expect(accepted, delivery).toEqual([
+        { kind: 'person' },
+        { kind: 'person' },
+        { kind: 'person' },
+      ])
+      expect(durable, delivery).toEqual([
+        'Fictional inactive direct words.',
+        'Fictional inactive queued words.',
+        'Fictional inactive replacement words.',
+      ])
+      expect(w.sent(), delivery).toHaveLength(3)
       expect(w.sent().every((text) => !text.includes('Suggested file titles'))).toBe(true)
       expect(w.seen).toHaveLength(0)
       expect(w.world.handles.get('writer')!.origins).toHaveLength(3)
