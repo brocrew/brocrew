@@ -13,6 +13,7 @@ import {
 } from './a-transcript-question-with-markdown'
 import { aWaitingPageWithMarkdown } from './a-waiting-page-with-markdown'
 import { mount, unmountAll, visible } from './harness'
+import { drawnReady, notDrawn, describeClip } from './drawn'
 
 afterEach(() => {
   unmountAll()
@@ -25,6 +26,54 @@ afterEach(() => {
 describe.each(['classic', 'crew-night', 'synthwave'] as const)(
   'shared question prose in %s',
   (theme) => {
+    it('draws a failed file press outside a long folded question', async () => {
+      if (theme !== 'classic') wearTheme(theme)
+      const opened = vi.fn(async () => ({ ok: false, reason: 'failed' }))
+      ;(window as unknown as { api: unknown }).api = {
+        runtime: {
+          resolveMessagePaths: async (ask: MessagePathAsk) =>
+            ask.texts.map((text) => ({
+              text,
+              found: true,
+              absolute: text,
+              name: text,
+              kind: 'file',
+              opens: true,
+            })),
+          openMessagePath: opened,
+          revealMessagePath: async () => ({ ok: true }),
+        },
+      }
+      const waiting = await aWaitingPageWithMarkdown(
+        1180,
+        1000,
+        false,
+        false,
+        '**Choose a draft**\n\nRead [the draft](notes.md).\n\n' +
+          '- More context for the draft.\n'.repeat(30),
+      )
+      const card = waiting.q('question-card')
+      expect(waiting.q('question-more').getAttribute('aria-expanded')).toBe('false')
+      const words = waiting.q('question-words')
+      await expect.poll(() => words.querySelectorAll('[aria-label="Open file"]').length).toBe(1)
+      words.querySelector<HTMLButtonElement>('[aria-label="Open file"]')!.click()
+      await expect.poll(() => card.querySelectorAll('[role="status"]').length).toBe(1)
+      await drawnReady()
+      const status = card.querySelector<HTMLElement>('[role="status"]')!
+      expect(notDrawn(status, waiting.host).map(describeClip)).toEqual([])
+      expect(opened).toHaveBeenCalledTimes(1)
+      words.querySelector<HTMLButtonElement>('[aria-label="Open file"]')!.click()
+      await expect.poll(() => opened.mock.calls.length).toBe(2)
+      await expect.poll(() => card.querySelectorAll('[role="status"]').length).toBe(1)
+      await drawnReady()
+      expect(
+        notDrawn(card.querySelector<HTMLElement>('[role="status"]')!, waiting.host).map(
+          describeClip,
+        ),
+      ).toEqual([])
+      expect(waiting.q('question-more').getAttribute('aria-expanded')).toBe('false')
+    })
+
     it('renders provider prompts and parts while grant fields stay literal and path presses have one owner', async () => {
       if (theme !== 'classic') wearTheme(theme)
       const press = vi.fn(async () => 'The sample file could not be opened.')

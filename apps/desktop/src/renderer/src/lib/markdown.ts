@@ -439,7 +439,7 @@ export function renderMarkdown(source: string): string {
 export function renderChatMarkdown(source: string, lead?: string): string {
   const html = chatRenderer.render(source)
   if (!lead) return html
-  const label = chatRenderer.utils.escapeHtml(lead)
+  const label = `<span class="md-lead">${chatRenderer.utils.escapeHtml(lead)}</span>`
   return html.startsWith('<p>') ? `<p>${label} ${html.slice(3)}` : `<p>${label}</p>\n${html}`
 }
 

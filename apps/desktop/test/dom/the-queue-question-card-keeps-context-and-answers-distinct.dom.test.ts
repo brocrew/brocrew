@@ -117,7 +117,9 @@ describe('the queue question separates its context from answering', () => {
       expect(getComputedStyle(badge).borderTopStyle).toBe('solid')
 
       expect(m.q('question-words').getAttribute('data-folded')).toBe('true')
-      expect(m.q('question-words').scrollHeight).toBeGreaterThan(m.q('question-words').clientHeight)
+      const prose = m.q('question-words').querySelector<HTMLElement>('.md-chat')!
+      expect(prose).not.toBeNull()
+      expect(prose.scrollHeight).toBeGreaterThan(prose.clientHeight)
       expect(m.all('question-context')).toHaveLength(0)
       expect(m.q('question-more').textContent?.trim()).toBe('Read full question')
       expect(m.q('question-more').getAttribute('aria-expanded')).toBe('false')
@@ -131,16 +133,20 @@ describe('the queue question separates its context from answering', () => {
       m.q('question-more').click()
       await nextTick()
       expect(m.q('question-words').getAttribute('data-folded')).toBe('false')
-      expect(m.q('question-words').textContent).toBe(words)
+      expect(m.q('question-words').textContent).toBe(words.trimEnd())
       expect(m.q('question-more').textContent?.trim()).toBe('Show less')
       expect(m.q('question-more').getAttribute('aria-expanded')).toBe('true')
       const quote = m.q('question-context')
-      expect(quote.textContent).toContain(context)
-      expect(quote.querySelector('.lead')?.textContent).toContain('Added')
+      expect(quote.querySelectorAll('.md-chat > p')).toHaveLength(2)
+      expect(quote.querySelectorAll('.md-chat > p')[0]?.textContent).toBe(
+        'Added: The venue has not been booked yet.',
+      )
+      expect(quote.querySelectorAll('.md-chat > p')[1]?.textContent).toBe(context.split('\n\n')[1])
+      expect(quote.querySelector('.md-lead')?.textContent).toContain('Added')
       expect(getComputedStyle(quote).whiteSpace).toBe('pre-wrap')
       expect(getComputedStyle(quote).borderLeftWidth).toBe('2px')
       expect(getComputedStyle(quote).backgroundColor).not.toBe('rgba(0, 0, 0, 0)')
-      expect(getComputedStyle(quote.querySelector('.lead')!).display).toBe('block')
+      expect(getComputedStyle(quote.querySelector('.md-lead')!).display).toBe('block')
       const lineTops = ['Draft timetable:', 'Room notes:', 'Volunteer rota:'].map((line) =>
         firstLetterTop(quote, line),
       )
@@ -199,14 +205,20 @@ describe('the queue question separates its context from answering', () => {
     expect(m.answers).toEqual([])
     m.q('question-more').click()
     await nextTick()
-    expect(m.q('question-context').textContent).toContain(context)
+    expect(m.q('question-context').querySelectorAll('.md-chat > p')).toHaveLength(2)
+    expect(m.q('question-context').querySelectorAll('.md-chat > p')[1]?.textContent).toBe(
+      context.split('\n\n')[1],
+    )
   })
 
   it('leaves the conversation card outside the queue styling and fully expanded', () => {
     const m = card(720, false)
     expect(m.q('question-card').classList.contains('queue-question')).toBe(false)
     expect(m.all('question-more')).toHaveLength(0)
-    expect(m.q('question-context').textContent).toContain(context)
+    expect(m.q('question-context').querySelectorAll('.md-chat > p')).toHaveLength(2)
+    expect(m.q('question-context').querySelectorAll('.md-chat > p')[1]?.textContent).toBe(
+      context.split('\n\n')[1],
+    )
     const badge = m.q('question-head').querySelector('svg')!
     expect(badge.getBoundingClientRect().width).toBe(11)
     expect(getComputedStyle(m.q('question-part-schedule')).borderTopWidth).toBe('0px')
