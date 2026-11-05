@@ -950,6 +950,8 @@ it.each(['pending', 'failed'] as const)(
     const old = await h.attach(sink)
     await bounded(entered.promise, 'positive old-origin applied before acknowledgement')
     await accepted(h.controller, old, B, bInstall.installId)
+    const oldB = h.controller.contributions(old, B)
+    expect(oldB.current()).toBe(true)
     expect(fresh.rows.get(A)).toMatchObject({
       installId: install.installId,
       incarnation: install.incarnation,
@@ -961,7 +963,10 @@ it.each(['pending', 'failed'] as const)(
     const beforeDetach = revoke.mock.calls.length
     await expect(h.controller.detach(old)).rejects.toMatchObject({ code: 'cleanup-pending' })
     expect(revoke.mock.calls.slice(beforeDetach)).toContainEqual([A, install.installId])
+    expect(() => h.controller.hostWorkspace(old)).toThrow()
     expect(() => h.controller.contributions(old, A)).toThrow()
+    expect(() => h.controller.contributions(old, B)).toThrow()
+    expect(oldB.current()).toBe(false)
     expect(h.controller.cleanForShutdown()).toBe(false)
     expect((await h.controller.status()).cleanupPending).toContain(A)
 
@@ -1022,6 +1027,10 @@ it.each(['pending', 'failed'] as const)(
     await bounded(returned.promise, 'abandoned positive acknowledgement returned')
     // Flush the abandoned continuation once; this is not a readiness retry.
     await new Promise<void>((resolve) => setImmediate(resolve))
+    expect(() => h.controller.hostWorkspace(old)).toThrow()
+    expect(() => h.controller.contributions(old, A)).toThrow()
+    expect(() => h.controller.contributions(old, B)).toThrow()
+    expect(oldB.current()).toBe(false)
     expect(revoke).toHaveBeenCalledTimes(oldCalls.revoke)
     expect(reconcile).toHaveBeenCalledTimes(oldCalls.reconcile)
     expect(applied).toHaveBeenCalledTimes(oldCalls.applied)
