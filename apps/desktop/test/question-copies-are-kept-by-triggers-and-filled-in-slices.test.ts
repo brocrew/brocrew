@@ -204,6 +204,54 @@ describe('question copies are kept by triggers and filled in slices', () => {
     expect(slice.visited).toBe(4)
   })
 
+  it('a slice reads ledger rows one at a time, and reads none past its byte bound', () => {
+    const wide = '😀'.repeat(20_000)
+    for (let i = 0; i < 10; i++)
+      row(
+        'alpha',
+        JSON.stringify({
+          type: 'question_asked',
+          requestId: `w${String(i)}`,
+          passedUpFrom: 'x',
+          wide,
+        }),
+      )
+    // Count the walk's rows as SQLite hands them over, however they are asked for.
+    let read = 0
+    const prepare = db.prepare.bind(db)
+    vi.spyOn(db, 'prepare').mockImplementation((sql: string) => {
+      const statement = prepare(sql)
+      if (!sql.includes('INDEXED BY events_fold_idx')) return statement
+      return new Proxy(statement, {
+        get(native, name) {
+          if (name === 'all')
+            return (...args: unknown[]) => {
+              const rows = native.all(...args)
+              read += rows.length
+              return rows
+            }
+          if (name === 'iterate')
+            return function* (...args: unknown[]) {
+              for (const one of native.iterate(...args)) {
+                read++
+                yield one
+              }
+            }
+          const value: unknown = Reflect.get(native, name, native)
+          return typeof value === 'function' ? value.bind(native) : value
+        },
+      })
+    })
+    const slice = store.fillQuestionCopies(200, 256 * 1024)
+    expect(slice.visited).toBe(4)
+    expect(read).toBe(4)
+  })
+
+  it('a row bound that is not a whole number still makes a slice', () => {
+    question('alpha', 'first')
+    expect(store.fillQuestionCopies(62.5, 256 * 1024).state).toBe('filled')
+  })
+
   it('a slice that cannot take the write lock at once is skipped', () => {
     question('alpha', 'first')
     const other = openDatabase(file)

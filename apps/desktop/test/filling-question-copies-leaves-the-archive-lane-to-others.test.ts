@@ -42,6 +42,28 @@ describe('filling question copies leaves the archive lane to others', () => {
     expect(order).toEqual(['slice 1', 'other', 'slice 2', 'slice 3'])
   })
 
+  it('every slice is asked for a whole number of rows, as its bound halves and doubles', async () => {
+    const asked: number[] = []
+    vi.spyOn(world.store, 'fillQuestionCopies').mockImplementation((rows) => {
+      asked.push(rows)
+      // Four fast slices take the bound to its most; then each takes longer than its target.
+      if (asked.length > 4) {
+        const until = performance.now() + 6
+        while (performance.now() < until) {
+          /* a slow slice */
+        }
+      }
+      return asked.length < 10
+        ? { state: 'filled', visited: 1, matched: 0 }
+        : { state: 'done', visited: 0, matched: 0 }
+    })
+    host.fillQuestionCopies()
+    await vi.waitFor(() => expect(asked).toHaveLength(10))
+    expect(asked.every((rows) => Number.isInteger(rows))).toBe(true)
+    expect(Math.max(...asked)).toBe(2000)
+    expect(Math.min(...asked)).toBeGreaterThanOrEqual(50)
+  })
+
   it('a slice that finds the write lock taken is tried again, and the fill stops once done', async () => {
     const states = ['busy', 'busy', 'filled', 'done'] as const
     let at = 0
