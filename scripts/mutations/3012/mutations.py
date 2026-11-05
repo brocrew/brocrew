@@ -94,8 +94,9 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "M5 · a stand-in keeps the empty owed read it took before it stood in, so it never says "
         f"what the replaced one owed · killed by `{OWES}`",
         [(HOST,
-          "      this.theAnswersItOwesMoved(event.sessionId)\n",
-          "      void event.sessionId\n")],
+          # ⚑ **the commit record · re-anchored in place, not retired** — A replacement row's new conversation is read from the committed row's replacedBy; same rule, same plant. Verified with verify_row.
+          "      this.theAnswersItOwesMoved(event.replacedBy)\n",
+          "      void event.replacedBy\n")],
     ),
     (
         "M6 · the index's seed counts a question routed to a PERSON as an edge somebody owes on · "

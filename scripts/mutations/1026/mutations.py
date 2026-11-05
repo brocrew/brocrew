@@ -106,19 +106,22 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M12 · a reply keeps its files and tells no window · the reply door no longer marks its files as kept, so the push never carries them — killed by `a-kept-file-is-titled-by-its-bytes-and-listed-by-one-door.test.ts` — killed by `a-kept-file-is-titled-by-its-bytes-and-listed-by-one-door.test.ts`",
         [
-            (RUNTIME_HOST, "    this.filesWereKept(piece.piece, resources)\n", "    void resources\n"),
+            # ⚑ **the commit record · re-aimed in place, not retired** — the doors no longer mark kept files by hand: each kept file is recorded by the store as it is written, and the host pushes it from that record. Same defect, cut where it now lives. Verified with verify_row.
+            (SESSION_STORE, "        committed.kept(input.piece, id)\n", ""),
         ],
     ),
     (
         "M13 · a give hands over inputs and tells no window · recordTheGive no longer marks the inputs as kept, so the piece's input files are never pushed — killed by `a-kept-file-is-titled-by-its-bytes-and-listed-by-one-door.test.ts` — killed by `a-kept-file-is-titled-by-its-bytes-and-listed-by-one-door.test.ts`",
         [
-            (RUNTIME_HOST, "    this.filesWereKept(piece.piece, piece.inputs)\n", "    void piece.inputs\n"),
+            # ⚑ **the commit record · re-aimed in place, not retired** — the doors no longer mark kept files by hand: each kept file is recorded by the store as it is written, and the host pushes it from that record. Same defect, cut where it now lives. Verified with verify_row.
+            (SESSION_STORE, "        committed.kept(given.piece, input.resource)\n", ""),
         ],
     ),
     (
         "M14 · update_work keeps files and tells no window · the update_work door no longer marks its rows as kept — killed by `a-kept-file-is-titled-by-its-bytes-and-listed-by-one-door.test.ts` — killed by `a-kept-file-is-titled-by-its-bytes-and-listed-by-one-door.test.ts`",
         [
-            (RUNTIME_HOST, "    this.filesWereKept(named.piece, rows)\n", "    void rows\n"),
+            # ⚑ **the commit record · re-aimed in place, not retired** — the doors no longer mark kept files by hand: each kept file is recorded by the store as it is written, and the host pushes it from that record. Same defect, cut where it now lives. Verified with verify_row.
+            (SESSION_STORE, "        committed.kept(input.piece, id)\n", ""),
         ],
     ),
     (
