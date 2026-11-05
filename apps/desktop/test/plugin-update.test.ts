@@ -279,7 +279,9 @@ describe.skipIf(process.platform === 'win32')(
         expect(after.package.manifest.version).toBe('0.1.3')
         expect(after.installation.installId).toBe(installedBefore.installation.installId)
         expect(after.installation.incarnation).not.toBe(installedBefore.installation.incarnation)
-        expect(after.installation.releaseRevision).toBe(installedBefore.installation.releaseRevision + 1)
+        expect(after.installation.releaseRevision).toBe(
+          installedBefore.installation.releaseRevision + 1,
+        )
         expect(after.installation.release).toMatchObject({
           archiveSha256: f.next.release.archive.sha256,
           manifestSha256: f.next.release.manifestSha256,
