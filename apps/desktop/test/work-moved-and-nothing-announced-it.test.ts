@@ -239,8 +239,8 @@ describe('638 · a change to a conversation’s work announces itself', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§1 · the subject', () => {
-    it('⛔ `work` is a member, and the three name three populations', () => {
-      expect([...RUNTIME_CHANGE_SUBJECTS]).toEqual(['conversations', 'agents', 'work'])
+    it('⛔ `work` is a member, and the four name four populations', () => {
+      expect([...RUNTIME_CHANGE_SUBJECTS]).toEqual(['conversations', 'agents', 'work', 'persons'])
       // ⚑ **Distinct**, because a duplicate would make one reader run for the other's fact —
       // `an-enumeration-whose-members-must-differ-needs-a-distinctness-check`.
       expect(new Set(RUNTIME_CHANGE_SUBJECTS).size).toBe(RUNTIME_CHANGE_SUBJECTS.length)

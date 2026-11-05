@@ -1381,7 +1381,14 @@ export const PROVIDERS_CHANGED_CHANNEL = 'runtime:providers-changed'
  * `handOnWhatItHeld` for the held work a teardown hands on — and, since `689`, the ending of a
  * conversation holding open work.
  */
-export const RUNTIME_CHANGE_SUBJECTS = ['conversations', 'agents', 'work'] as const
+/**
+ * ⚑ **`persons` — what a person must answer may have moved**: a question, a card, an ask against an
+ * agent's rules, an MCP server request, or the work a person is asked about. Announced from the
+ * store's record of each commit, whichever door wrote it. ⚠️ The queue also reads live facts — who
+ * holds a conversation, what is archived, what each is called — which `conversations` and `agents`
+ * announce, so a window reads its queue on those too.
+ */
+export const RUNTIME_CHANGE_SUBJECTS = ['conversations', 'agents', 'work', 'persons'] as const
 
 /** One of {@link RUNTIME_CHANGE_SUBJECTS}. */
 export type RuntimeChangeSubject = (typeof RUNTIME_CHANGE_SUBJECTS)[number]
