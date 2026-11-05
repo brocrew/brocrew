@@ -1106,6 +1106,7 @@ import {
   type PersonsPart,
   type PersonsQueue,
   type PersonsQueueAnswer,
+  type PersonsQueueRefused,
 } from '../../shared/persons-published'
 import type { KeptReading, KeptUsage } from '../provider-usage-file'
 import type { KeptAccounts, KnownAccount } from '../provider-accounts-file'
@@ -21388,14 +21389,26 @@ export class RuntimeHost implements LiveHost {
    * the part is null and its coverage says so.
    */
   async personsQueue(): Promise<PersonsQueueAnswer> {
-    let incidents: StampedIncidents | null
     try {
-      incidents = await this.incidentsForWindow(() => this.stampedIncidents())
+      let incidents: StampedIncidents | null
+      try {
+        incidents = await this.incidentsForWindow(() => this.stampedIncidents())
+      } catch (error) {
+        if (this.launches.closed) throw error
+        incidents = null
+      }
+      return await this.readForWindow(() => this.personsQueueAssembled(incidents))
     } catch (error) {
-      if (this.launches.closed) throw error
-      incidents = null
+      return this.personsQueueRefused(errorMessage(error))
     }
-    return this.readForWindow(() => this.personsQueueAssembled(incidents))
+  }
+
+  /** The queue refused as a whole, at the stamp current now. Reads nothing. */
+  personsQueueRefused(because: string): PersonsQueueRefused {
+    return {
+      refused: because,
+      published: { epoch: this.publicationEpoch, seq: this.publicationSeq },
+    }
   }
 
   /** The incidents, with the sequence, the time and the live facts they are exact at. */
@@ -21448,10 +21461,7 @@ export class RuntimeHost implements LiveHost {
         published: { epoch: this.publicationEpoch, seq, covers: personsCoverage(parts) },
       }
     }
-    return {
-      refused: 'The queue changed while it was read.',
-      published: { epoch: this.publicationEpoch, seq: this.publicationSeq },
-    }
+    return this.personsQueueRefused('The queue changed while it was read.')
   }
 
   /** The live facts an incidents reading consults for these holders, as one comparable string. */

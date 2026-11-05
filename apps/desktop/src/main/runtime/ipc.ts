@@ -2108,6 +2108,9 @@ export async function executeRuntimeCommand(
   // host method: a refusal written inside one would be the try/catch 273 §1 forbids, hiding the call
   // rather than stopping it.
   if (host.closing && DURING_A_QUIT[command.kind] === 'refused') {
+    // The stamped queue says its refusal at its stamp, so a window can order it; nothing is read.
+    if (command.kind === 'personsQueue')
+      return host.personsQueueRefused(refusedDuringAQuit(command.kind))
     throw new Error(refusedDuringAQuit(command.kind))
   }
   switch (command.kind) {
