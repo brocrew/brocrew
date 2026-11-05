@@ -430,8 +430,13 @@ it('offers the current update on every page opening and tells the truth about da
     },
   ])
   const request = f.client.request.bind(f.client)
+  let updateReply: PluginSettingsReply | undefined
+  let releaseUpdate!: (reply: PluginSettingsReply) => void
+  const heldUpdate = new Promise<PluginSettingsReply>((resolve) => {
+    releaseUpdate = resolve
+  })
   f.client.request = async (input) => {
-    if (input.kind === 'update')
+    if (input.kind === 'update') {
       f.set([
         {
           id: 'whatsapp',
@@ -442,6 +447,9 @@ it('offers the current update on every page opening and tells the truth about da
           uninstallDeletesData: true,
         },
       ])
+      updateReply = await request(input)
+      return heldUpdate
+    }
     return request(input)
   }
   const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })
@@ -456,8 +464,26 @@ it('offers the current update on every page opening and tells the truth about da
     })
   m.q('plugin-review-confirm').click()
   await vi.waitFor(() => expect(m.all('plugin-review-update')).toHaveLength(0))
+  await vi.waitFor(() => {
+    expect(updateReply).toMatchObject({
+      ok: true,
+      cards: [{ id: 'whatsapp', installedVersion: '0.1.3' }],
+    })
+    expect((m.q('plugin-uninstall') as HTMLButtonElement).disabled).toBe(true)
+  })
   expect(f.calls.some((call) => call.kind === 'update' && call.id === 'whatsapp')).toBe(true)
   expect(f.calls.some((call) => call.kind === 'uninstall')).toBe(false)
+  m.q('plugin-uninstall').click()
+  await nextTick()
+  expect(m.all('plugin-confirmation')).toHaveLength(0)
+  expect(f.calls.some((call) => call.kind === 'uninstall')).toBe(false)
+  if (!updateReply) throw new Error('The fictional update did not return its reply.')
+  releaseUpdate(updateReply)
+  await vi.waitFor(() => {
+    expect((m.q('plugin-uninstall') as HTMLButtonElement).disabled).toBe(false)
+    expect(m.all('plugin-review-confirm')).toHaveLength(0)
+    expect(m.all('plugin-review-update')).toHaveLength(0)
+  })
   if (import.meta.env.VITE_PLUGIN_UPDATE_CAPTURE)
     await page.screenshot({
       element: m.q('plugin-card'),
@@ -473,6 +499,7 @@ it('offers the current update on every page opening and tells the truth about da
   expect(m.q('plugin-confirmation').textContent).toContain(
     'Uninstall WhatsApp from all workspaces and delete its local data.',
   )
+  expect(f.calls.some((call) => call.kind === 'uninstall')).toBe(false)
   m.q('settings-tab-general').click()
   await nextTick()
   m.q('settings-tab-plugins').click()
