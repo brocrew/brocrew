@@ -20,6 +20,8 @@ import type {
 } from '../../../shared/runtime-ipc'
 import type { PickedModel } from '../lib/model-lists'
 import { useAgentPanel } from '../composables/useAgentPanel'
+import type { AgentPanelSubAgent } from '../lib/agent-panel'
+import { sameValue } from '../lib/workspace-projection'
 import { useConversationControls } from '../composables/useConversationControls'
 import { useConversationModelPick } from '../composables/useConversationModelPick'
 import { useProfileSignIn } from '../composables/useProfileSignIn'
@@ -265,9 +267,19 @@ const profileSignIn = computed(() => {
   const provider = props.session?.provider
   return provider && props.profile ? useProfileSignIn(provider, props.profile) : null
 })
-const telemetry = computed(
-  () => new Map(agent.panel.value.subAgents.cards.map((card) => [card.conversation, card])),
-)
+/**
+ * Each card's model, effort, context and memory, by conversation. The panel is folded again on
+ * every read it depends on; the map is kept while every card says the same, so the band beside it
+ * draws again only when a card changed.
+ */
+const telemetry = computed((was?: ReadonlyMap<string, AgentPanelSubAgent>) => {
+  const next = new Map(agent.panel.value.subAgents.cards.map((card) => [card.conversation, card]))
+  return was !== undefined &&
+    was.size === next.size &&
+    [...next].every(([conversation, card]) => sameValue(was.get(conversation), card))
+    ? was
+    : next
+})
 
 /**
  * Read work given to this conversation using the band's own fold over the same input as {@link parent}. Reusing the fold keeps the list and band consistent.
