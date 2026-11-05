@@ -107,12 +107,13 @@ afterEach(async () => {
 })
 async function host(overrideRead?: ConstructorParameters<typeof PluginPageTools>[0]['callTool']) {
   const { verified, binding } = genericUiFixture(),
-    read =
+    read = vi.fn(
       overrideRead ??
-      vi.fn(async () => ({
-        status: 'result' as const,
-        result: { content: [], structuredContent: { loaves: 2 } },
-      })),
+        (async () => ({
+          status: 'result' as const,
+          result: { content: [], structuredContent: { loaves: 2 } },
+        })),
+    ),
     detached = vi.fn()
   let valid = true,
     invalidate = () => {}
