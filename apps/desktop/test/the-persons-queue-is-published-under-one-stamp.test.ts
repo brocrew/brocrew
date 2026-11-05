@@ -264,6 +264,45 @@ describe('the person’s queue is published under one stamp', () => {
     expect([...held.rows.keys()]).toEqual(expect.arrayContaining([`${giver}:0`, `${other}:0`]))
   })
 
+  it('a wait on a time the incidents read moves the stamp once it ends, so a later answer is newer', async () => {
+    const { helper, piece } = await aHelperHoldingWork()
+    const at = world.clock + 60_000
+    world.store.append(
+      helper,
+      world.store.nextOrdinal(helper),
+      {
+        type: 'work_status_set',
+        piece,
+        line: 'Fictional wait.',
+        by: helper,
+        waiting: true,
+        on: { kind: 'time', at },
+      } as TranscriptEvent,
+      world.clock,
+    )
+    await settled()
+    const before = await queue()
+    expect(before.incidents).not.toBeNull()
+    // Nothing commits; only the clock passes the wait's end.
+    world.clock = at + 1
+    const after = await queue()
+    expect(after.published.seq).toBeGreaterThan(before.published.seq)
+    expect(after.incidents).not.toBeNull()
+    const keyOf = PERSONS_ROW_KEY.incidents
+    const held = acceptAnswer(
+      acceptAnswer(
+        emptyScope(),
+        before.published.seq,
+        true,
+        new Map(before.incidents!.rows.map((row) => [keyOf(row), row])),
+      ),
+      after.published.seq,
+      true,
+      new Map(after.incidents!.rows.map((row) => [keyOf(row), row])),
+    )
+    expect(held.watermark).toBe(after.published.seq)
+  })
+
   it('the persons notice carries the stamp it was made at', async () => {
     const before = (await queue()).published.seq
     announced = []
