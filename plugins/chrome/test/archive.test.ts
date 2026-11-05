@@ -32,6 +32,7 @@ import { fictionalPublicKey, signed } from '../../../apps/desktop/test/plugin-pa
 const artifact = process.env.BROCREW_CHROME_TEST_ARTIFACT
 const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
 type Inventory = Awaited<ReturnType<Client['listTools']>>
+type AgentRoutes = Awaited<ReturnType<ReturnType<typeof createLifecycleAgentBridge>['agentRoutes']>>
 async function builtInventory(
   run: (fixture: {
     view: AgentAttachmentView
@@ -45,7 +46,7 @@ async function builtInventory(
     token: string
     diagnostics: unknown[][]
     inventoryReply(tools: Inventory['tools']): void
-    routes(): Promise<Awaited<ReturnType<ReturnType<typeof createLifecycleAgentBridge>['routes']>>>
+    routes(): Promise<AgentRoutes>
     agent(): Promise<Client>
   }) => Promise<void>,
 ) {
@@ -59,7 +60,7 @@ async function builtInventory(
   })
     .verifyCatalogue(catalogue.bytes, catalogue.signature)
     .verifyPackage('chrome', release.version, archive)
-  const authored = JSON.parse(
+  const documentation = JSON.parse(
     Buffer.from(pkg.readFile('tools.json')!).toString(),
   ) as Inventory['tools']
   const built = await import(pathToFileURL(path.join(artifact!, 'package/server.mjs')).href)
@@ -67,6 +68,17 @@ async function builtInventory(
   const store: ProfileStore = built.createProfileStore({ home })
   const browser = new FakeBrowser(store.dirOf)
   const config = loadConfig(bootstrapEnv(home))
+  // Verified tools.json is author documentation; MCP describes these configured folders.
+  const authored = documentation.map((tool) =>
+    typeof tool.description === 'string'
+      ? {
+          ...tool,
+          description: tool.description
+            .replace('{downloads}', () => config.downloadsRoot)
+            .replace('{roots}', () => config.workspace),
+        }
+      : tool,
+  )
   const clients: Client[] = [],
     diagnostics: unknown[][] = []
   let server, bridge: ReturnType<typeof createLifecycleAgentBridge> | undefined
@@ -140,7 +152,7 @@ async function builtInventory(
       },
     })
     const routes = () =>
-      bridge!.routes(
+      bridge!.agentRoutes(
         {
           id: randomUUID(),
           workspace: 'a'.repeat(64),
@@ -166,7 +178,7 @@ async function builtInventory(
       view,
       inventory,
       authored,
-      documentation: authored,
+      documentation,
       source,
       store,
       browser,
@@ -580,9 +592,9 @@ describe('Chrome release fixture', () => {
       const bytes = fs.readFileSync(file)
       const verified = Buffer.from(checked.readFile(name)!)
       expect(verified.length).toBe(bytes.length)
-      expect(verified).toEqual(bytes)
+      expect(verified.equals(bytes), `Verified file bytes: ${name}`).toBe(true)
       if (name !== 'plugin.json')
-        expect(manifest.files).toContainEqual({
+        expect(manifestFiles.get(name)).toEqual({
           path: name,
           bytes: bytes.length,
           sha256: hash(bytes),
