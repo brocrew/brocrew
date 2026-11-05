@@ -88,4 +88,51 @@ describe('the listing is composed once until it moves', () => {
     expect(runningOf(helper)).toBe('unwatched')
     expect(compositions()).toBeGreaterThan(before)
   })
+
+  it('a listing that skipped a read is said once, and the next ask with nothing moved reads it again', async () => {
+    const given = await world.gives(host, giver, 'helper')
+    if (!given.ok) throw new Error('the give was refused')
+    const helper = world.store.workById(given.piece)!.owner
+    await vi.waitFor(() => expect(runningOf(helper)).toBe('unwatched'))
+    await host.close(helper, world.window)
+    await vi.waitFor(() => expect(runningOf(helper)).toBe('not-running'))
+    // A commit makes the next ask a fresh composition, and one read in it fails once.
+    world.store.setModel(giver, 'fictional-model')
+    const failing = vi.spyOn(world.store, 'messagesWaitingIn').mockImplementationOnce(() => {
+      throw new Error('fictional busy read')
+    })
+    const before = compositions()
+    listed()
+    expect(failing).toHaveBeenCalled()
+    expect(compositions()).toBe(before + 1)
+    // Nothing committed and nothing live moved: the skipped listing was not kept.
+    const recovered = listed()
+    expect(compositions()).toBe(before + 2)
+    // A complete listing is kept again.
+    expect(listed().resumable).toBe(recovered.resumable)
+  })
+
+  it('a rebuild’s batches and its discard keep the listing, and a commit mixing a batch with a setter does not', () => {
+    const generation = world.store.beginGeneration(giver)
+    const first = listed()
+    const before = compositions()
+    world.store.appendGeneration(giver, generation, [
+      { ordinal: 0, event: { type: 'assistant_message', text: 'rebuilt' }, at: world.clock++ },
+    ])
+    world.store.discardGeneration(giver, generation, 100)
+    const after = listed()
+    expect(compositions()).toBe(before)
+    expect(after.resumable).toBe(first.resumable)
+    const next = world.store.beginGeneration(giver)
+    listed()
+    const settled = compositions()
+    world.store.atomically(() => {
+      world.store.appendGeneration(giver, next, [
+        { ordinal: 0, event: { type: 'assistant_message', text: 'rebuilt' }, at: world.clock++ },
+      ])
+      world.store.setModel(giver, 'fictional-model')
+    })
+    listed()
+    expect(compositions()).toBe(settled + 1)
+  })
 })

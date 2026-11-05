@@ -49,6 +49,31 @@ describe('a person is told when what they must answer moves', () => {
     },
   )
 
+  it.each([
+    [{ type: 'background_work', running: [], source: 'fictional' }],
+    [{ type: 'scheduled_work', jobs: [], source: 'fictional' }],
+  ])('a level row written by the store alone announces persons: %j', async (event) => {
+    writtenByTheStore(event as unknown as TranscriptEvent)
+    await loopTurns()
+    expect(told()).toBeGreaterThanOrEqual(1)
+  })
+
+  it('background work its provider ends, through the real door, announces persons', async () => {
+    const handle = world.handles.at(-1)!.handle
+    handle.simulateBackgroundWork()
+    await loopTurns()
+    announced = []
+    handle.simulateBackgroundWork({ running: [] })
+    await loopTurns()
+    expect(told()).toBeGreaterThanOrEqual(1)
+  })
+
+  it('a rename written by the store alone, with no row, announces persons', async () => {
+    expect(world.store.setAgentDisplayName('asker', 'Fictional Asker')).toBe(true)
+    await loopTurns()
+    expect(told()).toBeGreaterThanOrEqual(1)
+  })
+
   it('words streamed and a working status announce nothing to a person', async () => {
     writtenByTheStore({ type: 'assistant_message', text: 'fictional words' })
     writtenByTheStore({ type: 'status', state: 'working' } as TranscriptEvent)
