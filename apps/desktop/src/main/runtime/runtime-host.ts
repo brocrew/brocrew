@@ -38228,6 +38228,8 @@ export class RuntimeHost implements LiveHost {
       }
       // ⚑ **W4.203 · and its newest context reading** is the new generation's.
       this.contextAsLastRead.delete(sessionId)
+      // The work a giver's drawer folds from this ledger may be gone.
+      this.theWorldMoved('work')
     }
     // The listing draws the new generation, or the failure or retry a derive records.
     if (outcome !== 'skipped') this.theWorldMoved('conversations')
