@@ -49,6 +49,13 @@ describe('hand-written schema survives a rebuild', () => {
         ].map((one) => ({ type: one[1]!.toLowerCase(), name: one[2]! })),
       )
       .filter((one) => !schema.includes(`'${one.name}'`) && !schema.includes(`"${one.name}"`))
+      // One a later migration dropped with its table is gone, not missing.
+      .filter(
+        (one) =>
+          db
+            .prepare('SELECT 1 FROM sqlite_master WHERE type = ? AND name = ?')
+            .get(one.type, one.name) !== undefined,
+      )
     expect(written.length).toBeGreaterThan(0)
     const declared = new Set(HAND_WRITTEN_OBJECTS.map((one) => `${one.type} ${one.name}`))
     for (const one of written)

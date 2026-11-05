@@ -80,8 +80,6 @@ export const HAND_WRITTEN_OBJECTS: readonly {
 }[] = [
   { type: 'index', name: 'events_kind_owner_idx' },
   { type: 'index', name: 'events_work_piece_idx' },
-  { type: 'index', name: 'raw_frame_session_idx' },
-  { type: 'index', name: 'raw_frame_session_ordinal_uq' },
   { type: 'trigger', name: 'skill_version_no_update' },
   { type: 'trigger', name: 'skill_version_no_delete' },
 ]
