@@ -1,4 +1,4 @@
-import { createApp, nextTick, type Component } from 'vue'
+import { createApp, nextTick, type App, type Component } from 'vue'
 import { expect } from 'vitest'
 import type ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import type { CreatedSession, TranscriptEvent } from '../../src/shared/runtime-ipc'
@@ -53,6 +53,8 @@ export function mount(
   component: Component,
   props: Record<string, unknown>,
   box: { width: number; height?: number } = { width: 1200 },
+  /** Registers app-wide hooks before the mount, such as a mixin that counts component updates. */
+  install?: (app: App) => void,
 ): Mounted {
   const host = document.createElement('div')
   host.style.width = `${box.width}px`
@@ -63,6 +65,7 @@ export function mount(
   document.body.append(host)
 
   const app = createApp(component, props)
+  install?.(app)
   // ⚠️ **Registered BEFORE the mount, because a mount can throw.** The host is already in the
   // document by this line; if `app.mount` raised and cleanup were registered after it, the div
   // would survive `afterEach` and sit in `document.body` for every later test in the file — where
