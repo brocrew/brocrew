@@ -5,7 +5,7 @@ import type { MessagePathAsk, MessagePathTarget } from '../../src/shared/runtime
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { wearTheme } from '../../look/fixtures/themes'
-import RequestMarkdown from '../../src/renderer/src/components/RequestMarkdown.vue'
+import MarkdownWords from '../../src/renderer/src/components/MarkdownWords.vue'
 import { aWaitingPageWithMarkdown, LITERAL_COMMAND } from './a-waiting-page-with-markdown'
 import { mount, unmountAll } from './harness'
 import { drawnReady, inkRects } from './drawn'
@@ -40,7 +40,7 @@ describe.each(['classic', 'crew-night'] as const)('Waiting on you markdown in %s
     expect(punctuation[0]!.top).toBeLessThan(code.getBoundingClientRect().bottom)
     expect(context.textContent).toBe('Added: Added after review: read summary.md.')
     const filename = 'long-name-'.repeat(80) + 'summary.md'
-    const narrow = mount(RequestMarkdown, { text: `Read \`${filename}\`.` }, { width: 180 })
+    const narrow = mount(MarkdownWords, { text: `Read \`${filename}\`.` }, { width: 180 })
     expect(narrow.host.querySelector('code')?.textContent).toBe(filename)
     expect(narrow.host.textContent).toBe(`Read ${filename}.`)
     expect(narrow.host.scrollWidth).toBeLessThanOrEqual(narrow.host.clientWidth)

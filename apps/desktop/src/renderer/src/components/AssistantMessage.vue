@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { clockTime } from '../../../shared/clock'
 import { fullTime } from '../lib/clock'
-import { renderChatMarkdown } from '../lib/markdown'
+import MarkdownWords from './MarkdownWords.vue'
 import {
   answerFor,
   questionsWithChoices,
@@ -10,8 +10,7 @@ import {
   SENT_AS_A_MESSAGE,
   type AskedWithoutWaiting,
 } from '../lib/asked-without-waiting'
-import { documentClicked, documentsNamedIn } from '../lib/the-documents-a-reply-names'
-import { usePathsIn, type PathsHere } from '../composables/useMessagePaths'
+import type { PathsHere } from '../composables/useMessagePaths'
 import type { AssistantItem, TranscriptItem } from '../lib/transcript'
 
 /**
@@ -105,38 +104,6 @@ function choose(question: AskedWithoutWaiting, option: string): void {
 
 /** Distinct per message, so each choice group names the note that explains it. */
 const noteId = computed(() => `asked-note-${props.item.id}`)
-
-const markdown = computed(() => (props.item.streaming ? '' : renderChatMarkdown(props.item.text)))
-
-/** Paths are asked about only once the reply has settled. */
-const paths = usePathsIn(
-  () => props.paths,
-  () => (props.item.streaming ? [] : [markdown.value]),
-)
-
-/**
- * ⛔ **Markdown first, then the roster** — see `lib/named-in-a-reply.ts`. ⚠️ The order is the whole
- * of why the `html: false` invariant below still holds: markdown-it escapes everything the reply
- * wrote, and the only markup added afterwards is this app's own, built from a value it read from its
- * own data — a resource id one of its own work reports carried, or a path main said it found,
- * escaped on the way in.
- */
-const rendered = computed(() => {
-  if (props.item.streaming) return ''
-  return paths.mark(documentsNamedIn(markdown.value, props.documents ?? []))
-})
-
-/**
- * ⛔ **A named file, pressed — raised, never opened here** (see {@link emit}).
- *
- * ⚠️ **Delegated on the container**, because `v-html` content has no components to bind handlers to.
- */
-function openANamedDocument(event: MouseEvent): void {
-  const resourceId = documentClicked(event.target)
-  if (resourceId === null) return paths.clicked(event)
-  event.preventDefault()
-  emit('openDocument', resourceId)
-}
 </script>
 
 <template>
@@ -169,15 +136,14 @@ function openANamedDocument(event: MouseEvent): void {
         <template v-if="item.streaming"
           >{{ item.text }}<span class="stream-caret" aria-hidden="true"></span
         ></template>
-        <!-- eslint-disable-next-line vue/no-v-html -- markdown-it runs with `html: false`, so this
-             string cannot contain markup from the reply; see lib/markdown.ts. -->
-        <div
+        <MarkdownWords
           v-else
-          class="md-chat"
           data-cy="assistant-markdown"
-          v-html="rendered"
-          @click="openANamedDocument"
-        ></div>
+          :text="item.text"
+          :paths="props.paths"
+          :documents="props.documents"
+          @open-document="(resourceId) => emit('openDocument', resourceId)"
+        />
       </div>
       <div
         v-if="questionsWithoutProse.length > 0"
@@ -186,14 +152,6 @@ function openANamedDocument(event: MouseEvent): void {
       >
         <p v-for="(question, index) in questionsWithoutProse" :key="index">{{ question.title }}</p>
       </div>
-      <p
-        v-if="paths.failure.value"
-        class="message-path-failure"
-        role="status"
-        data-cy="message-path-failure"
-      >
-        {{ paths.failure.value }}
-      </p>
       <!-- Questions asked without waiting, as choices (provider follow-ups 1). The message above
            already says them; this only makes them pressable, and says what a press does. -->
       <div

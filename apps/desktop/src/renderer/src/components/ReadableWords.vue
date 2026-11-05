@@ -11,7 +11,7 @@ import { computed } from 'vue'
 import MarkdownWords from './MarkdownWords.vue'
 import type { WordsPart } from '../lib/words-with-json'
 
-const props = defineProps<{ parts: readonly WordsPart[]; markdown?: boolean }>()
+const props = defineProps<{ parts: readonly WordsPart[] }>()
 
 const drawn = computed(() =>
   props.parts.flatMap((part, index): WordsPart[] => {
@@ -30,8 +30,7 @@ const drawn = computed(() =>
   <div class="readable">
     <template v-for="(part, index) in drawn" :key="index">
       <pre v-if="part.kind === 'json'" class="json" data-cy="words-json">{{ part.pretty }}</pre>
-      <MarkdownWords v-else-if="markdown" :text="part.text" />
-      <p v-else class="words">{{ part.text }}</p>
+      <MarkdownWords v-else :text="part.text" />
     </template>
   </div>
 </template>
@@ -40,11 +39,6 @@ const drawn = computed(() =>
 .readable {
   display: grid;
   gap: var(--space-3);
-}
-
-.words {
-  margin: 0;
-  white-space: pre-wrap;
 }
 
 /* ⚑ `ToolAnswerViewer`'s `.part-body.json` face, on a quiet well so the block reads as data. */

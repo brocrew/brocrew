@@ -73,11 +73,12 @@ export async function aWaitingPageWithMarkdown(
   height = 1000,
   long = false,
   relativeLink = false,
+  prompt = MARKDOWN_PROMPT,
 ) {
   const words: AskedQuestion = {
     prompt: relativeLink
       ? 'Read [the draft](notes.md).'
-      : MARKDOWN_PROMPT + (long ? '\n\n' + LONG_MARKDOWN : ''),
+      : prompt + (long ? '\n\n' + LONG_MARKDOWN : ''),
     context: 'Added **after review**: read `summary.md`.',
     passedUp: true,
     parts: [

@@ -188,7 +188,6 @@ const view = ref<'readable' | 'raw'>('readable')
       class="msg-body"
       data-cy="relayed-readable"
       :parts="jsonParts"
-      :markdown="true"
       :title="fullTime(item.at)"
     />
     <div

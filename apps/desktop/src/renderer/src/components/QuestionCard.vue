@@ -41,20 +41,11 @@ import {
   type QuestionPart,
   type QuestionState,
 } from '../lib/question-card'
-import { escaped } from '../lib/named-in-a-reply'
-import { renderChatMarkdown } from '../lib/markdown'
-import {
-  runtimePathCalls,
-  useMessagePaths,
-  usePathsIn,
-  type PathsHere,
-} from '../composables/useMessagePaths'
-import PathsInText from './PathsInText.vue'
+import { runtimePathCalls, useMessagePaths, type PathsHere } from '../composables/useMessagePaths'
 import MarkdownWords from './MarkdownWords.vue'
 
 const props = defineProps<{
   reading: QuestionCardReading
-  markdown?: boolean
   /** The outer exchange heading already names the recipient. */
   withoutRecipient?: boolean
   /**
@@ -73,14 +64,6 @@ const props = defineProps<{
 const queuePaths = useMessagePaths(
   () => props.pathSessionId ?? null,
   () => (!props.paths && props.pathSessionId ? runtimePathCalls() : null),
-)
-/** The question's words and each part's prompt; an option's words sit inside its button. */
-const paths = usePathsIn(
-  () => props.paths ?? queuePaths.value,
-  () =>
-    [props.reading.words ?? '', ...props.reading.parts.map((part) => part.prompt ?? '')].map(
-      (text) => (props.markdown ? renderChatMarkdown(text) : escaped(text)),
-    ),
 )
 
 const emit = defineEmits<{
@@ -232,7 +215,6 @@ watch(
     data-cy="question-card"
     :data-state="state"
     :data-request-id="props.reading.requestId ?? undefined"
-    @click="paths.clicked"
   >
     <header class="question-head" data-cy="question-head">
       <svg class="icon" aria-hidden="true"><use href="#i-question" /></svg>
@@ -274,31 +256,16 @@ watch(
       data-cy="question-words"
       :data-folded="String(folded)"
     >
-      <MarkdownWords v-if="markdown" :text="props.reading.words" :found="paths" />
-      <PathsInText v-else :text="props.reading.words" :found="paths" />
+      <MarkdownWords :text="props.reading.words" :paths="props.paths ?? queuePaths" />
     </div>
-    <p
-      v-if="paths.failure.value"
-      class="message-path-failure"
-      role="status"
-      data-cy="message-path-failure"
-    >
-      {{ paths.failure.value }}
-    </p>
     <!-- ⛔ A cut body SAYS it was cut, in words and outside the words' box (`678`). -->
     <p v-if="props.reading.wordsAreCut" class="aside" data-cy="question-cut">{{ BODY_WAS_CUT }}</p>
     <!-- ⚑ What the conversation that passed it up added — beside the words, never instead. -->
-    <component
-      :is="markdown ? 'div' : 'p'"
-      v-if="props.reading.context && !folded"
-      class="aside"
-      data-cy="question-context"
-    >
+    <div v-if="props.reading.context && !folded" class="aside" data-cy="question-context">
       <span class="lead">{{ ADDED_BESIDE }}</span
       >{{ ' ' }}
-      <MarkdownWords v-if="markdown" :text="props.reading.context" />
-      <template v-else>{{ props.reading.context }}</template>
-    </component>
+      <MarkdownWords :text="props.reading.context" :paths="props.paths ?? queuePaths" />
+    </div>
     <button
       v-if="foldable"
       class="more"
@@ -342,13 +309,15 @@ watch(
         class="part"
         :data-cy="`question-part-${part.id}`"
       >
-        <component :is="markdown ? 'div' : 'p'" v-if="asks(part)" :id="askId(index)" class="ask">
+        <div v-if="asks(part)" :id="askId(index)" class="ask">
           <span v-if="part.header" class="header">{{ part.header }}</span
           >{{ ' '
-          }}<MarkdownWords v-if="markdown && part.prompt" :text="part.prompt" :found="paths" />
-          <PathsInText v-else :text="part.prompt ?? ''" :found="paths" />{{ ' '
-          }}<span v-if="live && part.multiSelect" class="mode">{{ PICK_SEVERAL }}</span>
-        </component>
+          }}<MarkdownWords
+            v-if="part.prompt"
+            :text="part.prompt"
+            :paths="props.paths ?? queuePaths"
+          />{{ ' ' }}<span v-if="live && part.multiSelect" class="mode">{{ PICK_SEVERAL }}</span>
+        </div>
         <div
           v-if="live && part.options.length > 0"
           class="options"

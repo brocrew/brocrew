@@ -8413,7 +8413,7 @@ export function agentToolsFor(
           question: z
             .string()
             .describe(
-              `What you need decided, in your own words, at most ${REPLY_SUMMARY_LIMIT.toLocaleString('en-US')} characters (UTF-16 code units). Nothing is shortened for you.`,
+              `What you need decided, in your own words, at most ${REPLY_SUMMARY_LIMIT.toLocaleString('en-US')} characters (UTF-16 code units). Nothing is shortened for you. It shows under Waiting on you with Markdown: **bold**, lists, \`code\` for ids and paths, and links to files.`,
             ),
           who_answers: documentedToolEnum(
             TOOL_INPUT_ENUMS['ask_question:who_answers'],
@@ -9900,7 +9900,7 @@ export function agentToolsFor(
         action: z
           .string()
           .describe(
-            `What the person should do, in plain words, at most ${String(REPLY_SUMMARY_LIMIT)} characters.`,
+            `What the person should do, in plain words, at most ${String(REPLY_SUMMARY_LIMIT)} characters. It shows under Waiting on you with Markdown: **bold**, lists, \`code\` for ids and paths, and links to files.`,
           ),
         resources: z
           .array(z.string())
