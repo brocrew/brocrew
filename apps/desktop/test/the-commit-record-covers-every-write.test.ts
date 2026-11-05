@@ -73,9 +73,9 @@ describe('the commit record covers every write', () => {
     const { db, store } = aStore()
     // Test-only: a temp trigger on each persistent table says a change happened, independently of
     // the record; a publication clears it.
-    let changed = false
+    const seen = { changed: false }
     db.function('a_persistent_change', () => {
-      changed = true
+      seen.changed = true
       return 0
     })
     const tables = (
@@ -99,7 +99,7 @@ describe('the commit record covers every write', () => {
     }
     expect(watched).toBeGreaterThan(10)
     store.onCommitted(() => {
-      changed = false
+      seen.changed = false
     })
     const doors: [string, (one: SessionStore) => void][] = [
       [
@@ -169,15 +169,15 @@ describe('the commit record covers every write', () => {
     ]
     const unpublished: string[] = []
     for (const [name, door] of doors) {
-      changed = false
+      seen.changed = false
       door(store)
-      if (changed) unpublished.push(name)
+      if (seen.changed) unpublished.push(name)
     }
     expect(unpublished).toEqual([])
     // The control: a change the record never frames is seen.
-    changed = false
+    seen.changed = false
     db.exec("UPDATE provider_session SET cwd = '/tmp/elsewhere' WHERE id = 'alpha'")
-    expect(changed).toBe(true)
+    expect(seen.changed).toBe(true)
   })
 
   it('an append runs no SQL of the recorder’s own', () => {
