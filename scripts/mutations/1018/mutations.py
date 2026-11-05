@@ -176,7 +176,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M27 · a memory read that did not answer keeps the last figures instead of drawing none — killed by `the-memory-a-running-agent-holds-is-read-by-pid-and-never-kept.test.ts`",
         [
-            (RUNTIME_SCREEN_VUE, "  const held = await store.processMemory()\n  cast.processMemory.value = new Map(\n    (held?.conversations ?? []).map((one) => [one.conversation, one.bytes]),\n  )", "  const held = await store.processMemory()\n  if (held === null) return\n  cast.processMemory.value = new Map(\n    held.conversations.map((one) => [one.conversation, one.bytes]),\n  )"),
+            # ⚑ **the memory read keeps the newest ask · re-anchored in place, not retired** — the memory read now checks that it is still the newest ask before it writes; the plant still keeps the last figures when the read did not answer
+            (RUNTIME_SCREEN_VUE, "  if (mine !== memoryRead) return\n  cast.processMemory.value = new Map(\n    (held?.conversations ?? []).map((one) => [one.conversation, one.bytes]),\n  )", "  if (mine !== memoryRead) return\n  if (held === null) return\n  cast.processMemory.value = new Map(\n    held.conversations.map((one) => [one.conversation, one.bytes]),\n  )"),
         ],
     ),
     (

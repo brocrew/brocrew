@@ -2487,14 +2487,14 @@
         },
         {
           "id": "1018:M27",
-          "fingerprint": "a916b0804365ebef4b4a5f82c1ab5a9b81ecf6669b0a61e7c130d75ee3eb0814"
+          "fingerprint": "4bd3b82c20a84a03a5c45502c6780279d8ca6caf9107d286967a3a5145f024c0"
         },
         {
           "id": "1018:M28",
           "fingerprint": "0c821e0e9675fc4869162e407b219a5fa413891a0ebb5e12b6b53e9e8588e29f"
         }
       ],
-      "definitionFingerprint": "915b8c8580620fdcd487f42c6d29301e0e753bc00191b0ba7dfcc71e6bc1d325",
+      "definitionFingerprint": "96ab255cf2ad54d7d1d8a883a1b1896b54f88dcf52b2c0f377a1923a6c2607e2",
       "retiredRows": [
         "M10"
       ],

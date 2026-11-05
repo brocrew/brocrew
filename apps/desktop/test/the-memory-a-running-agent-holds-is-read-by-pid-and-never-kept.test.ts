@@ -675,10 +675,14 @@ describe('§4 · where the read is made, asked for and drawn', () => {
     expect(reading).toContain('await store.processMemory()')
     expect(reading).toContain('cast.processMemory.value = new Map(')
     expect(reading).toContain('held?.conversations ?? []')
-    // … and a refusal draws nothing: an early return would keep the last figures, and a kept
-    // figure could belong to a process that has since stopped.
-    expect(reading).not.toMatch(/\breturn\b/)
-    expect(reading).not.toMatch(/\bif\s*\(/)
+    // … and a refusal draws nothing: an early return on the answer would keep the last figures,
+    // and a kept figure could belong to a process that has since stopped. The one guard compares
+    // tickets only: an ask a newer one replaced, or one the screen retired as it went, writes nothing.
+    const newest = 'if (mine !== memoryRead) return'
+    expect(reading).toContain(newest)
+    const drawn = reading.replace(newest, '')
+    expect(drawn).not.toMatch(/\breturn\b/)
+    expect(drawn).not.toMatch(/\bif\s*\(/)
 
     // The figures go when the screen goes: the reset is in an `onUnmounted` callback.
     const reset = 'cast.processMemory.value = new Map()'

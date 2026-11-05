@@ -3086,14 +3086,19 @@ watch(surface, (now) => {
  * 🔴 **D-018 · the memory each running conversation's process holds, for the agent cards** —
  * asked with the band ({@link readTheCast}), so it moves when the band does: opening a
  * conversation, its tick, a start or a stop (`conversations`), and the work moving. ⚑ Main shares
- * one read between askers, so a later ask never gets an older answer and no counter is needed.
+ * one read between askers, so a later ask never gets an older answer; the counter is for this
+ * screen going, which retires every ask still out.
  *
  * ⛔ **A read that did not answer draws no figure**: a figure is a live process's, and a kept one
  * could belong to a process that has since stopped. ⚠️ **Not in the band's `Promise.all`**: the
  * figure is no part of the band's one moment, and awaiting it would hold the cards for a `ps`.
  */
+let memoryRead = 0
 async function readProcessMemory(): Promise<void> {
+  const mine = ++memoryRead
   const held = await store.processMemory()
+  // A read that lands after this screen has gone belongs to no screen.
+  if (mine !== memoryRead) return
   cast.processMemory.value = new Map(
     (held?.conversations ?? []).map((one) => [one.conversation, one.bytes]),
   )
@@ -3494,7 +3499,12 @@ onUnmounted(() => {
   // ⛔ **Handed back, because the ref outlives this component under HMR** — a band left holding a
   // press into a screen that has been replaced would claim through a store nobody is listening to.
   cast.goTo.value = null
+  // Every read still out belongs to this screen, so none of them may write once it has gone.
   castRead++
+  memoryRead++
+  filesRead++
+  glanceRead++
+  workRead++
   cast.loadingFor.value = null
   // ⚑ **UI-001 · and the rail's rows with it** — a band left holding them would draw a replaced
   // screen's words.
@@ -3510,6 +3520,8 @@ onUnmounted(() => {
   // that outlives this component under HMR, and a stale list of rows pointing at conversations a
   // new store has never heard of is worse than no list.
   persons.forget()
+  // And the stop switch, for the same reason: this screen supplied it.
+  safety.forget()
 })
 
 /**

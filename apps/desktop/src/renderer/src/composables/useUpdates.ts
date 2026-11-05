@@ -25,28 +25,42 @@ export interface Updates {
 
 type UpdatesBridge = Window['api']['updates']
 
-let held: Updates | null = null
+/** The window's one holder, and how to stop its listener. */
+let held: { readonly updates: Updates; readonly stop: () => void } | null = null
 
-/** ⚑ The window's one {@link Updates}. */
+/**
+ * ⚑ The window's one {@link Updates}. Its listener belongs to the window, not to a menu or a footer:
+ * one closing leaves it for the others, and only {@link forgetUpdates} lets it go.
+ */
 export function useUpdates(): Updates {
   held ??= updatesOver(bridgeOrNull())
-  return held
+  return held.updates
 }
 
-/** ⚑ For tests: forget the window's one, so the next {@link useUpdates} reads a new bridge. */
+/**
+ * ⚑ Let the window's one go, listener and all, so the next {@link useUpdates} reads a new bridge:
+ * a test's teardown, and a hot reload that re-evaluates this module.
+ */
 export function forgetUpdates(): void {
+  held?.stop()
   held = null
 }
+
+import.meta.hot?.dispose(forgetUpdates)
 
 function bridgeOrNull(): UpdatesBridge | null {
   if (typeof window === 'undefined') return null
   return (window as Partial<Window>).api?.updates ?? null
 }
 
-function updatesOver(bridge: UpdatesBridge | null): Updates {
+function updatesOver(bridge: UpdatesBridge | null): {
+  readonly updates: Updates
+  readonly stop: () => void
+} {
   const snapshot = shallowRef<UpdatesSnapshot | null>(null)
+  let stop = (): void => {}
   if (bridge !== null) {
-    bridge.onChanged((next) => {
+    stop = bridge.onChanged((next) => {
       snapshot.value = next
     })
     void bridge.read().then(
@@ -61,12 +75,15 @@ function updatesOver(bridge: UpdatesBridge | null): Updates {
     snapshot.value = await call()
   }
   return {
-    snapshot,
-    checkNow: () => take(bridge?.checkNow),
-    download: () => take(bridge?.download),
-    restartWhenQuiet: () => take(bridge?.restartWhenQuiet),
-    cancelRestart: () => take(bridge?.cancelRestart),
-    set: (change) => take(bridge === null ? undefined : () => bridge.set(change)),
-    refresh: () => take(bridge?.read).catch(() => {}),
+    updates: {
+      snapshot,
+      checkNow: () => take(bridge?.checkNow),
+      download: () => take(bridge?.download),
+      restartWhenQuiet: () => take(bridge?.restartWhenQuiet),
+      cancelRestart: () => take(bridge?.cancelRestart),
+      set: (change) => take(bridge === null ? undefined : () => bridge.set(change)),
+      refresh: () => take(bridge?.read).catch(() => {}),
+    },
+    stop,
   }
 }

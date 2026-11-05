@@ -4,6 +4,7 @@ import { AttentionSignals, ATTENTION_SIGNAL_INTERVAL_MS } from '../../src/main/a
 import { isAttentionSignal, type AttentionSignal } from '../../src/shared/attention-signals'
 import { useAttentionSignals } from '../../src/renderer/src/composables/useAttentionSignals'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
+import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
 import {
   chainReading,
   escalationChain,
@@ -24,7 +25,12 @@ import {
 } from '../../src/renderer/src/composables/useProfileSignIn'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
-import type { AgentIdentities, RuntimeBridge, ResumedSession } from '../../src/shared/runtime-ipc'
+import type {
+  AgentIdentities,
+  ProcessMemory,
+  RuntimeBridge,
+  ResumedSession,
+} from '../../src/shared/runtime-ipc'
 import type { ResolvedMessageLink } from '../../src/renderer/src/lib/message-links'
 import { idlePanel } from './sub-agents-idle-fixture'
 import { drawnReady } from './drawn'
@@ -157,6 +163,7 @@ const runtime = {
     readAt: 1,
     conversations: [],
   })),
+  processMemory: vi.fn<RuntimeBridge['processMemory']>(async () => ({ conversations: [] })),
   theWholeForest: vi.fn<RuntimeBridge['theWholeForest']>(async () => ({
     readAt: 1,
     nodes: forestWalk(),
@@ -1318,5 +1325,38 @@ it('opens Settings Skills from the agent book and closes the book without changi
     }
     window.api = previousApi
     agentStore = previousAgentStore
+  }
+})
+
+it('replies that land after the screen is gone write nothing the next screen would draw', async () => {
+  const memory = deferred<ProcessMemory>()
+  const files = deferred<Awaited<ReturnType<RuntimeBridge['filesKept']>>>()
+  runtime.processMemory.mockImplementation(() => memory.promise)
+  runtime.filesKept.mockImplementation(() => files.promise)
+  const cast = useWhoCalledWhom()
+  const safety = useSpawnSafety()
+  try {
+    // Opening a conversation reads its band, and the process memory with it, and its files.
+    const screen = await panelScreen()
+    await expect.poll(() => runtime.processMemory.mock.calls.length).toBeGreaterThan(0)
+    await expect.poll(() => runtime.filesKept.mock.calls.length).toBeGreaterThan(0)
+    await expect.poll(() => safety.view.value).not.toBeNull()
+
+    screen.unmount()
+    expect(safety.view.value).toBeNull()
+    memory.resolve({ conversations: [{ conversation: 'fictional-source', bytes: 1024 }] })
+    files.resolve({ ok: true, files: [], added: [] })
+    await new Promise((done) => setTimeout(done, 0))
+    await nextTick()
+
+    expect(cast.processMemory.value.size).toBe(0)
+    expect(cast.memoryUnmeasured.value).toBeNull()
+    expect(cast.treeFiles.value).toBeNull()
+    expect(cast.cardFiles.value).toBeNull()
+  } finally {
+    memory.resolve({ conversations: [] })
+    files.resolve({ ok: true, files: [], added: [] })
+    runtime.processMemory.mockImplementation(async () => ({ conversations: [] }))
+    runtime.filesKept.mockImplementation(async () => ({ ok: true, files: [], added: [] }))
   }
 })

@@ -30,6 +30,8 @@ type Fake = {
   restartWhenQuiet: ReturnType<typeof vi.fn>
   cancelRestart: ReturnType<typeof vi.fn>
   onChanged: ReturnType<typeof vi.fn>
+  /** What `onChanged`'s unsubscribe was called. */
+  stopped: ReturnType<typeof vi.fn>
   tell: (next: UpdatesSnapshot) => void
 }
 
@@ -38,6 +40,7 @@ const api = (): { api?: Record<string, unknown> } =>
 
 function fakeUpdates(first: UpdatesSnapshot): Fake {
   let listener: ((next: UpdatesSnapshot) => void) | null = null
+  const stopped = vi.fn()
   const answer = (next: UpdatesSnapshot) => vi.fn(async () => next)
   const fake: Fake = {
     read: answer(first),
@@ -50,8 +53,9 @@ function fakeUpdates(first: UpdatesSnapshot): Fake {
     ),
     onChanged: vi.fn((next: (snapshot: UpdatesSnapshot) => void) => {
       listener = next
-      return () => {}
+      return stopped
     }),
+    stopped,
     tell: (next) => listener?.(next),
   }
   api().api = {
@@ -299,5 +303,22 @@ describe('B2 · the footer opens it', () => {
     expect(
       (await rail({ kind: 'idle', checkedAt: null, upToDate: true })).all('rail-update-dot'),
     ).toHaveLength(0)
+  })
+})
+
+describe('the window’s one updates listener', () => {
+  it('outlives the menus that read it, and is let go when the window’s holder is', async () => {
+    const { m, fake } = await menuIn({ kind: 'idle', checkedAt: null, upToDate: false })
+    m.unmount()
+    const again = mount(UpdatesMenu, {}, { width: 300, height: 400 })
+    await settle()
+    fake.tell(snapshotOf({ kind: 'available', version: '0.2.0' }))
+    await settle()
+    expect(text(again.q('updates-said'))).toBe('BroCrew 0.2.0 is available.')
+    expect(fake.onChanged).toHaveBeenCalledTimes(1)
+    expect(fake.stopped).not.toHaveBeenCalled()
+
+    forgetUpdates()
+    expect(fake.stopped).toHaveBeenCalledTimes(1)
   })
 })
