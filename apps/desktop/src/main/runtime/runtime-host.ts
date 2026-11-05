@@ -1098,6 +1098,15 @@ import type { StalledWork } from '../../shared/stalled-work'
 import type { StoppedWorkForAPerson } from '../../shared/stopped-work'
 import type { WorkIncident } from '../../shared/work-incidents'
 import type { WaitingOnWhoWrote } from '../../shared/waiting-on-who-wrote'
+import type { Coverage, PublicationEpoch } from '../../shared/data-version'
+import {
+  PERSONS_PARTS,
+  PERSONS_ROW_KEY,
+  type CountedRows,
+  type PersonsPart,
+  type PersonsQueue,
+  type PersonsQueueAnswer,
+} from '../../shared/persons-published'
 import type { KeptReading, KeptUsage } from '../provider-usage-file'
 import type { KeptAccounts, KnownAccount } from '../provider-accounts-file'
 import {
@@ -7921,6 +7930,13 @@ export class RuntimeHost implements LiveHost {
    * that version ({@link forAPerson}).
    */
   private personsVersion = 0
+  /** This run's publisher, said to every window that asks; `n` moves only on a resync. */
+  private publicationEpoch: PublicationEpoch = { run: randomUUID(), n: 0 }
+  /**
+   * The sequence every stamped answer and notice carries. It moves with every version a window
+   * reads ({@link moveTheListing}, {@link moveThePersons}), and with nothing else.
+   */
+  private publicationSeq = 0
   private readonly personsKept = new Map<string, { readonly at: number; readonly value: unknown }>()
   /** Stops {@link heardACommit} being called, once this host closes. */
   private stopHearingCommits: () => void = () => undefined
@@ -7985,7 +8001,7 @@ export class RuntimeHost implements LiveHost {
     this.refreshWorkerReadings()
   }
   private refreshWorkerReadings(recheck = false): void {
-    this.listingVersion++
+    this.moveTheListing()
     if (recheck) this.workerTerminals.clear()
     const read = this.keptProfileExecution
     if (!read.readable) {
@@ -10555,14 +10571,18 @@ export class RuntimeHost implements LiveHost {
    */
   private theWorldMoved(what: RuntimeChangeMessage['what']): void {
     this.linkAnswers.invalidate()
-    this.listingVersion++
-    this.personsVersion++
+    this.moveTheListing()
+    this.moveThePersons()
     // ⚑ **D-019 · the roster names whoever a question waits on** (*waiting on an answer from Ada*) —
     // ⚑ and D-036 whoever holds work given out (*waiting on <name>*) — asked here, where every
     // roster change is announced, rather than at each of its sites.
     if (what === 'agents') this.namesMayHaveMoved()
     try {
-      this.deps.announce?.({ what })
+      this.deps.announce?.(
+        what === 'persons'
+          ? { what, published: { epoch: this.publicationEpoch, seq: this.publicationSeq } }
+          : { what },
+      )
     } catch (error) {
       console.warn(`runtime host could not announce that ${what} moved: ${errorMessage(error)}`)
     }
@@ -10587,8 +10607,8 @@ export class RuntimeHost implements LiveHost {
    */
   private stateMayHaveMoved(conversation: string): void {
     this.linkAnswers.invalidate()
-    this.listingVersion++
-    this.personsVersion++
+    this.moveTheListing()
+    this.moveThePersons()
     this.aServiceMayTakeItsNext(conversation)
     if (this.deps.statesMoved === undefined) return
     const countdown = this.idleCountdowns.get(conversation)
@@ -10701,7 +10721,9 @@ export class RuntimeHost implements LiveHost {
   private heardACommit(change: Committed): void {
     try {
       if (change.resync) {
-        this.listingVersion++
+        const { run, n } = this.publicationEpoch
+        this.publicationEpoch = { run, n: n + 1, reason: 'resync' }
+        this.moveTheListing()
         this.everyKeptReadingIsStale()
         return
       }
@@ -10712,7 +10734,7 @@ export class RuntimeHost implements LiveHost {
         change.kept.length > 0 ||
         change.visibleTables.size > 0
       )
-        this.listingVersion++
+        this.moveTheListing()
       for (const row of change.rows) this.aRowWasWritten(row.session, row)
       if (
         change.whole.size > 0 ||
@@ -11210,12 +11232,12 @@ export class RuntimeHost implements LiveHost {
     if (!kept.owned) {
       this.profileExecution = read
       this.profileExecutionConflicts = [...new Set([...settled.conflicts, ...settled.moved])]
-      this.listingVersion++
+      this.moveTheListing()
       return
     }
     this.profileExecution = { readable: true, kept: settled.kept }
     this.profileExecutionConflicts = settled.conflicts
-    this.listingVersion++
+    this.moveTheListing()
     if (!settled.changed) return
     try {
       kept.write(settled.kept)
@@ -19493,6 +19515,24 @@ export class RuntimeHost implements LiveHost {
    * skipped rows it could not read, or a composition that moved the version, is said once and
    * composed again at the next ask.
    */
+  /** The listing's inputs moved: what a window holds of it is older than the next answer. */
+  private moveTheListing(): void {
+    this.listingVersion++
+    this.publicationSeq++
+  }
+
+  /** The person's queue's inputs moved: what a window holds of it is older than the next answer. */
+  private moveThePersons(): void {
+    this.personsVersion++
+    this.publicationSeq++
+  }
+
+  /** This run's publisher, after another connection's commit is heard. */
+  currentEpoch(): PublicationEpoch {
+    this.deps.store.checkCommitted()
+    return this.publicationEpoch
+  }
+
   private forAPerson<T>(name: string, compose: () => T, complete?: (value: T) => boolean): T {
     return this.keptUntilItMoves(
       this.personsKept,
@@ -19541,14 +19581,30 @@ export class RuntimeHost implements LiveHost {
 
   /** The asks against agents' rules still waiting, read once per version of the person's queue. */
   private instructionAsksNow(): readonly InstructionAskWaiting[] {
-    return this.forAPerson('instructionAsksWaiting', () => this.deps.store.instructionAsksWaiting())
+    return this.instructionAsksCounted().rows
+  }
+
+  /** The same asks, with the rows the read could not take; a short read is read again. */
+  private instructionAsksCounted(): CountedRows<InstructionAskWaiting> {
+    return this.forAPerson('instructionAsksWaiting', () => {
+      const unread = rowsUnreadOnce()
+      const rows = this.deps.store.instructionAsksWaiting(unread)
+      return { rows, rowsUnread: unread.count }
+    })
   }
 
   /** The MCP server requests still waiting, read once per version of the person's queue. */
   private mcpServerRequestsNow(): ReturnType<SessionStore['mcpServerRequestsWaiting']> {
-    return this.forAPerson('mcpServerRequestsWaiting', () =>
-      this.deps.store.mcpServerRequestsWaiting(),
-    )
+    return this.mcpServerRequestsCounted().rows
+  }
+
+  /** The same requests, with the rows the read could not take; a short read is read again. */
+  private mcpServerRequestsCounted(): CountedRows<McpServerRequestWaiting> {
+    return this.forAPerson('mcpServerRequestsWaiting', () => {
+      const unread = rowsUnreadOnce()
+      const rows = this.deps.store.mcpServerRequestsWaiting(unread)
+      return { rows, rowsUnread: unread.count }
+    })
   }
 
   /**
@@ -20286,7 +20342,7 @@ export class RuntimeHost implements LiveHost {
   }
 
   private publishProviderLimitFactsSoon(conversation?: string): void {
-    this.listingVersion++
+    this.moveTheListing()
     if (conversation === undefined) this.providerLimitsAllMoved = true
     else this.providerLimitsMoved.add(conversation)
     if (this.providerLimitsPublicationAsked || this.launches.closed) return
@@ -20667,7 +20723,11 @@ export class RuntimeHost implements LiveHost {
    * leaves when the piece is driven again, says what it waits on, or ends.
    */
   /** One canonical read per holder, including roots whose waits are not folded pieces. */
-  private reconciliationReading(onlyPiece?: string, holders?: ReadonlySet<string>) {
+  private reconciliationReading(
+    onlyPiece?: string,
+    holders?: ReadonlySet<string>,
+    boundary?: { next: number },
+  ) {
     const unread = rowsUnreadOnce()
     const rows: (ReconciliationPiece & {
       work: WorkRow
@@ -20733,7 +20793,7 @@ export class RuntimeHost implements LiveHost {
           const watched = new Set<string>()
           const waitProblem =
             line?.waiting === true && line.on !== undefined
-              ? this.reconciliationWaitProblem(work, line.on, line.by, watched)
+              ? this.reconciliationWaitProblem(work, line.on, line.by, watched, boundary)
               : null
           const one: ReconciliationPiece & {
             work: WorkRow
@@ -20893,8 +20953,15 @@ export class RuntimeHost implements LiveHost {
     on: WaitOn,
     by?: string | null,
     watched?: Set<string>,
+    boundary?: { next: number },
   ): 'wait-target-ended' | 'wait-target-missing' | null {
-    if (on.kind === 'time') return on.at <= this.now() ? 'wait-target-ended' : null
+    if (on.kind === 'time') {
+      const now = this.now()
+      if (on.at <= now) return 'wait-target-ended'
+      // The reading holds until this wait ends.
+      if (boundary !== undefined) boundary.next = Math.min(boundary.next, on.at)
+      return null
+    }
     if (on.kind === 'agent' && 'piece' in on) {
       const target = this.deps.store.workById(on.piece)
       if (target === null) return 'wait-target-missing'
@@ -21267,8 +21334,16 @@ export class RuntimeHost implements LiveHost {
 
   /** Reads historical incident facts off main before composing with the current live state. */
   async workIncidentsForWindow(): Promise<LedgerWalk<WorkIncident>> {
+    return this.incidentsForWindow(() => this.readWorkIncidentsForAPerson())
+  }
+
+  /**
+   * `compose`, an incidents reading, run on the worker's incident snapshot, or on the main thread
+   * where the worker does not serve it and the fallback is due.
+   */
+  private async incidentsForWindow<T>(compose: () => T): Promise<T> {
     if (this.launches.closed) throw new WindowReadUnavailable()
-    if (this.deps.windowReader === undefined) return this.workIncidentsForAPerson()
+    if (this.deps.windowReader === undefined) return this.windowIncidentReads.run(compose)
     if (
       this.windowReadCallers >= WINDOW_READ_BOUNDS.callers ||
       this.windowIncidentsPending !== undefined
@@ -21279,7 +21354,7 @@ export class RuntimeHost implements LiveHost {
     try {
       return await this.freshWindowQuery({ kind: 'incidents' }, (result) => {
         if (result.kind !== 'incidents') throw new WindowReadMissed('worker-gone')
-        return this.windowIncidentReads.run(() => this.readWorkIncidentsForAPerson(), result)
+        return this.windowIncidentReads.run(compose, result)
       })
     } catch (error) {
       if (!(error instanceof WindowReadMissed) || this.launches.closed) throw error
@@ -21296,11 +21371,123 @@ export class RuntimeHost implements LiveHost {
     )
       throw new WindowReadUnavailable()
     this.lastIncidentMainReadAt = at
-    return this.answeredOnTheMainThread(missed, () => this.workIncidentsForAPerson())
+    return this.answeredOnTheMainThread(missed, () => this.windowIncidentReads.run(compose))
   }
 
-  private readWorkIncidentsForAPerson(): LedgerWalk<WorkIncident> {
-    const reading = this.reconciliationReading()
+  /**
+   * The person's queue as one publication: all eight parts composed in one synchronous stretch and
+   * stamped with the sequence they are exact at. The incidents, read first on their own snapshot,
+   * are included only if nothing they read moved before that stretch: no version, no wait on a
+   * time, and none of the live facts they consulted. Otherwise, as for any part whose read fails,
+   * the part is null and its coverage says so.
+   */
+  async personsQueue(): Promise<PersonsQueueAnswer> {
+    let incidents: StampedIncidents | null
+    try {
+      incidents = await this.incidentsForWindow(() => this.stampedIncidents())
+    } catch (error) {
+      if (this.launches.closed) throw error
+      incidents = null
+    }
+    return this.readForWindow(() => this.personsQueueAssembled(incidents))
+  }
+
+  /** The incidents, with the sequence, the time and the live facts they are exact at. */
+  private stampedIncidents(): StampedIncidents {
+    this.deps.store.checkCommitted()
+    const seq = this.publicationSeq
+    const holders = new Set<string>()
+    const boundary = { next: Number.POSITIVE_INFINITY }
+    const walk = this.readWorkIncidentsForAPerson(holders, boundary)
+    return { walk, seq, validUntil: boundary.next, holders, live: this.incidentsLiveFacts(holders) }
+  }
+
+  private personsQueueAssembled(incidents: StampedIncidents | null): PersonsQueueAnswer {
+    const part = <T>(read: () => T): T | null => {
+      try {
+        return read()
+      } catch (error) {
+        console.warn(
+          `runtime host could not read part of the person's queue: ${errorMessage(error)}`,
+        )
+        return null
+      }
+    }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      this.deps.store.checkCommitted()
+      const seq = this.publicationSeq
+      const parts: Omit<PersonsQueue, 'published'> = {
+        questions: part(() => this.questionsForAPerson()),
+        decisions: part(() => this.decisionsForAPerson()),
+        instructionAsks: part(() => this.instructionAsksCounted()),
+        mcpServerRequests: part(() => ({
+          rows: this.mcpServerRequestsForAPerson(),
+          rowsUnread: this.mcpServerRequestsCounted().rowsUnread,
+        })),
+        stalled: part(() => this.stalledWorkForAPerson()),
+        stopped: part(() => this.stoppedWorkForAPerson()),
+        waitingOnWhoWrote: part(() => this.waitingOnWhoWroteForAPerson()),
+        incidents:
+          incidents !== null &&
+          incidents.seq === seq &&
+          this.now() < incidents.validUntil &&
+          this.incidentsLiveFacts(incidents.holders) === incidents.live
+            ? incidents.walk
+            : null,
+      }
+      // Another connection's commit heard in the middle: compose once more at the new stamp.
+      if (this.publicationSeq !== seq) continue
+      return {
+        ...parts,
+        published: { epoch: this.publicationEpoch, seq, covers: personsCoverage(parts) },
+      }
+    }
+    return {
+      refused: 'The queue changed while it was read.',
+      published: { epoch: this.publicationEpoch, seq: this.publicationSeq },
+    }
+  }
+
+  /** The live facts an incidents reading consults for these holders, as one comparable string. */
+  private incidentsLiveFacts(holders: ReadonlySet<string>): string {
+    const elsewhere = workRunningElsewhere(this)
+    return JSON.stringify(
+      [...holders].sort().map((holder) => {
+        const slot = this.slots.get(holder)
+        const session = slot?.session ?? null
+        return [
+          holder,
+          elsewhere.has(holder),
+          this.aReopenIsBeingDecidedFor.has(holder),
+          this.reopeningForWhatWaited.has(holder),
+          this.startsInFlight.has(holder),
+          this.arrivals.has(holder),
+          this.heldAtAStop.get(holder)?.length ?? 0,
+          slot === undefined
+            ? null
+            : session === null
+              ? 'starting'
+              : [
+                  session.reopeningOnTheCurrentSignIn === true,
+                  session.handle.status(),
+                  session.mailbox.length,
+                  session.background.running.map((one) => one.id),
+                  session.scheduled?.jobs.map((one) => one.id) ?? null,
+                ],
+          this.wakeUps.get(holder)?.level?.jobs.map((one) => one.id) ?? null,
+          this.cutsAreReadable ? (this.cutsKept.cuts[holder] ?? null) : 'unreadable',
+          this.archived.has(holder),
+        ]
+      }),
+    )
+  }
+
+  private readWorkIncidentsForAPerson(
+    holders?: Set<string>,
+    boundary?: { next: number },
+  ): LedgerWalk<WorkIncident> {
+    const reading = this.reconciliationReading(undefined, undefined, boundary)
+    for (const piece of reading.rows) holders?.add(piece.holder)
     const rows: WorkIncident[] = []
     const receiptsUnread = new Set<string>()
     const receipts = this.reconciliationReceiptsFor(
@@ -37170,8 +37357,8 @@ export class RuntimeHost implements LiveHost {
     }
     try {
       this.archived.add(tree, this.now())
-      this.listingVersion++
-      this.personsVersion++
+      this.moveTheListing()
+      this.moveThePersons()
     } catch (error) {
       return { done: false, refusal: errorMessage(error) }
     }
@@ -37222,8 +37409,8 @@ export class RuntimeHost implements LiveHost {
     }
     try {
       this.archived.remove(archived)
-      this.listingVersion++
-      this.personsVersion++
+      this.moveTheListing()
+      this.moveThePersons()
     } catch (error) {
       return { done: false, refusal: errorMessage(error) }
     }
@@ -37310,8 +37497,8 @@ export class RuntimeHost implements LiveHost {
       archived.map((conversation) => [conversation, this.archived.archivedAt(conversation) ?? 0]),
     )
     this.archived.remove(archived)
-    this.listingVersion++
-    this.personsVersion++
+    this.moveTheListing()
+    this.moveThePersons()
     const cause =
       this.whatBringsItBack.get(sessionId) ?? (sink === null ? 'it was started' : 'you opened it')
     this.whatBringsItBack.delete(sessionId)
@@ -37337,8 +37524,8 @@ export class RuntimeHost implements LiveHost {
     this.bringingBack.delete(sessionId)
     try {
       for (const [conversation, at] of back.archivedAt) this.archived.add([conversation], at)
-      this.listingVersion++
-      this.personsVersion++
+      this.moveTheListing()
+      this.moveThePersons()
     } catch (error) {
       console.warn(
         `runtime host could not put ${sessionId} back in the archive after its start failed: ${errorMessage(error)}`,
@@ -37697,8 +37884,8 @@ export class RuntimeHost implements LiveHost {
       }
       try {
         this.archived.remove(tree)
-        this.listingVersion++
-        this.personsVersion++
+        this.moveTheListing()
+        this.moveThePersons()
       } catch (error) {
         console.warn(
           `runtime host could not take deleted conversations out of the archive: ${errorMessage(error)}`,
@@ -37804,7 +37991,7 @@ export class RuntimeHost implements LiveHost {
     for (const id of ids) {
       this.providerLimitFacts.forget(id)
       this.providerLimitLives.delete(id)
-      this.listingVersion++
+      this.moveTheListing()
       this.providerBlockSaid.delete(id)
       this.forgetItsWakeUp(id)
       const countdown = this.idleCountdowns.get(id)
@@ -45562,7 +45749,7 @@ export class RuntimeHost implements LiveHost {
     if (this.deps.turnsTheAppCut !== undefined) void this.identityOf(session)
     const life = {}
     this.providerLimitLives.set(id, { provider, life })
-    this.listingVersion++
+    this.moveTheListing()
     this.providerLimitFacts.begin(
       id,
       life,
@@ -48292,6 +48479,37 @@ function toHomeConversation(session: UserHomeDiscovery['found'][number]): HomeCo
 }
 
 /** Whether an answer read every row it walked: a walk that counted rows unread or skipped none. */
+/** An incidents reading, with what it is exact at. */
+interface StampedIncidents {
+  readonly walk: LedgerWalk<WorkIncident>
+  readonly seq: number
+  /** The earliest time a wait on a time it read ends; it is exact only before. */
+  readonly validUntil: number
+  readonly holders: ReadonlySet<string>
+  readonly live: string
+}
+
+/** Each part's coverage under one stamp: complete, partial with the rows it holds, or refused. */
+function personsCoverage(parts: Omit<PersonsQueue, 'published'>): Record<PersonsPart, Coverage> {
+  const covers = {} as Record<PersonsPart, Coverage>
+  for (const part of PERSONS_PARTS) {
+    const value = parts[part]
+    const key = PERSONS_ROW_KEY[part] as (row: unknown) => string
+    covers[part] =
+      value === null
+        ? { population: 'persons', scope: part, complete: false, ids: [] }
+        : everyRowWasRead(value)
+          ? { population: 'persons', scope: part, complete: true }
+          : {
+              population: 'persons',
+              scope: part,
+              complete: false,
+              ids: (value.rows as readonly unknown[]).map(key),
+            }
+  }
+  return covers
+}
+
 function everyRowWasRead(value: unknown): boolean {
   if (typeof value !== 'object' || value === null) return true
   const walk = value as { rowsUnread?: unknown; ledgersSkipped?: unknown }

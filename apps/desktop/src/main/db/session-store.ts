@@ -1907,7 +1907,7 @@ export interface SessionStore extends OwnNotesStore {
    * it stays in front of a person, whatever became of the conversation that made it, until they
    * decide it or save their own rules.
    */
-  instructionAsksWaiting(): readonly InstructionAskWaiting[]
+  instructionAsksWaiting(unread?: RowsUnread): readonly InstructionAskWaiting[]
   /**
    * ⛔ **End one ask, by appending into the ledger of the conversation that made it.** `false` when
    * there was nothing waiting by that name — a second press, or an ask another host has already
@@ -1915,7 +1915,7 @@ export interface SessionStore extends OwnNotesStore {
    */
   settleInstructionAsk(askId: string, ending: InstructionEnding, by: ActedBy, at: number): boolean
   /** Every MCP server request no ending names yet, oldest first, across every conversation. */
-  mcpServerRequestsWaiting(): readonly McpServerRequestWaiting[]
+  mcpServerRequestsWaiting(unread?: RowsUnread): readonly McpServerRequestWaiting[]
   /** Whether a request by this id was ever made, waiting or settled. */
   mcpServerRequestWasMade(requestId: string): boolean
   /**
@@ -11653,7 +11653,7 @@ export function createSessionStore(
    * vocabulary has moved reaches a reader as a word it does not know, and every consumer of these
    * folds narrows rather than casts.
    */
-  const instructionAsksWaiting = (): readonly InstructionAskWaiting[] =>
+  const instructionAsksWaiting = (unread?: RowsUnread): readonly InstructionAskWaiting[] =>
     waitingOnAPerson(
       (
         selectInstructionAsks.all() as {
@@ -11666,7 +11666,7 @@ export function createSessionStore(
       ).flatMap((row) => {
         // 🔴 **D-017 · R8 — one torn row is skipped, never the whole read** (`noteUnreadRow`).
         if (row.readable === 0) {
-          noteUnreadRow(row.conversation, row.ordinal, undefined)
+          noteUnreadRow(row.conversation, row.ordinal, unread?.in(row.conversation))
           return []
         }
         try {
@@ -11679,6 +11679,7 @@ export function createSessionStore(
             `session ledger: ${row.conversation} ordinal ${String(row.ordinal)} could not be read ` +
               `and was skipped (${error instanceof Error ? error.message : String(error)})`,
           )
+          unread?.in(row.conversation)(row.ordinal)
           return []
         }
       }),
@@ -11716,7 +11717,7 @@ export function createSessionStore(
   )
 
   /** Every MCP server request still waiting: {@link instructionAsksWaiting}'s read, for requests. */
-  const mcpServerRequestsWaitingNow = (): readonly McpServerRequestWaiting[] =>
+  const mcpServerRequestsWaitingNow = (unread?: RowsUnread): readonly McpServerRequestWaiting[] =>
     mcpServerRequestsWaiting(
       (
         selectMcpServerRequests.all() as {
@@ -11728,7 +11729,7 @@ export function createSessionStore(
         }[]
       ).flatMap((row) => {
         if (row.readable === 0) {
-          noteUnreadRow(row.conversation, row.ordinal, undefined)
+          noteUnreadRow(row.conversation, row.ordinal, unread?.in(row.conversation))
           return []
         }
         try {
@@ -11743,6 +11744,7 @@ export function createSessionStore(
             `session ledger: ${row.conversation} ordinal ${String(row.ordinal)} could not be read ` +
               `and was skipped (${error instanceof Error ? error.message : String(error)})`,
           )
+          unread?.in(row.conversation)(row.ordinal)
           return []
         }
       }),
@@ -13057,16 +13059,16 @@ export function createSessionStore(
       return row === undefined ? null : memoryAmendmentFrom(row)
     },
 
-    instructionAsksWaiting() {
-      return instructionAsksWaiting()
+    instructionAsksWaiting(unread) {
+      return instructionAsksWaiting(unread)
     },
 
     settleInstructionAsk(askId, ending, by, at) {
       return settleInstructionAskTx(askId, ending, by, at)
     },
 
-    mcpServerRequestsWaiting() {
-      return mcpServerRequestsWaitingNow()
+    mcpServerRequestsWaiting(unread) {
+      return mcpServerRequestsWaitingNow(unread)
     },
 
     mcpServerRequestWasMade(requestId) {

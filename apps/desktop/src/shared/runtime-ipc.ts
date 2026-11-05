@@ -1,3 +1,4 @@
+import type { PublicationEpoch } from './data-version'
 import type {
   MethodLibrary,
   MethodBody,
@@ -1402,6 +1403,8 @@ export type RuntimeChangeSubject = (typeof RUNTIME_CHANGE_SUBJECTS)[number]
  */
 export interface RuntimeChangeMessage {
   readonly what: RuntimeChangeSubject
+  /** On a `persons` notice: the publication it was made at, beside the queue's stamped answers. */
+  readonly published?: { readonly epoch: PublicationEpoch; readonly seq: number }
 }
 
 /**
