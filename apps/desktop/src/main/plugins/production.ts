@@ -227,14 +227,16 @@ export function productionPluginController() {
   const update = async () => {
     if (!connected || ended || cleanupUncertain) return fail()
     const connection = connected
+    let stage: 'rpc' | 'composition' = 'rpc'
     try {
       const admittedCards = await connection.catalogue()
+      stage = 'composition'
       if (ended || connected !== connection) return fail()
-      if (!catalogueEntries) return fail()
+      if (!catalogueEntries) throw new Error('Catalogue composition has no verified releases')
       const releases = catalogueEntries.releases
       if (connection.refreshCatalogue && !refreshFailed) {
         if (releases.some((release) => !admittedCards.some((card) => card.id === release.id)))
-          return fail()
+          throw new Error('Catalogue composition is missing admitted release cards')
       }
       // Installed cards come from the authenticated owner, independently of today's offers.
       let hints: PluginCard[] | undefined
@@ -285,7 +287,12 @@ export function productionPluginController() {
     } catch (error) {
       if (ended || connected !== connection) return fail()
       startupCatalogueVerifiedAt = undefined
-      failed('catalogue-response', error)
+      const diagnostic = new PluginStartupError(
+        pluginStartupReason(error, 'catalogue-response'),
+        error,
+        error instanceof PluginStartupError ? (error.catalogueStage ?? stage) : stage,
+      )
+      failed('catalogue-response', diagnostic)
       // Preserve a still-live channel for explicit retry/quit to detach with its acknowledgments.
       entries =
         entries?.map((one) => ({ ...one, state: 'Unavailable', tools: 'none', service: null })) ??

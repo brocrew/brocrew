@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { createLifecycleAgentBridge } from '../src/main/plugins/lifecycle/agent-bridge'
+import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { sharedLifecycleWorkspaces } from '../src/main/plugins/lifecycle/workspaces'
 import { WorkspacePluginAttachments } from '../src/main/plugins/attachments'
 import { fixture, cleanupLifecycleFixtures, deferred } from './plugin-lifecycle-fixtures'
@@ -887,8 +888,96 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
     await expect(client.listTools()).rejects.toThrow()
   })
 })
+it.skipIf(process.platform === 'win32')(
+  'a real cold legacy attach stays unknown until ensureRunning reconciles, then its route can be called',
+  async () => {
+    const f = await fixture()
+    const priorExit = deferred<void>()
+    const start = f.opts.runtime.start.bind(f.opts.runtime)
+    f.opts.runtime.start = async (spec) => {
+      const run = await start(spec)
+      return {
+        ...run,
+        exited: priorExit.promise,
+        stop: async () => {
+          await run.stop()
+          priorExit.resolve()
+        },
+      }
+    }
+    await f.controller.install(f.handle, 'chrome')
+    await f.controller.detach(f.handle)
+    await f.controller.drain()
+    const ready = deferred<void>()
+    const entered = vi.fn()
+    f.opts.runtime.start = async (spec) => {
+      const run = await start(spec)
+      return {
+        ...run,
+        ready: async () => {
+          entered()
+          await ready.promise
+          return run.ready()
+        },
+      }
+    }
+    const cold = await PluginLifecycleController.open(f.opts)
+    const binding = vi.fn(async () => ({
+      tools: [
+        {
+          name: 'echo',
+          description: 'Fictional echo',
+          inputSchema: { type: 'object' },
+          prepare: (input: BrokerInput) => ({ input, resources: [] }),
+        },
+      ],
+      resources: [],
+      adminOperations: [],
+      isAllowed: () => true,
+      server: {
+        tool: () => ({
+          result: Promise.resolve({
+            ok: true as const,
+            value: { content: [{ type: 'text', text: 'fictional cold echo' }] },
+          }),
+          quiescent: Promise.resolve(),
+          cancel() {},
+        }),
+        admin() {
+          throw new Error('person surface stays private')
+        },
+      },
+    }))
+    const bridge = createLifecycleAgentBridge({
+      owner: { valid: () => true },
+      controller: cold,
+      binding,
+      answerWithinMs: 100,
+    })
+    closes.push(() => bridge.close())
+    const owner = lease(),
+      req = request(f.local.sink.workspaceId)
+    try {
+      const reading = bridge.agentRoutes(owner, req)
+      await vi.waitFor(() => expect(entered).toHaveBeenCalled())
+      const unknown = await reading
+      expect(unknown).toEqual({ servers: [], pending: [], none: [], unknown: true })
+      expect(binding).not.toHaveBeenCalled()
+      ready.resolve()
+      await vi.waitFor(() => expect(cold.agentAttachments(req.workspaceId)).toHaveLength(1))
+      const admitted = await bridge.agentRoutes(owner, req)
+      expect(admitted.servers).toHaveLength(1)
+      const client = await connected(admitted.servers[0]!)
+      expect(await client.callTool({ name: 'echo', arguments: {} })).toMatchObject({
+        content: [{ text: 'fictional cold echo' }],
+      })
+    } finally {
+      ready.resolve()
+    }
+  },
+)
 it('workspace sources create fresh incarnations, preserve occupied names and release once', async () => {
-  const owner = { agentRoutes: vi.fn(async () => []) }
+  const owner = { agentRoutes: vi.fn(async () => ({ format: 1 as const, value: [] })) }
   const source = new WorkspacePluginAttachments(owner, randomUUID())
   const a = source.agent(['person-server']),
     b = source.agent([])
@@ -908,7 +997,8 @@ describe.skipIf(process.platform === 'win32')('supervisor socket agent admission
     const { PluginSupervisor } = await import('../src/main/plugins/supervisor/owner')
     const { PluginWorkspaceLease, pluginWorkspaceIdentity } =
       await import('../src/main/plugins/supervisor/client')
-    const { Command } = await import('../src/main/plugins/supervisor/protocol')
+    const { Command, OWNER_WIRE, AGENT_ROUTES_FORMAT_2 } =
+      await import('../src/main/plugins/supervisor/protocol')
     const f = await fixture()
     const owner = await PluginSupervisor.start({ root: f.root, workspaceRoots: [f.workspace] })
     const calls = vi.fn(async () => [])
@@ -917,6 +1007,10 @@ describe.skipIf(process.platform === 'win32')('supervisor socket agent admission
       root: f.root,
       workspaceRoot: f.workspace,
       build: 'fictional-build',
+      wire: {
+        ...OWNER_WIRE,
+        features: OWNER_WIRE.features.filter((one) => one !== AGENT_ROUTES_FORMAT_2),
+      },
       generation: randomUUID(),
     })
     closes.push(async () => {
@@ -928,7 +1022,7 @@ describe.skipIf(process.platform === 'win32')('supervisor socket agent admission
       incarnation: randomUUID(),
       occupied: ['person-server'],
     }
-    expect(await peer.agentRoutes(input)).toEqual([])
+    expect(await peer.agentRoutes(input)).toEqual({ format: 1, value: [] })
     expect(calls).toHaveBeenCalledOnce()
     await expect(peer.agentRoutes({ ...input, workspaceId: randomUUID() })).rejects.toThrow(
       'Plugin unavailable',

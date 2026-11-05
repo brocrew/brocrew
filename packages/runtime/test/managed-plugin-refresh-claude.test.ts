@@ -148,6 +148,9 @@ it.each([false, true])(
       async (servers: Parameters<NonNullable<ClaudeQuery['setMcpServers']>>[0]) => {
         const server = servers[currentRoute.name]!
         if (!('url' in server)) throw new Error('fictional managed server must use HTTP')
+        // A replacement creates its own connection; the failed old endpoint cannot
+        // authorize a reconnect of the new one. An unchanged endpoint still needs recovery.
+        if (server.url !== installedUrl) connected = true
         installedUrl = server.url
         return { added: [], removed: [], errors: {} }
       },
@@ -197,6 +200,7 @@ it.each([false, true])(
     expect(saved?.sessionId).toBe('fictional-claude')
     await handle.send('fictional first tool call')
     expect(setMcpServers).not.toHaveBeenCalled()
+    mcpServerStatus.mockClear()
     connected = false
     if (changed)
       currentRoute = {
@@ -205,15 +209,20 @@ it.each([false, true])(
         capability: 'b'.repeat(64),
       }
     await handle.send('fictional recovered tool call')
-    expect(mcpServerStatus).toHaveBeenCalled()
-    expect(reconnectMcpServer).toHaveBeenCalledWith('plugin-fern')
+    if (changed) {
+      expect(mcpServerStatus).not.toHaveBeenCalled()
+      expect(reconnectMcpServer).not.toHaveBeenCalled()
+    } else {
+      expect(mcpServerStatus).toHaveBeenCalled()
+      expect(reconnectMcpServer).toHaveBeenCalledWith('plugin-fern')
+    }
     expect(handle.ref).toEqual(saved)
     expect(resume).not.toHaveBeenCalled()
     expect(successfulCalls).toEqual(['http://127.0.0.1:8123/mcp', currentRoute.url])
     const refreshes = setMcpServers.mock.calls.length
     await handle.send('fictional healthy following call')
     expect(setMcpServers).toHaveBeenCalledTimes(refreshes)
-    expect(reconnectMcpServer).toHaveBeenCalledOnce()
+    expect(reconnectMcpServer).toHaveBeenCalledTimes(changed ? 0 : 1)
   },
 )
 

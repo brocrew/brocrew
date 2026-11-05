@@ -29,6 +29,7 @@ import { pluginSha256, verifyPluginDigest, PLUGIN_LIMITS } from '../package-dige
 import { strictPluginJson } from '../strict-json'
 import type { PluginMutationBlocked, PluginMutationConsent } from '../../../shared/plugin-settings'
 import { PluginSupervisorError } from '../supervisor/protocol'
+import { PluginStartupError, pluginStartupReason } from '../startup-failure'
 
 const Cards = z
   .array(
@@ -489,18 +490,36 @@ export async function connectPluginSettings(options: {
           await checkOwner()
           break
         } catch (error) {
-          if (!switching && generation === ticket) throw error
+          if (!switching && generation === ticket)
+            throw new PluginStartupError(
+              pluginStartupReason(error, 'catalogue-response'),
+              error,
+              'owner-check',
+            )
         }
       }
-      const cards = Cards.parse(
-        await channel.call({
+      let reply: unknown
+      try {
+        reply = await channel.call({
           kind: modern
             ? features.includes('tool-health-v1')
               ? 'list-tool-health'
               : 'list-v2'
             : 'list',
-        }),
-      )
+        })
+      } catch (error) {
+        throw new PluginStartupError(pluginStartupReason(error, 'catalogue-response'), error, 'rpc')
+      }
+      let cards: z.infer<typeof Cards>
+      try {
+        cards = Cards.parse(reply)
+      } catch (error) {
+        throw new PluginStartupError(
+          pluginStartupReason(error, 'catalogue-response'),
+          error,
+          'schema',
+        )
+      }
       // Project reviewed local adapter capabilities without expanding the legacy owner wire.
       return cards.map((card) => ({
         ...card,

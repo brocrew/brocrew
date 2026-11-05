@@ -5,10 +5,12 @@ import { PluginFence } from '../state/fence'
 import { SupervisorStorage } from './storage'
 import { isSocketFile } from '../local-endpoint'
 import type { DrainTrace } from './drain-trace'
+import { pluginFailureCause } from '../startup-failure'
 import {
   compatible,
   OWNER_LIMITS,
   OWNER_WIRE,
+  AGENT_ROUTES_FORMAT_2,
   OWNER_RECOVERY,
   pack,
   PluginSupervisorError,
@@ -77,16 +79,24 @@ const bounded = async <T>(work: Promise<T>, within: number): Promise<T | undefin
 }
 
 /** A stop attempt is not exit evidence, and no child can skip another child's cleanup. */
-async function stopAndProveChild(child: OwnedPluginChild): Promise<boolean> {
+async function stopAndProveChild(
+  child: OwnedPluginChild,
+  failed: (stage: 'child-stop' | 'child-exit' | 'descendants', error: unknown) => void,
+): Promise<boolean> {
   const exited = Promise.resolve()
     .then(() => child.exited)
     .then(
       () => true,
-      () => false,
+      (error) => {
+        failed('child-exit', error)
+        return false
+      },
     )
   const stopped = Promise.resolve()
     .then(() => child.stop())
-    .catch(() => undefined)
+    .catch((error) => {
+      failed('child-stop', error)
+    })
   // Even a rejected exit witness still runs the descendant check. Wait for an actual exit
   // before probing a healthy child so a process still shutting down is not counted as a leak.
   const descendantsGone = exited.then(() =>
@@ -94,7 +104,10 @@ async function stopAndProveChild(child: OwnedPluginChild): Promise<boolean> {
       .then(() => child.descendantsGone())
       .then(
         (gone) => gone === true,
-        () => false,
+        (error) => {
+          failed('descendants', error)
+          return false
+        },
       ),
   )
   const [, didExit, areGone] = await Promise.all([stopped, exited, descendantsGone])
@@ -124,6 +137,10 @@ export class PluginSupervisor {
   private readonly revocations = new Set<Promise<void>>()
   private agentBridge?: {
     routes(
+      lease: Readonly<WorkspaceLease>,
+      request: Extract<Command, { kind: 'agent-routes' }>,
+    ): Promise<unknown>
+    agentRoutes?(
       lease: Readonly<WorkspaceLease>,
       request: Extract<Command, { kind: 'agent-routes' }>,
     ): Promise<unknown>
@@ -246,6 +263,7 @@ export class PluginSupervisor {
         state: 'failed',
         attempt: 1,
         errno: drainWriteErrno(error),
+        cause: pluginFailureCause(error, [this.record.key]),
       })
     }
     clearInterval(this.timer)
@@ -266,6 +284,7 @@ export class PluginSupervisor {
           state: 'failed',
           attempt,
           errno: drainWriteErrno(error),
+          cause: pluginFailureCause(error, [this.record.key]),
         })
         await new Promise((resolve) => setTimeout(resolve, 1000))
       }
@@ -337,8 +356,13 @@ export class PluginSupervisor {
           )
             refuse()
           const bridge = this.agentBridge
-          void bridge
-            .routes(Object.freeze({ ...lease }), command)
+          const named =
+            command.format === 2 && lease.features.includes(AGENT_ROUTES_FORMAT_2)
+              ? bridge.agentRoutes?.bind(bridge)
+              : undefined
+          if (command.format === 2 && !named) refuse()
+          void (named ?? bridge.routes.bind(bridge))(Object.freeze({ ...lease }), command)
+            .then((value) => (named ? { format: 2, ...(value as Record<string, unknown>) } : value))
             .then((value) => {
               if (!this.valid(lease.id, lease.epoch)) refuse()
               socket.end(
@@ -450,10 +474,12 @@ export class PluginSupervisor {
     return { remaining: this.leases.size > 0 }
   }
   private drainFor(reason: StopReason): void {
+    this.trace({ stage: 'drain', state: 'waiting', reason })
     this.record.phase = 'draining'
     try {
       this.storage.writeStop({ epoch: this.record.epoch, reason })
-    } catch {
+    } catch (error) {
+      this.traceFailure('stop-write', error)
       /* The reason is for reading afterwards; it never holds up the drain. */
     }
     this.storage.write(this.record)
@@ -462,13 +488,15 @@ export class PluginSupervisor {
     this.leases.delete(lease.id)
     try {
       this.agentBridge?.revoke(lease)
-    } catch {
+    } catch (error) {
+      this.traceFailure('revoke', error)
       this.revocationFailed = true
     }
     const work: Promise<void> = Promise.resolve()
       .then(() => this.options.revoke?.(Object.freeze({ ...lease })))
       .then(() => undefined)
-      .catch(() => {
+      .catch((error) => {
+        this.traceFailure('revoke', error)
         this.revocationFailed = true
       })
       .finally(() => this.revocations.delete(work))
@@ -508,7 +536,8 @@ export class PluginSupervisor {
           this.children.add(child)
           return child
         },
-        () => {
+        (error) => {
+          this.traceFailure('child-start', error)
           // A rejected asynchronous start is not evidence that it left no descendant behind.
           // Keep this negative proof after the settled promise leaves the pending set.
           this.startFailed = true
@@ -535,6 +564,7 @@ export class PluginSupervisor {
   }
   private drain(): Promise<boolean> {
     this.drainWork ??= (async () => {
+      this.trace({ stage: 'invalidation', state: 'waiting' })
       this.trace({ stage: 'child-proofs', state: 'waiting' })
       this.drainDeadline = performance.now() + (this.options.drainWithin ?? OWNER_LIMITS.cleanup)
       const result = await (async () => {
@@ -548,11 +578,17 @@ export class PluginSupervisor {
             // and self-exit still requires separate positive proof for every physical child.
             proven:
               child.inProcess === true
-                ? (await bounded(stopAndProveChild(child), this.remainingDrainMs())) === true
-                : await stopAndProveChild(child),
+                ? (await bounded(
+                    stopAndProveChild(child, (stage, error) => this.traceFailure(stage, error)),
+                    this.remainingDrainMs(),
+                  )) === true
+                : await stopAndProveChild(child, (stage, error) => this.traceFailure(stage, error)),
           })),
         )
-      })().catch(() => undefined)
+      })().catch((error) => {
+        this.traceFailure('child-proofs', error)
+        return undefined
+      })
       if (
         !result ||
         this.startFailed ||
@@ -596,6 +632,7 @@ export class PluginSupervisor {
             state: 'failed',
             attempt,
             errno: drainWriteErrno(error),
+            cause: pluginFailureCause(error, [this.record.key]),
           })
           await new Promise((resolve) => setTimeout(resolve, 1000))
         }
@@ -610,7 +647,8 @@ export class PluginSupervisor {
       this.trace({ stage: 'closed', state: 'complete' })
       this.stopped()
       return true
-    })().catch(() => {
+    })().catch((error) => {
+      this.traceFailure('drain', error)
       this.fail()
       return false
     })
@@ -619,9 +657,12 @@ export class PluginSupervisor {
       (result) => result === true,
     )
   }
+  private traceFailure(stage: DrainTrace['stage'], error: unknown): void {
+    this.trace({ stage, state: 'failed', cause: pluginFailureCause(error, [this.record.key]) })
+  }
   private trace(event: DrainTrace): void {
     try {
-      this.options.traceDrain?.(event)
+      this.options.traceDrain?.({ epoch: this.record.epoch, ...event })
     } catch {
       /* Diagnostics cannot change the drain. */
     }

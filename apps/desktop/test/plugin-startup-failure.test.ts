@@ -14,6 +14,7 @@ import {
   PluginSupervisorLaunchFailure,
   observePluginSupervisorLaunch,
   pluginStartupDiagnostic,
+  pluginFailureCause,
   pluginStartupStderr,
   pluginStartupReason,
   recordPluginStartupFailure,
@@ -211,4 +212,59 @@ it('drains stderr after exit before retaining the failure, within the original l
   } finally {
     vi.useRealTimers()
   }
+})
+
+it('catalogue logs include stage and bounded sanitized nested causes only on that path', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fictional-catalogue-cause-'))
+  roots.push(root)
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const original = new Error('owner-invalidated token=fictional-token\u001b[31m', {
+    cause: new Error('broker closed password=fictional-password'),
+  })
+  await recordPluginStartupFailure(
+    root,
+    'catalogue-response',
+    new PluginStartupError('catalogue-response', original, 'rpc'),
+  )
+  const log = await readFile(join(root, 'plugin-startup.log'), 'utf8')
+  expect(log).toContain('stage=rpc')
+  expect(log).toContain('owner-invalidated')
+  expect(log).toContain('broker closed')
+  expect(log).not.toMatch(/fictional-token|fictional-password/)
+  expect(log).not.toContain(String.fromCharCode(27))
+  expect(log.length).toBeLessThan(1024)
+  await recordPluginStartupFailure(root, 'connection', original)
+  expect(await readFile(join(root, 'plugin-startup.log'), 'utf8')).not.toContain(
+    'owner-invalidated',
+  )
+})
+it('cause formatting bounds cycles and survives hostile diagnostic properties', () => {
+  const cyclic = new Error('owner-invalidated')
+  cyclic.cause = cyclic
+  expect(pluginFailureCause(cyclic)).toContain('owner-invalidated')
+  expect(
+    pluginFailureCause(new Error('x'.repeat(10000), { cause: new Error('actual leaf') })).length,
+  ).toBeLessThanOrEqual(512)
+  expect(
+    pluginFailureCause(new Error('x'.repeat(10000), { cause: new Error('actual leaf') })),
+  ).toContain('actual leaf')
+  const hostile = Object.defineProperty({}, 'message', {
+    get() {
+      throw new Error('getter')
+    },
+  })
+  expect(() => pluginFailureCause(hostile)).not.toThrow()
+})
+it('catalogue logs retain the typed refusal code when its public Error message is generic', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fictional-typed-catalogue-error-'))
+  roots.push(root)
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  await recordPluginStartupFailure(
+    root,
+    'catalogue-response',
+    new PluginSupervisorError('policy-refused'),
+  )
+  const log = await readFile(join(root, 'plugin-startup.log'), 'utf8')
+  expect(log).toContain('PluginSupervisorError')
+  expect(log).toContain('code=policy-refused')
 })

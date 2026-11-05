@@ -10,7 +10,7 @@ import {
 import { openManagedPluginRoute, type ManagedPluginRoute } from '../managed-transport'
 import type { PluginSupervisor, WorkspaceLease } from '../supervisor/owner'
 import type { Command } from '../supervisor/protocol'
-import type { PluginLifecycleController } from './controller'
+import type { PluginLifecycleController, AgentScopeEntry } from './controller'
 import type { LifecycleWorkspace } from './types'
 
 type View = ReturnType<PluginLifecycleController['agentAttachments']>[number]
@@ -30,14 +30,20 @@ interface Route {
   pluginId: string
   identity: string
   route: ManagedPluginRoute
+  current: () => boolean
 }
 /** Lives only in the supervisor. Workspace callers receive scoped routes, never private ports. */
 export function createLifecycleAgentBridge(options: {
   owner: Pick<PluginSupervisor, 'valid'>
-  controller: Pick<PluginLifecycleController, 'agentAttachments' | 'attach' | 'detach'>
+  controller: Pick<
+    PluginLifecycleController,
+    'agentAttachments' | 'agentScope' | 'onHostChanged' | 'attach' | 'detach'
+  >
   refused?: () => void | Promise<void>
   diagnostic?: (pluginId: string, reason: Parameters<PluginToolDiagnostic>[0]) => void
   now?: () => number
+  answerWithinMs?: number
+  openRoute?: typeof openManagedPluginRoute
   /** Owner-only: callback only after positive exit of view.runId and its descendants. */
   recoverChromeHost?: (view: View, stopped: () => void) => Promise<void>
   /** Person fallback when no broker was bound. Chrome only, never owner shutdown. */
@@ -56,12 +62,53 @@ export function createLifecycleAgentBridge(options: {
     >
   >
 }) {
+  const answerWithin = options.answerWithinMs ?? 1000
+  const openRoute = options.openRoute ?? openManagedPluginRoute
+  type Warmup = {
+    caller: string
+    pluginId: string
+    key: string
+    identity: string
+    failed: boolean
+    cancelled: boolean
+    settled: boolean
+    done: Promise<void>
+  }
+  type Answer = {
+    servers: (ManagedPluginMcpServer & { pluginId: string })[]
+    pending: string[]
+    none: string[]
+    unknown: boolean
+  }
+  const warmups = new Map<string, Warmup>()
+  // The existing route limit covers opens and late cleanup, not just already published routes.
+  const reservations = new Set<symbol>()
+  const routeReservations = new WeakMap<ManagedPluginRoute, symbol>()
+  const opening = new Set<Promise<void>>()
+  const chains = new Map<string, Promise<unknown>>()
+  const entryIdentities = new Map<string, string>()
+  const identityOf = (view: View) =>
+    `${view.installation.installId}:${view.installation.incarnation}:${view.installation.configRevision}:${view.runId}`
+  function cancelWarmups(test: (warmup: Warmup) => boolean) {
+    for (const [key, warmup] of warmups)
+      if (test(warmup)) {
+        warmup.cancelled = true
+        warmups.delete(key)
+      }
+  }
   const attachments = new Map<string, Promise<LifecycleWorkspace>>()
   const closing = new Set<Promise<unknown>>()
   const consumerCleanup = new Set<Promise<unknown>>()
   let cleanupFailed = false
   function closeRoute(route: ManagedPluginRoute) {
     const work = route.close()
+    const reservation = routeReservations.get(route)
+    void work.then(
+      () => {
+        if (reservation) reservations.delete(reservation)
+      },
+      () => undefined,
+    )
     closing.add(work)
     void work
       .finally(() => closing.delete(work))
@@ -106,6 +153,8 @@ export function createLifecycleAgentBridge(options: {
     versions.set(id, (versions.get(id) ?? 0) + 1)
     const entry = entries.get(id)
     entries.delete(id)
+    entryIdentities.delete(id)
+    cancelWarmups((one) => one.pluginId === id)
     liveEntries.delete(id)
     rebuilding.delete(id)
     overflowFailures.delete(id)
@@ -207,6 +256,7 @@ export function createLifecycleAgentBridge(options: {
     return work
   }
   function revoke(lease: Readonly<WorkspaceLease>): void {
+    cancelWarmups((one) => one.caller.startsWith(lease.id + ':'))
     failedAttachments.delete(lease.id)
     for (const key of failedRoutes.keys())
       if (key.startsWith(lease.id + ':')) failedRoutes.delete(key)
@@ -238,27 +288,294 @@ export function createLifecycleAgentBridge(options: {
         })
         .catch(() => undefined)
   }
-  let tail = Promise.resolve()
   let waiting = 0
+  async function openView(
+    lease: Readonly<WorkspaceLease>,
+    request: Request,
+    view: View,
+    live: () => boolean,
+    track: (route: ManagedPluginRoute) => void,
+  ) {
+    const caller = `${lease.id}:${request.incarnation}`
+    const id = view.installation.pluginId
+    let version = versions.get(id) ?? 0
+    const identity = identityOf(view)
+    const key = `${caller}:${id}`
+    let cached = routes.get(key)
+    const known = liveEntries.get(id)
+    if (known?.identity === identity && !known.broker.status().available) {
+      if (!(await recoverEntry(known))) {
+        // Keep the failed broker and its proof barrier until positive completion.
+        if (cached) {
+          routes.delete(key)
+          await closeRoute(cached.route)
+        }
+        return
+      }
+      // Re-read the new run/projection with this same caller after proven recovery.
+      return
+    }
+    if (cached?.identity !== identity) {
+      if (cached) {
+        routes.delete(key)
+        await closeRoute(cached.route)
+      }
+      let work = entries.get(id)
+      if (work && entryIdentities.get(id) !== identity) {
+        deny(id)
+        version = versions.get(id) ?? 0
+        work = undefined
+      }
+      if (!work) {
+        const report = diagnostic(id)
+        work = options.binding(view, report).then((binding) => {
+          if (!view.current() || closed || (versions.get(id) ?? 0) !== version)
+            throw new Error('unavailable')
+          if (typeof view.exited?.then !== 'function') throw new Error('unavailable')
+          let confirmHostExit!: () => void
+          const stopped = new Promise<void>((resolve) => {
+            confirmHostExit = resolve
+          })
+          const held: { entry?: Entry } = {}
+          const hostExitProof = Promise.any([view.exited, stopped])
+          const broker = createPluginToolBroker({
+            ...binding,
+            hostExited: hostExitProof,
+            audit(event) {
+              if (event.event === 'unavailable' || event.event === 'refused')
+                reportPluginToolFailure(report, event.reason ?? event.code ?? 'unavailable')
+              try {
+                binding.audit?.(event)
+              } catch {
+                /* Diagnostic only. */
+              }
+              if (event.event === 'unavailable' || event.event === 'finished')
+                queueMicrotask(() => {
+                  if (held.entry) void recoverEntry(held.entry)
+                })
+            },
+            binding: {
+              pluginId: id,
+              installId: view.installation.installId,
+              epoch: randomUUID(),
+            },
+            reservedNamespace: 'brobot',
+            hostToolNames: [],
+            occupiedNamespaces: [],
+            occupiedQualifiedNames: [],
+            isAllowed: (who, use) => {
+              const active = options.controller
+                .agentAttachments(who.workspaceId)
+                .some(
+                  (item) =>
+                    item.installation.installId === view.installation.installId && item.current(),
+                )
+              return active && binding.isAllowed(who, use)
+            },
+          })
+          const entry: Entry = {
+            identity,
+            broker,
+            view,
+            confirmHostExit,
+            hostExitProof,
+            workspaces: new Map<string, BrokerWorkspace>(),
+          }
+          held.entry = entry
+          liveEntries.set(id, entry)
+          return entry
+        })
+        entries.set(id, work)
+        entryIdentities.set(id, identity)
+        void work.catch(() => {
+          if (entries.get(id) === work) entries.delete(id)
+          reportPluginToolFailure(report, 'binding-failed')
+        })
+      }
+      try {
+        const entry = await work
+        if (!live() || !valid(lease) || !view.current() || retired.has(caller)) return
+        let workspace = entry.workspaces.get(lease.id)
+        if (!workspace) {
+          workspace = entry.broker.owner.attach(request.workspaceId)
+          entry.workspaces.set(lease.id, workspace)
+        }
+        const agent = entry.broker.owner.grantAgent(
+          workspace,
+          `${request.incarnation}:${randomUUID()}`,
+        )
+        const route = await openRoute(
+          entry.broker,
+          agent,
+          () => valid(lease) && view.current() && !retired.has(caller) && entries.get(id) === work,
+          diagnostic(id),
+        )
+        track(route)
+        if (
+          !live() ||
+          !valid(lease) ||
+          !view.current() ||
+          retired.has(caller) ||
+          !entry.broker.status().available
+        ) {
+          await closeRoute(route)
+          return
+        }
+        cached = {
+          lease: { ...lease },
+          workspaceId: request.workspaceId,
+          incarnation: request.incarnation,
+          pluginId: id,
+          identity,
+          route,
+          current: () =>
+            valid(lease) &&
+            view.current() &&
+            !retired.has(caller) &&
+            entries.get(id) === work &&
+            entry.broker.status().available,
+        }
+        routes.set(key, cached)
+        failedRoutes.delete(key)
+        if (liveEntries.get(id) === entry) rebuilding.delete(id)
+      } catch {
+        // A retired attempt may be diagnosed, but cannot degrade its replacement's health.
+        const current =
+          live() && valid(lease) && view.current() && (versions.get(id) ?? 0) === version
+        if (current) failRoute(key, id)
+        reportPluginToolFailure(diagnostic(id), current ? 'route-open-failed' : 'route-stale')
+        try {
+          if (options.refused) await options.refused()
+          else console.warn('Some plugin tools were refused.')
+        } catch {
+          /* Diagnostics cannot hide other plugins. */
+        }
+        return false as const
+      }
+    }
+  }
+  function warm(lease: Readonly<WorkspaceLease>, request: Request, view: View): Warmup | undefined {
+    const caller = `${lease.id}:${request.incarnation}`
+    const id = view.installation.pluginId
+    if (entries.has(id) && entryIdentities.get(id) !== identityOf(view)) deny(id)
+    const key = `${caller}:${id}:${identityOf(view)}:${versions.get(id) ?? 0}`
+    const existing = warmups.get(key)
+    if (existing && (!existing.settled || routes.get(`${caller}:${id}`)?.current())) return existing
+    cancelWarmups((one) => one.caller === caller && one.pluginId === id)
+    if (reservations.size >= 1024) return undefined
+    const reservation = Symbol()
+    reservations.add(reservation)
+    let allocated = false
+    const one: Warmup = {
+      caller,
+      pluginId: id,
+      key,
+      identity: `${caller}:${id}:${identityOf(view)}`,
+      failed: false,
+      cancelled: false,
+      settled: false,
+      done: Promise.resolve(),
+    }
+    warmups.set(key, one)
+    const live = () =>
+      !one.cancelled &&
+      warmups.get(key) === one &&
+      valid(lease) &&
+      view.current() &&
+      !retired.has(caller)
+    one.done = openView(lease, request, view, live, (route) => {
+      allocated = true
+      routeReservations.set(route, reservation)
+    })
+      .then((result) => {
+        one.failed = result === false
+      })
+      .finally(() => {
+        one.settled = true
+        opening.delete(one.done)
+        if (!allocated) reservations.delete(reservation)
+        if (warmups.get(key) === one && !routes.get(`${caller}:${id}`)?.current())
+          warmups.delete(key)
+      })
+    // A diagnostic or cleanup failure remains observed and cannot reject a sibling's answer.
+    void one.done.catch(() => undefined)
+    opening.add(one.done)
+    return one
+  }
+  function snapshot(
+    lease: Readonly<WorkspaceLease>,
+    request: Request,
+    scope: readonly AgentScopeEntry[] | null,
+    held: ReadonlySet<string> = new Set(),
+  ): Answer {
+    const caller = `${lease.id}:${request.incarnation}`
+    const servers: Answer['servers'] = []
+    if (valid(lease) && !retired.has(caller))
+      for (const item of routes.values())
+        if (
+          item.lease.id === lease.id &&
+          item.incarnation === request.incarnation &&
+          item.current() &&
+          !request.occupied.some(
+            (name) => name.toLowerCase() === item.route.server.name.toLowerCase(),
+          )
+        )
+          servers.push({ ...item.route.server, pluginId: item.pluginId })
+    servers.sort((a, b) => a.pluginId.localeCompare(b.pluginId))
+    const served = new Set(servers.map((one) => one.pluginId))
+    return {
+      servers,
+      pending:
+        scope
+          ?.filter(
+            (one) =>
+              !served.has(one.pluginId) &&
+              one.is !== 'off' &&
+              (one.is === 'pending' ||
+                held.has(one.pluginId) ||
+                [...warmups.values()].some(
+                  (w) => w.caller === caller && w.pluginId === one.pluginId && !w.settled,
+                )),
+          )
+          .map((one) => one.pluginId) ?? [],
+      none:
+        scope
+          ?.filter((one) => !served.has(one.pluginId) && one.is === 'off')
+          .map((one) => one.pluginId) ?? [],
+      unknown: scope === null,
+    }
+  }
   async function read(
     lease: Readonly<WorkspaceLease>,
     request: Request,
-  ): Promise<ManagedPluginMcpServer[]> {
-    if (!valid(lease)) return []
+    asked: number,
+  ): Promise<Answer> {
+    const empty: Answer = { servers: [], pending: [], none: [], unknown: false }
+    if (!valid(lease)) return empty
     const caller = `${lease.id}:${request.incarnation}`
     if (request.release) {
       retired.add(caller)
+      cancelWarmups((one) => one.caller === caller)
+      const pending: Promise<void>[] = []
       for (const key of failedRoutes.keys())
         if (key.startsWith(caller + ':')) failedRoutes.delete(key)
       for (const [key, item] of routes)
         if (item.lease.id === lease.id && item.incarnation === request.incarnation) {
           routes.delete(key)
-          await closeRoute(item.route)
+          pending.push(closeRoute(item.route))
         }
-      return []
+      await Promise.all(pending)
+      return empty
     }
-    if (retired.has(caller)) return []
-    // Only already reconciled live lifecycle projections are authority. Caller labels create none.
+    if (retired.has(caller)) return empty
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const deadline = new Promise<'deadline'>((resolve) => {
+      timer = setTimeout(
+        () => resolve('deadline'),
+        Math.max(0, answerWithin - (performance.now() - asked)),
+      )
+      timer.unref?.()
+    })
     let attached = attachments.get(lease.id)
     if (!attached) {
       attached = options.controller.attach({
@@ -270,6 +587,7 @@ export function createLifecycleAgentBridge(options: {
             ([, item]) => item.lease.id === lease.id && item.pluginId === id,
           )
           for (const [key] of pending) routes.delete(key)
+          cancelWarmups((one) => one.caller.startsWith(lease.id + ':') && one.pluginId === id)
           await Promise.all(pending.map(([, item]) => closeRoute(item.route)))
           const entry = await (entries.get(id) ?? stopping.get(id))
           return !entry?.broker.status().awaitingQuiescence
@@ -280,182 +598,146 @@ export function createLifecycleAgentBridge(options: {
         if (attachments.get(lease.id) === attached) attachments.delete(lease.id)
       })
     }
-    await attached
-    failedAttachments.delete(lease.id)
-    if (!valid(lease)) return []
-    const views = options.controller.agentAttachments(request.workspaceId)
-    const desired = new Set(views.map((view) => view.installation.pluginId))
-    for (const [key, item] of routes)
-      if (
-        item.lease.id === lease.id &&
-        item.incarnation === request.incarnation &&
-        !desired.has(item.pluginId)
-      ) {
-        routes.delete(key)
-        await closeRoute(item.route)
-      }
-    const result: ManagedPluginMcpServer[] = []
-    for (const view of views) {
-      if (!valid(lease) || !view.current()) continue
-      const id = view.installation.pluginId
-      let version = versions.get(id) ?? 0
-      const identity = `${view.installation.installId}:${view.installation.incarnation}:${view.installation.configRevision}`
-      const key = `${caller}:${id}`
-      let cached = routes.get(key)
-      const known = liveEntries.get(id)
-      if (known?.identity === identity && !known.broker.status().available) {
-        if (!(await recoverEntry(known))) {
-          // Keep the failed broker and its proof barrier until positive completion.
-          if (cached) {
-            routes.delete(key)
-            await closeRoute(cached.route)
-          }
-          continue
-        }
-        // Re-read the new run/projection with this same caller after proven recovery.
-        return read(lease, request)
-      }
-      if (cached?.identity !== identity) {
-        if (cached) {
-          routes.delete(key)
-          await closeRoute(cached.route)
-          cached = undefined
-        }
-        let work = entries.get(id)
-        if (work && (await work).identity !== identity) {
-          deny(id)
-          version = versions.get(id) ?? 0
-          work = undefined
-        }
-        if (!work) {
-          const report = diagnostic(id)
-          work = options.binding(view, report).then((binding) => {
-            if (!view.current() || closed || (versions.get(id) ?? 0) !== version)
-              throw new Error('unavailable')
-            if (typeof view.exited?.then !== 'function') throw new Error('unavailable')
-            let confirmHostExit!: () => void
-            const stopped = new Promise<void>((resolve) => {
-              confirmHostExit = resolve
-            })
-            const held: { entry?: Entry } = {}
-            const hostExitProof = Promise.any([view.exited, stopped])
-            const broker = createPluginToolBroker({
-              ...binding,
-              hostExited: hostExitProof,
-              audit(event) {
-                if (event.event === 'unavailable' || event.event === 'refused')
-                  reportPluginToolFailure(report, event.reason ?? event.code ?? 'unavailable')
-                try {
-                  binding.audit?.(event)
-                } catch {
-                  /* Diagnostic only. */
-                }
-                if (event.event === 'unavailable' || event.event === 'finished')
-                  queueMicrotask(() => {
-                    if (held.entry) void recoverEntry(held.entry)
-                  })
-              },
-              binding: {
-                pluginId: id,
-                installId: view.installation.installId,
-                epoch: randomUUID(),
-              },
-              reservedNamespace: 'brobot',
-              hostToolNames: [],
-              occupiedNamespaces: [],
-              occupiedQualifiedNames: [],
-              isAllowed: (who, use) => {
-                const active = options.controller
-                  .agentAttachments(who.workspaceId)
-                  .some(
-                    (item) =>
-                      item.installation.installId === view.installation.installId && item.current(),
-                  )
-                return active && binding.isAllowed(who, use)
-              },
-            })
-            const entry: Entry = {
-              identity,
-              broker,
-              view,
-              confirmHostExit,
-              hostExitProof,
-              workspaces: new Map<string, BrokerWorkspace>(),
-            }
-            held.entry = entry
-            liveEntries.set(id, entry)
-            return entry
-          })
-          entries.set(id, work)
-          void work.catch(() => {
-            if (entries.get(id) === work) entries.delete(id)
-            reportPluginToolFailure(report, 'binding-failed')
-          })
-        }
+    let detach = () => {}
+    try {
+      if ((await Promise.race([attached.then(() => 'attached' as const), deadline])) === 'deadline')
+        return snapshot(lease, request, null)
+      failedAttachments.delete(lease.id)
+      let woken: () => void = () => {}
+      let wake = new Promise<void>((resolve) => {
+        woken = resolve
+      })
+      detach = options.controller.onHostChanged((workspaceId) => {
+        if (workspaceId !== request.workspaceId) return
+        woken()
+        wake = new Promise<void>((resolve) => {
+          woken = resolve
+        })
+      })
+      const failedHere = new Set<string>()
+      let capacityReported = false
+      for (;;) {
+        if (!valid(lease) || retired.has(caller)) return empty
+        if (performance.now() - asked >= answerWithin) return snapshot(lease, request, null)
+        const woke = wake
+        let scope: readonly AgentScopeEntry[]
         try {
-          const entry = await work
-          if (!valid(lease) || !view.current() || retired.has(caller)) continue
-          let workspace = entry.workspaces.get(lease.id)
-          if (!workspace) {
-            workspace = entry.broker.owner.attach(request.workspaceId)
-            entry.workspaces.set(lease.id, workspace)
-          }
-          const agent = entry.broker.owner.grantAgent(
-            workspace,
-            `${request.incarnation}:${randomUUID()}`,
-          )
-          const route = await openManagedPluginRoute(
-            entry.broker,
-            agent,
-            () =>
-              valid(lease) && view.current() && !retired.has(caller) && entries.get(id) === work,
-            diagnostic(id),
-          )
-          if (
-            !valid(lease) ||
-            !view.current() ||
-            retired.has(caller) ||
-            !entry.broker.status().available
-          ) {
-            await closeRoute(route)
-            continue
-          }
-          cached = {
-            lease: { ...lease },
-            workspaceId: request.workspaceId,
-            incarnation: request.incarnation,
-            pluginId: id,
-            identity,
-            route,
-          }
-          routes.set(key, cached)
-          failedRoutes.delete(key)
-          if (liveEntries.get(id) === entry) rebuilding.delete(id)
+          scope = options.controller.agentScope(request.workspaceId).entries
         } catch {
-          // A retired attempt may be diagnosed, but cannot degrade its replacement's health.
-          const current = valid(lease) && view.current() && (versions.get(id) ?? 0) === version
-          if (current) failRoute(key, id)
-          reportPluginToolFailure(diagnostic(id), current ? 'route-open-failed' : 'route-stale')
-          if (options.refused) await options.refused()
-          else console.warn('Some plugin tools were refused.')
-          continue
+          return snapshot(lease, request, null)
         }
+        const taken = new Set(request.occupied.map((one) => one.toLowerCase()))
+        for (const [key, item] of routes)
+          if (
+            item.lease.id === lease.id &&
+            item.incarnation === request.incarnation &&
+            (!item.current() ||
+              !scope.some(
+                (one) =>
+                  one.pluginId === item.pluginId &&
+                  one.is === 'admitted' &&
+                  identityOf(one.view) === item.identity,
+              ) ||
+              taken.has(item.route.server.name.toLowerCase()))
+          ) {
+            routes.delete(key)
+            if (taken.has(item.route.server.name.toLowerCase())) {
+              failedHere.add(`${caller}:${item.pluginId}:${item.identity}`)
+              failRoute(key, item.pluginId)
+              reportPluginToolFailure(diagnostic(item.pluginId), 'name-collision')
+            }
+            void closeRoute(item.route).catch(() => undefined)
+          }
+        const warming: Warmup[] = []
+        const capacityPending = new Set<string>()
+        for (const one of scope)
+          if (one.is === 'admitted' && one.view.current()) {
+            const key = `${caller}:${one.pluginId}:${identityOf(one.view)}`
+            const route = routes.get(`${caller}:${one.pluginId}`)
+            if (route?.current() || failedHere.has(key)) continue
+            const opening = warm(lease, request, one.view)
+            if (!opening) {
+              capacityPending.add(one.pluginId)
+              if (!capacityReported) {
+                capacityReported = true
+                reportPluginToolFailure(diagnostic(one.pluginId), 'attachment-capacity')
+              }
+            } else if (!opening.settled) warming.push(opening)
+          }
+        const now = snapshot(lease, request, scope, capacityPending)
+        if (now.servers.length || !now.pending.length) return now
+        const next = await Promise.race([
+          woke.then(() => 'wake' as const),
+          deadline,
+          ...warming.map((one) =>
+            one.done
+              .catch(() => undefined)
+              .then(() => {
+                if (
+                  one.failed ||
+                  (!routes.get(`${caller}:${one.pluginId}`)?.current() && !one.cancelled)
+                )
+                  failedHere.add(one.identity)
+                return 'settled' as const
+              }),
+          ),
+        ])
+        if (next === 'deadline') return snapshot(lease, request, scope, capacityPending)
       }
-      if (cached) {
-        const collision =
-          request.occupied.some(
-            (name) => name.toLowerCase() === cached.route.server.name.toLowerCase(),
-          ) ||
-          result.some((one) => one.name.toLowerCase() === cached.route.server.name.toLowerCase())
-        if (collision) {
-          failRoute(key, id)
-          reportPluginToolFailure(diagnostic(id), 'name-collision')
-          routes.delete(key)
-          await closeRoute(cached.route)
-        } else result.push(cached.route.server)
-      }
+    } finally {
+      clearTimeout(timer)
+      detach()
     }
-    return result
+  }
+  function chained<T>(caller: string, work: () => Promise<T>): Promise<T> {
+    const run = (chains.get(caller) ?? Promise.resolve()).then(work)
+    const settled = run.catch(() => undefined)
+    chains.set(caller, settled)
+    void settled.then(() => {
+      if (chains.get(caller) === settled) chains.delete(caller)
+    })
+    return run
+  }
+  function answered(lease: Readonly<WorkspaceLease>, request: Request): Promise<Answer> {
+    const caller = `${lease.id}:${request.incarnation}`
+    if (request.release && valid(lease)) {
+      // Release ends authority when requested, even behind a read or cleanup already in flight.
+      retired.add(caller)
+      cancelWarmups((one) => one.caller === caller)
+    }
+    if (!request.release && (waiting >= 64 || retired.size >= 4096)) {
+      reportPluginToolFailure(diagnostic('host'), 'attachment-capacity')
+      return Promise.reject(new Error('unavailable'))
+    }
+    const asked = performance.now()
+    waiting++
+    let expired = false,
+      started = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const work = chained(caller, () => {
+      if (expired) return Promise.resolve(snapshot(lease, request, null))
+      started = true
+      return read(lease, request, asked)
+    })
+      .catch((error) => {
+        if (valid(lease)) failedAttachments.add(lease.id)
+        reportPluginToolFailure(diagnostic('host'), 'attachment-failed')
+        throw error
+      })
+      .finally(() => {
+        waiting--
+        clearTimeout(timer)
+      })
+    if (request.release) return work
+    const queued = new Promise<Answer>((resolve) => {
+      timer = setTimeout(() => {
+        if (started) return
+        expired = true
+        resolve(snapshot(lease, request, null))
+      }, answerWithin)
+      timer.unref?.()
+    })
+    return Promise.race([work, queued])
   }
   return {
     deny,
@@ -506,33 +788,22 @@ export function createLifecycleAgentBridge(options: {
         [...failedRoutes.values()].includes(id)
       )
     },
-    routes(lease: Readonly<WorkspaceLease>, request: Request) {
-      if (waiting >= 64 || routes.size >= 1024 || retired.size >= 4096) {
-        reportPluginToolFailure(diagnostic('host'), 'attachment-capacity')
-        return Promise.reject(new Error('unavailable'))
-      }
-      waiting++
-      const work = tail
-        .then(() => read(lease, request))
-        .catch((error: unknown) => {
-          if (valid(lease)) failedAttachments.add(lease.id)
-          reportPluginToolFailure(diagnostic('host'), 'attachment-failed')
-          throw error
-        })
-        .finally(() => {
-          waiting--
-        })
-      tail = work.then(
-        () => undefined,
-        () => undefined,
-      )
-      return work
+    agentRoutes(lease: Readonly<WorkspaceLease>, request: Request) {
+      return answered(lease, request)
+    },
+    async routes(lease: Readonly<WorkspaceLease>, request: Request) {
+      return (await answered(lease, request)).servers.map(({ name, url, capability }) => ({
+        name,
+        url,
+        capability,
+      }))
     },
     async close() {
       closed = true
       for (const id of entries.keys()) deny(id)
       await Promise.allSettled([...recoveries.values()])
-      await tail
+      cancelWarmups(() => true)
+      await Promise.allSettled([...chains.values(), ...opening])
       const detaches = await Promise.allSettled(
         [...attachments.values()].map(async (one) => options.controller.detach(await one)),
       )

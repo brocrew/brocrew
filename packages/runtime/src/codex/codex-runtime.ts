@@ -2710,7 +2710,9 @@ export class CodexSessionHandle implements SessionHandle {
   private currentStatus: SessionStatus = 'idle'
   /** The current local↔provider turn binding, or null between turns (029, 023 P1-C). */
   private currentTurn: CodexTurn | null = null
-  private managedPluginsChecked = false
+  private managedPluginsChecked: string | undefined
+  private managedPluginObservationVersion = 0
+  private managedPluginFailureReported = false
   private managedPluginWait: {
     localId: CodexTurn['localId']
     controller: AbortController
@@ -5896,32 +5898,76 @@ export class CodexSessionHandle implements SessionHandle {
     servers: readonly ManagedPluginMcpServer[],
   ): Promise<readonly string[] | undefined> {
     if (!this._ref || this.status() !== 'idle') return undefined
-    return failedManagedPluginConnections(
+    const scope = this.managedPluginObservationScope()
+    const version = ++this.managedPluginObservationVersion
+    const checked = this.managedPluginsChecked
+    // Until this reading settles, the next explicit turn must observe for itself.
+    this.managedPluginsChecked = undefined
+    const failed = await failedManagedPluginConnections(
       this.transport,
       this._ref.sessionId,
       servers.map((server) => server.name),
     )
+    if (
+      !this.isShuttingDown &&
+      this.status() === 'idle' &&
+      this.managedPluginObservationVersion === version &&
+      this.managedPluginObservationScope() === scope
+    )
+      // A late reply cannot restore a fast path invalidated by a newer turn.
+      this.managedPluginsChecked = failed?.length === 0 ? checked : undefined
+    return failed
+  }
+
+  /** Set before each turn by the managed session; until then, the served routes it was given. */
+  private managedPluginsAwaited?: readonly string[]
+
+  awaitManagedPlugins(names: readonly string[]): void {
+    const configured = new Set(this.managedPluginMcp?.map((server) => server.name))
+    this.managedPluginsAwaited = names.filter((name) => configured.has(name))
+  }
+
+  private awaitedManagedPlugins(): readonly string[] {
+    return (
+      this.managedPluginsAwaited ??
+      this.managedPluginMcp?.filter((server) => !server.retained).map((server) => server.name) ??
+      []
+    )
+  }
+
+  private managedPluginObservationScope(): string {
+    return JSON.stringify([this._ref?.sessionId, [...this.awaitedManagedPlugins()].sort()])
   }
 
   private startAfterManagedPlugins(localId: CodexTurn['localId'], dispatch: () => void): void {
-    if (this.managedPluginsChecked || !this.managedPluginMcp?.length) {
+    this.managedPluginObservationVersion++
+    const scope = this.managedPluginObservationScope()
+    // A route kept while its plugin is starting is configured but never awaited here.
+    const served = this.awaitedManagedPlugins()
+    if (this.managedPluginsChecked === scope || !served.length) {
       dispatch()
       return
     }
-    this.managedPluginsChecked = true
     const waiting = { localId, controller: new AbortController() }
     this.managedPluginWait = waiting
     void waitForManagedPluginTools(
       this.transport,
       this._ref!.sessionId,
-      this.managedPluginMcp.map((server) => server.name),
+      served,
       waiting.controller.signal,
     ).then((outcome) => {
       if (this.managedPluginWait !== waiting) return
       this.managedPluginWait = null
-      if (this.isShuttingDown || this.currentTurn?.localId !== localId || outcome === 'cancelled')
+      if (
+        this.isShuttingDown ||
+        this.currentTurn?.localId !== localId ||
+        this.managedPluginObservationScope() !== scope ||
+        outcome === 'cancelled'
+      )
         return
-      if (outcome !== 'ready')
+      if (outcome === 'ready') this.managedPluginsChecked = scope
+      else if (!this.managedPluginFailureReported) {
+        this.managedPluginFailureReported = true
         this.emit(
           wrapUnknown(
             'codex',
@@ -5935,6 +5981,7 @@ export class CodexSessionHandle implements SessionHandle {
             'managed-plugin/discovery',
           ),
         )
+      }
       dispatch()
     })
   }
@@ -5943,7 +5990,7 @@ export class CodexSessionHandle implements SessionHandle {
     const waiting = this.managedPluginWait
     if (!waiting) return
     this.managedPluginWait = null
-    this.managedPluginsChecked = false
+    this.managedPluginsChecked = undefined
     waiting.controller.abort()
   }
 
