@@ -152,17 +152,24 @@ it('a failed local wipe remains pending and retry never repeats a consumed packa
   expect(f.state.inspect().pending).toBeNull()
   expect(f.actual.bridge.unlinked).toBe(1)
 })
-it.each(['never linked', 'earlier unconfirmed logout', 'unresolved prior logout'])(
-  'an earlier state %s does not let the app invent a remote logout guarantee',
-  async () => {
+it.each([
+  { before: 'never linked', state: 'unlinked', warning: false },
+  { before: 'earlier unconfirmed logout', state: 'unlinked', warning: true },
+  { before: 'unresolved prior logout', state: 'unavailable', warning: true },
+])(
+  'an earlier state $before does not let the app invent a remote logout guarantee',
+  async ({ state, warning }) => {
     const f = await setup(),
       status = f.actual.bridge.status.bind(f.actual.bridge)
-    f.actual.bridge.status = () => ({ ...status(), state: 'unlinked', removeOnPhone: true })
+    f.actual.bridge.state = state
+    f.actual.bridge.status = () => ({ ...status(), removeOnPhone: warning })
+    expect(f.actual.bridge.status()).toMatchObject({ state, removeOnPhone: warning })
     const result = await f.controller.uninstall(f.handle, 'fictional-bakery')
     expect(result).toMatchObject({
       cleanup: 'completed',
-      result: { structuredContent: { status: 'warning' } },
+      result: { structuredContent: { status: warning ? 'warning' : 'complete' } },
     })
+    expect(f.actual.bridge.unlinked).toBe(1)
     expect(result).not.toHaveProperty('logout')
   },
 )
