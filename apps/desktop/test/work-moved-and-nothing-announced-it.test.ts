@@ -251,8 +251,16 @@ describe('638 · a change to a conversation’s work announces itself', () => {
       // composed from OTHER conversations' ledgers, so an id would name a transitive closure
       // nobody has bounded — see {@link RUNTIME_CHANGE_SUBJECTS}' own note.
       const wire = codeOf('shared/runtime-ipc.ts')
-      expect(wire).toContain(
-        'export interface RuntimeChangeMessage {\n  readonly what: RuntimeChangeSubject\n}',
+      const at = wire.indexOf('export interface RuntimeChangeMessage {')
+      expect(at).toBeGreaterThan(-1)
+      const body = wire.slice(at, wire.indexOf('\n}', at))
+      // The subject, and on a `persons` notice the publication it was made at: an epoch and a
+      // sequence, which name no conversation.
+      const fields = [...body.matchAll(/^ {2}readonly (\w+)\??:/gm)].map((one) => one[1])
+      expect(fields).toEqual(['what', 'published'])
+      expect(body).toContain('readonly what: RuntimeChangeSubject')
+      expect(body).toContain(
+        'readonly published?: { readonly epoch: PublicationEpoch; readonly seq: number }',
       )
     })
   })
