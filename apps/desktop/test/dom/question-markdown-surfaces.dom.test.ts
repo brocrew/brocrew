@@ -106,6 +106,7 @@ describe.each(['classic', 'crew-night', 'synthwave'] as const)(
           permission: {
             cwd: '/work/**literal**',
             paths: ['/work/`literal`'],
+            network: false,
             reason: '**literal reason**',
           },
         },
