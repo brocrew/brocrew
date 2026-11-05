@@ -327,6 +327,11 @@ export function withManagedPluginAttachments(
                 }
                 if (closed || wait.signal.aborted)
                   throw new Error('the turn was stopped before its message could be sent')
+                // The same routes under new markers: which of them this turn may wait on.
+                if (next && signature(next) === signature(attachment)) attachment = next
+                inner.awaitManagedPlugins?.(
+                  attachment.servers.filter((one) => !one.retained).map((one) => one.name),
+                )
                 pending = undefined
                 return inner.send(...args)
               } finally {

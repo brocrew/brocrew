@@ -216,6 +216,7 @@ const CONTRACT_MEMBERS: Record<keyof SessionHandle, string> = {
   builtInSkillsConfirmed:
     'whether SDK init confirmed the installed skill catalogue for this launch',
   refreshManagedPlugins: 'refresh managed tool attachments at a turn boundary where supported',
+  awaitManagedPlugins: 'names the configured managed servers a turn may wait on',
   managedPluginHealth: 'fresh public status identifies failed managed tool connections',
   ref: 'stable identity, or null until the provider gives one (011)',
   launchedAs: 'the id a launch asked for, before any init names it — never a ref (722 · R79)',
@@ -535,6 +536,8 @@ const claudeDriver: Driver = {
     gaps: {
       connectionId:
         'the desktop connection wrapper supplies app attribution; this raw adapter does not choose app connections',
+      awaitManagedPlugins:
+        'Claude never waits on managed servers before a turn, so there is no set to narrow',
       instructionSources:
         'Claude has no provider-reported instruction list — this app does that reading itself, ' +
         'through `StartOptions.systemHint` (158)',
@@ -1060,6 +1063,8 @@ const fakeDriver: Driver = {
         'the base Fake has no adapter-initiated retirement; host close and terminal status cover its lifecycle',
       refreshManagedPlugins:
         'The base Fake has no external plugin connection; wrapper controls supply a refresh fake',
+      awaitManagedPlugins:
+        'The base Fake never waits on managed servers before a turn; wrapper tests inject the set',
       managedPluginHealth:
         'The base Fake has no provider MCP connection to observe; wrapper tests inject public health facts',
       builtInSkillsConfirmed:
@@ -1672,6 +1677,7 @@ describe('conformance · the gap ledger (186)', () => {
           'connectionId',
           'isRetiring',
           'refreshManagedPlugins',
+          'awaitManagedPlugins',
           'managedPluginHealth',
           'builtInSkillsConfirmed',
           // 722 · R79: a pre-init window only a Claude launch has — the Fake's ref is set at birth.
@@ -1736,6 +1742,7 @@ describe('conformance · the gap ledger (186)', () => {
         'claude',
         [
           'connectionId',
+          'awaitManagedPlugins',
           'instructionSources',
           'signInCopyAtLaunch',
           'carryOn',
