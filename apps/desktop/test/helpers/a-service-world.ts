@@ -161,6 +161,7 @@ export interface AServiceWorld {
     deliveryWaitMs?: number
     endingWaitMs?: number
     windowWriterStamp?: ConstructorParameters<typeof RuntimeHost>[0]['windowWriterStamp']
+    windowReader?: ConstructorParameters<typeof RuntimeHost>[0]['windowReader']
     limitsWriterStamp?: ConstructorParameters<typeof RuntimeHost>[0]['limitsWriterStamp']
     listProfiles?: (provider?: Provider) => string[]
     readInstructions?: ConstructorParameters<typeof RuntimeHost>[0]['readInstructions']
@@ -369,6 +370,7 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
         ...(opts.windowWriterStamp === undefined
           ? {}
           : { windowWriterStamp: opts.windowWriterStamp }),
+        ...(opts.windowReader === undefined ? {} : { windowReader: opts.windowReader }),
         ...(opts.limitsWriterStamp === undefined
           ? {}
           : { limitsWriterStamp: opts.limitsWriterStamp }),
