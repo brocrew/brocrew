@@ -625,8 +625,13 @@ describe('canonical window worker folds and independent live-store reads', () =>
     const { host } = hostWith()
     anotherQuestion()
     host.readWorkspace()
-    store.setApprovalMode('alpha', 'auto')
-    row('alpha', 'request_escalated', { type: 'request_escalated', requestId: 'first' })
+    // A row the queue reads, written through the store's own door, moves the reading's version.
+    store.append(
+      'alpha',
+      store.nextOrdinal('alpha'),
+      { type: 'request_routed', requestId: 'third', to: 'a-person' } as TranscriptEvent,
+      1000 + ordinal++,
+    )
     const real = store.piecesWaitingOnWhoWrote.bind(store)
     const walked = vi
       .spyOn(store, 'piecesWaitingOnWhoWrote')
