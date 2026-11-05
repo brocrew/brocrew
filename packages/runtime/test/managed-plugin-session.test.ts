@@ -1018,3 +1018,57 @@ it('a turn that becomes active during health discovery cannot be refreshed or re
   expect(f.raw.resume).not.toHaveBeenCalled()
   await a.close()
 })
+it('a plugin still starting or unknown keeps its attached route; only a committed off or a complete legacy set removes it', async () => {
+  const fern = { ...route, pluginId: 'fern' }
+  const f = fixture(true)
+  f.change({ revision: 'one', servers: [fern] })
+  const a = await f.runtime.start(initial)
+  const refresh = f.opened[0]!.handle.refreshManagedPlugins!
+  f.change({
+    revision: 'two',
+    servers: [],
+    plugins: { pending: ['fern'], none: [], unknown: false },
+  })
+  await a.send('fictional words')
+  expect(refresh).not.toHaveBeenCalled()
+  f.change({ revision: 'three', servers: [], plugins: { pending: [], none: [], unknown: true } })
+  await a.send('fictional words')
+  expect(refresh).not.toHaveBeenCalled()
+  f.change({
+    revision: 'four',
+    servers: [],
+    plugins: { pending: [], none: ['fern'], unknown: false },
+  })
+  await a.send('fictional words')
+  expect(refresh).toHaveBeenCalledWith([])
+  await a.close()
+
+  const g = fixture(true)
+  g.change({ revision: 'one', servers: [fern] })
+  const b = await g.runtime.start(initial)
+  g.change({ revision: 'two', servers: [] })
+  await b.send('fictional words')
+  expect(g.opened[0]!.handle.refreshManagedPlugins).toHaveBeenCalledWith([])
+  await b.close()
+})
+it('a plugin served again under a new route replaces the one kept while it was starting', async () => {
+  const fern = { ...route, pluginId: 'fern' }
+  const fresh = { ...fern, capability: 'b'.repeat(64) }
+  const f = fixture(true)
+  f.change({ revision: 'one', servers: [fern] })
+  const a = await f.runtime.start(initial)
+  f.change({
+    revision: 'two',
+    servers: [],
+    plugins: { pending: ['fern'], none: [], unknown: false },
+  })
+  await a.send('fictional words')
+  f.change({
+    revision: 'three',
+    servers: [fresh],
+    plugins: { pending: [], none: [], unknown: false },
+  })
+  await a.send('fictional words')
+  expect(f.opened[0]!.handle.refreshManagedPlugins).toHaveBeenCalledWith([fresh])
+  await a.close()
+})

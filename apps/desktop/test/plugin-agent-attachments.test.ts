@@ -240,7 +240,12 @@ it('releases one agent attachment without a per-agent tool grant or another cons
     l = lease(),
     req = request()
   const source = new WorkspacePluginAttachments(
-    { agentRoutes: (input) => f.bridge.routes(l, { ...req, ...input }) },
+    {
+      agentRoutes: async (input) => ({
+        format: 1,
+        value: await f.bridge.routes(l, { ...req, ...input }),
+      }),
+    },
     req.workspaceId,
   )
   const a = source.agent(['brobot']),

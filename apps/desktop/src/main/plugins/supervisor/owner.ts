@@ -113,6 +113,11 @@ export class PluginSupervisor {
       lease: Readonly<WorkspaceLease>,
       request: Extract<Command, { kind: 'agent-routes' }>,
     ): Promise<unknown>
+    /** The reply naming each plugin, for a lease that negotiated it. */
+    agentRoutes?(
+      lease: Readonly<WorkspaceLease>,
+      request: Extract<Command, { kind: 'agent-routes' }>,
+    ): Promise<unknown>
     revoke(lease: Readonly<WorkspaceLease>): void
     /** Lifecycle cleanup notification, independent of physical child exit. */
     close?(): Promise<void>
@@ -280,8 +285,11 @@ export class PluginSupervisor {
           )
             refuse()
           const bridge = this.agentBridge
-          void bridge
-            .routes(Object.freeze({ ...lease }), command)
+          const named = undefined as typeof bridge.agentRoutes
+          void (named ?? bridge.routes.bind(bridge))(Object.freeze({ ...lease }), command)
+            .then((value) =>
+              named === undefined ? value : { format: 2, ...(value as Record<string, unknown>) },
+            )
             .then((value) => {
               if (!this.valid(lease.id, lease.epoch)) refuse()
               socket.end(

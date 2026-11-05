@@ -363,6 +363,7 @@ describe.skipIf(process.platform === 'win32')(
             configRevision: 1,
           },
           package: verified,
+          runId: 'fern-run',
           current: () => true,
           connection: Promise.resolve(connection),
         }
@@ -383,6 +384,22 @@ describe.skipIf(process.platform === 'win32')(
             attach: async () => Object.freeze({}),
             detach: async () => {},
             agentAttachments: () => [view],
+            agentScope: (workspaceId) => ({
+              workspaceId,
+              revision: 0,
+              entries: [
+                {
+                  pluginId: release.id,
+                  enabled: true,
+                  installId: 'fern-install',
+                  runId: 'fern-run',
+                  switchRevision: 0,
+                  is: 'admitted',
+                  view,
+                },
+              ],
+            }),
+            onHostChanged: () => () => {},
           },
           binding: chromeBrokerBinding,
         })
@@ -392,14 +409,17 @@ describe.skipIf(process.platform === 'win32')(
           {
             agentRoutes: async (request) => {
               attachmentReads++
-              return bridge.routes(lease, {
-                ...request,
-                kind: 'agent-routes',
-                workspace: lease.workspace,
-                generation: lease.generation,
-                lease: 'b'.repeat(64),
-                release: request.release === true,
-              })
+              return {
+                format: 1,
+                value: await bridge.routes(lease, {
+                  ...request,
+                  kind: 'agent-routes',
+                  workspace: lease.workspace,
+                  generation: lease.generation,
+                  lease: 'b'.repeat(64),
+                  release: request.release === true,
+                }),
+              }
             },
           },
           'fern-workspace',
