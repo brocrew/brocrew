@@ -58,6 +58,7 @@ const tool = 'gather_petals'
 const releases: Array<() => void> = []
 const closers: Array<() => Promise<unknown>> = []
 const turn = () => new Promise<void>((resolve) => setImmediate(resolve))
+// This bounds a hung test fixture; it does not set a product timeout.
 async function bounded<T>(work: Promise<T>, label: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
@@ -231,6 +232,8 @@ it.each(['service first', 'last lease first'] as const)(
     )
     await f.controller.install(f.handle, A)
     await f.controller.install(f.handle, B)
+    // Only the seed controller drains here. The subject opens the same stored packages
+    // with a separate controller and queue, and marks consumers ended inside service.close.
     f.controller.consumersEnded()
     await f.controller.drain()
     const install = f.state.currentInstallation(A)!
@@ -513,26 +516,38 @@ it.each(['service first', 'last lease first'] as const)(
       Promise.all([...children.values()].map((one) => one.stopped.promise)),
       'captured children stop replies',
     )
-    expect(service.controller.cleanForShutdown()).toBe(false)
-    expect(ownerFinished).toBe(false)
-    await expect(PluginSupervisor.start(ownerOptions)).rejects.toMatchObject({ code: 'busy' })
-    children.get(A)!.exit.resolve({ exited: true })
-    await turn()
-    expect(service.controller.cleanForShutdown()).toBe(false)
-    expect(ownerFinished).toBe(false)
-    children.get(B)!.exit.resolve({ exited: true })
     const draining = service.controller.drain()
     let controllerFinished = false
     void draining.then(() => {
       controllerFinished = true
     })
+    if (order === 'last lease first') {
+      effectHold.resolve()
+      await bounded(staging, 'tracked staging settled while both child exits remain held')
+      expect(effectQueue!.idle).toBe(true)
+    }
     await turn()
     expect(controllerFinished).toBe(false)
     expect(service.controller.cleanForShutdown()).toBe(false)
-    expect(ownerFinished).toBe(false)
+    if (order === 'last lease first') expect(ownerFinished).toBe(false)
     await expect(PluginSupervisor.start(ownerOptions)).rejects.toMatchObject({ code: 'busy' })
-    effectHold.resolve()
-    await bounded(staging, 'tracked staging reply settled after actual child exits')
+    children.get(A)!.exit.resolve({ exited: true })
+    await turn()
+    expect(controllerFinished).toBe(false)
+    expect(service.controller.cleanForShutdown()).toBe(false)
+    if (order === 'last lease first') expect(ownerFinished).toBe(false)
+    await expect(PluginSupervisor.start(ownerOptions)).rejects.toMatchObject({ code: 'busy' })
+    children.get(B)!.exit.resolve({ exited: true })
+    if (order === 'service first') {
+      await turn()
+      expect(controllerFinished).toBe(false)
+      expect(service.controller.cleanForShutdown()).toBe(false)
+      expect(effectQueue!.idle).toBe(false)
+      // This owner is still serving; its busy result is standing-owner exclusion.
+      await expect(PluginSupervisor.start(ownerOptions)).rejects.toMatchObject({ code: 'busy' })
+      effectHold.resolve()
+      await bounded(staging, 'tracked staging reply settled after actual child exits')
+    }
     await bounded(draining, 'actual modeled exits and tracked-effect settlement')
     expect(service.controller.cleanForShutdown()).toBe(true)
     if (order === 'service first') {
