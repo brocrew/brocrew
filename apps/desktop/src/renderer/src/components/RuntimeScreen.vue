@@ -4077,6 +4077,7 @@ onUnmounted(() => {
             v-else-if="surface === 'sessions'"
             ref="library"
             :identities="agentStore.identities.value?.identities ?? null"
+            :provider-blocks="store.providerBlocks"
             @read="readFromTheLibrary"
             @open="select"
             @delete="(sessionId) => overlays.open({ kind: 'deleteConversation', sessionId })"

@@ -207,6 +207,7 @@ import {
   type Constraint,
 } from '../lib/library-filters'
 import { basenameOf } from '../lib/paths'
+import type { ProviderBlockStore } from '../lib/provider-limit-facts'
 import { readableError } from '../lib/session-record'
 import FacetBar from './FacetBar.vue'
 import ResumableSessions from './ResumableSessions.vue'
@@ -259,8 +260,10 @@ const props = withDefaults(
      * conversation is. Read nowhere here.
      */
     identities?: readonly AgentIdentity[] | null
+    /** Where each listed conversation's provider facts are kept, forwarded to the recorded list. */
+    providerBlocks?: ProviderBlockStore
   }>(),
-  { identities: null },
+  { identities: null, providerBlocks: undefined },
 )
 
 const emit = defineEmits<{
@@ -1411,6 +1414,7 @@ function size(bytes: number | null): string {
             <ResumableSessions
               ref="reopenList"
               :identities="props.identities"
+              :provider-blocks="props.providerBlocks"
               @open="(sessionId) => emit('open', sessionId)"
             />
           </section>

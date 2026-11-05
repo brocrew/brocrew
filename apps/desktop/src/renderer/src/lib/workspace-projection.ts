@@ -101,6 +101,8 @@ export interface WorkspaceProjection {
   listError(): string | null
   /** The host's own rows, as the last list read gave them; empty until it lands. */
   hostRows(): readonly ResumableSessionInfo[]
+  /** The host's rows a message cannot continue, as the last list read gave them, all of them. */
+  hostUnresumable(): readonly UnresumableSessionInfo[]
   running(): readonly RunningConversation[] | null
   conversation(id: string): ListedConversation | undefined
   ofIdentity(identity: string): readonly ListedConversation[]
@@ -490,6 +492,7 @@ export function createWorkspaceProjection(
     listed: () => listed.value,
     listError: () => error.value,
     hostRows: () => resumable.value,
+    hostUnresumable: () => unresumable.value,
     running: () => running.value,
     conversation: (id) => byId.value.get(id),
     ofIdentity: (identity) => byIdentity.value.get(identity) ?? NO_ROWS,

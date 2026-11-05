@@ -741,10 +741,14 @@ describe('the closing announcement has more than one reader (273 §2)', () => {
     // ⛔ **BEFORE the ask, not after it**, which is the whole of the guard. Checked as an ordering
     // over the source rather than as a pattern, because a guard written under the `await` matches
     // every regex above and stops nothing at all.
-    expect(library.indexOf('if (appClosing.value) return')).toBeLessThan(
-      library.indexOf('window.api.runtime.listResumable()'),
+    // It asks through the workspace, which returns before it asks while the app is closing.
+    expect(library).toContain(
+      'workspace.readList(props.providerBlocks ?? localProviderBlocks, appClosing.value)',
     )
-    expect(library.indexOf('window.api.runtime.listResumable()')).toBeGreaterThan(-1)
+    expect(library.indexOf('if (appClosing.value) return')).toBeLessThan(
+      library.indexOf('workspace.readList('),
+    )
+    expect(library).not.toContain('window.api.runtime.listResumable()')
   })
 
   it('the flag is still a REF, so a template unwraps it rather than testing an object', () => {

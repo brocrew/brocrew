@@ -144,7 +144,8 @@ MUTATIONS = [
         # `@read="readFromTheLibrary"`), so the old anchor went stale. The plant drops the
         # `:identities` line and the source-reading test goes red.
         [
-            (RUNTIMESCREEN, "            :identities=\"agentStore.identities.value?.identities ?? null\"\n            @read=\"readFromTheLibrary\"\n", "            @read=\"readFromTheLibrary\"\n"),
+            # ⚑ **the reopen list reads the window's one list · re-anchored in place, not retired** — the screen now hands the library its provider store on the next line; the plant still drops only the roster.
+            (RUNTIMESCREEN, "            :identities=\"agentStore.identities.value?.identities ?? null\"\n            :provider-blocks=\"store.providerBlocks\"\n", "            :provider-blocks=\"store.providerBlocks\"\n"),
         ],
     ),
     (

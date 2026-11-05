@@ -5,7 +5,6 @@ import type {
   ExportedSession,
   ImportedRecording,
   ResumableSessionInfo,
-  UnresumableSessionInfo,
 } from '../../../shared/runtime-ipc'
 import { agentName, providerName } from '../../../shared/runtime-ipc'
 import { appClosing } from '../lib/app-closing'
@@ -14,7 +13,9 @@ import { childLabel } from '../lib/child-descent'
 import { agoWords } from '../lib/clock'
 import { endedUnfinished, endingLabel } from '../lib/ending'
 import { scanSummary, useHomeScan } from '../lib/home-scan'
+import { createProviderBlockStore, type ProviderBlockStore } from '../lib/provider-limit-facts'
 import { readableError } from '../lib/session-record'
+import { useWorkspace } from '../composables/useWorkspace'
 
 /**
  * The conversations this app recorded. It answers the question that started this — *"I closed a
@@ -24,10 +25,17 @@ import { readableError } from '../lib/session-record'
  * The ones a message cannot continue are listed too, with the reason. Leaving them out would answer
  * the original question with silence, which is what it was asking about in the first place.
  */
-const sessions = ref<ResumableSessionInfo[]>([])
-const unresumable = ref<UnresumableSessionInfo[]>([])
+const workspace = useWorkspace()
+const localProviderBlocks = createProviderBlockStore()
+/** The window's one list read, every row of it: this page lists what the rail leaves out too. */
+const unresumable = computed(() => workspace.hostUnresumable())
+/** This page's own read is in flight. */
 const loading = ref(false)
-const loadError = ref<string | null>(null)
+/** What the last scan of the provider homes could not do. */
+const scanError = ref<string | null>(null)
+const loadError = computed(() => scanError.value ?? workspace.listError())
+/** No list read has landed yet: not an empty list. */
+const unread = computed(() => workspace.listed() === null)
 /**
  * What the last scan of the provider homes did — including what it would not touch.
  *
@@ -63,11 +71,13 @@ const props = withDefaults(
      * answer for a roster it cannot look in.
      */
     identities?: readonly AgentIdentity[] | null
+    /** Where each listed conversation's provider facts are kept; the screen's store. */
+    providerBlocks?: ProviderBlockStore
   }>(),
-  { identities: null },
+  { identities: null, providerBlocks: undefined },
 )
 /** ⚑ **D-017b · every recorded conversation, whatever it is doing** — one list, one press. */
-const offered = computed(() => sessions.value)
+const offered = computed(() => workspace.hostRows())
 
 /*
  * ⛔ **`count` was emitted here and NOTHING listened** — removed in `301`'s acceptance-#7 sweep.
@@ -93,16 +103,10 @@ async function refresh(): Promise<void> {
   // returning would leave this list saying "looking…" for the rest of the window's life.
   if (appClosing.value) return
   loading.value = true
-  loadError.value = null
+  scanError.value = null
   try {
-    const [open, closed] = await Promise.all([
-      window.api.runtime.listResumable(),
-      window.api.runtime.listUnresumable(),
-    ])
-    sessions.value = open
-    unresumable.value = closed
-  } catch (cause) {
-    loadError.value = readableError(cause)
+    // The window's one list read: the rail and every surface listing conversations see its answer.
+    await workspace.readList(props.providerBlocks ?? localProviderBlocks, appClosing.value)
   } finally {
     loading.value = false
   }
@@ -119,18 +123,12 @@ async function scan(): Promise<void> {
   // This lane's own follow-up, and it stays this lane's: the rows a scan changes here are the
   // resumable and unresumable lists, which is not what the library page re-reads.
   //
-  // ⚠️ **Passed IN rather than awaited after, so the link stays disabled through it** (review).
-  // The first version cleared `scanning` before `refresh()` ran, so for two more round trips the
-  // button read "scan for existing sessions" and was pressable while the list below said
-  // "looking…" — and `refresh()` has no race guard, so two of them can land out of order. That is
-  // a behaviour change to the reopen lane, which `120` §9.10 says to leave alone.
-  //
-  // ⚠️ And `loadError` is cleared HERE and set only on failure, never cleared after — `refresh()`
-  // runs inside the scan and sets `loadError` itself when the list read fails, so clearing it on
-  // the way out would wipe an error the follow-up had just reported.
-  loadError.value = null
+  // The read is passed in rather than awaited after, so the link stays disabled until the list
+  // below has been read again. A scan's own failure is said here; a list read that fails inside it
+  // says so through the workspace.
+  scanError.value = null
   const result = await homeScan.scan(refresh)
-  if (result !== null && 'error' in result) loadError.value = result.error
+  if (result !== null && 'error' in result) scanError.value = result.error
 }
 
 /**
@@ -209,7 +207,8 @@ defineExpose({ refresh })
 const scanNote = computed(() => scanSummary(homeScan.lastScan.value))
 
 const isEmpty = computed(
-  () => !loading.value && offered.value.length === 0 && unresumable.value.length === 0,
+  () =>
+    !loading.value && !unread.value && offered.value.length === 0 && unresumable.value.length === 0,
 )
 
 /**
@@ -246,7 +245,7 @@ const ago = agoWords
     </header>
 
     <p v-if="loadError" class="err" data-cy="resumable-error">{{ loadError }}</p>
-    <p v-else-if="loading" class="muted">looking…</p>
+    <p v-else-if="loading || unread" class="muted">looking…</p>
     <p v-else-if="isEmpty" class="muted" data-cy="resumable-empty">
       Nothing recorded yet. A conversation is listed here once its provider has given it an id — on
       Claude that is after its first message.
