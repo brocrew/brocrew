@@ -30,6 +30,37 @@ function writableOpens(source: string): number {
   visit(tree)
   return count
 }
+function consumerDenyWriters(source: string): string[] {
+  const tree = ts.createSourceFile('controller.ts', source, ts.ScriptTarget.Latest, true)
+  const writers: string[] = []
+  function visit(node: ts.Node, method = '<outside method>') {
+    if (ts.isMethodDeclaration(node)) method = node.name.getText(tree)
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.name.text === 'add' &&
+      ts.isPropertyAccessExpression(node.expression.expression) &&
+      node.expression.expression.name.text === 'consumerBlocks'
+    )
+      writers.push(method)
+    ts.forEachChild(node, (child) => visit(child, method))
+  }
+  visit(tree)
+  return writers
+}
+it('keeps local consumer denies in binding reconciliation, separate from process and effect ownership', () => {
+  const controller = fileURLToPath(
+    new URL('../src/main/plugins/lifecycle/controller.ts', import.meta.url),
+  )
+  expect(consumerDenyWriters(readFileSync(controller, 'utf8'))).toEqual(['startBinding'])
+  expect(
+    consumerDenyWriters(`class Controller {
+      startBinding() { Promise.resolve().catch(() => workspace.consumerBlocks.add(id)) }
+      processFailed() { workspace.consumerBlocks.add(id) }
+      effectFailed() { workspace.consumerBlocks.add(id) }
+    }`),
+  ).toEqual(['startBinding', 'processFailed', 'effectFailed'])
+})
 it('counts writable state constructors through named import aliases and excludes fresh observers', () => {
   expect(
     writableOpens(

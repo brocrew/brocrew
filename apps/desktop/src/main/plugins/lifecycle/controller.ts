@@ -44,7 +44,7 @@ const refuse = (): never => {
 const pending = (): never => {
   throw new PluginSupervisorError('cleanup-pending')
 }
-type CleanupReason = 'consumer' | 'process' | 'effect'
+type CleanupReason = 'binding' | 'process' | 'effect'
 async function bounded<T>(work: () => Promise<T>, ms = 20000): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
@@ -64,6 +64,7 @@ type RegisteredContribution = ReturnType<ReturnType<typeof createContributionReg
 interface Workspace {
   sink: WorkspaceProjection
   receipts: Map<string, ProjectionReceipt>
+  // A consumer's failed-binding denies never own a process or durable effect.
   consumerBlocks: Set<string>
   revocations: Map<string, Set<string>>
   views: Set<string>
@@ -1227,7 +1228,7 @@ export class PluginLifecycleController {
             this.blocks.get(install.pluginId) === this.toolRestartBlocks.get(install.pluginId)
           const token = this.block(install.pluginId)
           if (repairable) this.toolRestartBlocks.set(install.pluginId, token)
-          this.addCleanup(install.pluginId, proven ? 'consumer' : 'process')
+          this.addCleanup(install.pluginId, proven ? 'binding' : 'process')
           if (proven) {
             try {
               this.options.onHostExit?.(install.pluginId, run.runId)
@@ -1241,7 +1242,7 @@ export class PluginLifecycleController {
               this.runs.get(install.pluginId) === running &&
               this.blocks.get(install.pluginId) === token
             )
-              this.clearCleanup(install.pluginId, 'consumer')
+              this.clearCleanup(install.pluginId, 'binding')
           })
           void running.revocation.catch(() => undefined)
         }
@@ -2343,7 +2344,7 @@ export class PluginLifecycleController {
           workspace.consumerBlocks.clear()
           workspace.receipts.clear()
         }
-        for (const id of this.cleanup.keys()) this.clearCleanup(id, 'consumer')
+        for (const id of this.cleanup.keys()) this.clearCleanup(id, 'binding')
       }
       // Once nothing holds the state, a removal or install left unfinished stays in the journal.
       this.drained = true
@@ -2352,7 +2353,7 @@ export class PluginLifecycleController {
     return this.drainWork
   }
   /**
-   * Consumer cleanup retires only after the trusted channel/route mark and proven drain.
+   * Dead consumer bindings retire only after the trusted channel/route mark and proven drain.
    * Physical and durable-effect failures remain obligations. The journal keeps an unfinished
    * removal or install for recovery after all starts, exits and tracked effects have settled.
    */
