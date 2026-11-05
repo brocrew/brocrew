@@ -129,6 +129,35 @@ it('holds the first model turn until the managed catalog is available, while sho
   expect(warnings(events)).toEqual([])
 })
 
+it('keeps a successful discovery on the fast path for the same thread and server set', async () => {
+  const { wire, handle } = await start()
+  const saved = handle.ref
+  wire.catalog = ['echo']
+  await handle.send('Fictional first healthy turn')
+  await tick()
+  wire.finish()
+  await tick()
+  const unexpected = vi.fn(async () => {
+    throw new Error('fictional unexpected discovery')
+  })
+  wire.discovery = unexpected
+  await handle.send('Fictional following healthy turn')
+  await tick()
+  expect(unexpected).not.toHaveBeenCalled()
+  expect(wire.catalogsAtTurns).toEqual([['echo'], ['echo']])
+  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual([
+    {
+      method: 'mcpServerStatus/list',
+      params: {
+        threadId: saved!.sessionId,
+        serverName: route.name,
+        detail: 'toolsAndAuthOnly',
+      },
+    },
+  ])
+  expect(handle.ref).toEqual(saved)
+})
+
 it('starts without a dead plugin and records one fixed line without provider error text', async () => {
   const { wire, handle, events } = await start()
   wire.discovery = async () => {
@@ -332,8 +361,22 @@ it('stops an undispatched turn promptly and a late catalog cannot send it', asyn
   await vi.advanceTimersByTimeAsync(MANAGED_PLUGIN_READY_WITHIN_MS)
   expect(wire.catalogsAtTurns).toEqual([])
   expect(warnings(events)).toEqual([])
-  wire.discovery = async () => ready()
+  const replacement = deferred<unknown>()
+  wire.discovery = () => replacement.promise
   await handle.send('Fictional replacement turn')
+  await tick()
+  expect(wire.catalogsAtTurns).toEqual([])
+  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual(
+    Array.from({ length: 2 }, () => ({
+      method: 'mcpServerStatus/list',
+      params: {
+        threadId: handle.ref!.sessionId,
+        serverName: route.name,
+        detail: 'toolsAndAuthOnly',
+      },
+    })),
+  )
+  replacement.resolve(ready())
   await tick()
   expect(wire.catalogsAtTurns).toHaveLength(1)
 })
