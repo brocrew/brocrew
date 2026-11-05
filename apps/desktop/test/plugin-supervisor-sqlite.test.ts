@@ -116,6 +116,22 @@ describe.each([
     }
   })
 
+  it('confirms FULL before a transaction used as the first database operation', async () => {
+    const database = open(join(await folder(), 'first-transaction.sqlite'))
+    try {
+      const transact = database.transaction(() => {
+        // Policy SQL inside this transaction would fail; first-use setup must already be complete.
+        expect(database.prepare('PRAGMA synchronous').get()).toMatchObject({ synchronous: 2 })
+        database.exec('CREATE TABLE records (id INTEGER); INSERT INTO records VALUES (9)')
+        return 'committed'
+      })
+      expect(transact()).toBe('committed')
+      expect(database.prepare('SELECT id FROM records').all()).toEqual([{ id: 9 }])
+    } finally {
+      database.close()
+    }
+  })
+
   it('preserves exclusive writer refusal and permits the successor after release', async () => {
     const path = join(await folder(), 'fence.sqlite')
     const owner = open(path)
@@ -186,11 +202,16 @@ describe.each([
     try {
       const held = await holdPluginSqlite(path, children)
       try {
+        const unopened = open(path, { fileMustExist: true, timeout: 0 })
+        expect(() => unopened.close()).not.toThrow()
         contender = open(path, { fileMustExist: true, timeout: 0 })
         expect(() => contender!.exec('BEGIN EXCLUSIVE')).toThrow(
           expect.objectContaining({ code: 'SQLITE_BUSY' }),
         )
         expect(() => contender!.prepare('SELECT id FROM records')).toThrow(
+          expect.objectContaining({ code: 'SQLITE_BUSY' }),
+        )
+        expect(() => contender!.transaction(() => 'not-entered')).toThrow(
           expect.objectContaining({ code: 'SQLITE_BUSY' }),
         )
         expect(() => insert.run(2)).toThrow(expect.objectContaining({ code: 'SQLITE_BUSY' }))
