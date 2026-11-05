@@ -1786,11 +1786,16 @@ export class PluginLifecycleController {
   }
   /** Restarts the selected package using its retained process and verified declaration. */
   restartPluginTools(id: string, runId: string | undefined, stopped: () => void): Promise<void> {
+    if (this.draining || this.effectQueue.signal.aborted)
+      return Promise.reject(new PluginSupervisorError('cleanup-pending'))
     const prior = this.toolRestarts.get(id)
     if (prior) {
       if (runId !== undefined && prior.runId !== runId)
         return Promise.reject(new PluginSupervisorError('unavailable'))
-      return prior.work.then(stopped)
+      return prior.work.then(() => {
+        if (this.draining || this.effectQueue.signal.aborted) return pending()
+        stopped()
+      })
     }
     const work = this.effectQueue
       .restart(id, randomUUID(), async () => {
@@ -1808,9 +1813,21 @@ export class PluginLifecycleController {
         this.toolRestartBlocks.set(id, token)
         this.addCleanup(id, 'process')
         running.ended = true
+        const ownsRun = () =>
+          this.runs.get(id) === running &&
+          this.blocks.get(id) === token &&
+          this.toolRestartBlocks.get(id) === token &&
+          this.current(id)?.installId === install.installId
+        const exitProof = running.run.exited.then(() => {
+          if (!ownsRun()) return
+          running.exitProven = true
+          this.addCleanup(id, 'binding')
+          this.clearCleanup(id, 'process')
+        })
+        void exitProof.catch(() => undefined)
         if (!running.exitProven) {
           try {
-            const exited = running.run.exited.catch(() => new Promise<void>(() => {}))
+            const exited = exitProof.catch(() => new Promise<void>(() => {}))
             await bounded(() =>
               Promise.race([Promise.resolve().then(() => running.run.stop()), exited]),
             )
@@ -1827,17 +1844,13 @@ export class PluginLifecycleController {
               .catch(() => undefined)
             throw error
           }
-          running.exitProven = true
         }
+        await exitProof
+        if (this.draining || this.effectQueue.signal.aborted || !ownsRun()) return pending()
         stopped()
         // Consumer cleanup is attempted, but an acknowledgement is not process admission.
         await this.revoke(install).catch(() => undefined)
-        if (
-          this.draining ||
-          this.runs.get(id) !== running ||
-          this.current(id)?.installId !== install.installId
-        )
-          return pending()
+        if (this.draining || this.effectQueue.signal.aborted || !ownsRun()) return pending()
         this.runs.delete(id)
         this.attempted.delete(id)
         await this.ensureRunning(install, running.package)
