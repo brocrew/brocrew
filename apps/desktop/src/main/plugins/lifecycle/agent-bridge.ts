@@ -36,12 +36,21 @@ interface Route {
   route: ManagedPluginRoute
 }
 export type { InstanceToolScope } from '../tool-broker'
+export type AgentRouteServer = ManagedPluginMcpServer & { readonly pluginId: string }
+export interface AgentRoutes {
+  readonly servers: readonly AgentRouteServer[]
+  readonly pending: readonly string[]
+  readonly none: readonly string[]
+  readonly unknown: boolean
+}
 
 /** One production forwarding path for providers, UI actions and other package callbacks. */
 export function createLifecycleAgentBridge(options: {
   owner: Pick<PluginSupervisor, 'valid'>
   controller: Pick<PluginLifecycleController, 'agentAttachments' | 'attach' | 'detach'>
   binding?: (view: View, diagnostic: PluginToolDiagnostic) => Promise<PluginMcpClient>
+  openRoute?: typeof openManagedPluginRoute
+  answerWithinMs?: number
   diagnostic?: (pluginId: string, reason: Parameters<PluginToolDiagnostic>[0]) => void
   refused?: () => void | Promise<void>
   restartHost?: (pluginId: string) => Promise<void>
@@ -240,7 +249,7 @@ export function createLifecycleAgentBridge(options: {
             namespace = pluginProviderNamespace(`${id}-${randomUUID()}`)
           const current = () =>
             valid(lease) && view.current() && !retired.has(caller) && entries.get(id) !== undefined
-          const route = await openManagedPluginRoute(
+          const route = await (options.openRoute ?? openManagedPluginRoute)(
             entry.broker,
             { workspaceId: request.workspaceId, origin: 'agent', namespace },
             current,
@@ -318,6 +327,22 @@ export function createLifecycleAgentBridge(options: {
     },
     toolsUnavailable(id: string) {
       return failures.has(id)
+    },
+    async agentRoutes(lease: Readonly<WorkspaceLease>, request: Request): Promise<AgentRoutes> {
+      const work = tail.then(() => read(lease, request))
+      tail = work.catch(() => undefined)
+      const served = await work
+      const caller = `${lease.id}:${request.incarnation}`
+      const servers = served.map((server) => ({
+        ...server,
+        pluginId:
+          [...routes.values()].find(
+            (one) =>
+              `${one.lease.id}:${one.incarnation}` === caller &&
+              one.route.server.url === server.url,
+          )?.pluginId ?? '',
+      }))
+      return { servers, pending: [], none: [], unknown: false }
     },
     routes(lease: Readonly<WorkspaceLease>, request: Request) {
       const work = tail.then(() => read(lease, request))

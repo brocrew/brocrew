@@ -88,6 +88,20 @@ async function fixture(bindingReady?: Promise<PluginMcpClient>) {
         } as unknown as View,
       ]
     }),
+    agentScope: vi.fn((workspaceId: string) => ({
+      workspaceId,
+      revision: 0,
+      entries: controller.agentAttachments(workspaceId).map((view) => ({
+        pluginId: view.installation.pluginId,
+        enabled: true,
+        installId: view.installation.installId,
+        runId: view.runId,
+        switchRevision: revisions.get(workspaceId) ?? 0,
+        is: 'admitted' as const,
+        view,
+      })),
+    })),
+    onHostChanged: vi.fn(() => () => {}),
     attach: vi.fn(async (sink: WorkspaceProjection) => {
       const handle = {} as LifecycleWorkspace
       sinks.set(handle, sink)
