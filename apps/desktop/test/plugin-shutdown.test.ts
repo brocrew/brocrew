@@ -365,35 +365,81 @@ describe.skipIf(process.platform === 'win32')(
       await f.controller.install(f.handle, 'chrome')
       const snapshot = join(f.root, 'state', 'installed-state.json'),
         selected = await readFile(snapshot)
+      const installation = f.state.currentInstallation('chrome')!
+      type Revoke = (install: typeof installation, currentOnly?: boolean) => Promise<void>
+      const originalRevoke = Reflect.get(f.controller, 'revoke') as Revoke
+      const captured = deferred<{ work: Promise<void> }>()
+      const observing = vi
+        .spyOn(f.controller as unknown as { revoke: Revoke }, 'revoke')
+        .mockImplementation(function (
+          this: PluginLifecycleController,
+          ...args: Parameters<Revoke>
+        ) {
+          const work = originalRevoke.apply(this, args)
+          if (
+            this === f.controller &&
+            args[0].pluginId === 'chrome' &&
+            args[0].installId === installation.installId &&
+            args[1] === undefined
+          )
+            captured.resolve({ work })
+          return work
+        })
       const revoke = vi.spyOn(f.local.sink, 'revoke').mockImplementation(() => ack.promise)
       const applied = vi.spyOn(f.local.sink, 'applied')
+      const oldReconcile = vi.spyOn(f.local.sink, 'reconcile')
+      const writes = vi.spyOn(f.state, 'recordProjection')
       const reconcile = vi.fn(async () => {
         throw new Error('fictional newer cleanup failure')
       })
-      exit.resolve()
-      await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
-      await f.controller.reconcileConsumer(f.handle, {
-        ...f.local.sink,
-        revoke: async () => true,
-        reconcile,
-      })
-      await vi.waitFor(() =>
+      try {
+        exit.resolve()
+        const { work } = await captured.promise
+        await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
+        expect(observing).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ pluginId: 'chrome', installId: installation.installId }),
+        )
+        expect(observing.mock.contexts[0]).toBe(f.controller)
+        expect(observing.mock.results[0]!.value).toBe(work)
+        await f.controller.reconcileConsumer(f.handle, {
+          ...f.local.sink,
+          revoke: async () => true,
+          reconcile,
+        })
+        await vi.waitFor(() =>
+          expect(f.controller.consumerBindings(f.handle)).toContainEqual({
+            pluginId: 'chrome',
+            state: 'failed',
+          }),
+        )
+        expect(reconcile).toHaveBeenCalledExactlyOnceWith({
+          pluginId: 'chrome',
+          before: null,
+          receipt: null,
+        })
+        expect(await readFile(snapshot)).toEqual(selected)
+        ack.resolve(true)
+        await work
+        expect(observing).toHaveBeenCalledOnce()
+        expect(oldReconcile).not.toHaveBeenCalled()
+        expect(applied).not.toHaveBeenCalled()
+        expect(writes).not.toHaveBeenCalled()
         expect(f.controller.consumerBindings(f.handle)).toContainEqual({
           pluginId: 'chrome',
           state: 'failed',
-        }),
-      )
-      expect(reconcile).toHaveBeenCalledExactlyOnceWith({
-        pluginId: 'chrome',
-        before: null,
-        receipt: null,
-      })
-      expect(await readFile(snapshot)).toEqual(selected)
-      ack.resolve(true)
-      await vi.waitFor(() => expect(applied).toHaveBeenCalledWith('chrome', null))
-      expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
-      expect(f.controller.cleanForShutdown()).toBe(false)
-      expect(await readFile(snapshot)).toEqual(selected)
+        })
+        expect(reconcile).toHaveBeenCalledExactlyOnceWith({
+          pluginId: 'chrome',
+          before: null,
+          receipt: null,
+        })
+        expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
+        expect(f.controller.cleanForShutdown()).toBe(false)
+        expect(await readFile(snapshot)).toEqual(selected)
+      } finally {
+        ack.resolve(true)
+        observing.mockRestore()
+      }
     })
     it('a proven crash drains the shared owner and its successor starts while another plugin stays running', async () => {
       const f = await fixture()
