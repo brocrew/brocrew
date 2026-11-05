@@ -202,6 +202,16 @@ describe('the person’s queue is published under one stamp', () => {
     }
   })
 
+  it('a queue that cannot be read at all is refused with the stamp it failed at', async () => {
+    const before = (await queue()).published
+    vi.spyOn(host, 'readForWindow').mockRejectedValueOnce(new Error('fictional failure'))
+    const answer = await host.personsQueue()
+    expect(answer).toEqual({
+      refused: 'fictional failure',
+      published: { epoch: host.currentEpoch(), seq: before.seq },
+    })
+  })
+
   it('the persons notice carries the stamp it was made at', async () => {
     const before = (await queue()).published.seq
     announced = []

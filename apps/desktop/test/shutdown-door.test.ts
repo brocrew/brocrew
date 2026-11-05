@@ -625,7 +625,7 @@ describe('the shutdown door (273)', () => {
 
   it('refuses every database-reaching command once a quit has begun, and asks the host nothing', async () => {
     for (const kind of KINDS) {
-      if (ANSWERED_DURING_A_QUIT.has(kind)) continue
+      if (ANSWERED_DURING_A_QUIT.has(kind) || kind === 'personsQueue') continue
       const { host, touched } = recordingHost(true)
       await expect(executeRuntimeCommand(host, new RecordingSink(), SAMPLES[kind])).rejects.toThrow(
         refusedDuringAQuit(kind),
@@ -634,6 +634,13 @@ describe('the shutdown door (273)', () => {
       // stopping it."* So the host is not asked, at all, and that is what is asserted.
       expect(touched, `${kind} reached the host during a quit`).toEqual([])
     }
+  })
+
+  it('refuses the stamped queue during a quit with its stamp, reading nothing', async () => {
+    const { host, touched } = recordingHost(true)
+    await executeRuntimeCommand(host, new RecordingSink(), SAMPLES.personsQueue)
+    // Only the refusal is built: what this run is called and its sequence, no store and no queue.
+    expect(touched).toEqual(['personsQueueRefused'])
   })
 
   it('still answers the nine that touch no database, or refuse themselves better', async () => {
