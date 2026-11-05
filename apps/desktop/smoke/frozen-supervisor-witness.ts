@@ -5,6 +5,8 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, readFile, readdir, writeFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { ChildProcess } from 'node:child_process'
+import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron'
+import { z } from 'zod'
 import { tar } from '../test/plugin-package-fixtures'
 import { verifyPluginPackage } from '../src/main/plugins/package-verifier'
 import { createPluginSupervisorLauncher } from '../src/main/plugins/supervisor/launcher'
@@ -15,12 +17,24 @@ import {
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { registerPluginSettings } from '../src/main/plugins/settings'
 import { PluginPageTools } from '../src/main/plugins/ui/tool-rpc'
+import { pluginStartupDiagnostic } from '../src/main/plugins/startup-failure'
+import type { PluginSettingsReply } from '../src/shared/plugin-settings'
 import { PLUGIN_PAGE_CHANNEL } from '../src/shared/plugin-page'
 import { liveGroupMembers } from '../resources/plugin-host/process-groups.mjs'
 
 const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex')
 const id = 'fictional-lantern'
 const target = { os: 'darwin' as const, cpu: 'arm64' as const }
+const runtimeReply = z.object({
+  version: z.string(),
+  pid: z.number().int().positive(),
+  runId: z.uuid(),
+  bootstrap: z.object({
+    dataSchema: z.number(),
+    previousVersion: z.string().optional(),
+    previousDataSchema: z.number().optional(),
+  }),
+})
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 async function wait<T>(read: () => Promise<T>, limit = 30_000): Promise<T> {
   const until = performance.now() + limit
@@ -224,7 +238,7 @@ export async function witness(options: {
   }
   // The real settings.ts handler validates every card. Only its Electron window boundary is inert.
   const validatedCards = async () => {
-    let handler: (...args: any[]) => Promise<any> = () => {
+    let handler: Parameters<IpcMain['handle']>[1] = () => {
       throw new Error('No Settings handler')
     }
     const sender = Object.assign(new EventEmitter(), { mainFrame: {}, isDestroyed: () => false })
@@ -234,21 +248,20 @@ export async function witness(options: {
     })
     registerPluginSettings(
       {
-        handle: (_channel: string, fn: any) => {
+        handle: (_channel, fn) => {
           handler = fn
         },
-      } as any,
-      () => owner as any,
+      },
+      () => owner as unknown as BrowserWindow,
       settings,
     )
-    const result = await handler({ sender, senderFrame: sender.mainFrame }, { kind: 'status' })
+    const result = (await handler(
+      { sender, senderFrame: sender.mainFrame } as unknown as IpcMainInvokeEvent,
+      { kind: 'status' },
+    )) as PluginSettingsReply
     assert.equal(result.ok, true, JSON.stringify(result))
-    return result.cards as Array<{
-      id: string
-      installed: boolean
-      installedVersion?: string
-      state: string
-    }>
+    assert.ok(result.ok && result.cards)
+    return result.cards
   }
   const screen = async () => {
     const value = await settings!.screen(id)
@@ -269,7 +282,8 @@ export async function witness(options: {
   ) => {
     const packet = await call(page, tool, args)
     assert.equal(packet.status, 'result', JSON.stringify(packet))
-    return (packet as any).result.structuredContent
+    assert.ok(packet.status === 'result')
+    return runtimeReply.parse(packet.result.structuredContent)
   }
   const ownerSpawn = () => {
     const record = options.spawns.at(-1)!
@@ -299,7 +313,7 @@ export async function witness(options: {
     assert.equal(sha(await readFile(firstOwner.argv[0]!)), options.entryHash)
     // A second production launcher executes the same frozen artifact and loses the owner fence.
     await assert.rejects(launch())
-    assert.match(String((launch.diagnostic() as any)?.diagnostic?.stderr), /Plugin busy/)
+    assert.match(String(pluginStartupDiagnostic(launch.diagnostic())?.stderr), /Plugin busy/)
     const contender = ownerSpawn()
     assert.equal((await contender.exited).code, 1)
     const beforeInstall = await validatedCards()
@@ -316,7 +330,8 @@ export async function witness(options: {
     assert.deepEqual(opaque, Buffer.from([0, 255, 3, 4]))
     const error = await call(old.page, 'lantern.v1', { error: true })
     assert.equal(error.status, 'protocol-error')
-    assert.equal((error as any).error.code, -32000)
+    assert.ok(error.status === 'protocol-error')
+    assert.equal(error.error.code, -32000)
     const oldAction = (await settings!.host!.snapshot()).contributions.find(
       (one) => one.kind === 'ui.button',
     )!
