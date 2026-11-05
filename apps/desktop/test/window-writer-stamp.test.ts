@@ -415,3 +415,59 @@ describe('window writer revisions follow the selected facts', () => {
       writeFileSync(evidence, JSON.stringify(measurements, null, 2) + '\n')
   }, 30_000)
 })
+
+describe('a writer whose tracking could not be installed tries again', () => {
+  let directory: string
+  let db: AppDatabase
+  beforeEach(() => {
+    directory = mkdtempSync(join(tmpdir(), 'fictional-window-install-'))
+    db = openDatabase(join(directory, 'fictional.sqlite'))
+    applyMigrations(db, migrations)
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+    db.close()
+    rmSync(directory, { recursive: true, force: true })
+  })
+  const failing = (times: number) => {
+    const exec = db.exec.bind(db)
+    let left = times
+    return vi.spyOn(db, 'exec').mockImplementation((sql: string) => {
+      if (left > 0) {
+        left -= 1
+        throw new Error('fictional install failure')
+      }
+      return exec(sql)
+    })
+  }
+
+  it('an install that failed when the writer was made is retried at the next sample', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    failing(1)
+    const sample = windowWriterSampler(db, () => true)
+    expect(sample(routes)).not.toBeNull()
+    expect(sample(leads)).not.toBeNull()
+  })
+
+  it('a failure that lasts keeps answering unsampled, and the first success samples again', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    failing(3)
+    const sample = windowWriterSampler(db, () => true)
+    expect(sample(routes)).toBeNull()
+    expect(sample(routes)).toBeNull()
+    const first = sample(routes)
+    expect(first).not.toBeNull()
+    expect(sameWindowWriter(first, sample(routes))).toBe(true)
+  })
+
+  it('a writer made inside a write fence is installed at its first sample after the fence', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const outer = windowWriterSampler(db, () => true)
+    expect(outer(routes)).not.toBeNull()
+    let inner: ReturnType<typeof windowWriterSampler> | undefined
+    withWindowWriteFence(db, () => {
+      inner = windowWriterSampler(db, () => true)
+    })
+    expect(inner!(routes)).not.toBeNull()
+  })
+})
