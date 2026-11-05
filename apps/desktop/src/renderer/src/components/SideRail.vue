@@ -783,11 +783,6 @@ defineExpose({
    */
   hearStates,
   /**
-   * ⚑ **D-017b · every conversation the one list names** — the screen keeps their drafts
-   * (`sweepDrafts`): a stop ends nothing, so a conversation's words last as long as it is listed.
-   */
-  listedIds: computed(() => rows.value.map((row) => row.sessionId)),
-  /**
    * ⚑ **D-017b · the host's row for one conversation**, or `null` when it lists none — when it last
    * moved, whether another window has it open, and its one state: what the screen compares a
    * recorded view against, and the state that view's plate draws, so the view and its row here say

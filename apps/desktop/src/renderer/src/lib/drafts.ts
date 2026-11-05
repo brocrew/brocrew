@@ -437,9 +437,10 @@ export function sweepDrafts(
   /**
    * ⚑ **D-017b · every conversation the window's one list names** — a stop is not an ending, so a
    * conversation's words survive a walk away for as long as it is listed, whether or not anything
-   * runs it; ⛔ they are not all in `open`, which is the records this window is fed.
+   * runs it; ⛔ they are not all in `open`, which is the records this window is fed. `null` until
+   * the list has been read: nothing is pruned before then, as an unread list is not an empty one.
    */
-  listed: () => readonly string[],
+  listed: () => readonly string[] | null,
   /**
    * 🔴 **744 · the app is closing — empty NOTHING.** The quit ends every conversation, and those
    * endings are not a person closing them (R34b: the quit leaves them open); a sweep that pruned on
@@ -457,7 +458,7 @@ export function sweepDrafts(
   const stop = watch(
     [open, onScreen, () => [...held.keys()], () => [...untilOpen], listed],
     ([live, shown, holding, waiting, inTheList]) => {
-      if (closing()) return
+      if (closing() || inTheList === null) return
       for (const sessionId of waiting) {
         if (live.some((each) => each.sessionId === sessionId)) untilOpen.delete(sessionId)
       }

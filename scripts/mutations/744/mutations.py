@@ -144,7 +144,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M11 · 🔴 the sweep prunes DURING a quit — the quit's own endings empty the open conversations' "
         f"slots, and the last book the quit keeps is missing their words · killed by `{NODE}`",
-        [(DRAFTS, "      if (closing()) return\n", "")],
+        # ⚑ **draft retention reads the window's one list · re-anchored in place, not retired** — the guard also waits for the first list read now; the plant drops only the closing half.
+        [(DRAFTS, "      if (closing() || inTheList === null) return\n", "      if (inTheList === null) return\n")],
     ),
     (
         "M12 · ⛔ a slot that EMPTIES waits the delay — a message sent and then killed inside it comes "

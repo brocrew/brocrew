@@ -426,7 +426,6 @@ watchEffect(() => {
  */
 const persons = usePersonsQueue()
 
-const rail = ref<InstanceType<typeof SideRail> | null>(null)
 /** Whether the left menu is collapsed to its icons: by a press, or by a narrow window. */
 const railFold = useRailFold()
 /**
@@ -1705,13 +1704,15 @@ watch(frontDoorProvider, (provider, before) => {
  * ⛔ **One call prunes the drafts AND the paths handed with them** — see `DraftBook.paths` — and the
  * slots it keeps are still `liveDraftSlots`' (217): the launcher's is always among them.
  */
+/** Every conversation the window's one list names, or `null` before it has been read. */
+const listedIds = computed(() => projection.listed()?.map((row) => row.sessionId) ?? null)
 const draftSweep = sweepDrafts(
   drafts,
   () => store.live.value,
   () => draftKeyForActive.value,
   // ⚑ **D-017b · every conversation the one list names** — a stop ends nothing, so its words
   // survive a walk away for as long as it is listed.
-  () => rail.value?.listedIds ?? [],
+  () => listedIds.value,
   // 🔴 **744 · a quit's own endings empty nothing** — see `sweepDrafts`' fifth door.
   () => appClosing.value,
 )
@@ -4005,7 +4006,6 @@ onUnmounted(() => {
              stopped. Limits keep their own last reading between the less frequent limit looks;
              workspace counts keep the actionable cadence. -->
         <SideRail
-          ref="rail"
           :open="store.live.value"
           :provider-blocks="store.providerBlocks"
           :active-id="activeId"

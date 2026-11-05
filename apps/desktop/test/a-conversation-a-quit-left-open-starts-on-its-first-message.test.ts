@@ -438,7 +438,10 @@ describe('§1 · 701 · `692` F-a, D-017b — through a real host, a real ledger
     )
     // ⚑ the sweep's fourth door is the one list
     const sweep = bodyOf(screen, 'const draftSweep = sweepDrafts(', '\n)\n')
-    expect(sweep).toMatch(/\(\) => rail\.value\?\.listedIds \?\? \[\]/)
+    expect(sweep).toMatch(/\n\s+\(\) => listedIds\.value,\n/)
+    expect(screen).toContain(
+      'const listedIds = computed(() => projection.listed()?.map((row) => row.sessionId) ?? null)',
+    )
     // ⚑ every open is a look, and ⛔ never a start
     const open = bodyOf(screen, 'async function openConversation(', '\n}\n')
     expect(open).toMatch(/store\.isLive\(sessionId\) \? sessionId : await store\.look\(sessionId\)/)
@@ -736,11 +739,11 @@ describe('§1 · 701 · `692` F-a, D-017b — through a real host, a real ledger
  * runs it.
  */
 describe('§3 · 701 · `sweepDrafts`’ fourth door — every conversation the one list names', () => {
-  it('🔴 a draft under a listed id survives a sweep while it is listed, and goes when it leaves — an id in no list goes at once', async () => {
+  it('🔴 a draft under a listed id survives a sweep while it is listed, and goes when it leaves — an id in no list goes once the list is read', async () => {
     const drafts = createDraftBook()
     drafts.write(draftKey('sess_listed'), 'typed before the start')
     drafts.write(draftKey('sess_neither'), 'typed for nothing listed')
-    const listedIds = ref<string[]>(['sess_listed'])
+    const listedIds = ref<string[] | null>(null)
     const sweep = sweepDrafts(
       drafts,
       () => [],
@@ -748,7 +751,13 @@ describe('§3 · 701 · `sweepDrafts`’ fourth door — every conversation the 
       () => listedIds.value,
     )
     try {
-      // ⚑ The sweep runs at once (`immediate`): the control goes, the listed one stays.
+      // ⛔ An unread list is not an empty one: nothing goes before the first read lands.
+      expect(drafts.read(draftKey('sess_neither'))).toBe('typed for nothing listed')
+      expect(drafts.read(draftKey('sess_listed'))).toBe('typed before the start')
+
+      // ⚑ The read lands: the control goes, the listed one stays.
+      listedIds.value = ['sess_listed']
+      await nextTick()
       expect(drafts.read(draftKey('sess_neither'))).toBe('')
       expect(drafts.read(draftKey('sess_listed'))).toBe('typed before the start')
 

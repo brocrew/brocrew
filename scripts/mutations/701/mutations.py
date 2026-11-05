@@ -392,7 +392,8 @@ MUTATIONS = [
         # person walks away. The screen's fourth door is now `rail.value?.listedIds ?? []` (every id
         # the one list names) instead of `keptOpenIds`. The plant hands the sweep an empty list.
         [
-            (RUNTIMESCREEN, '  () => rail.value?.listedIds ?? [],\n', '  () => [],\n'),
+            # ⚑ **draft retention reads the window's one list · re-anchored in place, not retired** — the screen hands the sweep the window's one list from the workspace projection; the plant hands it none.
+            (RUNTIMESCREEN, "  () => listedIds.value,\n", "  () => [],\n"),
         ],
     ),
     (

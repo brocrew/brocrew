@@ -6,6 +6,7 @@ import type { ResumableSessionInfo, UnresumableSessionInfo } from '../../src/sha
 import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import { createSessionRecord } from '../../src/renderer/src/lib/session-record'
 import { mount, unmountAll, visible, type Mounted } from './harness'
+import { testWorkspace } from '../workspace-fixture'
 
 /**
  * **D-017b · the ONE list says what the host says, newest first** — the rail's list as a person
@@ -25,7 +26,8 @@ import { mount, unmountAll, visible, type Mounted } from './harness'
  *  4. **a failed later read** keeps the rows an earlier read drew, and says why;
  *  5. **the palette in the rail** is told whether the list has answered and what its failure said,
  *     and a conversation only the host lists is one of its rows;
- *  6. **what the rail exposes** to the screen (`listedIds`, `listedOf`);
+ *  6. **what the window's one list names** — the conversations the rail draws from the host, and
+ *     the host's row for exactly those;
  *  7. **the screen's two hops** — it looks again at a recorded conversation whose row moved, and it
  *     hands the rail the record it is drawing — as a source census, because nothing in either test
  *     tree mounts `RuntimeScreen`.
@@ -259,7 +261,6 @@ describe('the rail draws its one list newest activity first, by the host’s row
       expect(visible(m.q(`open-session-${id}`))).toBe(true)
     }
     expect(drawnOrder(m)).toEqual(['sess_new', 'sess_mid', 'sess_held_old'])
-    expect(m.vm.listedIds).toEqual(['sess_new', 'sess_mid', 'sess_held_old'])
   })
 
   it('a conversation this window holds that the host has not listed yet goes first, and the same one listed goes by its row', async () => {
@@ -487,8 +488,8 @@ describe('the palette the rail hosts', () => {
 
 /* ------------------------------------------------------------------ 6 · what the rail exposes */
 
-describe('what the rail exposes to the screen', () => {
-  it('the rail names every conversation it lists and gives the host row for exactly those', async () => {
+describe('what the window’s one list names', () => {
+  it('names every conversation the host lists that the rail draws, and gives the host row for exactly those', async () => {
     const inAWindow = hostRow(
       'sess_in_window',
       { is: 'idle' },
@@ -498,14 +499,15 @@ describe('what the rail exposes to the screen', () => {
       { resumable: [OPENABLE, inAWindow], unresumable: [USER_HOME] },
       { open: [heldRecord('sess_held_unlisted', CWD)] },
     )
-    const listedOf = m.vm.listedOf as (sessionId: string) => Record<string, unknown> | null
+    const listedOf = (sessionId: string) => testWorkspace().conversation(sessionId) ?? null
 
     // Every drawn row is named, in the order they are drawn, and the launch the host has not listed
     // is first.
     const order = drawnOrder(m)
     expect(order).toEqual(['sess_held_unlisted', 'sess_in_window', 'sess_openable'])
-    expect(m.vm.listedIds).toEqual(order)
-    expect(m.vm.listedIds).not.toContain('sess_userhome')
+    // The list names the host's rows the rail draws; the held launch is the window's own record.
+    const listed = testWorkspace().listed() ?? []
+    expect(listed.map((row) => row.sessionId)).toEqual(order.slice(1))
 
     // The host's row, for the ones the host lists.
     expect(listedOf('sess_openable')).toMatchObject({
@@ -570,9 +572,9 @@ describe('the screen wires the list to the conversation it is drawing', () => {
     expect(screen.indexOf('<SideRail', from + 1)).toBe(-1)
     const tag = screen.slice(from, screen.indexOf('/>', from))
 
-    // The right tag: the live records and the rail's own handle are in it.
+    // The right tag: the live records are in it, and the screen reads nothing back through the rail.
     expect(tag).toContain(':open="store.live.value"')
-    expect(tag).toContain('ref="rail"')
+    expect(tag).not.toContain('ref=')
     // The record on screen is handed over, so a recorded conversation keeps its opening line.
     expect(tag).toContain(':on-screen="active"')
 
