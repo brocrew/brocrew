@@ -547,7 +547,8 @@ MUTATIONS = [
                 # ⚑ **W4.493 · re-anchored in place, not retired** — Source-only, NOT VERIFIED. The interrupting send still drops attachments and composition; preserve the new pending-row reset while removing the same handover. No plant or table run. Held: running it needs W4 written lift.
                 # ⚑ **W4.493 · re-anchored in place, not retired** — Source-only, NOT VERIFIED. Current-handoff association changed this boundary; the same interrupting-authorship removal or unframed send defect and killer remain. No plant or table run. Held: running it needs W4 written lift.
                 # ⚑ **W4.475 · re-anchored in place, not retired** — Source-only, NOT VERIFIED. The interrupting handover now also hands over the turn row, whose authorship says whose turn it is; the same interrupting send still drops attachments and composition, and the killer stands. No plant or table run.
-            ('apps/desktop/src/main/runtime/runtime-host.ts', '      await this.handToProvider(\n        session,\n        text,\n        handed.paths,\n        null,\n        null,\n        null,\n        this.originOf(by),\n        turn,\n        decided,\n      )', '      await session.handle.send(text)'),
+            # ⚑ **the title-hook census repair · re-anchored in place, not retired** — Optional title preparation added the title context to this call (and to the composition); same rule, same plant. Verified RED with verify_row.
+            ('apps/desktop/src/main/runtime/runtime-host.ts', "      await this.handToProvider(\n        session,\n        text,\n        handed.paths,\n        null,\n        null,\n        null,\n        this.originOf(by),\n        turn,\n        decided,\n        undefined,\n        titleContext,\n      )", '      await session.handle.send(text)'),
         ],
     ),
     (

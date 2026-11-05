@@ -440,7 +440,8 @@ MUTATIONS = [
         # Changing only `started` would give a huge negative number instead. The killer asserts
         # `totalMs > 0`.
         [
-            (HOST, '    const started = performance.now()\n', '    const started = Date.now()\n'),
+            # ⚑ **the title-hook census repair · re-anchored in place, not retired** — Title preparation added a second `const started = performance.now()`, so the anchor now carries the comment line above its own. Same plant. Measured: it SURVIVES the-digest-and-its-window.test.ts, as it would have before; table 438 was never run and its label names no killer.
+            (HOST, "    // `0 ms` on a large one, and a number that cannot move is not evidence of anything.\n    const started = performance.now()\n", "    // `0 ms` on a large one, and a number that cannot move is not evidence of anything.\n    const started = Date.now()\n"),
             (HOST, '      cost: { totalMs: +(performance.now() - started).toFixed(2) },\n', '      cost: { totalMs: +(Date.now() - started).toFixed(2) },\n'),
         ],
     ),
