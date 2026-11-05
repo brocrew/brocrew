@@ -326,9 +326,10 @@ it('advances past four denied old files, wraps after fault bursts, and reclaims 
   )
 })
 
-it.each([false, true])(
-  'commits the independent descending plan and pins P (missed cleanup: %s)',
-  (missed) => {
+it.each(['normal', 'missed', 'denied'])(
+  'commits the independent descending plan and pins P (%s cleanup)',
+  (scenario) => {
+    const missed = scenario === 'missed'
     let cut = false
     const f = fixture((point) => {
       if (cut && point === 'published') throw new Error('fictional planned cleanup cut')
@@ -343,7 +344,11 @@ it.each([false, true])(
     const unlink = fs.unlinkSync,
       attempts: string[] = []
     vi.spyOn(fs, 'unlinkSync').mockImplementation((path) => {
-      if (/^\d{16}-c/.test(basename(String(path)))) attempts.push(basename(String(path)))
+      if (/^\d{16}-c/.test(basename(String(path)))) {
+        attempts.push(basename(String(path)))
+        if (scenario === 'denied' && [1, 2, 3, 4].some((id) => basename(String(path)) === name(id)))
+          throw Object.assign(new Error('fictional retained planned file'), { code: 'EPERM' })
+      }
       return unlink(path)
     })
     syncBuiltinESMExports()
@@ -352,6 +357,7 @@ it.each([false, true])(
     else f.publish()
     const tenth = join(directory, name(10, '0000000000000001'))
     expect(fs.existsSync(tenth)).toBe(true)
+    const tenthBytes = fs.readFileSync(tenth)
     expect(fs.readFileSync(previous)).toEqual(bytes)
     expect(attempts).toEqual(missed ? [] : [name(4), name(3), name(2), name(1)])
     attempts.length = 0
@@ -359,7 +365,7 @@ it.each([false, true])(
     f.publish()
     expect(attempts).toEqual([name(0), name(9, '0000000000000005'), name(8), name(7)])
     expect(fs.existsSync(join(directory, name(11, '0000000000000007')))).toBe(true)
-    expect(fs.readFileSync(tenth).length).toBeGreaterThan(0)
+    expect(fs.readFileSync(tenth)).toEqual(tenthBytes)
   },
 )
 

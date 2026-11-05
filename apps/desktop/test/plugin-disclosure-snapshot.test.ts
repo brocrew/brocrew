@@ -192,7 +192,7 @@ it('observes a copied snapshot without history or writer files and never repairs
 it('reads a multiply linked selected snapshot without writing through either name', async () => {
   const f = await setup(),
     path = snapshotPath(join(f.f.root, 'state')),
-    alias = path + '.fictional-alias'
+    alias = join(f.f.root, 'fictional-snapshot-alias')
   fs.linkSync(path, alias)
   const before = await f.snapshot(),
     bytes = fs.readFileSync(alias),
