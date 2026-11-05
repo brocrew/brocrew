@@ -351,6 +351,51 @@ it('a late healthy reading cannot relatch readiness after a newer turn was cance
   expect(wire.requests.some((one) => one.method === 'thread/resume')).toBe(false)
 })
 
+it('an older healthy reply cannot replace a newer unknown reading before the next turn', async () => {
+  const { wire, handle } = await start()
+  const saved = handle.ref
+  wire.catalog = ['echo']
+  await handle.send('Fictional first healthy turn')
+  await tick()
+  wire.finish()
+  await tick()
+
+  const olderReply = deferred<unknown>()
+  wire.discovery = () => olderReply.promise
+  const older = handle.managedPluginHealth!([route])
+  await tick()
+  wire.discovery = async () => ({ data: [] })
+  expect(await handle.managedPluginHealth!([route])).toBeUndefined()
+  // No turn separates these reads. The older reply must not supersede the newer UNKNOWN.
+  expect(wire.catalogsAtTurns).toEqual([['echo']])
+  olderReply.resolve(ready())
+  expect(await older).toEqual([])
+  expect(handle.status()).toBe('idle')
+  expect(wire.catalogsAtTurns).toEqual([['echo']])
+
+  const currentReply = deferred<unknown>()
+  wire.discovery = () => currentReply.promise
+  await handle.send('Fictional next turn after overlapping health reads')
+  await tick()
+  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual(
+    Array.from({ length: 4 }, () => ({
+      method: 'mcpServerStatus/list',
+      params: {
+        threadId: saved!.sessionId,
+        serverName: route.name,
+        detail: 'toolsAndAuthOnly',
+      },
+    })),
+  )
+  expect(wire.catalogsAtTurns).toEqual([['echo']])
+  expect(handle.ref).toEqual(saved)
+  expect(wire.requests.filter((one) => one.method === 'thread/start')).toHaveLength(1)
+  expect(wire.requests.some((one) => one.method === 'thread/resume')).toBe(false)
+  currentReply.resolve(ready())
+  await tick()
+  expect(wire.catalogsAtTurns).toEqual([['echo'], ['echo']])
+})
+
 it('bounds a never-settling discovery and does not dispatch again when it eventually answers', async () => {
   const { wire, handle, events } = await start()
   const discovery = deferred<unknown>()
