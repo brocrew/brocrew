@@ -9567,12 +9567,10 @@ export function createSessionStore(
    * (`selectInstructionAsks`, `selectMcpServerRequests`), each served by its type's partial index.
    */
   const generationHoldsRowsReadInEvery = db.prepare(
-    `SELECT EXISTS (SELECT 1 FROM events
-                     WHERE type IN ('instruction_proposed', 'instruction_settled')
-                       AND session_id = ? AND generation = ?)
-         OR EXISTS (SELECT 1 FROM events
-                     WHERE type IN ('mcp_server_requested', 'mcp_server_request_settled')
-                       AND session_id = ? AND generation = ?) AS holds`,
+    `SELECT EXISTS (SELECT 1 FROM events WHERE session_id = ? AND generation = ?
+                       AND type IN ('instruction_proposed', 'instruction_settled'))
+         OR EXISTS (SELECT 1 FROM events WHERE session_id = ? AND generation = ?
+                       AND type IN ('mcp_server_requested', 'mcp_server_request_settled')) AS holds`,
   )
   const deleteTurnGeneration = db.prepare(
     `DELETE FROM turn WHERE rowid IN
