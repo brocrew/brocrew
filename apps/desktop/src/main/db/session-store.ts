@@ -14,7 +14,7 @@ import {
   type MethodFileState,
 } from './method-changes'
 import { withOptionalIndexes } from './optional-indexes'
-import { committedChangesOf, committedRowOf, type CommittedChanges } from './committed-changes'
+import { committedChangesOf, committedRowOf, type Committed } from './committed-changes'
 import { currentWorkTitle } from './current-work-title'
 import { searchPastWork, closePastWorkSearch, pastWorkSource } from './past-work-search'
 import type { PastWorkSearchResult, PastWorkSource } from '../../shared/past-work-search'
@@ -2352,6 +2352,13 @@ export interface SessionStore extends OwnNotesStore {
    * halfway through.
    */
   atomically<T>(work: () => T): T
+  /**
+   * Hears each commit on this store's connection once, after it commits, in commit order
+   * ({@link CommittedChanges}). Answers how to stop hearing.
+   */
+  onCommitted(listener: (change: Committed) => void): () => void
+  /** Asks whether another connection has committed since the last look; one resync if so. */
+  checkCommitted(): void
   /** Sessions with a ref to resume from, most recently touched first. */
   resumable(): ResumableSession[]
   /** The recorded sessions that cannot be reopened, each with the reason it cannot. */
@@ -4368,6 +4375,8 @@ export const NULL_SESSION_STORE: SessionStore = {
   append: () => {},
   appendMany: () => {},
   atomically: (work) => work(),
+  onCommitted: () => () => undefined,
+  checkCommitted: () => undefined,
   resumable: () => [],
   unresumable: () => [],
   recorded: () => [],
@@ -12528,6 +12537,7 @@ export function createSessionStore(
         at,
       )
       for (const input of given.inputs) {
+        committed.kept(given.piece, input.resource)
         workSql().insertResource.run(
           input.resource,
           given.piece,
@@ -13516,6 +13526,14 @@ export function createSessionStore(
 
     atomically(work) {
       return db.transaction(work)()
+    },
+
+    onCommitted(listener) {
+      return committed.listen(listener)
+    },
+
+    checkCommitted() {
+      committed.check()
     },
 
     find(sessionId) {

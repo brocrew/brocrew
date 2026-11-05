@@ -75,7 +75,7 @@ import type {
   NormalWorkerPool,
   WorkerBorn,
 } from '../profile-execution-file'
-import { TURN_ATTRIBUTION_KEYS } from '../../shared/runtime-ipc'
+import { RUNTIME_CHANGE_SUBJECTS, TURN_ATTRIBUTION_KEYS } from '../../shared/runtime-ipc'
 import { moveRequestDigest, originalMoveRequest, recordMovedRequest } from './move-request'
 import {
   DO_IT_HERE,
@@ -758,6 +758,12 @@ import {
   rowsUnreadOnce,
   skipTheLedger,
 } from '../db/session-store'
+import {
+  committedRowOf,
+  type Committed,
+  type CommittedRow,
+  type WholeChange,
+} from '../db/committed-changes'
 import type {
   GivenInput,
   KeptFileRow,
@@ -5017,16 +5023,9 @@ const MOVES_ITS_NAME: ReadonlySet<TranscriptEvent['type']> = new Set<TranscriptE
  * the owner by, which {@link MOVES_ITS_NAME} carries — and nor does a stall: a stalled piece is
  * still open.
  */
-type MovesItsGiversWait = WorkGivenEvent | WorkRepliedEvent | WorkTakenBackEvent | WorkClosedEvent
-
-function movesItsGiversWait(event: TranscriptEvent): event is MovesItsGiversWait {
-  return (
-    event.type === 'work_given' ||
-    event.type === 'work_replied' ||
-    event.type === 'work_taken_back' ||
-    event.type === 'work_closed'
-  )
-}
+const MOVES_ITS_GIVERS_WAIT: ReadonlySet<TranscriptEvent['type']> = new Set<
+  TranscriptEvent['type']
+>(['work_given', 'work_replied', 'work_taken_back', 'work_closed'])
 
 /**
  * ⚑ **D-033 · each OPEN piece a conversation holds, as a window draws it** — its composed state, and
@@ -7852,6 +7851,8 @@ export class RuntimeHost implements LiveHost {
    * until seeded.
    */
   private routedTo: Map<string, Set<string>> | null = null
+  /** Stops {@link heardACommit} being called, once this host closes. */
+  private stopHearingCommits: () => void = () => undefined
 
   /**
    * ⚑ **D-019 · the roster as the last roster announcement read it**, first read at launch — what
@@ -8663,6 +8664,8 @@ export class RuntimeHost implements LiveHost {
       this.reconciliationTimer.unref?.()
       setImmediate(() => this.reconcileWork())
     })
+    // Heard from here on: the launch's repairs above are written before this host listens.
+    this.stopHearingCommits = this.deps.store.onCommitted((change) => this.heardACommit(change))
   }
 
   /**
@@ -10513,10 +10516,9 @@ export class RuntimeHost implements LiveHost {
 
   /**
    * 🔴 **D-026 · R3 — files were kept on this piece, and every window is told**, on
-   * `runtime:states`, at the flush this asks for ({@link sayWhatMoved}). ⚑ Called at each door that
-   * keeps files, once their rows are committed — a reply ({@link replyToParent}), `update_work`
-   * ({@link updateWork}) and a give ({@link recordTheGive}) — so a refused call, and a write that
-   * failed, tell nobody. ⛔ No dep, no mark ({@link stateMayHaveMoved}'s rule).
+   * `runtime:states`, at the flush this asks for ({@link sayWhatMoved}). ⚑ Called for the files each
+   * commit kept ({@link heardACommit}), so a refused call, and a write that failed, tell nobody.
+   * ⛔ No dep, no mark ({@link stateMayHaveMoved}'s rule).
    */
   private filesWereKept(piece: string, kept: readonly { readonly resource: string }[]): void {
     if (this.deps.statesMoved === undefined || kept.length === 0) return
@@ -10604,12 +10606,102 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
+   * Each commit the store records, once, after it commits ({@link SessionStore.onCommitted}): what
+   * each row moves ({@link aRowWasWritten}), the files kept on each piece ({@link filesWereKept}),
+   * and what a ledger changed as a whole moves ({@link aWholeLedgerChanged}). A rebuild's staged
+   * batches move nothing a window reads. ⛔ A resync — another connection committed — forgets every
+   * reading kept from the ledgers ({@link everyKeptReadingIsStale}). It never throws.
+   */
+  private heardACommit(change: Committed): void {
+    try {
+      if (change.resync) {
+        this.everyKeptReadingIsStale()
+        return
+      }
+      for (const row of change.rows) this.aRowWasWritten(row.session, row)
+      const kept = new Map<string, { resource: string }[]>()
+      for (const { piece, resource } of change.kept) {
+        const resources = kept.get(piece)
+        if (resources === undefined) kept.set(piece, [{ resource }])
+        else resources.push({ resource })
+      }
+      for (const [piece, resources] of kept) this.filesWereKept(piece, resources)
+      for (const [session, why] of change.whole) this.aWholeLedgerChanged(session, why)
+    } catch (error) {
+      console.warn(`runtime host could not follow a committed change: ${errorMessage(error)}`)
+    }
+  }
+
+  /**
+   * A running conversation whose rows are no longer recorded ({@link record}) commits nothing, yet
+   * what its rows say still moves its live state: each is followed as if it had been heard.
+   */
+  private markWhatWasNotRecorded(
+    session: HostedSession,
+    ordinal: number,
+    event: TranscriptEvent,
+  ): void {
+    if (session.recordingFailure === null) return
+    this.aRowWasWritten(session.id, committedRowOf(session.id, 0, ordinal, event))
+  }
+
+  /**
+   * A ledger changed with no row each: an import, a promoted rebuild or a delete — or its listing
+   * state moved, as a rebuild begins or fails.
+   *
+   * ⚑ What it waits on, and what the conversations waiting on it call it, may have moved, and so may
+   * the work its givers wait on and the questions others owe it: each is forgotten and asked again.
+   * ⚑ An import can also bring a question routed to a conversation no kept edge names, so every
+   * running conversation's owed questions are folded again, and the routing map is seeded afresh.
+   * A promotion only drops rows this app wrote, and a delete only removes edges: their dependents
+   * are asked again, and the deleting door forgets the conversations themselves
+   * ({@link forgetTheConversations}).
+   */
+  private aWholeLedgerChanged(session: string, why: WholeChange): void {
+    // A rebuild beginning or failing is announced by the door that runs it.
+    if (why === 'listing') return
+    if (why !== 'deleted') {
+      this.waitAsLastRead.delete(session)
+      this.owedAsLastRead.delete(session)
+      this.contextAsLastRead.delete(session)
+      this.stateMayHaveMoved(session)
+    }
+    this.itsNameMayHaveMoved(session)
+    for (const [giver, holders] of this.waitsOnTheWorkOf) {
+      if (holders.includes(session)) this.theWorkItGaveMoved(giver)
+    }
+    for (const [answerer, askers] of this.owesTheAnswersOf) {
+      if (askers.includes(session)) this.theAnswersItOwesMoved(answerer)
+    }
+    // A rebuilt ledger carries no routing this app wrote, so only an import can add an edge.
+    if (why !== 'imported') return
+    this.routedTo = null
+    for (const [conversation, slot] of this.slots) {
+      if (slot.session !== null) this.theAnswersItOwesMoved(conversation)
+    }
+  }
+
+  /**
+   * Another connection committed: nothing kept from the ledgers can be trusted, so every reading is
+   * forgotten, every running conversation is asked again, and every population is announced.
+   */
+  private everyKeptReadingIsStale(): void {
+    this.waitAsLastRead.clear()
+    this.workOutAsLastRead.clear()
+    this.owedAsLastRead.clear()
+    this.contextAsLastRead.clear()
+    this.heldAsLastRead.clear()
+    this.routedTo = null
+    for (const [conversation, slot] of this.slots) {
+      if (slot.session !== null) this.stateMayHaveMoved(conversation)
+    }
+    for (const what of RUNTIME_CHANGE_SUBJECTS) this.theWorldMoved(what)
+  }
+
+  /**
    * 🔴 **D-019 · a row went into this conversation's ledger: what it can move in the one state.**
-   * Called at each door this host writes a ledger row through — {@link deliver}, {@link recordOurs},
-   * {@link appendIntoItsLedger}, {@link recordTheGive} and {@link replyToParent}. ⚑ The store's own
-   * settle of an ask is marked by its caller ({@link endInstructionAsk}), a ledger rebuilt from its
-   * archive by {@link rebuildLedger}, and the launch's repairs are written before any window can
-   * listen.
+   * Called for each row of each commit the store records ({@link heardACommit}), whichever door
+   * wrote it, once it is committed. The launch's repairs are written before this host listens.
    *
    *  - **a row its wait reads select** ({@link aWaitIsReadFrom}) — who owes it the next move may have
    *    moved, so what was kept of those reads is forgotten ({@link waitAsLastRead});
@@ -10619,12 +10711,12 @@ export class RuntimeHost implements LiveHost {
    *  - **its piece, or its replacement** ({@link MOVES_ITS_NAME}) — the name the conversations
    *    waiting on its answer say, ⚑ and D-036 those waiting on work it holds;
    *  - ⚑ **D-036 · a row that opens or ends a piece another conversation gave it**
-   *    ({@link movesItsGiversWait}) — what that giver waits on; ⚑ and its replacement — the work it
+   *    ({@link MOVES_ITS_GIVERS_WAIT}) — what that giver waits on; ⚑ and its replacement — the work it
    *    and the one in its place gave out.
    *
    * ⛔ Any other row — the provider's text, tool calls, tokens — marks nothing.
    */
-  private aRowWasWritten(conversation: string, event: TranscriptEvent): void {
+  private aRowWasWritten(conversation: string, event: CommittedRow): void {
     if (
       event.type === 'work_replied' ||
       event.type === 'work_closed' ||
@@ -10636,8 +10728,8 @@ export class RuntimeHost implements LiveHost {
     )
       queueMicrotask(() => this.reconcileWork(new Set([conversation])))
     if (MAY_FREE_A_SERVICE.has(event.type)) this.aServiceMayTakeItsNext(conversation)
-    // 🔴 **W4.189 · a piece given or ended moves the grants a window is shown.** ⚠️ Some callers mark
-    // a row a line BEFORE its write, so the grants are read again once this stretch has written it.
+    // 🔴 **W4.189 · a piece given or ended moves the grants a window is shown**, read again once
+    // this stretch is over.
     if (GRANTS_MAY_MOVE.has(event.type)) {
       const live = this.slots.get(conversation)?.session ?? null
       if (live !== null) {
@@ -10659,7 +10751,7 @@ export class RuntimeHost implements LiveHost {
     // ⚑ **F036 · a question put to another conversation moves what THAT one owes** — routed to it
     // ({@link RequestRoutedEvent.parent}), or, for one already noted as owing, any row that moves
     // this asker's questions: an answer, a decline, a withdrawal, an ending.
-    if (event.type === 'request_routed' && event.parent !== undefined) {
+    if (event.type === 'request_routed' && event.parent !== undefined && event.to !== undefined) {
       // ⚑ Kept up to date once seeded; before that, the seed reads this row. ⚑ Only a routing that
       // could be owed — one to a person never is ({@link SessionStore.whoRoutedToWhom}).
       if (this.routedTo !== null && event.to !== 'a-person') {
@@ -10678,16 +10770,17 @@ export class RuntimeHost implements LiveHost {
     }
     // ⚑ **D-036 · a piece's row moves what its giver waits on** — the giver's own ledger took no
     // row that moves it.
-    if (movesItsGiversWait(event)) this.itsGiversWaitMayHaveMoved(event.piece)
+    if (MOVES_ITS_GIVERS_WAIT.has(event.type) && event.piece !== undefined)
+      this.itsGiversWaitMayHaveMoved(event.piece)
     // ⚑ **D-036 · a replacement moves the work each of the two gave out**: the old one's is the new
     // one's now ({@link theIdsItStandsFor}), and the new one derived its first word before it was.
-    if (event.type === 'replaced_by') {
+    if (event.type === 'replaced_by' && event.replacedBy !== undefined) {
       this.refreshWorkerReadings(true)
       this.theWorkItGaveMoved(conversation)
-      this.theWorkItGaveMoved(event.sessionId)
+      this.theWorkItGaveMoved(event.replacedBy)
       // ⚑ **F036 · and the questions each of the two owes**, for the same reason.
       this.theAnswersItOwesMoved(conversation)
-      this.theAnswersItOwesMoved(event.sessionId)
+      this.theAnswersItOwesMoved(event.replacedBy)
     }
   }
 
@@ -10736,6 +10829,8 @@ export class RuntimeHost implements LiveHost {
    * cannot be read the states. ⛔ **A quit asks nothing** — the database is on its way to closing.
    */
   private sayWhatMoved(): void {
+    // Another connection's commit is heard before what moved is said.
+    this.deps.store.checkCommitted()
     this.flushAsked = false
     const asked = [...this.statesToAsk]
     this.statesToAsk.clear()
@@ -11304,9 +11399,7 @@ export class RuntimeHost implements LiveHost {
       event,
       at,
     )
-    this.aRowWasWritten(service, event)
     this.showTheWindowsLookingAt(service, { sessionId: service, ordinal, at, event })
-    this.filesWereKept(giving.piece, giving.inputs)
     this.theWorldMoved('work')
   }
 
@@ -16546,10 +16639,6 @@ export class RuntimeHost implements LiveHost {
     })
     this.rememberLedgerOrdinal(session, ordinal)
     const replied = repliedWith(resources)
-    // ⚑ **D-019 · the replier's piece moved** — the name the conversations waiting on it say.
-    this.aRowWasWritten(session.id, replied)
-    // ⚑ **D-026 · R3 — and its files are down**: none when the write was swallowed.
-    this.filesWereKept(piece.piece, resources)
     this.emitOurs(session, { sessionId: session.id, ordinal, at, event: replied })
     passedUp()
     // 🔴 **638 · work was ANSWERED** — one of the transitions that take a row out of
@@ -17169,7 +17258,6 @@ export class RuntimeHost implements LiveHost {
         `runtime host could not write ${row.type} into ${sessionId}'s record: ${errorMessage(error)}`,
       )
     }
-    this.aRowWasWritten(sessionId, row)
     if (written !== null) this.showTheWindowsLookingAt(sessionId, written)
     return written !== null
   }
@@ -18134,7 +18222,6 @@ export class RuntimeHost implements LiveHost {
         ),
       ),
     )
-    this.filesWereKept(piece.piece, rows)
     const files: readonly ActionFile[] = rows.map((one) => ({
       resource: one.resource,
       name: one.name,
@@ -18266,7 +18353,6 @@ export class RuntimeHost implements LiveHost {
     return () => {
       if (session !== null) session.ordinal = Math.max(session.ordinal, ordinal + 1)
       try {
-        this.aRowWasWritten(conversation, event)
         if (session === null) this.showTheWindowsLookingAt(conversation, message)
         else this.emitOurs(session, message)
       } catch (error) {
@@ -27201,10 +27287,8 @@ export class RuntimeHost implements LiveHost {
     // One reading of the clock for both the row and the wire, so they cannot disagree. ⚑ **398 may
     // hand one in**, and only for a row whose moment is a deadline rather than this instant.
     const at = stamped ?? this.now()
-    // ⚑ **D-019** — every row this app authors into a running conversation passes here. ⚠️ Marked
-    // a line before its write and asked after it: the flush waits for this stretch to end.
-    this.aRowWasWritten(session.id, event)
     this.record(session, () => this.deps.store.append(session.id, ordinal, event, at))
+    this.markWhatWasNotRecorded(session, ordinal, event)
     this.rememberLedgerOrdinal(session, ordinal)
     if (session.recordingFailure === null) this.aScheduleRowWasKept(session.id, ordinal, event, at)
     if (event.type === 'launched' && session.recordingFailure === null) {
@@ -28888,9 +28972,7 @@ export class RuntimeHost implements LiveHost {
     })
     const { taking, entry } = recorded
     session.ordinal = Math.max(session.ordinal, entry.ordinal + 1)
-    this.aRowWasWritten(session.id, entry.event)
     this.emitOurs(session, entry)
-    this.filesWereKept(taking.piece, taking.inputs)
     this.theWorldMoved('work')
     let notice: 'sent' | 'held' | 'not-delivered' | null = null
     if (giver !== null) {
@@ -30000,7 +30082,6 @@ export class RuntimeHost implements LiveHost {
               ),
             ),
           )
-    this.filesWereKept(named.piece, rows)
     if (revises) {
       this.writeIntoItsLedger(row.owner, {
         type: 'work_rebriefed',
@@ -31225,8 +31306,6 @@ export class RuntimeHost implements LiveHost {
       ),
     )
     this.rememberLedgerOrdinal(session, ordinal)
-    // ⚑ **D-019 · the owner's piece moved** — the name the conversations waiting on it say.
-    this.aRowWasWritten(session.id, event)
     // ⚠️ **{@link record} reports a write that failed, and a session already failing is not written
     // to at all** — so a piece is sent to a window only once it is down.
     if (session.recordingFailure !== null) {
@@ -31236,8 +31315,6 @@ export class RuntimeHost implements LiveHost {
       return false
     }
     this.emitOurs(session, { sessionId: session.id, ordinal, at, event })
-    // ⚑ **D-026 · R3 — its inputs are down**, with the piece's own row.
-    this.filesWereKept(piece.piece, piece.inputs)
     // 🔴 **638 · work was GIVEN** — it opens the giver's *waiting on a worker* as well as the
     // owner's own list. ⛔ After the write, never before.
     this.theWorldMoved('work')
@@ -32960,7 +33037,6 @@ export class RuntimeHost implements LiveHost {
           })
           queued.moveHandoverStarted = true
           session.ordinal = Math.max(session.ordinal, entry.ordinal + 1)
-          this.aRowWasWritten(session.id, event)
           this.emitOurs(session, entry)
         }
         const [one] = sending
@@ -33783,7 +33859,6 @@ export class RuntimeHost implements LiveHost {
       const session = this.slots.get(entry.sessionId)?.session
       if (session != null) session.ordinal = Math.max(session.ordinal, entry.ordinal + 1)
       // A stopped source or destination is drawn from these rows too.
-      this.aRowWasWritten(entry.sessionId, entry.event)
       if (session != null) this.emitOurs(session, entry)
       else this.showTheWindowsLookingAt(entry.sessionId, entry)
     }
@@ -37460,6 +37535,7 @@ export class RuntimeHost implements LiveHost {
    * describe one conversation's parentage differently — which is the disagreement `116` §5 found.
    */
   resumableSessions(): ResumableSessionInfo[] {
+    this.deps.store.checkCommitted()
     this.prepareInitialProviderLimitFacts()
     const { stateOf, itsWork } = this.oneReadPerListing()
     const shown = this.deps.store
@@ -38211,26 +38287,9 @@ export class RuntimeHost implements LiveHost {
         ),
       ),
     )
-    // ⚑ **D-019 · a new generation is the ledger its state is read from now** — its own or another
-    // writer's, promoted while this one built. ⚠️ Built from the file, it holds none of the rows
-    // this app wrote into the one it replaced — a question asked, a request routed, a retitle — so
-    // what it waits on, and what the conversations waiting on it call it, may have moved. ⚑ D-036 ·
-    // and a give is one of those rows, so the givers of the work it held may wait on less.
-    if (outcome === 'imported' || outcome === 'superseded') {
-      this.stateMayHaveMoved(sessionId)
-      this.itsNameMayHaveMoved(sessionId)
-      for (const [giver, holders] of this.waitsOnTheWorkOf) {
-        if (holders.includes(sessionId)) this.theWorkItGaveMoved(giver)
-      }
-      // ⚑ **F036 · and what each conversation owes the rebuilt one** — its questions are refolded.
-      for (const [answerer, askers] of this.owesTheAnswersOf) {
-        if (askers.includes(sessionId)) this.theAnswersItOwesMoved(answerer)
-      }
-      // ⚑ **W4.203 · and its newest context reading** is the new generation's.
-      this.contextAsLastRead.delete(sessionId)
-      // The work a giver's drawer folds from this ledger may be gone.
-      this.theWorldMoved('work')
-    }
+    // ⚑ What a new generation moves in each state was followed at its promotion
+    // ({@link aWholeLedgerChanged}); the work a giver's drawer folds from this ledger may be gone.
+    if (outcome === 'imported' || outcome === 'superseded') this.theWorldMoved('work')
     // The listing draws the new generation, or the failure or retry a derive records.
     if (outcome !== 'skipped') this.theWorldMoved('conversations')
     return { outcome, status: this.status(sessionId) }
@@ -40607,13 +40666,11 @@ export class RuntimeHost implements LiveHost {
     const message: RuntimeEventMessage = { sessionId: conversation, ordinal, at, event }
     return () => {
       if (session === null) {
-        this.aRowWasWritten(conversation, event)
         this.showTheWindowsLookingAt(conversation, message)
         this.stateMayHaveMoved(conversation)
         return
       }
       session.ordinal = Math.max(session.ordinal, ordinal + 1)
-      this.aRowWasWritten(conversation, event)
       this.emitOurs(session, message)
     }
   }
@@ -42328,11 +42385,7 @@ export class RuntimeHost implements LiveHost {
     const slot = this.slots.get(waiting.conversation)
     const session = slot?.session ?? null
     if (session === null) {
-      const settled = this.deps.store.settleInstructionAsk(askId, ending, by, this.now())
-      // ⚑ **D-019 · its ask against its rules no longer waits on a person** — the store's write,
-      // which passes no funnel ({@link aRowWasWritten} marks the live one).
-      if (settled) this.stateMayHaveMoved(waiting.conversation)
-      return settled
+      return this.deps.store.settleInstructionAsk(askId, ending, by, this.now())
     }
     this.publishOurs(session, { type: 'instruction_settled', askId, ending, by })
     return true
@@ -44420,6 +44473,7 @@ export class RuntimeHost implements LiveHost {
    * reason: an owner that changes changes in the block that swaps the sink and reads the page.
    */
   async look(sessionId: string, sink: RuntimeEventSink, claim: boolean): Promise<ResumedSession> {
+    this.deps.store.checkCommitted()
     // ⚑ Counted as looking from the start, so a window that stops looking or goes while this look
     // waits for a life to end is not counted again when the wait is over.
     const thisLook = this.startLooking(sessionId, sink)
@@ -45403,6 +45457,7 @@ export class RuntimeHost implements LiveHost {
    * is complete, and taking it late would race a session that finished early out of the picture.
    */
   async closeAll(): Promise<void> {
+    this.stopHearingCommits()
     const memoryClosed = this.deps.memoryKnowledge?.close() ?? Promise.resolve()
     this.deps.store.closePastWorkSearch?.()
     this.deps.closeSharedSkills?.()
@@ -47517,6 +47572,7 @@ export class RuntimeHost implements LiveHost {
         : null
     const ordinal = this.takeLedgerOrdinal(session)
     this.record(session, () => this.deps.store.append(session.id, ordinal, wire, at))
+    this.markWhatWasNotRecorded(session, ordinal, wire)
     this.rememberLedgerOrdinal(session, ordinal)
     if (session.recordingFailure === null) this.aScheduleRowWasKept(session.id, ordinal, wire, at)
     if (cutByALimit !== null && event.type === 'turn' && event.limit !== undefined) {
@@ -47527,9 +47583,6 @@ export class RuntimeHost implements LiveHost {
       if (this.providerLimitFacts.observe(session.id, life, session.provider, event, at))
         this.publishProviderLimitFactsSoon(session.id)
     }
-    // ⚑ **D-019 · a status, a level, a card resolved or a question raised moves its state** — above
-    // the sink gate with the write it is about; the rest of the stream marks nothing.
-    this.aRowWasWritten(session.id, wire)
     // 🔴 **740 · R99 (`736` F-8) — a plan the adapter settled with no card, written down** by the
     // next event the conversation delivers — {@link recordPlanPhase}. ⚠️ Above the sink gate with
     // the other durable writes: an agent-spawned child that plans has no window, and its row must say
