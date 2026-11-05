@@ -29,6 +29,15 @@ export const TRIGGER_WRITES: ReadonlyMap<string, readonly string[]> = new Map([
   ['events', ['question_copy']],
 ])
 
+/**
+ * The persistent tables a delete from a table may also change, through the rows its foreign keys
+ * delete with it and their triggers: a conversation's delete takes its ledger rows, and with them
+ * their copies.
+ */
+export const CASCADE_DELETE_WRITES: ReadonlyMap<string, readonly string[]> = new Map([
+  ['provider_session', ['question_copy']],
+])
+
 const TABLES = `
 CREATE TABLE IF NOT EXISTS question_copy (
   event_id TEXT PRIMARY KEY NOT NULL,
