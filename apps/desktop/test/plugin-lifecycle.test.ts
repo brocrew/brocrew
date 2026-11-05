@@ -27,10 +27,33 @@ import {
   cleanupLifecycleFixtures,
   reopenLifecycleFixture,
 } from './plugin-lifecycle-fixtures'
+const subscriptions: Array<() => void> = []
 afterEach(async () => {
+  for (const stop of subscriptions.splice(0)) stop()
   vi.unstubAllGlobals()
   await cleanupLifecycleFixtures()
 })
+
+async function afterConsumerChange(
+  controller: PluginLifecycleController,
+  workspaceId: string,
+  ready: () => boolean,
+): Promise<void> {
+  const done = deferred<void>()
+  const check = () => {
+    if (ready()) done.resolve()
+  }
+  const stop = controller.onHostChanged((changed) => {
+    if (changed === workspaceId) check()
+  })
+  subscriptions.push(stop)
+  try {
+    check()
+    await done.promise
+  } finally {
+    stop()
+  }
+}
 
 // Global owner-only storage has no Windows backend yet; these are fictional POSIX folders.
 describe.skipIf(process.platform === 'win32')(
@@ -92,6 +115,9 @@ describe.skipIf(process.platform === 'win32')(
       await f.controller.detach(f.handle)
       f.events.length = 0
       const fresh = await f.controller.attach(f.local.sink)
+      await afterConsumerChange(f.controller, f.local.sink.workspaceId, () =>
+        f.controller.admitted(fresh, 'chrome', receipt.installId),
+      )
       expect(f.events).toEqual(['revoke', 'clear', 'receipt', 'bind', 'receipt'])
       expect(f.controller.admitted(fresh, 'chrome', receipt.installId)).toBe(true)
     })
@@ -102,12 +128,37 @@ describe.skipIf(process.platform === 'win32')(
       await f.controller.detach(f.handle)
       f.local.failRevoke()
       f.events.length = 0
-      await expect(f.controller.attach(f.local.sink)).rejects.toMatchObject({
-        code: 'cleanup-pending',
-      })
-      expect(f.events).not.toContain('bind')
-      expect(f.controller.admitted(f.handle, 'chrome', receipt.installId)).toBe(false)
-      expect(f.controller.cleanForShutdown()).toBe(false)
+      const targets: Array<[string, string]> = []
+      const revoke = f.local.sink.revoke
+      f.local.sink.revoke = async (id, installId) => {
+        targets.push([id, installId])
+        return revoke(id, installId)
+      }
+      try {
+        const fresh = await f.controller.attach(f.local.sink)
+        await afterConsumerChange(f.controller, f.local.sink.workspaceId, () =>
+          f.controller
+            .consumerBindings(fresh)
+            .some((one) => one.pluginId === 'chrome' && one.state === 'failed'),
+        )
+        expect(f.events).not.toContain('bind')
+        expect(f.controller.admitted(fresh, 'chrome', receipt.installId)).toBe(false)
+        await expect(f.controller.detach(fresh)).rejects.toMatchObject({
+          code: 'cleanup-pending',
+        })
+        expect(() => f.controller.hostWorkspace(fresh)).toThrow()
+        expect(f.controller.admitted(fresh, 'chrome', receipt.installId)).toBe(false)
+        expect(f.controller.admitted(f.handle, 'chrome', receipt.installId)).toBe(false)
+        expect(f.events).not.toContain('bind')
+        expect((await f.controller.status()).cleanupPending).toContain('chrome')
+        expect(targets).toEqual([
+          ['chrome', receipt.installId],
+          ['chrome', receipt.installId],
+        ])
+        expect(f.controller.cleanForShutdown()).toBe(false)
+      } finally {
+        f.local.sink.revoke = revoke
+      }
     })
     it('a restored workspace with no canonical receipt still clears tombstoned tool/UI origins', async () => {
       const f = await fixture()
@@ -116,7 +167,18 @@ describe.skipIf(process.platform === 'win32')(
       await f.controller.detach(f.handle)
       expect(f.state.projections(f.local.sink.workspaceId)).toEqual([])
       f.events.length = 0
-      await f.controller.attach(f.local.sink)
+      const cleared = deferred<void>()
+      const applied = f.local.sink.applied
+      f.local.sink.applied = async (id, receipt) => {
+        await applied(id, receipt)
+        if (id === 'chrome' && receipt === null) cleared.resolve()
+      }
+      try {
+        await f.controller.attach(f.local.sink)
+        await cleared.promise
+      } finally {
+        f.local.sink.applied = applied
+      }
       expect(f.events).toEqual(['revoke', 'clear', 'receipt'])
       expect(f.state.projections(f.local.sink.workspaceId)).toEqual([])
     })
@@ -479,9 +541,13 @@ describe.skipIf(process.platform === 'win32')(
     it('offline A tool/UI bindings are cleaned on reopen before rebinding B', async () => {
       const f = await fixture()
       await f.controller.install(f.handle, 'chrome')
-      const old = projection(),
-        oldHandle = await f.controller.attach(old.sink),
-        receiptA = old.rows.get('chrome')!
+      const old = projection()
+      const oldHandle = await f.controller.attach(old.sink)
+      const installA = f.state.currentInstallation('chrome')!
+      await afterConsumerChange(f.controller, old.sink.workspaceId, () =>
+        f.controller.admitted(oldHandle, 'chrome', installA.installId),
+      )
+      const receiptA = old.rows.get('chrome')!
       await f.controller.detach(oldHandle)
       await f.controller.uninstall(f.handle, 'chrome')
       await f.controller.install(f.handle, 'chrome')
@@ -492,6 +558,9 @@ describe.skipIf(process.platform === 'win32')(
         changes.push(change.receipt ? 'bind' : 'clear')
       }
       const fresh = await f.controller.attach(old.sink)
+      await afterConsumerChange(f.controller, old.sink.workspaceId, () =>
+        f.controller.admitted(fresh, 'chrome', receiptB.installId),
+      )
       expect(changes).toEqual(['clear', 'bind'])
       expect(old.rows.get('chrome')!.installId).toBe(receiptB.installId)
       expect(f.state.matchesProjection(receiptA, old.sink.workspaceId)).toBe(false)
