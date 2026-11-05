@@ -101,8 +101,11 @@ and state with an existing archive containing older operations. Seeded operation
 aborted fictional installs written through the real state API and matching completed
 effect markers, so no package is selected to start. Each owner must reach `accepting`,
 answer the real person/Settings client, reject a second actual launcher as busy, and
-exit normally. Source-side observation then checks `operation(id)` and closed-state
-history through the readonly/existing-only backend. Runtime/entry copies and spawn
+exit normally. Before any source state reopen can import/reclaim history, the driver
+opens the actual owner-written archive readonly/existing-only and compares every row's
+id, status and decoded record. It checks that the archive and saved snapshot bytes are
+unchanged by observation and validates the snapshot's recent operations. Separate API
+reopen and closed-state-history controls follow that nonmutating assertion. Runtime/entry copies and spawn
 argv for every one of these owners receive the same exact frozen-byte checks as the
 main journey. The run retains `sqlite-bootstrap.json` separately, and failures retain
 the production launcher's bounded diagnostic when attachment fails. These checks do

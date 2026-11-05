@@ -12,6 +12,7 @@ import {
 } from '../src/main/plugins/supervisor/client'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { pluginStartupDiagnostic } from '../src/main/plugins/startup-failure'
+import { openPluginSqlite } from '../src/main/plugins/sqlite-contract'
 import type { SpawnRecord } from './frozen-supervisor-witness'
 
 const sha = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex')
@@ -198,6 +199,52 @@ export async function sqliteBootstrapCases(options: {
       assert.equal(await lease.close(), true)
       lease = undefined
       assert.equal((await bounded(owner.exited, `${kind} owner exit`)).code, 0)
+      // Observe the BUILT owner's output before any source state open can reclaim/import it.
+      const archivePath = join(root, 'state/operations.sqlite'),
+        snapshotPath = join(root, 'state/installed-state.json')
+      const archiveBytes = await readFile(archivePath),
+        snapshotBytes = await readFile(snapshotPath)
+      const archive = openPluginSqlite(archivePath, {
+        readonly: true,
+        fileMustExist: true,
+        timeout: 0,
+      })
+      let archiveRows
+      try {
+        archiveRows = archive
+          .prepare('SELECT id, status, value FROM operations ORDER BY sequence, id')
+          .all()
+          .map((row) => {
+            assert.ok(typeof row.value === 'string')
+            return { id: row.id, status: row.status, value: JSON.parse(row.value) }
+          })
+        assert.deepEqual(
+          archiveRows,
+          operations.map((operation) => ({
+            id: operation.operation.request.operationId,
+            status: operation.status,
+            value: operation,
+          })),
+        )
+      } finally {
+        archive.close()
+      }
+      assert.deepEqual(
+        await readFile(archivePath),
+        archiveBytes,
+        'Readonly archive observation changed owner output',
+      )
+      assert.deepEqual(
+        await readFile(snapshotPath),
+        snapshotBytes,
+        'Readonly observation changed owner snapshot',
+      )
+      const snapshot = JSON.parse(snapshotBytes.toString('utf8'))
+      assert.equal(snapshot.format, 2)
+      assert.equal(snapshot.pending, null)
+      assert.deepEqual(snapshot.active, [])
+      assert.deepEqual(snapshot.recentOperations, operations.slice(-1))
+      // These are separate API/reopen controls, after the immutable owner-output assertions.
       const state = GlobalPluginState.open({
         root: join(root, 'state'),
         workspaceRoots: [workspace],
@@ -222,6 +269,9 @@ export async function sqliteBootstrapCases(options: {
         accepting: true,
         operationIds: operations.map((operation) => operation.operation.request.operationId),
         historyCount: operations.length,
+        archiveObservedBeforeReopen: true,
+        archiveSha256BeforeReopen: sha(archiveBytes),
+        archiveRows,
         secondLaunchBusy: true,
         ownerExitCode: owner.child.exitCode,
         spawnRange: [firstSpawn, options.spawns.length],
