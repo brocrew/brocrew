@@ -178,43 +178,50 @@ describe.skipIf(process.platform === 'win32')('safe packaged gate failure diagno
     child.emit('exit', 0, null)
     await expect(task.wait()).resolves.toBeUndefined()
   })
-  it.each([
-    ['cdp-fixture-tests', true],
-    ['dependencies', false],
-    ['journey', false],
-  ])('the %s phase puts its own output in the job log: %s', async (phase, echoed) => {
-    const written = []
-    const write = vi.spyOn(process.stdout, 'write').mockImplementation((bytes) => {
-      written.push(String(bytes))
-      return true
-    })
-    try {
-      const { child, run } = launcher()
-      const task = run(
-        '/fictional/node',
-        [],
-        {},
-        '/fictional',
-        { signal: new AbortController().signal },
-        1000,
-        phase,
-      )
-      child.stdout.emit('data', Buffer.from('fictional test name\n'))
-      child.stderr.emit('data', Buffer.from('fictional assertion\n'))
-      child.emit('exit', 1, null)
-      let failure
-      await task.wait().catch((error) => {
-        failure = error.failure
+  it.each(['cdp-fixture-tests', 'dependencies', 'journey'])(
+    'keeps exact split streams and its structured failure for the %s phase',
+    async (phase) => {
+      const originalStdout = process.stdout.write,
+        originalStderr = process.stderr.write,
+        stdout = [],
+        stderr = []
+      const stdoutWrite = vi.spyOn(process.stdout, 'write').mockImplementation((bytes) => {
+        stdout.push(String(bytes))
+        return true
       })
-      expect(failure).toMatchObject({ phase, exitCode: 1 })
-      expect(JSON.stringify(failure)).not.toMatch(/fictional/)
-      expect(written.filter((line) => line.startsWith('fictional'))).toEqual(
-        echoed ? ['fictional test name\n', 'fictional assertion\n'] : [],
-      )
-    } finally {
-      write.mockRestore()
-    }
-  })
+      const stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation((bytes) => {
+        stderr.push(String(bytes))
+        return true
+      })
+      try {
+        const { child, run } = launcher()
+        const task = run(
+          '/fictional/node',
+          [],
+          {},
+          '/fictional',
+          { signal: new AbortController().signal },
+          1000,
+          phase,
+        )
+        const waiting = task.wait().catch((error) => error.failure)
+        child.stdout.emit('data', Buffer.from('fictional test name\n'))
+        child.stderr.emit('data', Buffer.from('fictional assertion\n'))
+        child.emit('exit', 1, null)
+        const failure = await waiting
+        expect(failure).toMatchObject({ phase, exitCode: 1 })
+        expect(failure).toEqual({ phase, exitCode: 1, errorClass: 'child-exit', signal: null })
+        expect(JSON.stringify(failure)).not.toMatch(/fictional/)
+        expect(stdout).toEqual(['fictional test name\n'])
+        expect(stderr).toEqual(['fictional assertion\n'])
+      } finally {
+        stdoutWrite.mockRestore()
+        stderrWrite.mockRestore()
+        expect(process.stdout.write).toBe(originalStdout)
+        expect(process.stderr.write).toBe(originalStderr)
+      }
+    },
+  )
 
   it.each(['cdp-fixture-tests', 'dependencies', 'journey'])(
     'keeps exact split streams through late pipe closure on a successful %s phase',
