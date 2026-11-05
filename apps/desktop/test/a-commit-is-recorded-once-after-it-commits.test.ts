@@ -195,6 +195,35 @@ describe('a commit is recorded once, after it commits', () => {
     expect(wholes).toEqual([['alpha', 'deleted']])
   })
 
+  it('a setter outside any transaction is recorded by its table, with no row', () => {
+    store.setModel('alpha', 'fictional-model')
+    expect(seen).toHaveLength(1)
+    const change = seen[0]!.change
+    if (change.resync) throw new Error('a setter resynced')
+    expect(change.rows).toEqual([])
+    expect([...change.tables]).toContain('provider_session')
+  })
+
+  it('a setter rolled back with its transaction records nothing', () => {
+    expect(() =>
+      store.atomically(() => {
+        store.setModel('alpha', 'fictional-model')
+        throw new Error('fictional failure')
+      }),
+    ).toThrow('fictional failure')
+    expect(seen).toEqual([])
+  })
+
+  it('a late restart’s row in the generation being read is a row, not staged', () => {
+    store.restartedWorkLate('alpha', ['fictional-piece'], 5_000)
+    const changes = seen.map((one) => one.change)
+    if (changes.some((one) => one.resync)) throw new Error('a late restart resynced')
+    expect(changes.flatMap((one) => (one.resync ? [] : one.rows.map((row) => row.type)))).toEqual([
+      'work_restarted',
+    ])
+    expect(changes.filter((one) => !one.resync && one.staged.size > 0)).toEqual([])
+  })
+
   it('writes made after SQLite ended the transaction under its caller are one resync', () => {
     const outer = db.transaction(() => {
       db.exec('ROLLBACK')
