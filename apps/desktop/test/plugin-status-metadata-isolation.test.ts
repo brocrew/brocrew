@@ -248,18 +248,32 @@ async function known(f: Fixture, id: string, value: boolean) {
 
 it('returns committed cards and independent A metadata while B actual vault read is held, deduplicating B', async () => {
   const h = await setup()
-  const b = gate()
+  const a = gate(),
+    b = gate()
   const loads = watchLoads(async (release) => {
+    if (release.id === A) await a.wait(release)
     if (release.id === B) await b.wait(release)
   })
   const initial = await status(h.f)
+  expect(card(initial.cards, A).uninstallDeletesData).toBeUndefined()
   expect(card(initial.cards, B).uninstallDeletesData).toBeUndefined()
-  expect(await bounded(b.entered, 'B actual vault loader entered')).toMatchObject({
+  // Both entries must be reached before either read is released: serial background work fails.
+  const [enteredA, enteredB] = await bounded(
+    Promise.all([a.entered, b.entered]),
+    'independent A and B actual vault loaders entered with both reads held',
+  )
+  expect(enteredA).toMatchObject({
+    id: A,
+    archive: { sha256: h.a.release.archive.sha256 },
+    manifestSha256: h.a.release.manifestSha256,
+  })
+  expect(enteredB).toMatchObject({
     id: B,
     version: '1.0.0',
     archive: { sha256: h.b.release.archive.sha256 },
     manifestSha256: h.b.release.manifestSha256,
   })
+  expect(a.held()).toBe(true)
   expect(b.held()).toBe(true)
   expect(card(initial.cards, A)).toMatchObject({
     installed: true,
@@ -272,6 +286,7 @@ it('returns committed cards and independent A metadata while B actual vault read
     state: 'Installed',
   })
   expect(card(initial.cards, B).uninstallDeletesData).toBeUndefined()
+  a.release()
   await known(h.f, A, false)
   for (let n = 0; n < 5; n++) {
     const snapshot = await status(h.f)
