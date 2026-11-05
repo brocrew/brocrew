@@ -1160,7 +1160,10 @@ export function aPieceNotEndedItsQuestionsUnread(
  * every status, and {@link deriveRoutedRequests}' one status arm acts on those two alone — so a
  * turn's `working` and `idle` move nothing it folds.
  */
-export function aWaitIsReadFrom(event: TranscriptEvent): boolean {
+export function aWaitIsReadFrom(event: {
+  readonly type: TranscriptEvent['type']
+  readonly state?: string
+}): boolean {
   if (event.type === 'status') return event.state === 'ended' || event.state === 'errored'
   return WHAT_THE_WAIT_READS_SELECT.has(event.type)
 }
