@@ -19,7 +19,7 @@ import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import type { WhatIsBeingDone } from '../../src/shared/what-is-being-done'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import { META, drawerProps, mount, permission, unmountAll, type Mounted } from './harness'
-import { heldWorkspace } from '../workspace-fixture'
+import { heldWorkspace, testWorkspace } from '../workspace-fixture'
 
 /**
  * # 🔴 UI-001 · the rail row is what EVERY plate under the strip draws
@@ -317,8 +317,8 @@ const standingOf = (m: Mounted, sessionId: string): HTMLElement => {
 /** A text with its runs of whitespace folded, so a template's line breaks do not decide an answer. */
 const said = (el: Element): string => (el.textContent ?? '').replace(/\s+/g, ' ').trim()
 
-const saysOf = (m: Mounted): ReadonlyMap<string, RailSays> =>
-  m.vm.says as ReadonlyMap<string, RailSays>
+/** What the rail on screen says of each conversation, as it lends it to the window. */
+const saysOf = (): ReadonlyMap<string, RailSays> => testWorkspace().railSays() ?? new Map()
 
 describe('the rail names each conversation it draws, with what the row itself draws', () => {
   const SCHEDULED: AgentState = { is: 'scheduled', dueAt: DUE }
@@ -337,7 +337,7 @@ describe('the rail names each conversation it draws, with what the row itself dr
       unresumable: [USER_HOME],
       open: [heldRecord('sess_held', CWD)],
     })
-    const says = saysOf(m)
+    const says = saysOf()
     const drawn = drawnOrder(m)
 
     // The key set is the drawn rows, one per conversation — and never the one the fold dropped.
@@ -388,7 +388,7 @@ describe('the rail names each conversation it draws, with what the row itself dr
         heldRecord('sess_asking', CWD, [permission('p1')]),
       ],
     })
-    const says = saysOf(m)
+    const says = saysOf()
     // ⚑ The premise: the held one really is mid-turn, and drawn from its record.
     expect(says.get('sess_running')?.facets.doing).toBe('working')
     // 🔴 One word for one fact, whichever side of the window the state came from.
@@ -401,10 +401,10 @@ describe('the rail names each conversation it draws, with what the row itself dr
     expect(says.get('sess_asking')?.word).toBe('needs you: permission')
   })
 
-  it('⚑ the exposed says follows the list when it is re-read', async () => {
-    const m = await rail({ resumable: rows(), open: [] })
-    expect(saysOf(m).get('sess_sched')?.facets.doing).toBe('idle')
-    expect(saysOf(m).get('sess_sched')?.word).toBe(`scheduled · ${clockTime(DUE)}`)
+  it('⚑ what the rail lends the window follows the list when it is re-read', async () => {
+    await rail({ resumable: rows(), open: [] })
+    expect(saysOf().get('sess_sched')?.facets.doing).toBe('idle')
+    expect(saysOf().get('sess_sched')?.word).toBe(`scheduled · ${clockTime(DUE)}`)
 
     // The job has run: the host's next answer is `active`.
     stubbed().api = {
@@ -413,12 +413,12 @@ describe('the rail names each conversation it draws, with what the row itself dr
         listUnresumable: () => Promise.resolve([]),
       },
     }
-    await (m.vm.refreshResumable as () => Promise<void>)()
+    await heldWorkspace.readList()
     await nextTick()
-    expect(saysOf(m).get('sess_sched')?.facets.doing).toBe('working')
-    expect(saysOf(m).get('sess_sched')?.word).toBe('active')
+    expect(saysOf().get('sess_sched')?.facets.doing).toBe('working')
+    expect(saysOf().get('sess_sched')?.word).toBe('active')
     // ⚑ The other rows did not move.
-    expect(saysOf(m).get('sess_wait')?.word).toBe('waiting on an answer from BroBot')
+    expect(saysOf().get('sess_wait')?.word).toBe('waiting on an answer from BroBot')
   })
 })
 

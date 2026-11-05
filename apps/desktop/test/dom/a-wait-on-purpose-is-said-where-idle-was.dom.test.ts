@@ -5,7 +5,6 @@ import ConversationPane from '../../src/renderer/src/components/ConversationPane
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
 import WorkingTogether from '../../src/renderer/src/components/WorkingTogether.vue'
-import type { RailSays } from '../../src/renderer/src/lib/agent-state'
 import { conversationList } from '../../src/renderer/src/lib/conversation-list'
 import type { ResumableSessionInfo } from '../../src/shared/runtime-ipc'
 import type { TaskState } from '../../src/shared/tasks'
@@ -129,8 +128,8 @@ function castFor(state: TaskState, marked: boolean): void {
 describe('the Sub agents card', () => {
   const card = async (marked: boolean) => {
     // The card says what the rail says of the agent: the rail is read first, as on the screen.
-    const r = await rail(marked)
-    heldWorkspace.railSays.value = r.vm.says as ReadonlyMap<string, RailSays>
+    await rail(marked)
+    heldWorkspace.railSays.value = testWorkspace().railSays()
     castFor(marked ? 'waiting-on-purpose' : 'working', marked)
     const m = mount(
       WorkingTogether,

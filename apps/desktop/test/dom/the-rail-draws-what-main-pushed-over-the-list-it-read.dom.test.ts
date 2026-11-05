@@ -5,6 +5,7 @@ import type { AgentState } from '../../src/shared/agent-state'
 import type { ResumableSessionInfo, UnresumableSessionInfo } from '../../src/shared/runtime-ipc'
 import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, visible, type Mounted } from './harness'
+import { heldWorkspace, testWorkspace } from '../workspace-fixture'
 
 /**
  * **D-019 · the rail draws what main pushed over the list it read** — the rail as a person reads
@@ -146,18 +147,15 @@ async function rail(resumable: ResumableSessionInfo[]): Promise<Mounted> {
 /** What main says on `runtime:states`: the conversations that moved, and only those. */
 type StatesMessage = { moved: { conversation: string; state: AgentState }[] }
 
-/** Hand the rail one `runtime:states` message, as the screen does, and let it redraw. */
-const push = async (
-  m: Mounted,
-  ...moved: { conversation: string; state: AgentState }[]
-): Promise<void> => {
-  ;(m.vm.hearStates as (message: StatesMessage) => void)({ moved })
+/** Hand the window one `runtime:states` message, as the screen does, and let the rail redraw. */
+const push = async (_m: Mounted, ...moved: StatesMessage['moved']): Promise<void> => {
+  heldWorkspace.hear({ moved })
   await nextTick()
 }
 
-/** Ask the rail's list again, as the screen does, and let it redraw. */
-const readAgain = async (m: Mounted): Promise<void> => {
-  await (m.vm.refreshResumable as () => Promise<void>)()
+/** Ask the list again, as the screen does, and let the rail redraw. */
+const readAgain = async (): Promise<void> => {
+  await heldWorkspace.readList()
   await nextTick()
 }
 
@@ -182,8 +180,8 @@ const standing = (m: Mounted, sessionId: string): string | null =>
 const said = (el: Element): string => (el.textContent ?? '').replace(/\s+/g, ' ').trim()
 
 /** The state one row says through the door the screen's header and plate read it through. */
-const listedState = (m: Mounted, sessionId: string): AgentState | undefined =>
-  (m.vm.listedOf as (id: string) => { state: AgentState } | null)(sessionId)?.state
+const listedState = (_m: Mounted, sessionId: string): AgentState | undefined =>
+  testWorkspace().conversation(sessionId)?.state
 
 afterEach(() => {
   unmountAll()
@@ -230,7 +228,7 @@ describe('the rail draws what main pushed over the list it read', () => {
     expect(listedState(m, 'sess_a')).toEqual({ is: 'needs-you' })
     expect(listedState(m, 'sess_b')).toEqual({ is: 'idle' })
     // …and so does the list the Team page draws its shelf from.
-    const theOneList = m.vm.theOneList as { sessionId: string; state: AgentState }[] | null
+    const theOneList = testWorkspace().listed()
     expect(theOneList, 'the list has not answered').not.toBeNull()
     expect(theOneList!.map((row) => [row.sessionId, row.state.is])).toEqual([
       ['sess_a', 'needs-you'],
@@ -290,7 +288,7 @@ describe('the rail draws what main pushed over the list it read', () => {
 
     // A read asked afterwards: the host now says A and B idle, and C running in the background.
     stubbed().api = answering([A, B, CBackground])
-    await readAgain(m)
+    await readAgain()
 
     // The read's answer is drawn — C is the control that it really landed…
     expect(standing(m, 'sess_c')).toBe('background')
@@ -315,7 +313,7 @@ describe('the rail draws what main pushed over the list it read', () => {
     stubbed().api = {
       runtime: { listResumable: () => answer, listUnresumable: () => Promise.resolve([]) },
     }
-    const inFlight = readAgain(m)
+    const inFlight = readAgain()
 
     // While it is parked, main says A needs a person: heard during a read.
     await push(m, { conversation: 'sess_a', state: { is: 'needs-you' } })
@@ -336,7 +334,7 @@ describe('the rail draws what main pushed over the list it read', () => {
     // A read asked AFTER the push: the same push gives way, so "stands" is not a push that never
     // expires.
     stubbed().api = answering([A, B, CBackground])
-    await readAgain(m)
+    await readAgain()
     expect(standing(m, 'sess_a')).toBe('idle')
     expect(m.all('rail-needs-you-brobot')).toHaveLength(0)
     expect(standing(m, 'sess_c')).toBe('background')
@@ -359,7 +357,7 @@ describe('the rail draws what main pushed over the list it read', () => {
         listUnresumable: () => Promise.resolve([]),
       },
     }
-    await readAgain(m)
+    await readAgain()
     const error = m.q('conversations-error')
     expect(visible(error)).toBe(true)
     expect(said(error)).toContain('the database is locked')
@@ -370,7 +368,7 @@ describe('the rail draws what main pushed over the list it read', () => {
 
     // The next read that succeeds takes the line away — and the push with it.
     stubbed().api = answering([A, B, C])
-    await readAgain(m)
+    await readAgain()
     expect(m.all('conversations-error')).toHaveLength(0)
     expect(standing(m, 'sess_a')).toBe('idle')
     expect(m.all('rail-needs-you-brobot')).toHaveLength(0)
@@ -391,7 +389,7 @@ describe('the rail draws what main pushed over the list it read', () => {
     expect(standing(m, 'sess_a')).toBe('working')
     // The ghost draws no row, no count and no badge.
     expect(m.all('open-session-sess_ghost')).toHaveLength(0)
-    expect((m.vm.listedOf as (id: string) => unknown)('sess_ghost')).toBeNull()
+    expect(testWorkspace().conversation('sess_ghost')).toBeUndefined()
     expect(drawnOrder(m)).toEqual(['sess_a', 'sess_b', 'sess_c'])
     expect(said(m.q('rail-count-brobot'))).toBe('3')
     expect(m.all('rail-needs-you-brobot')).toHaveLength(0)
@@ -404,7 +402,7 @@ describe('the rail draws what main pushed over the list it read', () => {
     stubbed().api = {
       runtime: { listResumable: () => answer, listUnresumable: () => Promise.resolve([]) },
     }
-    const inFlight = readAgain(m)
+    const inFlight = readAgain()
 
     // While it is parked, main says one of them is active.
     await push(m, { conversation: 'sess_late', state: { is: 'active' } })
@@ -426,7 +424,7 @@ describe('the rail draws what main pushed over the list it read', () => {
 
     // A read asked after the push puts the conversation back to what the host says.
     stubbed().api = answering([A, B, C, late, quiet])
-    await readAgain(m)
+    await readAgain()
     expect(said(m.q('rail-count-brobot'))).toBe('5')
     expect(standing(m, 'sess_late')).toBe('idle')
     expect(standing(m, 'sess_quiet')).toBe('idle')

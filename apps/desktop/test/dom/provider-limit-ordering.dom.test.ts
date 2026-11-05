@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { defineComponent, h, nextTick, ref } from 'vue'
+import { defineComponent, h, nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
@@ -8,7 +8,6 @@ import { fullTime } from '../../src/renderer/src/lib/clock'
 import { listenProviderStates } from '../../src/renderer/src/lib/provider-limit-facts'
 import type { ProviderBlockFacts } from '../../src/renderer/src/lib/provider-limit-status'
 import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
-import type { ListedConversation } from '../../src/renderer/src/lib/conversation-list'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type {
   AgentIdentities,
@@ -20,6 +19,7 @@ import type {
 } from '../../src/shared/runtime-ipc'
 import { createAttachmentBook, draftKey } from '../../src/renderer/src/lib/drafts'
 import { META, mount, unmountAll } from './harness'
+import { testWorkspace } from '../workspace-fixture'
 
 const NOW = Date.now()
 const current = {
@@ -121,11 +121,6 @@ const agents: AgentIdentities = {
   defaultApprovalMode: 'ask',
   externalMcpServers: [],
 }
-interface Rail {
-  hearStates(message: RuntimeStatesMessage): void
-  refreshResumable(): Promise<void>
-  theOneList: readonly ListedConversation[] | null
-}
 async function screens() {
   const wire: {
     states?: (message: RuntimeStatesMessage) => void
@@ -164,14 +159,13 @@ async function screens() {
   cleanups.push(() => store.dispose())
   await store.attachOpen()
   const record = store.get(META.sessionId)!
-  const rail = ref<Rail | null>(null)
-  cleanups.push(listenProviderStates(bridge, store, (message) => rail.value?.hearStates(message)))
+  const workspace = testWorkspace()
+  cleanups.push(listenProviderStates(bridge, store, (message) => workspace.hearStates(message)))
   const handing = createAttachmentBook().handing(draftKey(record.sessionId))
   const shell = defineComponent(
     () => () =>
       h('div', [
         h(SideRail, {
-          ref: rail,
           open: store.live.value,
           onScreen: record,
           providerBlocks: store.providerBlocks,
@@ -188,14 +182,13 @@ async function screens() {
           capabilities: null,
           draft: '',
           handing,
-          listedState: rail.value?.theOneList?.find((one) => one.sessionId === record.sessionId)
-            ?.state,
+          listedState: workspace.conversation(record.sessionId)?.state,
           providerBlock: store.providerBlocks.get(record.sessionId),
         }),
         h(TeamWorkspace, {
           agents,
           store: { renameTo: forbidden, remove: forbidden } as unknown as AgentStore,
-          conversations: rail.value?.theOneList ?? null,
+          conversations: workspace.listed(),
           held: [record.sessionId],
         }),
       ]),
@@ -222,7 +215,7 @@ async function screens() {
       word === 'clear' ? 'idle' : word === 'unavailable' ? 'Limit unavailable' : 'Claude limit'
     expect(railWord).toBe(['claude', short, railLine.dataset.place].filter(Boolean).join(' · '))
     expect(teamWord).toBe(short)
-    const list = rail.value!.theOneList
+    const list = workspace.listed()
     expect(list).not.toBeNull()
     const facts = list!.find((one) => one.sessionId === record.sessionId)!
     expect(facts.providerBlockStatus).toBe(word === 'unavailable' ? 'unavailable' : 'current')
@@ -250,7 +243,8 @@ async function screens() {
     page: m,
     store,
     record,
-    rail,
+    /** The list read the screen asks again. */
+    readList: () => workspace.readList(store.providerBlocks, false),
     check,
     state: async (facts: ProviderBlockFacts) => {
       wire.states!({
@@ -295,7 +289,7 @@ describe('Root channel ordering stays the same across pane, rail and Team', () =
       expect(team().title).toContain('Last known: stopped at Claude’s limit')
       const old = deferred<ResumableSessionInfo[]>()
       s.list(() => old.promise)
-      const reading = s.rail.value!.refreshResumable()
+      const reading = s.readList()
       const retired = { providerBlockLastKnown: null }
       await (door === 'state' ? s.live(retired) : s.state(retired))
       s.check('unavailable')
@@ -363,7 +357,7 @@ describe('Root channel ordering stays the same across pane, rail and Team', () =
     const s = await screens()
     const old = deferred<ResumableSessionInfo[]>()
     s.list(() => old.promise)
-    const refresh = s.rail.value!.refreshResumable()
+    const refresh = s.readList()
     await s.live(clear)
     s.check('clear')
     old.resolve([listed(current)])
@@ -371,7 +365,7 @@ describe('Root channel ordering stays the same across pane, rail and Team', () =
     await settle()
     s.check('clear')
     s.list(async () => [listed(current)])
-    await s.rail.value!.refreshResumable()
+    await s.readList()
     await settle()
     s.check('stop')
     expect(s.record.meta!.providerBlock).toBeNull()
@@ -389,7 +383,7 @@ describe('Root channel ordering stays the same across pane, rail and Team', () =
     await s.state(unavailable)
     s.check('unavailable')
     s.list(async () => [listed(current)])
-    await s.rail.value!.refreshResumable()
+    await s.readList()
     await settle()
     s.check('stop')
     await s.live(clear)

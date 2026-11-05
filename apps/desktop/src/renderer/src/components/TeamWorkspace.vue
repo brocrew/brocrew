@@ -63,8 +63,8 @@ const props = withDefaults(
     /** ⛔ **The conversations THIS window holds** — the precondition for an `Open` press. */
     held?: readonly string[]
     /**
-     * 🔴 **D-016 · the one list of conversations** — the rail's own (`SideRail.theOneList`), which
-     * each card's *Conversations* shelf narrows to its agent. ⛔ `null` is *the list has not answered
+     * 🔴 **D-016 · the one list of conversations** — the workspace's, which the rail draws too, and
+     * which each card's *Conversations* shelf narrows to its agent. ⛔ `null` is *the list has not answered
      * yet*, and a shelf says so rather than drawing *none*.
      */
     conversations?: readonly ListedConversation[] | null

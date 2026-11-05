@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { defineComponent, h, nextTick, reactive, ref } from 'vue'
+import { defineComponent, h, nextTick, reactive } from 'vue'
 import { page } from 'vitest/browser'
 import AppTitleBar from '../../src/renderer/src/components/AppTitleBar.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
@@ -86,10 +86,6 @@ function deferred<T>() {
   })
   return { promise, resolve }
 }
-interface Rail {
-  hearStates(message: RuntimeStatesMessage): void
-  refreshResumable(): Promise<void>
-}
 async function windowWith(
   rows = mixed(),
   unreadable: UnresumableSessionInfo[] = [],
@@ -105,14 +101,12 @@ async function windowWith(
       onProvidersChanged: () => () => {},
     },
   }
-  const rail = ref<Rail | null>(null)
   const navigation = reactive({ activeId: null as string | null, place: 'tools' as string | null })
   const shell = defineComponent(
     () => () =>
       h('div', [
         h(AppTitleBar, { info: null, error: null }),
         h(SideRail, {
-          ref: rail,
           open: [],
           activeId: navigation.activeId,
           place: navigation.place,
@@ -124,7 +118,6 @@ async function windowWith(
   await settle()
   return {
     m,
-    rail,
     navigation,
     setReply: (next: typeof reply) => {
       reply = next
@@ -189,43 +182,45 @@ describe('working counts in the title bar', () => {
   })
 
   it('updates immediately from the same state push the rail receives', async () => {
-    const { m, rail } = await windowWith()
-    rail.value!.hearStates(moved('menu', { is: 'active' }))
+    const { m } = await windowWith()
+    testWorkspace().hearStates(moved('menu', { is: 'active' }))
     await nextTick()
     expect(text(m)).toContain('8 agents · 4 working')
-    rail.value!.hearStates(moved('design', { is: 'idle' }))
+    testWorkspace().hearStates(moved('design', { is: 'idle' }))
     await nextTick()
     expect(text(m)).toContain('8 agents · 3 working')
-    rail.value!.hearStates(moved('stock', { is: 'in-the-background', what: 'read the stock list' }))
+    testWorkspace().hearStates(
+      moved('stock', { is: 'in-the-background', what: 'read the stock list' }),
+    )
     await nextTick()
     expect(text(m)).toContain('8 agents · 4 working')
   })
 
   it('a state push wins over a list reply already in flight', async () => {
-    const { m, rail, setReply } = await windowWith()
+    const { m, setReply } = await windowWith()
     const pending = deferred<ResumableSessionInfo[]>()
     setReply(() => pending.promise)
-    const refresh = rail.value!.refreshResumable()
-    rail.value!.hearStates(moved('menu', { is: 'active' }))
+    const refresh = heldWorkspace.readList()
+    testWorkspace().hearStates(moved('menu', { is: 'active' }))
     await nextTick()
     pending.resolve(mixed())
     await refresh
     await nextTick()
     expect(text(m)).toContain('8 agents · 4 working')
     setReply(() => Promise.resolve(mixed()))
-    await rail.value!.refreshResumable()
+    await heldWorkspace.readList()
     await nextTick()
     expect(text(m)).toContain('8 agents · 3 working')
   })
 
   it('a newer list reply fences an older reply that arrives afterwards', async () => {
-    const { m, rail, setReply } = await windowWith()
+    const { m, setReply } = await windowWith()
     const older = deferred<ResumableSessionInfo[]>()
     const newer = deferred<ResumableSessionInfo[]>()
     setReply(() => older.promise)
-    const oldRead = rail.value!.refreshResumable()
+    const oldRead = heldWorkspace.readList()
     setReply(() => newer.promise)
-    const newRead = rail.value!.refreshResumable()
+    const newRead = heldWorkspace.readList()
     newer.resolve([row('fresh', 'codex', { is: 'active' })])
     await newRead
     await nextTick()
@@ -238,15 +233,15 @@ describe('working counts in the title bar', () => {
   })
 
   it('an older failed read cannot replace a newer successful result with an error', async () => {
-    const { m, rail, setReply } = await windowWith()
+    const { m, setReply } = await windowWith()
     let reject!: (cause: Error) => void
     const older = new Promise<ResumableSessionInfo[]>((_, fail) => {
       reject = fail
     })
     setReply(() => older)
-    const oldRead = rail.value!.refreshResumable()
+    const oldRead = heldWorkspace.readList()
     setReply(() => Promise.resolve([row('fresh', 'codex', { is: 'active' })]))
-    await rail.value!.refreshResumable()
+    await heldWorkspace.readList()
     reject(new Error('Fictional older read failed'))
     await oldRead
     await nextTick()
@@ -255,9 +250,9 @@ describe('working counts in the title bar', () => {
   })
 
   it('updates the population when the all-page host list is refreshed', async () => {
-    const { m, rail, setReply } = await windowWith()
+    const { m, setReply } = await windowWith()
     setReply(() => Promise.resolve([...mixed(), row('new-worker', 'codex', { is: 'active' })]))
-    await rail.value!.refreshResumable()
+    await heldWorkspace.readList()
     await nextTick()
     expect(text(m)).toContain('9 agents · 4 working')
   })
@@ -305,9 +300,9 @@ describe('working counts in the title bar', () => {
   })
 
   it('a failed later list read keeps the last good count', async () => {
-    const { m, rail, setReply } = await windowWith()
+    const { m, setReply } = await windowWith()
     setReply(() => Promise.reject(new Error('Fictional list read failed')))
-    await rail.value!.refreshResumable()
+    await heldWorkspace.readList()
     await nextTick()
     expect(text(m)).toContain(expected)
   })

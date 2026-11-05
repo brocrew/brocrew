@@ -2,7 +2,6 @@
 import { chordKeys, chordSaid, platformHere } from '../lib/this-computer'
 import crewMark from '../assets/brocrew-mark.svg'
 import { computed, onBeforeUnmount, onMounted, nextTick, ref, useId, watch, type Ref } from 'vue'
-import type { RuntimeStatesMessage } from '../../../shared/runtime-ipc'
 import { agentStateWords } from '../../../shared/agent-state'
 import {
   facetsOfState,
@@ -355,16 +354,6 @@ const looked = computed(() => projection.listed() !== null)
 const listError = computed(() => projection.listError())
 /** Every conversation the host lists, newest first — see {@link conversationList}. */
 const listed = computed(() => projection.listed() ?? [])
-
-/**
- * ⚑ **D-026 · a message that moved no state leaves the list as it was** — files kept, alone: the
- * rail draws no files.
- */
-function hearStates(message: RuntimeStatesMessage): void {
-  if (message.moved.length === 0) return
-  projection.hearStates(message)
-  if (!props.providerBlocks) localProviderBlocks.acceptMany(message.moved)
-}
 
 const refreshListed = (): Promise<void> =>
   projection.readList(providerBlocks.value, appClosing.value)
@@ -768,40 +757,6 @@ const says = computed((): ReadonlyMap<string, RailSays> => {
   if (!moved) return saidBefore
   saidBefore = next
   return next
-})
-
-defineExpose({
-  /**
-   * 🔴 **Ask the list again** (151) — and since `534` the screen calls this because the HOST said
-   * something moved, not only because this window did something. ⚑ D-017b · resolves once the list
-   * has answered, so the screen can ask whether the conversation it is drawing moved.
-   */
-  refreshResumable: (): Promise<void> => refreshListed(),
-  /**
-   * 🔴 **D-019 · what main says an agent is doing, the moment it moves** — see {@link hearStates}.
-   * ⚑ The screen owns the subscription, as it owns `runtime:changed`'s; the rail folds the message.
-   */
-  hearStates,
-  /**
-   * ⚑ **D-017b · the host's row for one conversation**, or `null` when it lists none — when it last
-   * moved, whether another window has it open, and its one state: what the screen compares a
-   * recorded view against, and the state that view's plate draws, so the view and its row here say
-   * one thing. ⚑ **D-016 · commit 7 · R2** — and the work that names it, which the header titles
-   * the conversation with, as its row here does.
-   */
-  listedOf: (sessionId: string): ListedConversation | null =>
-    projection.conversation(sessionId) ?? null,
-  /**
-   * ⚑ **D-016 · every conversation the host lists, or `null` before the list has answered** — the
-   * Team page draws each agent's conversations from it, so an agent's shelf and this rail are one
-   * list. ⛔ `null` is *not read yet*, never *none*.
-   */
-  theOneList: computed(() => projection.listed()),
-  /**
-   * ⚑ **UI-001 · each row's plate and word, by conversation** — what the right panel draws for an
-   * agent under the strip, so a card and its row here cannot say two things.
-   */
-  says,
 })
 
 /** The parts that are present, joined: a missing part draws nothing, not an empty separator. */

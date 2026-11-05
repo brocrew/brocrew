@@ -6,6 +6,10 @@ import {
 } from '../src/renderer/src/composables/useWorkspace'
 import { provideConversationDoorTo } from '../src/renderer/src/composables/useConversationDoor'
 import type { FilesRead } from '../src/renderer/src/lib/files-kept'
+import {
+  createProviderBlockStore,
+  type ProviderBlockStore,
+} from '../src/renderer/src/lib/provider-limit-facts'
 import type { CastReading } from '../src/renderer/src/lib/working-together'
 import type { RailSays } from '../src/renderer/src/lib/agent-state'
 import type { AgentState } from '../src/shared/agent-state'
@@ -14,6 +18,7 @@ import type {
   AgentIdentity,
   ProcessMemory,
   ResumableSessionInfo,
+  RuntimeStatesMessage,
   UnresumableSessionInfo,
 } from '../src/shared/runtime-ipc'
 import type { WhatEachConversationIsWaitingOn } from '../src/shared/tasks'
@@ -83,6 +88,18 @@ export const heldWorkspace = {
   /** The files the card's agent added. */
   cardFiles(card: FilesRead | null): void {
     wired().filesRead(testWorkspace().treeFiles(), card)
+  },
+  /**
+   * What main pushes on `runtime:states`, heard as the screen hears it: the states into the list,
+   * and their provider facts into `providerBlocks` when the test keeps them.
+   */
+  hear(message: Pick<RuntimeStatesMessage, 'moved'>, providerBlocks?: ProviderBlockStore): void {
+    wired().hearStates({ kept: [], ...message })
+    providerBlocks?.acceptMany(message.moved)
+  },
+  /** The list read the screen asks again, through the bridge the test stubbed. */
+  readList(providerBlocks: ProviderBlockStore = createProviderBlockStore()): Promise<void> {
+    return wired().readList(providerBlocks, false)
   },
   /** One list read that answered with these rows. */
   list(

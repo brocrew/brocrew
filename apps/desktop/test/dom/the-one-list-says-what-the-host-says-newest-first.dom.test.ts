@@ -6,7 +6,7 @@ import type { ResumableSessionInfo, UnresumableSessionInfo } from '../../src/sha
 import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import { createSessionRecord } from '../../src/renderer/src/lib/session-record'
 import { mount, unmountAll, visible, type Mounted } from './harness'
-import { testWorkspace } from '../workspace-fixture'
+import { heldWorkspace, testWorkspace } from '../workspace-fixture'
 
 /**
  * **D-017b · the ONE list says what the host says, newest first** — the rail's list as a person
@@ -382,7 +382,7 @@ describe('a read of the list that fails after one that succeeded', () => {
     expect(said(m.q('rail-count-brobot'))).toBe('1')
     expect(m.all('conversations-error')).toHaveLength(0)
 
-    const refresh = m.vm.refreshResumable as () => Promise<void>
+    const refresh = () => heldWorkspace.readList()
 
     // The database is locked for one announcement.
     stubbed().api = {

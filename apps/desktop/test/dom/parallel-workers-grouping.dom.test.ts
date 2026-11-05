@@ -6,6 +6,7 @@ import { conversationList, groupWorkers } from '../../src/renderer/src/lib/conve
 import { createSessionRecord } from '../../src/renderer/src/lib/session-record'
 import type { RuntimeStatesMessage } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll } from './harness'
+import { testWorkspace } from '../workspace-fixture'
 import { assertDrawn, drawnReady, inkRects, lineCount } from './drawn'
 import { identities, workerRows, store, activity } from './parallel-workers-fixture'
 
@@ -145,7 +146,7 @@ describe('parallel workers beside their agent', () => {
       moved: [{ conversation: 'recipe-2', state: { is: 'needs-you' } }],
       kept: [],
     }
-    ;(m.vm.hearStates as (message: RuntimeStatesMessage) => void)(heard)
+    testWorkspace().hearStates(heard)
     await nextTick()
     expect(m.q('rail-state-word-recipe-2').textContent).toBe('needs you')
     expect(m.q('rail-worker-name-recipe-2').textContent).toBe('Mira · W90.2')

@@ -561,9 +561,11 @@ describe('A narrow rail folds facts even when AgentState is unchanged', () => {
     ;(window as { api?: unknown }).api = {
       runtime: { listResumable: async () => [row], listUnresumable: async () => [] },
     }
+    // The screen's provider store: the list read and every push keep their facts in it.
+    const blocks = createProviderBlockStore()
     const m = mount(
       SideRail,
-      { open: [], activeId: null, place: null, onSelect: () => undefined },
+      { providerBlocks: blocks, open: [], activeId: null, place: null, onSelect: () => undefined },
       { width: 251.68, height: 900 },
     )
     await new Promise((resolve) => setTimeout(resolve, 0))
@@ -583,10 +585,10 @@ describe('A narrow rail folds facts even when AgentState is unchanged', () => {
     expect(document.activeElement).toBe(opener)
     expect(opener.getAttribute('aria-description')).toContain('Reported reset:')
     const push = async (facts: Partial<AgentStateMoved>, ordinary: AgentState = { is: 'idle' }) => {
-      ;(m.vm.hearStates as (message: unknown) => void)({
-        moved: [{ conversation: 'menu-rail', state: ordinary, ...facts }],
-        kept: [],
-      })
+      heldWorkspace.hear(
+        { moved: [{ conversation: 'menu-rail', state: ordinary, ...facts }] },
+        blocks,
+      )
       await nextTick()
     }
     await push({})
@@ -750,9 +752,8 @@ describe('An open rail record follows the latest folded channel fact', () => {
       )
     // The runtime screen gives the same state push to the rail and the held record.
     const statePush = async (facts: Partial<AgentStateMoved>) => {
-      ;(m.vm.hearStates as (message: unknown) => void)({
+      heldWorkspace.hear({
         moved: [{ conversation: one.sessionId, state: { is: 'idle' }, ...facts }],
-        kept: [],
       })
       acceptProviderBlock(one, facts)
       authority.accept(one.sessionId, facts)
