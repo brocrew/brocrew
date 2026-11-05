@@ -510,6 +510,7 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     await expect(adapter.localPluginArchive(input, loaded.releases[0])).rejects.toThrow()
     target.url = 'https://example.invalid/alternate-chrome.tar.gz'
     fs.writeFileSync(path.join(input, 'catalogue.json'), JSON.stringify(list))
+    fs.mkdirSync(path.join(root, 'alternate'), { mode: 0o700 })
     const alternate = await adapter.loadRepoPluginList({
       root: path.join(root, 'alternate'),
       fixtureSource: input,

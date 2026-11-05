@@ -691,10 +691,8 @@ describe('packaged restart journey without a native launch', () => {
     expect(attempts).toBe(4)
   })
   it('requires Running rather than only persisted Installed, with no missing-card shortcut', async () => {
-    const body = source.slice(
-      source.indexOf('async function installed('),
-      source.indexOf('async function configure('),
-    )
+    const body = source.match(/^async function installed\(run, wanted\) \{[\s\S]*?^\}/m)?.[0]
+    expect(body).toBeTypeOf('string')
     const responses = [
       { ok: false },
       { ok: true, cards: [] },

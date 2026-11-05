@@ -51,6 +51,7 @@ function candidateFixture(root) {
     runtime: { kind: 'node', entry: 'server.mjs' },
     mcp: { transport: 'stdio' },
     tools: { source: 'mcp', inventory: 'tools.json' },
+    lifecycle: { stop: { signal: 'SIGTERM' }, dataOnRemove: 'keep' },
     files: [...files].map(([name, body]) => ({
       path: name,
       bytes: body.length,
