@@ -427,11 +427,11 @@ describe('562 · a press that opens the document it names', () => {
     }
     const KINDS: Readonly<Record<string, Kind>> = {
       'WorkReportEntry.vue': 'a-typed-field',
-      // ⚠️ The view BUILDS the roster; the message DRAWS from it. Both are listed, because a
+      // The view builds the roster; the shared prose component draws from it. Both are listed because a
       // binding is a forward and says nothing about the computed behind it — `537` §3.2's reason
       // for asking in two directions.
       'TranscriptView.vue': 'a-typed-field',
-      'AssistantMessage.vue': 'a-roster-of-typed-fields',
+      'MarkdownWords.vue': 'a-roster-of-typed-fields',
     }
 
     it('🔴 three surfaces, and not one of them reads an id out of prose', () => {
@@ -456,9 +456,16 @@ describe('562 · a press that opens the document it names', () => {
     it('⛔ the new control reaches the door through the hops 510 already built', () => {
       // ⚑ **No fourth "how".** `562` adds a second place a press is DRAWN and no new route: the
       // event, the pane's handler, the panel and the five refusals are `510`'s.
-      expect(CODE('../src/renderer/src/components/AssistantMessage.vue')).toContain(
-        "emit('openDocument', resourceId)",
-      )
+      const message = CODE('../src/renderer/src/components/AssistantMessage.vue')
+      expect(message).toContain("import MarkdownWords from './MarkdownWords.vue'")
+      expect(message).toContain(':documents="props.documents"')
+      expect(message).not.toContain(".split('_')")
+      expect(message).not.toContain("'res_'")
+      expect(message).not.toMatch(/\/\\bres_/)
+      expect(message).toContain("emit('openDocument', resourceId)")
+      const words = CODE('../src/renderer/src/components/MarkdownWords.vue')
+      expect(words).toContain('documentsNamedIn(html.value, props.documents ?? [])')
+      expect(words).toContain("emit('openDocument', resource)")
       expect(CODE('../src/renderer/src/components/TranscriptView.vue')).toContain(
         '@open-document="(resourceId) => $emit(\'openDocument\', resourceId)"',
       )
