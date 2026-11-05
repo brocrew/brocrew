@@ -274,13 +274,13 @@ function chipWord(card: CastCard): string | undefined {
 
     <p
       v-if="!view && workspace.castLoadingFor() === conversation"
-      class="quiet"
+      class="stand-in"
       role="status"
       data-cy="cast-loading"
     >
       Loading sub agents…
     </p>
-    <p v-else-if="!view" class="quiet" data-cy="cast-not-read">
+    <p v-else-if="!view" class="stand-in" data-cy="cast-not-read">
       Nothing has been read about the conversations around this one yet.
     </p>
 
@@ -536,6 +536,14 @@ function chipWord(card: CastCard): string | undefined {
   gap: var(--space-4);
 }
 
+/* What the band says in place of its agents is all it draws then, so it reads in the text's own ink:
+ * a quiet ink falls under 4.5:1 where the panel draws it. */
+.stand-in {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--type-caption);
+  line-height: 1.5;
+}
 .quiet {
   margin: 0;
   color: var(--faint);
