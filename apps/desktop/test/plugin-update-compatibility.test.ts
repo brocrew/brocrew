@@ -47,6 +47,7 @@ async function withDrain(controller: PluginLifecycleController, body: () => Prom
     failures.push(error)
   }
   try {
+    controller.consumersEnded()
     await controller.drain()
   } catch (error) {
     failures.push(error)
