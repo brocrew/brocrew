@@ -14,6 +14,7 @@ import {
   type MethodFileState,
 } from './method-changes'
 import { withOptionalIndexes } from './optional-indexes'
+import { committedChangesOf, committedRowOf, type CommittedChanges } from './committed-changes'
 import { currentWorkTitle } from './current-work-title'
 import { searchPastWork, closePastWorkSearch, pastWorkSource } from './past-work-search'
 import type { PastWorkSearchResult, PastWorkSource } from '../../shared/past-work-search'
@@ -5692,6 +5693,8 @@ export function createSessionStore(
   oneSnapshot = false,
 ): SessionStore {
   const connection = db
+  // Installed before any transaction on this connection is made, so every one is framed.
+  const committed = committedChangesOf(connection)
   const ownNotesStore = createOwnNotesStore(connection)
   const methodChangeStore = createMethodChangeStore(connection, now)
   const memoryRecoveryStore = createMemoryRecoveryStore(connection, now)
@@ -9658,6 +9661,8 @@ export function createSessionStore(
       )
       // A rolled-back write still invalidates a live allocator; it never publishes a floor.
       ledgerWrites.set(sessionId, { ordinal, generation })
+      if (reconcileStatus) committed.appended(committedRowOf(sessionId, generation, ordinal, event))
+      else committed.staged(sessionId)
 
       // ⛔ **A `conversation_reset` writes the ref for exactly the same reason a `session` does**
       // (199, from 192 H5): this column is what `resumeSession` reopens from, and after a `/clear`
@@ -12598,7 +12603,11 @@ export function createSessionStore(
    * changes is where the commit is, which is the entire point: there is no longer a moment at which
    * the row exists and the conversation does not.
    */
-  const importSnapshotTx = db.transaction((snapshot: SessionSnapshot) => {
+  const importSnapshotTx = db.transaction((snapshot: SessionSnapshot) =>
+    committed.asAWhole(() => importSnapshotRows(snapshot)),
+  )
+  const importSnapshotRows = (snapshot: SessionSnapshot): void => {
+    committed.whole(snapshot.session.id, 'imported')
     const at = now()
     insertAdoptedRow(snapshot.session, at)
     // ⛔ **In the same commit as the row, so a restored bundle is never briefly resumable** (214 §1).
@@ -12613,7 +12622,7 @@ export function createSessionStore(
     // a generation record anyway, and the record is the honest one: this projection is CURRENT for
     // the importer shipping now, and it covers every line the bundle carried.
     writeGeneration.run(snapshot.session.id, NORMALIZER_VERSION, snapshot.derivedThrough, at)
-  })
+  }
 
   /**
    * One rescan's worth of catching up on an adopted row: the provider's clock, and the descent
@@ -13825,7 +13834,10 @@ export function createSessionStore(
     },
 
     beginGeneration(sessionId) {
-      startBuilding.run(sessionId, PRE_CONTRACT_NORMALIZER_VERSION, now())
+      db.transaction(() => {
+        committed.whole(sessionId, 'listing')
+        startBuilding.run(sessionId, PRE_CONTRACT_NORMALIZER_VERSION, now())
+      })()
       // Read BACK rather than computed here: the statement above decides the number, and computing
       // it a second time in JS would be a second opinion about the same increment — free to differ
       // from the one on disk if two callers ever interleaved.
@@ -13857,6 +13869,7 @@ export function createSessionStore(
         // that the refusal is REPORTED rather than silent, because a caller that cannot see it calls
         // it an import.
         if (flipped.changes === 0) return false
+        committed.whole(sessionId, 'promoted')
         ledgerWrites.set(sessionId, { ordinal: null, generation })
         // An imported transcript has the user's prompts but NO `turn` events (045), so the last turn
         // of a derived ledger is left open. Closed as `unknown` — the ending is genuinely one we
@@ -13873,7 +13886,10 @@ export function createSessionStore(
     },
 
     abandonGeneration(sessionId, generation, failure) {
-      stopBuilding.run(failure, now(), sessionId, generation)
+      db.transaction(() => {
+        committed.whole(sessionId, 'listing')
+        stopBuilding.run(failure, now(), sessionId, generation)
+      })()
     },
 
     clearOrphanBuilds(running) {
@@ -15038,18 +15054,21 @@ export function createSessionStore(
 
     addResource(input, at) {
       const id = newResourceId()
-      workSql().insertResource.run(
-        id,
-        input.piece,
-        input.role,
-        input.title,
-        input.summary,
-        input.name,
-        input.sha256,
-        input.bytes,
-        input.addedBy,
-        at,
-      )
+      db.transaction(() => {
+        committed.kept(input.piece, id)
+        workSql().insertResource.run(
+          id,
+          input.piece,
+          input.role,
+          input.title,
+          input.summary,
+          input.name,
+          input.sha256,
+          input.bytes,
+          input.addedBy,
+          at,
+        )
+      })()
       return { ...input, resource: id, createdAt: at }
     },
 
@@ -15568,9 +15587,12 @@ export function createSessionStore(
     discardGeneration(sessionId, generation, limit) {
       // Events first: `events.turn_id` is `ON DELETE SET NULL`, so taking the turns out from under
       // them would rewrite every row of a generation that is about to be deleted anyway.
-      const events = deleteEventGeneration.run(sessionId, generation, limit)
-      if (events.changes > 0) return events.changes
-      return deleteTurnGeneration.run(sessionId, generation, limit).changes
+      return db.transaction(() => {
+        committed.staged(sessionId)
+        const events = deleteEventGeneration.run(sessionId, generation, limit)
+        if (events.changes > 0) return events.changes
+        return deleteTurnGeneration.run(sessionId, generation, limit).changes
+      })()
     },
 
     deadGenerations(sessionId) {
