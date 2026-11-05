@@ -764,7 +764,7 @@ describe('567 · two counts and one moment', () => {
       // reads — which is exactly what the brief forbids and what `543` measured it needed none of.
       // ⚑ **638 · a THIRD member**, `work` — the condition `534` set (*do not add a subject
       // nothing reads*) lapsed when `631` built the task lists that read it.
-      expect([...RUNTIME_CHANGE_SUBJECTS]).toEqual(['conversations', 'agents', 'work'])
+      expect([...RUNTIME_CHANGE_SUBJECTS]).toEqual(['conversations', 'agents', 'work', 'persons'])
     })
   })
 

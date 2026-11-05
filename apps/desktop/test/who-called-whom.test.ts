@@ -795,7 +795,7 @@ describe('543 · who called whom', () => {
       // to re-read, and this read gives nobody anything new to re-read.
       // ⚑ **638 · a THIRD member**, `work` — the condition `534` set (*do not add a subject
       // nothing reads*) lapsed when `631` built the task lists that read it.
-      expect([...RUNTIME_CHANGE_SUBJECTS]).toEqual(['conversations', 'agents', 'work'])
+      expect([...RUNTIME_CHANGE_SUBJECTS]).toEqual(['conversations', 'agents', 'work', 'persons'])
     })
 
     it('⛔ 638 · a RAW ledger append still announces nothing — the announcement is at the VERB', () => {
@@ -813,7 +813,9 @@ describe('543 · who called whom', () => {
       // ⚠️ **The arrival half is pinned in `work-moved-and-nothing-announced-it.test.ts`**, driven
       // through the host's verbs end to end.
       expect(host.whoCalledWhom(pm).workGivenOut.rows).toHaveLength(1)
-      expect(announced).toEqual([])
+      // ⚑ Only `persons`, which the store's record of the commit carries for the work a person is
+      // asked about; every other subject is still the verb's.
+      expect(announced.filter((message) => message.what !== 'persons')).toEqual([])
       // ⛔ **THE CONTROL, REPAIRED.** ⚠️ It read `expect(announced.length).toBeGreaterThanOrEqual(0)`
       // — true of every array there is, so it proved nothing
       // (`a-positive-assertion-must-differ-from-the-default`). ⚑ A session row written through the

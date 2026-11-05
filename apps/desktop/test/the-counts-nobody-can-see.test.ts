@@ -365,13 +365,16 @@ describe('§6 · the screen reads it on the cadence it already had, and invented
       mounted.indexOf('LOOK_EVERY_MS)', mounted.indexOf('looking = setInterval')),
     )
     expect(tick, 'the tick does not re-read it').toContain('void readTheWorkspace()')
-    // ⛔ **Three call sites and no fourth**, so a call stacked somewhere the slices above cannot
+    // ⚑ **And on `persons`**, which says what a person must answer may have moved.
+    const persons = mounted.slice(mounted.indexOf('persons:'), mounted.indexOf('\n  })'))
+    expect(persons, 'the persons subject does not re-read it').toContain('void readTheWorkspace()')
+    // ⛔ **Four call sites and no fifth**, so a call stacked somewhere the slices above cannot
     // see would show up as a count rather than pass unnoticed.
-    expect(callsTo(SCREEN_CODE, 'readTheWorkspace')).toBe(3)
-    // ⚑ **The floor that keeps the three a roster rather than a coincidence**: the screen names
+    expect(callsTo(SCREEN_CODE, 'readTheWorkspace')).toBe(4)
+    // ⚑ **The floor that keeps the four a roster rather than a coincidence**: the screen names
     // the function MORE times than it calls it — the declaration is one — so the matcher is
     // narrowing rather than matching every mention.
-    expect(SCREEN_CODE.split('readTheWorkspace').length - 1).toBeGreaterThan(3)
+    expect(SCREEN_CODE.split('readTheWorkspace').length - 1).toBeGreaterThan(4)
   })
 
   /**
@@ -420,7 +423,7 @@ describe('§6 · the screen reads it on the cadence it already had, and invented
     // ⚑ `567` §5 reached the same answer from the other side and this is the renderer's half.
     // ⚑ **638 · a THIRD member**, `work` — the condition `534` set (*do not add a subject
     // nothing reads*) lapsed when `631` built the task lists that read it.
-    expect([...RUNTIME_CHANGE_SUBJECTS]).toEqual(['conversations', 'agents', 'work'])
+    expect([...RUNTIME_CHANGE_SUBJECTS]).toEqual(['conversations', 'agents', 'work', 'persons'])
   })
 
   it('⚠️ a refusal keeps the last good reading rather than assembling one here', () => {

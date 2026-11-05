@@ -751,6 +751,7 @@ import {
 // ⚑ **F097** — whose words a turn's messages are, read the same way by the fold.
 import { aPersonsOwnWords } from '../../shared/a-persons-own-words'
 import {
+  ROUTED_REQUEST_EVENT_TYPES,
   aRowADeliveryCanStart,
   eachOrSkipped,
   ledgersSkippedOf,
@@ -5023,6 +5024,30 @@ const MOVES_ITS_NAME: ReadonlySet<TranscriptEvent['type']> = new Set<TranscriptE
  * the owner by, which {@link MOVES_ITS_NAME} carries — and nor does a stall: a stalled piece is
  * still open.
  */
+/**
+ * The rows the reads of a person's queue select — their questions and cards, asks against rules,
+ * MCP server requests, and the pieces, stalls and held messages its work reads fold — so a commit
+ * holding one tells every window `persons`. ⚑ A `status` counts only when it ends the provider,
+ * as {@link aWaitReads} counts it; text, tool calls and tokens move nothing a person is asked.
+ */
+const MOVES_WHAT_A_PERSON_IS_ASKED: ReadonlySet<TranscriptEvent['type']> = new Set<
+  TranscriptEvent['type']
+>([
+  ...ROUTED_REQUEST_EVENT_TYPES,
+  ...PIECE_EVENT_TYPES,
+  ...MOVES_A_PIECE_THAT_WAITS_ON_WHO_WROTE,
+  'permission_request',
+  'user_input_request',
+  'instruction_proposed',
+  'instruction_settled',
+  'mcp_server_requested',
+  'mcp_server_request_settled',
+  'work_stall_told',
+  'work_interrupted',
+  'work_restarted',
+  'status',
+])
+
 const MOVES_ITS_GIVERS_WAIT: ReadonlySet<TranscriptEvent['type']> = new Set<
   TranscriptEvent['type']
 >(['work_given', 'work_replied', 'work_taken_back', 'work_closed'])
@@ -10619,6 +10644,15 @@ export class RuntimeHost implements LiveHost {
         return
       }
       for (const row of change.rows) this.aRowWasWritten(row.session, row)
+      if (
+        change.whole.size > 0 ||
+        change.rows.some(
+          (row) =>
+            MOVES_WHAT_A_PERSON_IS_ASKED.has(row.rowType) &&
+            (row.rowType !== 'status' || aWaitReads(row.rowType, row.state)),
+        )
+      )
+        this.theWorldMoved('persons')
       const kept = new Map<string, { resource: string }[]>()
       for (const { piece, resource } of change.kept) {
         const resources = kept.get(piece)

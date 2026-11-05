@@ -89,12 +89,14 @@ const ACTS = {
   // the brief as its first turn — and the pin is what that act announces (re-measured at D-016).
   // Each give and its stall announce work; the serial giver notice then queues and sends,
   // announcing both queue changes. Three pieces therefore produce twelve work announcements.
-  'give 3': { conversations: 3, agents: 3, work: 12 },
-  '3 replies': { work: 3 },
+  // ⚑ `persons` is announced from the store's record, once per commit holding a row the person's
+  // queue reads; the window hears each subject once per turn of the loop.
+  'give 3': { conversations: 3, agents: 3, work: 12, persons: 24 },
+  '3 replies': { work: 3, persons: 9 },
   // ⚑ **D-017** — it was *end 3*, the parent's `end_agent` on each child, and nothing ends a
   // conversation any more: the act is the STOP, the app's own close — the teardown `end_agent`
   // escalated to.
-  'stop 3': { conversations: 6 },
+  'stop 3': { conversations: 6, persons: 3 },
 } as const satisfies Record<string, Tally>
 type Act = keyof typeof ACTS
 
@@ -302,6 +304,7 @@ const ARMS: Record<RuntimeChangeSubject, readonly ('workspace' | 'forest')[]> = 
   conversations: ['workspace', 'forest'],
   work: ['forest'],
   agents: [],
+  persons: ['workspace'],
 }
 
 describe('§2 · reads per act, through `whenTheWorldMoves` and `oneReadAtATime`', () => {
@@ -326,11 +329,13 @@ describe('§2 · reads per act, through `whenTheWorldMoves` and `oneReadAtATime`
     const conversationsAt = at('    conversations: () => {', from)
     const workAt = at('    work: () => {', conversationsAt)
     const agentsAt = at('    agents: ', workAt)
-    const endAt = at('\n  })', agentsAt)
+    const personsAt = at('    persons: ', agentsAt)
+    const endAt = at('\n  })', personsAt)
     const arms: Record<RuntimeChangeSubject, string> = {
       conversations: screen.slice(conversationsAt, workAt),
       work: screen.slice(workAt, agentsAt),
-      agents: screen.slice(agentsAt, endAt),
+      agents: screen.slice(agentsAt, personsAt),
+      persons: screen.slice(personsAt, endAt),
     }
     // ⚑ **Derived from ARMS**, both ways: every reader the table lists is called in that arm, and
     // every reader it does not list is not — so the table §2 feeds cannot drift from the screen.
@@ -370,6 +375,9 @@ describe('§2 · reads per act, through `whenTheWorldMoves` and `oneReadAtATime`
             for (const one of ARMS.work) void wrapped[one]()
           },
           agents: () => {},
+          persons: () => {
+            for (const one of ARMS.persons) void wrapped[one]()
+          },
         },
         () => false,
       )

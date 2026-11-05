@@ -139,6 +139,9 @@ describe('534 · a conversation that is born while he is looking at the rail', (
       }),
       announce: (change) => {
         if (swallowing) return
+        // ⚑ `persons` is announced from the store's record of each commit, whichever host or door
+        // wrote it; this file is about the verbs' own announcements, so it is left to its own file.
+        if (change.what === 'persons') return
         said.push(change)
         // 🔴 **The host's own answer, read INSIDE the announcement.** This is what makes §2 an
         // assertion about ORDER rather than about arrival: an announcement fired before its write
@@ -555,6 +558,7 @@ describe('534 · a conversation that is born while he is looking at the rail', (
           // ⚑ **638 · the third arm.** ⛔ The rig has to carry every member or the Record does not
           // compile — which is rule 3 of `the-world-moved.ts` doing its job on this file too.
           work: () => read.push('work'),
+          persons: () => read.push('persons'),
         },
         () => closing.now,
       )

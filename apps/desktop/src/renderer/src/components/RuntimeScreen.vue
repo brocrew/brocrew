@@ -3402,6 +3402,8 @@ onMounted(() => {
       // queue, whose writers `638` did not survey, so giving it this arm would be a subject
       // claiming a population nobody measured (`534`'s own rule, and `567` §5's reading of it).
       void readTheWorkspace()
+      // ⚑ **And the person's queue**, which reads who holds each conversation and what is archived.
+      void lookForWhatIsYours()
     },
     // 🔴 **638 · the work moved somewhere in this app** — see {@link RUNTIME_CHANGE_SUBJECTS}.
     // ⛔ **The SAME reader the `conversations` arm calls**, deliberately: `631`'s two task lists and
@@ -3441,6 +3443,14 @@ onMounted(() => {
       filesLibrary.markStale()
       refreshAgents()
       void modelLists.reread()
+      // ⚑ **And the person's queue**, which names whoever asks and whoever is asked.
+      void lookForWhatIsYours()
+    },
+    // ⚑ **What a person must answer may have moved**: the queue and the rail's needs-you count are
+    // read again, once each, beside the five-second look that stays until this arm is proven.
+    persons: () => {
+      void lookForWhatIsYours()
+      void readTheWorkspace()
     },
   })
   stopHearingLimits = window.api.runtime.onLimitsDisplayChanged((message) => {
