@@ -13,6 +13,7 @@ import {
 import { printFailure, stepFailure } from '../gates/plugin-packaged/diagnostics.mjs'
 import { providerState, printProviderState } from '../gates/plugin-packaged/provider-state.mjs'
 import { unknownPluginState } from '../gates/plugin-packaged/plugin-state.mjs'
+import * as installObservation from '../gates/plugin-packaged/journey.mjs'
 import {
   matchesInspection,
   inspectCandidate,
@@ -141,6 +142,9 @@ function fixture(
     tamperEffects = false,
     unexpectedRun = false,
     tamperError,
+    tamperState = 'published',
+    tamperTransition = false,
+    tamperReply = true,
   } = {},
 ) {
   const body = source
@@ -151,7 +155,9 @@ function fixture(
     lines = [],
     errors = [],
     stopped = [],
-    files = new Map()
+    files = new Map(),
+    strictReads = [],
+    tamperObservations = []
   const originalError = new Error('HOME=/fictional TOKEN=madeup argv=private')
   let starts = 0,
     selected = false,
@@ -166,14 +172,20 @@ function fixture(
     number,
     evaluate: async (text) => {
       if (text.includes("kind:'availability'")) return { ok: true, available: true }
-      if (text.includes("kind:'inspect'"))
-        return { ok: false, detail: 'The package files do not match the selected bytes.' }
-      if (text.includes("kind:'list'"))
+      if (text.includes("kind:'inspect'")) {
+        calls.push({ tamper: 'inspect', text, role: number })
+        return tamperReply
+          ? { ok: false, detail: 'The package files do not match the selected bytes.' }
+          : { ok: false, detail: 'A different refusal is not byte verification.' }
+      }
+      if (text.includes("kind:'list'")) {
+        calls.push({ tamper: 'list', role: number })
         return {
           ok: true,
           cards:
             number === roles.tamper ? [] : [{ id: 'chrome', installed: true, state: 'Running' }],
         }
+      }
       return true
     },
     send: async () => {},
@@ -186,10 +198,32 @@ function fixture(
     emptyInstallBaseline,
     firstInstallState,
     sameInstallState,
+    sameTamperInstallState: (...args) => installObservation.sameTamperInstallState(...args),
+    observeTamperInstallState: (root, global) => {
+      if (tamperError) throw tamperError
+      if (unknownTamper) throw new Error('Unknown tamper state')
+      let kind = tamperState
+      if (tamperTransition && tamperObservations.length)
+        kind = kind === 'absent' ? 'published' : 'absent'
+      const value = { kind, root, global, identity: { dev: 1, ino: 2 } }
+      if (kind === 'published') {
+        value.snapshot = structuredClone(logical.baseline)
+        if (tamperEffects) value.snapshot.sequence = 2
+      }
+      tamperObservations.push(value)
+      return value
+    },
     observeInstallState: (_root, global) => {
+      strictReads.push(global)
       if (global.replaceAll('\\', '/').endsWith('/b')) {
         if (tamperError) throw tamperError
         if (unknownTamper) throw new Error('Unknown tamper state')
+        if (tamperState === 'absent')
+          throw Object.assign(new Error('Unpublished tamper state'), {
+            code: 'ENOENT',
+            syscall: 'lstat',
+            path: path.join(global, 'state'),
+          })
         const value = structuredClone(logical.baseline)
         if (tamperEffects) value.sequence = 2
         return value
@@ -362,9 +396,64 @@ function fixture(
     },
   }
   const journey = Function(...Object.keys(io), 'return (' + body + ')')(...Object.values(io))
-  return { run: () => journey('/fictional/root'), calls, lines, errors, stopped, files, originalError }
+  return {
+    run: () => journey('/fictional/root'),
+    calls,
+    lines,
+    errors,
+    stopped,
+    files,
+    originalError,
+    strictReads,
+    tamperObservations,
+  }
 }
 describe('packaged restart journey without a native launch', () => {
+  it('reaches exact public tamper inspection from absent state while keeping the main baseline persisted', async () => {
+    const f = fixture(undefined, { tamperState: 'absent' })
+    const summary = await f.run()
+    // At TEST the unchanged journey calls the strict reader first and fails with lstat ENOENT.
+    if (!summary.checks.tamperedArchiveRefused) {
+      expect(f.errors[0][0]).toMatchObject({
+        code: 'ENOENT',
+        syscall: 'lstat',
+        path: path.join('/fictional/root', 'b/state'),
+      })
+      expect(f.calls.filter((one) => one?.tamper)).toEqual([])
+    }
+    expect(summary.checks.tamperedArchiveRefused).toBe(true)
+    expect(summary.passed).toBe(true)
+    expect(f.calls.filter((one) => one?.tamper).map((one) => one.tamper)).toEqual([
+      'inspect',
+      'list',
+    ])
+    const inspected = f.calls.find((one) => one?.tamper === 'inspect')
+    expect(inspected.role).toBe(roles.tamper)
+    expect(inspected.text).toContain(
+      '"source":"/fictional/root/a/repo-fixture/archives/archive.tar.gz"',
+    )
+    expect(f.tamperObservations.map((value) => value.kind)).toEqual(['absent', 'absent'])
+    expect(f.strictReads.length).toBeGreaterThanOrEqual(3)
+    expect(f.strictReads.every((global) => global === path.join('/fictional/root', 'g'))).toBe(true)
+    expect(f.errors).toEqual([])
+  })
+  it('cannot credit tamper refusal after boundary transitions, unknown state or a wrong public reply', async () => {
+    for (const options of [
+      { tamperState: 'absent', tamperTransition: true },
+      { tamperState: 'published', tamperTransition: true },
+      { tamperState: 'unknown' },
+      { tamperState: 'absent', tamperReply: false },
+      { tamperState: 'published', tamperEffects: true },
+    ]) {
+      const f = fixture(undefined, options)
+      const summary = await f.run()
+      expect(summary.passed).toBe(false)
+      expect(summary.checks.tamperedArchiveRefused).toBe(false)
+      expect(summary.checks.alternateSourceAccepted).toBe(false)
+      expect(f.stopped).toEqual([roles.tamper])
+      expect(safeReport(summary)).toBe(true)
+    }
+  })
   it('accounts exactly sequence0 to sequence2 and refuses hidden replay despite byte-identical retained package data', () => {
     const { baseline, completed, proof } = logicalFixture()
     expect(emptyInstallBaseline(baseline)).toBe(baseline)

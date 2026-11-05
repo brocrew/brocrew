@@ -26,6 +26,7 @@ import {
   validateInstallSnapshot,
 } from '../gates/plugin-packaged/journey.mjs'
 import { fixtureEnvironment, removeFixture } from '../gates/plugin-packaged/prepare.mjs'
+import * as installObservation from '../gates/plugin-packaged/journey.mjs'
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const desktopRequire = createRequire(path.join(repository, 'apps/desktop/package.json'))
 const { build } = createRequire(desktopRequire.resolve('electron-vite/package.json'))('esbuild')
@@ -45,6 +46,210 @@ function scratch() {
 const read = (name) => fs.readFileSync(path.join(repository, name), 'utf8')
 // The Mac gate fixtures require POSIX ownership and descriptor paths.
 describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => {
+  it('observes an absent tamper-state boundary without creating state or changing owned data', () => {
+    const root = scratch(),
+      global = path.join(root, 'g'),
+      state = path.join(global, 'state')
+    fs.mkdirSync(global, { mode: 0o700 })
+    const marker = path.join(global, 'opaque-data')
+    fs.writeFileSync(marker, 'fictional retained bytes', { mode: 0o600 })
+    const before = fs.statSync(marker),
+      identity = fs.lstatSync(global)
+    expect(() => observeInstallState(root, global)).toThrow()
+    const first = installObservation.observeTamperInstallState(root, global)
+    expect(first).toEqual({
+      kind: 'absent',
+      root,
+      global,
+      identity: { dev: identity.dev, ino: identity.ino },
+    })
+    expect(
+      installObservation.sameTamperInstallState(
+        first,
+        installObservation.observeTamperInstallState(root, global),
+      ),
+    ).toBe(true)
+    expect(fs.existsSync(state)).toBe(false)
+    expect(fs.readdirSync(global)).toEqual(['opaque-data'])
+    expect(fs.readFileSync(marker, 'utf8')).toBe('fictional retained bytes')
+    expect(fs.statSync(marker).mtimeMs).toBe(before.mtimeMs)
+    expect(fs.statSync(marker).ino).toBe(before.ino)
+    expect(() => observeInstallState(root, global)).toThrow()
+  })
+  it('rejects invalid, linked, unsafe, parent-replaced or changing tamper-absence observations', () => {
+    const root = scratch(),
+      global = path.join(root, 'g'),
+      state = path.join(global, 'state'),
+      other = path.join(root, 'other')
+    fs.mkdirSync(global, { mode: 0o700 })
+    fs.mkdirSync(other, { mode: 0o700 })
+    expect(() =>
+      installObservation.observeTamperInstallState(root, path.join(root, 'missing')),
+    ).toThrow()
+    const linked = path.join(root, 'linked')
+    fs.symlinkSync(global, linked)
+    expect(() => installObservation.observeTamperInstallState(root, linked)).toThrow()
+    fs.chmodSync(global, 0o755)
+    try {
+      expect(() => installObservation.observeTamperInstallState(root, global)).toThrow()
+    } finally {
+      fs.chmodSync(global, 0o700)
+    }
+    fs.unlinkSync(path.join(root, 'fixture-owned'))
+    try {
+      expect(() => installObservation.observeTamperInstallState(root, global)).toThrow()
+    } finally {
+      fs.writeFileSync(path.join(root, 'fixture-owned'), 'packaged-plugin-gate\n')
+    }
+    for (const kind of ['file', 'link', 'unsafe-directory', 'empty-directory']) {
+      if (kind === 'file') fs.writeFileSync(state, 'not a directory', { mode: 0o600 })
+      else if (kind === 'link') fs.symlinkSync(other, state)
+      else {
+        fs.mkdirSync(state, { mode: 0o700 })
+        if (kind === 'unsafe-directory') fs.chmodSync(state, 0o755)
+      }
+      try {
+        expect(() => installObservation.observeTamperInstallState(root, global)).toThrow()
+      } finally {
+        fs.rmSync(state, { recursive: true, force: true })
+      }
+    }
+    const lstat = fs.lstatSync
+    for (const error of [
+      Object.assign(new Error('fictional denial'), {
+        code: 'EACCES',
+        syscall: 'lstat',
+        path: state,
+      }),
+      Object.assign(new Error('wrong missing path'), {
+        code: 'ENOENT',
+        syscall: 'lstat',
+        path: other,
+      }),
+      Object.assign(new Error('wrong missing syscall'), {
+        code: 'ENOENT',
+        syscall: 'open',
+        path: state,
+      }),
+    ]) {
+      const denied = vi.spyOn(fs, 'lstatSync').mockImplementation((...args) => {
+        if (args[0] === state) throw error
+        return lstat(...args)
+      })
+      try {
+        expect(() => installObservation.observeTamperInstallState(root, global)).toThrow(error)
+      } finally {
+        denied.mockRestore()
+      }
+    }
+    let stateReads = 0
+    const appearing = vi.spyOn(fs, 'lstatSync').mockImplementation((...args) => {
+      if (args[0] === state && ++stateReads === 2) fs.mkdirSync(state, { mode: 0o700 })
+      return lstat(...args)
+    })
+    try {
+      expect(() => installObservation.observeTamperInstallState(root, global)).toThrow()
+      expect(stateReads).toBe(2)
+    } finally {
+      appearing.mockRestore()
+      fs.rmSync(state, { recursive: true, force: true })
+    }
+    let replaced = false
+    const replacing = vi.spyOn(fs, 'lstatSync').mockImplementation((...args) => {
+      if (args[0] === state && !replaced) {
+        replaced = true
+        fs.renameSync(global, global + '-original')
+        fs.mkdirSync(global, { mode: 0o700 })
+      }
+      return lstat(...args)
+    })
+    try {
+      expect(() => installObservation.observeTamperInstallState(root, global)).toThrow()
+      expect(replaced).toBe(true)
+    } finally {
+      replacing.mockRestore()
+    }
+  })
+  it('rejects absent/published transitions and retains strict published-state and disappearance validation', () => {
+    const root = scratch(),
+      global = path.join(root, 'g'),
+      state = path.join(global, 'state'),
+      snapshots = path.join(state, 'snapshots'),
+      file = path.join(snapshots, '0000000000000000-cr.json')
+    fs.mkdirSync(global, { mode: 0o700 })
+    const absent = installObservation.observeTamperInstallState(root, global)
+    fs.mkdirSync(snapshots, { recursive: true, mode: 0o700 })
+    const baseline = {
+      format: 2,
+      rootId: '11111111-1111-4111-8111-111111111111',
+      epoch: '22222222-2222-4222-8222-222222222222',
+      sequence: 0,
+      installations: [],
+      active: [],
+      recentOperations: [],
+      pending: null,
+      projections: [],
+      workspaceEnabled: [],
+      workspaceTitlesEnabled: [],
+    }
+    const bytes = JSON.stringify(baseline)
+    fs.writeFileSync(file, bytes, { mode: 0o600 })
+    const published = installObservation.observeTamperInstallState(root, global)
+    expect(published).toEqual({ ...absent, kind: 'published', snapshot: baseline })
+    expect(
+      installObservation.sameTamperInstallState(
+        published,
+        installObservation.observeTamperInstallState(root, global),
+      ),
+    ).toBe(true)
+    for (const [before, after] of [
+      [absent, published],
+      [published, absent],
+    ])
+      expect(() => installObservation.sameTamperInstallState(before, after)).toThrow()
+    for (const bad of [
+      undefined,
+      null,
+      { kind: 'absent' },
+      { ...absent, extra: true },
+      { ...absent, kind: 'unknown' },
+      { ...absent, identity: { ...absent.identity, ino: absent.identity.ino + 1 } },
+      { ...published, snapshot: { ...baseline, rootId: '33333333-3333-4333-8333-333333333333' } },
+      { ...published, snapshot: { ...baseline, epoch: '33333333-3333-4333-8333-333333333333' } },
+    ])
+      expect(() => installObservation.sameTamperInstallState(published, bad)).toThrow()
+    for (const bad of [
+      '{',
+      bytes.replace('"sequence":0', '"sequence":0,"sequence":0'),
+      Buffer.alloc(1024 * 1024 + 1),
+      JSON.stringify({ ...baseline, sequence: 1 }),
+      JSON.stringify({ ...baseline, installations: [{}] }),
+      JSON.stringify({ ...baseline, pending: {} }),
+    ]) {
+      fs.writeFileSync(file, bad)
+      expect(() => installObservation.observeTamperInstallState(root, global)).toThrow()
+    }
+    fs.writeFileSync(file, bytes, { mode: 0o600 })
+    const open = fs.openSync
+    const disappearing = vi.spyOn(fs, 'openSync').mockImplementation((...args) => {
+      if (args[0] === file) fs.unlinkSync(file)
+      return open(...args)
+    })
+    try {
+      expect(() => installObservation.observeTamperInstallState(root, global)).toThrow()
+    } finally {
+      disappearing.mockRestore()
+    }
+    expect(() => observeInstallState(root, global)).toThrow()
+    expect(() => installObservation.observeTamperInstallState(root, global)).toThrow()
+    fs.rmSync(state, { recursive: true })
+    expect(() =>
+      installObservation.sameTamperInstallState(
+        published,
+        installObservation.observeTamperInstallState(root, global),
+      ),
+    ).toThrow()
+  })
   it('requires real owned stable format2 bytes, rejecting missing, linked, duplicate-key, malformed, oversized and changing observations', () => {
     const root = fs.realpathSync(
       fs.mkdtempSync(path.join(os.tmpdir(), 'fictional-install-observation-')),
