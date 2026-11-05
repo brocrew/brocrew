@@ -7876,6 +7876,19 @@ export class RuntimeHost implements LiveHost {
    * until seeded.
    */
   private routedTo: Map<string, Set<string>> | null = null
+  /**
+   * The listing's version: advanced by every commit a reader can see and by every live fact the
+   * listing reads — a state, a slot, what is archived, a provider's limits, the services list — so
+   * a composition kept at one version is the answer at that version ({@link theListing}).
+   */
+  private listingVersion = 0
+  private listingKept:
+    | {
+        readonly at: number
+        readonly resumable: ResumableSessionInfo[]
+        readonly unresumable: UnresumableSessionInfo[]
+      }
+    | undefined
   /** Stops {@link heardACommit} being called, once this host closes. */
   private stopHearingCommits: () => void = () => undefined
 
@@ -7939,6 +7952,7 @@ export class RuntimeHost implements LiveHost {
     this.refreshWorkerReadings()
   }
   private refreshWorkerReadings(recheck = false): void {
+    this.listingVersion++
     if (recheck) this.workerTerminals.clear()
     const read = this.keptProfileExecution
     if (!read.readable) {
@@ -10498,6 +10512,7 @@ export class RuntimeHost implements LiveHost {
    */
   private theWorldMoved(what: RuntimeChangeMessage['what']): void {
     this.linkAnswers.invalidate()
+    this.listingVersion++
     // ⚑ **D-019 · the roster names whoever a question waits on** (*waiting on an answer from Ada*) —
     // ⚑ and D-036 whoever holds work given out (*waiting on <name>*) — asked here, where every
     // roster change is announced, rather than at each of its sites.
@@ -10528,6 +10543,7 @@ export class RuntimeHost implements LiveHost {
    */
   private stateMayHaveMoved(conversation: string): void {
     this.linkAnswers.invalidate()
+    this.listingVersion++
     this.aServiceMayTakeItsNext(conversation)
     if (this.deps.statesMoved === undefined) return
     const countdown = this.idleCountdowns.get(conversation)
@@ -10640,9 +10656,18 @@ export class RuntimeHost implements LiveHost {
   private heardACommit(change: Committed): void {
     try {
       if (change.resync) {
+        this.listingVersion++
         this.everyKeptReadingIsStale()
         return
       }
+      // A rebuild's batches change nothing a reader of the active ledger sees.
+      if (
+        change.rows.length > 0 ||
+        change.whole.size > 0 ||
+        change.kept.length > 0 ||
+        change.tables.size > 0
+      )
+        this.listingVersion++
       for (const row of change.rows) this.aRowWasWritten(row.session, row)
       if (
         change.whole.size > 0 ||
@@ -11138,10 +11163,12 @@ export class RuntimeHost implements LiveHost {
     if (!kept.owned) {
       this.profileExecution = read
       this.profileExecutionConflicts = [...new Set([...settled.conflicts, ...settled.moved])]
+      this.listingVersion++
       return
     }
     this.profileExecution = { readable: true, kept: settled.kept }
     this.profileExecutionConflicts = settled.conflicts
+    this.listingVersion++
     if (!settled.changed) return
     try {
       kept.write(settled.kept)
@@ -20092,6 +20119,7 @@ export class RuntimeHost implements LiveHost {
   }
 
   private publishProviderLimitFactsSoon(conversation?: string): void {
+    this.listingVersion++
     if (conversation === undefined) this.providerLimitsAllMoved = true
     else this.providerLimitsMoved.add(conversation)
     if (this.providerLimitsPublicationAsked || this.launches.closed) return
@@ -36928,6 +36956,7 @@ export class RuntimeHost implements LiveHost {
     }
     try {
       this.archived.add(tree, this.now())
+      this.listingVersion++
     } catch (error) {
       return { done: false, refusal: errorMessage(error) }
     }
@@ -36978,6 +37007,7 @@ export class RuntimeHost implements LiveHost {
     }
     try {
       this.archived.remove(archived)
+      this.listingVersion++
     } catch (error) {
       return { done: false, refusal: errorMessage(error) }
     }
@@ -37064,6 +37094,7 @@ export class RuntimeHost implements LiveHost {
       archived.map((conversation) => [conversation, this.archived.archivedAt(conversation) ?? 0]),
     )
     this.archived.remove(archived)
+    this.listingVersion++
     const cause =
       this.whatBringsItBack.get(sessionId) ?? (sink === null ? 'it was started' : 'you opened it')
     this.whatBringsItBack.delete(sessionId)
@@ -37089,6 +37120,7 @@ export class RuntimeHost implements LiveHost {
     this.bringingBack.delete(sessionId)
     try {
       for (const [conversation, at] of back.archivedAt) this.archived.add([conversation], at)
+      this.listingVersion++
     } catch (error) {
       console.warn(
         `runtime host could not put ${sessionId} back in the archive after its start failed: ${errorMessage(error)}`,
@@ -37447,6 +37479,7 @@ export class RuntimeHost implements LiveHost {
       }
       try {
         this.archived.remove(tree)
+        this.listingVersion++
       } catch (error) {
         console.warn(
           `runtime host could not take deleted conversations out of the archive: ${errorMessage(error)}`,
@@ -37552,6 +37585,7 @@ export class RuntimeHost implements LiveHost {
     for (const id of ids) {
       this.providerLimitFacts.forget(id)
       this.providerLimitLives.delete(id)
+      this.listingVersion++
       this.providerBlockSaid.delete(id)
       this.forgetItsWakeUp(id)
       const countdown = this.idleCountdowns.get(id)
@@ -37576,9 +37610,34 @@ export class RuntimeHost implements LiveHost {
    * describe one conversation's parentage differently — which is the disagreement `116` §5 found.
    */
   resumableSessions(): ResumableSessionInfo[] {
+    return this.theListing().resumable
+  }
+
+  /**
+   * Both halves of the listing, composed once at the listing's version and shared by every caller
+   * until anything it reads moves ({@link listingVersion}): a commit — another connection's
+   * included, checked first — or a live fact. A composition that moved its own inputs is not kept.
+   */
+  private theListing(): NonNullable<RuntimeHost['listingKept']> {
     this.deps.store.checkCommitted()
     this.prepareInitialProviderLimitFacts()
+    const kept = this.listingKept
+    if (kept !== undefined && kept.at === this.listingVersion) return kept
+    const at = this.listingVersion
     const { stateOf, itsWork } = this.oneReadPerListing()
+    const composed = {
+      at,
+      resumable: this.resumableHalf(stateOf, itsWork),
+      unresumable: this.unresumableHalf(stateOf, itsWork),
+    }
+    this.listingKept = this.listingVersion === at ? composed : undefined
+    return composed
+  }
+
+  private resumableHalf(
+    stateOf: ReturnType<RuntimeHost['oneReadPerListing']>['stateOf'],
+    itsWork: ReturnType<RuntimeHost['oneReadPerListing']>['itsWork'],
+  ): ResumableSessionInfo[] {
     const shown = this.deps.store
       .resumable()
       .filter(({ sessionId }) => !this.archived.has(sessionId))
@@ -37747,11 +37806,16 @@ export class RuntimeHost implements LiveHost {
    * it go?" deserves an answer even when the answer is "it never got far enough to come back".
    */
   unresumableSessions(): UnresumableSessionInfo[] {
-    this.prepareInitialProviderLimitFacts()
+    return this.theListing().unresumable
+  }
+
+  private unresumableHalf(
+    stateOf: ReturnType<RuntimeHost['oneReadPerListing']>['stateOf'],
+    itsWork: ReturnType<RuntimeHost['oneReadPerListing']>['itsWork'],
+  ): UnresumableSessionInfo[] {
     // ⚑ **Both halves carry it** (421), for the reason the wire shape states: a live Claude session
     // is in THIS list for the whole of its first turn, because it has no `external_ref` until the
     // provider's init arrives.
-    const { stateOf, itsWork } = this.oneReadPerListing()
     const shown = this.deps.store
       .unresumable()
       .filter(({ sessionId }) => !this.archived.has(sessionId))
@@ -45273,6 +45337,7 @@ export class RuntimeHost implements LiveHost {
     if (this.deps.turnsTheAppCut !== undefined) void this.identityOf(session)
     const life = {}
     this.providerLimitLives.set(id, { provider, life })
+    this.listingVersion++
     this.providerLimitFacts.begin(
       id,
       life,
