@@ -135,7 +135,7 @@ function genericPackage(id: string) {
   }
 }
 
-async function setup() {
+async function setup(expectUnmarkedDrain = false) {
   const packages = new Map([
     [A, genericPackage(A)],
     [B, genericPackage(B)],
@@ -197,7 +197,13 @@ async function setup() {
   const state: Fixture['state'] = f.state
   await f.controller.detach(f.handle)
   const controller = sharedLifecycleWorkspaces(f.controller)
-  closers.push(() => controller.drain())
+  closers.push(async () => {
+    const draining = controller.drain()
+    if (expectUnmarkedDrain) {
+      await expect(draining).rejects.toMatchObject({ code: 'cleanup-pending' })
+      expect(controller.cleanForShutdown()).toBe(false)
+    } else await draining
+  })
   async function attach(sink: WorkspaceProjection) {
     // Register eventual handles before racing a deadline, so a delayed attachment is cleaned up.
     return bounded(
@@ -410,6 +416,7 @@ async function setup() {
   return {
     f,
     controller,
+    bridge,
     person,
     other,
     otherPerson,
@@ -765,43 +772,84 @@ it.each(modes.flatMap((mode) => (['reconcile', 'applied'] as const).map((ack) =>
   20000,
 )
 
-it('returns a fresh handle and drains while every positive consumer acknowledgement is stalled', async () => {
-  const h = await setup()
-  const fresh = projection()
-  const release = deferred<void>()
-  releases.push(() => release.resolve())
-  const entered = new Set<string>()
-  const reconcile = vi.fn(async (change: Parameters<WorkspaceProjection['reconcile']>[0]) => {
-    if (change.receipt) {
-      entered.add(change.pluginId)
-      await release.promise
+it.each(['trusted', 'unmarked'] as const)(
+  'returns a fresh handle and drains while every positive consumer acknowledgement is stalled (%s)',
+  async (mode) => {
+    const h = await setup(mode === 'unmarked')
+    const fresh = projection()
+    const release = deferred<void>()
+    releases.push(() => release.resolve())
+    const entered = new Set<string>()
+    const reconcile = vi.fn(async (change: Parameters<WorkspaceProjection['reconcile']>[0]) => {
+      if (change.receipt) {
+        entered.add(change.pluginId)
+        await release.promise
+      }
+      await fresh.sink.reconcile(change)
+    })
+    const applied = vi.fn(fresh.sink.applied)
+    const writes = vi.spyOn(h.f.state, 'recordProjection')
+    const handle = await h.attach({ ...fresh.sink, reconcile, applied })
+    await vi.waitFor(() => expect([...entered].sort()).toEqual([A, B]))
+    expect(h.controller.consumerBindings(handle).map((one) => one.state)).toEqual([
+      'pending',
+      'pending',
+    ])
+    expect(h.controller.agentAttachments(fresh.sink.workspaceId)).toEqual([])
+    expect(() => h.controller.screen(handle, A)).toThrow()
+    expect(() => h.controller.screen(handle, B)).toThrow()
+    if (mode === 'trusted') {
+      const agentClosing = h.bridge.close()
+      h.controller.consumersEnded()
+      await expect(
+        bounded(
+          Promise.all([h.controller.drain(), agentClosing]),
+          'trusted drain without consumer replies',
+        ),
+      ).resolves.toEqual([undefined, undefined])
+      expect(h.controller.cleanForShutdown()).toBe(true)
+      expect(() => h.controller.hostWorkspace(handle)).toThrow()
+    } else {
+      await expect(
+        bounded(h.controller.drain(), 'unmarked drain without consumer replies'),
+      ).rejects.toMatchObject({ code: 'cleanup-pending' })
+      expect(h.controller.cleanForShutdown()).toBe(false)
+      expect((await h.controller.status()).cleanupPending).toEqual([A, B])
+      expect(h.controller.hostWorkspace(handle)).toBe(fresh.sink.workspaceId)
     }
-    await fresh.sink.reconcile(change)
-  })
-  const applied = vi.fn(fresh.sink.applied)
-  const writes = vi.spyOn(h.f.state, 'recordProjection')
-  const handle = await h.attach({ ...fresh.sink, reconcile, applied })
-  await vi.waitFor(() => expect([...entered].sort()).toEqual([A, B]))
-  expect(h.controller.consumerBindings(handle).map((one) => one.state)).toEqual([
-    'pending',
-    'pending',
-  ])
-  expect(h.controller.agentAttachments(fresh.sink.workspaceId)).toEqual([])
-  expect(() => h.controller.screen(handle, A)).toThrow()
-  expect(() => h.controller.screen(handle, B)).toThrow()
-  await expect(
-    bounded(h.controller.drain(), 'drain without consumer replies'),
-  ).resolves.toBeUndefined()
-  const calls = applied.mock.calls.length
-  release.resolve()
-  await new Promise((resolve) => setImmediate(resolve))
-  expect(applied).toHaveBeenCalledTimes(calls)
-  expect(applied.mock.calls.some(([, receipt]) => receipt !== null)).toBe(false)
-  expect(writes.mock.calls.filter(([workspace]) => workspace === fresh.sink.workspaceId)).toEqual(
-    [],
-  )
-  expect(h.controller.agentAttachments(fresh.sink.workspaceId)).toEqual([])
-}, 15000)
+    for (const id of [A, B]) {
+      expect(h.controller.admitted(handle, id, h.f.state.currentInstallation(id)!.installId)).toBe(
+        false,
+      )
+      expect(() => h.controller.contributions(handle, id)).toThrow()
+    }
+    const calls = applied.mock.calls.length
+    release.resolve()
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(applied).toHaveBeenCalledTimes(calls)
+    expect(applied.mock.calls.some(([, receipt]) => receipt !== null)).toBe(false)
+    expect(writes.mock.calls.filter(([workspace]) => workspace === fresh.sink.workspaceId)).toEqual(
+      [],
+    )
+    expect(h.controller.agentAttachments(fresh.sink.workspaceId)).toEqual([])
+    for (const id of [A, B]) {
+      expect(h.controller.admitted(handle, id, h.f.state.currentInstallation(id)!.installId)).toBe(
+        false,
+      )
+      expect(() => h.controller.contributions(handle, id)).toThrow()
+    }
+    if (mode === 'trusted') {
+      expect(h.controller.cleanForShutdown()).toBe(true)
+      expect(() => h.controller.hostWorkspace(handle)).toThrow()
+      expect((await h.controller.status()).cleanupPending).toEqual([])
+    } else {
+      expect(h.controller.cleanForShutdown()).toBe(false)
+      expect((await h.controller.status()).cleanupPending).toEqual([A, B])
+      expect(h.controller.hostWorkspace(handle)).toBe(fresh.sink.workspaceId)
+    }
+  },
+  15000,
+)
 
 it('keeps a contribution handle stable within one consumer and distinct from healthy peers', async () => {
   const h = await setup()
