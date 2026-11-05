@@ -12,7 +12,11 @@ import { pluginSha256 } from '../package-digests'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { createRepoAwarePluginVerifier, type VerifiedPluginPackage } from '../package-verifier'
+import {
+  createRepoAwarePluginVerifier,
+  verifiedPluginDigest,
+  type VerifiedPluginPackage,
+} from '../package-verifier'
 import { PluginSupervisorError } from '../supervisor/protocol'
 import { downloadPluginArchive } from './download'
 import { LifecycleEffects, type Effect } from './files'
@@ -153,6 +157,8 @@ export class PluginLifecycleController {
   >()
   private readonly toolRestartBlocks = new Map<string, symbol>()
   private readonly packageNames = new Map<string, string>()
+  private readonly removalPolicies = new Map<string, boolean>()
+  private readonly removalPolicyReads = new Map<string, Promise<void>>()
   private readonly attempted = new Set<string>()
   private readonly localOperations = new Set<string>()
   private readonly admittedCatalogues = new Map<string, readonly string[]>()
@@ -691,6 +697,52 @@ export class PluginLifecycleController {
       committed.matchesProjection(committed.projection(workspaceId, id), workspaceId)
     )
   }
+  private removalKey(install: Installation): string {
+    return JSON.stringify([
+      install.pluginId,
+      install.release.archiveSha256,
+      install.release.manifestSha256,
+    ])
+  }
+  private removalPolicy(install: Installation): boolean | undefined {
+    const key = this.removalKey(install)
+    const running = this.runs.get(install.pluginId)
+    if (
+      running?.installId === install.installId &&
+      verifiedPluginDigest(running.package) === install.release.archiveSha256
+    ) {
+      const removes = running.package.contract.lifecycle.dataOnRemove === 'remove'
+      this.removalPolicies.set(key, removes)
+      return removes
+    }
+    if (this.removalPolicies.has(key)) return this.removalPolicies.get(key)
+    if (this.removalPolicyReads.has(key) || this.effectQueue.signal.aborted) return undefined
+    const work: Promise<void> = Promise.resolve()
+      .then(async () => {
+        if (this.effectQueue.signal.aborted) return
+        const checked = await this.vault.load(this.descriptor(install), [])
+        if (this.effectQueue.signal.aborted) return
+        const active = this.options.state.readView().currentInstallation(install.pluginId)
+        if (
+          !active ||
+          active.installId !== install.installId ||
+          active.incarnation !== install.incarnation ||
+          this.removalKey(active) !== key
+        )
+          return
+        this.removalPolicies.set(key, checked.contract.lifecycle.dataOnRemove === 'remove')
+        for (const workspace of this.workspaces.values())
+          if (workspace.live) this.bindingChanged(workspace)
+      })
+      .catch(() => {
+        // Missing metadata stays unknown; a later status request can try again.
+      })
+      .finally(() => {
+        if (this.removalPolicyReads.get(key) === work) this.removalPolicyReads.delete(key)
+      })
+    this.removalPolicyReads.set(key, work)
+    return undefined
+  }
   async status(): Promise<{ cards: PluginCard[]; cleanupPending: string[] }> {
     let unfinished: Unfinished | undefined
     const read = await Promise.resolve().then(async () => {
@@ -713,10 +765,9 @@ export class PluginLifecycleController {
           return {
             id,
             name,
-            uninstallDeletesData:
-              this.runs.get(id)?.package.manifest.format === 3
-                ? this.runs.get(id)!.package.contract.lifecycle.dataOnRemove === 'remove'
-                : Boolean(pluginAdapter(id)?.uninstall),
+            ...(active && this.removalPolicy(active) !== undefined
+              ? { uninstallDeletesData: this.removalPolicies.get(this.removalKey(active))! }
+              : {}),
             ...(active ? { installedVersion: active.release.version } : {}),
             ...(active &&
             release &&
