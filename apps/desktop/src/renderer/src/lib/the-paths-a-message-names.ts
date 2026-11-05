@@ -167,11 +167,18 @@ export const COPY_ATTRIBUTE = 'data-message-path-copy'
 const icon = (fragment: string): string =>
   `<svg class="icon" aria-hidden="true"><use href="${fragment}"></use></svg>`
 
+/** A rendered label keeps its destination available on hover and to assistive technology. */
+function pathText(display: string, absolute: string, label?: string): string {
+  return label === undefined
+    ? `<span class="message-path-text" data-cy="message-path-text" title="${absolute}">${display}</span>`
+    : `<span class="message-path-label" role="group" title="${absolute}" aria-label="${absolute}">${label}</span>`
+}
+
 /** The path as text a person can read and select, then its Copy control. Values arrive escaped. */
-function pathAndCopy(kind: string, display: string, absolute: string): string {
+function pathAndCopy(kind: string, display: string, absolute: string, label?: string): string {
   return (
     `<span class="message-path" data-kind="${kind}">` +
-    `<span class="message-path-text" data-cy="message-path-text" title="${absolute}">${display}</span>` +
+    pathText(display, absolute, label) +
     `<button type="button" class="message-path-icon" data-cy="message-path-copy" ` +
     `${COPY_ATTRIBUTE}="${absolute}" title="Copy path" aria-label="Copy path">${icon('#i-copy')}</button>`
   )
@@ -185,11 +192,12 @@ export function pathMarkup(
   found: FoundMessagePath,
   words: PathWords,
   display: string = found.text,
+  label?: string,
 ): string {
   const opens = words.canOpen && found.opens
   const name = opens ? 'Open file' : escaped(`Show in ${words.fileManager}`)
   return (
-    pathAndCopy(found.kind, escaped(display), escaped(found.absolute)) +
+    pathAndCopy(found.kind, escaped(display), escaped(found.absolute), label) +
     `<button type="button" class="message-path-icon" data-cy="message-path" ` +
     `${PATH_ATTRIBUTE}="${escaped(found.text)}" data-opens="${opens ? 'true' : 'false'}" ` +
     `title="${name}" aria-label="${name}">${icon(opens ? '#i-open' : '#i-folder')}</button></span>`
@@ -197,19 +205,16 @@ export function pathMarkup(
 }
 
 /** A path main has not answered for yet: its text only, until the icons can say what they do. */
-function pendingPathMarkup(path: string): string {
+function pendingPathMarkup(path: string, label?: string): string {
   const said = escaped(path)
-  return (
-    `<span class="message-path" data-kind="file">` +
-    `<span class="message-path-text" data-cy="message-path-text" title="${said}">${said}</span></span>`
-  )
+  return `<span class="message-path" data-kind="file">` + pathText(said, said, label) + `</span>`
 }
 
 /** A network share: main never reads one, so Open stays off and says why. */
-function networkPathMarkup(path: string): string {
+function networkPathMarkup(path: string, label?: string): string {
   const said = escaped(path)
   return (
-    pathAndCopy('file', said, said) +
+    pathAndCopy('file', said, said, label) +
     `<button type="button" class="message-path-icon" data-cy="message-path-network" ` +
     `aria-disabled="true" title="Network paths can't be opened here." aria-label="Open file">` +
     `${icon('#i-open')}</button></span>`
@@ -342,7 +347,7 @@ function localSlotsIn(html: string, links: readonly LocalLink[]): string {
   return out
 }
 
-/** Controls carry the destination and display main's resolved path, never the link's label. */
+/** Labels name local links; their controls keep the destination. */
 function markLocalLinksIn(
   html: string,
   links: readonly LocalLink[],
@@ -353,18 +358,15 @@ function markLocalLinksIn(
   links.forEach((link, index) => {
     const network = isNetworkPath(link.path)
     const answer = network ? undefined : known(link.path)
-    const label = link.label.trim()
-    const sameAsPath = label === '' || unescaped(label) === link.path
-    const caption = sameAsPath ? '' : `<span class="message-path-label">${link.label}</span> `
+    const caption = link.label.trim() === '' ? undefined : link.label
     out = out.replace(localSlot(index), () =>
       network
-        ? caption + networkPathMarkup(link.path)
+        ? networkPathMarkup(link.path, caption)
         : answer === undefined
-          ? caption + pendingPathMarkup(link.path)
-          : caption +
-            (answer.found
-              ? pathMarkup(answer, words, answer.absolute)
-              : `<span title="${escaped(link.path)}">${escaped(link.path)}</span>`),
+          ? pendingPathMarkup(link.path, caption)
+          : answer.found
+            ? pathMarkup(answer, words, answer.absolute, caption)
+            : pathText(escaped(link.path), escaped(link.path), caption),
     )
   })
   return out

@@ -37,11 +37,21 @@ describe.each(['classic', 'crew-night', 'synthwave'] as const)(
       const paths: PathsHere = {
         sessionId: 'sess_glint',
         words: { canOpen: true, fileManager: 'Finder' },
-        known: (text) => ({ text, found: true, absolute: text, name: text, kind: 'file', opens: true }),
+        known: (text) => ({
+          text,
+          found: true,
+          absolute: text,
+          name: text,
+          kind: 'file',
+          opens: true,
+        }),
         ask: vi.fn(),
         press,
       }
-      const m = mount(MarkdownWords, { text: `Read [the **notes**](${path}); then ${bare}.`, paths })
+      const m = mount(MarkdownWords, {
+        text: `Read [the **notes**](${path}); then ${bare}.`,
+        paths,
+      })
       const words = m.host.querySelector<HTMLElement>('.md-chat')!
       expect(words.textContent).toBe(`Read the notes; then ${bare}.`)
       const label = words.querySelector<HTMLElement>('.message-path-label')!
@@ -212,6 +222,10 @@ describe.each(['classic', 'crew-night', 'synthwave'] as const)(
           expect(words.querySelectorAll('ul > li')).toHaveLength(2)
           expect(words.querySelector('code')?.textContent).toBe('draft_id')
           expect(words.textContent).toContain('the draft')
+          expect(words.textContent).not.toContain('/work/sample/notes.md')
+          const label = words.querySelector<HTMLElement>('.message-path-label')!
+          expect(label.title).toBe('/work/sample/notes.md')
+          expect(label.getAttribute('aria-label')).toBe('/work/sample/notes.md')
           expect(words.textContent).not.toContain('**')
           await expect.poll(() => words.querySelectorAll('[aria-label="Open file"]').length).toBe(1)
           expect(words.querySelectorAll('[aria-label="Copy path"]')).toHaveLength(1)
