@@ -464,6 +464,8 @@ describe.each(['claude', 'codex'] as const)(
       const words = w.sent().find((text) => text.includes(held))!
       expect(words).toContain('Canonical fictional recipe')
       expect(words).not.toContain('Untrusted plugin prose')
+      expect(words).toContain('Sent by')
+      expect(words).toContain('Suggested file titles')
       expect(words.indexOf('Sent by')).toBeLessThan(words.indexOf('Suggested file titles'))
       expect(w.started.filter((one) => one.pluginId === 'fictional-bakery')).toHaveLength(1)
       expect(w.started.filter((one) => one.pluginId === 'fictional-list')).toHaveLength(0)
@@ -598,6 +600,8 @@ describe.each(['claude', 'codex'] as const)(
       const originalEnvelopes = w.sent().filter((text) => text.includes(D1_ORIGINAL))
       expect(originalEnvelopes).toHaveLength(1)
       expect(originalEnvelopes[0]).toContain('Canonical fictional recipe')
+      expect(originalEnvelopes[0]).toContain('Sent by')
+      expect(originalEnvelopes[0]).toContain('Suggested file titles')
       expect(originalEnvelopes[0]!.indexOf('Sent by')).toBeLessThan(
         originalEnvelopes[0]!.indexOf('Suggested file titles'),
       )
@@ -820,6 +824,8 @@ describe.each(['claude', 'codex'] as const)(
       const batch = w.sent().find((text) => text.includes('Second fictional held words.'))!
       expect(batch).toContain('First fictional held words.')
       expect(batch.match(/Suggested file titles/g)).toHaveLength(1)
+      expect(batch).toContain('Sent by')
+      expect(batch).toContain('Suggested file titles')
       expect(batch.indexOf('Sent by')).toBeLessThan(batch.indexOf('Suggested file titles'))
       expect(w.seen).toHaveLength(before + 1)
       expect(w.seen.at(-1)!.context.candidates).toEqual([
@@ -892,6 +898,8 @@ describe.each(['claude', 'codex'] as const)(
         expect(w.sent()).toHaveLength(1)
         expect(w.sent()[0]).toContain('$fictional')
         expect(w.sent()[0]).toContain('Canonical fictional recipe')
+        expect(w.sent()[0]).toContain('Sent by')
+        expect(w.sent()[0]).toContain('Suggested file titles')
         expect(w.sent()[0]!.indexOf('Sent by')).toBeLessThan(
           w.sent()[0]!.indexOf('Suggested file titles'),
         )
