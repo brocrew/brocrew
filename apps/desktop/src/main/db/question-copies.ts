@@ -86,11 +86,29 @@ END`,
 export const HAND_WRITTEN_OBJECTS: readonly {
   readonly type: 'index' | 'trigger'
   readonly name: string
+  /** It enforces a rule (a unique partial index, a guard trigger), rather than speeding reads. */
+  readonly guards: boolean
 }[] = [
-  { type: 'index', name: 'events_kind_owner_idx' },
-  { type: 'index', name: 'events_work_piece_idx' },
-  { type: 'trigger', name: 'skill_version_no_update' },
-  { type: 'trigger', name: 'skill_version_no_delete' },
+  { type: 'index', name: 'events_kind_owner_idx', guards: false },
+  { type: 'index', name: 'events_work_piece_idx', guards: false },
+  { type: 'index', name: 'events_error_idx', guards: false },
+  { type: 'index', name: 'events_fold_idx', guards: false },
+  { type: 'index', name: 'events_human_final_idx', guards: false },
+  { type: 'index', name: 'events_human_prompt_idx', guards: false },
+  { type: 'index', name: 'events_instruction_ask_idx', guards: false },
+  { type: 'index', name: 'events_inventory_idx', guards: false },
+  { type: 'index', name: 'events_mcp_request_idx', guards: false },
+  { type: 'index', name: 'events_provider_clear_idx', guards: false },
+  { type: 'index', name: 'events_request_routed_idx', guards: false },
+  { type: 'index', name: 'events_turn_opening_idx', guards: false },
+  { type: 'index', name: 'events_work_idx', guards: false },
+  { type: 'index', name: 'identity_memory_amendment_one_pending_uq', guards: true },
+  { type: 'index', name: 'identity_method_change_pending_uq', guards: true },
+  { type: 'index', name: 'work_one_root_per_conversation_uq', guards: true },
+  { type: 'index', name: 'work_parent_number_uq', guards: true },
+  { type: 'index', name: 'work_root_number_uq', guards: true },
+  { type: 'trigger', name: 'skill_version_no_update', guards: true },
+  { type: 'trigger', name: 'skill_version_no_delete', guards: true },
 ]
 
 const present = (db: AppDatabase, type: string, name: string): boolean =>
@@ -119,6 +137,17 @@ export function ensureQuestionCopies(
     )
     for (const name of missing) db.exec(QUESTION_COPY_TRIGGERS[name]!)
     if (missing.length > 0) restart.run()
+    // A fill said done over a copy table that lost every row, while the ledger holds a keyed
+    // question, starts again. Both reads stop at their first row.
+    const lostEveryCopy = db
+      .prepare(
+        `SELECT (SELECT done FROM question_copy_progress WHERE id = 1) = 1
+            AND NOT EXISTS (SELECT 1 FROM question_copy)
+            AND EXISTS (SELECT 1 FROM events WHERE type = 'question_asked' AND ${key('events')} IS NOT NULL)
+            AS lost`,
+      )
+      .get() as { lost: number }
+    if (lostEveryCopy.lost === 1) restart.run()
     if (!present(db, 'index', INDEX)) {
       const empty = db
         .prepare('SELECT NOT EXISTS (SELECT 1 FROM question_copy) AS empty')
@@ -136,7 +165,11 @@ export function ensureQuestionCopies(
   })()
   for (const one of HAND_WRITTEN_OBJECTS)
     if (!present(db, one.type, one.name))
-      warn(`database: ${one.type} ${one.name} is missing; reads that use it take the slower way`)
+      warn(
+        one.guards
+          ? `database: ${one.type} ${one.name} is missing; the rule it enforces is not enforced until a migration restores it`
+          : `database: ${one.type} ${one.name} is missing; reads that use it take the slower way`,
+      )
 }
 
 /** Whether readers may use the copies: the fill is done and the index is there. */
