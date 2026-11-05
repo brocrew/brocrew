@@ -178,7 +178,6 @@ export async function disclosureFixture(
       target: f.opts.target,
       catalogue: ownerOptions.catalogue,
       projection: projection().sink,
-      propose() {},
       download,
     }
     const client = await connectPluginSettings(input)

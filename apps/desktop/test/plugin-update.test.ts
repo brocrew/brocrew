@@ -16,7 +16,7 @@ import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-cl
 import { pluginSha256 } from '../src/main/plugins/package-digests'
 import { sharedLifecycleWorkspaces } from '../src/main/plugins/lifecycle/workspaces'
 import { LifecycleEffects } from '../src/main/plugins/lifecycle/files'
-import { PluginProfileLedger as HistoricalLedger } from './fixtures/plugin-delete-parent/profile-ledger'
+import { PluginProfileLedger as HistoricalLedger } from './fixtures/plugin-encoder-820/profile-ledger'
 
 afterEach(async () => {
   await cleanupLifecycleFixtures()

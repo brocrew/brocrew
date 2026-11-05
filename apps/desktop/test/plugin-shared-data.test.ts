@@ -13,7 +13,7 @@ import {
   checkedSharedDataOwner,
   pluginOwnerIdentity,
 } from '../src/main/plugins/shared-data'
-import { PluginProfileLedger as EarlierProfileLedger } from './fixtures/plugin-delete-parent/profile-ledger'
+import { PluginProfileLedger as EarlierProfileLedger } from './fixtures/plugin-encoder-820/profile-ledger'
 import { randomUUID } from 'node:crypto'
 import {
   SHARED_DATA_FEATURE,

@@ -1,239 +1,176 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
+import { readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import {
-  applyChromeProfile,
-  chromeProfileIntent,
-  ChromeLedgerProposal,
-  ChromeProposal,
-} from '../src/main/plugins/lifecycle/chrome-apply'
-import { readChromeConfiguration } from '../src/main/plugins/lifecycle/chrome-read'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
-import { PluginUiRpc } from '../src/main/plugins/ui/rpc'
-import { PLUGIN_UI_CHANNEL } from '../src/shared/plugin-ui'
-import type { PluginNodeReady } from '../src/main/plugins/node-host'
-afterEach(() => vi.unstubAllGlobals())
-const connection: PluginNodeReady = {
-  serverPid: 123,
-  origin: 'http://127.0.0.1:1',
-  mcp: () => ({ url: '', headers: { Authorization: 'Bearer fictional-mcp' } }),
-  admin: () => ({
-    url: 'http://127.0.0.1:1/v1',
-    headers: { Authorization: 'Bearer fictional-admin' },
-  }),
-}
-describe('fixed person-only Chrome profile action mapping', () => {
-  it.each([
-    [{ action: 'create-profile', profile: 'birch' }, '/profiles', { name: 'birch' }, 201],
-    [
-      { action: 'set-enabled', profile: 'birch', enabled: true },
-      '/profiles/birch/flags',
-      { enabled: true },
-      200,
-    ],
-    [{ action: 'open-window', profile: 'birch' }, '/profiles/birch/open', {}, 202],
-    [
-      { action: 'delete-profile', profile: 'birch', confirm: 'birch' },
-      '/profiles/birch/delete',
-      { confirm: 'birch' },
-      200,
-    ],
-    [
-      { action: 'rename-profile', profile: 'birch', newName: 'Birch account' },
-      '/profiles/birch/rename',
-      { newName: 'Birch account' },
-      200,
-    ],
-    [{ action: 'helper-on', profile: 'birch' }, '/profiles/birch/helper', {}, 200],
-    [
-      {
-        action: 'set-flags',
-        profile: 'birch',
-        allowSync: false,
-        allowExtensions: true,
-        allowSettings: false,
-        keepRunning: true,
-      },
-      '/profiles/birch/flags',
-      { allowSync: false, allowExtensions: true, allowSettings: false, keepRunning: true },
-      200,
-    ],
-    [
-      {
-        action: 'delete-profile',
-        profile: 'birch',
-        confirm: 'birch',
-        deleteConfirmation: 'a'.repeat(64),
-      },
-      '/profiles/birch/delete',
-      { confirm: 'birch', deleteConfirmation: 'a'.repeat(64) },
-      200,
-    ],
-  ])(
-    'maps a validated action to only its own fixed admin endpoint',
-    async (proposal, path, body, status) => {
-      const fetch = vi.fn(async () => new Response('{}', { status: Number(status) }))
-      vi.stubGlobal('fetch', fetch)
-      await applyChromeProfile(
-        connection,
-        ChromeProposal.parse(proposal),
-        new AbortController().signal,
-      )
-      expect(fetch).toHaveBeenCalledOnce()
-      expect(fetch).toHaveBeenCalledWith(
-        'http://127.0.0.1:1/v1' + path,
-        expect.objectContaining({
-          method: 'POST',
-          redirect: 'error',
-          body: JSON.stringify(body),
-          headers: expect.objectContaining({ Authorization: 'Bearer fictional-admin' }),
-        }),
-      )
-    },
-  )
-  it.each([
-    { action: 'open-window', profile: '../foreign' },
-    { action: 'set-enabled', profile: 'birch', enabled: true, url: 'http://foreign.invalid/' },
-    { action: 'delete-profile', profile: 'birch' },
-    { action: 'delete-profile', profile: 'birch', confirm: 'fern' },
-    {
+  chromeSubject,
+  cleanupRetirementSubjects,
+  personMetadata,
+  legacyImportSubject,
+} from './plugin-retirement-subjects'
+afterEach(cleanupRetirementSubjects)
+it.each([
+  { action: 'create-profile', profile: 'birch' },
+  { action: 'set-enabled', profile: 'birch', enabled: true },
+  { action: 'open-window', profile: 'birch' },
+  { action: 'delete-profile', profile: 'birch', confirm: 'birch' },
+  { action: 'rename-profile', profile: 'birch', newName: 'Birch account' },
+  { action: 'helper-on', profile: 'birch' },
+  {
+    action: 'set-flags',
+    profile: 'birch',
+    allowSync: false,
+    allowExtensions: true,
+    allowSettings: false,
+    keepRunning: true,
+  },
+])('the real package executes only its explicitly named Configure action $action', async (args) => {
+  const f = await chromeSubject()
+  f.store.create('fern', 'panel')
+  const opaque = join(f.store.dirOf('fern'), 'opaque-account')
+  await writeFile(opaque, 'fictional retained account')
+  if (args.action !== 'create-profile') f.store.create('birch', 'panel')
+  if (args.action === 'helper-on') f.store.setFlags('birch', { enabled: true })
+  await f.configure.execute(args, personMetadata)
+  if (args.action === 'delete-profile') expect(f.store.get('birch')).toBeUndefined()
+  else expect(f.store.get('birch')).toBeDefined()
+  if (args.action === 'set-enabled') expect(f.store.get('birch')?.enabled).toBe(true)
+  if (args.action === 'set-flags')
+    expect(f.store.get('birch')).toMatchObject({
+      allowSync: false,
+      allowExtensions: true,
+      allowSettings: false,
+      keepRunning: true,
+    })
+  if (args.action === 'rename-profile')
+    expect(f.store.get('birch')?.displayName).toBe('Birch account')
+  if (args.action === 'open-window') expect(f.open).toHaveBeenCalledExactlyOnceWith('birch')
+  if (args.action === 'helper-on') {
+    expect(f.browser.helperTurnedOn).toEqual(['birch'])
+    expect(f.store.get('birch')?.helper).toBe('turning-on')
+  }
+  expect(await readFile(opaque, 'utf8')).toBe('fictional retained account')
+})
+it.each([
+  { action: 'open-window', profile: '../foreign' },
+  { action: 'set-enabled', profile: 'birch', enabled: true, url: 'http://foreign.invalid/' },
+  { action: 'delete-profile', profile: 'birch' },
+  { action: 'delete-profile', profile: 'birch', confirm: 'fern' },
+  { action: 'set-flags', profile: 'birch' },
+  { action: 'set-flags', profile: 'birch', allowExtensions: 'true' },
+  { action: 'helper-on', profile: 'birch', on: true },
+])('the actual package refuses invalid Configure arguments before effects %j', async (args) => {
+  const f = await chromeSubject()
+  f.store.create('birch', 'panel')
+  const before = f.store.list()
+  await expect(f.configure.execute(args, personMetadata)).rejects.toThrow()
+  expect(f.store.list()).toEqual(before)
+  expect(f.open).not.toHaveBeenCalled()
+  expect(f.browser.helperTurnedOn).toEqual([])
+})
+it('helper-on enforces its live enabled prerequisite rather than writing an app replay intent', async () => {
+  const f = await chromeSubject()
+  f.store.create('birch', 'panel')
+  f.store.setFlags('birch', { enabled: false })
+  await expect(
+    f.configure.execute({ action: 'helper-on', profile: 'birch' }, personMetadata),
+  ).rejects.toThrow(/Enable/)
+  expect(f.browser.helperTurnedOn).toEqual([])
+  f.store.setFlags('birch', { enabled: true })
+  await f.configure.execute({ action: 'helper-on', profile: 'birch' }, personMetadata)
+  expect(f.browser.helperTurnedOn).toEqual(['birch'])
+})
+it('current flags and destructive actions are absent from a consumed migration marker and do not replay', async () => {
+  const f = await legacyImportSubject('chrome')
+  await writeFile(
+    join(f.directory, 'intents', '00000002.json'),
+    JSON.stringify({
       action: 'delete-profile',
-      profile: 'birch',
-      confirm: 'birch',
-      deleteConfirmation: 'malformed',
-    },
-    { action: 'set-flags', profile: 'birch' },
-    { action: 'set-flags', profile: 'birch', enabled: false },
-    { action: 'set-flags', profile: 'birch', allowExtensions: 'true' },
-  ])('rejects unreviewed actions/fields before any request', async (proposal) => {
-    const fetch = vi.fn()
-    vi.stubGlobal('fetch', fetch)
-    await expect(
-      applyChromeProfile(connection, proposal as never, new AbortController().signal),
-    ).rejects.toThrow()
-    expect(fetch).not.toHaveBeenCalled()
-  })
-  it('records turning the helper on as its prerequisite, which earlier owners can read', () => {
-    const intent = chromeProfileIntent({ action: 'helper-on', profile: 'birch' })
-    expect(intent).toEqual({ action: 'set-enabled', profile: 'birch', enabled: true })
-    expect(ChromeLedgerProposal.safeParse({ action: 'helper-on', profile: 'birch' }).success).toBe(
-      false,
-    )
-    expect(
-      ChromeProposal.safeParse({ action: 'helper-on', profile: 'birch', on: true }).success,
-    ).toBe(false)
-  })
-  it('keeps shared deletion confirmation and live flags out of replayable profile intent', () => {
-    expect(
-      chromeProfileIntent({
-        action: 'delete-profile',
-        profile: 'birch',
-        confirm: 'birch',
-        deleteConfirmation: 'a'.repeat(64),
-      }),
-    ).toBeNull()
-    expect(
-      chromeProfileIntent({ action: 'set-flags', profile: 'birch', keepRunning: true }),
-    ).toBeNull()
-    expect(
-      ChromeLedgerProposal.safeParse({ action: 'set-flags', profile: 'birch', keepRunning: true })
-        .success,
-    ).toBe(false)
-  })
-  it('does not retry an ambiguous admin failure or return downstream bytes', async () => {
-    const fetch = vi.fn(async () => new Response('fictional-private-diagnostic', { status: 500 }))
-    vi.stubGlobal('fetch', fetch)
-    await expect(
-      applyChromeProfile(
-        connection,
-        { action: 'open-window', profile: 'birch' },
-        new AbortController().signal,
-      ),
-    ).rejects.toThrow('Plugin unavailable. Try again.')
-    expect(fetch).toHaveBeenCalledOnce()
-  })
-})
-
-it('the real package RPC schema admits a confirmed person Delete to the reviewed adapter', async () => {
-  const template = JSON.parse(
-    readFileSync(resolve(__dirname, '../../../plugins/chrome/manifest-template.json'), 'utf8'),
+      profile: 'DO-NOT-REPLAY',
+      confirm: 'DO-NOT-REPLAY',
+      deleteConfirmation: 'a'.repeat(64),
+    }),
   )
-  const binding = {
-    pluginId: 'chrome',
-    installId: 'fictional-install',
-    incarnation: 'fictional-incarnation',
-    releaseDigest: 'a'.repeat(64),
-    leaseId: 'fictional-lease',
-  }
-  const apply = vi.fn(async (payload: unknown) => {
-    ChromeProposal.parse(payload)
-    return { applied: true }
-  })
-  const rpc = new PluginUiRpc({
-    binding,
-    schemas: template.ui.methodSchemas,
-    current: () => true,
-    emit() {},
-    propose() {},
-    now: () => 0,
-    peer: { read: async () => ({}), subscribe: async () => () => {}, proposeConfig: apply },
-  })
-  const payload = { action: 'delete-profile', profile: 'fern', confirm: 'fern' }
+  const before = await f.inventory()
+  f.import()
+  const marker = await readFile(f.marker, 'utf8')
+  expect(marker).not.toContain('delete-profile')
+  expect(marker).not.toContain('confirm')
+  expect(marker).not.toContain('DO-NOT-REPLAY')
+  f.import()
+  expect(await f.inventory()).toEqual(before)
+})
+it('actual MCP sanitizes an ambiguous opener failure and never retries the action', async () => {
+  const f = await chromeSubject()
+  f.store.create('birch', 'panel')
+  f.open.mockRejectedValueOnce(new Error('fictional-private-diagnostic'))
+  const { createChromeMcpServer } = await vi.importActual<{
+    createChromeMcpServer(tools: unknown): {
+      connect(transport: unknown): Promise<void>
+      close(): Promise<void>
+    }
+  }>('../../../plugins/chrome/src/configuration')
+  const server = createChromeMcpServer(f.tools),
+    client = new Client({ name: 'fictional-configure', version: '1' })
+  const [left, right] = InMemoryTransport.createLinkedPair()
+  await server.connect(right)
   try {
-    expect(
-      await rpc.invoke({
-        channel: PLUGIN_UI_CHANNEL,
-        requestId: '1',
-        method: 'proposeConfig',
-        configRevision: 0,
-        payload,
-      }),
-    ).toEqual({ proposed: true })
-    expect(apply).toHaveBeenCalledWith(payload, 0, binding, expect.any(AbortSignal))
-    await expect(
-      rpc.invoke({
-        channel: PLUGIN_UI_CHANNEL,
-        requestId: '2',
-        method: 'proposeConfig',
-        configRevision: 0,
-        payload: { ...payload, confirm: 'birch' },
-      }),
-    ).rejects.toThrow()
+    await client.connect(left)
+    const result = await client.callTool({
+      name: 'configure_profile',
+      arguments: { action: 'open-window', profile: 'birch' },
+      _meta: personMetadata,
+    })
+    expect(result.isError).toBe(true)
+    expect(JSON.stringify(result)).not.toContain('fictional-private-diagnostic')
+    expect(f.open).toHaveBeenCalledExactlyOnceWith('birch')
   } finally {
-    await rpc.close()
+    await client.close()
+    await server.close()
   }
 })
-
-it('person rename is a live non-replayed action with an immutable profile selector', () => {
-  const rename = { action: 'rename-profile' as const, profile: 'birch', newName: 'Birch account' }
-  expect(ChromeProposal.parse(rename)).toEqual(rename)
-  expect(chromeProfileIntent(rename)).toBeNull()
-  expect(ChromeLedgerProposal.safeParse(rename).success).toBe(false)
-  expect(ChromeProposal.safeParse({ ...rename, profile: '../foreign' }).success).toBe(false)
-  expect(ChromeProposal.safeParse({ ...rename, url: 'https://fictional.invalid' }).success).toBe(
-    false,
+it('the actual package tool schema admits named person deletion and rejects agent mutation', async () => {
+  const f = await chromeSubject()
+  f.store.create('birch', 'panel')
+  expect(f.configure.definition.inputSchema.required).toEqual(
+    expect.arrayContaining(['profile', 'action']),
   )
-})
-
-it('the validated person snapshot keeps displayName without changing its stable profile selector', async () => {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(
-      async (url) =>
-        new Response(
-          JSON.stringify(
-            String(url).endsWith('/profiles')
-              ? {
-                  profiles: [
-                    { name: 'fern', displayName: 'Fern account', enabled: true, open: false },
-                  ],
-                }
-              : { tabs: [] },
-          ),
-          { headers: { 'content-type': 'application/json' } },
-        ),
+  expect(f.configure.definition.inputSchema.additionalProperties).toBe(false)
+  await expect(
+    f.configure.execute(
+      { action: 'delete-profile', profile: 'birch', confirm: 'birch' },
+      { ...personMetadata, origin: 'agent' },
     ),
+  ).rejects.toThrow()
+  expect(f.store.get('birch')).toBeDefined()
+  await f.configure.execute(
+    { action: 'delete-profile', profile: 'birch', confirm: 'birch' },
+    personMetadata,
   )
-  expect(await readChromeConfiguration('chrome', connection)).toMatchObject({
-    profiles: [{ name: 'fern', displayName: 'Fern account' }],
-  })
+  expect(f.store.get('birch')).toBeUndefined()
+})
+it('person rename updates only displayName and keeps the immutable profile selector', async () => {
+  const f = await chromeSubject()
+  f.store.create('birch', 'panel')
+  const directory = f.store.dirOf('birch')
+  await f.configure.execute(
+    { action: 'rename-profile', profile: 'birch', newName: 'Birch account' },
+    personMetadata,
+  )
+  expect(f.store.dirOf('birch')).toBe(directory)
+  expect(f.store.get('birch')).toMatchObject({ name: 'birch', displayName: 'Birch account' })
+})
+it('the real package snapshot retains displayName and its stable selector', async () => {
+  const f = await chromeSubject()
+  f.store.create('birch', 'panel')
+  await f.configure.execute(
+    { action: 'rename-profile', profile: 'birch', newName: 'Birch account' },
+    personMetadata,
+  )
+  expect((await f.snapshot()).profiles).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ name: 'birch', displayName: 'Birch account' }),
+    ]),
+  )
 })

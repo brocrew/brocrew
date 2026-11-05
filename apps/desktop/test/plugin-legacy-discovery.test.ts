@@ -1,3 +1,4 @@
+import { observeInstalled } from './plugin-installed-observation'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -198,7 +199,7 @@ async function setup(fixedVersion = false, invalidSource?: 'view') {
 describe.skipIf(process.platform === 'win32')(
   'ordinary production discovery and legacy package data',
   () => {
-    it('keeps listing and Configure across app versions despite stale high row minimums', async () => {
+    it('keeps listing and retained installed bytes across app versions despite stale high row minimums', async () => {
       const f = await setup()
       await f.expand()
       const facade = f.facade()
@@ -208,9 +209,9 @@ describe.skipIf(process.platform === 'win32')(
         { id: 'fictional-pointers', state: 'Available', installed: false },
         { id: 'fictional-maps', state: 'Available', installed: false },
       ])
-      const screen = await facade.screen('fictional-bakery')
-      expect(screen.verified.manifest.id).toBe('fictional-bakery')
-      expect(screen.current(screen.binding)).toBe(true)
+      await expect(facade.screen('fictional-bakery')).rejects.toThrow()
+      const screen = await observeInstalled(f.opts, f.state, 'fictional-bakery')
+      expect(screen.package.manifest.id).toBe('fictional-bakery')
       const modern = await connectPluginSettings(f.clientOptions())
       keepClient(modern)
       expect((await modern.catalogue()).map((one) => one.id).sort()).toEqual([
@@ -233,17 +234,19 @@ describe.skipIf(process.platform === 'win32')(
         'fictional-maps',
       ])
       expect(
-        (await reattached.screen('fictional-bakery')).verified.readFile('plugin.json'),
+        (await observeInstalled(f.opts, f.state, 'fictional-bakery')).package.readFile(
+          'plugin.json',
+        ),
       ).toEqual(Uint8Array.from(f.pkg.manifestBytes))
     })
 
-    it('reopens retained installation bytes and Configure offline under a different caller list', async () => {
+    it('reopens retained installation bytes offline with old Configure refused under a different caller list', async () => {
       const f = await setup(true)
       const first = await connectPluginSettings(f.clientOptions(f.one))
       keepClient(first)
-      const screen = await first.screen('fictional-bakery')
-      expect(screen.verified.manifest.id).toBe('fictional-bakery')
-      expect(screen.current(screen.binding)).toBe(true)
+      await expect(first.screen('fictional-bakery')).rejects.toThrow()
+      const screen = await observeInstalled(f.opts, f.state, 'fictional-bakery')
+      expect(screen.package.manifest.id).toBe('fictional-bakery')
       const before = f.state.exportActivation().entries[0]!
       await first.close()
       await f.bridge.close()
@@ -258,7 +261,7 @@ describe.skipIf(process.platform === 'win32')(
         root: f.root,
         key: f.key,
         controller: sharedLifecycleWorkspaces(restored),
-          })
+      })
       closers.push(() => bridge.close())
       const again = await connectPluginSettings({
         ...f.clientOptions(f.two),
@@ -270,12 +273,11 @@ describe.skipIf(process.platform === 'win32')(
         'fictional-bakery',
         'fictional-pointers',
       ])
-      const reopened = await again.screen('fictional-bakery')
-      expect(reopened.verified.readFile('plugin.json')).toEqual(
-        Uint8Array.from(f.pkg.manifestBytes),
-      )
-      expect(reopened.binding.installId).toBe(before.installId)
-      expect(reopened.current(reopened.binding)).toBe(true)
+      await expect(again.screen('fictional-bakery')).rejects.toThrow()
+      const reopened = await observeInstalled(f.opts, state, 'fictional-bakery')
+      expect(reopened.package.readFile('plugin.json')).toEqual(Uint8Array.from(f.pkg.manifestBytes))
+      expect(reopened.installation.installId).toBe(before.installId)
+      expect(reopened.installation).toEqual(before)
       expect(state.inspect().pending).toBeNull()
       expect(download).not.toHaveBeenCalled()
       expect(
@@ -314,9 +316,9 @@ describe.skipIf(process.platform === 'win32')(
       expect(sameSource.sha256).toBe(f.three.sha256)
       expect(f.three.releases.map((one) => one.id)).toContain('fictional-maps')
       expect(f.two.releases.map((one) => one.id)).not.toContain('fictional-maps')
-      const screen = await caller.screen('fictional-bakery')
-      expect(screen.current(screen.binding)).toBe(true)
-      expect(screen.verified.readFile('plugin.json')).toEqual(Uint8Array.from(f.pkg.manifestBytes))
+      await expect(caller.screen('fictional-bakery')).rejects.toThrow()
+      const screen = await observeInstalled(f.opts, f.state, 'fictional-bakery')
+      expect(screen.package.readFile('plugin.json')).toEqual(Uint8Array.from(f.pkg.manifestBytes))
       expect(f.state.inspect().pending).toBeNull()
     })
 
@@ -336,7 +338,9 @@ describe.skipIf(process.platform === 'win32')(
       const again = await connectPluginSettings(f.clientOptions(f.one))
       keepClient(again)
       expect((await again.catalogue()).map((one) => one.id)).toEqual(['fictional-bakery'])
-      expect((await again.screen('fictional-bakery')).verified.manifest.version).toBe('1.0.0')
+      expect(
+        (await observeInstalled(f.opts, f.state, 'fictional-bakery')).package.manifest.version,
+      ).toBe('1.0.0')
     })
 
     it('forwards new plugin notices without a caller catalogue admission filter', async () => {
@@ -389,9 +393,9 @@ describe.skipIf(process.platform === 'win32')(
         'fictional-pointers',
       ])
       expect(f.state.inspect().pending).toBeNull()
-      expect((await candidate.screen('fictional-bakery')).verified.manifest.id).toBe(
-        'fictional-bakery',
-      )
+      expect(
+        (await observeInstalled(f.opts, f.state, 'fictional-bakery')).package.manifest.id,
+      ).toBe('fictional-bakery')
     })
 
     it('lists without source provenance while retaining the negotiated reply shapes', async () => {

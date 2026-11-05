@@ -3,47 +3,55 @@
   "files": [
     {
       "path": "apps/desktop/src/main/plugins/lifecycle/profile-ledger.ts",
-      "file": "profile-ledger.ts",
+      "file": "profile-ledger.ts.txt",
       "sourceSha256": "68191bc653303c342d6792880d22f360d0c5306b9b964f44c336165c12c79818",
       "imports": {
         "./proposals": "./proposals",
         "../../../src/main/plugins/node-host-files": "../node-host-files",
         "../../../src/main/plugins/private-files": "../private-files",
         "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol"
-      }
+      },
+      "frozenSha256": "430764d5246eb54e0cc95cea0ce8acd10a56390046cffac6221dbab53d1b85c8",
+      "status": "old source snapshot frozen as data; separate authentic820 encoder is identified independently"
     },
     {
       "path": "apps/desktop/src/main/plugins/lifecycle/proposals.ts",
-      "file": "proposals.ts",
+      "file": "proposals.ts.txt",
       "sourceSha256": "8c90a0417a755d6f61418bfe0f18f88ce7615c742628116e10e9862bc489f52c",
       "imports": {
         "./chrome-apply": "./chrome-apply",
         "./whatsapp-apply": "./whatsapp-apply"
-      }
+      },
+      "frozenSha256": "8c90a0417a755d6f61418bfe0f18f88ce7615c742628116e10e9862bc489f52c",
+      "status": "old source snapshot frozen as data; separate authentic820 encoder is identified independently"
     },
     {
       "path": "apps/desktop/src/main/plugins/lifecycle/chrome-apply.ts",
-      "file": "chrome-apply.ts",
+      "file": "chrome-apply.ts.txt",
       "sourceSha256": "bdb9dec89e0e8607e6d2fc22272132ad6072f21bf976cb2aab47519ea643d6aa",
       "imports": {
         "../../../src/main/plugins/node-host": "../node-host",
         "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol"
-      }
+      },
+      "frozenSha256": "3f49bfca92dfab2a0e0df6a62fb872f731e368f2ca07ff8432c1af30eb8319e0",
+      "status": "old source snapshot frozen as data; separate authentic820 encoder is identified independently"
     },
     {
       "path": "apps/desktop/src/main/plugins/lifecycle/whatsapp-apply.ts",
-      "file": "whatsapp-apply.ts",
+      "file": "whatsapp-apply.ts.txt",
       "sourceSha256": "4df64e4532e090200e7ab59ebedf66bd5c72ae48a4ec36d3f5354e0ba8ae5cf6",
       "imports": {
         "../../../src/shared/plugin-settings": "../../../shared/plugin-settings",
         "../../../src/main/plugins/lifecycle/admin-read": "./admin-read",
         "../../../src/main/plugins/node-host": "../node-host",
         "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol"
-      }
+      },
+      "frozenSha256": "0a79647bd0e954bb167a35c70b5ed0f6c84b7fde13a244cfc3a34c29e18ffeab",
+      "status": "old source snapshot frozen as data; separate authentic820 encoder is identified independently"
     },
     {
       "path": "apps/desktop/src/main/plugins/lifecycle/controller.ts",
-      "file": "controller.ts",
+      "file": "controller.ts.txt",
       "sourceSha256": "d4210b53c7fd9e3afe25817511e3417d0503e773678e479bc4e4598159462715",
       "imports": {
         "../../../src/main/plugins/lifecycle/../contributions": "../contributions",
@@ -61,7 +69,9 @@
         "../../../src/main/plugins/lifecycle/../../../shared/plugin-settings": "../../../shared/plugin-settings",
         "../../legacy-plugin-verifier": "../package-verifier",
         "../../legacy-plugin-vault": "./vault"
-      }
+      },
+      "frozenSha256": "dba6f0c79152880b61a219f26f940549fda26cfa9751228cd320dd66ddd9b1a8",
+      "status": "old source snapshot frozen as data; separate authentic820 encoder is identified independently"
     }
   ]
 }

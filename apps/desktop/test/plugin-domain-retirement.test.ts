@@ -16,7 +16,7 @@ async function sources(root: string): Promise<Array<[string, string]>> {
 it('has no application-owned domain dispatcher, ledger reader or person proposal executor', async () => {
   const root = fileURLToPath(new URL('../src/', import.meta.url))
   const forbidden =
-    /\b(?:pluginAdapter|requirePluginAdapter|PluginProfileLedger|ChromeProposal|WhatsAppProposal|chromeProfileIntent|profileRevision|applyProfile|PluginUiPeer|PluginUiRpc|proposeConfig|configure-ledger|proposalFor|ledgerV2|profileCalls|installedChromeOnWindows|admittedPluginTools|hasRemoteLogout)\b|(?:chrome|whatsapp)-(?:apply|read|broker|policy)|\.admin\(|(?:(?:id|pluginId)\s*(?:===|==|!==|!=)\s*['"](?:chrome|whatsapp)['"]|['"](?:chrome|whatsapp)['"]\s*(?:===|==|!==|!=)\s*(?:id|pluginId))|\/v1\/(?:profiles|groups|status|uninstall)/
+    /\b(?:pluginAdapter|requirePluginAdapter|PluginProfileLedger|ChromeProposal|WhatsAppProposal|chromeProfileIntent|profileRevision|applyProfile|PluginUiPeer|PluginUiRpc|proposeConfig|configure-ledger|proposalFor|ledgerV2|profileCalls|installedChromeOnWindows|admittedPluginTools|hasRemoteLogout|readAdminJson)\b|(?:chrome|whatsapp)-(?:apply|read|broker|policy)|\.admin\(|(?:(?:id|pluginId)\s*(?:===|==|!==|!=)\s*['"](?:chrome|whatsapp)['"]|['"](?:chrome|whatsapp)['"]\s*(?:===|==|!==|!=)\s*(?:id|pluginId))|\/v1\/(?:profiles|groups|status|uninstall)/
   const violations = (await sources(root)).flatMap(([path, source]) =>
     source
       .split('\n')
@@ -28,6 +28,26 @@ it('has no application-owned domain dispatcher, ledger reader or person proposal
       (line) => !/\/plugins\/package-schema\.ts:\d+:\s*proposeConfig: valueSchema,/.test(line),
     ),
   ).toEqual([])
+})
+
+it('has no test import of a retired production domain or executable unavailable fixture graph', async () => {
+  const root = fileURLToPath(new URL('./', import.meta.url))
+  const retired =
+    /(?:src\/main\/plugins\/(?:lifecycle\/(?:adapters|chrome-(?:apply|read|broker|policy)|whatsapp-(?:apply|read|broker)|proposals|profile-ledger|admin-read)|ui\/rpc)|fixtures\/plugin-(?:update-parent|delete-parent|disclosure-mixed)\/(?!source\.json|FROZEN\.json)[^'"]+)/
+  const violations = (await sources(root)).flatMap(([path, source]) =>
+    [
+      ...source.matchAll(
+        /(?:from\s*|import\s*(?:\(\s*)?|vi\.importActual(?:<[^;]+?>)?\(\s*)['"]([^'"]+)['"]/g,
+      ),
+    ]
+      .filter((match) => retired.test(match[1]!))
+      .map((match) => `${path}: ${match[1]}`),
+  )
+  expect(violations).toEqual([])
+  for (const name of ['plugin-update-parent', 'plugin-delete-parent', 'plugin-disclosure-mixed']) {
+    const directory = join(root, 'fixtures', name)
+    expect((await readdir(directory)).filter((name) => /\.[cm]?[jt]sx?$/.test(name))).toEqual([])
+  }
 })
 
 // These controls exercise actual host installation/state/vault readers with an inert process

@@ -374,3 +374,25 @@ describe('the bridge program', () => {
     expect(fs.existsSync(path.join(config.home, 'log-out.pending'))).toBe(false)
   })
 })
+
+it('keeps malformed QR data and person group identifiers out of actual bridge snapshots', async () => {
+  const pairing = FAKE.replace(
+    "res.end(JSON.stringify({ state: linked ? 'linked' : 'unlinked', expired: false, account: '' }))",
+    "res.end(JSON.stringify({ state: 'pairing', expired: false, account: '', qr: { size: 21, bits: 'abc', expiresAt: 1 } }))",
+  )
+  expect(pairing).not.toBe(FAKE)
+  const first = setup(pairing)
+  await until(() => first.bridge.status().state === 'pairing')
+  expect(first.bridge.status().qr).toBeNull()
+  await first.bridge.close()
+  const people = FAKE.replace(
+    "{ jid: '120363000000000001@g.us', name: 'ATLAS Team' }",
+    "{ jid: '15550000001@s.whatsapp.net', name: 'Fictional person' }",
+  )
+  expect(people).not.toBe(FAKE)
+  const second = setup(people)
+  fs.writeFileSync(path.join(second.config.bridgeData, 'fake-linked'), '')
+  await until(() => second.bridge.status().state === 'linked')
+  await second.bridge.refreshGroups()
+  expect(second.bridge.groups()).toEqual([])
+})

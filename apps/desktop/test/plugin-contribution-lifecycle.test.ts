@@ -1,3 +1,4 @@
+import { observeInstalled } from './plugin-installed-observation'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as nodeHost from '../src/main/plugins/node-host'
 import { parsePluginManifest } from '../src/main/plugins/package-schema'
@@ -164,7 +165,6 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
       catalogue: { bytes: old.bytes, signature: Buffer.alloc(0) },
       download: f.opts.download,
       projection: projection().sink,
-      propose() {},
     })
     closers.push(() => client.close())
     expect((await client.catalogue()).map((entry) => entry.id)).toEqual([f.pkg.manifest.id])
@@ -183,9 +183,9 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
       archiveSha256: selected.ref.sha256,
       manifestSha256: f.pkg.release.manifestSha256,
     })
-    const page = await client.screen(f.pkg.manifest.id)
-    expect(page.current(page.binding)).toBe(true)
-    expect(page.verified.readFile('plugin.json')).toEqual(Uint8Array.from(f.pkg.manifestBytes))
+    await expect(client.screen(f.pkg.manifest.id)).rejects.toThrow()
+    const page = await observeInstalled(f.opts, f.state, f.pkg.manifest.id)
+    expect(page.package.readFile('plugin.json')).toEqual(Uint8Array.from(f.pkg.manifestBytes))
     expect(f.state.inspect().pending).toBeNull()
   })
   it('negotiates contribution support without expanding the strict attach reply', async () => {

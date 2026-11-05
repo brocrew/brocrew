@@ -1,219 +1,139 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import {
-  applyWhatsAppSettings,
-  logOutBeforeUninstall,
-  WhatsAppProposal,
-} from '../src/main/plugins/lifecycle/whatsapp-apply'
-import { readWhatsAppConfiguration } from '../src/main/plugins/lifecycle/whatsapp-read'
-import { whatsappBrokerBinding } from '../src/main/plugins/lifecycle/whatsapp-broker'
-import { pluginAdapter } from '../src/main/plugins/lifecycle/adapters'
-import { proposalFor } from '../src/main/plugins/lifecycle/proposals'
-import type { PluginNodeReady } from '../src/main/plugins/node-host'
-afterEach(() => vi.unstubAllGlobals())
-const connection: PluginNodeReady = {
-  serverPid: 123,
-  origin: 'http://127.0.0.1:1',
-  mcp: () => ({ url: '', headers: { Authorization: 'Bearer fictional-mcp' } }),
-  admin: () => ({
-    url: 'http://127.0.0.1:1/v1',
-    headers: { Authorization: 'Bearer fictional-admin' },
-  }),
-}
+  whatsappSubject,
+  cleanupRetirementSubjects,
+  personMetadata,
+} from './plugin-retirement-subjects'
+afterEach(cleanupRetirementSubjects)
 const ROWING = '120363000000000001@g.us'
-
-describe('fixed person-only WhatsApp settings mapping', () => {
-  it.each([
-    [{ action: 'link-phone' }, '/link', {}, 200],
-    [{ action: 'unlink-phone' }, '/unlink', {}, 202],
-    [{ action: 'refresh-groups' }, '/refresh-groups', {}, 200],
-    [{ action: 'set-read', enabled: true }, '/read', { enabled: true }, 200],
-    [{ action: 'set-prefix', enabled: false }, '/prefix', { enabled: false }, 200],
-    [
-      { action: 'set-group-write', group: ROWING, enabled: true },
-      '/group-write',
-      { group: ROWING, enabled: true },
-      200,
-    ],
-  ])(
-    'maps a validated action to only its own fixed admin route',
-    async (proposal, path, body, status) => {
-      const fetch = vi.fn(async () => new Response('{}', { status: Number(status) }))
-      vi.stubGlobal('fetch', fetch)
-      await applyWhatsAppSettings(connection, proposal, new AbortController().signal)
-      expect(fetch).toHaveBeenCalledOnce()
-      expect(fetch).toHaveBeenCalledWith(
-        'http://127.0.0.1:1/v1' + path,
-        expect.objectContaining({
-          method: 'POST',
-          redirect: 'error',
-          body: JSON.stringify(body),
-          headers: expect.objectContaining({ Authorization: 'Bearer fictional-admin' }),
-        }),
-      )
-    },
-  )
-  it.each([
-    { action: 'set-group-write', group: '15550000001@s.whatsapp.net', enabled: true },
-    { action: 'set-group-write', group: '../foreign', enabled: true },
-    { action: 'set-read', enabled: 'yes' },
-    { action: 'link-phone', url: 'http://foreign.invalid/' },
-    { action: 'send-message', group: ROWING, text: 'Hello' },
-    { action: 'create-profile', profile: 'birch' },
-  ])('rejects unreviewed actions, fields and people before any request', async (proposal) => {
-    const fetch = vi.fn()
-    vi.stubGlobal('fetch', fetch)
-    await expect(
-      applyWhatsAppSettings(connection, proposal, new AbortController().signal),
-    ).rejects.toThrow()
-    expect(fetch).not.toHaveBeenCalled()
-  })
-  it('does not retry an ambiguous admin failure', async () => {
-    const fetch = vi.fn(async () => new Response('fictional-private-diagnostic', { status: 500 }))
-    vi.stubGlobal('fetch', fetch)
-    await expect(
-      applyWhatsAppSettings(connection, { action: 'unlink-phone' }, new AbortController().signal),
-    ).rejects.toThrow('Plugin unavailable. Try again.')
-    expect(fetch).toHaveBeenCalledOnce()
-  })
+const context = { metadata: personMetadata }
+it.each([
+  ['whatsapp_link', {}],
+  ['whatsapp_unlink', {}],
+  ['whatsapp_refresh_groups', {}],
+  ['whatsapp_set_read', { enabled: true }],
+  ['whatsapp_set_prefix', { enabled: false }],
+  ['whatsapp_set_group_write', { group: ROWING, enabled: true }],
+] as const)(
+  'the actual package owns Configure action %s and its resulting state',
+  async (name, args) => {
+    const f = await whatsappSubject()
+    if (name === 'whatsapp_link') f.bridge.state = 'unlinked'
+    const result = await f.tool(name).execute(args, context)
+    expect(result.content[0]?.type).toBe('text')
+    if (name === 'whatsapp_set_read') expect(f.settings.get().read).toBe(true)
+    if (name === 'whatsapp_set_prefix') expect(f.settings.get().prefix).toBe(false)
+    if (name === 'whatsapp_set_group_write') expect(f.settings.get().writable).toEqual([ROWING])
+    if (name === 'whatsapp_unlink') expect(f.bridge.unlinked).toBe(1)
+    if (name === 'whatsapp_refresh_groups')
+      expect(f.bridge.requests).toEqual([{ route: '/groups', body: { refresh: true } }])
+    if (name === 'whatsapp_link') expect(f.bridge.state).toBe('pairing')
+  },
+)
+it.each([
+  ['whatsapp_set_group_write', { group: '15550000001@s.whatsapp.net', enabled: true }],
+  ['whatsapp_set_group_write', { group: '../foreign', enabled: true }],
+  ['whatsapp_set_read', { enabled: 'yes' }],
+  ['whatsapp_link', { url: 'http://foreign.invalid/' }],
+  ['whatsapp_set_read', { enabled: true, text: 'Unreviewed field' }],
+] as const)(
+  'the real package rejects invalid fields/people before state effects %s %j',
+  async (name, args) => {
+    const f = await whatsappSubject(),
+      before = f.settings.get()
+    await expect(f.tool(name).execute(args, context)).rejects.toThrow()
+    expect(f.settings.get()).toEqual(before)
+    expect(f.bridge.requests).toEqual([])
+    expect(f.bridge.unlinked).toBe(0)
+  },
+)
+it('never retries an ambiguous actual package unlink failure', async () => {
+  const f = await whatsappSubject()
+  const unlink = vi
+    .spyOn(f.bridge, 'unlink')
+    .mockRejectedValueOnce(new Error('fictional lost reply'))
+  await expect(f.tool('whatsapp_unlink').execute({}, context)).rejects.toThrow()
+  expect(unlink).toHaveBeenCalledOnce()
 })
-
-describe('uninstalling', () => {
-  it('asks the plugin to log out and waits for its answer', async () => {
-    let removed = false
-    const fetch = vi.fn(async (url: string) => {
-      if (url.endsWith('/uninstall')) {
-        removed = true
-        return Response.json({})
-      }
-      return Response.json({ state: removed ? 'unlinked' : 'linked', removeOnPhone: false })
-    })
-    vi.stubGlobal('fetch', fetch)
-    await expect(logOutBeforeUninstall(connection, new AbortController().signal)).resolves.toBe(
-      'confirmed',
-    )
-    expect(fetch).toHaveBeenCalledTimes(3)
-    expect(fetch).toHaveBeenCalledWith(
-      'http://127.0.0.1:1/v1/uninstall',
-      expect.objectContaining({
-        method: 'POST',
-        redirect: 'error',
-        body: '{}',
-        headers: expect.objectContaining({ Authorization: 'Bearer fictional-admin' }),
+it('explicit removal waits for the real package bridge logout and reports its result', async () => {
+  const f = await whatsappSubject()
+  let release!: () => void
+  const unlink = vi.spyOn(f.bridge, 'unlink').mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        release = resolve
       }),
-    )
-    expect(pluginAdapter('whatsapp')?.uninstall).toBeTypeOf('function')
-    expect(pluginAdapter('chrome')?.uninstall).toBeUndefined()
-  })
-  it('reports a log out the plugin did not finish', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response('{}', { status: 504 })),
-    )
-    await expect(logOutBeforeUninstall(connection, new AbortController().signal)).rejects.toThrow(
-      'Plugin unavailable. Try again.',
-    )
-  })
-})
-
-describe('the settings page view', () => {
-  function serve(status: unknown, settings: unknown) {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (url: string) =>
-        Response.json(url.endsWith('/status') ? status : settings, { status: 200 }),
-      ),
-    )
-  }
-  it('passes the link state and the switches, and nothing else the plugin sends', async () => {
-    serve(
-      {
-        state: 'pairing',
-        expired: false,
-        account: '',
-        qr: { size: 21, bits: '1'.repeat(441), expiresAt: 1 },
-        removeOnPhone: true,
-        token: 'x',
-      },
-      {
-        read: false,
-        prefix: true,
-        groups: [{ jid: ROWING, name: 'Harbour Rowing Club', canWrite: true, members: ['Ines'] }],
-        messages: ['Training moves to Thursday'],
-      },
-    )
-    expect(await readWhatsAppConfiguration(connection)).toEqual({
-      configRevision: 0,
-      status: {
-        state: 'pairing',
-        expired: false,
-        account: '',
-        qr: { size: 21, bits: '1'.repeat(441), expiresAt: 1 },
-        removeOnPhone: true,
-      },
-      read: false,
-      prefix: true,
-      groups: [{ jid: ROWING, name: 'Harbour Rowing Club', canWrite: true }],
+  )
+  let finished = false
+  const work = f
+    .tool('whatsapp_before_remove')
+    .execute({}, { metadata: { ...personMetadata, origin: 'lifecycle.beforeRemove' } })
+    .then((value) => {
+      finished = true
+      return value
     })
-  })
-  it('refuses a malformed QR pattern or a person among the groups', async () => {
-    serve(
-      {
-        state: 'pairing',
-        expired: false,
-        account: '',
-        qr: { size: 21, bits: 'abc', expiresAt: 1 },
-      },
-      { read: false, prefix: true, groups: [] },
-    )
-    await expect(readWhatsAppConfiguration(connection)).rejects.toThrow()
-    serve(
-      { state: 'linked', expired: false, account: 'Fictional Phone', qr: null },
-      {
-        read: true,
-        prefix: true,
-        groups: [{ jid: '15550000001@s.whatsapp.net', name: 'Ines', canWrite: true }],
-      },
-    )
-    await expect(readWhatsAppConfiguration(connection)).rejects.toThrow()
-  })
+  await Promise.resolve()
+  expect(finished).toBe(false)
+  release()
+  expect((await work).structuredContent).toMatchObject({ status: 'complete' })
+  expect(unlink).toHaveBeenCalledOnce()
 })
-
-describe('the plugin registry', () => {
-  it('keeps each plugin to its own page actions', () => {
-    expect(proposalFor('whatsapp')?.safeParse({ action: 'set-read', enabled: true }).success).toBe(
-      true,
-    )
-    expect(
-      proposalFor('whatsapp')?.safeParse({ action: 'open-window', profile: 'birch' }).success,
-    ).toBe(false)
-    expect(proposalFor('chrome')?.safeParse({ action: 'set-read', enabled: true }).success).toBe(
-      false,
-    )
-    expect(WhatsAppProposal.safeParse({ action: 'unlink-phone' }).success).toBe(true)
-    for (const id of ['fictional-atlas', 'constructor', '__proto__', 'toString']) {
-      expect(proposalFor(id)).toBeUndefined()
-      expect(pluginAdapter(id)).toBeUndefined()
-    }
-    expect(pluginAdapter('whatsapp')).toBeDefined()
-    expect(pluginAdapter('chrome')).toBeDefined()
+it('a failed package logout remains a failure rather than a local-data completion claim', async () => {
+  const f = await whatsappSubject()
+  vi.spyOn(f.bridge, 'unlink').mockRejectedValueOnce(new Error('fictional logout not completed'))
+  await expect(
+    f
+      .tool('whatsapp_before_remove')
+      .execute({}, { metadata: { ...personMetadata, origin: 'lifecycle.beforeRemove' } }),
+  ).rejects.toThrow()
+})
+it('actual package snapshots retain link/switch/group state without bridge message bodies', async () => {
+  const f = await whatsappSubject()
+  f.settings.setRead(false)
+  f.settings.setPrefix(true)
+  f.settings.setWritable(ROWING, true)
+  const result = await f.tool('whatsapp_settings').execute({}, context)
+  const value = JSON.parse(result.content[0]!.text!)
+  expect(value).toMatchObject({
+    read: false,
+    prefix: true,
+    groups: expect.arrayContaining([expect.objectContaining({ jid: ROWING, canWrite: true })]),
   })
-  it('binds tools only for the WhatsApp package that declares its account resource', async () => {
-    const view = (
-      pluginId: string,
-      resources: Array<{ id: string; label: string; read: boolean; write: boolean }>,
-    ) =>
-      ({
-        installation: { pluginId },
-        package: { compatibility: { tools: true }, manifest: { permissions: { resources } } },
-        connection: new Promise(() => undefined),
-        current: () => true,
-      }) as never
-    const account = [{ id: 'whatsapp', label: 'Fictional account', read: true, write: true }]
-    await expect(whatsappBrokerBinding(view('chrome', account), () => undefined)).rejects.toThrow(
-      'unavailable',
-    )
-    await expect(whatsappBrokerBinding(view('whatsapp', []), () => undefined)).rejects.toThrow(
-      'unavailable',
-    )
-  })
+  expect(JSON.stringify(value)).not.toContain('Training moves to Thursday')
+  expect(JSON.stringify(value)).not.toContain('members')
+})
+it('package validation refuses a person write target without changing saved choices', async () => {
+  const f = await whatsappSubject(),
+    path = join(f.home, 'settings.json')
+  f.settings.setRead(false)
+  const before = await readFile(path)
+  await expect(
+    f
+      .tool('whatsapp_set_group_write')
+      .execute({ group: '15550000001@s.whatsapp.net', enabled: true }, context),
+  ).rejects.toThrow()
+  expect(await readFile(path)).toEqual(before)
+})
+it('current package tool vocabularies expose no host registry cross-plugin actions', async () => {
+  const f = await whatsappSubject()
+  expect(f.tools.map((tool) => tool.definition.name)).not.toContain('configure_profile')
+  expect(f.tools.map((tool) => tool.definition.name)).not.toContain('send-message')
+  for (const tool of f.tools) {
+    await expect(
+      tool.execute({}, { metadata: { ...personMetadata, origin: 'agent' } }),
+    ).rejects.toThrow()
+  }
+  expect(f.bridge.unlinked).toBe(0)
+})
+it('current package origin admission protects account tools without an app binding table', async () => {
+  const f = await whatsappSubject()
+  const before = f.settings.get()
+  await expect(
+    f
+      .tool('whatsapp_set_read')
+      .execute({ enabled: true }, { metadata: { ...personMetadata, origin: 'agent' } }),
+  ).rejects.toThrow()
+  expect(f.settings.get()).toEqual(before)
 })

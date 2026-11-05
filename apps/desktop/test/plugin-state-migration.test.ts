@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
-import { encodeState } from './fixtures/plugin-update-parent/state-format'
+import { encodeState } from './fixtures/plugin-encoder-820/state-format'
 import { workspacePluginRoot } from '../src/main/plugins/root-selection'
 import { LifecycleEffects } from '../src/main/plugins/lifecycle/files'
 

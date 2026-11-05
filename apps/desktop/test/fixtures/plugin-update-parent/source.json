@@ -3,47 +3,55 @@
   "files": [
     {
       "path": "apps/desktop/src/main/plugins/state/store.ts",
-      "file": "state-store.ts",
+      "file": "state-store.ts.txt",
       "sourceSha256": "71dfb0d52c0cd1eff643c11e1c72e44cda388a5658d9b4c5c283a0d19c3e9b56",
       "imports": {
         "./state-format": "./format",
         "./state-disk": "./disk",
         "./state-machine": "./machine"
-      }
+      },
+      "frozenSha256": "ff39e9f5b3e53b8c98f201c5f1c898055c45cea3fc90e20345818a860ea93ca5",
+      "status": "historical producer source unavailable; bytes frozen locally"
     },
     {
       "path": "apps/desktop/src/main/plugins/state/disk.ts",
-      "file": "state-disk.ts",
+      "file": "state-disk.ts.txt",
       "sourceSha256": "9cb73535050405a81dc7d3461df1cf43bc282296a2da5bf29a5e1ebb445238c3",
       "imports": {
         "../../../src/main/plugins/state/fence": "./fence",
         "../../../src/main/plugins/package-digests": "../package-digests",
         "./state-format": "./format",
         "./state-machine": "./machine"
-      }
+      },
+      "frozenSha256": "76c46adc3962e5748333859c90b865f44823b524e434fae84eb8073328af30c5",
+      "status": "historical producer source unavailable; bytes frozen locally"
     },
     {
       "path": "apps/desktop/src/main/plugins/state/machine.ts",
-      "file": "state-machine.ts",
+      "file": "state-machine.ts.txt",
       "sourceSha256": "c6d07de668e8da9f79309cf2f46d07c7b93a7edd3dffad998b9a3c7745702139",
       "imports": {
         "../../../src/main/plugins/package-digests": "../package-digests",
         "./state-format": "./format"
-      }
+      },
+      "frozenSha256": "dd3bf39b88691438b60634208a4942efd79444fd577159fd070656b58ffdef0f",
+      "status": "historical producer source unavailable; bytes frozen locally"
     },
     {
       "path": "apps/desktop/src/main/plugins/state/format.ts",
-      "file": "state-format.ts",
+      "file": "state-format.ts.txt",
       "sourceSha256": "f0ce7d57e8cd1100938a7985a25a69bf5a7d0f0cc329806126d1de46dba58033",
       "imports": {
         "../../../src/shared/skills-catalogue": "../../../shared/skills-catalogue",
         "../../../src/main/plugins/package-digests": "../package-digests",
         "../../../src/main/plugins/strict-json": "../strict-json"
-      }
+      },
+      "frozenSha256": "03ac83041dd2e764a7ec155c50df72cc108f9fe29eaa90bd462cc43672516560",
+      "status": "historical producer source unavailable; bytes frozen locally"
     },
     {
       "path": "apps/desktop/src/main/plugins/lifecycle/controller.ts",
-      "file": "lifecycle-controller.ts",
+      "file": "lifecycle-controller.ts.txt",
       "sourceSha256": "4d968baeb7f65d0a3cf1b50cdf221161d6fd604939ed2f5585609e4d0b0801e9",
       "imports": {
         "../../../src/main/plugins/lifecycle/profile-ledger": "./profile-ledger",
@@ -57,21 +65,25 @@
         "../../../src/shared/plugin-settings": "../../../shared/plugin-settings",
         "../../legacy-plugin-verifier": "../package-verifier",
         "../../legacy-plugin-vault": "./vault"
-      }
+      },
+      "frozenSha256": "8cbb8e686322b590818cd2da35e6d775210768c61df8541432e0887e367eb706",
+      "status": "historical producer source unavailable; bytes frozen locally"
     },
     {
       "path": "apps/desktop/src/main/plugins/lifecycle/files.ts",
-      "file": "lifecycle-files.ts",
+      "file": "lifecycle-files.ts.txt",
       "sourceSha256": "3d310255c5d32942eac48a827b5116ed64cbd7ba9511bcd52a73ee83c52517cc",
       "imports": {
         "../../../src/main/plugins/node-host-files": "../node-host-files",
         "./state-format": "../state/format",
         "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol"
-      }
+      },
+      "frozenSha256": "0ff28ba05f8c83c222b8e3e4108b346b093f4a1b97650e8c2deedb1654c814a9",
+      "status": "historical producer source unavailable; bytes frozen locally"
     },
     {
       "path": "apps/desktop/src/main/plugins/lifecycle/person-control.ts",
-      "file": "lifecycle-person-control.ts",
+      "file": "lifecycle-person-control.ts.txt",
       "sourceSha256": "2a55a1a369c5733032bb53d4451750ffb53747b39947353b064adfefc9be3e4c",
       "imports": {
         "../../../src/main/plugins/lifecycle/proposals": "./proposals",
@@ -81,11 +93,13 @@
         "./lifecycle-controller": "./controller",
         "../../../src/main/plugins/lifecycle/types": "./types",
         "./state-format": "../state/format"
-      }
+      },
+      "frozenSha256": "1978103e8f34ba2d48bffec8ddffa33a9e9f10dd743ce4c9f2a17aabba6c3668",
+      "status": "historical producer source unavailable; bytes frozen locally"
     },
     {
       "path": "apps/desktop/src/main/plugins/lifecycle/settings-client.ts",
-      "file": "lifecycle-settings-client.ts",
+      "file": "lifecycle-settings-client.ts.txt",
       "sourceSha256": "5aa1fb875f42c882b6813e829a2ad87fd971c02a92b4b055cc9180af37a4e62f",
       "imports": {
         "../../../src/main/plugins/lifecycle/proposals": "./proposals",
@@ -101,11 +115,13 @@
         "../../../src/shared/plugin-settings": "../../../shared/plugin-settings",
         "../../../src/main/plugins/package-verifier": "../package-verifier",
         "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol"
-      }
+      },
+      "frozenSha256": "5e098df76fccf2c72b96f1940c869cf5f8520d15b5968962615eb74b008fa4c2",
+      "status": "historical producer source unavailable; bytes frozen locally"
     },
     {
       "path": "apps/desktop/src/main/plugins/production.ts",
-      "file": "production.ts",
+      "file": "production.ts.txt",
       "sourceSha256": "6fda4270263a6de4529be6b477d49738d1efe1ff5cbbbcbc9c3dcea059972a8e",
       "imports": {
         "./state-store": "./state/store",
@@ -121,17 +137,21 @@
         "../../../src/main/plugins/supervisor/protocol": "./supervisor/protocol",
         "../../../src/shared/plugin-settings": "../../shared/plugin-settings",
         "../../../src/main/plugins/package-schema": "./package-schema"
-      }
+      },
+      "frozenSha256": "e00cae3ea7bad266894a795cd635a0b1d0a3b3d1cf5b18b2ea29a07c9df79572",
+      "status": "historical producer source unavailable; bytes frozen locally"
     },
     {
       "path": "apps/desktop/src/main/plugins/lifecycle/profile-ledger.ts",
-      "file": "profile-ledger.ts",
+      "file": "profile-ledger.ts.txt",
       "sourceSha256": "cb0a6cf9bbd47a28aea4c465f7966e791f054dc7fbea77f0edcee0a5e027ed8f",
       "imports": {
         "../../../src/main/plugins/lifecycle/proposals": "./proposals",
         "../../../src/main/plugins/node-host-files": "../node-host-files",
         "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol"
-      }
+      },
+      "frozenSha256": "d2e97a0c17c2eda86053aab00e90fca652a2143f3ba019ac19978376f0c15d54",
+      "status": "historical producer source unavailable; bytes frozen locally"
     }
   ]
 }

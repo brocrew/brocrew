@@ -26,7 +26,6 @@ import {
 } from '../src/main/plugins/private-files'
 import { localEndpoint } from '../src/main/plugins/local-endpoint'
 import { windowsSystemEnvironment } from '../src/main/plugins/system-environment'
-import { installedChromeOnWindows } from '../src/main/plugins/windows-chrome'
 import {
   keepToThisUser,
   windowsAccessLists,
@@ -125,47 +124,20 @@ describe('the plugin host on Windows, by its platform seams', () => {
     for (const root of [undefined, 'Windows', '\\\\server\\Windows', 'C:\\Windows;C:\\Fictional'])
       expect(() => windowsSystemEnvironment({ SystemRoot: root })).toThrow('unsupported')
   })
-  it('finds Chrome only where its installers put it, as a plain file at its own long path', () => {
-    const files = new Map<string, { link?: boolean; real?: string }>()
-    const disk = {
-      lstat: ((path: string) => {
-        const file = files.get(path)
-        if (!file) throw Object.assign(new Error('fictional missing'), { code: 'ENOENT' })
-        return { isFile: () => !file.link, isSymbolicLink: () => !!file.link }
-      }) as unknown as typeof lstatSync,
-      realpath: (path: string) => files.get(path)?.real ?? path,
-    }
-    const environment = {
-      ProgramW6432: 'C:\\Program Files',
-      'ProgramFiles(x86)': 'C:\\Program Files (x86)',
-      LOCALAPPDATA: 'C:\\Users\\Fern\\AppData\\Local',
-    }
-    const system = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-      older = 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-      own = 'C:\\Users\\Fern\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe'
-    expect(installedChromeOnWindows(environment, disk)).toBeNull()
-    files.set(own, {})
-    expect(installedChromeOnWindows(environment, disk)).toBe(own)
-    files.set(older, {})
-    expect(installedChromeOnWindows(environment, disk)).toBe(older)
-    files.set(system, { link: true })
-    expect(installedChromeOnWindows(environment, disk)).toBe(older)
-    files.set(system, { real: 'D:\\Elsewhere\\chrome.exe' })
-    expect(installedChromeOnWindows(environment, disk)).toBe(older)
-    files.set(system, {})
-    expect(installedChromeOnWindows(environment, disk)).toBe(system)
-    expect(
-      installedChromeOnWindows(
-        { ProgramFiles: '\\\\server\\share' },
-        {
-          ...disk,
-          lstat: (() => ({
-            isFile: () => true,
-            isSymbolicLink: () => false,
-          })) as unknown as typeof lstatSync,
-        },
-      ),
-    ).toBeNull()
+  it('the actual package owns its Chrome channel or explicit executable choice', async () => {
+    const { browserChoice, launchTarget } = await vi.importActual<{
+      browserChoice(
+        channel?: string,
+        executable?: string,
+      ): { channel: string; executablePath?: string }
+      launchTarget(choice: { channel: string; executablePath?: string }): unknown
+    }>('../../../plugins/chrome/src/shared/browser/launchConfig')
+    expect(launchTarget(browserChoice())).toEqual({ channel: 'chrome' })
+    const executable = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
+    expect(launchTarget(browserChoice('chrome', executable))).toEqual({
+      executablePath: executable,
+    })
+    expect(() => browserChoice('unknown')).toThrow()
   })
   it('creates the selected real directory with ordinary filesystem semantics for either platform hint', async () => {
     const parent = mkdtempSync(join(tmpdir(), 'fictional-root-hints-'))

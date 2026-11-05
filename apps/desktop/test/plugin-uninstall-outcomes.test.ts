@@ -1,191 +1,180 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { writeFile } from 'node:fs/promises'
-import { logOutBeforeUninstall } from '../src/main/plugins/lifecycle/whatsapp-apply'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
-import { fictionalPublicKey } from './plugin-package-fixtures'
 import {
   cleanupLifecycleFixtures,
   deferred,
   fixture,
   projection,
 } from './plugin-lifecycle-fixtures'
-
-const connection = {
-  serverPid: 123,
-  origin: 'http://127.0.0.1:1',
-  mcp: () => ({ url: '', headers: { Authorization: 'Bearer fictional-mcp' } }),
-  admin: () => ({
-    url: 'http://127.0.0.1:1/v1',
-    headers: { Authorization: 'Bearer fictional-admin' },
-  }),
-}
+import { genericUiFixture } from './plugin-ui-fixtures'
+import { cleanupRetirementSubjects, connectWhatsappSubject } from './plugin-retirement-subjects'
+const closes: Array<() => Promise<unknown>> = []
 afterEach(async () => {
-  vi.unstubAllGlobals()
+  for (const close of closes.splice(0).reverse()) await close()
+  await cleanupRetirementSubjects()
   await cleanupLifecycleFixtures()
 })
-
+async function setup() {
+  const f = await fixture({ appVersion: '1.0.0' }, false, 'fictional-bakery')
+  const actual = await connectWhatsappSubject(),
+    exit = deferred<void>(),
+    start = f.opts.runtime.start
+  f.opts.runtime.start = async (spec) => {
+    const run = await start(spec)
+    return {
+      ...run,
+      exited: exit.promise,
+      ready: async () => ({ ...(await run.ready()), client: actual.client }),
+    }
+  }
+  const pkg = genericUiFixture({
+    target: f.opts.target,
+    dataOnRemove: 'remove',
+    beforeRemove: { tool: 'whatsapp_before_remove' },
+  })
+  const source = join(f.parent, 'fictional-cleanup.tar')
+  await writeFile(source, pkg.archive)
+  await f.controller.installPackage(
+    f.handle,
+    { source, sha256: pkg.binding.releaseDigest, bytes: pkg.archive.length },
+    'install',
+  )
+  return { ...f, actual, exit, source, pkg }
+}
 it.each([false, true, undefined])(
-  'separates the completed local wipe from remote logout confirmation %s',
+  'preserves the actual package cleanup result without app remote-logout inference %s',
   async (removeOnPhone) => {
-    let removed = false
-    const fetch = vi.fn(async (url: string) => {
-      if (url.endsWith('/uninstall')) {
-        removed = true
-        return Response.json({})
-      }
-      return Response.json(
-        removed ? { state: 'unlinked', removeOnPhone } : { state: 'linked', removeOnPhone: false },
-      )
+    const f = await setup(),
+      original = f.actual.bridge.status.bind(f.actual.bridge)
+    f.actual.bridge.status = () => ({ ...original(), removeOnPhone })
+    const result = await f.controller.uninstall(f.handle, 'fictional-bakery')
+    expect(result).toMatchObject({
+      data: 'deleted',
+      cleanup: 'completed',
+      result: { structuredContent: { status: removeOnPhone ? 'warning' : 'complete' } },
     })
-    vi.stubGlobal('fetch', fetch)
-    await expect(logOutBeforeUninstall(connection, new AbortController().signal)).resolves.toBe(
-      removeOnPhone === false ? 'confirmed' : 'unconfirmed',
-    )
-    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
-      'http://127.0.0.1:1/v1/status',
-      'http://127.0.0.1:1/v1/uninstall',
-      'http://127.0.0.1:1/v1/status',
-    ])
+    expect(result).not.toHaveProperty('logout')
+    expect(f.actual.bridge.unlinked).toBe(1)
+    expect(f.events).toContain('remove-data fictional-bakery')
   },
 )
-
-describe.skipIf(process.platform === 'win32')('uninstall results over inert peers', () => {
-  it.each(['confirmed', 'unconfirmed', 'failure', 'timeout', 'absent'] as const)(
-    'reports local deletion separately when remote logout is %s',
-    async (mode) => {
-      const f = await fixture({}, false, 'whatsapp')
-      const exit = deferred<void>()
-      const start = f.opts.runtime.start.bind(f.opts.runtime)
-      f.opts.runtime.start = async (spec) => ({ ...(await start(spec)), exited: exit.promise })
-      await f.controller.install(f.handle, 'whatsapp')
-      let removed = false
-      const fetch = vi.fn(async (url: string) => {
-        if (mode === 'failure') throw new Error('fictional-private-diagnostic')
-        if (mode === 'timeout') throw new DOMException('fictional deadline', 'TimeoutError')
-        if (url.endsWith('/uninstall')) {
-          removed = true
-          return Response.json({})
-        }
-        return Response.json(
-          removed
-            ? { state: 'unlinked', removeOnPhone: mode !== 'confirmed' }
-            : { state: 'linked', removeOnPhone: false },
-        )
-      })
-      vi.stubGlobal('fetch', fetch)
-      if (mode === 'absent') {
-        f.events.length = 0
-        exit.resolve()
-        await vi.waitFor(() => expect(f.events).toContain('revoke'))
-      }
-      await expect(f.controller.uninstall(f.handle, 'whatsapp')).resolves.toEqual({
-        data: 'deleted',
-        logout: mode === 'confirmed' ? 'confirmed' : 'unconfirmed',
-      })
-      expect(f.events).toContain('remove-data whatsapp')
-      expect(f.state.inspect().guards[0]?.phase).toBe('removed')
-      if (mode === 'absent') expect(fetch).not.toHaveBeenCalled()
-    },
-  )
-
-  it('carries the closed removal outcome through the real person Settings channel', async () => {
-    const f = await fixture({}, false, 'whatsapp')
-    await f.controller.detach(f.handle)
-    const key = 'a'.repeat(64)
-    const bridge = await servePersonPluginControl({
-      root: f.root,
-      key,
-      controller: f.controller,
-      read: async () => ({}),
-    })
-    let client: Awaited<ReturnType<typeof connectPluginSettings>> | undefined
-    try {
-      client = await connectPluginSettings({
-        path: bridge.path,
-        personKey: key,
-        root: f.root,
-        pinnedPublicKey: fictionalPublicKey,
-        target: f.opts.target,
-        catalogue: f.opts.catalogue,
-        projection: projection().sink,
-        propose: () => {},
-      })
-      expect((await client.catalogue())[0]?.uninstallDeletesData).toBe(true)
-      const archive = join(f.parent, 'fictional-whatsapp.tar')
-      await writeFile(archive, f.pkg.archive)
-      await client.install(archive)
-      vi.stubGlobal(
-        'fetch',
-        vi.fn(async () => Response.json({})),
+it.each(['confirmed', 'unconfirmed', 'failure', 'timeout', 'absent'] as const)(
+  'separates current local data deletion from package cleanup state %s',
+  async (mode) => {
+    const f = await setup()
+    if (mode === 'unconfirmed') {
+      const status = f.actual.bridge.status.bind(f.actual.bridge)
+      f.actual.bridge.status = () => ({ ...status(), removeOnPhone: true })
+    }
+    if (mode === 'failure')
+      vi.spyOn(f.actual.bridge, 'unlink').mockRejectedValueOnce(
+        new Error('fictional cleanup unavailable'),
       )
-      await expect(client.uninstall('whatsapp')).resolves.toEqual({
-        data: 'deleted',
-        logout: 'unconfirmed',
+    const late = deferred<void>()
+    if (mode === 'timeout') {
+      const unlink = f.actual.bridge.unlink.bind(f.actual.bridge)
+      vi.spyOn(f.actual.bridge, 'unlink').mockImplementationOnce(async () => {
+        await late.promise
+        await unlink()
       })
-      expect(f.events).toContain('remove-data whatsapp')
-      expect((await client.catalogue())[0]?.installed).toBe(false)
-      expect(f.state.inspect().pending).toBeNull()
-    } finally {
-      await client?.close()
-      await bridge.close()
+      const call = f.actual.client.callTool.bind(f.actual.client)
+      vi.spyOn(f.actual.client, 'callTool').mockImplementation((params, schema, options) =>
+        call(params, schema, { ...options, timeout: 10 }),
+      )
     }
-  })
-
-  it('does not turn a failed local deletion into a completed removal', async () => {
-    const f = await fixture({}, false, 'whatsapp')
-    await f.controller.install(f.handle, 'whatsapp')
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => Response.json({})),
-    )
-    f.opts.runtime.removeData = async () => {
-      throw new Error('fictional deletion failed')
+    if (mode === 'absent') {
+      f.exit.resolve()
+      await vi.waitFor(() => expect(f.events).toContain('revoke'))
     }
-    await expect(f.controller.uninstall(f.handle, 'whatsapp', randomUUID())).rejects.toMatchObject({
-      code: 'cleanup-pending',
+    const result = await f.controller.uninstall(f.handle, 'fictional-bakery')
+    expect(result).toMatchObject({
+      data: 'deleted',
+      cleanup: ['failure', 'timeout', 'absent'].includes(mode) ? 'unconfirmed' : 'completed',
     })
-    expect(f.state.inspect().pending).not.toBeNull()
-  })
-})
-
-it.each([
-  { before: 'never linked', state: 'unlinked', removeOnPhone: false },
-  { before: 'earlier unconfirmed logout', state: 'unlinked', removeOnPhone: true },
-  { before: 'unresolved prior logout', state: 'linked', removeOnPhone: true },
-])('does not turn $before into a remote logout guarantee', async (prior) => {
-  let removed = false
-  const fetch = vi.fn(async (url: string) => {
-    if (url.endsWith('/uninstall')) {
-      removed = true
-      return Response.json({})
+    expect(result).not.toHaveProperty('logout')
+    expect(f.events).toContain('remove-data fictional-bakery')
+    expect(f.state.inspect().pending).toBeNull()
+    expect(f.actual.bridge.unlinked).toBe(
+      mode === 'absent' || mode === 'failure' || mode === 'timeout' ? 0 : 1,
+    )
+    if (mode === 'timeout') {
+      late.resolve()
+      await vi.waitFor(() => expect(f.actual.bridge.unlinked).toBe(1))
+      expect(f.actual.bridge.unlink).toHaveBeenCalledOnce()
+      // A late real package effect cannot turn the durable uncertain reply into a replay.
+      expect(result).toMatchObject({ cleanup: 'unconfirmed' })
     }
-    return Response.json(removed ? { state: 'unlinked', removeOnPhone: false } : prior)
+  },
+)
+it('carries the actual package removal result over the real person Settings channel', async () => {
+  const f = await setup(),
+    key = 'a'.repeat(64)
+  const bridge = await servePersonPluginControl({ root: f.root, key, controller: f.controller })
+  closes.push(() => bridge.close())
+  const client = await connectPluginSettings({
+    path: bridge.path,
+    personKey: key,
+    root: f.root,
+    pinnedPublicKey: f.opts.pinnedPublicKey,
+    target: f.opts.target,
+    appVersion: '1.0.0',
+    catalogue: f.opts.catalogue,
+    projection: projection().sink,
   })
-  vi.stubGlobal('fetch', fetch)
-  await expect(logOutBeforeUninstall(connection, new AbortController().signal)).resolves.toBe(
-    'unconfirmed',
-  )
-  expect(removed).toBe(true)
+  closes.push(() => client.close())
+  expect((await client.catalogue())[0]?.uninstallDeletesData).toBe(true)
+  await expect(client.uninstall('fictional-bakery')).resolves.toMatchObject({
+    data: 'deleted',
+    cleanup: 'completed',
+    result: { structuredContent: { status: 'complete' } },
+  })
+  expect(f.actual.bridge.unlinked).toBe(1)
+  expect(f.state.inspect().pending).toBeNull()
 })
-
-it('still attempts uninstall when the earlier link state cannot be read', async () => {
-  let removed = false
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string) => {
-      if (url.endsWith('/uninstall')) {
-        removed = true
-        return Response.json({})
-      }
-      if (!removed) throw new Error('fictional status unavailable')
-      return Response.json({ state: 'unlinked', removeOnPhone: false })
-    }),
-  )
-  await expect(logOutBeforeUninstall(connection, new AbortController().signal)).resolves.toBe(
-    'unconfirmed',
-  )
-  expect(removed).toBe(true)
+it('a failed local wipe remains pending and retry never repeats a consumed package cleanup', async () => {
+  const f = await setup(),
+    remove = f.opts.runtime.removeData!
+  f.opts.runtime.removeData = async () => {
+    throw new Error('fictional deletion failure')
+  }
+  const operationId = randomUUID()
+  await expect(
+    f.controller.uninstall(f.handle, 'fictional-bakery', operationId),
+  ).rejects.toMatchObject({ code: 'cleanup-pending' })
+  expect(f.state.inspect().pending).not.toBeNull()
+  expect(f.actual.bridge.unlinked).toBe(1)
+  f.opts.runtime.removeData = remove
+  await f.controller.uninstall(f.handle, 'fictional-bakery', operationId)
+  expect(f.state.inspect().pending).toBeNull()
+  expect(f.actual.bridge.unlinked).toBe(1)
+})
+it.each(['never linked', 'earlier unconfirmed logout', 'unresolved prior logout'])(
+  'an earlier state %s does not let the app invent a remote logout guarantee',
+  async () => {
+    const f = await setup(),
+      status = f.actual.bridge.status.bind(f.actual.bridge)
+    f.actual.bridge.status = () => ({ ...status(), state: 'unlinked', removeOnPhone: true })
+    const result = await f.controller.uninstall(f.handle, 'fictional-bakery')
+    expect(result).toMatchObject({
+      cleanup: 'completed',
+      result: { structuredContent: { status: 'warning' } },
+    })
+    expect(result).not.toHaveProperty('logout')
+  },
+)
+it('current removal cleanup is attempted even if an earlier status observation is unavailable', async () => {
+  const f = await setup(),
+    status = f.actual.bridge.status.bind(f.actual.bridge)
+  const read = vi.spyOn(f.actual.bridge, 'status').mockImplementation(() => {
+    if (f.actual.bridge.unlinked === 0) throw new Error('fictional earlier status unavailable')
+    return status()
+  })
+  const result = await f.controller.uninstall(f.handle, 'fictional-bakery')
+  expect(result).toMatchObject({ data: 'deleted', cleanup: 'completed' })
+  expect(f.actual.bridge.unlinked).toBe(1)
+  expect(read).toHaveBeenCalledOnce()
 })

@@ -1,3 +1,4 @@
+import { observeInstalled } from './plugin-installed-observation'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createHash, randomUUID } from 'node:crypto'
 import { readFile, readdir, mkdir, writeFile, unlink } from 'node:fs/promises'
@@ -18,7 +19,7 @@ import {
   JournalRecord as ParentRecord,
   decodeState as decodeParent,
   encodeState as encodeParent,
-} from './fixtures/plugin-update-parent/state-format'
+} from './fixtures/plugin-encoder-820/state-format'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
 import { PersonChannel } from '../src/main/plugins/lifecycle/transport'
 import { sharedLifecycleWorkspaces } from '../src/main/plugins/lifecycle/workspaces'
@@ -39,9 +40,11 @@ afterEach(async () => {
 })
 const snapshotRoot = fileURLToPath(new URL('./fixtures/plugin-update-parent/', import.meta.url))
 it.each(parentSources.files)(
-  'uses the actual pinned parent $path, changing only import locations',
+  'pins unavailable historical producer source as labelled read-only data $path',
   async (source) => {
     const adapted = await readFile(join(snapshotRoot, source.file), 'utf8')
+    expect(createHash('sha256').update(adapted).digest('hex')).toBe(source.frozenSha256)
+    expect(source.status).toContain('source unavailable')
     const imports = new Map<string, string | undefined>(Object.entries(source.imports))
     const original = adapted.replace(/from '(\.[^']+)'/g, (_, spec: string) => {
       const originalImport = imports.get(spec)
@@ -97,7 +100,6 @@ const clientOptions = (f: Awaited<ReturnType<typeof fixture>>, path: string) => 
   catalogue: { bytes: f.pkg.bytes, signature: f.pkg.signature },
   download: f.opts.download,
   projection: projection().sink,
-  propose() {},
 })
 async function diskBytes(root: string, prefix = ''): Promise<Record<string, string>> {
   const files: Record<string, string> = {}
@@ -167,34 +169,33 @@ describe.skipIf(process.platform === 'win32')(
         }
       },
     )
-    it('a caller keeps listing and Configure when the owner selects a different catalogue', async () => {
+    it('a caller keeps listing and installed bytes when the owner selects a different catalogue', async () => {
       const f = await prepared()
       const data = await diskBytes(f.data)
       const bridge = await servePersonPluginControl({
         root: f.root,
         key: 'a'.repeat(64),
         controller: sharedLifecycleWorkspaces(f.controller),
-        read: async () => ({}),
       })
       const client = await connectPluginSettings(clientOptions(f, bridge.path))
       try {
         expect(await client.catalogue()).toMatchObject([
           { id: 'fictional-bakery', installed: true, state: 'Running', installedVersion: '1.0.0' },
         ])
-        const screen = await client.screen('fictional-bakery')
-        expect(screen.current(screen.binding)).toBe(true)
-        expect(screen.verified.readFile('plugin.json')).toEqual(
-          Uint8Array.from(f.pkg.manifestBytes),
-        )
+        await expect(client.screen('fictional-bakery')).rejects.toThrow()
+        const screen = await observeInstalled(f.opts, f.state, 'fictional-bakery')
+        expect(screen.package.readFile('plugin.json')).toEqual(Uint8Array.from(f.pkg.manifestBytes))
         await f.controller.update(f.handle, 'fictional-bakery')
-        expect(screen.current(screen.binding)).toBe(false)
+        expect(f.state.currentInstallation('fictional-bakery')?.incarnation).not.toBe(
+          screen.installation.incarnation,
+        )
         expect((await client.catalogue())[0]).toMatchObject({
           state: 'Running',
           installedVersion: '1.0.3',
         })
-        const current = await client.screen('fictional-bakery')
-        expect(current.current(current.binding)).toBe(true)
-        expect(current.verified.readFile('plugin.json')).toEqual(
+        const current = await observeInstalled(f.opts, f.state, 'fictional-bakery')
+        expect(current.installation.installId).toBe(screen.installation.installId)
+        expect(current.package.readFile('plugin.json')).toEqual(
           Uint8Array.from(f.next.manifestBytes),
         )
         expect(await diskBytes(f.data)).toEqual(data)
@@ -223,13 +224,13 @@ describe.skipIf(process.platform === 'win32')(
         root: f.root,
         key: 'a'.repeat(64),
         controller: sharedLifecycleWorkspaces(f.controller),
-        read: async () => ({}),
       })
       const client = await connectPluginSettings(clientOptions(f, bridge.path))
       try {
         expect(client.features!()).toEqual([])
         expect(client.mutationRequired!()).toBe(false)
-        const before = await client.screen('fictional-bakery')
+        await expect(client.screen('fictional-bakery')).rejects.toThrow()
+        const before = f.state.currentInstallation('fictional-bakery')!
         const selected = await client.inspectPackage!({ source: path })
         expect(selected.ref).toEqual({
           source: path,
@@ -242,15 +243,20 @@ describe.skipIf(process.platform === 'win32')(
           digest: selected.ref.sha256,
         })
         await client.applyPackage!(selected.ref, 'update')
-        expect(before.current(before.binding)).toBe(false)
+        expect(f.state.currentInstallation('fictional-bakery')?.incarnation).not.toBe(
+          before.incarnation,
+        )
+        expect(f.state.currentInstallation('fictional-bakery')?.installId).toBe(before.installId)
         expect((await client.catalogue())[0]).toMatchObject({
           installed: true,
           state: 'Running',
           installedVersion: '1.0.3',
         })
-        expect((await client.screen('fictional-bakery')).verified.readFile('plugin.json')).toEqual(
-          Uint8Array.from(f.next.manifestBytes),
-        )
+        expect(
+          (await observeInstalled(f.opts, f.state, 'fictional-bakery')).package.readFile(
+            'plugin.json',
+          ),
+        ).toEqual(Uint8Array.from(f.next.manifestBytes))
         expect(f.state.inspect().pending).toBeNull()
         expect(await diskBytes(f.data)).toEqual(data)
         expect(await readFile(path)).toEqual(f.next.archive)

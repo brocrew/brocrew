@@ -1,3 +1,4 @@
+import { observeInstalled } from './plugin-installed-observation'
 import { EventEmitter } from 'node:events'
 import { randomBytes } from 'node:crypto'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -17,7 +18,7 @@ afterEach(async () => {
   vi.restoreAllMocks()
   await cleanupLifecycleFixtures()
 })
-it('v2 HTTP404 leaves the real v1 Settings install, update, Configure and UI reply unchanged', async () => {
+it('v2 HTTP404 leaves the real v1 Settings install/update and selected bytes unchanged while legacy Configure stays retired', async () => {
   const f = await fixture(),
     next = packageFixture({ manifest: { ...f.pkg.manifest, version: '1.0.1' } })
   f.opts.download = async (entry) =>
@@ -41,7 +42,6 @@ it('v2 HTTP404 leaves the real v1 Settings install, update, Configure and UI rep
       target: f.opts.target,
       catalogue: f.opts.catalogue,
       projection: projection().sink,
-      propose() {},
       download,
     }
   const c = await connectPluginSettings(input),
@@ -88,8 +88,11 @@ it('v2 HTTP404 leaves the real v1 Settings install, update, Configure and UI rep
         screenId: '00000000-0000-4000-8000-000000000001',
         bounds: { x: 0, y: 0, width: 800, height: 600 },
       }),
-    ).toEqual({ ok: true })
-    expect(fake.open).toHaveBeenCalledOnce()
+    ).toMatchObject({ ok: false })
+    expect(fake.open).not.toHaveBeenCalled()
+    expect(
+      (await observeInstalled(f.opts, f.state, 'chrome')).package.readFile('plugin.json'),
+    ).toEqual(Uint8Array.from(f.pkg.manifestBytes))
     await c.refreshCatalogue!(pluginSha256(next.bytes), {
       bytes: next.bytes,
       signature: next.signature,

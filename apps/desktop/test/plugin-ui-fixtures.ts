@@ -46,6 +46,7 @@ export function genericUiFixture(
     version?: string
     target?: PluginTarget
     dataOnRemove?: 'keep' | 'remove'
+    beforeRemove?: { tool: string; arguments?: Record<string, unknown> }
   } = {},
 ) {
   const target: PluginTarget = options.target ?? { os: 'linux', cpu: 'x64' }
@@ -78,7 +79,11 @@ export function genericUiFixture(
     mcp: { transport: 'stdio' },
     tools: { source: 'mcp', inventory: 'tools.json' },
     settings: { page: { entry: 'ui/index.html', assets: ['ui/index.html', 'ui/app.js'] } },
-    lifecycle: { stop: { signal: 'SIGTERM' }, dataOnRemove: options.dataOnRemove ?? 'keep' },
+    lifecycle: {
+      stop: { signal: 'SIGTERM' },
+      dataOnRemove: options.dataOnRemove ?? 'keep',
+      ...(options.beforeRemove ? { beforeRemove: options.beforeRemove } : {}),
+    },
     data: { schema: 1 },
     ...(options.ui ? { ui: options.ui } : {}),
     ...(options.hooks ? { hooks: options.hooks } : {}),
