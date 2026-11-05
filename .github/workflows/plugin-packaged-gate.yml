@@ -40,7 +40,9 @@ jobs:
       - name: Best-effort drain; hosted VM teardown is the final boundary
         if: always() && env.PLUGIN_GATE_CONTROL != ''
         run: node scripts/gates/plugin-packaged/owner.mjs clean "$PLUGIN_GATE_CONTROL"
-      - name: Keep only the sanitized gate summary and named test receipts
+      # The projection retains known assertions/statuses only. Raw JSON stays private; its digest
+      # binds provenance, not retained/reconstructable raw bytes or an independent raw audit.
+      - name: Keep summary and sanitized native assertion projection (raw stays private)
         if: always() && env.PLUGIN_GATE_CONTROL != ''
         uses: actions/upload-artifact@v4
         with:

@@ -332,6 +332,9 @@ describe.skipIf(process.platform === 'win32')('named48 reporting oracles', () =>
     )
     expect(receipt.projectionSha256).toBe(contract.digest(before[0]))
     expect(projection.kind).toBe('sanitized native assertion projection')
+    expect(projection.rawNativeNotice).toBe(
+      'Provenance digest only. Raw bytes stay private and may be deleted by cleanup; no retained raw audit.',
+    )
     expect(before.join('')).not.toContain(f.root)
     removeFixture(f.root, { exited: true, processes: 0 }, [])
     expect(

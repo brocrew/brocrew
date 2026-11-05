@@ -290,6 +290,8 @@ export function retainNamed48(root, control, exit) {
   execution.exit = { code: exit.code, signal: exit.signal }
   const projection = reconcileNative(JSON.parse(nativeBytes), path.join(root, 'repo'))
   projection.rawNativeSha256 = digest(nativeBytes)
+  projection.rawNativeNotice =
+    'Provenance digest only. Raw bytes stay private and may be deleted by cleanup; no retained raw audit.'
   const current = fileHashes(path.join(root, 'repo'), sourcePaths)
   const sourceUnchanged = JSON.stringify(current) === JSON.stringify(execution.source.files)
   const baselineMatches = inventory.files.every(
