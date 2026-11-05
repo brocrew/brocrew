@@ -54,7 +54,6 @@ describe('the person’s queue is published under one stamp', () => {
 
   beforeEach(async () => {
     world = aServiceWorld()
-    world.clockStep = 0
     world.anAgent('giver', 'normal')
     world.anAgent('helper', 'normal')
     announced = []
