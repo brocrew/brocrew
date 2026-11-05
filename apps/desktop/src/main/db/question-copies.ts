@@ -41,8 +41,7 @@ CREATE TABLE IF NOT EXISTS question_copy_progress (
   after_generation INTEGER,
   after_ordinal INTEGER,
   done INTEGER NOT NULL DEFAULT 0
-);
-INSERT OR IGNORE INTO question_copy_progress (id) VALUES (1);`
+);`
 
 const INDEX = 'question_copy_key_idx'
 const INDEX_SQL = `CREATE INDEX ${INDEX} ON question_copy (passed_up_from, session_id)`
@@ -104,6 +103,7 @@ export function ensureQuestionCopies(
   if (db.readonly) return
   db.transaction(() => {
     db.exec(TABLES)
+    db.prepare('INSERT OR IGNORE INTO question_copy_progress (id) VALUES (1)').run()
     const restart = db.prepare(
       'UPDATE question_copy_progress SET after_session = NULL, after_generation = NULL, after_ordinal = NULL, done = 0 WHERE id = 1',
     )

@@ -60,6 +60,10 @@ describe('the commit record covers every write', () => {
       },
       'db/window-writer-stamp.ts': { count: 4, why: 'temp counters and triggers; dropping them' },
       'db/compact.ts': { count: 1, why: 'VACUUM, at launch' },
+      'db/question-copies.ts': {
+        count: 3,
+        why: "the derived copies' tables, triggers and index, created at open: schema only",
+      },
       'db/files-library-engine.ts': {
         count: 3,
         why: 'its read-only connection: BEGIN/COMMIT/ROLLBACK',
