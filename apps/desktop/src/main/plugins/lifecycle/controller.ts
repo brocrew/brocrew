@@ -2013,42 +2013,47 @@ export class PluginLifecycleController {
         .filter((one) => one.live)
         .map(async (workspace) => {
           const binding = workspace.bindings.get(install.pluginId)
+          if (binding) this.retainPublished(workspace, binding)
+          this.retainReceipt(workspace, install.pluginId)
           const publisher = workspace.receiptPublishers.get(install.pluginId) ?? workspace.sink
+          this.retainRevoke(workspace, install.pluginId, publisher, install.installId)
+          // Capture every old origin before an awaited callback can replace the binding.
+          const targets = [...(workspace.revocations.get(install.pluginId) ?? [])].flatMap(
+            ([origin, obligations]) =>
+              [...obligations].map((installId) => ({ origin, obligations, installId })),
+          )
           workspace.receipts.delete(install.pluginId)
           workspace.receiptPublishers.delete(install.pluginId)
           workspace.consumerRevisions.set(
             install.pluginId,
             (workspace.consumerRevisions.get(install.pluginId) ?? 0) + 1,
           )
-          const obligations = this.retainRevoke(
-            workspace,
-            install.pluginId,
-            publisher,
-            install.installId,
-          )
-          if (
-            (await bounded(() =>
-              this.effectQueue.consumer(() =>
-                publisher.revoke(install.pluginId, install.installId),
-              ),
-            )) !== true
-          )
-            return pending()
-          this.confirmRevoke(workspace, install.pluginId, publisher, install.installId, obligations)
-          if (
-            workspace.bindings.get(install.pluginId) === binding &&
-            binding?.sink === publisher &&
-            binding.selected?.installId === install.installId
-          )
-            binding.bound = false
-          await this.effectQueue.consumer(() =>
-            publisher.reconcile({
-              pluginId: install.pluginId,
-              before: null,
-              receipt: null,
+          const revoked = await Promise.allSettled(
+            targets.map(async ({ origin, obligations, installId }) => {
+              if (
+                (await bounded(() =>
+                  this.effectQueue.consumer(() => origin.revoke(install.pluginId, installId)),
+                )) !== true
+              )
+                return pending()
+              this.confirmRevoke(workspace, install.pluginId, origin, installId, obligations)
+              if (
+                workspace.bindings.get(install.pluginId) === binding &&
+                binding?.sink === origin &&
+                binding.selected?.installId === installId
+              )
+                binding.bound = false
+              await this.effectQueue.consumer(() =>
+                origin.reconcile({
+                  pluginId: install.pluginId,
+                  before: null,
+                  receipt: null,
+                }),
+              )
+              await this.effectQueue.consumer(() => origin.applied(install.pluginId, null))
             }),
           )
-          await this.effectQueue.consumer(() => publisher.applied(install.pluginId, null))
+          if (revoked.some((one) => one.status !== 'fulfilled')) return pending()
         }),
     )
     if (results.some((one) => one.status !== 'fulfilled')) return pending()
