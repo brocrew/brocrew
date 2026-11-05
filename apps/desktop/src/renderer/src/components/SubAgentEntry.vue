@@ -2,11 +2,11 @@
 import { computed, ref } from 'vue'
 import { subAgentFacets } from '../lib/agent-state'
 import { BACKGROUND_SENTENCE, BACKGROUND_WORD, backgroundState } from '../lib/background-work'
-import { renderChatMarkdown } from '../lib/markdown'
+import MarkdownWords from './MarkdownWords.vue'
 import type { SubAgentCard } from '../lib/transcript'
 import type { ChildWorkInput } from '../../../shared/runtime-ipc'
 import AgentState from './AgentState.vue'
-import { usePathsIn, type PathsHere } from '../composables/useMessagePaths'
+import type { PathsHere } from '../composables/useMessagePaths'
 
 /**
  * An agent the agent dispatched (029) — collapsed by default, and deliberately so.
@@ -233,9 +233,6 @@ const usage = computed(() => {
   return parts.join(' · ')
 })
 
-const summaryHtml = computed(() =>
-  props.card.summary ? renderChatMarkdown(props.card.summary) : '',
-)
 const hasBody = computed(() => props.card.body.length > 0 || Boolean(props.card.summary))
 
 /**
@@ -273,43 +270,9 @@ const saying = computed(() => {
   return ''
 })
 
-/**
- * The body, render-ready — the same rows in the same order, with prose turned into markup once.
- *
- * ⚠️ **A computed rather than a function called from the template, and the difference is real
- * work.** A running sub-agent heartbeats every few seconds and each beat writes `usage` on this
- * card; a `v-html="said(row.text)"` would re-parse every paragraph the child has ever said on every
- * one of those beats. The computed's dependencies are the body's rows and their text, which a usage
- * write does not touch, so the markdown is parsed when the child speaks and not again.
- *
- * ⛔ **Never trusted as HTML.** `renderChatMarkdown` runs markdown-it with `html: false` (see
- * `lib/markdown.ts`), so a child that emits a `<script>` gets a `<script>` on screen as text. This
- * is forwarded provider output — the one class of string in this app that a hostile file can reach —
- * and it takes the same door the parent's own prose takes.
- */
-const rows = computed(() =>
-  props.card.body.map((row) =>
-    row.kind === 'prose' ? { ...row, html: renderChatMarkdown(row.text) } : row,
-  ),
-)
-
-/** Asked about once the child has finished and its body is open. */
-const paths = usePathsIn(
-  () => props.paths,
-  () =>
-    open.value && !props.card.running
-      ? [
-          ...rows.value.flatMap((row) => (row.kind === 'prose' ? [row.html] : [])),
-          summaryHtml.value,
-        ]
-      : [],
-)
-
-/** What is drawn: the same rows, with the paths main found marked. */
-const drawnRows = computed(() =>
-  rows.value.map((row) => (row.kind === 'prose' ? { ...row, html: paths.mark(row.html) } : row)),
-)
-const summary = computed(() => paths.mark(summaryHtml.value))
+/** Each prose block caches its rendered text independently of usage updates. */
+const rows = computed(() => props.card.body)
+const prosePaths = computed(() => (open.value && !props.card.running ? props.paths : null))
 </script>
 
 <template>
@@ -410,7 +373,7 @@ const summary = computed(() => paths.mark(summaryHtml.value))
       </button>
     </div>
 
-    <div v-if="open && hasBody" :id="bodyId" class="body" @click="paths.clicked">
+    <div v-if="open && hasBody" :id="bodyId" class="body">
       <!-- The child's OWN calls and its OWN words, which Claude forwards into the parent stream.
            Collected here they are a nested transcript; left in the parent flow they read as the
            parent's own work — which is what the calls wrongly did before 029 and what the speech
@@ -418,7 +381,7 @@ const summary = computed(() => paths.mark(summaryHtml.value))
            and merging two collections at render is how 044 P3 put a tool in front of the text that
            preceded it. -->
       <ol v-if="rows.length" class="rows" data-cy="subagent-rows">
-        <template v-for="row in drawnRows" :key="row.kind === 'tool' ? row.callId : row.id">
+        <template v-for="row in rows" :key="row.kind === 'tool' ? row.callId : row.id">
           <!-- ⚠️ `pending` means "still to come", and for a child of a session that is gone nothing
                is coming (074). Only `false` is styled, so this is a read-out rather than a colour —
                but it is the read-out a test, an inspector or anything reading the DOM gets, and
@@ -485,23 +448,17 @@ const summary = computed(() => paths.mark(summaryHtml.value))
                coloured prefix on every sentence is the manual workaround this change exists to
                retire. The accent rule on the left is what marks it as speech rather than a row. -->
           <li v-else class="says" data-cy="subagent-says">
-            <!-- eslint-disable-next-line vue/no-v-html -- see `rows`: markdown-it runs with
-                 `html: false`, the same door the parent's own prose takes. -->
-            <div class="md-chat" v-html="row.html"></div>
+            <MarkdownWords :text="row.text" :paths="prosePaths" />
           </li>
         </template>
       </ol>
-      <!-- eslint-disable-next-line vue/no-v-html -- markdown-it runs with `html: false`; see
-           lib/markdown.ts. -->
-      <div v-if="summary" class="md-chat answer" data-cy="subagent-summary" v-html="summary"></div>
-      <p
-        v-if="paths.failure.value"
-        class="message-path-failure"
-        role="status"
-        data-cy="message-path-failure"
-      >
-        {{ paths.failure.value }}
-      </p>
+      <MarkdownWords
+        v-if="card.summary"
+        class="answer"
+        data-cy="subagent-summary"
+        :text="card.summary"
+        :paths="prosePaths"
+      />
     </div>
   </div>
 </template>

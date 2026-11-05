@@ -43,7 +43,10 @@ describe('tool refusals name their limits and fields without keeping caller text
       'What the conversation that gave you this needs to read — for work you took on for a person, what its record keeps as its last status line. At most 1,280 characters (UTF-16 code units). Put longer detail in a file listed in resource_paths. Nothing is shortened for you.',
     )
     expect(z.globalRegistry.get(tool('ask_question').input.question!)?.description).toBe(
-      'What you need decided, in your own words, at most 1,280 characters (UTF-16 code units). Nothing is shortened for you.',
+      'What you need decided, in your own words, at most 1,280 characters (UTF-16 code units). Nothing is shortened for you. It shows under Waiting on you with Markdown: **bold**, lists, `code` for ids and paths, and links to files.',
+    )
+    expect(z.globalRegistry.get(tool('request_action').input.action!)?.description).toBe(
+      'What the person should do, in plain words, at most 1280 characters. It shows under Waiting on you with Markdown: **bold**, lists, `code` for ids and paths, and links to files.',
     )
     expect(z.globalRegistry.get(tool('ask_question').input.options!)?.description).toBe(
       'The choices you are offering, as a list of text choices with at most 1,280 characters in total (UTF-16 code units). Leave it out to ask for an answer in their own words.',

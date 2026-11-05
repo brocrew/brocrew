@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import { usePersonsQueue, type TodoCard } from '../lib/persons-queue'
 import { TODO_CANT, TODO_DONE, TODO_NOTE } from '../lib/work-waits'
-import RequestMarkdown from './RequestMarkdown.vue'
+import MarkdownWords from './MarkdownWords.vue'
 
 withDefaults(
   defineProps<{
@@ -21,7 +21,7 @@ const note = ref('')
 <template>
   <div class="todo" :class="{ settled: card.taken }" :data-cy="`${cy}-todo-${card.row.key}`">
     <p class="todo-head" :data-cy="`${cy}-todo-head-${card.row.key}`">{{ card.row.head }}</p>
-    <RequestMarkdown
+    <MarkdownWords
       class="todo-text"
       :data-cy="`${cy}-todo-text-${card.row.key}`"
       :text="card.row.text"

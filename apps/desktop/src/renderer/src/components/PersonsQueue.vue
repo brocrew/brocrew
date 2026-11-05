@@ -41,7 +41,7 @@ import McpServerRequests from './McpServerRequests.vue'
 import WorkWaits from './WorkWaits.vue'
 import CloseWorkButton from './CloseWorkButton.vue'
 import QuestionCard from './QuestionCard.vue'
-import RequestMarkdown from './RequestMarkdown.vue'
+import MarkdownWords from './MarkdownWords.vue'
 import WaitingOnWhoWrote from './WaitingOnWhoWrote.vue'
 
 /** ⚑ D-046 · what a provider's question part takes, beside its choices — drawn, not answered here. */
@@ -613,7 +613,6 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
           <QuestionCard
             v-if="row.question"
             :reading="questionOnTheQueue(row, row.question, queue.presses.get(row.key))"
-            markdown
             :path-session-id="row.sessionId"
             fold
             @answer="(response) => answer(row, response)"
@@ -685,13 +684,13 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
                its asker's conversation answers it; the row's own answers and its press below are
                unchanged. -->
           <div v-if="row.words" class="pq-asked" :data-cy="`persons-queue-asked-${row.key}`">
-            <RequestMarkdown
+            <MarkdownWords
               v-if="row.words.prompt.trim() !== ''"
               class="pq-asked-words"
               :text="row.words.prompt"
               :session-id="row.sessionId"
             />
-            <RequestMarkdown
+            <MarkdownWords
               v-if="row.words.context"
               class="pq-asked-context"
               :text="row.words.context"
@@ -706,7 +705,7 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
               <p v-if="part.header" class="pq-asked-prompt">
                 <strong>{{ part.header }}</strong>
               </p>
-              <RequestMarkdown
+              <MarkdownWords
                 v-if="part.prompt"
                 class="pq-asked-prompt"
                 :text="part.prompt"
@@ -733,7 +732,7 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
                shortened; what a broader answer would install is drawn under more options. -->
           <div v-if="row.disclosed" class="pq-asked" :data-cy="`persons-queue-request-${row.key}`">
             <div class="pq-request-what">
-              <RequestMarkdown class="pq-asked-words" :text="row.disclosed.asked" />
+              <MarkdownWords class="pq-asked-words" :text="row.disclosed.asked" />
               <div
                 v-if="actionLinesOf(row.disclosed).length > 0"
                 class="pq-request-line"
