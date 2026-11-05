@@ -181,6 +181,11 @@ const connect=net.Socket.prototype.connect;net.Socket.prototype.connect=function
     plan.sourceSha,
     'Run from the prepared exact source SHA',
   )
+  assert.equal(
+    await git('status', '--porcelain'),
+    '',
+    'Run requires the clean prepared source checkout',
+  )
   const resources = join(out, 'resources')
   await checkRuntime(resources, target)
   const before = await inventory(out)
