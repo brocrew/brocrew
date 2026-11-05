@@ -19388,7 +19388,10 @@ export class RuntimeHost implements LiveHost {
    * is refused.
    */
   async readForWindow<T>(answer: () => T): Promise<T> {
-    if (this.deps.windowReader === undefined) return answer()
+    if (this.deps.windowReader === undefined) {
+      this.deps.store.checkCommitted()
+      return answer()
+    }
     if (this.launches.closed) throw new WindowReadUnavailable()
     if (this.windowReadCallers >= WINDOW_READ_BOUNDS.callers)
       return this.answeredOnTheMainThread('callers-full', answer)
@@ -19413,6 +19416,8 @@ export class RuntimeHost implements LiveHost {
    * often it happened are logged, each cause at most once a minute; nothing the answer holds is.
    */
   private answeredOnTheMainThread<T>(missed: WindowReadMiss, answer: () => T): T {
+    // Another connection's commit is heard before the answer is composed.
+    this.deps.store.checkCommitted()
     const at = this.now()
     const before = this.windowReadMisses.get(missed)
     const count = (before?.count ?? 0) + 1
@@ -19460,8 +19465,10 @@ export class RuntimeHost implements LiveHost {
       }
       const reusable = query.kind === 'routes' || query.kind === 'incidents'
       const kept = query.kind === 'incidents' ? this.windowIncidentsKept : this.windowRoutesKept
-      if (reusable && kept !== undefined && sameWindowWriter(kept.stamp, before))
+      if (reusable && kept !== undefined && sameWindowWriter(kept.stamp, before)) {
+        this.deps.store.checkCommitted()
         return compose(kept.result)
+      }
       let pending: Promise<WindowReadResult>
       let origin = before
       if (reusable) {
@@ -19491,6 +19498,8 @@ export class RuntimeHost implements LiveHost {
       if (sameWindowWriter(origin, before) && sameWindowWriter(origin, after)) {
         if (query.kind === 'routes') this.windowRoutesKept = { stamp: after!, result }
         if (query.kind === 'incidents') this.windowIncidentsKept = { stamp: after!, result }
+        // Heard after the wait, so a commit made while the worker read is heard too.
+        this.deps.store.checkCommitted()
         return compose(result)
       }
     }
