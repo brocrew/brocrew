@@ -601,6 +601,44 @@ describe('canonical window worker folds and independent live-store reads', () =>
     expect(answers[0]!.rows).toHaveLength(1)
   })
 
+  it('forty workspace reads answered on the main thread share one composition', async () => {
+    const read = vi.fn(async (input: WindowReadQuery) => engine.read(input))
+    const { host } = hostWith({ read, close: async () => {} }, false, {
+      windowWriterStamp: undefined,
+      limitsWriterStamp: () => null,
+    })
+    anotherQuestion()
+    const walks = [
+      vi.spyOn(store, 'questionsAPersonMustAnswer'),
+      vi.spyOn(store, 'decisionsAwaitingAPerson'),
+      vi.spyOn(store, 'piecesWaitingOnWhoWrote'),
+    ]
+    const answers = await Promise.all(
+      Array.from({ length: 40 }, () => host.readForWindow(() => host.readWorkspace())),
+    )
+    for (const walk of walks) expect(walk).toHaveBeenCalledOnce()
+    expect(read).not.toHaveBeenCalled()
+    for (const answer of answers) expect(answer).toBe(answers[0])
+  })
+
+  it('a workspace reading that came up short is said once, and read again with nothing moved', async () => {
+    const { host } = hostWith()
+    anotherQuestion()
+    host.readWorkspace()
+    store.setApprovalMode('alpha', 'auto')
+    row('alpha', 'request_escalated', { type: 'request_escalated', requestId: 'first' })
+    const real = store.piecesWaitingOnWhoWrote.bind(store)
+    const walked = vi
+      .spyOn(store, 'piecesWaitingOnWhoWrote')
+      .mockImplementationOnce((...args) => ({ ...real(...args), rowsUnread: 1 }))
+    const short = host.readWorkspace()
+    expect(short.needsYou.counted).toBe('short')
+    const recovered = host.readWorkspace()
+    expect(walked).toHaveBeenCalledTimes(2)
+    expect(recovered.needsYou.counted).toBe('in-full')
+    expect(host.readWorkspace()).toBe(recovered)
+  })
+
   it('answers on the main thread when the writer moves under both tries', async () => {
     const read = vi.fn(async (query: WindowReadQuery) => {
       const answer = engine.read(query)
