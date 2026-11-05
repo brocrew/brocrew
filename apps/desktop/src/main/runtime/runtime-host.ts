@@ -4890,6 +4890,8 @@ function listedFrom(reachable: readonly VisibleConversation[]): AgentsListed {
 interface CardReads {
   readonly roster: readonly AgentIdentity[]
   readonly askingForRules: ReadonlySet<string>
+  /** Rows of the asks against agents' rules the read could not take: a reading that skipped any is short. */
+  readonly asksUnread: number
   readonly nameOf?: (conversation: string) => string
 }
 
@@ -22259,7 +22261,7 @@ export class RuntimeHost implements LiveHost {
     return {
       conversations,
       readAt: Date.now(),
-      rowsUnread: unread.count,
+      rowsUnread: unread.count + reads.asksUnread,
       ...ledgersSkippedOf(unread.ledgersSkipped),
     }
   }
@@ -24146,9 +24148,11 @@ export class RuntimeHost implements LiveHost {
    * person's decision about their rules (one scan of every ledger's asks, rather than one per card).
    */
   private cardReads(): CardReads {
+    const asks = this.instructionAsksCounted()
     return {
       roster: this.deps.store.agentIdentities(),
-      askingForRules: new Set(this.instructionAsksNow().map((waiting) => waiting.conversation)),
+      askingForRules: new Set(asks.rows.map((waiting) => waiting.conversation)),
+      asksUnread: asks.rowsUnread,
     }
   }
 
@@ -30142,7 +30146,7 @@ export class RuntimeHost implements LiveHost {
       const ledgers = this.oneLedgerReadPerAnswer(unread)
       const state = this.stateOf(
         conversation,
-        { roster, askingForRules: new Set() },
+        { roster, askingForRules: new Set(), asksUnread: 0 },
         unread,
         ledgers(conversation),
         this.oneWorkOutReadPerAnswer(unread),
@@ -34255,6 +34259,8 @@ export class RuntimeHost implements LiveHost {
           roster: [],
           nameOf,
           askingForRules: new Set(asks.map((one) => one.conversation)),
+          // Read here for this conversation alone, not from the replay.
+          asksUnread: 0,
         },
         unread,
       )
@@ -38109,14 +38115,14 @@ export class RuntimeHost implements LiveHost {
     const kept = this.listingKept
     if (kept !== undefined && kept.at === this.listingVersion) return kept
     const at = this.listingVersion
-    const { unread, stateOf, itsWork } = this.oneReadPerListing()
+    const { unread, asksUnread, stateOf, itsWork } = this.oneReadPerListing()
     const halves = {
       resumable: this.resumableHalf(stateOf, itsWork),
       unresumable: this.unresumableHalf(stateOf, itsWork),
     }
     // ⚑ A read it skipped may have failed only this once, so a listing that skipped one is said
     // once and composed again at the next ask.
-    const complete = unread.count === 0 && unread.ledgersSkipped === 0
+    const complete = unread.count === 0 && unread.ledgersSkipped === 0 && asksUnread === 0
     const composed = { at, ...halves, complete }
     this.listingKept = this.listingVersion === at && complete ? composed : undefined
     return composed
@@ -38227,6 +38233,8 @@ export class RuntimeHost implements LiveHost {
   private oneReadPerListing(): {
     /** What this listing could not read: a listing that skipped anything is not kept. */
     readonly unread: RowsUnread
+    /** The rows of the asks against agents' rules its cards could not read. */
+    readonly asksUnread: number
     readonly stateOf: (sessionId: string) => AgentState
     readonly itsWork: (
       sessionId: string,
@@ -38242,6 +38250,7 @@ export class RuntimeHost implements LiveHost {
     const waiting = this.oneWaitReadPerAnswer(unread, ledger, workOut)
     return {
       unread,
+      asksUnread: reads.asksUnread,
       stateOf: (sessionId) => {
         // ⚑ **D-019 · the window that asked holds this word now, not the last one pushed**, so the
         // next word derived for this row is pushed whatever it is ({@link stateSaid}).
