@@ -5,7 +5,7 @@ import { fork } from 'node:child_process'
 import { once } from 'node:events'
 import { createPluginNodeHost } from '../src/main/plugins/node-host'
 import { preparePluginNodeRuntime, runtimeFiles } from '../src/main/plugins/node-runtime'
-import { verifyChromeUiArchive } from './chrome-ui-archive'
+import { verifyOrdinaryChromeArchive } from './ordinary-chrome-archive'
 import { liveGroupMembers, stopGroups } from '../resources/plugin-host/process-groups.mjs'
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 async function wait<T>(read: () => Promise<T | undefined>): Promise<T> {
@@ -26,30 +26,44 @@ export async function owner(config: {
     resourcesRoot: config.resources,
     durableRoot: join(config.root, 'runtimes'),
   })
-  const checked = verifyChromeUiArchive(await readFile(config.archive))
+  const checked = verifyOrdinaryChromeArchive(await readFile(config.archive))
   const host = createPluginNodeHost({
     root: join(config.root, 'host'),
     runtime,
     browserExecutable: config.browser,
   })
-  const child = await host.start({
-    package: checked.verified,
-    releaseDigest: checked.release.archive.sha256,
-  })
+  const previousExecutable = process.env.BROCREW_CHROME_EXECUTABLE
+  process.env.BROCREW_CHROME_EXECUTABLE = config.browser
+  let child: Awaited<ReturnType<typeof host.start>>
+  try {
+    child = await host.start({
+      package: checked.verified,
+      releaseDigest: checked.release.archive.sha256,
+    })
+  } finally {
+    if (previousExecutable === undefined) delete process.env.BROCREW_CHROME_EXECUTABLE
+    else process.env.BROCREW_CHROME_EXECUTABLE = previousExecutable
+  }
   const ready = await child.ready()
-  const headers = { ...ready.admin().headers, 'content-type': 'application/json' }
-  const made = await fetch(ready.origin + '/v1/profiles', {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ name: 'fir' }),
+  if (!ready.client) throw new Error('Actual converted package MCP client missing')
+  const meta = {
+    workspaceId: 'fictional-node-owner',
+    requestId: 'create-fir',
+    origin: 'settings.page',
+  }
+  const made = await ready.client.callTool({
+    name: 'configure_profile',
+    arguments: { action: 'create-profile', profile: 'fir' },
+    _meta: meta,
   })
-  if (made.status !== 201) throw new Error('fictional-profile-create-failed')
-  void fetch(ready.origin + '/v1/profiles/fir/open', {
-    method: 'POST',
-    headers,
-    body: '{}',
-    signal: AbortSignal.timeout(20000),
-  }).catch(() => {})
+  if (made.isError) throw new Error('fictional-profile-create-failed')
+  void ready.client
+    .callTool({
+      name: 'configure_profile',
+      arguments: { action: 'open-window', profile: 'fir' },
+      _meta: { ...meta, requestId: 'open-fir' },
+    })
+    .catch(() => {})
   const ids = await wait(async () => {
     try {
       return JSON.parse(
@@ -78,7 +92,7 @@ export async function proof(config: {
   const browser = join(config.root, 'fake-browser')
   await writeFile(
     browser,
-    `#!${paths.node}\nimport fs from 'node:fs';import path from 'node:path';import {spawn} from 'node:child_process';\nconst child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});\nfs.writeFileSync(path.join(process.env.BROCREW_CHROME_DATA,'fake-browser.json'),JSON.stringify({pid:process.pid,child:child.pid}));\nprocess.on('SIGTERM',()=>{});setInterval(()=>{},1000);\n`,
+    `#!${paths.node}\nimport fs from 'node:fs';import path from 'node:path';import {spawn} from 'node:child_process';\nconst child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});\nfs.writeFileSync(path.join(process.env.BROCREW_PLUGIN_DATA,'fake-browser.json'),JSON.stringify({pid:process.pid,child:child.pid}));\nprocess.on('SIGTERM',()=>{});setInterval(()=>{},1000);\n`,
     { mode: 0o700 },
   )
   let assertions = 0

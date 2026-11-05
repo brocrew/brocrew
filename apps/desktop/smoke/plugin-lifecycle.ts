@@ -11,7 +11,7 @@ import { createPluginSupervisorLauncher } from '../src/main/plugins/supervisor/l
 import { preparePluginNodeRuntime, runtimeFiles } from '../src/main/plugins/node-runtime'
 import { privateChild } from '../src/main/plugins/node-host-files'
 import { liveGroupMembers } from '../resources/plugin-host/process-groups.mjs'
-import { verifyChromeUiArchive } from './chrome-ui-archive'
+import { verifyOrdinaryChromeArchive } from './ordinary-chrome-archive'
 import { fictionalPublicKey, signed } from '../test/plugin-package-fixtures'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import type { WorkspaceProjection } from '../src/main/plugins/lifecycle/types'
@@ -39,7 +39,7 @@ export async function proof(config: { root: string; resources: string; archive: 
   const browser = join(root, 'fake-browser')
   await writeFile(
     browser,
-    `#!${node}\nimport fs from 'node:fs';import path from 'node:path';import {spawn} from 'node:child_process';\nconst child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});\nfs.writeFileSync(path.join(process.env.BROCREW_CHROME_DATA,'fake-browser.json'),JSON.stringify({pid:process.pid,child:child.pid}));\nprocess.on('SIGTERM',()=>{});setInterval(()=>{},1000);\n`,
+    `#!${node}\nimport fs from 'node:fs';import path from 'node:path';import {spawn} from 'node:child_process';\nconst child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});\nfs.writeFileSync(path.join(process.env.BROCREW_PLUGIN_DATA,'fake-browser.json'),JSON.stringify({pid:process.pid,child:child.pid,serverPid:process.ppid}));\nprocess.on('SIGTERM',()=>{});setInterval(()=>{},1000);\n`,
     { mode: 0o700 },
   )
   const data = await privateChild(root, 'host/data/chrome')
@@ -61,8 +61,8 @@ export async function proof(config: { root: string; resources: string; archive: 
     }),
     { mode: 0o600 },
   )
-  const checked = verifyChromeUiArchive(await readFile(config.archive))
-  assert.equal(checked.verified.manifest.skills.length, 0)
+  const checked = verifyOrdinaryChromeArchive(await readFile(config.archive))
+  assert.equal(checked.verified.manifest.format, 3)
   const catalogue = signed({ format: 1, entries: [checked.release] })
   const cataloguePath = join(root, 'fictional-catalogue.json'),
     signaturePath = join(root, 'fictional-catalogue.sig')
@@ -84,6 +84,8 @@ export async function proof(config: { root: string; resources: string; archive: 
   })
   let lease: PluginWorkspaceLease | undefined,
     client: Awaited<ReturnType<typeof connectPluginSettings>> | undefined
+  const previousExecutable = process.env.BROCREW_CHROME_EXECUTABLE
+  process.env.BROCREW_CHROME_EXECUTABLE = browser
   let cleanupSafe = false
   const workspaceId = randomUUID(),
     events: string[] = []
@@ -130,12 +132,9 @@ export async function proof(config: { root: string; resources: string; archive: 
       target: { os: process.platform as 'darwin' | 'linux', cpu: process.arch as 'arm64' | 'x64' },
       catalogue,
       projection,
-      propose() {
-        throw new Error('no Apply in this lifecycle proof')
-      },
     })
     // The actual Settings handler, with an explicitly inert main-window identity. No Electron
-    // window is opened; the isolated screen binding/read remains the verified adapter below.
+    // window is opened; the verified page uses the real package MCP tools below.
     const window = Object.assign(new EventEmitter(), {
       isDestroyed: () => false,
       webContents: Object.assign(new EventEmitter(), { mainFrame: {}, send() {} }),
@@ -152,30 +151,63 @@ export async function proof(config: { root: string; resources: string; archive: 
     )
     const event = { sender: window.webContents, senderFrame: window.webContents.mainFrame }
     assert.equal((await client.catalogue())[0]?.state, 'Available')
-    assert.equal((await handler(event, { kind: 'install', id: 'chrome' })).ok, true)
+    const inspection = await handler(event, { kind: 'inspect', source: config.archive })
+    if (!inspection.ok || !('inspection' in inspection))
+      throw new Error('Actual Settings package inspection failed')
+    assert.equal(
+      (await handler(event, { kind: 'install', id: 'chrome', package: inspection.inspection.ref }))
+        .ok,
+      true,
+    )
     assert.equal((await client.catalogue())[0]?.state, 'Running')
     const screen = await client.screen('chrome')
-    if (screen.tools !== undefined) throw new Error('Expected the legacy fixture page.')
+    assert.equal(screen.verified.manifest.format, 3)
     assert.equal(screen.verified.manifest.id, 'chrome')
-    const snapshot = (await screen.peer.read(
-      { surface: 'chrome' },
-      0,
-      screen.binding,
-      new AbortController().signal,
-    )) as { profiles: { name: string }[] }
-    assert.equal(snapshot.profiles[0]?.name, 'fir')
+    const call = async (
+      tool: string,
+      args: import('../src/shared/plugin-contract').PluginJsonObject,
+    ) => {
+      const result = await screen.tools.callTool(
+        tool,
+        args,
+        randomUUID(),
+        new AbortController().signal,
+      )
+      assert.equal(result.status, 'result')
+      if (result.status !== 'result') throw new Error('Actual package transport failed')
+      return result.result
+    }
+    const read = async () => {
+      const result = await call('configuration_snapshot', {})
+      assert.notEqual(result.isError, true)
+      const text = result.content.find(
+        (value) =>
+          value && typeof value === 'object' && !Array.isArray(value) && value.type === 'text',
+      )
+      if (!text || typeof text !== 'object' || Array.isArray(text) || typeof text.text !== 'string')
+        throw new Error('Actual package snapshot missing')
+      return JSON.parse(text.text) as { profiles: Array<{ name: string; enabled: boolean }> }
+    }
+    const snapshot = await read()
+    assert.equal(
+      snapshot.profiles.some((one) => one.name === 'fir'),
+      true,
+    )
     const ids = await wait(
       async () =>
         JSON.parse(await readFile(join(data, 'fake-browser.json'), 'utf8')) as {
           pid: number
           child: number
+          serverPid: number
         },
     )
     const runNames = await readdir(join(root, 'host/runs'))
     assert.equal(runNames.length, 1)
     const runDirectory = join(root, 'host/runs', runNames[0]!)
-    const ready = JSON.parse(await readFile(join(runDirectory, 'process.json'), 'utf8'))
-    const serverPid = ready.groups[0][0] as number
+    // The inert native executable records its exact OS parent. Generic format-3 runtime
+    // exposes no retired HTTP process/admin receipt; positive group membership is checked below.
+    const serverPid = ids.serverPid
+    assert.ok(Number.isSafeInteger(serverPid) && serverPid > 1)
     assert.ok((await liveGroupMembers(serverPid)).includes(ids.pid))
     assert.ok((await liveGroupMembers(serverPid)).includes(ids.child))
     let uiClosed = false
@@ -237,6 +269,8 @@ export async function proof(config: { root: string; resources: string; archive: 
       supervisorExited: true,
     }
   } finally {
+    if (previousExecutable === undefined) delete process.env.BROCREW_CHROME_EXECUTABLE
+    else process.env.BROCREW_CHROME_EXECUTABLE = previousExecutable
     await client?.close().catch(() => undefined)
     const closed = await lease?.close().catch(() => false)
     if (!cleanupSafe && closed !== true) {
