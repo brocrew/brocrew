@@ -1043,13 +1043,13 @@ describe('403 · a decision only a person can make', () => {
      * 🔴 **The naming is memoised PER ANSWER, and both halves are measured** (403, from the
      * review — the docblock made two claims and nothing counted anything).
      *
-     * ⛔ **Per answer**, because a conversation's name is its agent's since `734` — which a
-     * person's rename moves — and its folder where it has none, which a move changes: a cache
-     * hoisted to the host would print yesterday's name in today's chain. ⚑ **Memoised**, because
-     * three cards on one worker is `402`'s own measured shape and the walk would otherwise read that
-     * conversation's binding once per row.
+     * ⛔ **Per answer**, because a conversation's name is its agent's since `734`, which a
+     * person's rename moves. The host shares one answer until something it reads moves, and a
+     * rename is one of those, so the next answer reads the name again and says the new one.
+     * ⚑ **Memoised**, because three cards on one worker is `402`'s own measured shape and the walk
+     * would otherwise read that conversation's binding once per row.
      */
-    it('🔴 one name read per conversation inside an answer, and a fresh read for the next one', async () => {
+    it('🔴 one name read per conversation inside an answer, and a fresh read once a rename moves it', async () => {
       const { workers, handlesOf } = await aPmAndItsWorkers(1)
       const only = workers[0] as string
       await aChildParksOnAPermission(only)
@@ -1077,10 +1077,19 @@ describe('403 · a decision only a person can make', () => {
         // rather than a restatement of the docblock.
         expect(counting.reads()).toBe(1)
 
-        // ⛔ **And the next answer reads AGAIN**, so the map did not outlive the call. A cache
-        // hoisted to the host would leave this at 1.
-        expect(host.decisionsForAPerson().rows).toHaveLength(3)
+        // The same answer is shared while nothing it reads moves.
+        const shared = host.decisionsForAPerson()
+        expect(host.decisionsForAPerson()).toBe(shared)
+        expect(counting.reads()).toBe(1)
+
+        // ⛔ **A rename moves it, and the next answer reads AGAIN**, so the map did not outlive
+        // the answer and the chain says today's name.
+        const slug = store.identityOf(only)!.profileSlug
+        expect(store.setAgentDisplayName(slug, 'Fictional Renamed')).toBe(true)
+        const renamed = host.decisionsForAPerson()
+        expect(renamed.rows).toHaveLength(3)
         expect(counting.reads()).toBe(2)
+        expect(JSON.stringify(renamed.rows)).toContain('Fictional Renamed')
       } finally {
         counting.stop()
       }
