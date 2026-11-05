@@ -265,7 +265,7 @@ async function acceptance(
     }),
     sessions: observed.map((session, index) => ({
       session: index,
-      clean: session.service.controller.cleanForShutdown(),
+      clean: trace.inspect(() => session.service.controller.cleanForShutdown()),
       workspaces: ids.map((workspaceId, workspace) => ({
         workspace,
         directBindings: trace.inspect(() =>
