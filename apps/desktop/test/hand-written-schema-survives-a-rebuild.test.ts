@@ -37,18 +37,26 @@ describe('hand-written schema survives a rebuild', () => {
     rmSync(folder, { recursive: true, force: true })
   })
 
-  it('every index and trigger a migration writes that the generated schema does not know is declared', () => {
+  it('every partial index, and every index and trigger the generated schema does not know, is declared', () => {
     const schema = readFileSync(join(db_, 'schema.ts'), 'utf8')
     const written = readdirSync(migrations)
       .filter((name) => name.endsWith('.sql'))
       .flatMap((name) =>
         [
           ...readFileSync(join(migrations, name), 'utf8').matchAll(
-            /CREATE\s+(?:UNIQUE\s+)?(INDEX|TRIGGER)\s+`?(\w+)`?/gi,
+            /CREATE\s+(?:UNIQUE\s+)?(INDEX|TRIGGER)\s+`?(\w+)`?([^;]*)/gi,
           ),
-        ].map((one) => ({ type: one[1]!.toLowerCase(), name: one[2]! })),
+        ].map((one) => ({
+          type: one[1]!.toLowerCase(),
+          name: one[2]!,
+          partial: /\bWHERE\b/i.test(one[3] ?? ''),
+        })),
       )
-      .filter((one) => !schema.includes(`'${one.name}'`) && !schema.includes(`"${one.name}"`))
+      // Unknown to the generated schema, or a partial index, which a rebuild may not carry over.
+      .filter(
+        (one) =>
+          one.partial || (!schema.includes(`'${one.name}'`) && !schema.includes(`"${one.name}"`)),
+      )
       // One a later migration dropped with its table is gone, not missing.
       .filter(
         (one) =>
@@ -68,6 +76,14 @@ describe('hand-written schema survives a rebuild', () => {
           .get(one.type, one.name),
         `${one.type} ${one.name}`,
       ).toBeDefined()
+  })
+
+  it('a missing guard is said as a rule not enforced, and a missing read index as slower reads', () => {
+    db.exec('DROP TRIGGER skill_version_no_update')
+    db.exec('DROP INDEX events_fold_idx')
+    createSessionStore(db)
+    expect(said.find((line) => line.includes('skill_version_no_update'))).toContain('not enforced')
+    expect(said.find((line) => line.includes('events_fold_idx'))).toContain('slower')
   })
 
   it('a rebuild of events as the generator writes one is repaired at open, and what it dropped is named', () => {

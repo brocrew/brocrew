@@ -168,6 +168,15 @@ describe('question copies are kept by triggers and filled in slices', () => {
     expect(store.conversationsHoldingACopyOf('A')).toEqual([])
   })
 
+  it('a fill said done over a copy table that lost every row starts again at the next open', () => {
+    question('alpha', 'first')
+    fillToTheEnd()
+    db.exec('DELETE FROM question_copy')
+    reopen()
+    expect(progress().done).toBe(0)
+    expect(store.conversationsHoldingACopyOf('first')).toEqual(['alpha'])
+  })
+
   it('a missing index over a filled table is not rebuilt: the ledger query answers', () => {
     question('alpha', 'first')
     fillToTheEnd()
