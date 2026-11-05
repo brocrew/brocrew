@@ -3,6 +3,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import releaseMetadata from '../manifest-template.json' with { type: 'json' }
 import type { ProfileStore, ProfileFlags } from './profiles/store.js'
 import { FLAG_NAMES, isProfileName, ProfileStoreError } from './profiles/store.js'
+import { ProfileInUseError } from './browser/profileBrowser.js'
 import type { ProfileBrowser } from './browser/profileBrowser.js'
 import type { ProfileOpener } from './openWindow.js'
 import type { TabRegistry } from './tabs.js'
@@ -155,6 +156,10 @@ export function createConfigurationTools(deps: ConfigurationDeps): ToolHandler[]
             }
           }
         } catch (error) {
+          if (args.action === 'delete-profile' && error instanceof ProfileInUseError)
+            return refuse(
+              'Turn this profile off and wait for agent work to finish, then try again.',
+            )
           if (error instanceof ProfileStoreError) return refuse(error.message)
           throw error
         }
@@ -181,11 +186,18 @@ export async function configurationSnapshot(
   const tabs = await Promise.all(
     deps.tabs
       .list((name) => deps.browser.state(name)?.generation ?? null)
+      .slice(0, 200)
       .map(async (tab) => ({
         id: tab.id,
         profile: tab.profile,
-        url: bareUrl(tab.page.url()),
-        title: await tab.page.title().catch(() => ''),
+        url: bareUrl(tab.page.url()).slice(0, 2048),
+        title: await Promise.race([
+          tab.page.title().catch(() => ''),
+          new Promise<string>((resolve) => {
+            const timer = setTimeout(() => resolve(''), 250)
+            timer.unref()
+          }),
+        ]).then((value) => value.slice(0, 512)),
       })),
   )
   return { configRevision: 0, profiles, tabs }
