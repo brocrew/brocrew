@@ -99,7 +99,8 @@ describe('the listing and the states are published under one stamp', () => {
     await settled()
     const before = await listing()
     pushed = []
-    host.releaseSession(helper, other)
+    // Closing it moves its state, which is what a states push says.
+    await host.close(helper, other)
     await vi.waitFor(() => expect(pushed.length).toBeGreaterThan(0))
     const last = pushed.at(-1)!
     if (last.published === undefined) throw new Error('the push carried no stamp')
