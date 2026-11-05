@@ -606,6 +606,51 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
     expect(old?.state).toEqual({ is: 'idle' })
   })
 
+  it('🔴 §4b · an imported ledger that routes a question to a running conversation is owed at its next state, though it kept owing nothing', async () => {
+    const { brobot, ada, adaTools } = await aGiverWaitingOnAHelper()
+    const reviewer = await personOpens('reviewer')
+    await settle()
+    // Its owed questions are folded and kept: none.
+    expect(stateOf(reviewer)?.is).not.toBe('owes-an-answer')
+    const id = await adaAsksHerParent(adaTools)
+    await untilPushed(
+      brobot,
+      { is: 'owes-an-answer', to: [ADA], since: expect.any(Number) },
+      'the parent to be pushed as owing',
+    )
+    // Ada's question, as another machine exported it, now put to the reviewer by a conversation
+    // nothing here has seen.
+    const ledger = store
+      .events(ada)
+      .filter(({ event }) => JSON.stringify(event).includes(id))
+      .map(({ event, at }, ordinal) => ({
+        ordinal,
+        at,
+        event: JSON.parse(
+          JSON.stringify(event).replaceAll(id, 'imported-question').replaceAll(brobot, reviewer),
+        ) as TranscriptEvent,
+      }))
+    expect(ledger.map(({ event }) => event.type)).toContain('request_routed')
+    store.importSnapshot({
+      session: {
+        id: 'imported-asker',
+        provider: 'claude',
+        sessionId: 'fictional-imported-thread',
+        cwd: root,
+        profileId: 'worker',
+        updatedAt: clock,
+        createdAt: clock,
+      },
+      derivedThrough: 0,
+      ledger,
+    })
+    await waitFor(
+      () => lastSaid(reviewer)?.is === 'owes-an-answer',
+      'the reviewer to be pushed as owing the imported question',
+    )
+    expect(stateOf(reviewer)?.is).toBe('owes-an-answer')
+  })
+
   it('⚑ §5 · a listing folds an asker’s ledger once, though another row owes it an answer', async () => {
     const { brobot, brobotTools, ada, adaTools } = await aGiverWaitingOnAHelper()
     // ⚑ A second helper, the control: it holds a piece BroBot gave and asked nobody anything.
