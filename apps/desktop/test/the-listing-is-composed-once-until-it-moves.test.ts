@@ -108,15 +108,16 @@ describe('the listing is composed once until it moves', () => {
       return read(id)
     })
     const before = compositions()
-    listed()
+    host.resumableSessions()
     expect(failing).toHaveBeenCalled()
     expect(failedOnce).toBe(true)
     expect(compositions()).toBe(before + 1)
     // Nothing committed and nothing live moved: the skipped listing was not kept.
-    const recovered = listed()
+    const recovered = host.resumableSessions()
     expect(compositions()).toBe(before + 2)
     // A complete listing is kept again.
-    expect(listed().resumable).toBe(recovered.resumable)
+    expect(host.resumableSessions()).toBe(recovered)
+    expect(compositions()).toBe(before + 2)
   })
 
   it('a rebuild’s batches and its discard keep the listing, and a commit mixing a batch with a setter does not', () => {
