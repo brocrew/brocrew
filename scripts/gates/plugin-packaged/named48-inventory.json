@@ -1,0 +1,264 @@
+{
+  "base": "1906fb271f1f22f290e7ed6077589093fcb4b466",
+  "tree": "4788fe7d4f801ea89600a8cfdf38f2af8b472f9f",
+  "files": [
+    {
+      "path": "scripts/test/plugin-packaged-gate.test.mjs",
+      "sha256": "fe69fd34a503f879312d5721e7104a9c30f76ba74ef6fce48099ff7610fa77a8",
+      "assertions": [
+        {
+          "title": "requires real owned stable format2 bytes, rejecting missing, linked, duplicate-key, malformed, oversized and changing observations",
+          "fullName": "the packaged Chrome gate requires real owned stable format2 bytes, rejecting missing, linked, duplicate-key, malformed, oversized and changing observations",
+          "ancestorTitles": ["the packaged Chrome gate"]
+        },
+        {
+          "title": "requires exactly sixteen boolean facts and cannot replace ordinary acceptance with an obsolete or optimistic fact",
+          "fullName": "the packaged Chrome gate requires exactly sixteen boolean facts and cannot replace ordinary acceptance with an obsolete or optimistic fact",
+          "ancestorTitles": ["the packaged Chrome gate"]
+        },
+        {
+          "title": "requires a hosted Mac, the BroCrew repository and a packaged-gate ref",
+          "fullName": "the packaged Chrome gate requires a hosted Mac, the BroCrew repository and a packaged-gate ref",
+          "ancestorTitles": ["the packaged Chrome gate"]
+        },
+        {
+          "title": "refuses actual fixture initialization on this Mac or a self-hosted runner before any mutation",
+          "fullName": "the packaged Chrome gate refuses actual fixture initialization on this Mac or a self-hosted runner before any mutation",
+          "ancestorTitles": ["the packaged Chrome gate"]
+        },
+        {
+          "title": "projects only explicit scratch list/archive and inert-browser inputs into the packaged Settings path",
+          "fullName": "the packaged Chrome gate projects only explicit scratch list/archive and inert-browser inputs into the packaged Settings path",
+          "ancestorTitles": ["the packaged Chrome gate"]
+        },
+        {
+          "title": "refuses each gate-only pin on every normal packaging command, with no bypass option",
+          "fullName": "the packaged Chrome gate refuses each gate-only pin on every normal packaging command, with no bypass option",
+          "ancestorTitles": ["the packaged Chrome gate"]
+        },
+        {
+          "title": "normal packaging refuses enabled local releases or either removed dev-source packaged guard",
+          "fullName": "the packaged Chrome gate normal packaging refuses enabled local releases or either removed dev-source packaged guard",
+          "ancestorTitles": ["the packaged Chrome gate"]
+        },
+        {
+          "title": "admits only an owned marked root and does not inherit a provider identity into child environments",
+          "fullName": "the packaged Chrome gate admits only an owned marked root and does not inherit a provider identity into child environments",
+          "ancestorTitles": ["the packaged Chrome gate"]
+        },
+        {
+          "title": "cleans only its owned scratch tree, including immutable package directories, without following links",
+          "fullName": "the packaged Chrome gate cleans only its owned scratch tree, including immutable package directories, without following links",
+          "ancestorTitles": ["the packaged Chrome gate"]
+        },
+        {
+          "title": "keeps the loopback/Keychain profile available and requires an explicit measured launch policy",
+          "fullName": "the packaged Chrome gate keeps the loopback/Keychain profile available and requires an explicit measured launch policy",
+          "ancestorTitles": ["the packaged Chrome gate"]
+        },
+        {
+          "title": "cannot pass with a missing journey fact or a report containing text or material",
+          "fullName": "the packaged Chrome gate cannot pass with a missing journey fact or a report containing text or material",
+          "ancestorTitles": ["the packaged Chrome gate"]
+        },
+        {
+          "title": "stages full format3 rows and exact archive pins; alternate-source and tamper variants change only their intended inputs",
+          "fullName": "the packaged Chrome gate stages full format3 rows and exact archive pins; alternate-source and tamper variants change only their intended inputs",
+          "ancestorTitles": ["the packaged Chrome gate"]
+        },
+        {
+          "title": "uses the actual ordinary adapter to accept another source for identical pinned bytes and separately refuse changed bytes",
+          "fullName": "the packaged Chrome gate uses the actual ordinary adapter to accept another source for identical pinned bytes and separately refuse changed bytes",
+          "ancestorTitles": ["the packaged Chrome gate"]
+        }
+      ]
+    },
+    {
+      "path": "scripts/test/plugin-packaged-release.test.mjs",
+      "sha256": "d2cdbcb87e4dd95b8b395dcbb063d4efc6d3d1732e3572884900592ff2415f25",
+      "assertions": [
+        {
+          "title": "uses the real verifier and vault for alternate-source cache bytes, with no installed/run/profile effects or fetch",
+          "fullName": "release verifier module admission uses the real verifier and vault for alternate-source cache bytes, with no installed/run/profile effects or fetch",
+          "ancestorTitles": ["release verifier module admission"]
+        },
+        {
+          "title": "preserves the complete author-bearing producer row in a format3 catalogue",
+          "fullName": "release verifier module admission preserves the complete author-bearing producer row in a format3 catalogue",
+          "ancestorTitles": ["release verifier module admission"]
+        },
+        {
+          "title": "plans the current producer and generated tests only after an actual canonical HTTPS origin",
+          "fullName": "release verifier module admission plans the current producer and generated tests only after an actual canonical HTTPS origin",
+          "ancestorTitles": ["release verifier module admission"]
+        },
+        {
+          "title": "copies the locked export install into the producer checkout without changing plugin source",
+          "fullName": "release verifier module admission copies the locked export install into the producer checkout without changing plugin source",
+          "ancestorTitles": ["release verifier module admission"]
+        },
+        {
+          "title": "reuses the exact release dependency files for protocol controls and refuses stale or linked destinations",
+          "fullName": "release verifier module admission reuses the exact release dependency files for protocol controls and refuses stale or linked destinations",
+          "ancestorTitles": ["release verifier module admission"]
+        },
+        {
+          "title": "loads the verifier bundler from its locked plugin package in plain Node without NODE_PATH",
+          "fullName": "release verifier module admission loads the verifier bundler from its locked plugin package in plain Node without NODE_PATH",
+          "ancestorTitles": ["release verifier module admission"]
+        },
+        {
+          "title": "classifies actual missing filesystem and spawn operations without retaining their paths",
+          "fullName": "release verifier module admission classifies actual missing filesystem and spawn operations without retaining their paths",
+          "ancestorTitles": ["release verifier module admission"]
+        },
+        {
+          "title": "classifies denied scratch files and executables without changing permissions to make them work",
+          "fullName": "release verifier module admission classifies denied scratch files and executables without changing permissions to make them work",
+          "ancestorTitles": ["release verifier module admission"]
+        }
+      ]
+    },
+    {
+      "path": "scripts/test/plugin-packaged-provider.test.mjs",
+      "sha256": "7d39079c4e145d38d65c9b46b2155a5a22365e69a20d3ba6df6d98abb6165f89",
+      "assertions": [
+        {
+          "title": "sends exact named-profile arguments through the scripted open, read and close sequence",
+          "fullName": "a scripted provider using the installed Chrome tool protocol sends exact named-profile arguments through the scripted open, read and close sequence",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "credits a returned isError as a broker response, never a successful action or title",
+          "fullName": "a scripted provider using the installed Chrome tool protocol credits a returned isError as a broker response, never a successful action or title",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "compares every definition including unexercised tools, descriptions and full schemas",
+          "fullName": "a scripted provider using the installed Chrome tool protocol compares every definition including unexercised tools, descriptions and full schemas",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "restores the browser environment value or absence after successful or rejected setup",
+          "fullName": "a scripted provider using the installed Chrome tool protocol restores the browser environment value or absence after successful or rejected setup",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "closes provider, attachments, bridge and host before deleting scratch, retaining it on unknown exit",
+          "fullName": "a scripted provider using the installed Chrome tool protocol closes provider, attachments, bridge and host before deleting scratch, retaining it on unknown exit",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "reports the first missing agent-start witness, without paths or arbitrary fields",
+          "fullName": "a scripted provider using the installed Chrome tool protocol reports the first missing agent-start witness, without paths or arbitrary fields",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "reports the first missing turn-sent witness, without paths or arbitrary fields",
+          "fullName": "a scripted provider using the installed Chrome tool protocol reports the first missing turn-sent witness, without paths or arbitrary fields",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "reports the first missing mcp-attached witness, without paths or arbitrary fields",
+          "fullName": "a scripted provider using the installed Chrome tool protocol reports the first missing mcp-attached witness, without paths or arbitrary fields",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "reports the first missing tool-called witness, without paths or arbitrary fields",
+          "fullName": "a scripted provider using the installed Chrome tool protocol reports the first missing tool-called witness, without paths or arbitrary fields",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "reports the first missing cdp-navigate witness, without paths or arbitrary fields",
+          "fullName": "a scripted provider using the installed Chrome tool protocol reports the first missing cdp-navigate witness, without paths or arbitrary fields",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "reports the first missing result-returned witness, without paths or arbitrary fields",
+          "fullName": "a scripted provider using the installed Chrome tool protocol reports the first missing result-returned witness, without paths or arbitrary fields",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "does not credit a tool attempt or an unobserved transcript as a completed hop",
+          "fullName": "a scripted provider using the installed Chrome tool protocol does not credit a tool attempt or an unobserved transcript as a completed hop",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "persists a missing route before the IPC rejection can hide its origin",
+          "fullName": "a scripted provider using the installed Chrome tool protocol persists a missing route before the IPC rejection can hide its origin",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "keeps the closed hop when send fails at the window door",
+          "fullName": "a scripted provider using the installed Chrome tool protocol keeps the closed hop when send fails at the window door",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "keeps the closed hop when history fails at the window door",
+          "fullName": "a scripted provider using the installed Chrome tool protocol keeps the closed hop when history fails at the window door",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "keeps the closed hop when timeout fails at the window door",
+          "fullName": "a scripted provider using the installed Chrome tool protocol keeps the closed hop when timeout fails at the window door",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "uses the window runtime door and requires the earned assistant response, with a bounded unresponsive bridge",
+          "fullName": "a scripted provider using the installed Chrome tool protocol uses the window runtime door and requires the earned assistant response, with a bounded unresponsive bridge",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "creates only an empty private managed home under owned scratch, without sign-in or renewal",
+          "fullName": "a scripted provider using the installed Chrome tool protocol creates only an empty private managed home under owned scratch, without sign-in or renewal",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "delivers the built Chrome package full inventory through the retained client and generic agent bridge before its provider turn",
+          "fullName": "a scripted provider using the installed Chrome tool protocol delivers the built Chrome package full inventory through the retained client and generic agent bridge before its provider turn",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "cannot fabricate a title after missing-route",
+          "fullName": "a scripted provider using the installed Chrome tool protocol cannot fabricate a title after missing-route",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "cannot fabricate a title after wrong-title",
+          "fullName": "a scripted provider using the installed Chrome tool protocol cannot fabricate a title after wrong-title",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "cannot fabricate a title after missing-read",
+          "fullName": "a scripted provider using the installed Chrome tool protocol cannot fabricate a title after missing-read",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "cannot fabricate a title after refused-tool",
+          "fullName": "a scripted provider using the installed Chrome tool protocol cannot fabricate a title after refused-tool",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "refuses external routes before any HTTP connection",
+          "fullName": "a scripted provider using the installed Chrome tool protocol refuses external routes before any HTTP connection",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "waits for the actual tab count and fixture title, then for none, returning no raw title",
+          "fullName": "a scripted provider using the installed Chrome tool protocol waits for the actual tab count and fixture title, then for none, returning no raw title",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "does not mistake a missing profile row or wrong title for live-tabs proof",
+          "fullName": "a scripted provider using the installed Chrome tool protocol does not mistake a missing profile row or wrong title for live-tabs proof",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        },
+        {
+          "title": "reduces private provider/browser receipts to booleans and counts only",
+          "fullName": "a scripted provider using the installed Chrome tool protocol reduces private provider/browser receipts to booleans and counts only",
+          "ancestorTitles": ["a scripted provider using the installed Chrome tool protocol"]
+        }
+      ]
+    }
+  ]
+}

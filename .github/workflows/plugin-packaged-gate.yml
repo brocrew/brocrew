@@ -40,11 +40,14 @@ jobs:
       - name: Best-effort drain; hosted VM teardown is the final boundary
         if: always() && env.PLUGIN_GATE_CONTROL != ''
         run: node scripts/gates/plugin-packaged/owner.mjs clean "$PLUGIN_GATE_CONTROL"
-      - name: Keep only the sanitized gate summary
+      - name: Keep only the sanitized gate summary and named test receipts
         if: always() && env.PLUGIN_GATE_CONTROL != ''
         uses: actions/upload-artifact@v4
         with:
           name: plugin-packaged-summary
-          path: ${{ env.PLUGIN_GATE_CONTROL }}/summary.json
+          path: |
+            ${{ env.PLUGIN_GATE_CONTROL }}/summary.json
+            ${{ env.PLUGIN_GATE_CONTROL }}/named48-native-projection.json
+            ${{ env.PLUGIN_GATE_CONTROL }}/named48-execution.json
           if-no-files-found: error
           retention-days: 7

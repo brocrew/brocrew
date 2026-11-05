@@ -26,6 +26,7 @@ import { pageStateFrames, printPageState } from './page-state.mjs'
 import { providerStateFrames, printProviderState } from './provider-state.mjs'
 import { pluginStateFrames, printPluginState } from './plugin-state.mjs'
 import { registerChild, bestEffortDrain, runnerAdapter } from './runner-processes.mjs'
+import { retainNamed48 } from './named48.mjs'
 function safeSummary(summary) {
   if (!safeReport(summary)) throw new Error('Unsafe summary')
 }
@@ -124,7 +125,7 @@ export async function initialize(env = process.env) {
   })
   return control
 }
-function childRun(program, args, env, cwd, abort, maximum, phase) {
+function childRun(program, args, env, cwd, abort, maximum, phase, echo = true) {
   if (abort.signal.aborted) throw new Error('Gate cancelled')
   const child = spawn(program, args, {
     env,
@@ -137,7 +138,9 @@ function childRun(program, args, env, cwd, abort, maximum, phase) {
     innerPageState,
     innerStderr,
     innerPluginState,
-    innerProviderState
+    innerProviderState,
+    observedExit,
+    pipesClosed = false
   if (phase === 'journey')
     child.stdout.on(
       'data',
@@ -195,19 +198,27 @@ function childRun(program, args, env, cwd, abort, maximum, phase) {
   child.stderr.on('data', classify)
   // The fixture tests use only fictional fixtures, so their own output goes to the job log and a
   // red there says why. It never enters the summary.
-  if (phase === 'cdp-fixture-tests') {
+  if (phase === 'cdp-fixture-tests' && echo) {
     const echo = (bytes) => process.stdout.write(bytes)
     child.stdout.on('data', echo)
     child.stderr.on('data', echo)
   }
   const exit = new Promise((resolve, reject) => {
-    child.once('exit', (code, signal) => resolve({ code, signal }))
+    child.once('exit', (code, signal) => {
+      observedExit = { code, signal }
+      resolve(observedExit)
+    })
     child.once('error', (error) => reject(failureError(phase, error, 'spawn')))
   })
   // An exit event can precede the final stdout bytes. Join pipe closure before reading the frame.
   const completed = Promise.all([
     exit,
-    new Promise((resolve) => child.once('close', resolve)),
+    new Promise((resolve) =>
+      child.once('close', () => {
+        pipesClosed = true
+        resolve()
+      }),
+    ),
   ]).then(([result]) => result)
   const cancelled = new Promise((_, reject) =>
     abort.signal.addEventListener('abort', () => reject(new Error('Gate cancelled')), {
@@ -217,6 +228,12 @@ function childRun(program, args, env, cwd, abort, maximum, phase) {
   return {
     child,
     exit,
+    get result() {
+      return observedExit
+    },
+    get pipesClosed() {
+      return pipesClosed
+    },
     get appStderr() {
       return innerStderr
     },
@@ -262,7 +279,9 @@ export async function run(control, node22, pnpm) {
     pluginState,
     providerState,
     appStderr,
-    probePassed = false
+    probePassed = false,
+    named48,
+    named48Retained = false
   const ci = Object.fromEntries(
     ['GITHUB_ACTIONS', 'GITHUB_REPOSITORY', 'GITHUB_REF', 'RUNNER_ENVIRONMENT'].map((key) => [
       key,
@@ -273,10 +292,11 @@ export async function run(control, node22, pnpm) {
     ...ci,
     PATH: fixtureEnvironment(root).PATH + ':' + path.dirname(pnpm),
   })
-  async function start(step, program, args, maximum = 420000, environment = env) {
+  async function start(step, program, args, maximum = 420000, environment = env, echo = true) {
     phase = step
-    const child = childRun(program, args, environment, repo, abort, maximum, step)
+    const child = childRun(program, args, environment, repo, abort, maximum, step, echo)
     children.push(child)
+    if (args[0] === 'scripts/gates/plugin-packaged/named48.mjs') named48 = child
     // The matrix drains each app while it remains alive. Do not admit its own owner as a target.
     if (child.child.pid && step !== 'probe-matrix') await registerChild(root, child.child)
     try {
@@ -291,6 +311,12 @@ export async function run(control, node22, pnpm) {
   async function endLeaders() {
     await Promise.allSettled(children.map((child) => stopApp(child, 500)))
     await bounded(Promise.all(children.map((child) => child.exit)), 1500)
+  }
+  function keepNamed48() {
+    if (!named48.pipesClosed) throw new Error('Test receipt pipe closure missing')
+    const passed = retainNamed48(root, control, named48.result)
+    named48Retained = true
+    return passed
   }
   try {
     await start('runner-preflight', meta.node, [
@@ -336,14 +362,33 @@ export async function run(control, node22, pnpm) {
       repo,
       'apps/desktop/dist/mac-arm64/BroCrew.app/Contents/Resources/plugin-node/node',
     )
-    await start('cdp-fixture-tests', workloadNode, [
-      'node_modules/vitest/vitest.mjs',
-      'run',
-      '--project',
-      'scripts',
-      'scripts/test/plugin-packaged-browser.test.mjs',
-      'scripts/test/plugin-packaged-provider.test.mjs',
-    ])
+    const fixtureUntil = performance.now() + 420000
+    const remaining = () => {
+      const milliseconds = fixtureUntil - performance.now()
+      if (milliseconds <= 0) throw failureError('cdp-fixture-tests', {}, 'timeout')
+      return milliseconds
+    }
+    await start(
+      'cdp-fixture-tests',
+      workloadNode,
+      ['scripts/gates/plugin-packaged/named48.mjs', root],
+      remaining(),
+      env,
+      false,
+    )
+    if (!keepNamed48()) throw failureError('cdp-fixture-tests', {}, 'assertion')
+    await start(
+      'cdp-fixture-tests',
+      workloadNode,
+      [
+        'node_modules/vitest/vitest.mjs',
+        'run',
+        '--project',
+        'scripts',
+        'scripts/test/plugin-packaged-browser.test.mjs',
+      ],
+      remaining(),
+    )
     await start(
       'probe-matrix',
       meta.node,
@@ -370,6 +415,13 @@ export async function run(control, node22, pnpm) {
         printFailure(value)
       },
     })
+    if (named48 && !named48Retained) {
+      try {
+        if (!keepNamed48()) failure ??= failureFor('cdp-fixture-tests', {}, 'assertion')
+      } catch (error) {
+        failure ??= failureFor('cdp-fixture-tests', error)
+      }
+    }
     let summary
     try {
       summary = JSON.parse(fs.readFileSync(path.join(root, 'summary.json')))
