@@ -1,7 +1,8 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import * as release from '../src/sharedProfilesRelease.js'
 import { loadConfig } from '../src/config.js'
 import { createSharedProfileStore } from '../src/profiles/sharedStore.js'
 import { startAgentChrome } from '../src/app.js'
@@ -12,7 +13,10 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 
 const roots: string[] = []
-afterEach(() => roots.splice(0).forEach((dir) => fs.rmSync(dir, { recursive: true, force: true })))
+afterEach(() => {
+  vi.restoreAllMocks()
+  roots.splice(0).forEach((dir) => fs.rmSync(dir, { recursive: true, force: true }))
+})
 function fixture(extra = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fictional-chrome-bootstrap-'))
   roots.push(root)
@@ -60,6 +64,7 @@ describe('Chrome generic bootstrap', () => {
     expect(() => loadConfig({ BROCREW_PLUGIN_BOOTSTRAP: '{' })).toThrow()
   })
   it('uses the prior installation owner supplied by generic bootstrap without inventing an identity', () => {
+    vi.spyOn(release, 'sharedProfilesReleased').mockReturnValue(true)
     const { root, env } = fixture()
     const shared = path.join(root, 'shared')
     fs.mkdirSync(shared)
@@ -79,6 +84,21 @@ describe('Chrome generic bootstrap', () => {
       workspaceId: priorOwner.ownerId,
       workspaceLabel: priorOwner.ownerLabel,
     })
+  })
+  it('uses the actual platform release decision without writing shared storage when OFF', () => {
+    const { root, env } = fixture()
+    const shared = path.join(root, 'uncreated-shared')
+    const value = JSON.parse(env.BROCREW_PLUGIN_BOOTSTRAP)
+    const config = loadConfig({
+      BROCREW_PLUGIN_BOOTSTRAP: JSON.stringify({
+        ...value,
+        sharedDataDirectory: shared,
+        priorOwner: { ownerId: '12345678-1234-5123-a123-123456789012', ownerLabel: 'fictional' },
+      }),
+    })
+    const on = release.sharedProfilesReleased(process.platform, release.sharedProfilesRelease)
+    expect(!!config.shared).toBe(on)
+    if (!on) expect(fs.existsSync(shared)).toBe(false)
   })
   it('starts ordinary MCP with fake browser, preserves permanent bytes and retains the temporary restart lifecycle', async () => {
     const { env, home } = fixture()
@@ -127,6 +147,7 @@ describe('Chrome generic bootstrap', () => {
     }
   })
   it('keeps shared data separate and retains the historical root owner choices on update', () => {
+    vi.spyOn(release, 'sharedProfilesReleased').mockReturnValue(true)
     const owner = '12345678-1234-5123-a123-123456789012'
     const other = '87654321-1234-5123-a123-123456789012'
     const { root, home, env } = fixture()

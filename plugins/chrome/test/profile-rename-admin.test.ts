@@ -7,6 +7,13 @@ import { loadConfig } from '../src/config.js'
 import { createProfileStore } from '../src/profiles/store.js'
 import { silentLogger } from '../src/logger.js'
 import { FakeBrowser, harness } from './fakes.js'
+import {
+  bootstrapEnv,
+  connectPackage,
+  personMetadata,
+  resultJson,
+  resultText,
+} from './ordinary-package-fixture.js'
 
 const cleanup: Array<() => void | Promise<void>> = []
 afterEach(async () => {
@@ -18,11 +25,7 @@ async function boot() {
     join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-person-delete-'),
   )
   cleanup.push(() => fs.rmSync(home, { recursive: true, force: true }))
-  const mcpToken = 'fictional-mcp-'.repeat(8),
-    adminToken = 'fictional-person-'.repeat(8)
-  const authPath = join(home, 'fictional-auth.json')
-  fs.writeFileSync(authPath, JSON.stringify({ mcpToken, adminToken }), { mode: 0o600 })
-  const config = loadConfig({ BROCREW_CHROME_DATA: home, BROCREW_CHROME_AUTH: authPath })
+  const config = loadConfig(bootstrapEnv(home))
   const store = createProfileStore({ home })
   const browser = new FakeBrowser(store.dirOf)
   const server = await startAgentChrome(config, { store, browser, logger: silentLogger })
@@ -31,24 +34,42 @@ async function boot() {
   const directory = store.dirOf('fern')
   fs.writeFileSync(join(directory, 'Cookies'), 'fictional cookies')
   const url = 'http://127.0.0.1:' + (server.httpServer.address() as { port: number }).port
-  async function rename(token = adminToken, newName = 'Fern account') {
-    const response = await fetch(url + '/v1/profiles/fern/rename', {
-      method: 'POST',
-      headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' },
-      body: JSON.stringify({ newName }),
+  const client = await connectPackage(url, config.token)
+  cleanup.push(() => client.close())
+  async function rename(metadata = personMetadata, newName = 'Fern account') {
+    return await client.callTool({
+      name: 'configure_profile',
+      arguments: { profile: 'fern', action: 'rename-profile', newName },
+      _meta: metadata,
     })
-    return { status: response.status, body: await response.json() }
   }
-  return { store, browser, directory, rename, mcpToken, server }
+  return {
+    store,
+    browser,
+    directory,
+    rename,
+    client,
+    agentMetadata: { ...personMetadata, origin: 'agent' },
+    server,
+  }
 }
-it('rename endpoint is person-only and tool lists show the new display name on the next call', async () => {
+it('rename Configure action is person-only and tool lists show the new display name on the next call', async () => {
   const f = await boot()
-  expect((await f.rename(f.mcpToken)).status).toBe(401)
-  expect(await f.rename()).toMatchObject({
-    status: 200,
-    body: { profile: { name: 'fern', displayName: 'Fern account' } },
-  })
+  const before = f.store.get('fern')
+  expect((await f.rename(f.agentMetadata)).isError).toBe(true)
+  expect((await f.rename({} as typeof personMetadata)).isError).toBe(true)
+  expect(f.store.get('fern')).toEqual(before)
+  expect(fs.readFileSync(join(f.directory, 'Cookies'), 'utf8')).toBe('fictional cookies')
+  const renamed = await f.rename()
+  expect(renamed.isError).not.toBe(true)
+  expect(resultJson(renamed)).toEqual({ profile: 'fern', completed: true })
   expect(f.store.get('fern')?.displayName).toBe('Fern account')
+  expect(f.store.dirOf('fern')).toBe(f.directory)
+  const discovered = await f.client.callTool({ name: 'configuration_snapshot', arguments: {} })
+  expect(discovered.isError).not.toBe(true)
+  expect(resultJson(discovered).profiles).toContainEqual(
+    expect.objectContaining({ name: 'fern', displayName: 'Fern account' }),
+  )
   expect(fs.readFileSync(join(f.directory, 'Cookies'), 'utf8')).toBe('fictional cookies')
   const tool = harness()
   cleanup.push(() => {
@@ -64,15 +85,18 @@ it('rename endpoint is person-only and tool lists show the new display name on t
   )
   expect(await tool.callError('rename-profile', {})).toBe('no tool rename-profile')
 })
-it('rename endpoint returns the approved fixed invalid/duplicate errors', async () => {
+it('rename Configure action returns the approved fixed invalid/duplicate errors', async () => {
   const f = await boot()
   f.store.create('cedar', 'panel')
-  expect(await f.rename(undefined, ' ')).toMatchObject({
-    status: 400,
-    body: { error: 'Profile name must be 1–60 characters.' },
-  })
-  expect(await f.rename(undefined, 'CEDAR')).toMatchObject({
-    status: 409,
-    body: { error: 'Another profile already uses that name.' },
-  })
+  const before = f.store.list()
+  const invalid = await f.rename(undefined, ' ')
+  expect(invalid.isError).toBe(true)
+  expect(resultText(invalid)).toBe('Profile name must be 1–60 characters.')
+  expect(f.store.list()).toEqual(before)
+  expect(fs.readFileSync(join(f.directory, 'Cookies'), 'utf8')).toBe('fictional cookies')
+  const duplicate = await f.rename(undefined, 'CEDAR')
+  expect(duplicate.isError).toBe(true)
+  expect(resultText(duplicate)).toBe('Another profile already uses that name.')
+  expect(f.store.list()).toEqual(before)
+  expect(fs.readFileSync(join(f.directory, 'Cookies'), 'utf8')).toBe('fictional cookies')
 })

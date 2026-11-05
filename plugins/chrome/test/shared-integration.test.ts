@@ -2,6 +2,13 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
+import {
+  bootstrapEnv,
+  withBootstrap,
+  connectPackage,
+  personMetadata,
+  resultJson,
+} from './ordinary-package-fixture.js'
 import { loadConfig } from '../src/config.js'
 import { sharedProfilesRelease, sharedProfilesReleased } from '../src/sharedProfilesRelease.js'
 import { createConfiguredProfileStore } from '../src/index.js'
@@ -26,14 +33,11 @@ function fixture() {
   const shared = path.join(root, 'shared')
   fs.mkdirSync(home)
   fs.mkdirSync(shared)
-  const auth = path.join(root, 'auth.json')
-  fs.writeFileSync(auth, JSON.stringify({ mcpToken: 'm'.repeat(64), adminToken: 'a'.repeat(64) }), {
-    mode: 0o600,
-  })
   const env = {
-    BROCREW_CHROME_DATA: home,
-    BROCREW_CHROME_AUTH: auth,
-    BROCREW_CHROME_SHARED: shared,
+    ...bootstrapEnv(home, {
+      sharedDataDirectory: shared,
+      priorOwner: { ownerId: '11111111-1111-4111-8111-111111111111', ownerLabel: 'Alpha' },
+    }),
     BROCREW_PLUGIN_OWNER_ID: '11111111-1111-4111-8111-111111111111',
     BROCREW_PLUGIN_OWNER_LABEL: 'Alpha',
   }
@@ -61,22 +65,25 @@ it('config uses only supplied capability, binds workspace identity and keeps fil
   else expect(f.config.shared).toBeUndefined()
   expect(f.config.downloadsRoot.startsWith(f.home + path.sep)).toBe(true)
   expect(f.config.workspace.startsWith(f.home + path.sep)).toBe(true)
-  const localEnv: Record<string, string | undefined> = {
-    ...f.env,
-    BROCREW_CHROME_SHARED: undefined,
-  }
+  const localEnv = withBootstrap(f.env, { sharedDataDirectory: undefined })
   expect(loadConfig(localEnv).shared).toBeUndefined()
   expect(createConfiguredProfileStore(loadConfig(localEnv)).shared).toBeUndefined()
   for (const id of ['', '../beta', 'space id']) {
     if (released)
-      expect(() => loadConfig({ ...f.env, BROCREW_PLUGIN_OWNER_ID: id })).toThrow('identity')
-    else expect(loadConfig({ ...f.env, BROCREW_PLUGIN_OWNER_ID: id }).shared).toBeUndefined()
+      expect(() =>
+        loadConfig(withBootstrap(f.env, { priorOwner: { ownerId: id, ownerLabel: 'Alpha' } })),
+      ).toThrow('identity')
+    else
+      expect(
+        loadConfig(withBootstrap(f.env, { priorOwner: { ownerId: id, ownerLabel: 'Alpha' } }))
+          .shared,
+      ).toBeUndefined()
   }
   expect(loadConfig({ ...f.env, BROCREW_CHROME_MIGRATION_QUALIFICATION: '{}' }).shared).toEqual(
     f.config.shared,
   )
 })
-it('fresh admin warning binds the immutable identity/revision; agent bearer cannot delete', async () => {
+it('fresh Configure warning binds the immutable identity/revision; agent origin cannot delete', async () => {
   const f = fixture()
   const server = await startAgentChrome(f.config, {
     store: f.store,
@@ -85,26 +92,48 @@ it('fresh admin warning binds the immutable identity/revision; agent bearer cann
   })
   clean.push(() => server.close())
   f.store.create('fern', 'panel')
-  const url = `http://127.0.0.1:${(server.httpServer.address() as { port: number }).port}/v1/profiles`
-  const read = async () =>
-    (await (await fetch(url, { headers: { authorization: 'Bearer ' + 'a'.repeat(64) } })).json())
-      .profiles[0]
-  const remove = async (confirmation?: string, token = 'a'.repeat(64)) =>
-    fetch(url + '/fern/delete', {
-      method: 'POST',
-      headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' },
-      body: JSON.stringify({ confirm: 'fern', deleteConfirmation: confirmation }),
+  const url = `http://127.0.0.1:${(server.httpServer.address() as { port: number }).port}`
+  const client = await connectPackage(url, f.config.token)
+  clean.push(() => client.close())
+  const read = async () => {
+    const result = await client.callTool({ name: 'configuration_snapshot', arguments: {} })
+    expect(result.isError).not.toBe(true)
+    return resultJson(result).profiles[0]
+  }
+  const remove = async (confirmation?: string, origin = 'settings.page') =>
+    client.callTool({
+      name: 'configure_profile',
+      arguments: {
+        profile: 'fern',
+        action: 'delete-profile',
+        confirm: 'fern',
+        deleteConfirmation: confirmation,
+      },
+      _meta: { ...personMetadata, origin },
     })
+  const opaque = path.join(f.store.dirOf('fern'), 'Cookies')
+  fs.writeFileSync(opaque, 'opaque fictional shared account')
+  const identity = f.store.shared.identity('fern')
+  const unchanged = () => {
+    expect(f.store.shared.identity('fern')).toBe(identity)
+    expect(fs.readFileSync(opaque, 'utf8')).toBe('opaque fictional shared account')
+    expect(f.browser.closes).toEqual([])
+  }
   const original = await read()
   expect(original).toMatchObject({ shared: true, onIn: ['Alpha'], status: 'ready' })
-  expect((await remove(original.deleteConfirmation, 'm'.repeat(64))).status).toBe(401)
-  expect((await remove()).status).toBe(409)
+  expect((await remove(original.deleteConfirmation, 'agent')).isError).toBe(true)
+  expect((await remove()).isError).toBe(true)
+  unchanged()
   f.store.setFlags('fern', { keepRunning: true })
-  expect((await remove(original.deleteConfirmation)).status).toBe(409)
+  expect((await remove(original.deleteConfirmation)).isError).toBe(true)
+  unchanged()
   const lease = f.store.shared.acquire('fern')
-  expect((await remove((await read()).deleteConfirmation)).status).toBe(409)
+  expect((await remove((await read()).deleteConfirmation)).isError).toBe(true)
+  unchanged()
   lease.release()
-  expect((await remove((await read()).deleteConfirmation)).status).toBe(200)
+  expect((await remove((await read()).deleteConfirmation)).isError).not.toBe(true)
+  expect(f.store.get('fern')).toBeUndefined()
+  expect(fs.existsSync(opaque)).toBe(false)
 })
 it('shared tool listing hides off profiles while Settings can still list them', async () => {
   const f = fixture()
@@ -124,6 +153,13 @@ it('shared tool listing hides off profiles while Settings can still list them', 
     tools.find((t) => t.definition.name === 'list_browser_profiles')!.execute({ profile: 'fern' }),
   ).rejects.toThrow(/unavailable|not enabled/)
   expect(f.store.list()).toHaveLength(1)
+  const { configurationSnapshot } = await import('../src/configuration.js')
+  const snapshot = await configurationSnapshot({ store: f.store, browser: f.browser, tabs })
+  expect(snapshot.profiles).toContainEqual(
+    expect.objectContaining({ name: 'fern', enabled: false }),
+  )
+  expect(f.store.get('fern')?.enabled).toBe(false)
+  expect(f.browser.launches).toEqual([])
 })
 it('restores migration-mapped names, applies workspace access and excludes local file URLs from shared automatic restore', async () => {
   const f = fixture()
