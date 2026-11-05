@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { openDatabase } from '../../src/main/db/connection'
 import { applyMigrations } from '../../src/main/db/migrate'
 import { createSessionStore } from '../../src/main/db/session-store'
+import { archivedInMemory, type ArchivedConversations } from '../../src/main/archived-file'
 
 /**
  * A fictional workspace at the size a busy person runs, written into a real database through the
@@ -97,6 +98,8 @@ export interface Expectation {
 export interface RealisticProfile {
   readonly file: string
   readonly live: readonly string[]
+  /** The archive a host over this file is given: the historical conversations, archived. */
+  archive(): ArchivedConversations
   readonly digest: string
   readonly counts: Readonly<Record<string, number>>
   readonly expected: Expectation
@@ -175,11 +178,17 @@ export function aRealisticProfile(file: string, size: ProfileSize, seed = 1): Re
         profileId: pick(slugs),
         ...(parent === undefined ? {} : { parentSessionId: parent }),
       })
-      row(id, 'session', {
-        type: 'session',
-        state: 'started',
-        ref: { provider: 'codex', sessionId: `thread-${id}`, cwd: CWD, rotation: 0 },
-      })
+      // Through the store, which records the provider's reference: the row is resumable.
+      store.append(
+        id,
+        ordinal(id),
+        {
+          type: 'session',
+          state: 'started',
+          ref: { provider: 'codex', sessionId: `thread-${id}`, cwd: CWD, rotation: 0 },
+        },
+        AT,
+      )
     }
     conversation(OWNER)
     live.push(OWNER)
@@ -369,6 +378,11 @@ export function aRealisticProfile(file: string, size: ProfileSize, seed = 1): Re
   return {
     file,
     live,
+    archive() {
+      const kept = archivedInMemory()
+      if (archived.length > 0) kept.add(archived, AT)
+      return kept
+    },
     digest,
     counts,
     expected: {
