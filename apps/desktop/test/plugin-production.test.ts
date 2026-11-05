@@ -696,7 +696,7 @@ describe.skipIf(process.platform === 'win32')(
         expect(await f.controller.catalogue()).toEqual([running])
         expect(await f.controller.catalogue(true)).toEqual([running])
         expect(readPluginInstructions(f.controller)).toMatchObject([
-          { id: 'whatsapp', state: 'Running', tools: 'all agents', service: 'Fictional WhatsApp' },
+          { id: 'whatsapp', state: 'Running', service: 'Fictional WhatsApp' },
         ])
         expect(f.peer.uninstall).toHaveBeenCalledExactlyOnceWith('chrome')
         expect(f.peer.install).not.toHaveBeenCalled()
@@ -714,7 +714,7 @@ describe.skipIf(process.platform === 'win32')(
         { id: f.pkg.release.id, state: 'Unavailable' },
       ])
       expect(readPluginInstructions(f.controller)).toMatchObject([
-        { id: f.pkg.release.id, state: 'Unavailable', tools: 'none', service: null },
+        { id: f.pkg.release.id, state: 'Unavailable', service: null },
       ])
       expect(f.peer.install).not.toHaveBeenCalled()
     })
@@ -919,7 +919,6 @@ describe.skipIf(process.platform === 'win32')(
       expect(readPluginInstructions(f.controller)?.[0]).toMatchObject({
         id: 'fictional-bakery',
         state: 'Available',
-        tools: 'none',
         service: null,
       })
       await f.controller.install('fictional-bakery')
