@@ -651,7 +651,7 @@ describe('agent exchanges fold inline', () => {
               shifted: false,
               exchange: { from: 'BroBot', to: 'Ayo', kind: 'question', text: reading.words! },
             },
-            () => h(QuestionCard, { reading, markdown: true, paths }),
+            () => h(QuestionCard, { reading, paths }),
           ),
       }),
       {},
@@ -673,7 +673,7 @@ describe('agent exchanges fold inline', () => {
     expect(m.q('question-words').textContent).toContain('/tmp/missing.md')
     expect(m.all('question-option').every((el) => el.tagName !== 'BUTTON')).toBe(true)
     m.unmount()
-    const readOnly = mount(QuestionCard, { reading, markdown: true, paths: null })
+    const readOnly = mount(QuestionCard, { reading, paths: null })
     expect(readOnly.host.querySelectorAll('.message-path')).toHaveLength(0)
     expect(readOnly.q('question-words').textContent).toContain('/tmp/menu.md')
   })
@@ -702,7 +702,10 @@ describe('agent exchanges fold inline', () => {
     await nextTick()
     expect(m.all('exchange-toggle')).toHaveLength(0)
     expect(visible(m.q('question-words'))).toBe(true)
-    expect(m.q('question-words').textContent).toBe('**A choice**')
+    expect(m.q('question-words').textContent).toBe('A choice')
+    expect(m.q('question-words').querySelectorAll('strong')).toHaveLength(1)
+    expect(m.q('question-words').querySelector('strong')?.textContent).toBe('A choice')
+    expect(m.all('question-option').map((el) => el.textContent?.trim())).toEqual(['Keep', 'Change'])
     expect(m.all('question-option').every((el) => el.tagName === 'BUTTON')).toBe(true)
   })
 })
