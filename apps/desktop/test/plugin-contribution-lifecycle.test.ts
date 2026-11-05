@@ -129,6 +129,22 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
   })
   it('installs exact caller-selected legacy bytes while the owner uses a different versioned source', async () => {
     const f = await fixture()
+    const start = f.opts.runtime.start
+    f.opts.runtime.start = async (spec) => {
+      const run = await start(spec)
+      let finish!: () => void
+      const exited = new Promise<void>((resolve) => {
+        finish = resolve
+      })
+      return {
+        ...run,
+        exited,
+        async stop() {
+          await run.stop()
+          finish()
+        },
+      }
+    }
     const legacy = repoListFor(f.pkg.release)
     const raw = Buffer.from(
       JSON.stringify({
