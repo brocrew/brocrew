@@ -73,10 +73,11 @@ describe('the listing is composed once until it moves', () => {
     const other = new RecordingSink('webContents:2')
     await host.look(helper, other, true)
     expect(runningOf(helper)).toBe('in-a-window')
-    // Quiet: nothing commits between two asks, so the listing is being shared.
-    await vi.waitFor(() => {
+    // Quiet: nothing commits across a turn of the timers, so the listing is being shared.
+    await vi.waitFor(async () => {
       listed()
       const settled = compositions()
+      await new Promise((resolve) => setTimeout(resolve, 50))
       listed()
       expect(compositions()).toBe(settled)
     })
