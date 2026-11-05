@@ -600,7 +600,10 @@ export function productionPluginController() {
         ? new Map((hostSnapshot.plugins ?? []).map((one) => [one.pluginId, one.enabled]))
         : new Map<string, boolean>()
       return entries.map((entry): PluginInstructionEntry => {
-        const { tools: _tools, ...rest } = entry
+        const rest: Omit<PluginInstructionEntry, 'tools'> & {
+          tools?: PluginInstructionEntry['tools']
+        } = { ...entry }
+        delete rest.tools
         const enabled = settings.get(entry.id)
         return enabled === undefined ? rest : { ...rest, tools: enabled ? 'all agents' : 'none' }
       })

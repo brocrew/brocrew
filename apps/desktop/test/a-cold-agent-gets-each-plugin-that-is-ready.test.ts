@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { createLifecycleAgentBridge } from '../src/main/plugins/lifecycle/agent-bridge'
 import type { AgentAttachmentView, AgentScopeEntry } from '../src/main/plugins/lifecycle/controller'
-import type { LifecycleWorkspace, WorkspaceProjection } from '../src/main/plugins/lifecycle/types'
+import type { LifecycleWorkspace } from '../src/main/plugins/lifecycle/types'
 import { openManagedPluginRoute } from '../src/main/plugins/managed-transport'
 import type { WorkspaceLease } from '../src/main/plugins/supervisor/owner'
 import type { Command } from '../src/main/plugins/supervisor/protocol'
@@ -121,7 +121,7 @@ async function aWorkspace(
       listeners.add(listener)
       return () => listeners.delete(listener)
     }),
-    attach: vi.fn(async (_sink: WorkspaceProjection) => {
+    attach: vi.fn(async () => {
       await attached
       return {} as LifecycleWorkspace
     }),

@@ -534,7 +534,7 @@ export function createLifecycleAgentBridge(options: {
     /** The served routes alone, for a peer that reads the array reply. */
     async routes(lease: Readonly<WorkspaceLease>, request: Request) {
       const answer = await answered(lease, request)
-      return answer.servers.map(({ pluginId: _pluginId, ...server }) => server)
+      return answer.servers.map(({ name, url, capability }) => ({ name, url, capability }))
     },
     async close() {
       // Every current and pending authority ends before the first await.
