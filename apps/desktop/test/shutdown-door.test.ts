@@ -141,6 +141,8 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   mcpServerRequestsForAPerson: { kind: 'mcpServerRequestsForAPerson' },
   stalledWorkForAPerson: { kind: 'stalledWorkForAPerson' },
   stoppedWorkForAPerson: { kind: 'stoppedWorkForAPerson' },
+  currentEpoch: { kind: 'currentEpoch' },
+  personsQueue: { kind: 'personsQueue' },
   workIncidentsForAPerson: { kind: 'workIncidentsForAPerson' },
   // F097 · no arguments either, for its neighbours' reason: a person is not inside one family.
   waitingOnWhoWroteForAPerson: { kind: 'waitingOnWhoWroteForAPerson' },
@@ -394,6 +396,8 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
  */
 const ANSWERED_DURING_A_QUIT: ReadonlySet<RuntimeCommandKind> = new Set([
   'capabilities',
+  // What this run is called: nothing is read.
+  'currentEpoch',
   'profiles',
   'checkCwd',
   'checkProviderAuth',

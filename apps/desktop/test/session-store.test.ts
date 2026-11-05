@@ -347,6 +347,11 @@ function fakeBridge() {
         rowsUnread: 0,
       }
     },
+    // This run's publisher and the stamped queue: the window does not read them yet.
+    currentEpoch: async () => ({ run: 'fictional-run', n: 0 }),
+    personsQueue: async () => {
+      throw new Error('the stamped queue is not read by this store yet')
+    },
     // ⚑ Work whose holder stopped with it, faked the same way: empty is the ordinary answer.
     stoppedWorkForAPerson: async () => {
       calls.push('stoppedWorkForAPerson')

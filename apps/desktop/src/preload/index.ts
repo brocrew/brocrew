@@ -1,3 +1,5 @@
+import type { PublicationEpoch } from '../shared/data-version'
+import type { PersonsQueueAnswer } from '../shared/persons-published'
 import { providerSetupBridge } from './provider-setup'
 import type { RulesBaseline } from '../shared/agent-rules'
 import type { OwnNotesWrite } from '../shared/own-notes'
@@ -323,6 +325,10 @@ const runtime: RuntimeBridge = Object.freeze({
    */
   stalledWorkForAPerson: (): Promise<LedgerWalk<StalledWork>> =>
     command({ kind: 'stalledWorkForAPerson' }),
+  /** This run's publisher, which every stamped answer and notice names. */
+  currentEpoch: (): Promise<PublicationEpoch> => command({ kind: 'currentEpoch' }),
+  /** The person's queue as one stamped publication: eight parts, each with its own coverage. */
+  personsQueue: (): Promise<PersonsQueueAnswer> => command({ kind: 'personsQueue' }),
   /** Work whose holder stopped with it, its giver told: to look at or hand back. */
   stoppedWorkForAPerson: (): Promise<LedgerWalk<StoppedWorkForAPerson>> =>
     command({ kind: 'stoppedWorkForAPerson' }),

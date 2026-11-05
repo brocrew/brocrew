@@ -1,3 +1,4 @@
+import type { PersonsQueueAnswer } from './persons-published'
 import type { PublicationEpoch } from './data-version'
 import type {
   MethodLibrary,
@@ -8306,6 +8307,10 @@ export type RuntimeCommand =
    * siblings' reason: a person is not inside one family.
    */
   | { kind: 'stoppedWorkForAPerson' }
+  /** This run's publisher, which every stamped answer and notice names. No arguments. */
+  | { kind: 'currentEpoch' }
+  /** The person's queue as one stamped publication ({@link PersonsQueueAnswer}). No arguments. */
+  | { kind: 'personsQueue' }
   /**
    * The open pieces no other list shows a person, with what is wrong with each
    * ({@link WorkIncident}). ⚑ No arguments, for its siblings' reason.
@@ -9129,6 +9134,8 @@ export interface RuntimeCommandResults {
    * draws what it is handed and decides nothing about who was told.
    */
   stalledWorkForAPerson: LedgerWalk<StalledWork>
+  currentEpoch: PublicationEpoch
+  personsQueue: PersonsQueueAnswer
   stoppedWorkForAPerson: LedgerWalk<StoppedWorkForAPerson>
   workIncidentsForAPerson: LedgerWalk<WorkIncident>
   /**
@@ -9823,6 +9830,10 @@ export interface RuntimeBridge {
    * re-assign or end — and a person reading this goes to the conversation holding the work.
    */
   stalledWorkForAPerson(): Promise<LedgerWalk<StalledWork>>
+  /** This run's publisher, which every stamped answer and notice names. */
+  currentEpoch(): Promise<PublicationEpoch>
+  /** The person's queue as one stamped publication: eight parts, each with its own coverage. */
+  personsQueue(): Promise<PersonsQueueAnswer>
   stoppedWorkForAPerson(): Promise<LedgerWalk<StoppedWorkForAPerson>>
   /** The open pieces no other list shows a person, with what is wrong with each. */
   workIncidentsForAPerson(): Promise<LedgerWalk<WorkIncident>>

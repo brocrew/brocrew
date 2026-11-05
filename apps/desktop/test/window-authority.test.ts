@@ -423,6 +423,9 @@ const CLASSIFIED: Record<
   // ⛔ `no session`, its neighbour's word for its reason: it names no conversation, and walks every
   // one this app has given work to.
   stoppedWorkForAPerson: 'no session',
+  // ⛔ `no session`, for their neighbours' reason: neither names a conversation.
+  currentEpoch: 'no session',
+  personsQueue: 'no session',
   // ⛔ `no session`, for its neighbours' reason: it names no conversation.
   workIncidentsForAPerson: 'no session',
   // ⛔ **F097 · `no session`, its siblings' word for their reason.** It names no conversation: the
