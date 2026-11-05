@@ -24,13 +24,80 @@ import {
 } from './fixtures/third-plugin-acceptance'
 
 const cleanup: (() => Promise<unknown>)[] = []
-async function accepted(
+const traces: ReturnType<typeof boundaryTrace>[] = []
+let traceSequence = 0
+function boundaryTrace(transport: ThirdPluginTransport) {
+  const traceId = ++traceSequence
+  let sequence = 0
+  const counts: Record<string, { entered: number; fulfilled: number; rejected: number }> = {}
+  const recent: { label: string; outcome: string; facts: unknown }[] = []
+  let read = (): unknown => ({ session: 'not-created' })
+  const inspect = <T>(get: () => T): T | { unavailable: true } => {
+    try {
+      return get()
+    } catch {
+      return { unavailable: true }
+    }
+  }
+  const mark = (label: string, outcome: 'entered' | 'fulfilled' | 'rejected') => {
+    const count = (counts[label] ??= { entered: 0, fulfilled: 0, rejected: 0 })
+    count[outcome]++
+    recent.push({ label, outcome, facts: inspect(read) })
+    if (recent.length > 16) recent.shift()
+    console.info(
+      '[third-plugin boundary]',
+      JSON.stringify({ traceId, transport, sequence: ++sequence, label, outcome }),
+    )
+  }
+  // Observe settlement without replacing the operation's promise or supplying readiness.
+  const step = <T>(label: string, call: () => Promise<T>): Promise<T> => {
+    mark(label, 'entered')
+    let work: Promise<T>
+    try {
+      work = call()
+    } catch (error) {
+      mark(label, 'rejected')
+      throw error
+    }
+    void work.then(
+      () => mark(label, 'fulfilled'),
+      () => mark(label, 'rejected'),
+    )
+    return work
+  }
+  const trace = {
+    step,
+    inspect,
+    watch(get: () => unknown) {
+      read = get
+    },
+    dump() {
+      console.info(
+        '[third-plugin boundaries]',
+        JSON.stringify({
+          traceId,
+          transport,
+          counts,
+          recent,
+          atTeardown: inspect(read),
+        }),
+      )
+    },
+  }
+  traces.push(trace)
+  return trace
+}
+// Supervisor calls consume canonical authority; direct consumers are observed separately.
+async function acceptedScope(
   controller: PluginLifecycleController,
-  handle: LifecycleWorkspace,
+  state: GlobalPluginState,
+  workspaceId: string,
   id: string,
-  installId: string,
 ) {
-  const workspaceId = controller.hostWorkspace(handle)
+  const captured = state.readView()
+  const selected = captured.currentInstallation(id)
+  const choice = captured.getEnabled(workspaceId, id)
+  if (!selected || !choice.enabled) throw new Error('Expected an enabled selected installation.')
   let resolve!: () => void, reject!: (error: unknown) => void
   const ready = new Promise<void>((yes, no) => {
     resolve = yes
@@ -38,7 +105,32 @@ async function accepted(
   })
   const check = () => {
     try {
-      if (controller.admitted(handle, id, installId)) resolve()
+      const read = state.readView()
+      const current = read.currentInstallation(id)
+      const preference = read.getEnabled(workspaceId, id)
+      if (
+        current?.installId !== selected.installId ||
+        current.incarnation !== selected.incarnation ||
+        !preference.enabled ||
+        preference.revision !== choice.revision
+      )
+        throw new Error('The captured workspace selection changed while waiting for its scope.')
+      const scope = controller.agentScope(workspaceId)
+      const entry = scope.entries.find((one) => one.pluginId === id)
+      if (
+        scope.workspaceId === workspaceId &&
+        entry?.is === 'admitted' &&
+        entry.enabled &&
+        entry.installId === selected.installId &&
+        entry.switchRevision === choice.revision &&
+        entry.view.workspaceId === workspaceId &&
+        entry.view.installation.pluginId === id &&
+        entry.view.installation.installId === selected.installId &&
+        entry.view.installation.incarnation === selected.incarnation &&
+        entry.view.runId === entry.runId &&
+        entry.view.current()
+      )
+        resolve()
     } catch (error) {
       reject(error)
     }
@@ -59,7 +151,11 @@ const receiptSubscriptions = new Set<() => void>()
 afterEach(async () => {
   for (const stop of receiptSubscriptions) stop()
   receiptSubscriptions.clear()
-  for (const close of cleanup.splice(0).reverse()) await close()
+  try {
+    for (const trace of traces.splice(0)) trace.dump()
+  } finally {
+    for (const close of cleanup.splice(0).reverse()) await close()
+  }
 })
 
 function projection(workspaceId: string) {
@@ -119,6 +215,8 @@ async function acceptance(
   transport: ThirdPluginTransport,
   options: { dataOnRemove?: 'keep' | 'remove'; cleanupLosesReply?: boolean } = {},
 ) {
+  const trace = boundaryTrace(transport)
+  const step = trace.step
   const parent = await realpath(
     await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'third-plugin-')),
   )
@@ -138,10 +236,12 @@ async function acceptance(
   await cp(new URL('../resources/plugin-host/', import.meta.url), join(resources, 'plugin-host'), {
     recursive: true,
   })
-  const runtime = await preparePluginNodeRuntime({
-    resourcesRoot: resources,
-    durableRoot: join(parent, 'runtime'),
-  })
+  const runtime = await step('runtime.prepare', () =>
+    preparePluginNodeRuntime({
+      resourcesRoot: resources,
+      durableRoot: join(parent, 'runtime'),
+    }),
+  )
   const packages = []
   for (const revision of [1, 2] as const) {
     const pkg = thirdPluginPackage(revision, transport, options)
@@ -152,19 +252,64 @@ async function acceptance(
   const ids = [randomUUID(), randomUUID()]
   let state = GlobalPluginState.create({ root: join(root, 'state'), workspaceRoots: workspaces })
   const sessions: AcceptanceSession[] = []
+  const observed: Pick<AcceptanceSession, 'service' | 'handles'>[] = []
+  trace.watch(() => ({
+    selected: trace.inspect(() => {
+      const read = state.readView()
+      const install = read.currentInstallation(thirdPluginId)
+      return {
+        installId: install?.installId ?? null,
+        incarnation: install?.incarnation ?? null,
+        choices: ids.map((workspaceId) => read.getEnabled(workspaceId, thirdPluginId)),
+      }
+    }),
+    sessions: observed.map((session, index) => ({
+      session: index,
+      clean: session.service.controller.cleanForShutdown(),
+      workspaces: ids.map((workspaceId, workspace) => ({
+        workspace,
+        directBindings: trace.inspect(() =>
+          session.service.controller.consumerBindings(session.handles[workspace]!),
+        ),
+        directReceipts: trace.inspect(() =>
+          session.service.controller.consumerReceipts(session.handles[workspace]!),
+        ),
+        canonical: trace.inspect(() =>
+          session.service.controller.agentScope(workspaceId).entries.map((entry) => ({
+            pluginId: entry.pluginId,
+            enabled: entry.enabled,
+            switchRevision: entry.switchRevision,
+            state: entry.is,
+            ...(entry.is === 'admitted'
+              ? {
+                  installId: entry.installId,
+                  incarnation: entry.view.installation.incarnation,
+                  runId: entry.runId,
+                  current: entry.view.current(),
+                }
+              : { why: entry.why }),
+          })),
+        ),
+      })),
+    })),
+  }))
   async function start(): Promise<AcceptanceSession> {
-    const owner = await PluginSupervisor.start({ root, workspaceRoots: workspaces })
+    const owner = await step('owner.start', () =>
+      PluginSupervisor.start({ root, workspaceRoots: workspaces }),
+    )
     const sessionCleanup: { close?: () => Promise<void> } = {}
     cleanup.push(async () => {
       if (sessionCleanup.close) await sessionCleanup.close()
       else await owner.shutdown()
     })
-    const lease = await PluginWorkspaceLease.attach({
-      root,
-      workspaceRoot: workspaces[0]!,
-      generation: randomUUID(),
-      build: 'fictional-third-plugin-acceptance',
-    })
+    const lease = await step('lease.attach', () =>
+      PluginWorkspaceLease.attach({
+        root,
+        workspaceRoot: workspaces[0]!,
+        generation: randomUUID(),
+        build: 'fictional-third-plugin-acceptance',
+      }),
+    )
     const host = createPluginNodeHost({
       root: join(root, 'host'),
       runtime,
@@ -174,49 +319,15 @@ async function acceptance(
         ownerLabel: 'Fictional installation',
       },
     })
-    const service = await createSupervisorLifecycle({
-      owner,
-      host,
-      personKey: '7'.repeat(64),
+    const service = await step('service.open', () =>
+      createSupervisorLifecycle({
+        owner,
+        host,
+        personKey: '7'.repeat(64),
 
-      lifecycle: {
-        root,
-        state,
-        pinnedPublicKey: fictionalPublicKey,
-        target: {
-          os: process.platform as 'darwin' | 'linux' | 'win32',
-          cpu: process.arch as 'arm64' | 'x64',
-        },
-        appVersion: '1.0.0',
-        catalogue: signed({ format: 1, entries: [] }),
-        names: {},
-        deny() {},
-      },
-    })
-    const clients: AcceptanceSession['clients'] = []
-    const pages: PluginPageTools[] = []
-    let closed = false
-    const close = async () => {
-      if (closed) return
-      closed = true
-      for (const page of pages) page.close()
-      await Promise.allSettled(clients.map((client) => client.close()))
-      await service.close()
-      await host.stop()
-      await lease.close()
-      expect(await owner.shutdown()).toBe(true)
-    }
-    sessionCleanup.close = close
-    const handles: LifecycleWorkspace[] = []
-    const projections = ids.map(projection)
-    for (const projection of projections)
-      handles.push(await service.controller.attach(projection.sink))
-    for (const local of projections) {
-      clients.push(
-        await connectPluginSettings({
-          path: service.path,
-          personKey: '7'.repeat(64),
+        lifecycle: {
           root,
+          state,
           pinnedPublicKey: fictionalPublicKey,
           target: {
             os: process.platform as 'darwin' | 'linux' | 'win32',
@@ -224,8 +335,47 @@ async function acceptance(
           },
           appVersion: '1.0.0',
           catalogue: signed({ format: 1, entries: [] }),
-          projection: local.sink,
-        }),
+          names: {},
+          deny() {},
+        },
+      }),
+    )
+    const handles: LifecycleWorkspace[] = []
+    observed.push({ service, handles })
+    const clients: AcceptanceSession['clients'] = []
+    const pages: PluginPageTools[] = []
+    let closed = false
+    const close = async () => {
+      if (closed) return
+      closed = true
+      for (const page of pages) page.close()
+      await step('clients.close', () => Promise.allSettled(clients.map((client) => client.close())))
+      await step('service.close', () => service.close())
+      await step('host.stop', () => host.stop())
+      await step('lease.close', () => lease.close())
+      expect(await step('owner.shutdown', () => owner.shutdown())).toBe(true)
+    }
+    sessionCleanup.close = close
+    const projections = ids.map(projection)
+    for (const projection of projections)
+      handles.push(await step('direct.attach', () => service.controller.attach(projection.sink)))
+    for (const local of projections) {
+      clients.push(
+        await step('person.connect', () =>
+          connectPluginSettings({
+            path: service.path,
+            personKey: '7'.repeat(64),
+            root,
+            pinnedPublicKey: fictionalPublicKey,
+            target: {
+              os: process.platform as 'darwin' | 'linux' | 'win32',
+              cpu: process.arch as 'arm64' | 'x64',
+            },
+            appVersion: '1.0.0',
+            catalogue: signed({ format: 1, entries: [] }),
+            projection: local.sink,
+          }),
+        ),
       )
     }
     const session: AcceptanceSession = {
@@ -252,7 +402,8 @@ async function acceptance(
     appData,
     packages,
     ids,
-    start,
+    start: () => step('session.start', start),
+    step,
     get state() {
       return state
     },
@@ -279,30 +430,36 @@ describe.each(['stdio', 'streamable-http'] as const)(
         return { workspaceId: f.ids[workspace]!, pluginId: id, instanceId: view!.runId }
       }
       const call = (name: string, args: Record<string, unknown> = {}, workspace = 0) =>
-        session.service.controller.genericCallTool({
-          ...scope(workspace),
-          name,
-          arguments: args,
-          requestId: randomUUID(),
-          origin: 'acceptance',
-        })
-      await session.clients[0]!.applyPackage!(f.packages[0]!.ref, 'install')
+        f.step('supervisor.call.' + name, () =>
+          session.service.controller.genericCallTool({
+            ...scope(workspace),
+            name,
+            arguments: args,
+            requestId: randomUUID(),
+            origin: 'acceptance',
+          }),
+        )
+      await f.step('package.install', () =>
+        session.clients[0]!.applyPackage!(f.packages[0]!.ref, 'install'),
+      )
       const first = scope()
       expect((await call('pebble.helper')).structuredContent).toMatchObject({
         helper: 'opaque-third-helper',
       })
-      const initial = await session.service.controller.genericListTools(first)
+      const initial = await f.step('supervisor.list', () =>
+        session.service.controller.genericListTools(first),
+      )
       expect(initial.map((tool) => tool.name)).toContain('pebble.echo')
       expect(initial.map((tool) => tool.name)).not.toContain('pebble.count')
       const configuration = async (workspace = 0) => {
         const client = session.clients[workspace]!
-        const snapshot = await client.host!.snapshot()
+        const snapshot = await f.step('person.snapshot', () => client.host!.snapshot())
         expect(snapshot.contributions).toEqual(
           expect.arrayContaining([
             expect.objectContaining({ pluginId: id, kind: 'settings.page', state: 'active' }),
           ]),
         )
-        const screen = await client.screen(id)
+        const screen = await f.step('person.screen', () => client.screen(id))
         if (!screen.tools) throw new Error('Expected the real generic Configure tool service.')
         expect(screen.hostViewId).toEqual(expect.any(String))
         expect(screen.verified.readFile(screen.page!.entry)).toBeDefined()
@@ -311,12 +468,14 @@ describe.each(['stdio', 'streamable-http'] as const)(
         return {
           screen,
           invoke: (tool: string, args: Record<string, unknown> = {}) =>
-            page.invoke({
-              channel: PLUGIN_PAGE_CHANNEL,
-              requestId: randomUUID(),
-              method: 'callTool',
-              params: { tool, arguments: args },
-            }),
+            f.step('page.invoke.' + tool, () =>
+              page.invoke({
+                channel: PLUGIN_PAGE_CHANNEL,
+                requestId: randomUUID(),
+                method: 'callTool',
+                params: { tool, arguments: args },
+              }),
+            ),
         }
       }
       const pageV1 = await configuration()
@@ -343,23 +502,35 @@ describe.each(['stdio', 'streamable-http'] as const)(
       expect(await readFile(join(privateData, 'opaque.bin'))).toEqual(opaque)
       expect(await readFile(join(sharedData, 'opaque.bin'))).toEqual(opaque)
       expect(
-        await session.clients[1]!.host!.request({ kind: 'enabled', pluginId: id, enabled: false }),
+        await f.step('choice.disable', () =>
+          session.clients[1]!.host!.request({ kind: 'enabled', pluginId: id, enabled: false }),
+        ),
       ).toMatchObject({ value: { enabled: false } })
       expect(session.service.controller.agentAttachments(f.ids[1]!)).toEqual([])
       await expect(
-        session.service.controller.genericListTools({ ...first, workspaceId: f.ids[1]! }),
+        f.step('supervisor.list', () =>
+          session.service.controller.genericListTools({ ...first, workspaceId: f.ids[1]! }),
+        ),
       ).rejects.toMatchObject({ code: 'disabled' })
-      await session.clients[0]!.applyPackage!(f.packages[1]!.ref, 'update')
+      await f.step('package.update', () =>
+        session.clients[0]!.applyPackage!(f.packages[1]!.ref, 'update'),
+      )
       const updated = scope()
       await expect(pageV1.invoke('pebble.read_settings')).rejects.toThrow('Plugin unavailable.')
       const pageV2 = await configuration()
       expect(pageV2.screen.page!.fields).toEqual(f.packages[1]!.fields)
       expect(updated.instanceId).not.toBe(first.instanceId)
-      await expect(session.service.controller.genericListTools(first)).rejects.toMatchObject({
+      await expect(
+        f.step('supervisor.list', () => session.service.controller.genericListTools(first)),
+      ).rejects.toMatchObject({
         code: 'disabled',
       })
       expect(
-        (await session.service.controller.genericListTools(updated)).map((tool) => tool.name),
+        (
+          await f.step('supervisor.list', () =>
+            session.service.controller.genericListTools(updated),
+          )
+        ).map((tool) => tool.name),
       ).toContain('pebble.count')
       expect(
         (await call('pebble.count', { stones: ['opaque-a', 'opaque-b'] })).structuredContent,
@@ -418,14 +589,16 @@ describe.each(['stdio', 'streamable-http'] as const)(
       })
       const crashing = session.service.controller.agentAttachments(f.ids[0]!)[0]!
       await expect(call('pebble.lose_reply')).rejects.toBeDefined()
-      await crashing.exited
+      await f.step('crashed.exited', () => crashing.exited)
       expect(
         (await records(join(privateData, 'calls.jsonl'))).filter(
           (row) => row.name === 'pebble.lose_reply',
         ),
       ).toHaveLength(1)
       expect(session.service.controller.agentAttachments(f.ids[0]!)).toEqual([])
-      await session.service.controller.restartPluginTools(id, crashing.runId, () => {})
+      await f.step('tools.restart', () =>
+        session.service.controller.restartPluginTools(id, crashing.runId, () => {}),
+      )
       expect(scope().instanceId).not.toBe(crashing.runId)
       expect(
         (await records(join(privateData, 'calls.jsonl'))).filter(
@@ -433,19 +606,20 @@ describe.each(['stdio', 'streamable-http'] as const)(
         ),
       ).toHaveLength(1)
       // Restart never replays the package call whose reply was lost after its side effect.
-      await session.clients[0]!.host!.request({ kind: 'enabled', pluginId: id, enabled: false })
-      await session.clients[1]!.host!.request({ kind: 'enabled', pluginId: id, enabled: true })
-      await session.close()
+      await f.step('choice.disable', () =>
+        session.clients[0]!.host!.request({ kind: 'enabled', pluginId: id, enabled: false }),
+      )
+      await f.step('choice.enable', () =>
+        session.clients[1]!.host!.request({ kind: 'enabled', pluginId: id, enabled: true }),
+      )
+      await f.step('session.close', () => session.close())
       f.reopenState()
       session = await f.start()
       expect(f.state.getEnabled(f.ids[0]!, id).enabled).toBe(false)
       expect(f.state.getEnabled(f.ids[1]!, id).enabled).toBe(true)
       expect(session.service.controller.agentAttachments(f.ids[0]!)).toEqual([])
-      await accepted(
-        session.service.controller,
-        session.handles[1]!,
-        id,
-        f.state.currentInstallation(id)!.installId,
+      await f.step('canonical.workspace1', () =>
+        acceptedScope(session.service.controller, f.state, f.ids[1]!, id),
       )
       expect((await call('pebble.read_settings', {}, 1)).structuredContent).toMatchObject({
         revision: 2,
@@ -453,20 +627,25 @@ describe.each(['stdio', 'streamable-http'] as const)(
         home: privateData,
         shared: sharedData,
       })
-      await session.clients[0]!.host!.request({ kind: 'enabled', pluginId: id, enabled: true })
-      await accepted(
-        session.service.controller,
-        session.handles[0]!,
-        id,
-        f.state.currentInstallation(id)!.installId,
+      await f.step('choice.enable', () =>
+        session.clients[0]!.host!.request({ kind: 'enabled', pluginId: id, enabled: true }),
+      )
+      await f.step('canonical.workspace0', () =>
+        acceptedScope(session.service.controller, f.state, f.ids[0]!, id),
       )
       expect(
-        (await session.service.controller.genericListTools(scope())).map((tool) => tool.name),
+        (
+          await f.step('supervisor.list', () =>
+            session.service.controller.genericListTools(scope()),
+          )
+        ).map((tool) => tool.name),
       ).toContain('pebble.count')
       // Updates, explicit process restart and app reopening must not run uninstall cleanup.
       expect(await records(join(privateData, 'explicit-cleanup.jsonl'))).toEqual([])
       const removing = scope()
-      expect(await session.clients[0]!.uninstall(id)).toMatchObject({
+      expect(
+        await f.step('package.uninstall', () => session.clients[0]!.uninstall(id)),
+      ).toMatchObject({
         data: 'kept',
         cleanup: 'completed',
         result: { content: expect.any(Array) },
