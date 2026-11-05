@@ -232,7 +232,7 @@ import {
   usePersonsQueue,
   type PersonsQueueRow,
 } from '../lib/persons-queue'
-import { askedQuestionItemIn, briefItemIn, markRequestFailed } from '../lib/transcript'
+import { askedQuestionItemIn, briefItemIn } from '../lib/transcript'
 import { THE_BRIEF_IS_FURTHER_BACK } from '../lib/outgoing-card'
 // 🔴 **636 · the reading `621` built and left with no reader** — see {@link readWhatIsWaiting}.
 // ⚠️ **This file is `631`'s and the edit is deliberately four small ones**; the response document
@@ -529,8 +529,8 @@ provideOverlayLayer(overlayLayer)
 const todoDocument = ref<InstanceType<typeof CanonicalDocumentOverlay> | null>(null)
 
 /**
- * A person answers a to-do through the host's `answerAction` door.
- * `null` when it took the answer, else its words, and the look runs again so the row leaves.
+ * A person answers a to-do through the store, which settles its card.
+ * `null` when the host took the answer, else its words, and the look runs again so the row leaves.
  */
 async function answerATodo(
   sessionId: string,
@@ -539,20 +539,7 @@ async function answerATodo(
   note: string,
 ): Promise<string | null> {
   try {
-    const ack = await window.api.runtime.answerAction({
-      sessionId,
-      request,
-      done,
-      ...(note === '' ? {} : { note }),
-    })
-    if (ack.outcome === 'refused' && !ack.stillOpen) {
-      const record = store.get(sessionId)
-      if (record) {
-        markRequestFailed(record.transcript, request, ack.reason)
-        if (record.control !== record.transcript)
-          markRequestFailed(record.control, request, ack.reason)
-      }
-    }
+    const ack = await store.answerAction(sessionId, request, done, note)
     void lookForWhatIsYours()
     return ack.outcome === 'taken' ? null : ack.reason
   } catch (cause) {

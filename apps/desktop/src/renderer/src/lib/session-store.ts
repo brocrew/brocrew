@@ -17,6 +17,7 @@ import { activityOf, type WhatIsBeingDone } from '../../../shared/what-is-being-
 import type { WhatEachConversationIsWaitingOn, WorkGivenOut } from '../../../shared/tasks'
 import type { TheWholeForest } from '../../../shared/the-whole-forest'
 import type {
+  AnswerAck,
   ProviderAnswerAck,
   CreateSessionInput,
   PermissionDecision,
@@ -564,6 +565,18 @@ export interface SessionStore {
     requestId: string,
     response: UserInputResponse,
   ): Promise<string | null>
+  /**
+   * A person's answer to a to-do: done, or can't, with an optional note. Answers the host's ack and
+   * rejects as the bridge does. A refusal that leaves the to-do closed settles its card here, on both
+   * folds, in the host's words; a taken answer, a refusal that leaves it open and a thrown call leave
+   * the card as it is. The host is asked even when this window holds no record of the conversation.
+   */
+  answerAction(
+    sessionId: string,
+    requestId: string,
+    done: boolean,
+    note: string,
+  ): Promise<AnswerAck>
   interrupt(sessionId: string): Promise<void>
   /**
    * Stop ONE piece of background work, leaving the conversation running (248).
@@ -2171,6 +2184,22 @@ export function createSessionStore(bridge: RuntimeBridge): SessionStore {
       noteAnswer(sessionId, requestId, ok, value)
       if (!ok) return answerNeverLeftThisWindow(sessions.get(sessionId)?.error ?? null)
       return value === undefined ? null : whatAnAnswerAckSays(value)
+    },
+
+    async answerAction(sessionId, requestId, done, note) {
+      const ack = await bridge.answerAction({
+        sessionId,
+        request: requestId,
+        done,
+        ...(note === '' ? {} : { note }),
+      })
+      const record = sessions.get(sessionId)
+      if (ack.outcome === 'refused' && !ack.stillOpen && record) {
+        markRequestFailed(record.transcript, requestId, ack.reason)
+        if (record.control !== record.transcript)
+          markRequestFailed(record.control, requestId, ack.reason)
+      }
+      return ack
     },
 
     async interrupt(sessionId) {

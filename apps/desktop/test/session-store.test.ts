@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { computed, nextTick, reactive } from 'vue'
 import { allProviderCapabilities, answerToForward } from '@brobot2/runtime'
 import { runtimeCommandSchema } from '../src/main/runtime/ipc'
@@ -11,10 +13,16 @@ import { createSessionStore, overTheWire } from '../src/renderer/src/lib/session
 import { NOT_REACHED_THIS_WINDOW } from '../src/renderer/src/lib/session-record'
 import { createAttachmentBook, draftKey } from '../src/renderer/src/lib/drafts'
 import { sessionPanel } from '../src/renderer/src/lib/session-panel'
-import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
+import {
+  applyEvent,
+  createTranscript,
+  type OutgoingQuestion,
+  type TranscriptState,
+} from '../src/renderer/src/lib/transcript'
 import { tailWindow } from '../src/renderer/src/lib/transcript-window'
 import { RETITLE_SAID } from '../src/shared/piece-called'
 import type {
+  AnswerAck,
   CreatedSession,
   PersistedEventInfo,
   ResumedSession,
@@ -3031,5 +3039,147 @@ describe('🔴 737 · `store.startAndSend` — the first message and its start, 
     answer(refused({ refusedBy: 'the-start', said: 'Cancelled.', launch: 'cancelled' }))
     await expect(pending).resolves.toMatchObject({ sent: false, openHere: false })
     store.dispose()
+  })
+})
+
+/**
+ * A person's answer to a to-do goes through the store, and the store alone settles its card.
+ *
+ * The host answers `taken`, or `refused` with whether the to-do is still open. Only a refusal that
+ * leaves it closed settles the card, in the host's words, on both folds: the reading fold and the
+ * control fold are different objects while a reader pages back, and a card settled on one only
+ * would stay live on the other.
+ */
+describe('a to-do answered through the store', () => {
+  const TODO = 'Check the sample report and confirm its title.'
+  const toDo: TranscriptEvent[] = [
+    {
+      type: 'tool_inventory',
+      naming: { prefix: 'mcp__', separator: '__' },
+      declared: {
+        server: 'brobot',
+        tools: [{ name: 'request_action', description: '', parameters: [] }],
+      },
+      published: null,
+    } as unknown as TranscriptEvent,
+    {
+      type: 'tool_call',
+      id: 'call_report',
+      name: 'mcp__brobot__request_action',
+      summary: JSON.stringify({ action: TODO }),
+    } as TranscriptEvent,
+    {
+      type: 'question_asked',
+      requestId: 'req_report',
+      piece: 'work_report',
+      label: 'W3.4',
+      prompt: TODO,
+      questions: [],
+      action: { files: [] },
+    } as TranscriptEvent,
+    { type: 'request_routed', requestId: 'req_report', to: 'a-person' } as TranscriptEvent,
+  ]
+
+  const card = (fold: TranscriptState): OutgoingQuestion | null => {
+    for (const item of fold.items) {
+      if (item.kind !== 'tool' || item.outgoing?.tool !== 'request_action') continue
+      if (item.outgoing.asked?.requestId === 'req_report') return item.outgoing.asked
+    }
+    return null
+  }
+
+  /** A conversation holding the to-do, its reading fold split from its control fold. */
+  async function holding(bridge: ReturnType<typeof fakeBridge>) {
+    const store = createSessionStore(bridge)
+    const id = (await store.create({ provider: 'claude' })) ?? ''
+    toDo.forEach((event, ordinal) => bridge.__emit(id, ordinal, event))
+    const record = store.get(id)!
+    record.control = createTranscript()
+    for (const event of toDo) applyEvent(record.control, event)
+    expect(card(record.transcript)).not.toBeNull()
+    expect(card(record.control)).not.toBeNull()
+    return { store, id, record }
+  }
+
+  it('a refusal that closes the to-do settles its card on both folds, in the host’s words', async () => {
+    const bridge = fakeBridge()
+    const asked: unknown[] = []
+    bridge.answerAction = async (input) => {
+      asked.push(input)
+      return { outcome: 'refused', reason: 'This to-do was already answered.', stillOpen: false }
+    }
+    const { store, id, record } = await holding(bridge)
+
+    const ack = await store.answerAction(id, 'req_report', false, 'I cannot open it.')
+
+    expect(asked).toEqual([
+      { sessionId: id, request: 'req_report', done: false, note: 'I cannot open it.' },
+    ])
+    expect(ack).toEqual({
+      outcome: 'refused',
+      reason: 'This to-do was already answered.',
+      stillOpen: false,
+    })
+    expect(card(record.transcript)?.note).toBe('This to-do was already answered.')
+    expect(card(record.control)?.note).toBe('This to-do was already answered.')
+    store.dispose()
+  })
+
+  it('a taken answer, a refusal that leaves it open and a thrown call leave the card live', async () => {
+    const answers: (() => Promise<AnswerAck>)[] = [
+      async () => ({ outcome: 'taken' }),
+      async () => ({ outcome: 'refused', reason: 'Try again.', stillOpen: true }),
+      async () => {
+        throw new Error('the bridge is gone')
+      },
+    ]
+    for (const answer of answers) {
+      const bridge = fakeBridge()
+      bridge.answerAction = answer
+      const { store, id, record } = await holding(bridge)
+
+      await store.answerAction(id, 'req_report', true, '').catch(() => undefined)
+
+      expect(card(record.transcript)?.note).toBeUndefined()
+      expect(card(record.control)?.note).toBeUndefined()
+      store.dispose()
+    }
+  })
+
+  it('sends no empty note, and a thrown call reaches the caller', async () => {
+    const bridge = fakeBridge()
+    const asked: unknown[] = []
+    bridge.answerAction = async (input) => {
+      asked.push(input)
+      throw new Error('the bridge is gone')
+    }
+    const { store, id } = await holding(bridge)
+
+    await expect(store.answerAction(id, 'req_report', true, '')).rejects.toThrow(
+      'the bridge is gone',
+    )
+    expect(asked).toEqual([{ sessionId: id, request: 'req_report', done: true }])
+    store.dispose()
+  })
+
+  it('asks the host for a conversation this window does not hold', async () => {
+    const bridge = fakeBridge()
+    const store = createSessionStore(bridge)
+
+    expect(await store.answerAction('sess_elsewhere', 'req_report', true, '')).toEqual({
+      outcome: 'taken',
+    })
+    expect(bridge.__calls).toContain('answerAction:sess_elsewhere')
+    store.dispose()
+  })
+
+  it('no component writes a request’s folds itself', () => {
+    const components = join(__dirname, '../src/renderer/src/components')
+    const writers = readdirSync(components)
+      .filter((name) => name.endsWith('.vue'))
+      .filter((name) =>
+        /\bmarkRequestFailed\s*[(,}]/.test(readFileSync(join(components, name), 'utf8')),
+      )
+    expect(writers).toEqual([])
   })
 })
