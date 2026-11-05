@@ -121,4 +121,18 @@ describe('a routes reply names each plugin when both sides agreed to', () => {
     expect(read.servers).toEqual([server('aster')])
     expect(read.plugins?.none).toHaveLength(130)
   })
+
+  it('a named reply that names one plugin twice, or as two things at once, is refused', async () => {
+    const parse = (value: unknown) =>
+      new WorkspacePluginAttachments({ agentRoutes: async () => ({ format: 2, value }) }, 'w')
+        .agent([])
+        .read()
+    const reply = { format: 2, servers: [server('aster')], pending: [], none: [], unknown: false }
+    await expect(parse({ ...reply, pending: ['zinnia'], none: ['zinnia'] })).rejects.toThrow()
+    await expect(parse({ ...reply, none: ['aster'] })).rejects.toThrow()
+    await expect(parse({ ...reply, pending: ['aster'] })).rejects.toThrow()
+    await expect(parse({ ...reply, servers: [server('aster'), server('aster')] })).rejects.toThrow()
+    await expect(parse({ ...reply, pending: ['zinnia', 'zinnia'] })).rejects.toThrow()
+    await expect(parse(reply)).resolves.toMatchObject({ servers: [server('aster')] })
+  })
 })

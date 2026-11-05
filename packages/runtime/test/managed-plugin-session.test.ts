@@ -1107,3 +1107,21 @@ it('a read that fails says nothing new about what a turn may wait on', async () 
   expect(awaited).toHaveBeenCalledTimes(1)
   await a.close()
 })
+it('a plugin a named reply leaves out, without saying it is off, keeps its attached route', async () => {
+  const fern = { ...route, pluginId: 'fern' }
+  const f = fixture(true)
+  f.change({ revision: 'one', servers: [fern], plugins: { pending: [], none: [], unknown: false } })
+  const a = await f.runtime.start(initial)
+  f.change({ revision: 'two', servers: [], plugins: { pending: [], none: [], unknown: false } })
+  await a.send('fictional words')
+  expect(f.opened[0]!.handle.refreshManagedPlugins).not.toHaveBeenCalled()
+  expect(f.raw.resume).not.toHaveBeenCalled()
+  f.change({
+    revision: 'three',
+    servers: [],
+    plugins: { pending: [], none: ['fern'], unknown: false },
+  })
+  await a.send('fictional words again')
+  expect(f.opened[0]!.handle.refreshManagedPlugins).toHaveBeenCalledWith([])
+  await a.close()
+})
