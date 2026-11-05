@@ -1028,7 +1028,9 @@ async function go(step: -1 | 1): Promise<void> {
   if (aDialogIsOpen()) return
   // Once the reached place is on screen, a press is the next step, taken when this one is done.
   if (travelling === 'drawing') {
-    pressedWhileDrawing ??= { step, at: arrivals }
+    // The first press since the person's last move is kept; one from before that move is replaced.
+    if (pressedWhileDrawing === null || pressedWhileDrawing.at !== arrivals)
+      pressedWhileDrawing = { step, at: arrivals }
     return
   }
   // A press while a step is still reading is that step's, and does nothing more.
