@@ -139,7 +139,7 @@ describe('launch-only root selection', () => {
     )
     for (let i = 0; i < 3; i++)
       expect(paths.mkdir.mock.invocationCallOrder[i]).toBeLessThan(
-        paths.native.mock.invocationCallOrder[i],
+        paths.native.mock.invocationCallOrder[i]!,
       )
     gate.release()
     await vi.advanceTimersByTimeAsync(0)
