@@ -289,6 +289,28 @@ describe('question copies are kept by triggers and filled in slices', () => {
     }
   })
 
+  it('deleting a conversation records the copies its cascade removed', () => {
+    question('gamma', 'first')
+    const heard: Committed[] = []
+    const stop = committedChangesOf(db).listen((change) => heard.push(change))
+    try {
+      db.prepare('DELETE FROM provider_session WHERE id = ?').run('gamma')
+      const deleted = heard.at(-1)
+      if (deleted === undefined || deleted.resync) throw new Error('no change heard')
+      expect(db.prepare('SELECT count(*) AS n FROM question_copy').get()).toEqual({ n: 0 })
+      expect(deleted.tables.has('question_copy')).toBe(true)
+      expect(deleted.visibleTables.has('question_copy')).toBe(false)
+      // An update of a conversation removes no copy, and says none.
+      heard.length = 0
+      db.prepare('UPDATE provider_session SET cwd = ? WHERE id = ?').run('/tmp/elsewhere', 'alpha')
+      const updated = heard.at(-1)
+      if (updated === undefined || updated.resync) throw new Error('no update heard')
+      expect(updated.tables.has('question_copy')).toBe(false)
+    } finally {
+      stop()
+    }
+  })
+
   it('a build without this setup still opens the file, and its writes keep the copies full', async () => {
     question('alpha', 'first')
     fillToTheEnd()
