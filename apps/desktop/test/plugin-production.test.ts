@@ -1992,3 +1992,123 @@ it('keeps ordinary busy correlation when a selected root directory is replaced',
     storage.close()
   }
 }, 15000)
+
+describe('the tools line states the person’s setting for this workspace', () => {
+  type Snapshot = {
+    contributions: []
+    notifications: []
+    plugins?: { pluginId: string; name: string; enabled: boolean }[]
+  }
+  async function withHost(cards: (id: string) => PluginCard[]) {
+    const f = await setup()
+    const id = f.pkg.release.id
+    let next: () => Promise<Snapshot> = async () => ({
+      contributions: [],
+      notifications: [],
+      plugins: [{ pluginId: id, name: id, enabled: true }],
+    })
+    let changed: (() => void) | undefined
+    const request = vi.fn(async () => ({ value: { enabled: false, revision: 2 } }))
+    Object.assign(f.peer, {
+      host: {
+        snapshot: () => next(),
+        request,
+        onChanged: (listener: () => void) => {
+          changed = listener
+          return () => {}
+        },
+      },
+    })
+    f.peer.catalogue.mockResolvedValue(cards(id))
+    f.controller.start(f.options)
+    expect(await f.controller.ready!()).toBe(true)
+    await f.controller.catalogue(true)
+    const tools = () => readPluginInstructions(f.controller)?.find((one) => one.id === id)?.tools
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
+    return {
+      f,
+      id,
+      tools,
+      settle,
+      request,
+      give(snapshot: () => Promise<Snapshot>) {
+        next = snapshot
+      },
+      push() {
+        changed?.()
+      },
+    }
+  }
+  const setting = (id: string, enabled: boolean): Snapshot => ({
+    contributions: [],
+    notifications: [],
+    plugins: [{ pluginId: id, name: id, enabled }],
+  })
+  const running = (id: string): PluginCard => ({ id, name: id, installed: true, state: 'Running' })
+
+  it('an enabled plugin not yet running, or a stale Available card, still says all agents', async () => {
+    const w = await withHost((id) => [{ id, name: id, installed: false, state: 'Available' }])
+    expect(w.tools()).toBe('all agents')
+    expect(readPluginInstructions(w.f.controller)).not.toBeNull()
+  })
+
+  it('a catalogue failure keeps the setting, and a setting pushed after it is the next one said', async () => {
+    const w = await withHost(() => [])
+    w.f.peer.catalogue.mockResolvedValue([running(w.id)])
+    await w.f.controller.catalogue(true)
+    expect(w.tools()).toBe('all agents')
+    w.f.peer.catalogue.mockRejectedValue(new Error('fictional catalogue failure'))
+    await w.f.controller.catalogue().catch(() => {})
+    expect(w.tools()).toBe('all agents')
+    w.give(async () => setting(w.id, false))
+    w.push()
+    await w.settle()
+    expect(w.tools()).toBe('none')
+  })
+
+  it('no setting from the owner says nothing: never none', async () => {
+    const w = await withHost((id) => [running(id)])
+    w.give(async () => ({ contributions: [], notifications: [] }))
+    w.push()
+    await w.settle()
+    expect(w.tools()).toBeUndefined()
+    w.give(async () => ({ contributions: [], notifications: [], plugins: [] }))
+    w.push()
+    await w.settle()
+    expect(w.tools()).toBeUndefined()
+    expect(readPluginInstructions(w.f.controller)).not.toBeNull()
+  })
+
+  it('a failed refresh after a change says nothing until a reading succeeds', async () => {
+    const w = await withHost((id) => [running(id)])
+    expect(w.tools()).toBe('all agents')
+    w.give(async () => {
+      throw new Error('fictional snapshot failure')
+    })
+    await w.f.controller.host!.request({ kind: 'enabled', pluginId: w.id, enabled: false })
+    expect(w.tools()).toBeUndefined()
+    w.give(async () => setting(w.id, false))
+    w.push()
+    await w.settle()
+    expect(w.tools()).toBe('none')
+  })
+
+  it('an older reading that fails cannot erase a newer one that succeeded', async () => {
+    const w = await withHost((id) => [running(id)])
+    let failOld!: (error: Error) => void
+    w.give(
+      () =>
+        new Promise<Snapshot>((_, reject) => {
+          failOld = reject
+        }),
+    )
+    w.push()
+    w.give(async () => setting(w.id, false))
+    w.push()
+    await w.settle()
+    expect(w.tools()).toBe('none')
+    failOld(new Error('fictional late failure'))
+    await w.settle()
+    expect(w.tools()).toBe('none')
+  })
+})
