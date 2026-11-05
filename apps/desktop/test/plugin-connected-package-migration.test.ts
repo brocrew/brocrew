@@ -190,7 +190,8 @@ async function fixture(
       JSON.stringify({ format: 2, installId, revision: 40, previous: 'b'.repeat(64) }) + '\n',
     )
     oldFiles.set(join(legacy.directory, 'birth'), Buffer.from(installId))
-    oldFiles.set(legacy.floor, boundary === 'numeric' ? Buffer.from('9000\n') : checkpoint)
+    // Historical publishFloor(format1) writes String(revision), without a trailing newline.
+    oldFiles.set(legacy.floor, boundary === 'numeric' ? Buffer.from('9000') : checkpoint)
     oldFiles.set(
       join(legacy.directory, 'checkpoint.json'),
       Buffer.from(
@@ -435,6 +436,7 @@ async function migrateSelected(f: Awaited<ReturnType<typeof fixture>>, format: 1
   })
   // Only a new explicit person choice re-enables tools; update did not reset the old switch.
   await session.client.host!.request({ kind: 'enabled', pluginId: f.id, enabled: true })
+  expect(f.state.getEnabled(f.workspaceId, f.id).enabled).toBe(true)
   return { session, selected, titles }
 }
 
@@ -485,7 +487,8 @@ async function configure(session: ConnectedSession, id: MigratedPackage) {
 function current(session: ConnectedSession, workspaceId: string) {
   const view = session.service.controller.agentAttachments(workspaceId)[0]
   if (!view) throw new Error('Expected an actual running package attachment')
-  return { workspaceId, pluginId: view.pluginId, instanceId: view.runId }
+  expect(view.current()).toBe(true)
+  return { workspaceId, pluginId: view.installation.pluginId, instanceId: view.runId }
 }
 async function preserved(f: Awaited<ReturnType<typeof fixture>>) {
   expect(await readFile(join(f.home, 'opaque-account.bin'))).toEqual(opaque)
@@ -702,9 +705,13 @@ describe('ordinary package migration through actual app and package code', () =>
         result: { isError: true },
       })
       // An ordinary agent may not turn a person-only Configure action into account logout.
+      await session.client.host!.request({ kind: 'enabled', pluginId: 'whatsapp', enabled: true })
+      expect(f.state.getEnabled(f.workspaceId, 'whatsapp').enabled).toBe(true)
+      const agent = current(session, f.workspaceId)
+      expect(agent).toEqual(first)
       expect(
         await session.service.controller.genericCallTool({
-          ...first,
+          ...agent,
           name: 'whatsapp_unlink',
           arguments: {},
           requestId: randomUUID(),
