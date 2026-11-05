@@ -78,7 +78,8 @@ MUTATIONS = [
         "every window drops the message, because `whenTheWorldMoves` drops a subject it does not "
         "know — ⛔ **silently, by design**. ⚑ The app is back to the 30-second poll with five "
         "announcements shouting into a reader that refuses them, which is the worst of both",
-        [(WIRE, "export const RUNTIME_CHANGE_SUBJECTS = ['conversations', 'agents', 'work'] as const", "export const RUNTIME_CHANGE_SUBJECTS = ['conversations', 'agents'] as const")],
+        # ⚑ **the persons notice · re-anchored in place, not retired** — A fourth subject, persons, joined the list; the plant still takes work out of it. Verified with verify_row.
+        [(WIRE, "export const RUNTIME_CHANGE_SUBJECTS = ['conversations', 'agents', 'work', 'persons'] as const", "export const RUNTIME_CHANGE_SUBJECTS = ['conversations', 'agents', 'persons'] as const")],
     ),
     (
         "M2 · ⛔ **WORK GIVEN announces nothing** · the one transition that CREATES a task row, and "
