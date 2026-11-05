@@ -306,14 +306,10 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     ),
     (
         "M47 · 🔴 what a conversation added when it passed a question up is not drawn · the note that went with the pass is lost from the card — killed by the new DOM file — killed by `the-question-card-says-what-became-of-the-question.dom.test.ts`",
-        # ⚑ Landing ui bb5b9b7e…128203e6 (UI-009 to UI-011) · re-anchored in place, not retired — The note
-        # a conversation added when it passed a question up is now drawn by QuestionCard.vue as `<p
-        # v-if="props.reading.context && !folded" ... data-cy="question-context">`. The rule survives and
-        # T1 and T6 assert 'Added: ...' on each pass card. The plant turns the guard into `false`. Killed
-        # by `the-question-card-says-what-became-of-the-question.dom.test.ts`.
+        # The shared prose renderer is inside this context wrapper. Hiding the wrapper still
+        # loses only the added note; the question and its answer controls remain present.
         [
-            # ⚑ **source-restoration · re-anchored in place, not retired** — NOT VERIFIED; source targeting only. 636446c24 made the context element depend on readable mode; omit only its passed-up context in both modes.
-            (QUESTION_CARD_VUE, "      v-if=\"props.reading.context && !folded\"\n      class=\"aside\"\n      data-cy=\"question-context\"", "      v-if=\"false\"\n      class=\"aside\"\n      data-cy=\"question-context\""),
+            (QUESTION_CARD_VUE, '<div v-if="props.reading.context && !folded" class="aside" data-cy="question-context">', '<div v-if="false" class="aside" data-cy="question-context">'),
         ],
     ),
     (

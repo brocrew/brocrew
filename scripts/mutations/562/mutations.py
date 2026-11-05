@@ -259,8 +259,9 @@ MUTATIONS = [
     (
         "M17 · ⛔ **the message ignores the roster it was handed** · the leaf hop, where every "
         "control in the transcript disappears at once · killed by `a-press-that-opens-the-document-it-names.dom.test.ts`",
-        # ⚑ **W4.275 · re-anchored in place, not retired** — W4.275 · 619f250d renders the markdown once into its own computed and marks paths after the roster; the plant still hands the reply an empty roster, so no id in it becomes a press.
-        [(MESSAGE, "documentsNamedIn(markdown.value, props.documents ?? [])", "documentsNamedIn(markdown.value, [])")],
+        # AssistantMessage forwards its roster to the shared prose renderer. Emptying that
+        # leaf prop still removes every document control in the message while leaving its prose.
+        [(MESSAGE, ':documents="props.documents"', ':documents="[]"')],
     ),
     (
         "M18 · ⚑ **the view stops passing it** · the middle hop, which is `439`'s own note: a prop "
