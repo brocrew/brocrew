@@ -591,23 +591,28 @@ MUTATIONS = [
     ),
     (
         'M77 · 725 716 F-1 · an earlier *could not check* is left up under the refusal (and asked again) — killed by `a-refusal-that-said-why-is-not-asked-again.dom.test.ts`',
-        [(NEWCONVERSATION, "    if (authState.value?.state === 'unknown') {\n      authState.value = null\n      return\n    }\n", '')],
+        # ⚑ **the launcher signs in through the shared gesture · re-anchored in place, not retired** — the launcher's sign-in now runs through its own instance of the shared gesture, so its answer is read as signInHere.auth and its phase as signInHere.busy; the plant still does the same thing to the same rule
+        [(NEWCONVERSATION, "    if (signInHere.auth?.state === 'unknown') {\n      signInHere.auth = null\n      return\n    }\n", "")],
     ),
     (
         "M78 · 725 716 F-1 · a person's gesture in flight loses its panel to the drop — killed by `a-refusal-that-said-why-is-not-asked-again.dom.test.ts`",
-        [(NEWCONVERSATION, "    //  - *usable* draws nothing, so nothing is asked (review, round three).\n    if (authBusy.value !== 'idle') return\n", '    //  - *usable* draws nothing, so nothing is asked (review, round three).\n')],
+        # ⚑ **the launcher signs in through the shared gesture · re-anchored in place, not retired** — the launcher's sign-in now runs through its own instance of the shared gesture, so its answer is read as signInHere.auth and its phase as signInHere.busy; the plant still does the same thing to the same rule
+        [(NEWCONVERSATION, "    //  - *usable* draws nothing, so nothing is asked (review, round three).\n    if (signInHere.busy !== 'idle') return\n", "    //  - *usable* draws nothing, so nothing is asked (review, round three).\n")],
     ),
     (
         'M79 · 725 review · an earlier *expired* / *not signed in* is left up unasked (the provider never asked again) — killed by `a-refusal-that-said-why-is-not-asked-again.dom.test.ts`',
-        [(NEWCONVERSATION, "    if (authState.value !== null && authState.value.state !== 'usable') void checkAuth(true)\n", '')],
+        # ⚑ **the launcher signs in through the shared gesture · re-anchored in place, not retired** — the launcher's sign-in now runs through its own instance of the shared gesture, so its answer is read as signInHere.auth and its phase as signInHere.busy; the plant still does the same thing to the same rule
+        [(NEWCONVERSATION, "    if (signInHere.auth !== null && signInHere.auth.state !== 'usable') void checkAuth(true)\n", "")],
     ),
     (
         "M80 · 725 review · an automatic *could not check* after a refusal that said why is drawn — `710` F-7's second box — killed by `a-refusal-that-said-why-is-not-asked-again.dom.test.ts`",
-        [(NEWCONVERSATION, "    automatic && lastSaidWhy && said.state === 'unknown' ? null : said\n", '    said\n')],
+        # ⚑ **the launcher signs in through the shared gesture · re-anchored in place, not retired** — the check's drawing rule is now passed to the shared gesture as a function, so its line ends with a comma; the plant still draws every answer
+        [(NEWCONVERSATION, "    automatic && lastSaidWhy && said.state === 'unknown' ? null : said,\n", "    said,\n")],
     ),
     (
         "M81 · 725 review · a person's own *Check again* is dropped too when it could not check — killed by `a-refusal-that-said-why-is-not-asked-again.dom.test.ts`",
-        [(NEWCONVERSATION, "    automatic && lastSaidWhy && said.state === 'unknown' ? null : said\n", "    lastSaidWhy && said.state === 'unknown' ? null : said\n")],
+        # ⚑ **the launcher signs in through the shared gesture · re-anchored in place, not retired** — the check's drawing rule is now passed to the shared gesture as a function, so its line ends with a comma; the plant still drops a person's own check
+        [(NEWCONVERSATION, "    automatic && lastSaidWhy && said.state === 'unknown' ? null : said,\n", "    lastSaidWhy && said.state === 'unknown' ? null : said,\n")],
     ),
     (
         "M82 · 725 review · the first refusal that said why decides for every later failure (a later no-word or `sign-in` loses its check's answer) — killed by `a-refusal-that-said-why-is-not-asked-again.dom.test.ts`",
@@ -615,7 +620,8 @@ MUTATIONS = [
     ),
     (
         'M83 · 725 review · a hidden *usable* is asked again after a refusal that said why (the check `716` F-1 skips) — killed by `a-refusal-that-said-why-is-not-asked-again.dom.test.ts`',
-        [(NEWCONVERSATION, "    if (authState.value !== null && authState.value.state !== 'usable') void checkAuth(true)\n", '    if (authState.value !== null) void checkAuth(true)\n')],
+        # ⚑ **the launcher signs in through the shared gesture · re-anchored in place, not retired** — the launcher's sign-in now runs through its own instance of the shared gesture, so its answer is read as signInHere.auth and its phase as signInHere.busy; the plant still does the same thing to the same rule
+        [(NEWCONVERSATION, "    if (signInHere.auth !== null && signInHere.auth.state !== 'usable') void checkAuth(true)\n", "    if (signInHere.auth !== null) void checkAuth(true)\n")],
     ),
     # ── `711` GAP-1 · `701` F-4 — a conversation the quit left open, everywhere ─────────────────────────
     (

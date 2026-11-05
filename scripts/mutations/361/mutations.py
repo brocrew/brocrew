@@ -65,6 +65,8 @@ SETUP = "apps/desktop/test/dom/setup/the-window-is-a-wire.ts"
 DOMCONF = "apps/desktop/vitest.dom.config.ts"
 CENSUS = "apps/desktop/test/the-bridge-that-clones-nothing.test.ts"
 LAUNCHER = "apps/desktop/src/renderer/src/components/NewConversation.vue"
+# ⚑ The launcher's sign-in gestures run through this shared implementation, and its cancel with them.
+SIGN_IN_GESTURE = "apps/desktop/src/renderer/src/lib/sign-in-gesture.ts"
 FAKE = "apps/desktop/test/session-store.test.ts"
 PROJECT = "apps/desktop/test/project-store.test.ts"
 AGREEMENT = "apps/desktop/test/host-renderer-agreement.test.ts"
@@ -221,18 +223,16 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         "no catch, so for the whole life of the defect the wire's own sentence was invisible. "
         "⚑ ANCHOR CORRECTED IN PLACE BY 417, AND AGAIN BY 423",
         [
+            # ⚑ **the launcher signs in through the shared gesture · re-anchored in place, not retired**
+            # — the launcher's cancel moved, with its catch, into the shared gesture it now makes for
+            # itself; the plant still swallows a refused cancel, so its words have nowhere to land.
             (
-                LAUNCHER,
-                "    await window.api.runtime.cancelProviderSignIn({\n"
-                "      provider: running.provider,\n"
-                "      profileId: running.profileId,\n"
-                "    })",
-                "    await window.api.runtime\n"
-                "      .cancelProviderSignIn({\n"
-                "        provider: running.provider,\n"
-                "        profileId: running.profileId,\n"
-                "      })\n"
-                "      .catch(() => {})",
+                SIGN_IN_GESTURE,
+                "        await options.bridge().cancelProviderSignIn(literal(running ?? options.pair()))\n",
+                "        await options\n"
+                "          .bridge()\n"
+                "          .cancelProviderSignIn(literal(running ?? options.pair()))\n"
+                "          .catch(() => {})\n",
             )
         ],
     ),

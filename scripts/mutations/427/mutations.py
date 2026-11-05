@@ -82,6 +82,8 @@ CENSUS = "apps/desktop/test/what-a-person-reads-when-a-door-refuses.test.ts"
 RECORD = "apps/desktop/src/renderer/src/lib/session-record.ts"
 PROJECTS = "apps/desktop/src/renderer/src/lib/project-store.ts"
 LAUNCHER = "apps/desktop/src/renderer/src/components/NewConversation.vue"
+# ⚑ The launcher's sign-in gestures run through this shared implementation, and their notices with them.
+SIGN_IN_GESTURE = "apps/desktop/src/renderer/src/lib/sign-in-gesture.ts"
 APP_SOURCE = "scripts/lib/app-source.mjs"
 DRAFT_SURVIVES_A_RESTART_PROBE = "scripts/draft-survives-a-restart-probe.mjs"
 DOORS = "scripts/lib/front-door.mjs"
@@ -136,10 +138,13 @@ MUTATIONS = [
         "rejection to a person. ⛔ The one this repo cannot test behaviourally: a fake bridge "
         "rejects with a plain `Error`, so the wrapper is never there to strip",
         [
+            # ⚑ **the launcher signs in through the shared gesture · re-anchored in place, not retired**
+            # — the copy's refusal notice moved into the shared gesture the launcher now makes for
+            # itself; the plant still turns the thrown value into text by hand.
             (
-                LAUNCHER,
-                "      if (stillAsking(asked)) authNotice.value = readableError(error)\n    }\n  })\n  // Re-ask rather than assume the copy fixed it.",
-                "      if (stillAsking(asked))\n        authNotice.value = error instanceof Error ? error.message : String(error)\n    }\n  })\n  // Re-ask rather than assume the copy fixed it.",
+                SIGN_IN_GESTURE,
+                "          if (current(asked)) gesture.notice = readableError(error)\n        }\n      })\n    },\n    async cancel() {",
+                "          if (current(asked))\n            gesture.notice = error instanceof Error ? error.message : String(error)\n        }\n      })\n    },\n    async cancel() {",
             )
         ],
     ),

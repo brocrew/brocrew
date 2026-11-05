@@ -425,11 +425,12 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
       '🔴 THE DEFECT. `authFor` is a `ref` holding an object, so `authFor.value` is a Proxy and ' +
       'every cancel of a sign-in that was really running threw at the bridge. The `?? { provider }' +
       '` fallback is a literal, so cancelling with nothing in flight worked — which is why it ' +
-      'never looked like a bridge fault. Fixed in `NewConversation.cancelSignIn`.',
+      'never looked like a bridge fault. Fixed in the shared sign-in gesture: every payload it sends ' +
+      'is rebuilt field by field by its `literal`, the running pair included.',
     producers: [
       {
-        at: 'src/renderer/src/components/NewConversation.vue',
-        builds: 'provider: running.provider,\n      profileId: running.profileId,',
+        at: 'src/renderer/src/lib/sign-in-gesture.ts',
+        builds: 'provider: pair.provider,\n    profileId: pair.profileId,',
       },
     ],
   },

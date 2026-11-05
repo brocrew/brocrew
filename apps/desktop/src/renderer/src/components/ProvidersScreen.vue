@@ -14,13 +14,13 @@ import type {
   Provider,
   ProviderCapabilityMap,
   ProviderResources,
-  ProviderUsageReading,
   ProviderVersion,
 } from '../../../shared/runtime-ipc'
 import { DEFAULT_PROFILE_ID } from '../../../shared/runtime-ipc'
 import type { ProviderDescriptor } from '@brobot2/shared'
 import { useVisibleProviders } from '../composables/useVisibleProviders'
 import { useKeyAsked } from '../composables/useKeyAsked'
+import { useProviderUsage } from '../composables/useProviderUsage'
 import { aDialogIsOpen } from '../lib/a-dialog-is-open'
 import { useModelLists } from '../composables/useModelLists'
 import { createProviderAccess } from '../lib/provider-access'
@@ -51,7 +51,8 @@ import OverlayHost from './OverlayHost.vue'
  *
  * - **Versions**: on mount, on a person's Check again, and on a return to the window — so a program
  *   updated in a terminal shows. The host keeps each answer while the same file answers.
- * - **Usage**: on mount, and again on a `usage` notice — no timer.
+ * - **Usage**: the window's one holder ({@link useProviderUsage}), read when the first surface
+ *   needs it and again on each `usage` or `login` notice — no timer.
  * - **What is running**: `providerResources()` is read-driven, so this screen asks every
  *   {@link SAMPLE_MS} — ⛔ **only while it is mounted, the window is in front and the page is
  *   visible**. A sample is asked only after the last one answered, so two never overlap. Nothing runs
@@ -200,7 +201,8 @@ const open = computed(() =>
 /* ------------------------------------------------------------------ provider-wide facts */
 
 const versions = shallowRef<Readonly<Record<Provider, ProviderVersion>> | null>(null)
-const usage = shallowRef<Readonly<Record<Provider, readonly ProviderUsageReading[]>> | null>(null)
+/** ⚑ The window's one holder: the title bar reads the same answer, asked once, newest ask first. */
+const usage = useProviderUsage()
 const resources = shallowRef<Readonly<Record<Provider, ProviderResources>> | null>(null)
 const resourcesError = ref<string | null>(null)
 /** ⚑ Per provider, moved on each `login` notice — the card asks its login and key again. */
@@ -233,14 +235,6 @@ async function readVersions(): Promise<void> {
     ) as Record<Provider, ProviderVersion>
   }
   if (mine === versionsAsked) versions.value = read
-}
-
-async function readUsage(): Promise<void> {
-  try {
-    usage.value = await window.api.runtime.providerUsage()
-  } catch {
-    // ⚑ The last good answer stays; a refused read is asked again at the next notice.
-  }
 }
 
 /** ⚑ How often what is running is sampled while a person is looking (the host lists at most this often). */
@@ -305,11 +299,9 @@ onMounted(() => {
   }
   window.addEventListener('resize', measureDrawer)
   void readVersions()
-  void readUsage()
   readVisibleAccess()
   stopListening = window.api.runtime.onProvidersChanged((message) => {
     if (message.what === 'usage') {
-      void readUsage()
       emit('usageMoved')
     } else {
       if (providers.value.includes(message.provider)) readAccess(message.provider)
