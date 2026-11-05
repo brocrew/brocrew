@@ -514,7 +514,7 @@ describe.skipIf(process.platform === 'win32')(
       f.controller.bindGenericTools({
         listTools: async () => [],
         callTool,
-        cancelTool: async () => ({}),
+        cancelTool: async () => ({ cancelled: false, completed: true }),
       })
       await f.controller.detach(f.handle)
       const key = 'a'.repeat(64)

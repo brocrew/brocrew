@@ -137,7 +137,7 @@ export async function proof(config: {
     const event = { sender: window.webContents, senderFrame: window.webContents.mainFrame }
     assert.equal((await client.catalogue())[0]?.state, 'Available')
     const inspection = await handler(event, { kind: 'inspect', source: config.archive })
-    if (!inspection.ok || !('inspection' in inspection))
+    if (!inspection.ok || !('inspection' in inspection) || !inspection.inspection)
       throw new Error('Actual Settings package inspection failed')
     assert.equal(
       (await handler(event, { kind: 'install', id: 'chrome', package: inspection.inspection.ref }))
