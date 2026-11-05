@@ -10,6 +10,36 @@ import { RejectedSessionLaunch } from './rejected-session-launch'
 export interface ManagedPluginAttachment {
   readonly revision: string
   readonly servers: readonly ManagedPluginMcpServer[]
+  /**
+   * Present only when the reply named each plugin: those still starting, those committed state
+   * says are off, and whether the scope could be read at all. Without it, `servers` is the
+   * complete set. With it, a route already attached for a plugin still starting or unknown stays;
+   * only an off plugin, or a new route for it, replaces it.
+   */
+  readonly plugins?: {
+    readonly pending: readonly string[]
+    readonly none: readonly string[]
+    readonly unknown: boolean
+  }
+}
+/** The routes to keep configured: a partial reply keeps what it could not speak for. */
+function retained(
+  previous: readonly ManagedPluginMcpServer[],
+  next: ManagedPluginAttachment,
+): readonly ManagedPluginMcpServer[] {
+  const plugins = next.plugins
+  if (plugins === undefined) return next.servers
+  const served = new Set(next.servers.map((one) => one.pluginId))
+  const off = new Set(plugins.none)
+  const starting = new Set(plugins.pending)
+  const kept = previous.filter(
+    (one) =>
+      one.pluginId !== undefined &&
+      !served.has(one.pluginId) &&
+      !off.has(one.pluginId) &&
+      (plugins.unknown || starting.has(one.pluginId)),
+  )
+  return [...next.servers, ...kept]
 }
 export interface ManagedPluginAttachmentSource {
   read(): Promise<ManagedPluginAttachment>
@@ -63,7 +93,19 @@ export function withManagedPluginAttachments(
       if (next.revision.length > 256 || next.servers.length > 32)
         throw new Error('Plugin unavailable. Try again.')
       managedPluginHttpServers(next.servers)
-      return { revision: next.revision, servers: next.servers.map((one) => ({ ...one })) }
+      return {
+        revision: next.revision,
+        servers: retained(attachment.servers, next).map((one) => ({ ...one })),
+        ...(next.plugins === undefined
+          ? {}
+          : {
+              plugins: {
+                pending: [...next.plugins.pending],
+                none: [...next.plugins.none],
+                unknown: next.plugins.unknown,
+              },
+            }),
+      }
     }
     try {
       attachment = await read(options.signal)

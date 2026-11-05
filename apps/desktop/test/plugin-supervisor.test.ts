@@ -115,10 +115,15 @@ describe('ordinary shared plugin supervisor', () => {
     const target = await f.fixture(),
       owner = await target.start(),
       lease = await target.attach()
-    const routes = vi.fn(async (_lease: unknown, command: { occupied: string[] }) => ({
+    const routes = vi.fn(async () => [])
+    const agentRoutes = vi.fn(async (_lease: unknown, command: { occupied: string[] }) => ({
+      servers: [],
+      pending: [],
+      none: [],
+      unknown: false,
       count: command.occupied.length,
     }))
-    owner.bindAgentBridge({ routes, revoke() {} })
+    owner.bindAgentBridge({ routes, agentRoutes, revoke() {} })
     const { pluginWorkspaceIdentity } = await import('../src/main/plugins/supervisor/client')
     const input = {
       workspaceId: pluginWorkspaceIdentity(target.workspaceRoot),
@@ -126,8 +131,12 @@ describe('ordinary shared plugin supervisor', () => {
       occupied: Array.from({ length: 128 }, (_, i) => String(i).padEnd(128, 'x')),
     }
     expect(Buffer.byteLength(JSON.stringify(input))).toBeGreaterThan(16 * 1024)
-    await expect(lease.agentRoutes(input)).resolves.toEqual({ count: 128 })
-    expect(routes).toHaveBeenCalledOnce()
+    await expect(lease.agentRoutes(input)).resolves.toMatchObject({
+      format: 2,
+      value: { format: 2, count: 128 },
+    })
+    expect(agentRoutes).toHaveBeenCalledOnce()
+    expect(routes).not.toHaveBeenCalled()
     await expect(lease.agentRoutes({ ...input, workspaceId: randomUUID() })).rejects.toThrow()
   })
   it('accepts a request without a challenge and rejects an obsolete owner epoch', async () => {

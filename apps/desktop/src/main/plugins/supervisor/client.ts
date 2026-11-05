@@ -16,6 +16,7 @@ import {
   PluginSupervisorError,
   refuse,
   RENEW_RETRY,
+  AGENT_ROUTES_FORMAT_2,
   secret,
   unpack,
   type Command,
@@ -341,20 +342,26 @@ export class PluginWorkspaceLease {
     }
     return undefined
   }
-  /** Agent-only route metadata. The owner validates this lease again on every operation. */
+  /**
+   * Agent-only route metadata. The owner validates this lease again on every operation. The reply
+   * format is the one this lease negotiated, so it is read with the lease that carried it.
+   */
   async agentRoutes(input: {
     workspaceId: string
     incarnation: string
     occupied: string[]
     release?: boolean
-  }): Promise<unknown> {
+  }): Promise<{ readonly format: 1 | 2; readonly value: unknown }> {
     if (this.ended) refuse()
-    return supervisorRequest(this.storage, this.record, {
+    const format = this.features.includes(AGENT_ROUTES_FORMAT_2) ? 2 : 1
+    const value = await supervisorRequest(this.storage, this.record, {
       kind: 'agent-routes',
       ...this.identity(),
       ...input,
       release: input.release ?? false,
+      ...(format === 2 ? { format: 2 as const } : {}),
     })
+    return { format, value }
   }
   /** False once the lease has ended here, for whatever reason. */
   standing(): boolean {
@@ -470,7 +477,7 @@ export class PluginSupervisorAttachment {
     incarnation: string
     occupied: string[]
     release?: boolean
-  }): Promise<unknown> {
+  }): Promise<{ readonly format: 1 | 2; readonly value: unknown }> {
     const lease = await this.pending
     if (!lease || this.ended) refuse()
     return lease.agentRoutes(input)
