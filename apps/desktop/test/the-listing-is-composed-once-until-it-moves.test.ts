@@ -70,8 +70,17 @@ describe('the listing is composed once until it moves', () => {
     if (!given.ok) throw new Error('the give was refused')
     const helper = world.store.workById(given.piece)!.owner
     await vi.waitFor(() => expect(runningOf(helper)).toBe('unwatched'))
+    // Quiet: nothing commits between two asks, so the listing is being shared.
+    await vi.waitFor(() => {
+      listed()
+      const settled = compositions()
+      listed()
+      expect(compositions()).toBe(settled)
+    })
     const before = compositions()
+    const rows = world.store.events(helper).length
     await host.look(helper, new RecordingSink('webContents:2'), true)
+    expect(world.store.events(helper).length).toBe(rows)
     expect(runningOf(helper)).toBe('in-a-window')
     expect(compositions()).toBeGreaterThan(before)
   })
