@@ -8,6 +8,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { Provider } from '@brobot2/shared'
+import type { LoginRenewalOperations } from '../src/main/providers/auth-types'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { WorkspacePluginAttachments } from '../src/main/plugins/attachments'
@@ -38,6 +39,10 @@ async function connected(
   provider: Provider,
   pendingPerson = false,
   approvalMode: 'auto' | 'ask' = 'auto',
+  options: {
+    loginRenewal?: (provider: Provider) => LoginRenewalOperations | undefined
+    holdHookAt?: number
+  } = {},
 ) {
   const world = mcpRequestWorld()
   let closeBridge = async () => {},
@@ -77,6 +82,9 @@ async function connected(
   }
   server.onerror = client.onerror = () => undefined
   const seen: { context: PluginBeforeTurnInput; requestId: string }[] = []
+  const hookCompletions = new Map<string, Promise<unknown>>()
+  const completedCallbacks = new Set<string>()
+  const scheduledHook = options.holdHookAt === undefined ? undefined : world.gate()
   let waiting: ReturnType<typeof world.gate> | undefined
   let includeTitles = true
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -93,12 +101,16 @@ async function connected(
     const pointers = includeTitles
       ? context.candidates.map(({ resourceId, version }) => ({ resourceId, version }))
       : []
-    const held = waiting
+    const held = seen.length === options.holdHookAt ? scheduledHook : waiting
     waiting = undefined
-    if (held) await held.promise
-    return {
-      content: [],
-      structuredContent: { pointers, title: 'Untrusted plugin prose must not be rendered.' },
+    try {
+      if (held) await held.promise
+      return {
+        content: [],
+        structuredContent: { pointers, title: 'Untrusted plugin prose must not be rendered.' },
+      }
+    } finally {
+      completedCallbacks.add(context.turnId)
     }
   })
   const [downstream, upstream] = InMemoryTransport.createLinkedPair()
@@ -196,6 +208,7 @@ async function connected(
   } else personGate.release()
   const host = world.host({
     provider,
+    ...(options.loginRenewal === undefined ? {} : { loginRenewal: options.loginRenewal }),
     pluginAttachments: attachments,
     pluginContext: {
       active: () => {
@@ -210,7 +223,11 @@ async function connected(
           return false
         }
       },
-      beforeTurn: (input) => f.controller.hostBeforeTurn(person, input),
+      beforeTurn: (input) => {
+        const completion = f.controller.hostBeforeTurn(person, input)
+        hookCompletions.set(input.turnId, completion)
+        return completion
+      },
     },
   })
   const id = await world.open(host, 'writer', approvalMode)
@@ -281,6 +298,9 @@ async function connected(
     piece,
     resource,
     seen,
+    hookCompletions,
+    completedCallbacks,
+    scheduledHook,
     started,
     routeReads,
     cancelled,
@@ -302,6 +322,80 @@ async function connected(
     },
     idle: () => expect.poll(() => world.handles.get('writer')!.status()).toBe('idle'),
   }
+}
+
+const D1_ORIGINAL = 'Fictional original words before the fatal sign-in refusal.'
+const D1_CONTINUATION = 'Fictional app words continuing the refused turn.'
+
+async function textualFixture(provider: Provider, holdHookAt?: number) {
+  let renewed = false
+  const renewal: LoginRenewalOperations = {
+    launchLabel: 'fictional rejected sign-in renewal',
+    renew: vi.fn(async () => 'renewed' as const),
+    renewRejected: vi.fn(async () => {
+      renewed = true
+      return 'renewed' as const
+    }),
+    rejectedTurnContinuation: D1_CONTINUATION,
+    prepare: async (prepare) => ({ home: await prepare(), loginRenewed: false }),
+  }
+  const w = await connected(provider, false, 'auto', {
+    loginRenewal: () => renewal,
+    holdHookAt,
+  })
+  const failed = w.world.handles.get('writer')!
+  Object.defineProperty(failed, 'checkSignIn', {
+    configurable: true,
+    value: async () => renewed,
+  })
+  return { ...w, failed, renewal }
+}
+
+async function refusedTextualContinuation(provider: Provider) {
+  const w = await textualFixture(provider, 2)
+  w.world.failTheNextTurnOnItsLogin = { cause: 'auth' }
+  await w.host.send(w.id, D1_ORIGINAL, w.world.window)
+  await expect.poll(() => w.seen.length).toBe(2)
+  const resumed = w.world.handles.get('writer')!
+  expect(resumed).not.toBe(w.failed)
+  const checkSignIn = vi.fn(async () => false)
+  Object.defineProperty(resumed, 'checkSignIn', {
+    configurable: true,
+    value: checkSignIn,
+  })
+  const terminal = w.world.gate()
+  w.world.turnWait = terminal.promise
+  w.world.refuseTheNextTurnOnItsLogin = true
+  w.scheduledHook!.release()
+  await expect.poll(() => resumed.status()).toBe('working')
+  expect(w.sent().filter((text) => text.includes(D1_CONTINUATION))).toHaveLength(1)
+
+  // The sign-in changes after dispatch, while the refused terminal is still held.
+  checkSignIn.mockResolvedValue(true)
+  const checksAtMove = checkSignIn.mock.calls.length
+  w.world.turnWait = null
+  terminal.release()
+  await expect
+    .poll(
+      () =>
+        w.world
+          .ledger(w.id)
+          .filter(
+            (event) =>
+              event.type === 'turn' && event.state === 'failed' && event.loginRefused === true,
+          ).length,
+    )
+    .toBe(2)
+  // A competing reopen calls checkSignIn before this terminal is written.
+  expect(checkSignIn).toHaveBeenCalledTimes(checksAtMove)
+  expect(w.world.launches).toHaveLength(2)
+  expect(
+    w.turns().filter((event) => event.appNotice === 'a-turn-continued-after-sign-in'),
+  ).toHaveLength(1)
+  expect(w.failed.origins).toEqual([{ kind: 'person' }])
+  expect(w.sent().filter((text) => text.includes(D1_ORIGINAL))).toHaveLength(1)
+  // The nonfatal helper proves the refused terminal, not an accepted origin/settings stamp.
+  return { ...w, resumed, checkSignIn }
 }
 
 describe.each(['claude', 'codex'] as const)(
@@ -433,6 +527,214 @@ describe.each(['claude', 'codex'] as const)(
         content: [{ type: 'text', text: 'Fictional echo.' }],
       })
       expect(w.started).toHaveLength(1)
+    })
+
+    it('prepares real plugin titles for a textual rejected-login continuation without replaying the accepted original', async () => {
+      const w = await textualFixture(provider)
+      w.world.failTheNextTurnOnItsLogin = { cause: 'auth' }
+      await w.host.send(w.id, D1_ORIGINAL, w.world.window)
+      await expect
+        .poll(
+          () =>
+            w.turns().filter((event) => event.appNotice === 'a-turn-continued-after-sign-in')
+              .length,
+        )
+        .toBe(1)
+      await expect
+        .poll(
+          () =>
+            w.world
+              .ledger(w.id)
+              .filter((event) => event.type === 'turn' && event.state === 'completed').length,
+        )
+        .toBe(1)
+      const resumed = w.world.handles.get('writer')!
+      expect(resumed).not.toBe(w.failed)
+      expect(resumed.ref).toEqual(w.failed.ref)
+      expect(w.failed.origins).toEqual([{ kind: 'person' }])
+      expect(resumed.origins).toEqual([undefined])
+      expect(w.renewal.renewRejected).toHaveBeenCalledTimes(1)
+      expect(w.reopens()).toMatchObject([{ because: 'the-sign-in-was-renewed' }])
+      expect(w.world.launches).toHaveLength(2)
+      expect(w.world.launches.at(-1)?.kind).toBe('resume')
+      const refusedAt = w.world
+        .ledger(w.id)
+        .findIndex(
+          (event) =>
+            event.type === 'turn' && event.state === 'failed' && event.loginRefused === true,
+        )
+      const errorAt = w.world
+        .ledger(w.id)
+        .findIndex((event) => event.type === 'error' && event.fatal && event.cause === 'auth')
+      const reopenedAt = w.world.ledger(w.id).findIndex((event) => event.type === 'reopened')
+      expect(errorAt).toBeGreaterThanOrEqual(0)
+      expect(refusedAt).toBeGreaterThan(errorAt)
+      expect(reopenedAt).toBeGreaterThan(refusedAt)
+      expect(w.turns().filter((event) => event.text === D1_ORIGINAL)).toHaveLength(1)
+      expect(
+        w.turns().filter((event) => event.appNotice === 'a-turn-continued-after-sign-in'),
+      ).toEqual([expect.objectContaining({ text: D1_CONTINUATION, attribution: 'app_authored' })])
+      expect(w.turns().filter((event) => event.carriesOn === true)).toEqual([])
+      expect(w.sent().filter((text) => text.includes(D1_ORIGINAL))).toHaveLength(1)
+      expect(w.sent().filter((text) => text.includes(D1_CONTINUATION))).toHaveLength(1)
+      expect(w.sent().at(-1)).toContain('Canonical fictional recipe')
+      expect(w.sent().at(-1)).not.toContain('Untrusted plugin prose')
+      expect(JSON.stringify(w.turns())).not.toContain('Suggested file titles')
+      expect(w.seen).toHaveLength(2)
+      expect(w.started).toHaveLength(1)
+      expect(await w.route(1)).toMatchObject({
+        content: [{ type: 'text', text: 'Fictional echo.' }],
+      })
+    })
+
+    it('drops textual continuation on Close during its actual title hook, after the public recovery decision settles', async () => {
+      const w = await textualFixture(provider, 2)
+      w.world.failTheNextTurnOnItsLogin = { cause: 'auth' }
+      await w.host.send(w.id, D1_ORIGINAL, w.world.window)
+      await expect.poll(() => w.seen.length).toBe(2)
+      const resumed = w.world.handles.get('writer')!
+      expect(resumed).not.toBe(w.failed)
+      const pending = w.world
+        .ledger(w.id)
+        .find((event) => event.type === 'work_recovery' && event.phase === 'pending')
+      if (pending?.type !== 'work_recovery') throw new Error('The public recovery did not begin.')
+      const turnId = w.seen[1]!.context.turnId
+      expect(w.completedCallbacks.has(turnId)).toBe(false)
+      const completion = w.hookCompletions.get(turnId)
+      if (!completion) throw new Error('The actual title consumer did not start.')
+      await w.host.close(w.id, w.world.window)
+      w.scheduledHook!.release()
+      await Promise.allSettled([completion])
+      await expect.poll(() => w.completedCallbacks.has(turnId)).toBe(true)
+      await expect
+        .poll(
+          () =>
+            w.world
+              .ledger(w.id)
+              .filter(
+                (event) =>
+                  event.type === 'work_recovery' &&
+                  event.turn === pending.turn &&
+                  event.since === pending.since &&
+                  event.phase !== 'pending',
+              ).length,
+        )
+        .toBe(1)
+      // Recovery phase settles the decision; acceptance is checked independently.
+      expect(w.sent().filter((text) => text.includes(D1_CONTINUATION))).toEqual([])
+      expect(resumed.origins).toEqual([])
+      expect(
+        w.turns().filter((event) => event.appNotice === 'a-turn-continued-after-sign-in'),
+      ).toEqual([])
+      expect(w.turns().filter((event) => event.carriesOn === true)).toEqual([])
+      expect(w.failed.origins).toEqual([{ kind: 'person' }])
+      expect(w.sent().filter((text) => text.includes(D1_ORIGINAL))).toHaveLength(1)
+      expect(w.turns()).toEqual([expect.objectContaining({ text: D1_ORIGINAL })])
+      expect(w.seen).toHaveLength(2)
+      expect(w.started).toHaveLength(1)
+    })
+
+    it('does not recheck a moved sign-in or carry on again when its textual retry is refused before any completion', async () => {
+      const w = await refusedTextualContinuation(provider)
+      expect(
+        w.turns().filter((event) => event.appNotice === 'a-turn-continued-after-sign-in'),
+      ).toHaveLength(1)
+      expect(w.sent().filter((text) => text.includes(D1_CONTINUATION))).toHaveLength(1)
+      expect(
+        w.world
+          .ledger(w.id)
+          .filter((event) => event.type === 'turn' && event.state === 'completed'),
+      ).toEqual([])
+      expect(w.started).toHaveLength(1)
+    })
+
+    it('allows one later textual continuation after a real completed turn resets the rejected-retry guards', async () => {
+      const w = await refusedTextualContinuation(provider)
+      w.checkSignIn.mockResolvedValue(false)
+      const ordinary = 'Fictional ordinary words completing before another refusal.'
+      await w.host.send(w.id, ordinary, w.world.window)
+      await expect
+        .poll(
+          () =>
+            w.world
+              .ledger(w.id)
+              .filter((event) => event.type === 'turn' && event.state === 'completed').length,
+        )
+        .toBe(1)
+      let renewedAgain = false
+      w.checkSignIn.mockImplementation(async () => renewedAgain)
+      vi.mocked(w.renewal.renewRejected!).mockImplementationOnce(async () => {
+        renewedAgain = true
+        return 'renewed'
+      })
+      const secondOriginal = 'Fictional new original words after the completed reset.'
+      w.world.failTheNextTurnOnItsLogin = { cause: 'auth' }
+      await w.host.send(w.id, secondOriginal, w.world.window)
+      await expect
+        .poll(
+          () =>
+            w.turns().filter((event) => event.appNotice === 'a-turn-continued-after-sign-in')
+              .length,
+        )
+        .toBe(2)
+      await expect
+        .poll(
+          () =>
+            w.world
+              .ledger(w.id)
+              .filter((event) => event.type === 'turn' && event.state === 'completed').length,
+        )
+        .toBe(2)
+      expect(w.renewal.renewRejected).toHaveBeenCalledTimes(2)
+      expect(w.reopens()).toHaveLength(2)
+      expect(w.world.launches).toHaveLength(3)
+      const latest = w.world.handles.get('writer')!
+      expect(latest).not.toBe(w.resumed)
+      expect(latest.ref).toEqual(w.failed.ref)
+      expect(latest.origins).toEqual([undefined])
+      expect(w.resumed.origins).toEqual([{ kind: 'person' }, { kind: 'person' }])
+      expect(w.sent().filter((text) => text.includes(D1_ORIGINAL))).toHaveLength(1)
+      expect(w.sent().filter((text) => text.includes(secondOriginal))).toHaveLength(1)
+      expect(w.sent().filter((text) => text.includes(ordinary))).toHaveLength(1)
+      expect(w.sent().filter((text) => text.includes(D1_CONTINUATION))).toHaveLength(2)
+      expect(w.turns().filter((event) => event.carriesOn === true)).toEqual([])
+      expect(w.sent().at(-1)).toContain('Canonical fictional recipe')
+      expect(w.seen).toHaveLength(5)
+      expect(w.started).toHaveLength(1)
+    })
+
+    it('does not renew or add textual continuation for a fatal auth refusal explicitly on a fictional saved key', async () => {
+      const w = await textualFixture(provider)
+      w.world.failTheNextTurnOnItsLogin = { cause: 'auth', onAKey: true }
+      await w.host.send(w.id, D1_ORIGINAL, w.world.window)
+      await expect
+        .poll(
+          () =>
+            w.world
+              .ledger(w.id)
+              .filter(
+                (event) =>
+                  event.type === 'turn' &&
+                  event.state === 'failed' &&
+                  event.loginRefused === true &&
+                  event.onAKey === true,
+              ).length,
+        )
+        .toBe(1)
+      expect(w.world.ledger(w.id).filter((event) => event.type === 'error')).toEqual([
+        expect.objectContaining({ cause: 'auth', fatal: true, onAKey: true }),
+      ])
+      expect(w.renewal.renewRejected).not.toHaveBeenCalled()
+      expect(w.renewal.renew).not.toHaveBeenCalled()
+      expect(w.reopens()).toEqual([])
+      expect(w.world.launches).toHaveLength(1)
+      expect(w.failed.origins).toEqual([{ kind: 'person' }])
+      expect(w.sent().filter((text) => text.includes(D1_CONTINUATION))).toEqual([])
+      expect(
+        w.turns().filter((event) => event.appNotice === 'a-turn-continued-after-sign-in'),
+      ).toEqual([])
+      expect(w.turns()).toEqual([expect.objectContaining({ text: D1_ORIGINAL })])
+      expect(w.seen).toHaveLength(1)
     })
 
     it('keeps a healthy SDK route while a second Person consumer is pending, then admits that consumer without restarting A', async () => {
