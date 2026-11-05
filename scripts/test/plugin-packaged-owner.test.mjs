@@ -279,6 +279,7 @@ describe.skipIf(process.platform === 'win32')('ordinary fixture output artifacts
       f.child.stderr.end('late drain output\n')
       f.child.emit('exit', null, 'SIGTERM')
       f.child.emit('close')
+      await f.task.outputClosed
       await Promise.all(f.files.map((file) => finished(file)))
       expect(fs.readFileSync(f.output.stderr, 'utf8')).toBe(
         'fictional native error before drain\nlate drain output\n',
@@ -566,6 +567,48 @@ describe.skipIf(process.platform === 'win32')(
         expect(fs.readFileSync(nativeFile, 'utf8')).toBe(raw)
       },
     )
+    it('an ordinary whole48 cancellation waits for captured streams during the existing drain', async () => {
+      const f = fixture()
+      let closeOutput,
+        enterDrain,
+        written = false
+      const outputClosed = new Promise((resolve) => {
+          closeOutput = resolve
+        }),
+        draining = new Promise((resolve) => {
+          enterDrain = resolve
+        }),
+        launch = f.io.childRun,
+        writeSummary = f.io.writeSummary
+      f.io.childRun = (...args) => {
+        const task = launch(...args)
+        if (args[1].includes('scripts/test/plugin-packaged-provider.test.mjs')) {
+          task.outputClosed = outputClosed
+          task.wait = async () => {
+            throw diagnostics.failureError('cdp-fixture-tests', {}, 'cancelled')
+          }
+        }
+        return task
+      }
+      f.io.bestEffortDrain = async (_root, endLeaders) => {
+        enterDrain()
+        await endLeaders()
+        return { drained: true, boundary: 'hosted-vm-teardown' }
+      }
+      f.io.writeSummary = (...args) => {
+        written = true
+        writeSummary(...args)
+      }
+      const result = ownerFunction('run', f.io)(f.control, '/fictional/node22', '/fictional/pnpm')
+      await draining
+      await Promise.resolve()
+      expect(written).toBe(false)
+      closeOutput()
+      expect(await result).toBe(false)
+      expect(written).toBe(true)
+      expect(f.summary().failure.errorClass).toBe('cancelled')
+      expect(f.launches.filter((row) => row.phase === 'cdp-fixture-tests')).toHaveLength(1)
+    })
     it('keeps a failed-drain count when the later always drain succeeds, without changing the journey result', async () => {
       const f = fixture({ drained: false })
       expect(

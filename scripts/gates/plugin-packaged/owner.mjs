@@ -238,6 +238,7 @@ export function childRun(program, args, env, cwd, abort, maximum, phase, output)
   return {
     child,
     exit,
+    outputClosed: output ? completed : exit,
     get result() {
       return observedExit
     },
@@ -331,7 +332,7 @@ export async function run(control, node22, pnpm) {
   }
   async function endLeaders() {
     await Promise.allSettled(children.map((child) => stopApp(child, 500)))
-    await bounded(Promise.all(children.map((child) => child.exit)), 1500)
+    await bounded(Promise.all(children.map((child) => child.outputClosed ?? child.exit)), 1500)
   }
   try {
     await start('runner-preflight', meta.node, [
