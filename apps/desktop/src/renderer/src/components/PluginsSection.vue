@@ -58,36 +58,69 @@ let slowTimer: ReturnType<typeof setTimeout> | undefined
 const listFailureReason = ref<PluginListFailureReason>()
 const refreshFailed = ref(false)
 let healthTimer: ReturnType<typeof setTimeout> | undefined
+let statusFlight: Promise<void> | undefined
+let statusPending = false
+let statusQueued = false
 function scheduleHealth() {
   if (alive) healthTimer = setTimeout(refreshHealth, 5000)
 }
+function mayRefreshStatus() {
+  return (
+    alive &&
+    !busy.value &&
+    !selected.value &&
+    !reviews.value.size &&
+    !confirmation.value &&
+    cards.value.length > 0
+  )
+}
+function queueStatusRefresh() {
+  if (!statusPending || statusQueued || statusFlight || !mayRefreshStatus()) return
+  statusQueued = true
+  queueMicrotask(() => {
+    statusQueued = false
+    if (statusPending) void refreshStatus()
+  })
+}
+function statusChanged() {
+  if (!alive) return
+  statusPending = true
+  queueStatusRefresh()
+}
+function refreshStatus(): Promise<void> {
+  if (statusFlight) return statusFlight
+  if (!mayRefreshStatus()) return Promise.resolve()
+  statusPending = false
+  const before = cards.value
+  const turn = generation
+  // Status reads share one flight; a newer wake supersedes the in-flight snapshot.
+  statusFlight = (async () => {
+    try {
+      const answer = await request({ kind: 'status' })
+      if (!alive) return
+      if (turn !== generation || cards.value !== before || !mayRefreshStatus()) {
+        statusPending = true
+        return
+      }
+      if (!statusPending && answer.ok && answer.cards) cards.value = answer.cards
+    } finally {
+      statusFlight = undefined
+      queueStatusRefresh()
+    }
+  })()
+  return statusFlight
+}
+watch(
+  [busy, selected, confirmation, () => reviews.value.size, () => cards.value.length],
+  () => {
+    if (statusFlight && !mayRefreshStatus()) statusPending = true
+    queueStatusRefresh()
+  },
+  { flush: 'sync' },
+)
 async function refreshHealth() {
   try {
-    if (
-      !alive ||
-      busy.value ||
-      selected.value ||
-      reviews.value.size ||
-      confirmation.value ||
-      !cards.value.length
-    )
-      return
-    const before = cards.value
-    const turn = generation
-    // This local status read never refetches the catalogue or cancels a person's review.
-    const answer = await request({ kind: 'status' })
-    if (
-      alive &&
-      turn === generation &&
-      cards.value === before &&
-      !busy.value &&
-      !selected.value &&
-      !reviews.value.size &&
-      !confirmation.value &&
-      answer.ok &&
-      answer.cards
-    )
-      cards.value = answer.cards
+    await refreshStatus()
   } finally {
     scheduleHealth()
   }
@@ -348,7 +381,7 @@ async function change(kind: 'install' | 'update' | 'uninstall', card: PluginCard
   }
 }
 onMounted(async () => {
-  stopHostSettings = listenForPluginSettings(window.api?.pluginHost, openHostView)
+  stopHostSettings = listenForPluginSettings(window.api?.pluginHost, openHostView, statusChanged)
   stopReviews =
     client?.onReviewInvalidated?.(() => {
       reviews.value.clear()

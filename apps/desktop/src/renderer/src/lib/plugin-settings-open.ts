@@ -4,6 +4,7 @@ import type { PluginHostClient, PluginHostSnapshot } from '../../../shared/plugi
 export function listenForPluginSettings(
   client: PluginHostClient | undefined,
   open: (view: NonNullable<PluginHostSnapshot['settingsViews']>[number]) => void,
+  changed?: () => void,
 ): () => void {
   if (!client) return () => {}
   let alive = true,
@@ -28,6 +29,8 @@ export function listenForPluginSettings(
     }
   }
   const stop = client.onChanged(() => {
+    if (!alive) return
+    changed?.()
     void refresh()
   })
   void refresh()
