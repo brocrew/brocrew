@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { renderChatMarkdown } from '../lib/markdown'
+import MarkdownWords from './MarkdownWords.vue'
 import type { ThinkingItem } from '../lib/transcript'
 
 /**
@@ -27,7 +27,6 @@ const props = defineProps<{
 /** Open only when there is something to open. A disclosure over nothing is a lie about content. */
 const open = ref(props.opened === true)
 const hasText = computed(() => props.item.text.trim() !== '')
-const rendered = computed(() => (hasText.value ? renderChatMarkdown(props.item.text) : ''))
 
 const label = computed(() => {
   const verb = props.item.streaming ? 'thinking' : 'thought'
@@ -67,9 +66,7 @@ const label = computed(() => {
       <p class="caption" data-cy="thinking-caption">
         summary of the reasoning — not the model's own words
       </p>
-      <!-- eslint-disable-next-line vue/no-v-html -- markdown-it runs with `html: false`; see
-           lib/markdown.ts. -->
-      <div class="md-chat" data-cy="thinking-text" v-html="rendered"></div>
+      <MarkdownWords data-cy="thinking-text" :text="item.text" />
     </div>
   </div>
 </template>
