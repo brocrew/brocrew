@@ -43,6 +43,7 @@ function candidateFixture(root) {
     id: 'chrome',
     name: 'Fictional Chrome candidate',
     description: 'Inert cache verification',
+    permissions: { description: 'Fictional inert bytes only' },
     authors: ['fictional'],
     version: '1.0.0',
     platforms: [{ os: 'darwin', cpu: 'arm64' }],
@@ -146,7 +147,7 @@ describe.skipIf(process.platform === 'win32')('release verifier module admission
       }
       try {
         if (tamper) {
-          await expect(helper.prepareCandidateCache()).rejects.toThrow()
+          await expect(helper.prepareCandidateCache()).rejects.toMatchObject({ code: 'digest' })
           expect(fs.readdirSync(path.join(root, 'g'))).toEqual([])
           expect(fs.existsSync(path.join(root, 'proof/candidate-cache.json'))).toBe(false)
         } else {

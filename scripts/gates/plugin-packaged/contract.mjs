@@ -20,7 +20,7 @@ export const checks = [
   'concurrentWorkspaces',
   'reinstallRetained',
   'tamperedArchiveRefused',
-  'foreignUrlRefused',
+  'alternateSourceAccepted',
   'fakeBrowserOnly',
   'drawsWindow',
   'agentBrowserAction',
@@ -36,6 +36,7 @@ export const report = () => ({
 })
 export function finish(summary) {
   summary.passed =
+    safeChecks(summary.checks) &&
     checks.every((key) => summary.checks[key] === true) &&
     summary.coverage?.agentBrowserActions === true &&
     summary.coverage?.liveTabs === true &&
@@ -44,6 +45,16 @@ export function finish(summary) {
     summary.failure === undefined &&
     safeCleanup(summary.cleanup)
   return summary
+}
+export function safeChecks(value) {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === checks.length &&
+    Object.keys(value).every((key) => checks.includes(key)) &&
+    checks.every((key) => typeof value[key] === 'boolean')
+  )
 }
 export function requireCheck(summary, key, value) {
   if (!checks.includes(key) || value !== true) throw new Error('Gate assertion failed')
@@ -66,27 +77,29 @@ export function safeReport(value) {
     !Array.isArray(value) &&
     typeof value === 'object' &&
     Object.entries(value).every(([key, one]) =>
-      key === 'providerState'
-        ? safeProviderState(one)
-        : key === 'pageState'
-          ? safePageState(one)
-          : key === 'pluginState'
-            ? safePluginState(one)
-            : key === 'matrixPageStates'
-              ? safeMatrixPageStates(one)
-              : key === 'probeMatrix'
-                ? safeMatrix(one)
-                : key === 'matrixDrains'
-                  ? safeMatrixDrains(one)
-                  : key === 'launchSelection'
-                    ? safeSelection(one)
-                    : ['failure', 'drainFailure'].includes(key)
-                      ? safeFailure(one)
-                      : key === 'appStderr'
-                        ? safeAppStderr(one)
-                        : key === 'cleanup'
-                          ? safeCleanup(one)
-                          : safeReport(one),
+      key === 'checks'
+        ? safeChecks(one)
+        : key === 'providerState'
+          ? safeProviderState(one)
+          : key === 'pageState'
+            ? safePageState(one)
+            : key === 'pluginState'
+              ? safePluginState(one)
+              : key === 'matrixPageStates'
+                ? safeMatrixPageStates(one)
+                : key === 'probeMatrix'
+                  ? safeMatrix(one)
+                  : key === 'matrixDrains'
+                    ? safeMatrixDrains(one)
+                    : key === 'launchSelection'
+                      ? safeSelection(one)
+                      : ['failure', 'drainFailure'].includes(key)
+                        ? safeFailure(one)
+                        : key === 'appStderr'
+                          ? safeAppStderr(one)
+                          : key === 'cleanup'
+                            ? safeCleanup(one)
+                            : safeReport(one),
     )
   )
 }

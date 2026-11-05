@@ -82,6 +82,79 @@ export function stageReleaseDependencies(exported, checkout) {
     if (!fs.realpathSync(resolve.resolve(name)).startsWith(installedRoot))
       throw new Error('Release dependency resolved outside the locked install')
 }
+/** Bundled with the real verifier/vault. This prepares code cache, never lifecycle state. */
+export function cachePreparationSource(root) {
+  if (!path.isAbsolute(root)) throw new Error('Absolute candidate root required')
+  return `
+import fs from 'node:fs';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import {ownedRoot,digest} from ${JSON.stringify(path.join(repository, 'scripts/gates/plugin-packaged/contract.mjs'))};
+import {parseRepoPluginList} from ${JSON.stringify(path.join(repository, 'apps/desktop/src/main/plugins/catalogue/repo-list.ts'))};
+import {createRepoAwarePluginVerifier} from ${JSON.stringify(path.join(repository, 'apps/desktop/src/main/plugins/package-verifier.ts'))};
+import {PluginPackageVault} from ${JSON.stringify(path.join(repository, 'apps/desktop/src/main/plugins/lifecycle/vault.ts'))};
+const root=${JSON.stringify(root)};
+function directory(folder) {
+  const relative=path.relative(root,folder);
+  if(relative.startsWith('..')||path.isAbsolute(relative))throw new Error('Invalid candidate folder');
+  const info=fs.lstatSync(folder);
+  if(!info.isDirectory()||info.isSymbolicLink()||info.uid!==process.getuid()||(info.mode&0o022)||fs.realpathSync(folder)!==folder)throw new Error('Invalid candidate folder');
+  if(folder!==root)directory(path.dirname(folder));
+  return folder;
+}
+function read(file,maximum=128*1024) {
+  directory(path.dirname(file));
+  const fd=fs.openSync(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);
+  try {
+    const before=fs.fstatSync(fd);
+    if(!before.isFile()||before.uid!==process.getuid()||before.nlink!==1||(before.mode&0o022)||before.size>maximum)throw new Error('Invalid candidate bytes');
+    const bytes=fs.readFileSync(fd),after=fs.fstatSync(fd),named=fs.lstatSync(file);
+    if(bytes.length!==before.size||after.size!==before.size||after.mtimeMs!==before.mtimeMs||after.ctimeMs!==before.ctimeMs||named.ino!==before.ino||named.dev!==before.dev)throw new Error('Changing candidate bytes');
+    return bytes;
+  } finally {fs.closeSync(fd)}
+}
+export async function prepareCandidateCache() {
+  ownedRoot(root);
+  const global=directory(path.join(root,'g'));
+  assert.deepEqual(fs.readdirSync(global),[]);
+  const source=JSON.parse(read(path.join(root,'release/catalogue.json')));
+  const staged=JSON.parse(read(path.join(root,'a/repo-fixture/catalogue.json')));
+  assert.equal(source.format,3);assert.equal(staged.format,3);
+  assert.equal(source.entries.length,1);assert.equal(source.entries[0].id,'chrome');
+  const expected=structuredClone(source),index=expected.entries[0].targets.findIndex(one=>one.os==='darwin'&&one.cpu==='arm64');
+  assert.ok(index>=0);
+  expected.entries[0].targets[index].url='https://example.invalid/alternate-chrome.tar.gz';
+  assert.deepEqual(staged,expected);
+  const target=staged.entries[0].targets[index];
+  const archive=read(path.join(root,'a/repo-fixture/archives',target.sha256+'.tar.gz'),128*1024*1024);
+  const original=read(path.join(root,'release/chrome-darwin-arm64.tar.gz'),128*1024*1024);
+  const parsed=parseRepoPluginList(Buffer.from(JSON.stringify(staged)),{os:'darwin',cpu:'arm64'},'999.0.0');
+  const admitted=createRepoAwarePluginVerifier({pinnedPublicKey:null,repoCatalogueSha256:parsed.sha256,target:{os:'darwin',cpu:'arm64'},appVersion:'999.0.0'}).verifyCatalogue(parsed.bytes,Buffer.alloc(0));
+  const release=parsed.releases.find(one=>one.id==='chrome');assert.ok(release);
+  const verified=admitted.verifyPackage(release.id,release.version,archive);
+  assert.ok(archive.equals(original));assert.equal(digest(archive),target.sha256);assert.equal(archive.length,target.bytes);
+  assert.equal(digest(verified.readFile('plugin.json')),target.manifestSha256);
+  const vault=new PluginPackageVault(global,null,{os:'darwin',cpu:'arm64'},undefined,'999.0.0');
+  await vault.stage(release,archive,{bytes:parsed.bytes,signature:Buffer.alloc(0)},[]);
+  const loaded=await vault.load(release,[]),selection=await vault.selection(target.sha256);
+  assert.deepEqual(loaded.manifest,verified.manifest);assert.deepEqual(selection.package.manifest,verified.manifest);
+  assert.deepEqual(selection.release,release);assert.ok(Buffer.from(selection.archive).equals(archive));
+  assert.deepEqual(fs.readdirSync(global).sort(),['package-vault']);
+  const proof={cacheVerified:true,pristine:true,ref:{source:target.url,sha256:target.sha256,bytes:target.bytes},manifest:verified.manifest,manifestSha256:target.manifestSha256};
+  directory(path.join(root,'proof'));
+  fs.writeFileSync(path.join(root,'proof/candidate-cache.json'),JSON.stringify(proof),{mode:0o600,flag:'wx'});
+  return proof;
+}
+if(process.argv[1]&&path.resolve(process.argv[1])===path.join(root,'proof/cache.cjs'))
+  void prepareCandidateCache().catch(()=>{process.exitCode=1});
+`
+}
+
+export async function prepareCandidateCache(root, node) {
+  return phaseStep(root, 'release-verify', () =>
+    command(node, [path.join(root, 'proof/cache.cjs')], root, {}, repository, 'release-verify'),
+  )
+}
 export async function buildFixtureRelease(root, node22) {
   const commit = (await command('/usr/bin/git', ['rev-parse', 'HEAD'], root)).trim()
   const origin = (await command('/usr/bin/git', ['remote', 'get-url', 'origin'], root)).trim()
@@ -186,5 +259,15 @@ trusted.verifyPackage('chrome',${JSON.stringify(entry.version)},fs.readFileSync(
     }),
   )
   await phaseStep(root, 'release-verify', () => command(node22, [proof], root, env))
+  await phaseStep(root, 'release-verifier-bundle', () =>
+    build({
+      stdin: { contents: cachePreparationSource(root), resolveDir: repository, loader: 'ts' },
+      bundle: true,
+      platform: 'node',
+      format: 'cjs',
+      outfile: path.join(root, 'proof/cache.cjs'),
+      logLevel: 'silent',
+    }),
+  )
   return commit
 }
