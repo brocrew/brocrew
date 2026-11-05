@@ -2242,16 +2242,18 @@ export interface WaitOnAsked {
 const A_WAIT_ENDS_WITHIN_MS = 30 * 24 * 60 * 60 * 1000
 
 /**
- * How long a window read the worker failed or was too busy for is answered on the main thread
+ * How long a window read the worker failed is answered on the main thread
  * before the worker is asked again at the same writer stamp: doubled after each further failure
  * there, up to the most. A write that moves the stamp asks again at once.
  */
 const A_FAILED_WINDOW_READ_WAITS_MS = 1_000
 const A_FAILED_WINDOW_READ_WAITS_AT_MOST_MS = 30_000
-/** The worker's misses worth remembering at a stamp; a gone worker is its lifetime's to restart. */
+/**
+ * The worker's misses remembered at a stamp: a read that failed there. A busy worker is asked
+ * again by the next caller, and a gone one is its lifetime's to restart.
+ */
 const REMEMBERED_WINDOW_READ_MISSES: ReadonlySet<WindowReadMiss> = new Set<WindowReadMiss>([
   'worker-read-failed',
-  'worker-busy',
 ])
 
 /** How often each cause of a window read answered on the main thread is logged, at most. */
@@ -19692,7 +19694,7 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * Remembers a shared read the worker failed or was too busy for at `stamp`, so callers at that
+   * Remembers a shared read the worker failed at `stamp`, so callers at that
    * stamp are answered on the main thread until its wait passes, and the next asks again.
    */
   private rememberAFailedWindowRead(

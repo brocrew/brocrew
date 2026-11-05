@@ -796,16 +796,16 @@ describe('canonical window worker folds and independent live-store reads', () =>
       const callers = Array.from({ length: WINDOW_READ_BOUNDS.callers }, () =>
         host.readForWindow(() => host.questionsForAPerson()),
       )
+      // A caller past the bound joins the pending read; this verb does not wait on it.
+      const joined = host.readForWindow(() => host.questionsForAPerson())
       try {
-        await expect(host.readForWindow(() => host.questionsForAPerson())).resolves.toEqual(
-          host.questionsForAPerson(),
-        )
         await expect(executeRuntimeCommand(host, sink, { kind })).resolves.toEqual(expected)
         expect(read).toHaveBeenCalledOnce()
       } finally {
         finish(engine.read({ kind: 'routes' }))
         await Promise.all(callers)
       }
+      expect(await joined).toEqual(host.questionsForAPerson())
     },
   )
 
