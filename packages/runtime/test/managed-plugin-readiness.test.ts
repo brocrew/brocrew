@@ -215,6 +215,59 @@ it.each(['refused', 'tools-error', 'timeout'] as const)(
   },
 )
 
+it.each(['tools-error', 'unknown', 'refused'] as const)(
+  'reobserves %s health after a previously ready Codex discovery without replacing the thread',
+  async (outcome) => {
+    const { wire, handle } = await start()
+    const saved = handle.ref
+    wire.catalog = ['echo']
+    await handle.send('Fictional first healthy turn')
+    await tick()
+    expect(wire.catalogsAtTurns).toEqual([['echo']])
+    wire.finish()
+    await tick()
+    expect(handle.status()).toBe('idle')
+
+    wire.discovery = async () => {
+      if (outcome === 'refused') throw new Error('fictional-private-health-marker')
+      if (outcome === 'unknown') return { data: [] }
+      return {
+        data: [
+          {
+            name: route.name,
+            runtimeStatus: 'connected',
+            toolsError: 'fictional-private-health-marker',
+            tools: {},
+          },
+        ],
+      }
+    }
+    // Unknown permits a fresh observation, never a provider replacement or a broker reset.
+    expect(await handle.managedPluginHealth!([route])).toBeUndefined()
+    const recovered = deferred<unknown>()
+    wire.discovery = () => recovered.promise
+    await handle.send('Fictional later turn after an unknown health reading')
+    await tick()
+    expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual(
+      Array.from({ length: 3 }, () => ({
+        method: 'mcpServerStatus/list',
+        params: {
+          threadId: saved!.sessionId,
+          serverName: route.name,
+          detail: 'toolsAndAuthOnly',
+        },
+      })),
+    )
+    expect(wire.catalogsAtTurns).toEqual([['echo']])
+    expect(wire.requests.filter((one) => one.method === 'thread/start')).toHaveLength(1)
+    expect(wire.requests.some((one) => one.method === 'thread/resume')).toBe(false)
+    expect(handle.ref).toEqual(saved)
+    recovered.resolve(ready())
+    await tick()
+    expect(wire.catalogsAtTurns).toEqual([['echo'], ['echo']])
+  },
+)
+
 it('bounds a never-settling discovery and does not dispatch again when it eventually answers', async () => {
   const { wire, handle, events } = await start()
   const discovery = deferred<unknown>()
