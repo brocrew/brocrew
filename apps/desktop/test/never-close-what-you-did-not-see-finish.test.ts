@@ -1317,6 +1317,9 @@ describe('400 · never close what you did not see finish', () => {
         // ⚑ **438's digest reads it too** — the fold turns a restart into an `observed` line, and
         // the shared vocabulary names the type in the list its SQL selects.
         'main/runtime/digest.ts',
+        // ⚑ The person's queue reads stalled and restarted work, so a commit holding this row tells
+        // every window `persons`; the host names the type and writes none.
+        'main/runtime/runtime-host.ts',
         'renderer/src/lib/describe-event.ts',
         'renderer/src/lib/transcript.ts',
         'shared/digest.ts',
