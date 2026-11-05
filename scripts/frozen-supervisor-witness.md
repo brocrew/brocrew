@@ -90,7 +90,17 @@ check. An added durable resource must fail the same exact durable-runtime check 
 by the journey. These controls never alter the prepared artifact and write `controls.json`
 beside the run result. They remain UNRUN until the integration owner runs the command.
 
-Each execution allocates a new short `/tmp/fl-*` fictional global/workspace/data root;
+Every temporary directory uses Node's `os.tmpdir()`, honoring the supplied `TMPDIR`.
+Set it to a short permitted lane-local directory before running in a restricted lane;
+the command does not make a `/tmp` or `/private/tmp` exemption. Copied controls keep
+their `fc-`/`fr-` prefixes and the fictional run root keeps `fl-`, each allocated by
+mkdtemp. After canonicalizing the run root, the command checks both owner/person socket
+paths in the main and all bootstrap roots against a conservative 100-byte UTF-8 budget.
+An overlong path fails with `frozen-witness-socket-path-too-long` before controls or any
+owner spawn, retaining failure evidence; choose a shorter allowed TMPDIR rather than
+changing a timeout or bypassing the guard.
+
+Each execution allocates a new short `fl-*` fictional global/workspace/data root;
 there is no root-selection argument, live root discovery, credentials, plugin installs
 in personal roots, GUI, provider or network access. The sequence is:
 

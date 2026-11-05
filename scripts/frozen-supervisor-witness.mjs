@@ -16,6 +16,7 @@ import {
   rm,
 } from 'node:fs/promises'
 import { join, resolve, dirname } from 'node:path'
+import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { buildPluginSupervisor } from './build-plugin-supervisor.mjs'
 import { preparePluginNode, NODE_VERSION, NODE_TARGETS } from './prepare-plugin-node.mjs'
@@ -119,9 +120,26 @@ async function checkOwnerCopies(root, records, plan) {
   }
   return runtimes[0]
 }
+function checkSocketPaths(runRoot) {
+  // Conservative macOS filesystem-socket budget, checked after canonicalizing the temp root.
+  // Includes every root used by the separate bootstrap cases and the original package journey.
+  const roots = [
+    join(runRoot, 'p'),
+    ...['fresh', 'legacy', 'history'].map((kind) => join(runRoot, 'sql', kind, 'p')),
+  ]
+  for (const root of roots) {
+    for (const endpoint of ['supervisor/owner.sock', 'person-control/person.sock']) {
+      const bytes = Buffer.byteLength(join(root, endpoint), 'utf8')
+      assert.ok(
+        bytes <= 100,
+        `frozen-witness-socket-path-too-long: ${bytes} bytes; set TMPDIR to a shorter permitted lane-local directory (100-byte maximum)`,
+      )
+    }
+  }
+}
 async function controls(directory, plan, evidence) {
   // All mutations stay on a new copy, never the once-prepared artifact or a running root.
-  const scratch = await mkdtemp('/tmp/fc-')
+  const scratch = await mkdtemp(join(tmpdir(), 'fc-'))
   try {
     for (const name of Object.keys(plan.frozen)) {
       await mkdir(dirname(join(scratch, name)), { recursive: true, mode: 0o700 })
@@ -149,7 +167,7 @@ async function controls(directory, plan, evidence) {
     })
     await copyFile(join(directory, changed), join(scratch, changed))
     await checkFrozen(scratch, plan)
-    const runtime = await mkdtemp('/tmp/fr-')
+    const runtime = await mkdtemp(join(tmpdir(), 'fr-'))
     try {
       for (const name of Object.keys(plan.frozen)) {
         if (!/^resources\/plugin-(node|host)\//.test(name)) continue
@@ -348,7 +366,7 @@ const connect=net.Socket.prototype.connect;net.Socket.prototype.connect=function
   )
   assert.equal(sha(await readFile(process.execPath)), NODE_TARGETS[target].binarySha256)
   await checkFrozen(out, plan)
-  const runRoot = await realpath(await mkdtemp('/tmp/fl-'))
+  const runRoot = await realpath(await mkdtemp(join(tmpdir(), 'fl-')))
   await mkdir(join(out, 'evidence'), { recursive: true, mode: 0o700 })
   const evidence = join(out, 'evidence', `run-${runRoot.split('/').at(-1)}`)
   await mkdir(evidence, { mode: 0o700 })
@@ -373,6 +391,7 @@ const connect=net.Socket.prototype.connect;net.Socket.prototype.connect=function
   let answer,
     bootstrapSpawns = []
   try {
+    checkSocketPaths(runRoot)
     await controls(out, plan, evidence)
     await checkFrozen(out, plan)
     // Apply the same no-network policy to the app-side driver, not just its child.
