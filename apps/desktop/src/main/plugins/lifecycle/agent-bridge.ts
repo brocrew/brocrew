@@ -353,6 +353,14 @@ export function createLifecycleAgentBridge(options: {
       return empty
     }
     if (retired.has(caller)) return empty
+    // Measured from when the request arrived, queueing and attaching included.
+    const deadline = new Promise<'deadline'>((resolve) => {
+      const timer = setTimeout(
+        () => resolve('deadline'),
+        Math.max(0, answerWithin - (performance.now() - asked)),
+      )
+      timer.unref?.()
+    })
     let attached = attachments.get(lease.id)
     if (!attached) {
       attached = options.controller.attach({
@@ -369,7 +377,9 @@ export function createLifecycleAgentBridge(options: {
         if (attachments.get(lease.id) === attached) attachments.delete(lease.id)
       })
     }
-    await attached
+    // An attachment that does not settle within the bound leaves the scope unknown.
+    if ((await Promise.race([attached.then(() => 'attached' as const), deadline])) === 'deadline')
+      return snapshot(caller, null)
     if (!valid(lease)) return empty
     // Subscribed before the first scope, so no committed change between them is missed.
     let woken: () => void = () => {}
@@ -378,14 +388,6 @@ export function createLifecycleAgentBridge(options: {
       if (workspaceId !== request.workspaceId) return
       woken()
       wake = new Promise<void>((resolve) => (woken = resolve))
-    })
-    // Measured from when the request arrived, queueing and attaching included.
-    const deadline = new Promise<'deadline'>((resolve) => {
-      const timer = setTimeout(
-        () => resolve('deadline'),
-        Math.max(0, answerWithin - (performance.now() - asked)),
-      )
-      timer.unref?.()
     })
     const failedHere = new Set<string>()
     // A served name the caller now uses for another server is opened again under a free one.
@@ -413,7 +415,8 @@ export function createLifecycleAgentBridge(options: {
             for (const [other, warmup] of warmups)
               if (warmup.caller === caller && warmup.pluginId === route.pluginId && warmup.settled)
                 warmups.delete(other)
-            await closeRoute(route.route)
+            // Its authority ended above; closing is tracked and never holds the answer.
+            void closeRoute(route.route).catch(() => undefined)
           }
         const warming: Warmup[] = []
         for (const entry of scope) {
