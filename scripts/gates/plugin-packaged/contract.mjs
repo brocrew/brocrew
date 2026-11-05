@@ -154,7 +154,6 @@ export function projectBuild(config, entry, appData, browser) {
     entry,
     '            supervisor: pluginSupervisor,',
     `            /* ${GATE_BUILD_MARKER} */ fixtureSource: ${JSON.stringify(path.join(appData, 'repo-fixture'))},
-            /* ${GATE_BUILD_MARKER} */ browserExecutable: ${JSON.stringify(browser)},
             supervisor: pluginSupervisor,`,
   )
   return { config, entry }

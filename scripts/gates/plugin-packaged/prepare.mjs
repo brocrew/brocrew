@@ -52,7 +52,11 @@ export function fixtureEnvironment(root, extra = {}, runtime = process.execPath)
 }
 export function fixtureAppEnvironment(root, app) {
   // Matrix and journey run on different Node binaries; their app PATH must still be identical.
-  return fixtureEnvironment(root, {}, path.join(app, 'Contents/Resources/plugin-node/node'))
+  return fixtureEnvironment(
+    root,
+    { BROCREW_CHROME_EXECUTABLE: path.join(root, 'fake-browser') },
+    path.join(app, 'Contents/Resources/plugin-node/node'),
+  )
 }
 export function buildEnvironment(root, pnpm) {
   if (!path.isAbsolute(pnpm)) throw new Error('Declared package manager required')

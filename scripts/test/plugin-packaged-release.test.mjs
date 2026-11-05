@@ -6,7 +6,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { failureFor, printFailure, safeFailure } from '../gates/plugin-packaged/diagnostics.mjs'
 import { stageProtocolDependencies } from '../gates/plugin-packaged/prepare.mjs'
-import { listFor, releaseSourcePlan } from '../gates/plugin-packaged/release.mjs'
+import {
+  listFor,
+  releaseSourcePlan,
+  stageReleaseDependencies,
+} from '../gates/plugin-packaged/release.mjs'
 
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const roots = []
@@ -92,6 +96,55 @@ describe.skipIf(process.platform === 'win32')('release verifier module admission
     expect(exporter).toContain('vitest.release.config.mts')
     expect(exporter).toContain('release-test/*.test.ts')
     expect(exporter).toContain('plugins/chrome/test/archive.test.ts')
+  })
+  it('copies the locked export install into the producer checkout without changing plugin source', () => {
+    for (const mismatch of [false, true]) {
+      const root = scratch(),
+        exported = path.join(root, 'exported'),
+        checkout = path.join(root, 'checkout')
+      const plugin = path.join(checkout, 'plugins/chrome')
+      fs.mkdirSync(plugin, { recursive: true })
+      const declared = {
+        dependencies: { 'playwright-core': '1.0.0' },
+        devDependencies: { esbuild: '2.0.0' },
+      }
+      const bytes = JSON.stringify(declared)
+      fs.writeFileSync(path.join(plugin, 'package.json'), bytes)
+      fs.writeFileSync(path.join(plugin, 'source.ts'), 'export const fictional = true\n')
+      const metadata = path.join(exported, 'plugins/chrome/node_modules')
+      for (const [name, version] of Object.entries({
+        ...declared.dependencies,
+        ...declared.devDependencies,
+      })) {
+        const folder = path.join(metadata, name)
+        fs.mkdirSync(folder, { recursive: true })
+        fs.writeFileSync(
+          path.join(folder, 'package.json'),
+          JSON.stringify({
+            name,
+            version: mismatch && name === 'playwright-core' ? '9.0.0' : version,
+            main: 'index.js',
+          }),
+        )
+        fs.writeFileSync(path.join(folder, 'index.js'), 'module.exports = {}\n')
+      }
+      if (mismatch)
+        expect(() => stageReleaseDependencies(exported, checkout)).toThrow('pin differs')
+      else {
+        stageReleaseDependencies(exported, checkout)
+        for (const name of ['esbuild', 'playwright-core'])
+          expect(fs.readFileSync(path.join(plugin, 'node_modules', name, 'index.js'), 'utf8')).toBe(
+            'module.exports = {}\n',
+          )
+        expect(() => stageReleaseDependencies(exported, checkout)).toThrow(
+          'Invalid release dependency staging',
+        )
+      }
+      expect(fs.readFileSync(path.join(plugin, 'package.json'), 'utf8')).toBe(bytes)
+      expect(fs.readFileSync(path.join(plugin, 'source.ts'), 'utf8')).toBe(
+        'export const fictional = true\n',
+      )
+    }
   })
   it('reuses the exact release dependency files for protocol controls and refuses stale or linked destinations', () => {
     const root = scratch()

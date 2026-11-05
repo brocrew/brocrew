@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Client } from '../../apps/desktop/node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js'
@@ -9,7 +10,6 @@ import { StreamableHTTPClientTransport } from '../../apps/desktop/node_modules/@
 import { createRepoAwarePluginVerifier } from '../../apps/desktop/src/main/plugins/package-verifier.ts'
 import { preparePluginNodeRuntime } from '../../apps/desktop/src/main/plugins/node-runtime.ts'
 import { createPluginNodeHost } from '../../apps/desktop/src/main/plugins/node-host.ts'
-import { chromeBrokerBinding } from '../../apps/desktop/src/main/plugins/lifecycle/chrome-broker.ts'
 import { createLifecycleAgentBridge } from '../../apps/desktop/src/main/plugins/lifecycle/agent-bridge.ts'
 import { WorkspacePluginAttachments } from '../../apps/desktop/src/main/plugins/attachments.ts'
 import {
@@ -49,9 +49,7 @@ const protocolInstalled = fs.existsSync(
   new URL('../../plugins/chrome/node_modules/playwright-core/package.json', import.meta.url),
 )
 afterEach(async () => {
-  const ownedRoots = roots.splice(0)
-  for (const close of cleanup.splice(0).reverse()) await close()
-  for (const root of ownedRoots) fs.rmSync(root, { recursive: true, force: true })
+  await closeFixtureResources(cleanup.splice(0), roots.splice(0))
 })
 function scratch() {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'fern-provider-')))
@@ -434,7 +432,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(fs.readdirSync(outside)).toEqual([])
     })
     it.skipIf(!protocolInstalled)(
-      'delivers the built Chrome package full inventory through the real binding and agent bridge before its provider turn',
+      'delivers the built Chrome package full inventory through the retained client and generic agent bridge before its provider turn',
       async () => {
         const { buildChromePackage } = await import('../../plugins/chrome/build.mjs')
         const root = scratch(),
@@ -447,8 +445,12 @@ describe.skipIf(process.platform === 'win32')(
           { mode: 0o700 },
         )
         const built = path.join(root, 'built')
-        const release = await buildChromePackage(built, 'a'.repeat(40))
-        const catalogue = Buffer.from(JSON.stringify({ format: 1, entries: [release] }))
+        const commit = execFileSync('/usr/bin/git', ['rev-parse', 'HEAD'], {
+          cwd: fileURLToPath(new URL('../..', import.meta.url)),
+          encoding: 'utf8',
+        }).trim()
+        const release = await buildChromePackage(built, commit)
+        const catalogue = Buffer.from(JSON.stringify({ format: 3, entries: [release] }))
         const verified = createRepoAwarePluginVerifier({
           pinnedPublicKey: null,
           repoCatalogueSha256: createHash('sha256').update(catalogue).digest('hex'),
@@ -467,31 +469,41 @@ describe.skipIf(process.platform === 'win32')(
         const host = createPluginNodeHost({
           root: path.join(root, 'host'),
           runtime: nodeRuntime,
-          browserExecutable: executable,
         })
+        let running
         cleanup.push(async () => {
           // Scratch roots must survive if the owned plugin processes did not settle.
           expect(await host.stop()).toEqual({ exited: true })
+          if (running) {
+            let timer
+            try {
+              expect(
+                await Promise.race([
+                  running.exited,
+                  new Promise((_, reject) => {
+                    timer = setTimeout(() => reject(new Error('Physical exit unproven')), 15000)
+                  }),
+                ]),
+              ).toEqual({ exited: true })
+            } finally {
+              clearTimeout(timer)
+            }
+          }
         })
-        const running = await host.start({
-          package: verified,
-          releaseDigest: release.archive.sha256,
+        const connection = await withFixtureBrowser(executable, async () => {
+          running = await host.start({ package: verified, releaseDigest: release.archive.sha256 })
+          return running.ready()
         })
-        const connection = await running.ready()
-        const admin = connection.admin()
-        for (const [suffix, body, status] of [
-          ['/profiles', { name: 'fern' }, 201],
-          ['/profiles/fern/flags', { enabled: true }, 200],
-        ]) {
-          const response = await fetch(admin.url + suffix, {
-            method: 'POST',
-            headers: { ...admin.headers, 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-            redirect: 'error',
-            signal: AbortSignal.timeout(1500),
-          })
-          await response.body?.cancel()
-          expect(response.status).toBe(status)
+        expect(verified.manifest.format).toBe(3)
+        expect(connection.client).toBeInstanceOf(Client)
+        expect(Object.getOwnPropertyDescriptor(connection, 'client').enumerable).toBe(false)
+        expect(connection.admin).toBeUndefined()
+        expect(() => connection.mcp()).toThrow()
+        const forwarded = [],
+          actualCall = connection.client.callTool.bind(connection.client)
+        connection.client.callTool = (input, ...rest) => {
+          forwarded.push(structuredClone(input))
+          return actualCall(input, ...rest)
         }
         const inventoryAt = async (endpoint) => {
           const client = new Client({ name: 'fictional-fern-inventory', version: '1' })
@@ -511,18 +523,54 @@ describe.skipIf(process.platform === 'win32')(
             await client.close()
           }
         }
-        const advertised = await inventoryAt(connection.mcp())
+        // The runner owns this client. Route inventory clients below own only their own sessions.
+        const inventory = await connection.client.listTools(undefined, { timeout: 1500 })
+        expect(inventory.nextCursor).toBeUndefined()
+        const advertised = inventory.tools
         expect(advertised.length).toBeGreaterThan(0)
-        const view = {
-          installation: {
-            pluginId: release.id,
-            installId: 'fern-install',
-            incarnation: randomUUID(),
-            configRevision: 1,
+        const authorInventory = JSON.parse(
+          Buffer.from(verified.readFile(verified.manifest.tools.inventory)).toString('utf8'),
+        )
+        expect(Array.isArray(authorInventory)).toBe(true)
+        expect(definitions(advertised)).toEqual(definitions(authorInventory))
+        let live = true,
+          enabled = true
+        const installation = {
+          pluginId: release.id,
+          installId: 'fern-install',
+          incarnation: randomUUID(),
+          configRevision: 1,
+        }
+        const captured = {
+          pluginId: installation.pluginId,
+          installId: installation.installId,
+          incarnation: installation.incarnation,
+          runId: running.runId,
+        }
+        const exited = running.exited.then(
+          (result) => {
+            live = false
+            if (result.exited !== true) throw new Error('Physical exit unproven')
           },
+          (error) => {
+            live = false
+            throw error
+          },
+        )
+        void exited.catch(() => {})
+        const view = {
+          installation,
           package: verified,
-          runId: 'fern-run',
-          current: () => true,
+          workspaceId: 'fern-workspace',
+          runId: running.runId,
+          exited,
+          current: () =>
+            live &&
+            enabled &&
+            installation.pluginId === captured.pluginId &&
+            installation.installId === captured.installId &&
+            installation.incarnation === captured.incarnation &&
+            running.runId === captured.runId,
           connection: Promise.resolve(connection),
         }
         // Only lease/lifecycle admission is inert; inventory, binding, policy and transport are real.
@@ -541,27 +589,115 @@ describe.skipIf(process.platform === 'win32')(
           controller: {
             attach: async () => Object.freeze({}),
             detach: async () => {},
-            agentAttachments: () => [view],
+            agentAttachments: (workspaceId) =>
+              workspaceId === view.workspaceId && view.current() ? [view] : [],
             agentScope: (workspaceId) => ({
               workspaceId,
               revision: 0,
-              entries: [
-                {
-                  pluginId: release.id,
-                  enabled: true,
-                  installId: 'fern-install',
-                  runId: 'fern-run',
-                  switchRevision: 0,
-                  is: 'admitted',
-                  view,
-                },
-              ],
+              entries:
+                workspaceId === view.workspaceId && view.current()
+                  ? [
+                      {
+                        pluginId: release.id,
+                        enabled: true,
+                        installId: 'fern-install',
+                        runId: running.runId,
+                        switchRevision: 0,
+                        is: 'admitted',
+                        view,
+                      },
+                    ]
+                  : [],
             }),
             onHostChanged: () => () => {},
           },
-          binding: chromeBrokerBinding,
         })
         cleanup.push(() => bridge.close())
+        const scope = {
+          workspaceId: view.workspaceId,
+          pluginId: release.id,
+          instanceId: running.runId,
+        }
+        const jsonResult = (result) => {
+          expect(result.isError).not.toBe(true)
+          expect(result.content).toHaveLength(1)
+          expect(result.content[0].type).toBe('text')
+          return JSON.parse(result.content[0].text)
+        }
+        const call = (name, args, origin = 'settings.page') =>
+          bridge.callTool({
+            ...scope,
+            requestId: randomUUID(),
+            origin,
+            name,
+            arguments: args,
+          })
+        for (const args of [
+          { profile: 'fern', action: 'create-profile' },
+          { profile: 'fern', action: 'set-enabled', enabled: true },
+          { profile: 'birch', action: 'create-profile' },
+        ])
+          expect(jsonResult(await call('configure_profile', args))).toEqual({
+            profile: args.profile,
+            completed: true,
+          })
+        expect(forwarded.slice(0, 3).map((input) => input.arguments)).toEqual([
+          { profile: 'fern', action: 'create-profile' },
+          { profile: 'fern', action: 'set-enabled', enabled: true },
+          { profile: 'birch', action: 'create-profile' },
+        ])
+        for (const input of forwarded.slice(0, 3)) {
+          expect(input.name).toBe('configure_profile')
+          expect(input._meta).toEqual({
+            workspaceId: 'fern-workspace',
+            requestId: expect.any(String),
+            origin: 'settings.page',
+          })
+          expect(input.arguments).not.toHaveProperty('workspaceId')
+          expect(input.arguments).not.toHaveProperty('requestId')
+          expect(input.arguments).not.toHaveProperty('origin')
+        }
+        expect(new Set(forwarded.slice(0, 3).map((input) => input._meta.requestId)).size).toBe(3)
+        const configured = jsonResult(await call('configuration_snapshot', {}))
+        expect(configured.profiles.find((one) => one.name === 'fern').enabled).toBe(true)
+        expect(configured.profiles.find((one) => one.name === 'birch').enabled).toBe(false)
+        for (const args of [
+          { action: 'set-enabled', enabled: false },
+          { profile: '../fern', action: 'set-enabled', enabled: false },
+          {
+            profile: 'fern',
+            action: 'set-enabled',
+            enabled: false,
+            _meta: { origin: 'settings.page' },
+          },
+        ])
+          expect((await call('configure_profile', args)).isError).toBe(true)
+        expect(
+          (
+            await call(
+              'configure_profile',
+              { profile: 'fern', action: 'set-enabled', enabled: false },
+              'agent',
+            )
+          ).isError,
+        ).toBe(true)
+        expect(jsonResult(await call('configuration_snapshot', {}))).toEqual(configured)
+        for (const other of [
+          { workspaceId: 'other-workspace' },
+          { pluginId: 'other-plugin' },
+          { instanceId: randomUUID() },
+        ])
+          await expect(
+            bridge.callTool({
+              ...scope,
+              ...other,
+              requestId: randomUUID(),
+              origin: 'settings.page',
+              name: 'configure_profile',
+              arguments: { profile: 'fern', action: 'set-enabled', enabled: false },
+            }),
+          ).rejects.toMatchObject({ code: 'disabled' })
+        expect(jsonResult(await call('configuration_snapshot', {}))).toEqual(configured)
         let attachmentReads = 0
         const attachments = new WorkspacePluginAttachments(
           {
@@ -595,7 +731,7 @@ describe.skipIf(process.platform === 'win32')(
           headers: { Authorization: `Bearer ${route.capability}` },
         })
         // Compare the full advertised definitions, without a tool-name allowlist or count pin.
-        const definitions = (tools) =>
+        const projectedDefinitions = (tools) =>
           tools
             .map(({ name, inputSchema, description }) => ({
               name,
@@ -603,7 +739,9 @@ describe.skipIf(process.platform === 'win32')(
               description,
             }))
             .sort((a, b) => a.name.localeCompare(b.name))
+        expect(projectedDefinitions(delivered)).toEqual(projectedDefinitions(advertised))
         expect(definitions(delivered)).toEqual(definitions(advertised))
+        expect(definitions(delivered)).toEqual(definitions(authorInventory))
         const runtime = withManagedPluginAttachments(
           new PackagedGateRuntime('claude', root),
           attachments,
@@ -613,11 +751,14 @@ describe.skipIf(process.platform === 'win32')(
           providerHome: path.join(root, 'fake-home'),
           approvalMode: 'auto',
         })
-        cleanup.push(() => handle.close())
         const events = []
         const pump = (async () => {
           for await (const event of handle.events()) events.push(event)
         })()
+        cleanup.push(async () => {
+          await handle.close()
+          await pump
+        })
         await handle.send(
           `Fictional factory instructions\n\n${openPrompt}\n\nThis app adds a fictional notice.`,
         )
@@ -642,6 +783,41 @@ describe.skipIf(process.platform === 'win32')(
           closedTabs: 1,
         })
         expect(attachmentReads).toBeGreaterThanOrEqual(3)
+        const beforeRevocation = jsonResult(await call('configuration_snapshot', {}))
+        enabled = false
+        await expect(
+          bridge.callTool({
+            ...scope,
+            requestId: randomUUID(),
+            origin: 'settings.page',
+            name: 'configuration_snapshot',
+            arguments: {},
+          }),
+        ).rejects.toMatchObject({ code: 'disabled' })
+        // A retained route loses authority with the same captured view, before another tool side effect.
+        const stale = await fetch(route.url, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${route.capability}`,
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'tools/call',
+            params: {
+              name: 'configure_profile',
+              arguments: { profile: 'fern', action: 'set-enabled', enabled: false },
+            },
+          }),
+          signal: AbortSignal.timeout(1500),
+          redirect: 'error',
+        })
+        await stale.body?.cancel()
+        expect(stale.status).toBe(401)
+        enabled = true
+        expect(jsonResult(await call('configuration_snapshot', {}))).toEqual(beforeRevocation)
         await handle.close()
         await pump
       },
