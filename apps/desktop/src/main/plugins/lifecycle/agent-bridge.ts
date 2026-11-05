@@ -40,6 +40,7 @@ export interface AgentRoutes {
   readonly unknown: boolean
 }
 interface Warmup {
+  readonly key: string
   readonly caller: string
   readonly pluginId: string
   settled: boolean
@@ -200,6 +201,8 @@ export function createLifecycleAgentBridge(options: {
   function revoke(lease: Readonly<WorkspaceLease>) {
     void closeWorkspaceRoutes(lease.id).catch(() => undefined)
     for (const caller of retired) if (caller.startsWith(lease.id + ':')) retired.delete(caller)
+    for (const caller of reserved.keys())
+      if (caller.startsWith(lease.id + ':')) reserved.delete(caller)
     const attached = attachments.get(lease.id)
     attachments.delete(lease.id)
     if (attached) {
@@ -218,7 +221,9 @@ export function createLifecycleAgentBridge(options: {
     const id = entry.pluginId
     const key = [caller, id, entry.installId, entry.runId, entry.switchRevision].join('\u0000')
     const existing = warmups.get(key)
-    if (existing) return existing
+    // A settled warmup stands only while its route does; a swept route opens again.
+    if (existing && (!existing.settled || routes.get(`${caller}:${id}`)?.current())) return existing
+    if (existing) warmups.delete(key)
     for (const [other, warmup] of warmups)
       if (warmup.caller === caller && warmup.pluginId === id) {
         warmup.cancelled = true
@@ -228,6 +233,7 @@ export function createLifecycleAgentBridge(options: {
     const names = reserved.get(caller) ?? new Set<string>()
     reserved.set(caller, names)
     const warmup: Warmup = {
+      key,
       caller,
       pluginId: id,
       settled: false,
@@ -328,6 +334,7 @@ export function createLifecycleAgentBridge(options: {
   async function readRoutes(
     lease: Readonly<WorkspaceLease>,
     request: Request,
+    asked: number,
   ): Promise<AgentRoutes> {
     const empty: AgentRoutes = { servers: [], pending: [], none: [], unknown: false }
     if (!valid(lease)) return empty
@@ -335,6 +342,7 @@ export function createLifecycleAgentBridge(options: {
     if (request.release) {
       retired.add(caller)
       cancelWarmups(caller)
+      reserved.delete(caller)
       const closing: Promise<void>[] = []
       for (const [key, route] of routes)
         if (route.lease.id === lease.id && route.incarnation === request.incarnation) {
@@ -371,14 +379,22 @@ export function createLifecycleAgentBridge(options: {
       woken()
       wake = new Promise<void>((resolve) => (woken = resolve))
     })
+    // Measured from when the request arrived, queueing and attaching included.
     const deadline = new Promise<'deadline'>((resolve) => {
-      const timer = setTimeout(() => resolve('deadline'), answerWithin)
+      const timer = setTimeout(
+        () => resolve('deadline'),
+        Math.max(0, answerWithin - (performance.now() - asked)),
+      )
       timer.unref?.()
     })
-    const failedHere = new Set<Warmup>()
+    const failedHere = new Set<string>()
+    // A served name the caller now uses for another server is opened again under a free one.
+    const taken = new Set(request.occupied.map((one) => one.toLowerCase()))
     try {
       for (;;) {
         if (!valid(lease) || retired.has(caller)) return empty
+        // Taken before the scope, so a change during the sweep below still wakes this pass.
+        const woke = wake
         let scope: readonly AgentScopeEntry[]
         try {
           scope = options.controller.agentScope(request.workspaceId).entries
@@ -390,9 +406,13 @@ export function createLifecycleAgentBridge(options: {
             route.lease.id === lease.id &&
             route.incarnation === request.incarnation &&
             (!route.current() ||
+              taken.has(route.route.server.name.toLowerCase()) ||
               scope.some((one) => one.pluginId === route.pluginId && one.is === 'off'))
           ) {
             routes.delete(key)
+            for (const [other, warmup] of warmups)
+              if (warmup.caller === caller && warmup.pluginId === route.pluginId && warmup.settled)
+                warmups.delete(other)
             await closeRoute(route.route)
           }
         const warming: Warmup[] = []
@@ -400,18 +420,21 @@ export function createLifecycleAgentBridge(options: {
           if (entry.is !== 'admitted' || !entry.view.current()) continue
           const open = routes.get(`${caller}:${entry.pluginId}`)
           if (open && open.current() && open.instanceId === entry.runId) continue
-          // A plugin whose open failed during this read is retried at the next read, not here.
-          if ([...failedHere].some((one) => one.pluginId === entry.pluginId)) continue
-          warming.push(warm(lease, request, caller, entry))
+          const key = [caller, entry.pluginId, entry.installId, entry.runId, entry.switchRevision]
+          // A route whose open failed during this read is retried at the next read, not here.
+          if (failedHere.has(key.join('\u0000'))) continue
+          const warmup = warm(lease, request, caller, entry)
+          if (!warmup.settled) warming.push(warmup)
         }
         const now = snapshot(caller, scope)
+        for (const server of now.servers) failures.delete(server.pluginId)
         if (now.servers.length > 0 || now.pending.length === 0) return now
         const next = await Promise.race([
-          wake.then(() => 'wake' as const),
+          woke.then(() => 'wake' as const),
           deadline,
           ...warming.map((one) =>
             one.done.then(() => {
-              if (!one.ok) failedHere.add(one)
+              if (!one.ok && !one.cancelled) failedHere.add(one.key)
               return 'settled' as const
             }),
           ),
@@ -476,12 +499,14 @@ export function createLifecycleAgentBridge(options: {
     },
     /** One caller's routes; callers never wait on each other. */
     agentRoutes(lease: Readonly<WorkspaceLease>, request: Request) {
-      return chained(`${lease.id}:${request.incarnation}`, () => readRoutes(lease, request))
+      const asked = performance.now()
+      return chained(`${lease.id}:${request.incarnation}`, () => readRoutes(lease, request, asked))
     },
     /** The served routes alone, for a peer that reads the array reply. */
     async routes(lease: Readonly<WorkspaceLease>, request: Request) {
+      const asked = performance.now()
       const answer = await chained(`${lease.id}:${request.incarnation}`, () =>
-        readRoutes(lease, request),
+        readRoutes(lease, request, asked),
       )
       return answer.servers.map(({ pluginId: _pluginId, ...server }) => server)
     },
@@ -489,9 +514,10 @@ export function createLifecycleAgentBridge(options: {
       // Every current and pending authority ends before the first await.
       closed = true
       for (const id of [...entries.keys()]) deny(id)
-      for (const warmup of warmups.values()) warmup.cancelled = true
+      const opening = [...warmups.values()]
+      for (const warmup of opening) warmup.cancelled = true
       warmups.clear()
-      await Promise.all([...chains.values()])
+      await Promise.all([...chains.values(), ...opening.map((one) => one.done)])
       await Promise.all([...routes.values()].map((one) => closeRoute(one.route)))
       routes.clear()
       await Promise.all(
