@@ -132,6 +132,41 @@ describe('the person’s queue is composed once until it moves', () => {
     expect(host.waitingOnWhoWroteForAPerson()).toBe(recovered)
   })
 
+  it('a rebuild’s cleanup that takes out an ask the queue saw composes it again, and other cleanup does not', async () => {
+    const asked = () => host.instructionAsksForAPerson().map((one) => one.asked.askId)
+    // An ask in a generation nobody shows, which the replay over every generation still reads.
+    const stale = world.store.beginGeneration(giver)
+    world.store.appendGeneration(giver, stale, [
+      {
+        ordinal: 0,
+        event: {
+          type: 'instruction_proposed',
+          askId: 'iprop_fictional',
+          ask: 'propose',
+          about: 'giver',
+          proposedBy: 'giver',
+          text: 'Fictional rules.',
+          why: 'fictional',
+        } as TranscriptEvent,
+        at: world.clock++,
+      },
+    ])
+    const plain = world.store.beginGeneration(giver)
+    world.store.appendGeneration(giver, plain, [
+      { ordinal: 0, event: { type: 'assistant_message', text: 'rebuilt' }, at: world.clock++ },
+    ])
+    routed('fictional-before-cleanup')
+    await quiet()
+    expect(asked()).toContain('iprop_fictional')
+    const asks = host.instructionAsksForAPerson()
+    // A batch holding no such row keeps the queue shared.
+    world.store.discardGeneration(giver, plain, 100)
+    expect(host.instructionAsksForAPerson()).toBe(asks)
+    // The batch that takes the ask out composes the queue again, without it.
+    world.store.discardGeneration(giver, stale, 100)
+    expect(asked()).not.toContain('iprop_fictional')
+  })
+
   it('the asks against agents’ rules are replayed once a version, for the queue, the workspace and the listing', async () => {
     await quiet()
     routed('fictional-replay')
