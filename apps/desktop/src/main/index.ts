@@ -119,7 +119,7 @@ import {
   whatTheAppItselfHolds,
 } from './memory-watch'
 import { logWhenThePageStopsAnswering } from './page-answers'
-import { aStallLog } from './stall-log'
+import { aDiagnosticsSink, type DiagnosticsSink } from './diagnostics-sink'
 import { aPageReceipt, pageHeardSays, type PageReceipt } from './runtime/page-performance'
 import {
   MainThreadWork,
@@ -1293,22 +1293,16 @@ let lookAtTheWindow: () => void = () => {}
 let thePageReceipt: PageReceipt | null = null
 
 /**
- * A stall's line, to the console and to `stalls.log` beside `memory.log`. A hidden launch (a test
- * or a smoke, loading the machine on purpose) writes to its console only.
+ * A stall's line, to the console and to `stalls.log` beside `memory.log`, written off this thread
+ * so a slow disk or console never lengthens the stall it reports. A hidden launch (a test or a
+ * smoke, loading the machine on purpose) writes to its console only.
  */
 function intoTheStallLog(line: string): void {
-  const said = `pid ${String(process.pid)}: ${line}`
-  console.warn(said)
-  if (presentation.hidden) return
-  try {
-    theStallLog ??= aStallLog(app.getPath('logs'))
-    theStallLog(`${new Date().toISOString()} ${said}`)
-  } catch {
-    // Diagnostics only: the console line stands.
-  }
+  theStallSink ??= aDiagnosticsSink({ logs: presentation.hidden ? null : app.getPath('logs') })
+  theStallSink.accept(`${new Date().toISOString()} pid ${String(process.pid)}: ${line}`)
 }
 
-let theStallLog: ((line: string) => void) | null = null
+let theStallSink: DiagnosticsSink | null = null
 
 /**
  * Suppress Electron's error modal on hidden launches by adding an `uncaughtException`
@@ -2711,6 +2705,8 @@ const lifetime = createAppLifetime({
     await transcriptRetention?.stop()
     await (stoppingTheStart ?? host?.drainArchiveWork() ?? Promise.resolve())
     await themes?.close()
+    // Stall lines still queued, and the notice of what was left, get half a second in all.
+    await theStallSink?.close(500)
   },
   closeDatabase: () => {
     db?.close()

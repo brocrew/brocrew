@@ -362,7 +362,7 @@ describe('a start that never opened its data', () => {
       ),
     ).toBe(false)
     const drainsArchiveWork =
-      /drainArchiveWork: async \(\) => \{\s+await stopProviderSetup\?\.\(\)\s+await updates\?\.drain\(\)\s+await transcriptRetention\?\.stop\(\)\s+await \(stoppingTheStart \?\? host\?\.drainArchiveWork\(\) \?\? Promise\.resolve\(\)\)\s+await themes\?\.close\(\)\s+\}/
+      /drainArchiveWork: async \(\) => \{\s+await stopProviderSetup\?\.\(\)\s+await updates\?\.drain\(\)\s+await transcriptRetention\?\.stop\(\)\s+await \(stoppingTheStart \?\? host\?\.drainArchiveWork\(\) \?\? Promise\.resolve\(\)\)\s+await themes\?\.close\(\)\s+await theStallSink\?\.close\(500\)\s+\}/
     expect(CODE).toMatch(drainsArchiveWork)
     for (const replacement of ['', 'void stopProviderSetup?.()']) {
       expect(
