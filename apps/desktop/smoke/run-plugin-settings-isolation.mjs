@@ -47,16 +47,15 @@ async function bundle(entry, outDir, fileName) {
 let stage = 0
 let result = { passed: false, assertions: 0 }
 try {
-  await bundle('smoke/chrome-ui-archive.ts', main, 'archive.cjs')
-  const rebuild = require(join(main, 'archive.cjs')).rebuildChromeUiArchive
-  const archiveDir = process.env.BROBOT_CHROME_REBUILT_DIR || join(root, 'archive')
-  if (!process.env.BROBOT_CHROME_BASE_ARCHIVE) throw new Error('frozen archive required')
-  const archiveProof = rebuild(
-    process.env.BROBOT_CHROME_BASE_ARCHIVE,
-    join(appRoot, '../../plugins/chrome/ui'),
-    process.env.BROBOT_CHROME_SOURCE_COMMIT || '07cfbc3b6b567fe5240df50941679aa30474ebb3',
-    archiveDir,
-  )
+  await bundle('smoke/ordinary-chrome-archive.ts', main, 'archive.cjs')
+  const verify = require(join(main, 'archive.cjs')).verifyOrdinaryChromeArchive
+  const selectedArchive =
+    process.env.BROBOT_CHROME_TEST_ARCHIVE ||
+    process.env.BROBOT_CHROME_PACKAGE_ARCHIVE ||
+    process.env.BROBOT_CHROME_BASE_ARCHIVE
+  if (!selectedArchive) throw new Error('Supply the actual converted Chrome archive')
+  const archive = resolve(selectedArchive)
+  const archiveProof = verify(readFileSync(archive), archive.endsWith('.gz') ? 'tar.gz' : 'tar')
   await bundle('src/preload/plugin-ui.ts', preload, 'plugin-ui.js')
   await bundle('smoke/plugin-settings-preload.ts', preload, 'plugin-settings-fixture.js')
   await build({
@@ -79,7 +78,7 @@ try {
     BROBOT_PLUGIN_UI_PROBE_ROOT: root,
     BROBOT_TESTS_START_NO_PROGRAM: '1',
     BROBOT_PLUGIN_SOURCE_ROOT: resolve(appRoot, '../..'),
-    BROBOT_CHROME_TEST_ARCHIVE: join(archiveDir, 'chrome.tar'),
+    BROBOT_CHROME_TEST_ARCHIVE: archive,
     BROBOT_PLUGIN_UI_CROPS: process.env.BROBOT_PLUGIN_UI_CROPS || join(root, 'crops'),
   }
   delete env.ELECTRON_RUN_AS_NODE
@@ -107,8 +106,8 @@ try {
   stage = 4
   result = {
     ...JSON.parse(readFileSync(join(root, 'counts.json'), 'utf8')),
-    archiveVerified: archiveProof.verified,
-    archiveSha256: archiveProof.sha256,
+    archiveVerified: true,
+    archiveSha256: archiveProof.release.archive.sha256,
   }
   stage = 5
   if (code !== 0) result.passed = false

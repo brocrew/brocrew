@@ -80,7 +80,7 @@ async function legacyFixture(format: 1 | 2, id = 'chrome') {
     if (format === 2)
       Object.assign(manifest, {
         format: 2,
-        authors: ['Fictional author'],
+        authors: ['fictional-author'],
         executor: { kind: 'node', entry: manifest.server!.entry },
         hooks: [],
       })

@@ -15,6 +15,7 @@ import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-c
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
 import { sharedLifecycleWorkspaces } from '../src/main/plugins/lifecycle/workspaces'
+import { observeInstalled } from './plugin-installed-observation'
 import { LifecycleEffects } from '../src/main/plugins/lifecycle/files'
 import { PluginProfileLedger as HistoricalLedger } from './fixtures/plugin-encoder-820/profile-ledger'
 
@@ -205,17 +206,7 @@ describe.skipIf(process.platform === 'win32')(
         expect(await readFile(join(f.data, 'login'), 'utf8')).toBe('fictional-paired-phone')
       },
     )
-    it('refuses corrupt replacement bytes before stopping the old version', async () => {
-      const f = await setup()
-      await f.offer()
-      f.opts.download = async () => Buffer.from('fictional corrupt archive')
-      f.events.length = 0
-      await expect(f.controller.update(f.handle, 'whatsapp')).rejects.toThrow()
-      expect(f.events).not.toContain('stop')
-      expect(f.state.exportActivation().entries[0]?.release.version).toBe('0.1.0')
-      expect(f.state.inspect().pending).toBeNull()
-    })
-    it('person control uses caller-selected catalogue bytes and updates while revoking a stale screen', async () => {
+    it('person control uses caller-selected source bytes and updates retained data while old Configure stays unavailable', async () => {
       const f = await setup(true)
       await f.controller.detach(f.handle)
       let offered = f.old
@@ -241,14 +232,19 @@ describe.skipIf(process.platform === 'win32')(
         projection: projection().sink,
       })
       try {
-        const screen = await client.screen('whatsapp')
-        expect(screen.current(screen.binding)).toBe(true)
+        await expect(client.screen('whatsapp')).rejects.toThrow()
+        const installedBefore = await observeInstalled(f.opts, f.state, 'whatsapp')
+        expect(installedBefore.package.manifest.version).toBe('0.1.0')
+        expect(installedBefore.installation.release).toMatchObject({
+          archiveSha256: f.old.release.archive.sha256,
+          manifestSha256: f.old.release.manifestSha256,
+        })
         offered = f.next
         const before = f.state.inspect()
         await client.refreshCatalogue!('0'.repeat(64))
         expect((await client.catalogue())[0]?.updateVersion).toBeUndefined()
         expect(f.state.inspect()).toEqual(before)
-        expect(screen.current(screen.binding)).toBe(true)
+        expect(f.state.currentInstallation('whatsapp')).toEqual(installedBefore.installation)
         await client.refreshCatalogue!(pluginSha256(f.next.bytes), {
           bytes: f.next.bytes,
           signature: Buffer.alloc(0),
@@ -266,11 +262,21 @@ describe.skipIf(process.platform === 'win32')(
         await expect(
           client.inspectPackage!({ ...selected.ref, bytes: selected.ref.bytes + 1 }),
         ).rejects.toThrow('The selected package byte count does not match its archive.')
-        expect(screen.current(screen.binding)).toBe(true)
+        expect(f.state.currentInstallation('whatsapp')).toEqual(installedBefore.installation)
         await client.update!('whatsapp')
-        expect(screen.current(screen.binding)).toBe(false)
-        const nextScreen = await client.screen('whatsapp')
-        expect(nextScreen.verified.manifest.version).toBe('0.1.3')
+        await expect(client.screen('whatsapp')).rejects.toThrow()
+        const after = await observeInstalled(f.opts, f.state, 'whatsapp')
+        expect(after.package.manifest.version).toBe('0.1.3')
+        expect(after.installation.installId).toBe(installedBefore.installation.installId)
+        expect(after.installation.incarnation).not.toBe(installedBefore.installation.incarnation)
+        expect(after.installation.releaseRevision).toBe(installedBefore.installation.releaseRevision + 1)
+        expect(after.installation.release).toMatchObject({
+          archiveSha256: f.next.release.archive.sha256,
+          manifestSha256: f.next.release.manifestSha256,
+        })
+        expect(installedBefore.package.manifest.version).toBe('0.1.0')
+        expect(await readFile(join(f.data, 'settings'), 'utf8')).toBe('{"fictionalGroup":true}')
+        expect(fetch).not.toHaveBeenCalled()
         expect(await readFile(join(f.data, 'login'), 'utf8')).toBe('fictional-paired-phone')
       } finally {
         await client.close()

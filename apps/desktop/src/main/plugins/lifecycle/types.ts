@@ -40,7 +40,7 @@ export interface LifecycleOptions {
   pinnedPublicKey: KeyObject | null
   /** App-admitted repo-list digest authority only; exclusive with the dormant signing key. */
   repoCatalogueSha256?: string
-  /** Raw list bound by trusted app launch input, used to derive older minimum-version views. */
+  /** Raw list bound by trusted app launch input; package manifests determine compatibility. */
   repoList?: { bytes: Uint8Array; sha256: string; appVersion: string }
   legacyRepoList?: { bytes: Uint8Array; sha256: string; appVersion: string }
   target: PluginTarget

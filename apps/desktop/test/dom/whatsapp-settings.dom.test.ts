@@ -26,19 +26,27 @@ async function settingsPage() {
         ]
       }
     }
-    const answer = (packet, ok = true) => window.postMessage({ channel: packet.channel, requestId: packet.requestId, ok, data: packet.method === 'read' ? window.fixture.snapshot : {} }, location.origin)
+    // UI-only host fixture: package semantics are exercised by the actual package/connected suites.
+    const answer = (packet, ok = true) => window.postMessage({
+      channel: packet.channel, requestId: packet.requestId, ok,
+      data: { status: 'result', result: { content: [{ type: 'text', text: JSON.stringify(window.fixture.snapshot) }] } }
+    }, location.origin)
     window.addEventListener('message', (event) => {
       const packet = event.data
-      if (packet?.channel !== 'brocrew-plugin-ui:v1' || typeof packet.ok === 'boolean') return
+      if (packet?.channel !== 'brocrew-plugin-tools:v1' || typeof packet.ok === 'boolean') return
+      if (packet.method !== 'callTool' || typeof packet.params?.tool !== 'string') return
       window.fixture.requests.push(packet)
-      if (packet.payload?.action === 'refresh-groups') {
+      const { tool, arguments: args } = packet.params
+      if (tool === 'whatsapp_refresh_groups') {
         window.fixture.refresh = packet
         if (window.fixture.hold) return
         answer(packet, !window.fixture.fail)
-      } else if (packet.method === 'proposeConfig') {
-        if (packet.payload.action === 'set-group-write') window.fixture.snapshot.groups.find((g) => g.jid === packet.payload.group).canWrite = packet.payload.enabled
+      } else {
+        if (tool === 'whatsapp_set_group_write') window.fixture.snapshot.groups.find((g) => g.jid === args.group).canWrite = args.enabled
+        if (tool === 'whatsapp_set_read') window.fixture.snapshot.read = args.enabled
+        if (tool === 'whatsapp_set_prefix') window.fixture.snapshot.prefix = args.enabled
         answer(packet)
-      } else answer(packet)
+      }
     })
     document.addEventListener('finish-refresh', () => answer(window.fixture.refresh, !window.fixture.fail))
   `
@@ -69,7 +77,10 @@ async function settingsPage() {
   const fixtureState = (
     frame.contentWindow as unknown as {
       fixture: {
-        requests: Array<{ method: string; payload: { action?: string; enabled?: boolean } }>
+        requests: Array<{
+          method: string
+          params: { tool: string; arguments: { group?: string; enabled?: boolean } }
+        }>
         fail: boolean
         snapshot: { groups: Array<{ jid: string; name: string; canWrite: boolean }> }
       }
@@ -127,7 +138,7 @@ it('refreshes through the bridge action without blocking the page, then keeps th
   p.search('team')
   p.refresh.click()
   await vi.waitFor(() =>
-    expect(p.fixture.requests.some((r) => r.payload?.action === 'refresh-groups')).toBe(true),
+    expect(p.fixture.requests.some((r) => r.params?.tool === 'whatsapp_refresh_groups')).toBe(true),
   )
   expect(p.refresh.textContent).toBe('Refreshing…')
   expect(p.refresh.disabled).toBe(true)
@@ -140,13 +151,15 @@ it('refreshes through the bridge action without blocking the page, then keeps th
   await vi.waitFor(() =>
     expect(
       p.fixture.requests.some(
-        (r) => r.payload?.action === 'set-read' && r.payload.enabled === true,
+        (r) => r.params?.tool === 'whatsapp_set_read' && r.params.arguments.enabled === true,
       ),
     ).toBe(true),
   )
   expect(p.doc.querySelector<HTMLInputElement>('#groups input')!.disabled).toBe(false)
   p.refresh.click()
-  expect(p.fixture.requests.filter((r) => r.payload?.action === 'refresh-groups')).toHaveLength(1)
+  expect(
+    p.fixture.requests.filter((r) => r.params?.tool === 'whatsapp_refresh_groups'),
+  ).toHaveLength(1)
   p.fixture.snapshot.groups.push({
     jid: '120363000000000005@g.us',
     name: 'Cedar Club',
@@ -166,7 +179,7 @@ it('ends the refreshing state after a failure and leaves the last list usable', 
   p.fixture.fail = true
   p.refresh.click()
   await vi.waitFor(() =>
-    expect(p.fixture.requests.some((r) => r.payload?.action === 'refresh-groups')).toBe(true),
+    expect(p.fixture.requests.some((r) => r.params?.tool === 'whatsapp_refresh_groups')).toBe(true),
   )
   p.doc.dispatchEvent(new Event('finish-refresh'))
   await vi.waitFor(() => expect(p.refresh.disabled).toBe(false))
@@ -194,7 +207,7 @@ it('keeps reading and the robot prefix above a short list with its controls outs
   )
   p.refresh.click()
   await vi.waitFor(() =>
-    expect(p.fixture.requests.some((r) => r.payload?.action === 'refresh-groups')).toBe(true),
+    expect(p.fixture.requests.some((r) => r.params?.tool === 'whatsapp_refresh_groups')).toBe(true),
   )
   p.doc.dispatchEvent(new Event('finish-refresh'))
   await vi.waitFor(() => expect(p.names()).toHaveLength(64))
