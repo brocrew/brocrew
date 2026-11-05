@@ -286,8 +286,10 @@ MUTATIONS = [
         # needsYou reads 3 instead of 2. That turns red the toEqual({counted:'in-full',count:2})
         # assertions at lines 307, 321, 334 and 415. Keep the label and explain the re-anchor in a
         # '#' comment so the recorde
+        # Re-anchored in place: the key now reads the asks replayed once per version of the
+        # person's queue (instructionAsksNow), and reading the decisions there is the same defect.
         [
-            (HOST, "      'an-instruction-ask': this.deps.store.instructionAsksWaiting(),\n", "      'an-instruction-ask': this.deps.store.decisionsAwaitingAPerson(),\n"),
+            (HOST, "      'an-instruction-ask': this.instructionAsksNow(),\n", "      'an-instruction-ask': this.deps.store.decisionsAwaitingAPerson(),\n"),
         ],
     ),
     (
