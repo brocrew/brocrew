@@ -267,3 +267,105 @@ it('a held start that rejects without a run cannot retain terminal consumer clea
     await draining.catch(() => undefined)
   }
 })
+
+it('terminal drain retires a proven restart exit while its old consumer revoke is still held', async () => {
+  const r = runtime()
+  const f = await fixture({ runtime: r.host })
+  await f.controller.install(f.handle, 'chrome')
+  const selected = join(f.root, 'state', 'installed-state.json')
+  const before = await readFile(selected)
+  const data = join(f.root, 'host', 'data', 'chrome', 'sentinel')
+  await mkdir(join(data, '..'), { recursive: true })
+  await writeFile(data, 'fictional restart data')
+  const ack = deferred<boolean>()
+  const entered = deferred<void>()
+  release.push(() => ack.resolve(true))
+  const revoke = vi.spyOn(f.local.sink, 'revoke').mockImplementation(() => {
+    entered.resolve()
+    return ack.promise
+  })
+  const applied = vi.spyOn(f.local.sink, 'applied')
+  const published = vi.spyOn(f.state, 'recordProjection')
+  const stopped = vi.fn()
+  const restarting = f.controller.restartPluginTools('chrome', r.run.runId, stopped).then(
+    () => true,
+    () => false,
+  )
+  try {
+    await entered.promise
+    await r.run.exited
+    expect(stopped).toHaveBeenCalledOnce()
+    expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
+    expect(f.state.inspect().pending).toBeNull()
+    f.controller.consumersEnded()
+    await expect(f.controller.drain()).resolves.toBeUndefined()
+    expect(await restarting).toBe(false)
+    expect(f.controller.cleanForShutdown()).toBe(true)
+    expect(r.host.start).toHaveBeenCalledOnce()
+    expect(await readFile(selected)).toEqual(before)
+    expect(await readFile(data, 'utf8')).toBe('fictional restart data')
+    ack.resolve(true)
+    await turn()
+    expect(revoke).toHaveBeenCalledOnce()
+    expect(applied).not.toHaveBeenCalled()
+    expect(published).not.toHaveBeenCalled()
+    expect(stopped).toHaveBeenCalledOnce()
+    expect(r.host.removeCode).not.toHaveBeenCalled()
+    expect(r.host.removeData).not.toHaveBeenCalled()
+    expect(await readFile(selected)).toEqual(before)
+  } finally {
+    ack.resolve(true)
+    r.exit.resolve()
+    await restarting
+  }
+})
+
+it('restart and terminal drain keep the exact old process obligation until its actual exit', async () => {
+  const r = runtime()
+  const stopEntered = deferred<void>()
+  r.stop.mockImplementation(async () => stopEntered.resolve())
+  const f = await fixture({ runtime: r.host })
+  await f.controller.install(f.handle, 'chrome')
+  const selected = join(f.root, 'state', 'installed-state.json')
+  const before = await readFile(selected)
+  const stopped = vi.fn()
+  const revoke = vi.spyOn(f.local.sink, 'revoke')
+  const published = vi.spyOn(f.state, 'recordProjection')
+  const restarting = f.controller.restartPluginTools('chrome', r.run.runId, stopped).then(
+    () => true,
+    () => false,
+  )
+  let draining: Promise<void> | undefined
+  try {
+    await stopEntered.promise
+    await turn()
+    expect(stopped).not.toHaveBeenCalled()
+    expect(revoke).not.toHaveBeenCalled()
+    expect(r.host.start).toHaveBeenCalledOnce()
+    expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
+    f.controller.consumersEnded()
+    draining = f.controller.drain()
+    let settled = false
+    void draining.then(
+      () => (settled = true),
+      () => (settled = true),
+    )
+    await turn()
+    expect(settled).toBe(false)
+    expect(f.controller.cleanForShutdown()).toBe(false)
+    expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
+    r.exit.resolve()
+    await expect(draining).resolves.toBeUndefined()
+    expect(await restarting).toBe(false)
+    expect(f.controller.cleanForShutdown()).toBe(true)
+    expect(stopped).not.toHaveBeenCalled()
+    expect(revoke).not.toHaveBeenCalled()
+    expect(published).not.toHaveBeenCalled()
+    expect(r.host.start).toHaveBeenCalledOnce()
+    expect(await readFile(selected)).toEqual(before)
+  } finally {
+    r.exit.resolve()
+    await restarting
+    await draining?.catch(() => undefined)
+  }
+})
