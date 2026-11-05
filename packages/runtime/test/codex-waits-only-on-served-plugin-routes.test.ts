@@ -6,6 +6,10 @@ import { CodexRuntime } from '../src/codex/codex-runtime'
 import type { CodexIncoming, CodexTransport } from '../src/codex/codex-transport'
 import { AsyncQueue } from '../src/internal/async-queue'
 import { CODEX_PROTOCOL_VERSION } from '../src/codex/protocol-version'
+import {
+  withManagedPluginAttachments,
+  type ManagedPluginAttachment,
+} from '../src/managed-plugin-session'
 import type { RuntimeEvent, SessionHandle } from '../src/index'
 import { threadStartResponse, turnStartResponse, completedTurn } from './fixtures/codex-protocol'
 
@@ -130,4 +134,43 @@ it('a served route beside a kept one is the only one awaited, and the turn waits
   await tick()
   expect(wire.catalogsAtTurns).toHaveLength(1)
   expect(JSON.stringify(asked)).not.toContain('plugin-aster')
+})
+
+it('a route served at launch that turns pending on the same handle stays configured and is no longer awaited', async () => {
+  const location = home()
+  const wire = new Wire(location)
+  const fern = { ...route, pluginId: 'fern' }
+  let reply: ManagedPluginAttachment = {
+    revision: 'served',
+    servers: [fern],
+    plugins: { pending: [], none: [], unknown: false },
+  }
+  const handle = await withManagedPluginAttachments(new CodexRuntime(() => wire), {
+    read: async () => reply,
+    close: async () => {},
+  }).start(location)
+  handles.push(handle)
+  await handle.send('fictional first words')
+  await tick()
+  expect(wire.catalogsAtTurns).toHaveLength(1)
+  wire.finish()
+  await tick()
+  reply = {
+    revision: 'starting',
+    servers: [],
+    plugins: { pending: ['fern'], none: [], unknown: false },
+  }
+  wire.discovery = async () => ({
+    data: [{ name: route.name, runtimeStatus: 'starting', toolsError: null }],
+  })
+  const before = wire.requests.length
+  await handle.send('fictional later words')
+  await tick()
+  expect(wire.catalogsAtTurns).toHaveLength(2)
+  // One health read of the configured set before the turn; no wait on the starting route.
+  expect(
+    wire.requests.slice(before).filter((one) => one.method === 'mcpServerStatus/list'),
+  ).toHaveLength(1)
+  expect(wire.requests.slice(before).some((one) => one.method === 'thread/resume')).toBe(false)
+  expect(configured(wire)).toContain(route.name)
 })
