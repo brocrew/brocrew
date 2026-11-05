@@ -98,12 +98,19 @@ describe('the listing is composed once until it moves', () => {
     await vi.waitFor(() => expect(runningOf(helper)).toBe('not-running'))
     // A commit makes the next ask a fresh composition, and one read in it fails once.
     world.store.setModel(giver, 'fictional-model')
-    const failing = vi.spyOn(world.store, 'messagesWaitingIn').mockImplementationOnce(() => {
-      throw new Error('fictional busy read')
+    // The store notes a ledger whose fold failed as skipped whole; here the stopped helper's, once.
+    const read = world.store.routedRequestsOf.bind(world.store)
+    let failedOnce = false
+    const failing = vi.spyOn(world.store, 'routedRequestsOf').mockImplementation((id, unread) => {
+      if (id !== helper || failedOnce) return read(id, unread)
+      failedOnce = true
+      unread?.in(id)('the-whole-ledger')
+      return read(id)
     })
     const before = compositions()
     listed()
     expect(failing).toHaveBeenCalled()
+    expect(failedOnce).toBe(true)
     expect(compositions()).toBe(before + 1)
     // Nothing committed and nothing live moved: the skipped listing was not kept.
     const recovered = listed()
