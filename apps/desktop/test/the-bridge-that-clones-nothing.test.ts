@@ -290,6 +290,7 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   // This run's publisher and the stamped queue: `{ kind }` alone, no payload either.
   currentEpoch: { how: 'nothing' },
   personsQueue: { how: 'nothing' },
+  listConversations: { how: 'nothing' },
   // Open work no other list shows: `{ kind: 'workIncidentsForAPerson' }` carries no payload either.
   workIncidentsForAPerson: { how: 'nothing' },
   // ⛔ **F097 · its sixth sibling, and the same answer**: the preload writes
@@ -760,7 +761,8 @@ describe('§2 · every renderer→main verb is accounted for (361 §1)', () => {
     // ⚑ And `closeWork`, a person's close of stopped work: 137 → 138.
     // The connection list and all-agent sign-in copy each add one verb.
     // ⚑ And `currentEpoch` and `personsQueue`, the stamped queue: 142 → 144.
-    expect(Object.keys(HOW_EACH_VERB_IS_BUILT)).toHaveLength(144)
+    // ⚑ And `listConversations`, the stamped listing: 144 → 145.
+    expect(Object.keys(HOW_EACH_VERB_IS_BUILT)).toHaveLength(145)
     // ⚑ 8 → 10 at `744`: `savedDrafts`, `saveDrafts`. 10 → 9 at D-016: `getDemoSeed` out.
     // ⚑ 9 → 10 at D-031: `localZone`.
     expect(Object.keys(THE_APP_CHANNELS)).toHaveLength(10)
@@ -973,7 +975,8 @@ describe('§2 · every renderer→main verb is accounted for (361 §1)', () => {
       // ⚑ `closeWork` moves the FIRST number by one (`{ kind, piece }` written by the preload); the
       // sentences quoting it are corrected with it.
       // ⚑ `currentEpoch` and `personsQueue` move the MIDDLE number by two: no payload.
-      106, 30, 8,
+      // ⚑ `listConversations` moves the MIDDLE number by one: no payload.
+      106, 31, 8,
     ])
   })
 

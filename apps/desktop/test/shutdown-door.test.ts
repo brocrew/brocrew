@@ -143,6 +143,7 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   stoppedWorkForAPerson: { kind: 'stoppedWorkForAPerson' },
   currentEpoch: { kind: 'currentEpoch' },
   personsQueue: { kind: 'personsQueue' },
+  listConversations: { kind: 'listConversations' },
   workIncidentsForAPerson: { kind: 'workIncidentsForAPerson' },
   // F097 · no arguments either, for its neighbours' reason: a person is not inside one family.
   waitingOnWhoWroteForAPerson: { kind: 'waitingOnWhoWroteForAPerson' },
@@ -625,7 +626,12 @@ describe('the shutdown door (273)', () => {
 
   it('refuses every database-reaching command once a quit has begun, and asks the host nothing', async () => {
     for (const kind of KINDS) {
-      if (ANSWERED_DURING_A_QUIT.has(kind) || kind === 'personsQueue') continue
+      if (
+        ANSWERED_DURING_A_QUIT.has(kind) ||
+        kind === 'personsQueue' ||
+        kind === 'listConversations'
+      )
+        continue
       const { host, touched } = recordingHost(true)
       await expect(executeRuntimeCommand(host, new RecordingSink(), SAMPLES[kind])).rejects.toThrow(
         refusedDuringAQuit(kind),
@@ -641,6 +647,12 @@ describe('the shutdown door (273)', () => {
     await executeRuntimeCommand(host, new RecordingSink(), SAMPLES.personsQueue)
     // Only the refusal is built: what this run is called and its sequence, no store and no queue.
     expect(touched).toEqual(['personsQueueRefused'])
+  })
+
+  it('refuses the stamped listing during a quit with its stamp, reading nothing', async () => {
+    const { host, touched } = recordingHost(true)
+    await executeRuntimeCommand(host, new RecordingSink(), SAMPLES.listConversations)
+    expect(touched).toEqual(['listingRefused'])
   })
 
   it('still answers the nine that touch no database, or refuse themselves better', async () => {

@@ -1,3 +1,4 @@
+import type { ListingAnswer } from '../shared/listing-published'
 import type { PublicationEpoch } from '../shared/data-version'
 import type { PersonsQueueAnswer } from '../shared/persons-published'
 import { providerSetupBridge } from './provider-setup'
@@ -329,6 +330,8 @@ const runtime: RuntimeBridge = Object.freeze({
   currentEpoch: (): Promise<PublicationEpoch> => command({ kind: 'currentEpoch' }),
   /** The person's queue as one stamped publication: eight parts, each with its own coverage. */
   personsQueue: (): Promise<PersonsQueueAnswer> => command({ kind: 'personsQueue' }),
+  /** Both halves of the listing as one stamped publication. */
+  listConversations: (): Promise<ListingAnswer> => command({ kind: 'listConversations' }),
   /** Work whose holder stopped with it, its giver told: to look at or hand back. */
   stoppedWorkForAPerson: (): Promise<LedgerWalk<StoppedWorkForAPerson>> =>
     command({ kind: 'stoppedWorkForAPerson' }),

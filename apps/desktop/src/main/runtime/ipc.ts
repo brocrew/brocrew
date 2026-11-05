@@ -672,6 +672,7 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
   // This run's publisher, and the person's queue as one publication: no fields, as their neighbours.
   z.object({ kind: z.literal('currentEpoch') }),
   z.object({ kind: z.literal('personsQueue') }),
+  z.object({ kind: z.literal('listConversations') }),
   // Open work no other list shows: no fields, as its neighbour.
   z.object({ kind: z.literal('workIncidentsForAPerson') }),
   // ⚑ **F097** · no fields, and the same census answer as its siblings. ⚑ Its own verb rather than a
@@ -1830,6 +1831,8 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   stoppedWorkForAPerson: 'refused',
   // ⛔ `refused`, for its neighbours' reason: store walks the next launch reads again.
   personsQueue: 'refused',
+  // ⛔ `refused`, for the listing pair's reason; answered at its stamp, as the queue is.
+  listConversations: 'refused',
   // Answered: it reads nothing but what this run is called.
   currentEpoch: 'answered',
   // ⛔ `refused`, for its neighbour's reason: a store walk, over rows the next launch reads again.
@@ -2111,6 +2114,8 @@ export async function executeRuntimeCommand(
     // The stamped queue says its refusal at its stamp, so a window can order it; nothing is read.
     if (command.kind === 'personsQueue')
       return host.personsQueueRefused(refusedDuringAQuit(command.kind))
+    if (command.kind === 'listConversations')
+      return host.listingRefused(refusedDuringAQuit(command.kind))
     throw new Error(refusedDuringAQuit(command.kind))
   }
   switch (command.kind) {
@@ -2469,6 +2474,10 @@ export async function executeRuntimeCommand(
       // A read, and it takes no sink and no owner, as the eight reads it gathers. It sends what
       // they send, under one stamp.
       return host.personsQueue() satisfies Answer<'personsQueue'>
+    case 'listConversations':
+      // A read, and it takes no sink and no owner, as the two halves it gathers. It sends what
+      // they send, under one stamp.
+      return host.listConversations() satisfies Answer<'listConversations'>
     case 'workIncidentsForAPerson':
       // A read, and it takes no sink and no owner, as its neighbours. It sends each piece's label,
       // title, holder and giver names and what is wrong with it; no brief and no transcript.

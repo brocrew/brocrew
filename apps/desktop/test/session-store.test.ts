@@ -352,6 +352,9 @@ function fakeBridge() {
     personsQueue: async () => {
       throw new Error('the stamped queue is not read by this store yet')
     },
+    listConversations: async () => {
+      throw new Error('the stamped listing is not read by this store yet')
+    },
     // ⚑ Work whose holder stopped with it, faked the same way: empty is the ordinary answer.
     stoppedWorkForAPerson: async () => {
       calls.push('stoppedWorkForAPerson')

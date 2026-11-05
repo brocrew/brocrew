@@ -1,3 +1,4 @@
+import type { ListingAnswer } from './listing-published'
 import type { PersonsQueueAnswer } from './persons-published'
 import type { PublicationEpoch } from './data-version'
 import type {
@@ -1404,7 +1405,7 @@ export type RuntimeChangeSubject = (typeof RUNTIME_CHANGE_SUBJECTS)[number]
  */
 export interface RuntimeChangeMessage {
   readonly what: RuntimeChangeSubject
-  /** On a `persons` notice: the publication it was made at, beside the queue's stamped answers. */
+  /** On a `persons` or `conversations` notice: the publication it was made at. */
   readonly published?: { readonly epoch: PublicationEpoch; readonly seq: number }
 }
 
@@ -1468,6 +1469,8 @@ export interface RuntimeStatesMessage {
   readonly moved: readonly AgentStateMoved[]
   /** ⚑ **D-026 · the files kept since**, each once its row was down — {@link FilesKept}'s row. */
   readonly kept: readonly KeptFile[]
+  /** The publication it was sent at: newer than every answer composed before it. */
+  readonly published?: { readonly epoch: PublicationEpoch; readonly seq: number }
 }
 
 /**
@@ -8311,6 +8314,8 @@ export type RuntimeCommand =
   | { kind: 'currentEpoch' }
   /** The person's queue as one stamped publication ({@link PersonsQueueAnswer}). No arguments. */
   | { kind: 'personsQueue' }
+  /** Both halves of the listing as one stamped publication ({@link ListingAnswer}). No arguments. */
+  | { kind: 'listConversations' }
   /**
    * The open pieces no other list shows a person, with what is wrong with each
    * ({@link WorkIncident}). ⚑ No arguments, for its siblings' reason.
@@ -9136,6 +9141,7 @@ export interface RuntimeCommandResults {
   stalledWorkForAPerson: LedgerWalk<StalledWork>
   currentEpoch: PublicationEpoch
   personsQueue: PersonsQueueAnswer
+  listConversations: ListingAnswer
   stoppedWorkForAPerson: LedgerWalk<StoppedWorkForAPerson>
   workIncidentsForAPerson: LedgerWalk<WorkIncident>
   /**
@@ -9834,6 +9840,8 @@ export interface RuntimeBridge {
   currentEpoch(): Promise<PublicationEpoch>
   /** The person's queue as one stamped publication: eight parts, each with its own coverage. */
   personsQueue(): Promise<PersonsQueueAnswer>
+  /** Both halves of the listing as one stamped publication. */
+  listConversations(): Promise<ListingAnswer>
   stoppedWorkForAPerson(): Promise<LedgerWalk<StoppedWorkForAPerson>>
   /** The open pieces no other list shows a person, with what is wrong with each. */
   workIncidentsForAPerson(): Promise<LedgerWalk<WorkIncident>>

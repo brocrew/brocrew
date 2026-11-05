@@ -1099,6 +1099,11 @@ import type { StoppedWorkForAPerson } from '../../shared/stopped-work'
 import type { WorkIncident } from '../../shared/work-incidents'
 import type { WaitingOnWhoWrote } from '../../shared/waiting-on-who-wrote'
 import type { Coverage, PublicationEpoch } from '../../shared/data-version'
+import type {
+  ListingAnswer,
+  ListingRefused,
+  PublishedListing,
+} from '../../shared/listing-published'
 import {
   PERSONS_PARTS,
   PERSONS_ROW_KEY,
@@ -7918,6 +7923,8 @@ export class RuntimeHost implements LiveHost {
         readonly at: number
         readonly resumable: ResumableSessionInfo[]
         readonly unresumable: UnresumableSessionInfo[]
+        /** Every row was read; a kept listing always was. */
+        readonly complete: boolean
       }
     | undefined
   /** What each conversation waits on, and the forest, each kept at the listing's version. */
@@ -10585,7 +10592,7 @@ export class RuntimeHost implements LiveHost {
     if (what === 'agents') this.namesMayHaveMoved()
     try {
       this.deps.announce?.(
-        what === 'persons'
+        what === 'persons' || what === 'conversations'
           ? { what, published: { epoch: this.publicationEpoch, seq: this.publicationSeq } }
           : { what },
       )
@@ -10972,8 +10979,10 @@ export class RuntimeHost implements LiveHost {
     const moved = this.statesThatMoved(asked)
     const kept = this.whatWasKept(keptOn)
     if (moved.length === 0 && kept.length === 0) return
+    // A push is newer than every answer composed before it, so it moves the sequence once.
+    const published = { epoch: this.publicationEpoch, seq: ++this.publicationSeq }
     try {
-      say({ moved, kept })
+      say({ moved, kept, published })
     } catch (error) {
       console.warn(`runtime host could not tell the windows what moved: ${errorMessage(error)}`)
     }
@@ -21409,6 +21418,45 @@ export class RuntimeHost implements LiveHost {
   }
 
   /** The queue refused as a whole, at the stamp current now. Reads nothing. */
+  /**
+   * The listing as one publication: both halves of one composition, stamped with the sequence they
+   * are exact at, complete only if every row was read. A listing that cannot be read at all is
+   * refused at the stamp it failed against.
+   */
+  async listConversations(): Promise<ListingAnswer> {
+    try {
+      return await this.readForWindow((): PublishedListing => {
+        const { resumable, unresumable, complete } = this.theListing()
+        const seq = this.publicationSeq
+        return {
+          resumable,
+          unresumable,
+          published: {
+            epoch: this.publicationEpoch,
+            seq,
+            covers: complete
+              ? { population: 'listing', complete: true }
+              : {
+                  population: 'listing',
+                  complete: false,
+                  ids: [...resumable, ...unresumable].map((row) => row.sessionId),
+                },
+          },
+        }
+      })
+    } catch (error) {
+      return this.listingRefused(errorMessage(error))
+    }
+  }
+
+  /** The listing refused as a whole, at the stamp current now. Reads nothing. */
+  listingRefused(because: string): ListingRefused {
+    return {
+      refused: because,
+      published: { epoch: this.publicationEpoch, seq: this.publicationSeq },
+    }
+  }
+
   personsQueueRefused(because: string): PersonsQueueRefused {
     return {
       refused: because,
@@ -38062,14 +38110,14 @@ export class RuntimeHost implements LiveHost {
     if (kept !== undefined && kept.at === this.listingVersion) return kept
     const at = this.listingVersion
     const { unread, stateOf, itsWork } = this.oneReadPerListing()
-    const composed = {
-      at,
+    const halves = {
       resumable: this.resumableHalf(stateOf, itsWork),
       unresumable: this.unresumableHalf(stateOf, itsWork),
     }
     // ⚑ A read it skipped may have failed only this once, so a listing that skipped one is said
     // once and composed again at the next ask.
     const complete = unread.count === 0 && unread.ledgersSkipped === 0
+    const composed = { at, ...halves, complete }
     this.listingKept = this.listingVersion === at && complete ? composed : undefined
     return composed
   }

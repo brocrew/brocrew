@@ -426,6 +426,7 @@ const CLASSIFIED: Record<
   // ⛔ `no session`, for their neighbours' reason: neither names a conversation.
   currentEpoch: 'no session',
   personsQueue: 'no session',
+  listConversations: 'no session',
   // ⛔ `no session`, for its neighbours' reason: it names no conversation.
   workIncidentsForAPerson: 'no session',
   // ⛔ **F097 · `no session`, its siblings' word for their reason.** It names no conversation: the
