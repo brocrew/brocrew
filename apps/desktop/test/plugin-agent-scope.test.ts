@@ -262,12 +262,13 @@ it('publishes each independent receipt before its completion wake, with B still 
   releases.push(() => held.resolve())
   releases.push(() => heldA.resolve())
   const scopes: AgentScope[] = []
+  const receiptsAtWake: boolean[] = []
   const unsubscribe = f.controller.onHostChanged((workspaceId) => {
     if (workspaceId !== fresh.sink.workspaceId) return
     const scope = f.controller.agentScope(workspaceId)
     scopes.push(scope)
     if (entry(scope, A).is === 'admitted') {
-      expect(f.state.projections(workspaceId).some((one) => one.pluginId === A)).toBe(true)
+      receiptsAtWake.push(f.state.projections(workspaceId).some((one) => one.pluginId === A))
       done.resolve()
     }
   })
@@ -294,6 +295,8 @@ it('publishes each independent receipt before its completion wake, with B still 
   heldA.resolve()
   await done.promise
   expect(completion(scopes, A)).toBeDefined()
+  expect(receiptsAtWake.length).toBeGreaterThan(0)
+  expect(receiptsAtWake.every(Boolean)).toBe(true)
   expect(entry(f.controller.agentScope(fresh.sink.workspaceId), B)).toMatchObject({
     is: 'pending',
     why: 'not-projected',
