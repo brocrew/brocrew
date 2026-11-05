@@ -140,6 +140,7 @@ function fixture(
     unknownTamper = false,
     tamperEffects = false,
     unexpectedRun = false,
+    tamperError,
   } = {},
 ) {
   const body = source
@@ -148,7 +149,10 @@ function fixture(
   const installedCounts = new Map()
   const calls = [],
     lines = [],
+    errors = [],
+    stopped = [],
     files = new Map()
+  const originalError = new Error('HOME=/fictional TOKEN=madeup argv=private')
   let starts = 0,
     selected = false,
     inspections = 0
@@ -156,7 +160,7 @@ function fixture(
   let providerClosed = false
   const check = (step) => {
     calls.push(step)
-    if (fail === step) throw new Error('HOME=/fictional TOKEN=madeup argv=private')
+    if (fail === step) throw originalError
   }
   const page = (number) => ({
     number,
@@ -176,6 +180,7 @@ function fixture(
     close() {},
   })
   const io = {
+    console: { error: (...args) => errors.push(args) },
     isDeepStrictEqual,
     observationJson,
     emptyInstallBaseline,
@@ -183,6 +188,7 @@ function fixture(
     sameInstallState,
     observeInstallState: (_root, global) => {
       if (global.replaceAll('\\', '/').endsWith('/b')) {
+        if (tamperError) throw tamperError
         if (unknownTamper) throw new Error('Unknown tamper state')
         const value = structuredClone(logical.baseline)
         if (tamperEffects) value.sequence = 2
@@ -352,10 +358,11 @@ function fixture(
     stopApp: async (run) => {
       if (run.number === roles.main && !run.stopped) check('restart-stop')
       run.stopped = true
+      stopped.push(run.number)
     },
   }
   const journey = Function(...Object.keys(io), 'return (' + body + ')')(...Object.values(io))
-  return { run: () => journey('/fictional/root'), calls, lines, files }
+  return { run: () => journey('/fictional/root'), calls, lines, errors, stopped, files, originalError }
 }
 describe('packaged restart journey without a native launch', () => {
   it('accounts exactly sequence0 to sequence2 and refuses hidden replay despite byte-identical retained package data', () => {
@@ -577,6 +584,52 @@ describe('packaged restart journey without a native launch', () => {
     expect(summary.checks.restartRetained).toBe(true)
     expect(summary.checks.reinstallRetained).toBe(true)
     expect(f.lines).toEqual([])
+    expect(f.errors).toEqual([])
+  })
+  it('prints the original fictional tampered-state filesystem Error while preserving failure, summary and cleanup', async () => {
+    // This deterministic injection does not identify the actual hosted Mac failure's path.
+    const originalError = Object.assign(
+      new Error("ENOENT: no such file or directory, lstat '/fictional/root/b/state'"),
+      { code: 'ENOENT', syscall: 'lstat', path: '/fictional/root/b/state' },
+    )
+    const f = fixture(undefined, { tamperError: originalError })
+    const summary = await f.run()
+    expect(f.errors).toHaveLength(1)
+    expect(f.errors[0]).toHaveLength(1)
+    expect(f.errors[0][0]).toBe(originalError)
+    expect(originalError).toMatchObject({
+      message: "ENOENT: no such file or directory, lstat '/fictional/root/b/state'",
+      code: 'ENOENT',
+      syscall: 'lstat',
+      path: '/fictional/root/b/state',
+    })
+    expect(originalError.stack).toContain(originalError.message)
+    expect(originalError.stack).toMatch(/\n\s+at /)
+    expect(summary.failure).toEqual({
+      phase: 'journey',
+      step: 'tampered-refusal',
+      errorClass: 'fs-enoent',
+      exitCode: null,
+      signal: null,
+    })
+    expect(summary.passed).toBe(false)
+    expect(summary.counts.failed).toBe(1)
+    expect(summary.counts.cleanupFailures).toBeUndefined()
+    expect(summary.checks.tamperedArchiveRefused).toBe(false)
+    expect(summary.checks.alternateSourceAccepted).toBe(false)
+    expect(summary.checks.installed).toBe(false)
+    expect(summary.pageState).toEqual({
+      readyState: 'complete',
+      routeCategory: 'workspace',
+      markers: ['rail-settings'],
+    })
+    expect(f.stopped).toEqual([roles.tamper])
+    expect(f.calls.filter((one) => typeof one === 'object' && one.start)).toHaveLength(1)
+    expect(f.lines).toContain('gate-failure ' + JSON.stringify(summary.failure))
+    expect(safeReport(summary)).toBe(true)
+    expect(JSON.parse(f.files.get('/fictional/root/summary.json'))).toEqual(summary)
+    // The raw Error is separate from the unchanged closed records.
+    expect(JSON.stringify(summary) + f.lines.join('')).not.toMatch(/fictional|ENOENT|syscall|stack/)
   })
   it.each([
     'provider-start',
@@ -596,6 +649,12 @@ describe('packaged restart journey without a native launch', () => {
   ])('records %s and closed page state rather than swallowing a raw error', async (step) => {
     const f = fixture(step)
     const summary = await f.run()
+    expect(f.errors).toHaveLength(1)
+    expect(f.errors[0]).toHaveLength(1)
+    expect(f.errors[0][0]).toBe(f.originalError)
+    expect(f.originalError.message).toBe('HOME=/fictional TOKEN=madeup argv=private')
+    expect(f.originalError.stack).toContain(f.originalError.message)
+    expect(f.originalError.stack).toMatch(/\n\s+at /)
     expect(summary.passed).toBe(false)
     if (!['concurrent', 'uninstall', 'reinstall', 'fake-browser'].includes(step))
       expect(summary.checks.alternateSourceAccepted).toBe(false)

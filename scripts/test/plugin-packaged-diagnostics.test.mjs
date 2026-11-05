@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import { fileURLToPath } from 'node:url'
+import { inspect } from 'node:util'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as diagnostics from '../gates/plugin-packaged/diagnostics.mjs'
 import * as matrix from '../gates/plugin-packaged/matrix.mjs'
@@ -274,6 +275,78 @@ describe.skipIf(process.platform === 'win32')('safe packaged gate failure diagno
     },
   )
 
+  it('forwards the original tampered-state Error bytes after zero exit and retains its closed failure through pipe closure', async () => {
+    const originalError = Object.assign(
+      new Error("ENOENT: no such file or directory, lstat '/fictional/root/b/state'"),
+      { code: 'ENOENT', syscall: 'lstat', path: '/fictional/root/b/state' },
+    )
+    const raw = inspect(originalError) + '\n'
+    const expected = {
+      phase: 'journey',
+      step: 'tampered-refusal',
+      errorClass: 'fs-enoent',
+      exitCode: null,
+      signal: null,
+    }
+    const frame = 'gate-failure ' + JSON.stringify(expected) + '\n'
+    const originalStdout = process.stdout.write,
+      originalStderr = process.stderr.write,
+      stdout = [],
+      stderr = []
+    const stdoutWrite = vi.spyOn(process.stdout, 'write').mockImplementation((bytes) => {
+      stdout.push(String(bytes))
+      return true
+    })
+    const stderrWrite = vi.spyOn(process.stderr, 'write').mockImplementation((bytes) => {
+      stderr.push(String(bytes))
+      return true
+    })
+    try {
+      const { child, run } = launcher({ delayedClose: true })
+      const task = run(
+        '/fictional/node',
+        [],
+        {},
+        '/fictional',
+        { signal: new AbortController().signal },
+        1000,
+        'journey',
+      )
+      let settled = false
+      const waiting = task.wait().then(
+        () => {
+          settled = true
+        },
+        (error) => {
+          settled = true
+          return error.failure
+        },
+      )
+      child.stderr.emit('data', Buffer.from(raw.slice(0, 31)))
+      child.stdout.emit('data', Buffer.from(frame.slice(0, 25)))
+      child.emit('exit', 0, null)
+      await new Promise((resolve) => setImmediate(resolve))
+      expect(settled).toBe(false)
+      child.stderr.emit('data', Buffer.from(raw.slice(31)))
+      child.stdout.emit('data', Buffer.from(frame.slice(25)))
+      child.emit('close', 0, null)
+      expect(await waiting).toEqual(expected)
+      expect(stdout).toEqual([frame.slice(0, 25), frame.slice(25)])
+      expect(stderr).toEqual([raw.slice(0, 31), raw.slice(31)])
+      expect(stderr.join('')).toContain(originalError.message)
+      expect(stderr.join('')).toContain(originalError.stack)
+      expect(stderr.join('')).toContain("syscall: 'lstat'")
+      expect(stderr.join('')).toContain("path: '/fictional/root/b/state'")
+      expect(safeReport({ failure: expected })).toBe(true)
+      expect(JSON.stringify(expected)).not.toMatch(/fictional|ENOENT|syscall|stack/)
+    } finally {
+      stdoutWrite.mockRestore()
+      stderrWrite.mockRestore()
+      expect(process.stdout.write).toBe(originalStdout)
+      expect(process.stderr.write).toBe(originalStderr)
+    }
+  })
+
   it.each([
     ['EACCES', 'permission'],
     ['PermissionError: Permission denied', 'permission'],
@@ -282,7 +355,7 @@ describe.skipIf(process.platform === 'win32')('safe packaged gate failure diagno
     ['ENOTFOUND', 'network'],
     ['ERR_PNPM_META_FETCH_FAIL', 'network'],
     ['gyp ERR!', 'native-build'],
-  ])('classifies %s without exposing child paths, env or argv', async (token, kind) => {
+  ])('classifies %s while keeping child paths, env and argv out of structured records', async (token, kind) => {
     const { child, run } = launcher()
     const task = run(
       '/fictional/node',
@@ -314,7 +387,7 @@ describe.skipIf(process.platform === 'win32')('safe packaged gate failure diagno
     expect(bytes).not.toMatch(/private|fictional|HOME|MADE_UP_VALUE|argv|cwd/)
     expect(JSON.parse(printed[0].slice('gate-failure '.length))).toEqual(failure)
   })
-  it('carries a chunked inner failure frame across a generic prepare exit without forwarding raw output', async () => {
+  it('carries a chunked inner failure frame across a generic prepare exit independently of raw output', async () => {
     const { child, run } = launcher()
     const task = run(
       '/fictional/node',

@@ -295,13 +295,42 @@ describe('packaged GUI probe diagnostic steps without an app launch', () => {
       },
     )
     expect(result.status).toBe(1)
-    expect(result.stderr).toBe('')
+    expect(result.signal).toBeNull()
+    expect(result.stderr).toContain('Error: Private Mac gate only')
+    expect(result.stderr).toMatch(/\n\s+at requireCI /)
     const frames = []
     failureFrames((value) => frames.push(value))(Buffer.from(result.stdout))
     expect(frames).toEqual([
       { phase: 'gui-probe', step: 'app-spawn', errorClass: 'thrown', exitCode: null, signal: null },
     ])
+    expect(result.stdout).toBe('gate-failure ' + JSON.stringify(frames[0]) + '\n')
     expect(result.stdout).not.toMatch(/fictional|HOME|path|argv/)
+  })
+  it('prints the ordinary journey bootstrap refusal with its original Error and unchanged exit and frame', () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        fileURLToPath(new URL('../gates/plugin-packaged/journey.mjs', import.meta.url)),
+        '/fictional/absent',
+      ],
+      {
+        env: { RUNNER_ENVIRONMENT: 'self-hosted' },
+        encoding: 'utf8',
+        timeout: 3000,
+      },
+    )
+    expect(result.status).toBe(1)
+    expect(result.signal).toBeNull()
+    expect(result.stderr).toContain('Error: Private Mac gate only')
+    expect(result.stderr).toMatch(/\n\s+at requireCI /)
+    const expected = {
+      phase: 'journey',
+      step: 'bootstrap',
+      errorClass: 'thrown',
+      exitCode: null,
+      signal: null,
+    }
+    expect(result.stdout).toBe('gate-failure ' + JSON.stringify(expected) + '\n')
   })
   it('captures page state on a drawing timeout without replacing the original failure', async () => {
     const source = fs.readFileSync(
