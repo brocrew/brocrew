@@ -193,6 +193,10 @@ export class PluginLifecycleController {
   private readonly workspaceGenerations = new Map<string, number>()
   private readonly blocks = new Map<string, symbol>()
   private readonly runs = new Map<string, Running>()
+  private readonly bindingAcquisitions = new Map<
+    string,
+    { identity: string; block: symbol | undefined; work: Promise<LifecycleRun> }
+  >()
   private readonly toolRestarts = new Map<
     string,
     { runId: string | undefined; work: Promise<void> }
@@ -1102,8 +1106,10 @@ export class PluginLifecycleController {
           (await this.bindingWait(workspace, binding, () =>
             this.vault.load(this.descriptor(install), []),
           ))
+        const acquiring = this.bindingAcquisitions.has(id)
         binding.run ??= this.runs.get(id)
-        if (!binding.run) {
+        // Registration can precede readiness; pending consumers still join that exact attempt.
+        if (acquiring || !binding.run) {
           await this.bindingWait(
             workspace,
             binding,
@@ -1184,7 +1190,30 @@ export class PluginLifecycleController {
     install: Installation,
     checked: VerifiedPluginPackage,
   ): Promise<LifecycleRun> {
-    return this.effectQueue.restart(id, randomUUID(), () => this.ensureRunning(install, checked))
+    if (this.draining || this.effectQueue.signal.aborted) return pending()
+    const identity = JSON.stringify([install, this.options.state.readView().guard(id)])
+    const block = this.blocks.get(id)
+    const prior = this.bindingAcquisitions.get(id)
+    if (prior) {
+      if (prior.identity !== identity || prior.block !== block) return pending()
+      return prior.work
+    }
+    // An earlier attempt may have settled between the caller's check and this guarded callback.
+    const running = this.runs.get(id)
+    if (running) {
+      if (running.installId !== install.installId || running.ended) return pending()
+      return Promise.resolve(running.run)
+    }
+    const work = this.effectQueue.restart(id, randomUUID(), () =>
+      this.ensureRunning(install, checked),
+    )
+    const entry = { identity, block, work }
+    this.bindingAcquisitions.set(id, entry)
+    const clear = () => {
+      if (this.bindingAcquisitions.get(id) === entry) this.bindingAcquisitions.delete(id)
+    }
+    void work.then(clear, clear)
+    return work
   }
   /** A workspace can expose one ready plugin while an unrelated consumer binding is still pending. */
   async attach(sink: WorkspaceProjection, shared = false): Promise<LifecycleWorkspace> {
