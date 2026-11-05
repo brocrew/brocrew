@@ -171,7 +171,8 @@ describe('685 · a person chooses each agent’s model and effort — over the r
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
       listProfiles: () => [...folders],
-      announce: ({ what }) => announced.push(what),
+      // `persons` comes from the store's record of each commit, and is pinned in its own file.
+      announce: ({ what }) => void (what !== 'persons' && announced.push(what)),
       newSessionId: () => `sess_${Math.random().toString(36).slice(2)}`,
       readProviderConfig: (_provider, home) => ({
         home,

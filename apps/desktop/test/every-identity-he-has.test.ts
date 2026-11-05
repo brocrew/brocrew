@@ -164,7 +164,8 @@ describe('558 · every identity he has', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      announce: (change) => said.push(change),
+      // `persons` comes from the store's record of each commit, and is pinned in its own file.
+      announce: (change) => void (change.what !== 'persons' && said.push(change)),
       readProviderConfig: (provider, home) => ({
         home,
         homeEnv: 'CLAUDE_CONFIG_DIR',

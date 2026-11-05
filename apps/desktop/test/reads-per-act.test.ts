@@ -91,7 +91,7 @@ const ACTS = {
   // announcing both queue changes. Three pieces therefore produce twelve work announcements.
   // ⚑ `persons` is announced from the store's record, once per commit holding a row the person's
   // queue reads; the window hears each subject once per turn of the loop.
-  'give 3': { conversations: 3, agents: 3, work: 12, persons: 24 },
+  'give 3': { conversations: 3, agents: 3, work: 12, persons: 27 },
   '3 replies': { work: 3, persons: 9 },
   // ⚑ **D-017** — it was *end 3*, the parent's `end_agent` on each child, and nothing ends a
   // conversation any more: the act is the STOP, the app's own close — the teardown `end_agent`

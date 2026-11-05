@@ -226,7 +226,8 @@ describe('682 · a person’s choice holds the whole launch', () => {
         'brobot',
         ...(existsSync(homes()) ? readdirSync(homes()).filter((one) => one !== 'brobot') : []),
       ],
-      announce: ({ what }) => announced.push(what),
+      // `persons` comes from the store's record of each commit, and is pinned in its own file.
+      announce: ({ what }) => void (what !== 'persons' && announced.push(what)),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       readProviderConfig: (_provider, home) => ({
