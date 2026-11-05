@@ -34,6 +34,15 @@ describe('the person’s queue is composed once until it moves', () => {
     })
   }
 
+  /** A question routed to a person, written by the store alone: a row the queue reads. */
+  const routed = (requestId: string) =>
+    world.store.append(
+      giver,
+      world.store.nextOrdinal(giver),
+      { type: 'request_routed', requestId, to: 'a-person' } as TranscriptEvent,
+      world.clock++,
+    )
+
   beforeEach(async () => {
     world = aServiceWorld()
     world.anAgent('giver', 'normal')
@@ -110,8 +119,8 @@ describe('the person’s queue is composed once until it moves', () => {
 
   it('a walk that could not read a row is said once, and read again with nothing moved', async () => {
     await quiet()
-    // A commit moves the queue, so the next ask composes; its walk counts one row unread, once.
-    world.store.setModel(giver, 'fictional-model')
+    // A row the queue reads moves it, so the next ask composes; its walk counts one row unread, once.
+    routed('fictional-unread')
     const read = world.store.piecesWaitingOnWhoWrote.bind(world.store)
     const walked = vi
       .spyOn(world.store, 'piecesWaitingOnWhoWrote')
@@ -125,7 +134,7 @@ describe('the person’s queue is composed once until it moves', () => {
 
   it('the asks against agents’ rules are replayed once a version, for the queue, the workspace and the listing', async () => {
     await quiet()
-    world.store.setModel(giver, 'fictional-model')
+    routed('fictional-replay')
     const replayed = vi.spyOn(world.store, 'instructionAsksWaiting')
     host.instructionAsksForAPerson()
     host.readWorkspace()
