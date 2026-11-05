@@ -157,4 +157,21 @@ describe('a window keeps only newer publications', () => {
     expect(acceptError(state, 19, 'older').error?.message).toBe('first')
     expect(partial(state, 20, { a: '2' }).error).toBeNull()
   })
+
+  it('after a resync, the first complete answer of the new epoch is newer than what the stale scope holds', () => {
+    const held = whole(start(), 10, { a: '1' })
+    const kept = scopeAfterAdvance(held, { run: 'B', n: 2, reason: 'resync' })
+    expect(whole(kept, 10, { a: '2' })).toBe(kept)
+    const fresh = whole(kept, 11, { a: '2' })
+    expect(values(fresh)).toEqual({ a: '2' })
+    expect(fresh.stale).toBe(false)
+  })
+
+  it('an answer that changes nothing returns the same state', () => {
+    const value = 'idle'
+    const once = acceptAnswer(start(), 10, false, new Map([['a', value]]))
+    expect(acceptAnswer(once, 10, false, new Map([['a', value]]))).toBe(once)
+    expect(acceptAnswer(once, 9, false, new Map([['a', 'older']]))).not.toBe(start())
+    expect(acceptAnswer(once, 9, false, new Map([['a', 'older']])).rows).toBe(once.rows)
+  })
 })
