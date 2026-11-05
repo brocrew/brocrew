@@ -176,6 +176,20 @@ it('terminal drain includes a start allocation held before its run enters the co
   const current = await PluginLifecycleController.open({ ...f.opts, state, runtime: r.host })
   await current.attach(projection().sink)
   await entered.promise
+  const ack = deferred<boolean>()
+  const ackEntered = deferred<void>()
+  release.push(() => ack.resolve(true))
+  const pendingConsumer = projection()
+  vi.spyOn(pendingConsumer.sink, 'revoke').mockImplementation(() => {
+    ackEntered.resolve()
+    return ack.promise
+  })
+  const applied = vi.spyOn(pendingConsumer.sink, 'applied')
+  await current.attach(pendingConsumer.sink)
+  await ackEntered.promise
+  const selected = join(f.root, 'state', 'installed-state.json')
+  const before = await readFile(selected)
+  const published = vi.spyOn(state, 'recordProjection')
   current.consumersEnded()
   const draining = current.drain()
   let settled = false
@@ -197,9 +211,59 @@ it('terminal drain includes a start allocation held before its run enters the co
     expect(current.cleanForShutdown()).toBe(true)
     expect(r.host.start).toHaveBeenCalledOnce()
     expect(r.stop).toHaveBeenCalledOnce()
+    expect(await readFile(selected)).toEqual(before)
+    ack.resolve(true)
+    await turn()
+    expect(applied).not.toHaveBeenCalled()
+    expect(published).not.toHaveBeenCalled()
   } finally {
     allocated.resolve()
     r.exit.resolve()
+    ack.resolve(true)
+    await draining.catch(() => undefined)
+  }
+})
+
+it('a held start that rejects without a run cannot retain terminal consumer cleanup', async () => {
+  const original = runtime()
+  const f = await fixture({ runtime: original.host })
+  await f.controller.install(f.handle, 'chrome')
+  f.controller.consumersEnded()
+  await f.controller.drain()
+  const state = reopenLifecycleFixture(f)
+  const r = runtime()
+  const entered = deferred<void>()
+  const allocated = deferred<void>()
+  release.push(() => allocated.resolve())
+  r.host.start = vi.fn(async () => {
+    entered.resolve()
+    await allocated.promise
+    throw new Error('fictional allocation refused without a run')
+  })
+  const current = await PluginLifecycleController.open({ ...f.opts, state, runtime: r.host })
+  await current.attach(projection().sink)
+  await entered.promise
+  const selected = join(f.root, 'state', 'installed-state.json')
+  const before = await readFile(selected)
+  current.consumersEnded()
+  const draining = current.drain()
+  let settled = false
+  void draining.then(
+    () => (settled = true),
+    () => (settled = true),
+  )
+  try {
+    await turn()
+    expect(settled).toBe(false)
+    expect(current.cleanForShutdown()).toBe(false)
+    allocated.resolve()
+    await expect(draining).resolves.toBeUndefined()
+    expect(current.cleanForShutdown()).toBe(true)
+    expect(r.host.start).toHaveBeenCalledOnce()
+    expect(r.stop).not.toHaveBeenCalled()
+    expect(await readFile(selected)).toEqual(before)
+  } finally {
+    allocated.resolve()
     await draining.catch(() => undefined)
   }
 })
