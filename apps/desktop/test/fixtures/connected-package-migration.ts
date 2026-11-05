@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { readFile, realpath, writeFile } from 'node:fs/promises'
 import { SHARED_DATA_FEATURE } from '../../src/main/plugins/shared-data-contract'
@@ -82,9 +82,12 @@ function boundarySource(id: MigratedPackage, packageRoot: string): string {
   const common = String.raw`
 import fs from 'node:fs';
 import path from 'node:path';
-const bootstrap=JSON.parse(process.env.BROCREW_PLUGIN_BOOTSTRAP);
-const audit=path.join(bootstrap.sharedDataDirectory,'fictional-boundary.jsonl');
-const record=(event,extra={})=>fs.appendFileSync(audit,JSON.stringify({event,runId:bootstrap.instanceId,...extra})+'\n');
+const readBootstrap=()=>JSON.parse(process.env.BROCREW_PLUGIN_BOOTSTRAP);
+const record=(event,extra={})=>{
+ const bootstrap=readBootstrap();
+ const audit=path.join(bootstrap.sharedDataDirectory,'fictional-boundary.jsonl');
+ fs.appendFileSync(audit,JSON.stringify({event,runId:bootstrap.instanceId,...extra})+'\n');
+};
 `
   if (id === 'chrome')
     return (
@@ -92,7 +95,7 @@ const record=(event,extra={})=>fs.appendFileSync(audit,JSON.stringify({event,run
       `
 import {FakeBrowser} from ${imports};
 export class ChromeBrowser extends FakeBrowser {
- constructor(options) { super(options.dirOf); record('browser-start',{bootstrap}); }
+ constructor(options) { super(options.dirOf); record('browser-start',{bootstrap:readBootstrap()}); }
  async ensure(profile,mode) { record('browser-open',{profile,mode}); return super.ensure(profile,mode); }
  async turnHelperOn(profile) { record('helper-on',{profile}); await super.turnHelperOn(profile); }
  visiblePages() { return []; }
@@ -105,6 +108,7 @@ export class ChromeBrowser extends FakeBrowser {
     `
 import {FakeBridge} from ${imports};
 export function startBridge(options) {
+ const bootstrap=readBootstrap();
  record('bridge-start',{bootstrap,home:options.config.home,bridgeData:options.config.bridgeData});
  const state=JSON.parse(fs.readFileSync(path.join(bootstrap.sharedDataDirectory,'fictional-phone.json'),'utf8'));
  class FictionalBridge extends FakeBridge {
@@ -147,10 +151,11 @@ export async function migrationPackages(id: MigratedPackage, output: string) {
   const packageRoot = join(repository, 'plugins', id)
   const entry = join(packageRoot, 'src/index.ts')
   const boundary = id === 'chrome' ? /(?:^|\/)browser\/chromeBrowser\.js$/ : /^\.\/bridge\.js$/
+  const bundlePath = join(output, `${id}-ephemeral-entry.mjs`)
   const result = await bundler.build({
     absWorkingDir: repository,
     entryPoints: [entry],
-    outfile: join(output, `${id}-ephemeral-entry.mjs`),
+    outfile: bundlePath,
     platform: 'node',
     target: 'node22',
     format: 'esm',
@@ -205,6 +210,30 @@ export async function migrationPackages(id: MigratedPackage, output: string) {
     throw new Error('Actual staged package MCP SDK was not bundled')
   const server = Buffer.from(result.outputFiles[0]!.contents)
   const files = new Map<string, Buffer>([['server.mjs', server]])
+  // Match the package builders: document the actual definitions without starting the entry.
+  // The fictional native boundary reads bootstrap only when used by a running package.
+  await writeFile(bundlePath, server)
+  const definitions = await import(/* @vite-ignore */ pathToFileURL(bundlePath).href)
+  const data = '${BROCREW_PLUGIN_DATA}'
+  const inventory =
+    id === 'chrome'
+      ? definitions.chromeToolInventory()
+      : {
+          tools: definitions
+            .whatsappTools(
+              {
+                home: data,
+                files: data + '/files',
+                downloads: data + '/downloads',
+                bridgeData: data + '/bridge',
+                scratch: data + '/scratch',
+                bin: data + '/bin',
+              },
+              { bridge: {}, settings: {} },
+            )
+            .map((tool: { definition: unknown }) => tool.definition),
+        }
+  files.set('tools.json', Buffer.from(JSON.stringify(inventory, null, 2) + '\n'))
   for (const name of ['index.html', 'app.js', 'style.css'])
     files.set('ui/' + name, await readFile(join(packageRoot, 'ui', name)))
   if (id === 'chrome')
@@ -220,8 +249,7 @@ export async function migrationPackages(id: MigratedPackage, output: string) {
       ...template,
       version,
       platforms: [{ os: process.platform, cpu: process.arch }],
-      // Runtime discovery remains the real server's tools/list. No invented static tool inventory.
-      tools: { source: 'mcp' },
+      // Keep the template's required tools.inventory; runtime discovery still uses tools/list.
       files: [...files].map(([path, body]) => ({
         path,
         bytes: body.length,

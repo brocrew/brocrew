@@ -449,6 +449,20 @@ async function configure(session: ConnectedSession, id: MigratedPackage) {
   if (!screen.tools || !screen.page)
     throw new Error('Expected actual generic Configure screen/tools')
   expect(screen.hostViewId).toEqual(expect.any(String))
+  const manifest = screen.verified.manifest
+  expect(manifest.format).toBe(3)
+  if (manifest.format !== 3) throw new Error('Expected the converted package manifest')
+  expect(manifest.tools).toEqual({ source: 'mcp', inventory: 'tools.json' })
+  const inventoryBytes = screen.verified.readFile(manifest.tools.inventory)
+  expect(inventoryBytes).toBeDefined()
+  const inventory = JSON.parse(Buffer.from(inventoryBytes!).toString())
+  expect(Array.isArray(inventory) ? inventory : inventory.tools).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        name: id === 'chrome' ? 'configure_profile' : 'whatsapp_settings',
+      }),
+    ]),
+  )
   expect(screen.verified.readFile(screen.page.entry)?.toString()).toContain(
     id === 'chrome' ? '<title>Chrome</title>' : '<title>WhatsApp</title>',
   )
