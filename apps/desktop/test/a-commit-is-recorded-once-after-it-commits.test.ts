@@ -42,7 +42,7 @@ describe('a commit is recorded once, after it commits', () => {
   })
   const text = (words: string): TranscriptEvent => ({ type: 'assistant_message', text: words })
   const rowsOf = (change: Committed) =>
-    change.resync ? null : change.rows.map((row) => `${row.session}:${row.ordinal}:${row.type}`)
+    change.resync ? null : change.rows.map((row) => `${row.session}:${row.ordinal}:${row.rowType}`)
 
   it('one append is one record, published after the commit', () => {
     store.append('alpha', 0, text('fictional words'), 5_000)
@@ -102,8 +102,8 @@ describe('a commit is recorded once, after it commits', () => {
     store.append('alpha', 1, { type: 'status', state: 'ended' } as TranscriptEvent, 5_000)
     const rows = seen.flatMap((one) => (one.change.resync ? [] : one.change.rows))
     expect(rows).toMatchObject([
-      { session: 'alpha', type: 'request_routed', parent: 'beta', to: 'the-parent' },
-      { session: 'alpha', type: 'status', state: 'ended' },
+      { session: 'alpha', rowType: 'request_routed', parent: 'beta', to: 'the-parent' },
+      { session: 'alpha', rowType: 'status', state: 'ended' },
     ])
     expect(Object.isFrozen(rows[0])).toBe(true)
   })
@@ -218,9 +218,9 @@ describe('a commit is recorded once, after it commits', () => {
     store.restartedWorkLate('alpha', ['fictional-piece'], 5_000)
     const changes = seen.map((one) => one.change)
     if (changes.some((one) => one.resync)) throw new Error('a late restart resynced')
-    expect(changes.flatMap((one) => (one.resync ? [] : one.rows.map((row) => row.type)))).toEqual([
-      'work_restarted',
-    ])
+    expect(
+      changes.flatMap((one) => (one.resync ? [] : one.rows.map((row) => row.rowType))),
+    ).toEqual(['work_restarted'])
     expect(changes.filter((one) => !one.resync && one.staged.size > 0)).toEqual([])
   })
 

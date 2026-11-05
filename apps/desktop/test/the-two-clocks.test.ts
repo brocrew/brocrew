@@ -927,6 +927,8 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       // ⚑ **The control that plants TWO**: the routing's own literal really is in more than one
       // file, so the two empties above are measurements rather than a walk that reads nothing.
       expect(writers("'request_routed'")).toEqual([
+        // The commit record carries a routed question's parent and destination; it decides nothing.
+        'db/committed-changes.ts',
         // A delete reads it to find who asked a helper in the tree from outside.
         'db/conversation-tree.ts',
         // ⚑ F071 · the fold index's types name it — the routed-request fold reads through it.
