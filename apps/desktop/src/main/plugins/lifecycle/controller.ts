@@ -59,6 +59,7 @@ async function bounded<T>(work: () => Promise<T>, ms = 20000): Promise<T> {
 }
 const idSchema = z.string()
 type StateReadView = ReturnType<LifecycleOptions['state']['readView']>
+type RegisteredContribution = ReturnType<ReturnType<typeof createContributionRegistry>['register']>
 interface Workspace {
   sink: WorkspaceProjection
   receipts: Map<string, ProjectionReceipt>
@@ -68,6 +69,10 @@ interface Workspace {
   consumerRevisions: Map<string, number>
   bindings: Map<string, ConsumerBinding>
   bindingGenerations: Map<string, number>
+  contributionHandles: Map<
+    string,
+    { entry: RegisteredContribution; handle: RegisteredContribution }
+  >
   live: boolean
 }
 interface ConsumerBinding {
@@ -980,14 +985,20 @@ export class PluginLifecycleController {
         }
         // Only a partially published live binding needs compensation.
         if (!binding.bound) return false
+        const obligations = workspace.revocations.get(id) ?? new Set<string>()
+        for (const installId of [before?.installId, guard?.installId, binding.selected?.installId])
+          if (installId) obligations.add(installId)
+        workspace.revocations.set(id, obligations)
         void (async () => {
           try {
-            for (const installId of new Set(
-              [before?.installId, guard?.installId].filter((one): one is string => !!one),
-            ))
-              await this.bindingWait(workspace, binding, () =>
+            for (const installId of [...obligations]) {
+              const revoked = await this.bindingWait(workspace, binding, () =>
                 bounded(() => sink.revoke(id, installId)),
               )
+              if (revoked !== true) return pending()
+              obligations.delete(installId)
+            }
+            if (!obligations.size) workspace.revocations.delete(id)
             await this.bindingWait(workspace, binding, () =>
               sink.reconcile({ pluginId: id, before, receipt: null }),
             )
@@ -1028,6 +1039,7 @@ export class PluginLifecycleController {
       consumerRevisions: new Map(),
       bindings: new Map(),
       bindingGenerations: new Map(),
+      contributionHandles: new Map(),
       live: true,
     }
     this.workspaces.set(handle, workspace)
@@ -1066,6 +1078,7 @@ export class PluginLifecycleController {
     for (const viewId of workspace.views)
       this.hostRegistry.closeSettings(workspace.sink.workspaceId, viewId)
     workspace.views.clear()
+    workspace.contributionHandles.clear()
     this.detachWorkspaceIfUnused(workspace.sink.workspaceId)
     if (this.effectQueue.signal.aborted) return
     for (const receipt of workspace.receipts.values()) {
@@ -1073,6 +1086,7 @@ export class PluginLifecycleController {
       obligations.add(receipt.installId)
       workspace.revocations.set(receipt.pluginId, obligations)
     }
+    workspace.receipts.clear()
     const results = await Promise.allSettled(
       [...workspace.revocations].flatMap(([id, obligations]) =>
         [...obligations].map(async (installId) => {
@@ -2468,14 +2482,22 @@ export class PluginLifecycleController {
         this.current(id, latest)?.incarnation === identity.incarnation
       )
     })
+    const workspace = this.workspace(handle)
+    const cached = workspace.contributionHandles.get(id)
+    if (cached?.entry === entry && cached.handle.current()) return cached.handle
     let live = true
-    return Object.freeze({
+    const consumer = Object.freeze({
       ...entry,
-      current: () => live && consumerCurrent() && entry.current(),
+      current() {
+        live = live && consumerCurrent() && entry.current()
+        return live
+      },
       revoke() {
         live = false
       },
     })
+    workspace.contributionHandles.set(id, { entry, handle: consumer })
+    return consumer
   }
   screen(handle: LifecycleWorkspace, id: string, view = this.options.state.readView()) {
     const workspace = this.workspace(handle),
