@@ -463,7 +463,9 @@ async function configure(session: ConnectedSession, id: MigratedPackage) {
       }),
     ]),
   )
-  expect(screen.verified.readFile(screen.page.entry)?.toString()).toContain(
+  const pageBytes = screen.verified.readFile(screen.page.entry)
+  expect(pageBytes).toBeDefined()
+  expect(Buffer.from(pageBytes!).toString('utf8')).toContain(
     id === 'chrome' ? '<title>Chrome</title>' : '<title>WhatsApp</title>',
   )
   for (const asset of screen.page.assets) expect(screen.verified.readFile(asset)).toBeDefined()

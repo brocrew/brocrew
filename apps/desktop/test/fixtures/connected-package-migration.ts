@@ -312,7 +312,7 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
   if (format === 2)
     Object.assign(manifest, {
       format: 2,
-      authors: ['Fictional predecessor'],
+      authors: ['fictional-predecessor'],
       executor: { kind: 'node', entry: 'historical.mjs' },
       hooks: [],
       sharedData: true,
