@@ -137,6 +137,7 @@ it('keeps a successful discovery on the fast path for the same thread and server
   await tick()
   wire.finish()
   await tick()
+  expect(await handle.managedPluginHealth!([route])).toEqual([])
   const unexpected = vi.fn(async () => {
     throw new Error('fictional unexpected discovery')
   })
@@ -145,16 +146,16 @@ it('keeps a successful discovery on the fast path for the same thread and server
   await tick()
   expect(unexpected).not.toHaveBeenCalled()
   expect(wire.catalogsAtTurns).toEqual([['echo'], ['echo']])
-  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual([
-    {
+  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual(
+    Array.from({ length: 2 }, () => ({
       method: 'mcpServerStatus/list',
       params: {
         threadId: saved!.sessionId,
         serverName: route.name,
         detail: 'toolsAndAuthOnly',
       },
-    },
-  ])
+    })),
+  )
   expect(handle.ref).toEqual(saved)
 })
 
@@ -174,7 +175,7 @@ it('starts without a dead plugin and records one fixed line without provider err
   await handle.send('Fictional later turn')
   await tick()
   expect(wire.catalogsAtTurns).toHaveLength(2)
-  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toHaveLength(1)
+  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toHaveLength(2)
   expect(warnings(events)).toHaveLength(1)
 })
 
@@ -297,6 +298,59 @@ it.each(['tools-error', 'unknown', 'refused'] as const)(
   },
 )
 
+it('a late healthy reading cannot relatch readiness after a newer turn was cancelled', async () => {
+  const { wire, handle } = await start()
+  const saved = handle.ref
+  wire.catalog = ['echo']
+  await handle.send('Fictional first healthy turn')
+  await tick()
+  wire.finish()
+  await tick()
+
+  const healthReply = deferred<unknown>()
+  wire.discovery = () => healthReply.promise
+  const health = handle.managedPluginHealth!([route])
+  await tick()
+  const newerReply = deferred<unknown>()
+  wire.discovery = () => newerReply.promise
+  await handle.send('Fictional next turn while health is unread')
+  await tick()
+  expect(wire.catalogsAtTurns).toEqual([['echo']])
+  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toHaveLength(3)
+  await handle.interrupt()
+  await tick()
+  expect(handle.status()).toBe('idle')
+
+  // Both answers are now obsolete. Neither may confirm readiness or dispatch words.
+  healthReply.resolve(ready())
+  expect(await health).toEqual([])
+  newerReply.resolve(ready())
+  await tick()
+  expect(wire.catalogsAtTurns).toEqual([['echo']])
+
+  const currentReply = deferred<unknown>()
+  wire.discovery = () => currentReply.promise
+  await handle.send('Fictional replacement after cancellation')
+  await tick()
+  expect(wire.catalogsAtTurns).toEqual([['echo']])
+  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual(
+    Array.from({ length: 4 }, () => ({
+      method: 'mcpServerStatus/list',
+      params: {
+        threadId: saved!.sessionId,
+        serverName: route.name,
+        detail: 'toolsAndAuthOnly',
+      },
+    })),
+  )
+  currentReply.resolve(ready())
+  await tick()
+  expect(wire.catalogsAtTurns).toEqual([['echo'], ['echo']])
+  expect(handle.ref).toEqual(saved)
+  expect(wire.requests.filter((one) => one.method === 'thread/start')).toHaveLength(1)
+  expect(wire.requests.some((one) => one.method === 'thread/resume')).toBe(false)
+})
+
 it('bounds a never-settling discovery and does not dispatch again when it eventually answers', async () => {
   const { wire, handle, events } = await start()
   const discovery = deferred<unknown>()
@@ -309,11 +363,16 @@ it('bounds a never-settling discovery and does not dispatch again when it eventu
   expect(warnings(events)).toHaveLength(1)
   wire.finish()
   await tick()
+  const laterDiscovery = deferred<unknown>()
+  wire.discovery = () => laterDiscovery.promise
   await handle.send('Fictional later turn')
   await tick()
-  expect(wire.catalogsAtTurns).toHaveLength(2)
-  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toHaveLength(1)
+  expect(wire.catalogsAtTurns).toHaveLength(1)
+  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toHaveLength(2)
   discovery.resolve(ready())
+  await tick()
+  expect(wire.catalogsAtTurns).toHaveLength(1)
+  laterDiscovery.resolve(ready())
   await tick()
   expect(wire.catalogsAtTurns).toHaveLength(2)
   expect(warnings(events)).toHaveLength(1)
