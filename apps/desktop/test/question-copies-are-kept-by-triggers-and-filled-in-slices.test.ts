@@ -109,6 +109,16 @@ describe('question copies are kept by triggers and filled in slices', () => {
     expect(keys.map((key) => store.conversationsHoldingACopyOf(key))).toEqual(before)
   })
 
+  it('until the fill is done, rows older than the copies are still found, by the ledger query', () => {
+    question('alpha', 'first')
+    question('beta', 'first')
+    // As rows written before the triggers existed: in the ledger, with no copy yet.
+    db.exec('DELETE FROM question_copy')
+    expect(store.conversationsHoldingACopyOf('first')).toEqual(['alpha', 'beta'])
+    fillToTheEnd()
+    expect(store.conversationsHoldingACopyOf('first')).toEqual(['alpha', 'beta'])
+  })
+
   it('a torn or keyless question is written and has no copy', () => {
     const torn = row('alpha', '{not json')
     const keyless = question('alpha', undefined)
