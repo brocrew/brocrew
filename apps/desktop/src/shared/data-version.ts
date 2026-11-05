@@ -28,7 +28,11 @@ export type Coverage =
 
 export interface Published {
   readonly epoch: PublicationEpoch
-  /** Main's publication sequence when this value was composed. */
+  /**
+   * Main's publication sequence when this value was composed. It only rises within a run, across
+   * epochs too, and main advances it at every resync before any answer of the new epoch, so that
+   * answer is newer than everything a stale scope still holds.
+   */
   readonly seq: number
   readonly covers: Coverage
 }
@@ -75,24 +79,32 @@ export function acceptAnswer<V>(
   entries: ReadonlyMap<string, V>,
 ): ScopeState<V> {
   if (complete && seq <= state.watermark) return state
-  const rows = new Map(state.rows)
+  let rows: Map<string, Held<V>> | null = null
+  const changed = () => (rows ??= new Map(state.rows))
   if (complete) {
     for (const [id, held] of state.rows) {
-      if (!entries.has(id) && held.seq < seq) rows.delete(id)
+      if (!entries.has(id) && held.seq < seq) changed().delete(id)
     }
   }
   for (const [id, value] of entries) {
     const held = state.rows.get(id)
     const applies = held === undefined ? seq > state.watermark : seq >= held.seq
-    if (applies) rows.set(id, { seq, value })
+    if (applies && (held === undefined || held.seq !== seq || held.value !== value))
+      changed().set(id, { seq, value })
   }
-  return {
-    watermark: complete ? seq : state.watermark,
-    rows,
-    lastValid: Math.max(state.lastValid, seq),
-    error: clearedError(state, seq),
-    stale: complete ? false : state.stale,
-  }
+  const watermark = complete ? seq : state.watermark
+  const lastValid = Math.max(state.lastValid, seq)
+  const error = clearedError(state, seq)
+  const stale = complete ? false : state.stale
+  if (
+    rows === null &&
+    watermark === state.watermark &&
+    lastValid === state.lastValid &&
+    error === state.error &&
+    stale === state.stale
+  )
+    return state
+  return { watermark, rows: rows ?? state.rows, lastValid, error, stale }
 }
 
 /** A push at `seq` for the rows it names; it never removes, and never revives below the watermark. */
