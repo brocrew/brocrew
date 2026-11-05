@@ -164,6 +164,8 @@ export interface AServiceWorld {
     limitsWriterStamp?: ConstructorParameters<typeof RuntimeHost>[0]['limitsWriterStamp']
     listProfiles?: (provider?: Provider) => string[]
     readInstructions?: ConstructorParameters<typeof RuntimeHost>[0]['readInstructions']
+    announce?: ConstructorParameters<typeof RuntimeHost>[0]['announce']
+    statesMoved?: ConstructorParameters<typeof RuntimeHost>[0]['statesMoved']
   }): RuntimeHost
   /** An agent made now, on Claude unless `provider` says otherwise, kept as a service unless `kind` does. */
   anAgent(
@@ -391,6 +393,8 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
           },
           owned: opts.owned ?? true,
         },
+        ...(opts.announce === undefined ? {} : { announce: opts.announce }),
+        ...(opts.statesMoved === undefined ? {} : { statesMoved: opts.statesMoved }),
         ...(opts.interruptWaitMs === undefined ? {} : { interruptWaitMs: opts.interruptWaitMs }),
         ...(opts.deliveryWaitMs === undefined ? {} : { deliveryWaitMs: opts.deliveryWaitMs }),
         ...(opts.endingWaitMs === undefined ? {} : { endingWaitMs: opts.endingWaitMs }),
