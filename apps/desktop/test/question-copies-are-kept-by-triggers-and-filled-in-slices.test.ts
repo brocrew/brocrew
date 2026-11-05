@@ -131,6 +131,10 @@ describe('question copies are kept by triggers and filled in slices', () => {
     question('alpha', 5)
     fillToTheEnd()
     expect(store.conversationsHoldingACopyOf('5')).toEqual([])
+    // The copy keeps the key's own type, as the ledger's JSON holds it.
+    expect(db.prepare('SELECT typeof(passed_up_from) AS type FROM question_copy').get()).toEqual({
+      type: 'integer',
+    })
   })
 
   it('the triggers keep the copies current through updates, deletes and a discarded generation', () => {
