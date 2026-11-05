@@ -678,6 +678,8 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
     await settle()
 
     const reads = vi.spyOn(store, 'routedRequestsOf')
+    // A listing is shared until something it reads moves; a commit makes this one a fresh fold.
+    store.setModel(control, 'fictional-model')
     reads.mockClear()
     const rows = host.resumableSessions()
     const readsOf = (id: string): number =>

@@ -1175,7 +1175,7 @@ describe('558 · every identity he has', () => {
     it('⚑ a rename and a removal both announce `agents`, and the vocabulary is still two words', () => {
       // ⚑ **638 · a THIRD member**, `work` — the condition `534` set (*do not add a subject
       // nothing reads*) lapsed when `631` built the task lists that read it.
-      expect([...RUNTIME_CHANGE_SUBJECTS]).toEqual(['conversations', 'agents', 'work'])
+      expect([...RUNTIME_CHANGE_SUBJECTS]).toEqual(['conversations', 'agents', 'work', 'persons'])
       host.createAgent({ slug: 'worker', displayName: null, provider: null })
       said.length = 0
       host.setAgentDisplayName('worker', 'Worker')
