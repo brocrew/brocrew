@@ -38,6 +38,44 @@ export function pluginStartupStderr(text: string, secrets: readonly string[] = [
   return PluginStartupDiagnosticSchema.shape.stderr.safeParse(bounded).success ? bounded : null
 }
 
+/** One bounded cause chain for local diagnostic logs; never stringify input or stacks. */
+export function pluginFailureCause(error: unknown, secrets: readonly string[] = []): string {
+  const lines: string[] = []
+  const seen = new Set<unknown>()
+  for (let depth = 0; depth < 6 && error != null && !seen.has(error); depth++) {
+    seen.add(error)
+    try {
+      const message = typeof error === 'string' ? error : (error as Error).message
+      if (typeof message === 'string') {
+        const one = error as { code?: unknown }
+        const code =
+          error instanceof PluginSupervisorError
+            ? error.code
+            : typeof one.code === 'string' && /^E[A-Z0-9_]{1,30}$/.test(one.code)
+              ? one.code
+              : undefined
+        const name = error instanceof Error ? error.name : ''
+        const label = `${name}${code ? ` code=${code}` : ''}`
+        const line = pluginStartupStderr(
+          `${label ? `${label}: ` : ''}${message.replace(/\r?\n/g, ' ')}`,
+          secrets,
+        )
+        if (line) lines.push(line)
+      }
+      error = typeof error === 'object' ? (error as Error).cause : undefined
+    } catch {
+      break // A diagnostic property must not replace the failure being reported.
+    }
+  }
+  const budget = Math.floor(480 / Math.max(1, lines.length))
+  return (
+    pluginStartupStderr(
+      lines.map((line) => line.slice(0, budget).replace(/[\uD800-\uDBFF]$/, '')).join(' <- '),
+      secrets,
+    ) ?? 'Unknown failure'
+  )
+}
+
 export class PluginSupervisorLaunchFailure extends Error {
   constructor(
     readonly diagnostic: PluginStartupDiagnostic,
@@ -127,6 +165,7 @@ export class PluginStartupError extends PluginSupervisorError {
   constructor(
     readonly reason: PluginUnavailableReason,
     cause: unknown,
+    readonly catalogueStage?: 'owner-check' | 'rpc' | 'schema' | 'composition',
   ) {
     super('unavailable', { cause })
   }
@@ -164,8 +203,11 @@ export async function recordPluginStartupFailure(
   error?: unknown,
 ): Promise<void> {
   const diagnostic = pluginStartupDiagnostic(error)
+  const original = error
+  let stage: PluginStartupError['catalogueStage']
   let code: string | undefined
   for (let depth = 0; depth < 6 && error && typeof error === 'object'; depth++) {
+    if (error instanceof PluginStartupError && error.catalogueStage) stage = error.catalogueStage
     const one = error as { code?: unknown; cause?: unknown }
     if (
       typeof one.code === 'string' &&
@@ -174,7 +216,8 @@ export async function recordPluginStartupFailure(
       code = one.code
     error = one.cause
   }
-  const line = `[plugins] ${reason}: ${pluginUnavailableNotice(reason)}${code ? ` (${code})` : ''}${diagnostic ? ` ${pluginStartupDiagnosticNotice(diagnostic)}` : ''}`
+  const cause = reason === 'catalogue-response' || stage ? pluginFailureCause(original) : undefined
+  const line = `[plugins] ${reason}: ${pluginUnavailableNotice(reason)}${code ? ` (${code})` : ''}${diagnostic ? ` ${pluginStartupDiagnosticNotice(diagnostic)}` : ''}${cause ? ` stage=${stage ?? 'rpc'} cause=${cause}` : ''}`
   console.warn(line)
   if (!root) return
   const temporary = join(root, `.plugin-startup-${randomUUID()}.log`)

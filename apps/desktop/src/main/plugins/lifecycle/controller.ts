@@ -412,6 +412,7 @@ export class PluginLifecycleController {
     this.profileCalls.get(id)?.abort()
     const token = Symbol()
     this.blocks.set(id, token)
+    this.agentScopeChanged()
     try {
       this.options.deny(id)
     } catch {
@@ -574,6 +575,7 @@ export class PluginLifecycleController {
           const old = before.find((one) => one.pluginId === id) ?? null
           const guard = guards.find((one) => one.pluginId === id)
           if (old) workspace.receipts.set(id, old)
+          this.agentScopeChanged()
           const identities = new Set(
             [old?.installId, guard?.installId].filter((one): one is string => !!one),
           )
@@ -587,6 +589,7 @@ export class PluginLifecycleController {
           await sink.applied(id, null)
           this.options.state.recordProjection(sink.workspaceId, id, null)
           workspace.receipts.delete(id)
+          this.agentScopeChanged()
           const installed = active.find((one) => one.pluginId === id)
           if (installed) {
             const checked = await this.vault.load(this.descriptor(installed), this.pins())
@@ -650,6 +653,7 @@ export class PluginLifecycleController {
     })
     const running: Running = { run, installId: install.installId, package: checked, ended: false }
     this.runs.set(install.pluginId, running)
+    this.agentScopeChanged()
     const ended = (proven: boolean) => {
       if (this.runs.get(install.pluginId) !== running) return
       if (proven) running.exitProven = true
@@ -887,6 +891,7 @@ export class PluginLifecycleController {
         }
       })
       if (this.blocks.get(id) === token) this.blocks.delete(id)
+      this.agentScopeChanged()
     } catch (error) {
       if (
         error instanceof PluginSupervisorError &&
@@ -895,6 +900,7 @@ export class PluginLifecycleController {
         throw error
       if (!this.cleanup.has(id) && !this.options.state.inspect().pending) {
         if (this.blocks.get(id) === token) this.blocks.delete(id)
+        this.agentScopeChanged()
       }
       return refuse()
     }
@@ -1030,6 +1036,7 @@ export class PluginLifecycleController {
         await this.finishUpdate(effect, operation.next!)
       })
       if (this.blocks.get(id) === token) this.blocks.delete(id)
+      this.agentScopeChanged()
     } catch (error) {
       if (
         error instanceof PluginSupervisorError &&
@@ -1038,6 +1045,7 @@ export class PluginLifecycleController {
         throw error
       if (!this.options.state.inspect().pending && this.blocks.get(id) === token)
         this.blocks.delete(id)
+      this.agentScopeChanged()
       return refuse()
     }
   }
@@ -1091,6 +1099,7 @@ export class PluginLifecycleController {
     if (!workspace.live) return refuse()
     if (!next.receipt) return refuse()
     workspace.receipts.set(install.pluginId, next.receipt)
+    this.agentScopeChanged()
   }
   /** Supervisor-only Chrome repair. It does not mutate installations, profiles or other leases.
    * The callback belongs to the retained broker for runId; it runs only after exact physical exit. */
@@ -1152,6 +1161,7 @@ export class PluginLifecycleController {
         if (this.draining || this.runs.get(id) !== running || this.blocks.get(id) !== token)
           return pending()
         this.runs.delete(id)
+        this.agentScopeChanged()
         this.attempted.delete(id)
         await this.ensureRunning(install, running.package)
         if (this.draining || this.blocks.get(id) !== token) return pending()
@@ -1162,6 +1172,7 @@ export class PluginLifecycleController {
         )
         this.cleanup.delete(id)
         if (this.blocks.get(id) === token) this.blocks.delete(id)
+        this.agentScopeChanged()
         if (this.chromeToolRestartBlock === token) this.chromeToolRestartBlock = undefined
       })
       .finally(() => {
@@ -1178,6 +1189,7 @@ export class PluginLifecycleController {
       // A later Install may have started its own run meanwhile.
       if (this.runs.get(id) === run) {
         this.runs.delete(id)
+        this.agentScopeChanged()
         this.attempted.delete(id)
       }
       return
@@ -1192,6 +1204,7 @@ export class PluginLifecycleController {
         .filter((one) => one.live)
         .map(async (workspace) => {
           workspace.receipts.delete(install.pluginId)
+          this.agentScopeChanged()
           if (
             (await bounded(() => workspace.sink.revoke(install.pluginId, install.installId))) !==
             true
@@ -1354,10 +1367,12 @@ export class PluginLifecycleController {
         logout = await this.remove(id, operationId, null)
       })
       if (this.blocks.get(id) === token) this.blocks.delete(id)
+      this.agentScopeChanged()
       if (pluginAdapter(id)?.uninstall) return { data: 'deleted', logout }
     } catch {
       if (absent) {
         if (!this.cleanup.has(id) && this.blocks.get(id) === token) this.blocks.delete(id)
+        this.agentScopeChanged()
         return refuse()
       }
       this.cleanup.add(id)
@@ -1428,6 +1443,7 @@ export class PluginLifecycleController {
         this.blocks.get(next.pluginId) === token
       )
         this.blocks.delete(next.pluginId)
+      this.agentScopeChanged()
     }
   }
   /** Page revision is this per-install intent ledger, separate from package configRevision. */
@@ -1566,6 +1582,57 @@ export class PluginLifecycleController {
     }))
   }
 
+  private readonly agentListeners = new Set<(workspaceId: string) => void>()
+  onHostChanged(listener: (workspaceId: string) => void): () => void {
+    this.agentListeners.add(listener)
+    return () => {
+      this.agentListeners.delete(listener)
+    }
+  }
+  private agentScopeChanged(): void {
+    for (const workspace of this.workspaces.values())
+      if (workspace.live)
+        for (const listener of this.agentListeners) {
+          try {
+            listener(workspace.sink.workspaceId)
+          } catch {
+            /* Wakeups grant no authority. */
+          }
+        }
+  }
+  /** Committed absence is distinct from a run still starting or an unreadable state. */
+  agentScope(workspaceId: string): { entries: readonly AgentScopeEntry[] } {
+    if (this.draining) return pending()
+    const state = this.options.state.inspect()
+    if (state.pending) return pending()
+    const active = this.options.state.exportActivation().entries
+    const consumers = [...this.workspaces.values()].filter(
+      (one) => one.live && one.sink.workspaceId === workspaceId,
+    )
+    if (!consumers.length) return refuse()
+    const views = this.agentAttachments(workspaceId)
+    const ids = new Set([
+      ...(this.admittedCatalogues.get(this.catalogueIdentity()) ?? []),
+      ...state.guards.map((one) => one.pluginId),
+      ...this.runs.keys(),
+      ...consumers.flatMap((one) => [...one.receipts.keys()]),
+    ])
+    const entries = [...ids].sort().map((pluginId): AgentScopeEntry => {
+      const installed = active.find((one) => one.pluginId === pluginId)
+      const run = this.runs.get(pluginId)
+      if (this.blocks.has(pluginId)) return { pluginId, is: 'pending' }
+      if (!installed) return { pluginId, is: 'off' }
+      if (
+        run?.installId === installed.installId &&
+        (!run.package.manifest.server || !pluginContributions(run.package).tools)
+      )
+        return { pluginId, is: 'off' }
+      const view = views.find((one) => one.installation.pluginId === pluginId)
+      return view ? { pluginId, is: 'admitted', view } : { pluginId, is: 'pending' }
+    })
+    if (this.options.state.inspect().sequence !== state.sequence) return pending()
+    return { entries }
+  }
   /** Private supervisor view of already reconciled workspace consumers. No person authority. */
   agentAttachments(workspaceId: string) {
     const handle = [...this.workspaces].find(
@@ -1631,3 +1698,8 @@ export class PluginLifecycleController {
     }
   }
 }
+
+export type AgentAttachmentView = ReturnType<PluginLifecycleController['agentAttachments']>[number]
+export type AgentScopeEntry =
+  | { readonly pluginId: string; readonly is: 'admitted'; readonly view: AgentAttachmentView }
+  | { readonly pluginId: string; readonly is: 'pending' | 'off' }

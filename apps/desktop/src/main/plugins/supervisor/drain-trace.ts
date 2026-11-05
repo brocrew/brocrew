@@ -2,14 +2,32 @@ import { closeSync, constants, fstatSync, writeSync } from 'node:fs'
 import { join } from 'node:path'
 import { createFreshFile, openNotThroughALink } from '@brobot2/runtime/provider-home'
 import { isPrivateEntry } from '../private-files'
+import { pluginStartupStderr } from '../startup-failure'
+import type { StopReason } from './protocol'
 
 export interface DrainTrace {
-  stage: 'child-proofs' | 'server.close' | 'stopped-write' | 'blocked-write' | 'closed'
+  stage:
+    | 'drain'
+    | 'invalidation'
+    | 'child-stop'
+    | 'child-exit'
+    | 'descendants'
+    | 'revoke'
+    | 'stop-write'
+    | 'child-start'
+    | 'child-proofs'
+    | 'server.close'
+    | 'stopped-write'
+    | 'blocked-write'
+    | 'closed'
   state: 'waiting' | 'complete' | 'failed'
+  epoch?: string
+  reason?: StopReason
+  cause?: string
   attempt?: number
   errno?: string
 }
-/** Closed stage names and errno only; no error messages, launch input or plugin output. */
+/** Private, bounded, sanitized local diagnostic text; no launch input or plugin output. */
 export function recordDrainTrace(root: string, event: DrainTrace): void {
   let fd: number | undefined
   try {
@@ -25,7 +43,7 @@ export function recordDrainTrace(root: string, event: DrainTrace): void {
       return
     writeSync(
       fd,
-      `${new Date().toISOString()} [plugins] drain stage=${event.stage} state=${event.state}${event.attempt ? ` attempt=${event.attempt}` : ''}${event.errno ? ` errno=${event.errno}` : ''}\n`,
+      `${new Date().toISOString()} [plugins] drain stage=${event.stage} state=${event.state}${event.attempt ? ` attempt=${event.attempt}` : ''}${event.errno ? ` errno=${event.errno}` : ''}${event.epoch ? ` epoch=${event.epoch}` : ''}${event.reason ? ` reason=${event.reason}` : ''}${event.cause ? ` cause=${pluginStartupStderr(event.cause) ?? 'Unknown failure'}` : ''}\n`,
     )
   } catch {
     // A diagnostic cannot delay or change ownership.

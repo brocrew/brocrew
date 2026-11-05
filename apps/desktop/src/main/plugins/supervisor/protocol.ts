@@ -35,6 +35,8 @@ export const LOST_CHANNEL_ENDS = 'lost-channel-ends'
 /** Person configuration can explicitly negotiate checkpoint ledgers and safe-integer revisions. */
 export const CONFIGURATION_LEDGER_V2 = 'configuration-ledger-v2'
 export const OWNER_RECOVERY = 'owner-recovery'
+/** Per-lease negotiation for served, pending, off and unknown route facts. */
+export const AGENT_ROUTES_FORMAT_2 = 'agent-routes-format-2'
 export const OWNER_WIRE: WireVersion = {
   major: 1,
   minMinor: 0,
@@ -44,6 +46,7 @@ export const OWNER_WIRE: WireVersion = {
     LOST_CHANNEL_ENDS,
     CONFIGURATION_LEDGER_V2,
     OWNER_RECOVERY,
+    AGENT_ROUTES_FORMAT_2,
     ...PLUGIN_FRAMEWORK_FEATURES,
   ],
 }
@@ -94,6 +97,7 @@ export const Command = z.discriminatedUnion('kind', [
     incarnation: Uuid,
     occupied: z.array(z.string().min(1).max(128)).max(128),
     release: z.boolean(),
+    format: z.literal(2).optional(),
   }),
 ])
 export type Command = z.infer<typeof Command>

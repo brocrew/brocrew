@@ -1018,3 +1018,168 @@ it('a turn that becomes active during health discovery cannot be refreshed or re
   expect(f.raw.resume).not.toHaveBeenCalled()
   await a.close()
 })
+
+it('a plugin still starting or unknown keeps its attached route; only a committed off or a complete legacy set removes it', async () => {
+  const fern = { ...route, pluginId: 'fern' }
+  const f = fixture(true)
+  f.change({ revision: 'one', servers: [fern] })
+  const a = await f.runtime.start(initial)
+  const refresh = f.opened[0]!.handle.refreshManagedPlugins!
+  f.change({
+    revision: 'two',
+    servers: [],
+    plugins: { pending: ['fern'], none: [], unknown: false },
+  })
+  await a.send('fictional words')
+  expect(refresh).not.toHaveBeenCalled()
+  f.change({ revision: 'three', servers: [], plugins: { pending: [], none: [], unknown: true } })
+  await a.send('fictional words')
+  expect(refresh).not.toHaveBeenCalled()
+  f.change({
+    revision: 'four',
+    servers: [],
+    plugins: { pending: [], none: ['fern'], unknown: false },
+  })
+  await a.send('fictional words')
+  expect(refresh).toHaveBeenCalledWith([])
+  await a.close()
+
+  const g = fixture(true)
+  g.change({ revision: 'one', servers: [fern] })
+  const b = await g.runtime.start(initial)
+  g.change({ revision: 'two', servers: [] })
+  await b.send('fictional words')
+  expect(g.opened[0]!.handle.refreshManagedPlugins).toHaveBeenCalledWith([])
+  await b.close()
+})
+
+it('a plugin served again under a new route replaces the one kept while it was starting', async () => {
+  const fern = { ...route, pluginId: 'fern' }
+  const fresh = { ...fern, capability: 'b'.repeat(64) }
+  const f = fixture(true)
+  f.change({ revision: 'one', servers: [fern] })
+  const a = await f.runtime.start(initial)
+  f.change({
+    revision: 'two',
+    servers: [],
+    plugins: { pending: ['fern'], none: [], unknown: false },
+  })
+  await a.send('fictional words')
+  f.change({
+    revision: 'three',
+    servers: [fresh],
+    plugins: { pending: [], none: [], unknown: false },
+  })
+  await a.send('fictional words')
+  expect(f.opened[0]!.handle.refreshManagedPlugins).toHaveBeenCalledWith([fresh])
+  await a.close()
+})
+it('a turn may wait only on what the latest read served, even when its routes could not be applied', async () => {
+  const fern = { ...route, pluginId: 'fern' }
+  const aster = { ...route, name: 'plugin-aster', capability: 'c'.repeat(64), pluginId: 'aster' }
+  const f = fixture()
+  f.change({ revision: 'one', servers: [fern], plugins: { pending: [], none: [], unknown: false } })
+  const a = await f.runtime.start(initial)
+  const awaited = vi.fn()
+  Object.assign(f.opened[0]!.handle, { awaitManagedPlugins: awaited })
+  vi.mocked(f.raw.resume).mockRejectedValueOnce(new Error('fictional plugin unavailable'))
+  f.change({
+    revision: 'two',
+    servers: [aster],
+    plugins: { pending: ['fern'], none: [], unknown: false },
+  })
+  await a.send('fictional words')
+  expect(f.raw.resume).toHaveBeenCalledTimes(1)
+  expect(f.opened[0]!.send).toHaveBeenCalledWith('fictional words')
+  expect(awaited).toHaveBeenLastCalledWith(['plugin-aster'])
+  await a.close()
+})
+it('a read that fails says nothing new about what a turn may wait on', async () => {
+  const fern = { ...route, pluginId: 'fern' }
+  const f = fixture()
+  f.change({ revision: 'one', servers: [fern], plugins: { pending: [], none: [], unknown: false } })
+  const a = await f.runtime.start(initial)
+  const awaited = vi.fn()
+  Object.assign(f.opened[0]!.handle, { awaitManagedPlugins: awaited })
+  await a.send('first fictional turn')
+  expect(awaited).toHaveBeenCalledTimes(1)
+  vi.mocked(f.source.read).mockRejectedValueOnce(new Error('fictional read failure'))
+  await a.send('second fictional turn')
+  expect(f.opened[0]!.send).toHaveBeenCalledWith('second fictional turn')
+  expect(awaited).toHaveBeenCalledTimes(1)
+  await a.close()
+})
+it('a plugin a named reply leaves out, without saying it is off, keeps its attached route', async () => {
+  const fern = { ...route, pluginId: 'fern' }
+  const f = fixture(true)
+  f.change({ revision: 'one', servers: [fern], plugins: { pending: [], none: [], unknown: false } })
+  const a = await f.runtime.start(initial)
+  f.change({ revision: 'two', servers: [], plugins: { pending: [], none: [], unknown: false } })
+  await a.send('fictional words')
+  expect(f.opened[0]!.handle.refreshManagedPlugins).not.toHaveBeenCalled()
+  expect(f.raw.resume).not.toHaveBeenCalled()
+  f.change({
+    revision: 'three',
+    servers: [],
+    plugins: { pending: [], none: ['fern'], unknown: false },
+  })
+  await a.send('fictional words again')
+  expect(f.opened[0]!.handle.refreshManagedPlugins).toHaveBeenCalledWith([])
+  await a.close()
+})
+it('a route from a reply that named no plugin stays while a named reply cannot speak for it', async () => {
+  const f = fixture(true)
+  f.change({ revision: 'one', servers: [route] })
+  const a = await f.runtime.start(initial)
+  const refresh = f.opened[0]!.handle.refreshManagedPlugins!
+  const awaited = vi.fn()
+  Object.assign(f.opened[0]!.handle, { awaitManagedPlugins: awaited })
+  f.change({ revision: 'two', servers: [], plugins: { pending: [], none: [], unknown: true } })
+  await a.send('fictional words while unknown')
+  f.change({
+    revision: 'three',
+    servers: [],
+    plugins: { pending: ['fern'], none: ['aster'], unknown: false },
+  })
+  await a.send('fictional words while starting')
+  expect(refresh).not.toHaveBeenCalled()
+  expect(f.raw.resume).not.toHaveBeenCalled()
+  expect(awaited).toHaveBeenLastCalledWith([])
+  // The same address, now served under its plugin: nothing to change, and it is awaited again.
+  const fern = { ...route, pluginId: 'fern' }
+  f.change({ revision: 'four', servers: [fern], plugins: { pending: [], none: [], unknown: true } })
+  await a.send('fictional words once named')
+  expect(refresh).not.toHaveBeenCalled()
+  expect(f.raw.resume).not.toHaveBeenCalled()
+  expect(awaited).toHaveBeenLastCalledWith([route.name])
+  // Named now, it goes as any named route does: when its plugin is off.
+  f.change({
+    revision: 'five',
+    servers: [],
+    plugins: { pending: [], none: ['fern'], unknown: false },
+  })
+  await a.send('fictional words once off')
+  expect(refresh).toHaveBeenCalledWith([])
+  expect(f.opened[0]!.send).toHaveBeenCalledTimes(4)
+  await a.close()
+})
+it('a route kept while its scope could not be read is not awaited, and is awaited again once served', async () => {
+  const fern = { ...route, pluginId: 'fern' }
+  const f = fixture()
+  f.change({ revision: 'one', servers: [fern], plugins: { pending: [], none: [], unknown: false } })
+  const a = await f.runtime.start(initial)
+  const awaited = vi.fn()
+  Object.assign(f.opened[0]!.handle, { awaitManagedPlugins: awaited })
+  f.change({ revision: 'two', servers: [], plugins: { pending: [], none: [], unknown: true } })
+  await a.send('fictional words while unknown')
+  expect(awaited).toHaveBeenLastCalledWith([])
+  f.change({
+    revision: 'three',
+    servers: [fern],
+    plugins: { pending: [], none: [], unknown: false },
+  })
+  await a.send('fictional words once served')
+  expect(awaited).toHaveBeenLastCalledWith([route.name])
+  expect(f.raw.resume).not.toHaveBeenCalled()
+  await a.close()
+})

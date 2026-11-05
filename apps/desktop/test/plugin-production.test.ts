@@ -1481,7 +1481,8 @@ describe.skipIf(process.platform === 'win32')(
         { state: 'Unavailable', unavailableReason: 'catalogue-response' },
       ])
       expect(f.peer.close).toHaveBeenCalled()
-      expect(JSON.stringify(warning.mock.calls)).not.toContain('fictional-private-catalogue-error')
+      expect(JSON.stringify(warning.mock.calls)).toContain('fictional-private-catalogue-error')
+      expect(JSON.stringify(warning.mock.calls)).toContain('stage=rpc')
       f.peer.catalogue.mockResolvedValue([
         { id: f.pkg.release.id, name: 'Fictional Fir', installed: false, state: 'Available' },
       ])
@@ -1926,3 +1927,23 @@ it('resets authenticated busy continuity when the root inode changes but its sup
     storage.close()
   }
 }, 15000)
+
+it('catalogue composition reports missing admitted cards at its own stage', async () => {
+  const f = await setup()
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  f.peer.catalogue.mockResolvedValue([])
+  f.controller.start(f.options)
+  await f.controller.ready!()
+  await vi.waitFor(() => expect(JSON.stringify(warn.mock.calls)).toContain('stage=composition'))
+  expect(JSON.stringify(warn.mock.calls)).toContain('missing admitted release')
+})
+
+it('catalogue diagnostics retain existing busy classification', async () => {
+  const f = await setup()
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  f.peer.catalogue.mockRejectedValue(new PluginSupervisorError('busy'))
+  f.controller.start(f.options)
+  await f.controller.ready!()
+  expect(await f.controller.catalogue()).toMatchObject([{ unavailableReason: 'cleanup-pending' }])
+  await vi.waitFor(() => expect(JSON.stringify(warn.mock.calls)).toContain('stage=rpc'))
+})

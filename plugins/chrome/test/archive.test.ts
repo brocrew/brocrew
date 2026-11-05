@@ -117,6 +117,8 @@ async function builtInventory(
         attach: async () => ({}) as LifecycleWorkspace,
         detach: async () => {},
         agentAttachments: () => [view],
+        agentScope: () => ({ entries: [{ pluginId: 'chrome', is: 'admitted', view }] }),
+        onHostChanged: () => () => {},
       },
       binding: (view, diagnostic) => chromeBinding.chromeBrokerBinding(view, undefined, diagnostic),
     })

@@ -129,6 +129,36 @@ it('holds the first model turn until the managed catalog is available, while sho
   expect(warnings(events)).toEqual([])
 })
 
+it('keeps a successful discovery on the fast path for the same thread and server set', async () => {
+  const { wire, handle } = await start()
+  const saved = handle.ref
+  wire.catalog = ['echo']
+  await handle.send('Fictional first healthy turn')
+  await tick()
+  wire.finish()
+  await tick()
+  expect(await handle.managedPluginHealth!([route])).toEqual([])
+  const unexpected = vi.fn(async () => {
+    throw new Error('fictional unexpected discovery')
+  })
+  wire.discovery = unexpected
+  await handle.send('Fictional following healthy turn')
+  await tick()
+  expect(unexpected).not.toHaveBeenCalled()
+  expect(wire.catalogsAtTurns).toEqual([['echo'], ['echo']])
+  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual(
+    Array.from({ length: 2 }, () => ({
+      method: 'mcpServerStatus/list',
+      params: {
+        threadId: saved!.sessionId,
+        serverName: route.name,
+        detail: 'toolsAndAuthOnly',
+      },
+    })),
+  )
+  expect(handle.ref).toEqual(saved)
+})
+
 it('starts without a dead plugin and records one fixed line without provider error text', async () => {
   const { wire, handle, events } = await start()
   wire.discovery = async () => {
@@ -145,8 +175,225 @@ it('starts without a dead plugin and records one fixed line without provider err
   await handle.send('Fictional later turn')
   await tick()
   expect(wire.catalogsAtTurns).toHaveLength(2)
-  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toHaveLength(1)
+  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toHaveLength(2)
   expect(warnings(events)).toHaveLength(1)
+})
+
+it.each(['refused', 'tools-error', 'timeout'] as const)(
+  'reobserves a %s first discovery on the same Codex thread before a later turn',
+  async (outcome) => {
+    const { wire, handle, events } = await start()
+    const first = deferred<unknown>()
+    wire.discovery = async () => {
+      if (outcome === 'refused') throw new Error('fictional-private-discovery-marker')
+      if (outcome === 'timeout') return first.promise
+      return {
+        data: [
+          {
+            name: route.name,
+            runtimeStatus: 'connected',
+            toolsError: 'fictional-private-discovery-marker',
+            tools: {},
+          },
+        ],
+      }
+    }
+    const saved = handle.ref
+    await handle.send('Fictional ordinary first turn')
+    await vi.advanceTimersByTimeAsync(outcome === 'timeout' ? MANAGED_PLUGIN_READY_WITHIN_MS : 0)
+    expect(wire.catalogsAtTurns).toEqual([[]])
+    expect(warnings(events)).toHaveLength(1)
+    expect(JSON.stringify(warnings(events))).not.toContain('fictional-private-discovery-marker')
+    wire.finish()
+    await tick()
+    expect(handle.status()).toBe('idle')
+
+    let reread = false
+    const recovered = deferred<unknown>()
+    wire.discovery = () => {
+      reread = true
+      return recovered.promise
+    }
+    await handle.send('Fictional later turn after discovery recovered')
+    await tick()
+    expect(reread).toBe(true)
+    expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual(
+      Array.from({ length: 2 }, () => ({
+        method: 'mcpServerStatus/list',
+        params: {
+          threadId: saved!.sessionId,
+          serverName: route.name,
+          detail: 'toolsAndAuthOnly',
+        },
+      })),
+    )
+    expect(wire.catalogsAtTurns).toEqual([[]])
+    expect(handle.ref).toEqual(saved)
+    expect(wire.requests.filter((one) => one.method === 'thread/start')).toHaveLength(1)
+    expect(wire.requests.some((one) => one.method === 'thread/resume')).toBe(false)
+
+    // A late answer from a timed-out first observation cannot release the new turn.
+    first.resolve(ready())
+    await tick()
+    expect(wire.catalogsAtTurns).toEqual([[]])
+    wire.catalog = ['echo']
+    recovered.resolve(ready())
+    await tick()
+    expect(wire.catalogsAtTurns).toEqual([[], ['echo']])
+    expect(warnings(events)).toHaveLength(1)
+    expect(handle.ref).toEqual(saved)
+  },
+)
+
+it.each(['tools-error', 'unknown', 'refused'] as const)(
+  'reobserves %s health after a previously ready Codex discovery without replacing the thread',
+  async (outcome) => {
+    const { wire, handle } = await start()
+    const saved = handle.ref
+    wire.catalog = ['echo']
+    await handle.send('Fictional first healthy turn')
+    await tick()
+    expect(wire.catalogsAtTurns).toEqual([['echo']])
+    wire.finish()
+    await tick()
+    expect(handle.status()).toBe('idle')
+
+    wire.discovery = async () => {
+      if (outcome === 'refused') throw new Error('fictional-private-health-marker')
+      if (outcome === 'unknown') return { data: [] }
+      return {
+        data: [
+          {
+            name: route.name,
+            runtimeStatus: 'connected',
+            toolsError: 'fictional-private-health-marker',
+            tools: {},
+          },
+        ],
+      }
+    }
+    // Unknown permits a fresh observation, never a provider replacement or a broker reset.
+    expect(await handle.managedPluginHealth!([route])).toBeUndefined()
+    const recovered = deferred<unknown>()
+    wire.discovery = () => recovered.promise
+    await handle.send('Fictional later turn after an unknown health reading')
+    await tick()
+    expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual(
+      Array.from({ length: 3 }, () => ({
+        method: 'mcpServerStatus/list',
+        params: {
+          threadId: saved!.sessionId,
+          serverName: route.name,
+          detail: 'toolsAndAuthOnly',
+        },
+      })),
+    )
+    expect(wire.catalogsAtTurns).toEqual([['echo']])
+    expect(wire.requests.filter((one) => one.method === 'thread/start')).toHaveLength(1)
+    expect(wire.requests.some((one) => one.method === 'thread/resume')).toBe(false)
+    expect(handle.ref).toEqual(saved)
+    recovered.resolve(ready())
+    await tick()
+    expect(wire.catalogsAtTurns).toEqual([['echo'], ['echo']])
+  },
+)
+
+it('a late healthy reading cannot relatch readiness after a newer turn was cancelled', async () => {
+  const { wire, handle } = await start()
+  const saved = handle.ref
+  wire.catalog = ['echo']
+  await handle.send('Fictional first healthy turn')
+  await tick()
+  wire.finish()
+  await tick()
+
+  const healthReply = deferred<unknown>()
+  wire.discovery = () => healthReply.promise
+  const health = handle.managedPluginHealth!([route])
+  await tick()
+  const newerReply = deferred<unknown>()
+  wire.discovery = () => newerReply.promise
+  await handle.send('Fictional next turn while health is unread')
+  await tick()
+  expect(wire.catalogsAtTurns).toEqual([['echo']])
+  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toHaveLength(3)
+  await handle.interrupt()
+  await tick()
+  expect(handle.status()).toBe('idle')
+
+  // Both answers are now obsolete. Neither may confirm readiness or dispatch words.
+  healthReply.resolve(ready())
+  expect(await health).toEqual([])
+  newerReply.resolve(ready())
+  await tick()
+  expect(wire.catalogsAtTurns).toEqual([['echo']])
+
+  const currentReply = deferred<unknown>()
+  wire.discovery = () => currentReply.promise
+  await handle.send('Fictional replacement after cancellation')
+  await tick()
+  expect(wire.catalogsAtTurns).toEqual([['echo']])
+  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual(
+    Array.from({ length: 4 }, () => ({
+      method: 'mcpServerStatus/list',
+      params: {
+        threadId: saved!.sessionId,
+        serverName: route.name,
+        detail: 'toolsAndAuthOnly',
+      },
+    })),
+  )
+  currentReply.resolve(ready())
+  await tick()
+  expect(wire.catalogsAtTurns).toEqual([['echo'], ['echo']])
+  expect(handle.ref).toEqual(saved)
+  expect(wire.requests.filter((one) => one.method === 'thread/start')).toHaveLength(1)
+  expect(wire.requests.some((one) => one.method === 'thread/resume')).toBe(false)
+})
+
+it('an older healthy reply cannot replace a newer unknown reading before the next turn', async () => {
+  const { wire, handle } = await start()
+  const saved = handle.ref
+  wire.catalog = ['echo']
+  await handle.send('Fictional first healthy turn')
+  await tick()
+  wire.finish()
+  await tick()
+
+  const olderReply = deferred<unknown>()
+  wire.discovery = () => olderReply.promise
+  const older = handle.managedPluginHealth!([route])
+  await tick()
+  wire.discovery = async () => ({ data: [] })
+  expect(await handle.managedPluginHealth!([route])).toBeUndefined()
+  // No turn separates these reads. The older reply must not supersede the newer UNKNOWN.
+  expect(wire.catalogsAtTurns).toEqual([['echo']])
+  olderReply.resolve(ready())
+  expect(await older).toEqual([])
+  expect(handle.status()).toBe('idle')
+  expect(wire.catalogsAtTurns).toEqual([['echo']])
+
+  const currentReply = deferred<unknown>()
+  wire.discovery = () => currentReply.promise
+  await handle.send('Fictional next turn after overlapping health reads')
+  await tick()
+  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual(
+    Array.from({ length: 4 }, () => ({
+      method: 'mcpServerStatus/list',
+      params: {
+        threadId: saved!.sessionId,
+        serverName: route.name,
+        detail: 'toolsAndAuthOnly',
+      },
+    })),
+  )
+  expect(wire.catalogsAtTurns).toEqual([['echo']])
+  expect(handle.ref).toEqual(saved)
+  expect(wire.requests.filter((one) => one.method === 'thread/start')).toHaveLength(1)
+  expect(wire.requests.some((one) => one.method === 'thread/resume')).toBe(false)
+  currentReply.resolve(ready())
+  await tick()
+  expect(wire.catalogsAtTurns).toEqual([['echo'], ['echo']])
 })
 
 it('bounds a never-settling discovery and does not dispatch again when it eventually answers', async () => {
@@ -161,11 +408,16 @@ it('bounds a never-settling discovery and does not dispatch again when it eventu
   expect(warnings(events)).toHaveLength(1)
   wire.finish()
   await tick()
+  const laterDiscovery = deferred<unknown>()
+  wire.discovery = () => laterDiscovery.promise
   await handle.send('Fictional later turn')
   await tick()
-  expect(wire.catalogsAtTurns).toHaveLength(2)
-  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toHaveLength(1)
+  expect(wire.catalogsAtTurns).toHaveLength(1)
+  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toHaveLength(2)
   discovery.resolve(ready())
+  await tick()
+  expect(wire.catalogsAtTurns).toHaveLength(1)
+  laterDiscovery.resolve(ready())
   await tick()
   expect(wire.catalogsAtTurns).toHaveLength(2)
   expect(warnings(events)).toHaveLength(1)
@@ -213,8 +465,22 @@ it('stops an undispatched turn promptly and a late catalog cannot send it', asyn
   await vi.advanceTimersByTimeAsync(MANAGED_PLUGIN_READY_WITHIN_MS)
   expect(wire.catalogsAtTurns).toEqual([])
   expect(warnings(events)).toEqual([])
-  wire.discovery = async () => ready()
+  const replacement = deferred<unknown>()
+  wire.discovery = () => replacement.promise
   await handle.send('Fictional replacement turn')
+  await tick()
+  expect(wire.catalogsAtTurns).toEqual([])
+  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual(
+    Array.from({ length: 2 }, () => ({
+      method: 'mcpServerStatus/list',
+      params: {
+        threadId: handle.ref!.sessionId,
+        serverName: route.name,
+        detail: 'toolsAndAuthOnly',
+      },
+    })),
+  )
+  replacement.resolve(ready())
   await tick()
   expect(wire.catalogsAtTurns).toHaveLength(1)
 })

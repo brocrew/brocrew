@@ -1,17 +1,44 @@
 import { randomUUID, createHash } from 'node:crypto'
 import { z } from 'zod'
-import type { ManagedPluginAttachmentSource } from '@brobot2/runtime'
+import type { ManagedPluginAttachment, ManagedPluginAttachmentSource } from '@brobot2/runtime'
 import type { PluginSupervisorAttachment } from './supervisor/client'
 
-const Routes = z
-  .array(
-    z.strictObject({
-      name: z.string().max(64),
-      url: z.string().max(256),
-      capability: z.string().regex(/^[a-f0-9]{64}$/),
-    }),
-  )
-  .max(32)
+const Route = {
+  name: z.string().max(64),
+  url: z.string().max(256),
+  capability: z.string().regex(/^[a-f0-9]{64}$/),
+}
+const PluginId = z.string().min(1).max(128)
+/** An owner that did not negotiate a named reply: every route it serves, and nothing else. */
+const Routes = z.array(z.strictObject(Route)).max(32)
+/** The named reply: served routes by plugin, plugins still starting, plugins off. */
+const NamedRoutes = z
+  .strictObject({
+    format: z.literal(2),
+    servers: z.array(z.strictObject({ ...Route, pluginId: PluginId })).max(32),
+    pending: z.array(PluginId),
+    none: z.array(PluginId),
+    unknown: z.boolean(),
+  })
+  // Each plugin is named at most once: served, starting or off, never two of them.
+  .refine((reply) => {
+    const ids = [...reply.servers.map((one) => one.pluginId), ...reply.pending, ...reply.none]
+    return new Set(ids).size === ids.length
+  })
+
+/** Reads a reply in the format the lease that carried the request negotiated. */
+function parsed(reply: {
+  readonly format: 1 | 2
+  readonly value: unknown
+}): Omit<ManagedPluginAttachment, 'revision'> {
+  if (reply.format === 1) return { servers: Routes.parse(reply.value) }
+  const named = NamedRoutes.parse(reply.value)
+  return {
+    servers: named.servers,
+    plugins: { pending: named.pending, none: named.none, unknown: named.unknown },
+  }
+}
+
 /** One fresh source per runtime incarnation. The supervisor owns all broker and private authority. */
 export class WorkspacePluginAttachments {
   constructor(
@@ -25,11 +52,11 @@ export class WorkspacePluginAttachments {
     return {
       read: async () => {
         if (closed) throw new Error('Plugin unavailable. Try again.')
-        const servers = Routes.parse(await this.owner.agentRoutes(input))
+        const attachment = parsed(await this.owner.agentRoutes(input))
         if (closed) throw new Error('Plugin unavailable. Try again.')
         return {
-          revision: createHash('sha256').update(JSON.stringify(servers)).digest('hex'),
-          servers,
+          revision: createHash('sha256').update(JSON.stringify(attachment)).digest('hex'),
+          ...attachment,
         }
       },
       close: async () => {

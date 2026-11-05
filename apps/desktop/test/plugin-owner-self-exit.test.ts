@@ -175,7 +175,11 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
       // Real Windows sharing refusals may add attempts after the injected one.
       // Every retry must remain ordered, ending in publication before actual exit.
       expect(events).toEqual(expected)
-      expect(trace).not.toMatch(/Bearer|fictional-secret|private-owner-path/)
+      // Cause logging follows the existing credential formatter and keeps the actual path.
+      expect(trace).not.toContain('fictional-secret')
+      expect(trace).toContain(
+        'cause=Error code=EPERM: Bearer [redacted] /fictional/private-owner-path',
+      )
     },
   )
   it('holds the same fence before blocked publication succeeds, even with positive physical proofs', async () => {

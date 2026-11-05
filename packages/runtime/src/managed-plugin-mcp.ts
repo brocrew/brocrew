@@ -5,6 +5,10 @@ export interface ManagedPluginMcpServer {
   readonly name: string
   readonly url: string
   readonly capability: string
+  /** Stable plugin identity in a negotiated partial reply. */
+  readonly pluginId?: string
+  /** Configured from an earlier reply, but not served by the latest read. */
+  readonly retained?: true
 }
 export function managedPluginHttpServers(servers: readonly ManagedPluginMcpServer[] = []) {
   const result: Record<string, { type: 'http'; url: string; headers: Record<string, string> }> = {}

@@ -253,7 +253,13 @@ function run(program: string, args: readonly string[]): Promise<string> {
       system32(program),
       args,
       { timeout: TIME_LIMIT_MS, windowsHide: true, encoding: 'utf8' },
-      (error, stdout) => (error ? reject(error) : resolve(stdout)),
+      (error, stdout, stderr) => {
+        if (!error) return resolve(stdout)
+        const status = `exit=${error.code ?? 'unknown'} signal=${error.signal ?? 'none'} killed=${error.killed === true}`
+        const detail = stderr.trim().slice(0, 2048) || error.message
+        error.message = `Windows ${program} failed (${status}): ${detail}`
+        reject(error)
+      },
     )
   })
 }
