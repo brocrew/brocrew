@@ -37314,15 +37314,15 @@ export class RuntimeHost implements LiveHost {
         }
       }
       recordsDeleted = true
+      // Said at the commit: what follows can be slow, or throw.
+      this.theWorldMoved('conversations')
+      this.theWorldMoved('work')
       if (service !== null) this.theServiceConversationIs(service, sessionId, 'gone')
       if (normalPoolsMarked) this.takeTheProfileExecution()
       // Forgotten at once, so a start planned for one of them finds nothing in the awaits below.
       this.forgetTheConversations(tree)
       removed.push('records')
       this.endTheQuestions(sessionId, questions)
-      // Said at the commit: removing its kept files below can be slow, or fail.
-      this.theWorldMoved('conversations')
-      this.theWorldMoved('work')
       const root = this.deps.resourcesRoot?.() ?? null
       if (root !== null) {
         for (const { sha256, name } of deleted.filesNoOneNames) {
@@ -37983,7 +37983,8 @@ export class RuntimeHost implements LiveHost {
       },
     )
     const present = readable()
-    if (outcome === 'imported' || outcome === 'superseded') this.theWorldMoved('conversations')
+    // A derive that ran also records a failure, or clears one, which the listing draws.
+    if (outcome !== 'in-use' && outcome !== 'skipped') this.theWorldMoved('conversations')
     return { outcome, readable: present, note: failure ?? recordingNote(outcome, present) }
   }
 
@@ -38227,9 +38228,9 @@ export class RuntimeHost implements LiveHost {
       }
       // ⚑ **W4.203 · and its newest context reading** is the new generation's.
       this.contextAsLastRead.delete(sessionId)
-      // The listing reads the ledger it replaced: every window reads it again.
-      this.theWorldMoved('conversations')
     }
+    // The listing draws the new generation, or the failure or retry a derive records.
+    if (outcome !== 'skipped') this.theWorldMoved('conversations')
     return { outcome, status: this.status(sessionId) }
   }
 
