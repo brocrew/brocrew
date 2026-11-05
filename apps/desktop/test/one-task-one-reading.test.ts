@@ -429,8 +429,9 @@ describe('664 · one task, one reading, in every place it is drawn', () => {
           // are GONE with their subject: both asked whether the work still waited, for the held
           // *"It is waiting"* correction a reopen once sent — and since D-016c a reopen tells nobody
           // ⚑ `D-006` · F018 — where the work a RUNNING conversation holds stands, for the rail's
-          // plates: a state a person reads, so composed, as `list_tasks` composes the same rows
-          'whatEachConversationIsWaitingOn',
+          // plates: a state a person reads, so composed, as `list_tasks` composes the same rows —
+          // composed once per listing version and shared by every window that asks
+          'whatEachConversationIsWaitingOnComposed',
           // ⚑ When the piece a service is on stalled, said to the callers queued behind it: a
           // state, so composed — a piece waiting on its own question or child is not stalled
           'whenItsActivePieceStalled',
