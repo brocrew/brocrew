@@ -286,6 +286,66 @@ describe('FakeRuntime — teardown & ordering invariants', () => {
   })
 })
 
+describe('FakeRuntime — a turn refused on its login, fatally (sendRefusedOnItsLogin)', () => {
+  const started = async () => {
+    const runtime = new FakeRuntime('claude')
+    const handle = await runtime.start({ cwd: '/tmp/x', providerHome: '/tmp/x/home' })
+    const events: RuntimeEvent[] = []
+    const consumer = consume(handle, events)
+    return { handle, events, consumer }
+  }
+
+  it('accepts the turn once, says one fatal refusal with its cause, and ends through the machine', async () => {
+    const { handle, events, consumer } = await started()
+    const origin = { kind: 'person' } as unknown as Parameters<FakeSessionHandle['send']>[1]
+    await handle.sendRefusedOnItsLogin('fictional words', origin, { cause: 'auth' })
+    await consumer
+    expect(handle.origins).toEqual([origin])
+    const errors = events.filter((event) => event.type === 'error')
+    expect(errors).toEqual([expect.objectContaining({ fatal: true, cause: 'auth' })])
+    expect(errors[0]).not.toHaveProperty('onAKey')
+    const turns = events.filter((event) => event.type === 'turn')
+    expect(turns).toEqual([expect.objectContaining({ state: 'failed', loginRefused: true })])
+    expect(events.findIndex((event) => event.type === 'error')).toBeLessThan(
+      events.findIndex((event) => event.type === 'turn'),
+    )
+    expect(handle.status()).toBe('errored')
+  })
+
+  it('carries a saved key on the error and on the terminal, and auth_stale as its cause', async () => {
+    const keyed = await started()
+    await keyed.handle.sendRefusedOnItsLogin('fictional words', undefined, {
+      cause: 'auth',
+      onAKey: true,
+    })
+    await keyed.consumer
+    expect(keyed.events.find((event) => event.type === 'error')).toMatchObject({ onAKey: true })
+    expect(keyed.events.find((event) => event.type === 'turn')).toMatchObject({
+      loginRefused: true,
+      onAKey: true,
+    })
+    const stale = await started()
+    await stale.handle.sendRefusedOnItsLogin('fictional words', undefined, { cause: 'auth_stale' })
+    await stale.consumer
+    expect(stale.events.find((event) => event.type === 'error')).toMatchObject({
+      cause: 'auth_stale',
+    })
+  })
+
+  it('a handle with a turn already running refuses as send does, and records nothing', async () => {
+    const { handle, events, consumer } = await started()
+    await handle.send('go')
+    await vi.waitFor(() => expect(events.some((e) => e.type === 'permission_request')).toBe(true))
+    await expect(
+      handle.sendRefusedOnItsLogin('fictional words', undefined, { cause: 'auth' }),
+    ).rejects.toThrow()
+    expect(handle.origins).toEqual([undefined])
+    expect(events.some((event) => event.type === 'error')).toBe(false)
+    await handle.close()
+    await consumer
+  })
+})
+
 describe('FakeRuntime — exercises every RuntimeEvent variant', () => {
   it('produces every variant the FAKE emits, and every session/turn state', async () => {
     const runtime = new FakeRuntime('claude')
