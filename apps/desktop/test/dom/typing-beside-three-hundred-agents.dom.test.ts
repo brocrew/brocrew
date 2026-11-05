@@ -177,13 +177,12 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  const unexpected = [...fake.unexpected]
   unmountAll()
   sessions.dispose()
   useOverlays().close()
   localStorage.clear()
-  // Every read the screen made was one this test answered.
-  expect(unexpected.join(', ')).toBe('')
+  // Every call the screen made, its teardown included, was one this test answered.
+  expect(fake.unexpected.join(', ')).toBe('')
 })
 
 const settle = async (): Promise<void> => {
