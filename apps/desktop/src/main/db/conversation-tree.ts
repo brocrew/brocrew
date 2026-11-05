@@ -1,4 +1,5 @@
 import type { AppDatabase } from './connection'
+import { committedChangesOf } from './committed-changes'
 
 /**
  * A conversation and the conversations below it, the helpers it started and theirs, as a delete
@@ -114,7 +115,9 @@ export interface TreeDeleted {
  */
 export function deleteTheTree(db: AppDatabase, tree: readonly string[]): TreeDeleted {
   const ids = JSON.stringify(tree)
+  const committed = committedChangesOf(db)
   const run = db.transaction((): TreeDeleted => {
+    for (const id of tree) committed.whole(id, 'deleted')
     const kept = db
       .prepare(
         `SELECT DISTINCT sha256, name FROM work_resource
