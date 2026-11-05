@@ -62,6 +62,7 @@ async function aWorkspace(ids: readonly string[], answerWithinMs = 400) {
     ids.map((id) => [id, { is: 'pending', runId: `run-${id}-1`, switchRevision: 0 }]),
   )
   const listeners = new Set<(workspaceId: string) => void>()
+  let unreadable = false
   const opened: string[] = []
   const closed: string[] = []
   const view = (workspaceId: string, id: string, one: PluginState): AgentAttachmentView => {
@@ -84,30 +85,33 @@ async function aWorkspace(ids: readonly string[], answerWithinMs = 400) {
         .filter(([, one]) => one.is === 'admitted')
         .map(([id, one]) => view(workspaceId, id, one)),
     ),
-    agentScope: vi.fn((workspaceId: string) => ({
-      workspaceId,
-      revision: 0,
-      entries: (workspaceId === 'fictional-workspace' ? [...state] : [])
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([id, one]): AgentScopeEntry => {
-          const base = {
-            pluginId: id,
-            enabled: one.is !== 'off',
-            switchRevision: one.switchRevision,
-          }
-          if (one.is === 'admitted')
-            return {
-              ...base,
-              is: 'admitted',
-              installId: `code-${id}`,
-              runId: one.runId,
-              view: view(workspaceId, id, one),
+    agentScope: vi.fn((workspaceId: string) => {
+      if (unreadable) throw new Error('fictional committed state unreadable')
+      return {
+        workspaceId,
+        revision: 0,
+        entries: (workspaceId === 'fictional-workspace' ? [...state] : [])
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([id, one]): AgentScopeEntry => {
+            const base = {
+              pluginId: id,
+              enabled: one.is !== 'off',
+              switchRevision: one.switchRevision,
             }
-          if (one.is === 'pending')
-            return { ...base, is: 'pending', why: 'starting', installId: null }
-          return { ...base, is: 'off', why: 'disabled' }
-        }),
-    })),
+            if (one.is === 'admitted')
+              return {
+                ...base,
+                is: 'admitted',
+                installId: `code-${id}`,
+                runId: one.runId,
+                view: view(workspaceId, id, one),
+              }
+            if (one.is === 'pending')
+              return { ...base, is: 'pending', why: 'starting', installId: null }
+            return { ...base, is: 'off', why: 'disabled' }
+          }),
+      }
+    }),
     onHostChanged: vi.fn((listener: (workspaceId: string) => void) => {
       listeners.add(listener)
       return () => listeners.delete(listener)
@@ -139,6 +143,9 @@ async function aWorkspace(ids: readonly string[], answerWithinMs = 400) {
     state,
     opened,
     closed,
+    unreadable(value: boolean) {
+      unreadable = value
+    },
     /** A committed change for this workspace, told after it is committed. */
     commit(id: string, change: Partial<PluginState>, workspaceId = 'fictional-workspace') {
       Object.assign(state.get(id)!, change)
@@ -266,5 +273,56 @@ describe('a cold agent gets each plugin that is ready', () => {
     expect(w.opened).toEqual(['aster'])
     expect(w.closed).toEqual(['aster'])
     expect((await w.bridge.agentRoutes(l, r)).servers).toEqual([])
+  })
+
+  it('a route swept while its plugin was briefly not admitted opens again when it is, with no spin', async () => {
+    const w = await aWorkspace(['aster', 'zinnia'], 400)
+    const l = lease()
+    const r = request()
+    w.commit('aster', { is: 'admitted' })
+    expect(ids((await w.bridge.agentRoutes(l, r)).servers)).toEqual(['aster'])
+    w.commit('aster', { is: 'pending' })
+    await w.bridge.agentRoutes(l, r)
+    w.commit('aster', { is: 'admitted' })
+    const again = await w.bridge.agentRoutes(l, r)
+    expect(ids(again.servers)).toEqual(['aster'])
+    expect(again.pending).toEqual(['zinnia'])
+  })
+
+  it('a warmup cancelled by a new run is not a failure: the new run is served without waiting out the bound', async () => {
+    const w = await aWorkspace(['aster'], 2_000)
+    const first = deferred<void>()
+    const second = deferred<void>()
+    w.state.get('aster')!.open = first.promise
+    w.commit('aster', { is: 'admitted' })
+    const started = performance.now()
+    const reading = w.bridge.agentRoutes(lease(), request())
+    await tick(30)
+    w.state.get('aster')!.open = second.promise
+    w.commit('aster', { runId: 'run-aster-2' })
+    await tick(20)
+    first.resolve()
+    await tick(20)
+    w.commit('aster', {})
+    await tick(20)
+    second.resolve()
+    const routes = await reading
+    expect(ids(routes.servers)).toEqual(['aster'])
+    expect(performance.now() - started).toBeLessThan(1_000)
+  })
+
+  it('a scope that cannot be read is unknown and serves only routes still open', async () => {
+    const w = await aWorkspace(['aster', 'zinnia'], 200)
+    const l = lease()
+    const r = request()
+    w.commit('aster', { is: 'admitted' })
+    await w.bridge.agentRoutes(l, r)
+    w.unreadable(true)
+    expect(await w.bridge.agentRoutes(l, r)).toMatchObject({
+      pending: [],
+      none: [],
+      unknown: true,
+    })
+    expect(ids((await w.bridge.agentRoutes(l, r)).servers)).toEqual(['aster'])
   })
 })
