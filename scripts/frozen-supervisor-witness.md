@@ -45,7 +45,9 @@ production-verifies two independent real tar archives. They differ in entry byte
 tools/schema, settings HTML/fields, version and data schema. Neither package is an
 installed Chrome/WhatsApp artifact. `prepared.json` retains SHA256 and size for **every**
 produced file/resource, package, driver, preload, runtime executable, metadata and
-license; the receipt itself is not part of its own digest map. Treat that receipt as
+license. It separately pins the executing runner, imported build/runtime setup modules,
+source driver, package metadata and lockfile. Clean exact SHA/tree and those source
+hashes are required at execution. The receipt is not part of its own digest map. Treat that receipt as
 reviewed evidence, retain it externally with the output, and do not edit it. Failed
 preparation leaves its partial output; correct the cause and choose a new directory,
 never rebuild over a prepared witness.
@@ -61,14 +63,23 @@ prepared shipped Node for the driver as well:
 
 `run` never calls a builder, downloader, installer or native compiler. It refuses a
 missing/wrong version or binary digest with a preparation-specific error and never
-falls back to system Node. It checks all frozen inputs before and after the journey,
-checks the durable runtime copy against every packaged runtime/host file, hashes the
+falls back to system Node. The current driver process must itself have the prepared
+shipped executable's real path, exact version and binary digest; probing that binary
+from a different system Node process does not qualify. It compares complete frozen
+input path sets and hashes before and after the journey, compares the complete flattened
+durable runtime path set and hashes against the packaged runtime/host files, hashes the
 content-addressed supervisor copy, checks the actual captured spawn executable and
 argv, and retains the runtime id and spawn records. A test-only inherited preload
 throws on fetch/HTTP/HTTPS/TLS/TCP connections, permitting local Unix sockets. Production
 owner bytes are unchanged; the preload is separately hashed instrumentation. The
 inherited `--no-warnings` flag suppresses Node's own experimental notices so the
 production launcher's first-line diagnostic retains the actual busy refusal.
+
+Before any owner starts, the run executes filesystem refusal controls on newly copied
+inputs. Added, altered and removed host resources must each fail the actual frozen-input
+check. An added durable resource must fail the same exact durable-runtime check used
+by the journey. These controls never alter the prepared artifact and write `controls.json`
+beside the run result. They remain UNRUN until the integration owner runs the command.
 
 Each execution allocates a new short `/tmp/fl-*` fictional global/workspace/data root;
 there is no root-selection argument, live root discovery, credentials, plugin installs
@@ -94,9 +105,13 @@ in personal roots, GUI, provider or network access. The sequence is:
    more, prove committed v2 recovery/no replay, uninstall through person control and
    assert `dataOnRemove: keep`, then prove final package and owner exits.
 
-Evidence is appended in a new `run-*/result.json` below the prepared output, including
+Evidence is appended in a new `evidence/run-*/result.json` below the prepared output, including
 the exact source SHA/tree, resource map, runtime id/version, spawn argv and captured
-run metadata. Failure writes `failure.json` and returns nonzero. All fictional roots
+run metadata and actual driver runtime identity. Only `prepared.json` and the exact
+`evidence/` subtree are excluded from frozen input comparison; resources, packages,
+driver and preload have no exclusions. Owner-exit waits have a 35-second deadline;
+timeout retains captured process information and never implies exit. Failure writes
+`failure.json` and returns nonzero. All fictional roots
 and evidence are retained on success and failure; the fixture never erases a root
 with uncertain cleanup. A failed run may still hold captured processes until normal
 lease expiry/drain; inspect the saved failure and owned process records before any
@@ -107,8 +122,9 @@ owner process information; do not delete its guards while processes remain.
 ## Supported hosts and coverage
 
 Shipped Node target metadata lists `darwin-arm64` and `win32-x64`. This command selects
-the actual host and explicitly refuses Linux and the current Windows supervisor fence
-limitation; it does not fake a shipped Linux target. It adds no default Vitest/CI glob,
+the actual host and admits only its macOS arm64 launcher/path; it does not fake a shipped
+Linux target or make claims about other production Windows ownership routes. Windows
+execution of this witness is UNRUN. It adds no default Vitest/CI glob,
 deletes no test, and skips no existing coverage. Integrators can invoke these commands
-in a separately authorized macOS arm64 job. Separate CI source wiring, Windows support
+in a separately authorized macOS arm64 job. Separate CI source wiring, Windows witness execution
 and all whole-Electron gates need their own integration ownership and evidence.

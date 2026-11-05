@@ -4,7 +4,17 @@ import { createRequire, syncBuiltinESMExports } from 'node:module'
 import childProcess from 'node:child_process'
 import { promisify } from 'node:util'
 import { createHash } from 'node:crypto'
-import { mkdir, readdir, readFile, writeFile, lstat, copyFile, realpath } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  writeFile,
+  lstat,
+  copyFile,
+  realpath,
+  rm,
+} from 'node:fs/promises'
 import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { buildPluginSupervisor } from './build-plugin-supervisor.mjs'
@@ -17,6 +27,25 @@ const sha = (bytes) => createHash('sha256').update(bytes).digest('hex')
 const json = async (file) => JSON.parse(await readFile(file, 'utf8'))
 const save = (file, value) =>
   writeFile(file, JSON.stringify(value, null, 2) + '\n', { flag: 'wx', mode: 0o600 })
+const sourceNames = [
+  'scripts/frozen-supervisor-witness.mjs',
+  'scripts/build-plugin-supervisor.mjs',
+  'scripts/prepare-plugin-node.mjs',
+  'apps/desktop/smoke/frozen-supervisor-witness.ts',
+  'package.json',
+  'apps/desktop/package.json',
+  'pnpm-lock.yaml',
+]
+async function sourceFiles() {
+  return Object.fromEntries(
+    await Promise.all(
+      sourceNames.map(async (name) => {
+        const bytes = await readFile(join(root, name))
+        return [name, { sha256: sha(bytes), bytes: bytes.length }]
+      }),
+    ),
+  )
+}
 async function inventory(directory, prefix = '') {
   const result = {}
   for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) =>
@@ -41,6 +70,99 @@ async function copyTree(from, to) {
     await copyFile(join(from, name), join(to, name))
   }
 }
+async function frozenInventory(directory) {
+  // Only the receipt itself and the named evidence subtree are mutable outputs.
+  // No resource/package/driver/preload addition is exempted from exact comparison.
+  return Object.fromEntries(
+    Object.entries(await inventory(directory)).filter(
+      ([name]) => name !== 'prepared.json' && !name.startsWith('evidence/'),
+    ),
+  )
+}
+async function checkFrozen(directory, plan) {
+  assert.deepEqual(
+    await frozenInventory(directory),
+    plan.frozen,
+    'Frozen input path set or bytes changed',
+  )
+}
+function flattenedRuntime(plan) {
+  const files = {}
+  for (const [name, value] of Object.entries(plan.frozen)) {
+    if (!/^resources\/plugin-(node|host)\//.test(name)) continue
+    const flat = name.replace(/^resources\/plugin-(node|host)\//, '')
+    assert.equal(Object.hasOwn(files, flat), false, `Runtime resource name collision: ${flat}`)
+    files[flat] = value
+  }
+  return files
+}
+async function checkDurable(directory, plan) {
+  assert.deepEqual(
+    await inventory(directory),
+    flattenedRuntime(plan),
+    'Durable runtime path set or bytes changed',
+  )
+}
+async function controls(directory, plan, evidence) {
+  // All mutations stay on a new copy, never the once-prepared artifact or a running root.
+  const scratch = await mkdtemp('/tmp/fc-')
+  try {
+    for (const name of Object.keys(plan.frozen)) {
+      await mkdir(dirname(join(scratch, name)), { recursive: true, mode: 0o700 })
+      await copyFile(join(directory, name), join(scratch, name))
+    }
+    await checkFrozen(scratch, plan)
+    const extra = join(scratch, 'resources/plugin-host/fictional-unrecorded.mjs')
+    await writeFile(extra, '// fictional addition', { flag: 'wx', mode: 0o600 })
+    await assert.rejects(checkFrozen(scratch, plan), {
+      message: /Frozen input path set or bytes changed/,
+    })
+    await rm(extra)
+    const changed = Object.keys(plan.frozen).find((name) =>
+      name.startsWith('resources/plugin-host/'),
+    )
+    assert.ok(changed)
+    await writeFile(join(scratch, changed), '// fictional changed resource')
+    await assert.rejects(checkFrozen(scratch, plan), {
+      message: /Frozen input path set or bytes changed/,
+    })
+    await copyFile(join(directory, changed), join(scratch, changed))
+    await rm(join(scratch, changed))
+    await assert.rejects(checkFrozen(scratch, plan), {
+      message: /Frozen input path set or bytes changed/,
+    })
+    await copyFile(join(directory, changed), join(scratch, changed))
+    await checkFrozen(scratch, plan)
+    const runtime = await mkdtemp('/tmp/fr-')
+    try {
+      for (const name of Object.keys(plan.frozen)) {
+        if (!/^resources\/plugin-(node|host)\//.test(name)) continue
+        const flat = name.replace(/^resources\/plugin-(node|host)\//, '')
+        await mkdir(dirname(join(runtime, flat)), { recursive: true, mode: 0o700 })
+        await copyFile(join(directory, name), join(runtime, flat))
+      }
+      await checkDurable(runtime, plan)
+      await writeFile(join(runtime, 'fictional-extra.mjs'), '// fictional durable addition', {
+        flag: 'wx',
+      })
+      await assert.rejects(checkDurable(runtime, plan), {
+        message: /Durable runtime path set or bytes changed/,
+      })
+    } finally {
+      await rm(runtime, { recursive: true, force: true })
+    }
+    await save(join(evidence, 'controls.json'), {
+      passed: true,
+      addedResourceRefused: true,
+      changedResourceRefused: true,
+      removedResourceRefused: true,
+      addedDurableResourceRefused: true,
+      ownerSpawned: false,
+    })
+  } finally {
+    await rm(scratch, { recursive: true, force: true })
+  }
+}
 async function git(...args) {
   return (await exec('git', ['-C', root, ...args])).stdout.trim()
 }
@@ -52,7 +174,7 @@ function host() {
     )
   if (name !== 'darwin-arm64')
     throw new Error(
-      'win32-x64 runtime is shipped, but this source tip has a POSIX-only supervisor fence; Windows witness remains UNRUN.',
+      'This component witness selects the darwin-arm64 launcher/path only. win32-x64 runtime is shipped; Windows witness is UNRUN and no conclusion about other Windows ownership routes is made.',
     )
   return name
 }
@@ -158,6 +280,12 @@ const connect=net.Socket.prototype.connect;net.Socket.prototype.connect=function
 `,
     { flag: 'wx', mode: 0o600 },
   )
+  assert.equal(
+    await git('rev-parse', 'HEAD'),
+    expectedSha,
+    'Source HEAD changed during preparation',
+  )
+  assert.equal(await git('status', '--porcelain'), '', 'Source changed during preparation')
   const frozen = await inventory(out)
   await save(join(out, 'prepared.json'), {
     format: 1,
@@ -165,6 +293,7 @@ const connect=net.Socket.prototype.connect;net.Socket.prototype.connect=function
     sourceTree: await git('rev-parse', 'HEAD^{tree}'),
     lockfileSha256: sha(await readFile(join(root, 'pnpm-lock.yaml'))),
     esbuildVersion,
+    sourceFiles: await sourceFiles(),
     target,
     nodeVersion: NODE_VERSION,
     supervisorBuildCalls: 1,
@@ -186,13 +315,25 @@ const connect=net.Socket.prototype.connect;net.Socket.prototype.connect=function
     '',
     'Run requires the clean prepared source checkout',
   )
+  assert.equal(await git('rev-parse', 'HEAD^{tree}'), plan.sourceTree)
+  assert.deepEqual(
+    await sourceFiles(),
+    plan.sourceFiles,
+    'Executing runner/setup/source inputs changed',
+  )
   const resources = join(out, 'resources')
-  await checkRuntime(resources, target)
-  const before = await inventory(out)
-  for (const [name, value] of Object.entries(plan.frozen))
-    assert.deepEqual(before[name], value, `Frozen input changed: ${name}`)
-  const runRoot = await realpath(await (await import('node:fs/promises')).mkdtemp('/tmp/fl-'))
-  const evidence = join(out, `run-${runRoot.split('/').at(-1)}`)
+  const shippedNode = await checkRuntime(resources, target)
+  assert.equal(process.version, `v${NODE_VERSION}`, 'Driver process must use shipped Node 24.22.0')
+  assert.equal(
+    await realpath(process.execPath),
+    await realpath(shippedNode),
+    'Invoke run with the prepared shipped Node executable',
+  )
+  assert.equal(sha(await readFile(process.execPath)), NODE_TARGETS[target].binarySha256)
+  await checkFrozen(out, plan)
+  const runRoot = await realpath(await mkdtemp('/tmp/fl-'))
+  await mkdir(join(out, 'evidence'), { recursive: true, mode: 0o700 })
+  const evidence = join(out, 'evidence', `run-${runRoot.split('/').at(-1)}`)
   await mkdir(evidence, { mode: 0o700 })
   const spawns = [],
     originalSpawn = childProcess.spawn,
@@ -203,15 +344,19 @@ const connect=net.Socket.prototype.connect;net.Socket.prototype.connect=function
   process.env.NODE_OPTIONS = `--no-warnings --import=${pathToFileURL(join(out, 'network-forbidden.mjs')).href}`
   childProcess.spawn = function (command, argv, opts) {
     const child = originalSpawn(command, argv, opts)
-    const exited = new Promise((resolve) =>
-      child.once('exit', (code, signal) => resolve({ code, signal })),
-    )
+    const exited = new Promise((resolve, reject) => {
+      child.once('exit', (code, signal) => resolve({ code, signal }))
+      child.once('error', reject)
+    })
+    void exited.catch(() => {})
     spawns.push({ command, argv: [...argv], child, exited })
     return child
   }
   syncBuiltinESMExports()
   let answer
   try {
+    await controls(out, plan, evidence)
+    await checkFrozen(out, plan)
     // Apply the same no-network policy to the app-side driver, not just its child.
     await import(pathToFileURL(join(out, 'network-forbidden.mjs')).href)
     answer = await req(join(out, 'app-source-driver.cjs')).witness({
@@ -224,16 +369,7 @@ const connect=net.Socket.prototype.connect;net.Socket.prototype.connect=function
     // Durable runtime and entry copies must match every shipped resource byte.
     const runtime = await readdir(join(runRoot, 'p/runtimes'))
     assert.equal(runtime.length, 1)
-    const runtimeFiles = await inventory(join(runRoot, 'p/runtimes', runtime[0]))
-    for (const [name, value] of Object.entries(plan.frozen)) {
-      if (name.startsWith('resources/plugin-node/') || name.startsWith('resources/plugin-host/')) {
-        assert.deepEqual(
-          runtimeFiles[name.replace(/^resources\/plugin-(node|host)\//, '')],
-          value,
-          `Durable runtime resource changed: ${name}`,
-        )
-      }
-    }
+    await checkDurable(join(runRoot, 'p/runtimes', runtime[0]), plan)
     for (const record of spawns) {
       assert.equal(
         record.command,
@@ -244,15 +380,24 @@ const connect=net.Socket.prototype.connect;net.Socket.prototype.connect=function
         plan.frozen['resources/plugin-supervisor/entry.cjs'].sha256,
       )
     }
-    const after = await inventory(out)
-    for (const [name, value] of Object.entries(plan.frozen))
-      assert.deepEqual(after[name], value, `Prepared artifact changed after operations: ${name}`)
+    await checkFrozen(out, plan)
+    assert.deepEqual(
+      await sourceFiles(),
+      plan.sourceFiles,
+      'Executing source inputs changed during operations',
+    )
     answer = {
       ...answer,
       sourceSha: plan.sourceSha,
       sourceTree: plan.sourceTree,
       runtimeId: runtime[0],
       runtimeVersion: NODE_VERSION,
+      driverRuntime: {
+        executable: process.execPath,
+        version: process.version,
+        sha256: sha(await readFile(process.execPath)),
+      },
+      sourceFiles: plan.sourceFiles,
       frozen: plan.frozen,
       spawnArgv: spawns.map(({ command, argv, child }) => ({ command, argv, pid: child.pid })),
       fictionalRoot: runRoot,

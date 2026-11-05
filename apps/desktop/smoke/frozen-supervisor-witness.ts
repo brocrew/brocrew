@@ -36,6 +36,22 @@ const runtimeReply = z.object({
   }),
 })
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+async function bounded<T>(work: Promise<T>, label: string, limit = 35_000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`frozen-witness-deadline: ${label}; captured processes retained`)),
+          limit,
+        )
+      }),
+    ])
+  } finally {
+    clearTimeout(timer)
+  }
+}
 async function wait<T>(read: () => Promise<T>, limit = 30_000): Promise<T> {
   const until = performance.now() + limit
   let last: unknown
@@ -315,7 +331,7 @@ export async function witness(options: {
     await assert.rejects(launch())
     assert.match(String(pluginStartupDiagnostic(launch.diagnostic())?.stderr), /Plugin busy/)
     const contender = ownerSpawn()
-    assert.equal((await contender.exited).code, 1)
+    assert.equal((await bounded(contender.exited, 'busy contender exit')).code, 1)
     const beforeInstall = await validatedCards()
     assert.equal(beforeInstall.length, 0)
     await settings!.inspectPackage!({ source: options.refs[0]!.source })
@@ -366,7 +382,7 @@ export async function witness(options: {
     lease!.abandon()
     lease = undefined
     assert.equal(firstOwner.child.kill('SIGKILL'), true)
-    assert.equal((await firstOwner.exited).signal, 'SIGKILL')
+    assert.equal((await bounded(firstOwner.exited, 'crashed owner exit')).signal, 'SIGKILL')
     assert.equal((await updating).succeeded, false)
     await gone(interrupted.pid)
     // The killed owner cannot write an exit receipt. Physical group absence is a separate check.
@@ -427,7 +443,7 @@ export async function witness(options: {
     settings = undefined
     assert.equal(await lease!.close(), true)
     lease = undefined
-    assert.equal((await recoveredOwner.exited).code, 0)
+    assert.equal((await bounded(recoveredOwner.exited, 'drained owner exit')).code, 0)
     await exactExit(second.runId, options.refs[1]!.sha256)
     await gone(second.pid)
     const stopped = JSON.parse(await readFile(join(global, 'supervisor/owner.json'), 'utf8'))
@@ -454,7 +470,7 @@ export async function witness(options: {
     settings = undefined
     assert.equal(await lease!.close(), true)
     lease = undefined
-    assert.equal((await finalOwner.exited).code, 0)
+    assert.equal((await bounded(finalOwner.exited, 'final owner exit')).code, 0)
     assert.equal((await readdir(join(global, 'supervisor-entries'))).length, 1)
     return {
       passed: true,
@@ -469,8 +485,8 @@ export async function witness(options: {
       guardianSigkill: 'UNRUN',
     }
   } finally {
-    await settings?.close().catch(() => {})
-    await lease?.close().catch(() => {})
+    if (settings) await bounded(settings.close(), 'failure person close').catch(() => {})
+    if (lease) await bounded(lease.close(), 'failure lease close').catch(() => {})
     // No rm or speculative process signaling: failed proofs retain the complete fictional root.
   }
 }
