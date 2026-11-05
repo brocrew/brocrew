@@ -9670,8 +9670,7 @@ export function createSessionStore(
       )
       // A rolled-back write still invalidates a live allocator; it never publishes a floor.
       ledgerWrites.set(sessionId, { ordinal, generation })
-      if (reconcileStatus) committed.appended(committedRowOf(sessionId, generation, ordinal, event))
-      else committed.staged(sessionId)
+      committed.appended(committedRowOf(sessionId, generation, ordinal, event))
 
       // ⛔ **A `conversation_reset` writes the ref for exactly the same reason a `session` does**
       // (199, from 192 H5): this column is what `resumeSession` reopens from, and after a `/clear`
@@ -13868,7 +13867,9 @@ export function createSessionStore(
 
     appendGeneration(sessionId, generation, entries) {
       if (entries.length === 0) return
-      withWindowWriteFence(connection, () => appendManyTx(sessionId, entries, generation, false))
+      withWindowWriteFence(connection, () =>
+        committed.asStaged(() => appendManyTx(sessionId, entries, generation, false)),
+      )
     },
 
     promoteGeneration(sessionId, generation, through) {

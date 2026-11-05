@@ -57,6 +57,8 @@ export interface CommittedChange {
   readonly staged: ReadonlySet<string>
   /** Files kept on a piece. */
   readonly kept: readonly { readonly piece: string; readonly resource: string }[]
+  /** The persistent tables the commit wrote, whatever else it says: a setter's, a note's. */
+  readonly tables: ReadonlySet<string>
 }
 
 /** What was committed can't be told: every reader starts again. */
@@ -77,6 +79,8 @@ export interface CommittedChanges {
   kept(piece: string, resource: string): void
   /** Runs `write` with its appends recorded as part of a whole change, not row by row. */
   asAWhole<T>(write: () => T): T
+  /** Runs `write` with its appends recorded as staged: a generation nobody reads yet. */
+  asStaged<T>(write: () => T): T
   /**
    * Compares the file's `data_version` with the last one seen: a move means another connection
    * committed, and one resync is published. Asked at the points a reader is about to answer.
@@ -89,6 +93,7 @@ interface Frame {
   whole: Map<string, WholeChange>
   staged: Set<string>
   kept: { piece: string; resource: string }[]
+  tables: Set<string>
   poisoned: boolean
 }
 
@@ -97,6 +102,7 @@ const frame = (): Frame => ({
   whole: new Map(),
   staged: new Set(),
   kept: [],
+  tables: new Set(),
   poisoned: false,
 })
 
@@ -106,21 +112,40 @@ const frame = (): Frame => ({
  */
 const RECORDER = Symbol('committed changes')
 
+const WRITES = /^(?:INSERT|REPLACE|UPDATE|DELETE|WITH)\b/i
+const TARGET =
+  /\b(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|REPLACE\s+INTO|UPDATE(?:\s+OR\s+\w+)?|DELETE\s+FROM)\s+["`[]?([A-Za-z_][\w.]*)/i
+
+/** The persistent table a statement writes, or `null` for a read, DDL or a temp table. */
+function tableWrittenBy(sql: string): string | null {
+  const text = sql.replace(/^(?:\s+|--[^\n]*\n|\/\*[\s\S]*?\*\/)*/, '')
+  if (!WRITES.test(text)) return null
+  const name = TARGET.exec(text)?.[1]?.toLowerCase()
+  if (name === undefined || name.startsWith('temp.')) return null
+  return name
+}
+
 /**
  * The record of what each commit on this connection wrote. One per raw connection, whichever
  * store or module asks for it. Every transaction made on the connection after this is installed
  * is framed: a nested one merges into its parent when it returns and is dropped when it throws,
- * and the outermost publishes once the connection has left its transaction.
+ * and the outermost publishes once the connection has left its transaction. A persistent write
+ * outside any transaction publishes on its own.
  */
 export function committedChangesOf(db: AppDatabase): CommittedChanges {
   const known = (db as unknown as Record<symbol, CommittedChanges | undefined>)[RECORDER]
   if (known !== undefined) return known
   // What the connection itself answers for each method, called on whichever connection a proxy
   // hands it: an own replacement installed before this one, or the prototype's.
-  type Transaction = (this: AppDatabase, fn: unknown) => unknown
-  const nativeTransaction =
-    (Object.getOwnPropertyDescriptor(db, 'transaction')?.value as Transaction | undefined) ??
-    (Object.getPrototypeOf(db) as { transaction: Transaction }).transaction
+  type Methods = {
+    prepare(this: AppDatabase, sql: string): ReturnType<AppDatabase['prepare']>
+    transaction(this: AppDatabase, fn: unknown): unknown
+  }
+  const prototype = Object.getPrototypeOf(db) as Methods
+  const before = <K extends keyof Methods>(key: K): Methods[K] =>
+    (Object.getOwnPropertyDescriptor(db, key)?.value as Methods[K] | undefined) ?? prototype[key]
+  const nativeTransaction = before('transaction')
+  const nativePrepare = before('prepare')
 
   if (db.readonly) {
     // A read-only connection never commits: nothing is patched, and nothing is published.
@@ -131,6 +156,7 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
       staged: () => undefined,
       kept: () => undefined,
       asAWhole: (write) => write(),
+      asStaged: (write) => write(),
       check: () => undefined,
     }
     Object.defineProperty(db, RECORDER, { value: reader })
@@ -142,6 +168,7 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
   let draining = false
   let commit = 0
   let wholeDepth = 0
+  let stagedDepth = 0
   let seen: number | null = null
   const dataVersion = (): number | null => {
     try {
@@ -178,7 +205,8 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
       done.rows.length > 0 ||
       done.whole.size > 0 ||
       done.staged.size > 0 ||
-      done.kept.length > 0
+      done.kept.length > 0 ||
+      done.tables.size > 0
     ) {
       queue.push({
         commit: ++commit,
@@ -187,6 +215,7 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
         whole: done.whole,
         staged: done.staged,
         kept: done.kept,
+        tables: done.tables,
       })
     } else return
     drain()
@@ -198,6 +227,7 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
       if (!into.whole.has(session)) into.whole.set(session, why)
     for (const session of done.staged) into.staged.add(session)
     into.kept.push(...done.kept)
+    for (const table of done.tables) into.tables.add(table)
     into.poisoned ||= done.poisoned
   }
 
@@ -252,6 +282,39 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
     writable: true,
   })
 
+  /** Whether a name a write statement targets is one of this connection's temp tables. */
+  const isATempTable = (name: string): boolean =>
+    nativePrepare
+      .call(db, "SELECT 1 FROM temp.sqlite_master WHERE type = 'table' AND name = ?")
+      .get(name) !== undefined
+  Object.defineProperty(db, 'prepare', {
+    configurable: true,
+    writable: true,
+    value: function prepare(this: AppDatabase | undefined, sql: string) {
+      const statement = nativePrepare.call(this ?? db, sql)
+      const table = tableWrittenBy(sql)
+      if (table === null || isATempTable(table)) return statement
+      const run = statement.run.bind(statement) as (...args: unknown[]) => { changes: number }
+      Object.defineProperty(statement, 'run', {
+        configurable: true,
+        writable: true,
+        value: (...args: unknown[]) => {
+          const result = run(...args)
+          if (result.changes === 0) return result
+          const current = frames.at(-1)
+          if (current !== undefined) current.tables.add(table)
+          else if (!db.inTransaction) {
+            const alone = frame()
+            alone.tables.add(table)
+            publish(alone)
+          }
+          return result
+        },
+      })
+      return statement
+    },
+  })
+
   const recorder: CommittedChanges = {
     listen(listener) {
       listeners.add(listener)
@@ -262,7 +325,8 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
       const current = frames.at(-1)
       if (current === undefined) return
       if (wholeDepth > 0) return
-      current.rows.push(Object.freeze(row))
+      if (stagedDepth > 0) current.staged.add(row.session)
+      else current.rows.push(Object.freeze(row))
     },
     whole(session, why) {
       const current = frames.at(-1)
@@ -280,6 +344,14 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
         return write()
       } finally {
         wholeDepth -= 1
+      }
+    },
+    asStaged(write) {
+      stagedDepth += 1
+      try {
+        return write()
+      } finally {
+        stagedDepth -= 1
       }
     },
     check() {
