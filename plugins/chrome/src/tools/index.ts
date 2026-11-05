@@ -378,6 +378,9 @@ export function buildToolDefs(): ToolDef[] {
           a.tabId as string,
           async ({ page }) => {
             await page.close()
+            // Closing removes the tab; recheck profile authority without resolving it again.
+            if (!deps.store.get(a.profile as string)?.enabled)
+              throw new ToolError('profile is unavailable — check Settings → Plugins → Chrome')
           },
         )
         return withNotes({ ok: true }, notes)
