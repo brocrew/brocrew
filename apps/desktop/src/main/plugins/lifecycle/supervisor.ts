@@ -20,7 +20,7 @@ export async function createSupervisorLifecycle(options: {
   const releaseReads = options.lifecycle.state.retainOwnerReadSnapshot()
   void options.owner.closed.then(releaseReads)
   const effectQueue = new PluginEffectQueue()
-  options.owner.bindLifecycleEffects(() => effectQueue.close())
+  options.owner.bindLifecycleEffects(effectQueue)
   const host = createSupervisedPluginHost(options.owner, options.host)
   const consumer: { agents?: ReturnType<typeof createLifecycleAgentBridge> } = {}
   const controller = sharedLifecycleWorkspaces(

@@ -62,6 +62,8 @@ type StateReadView = ReturnType<LifecycleOptions['state']['readView']>
 interface Workspace {
   sink: WorkspaceProjection
   receipts: Map<string, ProjectionReceipt>
+  consumerBlocks: Set<string>
+  consumerRevisions: Map<string, number>
   live: boolean
 }
 /** The journal's pending operation, which a list under the state lock sees only once it is stuck. */
@@ -246,9 +248,8 @@ export class PluginLifecycleController {
   }
   async setEnabled(handle: LifecycleWorkspace, id: string, enabled: boolean) {
     const workspace = this.workspace(handle)
-    const value = await this.options.state.withExclusive(async () =>
-      this.options.state.setEnabled(workspace.sink.workspaceId, id, enabled),
-    )
+    if (this.effectQueue.signal.aborted) return pending()
+    const value = this.options.state.setEnabled(workspace.sink.workspaceId, id, enabled)
     this.workspace(handle)
     this.syncHostWorkspace(workspace)
     if (!this.hostOwners.has(id))
@@ -257,9 +258,8 @@ export class PluginLifecycleController {
   }
   async setTitlesEnabled(handle: LifecycleWorkspace, id: string, enabled: boolean) {
     const workspace = this.workspace(handle)
-    const value = await this.options.state.withExclusive(async () =>
-      this.options.state.setTitlesEnabled(workspace.sink.workspaceId, id, enabled),
-    )
+    if (this.effectQueue.signal.aborted) return pending()
+    const value = this.options.state.setTitlesEnabled(workspace.sink.workspaceId, id, enabled)
     this.workspace(handle)
     this.syncHostWorkspace(workspace)
     if (!this.hostOwners.has(id))
@@ -552,21 +552,33 @@ export class PluginLifecycleController {
     view?: StateReadView,
   ): boolean {
     try {
+      if (this.draining || this.effectQueue.signal.aborted) return false
       const committed = view ?? this.options.state.readView()
-      const workspace = this.workspace(handle),
-        active = this.current(id, committed),
-        run = this.runs.get(id)
+      const workspace = this.workspace(handle)
       return (
-        committed.getEnabled(workspace.sink.workspaceId, id).enabled &&
-        !this.blocks.has(id) &&
-        active?.installId === installId &&
-        run?.installId === installId &&
-        !run.ended &&
-        committed.matchesProjection(workspace.receipts.get(id), workspace.sink.workspaceId)
+        !workspace.consumerBlocks.has(id) &&
+        this.admittedProjection(workspace, id, installId, committed)
       )
     } catch {
       return false
     }
+  }
+  private admittedProjection(
+    workspace: Workspace,
+    id: string,
+    installId: string,
+    committed: StateReadView,
+  ): boolean {
+    const active = this.current(id, committed),
+      run = this.runs.get(id)
+    return (
+      committed.getEnabled(workspace.sink.workspaceId, id).enabled &&
+      !this.blocks.has(id) &&
+      active?.installId === installId &&
+      run?.installId === installId &&
+      !run.ended &&
+      committed.matchesProjection(workspace.receipts.get(id), workspace.sink.workspaceId)
+    )
   }
   async status(): Promise<{ cards: PluginCard[]; cleanupPending: string[] }> {
     let unfinished: Unfinished | undefined
@@ -672,6 +684,8 @@ export class PluginLifecycleController {
   }
   async attach(sink: WorkspaceProjection): Promise<LifecycleWorkspace> {
     if (
+      this.draining ||
+      this.effectQueue.signal.aborted ||
       !z.uuid().safeParse(sink.workspaceId).success ||
       [...this.workspaces.values()].some(
         (one) => one.live && one.sink.workspaceId === sink.workspaceId,
@@ -679,13 +693,18 @@ export class PluginLifecycleController {
     )
       return refuse()
     const handle = Object.freeze({}) as LifecycleWorkspace
-    const workspace: Workspace = { sink, receipts: new Map(), live: true }
+    const workspace: Workspace = {
+      sink,
+      receipts: new Map(),
+      consumerBlocks: new Set(),
+      consumerRevisions: new Map(),
+      live: true,
+    }
     this.workspaces.set(handle, workspace)
     const touched = new Map<string, { before: ProjectionReceipt | null; ids: Set<string> }>()
     try {
       await Promise.resolve().then(async () => {
         const before = this.options.state.projections(sink.workspaceId)
-        const active = this.options.state.exportActivation().entries
         const guards = this.options.state.inspect().guards
         const ids = new Set([
           ...before.map((one) => one.pluginId),
@@ -712,13 +731,20 @@ export class PluginLifecycleController {
             sink.reconcile({ pluginId: id, before: old, receipt: null }),
           )
           await this.effectQueue.consumer(() => sink.applied(id, null))
-          this.options.state.recordProjection(sink.workspaceId, id, null)
+          if (this.effectQueue.signal.aborted) return pending()
+          const pendingOperation = this.options.state.inspect().pending
+          if (
+            !pendingOperation ||
+            (pendingOperation.request.consent.action !== 'global-restore' &&
+              pendingOperation.request.consent.pluginId !== id)
+          )
+            this.options.state.recordProjection(sink.workspaceId, id, null)
           workspace.receipts.delete(id)
-          const installed = active.find((one) => one.pluginId === id)
+          const installed = this.current(id)
           if (installed) {
             const checked = await this.vault.load(this.descriptor(installed), [])
             await this.ensureRunning(installed, checked)
-            // Only authenticated current owner state, readiness and a fresh consumer ack can rebind.
+            // Bind only the current selection and ready run after this consumer acknowledges it.
             await this.project(workspace, installed)
           }
         }
@@ -743,13 +769,11 @@ export class PluginLifecycleController {
         ),
       )
       this.workspaces.delete(handle)
-      if (proofs.some((one) => one.status !== 'fulfilled')) {
-        for (const id of touched.keys()) {
-          this.block(id)
-          this.cleanup.add(id)
-        }
-        return pending()
-      }
+      this.hostRegistry.detachWorkspace(sink.workspaceId)
+      for (const key of this.hostScopes)
+        if ((JSON.parse(key) as string[])[2] === sink.workspaceId) this.hostScopes.delete(key)
+      this.registrations.detach(sink.workspaceId)
+      if (proofs.some((one) => one.status !== 'fulfilled')) return pending()
       return refuse()
     }
   }
@@ -779,7 +803,7 @@ export class PluginLifecycleController {
     previous?: Pick<Effect, 'previousVersion' | 'previousDataSchema'>,
   ): Promise<LifecycleRun> {
     const prior = this.runs.get(install.pluginId)
-    if (this.draining) return pending()
+    if (this.draining || this.effectQueue.signal.aborted) return pending()
     this.assertInstallation(install)
     if (prior) {
       if (prior.installId !== install.installId || prior.ended) return pending()
@@ -855,7 +879,7 @@ export class PluginLifecycleController {
     // On Windows a start first opens the job keeper, which can take two minutes on a cold machine;
     // the host bounds that open and the readiness after it (node-host.ts).
     const connection = await bounded(
-      () => run.ready(),
+      () => this.effectQueue.consumer(() => run.ready()),
       process.platform === 'win32' ? 150_000 : 20000,
     )
     this.assertInstallation(install)
@@ -882,11 +906,13 @@ export class PluginLifecycleController {
           appVersion: this.options.appVersion ?? this.options.repoList?.appVersion ?? '',
         })
     this.packageNames.set(selected.release.id, selected.package.contract.name)
-    await this.vault.stage(
-      selected.release,
-      selected.archive,
-      { bytes: Buffer.alloc(0), signature: Buffer.alloc(0) },
-      [],
+    await this.effectQueue.stage(() =>
+      this.vault.stage(
+        selected.release,
+        selected.archive,
+        { bytes: Buffer.alloc(0), signature: Buffer.alloc(0) },
+        [],
+      ),
     )
     if (action === 'install')
       return this.installMutation(handle, selected.release.id, operationId, selected)
@@ -921,9 +947,13 @@ export class PluginLifecycleController {
         },
       })
       if (!equalState(retry, original)) return refuse()
-      return this.options.state.prepare(original)
+      return this.effectQueue.commit(request.consent.pluginId ?? '*', () =>
+        this.options.state.prepare(original),
+      )
     }
-    return this.options.state.prepare(request)
+    return this.effectQueue.commit(request.consent.pluginId ?? '*', () =>
+      this.options.state.prepare(request),
+    )
   }
   private installMutation(
     handle: LifecycleWorkspace,
@@ -999,9 +1029,11 @@ export class PluginLifecycleController {
           return refuse()
         const bytes = preflight
           ? preflight.bytes
-          : await (this.options.download ?? downloadPluginArchive)(
-              release,
-              AbortSignal.timeout(30000),
+          : await this.effectQueue.consumer(() =>
+              (this.options.download ?? downloadPluginArchive)(
+                release,
+                AbortSignal.any([this.effectQueue.signal, AbortSignal.timeout(30000)]),
+              ),
             )
         const checked = preflight?.checked ?? catalogue.verifyPackage(id, release.version, bytes!)
         const state = this.options.state.inspect(),
@@ -1042,7 +1074,9 @@ export class PluginLifecycleController {
           await this.writeEffect(effect)
           this.options.fault?.('prepared')
           const staged = bytes
-            ? await this.vault.stage(release, bytes, this.options.catalogue, [])
+            ? await this.effectQueue.effect(id, () =>
+                this.vault.stage(release, bytes, this.options.catalogue, []),
+              )
             : checked
           this.options.fault?.('staged')
           const run = await this.ensureRunning(install, staged)
@@ -1076,7 +1110,7 @@ export class PluginLifecycleController {
           if (!workspace.live || cohort.some((one) => !one.live)) return refuse()
           this.assertOperation(effect, install)
           if (this.runs.get(id)?.run !== run || this.runs.get(id)?.ended) return pending()
-          this.options.state.complete(operationId)
+          this.effectQueue.commit(id, () => this.options.state.complete(operationId))
           for (const [one, receipt] of receipts) one.receipts.set(id, receipt)
           this.options.fault?.('activated')
         } catch (error) {
@@ -1209,13 +1243,18 @@ export class PluginLifecycleController {
           return refuse()
         const bytes = preflight
           ? preflight.bytes
-          : await (this.options.download ?? downloadPluginArchive)(
-              release,
-              AbortSignal.timeout(30000),
+          : await this.effectQueue.consumer(() =>
+              (this.options.download ?? downloadPluginArchive)(
+                release,
+                AbortSignal.any([this.effectQueue.signal, AbortSignal.timeout(30000)]),
+              ),
             )
         const checked = preflight?.checked ?? catalogue.verifyPackage(id, release.version, bytes!)
         // Cache the verified replacement durably before reserving an update. Recovery needs no download.
-        if (bytes) await this.vault.stage(release, bytes, this.options.catalogue, [])
+        if (bytes)
+          await this.effectQueue.effect(id, () =>
+            this.vault.stage(release, bytes, this.options.catalogue, []),
+          )
         this.options.fault?.('staged')
         if (!workspace.live || this.draining) return refuse()
         this.options.state.requireUpdateReader()
@@ -1311,7 +1350,7 @@ export class PluginLifecycleController {
     this.assertOperation(effect, install)
     if (this.runs.get(install.pluginId)?.run !== run || this.runs.get(install.pluginId)?.ended)
       return pending()
-    this.options.state.complete(effect.operationId)
+    this.effectQueue.commit(effect.pluginId, () => this.options.state.complete(effect.operationId))
     for (const [one, receipt] of receipts) one.receipts.set(install.pluginId, receipt)
     for (const one of this.workspaces.values()) if (one.live) this.syncHostWorkspace(one)
     this.cleanup.delete(install.pluginId)
@@ -1345,6 +1384,7 @@ export class PluginLifecycleController {
     if (!workspace.live) return refuse()
     if (!next.receipt) return refuse()
     workspace.receipts.set(install.pluginId, next.receipt)
+    workspace.consumerBlocks.delete(install.pluginId)
     const owner = this.hostOwners.get(install.pluginId)
     if (owner) await this.declareHostScope(workspace, owner.owner, owner.package)
     this.syncHostWorkspace(workspace)
@@ -1468,6 +1508,7 @@ export class PluginLifecycleController {
     if (results.some((one) => one.status !== 'fulfilled')) return pending()
   }
   private assertInstallation(install: Installation): void {
+    if (this.draining || this.effectQueue.signal.aborted) return pending()
     const guard = this.options.state
       .inspect()
       .guards.find((entry) => entry.pluginId === install.pluginId)
@@ -1510,11 +1551,11 @@ export class PluginLifecycleController {
   }
   private writeEffect(effect: Effect): Promise<void> {
     this.effectQueue.assertEffect(effect.pluginId)
-    return this.effects.write(effect)
+    return this.effectQueue.effect(effect.pluginId, () => this.effects.write(effect))
   }
-  idleEffects(): Promise<void> {
+  beginDrain(): void {
     this.draining = true
-    return this.effectQueue.close()
+    this.effectQueue.beginClose()
   }
   private async removeFiles(install: Installation, operationId: string): Promise<void> {
     const operation = this.options.state.operation(operationId)?.operation
@@ -1525,12 +1566,16 @@ export class PluginLifecycleController {
       action: operation.request.consent.action,
     }
     this.assertOperation(effect, install)
-    await this.options.runtime.removeCode(install.pluginId, install.release.archiveSha256)
+    await this.effectQueue.effect(install.pluginId, () =>
+      this.options.runtime.removeCode(install.pluginId, install.release.archiveSha256),
+    )
     this.assertOperation(effect, install)
-    await this.vault.remove(this.descriptor(install), [], {
-      operationId,
-      installId: install.installId,
-    })
+    await this.effectQueue.effect(install.pluginId, () =>
+      this.vault.remove(this.descriptor(install), [], {
+        operationId,
+        installId: install.installId,
+      }),
+    )
   }
   /** A running plugin's own clean-up before uninstall, such as logging out of an account. Its failure is not refused:
    * the plugin's data is deleted below either way. */
@@ -1541,12 +1586,14 @@ export class PluginLifecycleController {
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
       const connection = await Promise.race([
-        running.run.ready(),
+        this.effectQueue.consumer(() => running.run.ready()),
         new Promise<never>((_, reject) => {
           timer = setTimeout(() => reject(new Error('unavailable')), 5000)
         }),
       ])
-      return await adapter.uninstall(connection, new AbortController().signal)
+      return await this.effectQueue.effect(id, () =>
+        adapter.uninstall!(connection, this.effectQueue.signal),
+      )
     } catch {
       // Local deletion can finish even when remote removal was not confirmed.
       return 'unconfirmed'
@@ -1574,18 +1621,31 @@ export class PluginLifecycleController {
     if (!running || running.ended || running.installId !== effect.installId || !effect.workspaceId)
       return 'unconfirmed'
     try {
-      const connection = await running.run.ready()
-      if (!connection.client) return 'unconfirmed'
+      const connection = await this.effectQueue.consumer(() => running.run.ready())
+      this.assertOperation(
+        effect,
+        this.options.state.inspect().guards.find((one) => one.pluginId === effect.pluginId) ??
+          pending(),
+      )
+      if (this.runs.get(effect.pluginId) !== running || running.ended || !connection.client)
+        return 'unconfirmed'
       const binding = manifest.lifecycle.beforeRemove
-      const result = await connection.client.callTool({
-        name: binding.tool,
-        arguments: binding.arguments ?? {},
-        _meta: {
-          workspaceId: effect.workspaceId,
-          origin: 'lifecycle.beforeRemove',
-          requestId: effect.operationId,
-        },
-      })
+      const result = await this.effectQueue.effect(effect.pluginId, () =>
+        connection.client!.callTool(
+          {
+            name: binding.tool,
+            arguments: binding.arguments ?? {},
+            _meta: {
+              workspaceId: effect.workspaceId,
+              origin: 'lifecycle.beforeRemove',
+              requestId: effect.operationId,
+            },
+          },
+          undefined,
+          { signal: this.effectQueue.signal },
+        ),
+      )
+      if (this.runs.get(effect.pluginId) !== running || running.ended) return 'unconfirmed'
       effect.cleanupReply = result
       effect.cleanupResult = result.isError ? 'unconfirmed' : 'completed'
       await this.writeEffect(effect)
@@ -1653,7 +1713,9 @@ export class PluginLifecycleController {
     if (deleteData) {
       if (!this.options.runtime.removeData) return pending()
       this.assertOperation(effect, install)
-      await this.options.runtime.removeData(install.pluginId)
+      await this.effectQueue.effect(install.pluginId, () =>
+        this.options.runtime.removeData!(install.pluginId),
+      )
     }
     const state = this.options.state.inspect()
     // The effect is durable first. A crash here still has a pending journal resolution and
@@ -1662,7 +1724,9 @@ export class PluginLifecycleController {
     if (state.pending?.request.operationId === effect.operationId) {
       try {
         this.assertOperation(effect, install)
-        this.options.state.complete(effect.operationId)
+        this.effectQueue.commit(effect.pluginId, () =>
+          this.options.state.complete(effect.operationId),
+        )
       } catch {
         const completed = this.options.state.operation(effect.operationId)
         if (completed?.status !== 'completed') return pending()
@@ -1808,7 +1872,7 @@ export class PluginLifecycleController {
       }
       await this.removeFiles(entry, effect.operationId)
       this.assertOperation(effect, entry)
-      this.options.state.abort(effect.operationId)
+      this.effectQueue.commit(effect.pluginId, () => this.options.state.abort(effect.operationId))
     } else if (entry.phase === 'active') {
       if (entry.releaseRevision !== 1 || entry.configRevision !== 0) return pending()
       await this.remove(entry.pluginId, randomUUID(), effect.operationId)
@@ -1924,10 +1988,9 @@ export class PluginLifecycleController {
   }
   /** Trusted owner teardown only. Mark intent synchronously before any child can be stopped. */
   drain(): Promise<void> {
-    this.draining = true
+    this.beginDrain()
     // The supervisor bounds its caller's wait while retaining this exact cleanup barrier.
     this.drainWork ??= (async () => {
-      await this.effectQueue.close()
       const results = await Promise.allSettled(
         [...this.runs.values()].map(async (running) => {
           const [, exit] = await Promise.allSettled([
@@ -1935,14 +1998,13 @@ export class PluginLifecycleController {
             running.run.exited,
           ])
           if (exit.status !== 'fulfilled') return pending()
-          await running.revocation
+          // Consumer acknowledgements cannot retain an exited process owner's lease.
         }),
       )
+      await this.effectQueue.settled()
       if (results.some((one) => one.status !== 'fulfilled')) return pending()
       // Once nothing holds the state, a removal or install left unfinished stays in the journal.
-      await this.options.state.withExclusive(async () => {
-        this.drained = true
-      })
+      this.drained = true
       if (!this.cleanForShutdown()) return pending()
     })()
     return this.drainWork
@@ -1968,12 +2030,13 @@ export class PluginLifecycleController {
   /** A second consumer must clear stale bindings before sharing an admitted projection. */
   async reconcileConsumer(handle: LifecycleWorkspace, sink: WorkspaceProjection): Promise<void> {
     const workspace = this.workspace(handle)
+    if (this.effectQueue.signal.aborted) return pending()
     if (sink.workspaceId !== workspace.sink.workspaceId) return refuse()
     await (async () => {
       const guards = this.options.state.inspect().guards
       const ids = new Set([...guards.map((one) => one.pluginId), ...workspace.receipts.keys()])
-      try {
-        for (const id of ids) {
+      for (const id of ids) {
+        try {
           const before = workspace.receipts.get(id) ?? null
           const guard = guards.find((one) => one.pluginId === id)
           for (const installId of new Set(
@@ -1984,18 +2047,22 @@ export class PluginLifecycleController {
               true
             )
               return pending()
-          const receipt = before && this.admitted(handle, id, before.installId) ? before : null
+          const receipt =
+            before &&
+            this.admittedProjection(workspace, id, before.installId, this.options.state.readView())
+              ? before
+              : null
           await this.effectQueue.consumer(() =>
             sink.reconcile({ pluginId: id, before: null, receipt }),
           )
           await this.effectQueue.consumer(() => sink.applied(id, receipt))
+          workspace.consumerBlocks.delete(id)
+        } catch {
+          workspace.consumerBlocks.add(id)
+          workspace.consumerRevisions.set(id, (workspace.consumerRevisions.get(id) ?? 0) + 1)
+          this.syncHostWorkspace(workspace)
+          return pending()
         }
-      } catch {
-        for (const id of ids) {
-          this.block(id)
-          this.cleanup.add(id)
-        }
-        return pending()
       }
     })()
   }
@@ -2027,6 +2094,7 @@ export class PluginLifecycleController {
         if (!contributions.tools || !contributions.mcp) return []
         const run = this.runs.get(id)!
         const choice = read.getEnabled(workspaceId, id)
+        const consumerRevision = this.workspace(handle).consumerRevisions.get(id) ?? 0
         return [
           {
             ...view,
@@ -2035,6 +2103,8 @@ export class PluginLifecycleController {
             current: () => {
               const latest = this.options.state.readView()
               return (
+                (this.workspaces.get(handle)?.consumerRevisions.get(id) ?? 0) ===
+                  consumerRevision &&
                 latest.getEnabled(workspaceId, id).revision === choice.revision &&
                 this.runs.get(id) === run &&
                 this.admitted(handle, id, view.installation.installId, latest)
@@ -2053,6 +2123,7 @@ export class PluginLifecycleController {
     const view = this.screen(handle, id, read)
     const running = this.runs.get(id)!
     const choice = read.getEnabled(view.workspaceId, id)
+    const consumerRevision = this.workspace(handle).consumerRevisions.get(id) ?? 0
     const identity = {
       pluginId: id,
       releaseDigest: view.installation.release.archiveSha256,
@@ -2065,6 +2136,7 @@ export class PluginLifecycleController {
     return this.registrations.register(view.package, identity, () => {
       const latest = this.options.state.readView()
       return (
+        (this.workspaces.get(handle)?.consumerRevisions.get(id) ?? 0) === consumerRevision &&
         latest.getEnabled(view.workspaceId, id).revision === choice.revision &&
         this.admitted(handle, id, identity.installId, latest) &&
         this.runs.get(id)?.run.runId === identity.runId &&

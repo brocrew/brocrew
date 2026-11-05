@@ -19,6 +19,8 @@ export class PluginEffectQueue {
   private readonly targets = new Map<string, Promise<void>>()
   private mutationTail: Promise<void> = Promise.resolve()
   private closing = false
+  private readonly abort = new AbortController()
+  private readonly effects = new Set<Promise<unknown>>()
   private interrupt!: () => void
   private readonly interrupted = new Promise<void>((resolve) => {
     this.interrupt = resolve
@@ -85,20 +87,77 @@ export class PluginEffectQueue {
   }
   assertEffect(target: string): void {
     const work = this.context.getStore()
-    if (!work?.live || !work.mutation || (work.target !== '*' && work.target !== target))
+    if (
+      this.closing ||
+      !work?.live ||
+      !work.mutation ||
+      (work.target !== '*' && work.target !== target)
+    )
       unavailable()
+  }
+  /** Start and retain a real effect before returning control to another task. */
+  effect<T>(target: string, run: () => Promise<T>): Promise<T> {
+    this.assertEffect(target)
+    return this.track(run)
+  }
+  /** Content staging may precede a mutation, but still belongs to this owner's lifetime. */
+  stage<T>(run: () => Promise<T>): Promise<T> {
+    if (this.closing) return unavailable()
+    return this.track(run)
+  }
+  private track<T>(run: () => Promise<T>): Promise<T> {
+    let resolve!: (value: T | PromiseLike<T>) => void
+    let reject!: (reason: unknown) => void
+    const result = new Promise<T>((yes, no) => {
+      resolve = yes
+      reject = no
+    })
+    this.effects.add(result)
+    try {
+      resolve(run())
+    } catch (error) {
+      reject(error)
+    }
+    void result.then(
+      () => this.effects.delete(result),
+      () => this.effects.delete(result),
+    )
+    return result
+  }
+  /** A synchronous commit cannot overlap drain; check its task immediately before calling it. */
+  commit<T>(target: string, run: () => T): T {
+    this.assertEffect(target)
+    return run()
+  }
+  get signal(): AbortSignal {
+    return this.abort.signal
   }
   /** Consumer replies can be abandoned; filesystem effects are always awaited to settlement. */
   async consumer<T>(run: () => Promise<T>): Promise<T> {
     if (this.closing) return unavailable()
-    return Promise.race([Promise.resolve().then(run), this.interrupted.then(unavailable)])
+    return Promise.race([
+      Promise.resolve().then(() => {
+        if (this.closing) return unavailable()
+        return run()
+      }),
+      this.interrupted.then(unavailable),
+    ])
+  }
+  beginClose(): void {
+    if (this.closing) return
+    this.closing = true
+    for (const work of this.operations.values()) work.live = false
+    this.abort.abort()
+    this.interrupt()
+  }
+  async settled(): Promise<void> {
+    await Promise.allSettled([...this.effects])
   }
   async close(): Promise<void> {
-    this.closing = true
-    this.interrupt()
-    await Promise.allSettled([...this.operations.values()].map((work) => work.result))
+    this.beginClose()
+    await this.settled()
   }
   get idle(): boolean {
-    return this.operations.size === 0
+    return this.effects.size === 0 && (this.closing || this.operations.size === 0)
   }
 }
