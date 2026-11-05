@@ -208,7 +208,7 @@ describe('question copies are kept by triggers and filled in slices', () => {
     const heard: Committed[] = []
     const stop = committedChangesOf(db).listen((change) => heard.push(change))
     try {
-      store.append('alpha', store.nextOrdinal('alpha'), { type: 'assistant_message', text: 'x' }, 1)
+      row('alpha', '{"type":"assistant_message","text":"x"}', 'assistant_message')
       const written = heard.at(-1)
       if (written === undefined || written.resync) throw new Error('no change heard')
       expect(written.tables.has('question_copy')).toBe(true)
