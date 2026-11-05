@@ -188,7 +188,8 @@ MUTATIONS = [
         # WorkspaceReading's own rule. Zeroing it still makes every age a surface derives from this
         # reading read as `now - 0`, the epoch-old-but-current defect the row names.
         [
-            (HOST, '    return {\n      conversations,\n      readAt: Date.now(),\n      rowsUnread: unread.count,\n      ...ledgersSkippedOf(unread.ledgersSkipped),\n    }\n', '    return {\n      conversations,\n      readAt: 0,\n      rowsUnread: unread.count,\n      ...ledgersSkippedOf(unread.ledgersSkipped),\n    }\n'),
+            # Re-anchored in place: the count also carries the rules asks its cards could not read.
+            (HOST, '    return {\n      conversations,\n      readAt: Date.now(),\n      rowsUnread: unread.count + reads.asksUnread,\n      ...ledgersSkippedOf(unread.ledgersSkipped),\n    }\n', '    return {\n      conversations,\n      readAt: 0,\n      rowsUnread: unread.count + reads.asksUnread,\n      ...ledgersSkippedOf(unread.ledgersSkipped),\n    }\n'),
         ],
     ),
     # ── §4 · the wire ──────────────────────────────────────────────────────────────────────────

@@ -314,7 +314,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # for the Team plates/rail answer; zeroing it still drops the count on the wire regardless
         # of what was actually unread.
         [
-            (HOST, '    return {\n      conversations,\n      readAt: Date.now(),\n      rowsUnread: unread.count,\n      ...ledgersSkippedOf(unread.ledgersSkipped),\n    }\n', '    return {\n      conversations,\n      readAt: Date.now(),\n      rowsUnread: 0,\n      ...ledgersSkippedOf(unread.ledgersSkipped),\n    }\n'),
+            # Re-anchored in place: the count also carries the rules asks its cards could not read.
+            (HOST, '    return {\n      conversations,\n      readAt: Date.now(),\n      rowsUnread: unread.count + reads.asksUnread,\n      ...ledgersSkippedOf(unread.ledgersSkipped),\n    }\n', '    return {\n      conversations,\n      readAt: Date.now(),\n      rowsUnread: 0,\n      ...ledgersSkippedOf(unread.ledgersSkipped),\n    }\n'),
         ],
     ),
     (
