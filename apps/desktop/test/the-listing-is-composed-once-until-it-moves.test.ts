@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { aServiceWorld, RecordingSink, type AServiceWorld } from './helpers/a-service-world'
 import { openDatabase } from '../src/main/db/connection'
-import type { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { THE_APP_ITSELF, type RuntimeHost } from '../src/main/runtime/runtime-host'
 
 /**
  * Both halves of the listing are composed once and shared by every window that asks, until
@@ -94,7 +94,7 @@ describe('the listing is composed once until it moves', () => {
     if (!given.ok) throw new Error('the give was refused')
     const helper = world.store.workById(given.piece)!.owner
     await vi.waitFor(() => expect(runningOf(helper)).toBe('unwatched'))
-    await host.close(helper, world.window)
+    await host.close(helper, THE_APP_ITSELF)
     await vi.waitFor(() => expect(runningOf(helper)).toBe('not-running'))
     // A commit makes the next ask a fresh composition, and one read in it fails once.
     world.store.setModel(giver, 'fictional-model')
