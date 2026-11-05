@@ -946,7 +946,8 @@ describe('§7 · a read that did not answer is not an all-clear', () => {
      * `partial` is false for ever, because the value is not `null`.
      */
     it('🔴 the look records a refusal per population, and keeps the rows either way', () => {
-      const body = bodyOf('lookForWhatIsYours')
+      // ⚑ The reads and their writes are one round of the look, which every ask goes through.
+      const body = bodyOf('lookAtTheQueueOnce')
       expect(body).toContain('if (questions !== null) escalated.value = questions')
       expect(body).toContain('if (decisions !== null) decided.value = decisions')
       // ⛔ **Per population, from the answer itself** — a single boolean over all of them would say
@@ -1095,7 +1096,7 @@ describe('§7 · a read that did not answer is not an all-clear', () => {
      * make a dropped IPC call delete half of somebody's queue.
      */
     it('⛔ the look never writes a refusal into either population', () => {
-      const body = bodyOf('lookForWhatIsYours')
+      const body = bodyOf('lookAtTheQueueOnce')
       expect(body).toContain('if (questions !== null) escalated.value = questions')
       expect(body).toContain('if (decisions !== null) decided.value = decisions')
       // ⛔ **And they go out together**, so the count and the list it is over cannot straddle an

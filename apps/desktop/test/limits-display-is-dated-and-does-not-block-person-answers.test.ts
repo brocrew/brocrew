@@ -9,6 +9,7 @@ import {
   type LimitsDisplayState,
 } from '../src/renderer/src/lib/limits-display'
 import { providerLimitsView } from '../src/renderer/src/lib/persons-queue'
+import { oneReadAtATime } from '../src/renderer/src/lib/one-read-at-a-time'
 import { readProviderLimit } from '../src/shared/provider-limit'
 
 const NOW = Date.UTC(2026, 9, 8, 22)
@@ -162,7 +163,7 @@ describe('the limits display retains dated evidence without current-state author
 })
 
 describe('the actual screen publishes actionables without awaiting the limits lane', () => {
-  it('keeps ready answers live during a slow limits read and rejects an older actionable round', async () => {
+  it('keeps ready answers live during a slow limits read, and an older round never lands over a newer one', async () => {
     const source = readFileSync(
       fileURLToPath(new URL('../src/renderer/src/components/RuntimeScreen.vue', import.meta.url)),
       'utf8',
@@ -170,6 +171,11 @@ describe('the actual screen publishes actionables without awaiting the limits la
     const start = source.indexOf('async function lookForWhatIsYours(')
     const end = source.indexOf('\n}\n', start)
     if (start < 0 || end < start) throw new Error('screen look missing')
+    const once = source.indexOf('async function lookAtTheQueueOnce(')
+    const onceEnd = source.indexOf('\n}\n', once)
+    if (once < 0 || onceEnd < once) throw new Error('screen look round missing')
+    const coalesced = 'const lookAtTheQueue = oneReadAtATime(lookAtTheQueueOnce)'
+    expect(source).toContain(coalesced)
     const first = deferred<object>()
     const slowLimits = deferred<void>()
     const fresh = { rows: ['fictional new question'], walk: 'fictional', ledgers: 1, rowsUnread: 0 }
@@ -202,21 +208,25 @@ describe('the actual screen publishes actionables without awaiting the limits la
     }
     const refreshLimitsDisplay = vi.fn(() => slowLimits.promise)
     const look = runInNewContext(
-      `${source.slice(start, end + 2).replace(': Promise<void>', '')}; lookForWhatIsYours`,
+      `${source.slice(start, end + 2).replace(': Promise<void>', '')}; ${source.slice(once, onceEnd + 2).replace(': Promise<void>', '')}; ${coalesced}; lookForWhatIsYours`,
       {
         ...refs,
         store,
         refreshLimitsDisplay,
-        actionableReadSequence: 0,
+        oneReadAtATime,
         actionableReadsClosed: false,
       },
     ) as () => Promise<void>
     const old = look()
-    await look()
-    expect(refs.escalated.value).toBe(fresh)
+    const asked = look()
+    // The second ask is owed while the first round is out, so it reads nothing beside it; the
+    // limits refresh starts for each ask and is awaited by neither.
+    expect(store.questionsForAPerson).toHaveBeenCalledTimes(1)
     expect(refreshLimitsDisplay).toHaveBeenCalledTimes(2)
     first.finish({ ...fresh, rows: ['older question'] })
-    await old
+    await Promise.all([old, asked])
+    // The owed round reads after the older one landed, so the newer answer is the one that stands.
+    expect(store.questionsForAPerson).toHaveBeenCalledTimes(2)
     expect(refs.escalated.value).toBe(fresh)
     slowLimits.finish()
   })

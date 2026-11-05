@@ -335,7 +335,8 @@ describe('§4 · actionable reads and the limits display each have a publication
     expect(kinds.length).toBeGreaterThanOrEqual(5)
     expect(kinds).toContain('limitsForAPerson')
     expect(every).toContain('readLimitsDisplay')
-    const look = SCREEN_SOURCE.slice(SCREEN_SOURCE.indexOf('async function lookForWhatIsYours'))
+    // ⚑ The readers are one round of the look, which every ask for the queue goes through.
+    const look = SCREEN_SOURCE.slice(SCREEN_SOURCE.indexOf('async function lookAtTheQueueOnce'))
     const body = look.slice(0, look.indexOf('\n}\n') + 2)
     for (const kind of kinds.filter((kind) => kind !== 'limitsForAPerson'))
       expect(body).toContain(`store.${kind}()`)
@@ -376,10 +377,10 @@ describe('§4 · actionable reads and the limits display each have a publication
     // its rows rather than as one.
     //
     // ⚠️ **First: it really is conscripted.** `stalledWorkForAPerson` ends in the suffix, so the
-    // assertion above already requires `lookForWhatIsYours` to call it — and that assertion would
+    // assertion above already requires the look's round to call it — and that assertion would
     // also pass if the verb had been named something else and quietly left out, which is `441`'s
     // defect.
-    const look = SCREEN_SOURCE.slice(SCREEN_SOURCE.indexOf('async function lookForWhatIsYours'))
+    const look = SCREEN_SOURCE.slice(SCREEN_SOURCE.indexOf('async function lookAtTheQueueOnce'))
     expect(look.slice(0, look.indexOf('\n}\n') + 2)).toContain('store.stalledWorkForAPerson()')
     // 🔴 **Second: it is NOT a `PersonsQueueKind`.** ⛔ `533`'s own table, re-run against this
     // subject, has TWO false rows rather than one: `WHERE_ITS_SETTLED` and its mixed-list tail both

@@ -2567,7 +2567,6 @@ const lastLookAnswered = ref<{ questions: boolean; decisions: boolean }>({
 const limitsDisplay = ref<LimitsDisplayState>({ status: 'updating', reading: null })
 const limitsLane = limitsDisplayLane((state) => (limitsDisplay.value = state))
 let stopHearingLimits: (() => void) | null = null
-let actionableReadSequence = 0
 let actionableReadsClosed = false
 /**
  * 🔴 **557 · work that has stopped with nobody left to tell** — another read of the one look.
@@ -2641,9 +2640,23 @@ function lookAfterAUsageNotice(): void {
   })
 }
 
+/**
+ * The one entry every ask for the queue goes through: the tick, the `persons` notice, the
+ * `conversations` and `agents` notices, and each answer given here. `scheduled` keeps the limits
+ * walk on its own cadence; an explicit look reads it at once. The queue itself is read by
+ * {@link lookAtTheQueue}, so a burst of asks costs at most one more look.
+ */
 async function lookForWhatIsYours(scheduled = false): Promise<void> {
   void refreshLimitsDisplay(scheduled)
-  const mine = ++actionableReadSequence
+  await lookAtTheQueue()
+}
+
+/**
+ * One round of the queue's reads. A screen that has closed starts none, and a round that lands
+ * after it closed writes nothing.
+ */
+async function lookAtTheQueueOnce(): Promise<void> {
+  if (actionableReadsClosed) return
   const [questions, decisions, stalls, asks, owed, serverAsks, stops, incidents] =
     await Promise.all([
       store.questionsForAPerson(),
@@ -2666,7 +2679,7 @@ async function lookForWhatIsYours(scheduled = false): Promise<void> {
       // Open work no other list shows, in the same look: it is drawn beside the stops it never repeats.
       store.workIncidentsForAPerson(),
     ])
-  if (actionableReadsClosed || mine !== actionableReadSequence) return
+  if (actionableReadsClosed) return
   if (questions !== null) escalated.value = questions
   if (decisions !== null) decided.value = decisions
   // ⛔ **The last good answer is kept here too**, for the reads above's reason: a dropped call must
@@ -2697,6 +2710,12 @@ async function lookForWhatIsYours(scheduled = false): Promise<void> {
     decisions: decisions !== null,
   }
 }
+
+/**
+ * At most one round in flight and one owed, so the round that reads after the last ask always
+ * runs; rounds never overlap, so an older round's answer can't land over a newer one.
+ */
+const lookAtTheQueue = oneReadAtATime(lookAtTheQueueOnce)
 
 async function refreshLimitsDisplay(scheduled = false): Promise<void> {
   await lookAtLimits(() => limitsLane.refresh(() => store.readLimitsDisplay()), scheduled)
@@ -3410,8 +3429,9 @@ onMounted(() => {
       // queue, whose writers `638` did not survey, so giving it this arm would be a subject
       // claiming a population nobody measured (`534`'s own rule, and `567` §5's reading of it).
       void readTheWorkspace()
-      // ⚑ **And the person's queue**, which reads who holds each conversation and what is archived.
-      void lookForWhatIsYours()
+      // ⚑ **And the person's queue**, which reads who holds each conversation and what is archived:
+      // on the tick's terms, so a notice leaves the limits walk on its own cadence.
+      void lookForWhatIsYours(true)
     },
     // 🔴 **638 · the work moved somewhere in this app** — see {@link RUNTIME_CHANGE_SUBJECTS}.
     // ⛔ **The SAME reader the `conversations` arm calls**, deliberately: `631`'s two task lists and
@@ -3451,13 +3471,15 @@ onMounted(() => {
       filesLibrary.markStale()
       refreshAgents()
       void modelLists.reread()
-      // ⚑ **And the person's queue**, which names whoever asks and whoever is asked.
-      void lookForWhatIsYours()
+      // ⚑ **And the person's queue**, which names whoever asks and whoever is asked: on the tick's
+      // terms, like the arm above.
+      void lookForWhatIsYours(true)
     },
     // ⚑ **What a person must answer may have moved**: the queue and the rail's needs-you count are
-    // read again, once each, beside the five-second look that stays until this arm is proven.
+    // read again, each through its one-at-a-time read, so a burst costs at most one more look. The
+    // queue is asked on the tick's terms, and the five-second look stays until this arm is proven.
     persons: () => {
-      void lookForWhatIsYours()
+      void lookForWhatIsYours(true)
       void readTheWorkspace()
     },
   })
@@ -3502,7 +3524,6 @@ onUnmounted(() => {
   stopProviderFacts = null
   programsRead++
   actionableReadsClosed = true
-  actionableReadSequence++
   limitsLane.close()
   stopHearingLimits?.()
   stopHearingLimits = null
