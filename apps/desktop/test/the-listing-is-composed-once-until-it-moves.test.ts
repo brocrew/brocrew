@@ -65,11 +65,14 @@ describe('the listing is composed once until it moves', () => {
     expect(row?.cwd).toBe('/tmp/elsewhere')
   })
 
-  it('a live fact with no commit — a window claiming a conversation — composes again', async () => {
+  it('a live fact with no commit — a window handing a conversation back — composes again', async () => {
     const given = await world.gives(host, giver, 'helper')
     if (!given.ok) throw new Error('the give was refused')
     const helper = world.store.workById(given.piece)!.owner
     await vi.waitFor(() => expect(runningOf(helper)).toBe('unwatched'))
+    const other = new RecordingSink('webContents:2')
+    await host.look(helper, other, true)
+    expect(runningOf(helper)).toBe('in-a-window')
     // Quiet: nothing commits between two asks, so the listing is being shared.
     await vi.waitFor(() => {
       listed()
@@ -79,9 +82,9 @@ describe('the listing is composed once until it moves', () => {
     })
     const before = compositions()
     const rows = world.store.events(helper).length
-    await host.look(helper, new RecordingSink('webContents:2'), true)
+    host.releaseSession(helper, other)
     expect(world.store.events(helper).length).toBe(rows)
-    expect(runningOf(helper)).toBe('in-a-window')
+    expect(runningOf(helper)).toBe('unwatched')
     expect(compositions()).toBeGreaterThan(before)
   })
 })
