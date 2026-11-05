@@ -30,6 +30,8 @@ export interface WorldHostOptions {
   readonly plugins?: ConstructorParameters<typeof RuntimeHost>[0]['plugins']
   readonly pluginAttachments?: ConstructorParameters<typeof RuntimeHost>[0]['pluginAttachments']
   readonly pluginContext?: ConstructorParameters<typeof RuntimeHost>[0]['pluginContext']
+  /** How long a close waits for the provider to confirm it stopped. */
+  readonly closeDrainTimeoutMs?: number
 }
 
 export class McpRequestSink implements RuntimeEventSink {
@@ -162,7 +164,8 @@ export function mcpRequestWorld() {
     },
     /**
      * A host over this world's store. `options` adds the plugin dependencies a real app wires
-     * (attachments, before-turn context, instruction source) and picks the provider `open` uses.
+     * (attachments, before-turn context, instruction source), picks the provider `open` uses, and
+     * can shorten how long a close waits for its provider.
      */
     host(options: WorldHostOptions = {}): RuntimeHost {
       world.provider = options.provider ?? 'claude'
@@ -230,6 +233,9 @@ export function mcpRequestWorld() {
           ? {}
           : { pluginAttachments: options.pluginAttachments }),
         ...(options.pluginContext === undefined ? {} : { pluginContext: options.pluginContext }),
+        ...(options.closeDrainTimeoutMs === undefined
+          ? {}
+          : { closeDrainTimeoutMs: options.closeDrainTimeoutMs }),
         readProviderConfig: (_provider, home) => ({
           home,
           homeEnv: 'CLAUDE_CONFIG_DIR',
