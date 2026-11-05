@@ -947,9 +947,10 @@ describe('the derived-generation contract (065)', () => {
       return path
     }
 
-    const buildHost = (): RuntimeHost =>
+    const buildHost = (announced?: string[]): RuntimeHost =>
       new RuntimeHost({
         store,
+        ...(announced === undefined ? {} : { announce: ({ what }) => void announced.push(what) }),
         discoverSessions: NO_DISCOVERY,
         nativeTranscriptPath: () => (held.length === 0 ? null : providerFile()),
         exportDirectory: () => join(dir, 'exports'),
@@ -976,6 +977,18 @@ describe('the derived-generation contract (065)', () => {
       expect(result.outcome).toBe('imported')
       expect(result.status?.derived).toBe('current')
       expect(result.status?.derivedThrough).toBe(10)
+    })
+
+    it('tells every window that the conversations and the work moved when a rebuild replaces a ledger', async () => {
+      planted(6)
+      await derive()
+      held.push(...claudeFrames(6, 4))
+      const announced: string[] = []
+
+      const result = await buildHost(announced).rebuildLedger(SESSION)
+      expect(result.outcome).toBe('imported')
+      expect(announced).toContain('conversations')
+      expect(announced).toContain('work')
     })
 
     it('refuses once the quit has closed the background lane, and changes nothing', async () => {
