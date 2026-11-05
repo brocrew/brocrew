@@ -7895,6 +7895,13 @@ export class RuntimeHost implements LiveHost {
         readonly unresumable: UnresumableSessionInfo[]
       }
     | undefined
+  /**
+   * The person's queue's version: advanced by every announcement — which a commit holding a row
+   * the queue reads makes — and every state move, so an answer kept at one version is the answer at
+   * that version ({@link forAPerson}).
+   */
+  private personsVersion = 0
+  private readonly personsKept = new Map<string, { readonly at: number; readonly value: unknown }>()
   /** Stops {@link heardACommit} being called, once this host closes. */
   private stopHearingCommits: () => void = () => undefined
 
@@ -10519,6 +10526,7 @@ export class RuntimeHost implements LiveHost {
   private theWorldMoved(what: RuntimeChangeMessage['what']): void {
     this.linkAnswers.invalidate()
     this.listingVersion++
+    this.personsVersion++
     // ⚑ **D-019 · the roster names whoever a question waits on** (*waiting on an answer from Ada*) —
     // ⚑ and D-036 whoever holds work given out (*waiting on <name>*) — asked here, where every
     // roster change is announced, rather than at each of its sites.
@@ -10550,6 +10558,7 @@ export class RuntimeHost implements LiveHost {
   private stateMayHaveMoved(conversation: string): void {
     this.linkAnswers.invalidate()
     this.listingVersion++
+    this.personsVersion++
     this.aServiceMayTakeItsNext(conversation)
     if (this.deps.statesMoved === undefined) return
     const countdown = this.idleCountdowns.get(conversation)
@@ -19448,6 +19457,36 @@ export class RuntimeHost implements LiveHost {
    */
 
   /**
+   * One answer of the person's queue, composed once per {@link personsVersion} and shared by every
+   * caller at that version. Another connection's commit is checked for first. An answer that
+   * skipped rows it could not read, or a composition that moved the version, is said once and
+   * composed again at the next ask.
+   */
+  private forAPerson<T>(name: string, compose: () => T): T {
+    this.deps.store.checkCommitted()
+    const kept = this.personsKept.get(name)
+    if (kept !== undefined && kept.at === this.personsVersion) return kept.value as T
+    const at = this.personsVersion
+    const value = compose()
+    if (this.personsVersion === at && everyRowWasRead(value))
+      this.personsKept.set(name, { at, value })
+    else this.personsKept.delete(name)
+    return value
+  }
+
+  /** The asks against agents' rules still waiting, read once per version of the person's queue. */
+  private instructionAsksNow(): readonly InstructionAskWaiting[] {
+    return this.forAPerson('instructionAsksWaiting', () => this.deps.store.instructionAsksWaiting())
+  }
+
+  /** The MCP server requests still waiting, read once per version of the person's queue. */
+  private mcpServerRequestsNow(): ReturnType<SessionStore['mcpServerRequestsWaiting']> {
+    return this.forAPerson('mcpServerRequestsWaiting', () =>
+      this.deps.store.mcpServerRequestsWaiting(),
+    )
+  }
+
+  /**
    * Await one canonical routing snapshot, then compose without an asynchronous gap. ⚑ Where the
    * worker does not serve it ({@link WindowReadMiss}), the same answer is read here, on the main
    * thread. ⛔ Only a read the main thread can't answer either, or one asked while the app closes,
@@ -19691,6 +19730,10 @@ export class RuntimeHost implements LiveHost {
    * person's with nothing refused and the two must not be folded.
    */
   questionsForAPerson(): LedgerWalk<PersonsQuestion> {
+    return this.forAPerson('questionsForAPerson', () => this.questionsForAPersonComposed())
+  }
+
+  private questionsForAPersonComposed(): LedgerWalk<PersonsQuestion> {
     // 🔴 **D-017 · R8 — ONE set for the walk and every read this answer adds**, so a record met by
     // both is skipped once and named once.
     const unread = rowsUnreadOnce()
@@ -19855,6 +19898,10 @@ export class RuntimeHost implements LiveHost {
    * hop and {@link readingSentence} is the same join the escalated line uses.
    */
   decisionsForAPerson(): LedgerWalk<PersonsDecision> {
+    return this.forAPerson('decisionsForAPerson', () => this.decisionsForAPersonComposed())
+  }
+
+  private decisionsForAPersonComposed(): LedgerWalk<PersonsDecision> {
     const name = this.oneNamingPerAnswer()
     const work = this.oneWorkReadPerAnswer()
     // 🔴 **D-017 · R8** — one set for the walk and this answer's own reads.
@@ -20278,7 +20325,13 @@ export class RuntimeHost implements LiveHost {
    * store's read.
    */
   instructionAsksForAPerson(): readonly InstructionAskWaiting[] {
-    return this.deps.store.instructionAsksWaiting()
+    return this.forAPerson('instructionAsksForAPerson', () =>
+      this.instructionAsksForAPersonComposed(),
+    )
+  }
+
+  private instructionAsksForAPersonComposed(): readonly InstructionAskWaiting[] {
+    return this.instructionAsksNow()
   }
 
   /**
@@ -20286,7 +20339,13 @@ export class RuntimeHost implements LiveHost {
    * with what its asking conversation is called. A read, on no toolset.
    */
   mcpServerRequestsForAPerson(): readonly McpServerRequestForAPerson[] {
-    return this.deps.store.mcpServerRequestsWaiting().map((one) => ({
+    return this.forAPerson('mcpServerRequestsForAPerson', () =>
+      this.mcpServerRequestsForAPersonComposed(),
+    )
+  }
+
+  private mcpServerRequestsForAPersonComposed(): readonly McpServerRequestForAPerson[] {
+    return this.mcpServerRequestsNow().map((one) => ({
       ...one,
       askerCalled: this.whatToCallTheConversation(this.theOneInItsPlace(one.conversation)),
     }))
@@ -20359,6 +20418,10 @@ export class RuntimeHost implements LiveHost {
    * for the precedent.
    */
   stalledWorkForAPerson(): LedgerWalk<StalledWork> {
+    return this.forAPerson('stalledWorkForAPerson', () => this.stalledWorkForAPersonComposed())
+  }
+
+  private stalledWorkForAPersonComposed(): LedgerWalk<StalledWork> {
     // ⚑ **732 · the holder's and the giver's IDENTITY names, once per conversation per answer**
     // (`729` F-1, R41): {@link oneNamingPerAnswer} named a conversation by its FOLDER until `734`,
     // and in the default one that is `brobot-workspace` for every agent a person has. ⚑ The row's
@@ -20447,6 +20510,10 @@ export class RuntimeHost implements LiveHost {
    * person, since a row leaves when anything drives the piece again.
    */
   stoppedWorkForAPerson(): LedgerWalk<StoppedWorkForAPerson> {
+    return this.forAPerson('stoppedWorkForAPerson', () => this.stoppedWorkForAPersonComposed())
+  }
+
+  private stoppedWorkForAPersonComposed(): LedgerWalk<StoppedWorkForAPerson> {
     // ⚑ Each conversation named once per answer.
     const names = new Map<string, string>()
     const nameOf = (conversation: string): string => {
@@ -21196,6 +21263,12 @@ export class RuntimeHost implements LiveHost {
    * follow-up, a new brief, a reply or a take-back.
    */
   waitingOnWhoWroteForAPerson(): LedgerWalk<WaitingOnWhoWrote> {
+    return this.forAPerson('waitingOnWhoWroteForAPerson', () =>
+      this.waitingOnWhoWroteForAPersonComposed(),
+    )
+  }
+
+  private waitingOnWhoWroteForAPersonComposed(): LedgerWalk<WaitingOnWhoWrote> {
     // ⚑ **The holder's IDENTITY name, once per conversation per answer** — the memo
     // {@link stalledWorkForAPerson} keeps, for its reason (`732`, R41): a holder with several pieces
     // waiting on the person is named once.
@@ -21535,9 +21608,9 @@ export class RuntimeHost implements LiveHost {
       // ⚑ **D-017 · R19 — the asks against an identity's rules**, the read
       // {@link instructionAsksForAPerson} hands *Waiting on you*, so this count, the rail's badge
       // and that page are one number. ⚠️ A list and not a walk — see {@link countedTogether}.
-      'an-instruction-ask': this.deps.store.instructionAsksWaiting(),
+      'an-instruction-ask': this.instructionAsksNow(),
       // The agents' requests to register an MCP server, the read *Waiting on you* draws.
-      'a-server-request': this.deps.store.mcpServerRequestsWaiting(),
+      'a-server-request': this.mcpServerRequestsNow(),
       // ⚑ **F097 — the work whose agent answered a person**, the walk
       // {@link waitingOnWhoWroteForAPerson} hands *Waiting on you*, so this count, the rail's badge
       // and that page are one number.
@@ -23673,9 +23746,7 @@ export class RuntimeHost implements LiveHost {
   private cardReads(): CardReads {
     return {
       roster: this.deps.store.agentIdentities(),
-      askingForRules: new Set(
-        this.deps.store.instructionAsksWaiting().map((waiting) => waiting.conversation),
-      ),
+      askingForRules: new Set(this.instructionAsksNow().map((waiting) => waiting.conversation)),
     }
   }
 
@@ -36964,6 +37035,7 @@ export class RuntimeHost implements LiveHost {
     try {
       this.archived.add(tree, this.now())
       this.listingVersion++
+      this.personsVersion++
     } catch (error) {
       return { done: false, refusal: errorMessage(error) }
     }
@@ -37015,6 +37087,7 @@ export class RuntimeHost implements LiveHost {
     try {
       this.archived.remove(archived)
       this.listingVersion++
+      this.personsVersion++
     } catch (error) {
       return { done: false, refusal: errorMessage(error) }
     }
@@ -37102,6 +37175,7 @@ export class RuntimeHost implements LiveHost {
     )
     this.archived.remove(archived)
     this.listingVersion++
+    this.personsVersion++
     const cause =
       this.whatBringsItBack.get(sessionId) ?? (sink === null ? 'it was started' : 'you opened it')
     this.whatBringsItBack.delete(sessionId)
@@ -37128,6 +37202,7 @@ export class RuntimeHost implements LiveHost {
     try {
       for (const [conversation, at] of back.archivedAt) this.archived.add([conversation], at)
       this.listingVersion++
+      this.personsVersion++
     } catch (error) {
       console.warn(
         `runtime host could not put ${sessionId} back in the archive after its start failed: ${errorMessage(error)}`,
@@ -37487,6 +37562,7 @@ export class RuntimeHost implements LiveHost {
       try {
         this.archived.remove(tree)
         this.listingVersion++
+        this.personsVersion++
       } catch (error) {
         console.warn(
           `runtime host could not take deleted conversations out of the archive: ${errorMessage(error)}`,
@@ -48077,6 +48153,16 @@ function toHomeConversation(session: UserHomeDiscovery['found'][number]): HomeCo
     // descent has to survive on it.
     ...(session.child ? { child: session.child } : {}),
   }
+}
+
+/** Whether an answer read every row it walked: a walk that counted rows unread or skipped none. */
+function everyRowWasRead(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return true
+  const walk = value as { rowsUnread?: unknown; ledgersSkipped?: unknown }
+  return (
+    (typeof walk.rowsUnread !== 'number' || walk.rowsUnread === 0) &&
+    (typeof walk.ledgersSkipped !== 'number' || walk.ledgersSkipped === 0)
+  )
 }
 
 /** True if `promise` settled within `ms`. Never rejects — the caller only needs the fact. */
