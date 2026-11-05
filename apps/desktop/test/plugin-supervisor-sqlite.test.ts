@@ -37,6 +37,11 @@ describe('standalone supervisor SQLite contract', () => {
     const path = join(await folder(), 'history.sqlite')
     let database = new SupervisorDatabase(path)
     try {
+      expect(database.prepare('PRAGMA journal_mode').get()).toMatchObject({
+        journal_mode: 'delete',
+      })
+      expect(database.prepare('PRAGMA busy_timeout').get()).toMatchObject({ timeout: 0 })
+      expect(database.prepare('PRAGMA synchronous').get()).toMatchObject({ synchronous: 2 })
       database.exec('CREATE TABLE operations (id TEXT PRIMARY KEY, value TEXT NOT NULL)')
       const insert = database.prepare('INSERT INTO operations (id, value) VALUES (?, ?)')
       insert.run('fictional-one', '{"status":"committed"}')
@@ -73,7 +78,13 @@ describe('standalone supervisor SQLite contract', () => {
         insert.run('fictional-rolled-back')
         throw failure
       })
-      expect(interrupted).toThrow(failure)
+      let caught: unknown
+      try {
+        interrupted()
+      } catch (error) {
+        caught = error
+      }
+      expect(caught).toBe(failure)
       expect(database.prepare('SELECT id FROM operations ORDER BY id').all()).toEqual([
         { id: 'fictional-kept' },
       ])
