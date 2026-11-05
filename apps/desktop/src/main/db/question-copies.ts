@@ -194,38 +194,48 @@ export function fillQuestionCopies(
   const move = db.prepare(
     'UPDATE question_copy_progress SET after_session = ?, after_generation = ?, after_ordinal = ?, done = ? WHERE id = 1',
   )
+  // A whole number of rows, at least one: SQLite's LIMIT takes nothing else.
+  const limit = Math.max(1, Math.floor(rows))
   const slice = db.transaction((): QuestionCopySlice => {
-    const visited = walk.all(
+    // Stepped: each row is read as it is needed, and none past the byte bound. The writes follow
+    // once the read is closed, since a connection cannot write while one of its reads is open.
+    const visited: {
+      id: string
+      type: string
+      session: string
+      generation: number
+      ordinal: number
+    }[] = []
+    let total = 0
+    for (const one of walk.iterate(
       progress.after_session ?? '',
       progress.after_generation ?? -1,
       progress.after_ordinal ?? -1,
-      rows,
-    ) as {
+      limit,
+    ) as Iterable<{
       id: string
       type: string
       session: string
       generation: number
       ordinal: number
       bytes: number | null
-    }[]
+    }>) {
+      visited.push(one)
+      total += one.bytes ?? 0
+      if (total >= bytes) break
+    }
     if (visited.length === 0) {
       move.run(progress.after_session, progress.after_generation, progress.after_ordinal, 1)
       return { state: 'done', visited: 0, matched: 0 }
     }
-    let seen = 0
     let matched = 0
-    let total = 0
-    let last = visited[0]!
     for (const one of visited) {
-      seen++
-      last = one
-      if (one.type === 'question_asked') {
-        forget.run(one.id)
-        matched += copy.run(one.id).changes > 0 ? 1 : 0
-      }
-      total += one.bytes ?? 0
-      if (total >= bytes) break
+      if (one.type !== 'question_asked') continue
+      forget.run(one.id)
+      matched += copy.run(one.id).changes > 0 ? 1 : 0
     }
+    const seen = visited.length
+    const last = visited[seen - 1]!
     move.run(last.session, last.generation, last.ordinal, 0)
     return { state: 'filled', visited: seen, matched }
   })

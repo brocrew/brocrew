@@ -38749,7 +38749,9 @@ export class RuntimeHost implements LiveHost {
             COPY_SLICE_ROWS.least,
             Math.min(
               COPY_SLICE_ROWS.most,
-              took > COPY_SLICE_TARGET_MS ? this.copySliceRows / 2 : this.copySliceRows * 2,
+              took > COPY_SLICE_TARGET_MS
+                ? Math.floor(this.copySliceRows / 2)
+                : this.copySliceRows * 2,
             ),
           )
           this.copyBusyWait = COPY_BUSY_WAIT_MS.least
