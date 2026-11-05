@@ -457,7 +457,10 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
     const { host, home } = await context()
     const body = source.replace(
       " const token = req.url === '/healthz' ? auth.adminToken : auth.mcpToken;",
-      ` if (req.url === '/mcp') fs.writeFileSync(home+'/auth-presence-at-health.json',
+      // Only the first request is recorded: the client's later requests would rewrite the file
+      // while the test reads it.
+      ` if (req.url === '/mcp' && !fs.existsSync(home+'/auth-presence-at-health.json'))
+        fs.writeFileSync(home+'/auth-presence-at-health.json',
         JSON.stringify({present:fs.existsSync(process.env.BROCREW_CHROME_AUTH)}));
  const token = req.url === '/healthz' ? auth.adminToken : auth.mcpToken;`,
     )

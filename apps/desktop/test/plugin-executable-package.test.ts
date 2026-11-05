@@ -108,7 +108,8 @@ async function hostFixture() {
   const root = await realpath(
     await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-executable-')),
   )
-  cleanup.push(() => rm(root, { recursive: true, force: true }))
+  // Windows can hold a stopped process's executable open for a moment after it exits.
+  cleanup.push(() => rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }))
   const resources = join(root, 'resources')
   await mkdir(join(resources, 'plugin-node'), { recursive: true })
   await copyFile(
