@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { aServiceWorld, RecordingSink, type AServiceWorld } from './helpers/a-service-world'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeChangeMessage, RuntimeStatesMessage } from '../src/shared/runtime-ipc'
+import type {
+  RuntimeChangeMessage,
+  RuntimeStatesMessage,
+  TranscriptEvent,
+} from '../src/shared/runtime-ipc'
 import type { ListingAnswer, PublishedListing } from '../src/shared/listing-published'
 import { acceptAnswer, acceptPush, emptyScope } from '../src/shared/data-version'
 
@@ -121,6 +125,23 @@ describe('the listing and the states are published under one stamp', () => {
       new Map(push.moved.map((one) => [one.conversation, one])),
     )
     expect(held.rows.get(helper)?.seq).toBe(push.published.seq)
+  })
+
+  it('a push is newer than an answer composed after the move it says and before it was sent', async () => {
+    await settled()
+    pushed = []
+    world.store.append(
+      giver,
+      world.store.nextOrdinal(giver),
+      { type: 'status', state: 'working' } as TranscriptEvent,
+      world.clock,
+    )
+    // Composed now, after the commit moved the version and before the push is sent.
+    const between = host.listConversations()
+    await vi.waitFor(() => expect(pushed.length).toBeGreaterThan(0))
+    const answer = await between
+    if ('refused' in answer) throw new Error(answer.refused)
+    expect(pushed.at(-1)!.published!.seq).toBeGreaterThan(answer.published.seq)
   })
 
   it('an ask with nothing moved moves no stamp, so a push stays the newest', async () => {
