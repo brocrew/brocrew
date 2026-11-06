@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { SharedSkillDiscovery } from '../src/main/skills/shared-discovery'
@@ -136,4 +136,35 @@ it('moves new native folders before discovery on every start or resume, for all 
   expect((await service.list()).find((one) => one.folder === 'recipe-check-2')?.body).toContain(
     'A replacement recipe.',
   )
+})
+
+it('lists good neighbors and names a broken linked folder in both shared and profile reads', async () => {
+  service.close()
+  service = new SharedSkillDiscovery(root, Promise.resolve(), shipped, undefined, (profileId) => ({
+    profileId,
+    canCreateAgents: true,
+    isCoordinator: false,
+  }))
+  const good = join(root, 'skills', 'good')
+  await mkdir(good, { recursive: true })
+  await writeFile(join(good, 'SKILL.md'), text('good'))
+  const broken = join(root, 'skills', 'broken')
+  await symlink(join(root, 'missing-folder'), broken, 'dir')
+  const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  expect((await service.list()).some((skill) => skill.folder === 'good')).toBe(true)
+  expect(
+    warning.mock.calls.some(
+      (call) => String(call[0]).includes(broken) && String(call[0]).includes('ENOENT'),
+    ),
+  ).toBe(true)
+  warning.mockClear()
+  const reply = await service.window({ operation: 'profile-list', profileId: 'lark' })
+  expect(reply.operation).toBe('profile-list')
+  if (reply.operation === 'profile-list')
+    expect(reply.skills.some((skill) => skill.folder === 'good')).toBe(true)
+  expect(
+    warning.mock.calls.some(
+      (call) => String(call[0]).includes(broken) && String(call[0]).includes('ENOENT'),
+    ),
+  ).toBe(true)
 })

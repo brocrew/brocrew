@@ -8,7 +8,7 @@ const emit = defineEmits<{ settings: ['skills'] }>()
 const items = ref<readonly ProfileSkillMetadata[]>([])
 const loaded = ref(false)
 const loading = ref(false)
-const error = ref(false)
+const error = ref<string | null>(null)
 const nextOffset = ref<number | null>(null)
 let epoch = 0
 let sequence = 0
@@ -19,7 +19,7 @@ async function read(offset = 0): Promise<void> {
   const generation = epoch
   const request = ++sequence
   loading.value = true
-  error.value = false
+  error.value = null
   try {
     const runtime = props.bridge ?? window.api.runtime
     const reply = await runtime.skills({
@@ -32,8 +32,9 @@ async function read(offset = 0): Promise<void> {
     items.value = offset === 0 ? reply.skills : [...items.value, ...reply.skills]
     nextOffset.value = reply.nextOffset ?? null
     loaded.value = true
-  } catch {
-    if (generation === epoch && request === sequence && props.active) error.value = true
+  } catch (cause) {
+    if (generation === epoch && request === sequence && props.active)
+      error.value = cause instanceof Error ? cause.message : String(cause)
   } finally {
     if (generation === epoch && request === sequence) loading.value = false
   }
@@ -47,7 +48,7 @@ watch(
     items.value = []
     loaded.value = false
     loading.value = false
-    error.value = false
+    error.value = null
     nextOffset.value = null
     if (props.active) void read()
   },
@@ -75,7 +76,7 @@ onBeforeUnmount(() => {
     <p class="muted">The skills this agent receives.</p>
     <p v-if="loading" role="status">Reading…</p>
     <p v-if="error" class="error" role="alert" data-cy="agent-skills-error">
-      This app could not read the skills.
+      This app could not read the skills: {{ error }}
     </p>
     <p v-if="loaded && !loading && !error && items.length === 0" data-cy="agent-skills-empty">
       No skills found.
