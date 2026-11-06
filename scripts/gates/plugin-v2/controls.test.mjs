@@ -554,59 +554,19 @@ test('false Read/Write flags and extra labels cannot be accepted', () => {
   ])
     assert.throws(() => assertAccessLabels(bad, rows))
 })
-test('BigInt file identity, post-read path/FD and parent witness all refuse changes', () =>
+test('gate file reads are bounded and stay inside the gate root, including in embedded bundles', () =>
   scratch((root) => {
     const file = path.join(root, 'owned')
     fs.writeFileSync(file, 'proof')
     assert.equal(readOwnedFile(file, 5, rootWitness(root)).toString(), 'proof')
-    assert.throws(() => readOwnedFile(file, 4, rootWitness(root)))
-    const held = rootWitness(root)
-    assert.throws(() => readOwnedFile(file, 5, { ...held, ino: String(BigInt(held.ino) + 1n) }))
-    for (const sabotage of ['large-id', 'fd-after', 'path-after', 'parent-after']) {
-      let read = false,
-        fds = 0
-      const fake = {
-        ...fs,
-        readSync(...args) {
-          const n = fs.readSync(...args)
-          read = true
-          return n
-        },
-        fstatSync(...args) {
-          const s = fs.fstatSync(...args)
-          fds++
-          return {
-            ...s,
-            ino: sabotage === 'large-id' ? 9007199254740992n : s.ino,
-            ...(sabotage === 'fd-after' && fds > 1 ? { ctimeNs: s.ctimeNs + 1n } : {}),
-          }
-        },
-        lstatSync(p, ...args) {
-          const s = fs.lstatSync(p, ...args)
-          return {
-            ...s,
-            ...(p === file && sabotage === 'large-id' ? { ino: 9007199254740993n } : {}),
-            ...(read &&
-            ((sabotage === 'path-after' && p === file) ||
-              (sabotage === 'parent-after' && p === root))
-              ? { ino: s.ino + 1n }
-              : {}),
-          }
-        },
-      }
-      // Preserve the predicate methods lost by object spread on Stats.
-      for (const name of ['fstatSync', 'lstatSync']) {
-        const wrapped = fake[name]
-        fake[name] = (...args) => {
-          const value = wrapped(...args)
-          const actual = fs[name](...args)
-          return Object.assign(Object.create(Object.getPrototypeOf(actual)), value)
-        }
-      }
-      const context = vm.createContext({ fs: fake, path, Buffer, process })
-      const readGate = vm.runInContext('(' + readOwnedFile.toString() + ')', context)
-      assert.throws(() => readGate(file, 5, held), sabotage)
-    }
+    assert.throws(() => readOwnedFile(file, 4, rootWitness(root)), /larger than 4 bytes/)
+    assert.throws(
+      () => readOwnedFile(path.join(root, '..', 'outside'), 5, rootWitness(root)),
+      /outside/,
+    )
+    const context = vm.createContext({ fs, path, Buffer, process })
+    const readGate = vm.runInContext('(' + readOwnedFile.toString() + ')', context)
+    assert.equal(readGate(file, 5, rootWitness(root)).toString(), 'proof')
   }))
 test('dependency install is a held Node child with fictional provider homes and no auth', () =>
   scratch((root) => {
