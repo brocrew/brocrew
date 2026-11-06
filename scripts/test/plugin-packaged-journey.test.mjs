@@ -128,6 +128,22 @@ function logicalFixture(workspace = '/fictional/root/wa') {
   return { baseline, completed, proof }
 }
 
+const tamperLabels = [
+  'availability-ok',
+  'availability-available',
+  'inspection-refused',
+  'inspection-byte-mismatch',
+  'list-ok',
+  'cards-array',
+  'cards-uninstalled',
+  'baseline-runs-empty',
+  'current-runs-empty',
+  'archive-not-cached',
+  'profile-config-absent',
+  'browser-absent',
+  'profile-marker-unchanged',
+  'download-unchanged',
+]
 // Exercise orchestration with inert dependencies: no app, provider, endpoint or real data.
 function fixture(
   fail,
@@ -145,6 +161,9 @@ function fixture(
     tamperState = 'published',
     tamperTransition = false,
     tamperReply = true,
+    tamperFalse,
+    tamperThrow = false,
+    tamperExtraReplies = false,
   } = {},
 ) {
   const body = source
@@ -157,12 +176,43 @@ function fixture(
     stopped = [],
     files = new Map(),
     strictReads = [],
-    tamperObservations = []
+    tamperObservations = [],
+    tamperDiagnostics = [],
+    tamperReadLog = []
   const originalError = new Error('HOME=/fictional TOKEN=madeup argv=private')
   let starts = 0,
     selected = false,
-    inspections = 0
+    inspections = 0,
+    tamperRunReads = 0,
+    tamperAssertionReady = false
   const logical = logicalFixture(path.join('/fictional/root', 'wa'))
+  const tamperReplies = {
+    availability: {
+      ok: tamperFalse !== 'availability-ok',
+      available: tamperFalse !== 'availability-available',
+    },
+    refused: {
+      ok: tamperFalse === 'inspection-refused',
+      detail:
+        tamperReply && tamperFalse !== 'inspection-byte-mismatch'
+          ? 'The package files do not match the selected bytes.'
+          : 'A different refusal is not byte verification.',
+    },
+    cards: {
+      ok: tamperFalse !== 'list-ok',
+      cards:
+        tamperFalse === 'cards-array'
+          ? null
+          : tamperFalse === 'cards-uninstalled'
+            ? [{ installed: true }]
+            : [],
+    },
+  }
+  if (tamperExtraReplies) {
+    tamperReplies.availability.fictionalExtra = undefined
+    tamperReplies.refused.fictionalExtra = null
+    tamperReplies.cards.fictionalExtra = { text: 'fictional raw reply detail' }
+  }
   let providerClosed = false
   const check = (step) => {
     calls.push(step)
@@ -171,15 +221,22 @@ function fixture(
   const page = (number) => ({
     number,
     evaluate: async (text) => {
-      if (text.includes("kind:'availability'")) return { ok: true, available: true }
+      if (text.includes("kind:'availability'"))
+        return number === roles.tamper ? tamperReplies.availability : { ok: true, available: true }
       if (text.includes("kind:'inspect'")) {
-        if (number === roles.tamper) calls.push({ tamper: 'inspect', text, role: number })
+        if (number === roles.tamper) {
+          calls.push({ tamper: 'inspect', text, role: number })
+          return tamperReplies.refused
+        }
         return tamperReply
           ? { ok: false, detail: 'The package files do not match the selected bytes.' }
           : { ok: false, detail: 'A different refusal is not byte verification.' }
       }
       if (text.includes("kind:'list'")) {
-        if (number === roles.tamper) calls.push({ tamper: 'list', role: number })
+        if (number === roles.tamper) {
+          calls.push({ tamper: 'list', role: number })
+          return tamperReplies.cards
+        }
         return {
           ok: true,
           cards:
@@ -192,13 +249,23 @@ function fixture(
     close() {},
   })
   const io = {
-    console: { error: (...args) => errors.push(args) },
+    console: {
+      error: (...args) => {
+        if (args[0] === 'tamper replies' || args[0] === 'tamper condition')
+          tamperDiagnostics.push(args)
+        else errors.push(args)
+      },
+    },
     isDeepStrictEqual,
     observationJson,
     emptyInstallBaseline,
     firstInstallState,
     sameInstallState,
-    sameTamperInstallState: (...args) => installObservation.sameTamperInstallState(...args),
+    sameTamperInstallState: (...args) => {
+      const value = installObservation.sameTamperInstallState(...args)
+      tamperAssertionReady = true
+      return value
+    },
     observeTamperInstallState: (root, global) => {
       if (tamperError) throw tamperError
       if (unknownTamper) throw new Error('Unknown tamper state')
@@ -232,12 +299,16 @@ function fixture(
       if (replay && starts >= roles.restart) value.sequence += 2
       return value
     },
-    observeRunNames: (_root, global) =>
-      global.replaceAll('\\', '/').endsWith('/b') || !selected
-        ? []
-        : unexpectedRun && inspections > 1
-          ? ['first', 'extra']
-          : ['first'],
+    observeRunNames: (_root, global) => {
+      if (global.replaceAll('\\', '/').endsWith('/b')) {
+        const first = ++tamperRunReads === 1
+        if (!first && tamperAssertionReady) tamperReadLog.push('current-runs-empty')
+        return tamperFalse === (first ? 'baseline-runs-empty' : 'current-runs-empty')
+          ? ['fictional-unwanted-run']
+          : []
+      }
+      return !selected ? [] : unexpectedRun && inspections > 1 ? ['first', 'extra'] : ['first']
+    },
     prepareCandidateCache: async () => {
       check('cache-prepare')
       files.set('/fictional/root/proof/candidate-cache.json', JSON.stringify(logical.proof))
@@ -328,14 +399,46 @@ function fixture(
     command: async (program) => (program === '/usr/bin/lipo' ? 'arm64' : 'v24.0.0'),
     fs: {
       lstatSync: () => ({ isFile: () => true }),
-      existsSync: () => false,
-      readdirSync: (folder) =>
-        folder.replaceAll('\\', '/') === '/fictional/root/g' ? ['package-vault'] : [],
+      existsSync: (named) => {
+        if (tamperAssertionReady && starts === roles.tamper) {
+          const file = named.replaceAll('\\', '/')
+          if (file === '/fictional/root/b/package-vault/' + logical.proof.ref.sha256) {
+            tamperReadLog.push('archive-not-cached')
+            return tamperFalse === 'archive-not-cached'
+          }
+          if (file === '/fictional/root/b/host/data/chrome/profiles.json') {
+            tamperReadLog.push('profile-config-absent')
+            return tamperFalse === 'profile-config-absent'
+          }
+        }
+        return false
+      },
+      readdirSync: (folder) => {
+        const file = folder.replaceAll('\\', '/')
+        if (file === '/fictional/root' && tamperAssertionReady && starts === roles.tamper) {
+          tamperReadLog.push('browser-absent')
+          return tamperFalse === 'browser-absent' ? ['fake-browser.json'] : []
+        }
+        return file === '/fictional/root/g' ? ['package-vault'] : []
+      },
       writeFileSync: (file, bytes) => files.set(file.replaceAll('\\', '/'), bytes),
     },
     readOwned: (named) => {
       // The journey joins its own paths, so they carry the host's separator.
       const file = named.replaceAll('\\', '/')
+      if (tamperAssertionReady && starts === roles.tamper) {
+        const label =
+          file === '/fictional/root/b/host/data/chrome/profiles/fern/fern-gate-retained'
+            ? 'profile-marker-unchanged'
+            : file === '/fictional/root/b/host/data/chrome/downloads/fern-kept.txt'
+              ? 'download-unchanged'
+              : null
+        if (label) {
+          tamperReadLog.push(label)
+          if (tamperThrow && label === 'profile-marker-unchanged') throw originalError
+          if (tamperFalse === label) return Buffer.from('fictional changed bytes')
+        }
+      }
       if (file.endsWith('/plan.json'))
         return JSON.stringify({ app: '/fictional/app', appData: '/fictional/data' })
       if (file.endsWith('/gui-probe.json')) {
@@ -406,9 +509,96 @@ function fixture(
     originalError,
     strictReads,
     tamperObservations,
+    tamperReplies,
+    tamperDiagnostics,
+    tamperReadLog,
+    tamperReady: () => tamperAssertionReady,
+    captureError: io.console.error,
   }
 }
 describe('packaged restart journey without a native launch', () => {
+  it('prints held tamper replies and fourteen true conditions without changing successful acceptance', async () => {
+    const f = fixture(undefined, { tamperExtraReplies: true })
+    const summary = await f.run()
+    expect(summary.passed).toBe(true)
+    expect(summary.checks.tamperedArchiveRefused).toBe(true)
+    expect(f.tamperReady()).toBe(true)
+    expect(f.tamperObservations).toHaveLength(2)
+    expect(f.calls.filter((one) => one?.tamper).map((one) => one.tamper)).toEqual([
+      'inspect',
+      'list',
+    ])
+    // The old actual journey earns the fact but emits no evidence: this is visibility RED.
+    expect(f.tamperDiagnostics).toHaveLength(15)
+    expect(f.tamperDiagnostics[0][0]).toBe('tamper replies')
+    for (const key of ['availability', 'refused', 'cards'])
+      expect(f.tamperDiagnostics[0][1][key]).toBe(f.tamperReplies[key])
+    expect(Object.hasOwn(f.tamperDiagnostics[0][1].availability, 'fictionalExtra')).toBe(true)
+    expect(f.tamperDiagnostics[0][1].availability.fictionalExtra).toBeUndefined()
+    expect(f.tamperDiagnostics[0][1].refused.fictionalExtra).toBeNull()
+    expect(f.tamperDiagnostics[0][1].cards.fictionalExtra).toEqual({
+      text: 'fictional raw reply detail',
+    })
+    expect(f.tamperDiagnostics.slice(1)).toEqual(
+      tamperLabels.map((label) => ['tamper condition', label, true]),
+    )
+    expect(f.tamperReadLog).toEqual(tamperLabels.slice(8))
+    expect(f.errors).toEqual([])
+    expect(f.lines).toEqual([])
+    expect(safeReport(summary)).toBe(true)
+    f.captureError('tamper unknown row', 'fictional unfamiliar output')
+    expect(f.errors).toEqual([['tamper unknown row', 'fictional unfamiliar output']])
+    expect(f.tamperDiagnostics).toHaveLength(15)
+  })
+  it('prints only the evaluated tamper prefix for each false condition and preserves a thrown Error unchanged', async () => {
+    for (const [index, label] of tamperLabels.entries()) {
+      const f = fixture(undefined, { tamperFalse: label })
+      const summary = await f.run()
+      expect(f.tamperReady()).toBe(true)
+      expect(f.tamperObservations).toHaveLength(2)
+      expect(f.calls.filter((one) => one?.tamper).map((one) => one.tamper)).toEqual([
+        'inspect',
+        'list',
+      ])
+      expect(summary.passed).toBe(false)
+      expect(summary.checks.tamperedArchiveRefused).toBe(false)
+      expect(summary.checks.alternateSourceAccepted).toBe(false)
+      expect(f.errors).toHaveLength(1)
+      expect(f.errors[0][0].message).toBe('Gate assertion failed')
+      expect(f.stopped).toEqual([roles.tamper])
+      expect(f.tamperDiagnostics).toHaveLength(index + 2)
+      expect(f.tamperDiagnostics[0][0]).toBe('tamper replies')
+      for (const key of ['availability', 'refused', 'cards'])
+        expect(f.tamperDiagnostics[0][1][key]).toBe(f.tamperReplies[key])
+      expect(f.tamperDiagnostics.slice(1)).toEqual(
+        tamperLabels.slice(0, index + 1).map((name, i) => ['tamper condition', name, i !== index]),
+      )
+      expect(f.tamperReadLog).toEqual(tamperLabels.slice(8, Math.max(8, index + 1)))
+      expect(safeReport(summary)).toBe(true)
+      expect(JSON.stringify(summary) + f.lines.join('')).not.toMatch(
+        /fictional|tamper replies|tamper condition/,
+      )
+    }
+    const f = fixture(undefined, { tamperThrow: true })
+    const summary = await f.run()
+    expect(f.tamperReady()).toBe(true)
+    expect(f.calls.filter((one) => one?.tamper).map((one) => one.tamper)).toEqual([
+      'inspect',
+      'list',
+    ])
+    expect(f.tamperDiagnostics).toHaveLength(13)
+    expect(f.tamperDiagnostics.slice(1)).toEqual(
+      tamperLabels.slice(0, 12).map((label) => ['tamper condition', label, true]),
+    )
+    expect(f.tamperReadLog).toEqual(tamperLabels.slice(8, 13))
+    expect(f.errors).toHaveLength(1)
+    expect(f.errors[0]).toEqual([f.originalError])
+    expect(f.errors[0][0]).toBe(f.originalError)
+    expect(summary.passed).toBe(false)
+    expect(summary.checks.tamperedArchiveRefused).toBe(false)
+    expect(f.stopped).toEqual([roles.tamper])
+    expect(safeReport(summary)).toBe(true)
+  })
   it('reaches exact public tamper inspection from absent state while keeping the main baseline persisted', async () => {
     const f = fixture(undefined, { tamperState: 'absent' })
     const summary = await f.run()
