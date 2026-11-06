@@ -183,7 +183,6 @@ describe('answering from the overview', () => {
     ).toBe(false)
   })
 
-
   /**
    * 🔴 **The second button, on the one card shape where it used to be the wholesale grant** (299 §1,
    * from 297 finding 1).

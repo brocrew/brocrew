@@ -160,8 +160,6 @@ describe('a text pack, in a build run from its source', () => {
       () => readBuiltInSkills(shipped).catalogue.version,
     )
 
-
-
   it('a pack of its own files is read', () => {
     expect(read(aPack()).kind).toBe('read')
   })

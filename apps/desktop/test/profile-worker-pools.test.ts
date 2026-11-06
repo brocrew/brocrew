@@ -214,7 +214,10 @@ describe('bounded versioned normal pools', () => {
     writeProfileExecution(file, input)
     expect(readProfileExecution(file)).toEqual({ readable: true, kept: input })
     const tooMany = { profiles: { ...input.profiles, 'aid:other': entry([pool([primary])]) } }
-    expect(holding(tooMany.profiles)).toEqual({ readable: false, why: `${file}: it holds too many workers` })
+    expect(holding(tooMany.profiles)).toEqual({
+      readable: false,
+      why: `${file}: it holds too many workers`,
+    })
     expect(() => writeProfileExecution(file, tooMany)).toThrow('too many workers')
   })
 

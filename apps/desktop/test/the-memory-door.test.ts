@@ -215,7 +215,6 @@ describe('§1 · ⛔ the read reaches the store with NO conversation open', () =
 })
 
 describe('§2 · 🔴 the act and its record land together', () => {
-
   it('⛔ a person removes the false note — the file goes, the row stays, and the reading comes back', async () => {
     identity('brobot')
     const { note } = plantTheNight('brobot')

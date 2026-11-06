@@ -34,8 +34,7 @@ async function refresh(): Promise<void> {
     loaded.value = true
     status.value = ''
   } catch (cause) {
-    if (alive && turn === serial)
-      status.value = `Skills could not be read: ${readableError(cause)}`
+    if (alive && turn === serial) status.value = `Skills could not be read: ${readableError(cause)}`
   } finally {
     if (alive && turn === serial) loading.value = false
   }
@@ -55,8 +54,7 @@ async function toggle(skill: SharedSkill): Promise<void> {
     if (reply.operation !== 'shared-toggle') throw new Error('The skill was not saved.')
     await refresh()
   } catch (cause) {
-    if (alive)
-      status.value = `The skill was not saved: ${readableError(cause)}`
+    if (alive) status.value = `The skill was not saved: ${readableError(cause)}`
   } finally {
     if (alive) saving.value = false
   }

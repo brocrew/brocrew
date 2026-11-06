@@ -930,7 +930,6 @@ describe('688 · draw who wrote it, and which task', () => {
       // ⚑ The row keeps its act: it was taken back, and it is still BroBot's.
       expect(textsOf(drawn, 'queued-state')).toEqual(['not sent · you took it back'])
       expect(textsOf(drawn, 'queued-sender')).toEqual([GO_AHEAD_SENDER])
-
     })
   })
 
