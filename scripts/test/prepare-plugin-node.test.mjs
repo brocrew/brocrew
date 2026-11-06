@@ -1,7 +1,68 @@
-import { expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { createRequire } from 'node:module'
-import { NODE_VERSION, NODE_TARGETS, verifyNodeArchive } from '../prepare-plugin-node.mjs'
+import {
+  NODE_VERSION,
+  NODE_TARGETS,
+  preparePluginNode,
+  verifyNodeArchive,
+} from '../prepare-plugin-node.mjs'
+
+vi.mock('node:timers/promises', () => ({ setTimeout: async () => {} }))
+const scratch = []
+afterEach(async () => {
+  await Promise.all(scratch.splice(0).map((folder) => rm(folder, { recursive: true, force: true })))
+})
+async function outputFolder() {
+  const root = await mkdtemp(join(tmpdir(), 'plugin-node-test-'))
+  scratch.push(root)
+  return join(root, 'runtime')
+}
+const downloadUrl = `https://nodejs.org/download/release/v${NODE_VERSION}/node-v${NODE_VERSION}-darwin-arm64.tar.gz`
+
+it('reports the HTTP status and URL without retrying a missing archive', async () => {
+  const fetcher = vi.fn(async () => new Response('missing', { status: 404 }))
+  await expect(preparePluginNode(await outputFolder(), fetcher, 'darwin-arm64')).rejects.toThrow(
+    `HTTP 404: ${downloadUrl}`,
+  )
+  expect(fetcher).toHaveBeenCalledTimes(1)
+})
+
+it.each(['HTTP', 'network', 'body'])(
+  'retries a transient %s failure and still verifies the archive digest',
+  async (kind) => {
+    const fetcher = vi.fn()
+    if (kind === 'HTTP') fetcher.mockResolvedValueOnce(new Response('busy', { status: 503 }))
+    else if (kind === 'network') fetcher.mockRejectedValueOnce(new Error('connection reset'))
+    else
+      fetcher.mockResolvedValueOnce(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new Error('body reset'))
+            },
+          }),
+        ),
+      )
+    fetcher.mockResolvedValue(new Response('altered archive'))
+    await expect(preparePluginNode(await outputFolder(), fetcher, 'darwin-arm64')).rejects.toThrow(
+      'plugin-node-archive-digest',
+    )
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(fetcher.mock.calls[0][1].signal).toBeUndefined()
+  },
+)
+
+it('stops ordinary retries and reports the last status and URL', async () => {
+  const fetcher = vi.fn(async () => new Response('busy', { status: 503 }))
+  await expect(preparePluginNode(await outputFolder(), fetcher, 'darwin-arm64')).rejects.toThrow(
+    `HTTP 503: ${downloadUrl}`,
+  )
+  expect(fetcher).toHaveBeenCalledTimes(3)
+})
 it('pins both the release archive and executable per target, and refuses altered bytes before extraction', () => {
   expect(NODE_VERSION).toMatch(/^24\.\d+\.\d+$/)
   expect(Object.keys(NODE_TARGETS).sort()).toEqual(['darwin-arm64', 'win32-x64'])
