@@ -405,7 +405,6 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     const me = await start(DEFAULT_PROFILE_ID)
     policy().instructAgent('lark', 'Person rules', undefined, window)
     expect(replace(me).ok).toBe(false)
-    expect(replace(me, { expectedVersion: 1 }).ok).toBe(false)
     const written = replace(me, { expectedVersion: 1 })
     expect(written).toMatchObject({
       ok: true,

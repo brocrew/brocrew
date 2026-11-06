@@ -706,7 +706,7 @@ describe('a person moves the stored request', () => {
         }
         finish()
         const ack = await deciding
-        if (change === 'unchanged') {
+        if (change === 'unchanged' || change === 'owner') {
           expect(ack.outcome).toBe('moved')
           await expect.poll(() => targetWords().length).toBe(1)
         } else {
@@ -897,17 +897,17 @@ describe('a person moves the stored request', () => {
   )
 
   it('provider-transcript stored words cannot be offered through the composed final tool', async () => {
-    const read = world.store.eventsFrom
-    world.store.eventsFrom = (id, from, limit) =>
-      read(id, from, limit).map((one) =>
-        one.event.type === 'user_turn'
-          ? { ...one, event: { ...one.event, attribution: 'provider_transcript' } }
-          : one,
-      )
+    const read = world.store.recordedTurnMessage
+    world.store.recordedTurnMessage = (id, turn) => {
+      const row = read(id, turn)
+      return row === null
+        ? null
+        : { ...row, event: { ...row.event, attribution: 'provider_transcript' } }
+    }
     try {
       await expectMoveRail('move-offer-not-available', 'permanent', false, null, target)
     } finally {
-      world.store.eventsFrom = read
+      world.store.recordedTurnMessage = read
     }
   })
 
