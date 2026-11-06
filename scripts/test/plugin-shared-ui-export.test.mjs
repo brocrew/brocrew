@@ -30,6 +30,8 @@ function canonicalSource(base, sourceCommit) {
   fs.writeFileSync(path.join(root, '.git/objects/info/alternates'), objects + '\n')
   git(
     root,
+    '-c',
+    'core.autocrlf=true',
     'checkout',
     sourceCommit,
     '--',
