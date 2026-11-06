@@ -48,7 +48,7 @@ export function verifyReload(sourceSha, catalogueBytes, bytes) {
   demand(
     ipc &&
       Object.keys(ipc).sort().join(',') ===
-        'createdViaNormalPreload,nonceAndOpRefused,sampledDistinctActualArrivals,threePendingBeforeExit,threeRealSends,threeResolvedAfterExit',
+        'createdViaNormalPreload,sampledDistinctActualArrivals,threePendingBeforeExit,threeRealSends,threeResolvedAfterExit,unknownOperationRefused',
   )
   demand(Object.values(ipc).every((v) => v === true))
   return {
