@@ -9,6 +9,7 @@ import {
   writeFile,
   type FileHandle,
 } from 'node:fs/promises'
+import * as themeFiles from '../../src/main/themes/files'
 import { join } from 'node:path'
 import type {
   IpcMain,
@@ -175,6 +176,31 @@ describe('theme asset registry and scheme', () => {
     if (duplicated.outcome !== 'ok') throw new Error('remix failed')
     expect(await readFile(join(fixture.library, duplicated.id, 'assets/red.png'))).toEqual(changed)
   })
+
+  it.each(['ENOENT', 'EACCES'])(
+    'a remix reports the actual %s asset path and cause',
+    async (code) => {
+      const folder = await putTheme(fixture.library, 'mine', childTheme('mine'), {
+        'assets/red.png': RED_PNG,
+      })
+      const store = fixture.store()
+      await store.start()
+      const path = join(folder, 'assets/red.png')
+      vi.spyOn(store as unknown as { reload(): Promise<void> }, 'reload').mockResolvedValueOnce()
+      if (code === 'ENOENT') await rm(path)
+      else
+        vi.spyOn(themeFiles, 'readThemeFile').mockResolvedValueOnce({
+          ok: false,
+          failure: 'unreadable',
+          cause: Object.assign(new Error(`${code}: permission denied, open '${path}'`), { code }),
+        })
+      const reply = await store.duplicate('mine', 'Copy')
+      expect(reply).toMatchObject({
+        outcome: 'refused',
+        problems: [expect.objectContaining({ at: path, says: expect.stringContaining(code) })],
+      })
+    },
+  )
 
   it('names a missing or denied picture and preserves its system cause', async () => {
     const folder = await putTheme(fixture.library, 'mine', childTheme('mine'), {

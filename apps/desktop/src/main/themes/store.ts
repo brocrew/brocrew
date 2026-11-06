@@ -958,7 +958,15 @@ export class ThemeStore implements ThemeAssetRegistry {
           asset.path,
           asset.facts.type === 'woff2' ? LIMITS.fontBytes : LIMITS.pictureBytes,
         )
-        if (!read.ok) return this.problem('theme-invalid', asset.path, read.failure)
+        if (!read.ok)
+          return refused('theme-invalid', [
+            {
+              at: join(source.root, asset.path),
+              says: [this.options.problem(read.failure), 'cause' in read ? String(read.cause) : '']
+                .filter(Boolean)
+                .join(': '),
+            },
+          ])
         assets.push({ name: asset.path, base64: read.bytes.toString('base64') })
       }
       return this.saveInside({ theme: { ...source.theme, id: next, name }, assets })
