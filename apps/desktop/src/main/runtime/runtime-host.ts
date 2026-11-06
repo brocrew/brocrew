@@ -965,6 +965,7 @@ import type {
   // 🔴 **611 · the two ends a question may be addressed to** (HO-088 §2.1).
   QuestionRecipient,
   RaisedQuestion,
+  UnreadQuestion,
   RequestOnlyAPersonCanSettle,
   RequestState,
   RoutedRequest,
@@ -2225,8 +2226,11 @@ type WindowReadMiss =
 
 /** A window read the worker did not serve, and why; any other refusal stands. */
 class WindowReadMissed extends WindowReadUnavailable {
-  constructor(readonly missed: WindowReadMiss) {
-    super(missed === 'worker-needs-restart' ? 'restart' : 'unavailable')
+  constructor(
+    readonly missed: WindowReadMiss,
+    cause?: string,
+  ) {
+    super(missed === 'worker-needs-restart' ? 'restart' : 'unavailable', undefined, cause)
   }
 }
 
@@ -2236,9 +2240,12 @@ class WindowReadMissed extends WindowReadUnavailable {
  */
 function whyTheWorkerMissed(error: unknown, signal: AbortSignal | undefined): unknown {
   if (signal?.aborted === true || !(error instanceof WindowReadUnavailable)) return error
-  if (error.why === 'restart') return new WindowReadMissed('worker-needs-restart')
-  if (error.why === 'busy') return new WindowReadMissed('worker-busy')
-  return new WindowReadMissed(error.why === 'failed' ? 'worker-read-failed' : 'worker-gone')
+  if (error.why === 'restart') return new WindowReadMissed('worker-needs-restart', error.message)
+  if (error.why === 'busy') return new WindowReadMissed('worker-busy', error.message)
+  return new WindowReadMissed(
+    error.why === 'failed' ? 'worker-read-failed' : 'worker-gone',
+    error.message,
+  )
 }
 
 /**
@@ -4249,7 +4256,11 @@ export type TakeBackRefused =
       readonly label: string
     }
   /** The piece could not end with the copies passed up of its questions, so nothing was done. */
-  | { readonly rail: TheCopiesRefusal; readonly label: string }
+  | {
+      readonly rail: TheCopiesRefusal
+      readonly label: string
+      readonly unreadQuestion?: UnreadQuestion
+    }
   /**
    * 🔴 **657 · the piece is real and its owner is a launch in flight** (`650` F4) — the shared word,
    * carrying the label because the caller can act on it the moment the launch lands.
@@ -7302,7 +7313,11 @@ export type UpdateWorkOutcome =
   | {
       readonly ok: false
       readonly rail: TheCopiesRefusal
-      readonly detail: { readonly piece: string; readonly label: string }
+      readonly detail: {
+        readonly piece: string
+        readonly label: string
+        readonly unreadQuestion?: UnreadQuestion
+      }
     }
   | {
       readonly ok: false
@@ -8411,7 +8426,7 @@ export class RuntimeHost implements LiveHost {
     'routes' | 'incidents',
     {
       readonly stamp: WindowWriterStamp
-      readonly missed: WindowReadMiss
+      readonly missed: WindowReadMissed
       readonly wait: number
       readonly until: number
     }
@@ -9065,9 +9080,8 @@ export class RuntimeHost implements LiveHost {
   /**
    * 🔴 **What the quit is about to cut, kept before it cuts it** — each conversation it closes whose
    * turn is running and waits on nobody: that turn's row, the account its life runs on, and the
-   * quit's moment. ⚑ Taken after the sign-ins are let go and before the first close, with nothing
-   * awaited between. ⚑ **Not that the quit finished** — `closed_by_the_quit_at` says that, after
-   * the teardown: a quit cut short still cut these. ⛔ It never throws: nothing stops a quit.
+   * quit's moment. Kept with the open list before any teardown wait. A quit cut short still
+   * preserves these conversations. It never throws: nothing stops a quit.
    */
   private keepTheTurnsTheQuitCuts(closing: readonly HostedSession[]): void {
     if (this.deps.turnsTheAppCut === undefined) return
@@ -15570,7 +15584,8 @@ export class RuntimeHost implements LiveHost {
     const itsTurn = queued ? null : this.theTurnOnThePieceItIsOn(piece, session)
     // ⚑ The copies passed up of its questions, which end with it: read before anything is written.
     const copies = this.theCopiesToEnd(piece.owner, piece.piece)
-    if (!copies.ok) return { ok: false, refused: { rail: copies.because, label: piece.label } }
+    if (!copies.ok)
+      return { ok: false, refused: { rail: copies.because, label: piece.label, ...copies.detail } }
     // ⚑ **The held messages go first, because they are the half that could still refuse** — the
     // brief, and any new brief: every message still waiting that carries the piece.
     const tookBackTheMessage = this.takeBackTheHeldMessages(piece, stands.held)
@@ -16707,7 +16722,11 @@ export class RuntimeHost implements LiveHost {
     if (!copies.ok) {
       return {
         ok: false,
-        refusal: refuseReply(copies.because, { piece: input.piece, label: piece.label }),
+        refusal: refuseReply(copies.because, {
+          piece: input.piece,
+          label: piece.label,
+          ...copies.detail,
+        }),
       }
     }
     const kept = this.keptFor(speaking, input.resourcePaths, (files) => {
@@ -18564,7 +18583,7 @@ export class RuntimeHost implements LiveHost {
     const folded = this.deps.store.piecesOwnedBy(row.owner).find((one) => one.piece === row.piece)
     if (folded === undefined || !TASK_IS_OPEN[folded.state]) return []
     const copies = this.whatWasPassedUpAbout(row.owner, row.piece)
-    return copies === null ? [] : this.theStartsUnderWay(copies)
+    return copies.ok ? this.theStartsUnderWay(copies.copies) : []
   }
 
   /**
@@ -18593,13 +18612,22 @@ export class RuntimeHost implements LiveHost {
     piece: string,
   ):
     | { readonly ok: true; readonly copies: PassedUpCopies }
-    | { readonly ok: false; readonly because: TheCopiesRefusal } {
-    const copies = this.whatWasPassedUpAbout(owner, piece)
-    if (copies === null) return { ok: false, because: 'its-questions-could-not-all-be-read' }
-    if (this.theStartsUnderWay(copies, owner).length > 0) {
+    | {
+        readonly ok: false
+        readonly because: TheCopiesRefusal
+        readonly detail?: { readonly unreadQuestion: UnreadQuestion }
+      } {
+    const read = this.whatWasPassedUpAbout(owner, piece)
+    if (!read.ok)
+      return {
+        ok: false,
+        because: 'its-questions-could-not-all-be-read',
+        detail: { unreadQuestion: read.unreadQuestion },
+      }
+    if (this.theStartsUnderWay(read.copies, owner).length > 0) {
       return { ok: false, because: 'a-conversation-with-its-questions-is-starting' }
     }
-    return { ok: true, copies }
+    return read
   }
 
   /**
@@ -18607,25 +18635,49 @@ export class RuntimeHost implements LiveHost {
    * those copies passed up in turn, each with the conversation that passed it up. ⚑ A question
    * passed up names no piece, so its own ledger's fold cannot end it. ⚑ Read before the transaction
    * that ends them, in the same synchronous stretch, where the store answers from what it keeps;
-   * a ledger's routings are read only where it passed one up. ⛔ `null` when a ledger, or a row of
-   * one, could not be read: a copy might stay open, so the piece does not end.
+   * a ledger's routings are read only where it passed one up. An unread result names the ledger or row that
+   * could not be read: a copy might stay open, so the piece does not end.
    */
-  private whatWasPassedUpAbout(owner: string, piece: string): PassedUpCopies | null {
-    const unread = rowsUnreadOnce()
-    const raisedIn = this.oneQuestionReadPerAnswer(unread)
+  private whatWasPassedUpAbout(
+    owner: string,
+    piece: string,
+  ):
+    | { readonly ok: true; readonly copies: PassedUpCopies }
+    | { readonly ok: false; readonly unreadQuestion: UnreadQuestion } {
+    let reading: { ledger: string; question?: string } = { ledger: owner }
+    let failure: UnreadQuestion | undefined
+    const counted = rowsUnreadOnce()
+    const unread: RowsUnread = {
+      in: (ledger) => (row, cause) => {
+        counted.in(ledger)(row, cause)
+        failure ??= {
+          ledger,
+          ...(typeof row === 'number' ? { row } : {}),
+          cause: cause ?? 'the question record could not be decoded',
+        }
+      },
+      get count() {
+        return counted.count
+      },
+      get ledgersSkipped() {
+        return counted.ledgersSkipped
+      },
+    }
+    const questions = this.oneQuestionReadPerAnswer(unread)
+    const raisedIn = (ledger: string): ReadonlyMap<string, RaisedQuestion> => {
+      reading = { ledger }
+      return questions(ledger)
+    }
     const routings = new Map<string, readonly RoutedRequest[]>()
     const routedIn = (conversation: string): readonly RoutedRequest[] => {
       const kept = routings.get(conversation)
       if (kept !== undefined) return kept
+      if (reading.ledger !== conversation) reading = { ledger: conversation }
       const read = this.deps.store.routedRequestsOf(conversation, unread)
       routings.set(conversation, read)
       return read
     }
     const copies: { readonly passer: string; readonly requestId: string }[] = []
-    const notRead = (why: string): null => {
-      console.warn(`runtime host could not read the questions passed up about ${piece}: ${why}`)
-      return null
-    }
     try {
       const toFollow = [...raisedIn(owner)]
         .filter(([, words]) => words.piece === piece)
@@ -18635,6 +18687,7 @@ export class RuntimeHost implements LiveHost {
         const key = aQuestionKey(asked.askedBy, asked.requestId)
         if (followed.has(key)) continue
         followed.add(key)
+        reading = { ledger: asked.askedBy, question: asked.requestId }
         const parent =
           routedIn(asked.askedBy)
             .filter((one) => one.requestId === asked.requestId)
@@ -18648,6 +18701,7 @@ export class RuntimeHost implements LiveHost {
         for (const passer of passers) {
           for (const [passedUp, words] of raisedIn(passer)) {
             if (words.passedUpFrom !== asked.requestId) continue
+            reading = { ledger: passer, question: passedUp }
             const open = routedIn(passer).some(
               (one) => one.requestId === passedUp && REQUEST_IS_OPEN[one.state],
             )
@@ -18657,14 +18711,9 @@ export class RuntimeHost implements LiveHost {
         }
       }
     } catch (error) {
-      return notRead(errorMessage(error))
+      failure ??= { ...reading, cause: errorMessage(error) }
     }
-    if (unread.count > 0 || unread.ledgersSkipped > 0) {
-      return notRead(
-        `${String(unread.count)} rows and ${String(unread.ledgersSkipped)} records could not be read`,
-      )
-    }
-    return copies
+    return failure === undefined ? { ok: true, copies } : { ok: false, unreadQuestion: failure }
   }
 
   /**
@@ -19743,7 +19792,7 @@ export class RuntimeHost implements LiveHost {
         sameWindowWriter(failed.stamp, before) &&
         this.now() < failed.until
       )
-        throw new WindowReadMissed(failed.missed)
+        throw failed.missed
       let pending: Promise<WindowReadResult>
       let origin = before
       if (reusable) {
@@ -19806,7 +19855,7 @@ export class RuntimeHost implements LiveHost {
         : A_FAILED_WINDOW_READ_WAITS_MS
     this.windowReadsFailed.set(kind, {
       stamp,
-      missed: missed.missed,
+      missed,
       wait,
       until: this.now() + wait,
     })
@@ -30641,7 +30690,8 @@ export class RuntimeHost implements LiveHost {
       input.close && held !== null
         ? this.theCopiesToEnd(row.owner, row.piece)
         : ({ ok: true, copies: [] } as const)
-    if (!copies.ok) return { ok: false, rail: copies.because, detail: named }
+    if (!copies.ok)
+      return { ok: false, rail: copies.because, detail: { ...named, ...copies.detail } }
     // ⚑ **R2 · the files, read, hashed and kept — the last thing that can refuse.**
     const kept = this.keptFor(caller, input.resources)
     if (!kept.ok) return { ok: false, resourceRefusal: kept.refusal }
@@ -46169,7 +46219,20 @@ export class RuntimeHost implements LiveHost {
    * for the same reason admission is: nothing new can be admitted after this line, so the snapshot
    * is complete, and taking it late would race a session that finished early out of the picture.
    */
+  recordOpenForQuit(): void {
+    if (this.quitRecorded) return
+    this.quitRecorded = true
+    const closing = this.whatTheQuitCloses()
+    this.keepTheTurnsTheQuitCuts(closing)
+    this.recordWhatTheQuitClosed(closing)
+    this.keepTheUsage()
+    this.launches.closeAdmission()
+  }
+
+  private quitRecorded = false
+
   async closeAll(): Promise<void> {
+    this.recordOpenForQuit()
     this.stopHearingCommits()
     const memoryClosed = this.deps.memoryKnowledge?.close() ?? Promise.resolve()
     this.deps.store.closePastWorkSearch?.()
@@ -46210,14 +46273,6 @@ export class RuntimeHost implements LiveHost {
     for (const { timer } of this.theResets.values()) clearTimeout(timer)
     this.theResets.clear()
     const terminated = settledWithin(this.launches.pending(), this.closeDrainTimeoutMs * 2)
-    // 🔴 **692 · R34a — which conversations THE QUIT closes, taken as the last thing before it
-    // closes them**, with nothing awaited in between: after the sign-ins' bounded cancel above, so a
-    // conversation a person closed, a parent ended or a provider failed during that wait is already
-    // on its way out and is left out — see {@link whatTheQuitCloses}.
-    const theQuitCloses = this.whatTheQuitCloses()
-    // 🔴 **…and which running turns it is about to cut, kept before it cuts them**, with nothing
-    // awaited between ({@link keepTheTurnsTheQuitCuts}).
-    this.keepTheTurnsTheQuitCuts(theQuitCloses)
     let confirmed: boolean
     try {
       ;[, confirmed] = await Promise.all([
@@ -46234,16 +46289,6 @@ export class RuntimeHost implements LiveHost {
     } finally {
       // A failed session close must still leave memory quiescent before SQLite closes.
       await Promise.allSettled([memoryClosed, teamProfileGraphsClosed])
-      // 🔴 **692 · …and recorded once the teardown is over** (R34c). ⛔ A crash, a kill or a forced
-      // exit that lands before this line records NOTHING, so what the quit was closing comes back
-      // closed — which is what R34c rules and what the rail's hover tells a person. ⚠️ **In a
-      // `finally`**: one conversation whose close rejected must not cost every other its record.
-      this.recordWhatTheQuitClosed(theQuitCloses)
-      // ⚑ **F096 — the usage readings as they stand at the quit**, each with the moment it was last
-      // received: a frame that said the same again moved that moment and wrote nothing
-      // ({@link takeTheUsage}), so the next launch would otherwise say an older one. ⚠️ In the
-      // `finally` for the same reason as the line above.
-      this.keepTheUsage()
     }
     // Bounded like every other wait a quit makes, and for the same reason: one adapter that will not
     // let go must not be able to hold the whole application open. What the bound costs is the same
@@ -46293,20 +46338,7 @@ export class RuntimeHost implements LiveHost {
     })
   }
 
-  /**
-   * 🔴 **692 · write down what the quit closed — once it HAS closed it** (R34a, R34c).
-   *
-   * ⚑ **The set is the one {@link whatTheQuitCloses} took just before the teardown; the write waits
-   * for the teardown.** ⛔ A crash, a kill, or the app's own last-resort exit that lands in between
-   * writes nothing, so everything the quit was closing comes back CLOSED — R34c's fallback, and what
-   * the rail's hover promises a person. ⚠️ Writing first would have brought them back open from a
-   * quit that never finished.
-   *
-   *
-   * ⛔ **It never stops a quit.** A failed write is warned about and the quit carries on: the price
-   * is R34c's fallback — those conversations come back closed, as every crash leaves them — which is
-   * the ordinary state of this app until this dispatch, never a worse one.
-   */
+  /** Keep the quit's open-conversation list before asynchronous teardown can delay it. */
   private recordWhatTheQuitClosed(closing: readonly HostedSession[]): void {
     const closed = closing.map((session) => session.id)
     if (closed.length === 0) return

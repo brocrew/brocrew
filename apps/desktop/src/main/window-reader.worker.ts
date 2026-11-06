@@ -25,8 +25,11 @@ if (parentPort !== null) {
   try {
     engine = new WindowReadEngine(options.parse(workerData).file)
     port.postMessage({ type: 'ready' })
-  } catch {
-    port.postMessage({ type: 'unavailable' })
+  } catch (error) {
+    port.postMessage({
+      type: 'unavailable',
+      cause: error instanceof Error ? error.message : String(error),
+    })
     port.close()
   }
   if (engine !== undefined) {
@@ -50,6 +53,7 @@ if (parentPort !== null) {
         port.postMessage({
           type: 'failed',
           id,
+          cause: error instanceof Error ? error.message : String(error),
           reason:
             error instanceof WindowReadUnavailable
               ? (error.reason ?? 'worker-read-failed')

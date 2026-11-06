@@ -1131,7 +1131,7 @@ interface RaisedQuestionRow {
  */
 export function toPersistedEvents(
   rows: EventRow[],
-  noteSkip?: (ordinal: number) => void,
+  noteSkip?: (ordinal: number, cause?: string) => void,
 ): PersistedEvent[] {
   return rows.flatMap((row) => {
     // A row we cannot parse is skipped rather than replayed as something else: a
@@ -1166,7 +1166,7 @@ export function toPersistedEvents(
       // reason; a person's queue is a different bill — *"a summary may be scoped, a list of
       // obligations may not"* — so the three readers behind `LedgerWalk.rowsUnread` pass a counter
       // and everything else in this file goes on skipping silently, unchanged.
-      noteSkip?.(row.ordinal)
+      noteSkip?.(row.ordinal, error instanceof Error ? error.message : String(error))
       return []
     }
   })
@@ -1193,13 +1193,13 @@ function* persistedEventsFrom(
 function noteUnreadRow(
   sessionId: string,
   ordinal: number,
-  noteSkip: ((ordinal: number) => void) | undefined,
+  noteSkip: ((ordinal: number, cause?: string) => void) | undefined,
   because = 'is not JSON',
 ): void {
   console.warn(
     `session ledger: ${sessionId} ordinal ${String(ordinal)} ${because} and was skipped by a guarded read`,
   )
-  noteSkip?.(ordinal)
+  noteSkip?.(ordinal, because)
 }
 
 /**
@@ -1299,7 +1299,7 @@ const THE_WHOLE_LEDGER = 'the-whole-ledger'
  * ⚑ **The skip note for ONE ledger** — the `(ordinal) => void` every fold here takes, and since
  * D-017 {@link THE_WHOLE_LEDGER} when a fold over that ledger threw.
  */
-export type SkipNote = (ordinal: number | typeof THE_WHOLE_LEDGER) => void
+export type SkipNote = (ordinal: number | typeof THE_WHOLE_LEDGER, cause?: string) => void
 
 /**
  * ⚑ **F033 · one piece a conversation holds, as much as naming it reads** — a fold's row less its
@@ -1355,7 +1355,7 @@ export function skipTheLedger(
     `session ledger: ${sessionId} could not be read and was skipped ` +
       `(${error instanceof Error ? error.message : String(error)})`,
   )
-  noteSkip?.(THE_WHOLE_LEDGER)
+  noteSkip?.(THE_WHOLE_LEDGER, error instanceof Error ? error.message : String(error))
 }
 
 /**
@@ -3909,13 +3909,9 @@ export interface SessionStore extends OwnNotesStore {
    */
   reopened(sessionId: string, at: number): boolean
   /**
-   * 🔴 **692 · R34a — record which conversations the QUIT closed**, once it has closed them.
-   *
-   * ⚑ **Its one caller is `RuntimeHost.closeAll`**, which takes the set before its first `await` and
-   * hands it in after its teardown — only conversations nothing else was already ending: never one
-   * a person closed or was closing, one whose provider failed or ended on its own, or one an agent
-   * ended, even while the quit ran. ⛔ **One transaction**: all of them or none — and a crash before
-   * the call records none, which is R34c.
+   * Record the open conversations at the quit gesture, before asynchronous teardown.
+   * The host excludes conversations already closing, failed, ended or still starting.
+   * One transaction preserves the complete list even if a later drain never returns.
    *
    * ⚠️ **It never un-stamps.** A conversation that came back open and was never spoken to is not in
    * the host's slot map at the next quit, so this is not handed it — and its stamp from the previous
@@ -10039,9 +10035,9 @@ export function createSessionStore(
       }
       if (noteSkip === undefined) return fold(sessionId)
       let readEveryRow = true
-      const answer = fold(sessionId, (ordinal) => {
+      const answer = fold(sessionId, (ordinal, cause) => {
         readEveryRow = false
-        noteSkip(ordinal)
+        noteSkip(ordinal, cause)
       })
       if (readEveryRow && (oneSnapshot || !db.inTransaction))
         keep(sessionId, { generation, newest, answer })

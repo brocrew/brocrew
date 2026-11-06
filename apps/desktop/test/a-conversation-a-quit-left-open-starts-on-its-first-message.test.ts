@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, reactive, ref } from 'vue'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { AgentToolset, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
@@ -225,9 +225,14 @@ describe('§1 · 701 · `692` F-a, D-017b — through a real host, a real ledger
   const stops: (() => void)[] = []
   const tick = (): number => clock++
 
+  let holdReaderClose: (() => Promise<void>) | undefined
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store: ledger,
+      memoryKnowledge:
+        holdReaderClose === undefined
+          ? undefined
+          : ({ close: holdReaderClose, busy: () => false, held: () => false } as never),
       discoverSessions: NO_DISCOVERY,
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
@@ -266,6 +271,7 @@ describe('§1 · 701 · `692` F-a, D-017b — through a real host, a real ledger
     clock = 7_000_000
     ledger = createLedger(db, tick)
     counter = 0
+    holdReaderClose = undefined
     hosts = []
     launched = []
     handed = []
@@ -281,6 +287,25 @@ describe('§1 · 701 · `692` F-a, D-017b — through a real host, a real ledger
     for (const built of hosts) await built.closeAll()
     db.close()
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('records open conversations before a quit waits for background work', async () => {
+    let release!: () => void
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    holdReaderClose = () => held
+    host = buildHost()
+    const created = await host.createSession({ provider: 'claude', cwd: root }, win.sink)
+    const kept = vi.spyOn(ledger, 'closedByTheQuit')
+    const closing = host.closeAll()
+    try {
+      expect(kept).toHaveBeenCalledWith([created.sessionId], expect.any(Number))
+    } finally {
+      release()
+      await closing
+      kept.mockRestore()
+    }
   })
 
   /** ⚑ A renderer store in the current window — disposed with the window. */

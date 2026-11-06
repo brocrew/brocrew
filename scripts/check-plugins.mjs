@@ -9,10 +9,10 @@ const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '.
 const pluginRoot = path.join(repository, 'plugins')
 let failed = false
 
-// Only these fields enter a failure receipt; never copy an exception, path or child output.
-function failure(plugin, stage, exitCode, reason) {
+function failure(plugin, stage, exitCode, reason, error) {
   failed = true
   console.error('plugin-failure ' + JSON.stringify({ plugin, stage, exitCode, reason }))
+  if (error) console.error(error)
 }
 function command(plugin, stage, program, args, cwd, env = process.env) {
   const result = spawnSync(program, args, { cwd, env, stdio: 'inherit', timeout: 480_000 })
@@ -28,6 +28,7 @@ function command(plugin, stage, program, args, cwd, env = process.env) {
       : result.signal
         ? 'signal'
         : 'exit',
+    result.error,
   )
   return false
 }
@@ -85,9 +86,9 @@ async function check(plugin, scratch, commit) {
         const artifact = path.join(scratch, id)
         await buildChromePackage(artifact, commit)
         testEnv.BROCREW_CHROME_TEST_ARTIFACT = artifact
-      } catch {
+      } catch (error) {
         artifactReady = false
-        failure(id, 'archive', null, 'exception')
+        failure(id, 'archive', null, 'exception', error)
       }
     }
     if (artifactReady)
@@ -115,7 +116,7 @@ async function check(plugin, scratch, commit) {
       timeout: 30_000,
     })
     if (version.status !== 0 || version.stdout.trim() !== `go${process.env.PLUGIN_CI_GO_VERSION}`) {
-      failure(id, 'go-toolchain', version.status, 'pin')
+      failure(id, 'go-toolchain', version.status, 'pin', version.error)
       continue
     }
     command(id, 'go-vet', 'go', ['vet', './...'], cwd)
@@ -141,7 +142,8 @@ async function main() {
     timeout: 480_000,
   })
   if (installed.status !== 0) {
-    for (const { id } of plugins) failure(id, 'workspace-install', installed.status, 'exit')
+    for (const { id } of plugins)
+      failure(id, 'workspace-install', installed.status, 'exit', installed.error)
     return
   }
   const commit = execFileSync('git', ['rev-parse', 'HEAD'], {
@@ -153,8 +155,8 @@ async function main() {
     for (const plugin of plugins) {
       try {
         await check(plugin, scratch, commit)
-      } catch {
-        failure(plugin.id, 'plugin', null, 'exception')
+      } catch (error) {
+        failure(plugin.id, 'plugin', null, 'exception', error)
       }
     }
   } finally {
@@ -164,7 +166,7 @@ async function main() {
 }
 try {
   await main()
-} catch {
-  failure('all', 'discovery', null, 'exception')
+} catch (error) {
+  failure('all', 'discovery', null, 'exception', error)
 }
 process.exitCode = failed ? 1 : 0
