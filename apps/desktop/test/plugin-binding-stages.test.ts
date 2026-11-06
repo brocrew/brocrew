@@ -30,7 +30,7 @@ function fixture() {
   } as unknown as Parameters<typeof admittedPluginTools>[0]
 }
 it.each(['connection', 'connect', 'inventory', 'close'] as const)(
-  'names the actual binding %s failure with its real error message',
+  'names the actual binding %s failure, excluding its raw body',
   async (where) => {
     const view = fixture()
     const error = Object.assign(new Error('http://fictional.private/mcp Bearer secret-body'), {
@@ -45,9 +45,7 @@ it.each(['connection', 'connect', 'inventory', 'close'] as const)(
       failure = error
     }
     expect(failure).toMatchObject({ pluginStage: `binding-${where}`, pluginCause: 'io-denied' })
-    expect((failure as Error).message).toBe(
-      `Plugin unavailable at binding-${where}: io-denied. http://fictional.private/mcp Bearer secret-body`,
-    )
+    expect((failure as Error).message).not.toMatch(/fictional.private|secret-body|Bearer/)
     expect(sdk.close).toHaveBeenCalledTimes(where === 'connection' ? 0 : 1)
   },
 )

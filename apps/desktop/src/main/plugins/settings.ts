@@ -182,6 +182,7 @@ export function registerPluginSettings(
               'installed',
               'priorityClamped',
               'toolsUnavailable',
+              'toolsCause',
               'canRestart',
               'installedVersion',
               'updateVersion',
@@ -202,6 +203,10 @@ export function registerPluginSettings(
               PluginStartupDiagnosticSchema.safeParse(card.startupDiagnostic).success)) &&
           (card.toolsUnavailable === undefined ||
             (card.state === 'Running' && card.toolsUnavailable === true)) &&
+          (card.toolsCause === undefined ||
+            (card.toolsUnavailable === true &&
+              typeof card.toolsCause === 'string' &&
+              /^[a-z][a-z0-9-]{0,63}(?:: [a-z][a-z0-9-]{0,63})?$/.test(card.toolsCause))) &&
           (card.canRestart === undefined ||
             (card.canRestart === true &&
               card.id === 'chrome' &&

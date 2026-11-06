@@ -542,10 +542,10 @@ it('a dead attachment source cannot stop an ordinary start or turn', async () =>
   expect(f.opened[0]!.send).toHaveBeenCalledOnce()
   await a.close()
 })
-it('names the attachment read stage, normalized cause and the real error message', async () => {
+it('names the attachment read stage and normalized cause without exposing provider error text', async () => {
   const f = fixture()
   f.source.read = vi.fn(async () => {
-    throw Object.assign(new Error('fictional permission denied on /fictional/state'), {
+    throw Object.assign(new Error('https://fictional.invalid/private token=do-not-log'), {
       code: 'EACCES',
     })
   })
@@ -555,9 +555,7 @@ it('names the attachment read stage, normalized cause and the real error message
     type: 'unknown',
     raw: { method: 'plugin/attachment', stage: 'attachment-read', cause: 'io-denied' },
   })
-  expect((event.value as { raw: { message: string } }).raw.message).toBe(
-    'Plugin unavailable at attachment-read: io-denied. fictional permission denied on /fictional/state',
-  )
+  expect(JSON.stringify(event.value)).not.toMatch(/fictional.invalid|do-not-log|EACCES/)
   await handle.send('ordinary input still works')
   expect(f.opened[0]!.send).toHaveBeenCalledOnce()
   await handle.close()
@@ -580,7 +578,7 @@ it('keeps the inner normalized stage through a generic unavailable wrapper', asy
   const f = fixture()
   f.source.read = vi.fn(async () => {
     throw Object.assign(
-      new Error('outer fictional details', {
+      new Error('outer private details', {
         cause: new ManagedPluginFailure('admission-read', 'corrupt'),
       }),
       { code: 'unavailable' },
@@ -589,10 +587,7 @@ it('keeps the inner normalized stage through a generic unavailable wrapper', asy
   const handle = await f.runtime.start(initial)
   const event = await handle.events()[Symbol.asyncIterator]().next()
   expect(event.value).toMatchObject({ raw: { stage: 'admission-read', cause: 'corrupt' } })
-  // The outer message is shown too: our own errors are never filtered out.
-  expect((event.value as { raw: { message: string } }).raw.message).toBe(
-    'Plugin unavailable at admission-read: corrupt. outer fictional details',
-  )
+  expect(JSON.stringify(event.value)).not.toContain('private details')
   await handle.close()
 })
 it('bounds held discovery before ordinary start', async () => {

@@ -95,6 +95,7 @@ async function live(
   const f = await fixture({
     deny: (id) => consumer.bridge?.deny(id),
     toolsUnavailable: (id) => consumer.bridge?.toolsUnavailable?.(id) ?? false,
+    toolsCause: (id) => consumer.bridge?.toolsCause?.(id),
     onChromeHostExit: (runId) => consumer.bridge?.hostExited?.(runId),
   })
   if (firstExit || firstStop) {
@@ -490,6 +491,8 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
         reason: 'fictional-private-downstream-name',
       })
       expect(failures[1]![2]).toEqual(failures[0]![2])
+      // The same fixed stage and cause reach the card, and from there the agent's launch line.
+      expect(f.bridge.toolsCause(failures[0]![0])).toBe('route-binding: unknown')
     } finally {
       log.mockRestore()
     }

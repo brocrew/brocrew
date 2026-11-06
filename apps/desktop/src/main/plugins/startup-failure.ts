@@ -39,50 +39,47 @@ export function pluginStartupStderr(text: string, secrets: readonly string[] = [
   return PluginStartupDiagnosticSchema.shape.stderr.safeParse(bounded).success ? bounded : null
 }
 
-/** A bounded chain of fixed stages, error kinds and normalized causes; never error bodies. */
+/** One bounded cause chain for local diagnostic logs: each error's real message, plus its stage. */
 export function pluginFailureCause(error: unknown, secrets: readonly string[] = []): string {
-  void secrets // Kept for callers; no underlying message is copied into this diagnostic.
   const lines: string[] = []
   const seen = new Set<unknown>()
   for (let depth = 0; depth < 6 && error != null && !seen.has(error); depth++) {
     seen.add(error)
     try {
-      const one = error as { code?: unknown; name?: unknown; cause?: unknown }
-      const name =
-        error instanceof PluginStartupError
-          ? 'PluginStartupError'
-          : error instanceof PluginSupervisorError
-            ? 'PluginSupervisorError'
-            : [
-                  'Error',
-                  'TypeError',
-                  'RangeError',
-                  'ZodError',
-                  'PluginStateError',
-                  'ManagedPluginFailure',
-                ].includes(String(one.name))
-              ? String(one.name)
-              : 'Error'
-      const code =
-        error instanceof PluginSupervisorError
-          ? error.code
-          : typeof one.code === 'string' &&
-              /^(?:EACCES|EPERM|ENOENT|ENOSPC|EBUSY|EIO|EMFILE|ENFILE|ECONNREFUSED|ECONNRESET|EPIPE|ETIMEDOUT|corrupt|unsafe-path|conflict|limit|unsupported|busy)$/.test(
-                one.code,
-              )
-            ? one.code
-            : undefined
-      const stage = error instanceof PluginStartupError ? error.detailStage : undefined
-      const failure = managedPluginFailure(error, stage ?? 'ipc-reply')
-      lines.push(
-        `${name}${code ? ` code=${code}` : ''}${stage ? ` detail=${stage}` : ''}${error instanceof ManagedPluginFailure ? ` origin=${failure.pluginStage}` : ''} cause=${name === 'ZodError' ? 'invalid-reply' : failure.pluginCause}`,
-      )
-      error = typeof error === 'object' ? one.cause : undefined
+      const message = typeof error === 'string' ? error : (error as Error).message
+      if (typeof message === 'string') {
+        const one = error as { code?: unknown }
+        const code =
+          error instanceof PluginSupervisorError
+            ? error.code
+            : typeof one.code === 'string' && /^E[A-Z0-9_]{1,30}$/.test(one.code)
+              ? one.code
+              : undefined
+        const name = error instanceof Error ? error.name : ''
+        const stage = error instanceof PluginStartupError ? error.detailStage : undefined
+        const origin =
+          error instanceof ManagedPluginFailure
+            ? ` origin=${error.pluginStage} cause=${error.pluginCause}`
+            : ''
+        const label = `${name}${code ? ` code=${code}` : ''}${stage ? ` detail=${stage}` : ''}${origin}`
+        const line = pluginStartupStderr(
+          `${label ? `${label}: ` : ''}${message.replace(/\r?\n/g, ' ')}`,
+          secrets,
+        )
+        if (line) lines.push(line)
+      }
+      error = typeof error === 'object' ? (error as Error).cause : undefined
     } catch {
-      break
+      break // A diagnostic property must not replace the failure being reported.
     }
   }
-  return lines.join(' <- ').slice(0, 512) || 'Unknown failure'
+  const budget = Math.floor(480 / Math.max(1, lines.length))
+  return (
+    pluginStartupStderr(
+      lines.map((line) => line.slice(0, budget).replace(/[\uD800-\uDBFF]$/, '')).join(' <- '),
+      secrets,
+    ) ?? 'Unknown failure'
+  )
 }
 
 export class PluginSupervisorLaunchFailure extends Error {

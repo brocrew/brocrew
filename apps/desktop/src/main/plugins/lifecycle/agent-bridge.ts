@@ -4,7 +4,11 @@ import {
   type PluginToolFailureDetail,
 } from '../tool-diagnostics'
 import { randomUUID } from 'node:crypto'
-import { managedPluginFailure, type ManagedPluginMcpServer } from '@brobot2/runtime'
+import {
+  managedPluginFailure,
+  pluginFailureReason,
+  type ManagedPluginMcpServer,
+} from '@brobot2/runtime'
 import {
   createPluginToolBroker,
   type BrokerOptions,
@@ -136,9 +140,15 @@ export function createLifecycleAgentBridge(options: {
     else overflowFailures.add(id) // Bounded and conservative until this installation is revoked.
   }
   const failedAttachments = new Set<string>()
+  // The last known stage and cause behind each plugin's unavailable tools, in fixed words only.
+  const lastCause = new Map<string, string>()
   const diagnostic =
     (id: string): PluginToolDiagnostic =>
     (reason, detail) => {
+      if (detail) lastCause.set(id, `${detail.stage}: ${detail.cause}`)
+      else if (/failed|unproven|capacity|collision|rate-limited/.test(reason))
+        lastCause.set(id, reason)
+      if (lastCause.size > 256) lastCause.delete(lastCause.keys().next().value!)
       try {
         if (detail) options.diagnostic?.(id, reason, detail)
         else options.diagnostic?.(id, reason)
@@ -161,6 +171,7 @@ export function createLifecycleAgentBridge(options: {
   function deny(id: string): Promise<void>[] {
     const pending: Promise<void>[] = []
     versions.set(id, (versions.get(id) ?? 0) + 1)
+    lastCause.delete(id)
     const entry = entries.get(id)
     entries.delete(id)
     entryIdentities.delete(id)
@@ -412,7 +423,7 @@ export function createLifecycleAgentBridge(options: {
             stage: failure.pluginStage,
             cause: failure.pluginCause,
             correlation: randomUUID(),
-            reason: failure.pluginReason,
+            reason: pluginFailureReason(error), // Person log only.
           }
           bindingFailures.set(bindingWork, detail)
           reportPluginToolFailure(report, 'binding-failed', detail)
@@ -457,6 +468,7 @@ export function createLifecycleAgentBridge(options: {
         }
         routes.set(key, cached)
         failedRoutes.delete(key)
+        if (![...failedRoutes.values()].includes(id)) lastCause.delete(id)
         if (liveEntries.get(id) === entry) rebuilding.delete(id)
       } catch (error) {
         // A retired attempt may be diagnosed, but cannot degrade its replacement's health.
@@ -467,7 +479,7 @@ export function createLifecycleAgentBridge(options: {
           stage: failure.pluginStage,
           cause: failure.pluginCause,
           correlation: randomUUID(),
-          reason: failure.pluginReason,
+          reason: pluginFailureReason(error), // Person log only.
         }
         reportPluginToolFailure(
           diagnostic(id),
@@ -634,6 +646,7 @@ export function createLifecycleAgentBridge(options: {
       if ((await Promise.race([attached.then(() => 'attached' as const), deadline])) === 'deadline')
         return snapshot(lease, request, null)
       failedAttachments.delete(lease.id)
+      if (!failedAttachments.size) lastCause.delete('host')
       let woken: () => void = () => {}
       let wake = new Promise<void>((resolve) => {
         woken = resolve
@@ -845,6 +858,10 @@ export function createLifecycleAgentBridge(options: {
         liveEntries.get(id)?.broker.status().available === false ||
         [...failedRoutes.values()].includes(id)
       )
+    },
+    /** Why this plugin's tools are unavailable, as `stage: cause` or a fixed reason, if known. */
+    toolsCause(id: string): string | undefined {
+      return lastCause.get(id) ?? (failedAttachments.size ? lastCause.get('host') : undefined)
     },
     agentRoutes(lease: Readonly<WorkspaceLease>, request: Request) {
       return answered(lease, request)

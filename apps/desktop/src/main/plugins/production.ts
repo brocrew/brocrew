@@ -290,6 +290,7 @@ export function productionPluginController() {
         // A verified absent installation has no tools; otherwise access is unknown here.
         tools: card.installed === false ? 'none' : 'unknown',
         toolHealth: card.state === 'Running' && !card.toolsUnavailable ? 'ready' : 'unavailable',
+        ...(card.toolsCause ? { toolsCause: card.toolsCause } : {}),
         service: card.state === 'Running' ? (names[card.id] ?? card.id) : null,
       }))
       return cards

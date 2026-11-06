@@ -49,6 +49,10 @@ async function bounded<T>(work: () => Promise<T>, ms = 20000): Promise<T> {
   }
 }
 const idSchema = z.string().regex(/^[a-z][a-z0-9-]{0,63}$/)
+/** A cause the launch line may name: fixed-vocabulary words, never an error body. */
+export const TOOLS_CAUSE = /^[a-z][a-z0-9-]{0,63}(?:: [a-z][a-z0-9-]{0,63})?$/
+const toolsCause = (value: unknown): value is string =>
+  typeof value === 'string' && TOOLS_CAUSE.test(value)
 interface Workspace {
   sink: WorkspaceProjection
   receipts: Map<string, ProjectionReceipt>
@@ -517,7 +521,12 @@ export class PluginLifecycleController {
             this.runs.has(id) &&
             !this.runs.get(id)!.ended &&
             this.options.toolsUnavailable?.(id)
-              ? { toolsUnavailable: true as const }
+              ? {
+                  toolsUnavailable: true as const,
+                  ...(toolsCause(this.options.toolsCause?.(id))
+                    ? { toolsCause: this.options.toolsCause!(id) }
+                    : {}),
+                }
               : {}),
             installed:
               !!active ||

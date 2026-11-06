@@ -64,6 +64,8 @@ export interface LifecycleOptions {
   now?: () => number
   /** Live host-broker reachability, separate from the plugin process lifecycle. */
   toolsUnavailable?: (pluginId: string) => boolean
+  /** Fixed-vocabulary `stage: cause` behind unavailable tools, when known. */
+  toolsCause?: (pluginId: string) => string | undefined
   /** Inert fault controls only; never a production launch option. */
   fault?: (
     point: 'prepared' | 'staged' | 'ready' | 'activated' | 'receipted' | 'update-fenced',

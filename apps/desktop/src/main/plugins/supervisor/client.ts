@@ -4,7 +4,6 @@ import { createConnection } from 'node:net'
 import { isAbsolute, join } from 'node:path'
 import { z } from 'zod'
 import { SupervisorStorage } from './storage'
-import { recordLeaseTrace, type LeaseTrace } from './lease-trace'
 import { isWithinOrSame } from '../private-files'
 import { workspacePluginRoot } from '../root-selection'
 import {
@@ -197,7 +196,6 @@ export class PluginWorkspaceLease {
   private counter = 0
   private renewal = secret()
   private renewedAt = performance.now()
-  private heartbeatDueAt = performance.now() + OWNER_LIMITS.heartbeat
   private timer: ReturnType<typeof setInterval> | undefined
   private retry: ReturnType<typeof setTimeout> | undefined
   private renewing: Promise<void> | undefined
@@ -218,9 +216,6 @@ export class PluginWorkspaceLease {
     this.features = hello.features
     this.epoch = record.epoch
     this.timer = setInterval(() => {
-      const started = performance.now()
-      this.traceLease('timer-start', { timerDelayMs: Math.max(0, started - this.heartbeatDueAt) })
-      this.heartbeatDueAt = started + OWNER_LIMITS.heartbeat
       void this.renew().catch(() => undefined)
     }, OWNER_LIMITS.heartbeat)
     this.timer.unref()
@@ -427,30 +422,10 @@ export class PluginWorkspaceLease {
    * its expiry has surely passed: the owner applied the last confirmed renewal before its reply
    * came back.
    */
-  private traceLease(
-    stage: LeaseTrace['stage'],
-    extra: Partial<Pick<LeaseTrace, 'elapsedMs' | 'timerDelayMs' | 'leaseAgeMs' | 'cause'>> = {},
-    counter = this.counter,
-  ): void {
-    recordLeaseTrace(this.options.root, {
-      role: 'app',
-      stage,
-      epoch: this.epoch,
-      generation: this.options.generation,
-      counter,
-      ...extra,
-    })
-  }
   renew(): Promise<void> {
     if (this.ended) return Promise.reject(new PluginSupervisorError('unavailable'))
     this.renewing ??= (async () => {
       const counter = this.counter + 1
-      const started = performance.now()
-      this.traceLease(
-        'request-dispatch',
-        { leaseAgeMs: Math.max(0, started - this.renewedAt) },
-        counter,
-      )
       try {
         const result = z.strictObject({ counter: z.number().int() }).parse(
           await supervisorRequest(this.storage, this.record, {
@@ -466,20 +441,10 @@ export class PluginWorkspaceLease {
         this.renewedAt = performance.now()
         clearTimeout(this.retry)
         this.retry = undefined
-        this.traceLease(
-          'request-complete',
-          { elapsedMs: Math.max(0, performance.now() - started) },
-          counter,
-        )
       } catch (error) {
         if (this.ended) refuse()
         const cause = error instanceof NoReply ? this.noLongerHeld() : 'refused-or-invalid'
         if (!cause) {
-          this.traceLease(
-            'request-retry',
-            { elapsedMs: Math.max(0, performance.now() - started), cause: 'no-reply' },
-            counter,
-          )
           this.retry ??= setTimeout(() => {
             this.retry = undefined
             void this.renew().catch(() => undefined)
@@ -488,11 +453,6 @@ export class PluginWorkspaceLease {
           refuse()
         }
         this.ended = true
-        this.traceLease(
-          'lease-ended',
-          { elapsedMs: Math.max(0, performance.now() - started), cause },
-          counter,
-        )
         clearInterval(this.timer)
         clearTimeout(this.retry)
         this.storage.close()

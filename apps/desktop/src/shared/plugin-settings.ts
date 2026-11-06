@@ -212,6 +212,8 @@ export interface PluginCard {
   priorityClamped?: boolean | null
   /** A living process does not imply that its agent tools are reachable. */
   toolsUnavailable?: true
+  /** Fixed-vocabulary `stage: cause` behind unavailable tools, when known. */
+  toolsCause?: string
   /** Negotiated person-only Chrome recovery; absent for older supervisors. */
   canRestart?: true
   installedVersion?: string

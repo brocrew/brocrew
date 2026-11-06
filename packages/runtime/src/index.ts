@@ -633,6 +633,7 @@ export {
 export {
   managedPluginFailure,
   ManagedPluginFailure,
+  pluginFailureReason,
   type PluginFailureStage,
   type PluginFailureCause,
 } from './managed-plugin-failure'

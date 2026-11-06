@@ -25,6 +25,7 @@ export async function createSupervisorLifecycle(options: {
     await PluginLifecycleController.open({
       ...options.lifecycle,
       toolsUnavailable: (id) => consumer.agents?.toolsUnavailable(id) ?? false,
+      toolsCause: (id) => consumer.agents?.toolsCause(id),
       deny(id) {
         consumer.agents?.deny(id)
         options.lifecycle.deny(id)

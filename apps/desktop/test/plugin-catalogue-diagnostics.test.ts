@@ -45,7 +45,7 @@ it.each(['owner-check', 'rpc', 'schema'] as const)(
     ) {
       const kind = (value as { kind: string }).kind
       if (stage === 'owner-check' && kind === 'features') return Promise.reject(original)
-      if (['list', 'list-v2', 'list-tool-health'].includes(kind)) {
+      if (['list', 'list-v2', 'list-tool-health', 'list-tool-cause'].includes(kind)) {
         if (stage === 'rpc') return Promise.reject(original)
         if (stage === 'schema') return Promise.resolve([{ id: 123 }])
       }
@@ -71,9 +71,9 @@ it.each(['owner-check', 'rpc', 'schema'] as const)(
     expect(log).toContain(`stage=${stage}`)
     if (stage === 'owner-check') expect(log).toContain('detail=owner-features')
     if (stage !== 'schema') {
-      expect(log).toContain('Error cause=unknown')
-      expect(log).not.toMatch(/owner-invalidated|broker already closed/)
-    } else expect(log).toContain('ZodError cause=invalid-reply')
+      expect(log).toContain('owner-invalidated')
+      expect(log).toContain('broker already closed')
+    } else expect(log).toContain('invalid_type')
     expect(log).not.toMatch(/fictional-key|fictional-password/)
   },
 )

@@ -44,6 +44,10 @@ const Cards = z
       installed: z.boolean(),
       priorityClamped: z.boolean().nullable().optional(),
       toolsUnavailable: z.literal(true).optional(),
+      toolsCause: z
+        .string()
+        .regex(/^[a-z][a-z0-9-]{0,63}(?:: [a-z][a-z0-9-]{0,63})?$/)
+        .optional(),
       installedVersion: z.string().min(1).max(80).optional(),
       updateVersion: z.string().min(1).max(80).optional(),
       uninstallDeletesData: z.boolean().optional(),
@@ -524,9 +528,11 @@ export async function connectPluginSettings(options: {
       try {
         reply = await channel.call({
           kind: modern
-            ? features.includes('tool-health-v1')
-              ? 'list-tool-health'
-              : 'list-v2'
+            ? features.includes('tool-cause-v1')
+              ? 'list-tool-cause'
+              : features.includes('tool-health-v1')
+                ? 'list-tool-health'
+                : 'list-v2'
             : 'list',
         })
       } catch (error) {

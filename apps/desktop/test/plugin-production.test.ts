@@ -1493,8 +1493,7 @@ describe.skipIf(process.platform === 'win32')(
         { state: 'Unavailable', unavailableReason: 'catalogue-response' },
       ])
       expect(f.peer.close).toHaveBeenCalled()
-      expect(JSON.stringify(warning.mock.calls)).not.toContain('fictional-private-catalogue-error')
-      expect(JSON.stringify(warning.mock.calls)).toContain('Error cause=unknown')
+      expect(JSON.stringify(warning.mock.calls)).toContain('fictional-private-catalogue-error')
       expect(JSON.stringify(warning.mock.calls)).toContain('stage=rpc')
       f.peer.catalogue.mockResolvedValue([
         { id: f.pkg.release.id, name: 'Fictional Fir', installed: false, state: 'Available' },

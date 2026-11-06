@@ -50,6 +50,26 @@ it.each(['all agents', 'none', 'unknown'] as const)(
     if (tools === 'none') expect(text).not.toContain('tools: all agents')
   },
 )
+it('names the known stage and cause when access is on and tools are unavailable', () => {
+  const entry = {
+    ...AVAILABLE,
+    state: 'Running' as const,
+    tools: 'all agents' as const,
+    toolHealth: 'unavailable' as const,
+    toolsCause: 'route-binding: io-denied',
+    service: 'fictional-service',
+  }
+  const text = pluginInstructionSection(
+    readPluginInstructions({ instructionCatalogue: () => [entry] }),
+  )!
+  expect(text).toContain('tools: unavailable: route-binding: io-denied;')
+  // Only fixed words reach agent text; an error body is not a cause.
+  expect(
+    readPluginInstructions({
+      instructionCatalogue: () => [{ ...entry, toolsCause: 'Error: http://fictional.invalid' }],
+    }),
+  ).toBeNull()
+})
 it('does not turn healthy broker state into a configured access grant', () => {
   const entry = {
     ...AVAILABLE,
