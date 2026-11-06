@@ -41,26 +41,38 @@ export async function bootstrapPluginLifecycle(options: {
   }).verifyCatalogue(catalogue.bytes, catalogue.signature)
   let repoList: { bytes: Uint8Array; sha256: string; appVersion: string } | undefined
   if (repo?.repoList) {
-    if (!repo.appVersion) throw new Error('unavailable')
+    if (!repo.appVersion)
+      throw new Error('The plugin launch plan has a repo list but no app version')
     const bytes = await sourceBytes(repo.repoList.path, PLUGIN_LIMITS.catalogueBytes)
     await verifyImmutableFile(repo.repoList.path, bytes)
-    if (
-      pluginSha256(bytes) !== repo.repoList.sha256 ||
-      parseRepoPluginList(bytes, target, repo.appVersion).format !== (repo.sourceVersion ?? 1)
-    )
-      throw new Error('unavailable')
+    const got = pluginSha256(bytes)
+    if (got !== repo.repoList.sha256)
+      throw new Error(
+        `The plugin repo list at ${repo.repoList.path} changed: sha256 ${got}, expected ${repo.repoList.sha256}`,
+      )
+    // The app already parsed and admitted this list. Any supported list format is accepted here;
+    // its own format no longer has to equal the source version the app asked for.
+    parseRepoPluginList(bytes, target, repo.appVersion)
     repoList = { bytes, sha256: repo.repoList.sha256, appVersion: repo.appVersion }
   }
   let legacyRepoList: typeof repoList
   if (repo?.legacyRepoList) {
-    if (repo.sourceVersion !== 2 || !repo.appVersion) throw new Error('unavailable')
+    if (repo.sourceVersion !== 2)
+      throw new Error(
+        `The plugin launch plan has a legacy repo list with source version ${repo.sourceVersion ?? 'none'}, expected 2`,
+      )
+    if (!repo.appVersion)
+      throw new Error('The plugin launch plan has a legacy repo list but no app version')
     const bytes = await sourceBytes(repo.legacyRepoList.path, PLUGIN_LIMITS.catalogueBytes)
     await verifyImmutableFile(repo.legacyRepoList.path, bytes)
-    if (
-      pluginSha256(bytes) !== repo.legacyRepoList.sha256 ||
-      parseRepoPluginList(bytes, target, repo.appVersion).format !== 1
-    )
-      throw new Error('unavailable')
+    const got = pluginSha256(bytes)
+    if (got !== repo.legacyRepoList.sha256)
+      throw new Error(
+        `The legacy plugin repo list at ${repo.legacyRepoList.path} changed: sha256 ${got}, expected ${repo.legacyRepoList.sha256}`,
+      )
+    const format = parseRepoPluginList(bytes, target, repo.appVersion).format
+    if (format !== 1)
+      throw new Error(`The legacy plugin repo list has format ${format}, expected 1`)
     legacyRepoList = { bytes, sha256: repo.legacyRepoList.sha256, appVersion: repo.appVersion }
   }
   const state = GlobalPluginState.open({
@@ -135,7 +147,10 @@ export async function bootstrapPluginLifecycle(options: {
                   const file = legacy.downloads!.find(
                     (one) => one.id === release.id && one.version === release.version,
                   )
-                  if (!file) throw new Error('unavailable')
+                  if (!file)
+                    throw new Error(
+                      `The plugin launch plan has no download for ${release.id} ${release.version}`,
+                    )
                   return sourceBytes(file.archive, PLUGIN_LIMITS.archiveBytes)
                 }
               : undefined,

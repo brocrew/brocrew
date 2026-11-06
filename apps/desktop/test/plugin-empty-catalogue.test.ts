@@ -358,3 +358,63 @@ it.each([false, true])(
     }
   },
 )
+
+it('owner bootstrap accepts a format-3 repo list from a launch plan that names no source version', async () => {
+  // The packaged fixture launch plan sends a format-3 list and no sourceVersion; the owner used to
+  // demand format === (sourceVersion ?? 1) and threw a bare "unavailable" before Settings could connect.
+  const f = await setup(false)
+  const appVersion = '0.0.0'
+  const raw = Buffer.from(JSON.stringify({ format: 3, entries: [] }))
+  const view = parseRepoPluginList(raw, f.opts.target, appVersion)
+  expect(view.format).toBe(3)
+  const catalogue = join(f.root, 'fictional-format3-catalogue.json'),
+    repo = join(f.root, 'fictional-format3-list.json')
+  await immutableFile(catalogue, view.bytes)
+  await immutableFile(repo, raw)
+  let closeOwner!: () => void
+  const closed = new Promise<void>((resolve) => {
+    closeOwner = resolve
+  })
+  seam.start.mockImplementation(
+    async (options: Parameters<typeof createSupervisorLifecycle>[0]) => {
+      const controller = await PluginLifecycleController.open({
+        ...options.lifecycle,
+        runtime: f.opts.runtime,
+      })
+      closers.push(async () => {
+        await controller.drain()
+        closeOwner()
+      })
+      return { controller }
+    },
+  )
+  const plan = {
+    source: 'repo-list' as const,
+    appVersion,
+    catalogue,
+    catalogueSha256: view.sha256,
+    repoList: { path: repo, sha256: pluginSha256(raw) },
+    personKey: 'e'.repeat(64),
+    names: {},
+  }
+  const service = await bootstrapPluginLifecycle({
+    root: f.root,
+    workspaceRoots: [f.workspace],
+    owner: { closed } as Parameters<typeof bootstrapPluginLifecycle>[0]['owner'],
+    host: {} as Parameters<typeof bootstrapPluginLifecycle>[0]['host'],
+    plan,
+  })
+  expect((await service.controller.status()).cards).toEqual([])
+  // A list that really changed still refuses, and says what changed.
+  await expect(
+    bootstrapPluginLifecycle({
+      root: f.root,
+      workspaceRoots: [f.workspace],
+      owner: { closed } as Parameters<typeof bootstrapPluginLifecycle>[0]['owner'],
+      host: {} as Parameters<typeof bootstrapPluginLifecycle>[0]['host'],
+      plan: { ...plan, repoList: { path: repo, sha256: 'f'.repeat(64) } },
+    }),
+  ).rejects.toThrow(
+    `The plugin repo list at ${repo} changed: sha256 ${pluginSha256(raw)}, expected ${'f'.repeat(64)}`,
+  )
+})
