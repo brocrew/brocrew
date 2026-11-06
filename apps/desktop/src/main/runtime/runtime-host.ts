@@ -2225,8 +2225,11 @@ type WindowReadMiss =
 
 /** A window read the worker did not serve, and why; any other refusal stands. */
 class WindowReadMissed extends WindowReadUnavailable {
-  constructor(readonly missed: WindowReadMiss) {
-    super(missed === 'worker-needs-restart' ? 'restart' : 'unavailable')
+  constructor(
+    readonly missed: WindowReadMiss,
+    cause?: string,
+  ) {
+    super(missed === 'worker-needs-restart' ? 'restart' : 'unavailable', undefined, cause)
   }
 }
 
@@ -2236,9 +2239,12 @@ class WindowReadMissed extends WindowReadUnavailable {
  */
 function whyTheWorkerMissed(error: unknown, signal: AbortSignal | undefined): unknown {
   if (signal?.aborted === true || !(error instanceof WindowReadUnavailable)) return error
-  if (error.why === 'restart') return new WindowReadMissed('worker-needs-restart')
-  if (error.why === 'busy') return new WindowReadMissed('worker-busy')
-  return new WindowReadMissed(error.why === 'failed' ? 'worker-read-failed' : 'worker-gone')
+  if (error.why === 'restart') return new WindowReadMissed('worker-needs-restart', error.message)
+  if (error.why === 'busy') return new WindowReadMissed('worker-busy', error.message)
+  return new WindowReadMissed(
+    error.why === 'failed' ? 'worker-read-failed' : 'worker-gone',
+    error.message,
+  )
 }
 
 /**
@@ -8411,7 +8417,7 @@ export class RuntimeHost implements LiveHost {
     'routes' | 'incidents',
     {
       readonly stamp: WindowWriterStamp
-      readonly missed: WindowReadMiss
+      readonly missed: WindowReadMissed
       readonly wait: number
       readonly until: number
     }
@@ -19743,7 +19749,7 @@ export class RuntimeHost implements LiveHost {
         sameWindowWriter(failed.stamp, before) &&
         this.now() < failed.until
       )
-        throw new WindowReadMissed(failed.missed)
+        throw failed.missed
       let pending: Promise<WindowReadResult>
       let origin = before
       if (reusable) {
@@ -19806,7 +19812,7 @@ export class RuntimeHost implements LiveHost {
         : A_FAILED_WINDOW_READ_WAITS_MS
     this.windowReadsFailed.set(kind, {
       stamp,
-      missed: missed.missed,
+      missed,
       wait,
       until: this.now() + wait,
     })

@@ -37,6 +37,7 @@ export class WindowWorkerReader implements WindowStoreReader {
   private nextId = 0
   private closed = false
   private failed = false
+  private failureCause: string | undefined
   private terminating = false
 
   constructor(private readonly worker: WindowReadWorker) {
@@ -49,13 +50,14 @@ export class WindowWorkerReader implements WindowStoreReader {
       this.resolveExit = resolve
     })
     worker.on('message', (message: unknown) => this.receive(message))
-    worker.on('error', () => this.fail())
-    worker.on('exit', () => {
+    worker.on('error', (error) => this.fail(error.message))
+    worker.on('exit', (code) => {
+      this.failureCause ??= `The window reader exited with code ${code}.`
       this.failed = true
-      this.rejectReady(new WindowReadUnavailable())
+      this.rejectReady(new WindowReadUnavailable('unavailable', undefined, this.failureCause))
       for (const one of this.pending.values()) {
         one.cleanUp()
-        one.reject(new WindowReadUnavailable())
+        one.reject(new WindowReadUnavailable('unavailable', undefined, this.failureCause))
       }
       this.pending.clear()
       this.resolveExit()
@@ -67,11 +69,14 @@ export class WindowWorkerReader implements WindowStoreReader {
   }
 
   async read(input: WindowReadQuery, signal?: AbortSignal): Promise<WindowReadResult> {
-    if (this.closed || this.failed) throw new WindowReadUnavailable()
+    if (this.closed || this.failed)
+      throw new WindowReadUnavailable('unavailable', undefined, this.failureCause)
     if (this.pending.size >= WINDOW_READ_BOUNDS.pending) throw new WindowReadUnavailable('busy')
     const query = windowReadQuery.parse(input)
-    if (signal?.aborted) throw new WindowReadUnavailable()
-    if (!Number.isSafeInteger(this.nextId + 1)) throw new WindowReadUnavailable()
+    if (signal?.aborted)
+      throw new WindowReadUnavailable('unavailable', undefined, this.failureCause)
+    if (!Number.isSafeInteger(this.nextId + 1))
+      throw new WindowReadUnavailable('unavailable', undefined, this.failureCause)
     const id = ++this.nextId
     // The caller can set this flag while the worker is inside synchronous SQLite.
     const flag =
@@ -87,7 +92,7 @@ export class WindowWorkerReader implements WindowStoreReader {
         const pending = this.pending.get(id)
         this.pending.delete(id)
         cleanUp()
-        pending?.reject(new WindowReadUnavailable())
+        pending?.reject(new WindowReadUnavailable('unavailable', undefined, this.failureCause))
       }
     }
     const result = new Promise<WindowReadResult>((resolve, reject) => {
@@ -98,7 +103,8 @@ export class WindowWorkerReader implements WindowStoreReader {
     void this.ready
       .then(() => {
         if (!this.pending.has(id)) return
-        if (this.closed || this.failed) throw new WindowReadUnavailable()
+        if (this.closed || this.failed)
+          throw new WindowReadUnavailable('unavailable', undefined, this.failureCause)
         posted = true
         this.worker.postMessage({
           type: 'read',
@@ -107,18 +113,18 @@ export class WindowWorkerReader implements WindowStoreReader {
           ...(flag === undefined ? {} : { cancellation: flag.buffer }),
         })
       })
-      .catch(() => this.fail())
+      .catch((error: unknown) => this.fail(error instanceof Error ? error.message : String(error)))
     return result
   }
 
   async close(): Promise<void> {
     if (!this.closed) {
       this.closed = true
-      this.rejectReady(new WindowReadUnavailable())
+      this.rejectReady(new WindowReadUnavailable('unavailable', undefined, this.failureCause))
       try {
         this.worker.postMessage({ type: 'close' })
-      } catch {
-        this.fail()
+      } catch (error) {
+        this.fail(error instanceof Error ? error.message : String(error))
       }
     }
     const timer = setTimeout(() => this.terminate(), 3000)
@@ -140,7 +146,7 @@ export class WindowWorkerReader implements WindowStoreReader {
       return
     }
     if (message.type === 'unavailable') {
-      this.fail()
+      this.fail(typeof message.cause === 'string' ? message.cause : undefined)
       return
     }
     if (typeof message.id !== 'number') {
@@ -154,7 +160,11 @@ export class WindowWorkerReader implements WindowStoreReader {
       pending.cleanUp()
       const failure = windowReadFailure.safeParse(message.reason)
       pending.reject(
-        new WindowReadUnavailable('failed', failure.success ? failure.data : 'worker-read-failed'),
+        new WindowReadUnavailable(
+          'failed',
+          failure.success ? failure.data : 'worker-read-failed',
+          typeof message.cause === 'string' ? message.cause : undefined,
+        ),
       )
       return
     }
@@ -165,13 +175,15 @@ export class WindowWorkerReader implements WindowStoreReader {
     }
     this.pending.delete(message.id)
     pending.cleanUp()
-    if (this.closed) pending.reject(new WindowReadUnavailable())
+    if (this.closed)
+      pending.reject(new WindowReadUnavailable('unavailable', undefined, this.failureCause))
     else pending.resolve(parsed.data as WindowReadResult)
   }
 
-  private fail(): void {
+  private fail(cause?: string): void {
+    this.failureCause ??= cause
     this.failed = true
-    this.rejectReady(new WindowReadUnavailable())
+    this.rejectReady(new WindowReadUnavailable('unavailable', undefined, this.failureCause))
     this.terminate()
   }
 
@@ -187,6 +199,7 @@ export class WindowReaderLifetime implements WindowStoreReader {
   private owned: WindowWorkerReader | undefined
   private closed = false
   private created = 0
+  private lastCause: string | undefined
 
   constructor(private readonly start: () => WindowWorkerReader) {}
 
@@ -194,20 +207,30 @@ export class WindowReaderLifetime implements WindowStoreReader {
     const query = windowReadQuery.parse(input)
     if (this.closed) throw new WindowReadUnavailable()
     if (this.owned === undefined) {
-      if (this.created >= 2) throw new WindowReadUnavailable('restart')
+      if (this.created >= 2) throw new WindowReadUnavailable('restart', undefined, this.lastCause)
       this.created++
       let reader: WindowWorkerReader
       try {
         reader = this.start()
-      } catch {
-        throw new WindowReadUnavailable()
+      } catch (error) {
+        this.lastCause = error instanceof Error ? error.message : String(error)
+        throw new WindowReadUnavailable(
+          'unavailable',
+          undefined,
+          error instanceof Error ? error.message : String(error),
+        )
       }
       this.owned = reader
       void reader.whenExited.then(() => {
         if (this.owned === reader) this.owned = undefined
       })
     }
-    return this.owned.read(query, signal)
+    try {
+      return await this.owned.read(query, signal)
+    } catch (error) {
+      if (error instanceof WindowReadUnavailable) this.lastCause = error.readCause ?? error.message
+      throw error
+    }
   }
 
   async close(): Promise<void> {
