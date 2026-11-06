@@ -118,23 +118,25 @@ it('fails malformed and oversize relevant routing rather than returning partial 
     expect(complete(f).nodes).toHaveLength(1)
   }
 })
-it('does not parse or export unrelated prose and rejects wrong-type/forged/foreign cursors', () => {
+it('pages the immutable reading with plain offsets and excludes unrelated prose', () => {
   const f = setup()
   f.seed()
   f.event('a1', 'assistant', JSON.stringify({ text: 'private-fictional-prose'.repeat(10000) }), 2)
   const h = snapshot(f.engine.read({ operation: 'snapshot' }, graphContext))
   const page = f.engine.read({ operation: 'nodes', snapshot: h.snapshot, size: 1 }, graphContext)
-  if (page.type !== 'nodes' || !page.next) throw new Error('missing page')
+  if (page.type !== 'nodes') throw new Error('missing page')
+  expect(page.next).toBe('1')
   expect(JSON.stringify(page)).not.toContain('private-fictional-prose')
-  for (const [operation, cursor, context] of [
-    ['nodes', page.next + 'x', graphContext],
-    ['edges', page.next, graphContext],
-    ['nodes', page.next, { ...graphContext, ownerNonce: 'another-window' }],
-  ] as const)
-    expect(f.engine.read({ operation, snapshot: h.snapshot, cursor }, context)).toMatchObject({
-      type: 'unavailable',
-      cause: 'invalid-cursor',
-    })
+  const next = f.engine.read(
+    { operation: 'nodes', snapshot: h.snapshot, cursor: '1', size: 1 },
+    graphContext,
+  )
+  expect(next.type).toBe('nodes')
+  if (next.type === 'nodes') expect(next.nodes[0]?.id).not.toBe(page.nodes[0]?.id)
+  for (const cursor of ['x', '-1', '1.5', '9007199254740992', '99999'])
+    expect(
+      f.engine.read({ operation: 'nodes', snapshot: h.snapshot, cursor }, graphContext),
+    ).toMatchObject({ type: 'unavailable', cause: 'invalid-cursor' })
 })
 it('pins pages and stale is monotonic after a newer host revision', () => {
   const f = setup()
