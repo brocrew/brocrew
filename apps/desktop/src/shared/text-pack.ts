@@ -3,7 +3,7 @@ import type { BuiltInSkillName } from './built-in-skills'
 /** Why a launch could not use a text pack, each said in one fixed sentence. */
 export type TextPackRefusal =
   | { readonly kind: 'not-absolute' }
-  | { readonly kind: 'unreadable' }
+  | { readonly kind: 'unreadable'; readonly cause?: string }
   | { readonly kind: 'core-missing' }
   | { readonly kind: 'core-block-missing'; readonly block: 'core' | 'coordinator' }
   | { readonly kind: 'turn-line-missing' }
@@ -22,7 +22,9 @@ export function textPackRefusalSaid(refusal: TextPackRefusal): string {
     case 'not-absolute':
       return 'its folder is not a full path'
     case 'unreadable':
-      return 'its folder could not be read'
+      return refusal.cause === undefined
+        ? 'its folder could not be read'
+        : `its folder could not be read: ${refusal.cause}`
     case 'core-missing':
       return 'core.md is missing'
     case 'core-block-missing':
