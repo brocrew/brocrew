@@ -361,7 +361,7 @@ const REPLY_SENTENCES: Readonly<Record<ReplyRail, string>> = {
     "that piece wasn't handed back: a conversation with a question about it is still starting. Try again in a moment.",
   // Said with the piece's label when the detail holds it ({@link aPieceNotEndedItsQuestionsUnread}).
   'its-questions-could-not-all-be-read':
-    "that piece wasn't handed back: its question ledger could not be read. Check that record, then retry this call.",
+    "that piece wasn't handed back: its question records could not be read. Check that record, then retry this call.",
 }
 
 function longSummarySentence(detail: ReplyRefusalDetail): string {

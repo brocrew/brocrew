@@ -2434,7 +2434,7 @@ const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
     "that piece wasn't taken back or closed: a conversation with a question about it is still starting. Try again in a moment.",
   // Said with the piece's label at each door (`aPieceNotEndedItsQuestionsUnread`).
   'its-questions-could-not-all-be-read':
-    "that piece wasn't taken back or closed: its question ledger could not be read. Check that record, then retry this call.",
+    "that piece wasn't taken back or closed: its question records could not be read. Check that record, then retry this call.",
   // Grants do not select the app's direct writer.
   'may-not-write-rules':
     'Only BroBot writes other agents’ standing rules directly. You can propose a change with propose_agent_rules, and the person decides. Nothing was written.',

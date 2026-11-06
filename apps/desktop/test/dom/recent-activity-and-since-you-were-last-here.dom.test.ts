@@ -701,7 +701,7 @@ it('Recent activity names an early stop even when no transcript was cleared', ()
   }
   const { m } = page(value)
   expect(m.q('activity-transcripts-cleared').textContent).toContain(
-    'Transcript clearing stopped after 15 seconds so agents could start. No transcripts were cleared. The rest will be checked next time BroCrew starts.',
+    'Transcript clearing stopped after 15 seconds. No transcripts were cleared. The rest will be checked next time BroCrew starts.',
   )
   expect(m.all('activity-empty')).toHaveLength(0)
 })

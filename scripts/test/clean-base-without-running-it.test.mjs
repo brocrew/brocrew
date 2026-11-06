@@ -123,9 +123,7 @@ describe('§1 · the source census — a new durable write under userData must n
     expect(sources.length, 'the walk found no production source at all').toBeGreaterThan(50)
     const found = new Set()
     for (const source of sources) {
-      // ⚠️ One level of nesting is allowed in the argument, because one of the eight sites is
-      // `join(userData, \`.oh-${digest(token).slice(0, 8)}\`)`. A `[^)]` capture stops inside
-      // `digest(` and pins half an expression — true, and unreadable as a census row.
+      // One level of nesting is allowed so a function argument is read as a whole expression.
       // ⚑ **And `userData` as a FIELD too** (`where.userData`): the updater's settings are joined to
       // one, and a census that read only the bare name let that durable write past it.
       for (const match of code(source).matchAll(
@@ -190,7 +188,6 @@ describe('§1 · the source census — a new durable write under userData must n
       'TRANSCRIPT_RETENTION_FILE',
       'WORKER_OUTPUT_DIRNAME',
       'WORKSPACE_DIRNAME',
-      '`.oh-${digest(token).slice(0, 8)}`',
       // The app's state files a recovery copy takes, each named in `APP_STATE_FILES`; the test
       // below holds every name there to this manifest.
       'segment(file.name)',
