@@ -1,4 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
+import { randomUUID } from 'node:crypto'
 import { fixture, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
 
 afterEach(async () => {
@@ -23,13 +24,31 @@ it('an unresolved journal operation makes scope unreadable rather than claiming 
   const f = await fixture()
   await f.controller.install(f.handle, 'chrome')
   const before = f.state.inspect()
-  const blocked = vi.spyOn(f.state, 'inspect').mockReturnValue({
-    ...before,
-    pending: {} as NonNullable<typeof before.pending>,
+  const view = f.controller.agentAttachments(f.local.sink.workspaceId)[0]!
+  const operationId = randomUUID()
+  f.state.prepare({
+    operationId,
+    consent: {
+      action: 'install',
+      pluginId: 'willow',
+      at: 1000,
+      expectedSequence: before.sequence,
+      expectedInstallId: null,
+      release: view.installation.release,
+    },
+    snapshot: null,
   })
-  expect(() => f.controller.agentScope(f.local.sink.workspaceId)).toThrow()
-  blocked.mockRestore()
-  expect(f.controller.agentScope(f.local.sink.workspaceId).entries).toMatchObject([
-    { pluginId: 'chrome', is: 'admitted' },
-  ])
+  try {
+    expect(f.state.inspect().pending).not.toBeNull()
+    expect(view.current()).toBe(false)
+    expect(() => f.controller.agentScope(f.local.sink.workspaceId)).toThrow()
+  } finally {
+    f.state.abort(operationId)
+  }
+  expect(
+    f.controller
+      .agentScope(f.local.sink.workspaceId)
+      .entries.find((one) => one.pluginId === 'chrome'),
+  ).toMatchObject({ pluginId: 'chrome', is: 'admitted' })
+  expect(view.current()).toBe(true)
 })

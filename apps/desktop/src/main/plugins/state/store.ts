@@ -141,6 +141,23 @@ export class GlobalPluginState {
     const state = this.disk.load()
     return frozen(this.active(state))
   }
+  /** One fresh, verified read for a synchronous workspace admission decision. Never retain it. */
+  readWorkspaceAdmission(workspaceId: string) {
+    const state = this.disk.load()
+    const installations = state.pending ? [] : this.active(state).entries
+    return frozen({
+      sequence: state.sequence,
+      pending: state.pending !== null,
+      guardIds: [...state.guards.keys()],
+      installations,
+      receipts: installations.map((installation) =>
+        stateInput(
+          installationProjection(state.rootId, state.epoch, workspaceId, installation),
+          ProjectionReceipt,
+        ),
+      ),
+    })
+  }
   emptyProjection(workspaceId: string, pluginId: string): Receipt | null {
     const state = this.disk.load()
     const current = this.active(state).entries.find((entry) => entry.pluginId === pluginId)
