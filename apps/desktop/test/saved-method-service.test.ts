@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import {
   chmodSync,
   existsSync,
@@ -67,7 +66,7 @@ const app = { who: 'the-app-itself' } as const
 const agent = { who: 'an-agent', agent: 'ses-wren' } as const
 const line = '- Review | During review | verified 2026-10-21 | review.md\r\n'
 const bytes = Buffer.from([0xff, 0x00, 0x0d, 0x0a])
-const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex')
+const hash = (bytes: Buffer) => bytes.toString('base64')
 let root: string
 let homesRoot: string
 let db: AppDatabase
@@ -99,20 +98,17 @@ function selection(api: Service, name = 'review.md', slug = 'lark'): MethodDelet
   return {
     confirmed: true,
     key: item.key,
-    fingerprint: item.fingerprint,
-    indexState: listed.indexState,
-    indexFingerprint: listed.indexFingerprint,
   }
 }
 function pending() {
-  const image = { base64: bytes.toString('base64'), fingerprint: hash(bytes), mode: 0o640 }
+  const image = { base64: bytes.toString('base64'), mode: 0o640 }
   return changes.begin(
     agentIdentityRowId('lark'),
     {
       operation: 'delete',
       sourceId: null,
       target: 'review.md',
-      files: [{ name: 'review.md', before: image, after: null, afterMode: null }],
+      files: [{ name: 'review.md', before: image, afterBase64: null, afterMode: null }],
     },
     person,
     1000,
@@ -278,6 +274,46 @@ describe('saved methods change only through a confirmed, recoverable profile ope
       changes: [{ outcome: 'done', by: person, settlement: { by: app } }],
     })
   })
+  it('shows the database settlement cause after publication and records the real outcome on reopen', async () => {
+    const cause = `SQLITE_FULL: '/fictional/workspace.sqlite' settling saved methods`
+    const api = await service({
+      changes: {
+        ...changes,
+        settle: () => {
+          throw new Error(cause)
+        },
+      },
+    })
+    expect(await api.remove('lark', selection(api), person)).toMatchObject({
+      ok: false,
+      cause: expect.stringContaining(cause),
+      change: { outcome: 'pending' },
+    })
+    expect(existsSync(path('review.md'))).toBe(false)
+    expect(changes.hasPending(agentIdentityRowId('lark'))).toBe(true)
+    const reopened = await service()
+    expect(reopened.history('lark')).toMatchObject({ ok: true, changes: [{ outcome: 'done' }] })
+  })
+
+  it('shows the database cause during an explicit interruption check without claiming completion', async () => {
+    const cause = `SQLITE_IOERR: '/fictional/workspace.sqlite' checking saved methods`
+    const api = await service({
+      changes: {
+        ...changes,
+        settle: () => {
+          throw new Error(cause)
+        },
+      },
+    })
+    const row = pending()
+    expect(await api.checkInterrupted('lark', true, person)).toMatchObject({
+      ok: false,
+      cause: expect.stringContaining(cause),
+    })
+    expect(changes.read(agentIdentityRowId('lark'), row.id)?.outcome).toBe('pending')
+    expect(readFileSync(path('review.md'))).toEqual(bytes)
+  })
+
   it('startup observes unfinished work without changing its author or restoring files', async () => {
     const row = pending()
     rmSync(path('review.md'))
@@ -289,6 +325,44 @@ describe('saved methods change only through a confirmed, recoverable profile ope
     })
     expect(existsSync(path('review.md'))).toBe(false)
   })
+  it('undoes a completed legacy operation from its recorded bytes and fresh content without trusting digests', async () => {
+    const api = await service()
+    const removed = await api.remove('lark', selection(api), person)
+    expect(removed.ok).toBe(true)
+    if (!removed.ok) throw new Error('remove did not finish')
+    const table = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%method%change%'")
+      .all() as { name: string }[]
+    expect(table).toHaveLength(1)
+    const name = table[0]!.name
+    const stored = db
+      .prepare(`SELECT files, actual FROM ${name} WHERE id=?`)
+      .get(removed.change.id) as { files: string; actual: string }
+    const files = JSON.parse(stored.files).map(
+      (one: { afterBase64?: string | null; before: Record<string, unknown> | null }) => {
+        const { afterBase64, ...old } = one
+        return {
+          ...old,
+          before: old.before === null ? null : { ...old.before, fingerprint: 'a'.repeat(64) },
+          after: afterBase64 === null ? null : 'b'.repeat(64),
+        }
+      },
+    )
+    const actual = JSON.parse(stored.actual).map((one: { base64?: string | null }) => {
+      const { base64, ...old } = one
+      return { ...old, fingerprint: base64 === null ? null : 'c'.repeat(64) }
+    })
+    db.prepare(`UPDATE ${name} SET files=?, actual=? WHERE id=?`).run(
+      JSON.stringify(files),
+      JSON.stringify(actual),
+      removed.change.id,
+    )
+    const reopened = await service()
+    expect((await reopened.undo('lark', removed.change.id, person)).ok).toBe(true)
+    expect(readFileSync(path('review.md'))).toEqual(bytes)
+    expect(readFileSync(path('index.md'), 'utf8')).toBe(`# Keep\r\n${line}untouched`)
+  })
+
   it('a person can check an interrupted operation without impersonating startup or changing files', async () => {
     let settle = false
     const api = await service({

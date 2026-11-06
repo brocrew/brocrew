@@ -42737,7 +42737,6 @@ export class RuntimeHost implements LiveHost {
         entry: command.entry,
         act: command.act,
         text: command.text,
-        fingerprint: command.fingerprint,
         confirmed: command.confirmed,
       },
       whoDidIt(by),

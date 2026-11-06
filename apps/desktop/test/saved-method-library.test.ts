@@ -27,7 +27,6 @@ interface LibraryItem {
   readonly key: string
   readonly name: string
   readonly kind: string
-  readonly fingerprint: string | null
   readonly references: readonly unknown[]
   readonly canDelete: boolean
 }
@@ -36,7 +35,6 @@ interface LibraryReading {
   readonly items: readonly LibraryItem[]
   readonly total: number
   readonly nextOffset: number | null
-  readonly indexFingerprint: string | null
   readonly malformedLines: number
   readonly indexState: string
   readonly truncated: boolean
@@ -47,7 +45,6 @@ type BodyReading =
       readonly ok: true
       readonly text: string
       readonly bytes: number
-      readonly fingerprint: string
     }
 const METHOD_LIBRARY_SCAN_LIMIT = 5000
 function listSavedMethodLibrary(
@@ -131,7 +128,6 @@ describe('saved methods in the agent book', () => {
     expect(readSavedMethodBody(inputs, 'index')).toMatchObject({
       ok: true,
       text,
-      fingerprint: catalog.indexFingerprint,
     })
   })
 
@@ -149,7 +145,6 @@ describe('saved methods in the agent book', () => {
     expect(readSavedMethodBody(inputs, chosen.key)).toMatchObject({
       ok: true,
       text: 'Method 21',
-      fingerprint: chosen.fingerprint,
     })
     const index = readSavedMethodBody(inputs, 'index')
     expect(index.ok && index.bytes).toBeGreaterThan(4096)
@@ -224,7 +219,6 @@ describe('saved methods in the agent book', () => {
     writeFileSync(join(folder, 'Review.md'), 'Second')
     const after = readSavedMethodBody(inputs, actual.key)
     expect(after).toMatchObject({ ok: true, text: 'Second' })
-    expect(after.ok && after.fingerprint).not.toBe(actual.fingerprint)
     if (existsSync(join(folder, 'review.md'))) {
       expect(actual.references).toHaveLength(1)
       expect(before.items.filter((one) => one.name.toLowerCase() === 'review.md')).toHaveLength(1)

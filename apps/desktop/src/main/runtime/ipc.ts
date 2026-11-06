@@ -1309,15 +1309,6 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
         .object({
           confirmed: z.boolean(),
           key: z.string().min(1).max(1024),
-          fingerprint: z
-            .string()
-            .regex(/^[0-9a-f]{64}$/)
-            .nullable(),
-          indexState: z.enum(['absent', 'ok', 'problem']),
-          indexFingerprint: z
-            .string()
-            .regex(/^[0-9a-f]{64}$/)
-            .nullable(),
         })
         .strict(),
     })
@@ -1417,7 +1408,6 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
       entry: z.string().min(1).max(4096),
       act: z.enum([...MEMORY_EDIT]),
       text: memoryText,
-      fingerprint: z.string().regex(/^[0-9a-f]{64}$/),
       confirmed: z.boolean(),
     })
     .strict(),

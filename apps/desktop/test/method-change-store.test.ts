@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -12,17 +11,16 @@ import type { ActedBy } from '../src/shared/who-did-it'
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 const person = { who: 'a-person' } as const
 const agent = { who: 'an-agent', agent: 'ses-wren' } as const
-const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex')
+const hash = (bytes: Buffer) => bytes.toString('base64')
 const image = (bytes: Buffer) => ({
   base64: bytes.toString('base64'),
-  fingerprint: hash(bytes),
   mode: 0o600,
 })
 
 // Local expected contracts keep the tests-only commit typecheckable on the earlier store.
 type Image = ReturnType<typeof image>
-type FileChange = { name: string; before: Image | null; after: string | null }
-type State = { name: string; fingerprint: string | null; unreadable?: true }
+type FileChange = { name: string; before: Image | null; afterBase64: string | null }
+type State = { name: string; base64: string | null; unreadable?: true }
 type Intent = {
   operation: 'delete' | 'undo'
   sourceId: string | null
@@ -58,7 +56,7 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
   const recovery = () => store as unknown as Recovery
   const before = image(Buffer.from([0x23, 0x20, 0x41, 0x0d, 0x0a, 0xff]))
   const deletion = (
-    files: readonly FileChange[] = [{ name: 'review.md', before, after: null }],
+    files: readonly FileChange[] = [{ name: 'review.md', before, afterBase64: null }],
   ): Intent => ({
     operation: 'delete',
     sourceId: null,
@@ -118,21 +116,20 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
 
   it('refuses unsafe names, corrupt or oversized before-images, and no-op deletion intents', () => {
     for (const name of ['../review.md', '..\\review.md', 'bad\0.md', 'notes/review.md']) {
-      expect(begin(deletion([{ name, before, after: null }]))).toBeNull()
+      expect(begin(deletion([{ name, before, afterBase64: null }]))).toBeNull()
     }
     for (const bad of [
-      { ...before, fingerprint: '0'.repeat(64) },
       { ...before, base64: `${before.base64}\n` },
       { ...before, mode: 0o7777 },
       image(Buffer.alloc(16 * 1024 + 1)),
     ])
-      expect(begin(deletion([{ name: 'review.md', before: bad, after: null }]))).toBeNull()
-    expect(begin(deletion([{ name: 'review.md', before, after: before.fingerprint }]))).toBeNull()
+      expect(begin(deletion([{ name: 'review.md', before: bad, afterBase64: null }]))).toBeNull()
+    expect(begin(deletion([{ name: 'review.md', before, afterBase64: before.base64 }]))).toBeNull()
     expect(
       begin(
         deletion([
-          { name: 'review.md', before, after: null },
-          { name: 'review.md', before, after: null },
+          { name: 'review.md', before, afterBase64: null },
+          { name: 'review.md', before, afterBase64: null },
         ]),
       ),
     ).toBeNull()
@@ -144,16 +141,16 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
     expect(
       begin(
         deletion([
-          { name: 'index.md', before: index, after: null },
-          { name: 'Index.md', before: image(Buffer.alloc(16 * 1024 + 1)), after: null },
+          { name: 'index.md', before: index, afterBase64: null },
+          { name: 'Index.md', before: image(Buffer.alloc(16 * 1024 + 1)), afterBase64: null },
         ]),
       ),
     ).toBeNull()
     expect(
       begin(
         deletion([
-          { name: 'index.md', before: index, after: null },
-          { name: 'review.md', before: image(Buffer.alloc(16 * 1024)), after: null },
+          { name: 'index.md', before: index, afterBase64: null },
+          { name: 'review.md', before: image(Buffer.alloc(16 * 1024)), afterBase64: null },
         ]),
       ),
     ).not.toBeNull()
@@ -177,7 +174,7 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
         operation: 'undo',
         sourceId: started.id,
         target: 'review.md',
-        files: [{ name: 'review.md', before: null, after: before.fingerprint }],
+        files: [{ name: 'review.md', before: null, afterBase64: before.base64 }],
       }),
     ).toBeNull()
     expect(begin(deletion(), person, 'wren')).not.toBeNull()
@@ -185,7 +182,7 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
       'lark',
       started.id,
       'done',
-      [{ name: 'review.md', fingerprint: null }],
+      [{ name: 'review.md', base64: null }],
       person,
     )
     expect(begin()).not.toBeNull()
@@ -193,7 +190,7 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
 
   it('settles once, only for the identity and person, without changing the intent bytes', () => {
     const started = begin()!
-    const actual = [{ name: 'review.md', fingerprint: null }]
+    const actual = [{ name: 'review.md', base64: null }]
     expect(recovery().settleMethodChange('lark', started.id, 'done', actual, agent)).toBe(false)
     expect(recovery().settleMethodChange('wren', started.id, 'done', actual, person)).toBe(false)
     expect(
@@ -201,7 +198,7 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
         'lark',
         started.id,
         'done',
-        [{ name: 'review.md', fingerprint: before.fingerprint }],
+        [{ name: 'review.md', base64: before.base64 }],
         person,
       ),
     ).toBe(false)
@@ -223,21 +220,21 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
       'lark',
       started.id,
       'done',
-      [{ name: 'review.md', fingerprint: null }],
+      [{ name: 'review.md', base64: null }],
       person,
     )
     const undo: Intent = {
       operation: 'undo',
       sourceId: started.id,
       target: 'review.md',
-      files: [{ name: 'review.md', before: null, after: before.fingerprint }],
+      files: [{ name: 'review.md', before: null, afterBase64: before.base64 }],
     }
     expect(begin(undo, person, 'wren')).toBeNull()
     expect(
-      begin({ ...undo, files: [{ name: 'review.md', before, after: before.fingerprint }] }),
+      begin({ ...undo, files: [{ name: 'review.md', before, afterBase64: before.base64 }] }),
     ).toBeNull()
     expect(
-      begin({ ...undo, files: [{ name: 'review.md', before: null, after: '0'.repeat(64) }] }),
+      begin({ ...undo, files: [{ name: 'review.md', before: null, afterBase64: '0'.repeat(64) }] }),
     ).toBeNull()
     const restored = begin(undo)!
     expect(restored).toMatchObject({
@@ -251,7 +248,7 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
         'lark',
         restored.id,
         'done',
-        [{ name: 'review.md', fingerprint: before.fingerprint }],
+        [{ name: 'review.md', base64: before.base64 }],
         person,
       ),
     ).toBe(true)
@@ -259,12 +256,12 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
       operation: 'undo',
       sourceId: restored.id,
       target: 'review.md',
-      files: [{ name: 'review.md', before, after: null }],
+      files: [{ name: 'review.md', before, afterBase64: null }],
     })
     expect(reversed).toMatchObject({
       sequence: 3,
       sourceId: restored.id,
-      files: [{ before, after: null }],
+      files: [{ before, afterBase64: null }],
     })
   })
 
@@ -274,13 +271,13 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
     )
     const newIndex = image(Buffer.from(''))
     const files = [
-      { name: 'index.md', before: oldIndex, after: newIndex.fingerprint },
-      { name: 'review.md', before, after: null },
+      { name: 'index.md', before: oldIndex, afterBase64: newIndex.base64 },
+      { name: 'review.md', before, afterBase64: null },
     ]
     const started = begin(deletion(files))!
     const undoFiles = [
-      { name: 'index.md', before: newIndex, after: oldIndex.fingerprint },
-      { name: 'review.md', before, after: before.fingerprint },
+      { name: 'index.md', before: newIndex, afterBase64: oldIndex.base64 },
+      { name: 'review.md', before, afterBase64: before.base64 },
     ]
     expect(
       begin({ operation: 'undo', sourceId: started.id, target: 'review.md', files: undoFiles }),
@@ -291,8 +288,8 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
         started.id,
         'partial',
         [
-          { name: 'index.md', fingerprint: newIndex.fingerprint },
-          { name: 'review.md', fingerprint: before.fingerprint },
+          { name: 'index.md', base64: newIndex.base64 },
+          { name: 'review.md', base64: before.base64 },
         ],
         person,
       ),
@@ -309,8 +306,8 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
       restored.id,
       'done',
       [
-        { name: 'index.md', fingerprint: oldIndex.fingerprint },
-        { name: 'review.md', fingerprint: before.fingerprint },
+        { name: 'index.md', base64: oldIndex.base64 },
+        { name: 'review.md', base64: before.base64 },
       ],
       person,
     )
@@ -320,7 +317,7 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
       'lark',
       external.id,
       'partial',
-      [{ name: 'review.md', fingerprint: changed.fingerprint }],
+      [{ name: 'review.md', base64: changed.base64 }],
       person,
     )
     expect(
@@ -328,7 +325,7 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
         operation: 'undo',
         sourceId: external.id,
         target: 'review.md',
-        files: [{ name: 'review.md', before: changed, after: before.fingerprint }],
+        files: [{ name: 'review.md', before: changed, afterBase64: before.base64 }],
       }),
     ).toBeNull()
     const unreadable = begin(deletion())!
@@ -336,7 +333,7 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
       'lark',
       unreadable.id,
       'partial',
-      [{ name: 'review.md', fingerprint: null, unreadable: true }],
+      [{ name: 'review.md', base64: null, unreadable: true }],
       person,
     )
     expect(
@@ -344,7 +341,7 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
         operation: 'undo',
         sourceId: unreadable.id,
         target: 'review.md',
-        files: [{ name: 'review.md', before: null, after: before.fingerprint }],
+        files: [{ name: 'review.md', before: null, afterBase64: before.base64 }],
       }),
     ).toBeNull()
   })
@@ -362,7 +359,7 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
         'finch',
         pending.id,
         'partial',
-        [{ name: 'review.md', fingerprint: before.fingerprint }],
+        [{ name: 'review.md', base64: before.base64 }],
         person,
       ),
     ).toBe(true)
@@ -382,7 +379,7 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
       'finch',
       deleted.id,
       'done',
-      [{ name: 'review.md', fingerprint: null }],
+      [{ name: 'review.md', base64: null }],
       person,
     )
     const restored = begin(
@@ -390,7 +387,7 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
         operation: 'undo',
         sourceId: deleted.id,
         target: 'review.md',
-        files: [{ name: 'review.md', before: null, after: before.fingerprint }],
+        files: [{ name: 'review.md', before: null, afterBase64: before.base64 }],
       },
       person,
       'finch',
@@ -399,7 +396,7 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
       'finch',
       restored.id,
       'done',
-      [{ name: 'review.md', fingerprint: before.fingerprint }],
+      [{ name: 'review.md', base64: before.base64 }],
       person,
     )
     expect(store.removeAgentIdentity('finch')).toBe(true)
@@ -424,7 +421,7 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
         'lark',
         started.id,
         'done',
-        [{ name: 'review.md', fingerprint: null }],
+        [{ name: 'review.md', base64: null }],
         person,
       )
     }

@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import {
   existsSync,
   mkdirSync,
@@ -30,7 +29,6 @@ interface Edit {
   profile: string
   provider: 'codex'
   entry: string
-  fingerprint: string
   act: 'removed' | 'corrected'
   text: string
   confirmed: boolean
@@ -61,7 +59,6 @@ const person = { who: 'a-person' } as const
 const app = { who: 'the-app-itself' } as const
 const agent = { who: 'an-agent', agent: 'ses-wren' } as const
 const original = 'Saved text.\r\nCafé.\n'
-const hash = (text: string) => createHash('sha256').update(text).digest('hex')
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 let root: string
 let homes: string
@@ -76,7 +73,6 @@ const selection = (overrides: Partial<Edit> = {}): Edit => ({
   profile: 'lark',
   provider: 'codex',
   entry: entry(),
-  fingerprint: hash(original),
   act: 'removed',
   text: '',
   confirmed: true,
@@ -145,7 +141,7 @@ describe('memory writes retain their intent under one profile lock until honest 
     })
     expect(await service.amend(selection(), person)).toMatchObject({
       ok: true,
-      amendment: { outcome: 'done', actual: { fingerprint: null }, settlement: { by: person } },
+      amendment: { outcome: 'done', actual: { text: null }, settlement: { by: person } },
     })
     expect(existsSync(entry())).toBe(false)
     expect(service.held('lark')).toBe(false)
@@ -289,7 +285,7 @@ describe('memory writes retain their intent under one profile lock until honest 
       outcome: 'done',
       by: person,
       at: row.at,
-      actual: { fingerprint: null },
+      actual: { text: null },
       settlement: { by: app },
     })
     expect(service.held('lark')).toBe(false)
@@ -312,7 +308,7 @@ describe('memory writes retain their intent under one profile lock until honest 
     const service = await create()
     expect(store.memoryAmendment('lark', row.id)).toMatchObject({
       outcome: 'partial',
-      actual: { fingerprint: null, unreadable: true },
+      actual: { text: null, unreadable: true },
       settlement: { by: app },
     })
     expect(await service.undo('lark', row.id, true, person)).toMatchObject({ ok: false })
@@ -341,6 +337,83 @@ describe('memory writes retain their intent under one profile lock until honest 
     })
     expect(resumed.held('lark')).toBe(false)
   })
+  it.each(['settlement', 'readback'] as const)(
+    'keeps the actual %s database cause after a file publication',
+    async (fault) => {
+      const cause = `SQLITE_FULL: '/fictional/workspace.sqlite' during ${fault}`
+      const broken = {
+        ...store,
+        ...(fault === 'settlement'
+          ? {
+              settleMemoryAmendment: () => {
+                throw new Error(cause)
+              },
+            }
+          : {
+              memoryAmendment: () => {
+                throw new Error(cause)
+              },
+            }),
+      }
+      const service = await create({ store: broken })
+      const reply = await service.amend(
+        selection({ act: 'corrected', text: 'Published replacement.' }),
+        person,
+      )
+      expect(reply).toMatchObject({ ok: false, cause: expect.stringContaining(cause) })
+      expect(readFileSync(entry(), 'utf8')).toBe('Published replacement.')
+      expect(store.memoryAmendmentsOf('lark')[0]?.outcome).toBe(
+        fault === 'settlement' ? 'pending' : 'done',
+      )
+      await service.close(0)
+      await create()
+      expect(store.memoryAmendmentsOf('lark')[0]?.outcome).toBe('done')
+    },
+  )
+
+  it('names a database failure while checking an interrupted memory change and leaves it pending', async () => {
+    const cause = `SQLITE_IOERR: '/fictional/workspace.sqlite' checking memory`
+    const service = await create({
+      store: {
+        ...store,
+        settleMemoryAmendment: () => {
+          throw new Error(cause)
+        },
+      },
+    })
+    const row = store.beginMemoryAmendment(
+      {
+        profileSlug: 'lark',
+        provider: 'codex',
+        entry: entry(),
+        act: 'removed',
+        by: person,
+        textBefore: original,
+        textAfter: null,
+      },
+      clock++,
+    )!
+    expect(await service.checkInterrupted('lark', true, person)).toMatchObject({
+      ok: false,
+      cause: expect.stringContaining(cause),
+    })
+    expect(store.memoryAmendment('lark', row.id)?.outcome).toBe('pending')
+    expect(readFileSync(entry(), 'utf8')).toBe(original)
+  })
+
+  it('undoes a completed legacy observation from saved before/after text and a fresh current read', async () => {
+    const service = await create()
+    const removed = await service.amend(selection(), person)
+    const id = removed.amendment!.id
+    db.prepare('UPDATE identity_memory_amendment SET actual=? WHERE id=?').run(
+      JSON.stringify({ fingerprint: 'a'.repeat(64) }),
+      id,
+    )
+    expect(store.memoryAmendment('lark', id)).toMatchObject({ outcome: 'done', actual: {} })
+    expect(await service.undo('lark', id, true, person)).toMatchObject({ ok: true })
+    expect(readFileSync(entry(), 'utf8')).toBe(original)
+  })
+
   it('bounds quit, refuses queued work and prevents late filesystem, store or refresh effects', async () => {
     const entered = deferred()
     const release = deferred()

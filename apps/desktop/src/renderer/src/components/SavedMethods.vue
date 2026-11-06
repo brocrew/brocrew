@@ -39,7 +39,6 @@ const selected = ref<{
   profileId: string
   item: MethodLibraryItem
   indexState: MethodLibrary['indexState']
-  indexFingerprint: string | null
   truncated: boolean
 } | null>(null)
 const body = ref<MethodBody | null>(null)
@@ -125,21 +124,11 @@ const canDelete = computed(() => {
     one.indexState === 'problem'
   )
     return false
-  if (one.item.kind === 'missing-reference')
-    return one.item.fingerprint === null && one.item.problem === 'missing'
-  return (
-    !one.item.problem &&
-    body.value?.ok === true &&
-    body.value.key === one.item.key &&
-    body.value.fingerprint === one.item.fingerprint
-  )
+  if (one.item.kind === 'missing-reference') return one.item.problem === 'missing'
+  return !one.item.problem && body.value?.ok === true && body.value.key === one.item.key
 })
 const staleBody = computed(
-  () =>
-    selected.value &&
-    body.value?.ok &&
-    (body.value.key !== selected.value.item.key ||
-      body.value.fingerprint !== selected.value.item.fingerprint),
+  () => selected.value && body.value?.ok && body.value.key !== selected.value.item.key,
 )
 
 async function readInventory(): Promise<void> {
@@ -225,7 +214,6 @@ async function select(item: MethodLibraryItem): Promise<void> {
     profileId,
     item: { ...item, references: item.references.map((one) => ({ ...one })) },
     indexState: reading.indexState,
-    indexFingerprint: reading.indexFingerprint,
     truncated: reading.truncated,
   }
   if (item.problem) return
@@ -236,7 +224,7 @@ async function select(item: MethodLibraryItem): Promise<void> {
     body.value = answer
     if (!answer) bodyError.value = "BroCrew couldn't read this method. Read the files again."
     else if (!answer.ok) bodyError.value = problems[answer.problem]
-    if (!answer?.ok || answer.key !== item.key || answer.fingerprint !== item.fingerprint) {
+    if (!answer?.ok || answer.key !== item.key) {
       void readInventory()
       void readHistory()
     }
@@ -263,9 +251,6 @@ function previewDelete(): void {
     selection: {
       confirmed: true,
       key: one.item.key,
-      fingerprint: one.item.fingerprint,
-      indexState: one.indexState,
-      indexFingerprint: one.indexFingerprint,
     },
   }
 }
@@ -333,11 +318,10 @@ async function confirm(): Promise<void> {
       clearSelection()
       historyOffset.value = 0
     }
-  } catch {
+  } catch (cause) {
     if (generation !== epoch) return
     previewRefused.value = true
-    message.value =
-      "BroCrew couldn't confirm the result. Read the files and history before trying again."
+    message.value = `BroCrew couldn't confirm the result. ${cause instanceof Error ? cause.message : String(cause)}`
   } finally {
     if (generation === epoch) {
       busy.value = false

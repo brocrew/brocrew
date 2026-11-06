@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import {
   existsSync,
   linkSync,
@@ -16,7 +15,6 @@ import type { MethodLibraryItem } from '../src/shared/saved-method-library'
 
 interface Image {
   bytes: Buffer
-  fingerprint: string
   mode: number
 }
 interface Plan {
@@ -27,9 +25,7 @@ interface Plan {
 interface Selection {
   confirmed: boolean
   key: string
-  fingerprint: string | null
   indexState: 'ok' | 'absent' | 'problem'
-  indexFingerprint: string | null
 }
 let root: string
 let homesRoot: string
@@ -37,7 +33,6 @@ let folder: string
 const bytes = Buffer.from([0xff, 0, 0x0d, 0x0a])
 const line = '- Review | During review | verified 2026-10-21 | review.md'
 const other = '- Check | Before saving | verified 2026-10-20 | other.md'
-const hash = (data: Buffer | string) => createHash('sha256').update(data).digest('hex')
 const inputs = () => ({ folder, homesRoot })
 function selection(name = 'review.md'): Selection {
   const listed = library.listSavedMethodLibrary(inputs(), 1000)
@@ -46,9 +41,6 @@ function selection(name = 'review.md'): Selection {
   return {
     confirmed: true,
     key: item.key,
-    fingerprint: item.fingerprint,
-    indexState: listed.indexState,
-    indexFingerprint: listed.indexFingerprint,
   }
 }
 function capture(said = selection()): Plan {
@@ -81,7 +73,7 @@ describe('a method delete is planned from the confirmed current inventory', () =
       Buffer.from(`# Saved\r\n\r\nmalformed | review.md\n${other}\nend without newline`),
     )
     expect(plan.files[1]?.before?.bytes).toEqual(bytes)
-    expect(plan.files[1]?.before?.fingerprint).toBe(hash(bytes))
+    expect(plan.files[1]?.before?.bytes).toEqual(bytes)
     expect(plan.files[1]?.after).toBeNull()
     plan.check()
     expect(readFileSync(join(folder, 'index.md'), 'utf8')).toBe(index)

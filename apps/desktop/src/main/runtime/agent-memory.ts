@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import {
   closeSync,
   existsSync,
@@ -616,7 +615,6 @@ export function sweepKnowledgeStages(folder: string, check: () => void): void {
 export interface MemoryFileSelection extends AgentMemoryInputs {
   readonly provider: Provider
   readonly entry: string
-  readonly fingerprint: string
   readonly confirmed: boolean
   /** Main rechecks identity and any source record; no window supplies a function. */
   readonly check: () => void
@@ -681,19 +679,6 @@ function selectedMemory(inputs: AgentMemoryInputs, provider: Provider, entry: st
   if (!validText(image)) throw new Error(`${entry}: invalid UTF-8 text`)
   return { location, image }
 }
-/** Raw displayed fingerprint, or no destructive control when the whole entry cannot be captured. */
-export function memoryEntryFingerprint(
-  inputs: AgentMemoryInputs,
-  provider: Provider,
-  entry: string,
-): string | null {
-  try {
-    return selectedMemory(inputs, provider, entry)?.image.fingerprint ?? null
-  } catch {
-    return null
-  }
-}
-
 /** One confirmed removal. Main records the returned before-text before acknowledging success. */
 export function removeMemoryEntry(
   inputs: MemoryFileSelection,
@@ -803,9 +788,6 @@ export function undoMemoryRestoration(
       },
       provider: inputs.source.provider,
       entry: inputs.source.entry,
-      fingerprint: createHash('sha256')
-        .update(Buffer.from(inputs.source.textAfter, 'utf8'))
-        .digest('hex'),
     },
     seams,
   )
@@ -824,16 +806,15 @@ export function observeMemoryEntry(
     guard()
     const image = memoryImage(location)
     guard()
-    return { fingerprint: image?.fingerprint ?? null }
-  } catch {
-    return { fingerprint: null, unreadable: true }
+    return { text: image?.bytes.toString('utf8') ?? null }
+  } catch (error) {
+    return { text: null, unreadable: true, cause: `${entry}: ${String(error)}` }
   }
 }
 
 interface MemoryCapture {
   readonly entry: string
   readonly text: string | null
-  readonly fingerprint: string | null
   readonly check: () => void
 }
 function captureMemoryEntry(
@@ -856,7 +837,6 @@ function captureMemoryEntry(
     return {
       entry: location.entry,
       text: image?.bytes.toString('utf8') ?? null,
-      fingerprint: image?.fingerprint ?? null,
       check,
     }
   }
@@ -941,7 +921,6 @@ export interface MemoryServiceEdit {
   readonly profile: string
   readonly provider: Provider
   readonly entry: string
-  readonly fingerprint: string
   readonly act: MemoryEditAct
   readonly text: string
   readonly confirmed: boolean
@@ -1023,11 +1002,13 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
     context.check()
     const one = identity(slug)
     if (one === undefined) return failed('no-such-agent')
+    let observedCause: string | undefined
     try {
       for (const row of deps.store.memoryAmendmentsOf(slug)) {
         if (row.outcome !== 'pending') continue
         context.check()
         const actual = observeMemoryEntry(deps.inputsOf(slug), row.provider, row.entry)
+        observedCause ??= actual.cause
         context.check()
         const recorded = app
           ? deps.reconcile(one.id, row.id, actual, { who: 'the-app-itself' })
@@ -1052,9 +1033,15 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
       }
       if (deps.store.hasPendingMemoryAmendment(slug))
         throw new Error('An interrupted memory change is still pending')
-      return { ok: true }
-    } catch {
-      return failed('interruption-needs-checking')
+      return observedCause === undefined
+        ? { ok: true }
+        : { ok: false, reason: 'change-incomplete', cause: observedCause }
+    } catch (error) {
+      return {
+        ok: false,
+        reason: 'interruption-needs-checking',
+        cause: `${slug}: ${String(error)}`,
+      }
     }
   }
   // The same lock is used at boot and for every later app writer on every platform.
@@ -1093,26 +1080,24 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
           deps.seams?.writes,
         )
       } else if (plan.act === 'removed') {
-        if (capture.fingerprint === null) throw new Error('The entry is absent')
+        if (capture.text === null) throw new Error('The entry is absent')
         effect = removeMemoryEntry(
           {
             ...inputs,
             provider: plan.provider,
             entry: capture.entry,
-            fingerprint: capture.fingerprint,
             confirmed: true,
             check: guard,
           },
           deps.seams?.writes,
         )
       } else if (plan.act === 'corrected' && plan.textAfter !== null) {
-        if (capture.fingerprint === null) throw new Error('The entry is absent')
+        if (capture.text === null) throw new Error('The entry is absent')
         effect = await correctMemoryEntry(
           {
             ...inputs,
             provider: plan.provider,
             entry: capture.entry,
-            fingerprint: capture.fingerprint,
             confirmed: true,
             check: guard,
             text: plan.textAfter,
@@ -1138,11 +1123,13 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
       return {
         ok: false,
         reason: settled.outcome === 'unchanged' ? 'nothing-changed' : 'change-incomplete',
-        ...(effectError === undefined ? {} : { cause: `${capture.entry}: ${String(effectError)}` }),
+        ...((effectError ?? actual.cause) === undefined
+          ? {}
+          : { cause: `${capture.entry}: ${String(effectError ?? actual.cause)}` }),
         amendment: settled,
       }
-    } catch {
-      return failed('not-recorded')
+    } catch (error) {
+      return { ok: false, reason: 'not-recorded', cause: `${capture.entry}: ${String(error)}` }
     }
   }
   const person = (
@@ -1211,15 +1198,13 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
         const capture = captureMemoryEntry(deps.inputsOf(slug), source.provider, source.entry, true)
         if (capture === null) return failed('changed-or-unreadable')
         const known = source.actual
-        const current = capture.fingerprint
-        const hashText = (text: string | null) =>
-          text === null ? null : createHash('sha256').update(text).digest('hex')
+        const current = capture.text
         if (
           known?.unreadable ||
-          (known === undefined
-            ? source.outcome === 'partial' || capture.text !== source.textAfter
-            : current !== known.fingerprint ||
-              (current !== hashText(source.textBefore) && current !== hashText(source.textAfter)))
+          (known?.text === undefined
+            ? source.outcome === 'partial' || current !== source.textAfter
+            : current !== known.text ||
+              (current !== source.textBefore && current !== source.textAfter))
         )
           return failed('source-changed')
         const restored = source.textBefore

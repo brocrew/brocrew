@@ -13,7 +13,6 @@ export interface MethodLibraryItem {
   readonly name: string
   readonly kind: 'index' | 'method' | 'missing-reference'
   readonly references: readonly MethodReference[]
-  readonly fingerprint: string | null
   readonly bytes: number | null
   readonly canDelete: boolean
   readonly problem?: MethodProblem
@@ -29,7 +28,6 @@ export interface MethodLibrary {
   readonly indexProblem?: MethodProblem
   readonly problem?: MethodProblem
   readonly truncated: boolean
-  readonly indexFingerprint: string | null
   readonly malformedLines: number
   readonly readAt: number
 }
@@ -40,7 +38,6 @@ export type MethodBody =
       readonly key: string
       readonly text: string
       readonly bytes: number
-      readonly fingerprint: string
     }
   | { readonly ok: false; readonly problem: MethodProblem }
 
@@ -48,9 +45,6 @@ export type MethodBody =
 export interface MethodDeleteSelection {
   readonly confirmed: boolean
   readonly key: string
-  readonly fingerprint: string | null
-  readonly indexState: MethodLibrary['indexState']
-  readonly indexFingerprint: string | null
 }
 
 /** Receipts contain metadata; recovery bytes remain in main's ledger. */
