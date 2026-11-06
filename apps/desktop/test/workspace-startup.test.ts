@@ -128,6 +128,12 @@ async function startup(fake: PinnableApp, beforeThemes?: () => void) {
     resolveMigrationsFolder: () => migrations,
     ownershipFrom: () => ({ ask: async () => 'unknown' }),
     createRecoveryService,
+    // The app checks a recovery copy in a worker; here the same check runs in this thread.
+    verifyInAWorker: () => checkTheCopyHere,
+    startRecoveryVerifier: () => {
+      throw new Error('no worker in this sandbox')
+    },
+    mainThreadWork: { timed: <T>(_what: string, work: () => T): T => work() },
     buildLineage: async () => [],
     recoveryService: null,
     theOneAppAnswer: null,
@@ -332,6 +338,7 @@ it('main passes the must-exist option into SQLite when the database disappears a
     openOrRefuse: () => {},
     theBuildsMigrations: () => [],
     applyMigrations: () => {},
+    mainThreadWork: { timed: <T>(_what: string, work: () => T): T => work() },
     compactWhenMuchIsFree: () => 'unchanged',
     freeBytesOn: () => null,
     db: null,
