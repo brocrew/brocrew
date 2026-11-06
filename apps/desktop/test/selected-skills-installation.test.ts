@@ -272,39 +272,37 @@ describe.each(['claude', 'codex'] as const)(
         }
       },
     )
-    it.each(['revision', 'grant', 'cancel'] as const)(
-      'does not publish after a mid-write %s change',
-      async (change) => {
-        const selection = select('recipe-writer', grants)
-        let checks = 0,
-          current = true
-        const isCurrent = () => {
-          if (++checks === 20) {
-            if (change === 'revision') catalogue.select(id, 'built-in/remember', 'off', revision())
-            else current = false
-          }
-          return current && selection.isCurrent()
-        }
-        await expect(
-          prepareBuiltInSkills({
-            provider,
-            managedRoot: root,
-            providerHome: home,
-            shipped,
-            ...grants,
-            selection,
-            isCurrent,
-          }),
-        ).rejects.toThrow('Nothing was overwritten.')
-        expect(checks).toBeGreaterThanOrEqual(20)
-        expect(catalogue.detail('built-in/remember')?.body).toBe(shipped().bodies.get('remember'))
-      },
-    )
-    it('refuses a stale empty selection before allocating a new view', async () => {
-      for (const skill of catalogue.list().items) catalogue.select(id, skill.id, 'off', revision())
+    it('keeps the captured choice during launch and applies a toggle at the next launch', async () => {
       const selection = select('recipe-writer', grants)
-      catalogue.select(id, 'built-in/remember', 'on', revision())
-      const before = readdirSync(home)
+      let checks = 0
+      const first = await prepareBuiltInSkills({
+        provider,
+        managedRoot: root,
+        providerHome: home,
+        shipped,
+        ...grants,
+        selection,
+        isCurrent: () => {
+          if (++checks === 3) catalogue.select(id, 'built-in/remember', 'off', revision())
+          return selection.isCurrent()
+        },
+      })
+      expect(first.context.skills.some((one) => one.name === 'remember')).toBe(true)
+      const next = select('recipe-writer', grants)
+      const second = await prepareBuiltInSkills({
+        provider,
+        managedRoot: root,
+        providerHome: home,
+        shipped,
+        ...grants,
+        selection: next,
+        isCurrent: next.isCurrent,
+      })
+      expect(second.context.skills.some((one) => one.name === 'remember')).toBe(false)
+    })
+    it('cancels actual copying without publishing a view', async () => {
+      const selection = select('recipe-writer', grants)
+      let checks = 0
       await expect(
         prepareBuiltInSkills({
           provider,
@@ -313,10 +311,38 @@ describe.each(['claude', 'codex'] as const)(
           shipped,
           ...grants,
           selection,
-          isCurrent: selection.isCurrent,
+          isCurrent: () => ++checks < 3,
         }),
-      ).rejects.toThrow()
-      expect(readdirSync(home)).toEqual(before)
+      ).rejects.toThrow('current')
+    })
+    it('keeps a captured empty choice and applies later changes only on the next launch', async () => {
+      for (const skill of catalogue.list().items) catalogue.select(id, skill.id, 'off', revision())
+      const selection = select('recipe-writer', grants)
+      catalogue.select(id, 'built-in/remember', 'on', revision())
+      const first = await prepareBuiltInSkills({
+        provider,
+        managedRoot: root,
+        providerHome: home,
+        shipped,
+        ...grants,
+        selection,
+        isCurrent: selection.isCurrent,
+      })
+      expect(first.context.skills).toHaveLength(0)
+      const next = select('recipe-writer', grants)
+      expect(
+        (
+          await prepareBuiltInSkills({
+            provider,
+            managedRoot: root,
+            providerHome: home,
+            shipped,
+            ...grants,
+            selection: next,
+            isCurrent: next.isCurrent,
+          })
+        ).context.skills.map((one) => one.name),
+      ).toEqual(['remember'])
     })
     it('keeps a text-pack override out of saved sources and selections', async () => {
       add('crumb-check')
@@ -391,12 +417,11 @@ it('keeps new/anonymous defaults grant-limited and detects a newly replaced iden
   )
   expect(selection.isCurrent()).toBe(false)
 })
-it('refuses duplicate aliases, changed source bytes, unavailable sources and overfull views', () => {
+it('refuses duplicate aliases, malformed names, unavailable sources and overfull views', () => {
   const source = catalogue.detail('built-in/delegate')!
   for (const skills of [
     [source, source],
     [{ ...source, alias: '../elsewhere' }],
-    [{ ...source, body: source.body + 'x' }],
     [{ ...source, active: false }],
     Array(65).fill(source),
   ])

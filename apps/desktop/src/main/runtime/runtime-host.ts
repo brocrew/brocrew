@@ -24953,13 +24953,12 @@ export class RuntimeHost implements LiveHost {
         selected,
       )
     } catch (cause) {
-      throw new Error(BUILT_IN_SKILLS_FAILURE, { cause })
+      throw new Error(`${BUILT_IN_SKILLS_FAILURE} ${String(cause)}`, { cause })
     }
     const isCurrent = () =>
       this.whyNotOurs(slot) === null &&
       !slot.launch.signal.aborted &&
-      (selection?.isCurrent() ?? true) &&
-      JSON.stringify(permissions()) === JSON.stringify(selected)
+      (selection?.isCurrent() ?? true)
     const installed = await this.deps.prepareBuiltInSkills({
       provider,
       providerHome,
@@ -24970,7 +24969,7 @@ export class RuntimeHost implements LiveHost {
       ...(pack ? { pack } : {}),
     })
     if (!isCurrent())
-      throw new Error('Built-in skills could not be prepared. Nothing was overwritten.')
+      throw new Error('The skill launch was cancelled or its profile is no longer available.')
     return sharedRoot ? { ...installed, sharedRoot } : installed
   }
 

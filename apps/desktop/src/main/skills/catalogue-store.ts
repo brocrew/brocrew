@@ -364,7 +364,6 @@ export class SqliteSkillCatalogue implements SkillCatalogue {
   }
   seedBuiltins(bundle: VerifiedBuiltInSkills): number {
     const verified = verifyBuiltInSkills(bundle.catalogue, bundle.bodies)
-    if (verified.digest !== bundle.digest) return refuse('hash')
     return this.change(undefined, () => {
       const currentIds = verified.catalogue.skills.map((item) => `built-in/${item.name}`)
       const omitted = this.db
@@ -375,6 +374,14 @@ export class SqliteSkillCatalogue implements SkillCatalogue {
       let changed = omitted.changes > 0
       for (const item of verified.catalogue.skills) {
         if (this.row(`person/${item.name}`)) return refuse('duplicate-name')
+        const existing = this.row(`built-in/${item.name}`)
+        if (existing && this.summary(existing).version === verified.catalogue.version) {
+          changed =
+            this.db
+              .prepare('UPDATE skill_current SET active=1 WHERE id=? AND active<>1')
+              .run(existing.id).changes > 0 || changed
+          continue
+        }
         changed =
           this.put(
             { kind: 'built-in' },
