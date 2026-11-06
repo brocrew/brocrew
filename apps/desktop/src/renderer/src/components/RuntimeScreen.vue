@@ -217,6 +217,7 @@ import {
   createDraftBook,
   draftKey,
   draftSlot,
+  handRefusedBack,
   sweepDrafts,
 } from '../lib/drafts'
 import { keepTheDraftBook, SAVED_DRAFTS } from '../lib/kept-drafts'
@@ -1799,7 +1800,7 @@ function say(message: string): void {
  * in `drafts.ts` does — including the wording, which is why this is three lines rather than thirty.
  */
 function restoreRefused(slot: string, text: string, attachments: HandedPath[]): void {
-  const refused = drafts.restore(slot, text, attachments)
+  const refused = handRefusedBack(drafts, slot, text, attachments)
   if (refused > 0) say(attachmentsNotRestored(refused))
 }
 

@@ -151,12 +151,23 @@ describe('the native pipe', () => {
       expect(await session.result).toEqual({ ok: false, error: 'timeout' })
     }
   })
-  it('refuses a successful transcript from a failed process', async () => {
+  it('keeps a whole transcript however the helper exits afterwards', async () => {
     const { child, session, frame } = fakeChild()
     frame({ state: 'listening' })
     frame({ text: 'Purple robot.' })
     child.emit('close', 1)
-    expect(await session.result).toEqual({ ok: false, error: 'protocol' })
+    expect(await session.result).toEqual({ ok: true, text: 'Purple robot.' })
+  })
+  it('keeps the transcript when the helper is slow to exit, and stops the helper', async () => {
+    vi.useFakeTimers()
+    const { child, session, frame } = fakeChild()
+    frame({ state: 'listening' })
+    frame({ text: 'Purple robot.' })
+    await vi.advanceTimersByTimeAsync(1_500)
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM')
+    expect(child.kill).toHaveBeenCalledWith('SIGKILL')
+    child.emit('close', null)
+    expect(await session.result).toEqual({ ok: true, text: 'Purple robot.' })
   })
 })
 

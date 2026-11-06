@@ -27,7 +27,7 @@ end, cleared when sent; nothing is sent anywhere by being saved, and it lives in
  * ⚑ **M36–M52 · the file** (`drafts-file.ts`) — readable by this user only (M36), coalesced to the
    newest (M37); a failed save never thrown at the window (M38) and its part removed (M39); a file
    that is there and cannot be read is UNREADABLE (M40); not JSON is no drafts (M41); another build's
-   version is unreadable (M42); an earlier run's parts removed (M43), and only its own (M44); the
+   file is read as a book (M42); an earlier run's parts removed (M43), and only its own (M44); the
    quit's wait (M45–M48: it waits, for a write in flight too, and counts only books marked `last`);
    the read after the save in flight (M49); the pictures a kept draft names kept young (M50), and
    only BroBot's own (M51–M52).
@@ -300,9 +300,12 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
           "    raw = JSON.parse(text)\n  } catch (error) {\n    throw error\n")],
     ),
     (
-        "M42 · 🔴 a file ANOTHER build wrote is read as this one's — its book comes back smaller, and the "
-        f"next save writes over the rest · killed by `{NODE}`",
-        [(FILE, "  if (version !== DRAFTS_FILE_VERSION) {\n", "  if (version === 'never') {\n")],
+        "M42 · 🔴 a file ANOTHER build wrote is refused again — nothing is restored and nothing saved "
+        f"for the whole run · killed by `{NODE}`",
+        # Re-anchored in place, not retired, and turned around: another build's file is now read as a
+        # book, so the row plants the old refusal of any other version.
+        [(FILE, "    return { kind: 'none' }\n  }\n  return { kind: 'book', raw }\n",
+          "    return { kind: 'none' }\n  }\n  if ((raw as { version?: unknown } | null)?.version !== DRAFTS_FILE_VERSION) {\n    return { kind: 'unreadable', why: 'another version' }\n  }\n  return { kind: 'book', raw }\n")],
     ),
     (
         "M43 · ⛔ a part an earlier run's kill left is never removed — it holds somebody's words for good "
