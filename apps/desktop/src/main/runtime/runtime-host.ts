@@ -22327,7 +22327,6 @@ export class RuntimeHost implements LiveHost {
     return this.keptFiles.revealResource(resourceId)
   }
 
-
   filesKept(asked: FilesKeptScope): FilesKept {
     return this.keptFiles.filesKept(asked)
   }
