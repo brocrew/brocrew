@@ -658,9 +658,15 @@ export function createLifecycleAgentBridge(options: {
       })
       const failedHere = new Set<string>()
       let capacityReported = false
+      // The last scope this read verified. Once it has one, running out of time answers with
+      // it; only a read that never got a scope answers unknown.
+      let known: { scope: readonly AgentScopeEntry[]; capacity: Set<string> } | undefined
       for (;;) {
         if (!valid(lease) || retired.has(caller)) return empty
-        if (performance.now() - asked >= answerWithin) return snapshot(lease, request, null)
+        if (performance.now() - asked >= answerWithin)
+          return known
+            ? snapshot(lease, request, known.scope, known.capacity)
+            : snapshot(lease, request, null)
         const woke = wake
         // Plan without effects under one operation-local, byte-verified decision.
         let plan: {
@@ -735,6 +741,7 @@ export function createLifecycleAgentBridge(options: {
           return snapshot(lease, request, null)
         }
         if (now.servers.length || !now.pending.length) return now
+        known = { scope, capacity: capacityPending }
         const next = await Promise.race([
           woke.then(() => 'wake' as const),
           deadline,
