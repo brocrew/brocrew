@@ -813,7 +813,7 @@ describe('§4 · the Mac’s guided download, against a local server', () => {
           stallsAfterMs: 1_000,
         }),
         path,
-      ).rejects.toThrow('the download stalled: nothing arrived for 1 s')
+      ).rejects.toThrow('the download stalled: no progress for 1 s')
       expect(readdirSync(dirname(to)), path).toEqual([])
     }
   })

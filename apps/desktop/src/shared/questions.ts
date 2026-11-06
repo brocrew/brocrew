@@ -1160,8 +1160,8 @@ export function aPieceNotEndedItsQuestionsUnread(
 ): string {
   const where =
     unread === undefined
-      ? 'its question ledger could not be read'
-      : `${unread.question === undefined ? 'question ledger' : `question ${unread.question} in ledger`} ${unread.ledger}${unread.row === undefined ? '' : `, row ${String(unread.row)}`}: ${unread.cause}`
+      ? 'its question records could not be read'
+      : `${unread.question === undefined ? 'question records for conversation' : `question ${unread.question} in conversation`} ${unread.ledger}${unread.row === undefined ? '' : `, row ${String(unread.row)}`}: ${unread.cause}`
   return `${label} wasn't ${HOW_ITS_PIECE_ENDED[ending]}: ${where}. Check that record, then retry this call.`
 }
 

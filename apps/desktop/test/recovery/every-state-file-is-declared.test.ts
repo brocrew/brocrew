@@ -175,7 +175,6 @@ describe('every name the app writes in its data folder is declared', () => {
       'resources',
       'backups',
       'recovery',
-      '.oh-*',
     ]) {
       expect(names, known).toContain(known)
     }

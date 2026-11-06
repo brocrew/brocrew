@@ -800,10 +800,10 @@ describe('a to-do for a person', () => {
         // so what was read of it before is read again.
         const row = db
           .prepare(
-            `SELECT id, payload FROM events WHERE session_id = ? AND type = 'question_asked'
+            `SELECT id, ordinal, payload FROM events WHERE session_id = ? AND type = 'question_asked'
                AND json_extract(payload, '$.requestId') = ?`,
           )
-          .get(ada, copy) as { id: string; payload: string }
+          .get(ada, copy) as { id: string; ordinal: number; payload: string }
         const aNote = async (): Promise<void> => {
           await ok(agentToolsFor(host, brobot), 'message_agent', {
             agent: ada,
@@ -820,7 +820,7 @@ describe('a to-do for a person', () => {
           outcome: 'refused',
           rail: 'its-questions-could-not-all-be-read',
           retryable: true,
-          reason: `${label} wasn't ${how}: its questions couldn't all be read. Try again; if it fails again, ask a person.`,
+          reason: `${label} wasn't ${how}: question records for conversation ${ada}, row ${String(row.ordinal)}: is not a well-formed question. Check that record, then retry this call.`,
         })
         await settle()
         expect(
@@ -852,13 +852,18 @@ describe('a to-do for a person', () => {
       ada: string,
       brobot: string,
       copy: string,
-    ): { readonly id: string; readonly payload: string; readonly reread: () => Promise<void> } => {
+    ): {
+      readonly id: string
+      readonly ordinal: number
+      readonly payload: string
+      readonly reread: () => Promise<void>
+    } => {
       const row = db
         .prepare(
-          `SELECT id, payload FROM events WHERE session_id = ? AND type = 'request_routed'
+          `SELECT id, ordinal, payload FROM events WHERE session_id = ? AND type = 'request_routed'
              AND json_extract(payload, '$.requestId') = ?`,
         )
-        .get(ada, copy) as { id: string; payload: string }
+        .get(ada, copy) as { id: string; ordinal: number; payload: string }
       return {
         ...row,
         reread: async () => {
@@ -891,7 +896,7 @@ describe('a to-do for a person', () => {
           outcome: 'refused',
           rail: 'its-questions-could-not-all-be-read',
           retryable: true,
-          reason: `${label} wasn't ${how}: its questions couldn't all be read. Try again; if it fails again, ask a person.`,
+          reason: `${label} wasn't ${how}: question records for conversation ${ada}, row ${String(routing.ordinal)}: is not a well-formed routing. Check that record, then retry this call.`,
         })
         await settle()
         expect(
@@ -1105,7 +1110,7 @@ describe('a to-do for a person', () => {
       ).toMatchObject({
         outcome: 'refused',
         rail: 'its-questions-could-not-all-be-read',
-        reason: `${label} wasn't handed back: its questions couldn't all be read. Try again; if it fails again, ask a person.`,
+        reason: `${label} wasn't handed back: question records for conversation ${brobot}, row 0: the question record could not be decoded. Check that record, then retry this call.`,
       })
       store.questionsRaisedIn = raised
       expect([stateOf(bea, original), stateOf(ada, copy), stateOf(brobot, copyOfTheCopy)]).toEqual([
@@ -1133,7 +1138,7 @@ describe('a to-do for a person', () => {
             rail: 'its-questions-could-not-all-be-read',
             retryable: true,
             remedy: 'make-the-same-call-when-this-settles',
-            reason: `${label} wasn't ${how}: its questions couldn't all be read. Try again; if it fails again, ask a person.`,
+            reason: `${label} wasn't ${how}: question records for conversation ${chain[passer]}: the disk could not be read. Check that record, then retry this call.`,
           })
           store.questionsRaisedIn = raised
           await settle()
