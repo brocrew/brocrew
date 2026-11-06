@@ -7645,7 +7645,7 @@ export class RuntimeHost implements LiveHost {
     this.limitWakesApartMs = deps.limitWakesApartMs ?? LIMIT_WAKES_APART_MS
     this.accountWaitMs = deps.accountWaitMs ?? ACCOUNT_WAIT_MS
     this.now = deps.now ?? Date.now
-    this.keptFiles = new KeptFiles(deps, {
+    this.keptFiles = new KeptFiles(this.deps, {
       theIdsItStandsFor: (id) => this.theIdsItStandsFor(id),
       pieceNamed: (spelled) => this.pieceNamed(spelled),
       keptFileOf,
