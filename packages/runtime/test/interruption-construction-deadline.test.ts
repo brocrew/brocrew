@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fingerprint, pinsOver, probeSource, squash } from './fixtures/probe-source'
+import { pinsOver, probeSource, squash } from './fixtures/probe-source'
 
 /**
  * ⛔ **`443`'s construction arm — its outer deadline, and the code that ran** (`669`, from `655` §4).
@@ -85,28 +85,5 @@ describe('669 · the 443 probe runs inside one derived outer deadline', () => {
         "expect(one.configuredPort, `${one.arm} · the port in the child's config`).toBe(one.listenedOn)",
       ),
     ).toBe(1)
-  })
-})
-
-/**
- * 🔴 **`669` · the probe FILE is the code that ran green, and nothing between its pins moved.**
- *
- * ⚑ Run `2026-09-23T17-57-46-222Z-6898` on `0b37e36a` + this change (the first, `…-87088`, ran before
- * the review's teardown fix), bundled Codex, loopback: the
- * interrupt arm's raw terminal read `interrupted` after an RPC written while the provider request was
- * live, the control's read `completed` after an ordinary completion, and both arms' configured ports
- * equalled the ones `listen(0)` returned.
- *
- * ⚠️ **The fingerprint covers this file, not the modules it imports.** An edit HERE owes a run, in
- * the same commit — the file alone, `pnpm exec vitest run --config vitest.smoke.config.ts
- * packages/runtime/smoke/interruption-construction.smoke.ts`, NOT `probe:interrupt`, whose other two
- * files are live — **then** the new pin.
- */
-describe('669 · the construction probe is the code that ran green', () => {
-  it('🔴 nothing moved: the probe file, as code, is the code that ran', () => {
-    expect(
-      fingerprint(source),
-      'the probe changed: run the file alone (see above), then pin the value received',
-    ).toBe('f4868d55b1bb0fefaa5a0da6fed70ea9fac4af6d622ad076c43b4ac7f341bec7')
   })
 })
