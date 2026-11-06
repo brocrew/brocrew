@@ -400,9 +400,7 @@ describe('the launch', () => {
 
   it('sets up fixtures in the packaged runtime and launches the app outside Node mode', () => {
     expect(script).toContain("ELECTRON_RUN_AS_NODE: '1'")
-    expect(script).toContain(
-      'spawnSync(packagedProgram, [fileURLToPath(import.meta.url), ...argv]',
-    )
+    expect(script).toContain('spawnSync(packagedProgram, [fileURLToPath(import.meta.url), ...argv]')
     expect(script).toContain('delete env.ELECTRON_RUN_AS_NODE')
   })
 
