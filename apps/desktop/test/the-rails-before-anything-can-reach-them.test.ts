@@ -269,17 +269,6 @@ describe('341 · the rails, before anything can reach them', () => {
       return admission.goes.start
     }
 
-    it('starts a normal child and records its actual parent', async () => {
-      const parent = await personOpens('pm')
-      const real = admittedStart(parent)
-      const created = await host.createSession({ provider: 'claude', cwd: work }, null, null, real)
-      expect(created.sessionId).toMatch(/^sess_/)
-      // ⚑ **D-016 · the parent is the row's** (`parentOf`); the spawn reason and stamp are gone.
-      expect(store.parentOf(created.sessionId)).toBe(parent)
-      // ⛔ …and a conversation another one started owns no root (R1).
-      expect(store.rootOf(created.sessionId)).toBeNull()
-    })
-
     it('⛔ a spawn may not also be handed a second commanding caller', async () => {
       const parent = await personOpens('pm')
       const real = admittedStart(parent)

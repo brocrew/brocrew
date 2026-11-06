@@ -664,6 +664,21 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       writeKeptAccounts(providerAccountsFile(userData), { claude: b, claudeAccounts: [a, b] })
       const id = await aTurnRunsIn({ account: 'never' })
       const handle = handles.at(-1)!
+      await now.host.createSession(
+        { provider: 'claude', profileId: 'agent-b', approvalMode: 'auto', cwd: root },
+        window,
+      )
+      const otherHandle = handles.at(-1)!
+      await settle()
+      ;(otherHandle as unknown as { account: () => unknown }).account = () => ({ email: EMAIL.bea })
+      otherHandle.simulateProviderUsage([{ window: 'five_hour', usedPercent: 9, resetsAt: null }])
+      await waitFor(
+        () => now.host.providerUsage().claude.some((one) => one.usedPercent === 9),
+        'overlapping B usage',
+      )
+      expect(readKeptUsage(providerUsageFile(userData)).readings.claude).toEqual([
+        expect.objectContaining({ account: b.id, usedPercent: 9 }),
+      ])
       ;(handle as unknown as { account: () => unknown }).account = () => ({ email: EMAIL.ada })
       handle.simulateProviderUsage([{ window: 'five_hour', usedPercent: 12, resetsAt: null }])
       await waitFor(
@@ -688,6 +703,31 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       await settle()
       expect(readKeptAccounts(providerAccountsFile(userData)).claude!.id).toBe(a.id)
       expect(readKeptAccounts(providerAccountsFile(userData)).claudeAccounts).toEqual([a, b])
+    })
+
+    it('keeps conflicting ordinary account records unknown instead of choosing or minting another ID', async () => {
+      const a = { id: 'a'.repeat(32), email: EMAIL.ada }
+      const conflicting = { ...a, id: 'c'.repeat(32) }
+      writeKeptAccounts(providerAccountsFile(userData), {
+        claude: a,
+        claudeAccounts: [a, conflicting],
+      })
+      const id = await aTurnRunsIn({ account: 'ada' })
+      handles
+        .at(-1)!
+        .simulateProviderUsage([{ window: 'five_hour', usedPercent: 12, resetsAt: null }])
+      await settle()
+      await now.host.closeAll()
+      expect(readKeptCuts(turnsTheAppCutFile(userData)).cuts[id]!.expected).toBeNull()
+      expect(readKeptAccounts(providerAccountsFile(userData)).claudeAccounts).toEqual([
+        a,
+        conflicting,
+      ])
+      expect(
+        readKeptUsage(providerUsageFile(userData)).readings.claude.every(
+          (one) => one.account === undefined,
+        ),
+      ).toBe(true)
     })
 
     it('does not claim a durable account identity when its ordinary account file cannot be saved', async () => {
