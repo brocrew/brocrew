@@ -59,7 +59,7 @@ describe('the recovery copy is checked off the main thread', () => {
     return file
   }
   const inAWorker = (holdMs?: number): VerifyCopy =>
-    verifyInAWorker((request) => new Worker(bundle, { workerData: request }), holdMs)
+    verifyInAWorker((request) => new Worker(bundle, { workerData: request }), holdMs).verify
   /** The longest gap between ticks of a 10 ms heartbeat while `work` runs. */
   const longestGapDuring = async (work: () => Promise<unknown>): Promise<number> => {
     let last = performance.now()
@@ -110,11 +110,11 @@ describe('the recovery copy is checked off the main thread', () => {
   })
 
   it('a worker that ends without answering, or cannot start, says the check could not run', async () => {
-    const silent = verifyInAWorker(() => new Worker('process.exit(0)', { eval: true }))
+    const silent = verifyInAWorker(() => new Worker('process.exit(0)', { eval: true })).verify
     expect((await silent(aCopy())).kind).toBe('failed')
     const unstarted = verifyInAWorker(() => {
       throw new Error('no worker today')
-    })
+    }).verify
     expect(await unstarted(aCopy())).toEqual({
       kind: 'failed',
       message: 'its check could not start: no worker today',
@@ -123,7 +123,7 @@ describe('the recovery copy is checked off the main thread', () => {
 
   it('the answer is taken only once the worker has exited', async () => {
     const order: string[] = []
-    const verify = verifyInAWorker((request) => {
+    const { verify } = verifyInAWorker((request) => {
       const worker = new Worker(bundle, { workerData: request })
       worker.once('exit', () => order.push('exited'))
       return worker
@@ -131,6 +131,28 @@ describe('the recovery copy is checked off the main thread', () => {
     await verify(aCopy())
     order.push('answered')
     expect(order).toEqual(['exited', 'answered'])
+  })
+
+  it('a quit stops a check under way, and stops only once its worker has exited', async () => {
+    const order: string[] = []
+    let started = 0
+    const verifier = verifyInAWorker((request) => {
+      started++
+      const worker = new Worker(bundle, { workerData: request })
+      worker.once('exit', () => order.push('exited'))
+      return worker
+    }, 5_000)
+    const checking = verifier.verify(aCopy())
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    const began = performance.now()
+    await verifier.stop()
+    order.push('stopped')
+    expect(performance.now() - began).toBeLessThan(2_000)
+    expect(order).toEqual(['exited', 'stopped'])
+    expect((await checking).kind).toBe('failed')
+    // Once stopped, no check starts a worker.
+    expect((await verifier.verify(aCopy())).kind).toBe('failed')
+    expect(started).toBe(1)
   })
 
   describe('a checkpoint says each outcome as it did, and keeps nothing it could not check', () => {
