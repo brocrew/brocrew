@@ -644,7 +644,11 @@ describe('437 · a question a worker can ask its parent', () => {
       expect(reach).not.toContain('piecesOwnedBy')
       expect(reach).not.toContain('heldBy')
       expect(reach).not.toContain('parentOf')
-      const command = bodyOf(source, 'export function mayCommand(', '\n}')
+      const command = bodyOf(
+        sourceOf(join(mainRoot, 'runtime'), 'conversation-caller.ts'),
+        'export function mayCommand(',
+        '\n}',
+      )
       expect(command).not.toContain('piecesOwnedBy')
       expect(command).not.toContain('heldBy')
       // ⚑ **The positive control for the instrument itself**: the two bodies really were found and

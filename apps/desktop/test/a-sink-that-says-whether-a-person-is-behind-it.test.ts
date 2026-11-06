@@ -668,9 +668,9 @@ describe('349 · a sink that says whether a person is behind it', () => {
       // which is 169 §1. The slot's own three writes are not readers and are counted apart.
       // ⛔ Prose stripped first: this file argues about the field at length, and a docblock quoting
       // it would count as a reader.
-      const code = strippedOfProse(
-        readFileSync(join(here, '../src/main/runtime/runtime-host.ts'), 'utf8'),
-      )
+      const code = ['runtime-host.ts', 'conversation-caller.ts']
+        .map((file) => strippedOfProse(readFileSync(join(here, '../src/main/runtime', file), 'utf8')))
+        .join('\n')
       // ⛔ **Every mention, then the writes subtracted — NOT a pattern for the one read shape.**
       // A search for `slot.ownerIsAPerson &&` can only see a read written as the left conjunct of
       // an `&&` on a variable literally called `slot`; `if (slot.ownerIsAPerson)`,
