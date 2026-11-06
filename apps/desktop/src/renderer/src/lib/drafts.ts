@@ -320,7 +320,7 @@ export interface DraftBook {
   readonly paths: AttachmentBook
   /**
    * ⛔ **Put a message back — the words and the paths together** (216): a saved draft at start, and
-   * the paths of a refused send through {@link handBack}, whose words join live typing.
+   * the paths of a refused send through {@link handRefusedBack}, whose words join live typing.
    *
    * ⚠️ **Each book guards ITSELF, and that is the whole content of this method.** Written out at
    * the call site it guarded the text against clobbering live typing and wrote the paths
@@ -527,7 +527,7 @@ export function createDraftBook(): DraftBook {
     restore: (key, text, attachments) => {
       // Only if the box is still empty: the person may have started typing before a saved draft
       // came back, and overwriting live typing is the bug 019 exists to prevent. A refused send
-      // goes through {@link handBack}, whose words join the typing instead.
+      // goes through {@link handRefusedBack}, whose words join the typing instead.
       if ((drafts.get(key) ?? '') === '') {
         if (text !== '') drafts.set(key, text)
       }
@@ -601,7 +601,7 @@ export function shouldRestoreDraft(input: {
  * Hand a refused message back to its slot: its words join what was typed since
  * ({@link joiningTheBox}), and its paths join what is staged. Returns how many paths did not fit.
  */
-export function handBack(
+export function handRefusedBack(
   book: DraftBook,
   key: string,
   text: string,

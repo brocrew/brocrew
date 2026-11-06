@@ -113,7 +113,7 @@ describe('what the first message is made of (217)', () => {
     expect(restore.length, 'restoreRefused moved or was renamed — re-point this').toBeGreaterThan(
       100,
     )
-    expect(restore).toContain('const refused = handBack(drafts, slot, text, attachments)')
+    expect(restore).toContain('const refused = handRefusedBack(drafts, slot, text, attachments)')
     expect(restore).toContain('if (refused > 0) say(attachmentsNotRestored(refused))')
   })
 })
