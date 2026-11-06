@@ -316,6 +316,8 @@ export function createMethodChangeStore(
         return (
           planned !== undefined &&
           !state.unreadable &&
+          state.base64 !== undefined &&
+          planned.afterBase64 !== undefined &&
           state.base64 === planned.afterBase64 &&
           (planned.afterMode === undefined || state.mode === planned.afterMode)
         )
