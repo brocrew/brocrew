@@ -7269,7 +7269,7 @@ export class RuntimeHost implements LiveHost {
       handBackTheMainProcess,
     })
     this.modelCatalogues = new ModelCatalogues(
-      deps.store,
+      this.deps.store,
       (provider) => this.profiles(provider),
       (provider, profileId) => this.askProviderForModels(provider, profileId),
       () => this.launches.closed,
