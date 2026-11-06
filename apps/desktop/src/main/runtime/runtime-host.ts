@@ -1,8 +1,7 @@
 import {
   filesLibraryForWindow,
   teamProfileGraphForWindow,
-  closeTeamProfileGraphWindow,
-  closeFilesLibraryWindow,
+  closeWindowRead,
 } from './window-reads'
 import type {
   FactsAQueueCarries,
@@ -23139,11 +23138,11 @@ export class RuntimeHost implements LiveHost {
   }
 
   async closeTeamProfileGraphWindow(owner: string): Promise<void> {
-    await closeTeamProfileGraphWindow(owner, this.deps.teamProfileGraphs)
+    await closeWindowRead(owner, this.deps.teamProfileGraphs)
   }
 
   async closeFilesLibraryWindow(owner: string): Promise<void> {
-    await closeFilesLibraryWindow(owner, this.deps.filesLibraries)
+    await closeWindowRead(owner, this.deps.filesLibraries)
   }
 
   async searchWork(asAgent: string, input: WorkSearchQuery): Promise<WorkSearchResult> {
