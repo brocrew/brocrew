@@ -183,19 +183,6 @@ export async function servePersonPluginControl(options: {
               workspaceId: request.workspaceId,
               revoke: async (pluginId, installId) =>
                 (await tell({ kind: 'revoke', pluginId, installId })) === true,
-              applied: async (pluginId, receipt) => {
-                await tell({ kind: 'applied', pluginId, receipt })
-              },
-              reconcile: async (change) => {
-                await tell({
-                  kind: 'reconcile',
-                  change: {
-                    pluginId: change.pluginId,
-                    before: change.before,
-                    receipt: change.receipt,
-                  },
-                })
-              },
             })
           } catch (error) {
             session.attaching = false

@@ -23,11 +23,12 @@ export interface LifecycleRuntime {
 }
 export interface WorkspaceProjection {
   readonly workspaceId: string
-  /** Acknowledges applying the projection; persistence belongs exclusively to GlobalPluginState. */
-  applied(pluginId: string, receipt: ProjectionReceipt | null): Promise<void>
   /** Revoke running consumers/UI; false or rejection is not proof of quiescence. */
   revoke(pluginId: string, installId: string): Promise<boolean>
-  /** Clear stale tool/UI bindings before acknowledging fresh live-owner metadata. No skills. */
+}
+/** The app's side of a workspace: it still answers an older owner's applied/reconcile notices. */
+export interface PersonProjection extends WorkspaceProjection {
+  applied(pluginId: string, receipt: ProjectionReceipt | null): Promise<void>
   reconcile(change: {
     pluginId: string
     before: ProjectionReceipt | null
@@ -68,7 +69,7 @@ export interface LifecycleOptions {
   toolsCause?: (pluginId: string) => string | undefined
   /** Inert fault controls only; never a production launch option. */
   fault?: (
-    point: 'prepared' | 'staged' | 'ready' | 'activated' | 'receipted' | 'update-fenced',
+    point: 'prepared' | 'staged' | 'ready' | 'activated' | 'update-fenced',
   ) => void
 }
 declare const workspaceBrand: unique symbol

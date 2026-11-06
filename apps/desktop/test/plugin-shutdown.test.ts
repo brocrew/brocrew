@@ -275,45 +275,17 @@ describe.skipIf(process.platform === 'win32')(
         await draining.catch(() => undefined)
       }
     })
-    it.each(['revoke', 'reconcile', 'applied'] as const)(
-      'a proven exit retains an unacknowledged %s cleanup',
-      async (step) => {
-        const exit = deferred<void>()
-        const f = await fixture({ runtime: exitingRuntime(exit.promise) })
-        await f.controller.install(f.handle, 'chrome')
-        if (step === 'revoke') vi.spyOn(f.local.sink, step).mockResolvedValue(false)
-        else vi.spyOn(f.local.sink, step).mockRejectedValue(new Error('fictional cleanup refused'))
-        const revoke = vi.spyOn(f.local.sink, 'revoke')
-        exit.resolve()
-        await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
-        expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
-        expect(f.controller.cleanForShutdown()).toBe(false)
-        await expect(f.controller.drain()).rejects.toMatchObject({ code: 'cleanup-pending' })
-        expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
-      },
-    )
-    it('a late crash acknowledgement cannot clear a newer consumer cleanup failure', async () => {
-      const exit = deferred<void>(),
-        ack = deferred<boolean>()
+    it('a proven exit retains an unacknowledged revoke cleanup', async () => {
+      const exit = deferred<void>()
       const f = await fixture({ runtime: exitingRuntime(exit.promise) })
       await f.controller.install(f.handle, 'chrome')
-      const revoke = vi.spyOn(f.local.sink, 'revoke').mockImplementation(() => ack.promise)
-      const applied = vi.spyOn(f.local.sink, 'applied')
+      const revoke = vi.spyOn(f.local.sink, 'revoke').mockResolvedValue(false)
       exit.resolve()
       await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
-      await expect(
-        f.controller.reconcileConsumer(f.handle, {
-          ...f.local.sink,
-          revoke: async () => true,
-          reconcile: async () => {
-            throw new Error('fictional newer cleanup failure')
-          },
-        }),
-      ).rejects.toMatchObject({ code: 'corrupt' })
-      ack.resolve(true)
-      await vi.waitFor(() => expect(applied).toHaveBeenCalledWith('chrome', null))
       expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
       expect(f.controller.cleanForShutdown()).toBe(false)
+      await expect(f.controller.drain()).rejects.toMatchObject({ code: 'cleanup-pending' })
+      expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
     })
     it('a proven crash drains the shared owner and its successor starts while another plugin stays running', async () => {
       const f = await fixture()

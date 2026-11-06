@@ -23,7 +23,6 @@ export function sharedLifecycleWorkspaces(
       if (key === 'attach')
         return async (sink: WorkspaceProjection) => {
           let group = groups.get(sink.workspaceId)
-          const existing = group !== undefined
           if (!group) {
             const sinks = new Set([sink])
             const projection: WorkspaceProjection = {
@@ -33,19 +32,12 @@ export function sharedLifecycleWorkspaces(
                   (one) => one === true,
                 )
               },
-              async applied(id, receipt) {
-                await Promise.all([...sinks].map((one) => one.applied(id, receipt)))
-              },
-              async reconcile(change) {
-                await Promise.all([...sinks].map((one) => one.reconcile(change)))
-              },
             }
             group = { sinks, ready: target.attach(projection) }
             groups.set(sink.workspaceId, group)
           } else group.sinks.add(sink)
           try {
             const handle = await group.ready
-            if (existing) await target.reconcileConsumer(handle, sink)
             const token = Object.freeze({}) as LifecycleWorkspace
             clients.set(token, { sink, actual: handle })
             return token
@@ -59,10 +51,10 @@ export function sharedLifecycleWorkspaces(
         return async (handle: LifecycleWorkspace) => {
           const client = clients.get(handle)
           if (!client) return
-          const receipts = target.consumerReceipts(client.actual)
+          const installs = target.consumerInstalls(client.actual)
           clients.delete(handle)
           const proofs = await Promise.allSettled(
-            receipts.map((receipt) => client.sink.revoke(receipt.pluginId, receipt.installId)),
+            installs.map((one) => client.sink.revoke(one.pluginId, one.installId)),
           )
           if (proofs.some((one) => one.status !== 'fulfilled' || one.value !== true)) {
             clients.set(handle, client) // Its consumer may detach again, as when its channel closes.

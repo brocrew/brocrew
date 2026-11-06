@@ -21,7 +21,7 @@ import type { PluginUiBinding } from '../ui/rpc'
 import type { PluginTarget } from '../package-schema'
 import { PluginPackageVault } from './vault'
 import { ConsumerCommand, connectPersonPluginControl } from './person-control'
-import type { WorkspaceProjection } from './types'
+import type { PersonProjection } from './types'
 import { Installation } from '../state/format'
 import { PLUGIN_STATES, pluginRemovalOutcome } from '../../../shared/plugin-settings'
 import { createRepoAwarePluginVerifier } from '../package-verifier'
@@ -63,7 +63,7 @@ export async function connectPluginSettings(options: {
   repoCatalogueSha256?: string
   target: PluginTarget
   catalogue: { bytes: Uint8Array; signature: Uint8Array }
-  projection: WorkspaceProjection
+  projection: PersonProjection
   propose(publicProposal: unknown, revision: number): void
   lost?(): void
   signal?: AbortSignal

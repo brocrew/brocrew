@@ -534,8 +534,8 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       })
       expect(await f.bridge.routes(owner, req)).toEqual([])
       expect(await f.bridge.routes(owner, request(f.local.sink.workspaceId))).toEqual([])
-      // A new lease must also refuse when its reconciliation cannot prove the old work quiet.
-      await expect(f.bridge.routes(lease(), request(f.local.sink.workspaceId))).rejects.toThrow()
+      // A new lease gets no route either while the old work is not proven quiet.
+      expect(await f.bridge.routes(lease(), request(f.local.sink.workspaceId))).toEqual([])
       expect(f.binding).toHaveBeenCalledTimes(2) // One fixture lookup, one broker. No replacement.
       expect(f.call).toHaveBeenCalledOnce()
     } finally {
@@ -1051,46 +1051,17 @@ describe.skipIf(process.platform === 'win32')('supervisor socket agent admission
     await expect(peer.agentRoutes(input)).rejects.toThrow('Plugin unavailable')
   })
 })
-describe.skipIf(process.platform === 'win32')('shared lifecycle consumer reconciliation', () => {
-  it('a second consumer clears stale bindings and gets the current projection before attach returns', async () => {
-    const f = await live()
-    const events: string[] = []
-    const second = await f.controller.attach({
-      workspaceId: f.local.sink.workspaceId,
-      async revoke() {
-        events.push('clear')
-        return true
-      },
-      async reconcile(change) {
-        events.push(change.receipt ? 'bind' : 'empty')
-      },
-      async applied() {
-        events.push('applied')
-      },
-    })
-    expect(events).toEqual(['clear', 'bind', 'applied'])
-    await f.controller.detach(second)
-  })
-})
-
 describe.skipIf(process.platform === 'win32')('temporary attachment loss', () => {
   it('a recovered logical incarnation gets a fresh capability after its former route was revoked', async () => {
     const f = await live(),
       owner = lease(),
       req = request(f.local.sink.workspaceId)
     const [before] = await f.bridge.routes(owner, req)
-    const workspaces = (
-      f.controller as unknown as {
-        workspaces: Map<unknown, { sink: { workspaceId: string }; receipts: Map<string, unknown> }>
-      }
-    ).workspaces
-    const workspace = [...workspaces.values()].find(
-      (one) => one.sink.workspaceId === req.workspaceId,
-    )!
-    const receipt = workspace.receipts.get('chrome')
-    workspace.receipts.delete('chrome')
+    // A mutation's block takes the plugin away for a moment; lifting it brings it back.
+    const blocks = (f.controller as unknown as { blocks: Map<string, symbol> }).blocks
+    blocks.set('chrome', Symbol())
     expect(await f.bridge.routes(owner, req)).toEqual([])
-    workspace.receipts.set('chrome', receipt)
+    blocks.delete('chrome')
     const [after] = await f.bridge.routes(owner, req)
     expect(after!.capability).not.toBe(before!.capability)
     const client = await connected(after!)

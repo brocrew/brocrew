@@ -7,7 +7,6 @@ import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   PluginSupervisorAttachment,
-  pluginWorkspaceIdentity,
 } from '../src/main/plugins/supervisor/client'
 import { productionPluginController } from '../src/main/plugins/production'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
@@ -87,7 +86,6 @@ export async function proof(config: {
   const supervisor = new PluginSupervisorAttachment(),
     client = productionPluginController()
   let cleanupSafe = false
-  const workspaceId = pluginWorkspaceIdentity(workspace)
   try {
     client.start({
       root,
@@ -221,7 +219,7 @@ export async function proof(config: {
     const state = GlobalPluginState.open({ root: join(root, 'state'), workspaceRoots: [workspace] })
     try {
       assert.equal(state.inspect().guards[0]?.phase, 'removed')
-      assert.deepEqual(state.projections(workspaceId), [])
+      assert.deepEqual(state.exportActivation().entries, [])
     } finally {
       state.close()
     }

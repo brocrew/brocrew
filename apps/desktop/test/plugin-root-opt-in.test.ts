@@ -15,16 +15,9 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { createConnection } from 'node:net'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  PluginWorkspaceLease,
-  pluginSupervisorRoot,
-  supervisorRequest,
-} from '../src/main/plugins/supervisor/client'
-import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
-import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
-import { GlobalPluginState } from '../src/main/plugins/state/store'
+import { pluginSupervisorRoot } from '../src/main/plugins/supervisor/client'
 import { keepPluginRootPrivate, realPath, isWithinOrSame } from '../src/main/plugins/private-files'
 import { keepToThisUser } from '../src/main/recovery/windows-privacy'
 import { pluginPersonCapability } from '../src/main/plugins/catalogue/capability'
@@ -33,25 +26,15 @@ import {
   servePersonPluginControl,
 } from '../src/main/plugins/lifecycle/person-control'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
-import { manifestFor, packageFixture, fictionalPublicKey } from './plugin-package-fixtures'
-import { projection, deferred } from './plugin-lifecycle-fixtures'
 import { PersonChannel } from '../src/main/plugins/lifecycle/transport'
 import { PluginSupervisorError } from '../src/main/plugins/supervisor/protocol'
 
 const folders: string[] = [],
-  owners: PluginSupervisor[] = [],
-  leases: PluginWorkspaceLease[] = [],
-  stores: GlobalPluginState[] = [],
-  storage: SupervisorStorage[] = [],
   closers: Array<() => Promise<unknown>> = []
 afterEach(async () => {
   try {
     for (const close of closers.splice(0).reverse()) await close()
-    for (const lease of leases.splice(0)) await lease.close()
-    for (const owner of owners.splice(0)) await owner.shutdown()
   } finally {
-    for (const disk of storage.splice(0)) disk.close()
-    for (const state of stores.splice(0)) state.close()
     for (const folder of folders.splice(0)) await rm(folder, { recursive: true, force: true })
   }
 })
@@ -116,47 +99,6 @@ async function treeHash(root: string): Promise<string> {
   }
   await visit(root, '')
   return hash.digest('hex')
-}
-async function attach(global: string, workspace: string, generation = randomUUID()) {
-  const lease = await PluginWorkspaceLease.attach({
-    root: global,
-    workspaceRoot: workspace,
-    generation,
-    build: 'fictional-fern',
-  })
-  leases.push(lease)
-  return lease
-}
-async function owner(global: string, workspace: string) {
-  await keepPluginRootPrivate(global)
-  const childStopped = vi.fn(),
-    revoked = vi.fn()
-  const supervisor = await PluginSupervisor.start({
-    root: global,
-    workspaceRoots: [workspace],
-    revoke: revoked,
-  })
-  owners.push(supervisor)
-  let stopped!: () => void
-  const exited = new Promise<void>((resolve) => {
-    stopped = resolve
-  })
-  const adopt = () =>
-    supervisor.adopt({
-      stop() {
-        childStopped()
-        stopped()
-      },
-      exited,
-      async descendantsGone() {
-        return true
-      },
-    })
-  const disk = new SupervisorStorage(global, [workspace], false)
-  storage.push(disk)
-  const record = disk.read()
-  if (!record) throw new Error('fictional owner record is missing')
-  return { supervisor, disk, record, childStopped, revoked, adopt }
 }
 
 describe('workspace opt-in keeps every other plugin setup unchanged', () => {

@@ -7,19 +7,17 @@ afterEach(async () => {
   await cleanupLifecycleFixtures()
 })
 
-it('only committed absence is off; an installed plugin missing its projection is pending', async () => {
+it('only committed absence is off; an installed plugin whose run is not up is pending', async () => {
   const f = await fixture()
   const scope = () => f.controller.agentScope(f.local.sink.workspaceId).entries
   expect(scope()).toEqual([{ pluginId: 'chrome', is: 'off' }])
   await f.controller.install(f.handle, 'chrome')
   expect(scope()).toMatchObject([{ pluginId: 'chrome', is: 'admitted' }])
-  const workspace = (
-    f.controller as unknown as { workspaces: Map<unknown, { receipts: Map<string, unknown> }> }
-  ).workspaces.get(f.handle)!
-  const receipt = workspace.receipts.get('chrome')
-  workspace.receipts.delete('chrome')
+  const runs = (f.controller as unknown as { runs: Map<string, unknown> }).runs
+  const run = runs.get('chrome')
+  runs.delete('chrome')
   expect(scope()).toEqual([{ pluginId: 'chrome', is: 'pending' }])
-  workspace.receipts.set('chrome', receipt)
+  runs.set('chrome', run)
   await f.controller.uninstall(f.handle, 'chrome')
   expect(scope()).toEqual([{ pluginId: 'chrome', is: 'off' }])
 })

@@ -139,11 +139,9 @@ async function restarted(appVersion: string, empty: boolean) {
   })
   recordGuards()
   closers.push(() => client.close())
-  // Every attach clears stale workspace consumers, including with admitted releases.
-  // It then rebinds the same authenticated installation; absence must add no revocation.
+  // Attaching writes and revokes nothing; an empty catalogue adds no effect either.
   const startup = f.events.slice(cutoff)
-  expect(startup.filter((event) => event === 'revoke')).toEqual(['revoke'])
-  expect(startup.slice(startup.indexOf('revoke') + 1)).toContain('bind')
+  expect(startup.filter((event) => event === 'revoke')).toEqual([])
   expect(
     startup.filter((event) => event === 'deny' || event === 'stop' || event.startsWith('remove')),
   ).toEqual([])

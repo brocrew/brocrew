@@ -623,8 +623,6 @@ export function createLifecycleAgentBridge(options: {
     if (!attached) {
       attached = options.controller.attach({
         workspaceId: request.workspaceId,
-        applied: async () => {},
-        reconcile: async () => {},
         revoke: async (id) => {
           const pending = [...routes].filter(
             ([, item]) => item.lease.id === lease.id && item.pluginId === id,
