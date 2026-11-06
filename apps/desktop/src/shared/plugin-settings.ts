@@ -300,7 +300,12 @@ export type PluginSettingsReply =
       removal?: PluginRemovalOutcome
     }
   | { ok: false; listState: 'not-published' | 'fetch-error'; reason?: PluginListFailureReason }
-  | { ok: false; error: 'Plugin unavailable. Try again.'; mutationFailure?: PluginMutationFailure }
+  | {
+      ok: false
+      error: 'Plugin unavailable. Try again.'
+      mutationFailure?: PluginMutationFailure
+      detail?: string
+    }
 export interface PluginsClient {
   request(input: PluginSettingsRequest): Promise<PluginSettingsReply>
   onReviewInvalidated?(listener: () => void): () => void

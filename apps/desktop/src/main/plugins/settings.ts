@@ -5,6 +5,7 @@ import {
 import { randomUUID } from 'node:crypto'
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron'
 import { PluginSupervisorError } from './supervisor/protocol'
+import { managedPluginFailure } from '@brobot2/runtime'
 import { displayedDetailsHash } from './mutation-disclosure'
 import { PluginListError } from './catalogue/list-error'
 import {
@@ -515,6 +516,11 @@ export function registerPluginSettings(
         return { ok: true, cards: await catalogue() }
       } catch (error) {
         await created?.close().catch(() => {})
+        // One shared classifier. Unknown causes stay unknown; never echo an arbitrary body.
+        const failure = {
+          ...refused,
+          detail: managedPluginFailure(error, 'plugin-settings').message,
+        }
         if (mutationContext) {
           const code = error instanceof PluginSupervisorError ? error.code : 'unavailable'
           const mutationFailure: PluginMutationFailure =
@@ -523,9 +529,9 @@ export function registerPluginSettings(
               : ['policy-refused', 'source-mismatch', 'network'].includes(code)
                 ? (code as PluginMutationFailure)
                 : 'unavailable'
-          return { ...refused, mutationFailure }
+          return { ...failure, mutationFailure }
         }
-        return refused
+        return failure
       }
     },
   )

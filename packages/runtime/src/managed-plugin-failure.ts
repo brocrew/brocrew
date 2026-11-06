@@ -12,6 +12,7 @@ export const PLUGIN_FAILURE_STAGES = [
   'owner-response',
   'owner-generation',
   'catalogue-composition',
+  'plugin-settings',
   'admission-read',
   'route-binding',
   'binding-connection',
@@ -51,7 +52,7 @@ export class ManagedPluginFailure extends Error {
     readonly pluginStage: PluginFailureStage,
     readonly pluginCause: PluginFailureCause,
   ) {
-    super(`Plugin attachment unavailable at ${pluginStage}: ${pluginCause}.`)
+    super(`Plugin unavailable at ${pluginStage}: ${pluginCause}.`)
     this.name = 'ManagedPluginFailure'
   }
 }
