@@ -2717,6 +2717,11 @@ export class CodexSessionHandle implements SessionHandle {
     localId: CodexTurn['localId']
     controller: AbortController
   } | null = null
+  /** What says the shared skills changed, and the generation this session last loaded. */
+  private sharedSkillsGeneration?: () => number
+  private sharedSkillsLoaded?: number
+  /** A turn's shared-skills refresh in flight, so a Stop can end the wait for it. */
+  private skillsRefresh: { localId: CodexTurn['localId']; stop: () => void } | null = null
   private messageTurn: CodexTurn | null = null
   private messageCalls = new MessageActCalls()
   /**
@@ -3320,8 +3325,7 @@ export class CodexSessionHandle implements SessionHandle {
         await registerCodexBuiltInSkills(
           this.builtInSkills,
           this.cwd,
-          (method, params) =>
-            withDeadline(this.transport.request(method, params), COMMAND_LIST_TIMEOUT_MS, method),
+          (method, params) => this.transport.request(method, params),
           this.sharedSkillsRoot,
         )
       } catch (cause) {
@@ -5850,21 +5854,15 @@ export class CodexSessionHandle implements SessionHandle {
             askedModel,
           ),
         )
-      const request = this.sharedSkillsRoot
-        ? Promise.resolve()
-            .then(() => this.beforeSkillDiscovery?.())
-            .then(() =>
-              withDeadline(
-                this.transport.request('skills/list', { cwds: [this.cwd], forceReload: true }),
-                COMMAND_LIST_TIMEOUT_MS,
-                'skills/list',
-              ),
-            )
-            .then(() => {
-              if (this.currentTurn?.localId !== localId || this.currentTurn.interruptPending)
-                throw new Error('turn interrupted')
-              return send()
-            })
+      // The shared skills are refreshed only when they changed since this session loaded them, and
+      // the refresh is waited for until Codex answers or the person stops the turn. A refresh that
+      // fails is said, and the turn still goes with the skills the session has.
+      const request = this.sharedSkillsMoved()
+        ? this.refreshSharedSkills(localId).then(() => {
+            if (this.currentTurn?.localId !== localId || this.currentTurn.interruptPending)
+              throw new Error('turn interrupted')
+            return send()
+          })
         : send()
       void Promise.resolve(request).then(
         (result) => this.onTurnStartResult(localId, result),
@@ -5992,6 +5990,67 @@ export class CodexSessionHandle implements SessionHandle {
     this.managedPluginWait = null
     this.managedPluginsChecked = undefined
     waiting.controller.abort()
+  }
+
+  noteSharedSkillsGeneration(generation: (() => number) | undefined): void {
+    this.sharedSkillsGeneration = generation
+    this.sharedSkillsLoaded = generation?.()
+  }
+
+  /** Whether a turn must refresh the shared skills: always, when nothing says when they change. */
+  private sharedSkillsMoved(): boolean {
+    if (!this.sharedSkillsRoot) return false
+    if (this.sharedSkillsGeneration === undefined) return true
+    return this.sharedSkillsGeneration() !== this.sharedSkillsLoaded
+  }
+
+  /**
+   * Ask Codex to reload the shared skills before a turn. Settles when Codex answers, or at once when
+   * the person stops the turn ({@link cancelSkillsRefresh}); a refusal is said as a notice and the
+   * turn goes on. Rejects only when the turn was stopped.
+   */
+  private async refreshSharedSkills(localId: CodexTurn['localId']): Promise<void> {
+    const seen = this.sharedSkillsGeneration?.()
+    let stop!: () => void
+    const stopped = new Promise<'stopped'>((resolve) => {
+      stop = () => resolve('stopped')
+    })
+    const refresh = { localId, stop }
+    this.skillsRefresh = refresh
+    try {
+      const answered = await Promise.race([
+        Promise.resolve()
+          .then(() => this.beforeSkillDiscovery?.())
+          .then(() =>
+            this.transport.request('skills/list', { cwds: [this.cwd], forceReload: true }),
+          )
+          .then(
+            () => 'answered' as const,
+            (error: unknown) => error,
+          ),
+        stopped,
+      ])
+      if (answered === 'stopped') throw new Error('turn interrupted')
+      if (answered === 'answered') {
+        this.sharedSkillsLoaded = seen
+        return
+      }
+      if (this.currentTurn?.localId === localId) {
+        this.emit({
+          type: 'error',
+          fatal: false,
+          message: `Shared skills could not be refreshed: ${errorMessage(answered)}`,
+        })
+      }
+    } finally {
+      if (this.skillsRefresh === refresh) this.skillsRefresh = null
+    }
+  }
+
+  private cancelSkillsRefresh(): void {
+    const refresh = this.skillsRefresh
+    this.skillsRefresh = null
+    refresh?.stop()
   }
 
   /**
@@ -6260,6 +6319,13 @@ export class CodexSessionHandle implements SessionHandle {
     this.settleRequests()
     if (this.managedPluginWait && this.managedPluginWait.localId === this.currentTurn?.localId) {
       this.cancelManagedPluginWait()
+      this.currentTurn = null
+      this.machine.forceEnd(false)
+      return
+    }
+    // A turn still waiting on its shared-skills refresh has sent nothing to Codex: it ends here.
+    if (this.skillsRefresh && this.skillsRefresh.localId === this.currentTurn?.localId) {
+      this.cancelSkillsRefresh()
       this.currentTurn = null
       this.machine.forceEnd(false)
       return
@@ -6625,6 +6691,7 @@ export class CodexSessionHandle implements SessionHandle {
 
   private async doClose(): Promise<void> {
     this.cancelManagedPluginWait()
+    this.cancelSkillsRefresh()
     // ⛔ **The registry watch stops FIRST, on both paths** (275). It is the one thing here that would
     // otherwise send a request into a transport being closed, and `273` is the dispatch that
     // established what that costs — a clean quit that prints a handler exception. Idempotent, so the
@@ -6831,6 +6898,7 @@ export class CodexRuntime implements AgentRuntime {
     )
     handle.noteLaunchAccount(launchAccount, launchCopy, launchKeyTag)
     handle.noteStartPhases(phase)
+    handle.noteSharedSkillsGeneration(opts.sharedSkillsGeneration)
     try {
       // A malformed thread/start now throws from begin() (empty/missing id) —
       // close the transport so the spawned app-server can't leak, then reject.
@@ -7056,6 +7124,7 @@ export class CodexRuntime implements AgentRuntime {
     )
     handle.noteLaunchAccount(launchAccount, launchCopy, launchKeyTag)
     handle.noteStartPhases(phase)
+    handle.noteSharedSkillsGeneration(options.sharedSkillsGeneration)
     try {
       // begin() rejects on a missing thread AND on an explicit post-handshake
       // identity barrier (schema-invalid / empty id / id- or cwd-mismatch), so a

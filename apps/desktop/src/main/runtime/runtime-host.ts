@@ -2566,6 +2566,8 @@ export interface RuntimeHostDeps {
   prepareSharedSkills?: () => Promise<void>
   beforeSkillDiscovery?: () => Promise<void>
   sharedSkillsRoot?: () => Promise<string>
+  /** Moves whenever the shared skills change, so a session reloads them only then. */
+  sharedSkillsGeneration?: () => number
   closeSharedSkills?: () => void
   skillsForAPerson?: SkillsWindow
   savedMethods?: SavedMethodService
@@ -25068,6 +25070,7 @@ export class RuntimeHost implements LiveHost {
                 ...(builtInSkills.sharedRoot
                   ? {
                       sharedSkillsRoot: builtInSkills.sharedRoot,
+                      sharedSkillsGeneration: this.deps.sharedSkillsGeneration,
                       beforeSkillDiscovery: this.deps.beforeSkillDiscovery,
                     }
                   : {}),
@@ -44495,6 +44498,7 @@ export class RuntimeHost implements LiveHost {
                 ...(builtInSkills.sharedRoot
                   ? {
                       sharedSkillsRoot: builtInSkills.sharedRoot,
+                      sharedSkillsGeneration: this.deps.sharedSkillsGeneration,
                       beforeSkillDiscovery: this.deps.beforeSkillDiscovery,
                     }
                   : {}),
