@@ -33,6 +33,14 @@ async function installed() {
   disk.load()
   return { ...f, disk, guard, files }
 }
+/**
+ * The full journal read, as at startup and after the writer's own change. Ordinary loads use the
+ * state the writer holds, so these controls drop it first.
+ */
+function fullRead(disk: PluginStateDisk) {
+  ;(disk as unknown as { held?: unknown }).held = undefined
+  return disk.load()
+}
 it('freshly opens and closes all journal files while eliminating only duplicate initial observations', async () => {
   const f = await installed()
   const total = f.files.reduce((sum, name) => sum + fs.statSync(join(f.guard, name)).size, 0)
@@ -42,7 +50,7 @@ it('freshly opens and closes all journal files while eliminating only duplicate 
     held = vi.mocked(fs.fstatSync),
     read = vi.mocked(fs.readSync)
   for (const spy of [opened, closed, observed, held, read]) spy.mockClear()
-  f.disk.load()
+  fullRead(f.disk)
   const fileOpens = opened.mock.calls.filter(([path]) =>
     f.files.some((name) => String(path) === join(f.guard, name)),
   )
@@ -99,23 +107,23 @@ it('closes transient reads after repeated read failures and recovers after fresh
     read.mockImplementationOnce(() => {
       throw Object.assign(new Error('fictional read failure'), { code: 'EIO' })
     })
-    expect(() => f.disk.load()).toThrow()
+    expect(() => fullRead(f.disk)).toThrow()
     expect(opened).toHaveBeenCalledTimes(1)
     expect(closed).toHaveBeenCalledTimes(1)
     const result = opened.mock.results[0]!
     expect(result.type).toBe('return')
     expect(() => fs.fstatSync(result.value)).toThrow()
-    expect(f.disk.load().rootId).toBeTruthy()
+    expect(fullRead(f.disk).rootId).toBeTruthy()
   }
   opened.mockClear()
   closed.mockClear()
   opened.mockImplementationOnce(() => {
     throw Object.assign(new Error('fictional descriptor exhaustion'), { code: 'EMFILE' })
   })
-  expect(() => f.disk.load()).toThrow()
+  expect(() => fullRead(f.disk)).toThrow()
   expect(opened).toHaveBeenCalledTimes(1)
   expect(closed).not.toHaveBeenCalled()
-  expect(f.disk.load().rootId).toBeTruthy()
+  expect(fullRead(f.disk).rootId).toBeTruthy()
 })
 for (const interruption of ['reentry', 'pin change'] as const) {
   it(`restores the full post-read check after ${interruption} during a file read`, async () => {
@@ -136,7 +144,7 @@ for (const interruption of ['reentry', 'pin change'] as const) {
     read.mockImplementationOnce((...args) => {
       outerFd = args[0]
       const result = Reflect.apply(nativeRead, fs, args) as number
-      if (interruption === 'reentry') f.disk.load()
+      if (interruption === 'reentry') fullRead(f.disk)
       else {
         const extra = join(f.parent, 'extra-pin')
         fs.mkdirSync(extra, { mode: 0o700 })
@@ -146,7 +154,7 @@ for (const interruption of ['reentry', 'pin change'] as const) {
       return result
     })
     try {
-      expect(f.disk.load().rootId).toBeTruthy()
+      expect(fullRead(f.disk).rootId).toBeTruthy()
       expect(afterInterruption).toBeGreaterThan(0)
       expect(atOuterClose).toBeGreaterThan(afterInterruption)
     } finally {
@@ -169,7 +177,7 @@ it('refuses a read interrupted by close even if the OS reuses a released descrip
     return result
   })
   try {
-    expect(() => f.disk.load()).toThrow()
+    expect(() => fullRead(f.disk)).toThrow()
     expect(replacement).toBeDefined()
     expect(fs.fstatSync(replacement!).isFile()).toBe(true)
   } finally {
@@ -191,12 +199,12 @@ it.skipIf(process.platform === 'win32')(
       return result
     })
     try {
-      expect(() => f.disk.load()).toThrow()
+      expect(() => fullRead(f.disk)).toThrow()
     } finally {
       fs.rmdirSync(path)
       fs.renameSync(saved, path)
     }
-    expect(f.disk.load().rootId).toBeTruthy()
+    expect(fullRead(f.disk).rootId).toBeTruthy()
   },
 )
 for (const kind of ['record', 'seal']) {
@@ -210,11 +218,11 @@ for (const kind of ['record', 'seal']) {
       try {
         expect(fs.lstatSync(path).isFile()).toBe(true)
         expect(() => openNotThroughALink(path, fs.constants.O_RDONLY)).toThrow()
-        expect(() => f.disk.load()).toThrow()
+        expect(() => fullRead(f.disk)).toThrow()
       } finally {
         fs.chmodSync(path, 0o600)
       }
-      expect(f.disk.load().rootId).toBeTruthy()
+      expect(fullRead(f.disk).rootId).toBeTruthy()
     },
   )
   it.runIf(process.platform === 'win32')(
@@ -228,11 +236,11 @@ for (const kind of ['record', 'seal']) {
       try {
         expect(fs.lstatSync(path).isFile()).toBe(true)
         expect(() => openNotThroughALink(path, fs.constants.O_RDONLY)).toThrow()
-        expect(() => f.disk.load()).toThrow()
+        expect(() => fullRead(f.disk)).toThrow()
       } finally {
         execFileSync(icacls, [path, '/remove:d', '*S-1-1-0', '/Q'], { windowsHide: true })
       }
-      expect(f.disk.load().rootId).toBeTruthy()
+      expect(fullRead(f.disk).rootId).toBeTruthy()
     },
   )
 }
@@ -255,13 +263,13 @@ it.runIf(process.platform === 'win32')(
     const read = vi.mocked(fs.readSync)
     read.mockClear()
     try {
-      expect(() => f.disk.load()).toThrow()
+      expect(() => fullRead(f.disk)).toThrow()
       expect(read).not.toHaveBeenCalled()
       expect(() => fs.fstatSync(opened!)).toThrow()
     } finally {
       fs.unlinkSync(path)
       fs.renameSync(saved, path)
     }
-    expect(f.disk.load().rootId).toBeTruthy()
+    expect(fullRead(f.disk).rootId).toBeTruthy()
   },
 )

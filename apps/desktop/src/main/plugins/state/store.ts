@@ -1,16 +1,15 @@
 import { randomUUID } from 'node:crypto'
 import {
-  ActivationSnapshot,
   Event,
   installationProjection,
   STATE_LIMITS,
   OperationRequest,
   ProjectionReceipt,
-  decodeState,
   equalState,
   frozen,
   refuseState,
   stateInput,
+  type ActivationSnapshot,
   type Operation,
   type ProjectionReceipt as Receipt,
 } from './format'
@@ -128,7 +127,7 @@ export class GlobalPluginState {
       if (state.guards.size !== 0) refuseState('corrupt')
       return { format: 1, rootId: state.rootId, epoch: state.epoch, entries: [] }
     }
-    const snapshot = decodeState(this.disk.readActivation(state.activation), ActivationSnapshot)
+    const snapshot = this.disk.activationSnapshot(state.activation)
     if (
       snapshot.rootId !== state.rootId ||
       snapshot.epoch !== state.epoch ||
@@ -145,7 +144,7 @@ export class GlobalPluginState {
     const state = this.disk.load()
     return frozen(this.active(state))
   }
-  /** One fresh, verified read for a synchronous workspace admission decision. Never retain it. */
+  /** One state snapshot for a synchronous workspace admission decision. Never retain it. */
   readWorkspaceAdmission(workspaceId: string) {
     return this.withWorkspaceAdmission(workspaceId, (read) => read)
   }

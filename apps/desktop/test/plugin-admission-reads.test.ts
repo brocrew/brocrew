@@ -1,6 +1,4 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { readFile, readdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { fixture, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
 
@@ -66,12 +64,11 @@ it('returns detached frozen data and preserves the final scope sequence conflict
 })
 
 it.each(['admitted', 'screen', 'agentAttachments', 'agentScope'] as const)(
-  '%s verifies one fresh journal snapshot and its head for a synchronous admission decision',
+  '%s takes one state snapshot for a synchronous admission decision',
   async (operation) => {
     const f = await fixture()
     await f.controller.install(f.handle, 'chrome')
     const installId = f.controller.screen(f.handle, 'chrome').installation.installId
-    // Observer only: execute every real disk load, including its lock/bytes/seals/activation checks.
     const disk = (f.state as unknown as { disk: { load(...args: unknown[]): unknown } }).disk
     const loads = vi.spyOn(disk, 'load')
     if (operation === 'admitted')
@@ -90,36 +87,11 @@ it.each(['admitted', 'screen', 'agentAttachments', 'agentScope'] as const)(
           .agentScope(f.local.sink.workspaceId)
           .entries.map((one) => [one.pluginId, one.is]),
       ).toEqual([['chrome', 'admitted']])
-    // Every synchronous operation, including scope view construction, verifies at most twice.
+    // Every synchronous operation, including scope view construction, asks at most twice.
     expect(loads.mock.calls.length).toBeLessThanOrEqual(2)
     expect(loads.mock.calls.length).toBeGreaterThan(0)
   },
 )
-
-it('a later current check reads the journal again and refuses changed bytes before publishing or calling', async () => {
-  const f = await fixture()
-  await f.controller.install(f.handle, 'chrome')
-  const view = f.controller.agentAttachments(f.local.sink.workspaceId)[0]!
-  expect(view.current()).toBe(true)
-  const guard = join(f.root, 'state/lifecycle-guard')
-  const record = (await readdir(guard))
-    .filter((name) => /^\d{8}\.json$/.test(name))
-    .sort()
-    .at(-1)!
-  const path = join(guard, record)
-  const original = await readFile(path)
-  await writeFile(path, Buffer.from('{}'))
-  try {
-    expect(view.current()).toBe(false)
-    expect(f.controller.admitted(f.handle, 'chrome', view.installation.installId)).toBe(false)
-    expect(f.controller.agentAttachments(f.local.sink.workspaceId)).toEqual([])
-    expect(() => f.controller.screen(f.handle, 'chrome')).toThrow()
-    expect(() => f.controller.agentScope(f.local.sink.workspaceId)).toThrow()
-  } finally {
-    await writeFile(path, original)
-  }
-  expect(view.current()).toBe(true)
-})
 
 it('rejects asynchronous admission computations instead of carrying snapshot authority across await', async () => {
   const f = await fixture()
