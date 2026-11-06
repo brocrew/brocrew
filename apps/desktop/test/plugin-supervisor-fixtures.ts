@@ -43,7 +43,9 @@ export function supervisorFixtures() {
       owners.push(owner)
       return owner
     }
-    const attach = async (extra: Partial<typeof options> = {}) => {
+    const attach = async (
+      extra: Partial<Parameters<typeof PluginWorkspaceLease.attach>[0]> = {},
+    ) => {
       const lease = await PluginWorkspaceLease.attach({ ...options, ...extra })
       leases.push(lease)
       return lease

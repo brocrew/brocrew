@@ -141,7 +141,9 @@ it.each(['released', 'lease-expired', 'shutdown', 'drain'] as const)(
     })
     const { PluginWorkspaceLease } = await import('../src/main/plugins/supervisor/client')
     const { randomUUID } = await import('node:crypto')
-    const { OWNER_LIMITS } = await import('../src/main/plugins/supervisor/protocol')
+    const { OWNER_LIMITS, OWNER_WIRE, APP_HELD_CONNECTION } = await import(
+      '../src/main/plugins/supervisor/protocol'
+    )
     let lease: Awaited<ReturnType<typeof PluginWorkspaceLease.attach>> | undefined
     try {
       if (reason !== 'drain') {
@@ -150,6 +152,15 @@ it.each(['released', 'lease-expired', 'shutdown', 'drain'] as const)(
           workspaceRoot,
           generation: randomUUID(),
           build: 'fictional',
+          // Only an older app copy without a held connection can still let its lease expire.
+          ...(reason === 'lease-expired'
+            ? {
+                wire: {
+                  ...OWNER_WIRE,
+                  features: OWNER_WIRE.features.filter((one) => one !== APP_HELD_CONNECTION),
+                },
+              }
+            : {}),
         })
         const epoch = lease.epoch
         owner.adopt({

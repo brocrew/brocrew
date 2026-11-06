@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { lstatSync, realpathSync } from 'node:fs'
-import { createConnection } from 'node:net'
+import { createConnection, type Socket } from 'node:net'
 import { isAbsolute, join } from 'node:path'
 import { z } from 'zod'
 import { SupervisorStorage } from './storage'
@@ -12,6 +12,7 @@ import {
   OWNER_LIMITS,
   OWNER_WIRE,
   AGENT_ROUTES_FORMAT_2,
+  APP_HELD_CONNECTION,
   OWNER_RECOVERY,
   OwnerDiagnostic,
   pack,
@@ -112,6 +113,61 @@ function releasedDrainStalled(
     return false
   }
 }
+/**
+ * Open the app's held connection: one hold request whose reply arrives, after which the
+ * connection simply stays open until this app ends or the owner goes away.
+ */
+export function holdSupervisorConnection(
+  storage: SupervisorStorage,
+  record: OwnerRecord,
+  command: Extract<Command, { kind: 'hold' }>,
+): Promise<Socket> {
+  const nonce = secret()
+  return new Promise((resolve, reject) => {
+    const socket = createConnection(storage.endpoint(record))
+    let bytes = Buffer.alloc(0),
+      challenge: string | undefined,
+      done = false
+    const fail = (error: Error) => {
+      if (done) return
+      done = true
+      clearTimeout(deadline)
+      socket.destroy()
+      reject(new PluginSupervisorError('unavailable', { cause: error }))
+    }
+    const deadline = setTimeout(
+      () => fail(new Error(`no reply to hold within ${OWNER_LIMITS.request} ms`)),
+      OWNER_LIMITS.request,
+    )
+    socket.on('error', fail)
+    socket.once('close', () => fail(new Error('the plugin service closed hold unanswered')))
+    socket.on('data', (chunk: Buffer) => {
+      if (done) return
+      bytes = Buffer.concat([bytes, chunk])
+      const end = bytes.indexOf(10)
+      if (end < 0) return
+      try {
+        const line = bytes.toString('utf8', 0, end)
+        bytes = bytes.subarray(end + 1)
+        if (!challenge) {
+          challenge = z.strictObject({ challenge: Hex }).parse(JSON.parse(line)).challenge
+          socket.write(
+            pack(record.key, 'request', { epoch: record.epoch, nonce, challenge, command }),
+          )
+          return
+        }
+        const response = Reply.parse(unpack(record.key, 'response', line))
+        if (response.nonce !== nonce || response.epoch !== record.epoch || !response.ok)
+          throw new Error('the plugin service refused the held connection')
+        done = true
+        clearTimeout(deadline)
+        resolve(socket)
+      } catch (error) {
+        fail(error instanceof Error ? error : new Error(String(error)))
+      }
+    })
+  })
+}
 /** One authenticated, bounded command on a private socket. No raw error or packet leaves here. */
 export function supervisorRequest(
   storage: SupervisorStorage,
@@ -200,6 +256,8 @@ export class PluginWorkspaceLease {
   private retry: ReturnType<typeof setTimeout> | undefined
   private renewing: Promise<void> | undefined
   private ended = false
+  /** Open while this app's registration lasts; when held, no heartbeat is sent. */
+  private held: Socket | undefined
   readonly lease: string
   readonly minor: number
   readonly features: readonly string[]
@@ -216,9 +274,32 @@ export class PluginWorkspaceLease {
     this.features = hello.features
     this.epoch = record.epoch
     this.timer = setInterval(() => {
-      void this.renew().catch(() => undefined)
+      if (!this.held) void this.renew().catch(() => undefined)
     }, OWNER_LIMITS.heartbeat)
     this.timer.unref()
+  }
+  /** An owner that offers it gets one held connection; renewals then stop. */
+  private async hold(): Promise<void> {
+    const socket = await holdSupervisorConnection(this.storage, this.record, {
+      kind: 'hold',
+      ...this.identity(),
+    })
+    this.held = socket
+    clearInterval(this.timer)
+    socket.on('error', () => socket.destroy())
+    socket.once('close', () => {
+      if (this.held !== socket || this.ended) return
+      this.held = undefined
+      this.ended = true
+      clearTimeout(this.retry)
+      this.storage.close()
+      console.warn('[plugins] supervisor-lease-ended owner-connection-closed')
+      try {
+        this.options.onLost?.()
+      } catch {
+        /* Always return the approved typed refusal. */
+      }
+    })
   }
   static async attach(options: SupervisorClientOptions): Promise<PluginWorkspaceLease> {
     let storage: SupervisorStorage | undefined
@@ -393,7 +474,21 @@ export class PluginWorkspaceLease {
         answer = await supervisorRequest(storage, record, helloCommand)
       }
       const hello = Hello.parse(answer)
-      return new PluginWorkspaceLease(storage, record, options, workspaceId, hello)
+      const lease = new PluginWorkspaceLease(storage, record, options, workspaceId, hello)
+      // An older owner without the held connection keeps the ordinary heartbeat. An owner that
+      // offers it and then fails to hold is a real failure, never a quiet return to expiry.
+      if (lease.features.includes(APP_HELD_CONNECTION)) {
+        try {
+          await lease.hold()
+        } catch (error) {
+          await lease.close()
+          throw new PluginSupervisorError('unavailable', {
+            cause: error,
+            diagnostic: { phase: 'accepting', stage: 'hold', probe: 'live', reason: 'unknown' },
+          })
+        }
+      }
+      return lease
     } catch (error) {
       storage?.close()
       if (error instanceof PluginSupervisorError) {
@@ -505,6 +600,7 @@ export class PluginWorkspaceLease {
   /** For an owner that has stopped: there is nobody left to send a release to. */
   abandon(): void {
     this.ended = true
+    this.held?.destroy()
     clearInterval(this.timer)
     clearTimeout(this.retry)
     this.storage.close()
@@ -523,6 +619,7 @@ export class PluginWorkspaceLease {
           ...this.identity(),
         }),
       )
+      this.held?.destroy()
       if (result.remaining) return true
       // Acknowledged release is not proof of child exit. Wait for the fenced clean-stop record.
       const until = performance.now() + OWNER_LIMITS.drain + OWNER_LIMITS.request
@@ -537,6 +634,7 @@ export class PluginWorkspaceLease {
     } catch {
       return false
     } finally {
+      this.held?.destroy()
       this.storage.close()
     }
   }

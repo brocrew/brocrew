@@ -11,6 +11,7 @@ import {
   OWNER_LIMITS,
   OWNER_WIRE,
   AGENT_ROUTES_FORMAT_2,
+  APP_HELD_CONNECTION,
   OWNER_RECOVERY,
   pack,
   PluginSupervisorError,
@@ -35,6 +36,8 @@ export interface WorkspaceLease {
   /** The renewal that set counter; only that one may come again. */
   renewal?: string
   renewedAt: number
+  /** The app holds a connection open; only its close ends this registration. */
+  held?: true
 }
 /** Supplied only by the trusted process host, never over workspace IPC. */
 export interface OwnedPluginChild {
@@ -134,6 +137,8 @@ export class PluginSupervisor {
   private readonly children = new Set<OwnedPluginChild>()
   private readonly starting = new Set<Promise<OwnedPluginChild>>()
   private readonly sockets = new Set<Socket>()
+  /** Each app's held connection, closed when this owner drains. */
+  private readonly held = new Set<Socket>()
   private readonly revocations = new Set<Promise<void>>()
   private agentBridge?: {
     routes(
@@ -337,6 +342,47 @@ export class PluginSupervisor {
         socket.destroy()
         return
       }
+      if (request.command.kind === 'hold') {
+        const command = request.command
+        const lease = this.leases.get(command.lease)
+        if (
+          this.record.phase !== 'accepting' ||
+          !lease ||
+          lease.workspace !== command.workspace ||
+          lease.generation !== command.generation ||
+          !lease.features.includes(APP_HELD_CONNECTION)
+        ) {
+          console.error('[plugins] owner refused a held connection for an unknown registration')
+          socket.end(
+            pack(this.record.key, 'response', {
+              nonce: request.nonce,
+              epoch: this.record.epoch,
+              ok: false,
+              code: 'unavailable',
+            }),
+          )
+          return
+        }
+        // This connection stays open for the app's life. Its close is the app ending.
+        // It still counts toward the 64 accepted connections; real apps hold one each.
+        clearTimeout(deadline)
+        lease.held = true
+        this.held.add(socket)
+        socket.on('close', () => {
+          this.held.delete(socket)
+          if (this.leases.get(lease.id) === lease && this.record.phase === 'accepting')
+            this.remove(lease, 'released')
+        })
+        socket.write(
+          pack(this.record.key, 'response', {
+            nonce: request.nonce,
+            epoch: this.record.epoch,
+            ok: true,
+            value: { held: true },
+          }),
+        )
+        return
+      }
       let result: unknown
       try {
         this.storage.check()
@@ -476,6 +522,8 @@ export class PluginSupervisor {
   private drainFor(reason: StopReason): void {
     this.trace({ stage: 'drain', state: 'waiting', reason })
     this.record.phase = 'draining'
+    // Closing the apps' held connections tells them at once; it also lets the server close.
+    for (const socket of this.held) socket.destroy()
     try {
       this.storage.writeStop({ epoch: this.record.epoch, reason })
     } catch (error) {
@@ -507,7 +555,9 @@ export class PluginSupervisor {
     if (this.record.phase !== 'accepting') return
     const now = this.clock()
     for (const lease of this.leases.values())
-      if (now - lease.renewedAt >= OWNER_LIMITS.expires) this.remove(lease, 'lease-expired')
+      // A held registration ends only when its connection closes, never on a late heartbeat.
+      if (!lease.held && now - lease.renewedAt >= OWNER_LIMITS.expires)
+        this.remove(lease, 'lease-expired')
   }
   /** Consumers recheck this on dispatch; expiry never resurrects an old capability. */
   valid(id: string, epoch: string): boolean {
