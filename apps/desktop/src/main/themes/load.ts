@@ -340,7 +340,6 @@ export async function loadThemeFolder(
         root,
         path: file.path,
         facts: file.facts,
-        digest: createHash('sha256').update(file.bytes).digest('hex'),
         version: checked.version,
       })
     }

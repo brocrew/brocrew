@@ -159,6 +159,23 @@ describe('theme asset registry and scheme', () => {
     })
   })
 
+  it('loads and remixes a valid saved picture after its content and length change', async () => {
+    const folder = await putTheme(fixture.library, 'mine', childTheme('mine'), {
+      'assets/red.png': RED_PNG,
+    })
+    const store = fixture.store()
+    await store.start()
+    const changed = await readFile(
+      new URL('../../resources/themes/crew-night/assets/logo.png', import.meta.url),
+    )
+    expect(changed.length).not.toBe(RED_PNG.length)
+    await writeFile(join(folder, 'assets/red.png'), changed)
+    const duplicated = await store.duplicate('mine', 'New picture')
+    expect(duplicated).toMatchObject({ outcome: 'ok' })
+    if (duplicated.outcome !== 'ok') throw new Error('remix failed')
+    expect(await readFile(join(fixture.library, duplicated.id, 'assets/red.png'))).toEqual(changed)
+  })
+
   it('names a missing or denied picture and preserves its system cause', async () => {
     const folder = await putTheme(fixture.library, 'mine', childTheme('mine'), {
       'assets/red.png': RED_PNG,

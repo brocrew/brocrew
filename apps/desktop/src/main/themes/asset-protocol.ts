@@ -24,7 +24,6 @@ const MIME: Readonly<Partial<Record<AssetType, string>>> = {
 export interface AdmittedThemeAsset {
   readonly root: string
   readonly path: string
-  readonly digest: string
   readonly version: string
   readonly facts: AssetFacts
 }
