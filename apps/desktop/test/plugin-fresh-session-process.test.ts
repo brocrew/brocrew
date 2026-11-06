@@ -11,9 +11,12 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import {
   FakeRuntime,
   withManagedPluginAttachments,
+  type ManagedPluginAttachment,
   type ManagedPluginMcpServer,
   type SessionHandle,
+  type RuntimeEvent,
 } from '@brobot2/runtime'
+import { PLUGIN_ATTACHMENT_WAIT_MS } from '../../../packages/runtime/src/managed-plugin-session'
 import { fixture, cleanupLifecycleFixtures, deferred } from './plugin-lifecycle-fixtures'
 import { manifestFor, packageFixture, signed } from './plugin-package-fixtures'
 import { bundleAWorker } from './helpers/bundle-a-worker'
@@ -255,7 +258,7 @@ it.each([
       ).toEqual(
         expect.arrayContaining([expect.objectContaining({ id: 'chrome', state: 'Running' })]),
       )
-      const source = new WorkspacePluginAttachments(
+      const baseSource = new WorkspacePluginAttachments(
         {
           agentRoutes: async (input) => {
             const began = performance.now()
@@ -294,6 +297,16 @@ it.each([
         },
         workspaceId,
       ).agent(['brobot'])
+      const parsedReads: Array<{ value: ManagedPluginAttachment; elapsedMs: number }> = []
+      const source = {
+        async read() {
+          const began = performance.now()
+          const value = await baseSource.read()
+          parsedReads.push({ value, elapsedMs: performance.now() - began })
+          return value
+        },
+        close: () => baseSource.close(),
+      }
       // Only the provider is a double. Discovery/lease/format2/parser/wrapper/deadline are real.
       // Native SDK configuration and provider tools/list remain a separate required gate.
       const raw = new FakeRuntime(provider)
@@ -328,11 +341,16 @@ it.each([
           model: 'fictional',
         }),
       )
+      const wrapperEvents: RuntimeEvent[] = []
+      const eventPump = (async () => {
+        for await (const event of session.events()) wrapperEvents.push(event)
+      })()
       let sessionClosed = false
       const closeSession = async () => {
         if (!sessionClosed) {
           sessionClosed = true
           await session.close()
+          await eventPump
         }
       }
       close.push(closeSession)
@@ -343,7 +361,17 @@ it.each([
         stage: 'fixture-start-offer',
         names: offered.map((server) => server.name),
       })
-      expect(offered.length).toBeGreaterThan(0)
+      if (history === 0 || offered.length > 0) expect(offered.length).toBeGreaterThan(0)
+      else {
+        // A timely named unknown/pending reply may launch without routes; rejection/timeout may not.
+        const first = parsedReads[0]!
+        expect(first).toBeDefined()
+        expect(first.elapsedMs).toBeLessThan(PLUGIN_ATTACHMENT_WAIT_MS)
+        expect(first.value.servers).toEqual([])
+        expect(first.value.plugins).toBeDefined()
+        expect(first.value.plugins!.none).toEqual([])
+        expect(first.value.plugins!.unknown || first.value.plugins!.pending.length > 0).toBe(true)
+      }
       await observed(`${generation}:wrapper-first-send`, session.send('Fictional provider turn'))
       record({
         history,
@@ -367,6 +395,12 @@ it.each([
       })
       await mcp.close()
       await observed(`${generation}:wrapper-close`, closeSession())
+      expect(
+        wrapperEvents.filter(
+          (event) =>
+            event.type === 'unknown' && JSON.stringify(event).includes('plugin/attachment'),
+        ),
+      ).toEqual([])
       await closeSettings()
       const stopped = receive(child),
         exited = once(child, 'exit')

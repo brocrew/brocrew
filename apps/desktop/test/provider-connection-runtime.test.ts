@@ -2,6 +2,10 @@ import { afterEach, expect, it, vi } from 'vitest'
 import {
   FakeProviderSessions,
   FakeRuntime,
+  RejectedSessionLaunch,
+  ResumeError,
+  StoppedBeforeSend,
+  withManagedPluginAttachments,
   type AgentRuntime,
   type SessionHandle,
   type SessionRef,
@@ -202,6 +206,149 @@ for (const provider of ['claude', 'codex'] as const) {
     }
   })
 
+  for (const change of ['revision', 'abort'] as const) {
+    it(`${provider}: retains a privately withheld start allocation after ${change} and handshake rejection`, async () => {
+      const f = fixture(provider)
+      const raw = new FakeRuntime(provider)
+      const start = raw.start.bind(raw)
+      const controller = new AbortController()
+      let finishExit!: () => void
+      const exit = new Promise<void>((resolve) => {
+        finishExit = resolve
+      })
+      vi.spyOn(raw, 'start').mockImplementation(async (options) => {
+        const handle = await start(options)
+        handles.push(handle)
+        Object.defineProperty(handle, 'awaitProcessExit', { configurable: true, value: () => exit })
+        if (change === 'revision') f.state.revision++
+        else controller.abort()
+        options.onSessionCreated?.(handle)
+        await handle.close()
+        throw new Error('fictional rejected handshake')
+      })
+      f.create.mockReturnValue(raw)
+      const callback = vi.fn()
+      const error = await f.runtime
+        .start({
+          cwd: '/fictional/fern',
+          providerHome: '/fictional/state',
+          signal: controller.signal,
+          onSessionCreated: callback,
+        })
+        .catch((error: unknown) => error)
+      try {
+        expect(callback).not.toHaveBeenCalled()
+        expect(error).toBeInstanceOf(RejectedSessionLaunch)
+        const refused = error as RejectedSessionLaunch
+        expect(refused.processExit).toBe(exit)
+        let terminated = false
+        void refused.terminated.then(() => {
+          terminated = true
+        })
+        await Promise.resolve()
+        expect(terminated).toBe(false)
+        finishExit()
+        await refused.terminated
+        expect(terminated).toBe(true)
+      } finally {
+        finishExit()
+      }
+    })
+  }
+
+  for (const withheld of [false, true]) {
+    it(`${provider}: resume rejection ${withheld ? 'retains withheld exit proof' : 'preserves forwarded typed refusal'}`, async () => {
+      const f = fixture(provider)
+      const first = await f.runtime.start({
+        cwd: '/fictional/fern',
+        providerHome: '/fictional/state',
+      })
+      await first.close()
+      const raw = new FakeRuntime(provider)
+      const refusal = new ResumeError(first.ref!, 'fictional no rollout found', {
+        noSuchSession: true,
+      })
+      let finish!: () => void
+      const exit = new Promise<void>((resolve) => {
+        finish = resolve
+      })
+      vi.spyOn(raw, 'resume').mockImplementation(async (_ref, options) => {
+        const handle = await raw.start({ ...options, cwd: first.ref!.cwd })
+        handles.push(handle)
+        Object.defineProperty(handle, 'awaitProcessExit', { configurable: true, value: () => exit })
+        if (withheld) f.state.revision++
+        options.onSessionCreated?.(handle)
+        await handle.close()
+        throw refusal
+      })
+      f.create.mockReturnValue(raw)
+      const callback = vi.fn()
+      const error = await f.runtime
+        .resume(first.ref!, {
+          providerHome: '/fictional/state',
+          onSessionCreated: callback,
+        })
+        .catch((error: unknown) => error)
+      try {
+        if (withheld) {
+          expect(callback).not.toHaveBeenCalled()
+          expect(error).toBeInstanceOf(RejectedSessionLaunch)
+          expect((error as RejectedSessionLaunch).cause).toBe(refusal)
+          expect((error as RejectedSessionLaunch).processExit).toBe(exit)
+          let terminated = false
+          void (error as RejectedSessionLaunch).terminated.then(() => {
+            terminated = true
+          })
+          await Promise.resolve()
+          expect(terminated).toBe(false)
+          finish()
+          await (error as RejectedSessionLaunch).terminated
+        } else {
+          expect(callback).toHaveBeenCalledTimes(1)
+          expect(error).toBe(refusal)
+          expect((error as ResumeError).noSuchSession).toBe(true)
+        }
+      } finally {
+        finish()
+      }
+    })
+  }
+
+  for (const changed of [false, true]) {
+    it(`${provider}: start callback ${changed ? 'withholds changed binding' : 'owns the same attributed handle'}`, async () => {
+      const f = fixture(provider)
+      const raw = new FakeRuntime(provider)
+      const start = raw.start.bind(raw)
+      const innerClose = vi.fn<() => Promise<void>>()
+      vi.spyOn(raw, 'start').mockImplementation(async (options) => {
+        const handle = await start(options)
+        innerClose.mockImplementation(handle.close.bind(handle))
+        handle.close = innerClose
+        if (changed) f.state.revision++
+        options.onSessionCreated?.(handle)
+        return handle
+      })
+      f.create.mockReturnValue(raw)
+      const callback = vi.fn()
+      const pending = f.runtime.start({
+        cwd: '/fictional/fern',
+        providerHome: '/fictional/state',
+        onSessionCreated: callback,
+      })
+      if (changed) {
+        await expect(pending).rejects.toThrow()
+        expect(callback).not.toHaveBeenCalled()
+        expect(innerClose).toHaveBeenCalledTimes(1)
+      } else {
+        const handle = await pending
+        handles.push(handle)
+        expect(callback).toHaveBeenCalledTimes(1)
+        expect(callback.mock.calls[0]![0]).toBe(handle)
+        expect(Reflect.get(handle, 'connectionId')).toBe(`${provider}:sign-in`)
+      }
+    })
+  }
+
   for (const changed of [false, true]) {
     it(`${provider}: resume callback ${changed ? 'withholds changed binding' : 'owns the same attributed handle'}`, async () => {
       const f = fixture(provider)
@@ -274,3 +421,69 @@ for (const provider of ['claude', 'codex'] as const) {
     expect(f.create).not.toHaveBeenCalled()
   })
 }
+
+it('composed privately withheld start allocation keeps aggregate cleanup pending until actual exit', async () => {
+  const f = fixture('codex')
+  const raw = new FakeRuntime('codex')
+  const start = raw.start.bind(raw)
+  let allocations = 0,
+    finishExit!: () => void
+  const exit = new Promise<void>((resolve) => {
+    finishExit = resolve
+  })
+  const sent = vi.fn()
+  vi.spyOn(raw, 'resume').mockImplementation(async (ref) => {
+    throw new ResumeError(ref, 'fictional empty rollout', { noSuchSession: true })
+  })
+  vi.spyOn(raw, 'start').mockImplementation(async (options) => {
+    const handle = await start(options)
+    handle.send = sent
+    allocations++
+    if (allocations === 2) {
+      Object.defineProperty(handle, 'awaitProcessExit', { configurable: true, value: () => exit })
+      f.state.revision++
+      options.onSessionCreated?.(handle)
+      await handle.close()
+      throw new Error('fictional refused late handshake')
+    }
+    Object.defineProperty(handle, 'awaitProcessExit', {
+      configurable: true,
+      value: () => Promise.resolve(),
+    })
+    return handle
+  })
+  f.create.mockReturnValue(raw)
+  let reads = 0
+  const route = {
+    name: 'plugin-chrome',
+    pluginId: 'chrome',
+    url: 'http://127.0.0.1:8123/mcp',
+    capability: 'a'.repeat(64),
+  }
+  const wrapped = withManagedPluginAttachments(f.runtime, {
+    read: async () => ({ revision: String(++reads), servers: reads === 1 ? [] : [route] }),
+    close: async () => {},
+  })
+  const handle = await wrapped.start({ cwd: '/fictional/fern', providerHome: '/fictional/state' })
+  try {
+    await expect(handle.send('One unsent input.')).rejects.toBeInstanceOf(StoppedBeforeSend)
+    expect(sent).not.toHaveBeenCalled()
+    await expect(handle.send('Explicit blocked retry.')).rejects.toBeInstanceOf(StoppedBeforeSend)
+    expect(allocations).toBe(2)
+    let settled = false
+    await handle.close()
+    const actualExit = handle.awaitProcessExit?.()
+    expect(actualExit).toBeDefined()
+    const quiesced = actualExit!.then(() => {
+      settled = true
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(settled).toBe(false)
+    finishExit()
+    await quiesced
+    expect(settled).toBe(true)
+  } finally {
+    finishExit()
+    await handle.close()
+  }
+})

@@ -4,6 +4,7 @@ import type {
   ProviderRuntimeContext,
   ResumeOptions,
   SessionHandle,
+  StartOptions,
 } from '@brobot2/runtime'
 import { compatibilityConnectionId, type Provider, type ProviderConnection } from '@brobot2/shared'
 
@@ -85,35 +86,59 @@ export function onProviderConnection(
       throw new Error('The selected connection changed during launch')
   }
 
+  async function launchOwned<T extends StartOptions | ResumeOptions>(
+    options: T,
+    id: string,
+    beganAt: number,
+    launch: (scoped: T) => Promise<SessionHandle>,
+  ): Promise<SessionHandle> {
+    const wrap = attribution(id)
+    let withheld: SessionHandle | undefined
+    const scoped: T = options.onSessionCreated
+      ? {
+          ...options,
+          onSessionCreated: (raw: SessionHandle) => {
+            const handle = wrap(raw)
+            withheld = handle
+            try {
+              assertCurrent(id, options, beganAt)
+            } catch {
+              return
+            }
+            // The caller owns forwarded allocations; preserve its original typed refusal.
+            withheld = undefined
+            options.onSessionCreated!(handle)
+          },
+        }
+      : options
+    let handle: SessionHandle
+    try {
+      handle = await launch(scoped)
+    } catch (error) {
+      if (withheld && !(error instanceof RejectedSessionLaunch)) {
+        const closing = Promise.resolve().then(() => withheld!.close())
+        const refused = new RejectedSessionLaunch(error, withheld, closing)
+        await closing.catch(() => {})
+        throw refused
+      }
+      throw error
+    }
+    return checked(wrap(handle), id, options, beganAt)
+  }
+
   return {
     provider,
     async start(options) {
       const beganAt = revision()
       const id = admit(options)
-      return checked(attribution(id)(await runtime().start(options)), id, options, beganAt)
+      return launchOwned(options, id, beganAt, (scoped) => runtime().start(scoped))
     },
     async resume(ref, options) {
       options.signal?.throwIfAborted()
       if (ref.provider !== provider) throw new Error('The recorded provider does not match')
       const beganAt = revision()
       const id = admit(options)
-      const wrap = attribution(id)
-      const scoped: ResumeOptions = options.onSessionCreated
-        ? {
-            ...options,
-            onSessionCreated: (handle) => {
-              // The delegate retains cleanup ownership until it returns. A changed binding is
-              // checked and closed below rather than exposed through the early ownership callback.
-              try {
-                assertCurrent(id, options, beganAt)
-              } catch {
-                return
-              }
-              options.onSessionCreated!(wrap(handle))
-            },
-          }
-        : options
-      return checked(wrap(await runtime().resume(ref, scoped)), id, options, beganAt)
+      return launchOwned(options, id, beganAt, (scoped) => runtime().resume(ref, scoped))
     },
     async listModels(context) {
       const beganAt = revision()

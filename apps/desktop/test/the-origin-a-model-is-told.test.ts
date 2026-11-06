@@ -1053,14 +1053,9 @@ describe('414 · the origin a model is told', () => {
      * `session.handle.send(` in `handTogetherToProvider`. ⛔ A door and not the handover, because
      * it is the second place callers' words reach a provider, so it is counted with the others;
      * ⚑ its frame is composed a few lines above it, one message at a time, and is pinned there
-     * ({@link theTurnOfSeveral}). Spelled as the host writes it, over four lines.
+     * ({@link theTurnOfSeveral}). Spelled as the host writes it; the original send promise is preserved by the lead guard.
      */
-    const THE_TURN_OF_SEVERAL = [
-      'session.handle.send(',
-      '      this.withWhatThisLifeOwes(session, turn, currentPiece),',
-      '      this.stampForATurnOf(messages),',
-      '    )',
-    ].join('\n')
+    const THE_TURN_OF_SEVERAL = 'session.handle.send(words, this.stampForATurnOf(messages))'
     /** The body of {@link handToProvider}, from its signature to its closing brace. */
     const theHandover = (source: string): string => {
       const opens = source.indexOf('\n  private handToProvider(')
@@ -1140,6 +1135,12 @@ describe('414 · the origin a model is told', () => {
       expect(framing).toHaveLength(1)
       expect(framing[0]).toContain('queued.origin ?? null,')
       expect(together).not.toContain('this.originOf(')
+      expect(together).toContain(
+        'const words = this.withWhatThisLifeOwes(session, turn, currentPiece)',
+      )
+      expect(together).toContain(
+        'const sent = this.keepLeadWhenUnsent(session, owedLead, owedLeadIs, () =>',
+      )
       expect(balancedCalls(together, 'session.handle.send(')).toEqual([THE_TURN_OF_SEVERAL])
       expect(theBodyOf(hostSource(), 'stampForATurnOf')).toContain(
         'this.stampFor(queued.origin ?? null, handed.paths)',

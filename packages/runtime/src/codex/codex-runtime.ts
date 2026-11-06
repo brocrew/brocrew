@@ -6833,6 +6833,7 @@ export class CodexRuntime implements AgentRuntime {
     try {
       // A malformed thread/start now throws from begin() (empty/missing id) —
       // close the transport so the spawned app-server can't leak, then reject.
+      opts.onSessionCreated?.(handle)
       await handle.begin('started', opts.model, opts.systemHint, bootSettled)
       // Asked AFTER the await, because that is the interval it is about. A cancel that landed during
       // the handshake has already closed the transport above; this is what stops a dead handle being
