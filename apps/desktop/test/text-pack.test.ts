@@ -254,7 +254,7 @@ describe('a text pack, read only by a build run from its source', () => {
     })
   }
 
-  describe('reads only what is inside its folder', () => {
+  describe('reads ordinary linked pack files', () => {
     /** A scratch folder outside the pack, holding a valid copy of `delegate`'s file. */
     const outside = () => {
       const folder = mkdtempSync(join(tmpdir(), 'text-pack-outside-'))
@@ -262,33 +262,32 @@ describe('a text pack, read only by a build run from its source', () => {
       cpSync(join(shipped, 'delegate', 'SKILL.md'), join(folder, 'SKILL.md'))
       return folder
     }
-    const unreadable = (folder: string) =>
-      expect(read(folder)).toEqual({ kind: 'refused', folder, refusal: { kind: 'unreadable' } })
-    it('refuses a pack whose folder is a link', () => {
+    const readable = (folder: string) => expect(read(folder)).toMatchObject({ kind: 'read' })
+    it('reads a pack whose folder is a link', () => {
       const link = join(mkdtempSync(join(tmpdir(), 'text-pack-link-')), 'pack')
       folders.push(dirname(link))
       symlinkSync(aPack(), link)
-      unreadable(link)
+      readable(link)
     })
-    it('refuses a skill’s folder that links outside, though its file would pass', () => {
+    it('reads a skill’s linked folder', () => {
       const folder = aPack()
       rmSync(join(folder, 'delegate'), { recursive: true })
       symlinkSync(outside(), join(folder, 'delegate'))
-      unreadable(folder)
+      readable(folder)
     })
-    it('refuses a skill’s file that is a link', () => {
+    it('reads a skill’s linked file', () => {
       const folder = aPack()
       rmSync(join(folder, 'delegate', 'SKILL.md'))
       symlinkSync(join(outside(), 'SKILL.md'), join(folder, 'delegate', 'SKILL.md'))
-      unreadable(folder)
+      readable(folder)
     })
-    it('refuses a core.md that is a link', () => {
+    it('reads a linked core.md', () => {
       const folder = aPack()
       const core = join(outside(), 'core.md')
       writeFileSync(core, CORE)
       rmSync(join(folder, 'core.md'))
       symlinkSync(core, join(folder, 'core.md'))
-      unreadable(folder)
+      readable(folder)
     })
   })
 
