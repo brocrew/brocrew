@@ -203,6 +203,22 @@ describe('putting a refused message back (216)', () => {
     expect(typing.paths.read('s:1')).toEqual([OTHER, FILE])
   })
 
+  it('⚑ …and is not joined a second time when the box already holds that message', () => {
+    const back = createDraftBook()
+    back.write('s:1', 'have a look at this')
+    handBack(back, 's:1', 'have a look at this', [])
+    expect(back.read('s:1')).toBe('have a look at this')
+
+    back.write('s:1', 'a different thought\n\nhave a look at this')
+    handBack(back, 's:1', 'have a look at this', [])
+    expect(back.read('s:1')).toBe('a different thought\n\nhave a look at this')
+
+    // Only a whole message counts: words that merely start the box are still handed back.
+    back.write('s:1', 'have a look at this one too')
+    handBack(back, 's:1', 'have a look at this', [])
+    expect(back.read('s:1')).toBe('have a look at this one too\n\nhave a look at this')
+  })
+
   it('⚑ …and the two are guarded SEPARATELY, which is the case a single guard gets wrong', () => {
     // Typed something but attached nothing: the words are kept and the paths still come back.
     const book = createDraftBook()

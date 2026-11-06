@@ -10,7 +10,7 @@ import PromptComposer, {
 } from '../src/renderer/src/components/PromptComposer.vue'
 import {
   createAttachmentBook,
-  puttingItBack,
+  joiningTheBox,
   shouldRestoreDraft,
 } from '../src/renderer/src/lib/drafts'
 import type { HandedPath } from '../src/shared/runtime-ipc'
@@ -185,9 +185,11 @@ describe('a failed launch hands the message back (015), to the slot it came from
 
   it('hands back even when something is being typed now: the words join it, after a blank line', () => {
     expect(shouldRestoreDraft(attempt)).toBe(true)
-    expect(puttingItBack('something I am typing', attempt.lastTried)).toBe(
+    expect(joiningTheBox('something I am typing', attempt.lastTried)).toBe(
       'something I am typing\n\nthe paragraphs I typed',
     )
+    // …and a box that already holds the message is left as it is.
+    expect(joiningTheBox(attempt.lastTried, attempt.lastTried)).toBe(attempt.lastTried)
   })
 })
 

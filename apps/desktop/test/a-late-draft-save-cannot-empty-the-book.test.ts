@@ -431,6 +431,38 @@ it.each([{ version: 2 }, {}])(
   },
 )
 
+it('what another build wrote and this one does not read survives this build saving and clearing', async () => {
+  const path = folder()
+  const unknownSlot = { slot: 'tab:a-newer-kind', text: 'a newer build kept this', mode: 'plan' }
+  const newerShape = { slot: brook, words: ['a newer shape'] }
+  writeFileSync(
+    join(path, 'drafts.json'),
+    JSON.stringify({
+      version: 2,
+      kept: 'by a newer build',
+      drafts: [
+        { slot: fern, text: 'fern words', attached: [], pinned: true },
+        unknownSlot,
+        newerShape,
+      ],
+    }),
+  )
+  const writer = createDraftWriter(path)
+  await writer.write(packet(fern, 'fern words, edited here'))
+  const once = JSON.parse(readFileSync(join(path, 'drafts.json'), 'utf8'))
+  expect(once.kept).toBe('by a newer build')
+  expect(once.drafts).toEqual([
+    { slot: fern, text: 'fern words, edited here', attached: [], pinned: true },
+    unknownSlot,
+    newerShape,
+  ])
+  await writer.write({ drafts: [], cleared: [fern] })
+  expect(JSON.parse(readFileSync(join(path, 'drafts.json'), 'utf8')).drafts).toEqual([
+    unknownSlot,
+    newerShape,
+  ])
+})
+
 it('a slot sent and a keeper stopped in the same tick still persists its explicit removal', async () => {
   const path = folder()
   const writer = createDraftWriter(path)
