@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { runInNewContext } from 'node:vm'
 import { describe, expect, it } from 'vitest'
 import {
   BUILT_FILES,
@@ -20,7 +21,7 @@ import {
   evidenceFolder,
   expectedHistory,
   historyProblems,
-  notElectronsOwn,
+  launchArguments,
   readStartLines,
   refusedDataFolder,
   refusedPort,
@@ -299,17 +300,6 @@ describe('the scenarios', () => {
     expect(host.indexOf('ensureWorkspace(userData)')).toBeLessThan(host.indexOf('\n}\n'))
   })
 
-  it("tell Electron's own processes from any other the launch runs", () => {
-    const dist = '/r/node_modules/.pnpm/electron@38/node_modules/electron/dist'
-    const ours = [
-      `${dist}/Electron.app/Contents/MacOS/Electron --remote-debugging-port=1 .`,
-      `${dist}/Electron.app/Contents/Frameworks/Electron Helper (Renderer).app/Contents/MacOS/Electron Helper (Renderer) --type=renderer`,
-    ]
-    expect(notElectronsOwn(ours)).toEqual([])
-    const claude = '/Users/someone/.local/bin/claude --print'
-    expect(notElectronsOwn([...ours, claude])).toEqual([claude])
-  })
-
   it('name each gap with an owner', () => {
     for (const gap of Object.values(GAPS)) {
       expect(gap.owner).not.toBe('')
@@ -382,7 +372,7 @@ describe('the launch', () => {
   const script = readFileSync(join(ROOT, 'scripts', 'recovery-real-entry-check.mjs'), 'utf8')
 
   it('is hidden, on its own folder and a kernel-assigned port, and reaped by what it owns', () => {
-    expect(script).toMatch(/\n {6}HIDDEN_LAUNCH_ARG,\n {6}KEEP_RECOVERY_WINDOW_ARG,\n/)
+    expect(script).toContain('HIDDEN_LAUNCH_ARG,')
     expect(script).toContain('`--user-data-dir=${userDataDir}`')
     expect(script).toContain("server.listen(0, '127.0.0.1'")
     expect(script).toContain(
@@ -398,8 +388,57 @@ describe('the launch', () => {
     expect(script).not.toContain('node_modules/.bin/electron')
   })
 
-  it('fails a scenario whose launch was not reaped or whose folder stayed', () => {
-    expect(script).toContain("'the launch was reaped and its folder removed'")
+  it('launches the packaged executable without the development app argument', () => {
+    const args = launchArguments('/tmp/synthetic/d', 53211, true)
+    expect(args).toContain('--user-data-dir=/tmp/synthetic/d')
+    expect(args).toContain('--remote-debugging-port=53211')
+    expect(args).toContain('--brobot-hidden')
+    expect(args).toContain(KEEP_RECOVERY_WINDOW_ARG)
+    expect(args).not.toContain('.')
+    expect(launchArguments('/tmp/synthetic/d', 53211, false).at(-1)).toBe('.')
+  })
+
+  it('sets up fixtures in the packaged runtime and launches the app outside Node mode', () => {
+    expect(script).toContain("ELECTRON_RUN_AS_NODE: '1'")
+    expect(script).toContain(
+      'spawnSync(packagedProgram, [fileURLToPath(import.meta.url), ...argv]',
+    )
+    expect(script).toContain('delete env.ELECTRON_RUN_AS_NODE')
+  })
+
+  it('preserves a relative packaged executable when reexec changes directory', () => {
+    const entry = join(ROOT, 'scripts', 'recovery-real-entry-check.mjs')
+    const packaged = join('apps', 'desktop', 'dist', 'packaged', 'BroCrew')
+    const calls = []
+    const bootstrap = script
+      .slice(script.lastIndexOf('\nif (process.argv[1]'))
+      .replaceAll('import.meta.url', JSON.stringify(pathToFileURL(entry).href))
+    runInNewContext(bootstrap, {
+      process: {
+        argv: ['node', entry, '--packaged', packaged, '--scenario', 'close'],
+        versions: {},
+        env: {},
+      },
+      resolve,
+      fileURLToPath,
+      DESKTOP,
+      spawnSync: (...args) => {
+        calls.push(args)
+        return { status: 0 }
+      },
+    })
+    expect(calls).toHaveLength(1)
+    const [program, args, options] = calls[0]
+    expect(program).toBe(resolve(packaged))
+    expect(options.cwd).toBe(DESKTOP)
+    expect(resolve(options.cwd, args[args.indexOf('--packaged') + 1])).toBe(program)
+    expect(args.slice(-2)).toEqual(['--scenario', 'close'])
+  })
+
+  it('records cleanup and process observations without making them product verdicts', () => {
+    expect(script).not.toContain("'the launch was reaped and its folder removed'")
+    expect(script).not.toContain("every process of the launch is Electron's own")
+    expect(script).toContain('record.evidence.reaped = reaped')
   })
 })
 

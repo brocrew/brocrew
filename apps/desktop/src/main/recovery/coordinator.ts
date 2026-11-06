@@ -252,22 +252,17 @@ export function hooksFor(
 /**
  * The launch switch a test passes to keep the recovery window on a hidden launch, so it can drive
  * that window. It changes only what a refused hidden start does next (stay open instead of
- * exiting), never the verdict or any step on the data. Honoured only by a build that is not
- * packaged.
+ * exiting), never the verdict or any step on the data.
  */
 export const KEEP_RECOVERY_WINDOW_SWITCH = 'brobot-test-keep-recovery-window'
 
 /** Whether a hidden launch keeps its recovery window, saying so either way when it was asked. */
 export function keepsTheRecoveryWindow(
   asked: boolean,
-  packaged: boolean,
+  _packaged: boolean,
   warn: (line: string) => void,
 ): boolean {
   if (!asked) return false
-  if (packaged) {
-    warn(`BroCrew ignored --${KEEP_RECOVERY_WINDOW_SWITCH}: a packaged build takes no test switch`)
-    return false
-  }
   warn(`BroCrew keeps its recovery window on a hidden launch: --${KEEP_RECOVERY_WINDOW_SWITCH}`)
   return true
 }

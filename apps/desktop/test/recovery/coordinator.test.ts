@@ -1314,11 +1314,11 @@ describe('a test keeping the recovery window on a hidden launch', () => {
     ])
   })
 
-  it('is ignored by a packaged build, and the ignoring is said', () => {
+  it('is kept by a packaged build for its hidden recovery check, and said', () => {
     const said: string[] = []
-    expect(keepsTheRecoveryWindow(true, true, (line) => said.push(line))).toBe(false)
+    expect(keepsTheRecoveryWindow(true, true, (line) => said.push(line))).toBe(true)
     expect(said).toEqual([
-      'BroCrew ignored --brobot-test-keep-recovery-window: a packaged build takes no test switch',
+      'BroCrew keeps its recovery window on a hidden launch: --brobot-test-keep-recovery-window',
     ])
   })
 
