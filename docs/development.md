@@ -50,7 +50,7 @@ docs/                   the guides (installing, API keys, Codex, the data folder
 | `pnpm run smoke:ui`                                         | Launch its own hidden app and drive it against live providers (see below).          |
 
 `pnpm run ci` runs, in this order, and stops at the first that fails: `engine:check` → `leak:check`
-→ `typecheck` → `lint` → `format:check` → `db:check` → `mutations:check` → `gate-only:check` →
+→ `typecheck` → `lint` → `format:check` → `db:check` → `gate-only:check` →
 `test` → `build` → `window:check` → `quit:check` → `notices:check`.
 
 `leak:check` fails on a tracked file that carries more mentions of a name this repo must not carry
