@@ -162,14 +162,18 @@ describe('reading and writing the file', () => {
       'its entry for aid:a is not one this app writes',
     ],
   ])('a file holding %s cannot be read, and says why', (_what, body, why) => {
-    expect(readProfileExecution(holding(body))).toEqual({ readable: false, why })
+    const read = readProfileExecution(holding(body))
+    expect(read.readable).toBe(false)
+    if (read.readable) throw new Error('expected malformed execution state')
+    expect(read.why).toContain(fileIn())
+    expect(read.why).toContain(why)
   })
 
   it('a file that cannot be opened cannot be read: it is never taken as empty', () => {
     mkdirSync(fileIn())
     const read = readProfileExecution(fileIn())
     expect(read.readable).toBe(false)
-    expect(read.readable ? '' : read.why).toMatch(/^it could not be read \(/)
+    expect(read.readable ? '' : read.why).toContain(`${fileIn()}: it could not be read (`)
   })
 })
 
@@ -769,9 +773,7 @@ describe('the host takes the file as it starts', () => {
       warned.mockClear()
       expect(() => host.removeAgent('writer')).toThrow(/^Not removed: services list unreadable\.$/)
       // Why is the log's, never the window's.
-      expect(warned).toHaveBeenCalledWith(
-        'runtime host did not remove aid:writer, since the services list can’t be read (it is not JSON)',
-      )
+      expect(warned).toHaveBeenCalledWith(expect.stringContaining(`${fileIn()}: it is not JSON`))
       expect(store.agentIdentities().some((one) => one.slug === 'writer')).toBe(true)
       warned.mockRestore()
     })
@@ -1008,9 +1010,7 @@ describe('the host takes the file as it starts', () => {
     expect(host.profileKindOf('writer')).toBe('unknown')
     expect(host.profileKindOf('nobody-by-this-name')).toBe('unknown')
     expect(readFileSync(fileIn(), 'utf8')).toBe(torn)
-    expect(warned).toHaveBeenCalledWith(
-      'runtime host could not read how its profiles run their work: it is not JSON',
-    )
+    expect(warned).toHaveBeenCalledWith(expect.stringContaining(`${fileIn()}: it is not JSON`))
     warned.mockRestore()
   })
 

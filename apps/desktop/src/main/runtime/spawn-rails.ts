@@ -301,6 +301,7 @@ export function remedyOf(rail: SpawnRail): RefusalRemedy | null {
 export interface SpawnRefusalDetail {
   /** The agent the give named — the KEY. */
   profileId?: string
+  executionProblem?: string
   /** The piece the caller named, as it spelled it — echoed back, never what the app found. */
   piece?: string
   /**
@@ -418,6 +419,7 @@ export function describeRail(rail: SpawnRail, detail: SpawnRefusalDetail = {}): 
     case 'services-are-off':
       return `Not given: services are off. Do the work yourself, or give it to another agent; “${detail.profileId ?? '?'}” is a service.`
     case 'its-kind-is-unknown':
+      if (detail.executionProblem) return `Not given: ${detail.executionProblem}`
       return `Not given: the services list can’t be read. Give the work to another agent, or ask a person; this app can’t tell whether “${detail.profileId ?? '?'}” is a service.`
     case 'parallel-not-for-a-service':
       return 'A service runs one piece at a time. Leave parallel out to queue the work.'
@@ -705,20 +707,8 @@ export interface WhatItRunsOn {
   readonly named: { readonly model: boolean; readonly effort: boolean }
 }
 
-/**
- * 🔴 **The token `RuntimeHost.createSession` requires before it will record a parent** — and the
- * only way to hold one is to have passed every rail above, or to be carrying on a conversation a
- * give already started ({@link admitAReplacement}).
- *
- * ⛔ **Branded with a `unique symbol` this module never exports as a value**, so no other file can
- * spell the key and no object literal elsewhere can satisfy the type — *"the rails ran"* is a
- * COMPILE-TIME fact. ⚑ **And a runtime one as well, because a type is not a gate**: every token this
- * module mints is remembered in {@link minted}, and {@link wasAdmitted} is what the chokepoint asks.
- */
-declare const admittedBrand: unique symbol
-
+/** The start plan returned after the normal give/replacement eligibility checks. */
 export interface AdmittedSpawn {
-  readonly [admittedBrand]: true
   /** The conversation that gives the work, and so the new conversation's parent. */
   readonly parentSessionId: string
   readonly profileId: string
@@ -731,16 +721,6 @@ export interface AdmittedSpawn {
    * everything.
    */
   readonly commandedBy: CallerIdentity | null
-}
-
-/**
- * ⛔ **A `WeakSet` and not a flag on the object**, so the mark cannot be copied by a spread.
- */
-const minted = new WeakSet<object>()
-
-/** Whether this token came out of this module rather than out of a cast. */
-export function wasAdmitted(spawn: AdmittedSpawn): boolean {
-  return minted.has(spawn)
 }
 
 /**
@@ -874,7 +854,7 @@ export interface GiveFacts {
  * waits on the giver through work it gave, and the provider its first give records it on.
  */
 export type ServiceAtAGive =
-  | { readonly is: 'normal' | 'off' | 'unknown' }
+  | { readonly is: 'normal' | 'off' | 'unknown'; readonly why?: string }
   | {
       readonly is: 'service'
       readonly conversation: string | null
@@ -891,7 +871,7 @@ export type ServiceAtAGive =
  * ⚑ **What {@link admitGive} answers** — the piece it hangs under and where the work goes: the
  * conversation found, or a START, admitted.
  *
- * ⛔ **A start carries a token and, for a new agent, who is creating it** — the identity row is the
+ * ⛔ **A start carries its plan and, for a new agent, who is creating it** — the identity row is the
  * host's first write, made after every rail has answered.
  */
 export type GiveAdmission =
@@ -1016,25 +996,23 @@ export interface ReplacedConversation {
 }
 
 /**
- * ⚑ **D-017 · R10 — the token a REPLACEMENT carries into `RuntimeHost.createSession`** (`05` rule
+ * ⚑ **D-017 · R10 — the plan a REPLACEMENT carries into `RuntimeHost.createSession`** (`05` rule
  * 3): the conversation its parent already started, carried on in a new one because its own record
  * can never be reopened.
  *
  * ⛔ **No rail is asked, and that is the ruling rather than a gap**: nothing new is decided — the
  * parent, the identity and the folder are the ones the give that started it admitted — and a
- * delivery's start asks no launch rail (R1). ⚑ The token is minted HERE, into the same set
- * {@link wasAdmitted} reads, so `createSession` still takes a parent only from this module.
+ * delivery's start asks no launch rail (R1). The existing parent and commanding caller are kept.
  */
 export function admitAReplacement(replaced: ReplacedConversation): AdmittedSpawn {
-  const admitted = {
+  const admitted: AdmittedSpawn = {
     parentSessionId: replaced.parentSessionId,
     profileId: replaced.profileId,
     provider: replaced.provider,
     cwd: replaced.cwd,
     approvalMode: replaced.approvalMode,
     commandedBy: replaced.commandedBy,
-  } as AdmittedSpawn
-  minted.add(admitted)
+  }
   return admitted
 }
 
@@ -1161,7 +1139,11 @@ export function admitGive(
   // 5 · the lookup — a lookup, not a rail: whatever state the conversation is in, the work goes there.
   const service = asked.new === true ? null : facts.serviceAt(giving.sessionId, asked.profile)
   if (service?.is === 'off') return no('services-are-off', { profileId: asked.profile })
-  if (service?.is === 'unknown') return no('its-kind-is-unknown', { profileId: asked.profile })
+  if (service?.is === 'unknown')
+    return no('its-kind-is-unknown', {
+      profileId: asked.profile,
+      ...(service.why ? { executionProblem: service.why } : {}),
+    })
   if (service?.is === 'service') {
     const requestedProvider = asked.provider ?? facts.theNamedModelsProvider()
     if (
@@ -1321,7 +1303,7 @@ export function admitGive(
   const folder = facts.checkFolder(placedFrom(requested, giving.cwd))
   if (!folder.ok) return no('folder-unusable', { folderReason: folder.reason })
 
-  const start = {
+  const start: AdmittedSpawn = {
     parentSessionId: giving.sessionId,
     // ⚑ **An agent this give creates starts under its folded name** — the one its row is written
     // with; an existing one under the spelling the give used, which `provider_session.profile_id`
@@ -1332,8 +1314,7 @@ export function admitGive(
     approvalMode,
     // ⛔ **The giver commands what it starts** (340): an identity a slot holds for as long as it runs.
     commandedBy: by,
-  } as AdmittedSpawn
-  minted.add(start)
+  }
   return {
     ok: true,
     asked,
