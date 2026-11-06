@@ -722,7 +722,6 @@ import {
   type RuntimeEventMessage,
   type SessionInstructions,
   type SessionLiveness,
-  type SessionLivenessMessage,
   type SkippedSessionInfo,
   type RequestEscalatedEvent,
   type WorkRestartedEvent,
