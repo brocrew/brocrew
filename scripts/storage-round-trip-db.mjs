@@ -59,7 +59,12 @@ export function snapshot(file, directory) {
     for (const table of tableNames(db)) {
       const columns = columnsOf(db, table)
       const key = keyColumns(columns)
-      const order = key.length ? key.map((c) => quote(c.name)).join(',') : rowCells(columns)
+      // Rows that can share a key (a NULL one) fall back to their bytes, so the hash is of the
+      // multiset.
+      const order = [
+        ...key.map((c) => quote(c.name)),
+        ...(key.length && key.every((c) => c.notnull) ? [] : [rowCells(columns)]),
+      ].join(',')
       const hash = createHash('sha256')
       let count = 0
       for (const row of db
@@ -134,7 +139,15 @@ export function compare(before, after) {
         continue
       }
       const key = keyColumns(meta.columns)
-      if (!key.length) {
+      // A declared key can hold NULL (drizzle's `id SERIAL PRIMARY KEY`); such rows have no key to
+      // match by, so the table is compared as a whole.
+      const nullKey = (schema) =>
+        db
+          .prepare(
+            `SELECT 1 FROM ${schema}.${quote(table)} WHERE ${key.map((c) => `${quote(c.name)} IS NULL`).join(' OR ')} LIMIT 1`,
+          )
+          .get() !== undefined
+      if (!key.length || nullKey('prior') || nullKey('main')) {
         if (meta.count !== now.count || meta.sha256 !== now.sha256)
           differ({ kind: 'unkeyed table changed', table, before: meta.count, after: now.count })
         continue
