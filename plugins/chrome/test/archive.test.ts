@@ -118,6 +118,10 @@ async function builtInventory(
         detach: async () => {},
         agentAttachments: () => [view],
         agentScope: () => ({ entries: [{ pluginId: 'chrome', is: 'admitted', view }] }),
+        withAgentScope: (_workspaceId, decide) =>
+          decide({ entries: [{ pluginId: 'chrome', is: 'admitted', view }] }, (one) =>
+            one.current(),
+          ),
         onHostChanged: () => () => {},
       },
       binding: (view, diagnostic) => chromeBinding.chromeBrokerBinding(view, undefined, diagnostic),

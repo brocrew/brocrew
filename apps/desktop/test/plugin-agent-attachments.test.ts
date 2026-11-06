@@ -736,19 +736,6 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
   })
   it('binds a changed installation identity after its own invalidation and rotates the caller route', async () => {
     const f = await live()
-    const views = f.controller.agentAttachments
-    let changed = false
-    const projection = vi
-      .spyOn(f.controller, 'agentAttachments')
-      .mockImplementation((workspaceId) =>
-        views(workspaceId).map((one) => ({
-          ...one,
-          installation: {
-            ...one.installation,
-            configRevision: one.installation.configRevision + (changed ? 1 : 0),
-          },
-        })),
-      )
     const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
       const owner = lease(),
@@ -756,7 +743,11 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       const [before] = await f.bridge.routes(owner, req)
       const oldClient = await connected(before!)
       await oldClient.callTool({ name: 'echo', arguments: {} })
-      changed = true
+      // Exercise a real committed installation change instead of overriding the old view seam.
+      const installation = f.controller.screen(f.person, 'chrome').installation.installId
+      await f.controller.uninstall(f.person, 'chrome')
+      await f.controller.install(f.person, 'chrome')
+      expect(f.controller.screen(f.person, 'chrome').installation.installId).not.toBe(installation)
       const next = await f.bridge.routes(owner, req)
       expect(next).toHaveLength(1)
       expect(next[0]!.capability).not.toBe(before!.capability)
@@ -769,7 +760,6 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       expect(f.call).toHaveBeenCalledTimes(2)
       expect((await f.controller.status()).cards[0]).not.toHaveProperty('toolsUnavailable')
     } finally {
-      projection.mockRestore()
       log.mockRestore()
     }
   })
@@ -1071,14 +1061,21 @@ describe.skipIf(process.platform === 'win32')('temporary attachment loss', () =>
       owner = lease(),
       req = request(f.local.sink.workspaceId)
     const [before] = await f.bridge.routes(owner, req)
-    const actual = f.controller.agentAttachments.bind(f.controller)
-    const hidden = vi.spyOn(f.controller, 'agentAttachments').mockImplementation(() => [])
+    const workspaces = (
+      f.controller as unknown as {
+        workspaces: Map<unknown, { sink: { workspaceId: string }; receipts: Map<string, unknown> }>
+      }
+    ).workspaces
+    const workspace = [...workspaces.values()].find(
+      (one) => one.sink.workspaceId === req.workspaceId,
+    )!
+    const receipt = workspace.receipts.get('chrome')
+    workspace.receipts.delete('chrome')
     expect(await f.bridge.routes(owner, req)).toEqual([])
-    hidden.mockImplementation(actual)
+    workspace.receipts.set('chrome', receipt)
     const [after] = await f.bridge.routes(owner, req)
     expect(after!.capability).not.toBe(before!.capability)
     const client = await connected(after!)
     expect((await client.listTools()).tools).toHaveLength(1)
-    hidden.mockRestore()
   })
 })

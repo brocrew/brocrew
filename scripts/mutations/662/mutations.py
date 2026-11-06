@@ -132,8 +132,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         [
             (
                 HOST,
-                "    return session.handle.send(words, this.stampFor(from, handed))\n",
-                "    return session.handle.send(words)\n",
+                "        session.handle.send(words, this.stampFor(from, handed)),\n",
+                "        session.handle.send(words),\n",
             )
         ],
     ),
@@ -144,8 +144,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         [
             (
                 HOST,
-                "    return session.handle.send(words, this.stampFor(from, handed))\n",
-                "    return session.handle.send(words, this.stampFor(THE_PERSON_AT_A_WINDOW, handed))\n",
+                "        session.handle.send(words, this.stampFor(from, handed)),\n",
+                "        session.handle.send(words, this.stampFor(THE_PERSON_AT_A_WINDOW, handed)),\n",
             )
         ],
     ),
@@ -155,8 +155,8 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
         [
             (
                 HOST,
-                "    return session.handle.send(words, this.stampFor(from, handed))\n",
-                "    return session.handle.send(words, this.stampFor(from, []))\n",
+                "        session.handle.send(words, this.stampFor(from, handed)),\n",
+                "        session.handle.send(words, this.stampFor(from, [])),\n",
             )
         ],
     ),

@@ -70,6 +70,8 @@ const stageName = /^\.stage-[0-9a-f-]{36}$/
 const recordName = /^\d{8}\.json$/
 const sealName = /^\d{8}-[a-f0-9]{64}\.seal$/
 
+class ReplayCacheChanged extends Error {}
+
 /** Shared pinned journal reader. The display entry point never opens the writer disk or fence. */
 class PluginJournalReader {
   protected readonly pins: Pin[] = []
@@ -78,6 +80,19 @@ class PluginJournalReader {
   readonly activations: string
   readonly reservations: string
   protected closed = false
+  private readonly readIdentities = new WeakMap<Buffer, BigIntStats>()
+  // Only the fenced writer seeds this cache. Every reuse still opens and reads all
+  // records and seals through the ordinary per-file path/fence checks.
+  private replayCache?: {
+    state: LifecycleState
+    records: Array<{
+      bytes: Buffer
+      identity: BigIntStats
+      checksum: string
+      record: JournalRecord
+      prior: ResolutionReservation | null
+    }>
+  }
   constructor(
     protected readonly options: PluginDiskOptions,
     create = false,
@@ -216,7 +231,9 @@ class PluginJournalReader {
       )
         refuseState('corrupt')
       this.check()
-      return bytes.subarray(0, at)
+      const result = bytes.subarray(0, at)
+      this.readIdentities.set(result, held)
+      return result
     } finally {
       closeSync(fd)
     }
@@ -257,17 +274,36 @@ class PluginJournalReader {
         if (seals.has(sequence) || !recordNames.has(`${sequence}.json`)) refuseState('corrupt')
         seals.set(sequence, name)
       }
-      const state = newLifecycle()
+      if (this.replayCache && records.length < this.replayCache.records.length)
+        this.replayCache = undefined
+      const cache = repair ? this.replayCache : undefined
+      let state = cache ? cache.state : newLifecycle()
+      const verified: NonNullable<typeof this.replayCache>['records'] = []
       let total = 0
       records.forEach((name, index) => {
         if (name !== `${String(index).padStart(8, '0')}.json`) refuseState('corrupt')
-        const priorReservation = state.reservation
+        const cached = cache?.records[index]
+        const priorReservation = cached ? cached.prior : state.reservation
         const bytes = this.readJournal(name, priorReservation)
+        const identity = this.readIdentities.get(bytes)!
+        if (!identity) refuseState('corrupt')
+        if (cached && (!same(identity, cached.identity) || !bytes.equals(cached.bytes))) {
+          // A prefix replacement is never certified by a later head stamp.
+          // Replay it afresh using exactly the same validation as an uncached load.
+          this.replayCache = undefined
+          throw new ReplayCacheChanged()
+        }
         total += bytes.length
         if (total > STATE_LIMITS.journalBytes) refuseState('limit')
-        const checksum = pluginSha256(bytes)
-        const record = decodeState(bytes, JournalRecord)
-        foldRecord(state, record, checksum)
+        const checksum = cached ? cached.checksum : pluginSha256(bytes)
+        const record = cached ? cached.record : decodeState(bytes, JournalRecord)
+        if (!cached) {
+          // The cached fold stays owned and untouched until the entire suffix has
+          // succeeded. Unchanged histories need only the detached return copy.
+          if (cache && index === cache.records.length) state = structuredClone(state)
+          foldRecord(state, record, checksum)
+        }
+        verified.push({ bytes, identity, checksum, record, prior: priorReservation })
         if (record.event.kind === 'completed' || record.event.kind === 'aborted')
           keptActivations?.add(record.event.activation.name)
         const expectedSeal = `${name.slice(0, 8)}-${checksum}.seal`
@@ -292,8 +328,12 @@ class PluginJournalReader {
           refuseState('corrupt')
       })
       this.check()
-      return state
+      if (repair) this.replayCache = { state, records: verified }
+      // Maps, Sets and nested event objects never escape the cache's ownership.
+      return structuredClone(state)
     } catch (error) {
+      this.replayCache = undefined
+      if (error instanceof ReplayCacheChanged) return this.loadLocked(keptActivations, repair)
       throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
     }
   }
@@ -307,6 +347,7 @@ class PluginJournalReader {
     }
   }
   close(): void {
+    this.replayCache = undefined
     if (this.closed) return
     for (const pin of this.pins.splice(0)) closeSync(pin.fd)
     this.closed = true

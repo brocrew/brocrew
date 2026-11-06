@@ -1,5 +1,6 @@
 import { TurnInProgress } from './turn-in-progress'
 import type { AgentRuntime, ResumeOptions, SessionHandle, StartOptions } from './runtime'
+import { ResumeError } from './runtime'
 import { wrapUnknown, type RuntimeEvent } from './events'
 import type { ManagedPluginMcpServer } from './managed-plugin-mcp'
 import { managedPluginHttpServers } from './managed-plugin-mcp'
@@ -141,6 +142,10 @@ export function withManagedPluginAttachments(
     let pendingSend: Promise<void> | undefined
     let closing: Promise<void> | undefined
     let refreshRefusal: Error | undefined
+    let dispatched = false,
+      providerActive = false,
+      freshAttempted = false,
+      freshRepairPending = false
     const settings: Record<string, unknown> = {}
     let settingsRevision = 0
     let changingSettings = 0
@@ -157,7 +162,24 @@ export function withManagedPluginAttachments(
       const current = ++generation
       void (async () => {
         try {
-          for await (const event of handle.events()) if (current === generation) events.push(event)
+          for await (const event of handle.events())
+            if (current === generation) {
+              if (
+                event.type === 'turn' ||
+                event.type === 'provider_turn' ||
+                event.type === 'assistant_delta' ||
+                event.type === 'assistant_message' ||
+                event.type === 'tool_call' ||
+                event.type === 'tool_result' ||
+                event.type === 'thinking' ||
+                event.type === 'conversation_reset' ||
+                event.type === 'permission_request' ||
+                event.type === 'user_input_request' ||
+                (event.type === 'status' && event.state === 'working')
+              )
+                providerActive = true
+              events.push(event)
+            }
         } catch {
           /* The provider's normalized events own its error reporting. */
         } finally {
@@ -177,10 +199,18 @@ export function withManagedPluginAttachments(
           return (...args: Parameters<SessionHandle['send']>) => {
             if (refreshRefusal) return Promise.reject(refreshRefusal)
             if (pending) return Promise.reject(new TurnInProgress())
-            if (closed || inner.status() !== 'idle') return inner.send(...args)
+            if (closed || inner.status() !== 'idle') {
+              if (freshRepairPending) return Promise.reject(new StoppedBeforeSend())
+              dispatched = true
+              return inner.send(...args)
+            }
             const send = async () => {
               const wait = new AbortController()
               pending = wait
+              let repairingUnused = false
+              let handedInput = false
+              let preparationAbort: AbortController | undefined
+              let preparationDeadline: ReturnType<typeof setTimeout> | undefined
               try {
                 let next: ManagedPluginAttachment | undefined
                 try {
@@ -261,42 +291,96 @@ export function withManagedPluginAttachments(
                       managedPluginMcp: next.servers,
                       signal: wait.signal,
                     }
-                    async function reopen(servers: readonly ManagedPluginMcpServer[]) {
-                      const abort = new AbortController()
-                      const deadline = setTimeout(
-                        () => abort.abort(),
-                        MANAGED_PLUGIN_REOPEN_WITHIN_MS,
-                      )
+                    const abort = new AbortController()
+                    preparationAbort = abort
+                    preparationDeadline = setTimeout(
+                      () => abort.abort(),
+                      MANAGED_PLUGIN_REOPEN_WITHIN_MS,
+                    )
+                    let freshRepair = false
+                    async function reopen(
+                      servers: readonly ManagedPluginMcpServer[],
+                      fresh = false,
+                    ) {
                       let allocated: SessionHandle | undefined
                       try {
                         // Cancellation owns settlement; a deadline never fabricates child exit.
-                        const handle = await runtime.resume(saved, {
+                        const preparing = {
                           ...resume,
                           managedPluginMcp: servers,
                           signal: AbortSignal.any([wait.signal, abort.signal]),
-                          onSessionCreated: (handle) => {
+                          onSessionCreated: (handle: SessionHandle) => {
                             allocated = handle
                             ownership.track(handle)
-                            ;(options as ResumeOptions).onSessionCreated?.(handle)
+                            options.onSessionCreated?.(handle)
                           },
-                        })
+                        }
+                        const handle = fresh
+                          ? await runtime.start({ ...preparing, cwd: (seed as StartOptions).cwd })
+                          : await runtime.resume(saved, preparing)
                         ownership.track(handle)
                         return handle
                       } catch (error) {
                         if (error instanceof RejectedSessionLaunch) ownership.trackRefused(error)
                         if (allocated) await ownership.retire(allocated).catch(() => undefined)
                         throw error
-                      } finally {
-                        clearTimeout(deadline)
                       }
                     }
                     let replacement: SessionHandle | undefined
                     try {
-                      replacement = await reopen(next.servers)
+                      try {
+                        replacement = await reopen(next.servers)
+                      } catch (error) {
+                        const missingUnusedThread =
+                          !ref &&
+                          runtime.canRecreateMissingUnusedSession === true &&
+                          !dispatched &&
+                          !providerActive &&
+                          error instanceof ResumeError &&
+                          error.noSuchSession &&
+                          error.ref.provider === saved.provider &&
+                          error.ref.sessionId === saved.sessionId &&
+                          error.ref.cwd === saved.cwd &&
+                          error.ref.rotation === saved.rotation
+                        if (missingUnusedThread) {
+                          freshRepair = true
+                          repairingUnused = true
+                          freshRepairPending = true
+                          if (
+                            freshAttempted ||
+                            closed ||
+                            wait.signal.aborted ||
+                            abort.signal.aborted ||
+                            inner.status() !== 'idle' ||
+                            changingSettings !== 0 ||
+                            settingsRevision !== preparedSettings ||
+                            !(await ownership.mayReopen())
+                          )
+                            throw new StoppedBeforeSend()
+                          // Ownership settles asynchronously; eligibility must still hold now.
+                          if (
+                            closed ||
+                            wait.signal.aborted ||
+                            abort.signal.aborted ||
+                            dispatched ||
+                            providerActive ||
+                            inner.status() !== 'idle' ||
+                            changingSettings !== 0 ||
+                            settingsRevision !== preparedSettings
+                          )
+                            throw new StoppedBeforeSend()
+                          freshAttempted = true
+                          replacement = await reopen(next.servers, true)
+                        } else {
+                          if (closed || wait.signal.aborted) throw error
+                          noteUnavailable()
+                        }
+                      }
                     } catch (error) {
-                      if (closed || wait.signal.aborted) throw error
-                      noteUnavailable()
+                      if (freshRepair) throw new StoppedBeforeSend()
+                      throw error
                     }
+                    if (!freshRepair) clearTimeout(preparationDeadline)
                     // A setting changed on the live handle must not be replaced by a stale copy.
                     if (
                       replacement &&
@@ -305,19 +389,32 @@ export function withManagedPluginAttachments(
                       await ownership.retire(replacement).catch(() => undefined)
                       replacement = undefined
                       noteUnavailable()
+                      if (freshRepair) throw new StoppedBeforeSend()
                     }
                     if (replacement) {
+                      if (
+                        freshRepair &&
+                        (dispatched ||
+                          providerActive ||
+                          abort.signal.aborted ||
+                          replacement.status() !== 'idle')
+                      ) {
+                        await ownership.retire(replacement).catch(() => undefined)
+                        throw new StoppedBeforeSend()
+                      }
                       if (inner.status() !== 'idle' && !closed) {
                         await ownership.retire(replacement).catch(() => undefined)
-                        throw new TurnInProgress()
+                        throw freshRepair ? new StoppedBeforeSend() : new TurnInProgress()
                       }
                       if (closed || wait.signal.aborted) {
                         await ownership.retire(replacement).catch(() => undefined)
+                        if (freshRepair) throw new StoppedBeforeSend()
                         throw new Error('the turn was stopped before its message could be sent')
                       }
                       const previous = inner
                       inner = replacement
                       attachment = next
+                      freshRepairPending = false
                       listen(inner)
                       await ownership.retire(previous).catch(() => noteUnavailable())
                     }
@@ -327,6 +424,8 @@ export function withManagedPluginAttachments(
                 }
                 if (closed || wait.signal.aborted)
                   throw new Error('the turn was stopped before its message could be sent')
+                if (repairingUnused && preparationAbort?.signal.aborted)
+                  throw new StoppedBeforeSend()
                 // A marker-only change updates what the turn waits on without reopening it.
                 if (next && signature(next) === signature(attachment)) attachment = next
                 if (next)
@@ -334,8 +433,16 @@ export function withManagedPluginAttachments(
                     next.servers.filter((one) => !one.retained).map((one) => one.name),
                   )
                 pending = undefined
+                if (freshRepairPending) throw new StoppedBeforeSend()
+                dispatched = true
+                handedInput = true
                 return inner.send(...args)
+              } catch (error) {
+                if ((repairingUnused || freshRepairPending) && !handedInput)
+                  throw new StoppedBeforeSend()
+                throw error
               } finally {
+                clearTimeout(preparationDeadline)
                 if (pending === wait) pending = undefined
               }
             }
@@ -372,6 +479,11 @@ export function withManagedPluginAttachments(
             })())
         const value = Reflect.get(inner, key, inner)
         if (typeof value !== 'function') return value
+        if (key === 'carryOn' || key === 'compact')
+          return (...args: unknown[]) => {
+            dispatched = true
+            return value.apply(inner, args)
+          }
         const fields: Record<string, string> = {
           setModel: 'model',
           setReasoningEffort: 'reasoningEffort',

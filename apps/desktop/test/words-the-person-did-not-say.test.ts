@@ -652,7 +652,8 @@ describe('413 · words the person did not say', () => {
         'private sendTheAppsWords(session: HostedSession, text: string): Promise<void>',
       )
       expect(code.match(/await session\.handle\.send\(/g) ?? []).toHaveLength(0)
-      expect(code).toContain('return session.handle.send(words, this.stampFor(from, handed))')
+      expect(code).toContain('return this.keepLeadWhenUnsent(session, owedLead, owedLeadIs, () =>')
+      expect(code).toContain('session.handle.send(words, this.stampFor(from, handed))')
       // 🔴 **D-027 · and a fifth: a turn of several held messages**, which the flush hands to
       // `handTogetherToProvider` — the second method that performs a handover, and RETURNS its
       // send for {@link handToProvider}'s ordering reason. ⚑ Pinned by its exact text as that one
@@ -662,12 +663,12 @@ describe('413 · words the person did not say', () => {
       expect(together.length).toBe(1)
       expect(code).toContain(
         [
-          'const sent = session.handle.send(',
-          '      this.withWhatThisLifeOwes(session, turn, currentPiece),',
-          '      this.stampForATurnOf(messages),',
+          'const sent = this.keepLeadWhenUnsent(session, owedLead, owedLeadIs, () =>',
+          '      session.handle.send(words, this.stampForATurnOf(messages)),',
           '    )',
         ].join('\n'),
       )
+      expect(code).toContain('const words = this.withWhatThisLifeOwes(session, turn, currentPiece)')
       expect(code).toContain('    return sent\n')
       // ⚑ **And a sixth: a turn that hands over nothing new**, after a repaired sign-in, so the
       // agent answers the message its thread already holds. No string reaches the model through it.

@@ -3399,7 +3399,8 @@ interface HostedSession {
    * (`wordOf: 'this-app'`: its provider never began it, or died under it) — see
    * `RuntimeHost.deliver`. ⚑ On Codex the tools' instructions ride it alone — its catalogue cannot
    * hold them — so a life that lost it would run on without them. ⚠️ A send the adapter refuses
-   * before it begins a turn (a guard the gate has already asked) still takes it, and no row says so.
+   * before it begins a turn still takes it unless the adapter proves top-level StoppedBeforeSend;
+   * that exact handover restores its consumed lead through keepLeadWhenUnsent.
    */
   firstTurnLead: string | null
   /**
@@ -26164,6 +26165,8 @@ export class RuntimeHost implements LiveHost {
     // 🔴 **D-024 · R1 — and the first turn of a life carries what that life still owes in front**
     // ({@link withWhatThisLifeOwes}): on Codex, this conversation's own text. ⚑ Never a command's
     // (it goes as typed, above), so a person's command on a fresh life leaves it for the next turn.
+    const owedLead = session.firstTurnLead
+    const owedLeadIs = session.firstTurnLeadIs
     const words = this.withWhatThisLifeOwes(session, framed, drives ?? handing?.piece ?? null)
     // 🔴 **W4.189** — the folders this turn may also work in, the piece it hands over among them.
     session.handle.setWorkFolders(
@@ -26181,7 +26184,9 @@ export class RuntimeHost implements LiveHost {
     // promise keeps the timing every caller had before `662`.
     const kept = this.aTurnIsHandedOver(session, whose, askedForTheStop)
     try {
-      return session.handle.send(words, this.stampFor(from, handed))
+      return this.keepLeadWhenUnsent(session, owedLead, owedLeadIs, () =>
+        session.handle.send(words, this.stampFor(from, handed)),
+      )
     } catch (error) {
       session.itsTurnIs = kept
       throw error
@@ -26278,9 +26283,11 @@ export class RuntimeHost implements LiveHost {
     // call below has composed them and handed them over, so words that could not be composed leave
     // it as it was; whether its provider ran a turn is read before that call begins one.
     const nothingRuns = session.handle.status() === 'idle'
-    const sent = session.handle.send(
-      this.withWhatThisLifeOwes(session, turn, currentPiece),
-      this.stampForATurnOf(messages),
+    const owedLead = session.firstTurnLead
+    const owedLeadIs = session.firstTurnLeadIs
+    const words = this.withWhatThisLifeOwes(session, turn, currentPiece)
+    const sent = this.keepLeadWhenUnsent(session, owedLead, owedLeadIs, () =>
+      session.handle.send(words, this.stampForATurnOf(messages)),
     )
     this.aTurnIsHandedOver(
       session,
@@ -26839,6 +26846,38 @@ export class RuntimeHost implements LiveHost {
     const framed = session.wordsItWasHandedFor
     if (sent === null || framed.length !== words.length) return {}
     return framed.every((one, at) => one === words[at]) ? { sent } : {}
+  }
+
+  /** Restore only this handover's consumed lead when the adapter proves no input was sent. */
+  private keepLeadWhenUnsent(
+    session: HostedSession,
+    lead: string | null,
+    is: LeadInFront['is'],
+    send: () => Promise<void>,
+  ): Promise<void> {
+    const consumed = session.leadJustHandedOver
+    const restore = (error: unknown) => {
+      if (
+        error instanceof StoppedBeforeSend &&
+        this.slots.get(session.id)?.session === session &&
+        lead !== null &&
+        session.firstTurnLead === null &&
+        session.leadJustHandedOver === consumed
+      ) {
+        session.firstTurnLead = lead
+        session.firstTurnLeadIs = is
+        session.leadJustHandedOver = null
+      }
+    }
+    try {
+      const sent = send()
+      // Observe refusal without adding an await or replacing the original success promise.
+      void sent.catch(restore)
+      return sent
+    } catch (error) {
+      restore(error)
+      throw error
+    }
   }
 
   /** ⚑ {@link withWhatThisLifeOwes}'s composition: what a stop ended, and the life's lead, in front. */

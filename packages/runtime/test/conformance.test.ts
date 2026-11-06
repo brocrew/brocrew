@@ -264,7 +264,10 @@ const CONTRACT_MEMBERS: Record<keyof SessionHandle, string> = {
 }
 
 /** The same, for the runtime that issues handles. */
-const RUNTIME_MEMBERS: Record<keyof AgentRuntime, string> = {
+type RequiredRuntimeMember = {
+  [K in keyof AgentRuntime]-?: object extends Pick<AgentRuntime, K> ? never : K
+}[keyof AgentRuntime]
+const RUNTIME_MEMBERS: Record<RequiredRuntimeMember, string> = {
   provider: 'which provider this runtime speaks for',
   start: 'open a fresh session',
   resume: 'reopen a persisted one, honestly (001 decision 5)',

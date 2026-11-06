@@ -1,0 +1,11 @@
+export { readInstalledPluginDescriptor } from '../../src/main/plugins/state/disk'
+export { PluginSupervisor } from '../../src/main/plugins/supervisor/owner'
+export { PluginLifecycleController } from '../../src/main/plugins/lifecycle/controller'
+export { GlobalPluginState } from '../../src/main/plugins/state/store'
+export { sharedLifecycleWorkspaces } from '../../src/main/plugins/lifecycle/workspaces'
+export { createLifecycleAgentBridge } from '../../src/main/plugins/lifecycle/agent-bridge'
+export { servePersonPluginControl } from '../../src/main/plugins/lifecycle/person-control'
+export { requirePluginAdapter } from '../../src/main/plugins/lifecycle/adapters'
+export { fictionalPublicKey } from '../plugin-package-fixtures'
+
+export { keepPluginRootPrivate } from '../../src/main/plugins/private-files'

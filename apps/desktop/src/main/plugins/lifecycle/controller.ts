@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { createRepoAwarePluginVerifier, type VerifiedPluginPackage } from '../package-verifier'
 import { PluginSupervisorError } from '../supervisor/protocol'
+import { equalState, ProjectionReceipt as ReceiptSchema } from '../state/format'
 import { downloadPluginArchive } from './download'
 import { LifecycleEffects, type Effect } from './files'
 import { PluginPackageVault } from './vault'
@@ -53,6 +54,7 @@ interface Workspace {
   receipts: Map<string, ProjectionReceipt>
   live: boolean
 }
+type WorkspaceAdmission = ReturnType<LifecycleOptions['state']['readWorkspaceAdmission']>
 /** The journal's pending operation, which a list under the state lock sees only once it is stuck. */
 interface Unfinished {
   install: Installation
@@ -83,6 +85,10 @@ export class PluginLifecycleController {
   private readonly workspaces = new Map<LifecycleWorkspace, Workspace>()
   private readonly blocks = new Map<string, symbol>()
   private readonly runs = new Map<string, Running>()
+  private readonly attachmentChecks = new WeakMap<
+    object,
+    (workspaceId: string, read: WorkspaceAdmission) => boolean
+  >()
   private chromeToolRestart?: { runId: string | undefined; work: Promise<void> }
   private chromeToolRestartBlock?: symbol
   private readonly attempted = new Set<string>()
@@ -432,19 +438,39 @@ export class PluginLifecycleController {
   }
   admitted(handle: LifecycleWorkspace, id: string, installId: string): boolean {
     try {
-      const workspace = this.workspace(handle),
-        active = this.current(id),
-        run = this.runs.get(id)
-      return (
-        !this.blocks.has(id) &&
-        active?.installId === installId &&
-        run?.installId === installId &&
-        !run.ended &&
-        this.options.state.matchesProjection(workspace.receipts.get(id), workspace.sink.workspaceId)
+      const workspace = this.workspace(handle)
+      return this.admittedIn(
+        workspace,
+        id,
+        installId,
+        this.options.state.readWorkspaceAdmission(workspace.sink.workspaceId),
       )
     } catch {
       return false
     }
+  }
+  private admittedIn(
+    workspace: Workspace,
+    id: string,
+    installId: string,
+    read: WorkspaceAdmission,
+  ) {
+    const active = read.installations.find((one) => one.pluginId === id),
+      run = this.runs.get(id),
+      receipt = ReceiptSchema.safeParse(workspace.receipts.get(id))
+    return (
+      !read.pending &&
+      workspace.live &&
+      !this.blocks.has(id) &&
+      active?.installId === installId &&
+      run?.installId === installId &&
+      !run.ended &&
+      receipt.success &&
+      equalState(
+        receipt.data,
+        read.receipts.find((one) => one.pluginId === id),
+      )
+    )
   }
   async status(): Promise<{ cards: PluginCard[]; cleanupPending: string[] }> {
     let unfinished: Unfinished | undefined
@@ -1603,45 +1629,76 @@ export class PluginLifecycleController {
   /** Committed absence is distinct from a run still starting or an unreadable state. */
   agentScope(workspaceId: string): { entries: readonly AgentScopeEntry[] } {
     if (this.draining) return pending()
-    const state = this.options.state.inspect()
-    if (state.pending) return pending()
-    const active = this.options.state.exportActivation().entries
-    const consumers = [...this.workspaces.values()].filter(
-      (one) => one.live && one.sink.workspaceId === workspaceId,
-    )
-    if (!consumers.length) return refuse()
-    const views = this.agentAttachments(workspaceId)
-    const ids = new Set([
-      ...(this.admittedCatalogues.get(this.catalogueIdentity()) ?? []),
-      ...state.guards.map((one) => one.pluginId),
-      ...this.runs.keys(),
-      ...consumers.flatMap((one) => [...one.receipts.keys()]),
-    ])
-    const entries = [...ids].sort().map((pluginId): AgentScopeEntry => {
-      const installed = active.find((one) => one.pluginId === pluginId)
-      const run = this.runs.get(pluginId)
-      if (this.blocks.has(pluginId)) return { pluginId, is: 'pending' }
-      if (!installed) return { pluginId, is: 'off' }
-      if (
-        run?.installId === installed.installId &&
-        (!run.package.manifest.server || !pluginContributions(run.package).tools)
+    return this.withAgentScope(workspaceId, (scope) => scope)
+  }
+  /** Internal synchronous route planning. The checker is revoked before this operation returns. */
+  withAgentScope<T>(
+    workspaceId: string,
+    decide: (
+      scope: { entries: readonly AgentScopeEntry[] },
+      current: (view: AgentAttachmentView) => boolean,
+    ) => T extends PromiseLike<unknown> ? never : T,
+  ): T {
+    if (this.draining) return pending()
+    return this.options.state.withWorkspaceAdmission(workspaceId, (state) => {
+      if (state.pending) return pending()
+      const active = state.installations
+      const consumers = [...this.workspaces.values()].filter(
+        (one) => one.live && one.sink.workspaceId === workspaceId,
       )
-        return { pluginId, is: 'off' }
-      const view = views.find((one) => one.installation.pluginId === pluginId)
-      return view ? { pluginId, is: 'admitted', view } : { pluginId, is: 'pending' }
+      if (!consumers.length) return refuse()
+      const views = this.attachmentViews(workspaceId, state)
+      const ids = new Set([
+        ...(this.admittedCatalogues.get(this.catalogueIdentity()) ?? []),
+        ...state.guardIds,
+        ...this.runs.keys(),
+        ...consumers.flatMap((one) => [...one.receipts.keys()]),
+      ])
+      const entries = [...ids].sort().map((pluginId): AgentScopeEntry => {
+        const installed = active.find((one) => one.pluginId === pluginId)
+        const run = this.runs.get(pluginId)
+        if (this.blocks.has(pluginId)) return { pluginId, is: 'pending' }
+        if (!installed) return { pluginId, is: 'off' }
+        if (
+          run?.installId === installed.installId &&
+          (!run.package.manifest.server || !pluginContributions(run.package).tools)
+        )
+          return { pluginId, is: 'off' }
+        const view = views.find((one) => one.installation.pluginId === pluginId)
+        return view ? { pluginId, is: 'admitted', view } : { pluginId, is: 'pending' }
+      })
+      let live = true
+      const current = (view: AgentAttachmentView) =>
+        live && !this.draining && this.attachmentChecks.get(view)?.(workspaceId, state) === true
+      try {
+        return decide({ entries }, current)
+      } finally {
+        live = false
+      }
     })
-    if (this.options.state.inspect().sequence !== state.sequence) return pending()
-    return { entries }
   }
   /** Private supervisor view of already reconciled workspace consumers. No person authority. */
   agentAttachments(workspaceId: string) {
+    if (
+      ![...this.workspaces.values()].some((one) => one.live && one.sink.workspaceId === workspaceId)
+    )
+      return []
+    try {
+      return this.options.state.withWorkspaceAdmission(workspaceId, (read) =>
+        this.attachmentViews(workspaceId, read),
+      )
+    } catch {
+      return []
+    }
+  }
+  private attachmentViews(workspaceId: string, read: WorkspaceAdmission) {
     const handle = [...this.workspaces].find(
       ([, value]) => value.live && value.sink.workspaceId === workspaceId,
     )?.[0]
     if (!handle) return []
     return [...this.runs.keys()].sort().flatMap((id) => {
       try {
-        const view = this.screen(handle, id)
+        const view = this.screenIn(handle, id, read)
         if (
           !view.package.manifest.server ||
           !view.package.compatibility.tools ||
@@ -1649,15 +1706,23 @@ export class PluginLifecycleController {
         )
           return []
         const run = this.runs.get(id)!
-        return [
-          {
-            ...view,
-            runId: run.run.runId,
-            exited: run.run.exited,
-            current: () =>
-              this.runs.get(id) === run && this.admitted(handle, id, view.installation.installId),
-          },
-        ]
+        const attachment = {
+          ...view,
+          runId: run.run.runId,
+          exited: run.run.exited,
+          current: () =>
+            this.runs.get(id) === run && this.admitted(handle, id, view.installation.installId),
+        }
+        this.attachmentChecks.set(attachment, (workspaceId, read) => {
+          const workspace = this.workspaces.get(handle)
+          return (
+            workspace?.live === true &&
+            workspace.sink.workspaceId === workspaceId &&
+            this.runs.get(id) === run &&
+            this.admittedIn(workspace, id, view.installation.installId, read)
+          )
+        })
+        return [attachment]
       } catch {
         return []
       }
@@ -1686,10 +1751,18 @@ export class PluginLifecycleController {
     )
   }
   screen(handle: LifecycleWorkspace, id: string) {
+    const workspace = this.workspace(handle)
+    return this.screenIn(
+      handle,
+      id,
+      this.options.state.readWorkspaceAdmission(workspace.sink.workspaceId),
+    )
+  }
+  private screenIn(handle: LifecycleWorkspace, id: string, read: WorkspaceAdmission) {
     const workspace = this.workspace(handle),
-      active = this.current(id),
+      active = read.installations.find((one) => one.pluginId === id),
       run = this.runs.get(id)
-    if (!active || !run || !this.admitted(handle, id, active.installId)) return refuse()
+    if (!active || !run || !this.admittedIn(workspace, id, active.installId, read)) return refuse()
     return {
       package: run.package,
       connection: run.run.ready(),
