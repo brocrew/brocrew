@@ -39,7 +39,6 @@ import {
   saysAbsent,
   themeDirectory,
   themeFolderState,
-  themeWriteLock,
   writeActiveTheme,
   type ThemeCommitFiles,
 } from './state'
@@ -52,7 +51,6 @@ export type ThemeStoreProblem =
   | 'absolute-path'
   | 'base64'
   | 'save'
-  | 'busy'
   | 'choice'
   | 'trash'
   | 'open-folder'
@@ -837,8 +835,6 @@ export class ThemeStore implements ThemeAssetRegistry {
       ])
     const root = this.libraryRoot
     if (!root) return this.problem('theme-invalid', 'theme.json', 'save')
-    const release = await themeWriteLock(root, id)
-    if (!release) return this.problem('theme-invalid', 'theme.json', 'busy')
     let stage: string | undefined
     let previous: string | undefined
     let published = false
@@ -922,7 +918,6 @@ export class ThemeStore implements ThemeAssetRegistry {
       if (stage) await rm(stage, { recursive: true, force: true }).catch(() => undefined)
       if (published && previous)
         await rm(previous, { recursive: true, force: true }).catch(() => undefined)
-      await release().catch(() => undefined)
     }
   }
 
@@ -973,31 +968,23 @@ export class ThemeStore implements ThemeAssetRegistry {
       await this.reload()
       if (this.reserved.has(id)) return refused('theme-is-built-in')
       if (!this.registry.has(id) || !this.libraryRoot) return refused('theme-unknown')
-      const release = await themeWriteLock(this.libraryRoot, id)
-      if (!release) return this.problem('theme-invalid', 'theme.json', 'busy')
+      const target = join(this.libraryRoot, id)
+      if (!(await themeDirectory(target)))
+        return this.problem('theme-invalid', 'theme.json', 'link')
       try {
-        const target = join(this.libraryRoot, id)
-        if (!(await themeDirectory(target)))
-          return this.problem('theme-invalid', 'theme.json', 'link')
-        try {
-          await this.options.trash(target)
-        } catch {
-          return this.problem('theme-invalid', 'theme.json', 'trash')
-        }
-        const previous = this.active
-        if (this.requested === id) {
-          await writeActiveTheme(
-            this.options.userData,
-            this.options.defaultTheme,
-            this.files,
-          ).catch(() => undefined)
-        }
-        await this.reload()
-        this.announce(previous)
-        return { outcome: 'ok', id, active: this.active }
-      } finally {
-        await release().catch(() => undefined)
+        await this.options.trash(target)
+      } catch {
+        return this.problem('theme-invalid', 'theme.json', 'trash')
       }
+      const previous = this.active
+      if (this.requested === id) {
+        await writeActiveTheme(this.options.userData, this.options.defaultTheme, this.files).catch(
+          () => undefined,
+        )
+      }
+      await this.reload()
+      this.announce(previous)
+      return { outcome: 'ok', id, active: this.active }
     })
   }
 

@@ -186,25 +186,3 @@ export async function writeWorkspaceFile(
     }
   }
 }
-
-// A failed or killed writer leaves a lock for inspection rather than guessing that it is stale.
-export async function themeWriteLock(
-  root: string,
-  id: string,
-): Promise<(() => Promise<void>) | null> {
-  const path = join(root, `.theme-${id}.lock`)
-  try {
-    await mkdir(path)
-  } catch {
-    return null
-  }
-  const owned = await lstat(path)
-  return async () => {
-    const now = await lstat(path).catch(() => null)
-    if (now && !now.isSymbolicLink() && now.dev === owned.dev && now.ino === owned.ino) {
-      // A lock left behind would refuse every later save of this theme, so a brief hold is
-      // waited out.
-      await retrying(() => rm(path, { recursive: true, force: true }))
-    }
-  }
-}
