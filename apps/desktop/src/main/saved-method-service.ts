@@ -497,8 +497,8 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
             summary(row, row.id === newest?.id && canUndo(inputsOf(slug), row)),
           ),
         }
-      } catch {
-        return { ok: false as const, reason: 'history-unreadable' }
+      } catch (error) {
+        return { ok: false as const, reason: 'history-unreadable', cause: String(error) }
       }
     },
   }
