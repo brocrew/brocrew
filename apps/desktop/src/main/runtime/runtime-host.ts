@@ -14361,7 +14361,7 @@ export class RuntimeHost implements LiveHost {
     return { is: 'listed', made, more: found.total - made.length }
   }
 
-  async findKeptFiles(asAgent: string, asked: FindFilesAsked): Promise<FoundFiles> {
+  findKeptFiles(asAgent: string, asked: FindFilesAsked): Promise<FoundFiles> {
     return this.keptFiles.findKeptFiles(asAgent, asked)
   }
 
@@ -15872,7 +15872,7 @@ export class RuntimeHost implements LiveHost {
     return { ok: true, files: files.map((file) => ({ ...file, title: resourceTitle(file) })) }
   }
 
-  async titleTheOlderFiles(): Promise<{ titled: number; retitled: number }> {
+  titleTheOlderFiles(): Promise<{ titled: number; retitled: number }> {
     return this.keptFiles.titleTheOlderFiles()
   }
 
@@ -22718,7 +22718,7 @@ export class RuntimeHost implements LiveHost {
     return this.keptFiles.filesKept(asked)
   }
 
-  async filesKeptForWindow(conversation: string): Promise<FilesKept> {
+  filesKeptForWindow(conversation: string): Promise<FilesKept> {
     return this.keptFiles.filesKeptForWindow(conversation)
   }
 
