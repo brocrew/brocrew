@@ -2753,8 +2753,6 @@ export interface RuntimeHostDeps {
     read(): KeptCuts
     write(kept: KeptCuts): void
   }
-  /** How long a woken life's account is waited for before its continuation is not sent. */
-  accountWaitMs?: number
   /**
    * Where the Claude account its usage readings were read on is kept (`provider-accounts-file.ts`),
    * with the only copy of its email. Optional: without it the account is known for this run only.
@@ -6462,9 +6460,6 @@ function continuationsInARow(before: CutRecord | undefined, aContinuation: boole
 /** How far apart a provider's limit continuations go after its reset. */
 const LIMIT_WAKES_APART_MS = 2 * 60_000
 
-/** How long a woken life's account is waited for, as its provider's own account read is bounded. */
-const ACCOUNT_WAIT_MS = 15_000
-
 /** How often a woken life is asked whether its account is known yet, while it is waited for. */
 const ACCOUNT_LOOK_EVERY_MS = 50
 
@@ -8187,8 +8182,6 @@ export class RuntimeHost implements LiveHost {
    * has that work stalled then ({@link stallWhatACutLeft}).
    */
   private readonly sparedAtTheLaunch = new Map<string, string>()
-  /** How long a woken life's account is waited for ({@link ACCOUNT_WAIT_MS}). */
-  private readonly accountWaitMs: number
   /**
    * ⚑ The words about its jobs held for each stopped conversation's next start, as they are kept
    * once a start sends them ({@link theWordsAboutItsJobsWereSent}) — whoever makes it, and whether
@@ -8454,7 +8447,6 @@ export class RuntimeHost implements LiveHost {
     this.aProgramStartsAgainAfterMs =
       deps.aProgramStartsAgainAfterMs ?? A_PROGRAM_IS_STARTED_AGAIN_AFTER_MS
     this.limitWakesApartMs = deps.limitWakesApartMs ?? LIMIT_WAKES_APART_MS
-    this.accountWaitMs = deps.accountWaitMs ?? ACCOUNT_WAIT_MS
     this.now = deps.now ?? Date.now
     deps.limitsReader?.observeReads({
       before: () => ({
@@ -10124,16 +10116,20 @@ export class RuntimeHost implements LiveHost {
    * launched on, so it never changes for that life: a Claude account by a digest of the email and
    * organisation its provider names, keyed with this app's own salt; else the tag the life's runtime
    * makes of the credential or the account it launched on. ⚑ Kept for its conversation once known,
-   * for the next launch to read if a crash cuts this life. ⚑ `null` when it cannot be told within
-   * {@link accountWaitMs}. ⛔ It never rejects.
+   * for the next launch to read if a crash cuts this life. ⚑ Waited for as long as the life runs,
+   * however slowly its provider names the account; `null` when the life ends without naming one.
+   * ⛔ It never rejects.
    */
   private async learnItsIdentity(session: HostedSession): Promise<string | null> {
     let identity: string | null
     try {
       const policy = providerAuthPolicies[session.provider].identity
-      const until = policy.waitsForAccount ? performance.now() + this.accountWaitMs : 0
       let fact = policy.launch(session.handle)
-      while (fact === undefined && performance.now() < until) {
+      const ended = (): boolean => {
+        const status = session.handle.status()
+        return status === 'ended' || status === 'errored'
+      }
+      while (fact === undefined && policy.waitsForAccount && !ended()) {
         await new Promise<void>((resolve) => {
           const timer = setTimeout(resolve, ACCOUNT_LOOK_EVERY_MS)
           timer.unref?.()
