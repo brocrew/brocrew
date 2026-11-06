@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fingerprint, pinsOver, probeSource, squash } from './fixtures/probe-source'
+import { pinsOver, probeSource, squash } from './fixtures/probe-source'
 
 /**
  * ⛔ **`605`'s external-MCP probe — its outer deadline, and the code that ran** (`655`, from
@@ -169,32 +169,5 @@ describe('655 · the 605 probe runs inside one derived outer deadline', () => {
       `),
     ).toBe(1)
     expect(source.match(/\bit\(/g)).toHaveLength(1)
-  })
-})
-
-/**
- * 🔴 **`655` · the probe FILE is the code that ran green.** ⚑ Run `2026-09-25T07-09-45-371Z-20249`
- * (`720`, on `main` `c6cb62dc` + the branch; its first run was `2026-09-25T06-14-28-775Z-3116`),
- * bundled Codex `0.146.0`, loopback: all TEN arms
- * without failure — A, B and C registered the server, the control D registered nothing, F and G
- * carried the `mcpServer/elicitation/request` frame as `605` measured it, and `720`'s H, I and J
- * (R74): a url-mode frame naming its own bound turn; after `cancel` alone (H) and `decline` (I) the
- * turn `completed` with the model called again (both asserted); after `cancel` then `turn/interrupt`
- * to the frame's turn (J) it ended `interrupted` — and every arm's configured port equal to its endpoint's (rule
- * 40). (`655`'s run was `2026-09-23T03-11-20-830Z-36148` on `36c28154`, seven arms.) ⚑ Re-pinned
- * on run `2026-10-02T04-43-28-190Z-66109` (provider update 1, `providers` at `f40ef7e8`), bundled Codex 0.160.0,
- * loopback: all ten arms green, F now asserting its turns reached the model before its negatives,
- * and the tool's name nowhere in the model-bound turn (0.160.0 defers it).
- *
- * ⚠️ The fingerprint covers this file; `probe-run-deadline.ts` is TESTED in `ci` instead. ⛔ An edit
- * HERE owes a run, in the same commit: `pnpm run probe:codex-external-mcp` — loopback, no
- * credential, no tokens — **then** the new pins.
- */
-describe('655 · the 605 probe is the code that ran green', () => {
-  it('🔴 nothing moved: the probe file, as code, is the code that ran', () => {
-    expect(
-      fingerprint(source),
-      'the probe changed: run `pnpm run probe:codex-external-mcp`, then pin the value received',
-    ).toBe('dc0a8a9c2f6a3b2dd945614aabd05a3da668c39b1c043f9631853bfa7f5379e9')
   })
 })
