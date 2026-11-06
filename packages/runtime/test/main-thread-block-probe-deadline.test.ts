@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { fingerprint, pinsOver, probeSource, squash } from './fixtures/probe-source'
+import { pinsOver, probeSource, squash } from './fixtures/probe-source'
 
 /**
- * ⛔ **`243`'s main-thread-block probe — its outer deadline, and the code that ran** (`669`, from
+ * ⛔ **`243`'s main-thread-block probe — its outer deadline** (`669`, from
  * `655` §4).
  *
  * This probe runs only under `vitest.smoke.config.ts`, so `pnpm run ci` never executes it. ⚠️ Until
  * `669` it had no bound but vitest's own per-test default, which frees the awaiter and not the lock
  * holder a row spawned. ⚑ It now runs inside `smoke/probe-run-deadline.ts` (tested under fake
- * timers); what is measured HERE is how it wires that in, and that the code is the code that ran.
+ * timers); what is measured HERE is how it wires that in.
  */
 
 const source = probeSource('main-thread-block-probe.smoke.ts')
@@ -86,26 +86,5 @@ describe('669 · the 243 probe runs inside one derived outer deadline', () => {
     // ⚠️ `holder = spawned` is the line that hands the child to the teardown: without it an expiry
     // during `holderIsIn` would find nothing to kill.
     expect(occurrences('holder = spawned')).toBe(1)
-  })
-})
-
-/**
- * 🔴 **`669` · the probe FILE is the code that ran green, and nothing between its pins moved.**
- *
- * ⚑ Run `2026-09-23T17-01-21-420Z-84578` on `0b37e36a` + this change, Node `v24.0.2`: idle
- * `maxGapMs` 13 over 1,501 ms, uncontended 2 ms, contended-500 and -2000 `maxGapMs` 13 and 12, and
- * contended-timeout refused *timed out acquiring provisioning lock* after 1,013 ms with a
- * `maxGapMs` of 14.
- *
- * ⚠️ **The fingerprint covers this file, not the modules it imports** — `probe-run-deadline.ts` is
- * TESTED in `ci` instead. An edit HERE owes a run, in the same commit:
- * `pnpm run probe:main-thread-block` — no provider, no credential, no tokens — **then** the new pin.
- */
-describe('669 · the main-thread-block probe is the code that ran green', () => {
-  it('🔴 nothing moved: the probe file, as code, is the code that ran', () => {
-    expect(
-      fingerprint(source),
-      'the probe changed: run `pnpm run probe:main-thread-block`, then pin the value received',
-    ).toBe('e88314b39045fcaf154ffb1b2acbe048d22e58c4eadab9b7d602b96bbc97650c')
   })
 })

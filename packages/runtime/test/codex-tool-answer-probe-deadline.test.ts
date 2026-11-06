@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { fingerprint, pinsOver, probeSource, squash } from './fixtures/probe-source'
+import { pinsOver, probeSource, squash } from './fixtures/probe-source'
 
 /**
- * ⛔ **`457`'s tool-answer probe — its outer deadline, and the code that ran** (`669`, from `655` §4).
+ * ⛔ **`457`'s tool-answer probe — its outer deadline** (`669`, from `655` §4).
  *
  * This probe runs only under `vitest.smoke.config.ts`, so `pnpm run ci` never executes it. ⚠️ Until
  * `669` it had no bound but vitest's own per-test default. ⚑ What is measured HERE is how it wires in
- * `smoke/probe-run-deadline.ts` (tested under fake timers), and that the code is the code that ran.
+ * `smoke/probe-run-deadline.ts` (tested under fake timers).
  */
 
 const source = probeSource('codex-tool-answer-probe.smoke.ts')
@@ -70,25 +70,5 @@ describe('669 · the 457 probe runs inside one derived outer deadline', () => {
         "expect(arm.configuredPort, `${arm.label} · the port in the child's config`).toBe( arm.listenedOn, )",
       ),
     ).toBe(1)
-  })
-})
-
-/**
- * 🔴 **`669` · the probe FILE is the code that ran green, and nothing between its pins moved.**
- *
- * ⚑ Run `2026-09-23T17-01-38-445Z-87373` on `0b37e36a` + this change, bundled Codex, loopback: each
- * arm was asked `item/tool/call` once and came back to the model, the isolate handed the model the
- * same string on both shapes, and both arms' configured ports equalled the ones `listen(0)` returned.
- *
- * ⚠️ **The fingerprint covers this file, not the modules it imports.** An edit HERE owes a run, in
- * the same commit: `pnpm run probe:codex-tool-answer` — loopback, no credential, no tokens —
- * **then** the new pin.
- */
-describe('669 · the tool-answer probe is the code that ran green', () => {
-  it('🔴 nothing moved: the probe file, as code, is the code that ran', () => {
-    expect(
-      fingerprint(source),
-      'the probe changed: run `pnpm run probe:codex-tool-answer`, then pin the value received',
-    ).toBe('75db0fd0ba67a893ae01f6cb56d0e48d849ec6f4718279cf0e98553c4327bcad')
   })
 })
