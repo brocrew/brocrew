@@ -22762,11 +22762,11 @@ export class RuntimeHost implements LiveHost {
     await closeWindowRead(owner, this.deps.filesLibraries)
   }
 
-  async searchWork(asAgent: string, input: WorkSearchQuery): Promise<WorkSearchResult> {
+  searchWork(asAgent: string, input: WorkSearchQuery): Promise<WorkSearchResult> {
     return this.workSearch.searchWork(asAgent, input)
   }
 
-  async searchPastWork(asAgent: string, words: string): Promise<PastWorkSearchResult> {
+  searchPastWork(asAgent: string, words: string): Promise<PastWorkSearchResult> {
     return this.workSearch.searchPastWork(asAgent, words)
   }
 
