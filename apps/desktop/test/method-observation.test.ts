@@ -96,6 +96,25 @@ describe('the app records interrupted method outcomes without impersonating the 
     expect(api.read(lark, started.id)).toEqual(saved)
   })
 
+  it('does not turn matching unknown legacy observations into a completed operation', () => {
+    const started = begin()
+    db.prepare('UPDATE identity_method_change SET files=? WHERE id=?').run(
+      JSON.stringify([
+        { name: 'review.md', before: { ...image, fingerprint: 'a'.repeat(64) }, after: null },
+      ]),
+      started.id,
+    )
+    const oldObservation = [
+      { name: 'review.md', fingerprint: null },
+    ] as unknown as MethodFileState[]
+    expect(api.settle(lark, started.id, 'done', oldObservation, person)).toBe(false)
+    expect(reconcile(lark, started.id, oldObservation, app)).toBe(true)
+    expect(api.read(lark, started.id)).toMatchObject({
+      outcome: 'partial',
+      actual: [{ name: 'review.md' }],
+    })
+  })
+
   it('allows only the app to reconcile, without granting it begin or ordinary settle', () => {
     const started = begin()
     expect(reconcile(lark, started.id, absent, person)).toBe(false)
