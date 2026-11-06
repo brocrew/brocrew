@@ -1,5 +1,6 @@
 import type { AppDatabase } from './connection'
 import type { TranscriptEvent } from '../../shared/runtime-ipc'
+import { CASCADE_DELETE_WRITES, DERIVED_TABLES, TRIGGER_WRITES } from './question-copies'
 
 /**
  * What a committed row says to the readers that keep something of it: its place, its type and the
@@ -128,6 +129,9 @@ const RECORDER = Symbol('committed changes')
 const WRITES = /^(?:INSERT|REPLACE|UPDATE|DELETE|WITH)\b/i
 const TARGET =
   /\b(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|REPLACE\s+INTO|UPDATE(?:\s+OR\s+\w+)?|DELETE\s+FROM)\s+["`[]?([A-Za-z_][\w.]*)/i
+
+/** A statement that deletes, once leading space and comments are passed. */
+const DELETES = /^(?:\s+|--[^\n]*\n|\/\*[\s\S]*?\*\/)*DELETE\b/i
 
 /** The persistent table a statement writes, or `null` for a read, DDL or a temp table. */
 function tableWrittenBy(sql: string): string | null {
@@ -312,6 +316,11 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
       const statement = nativePrepare.call(this ?? db, sql)
       const table = tableWrittenBy(sql)
       if (table === null || isATempTable(table)) return statement
+      // What the table's triggers write, and on a delete what its cascades remove, is written too.
+      const alsoWritten = [
+        ...(TRIGGER_WRITES.get(table) ?? []),
+        ...(DELETES.test(sql) ? (CASCADE_DELETE_WRITES.get(table) ?? []) : []),
+      ]
       const run = statement.run.bind(statement) as (...args: unknown[]) => { changes: number }
       Object.defineProperty(statement, 'run', {
         configurable: true,
@@ -320,13 +329,15 @@ export function committedChangesOf(db: AppDatabase): CommittedChanges {
           const result = run(...args)
           if (result.changes === 0) return result
           const current = frames.at(-1)
-          const visible = stagedDepth === 0
+          // A derived table is never one a reader of what is shown sees.
+          const visible = stagedDepth === 0 && !DERIVED_TABLES.has(table)
+          const written = [table, ...alsoWritten]
           if (current !== undefined) {
-            current.tables.add(table)
+            for (const one of written) current.tables.add(one)
             if (visible) current.visibleTables.add(table)
           } else if (!db.inTransaction) {
             const alone = frame()
-            alone.tables.add(table)
+            for (const one of written) alone.tables.add(one)
             if (visible) alone.visibleTables.add(table)
             publish(alone)
           }

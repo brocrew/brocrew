@@ -26,6 +26,7 @@ import {
   HIDDEN_BASE_THEME_IDS,
   themeDefaultsFor,
 } from '../src/main/themes/defaults'
+import { checkTheCopyHere } from './helpers/check-the-copy-here'
 
 const hooks = vi.hoisted(() => ({
   afterStat: undefined as ((file: unknown) => void) | undefined,
@@ -127,6 +128,10 @@ async function startup(fake: PinnableApp, beforeThemes?: () => void) {
     resolveMigrationsFolder: () => migrations,
     ownershipFrom: () => ({ ask: async () => 'unknown' }),
     createRecoveryService,
+    withRecoveryWork: <T>(work: () => Promise<T>) => work(),
+    // The app checks a recovery copy in a worker; here the same check runs in this thread.
+    recoveryCopyVerifier: { verify: checkTheCopyHere, stop: async () => {} },
+    mainThreadWork: { timed: <T>(_what: string, work: () => T): T => work() },
     buildLineage: async () => [],
     recoveryService: null,
     theOneAppAnswer: null,
@@ -274,6 +279,7 @@ it('configured recovery refuses a missing database with the fixed line, ordinary
   const deps = {
     userData: workspace,
     buildMigrationsFolder: migrations,
+    verifyCopy: checkTheCopyHere,
     appVersion: '0.0.0',
     build: null,
     packaged: true,
@@ -330,6 +336,7 @@ it('main passes the must-exist option into SQLite when the database disappears a
     openOrRefuse: () => {},
     theBuildsMigrations: () => [],
     applyMigrations: () => {},
+    mainThreadWork: { timed: <T>(_what: string, work: () => T): T => work() },
     compactWhenMuchIsFree: () => 'unchanged',
     freeBytesOn: () => null,
     db: null,

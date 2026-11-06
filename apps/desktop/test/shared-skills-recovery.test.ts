@@ -34,6 +34,7 @@ import {
   copyHoldsTheData,
   verifyCheckpoint as rehearsalCheckpoint,
 } from '../../../scripts/lib/update-rehearsal-data.mjs'
+import { checkTheCopyHere } from './helpers/check-the-copy-here'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrations = join(here, '../src/main/db/migrations')
@@ -80,6 +81,7 @@ async function shipped() {
 }
 const checkpoint = (fs: RecoveryFs = nodeFs) =>
   makeCheckpoint({
+    verifyCopy: checkTheCopyHere,
     userData: root,
     ownership: 'sole',
     appVersion: 'fictional-shared-skills',

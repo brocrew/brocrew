@@ -26,6 +26,7 @@ import {
   type RecoveryFixture,
   type RecoveryFixtureOptions,
 } from './recovery-fixture'
+import { checkTheCopyHere } from '../../helpers/check-the-copy-here'
 
 /**
  * Helpers for the release-gate tests: real data folders laid down once and copied per case, the
@@ -88,6 +89,7 @@ export function aService(
     appVersion: THIS_VERSION,
     ownership: 'sole',
     log: () => undefined,
+    verifyCopy: checkTheCopyHere,
     ...more,
   })
 }

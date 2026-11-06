@@ -17,6 +17,7 @@ import { clearUpdateStaging } from '../src/main/guided-update'
 import { makeCheckpoint } from '../src/main/recovery/checkpoint'
 import { restore } from '../src/main/recovery/restore'
 import { APP_STATE_FILES, NOT_STATE } from '../src/main/recovery/state-files'
+import { checkTheCopyHere } from './helpers/check-the-copy-here'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 let root: string
@@ -43,6 +44,7 @@ afterEach(() => rmSync(root, { recursive: true, force: true }))
 
 const checkpoint = () =>
   makeCheckpoint({
+    verifyCopy: checkTheCopyHere,
     userData,
     ownership: 'sole',
     appVersion: '1.0.0',

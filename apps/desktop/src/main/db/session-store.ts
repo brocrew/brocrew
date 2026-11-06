@@ -144,6 +144,12 @@ import {
   type TreeDeleted,
 } from './conversation-tree'
 import { FOLD_EVENT_TYPES, FOLD_TERM } from './fold-index'
+import {
+  ensureQuestionCopies,
+  fillQuestionCopies,
+  questionCopiesReady,
+  type QuestionCopySlice,
+} from './question-copies'
 import { foldWatchTriggers, watchFoldWrites } from './fold-write-watch'
 import { providerWallsWatched, watchProviderWalls } from './provider-wall-watch'
 import { withWindowWriteFence } from './window-write-fence'
@@ -3642,6 +3648,11 @@ export interface SessionStore extends OwnNotesStore {
    */
   conversationsHoldingACopyOf(requestId: string): readonly string[]
   /**
+   * Fills the copies {@link conversationsHoldingACopyOf} reads for at most `rows` ledger rows, or
+   * until `bytes` of payload have been visited: one slice, skipped if the write lock is taken.
+   */
+  fillQuestionCopies(rows: number, bytes: number): QuestionCopySlice
+  /**
    * ⚑ **F026 — how one question this conversation asked was decided, and by whom** — the newest
    * `user_decision` its ledger holds for that id: its outcome, and its actor ({@link ActedBy}, `null`
    * on a row that names none). `null` while nothing decided it.
@@ -4348,6 +4359,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   theRequestRouted: () => null,
   whoRoutedToWhom: () => [],
   conversationsHoldingACopyOf: () => [],
+  fillQuestionCopies: () => ({ state: 'done', visited: 0, matched: 0 }),
   lastEndedTurn: () => null,
   routedRequestsAtHand: () => null,
   questionsRaisedAtHand: () => null,
@@ -5704,6 +5716,8 @@ export function createSessionStore(
   const connection = db
   // Installed before any transaction on this connection is made, so every one is framed.
   const committed = committedChangesOf(connection)
+  // The derived copies, created or repaired before any read of them.
+  ensureQuestionCopies(connection)
   const ownNotesStore = createOwnNotesStore(connection)
   const methodChangeStore = createMethodChangeStore(connection, now)
   const memoryRecoveryStore = createMemoryRecoveryStore(connection, now)
@@ -7309,7 +7323,7 @@ export function createSessionStore(
   )
   // Keep replacement insertion order across generations and require an existing target.
   const selectReplacements = db.prepare(
-    `SELECT session_id, payload FROM events INDEXED BY events_fold_idx
+    `SELECT session_id, payload FROM events INDEXED BY events_kind_owner_idx
       WHERE ${FOLD_TERM} AND type = 'replaced_by' AND json_valid(payload)
         AND EXISTS (SELECT 1 FROM provider_session
                      WHERE provider_session.id = json_extract(events.payload, '$.sessionId'))
@@ -7320,7 +7334,7 @@ export function createSessionStore(
   const selectNewestScheduleLevels = db.prepare(
     `WITH levels AS MATERIALIZED (
        SELECT session_id, created_at, generation, ordinal, payload
-         FROM events INDEXED BY events_fold_idx
+         FROM events INDEXED BY events_kind_owner_idx
         WHERE ${FOLD_TERM} AND type = 'scheduled_work'
           AND CASE WHEN json_valid(payload) THEN json_type(payload, '$.jobs') = 'array' ELSE 1 END
      ), candidates AS MATERIALIZED (
@@ -7840,18 +7854,21 @@ export function createSessionStore(
   const selectConversationsHoldingACopyOf = db.prepare(
     `SELECT DISTINCT session_id AS id FROM events
       WHERE type = 'question_asked'
-        AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.passedUpFrom') END = ?`,
+        AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.passedUpFrom') END = ?
+      ORDER BY session_id`,
   )
+  /** The same conversations, by the copies' key, each checked against its ledger row. */
+  let selectConversationsByCopy: AppStatement | undefined
   /** ⚑ **F026** — {@link SessionStore.theDecisionOn}'s one row, by the fold's own index. */
   const selectLatestMoveOffer = db.prepare(
-    `SELECT payload FROM events INDEXED BY events_fold_idx
+    `SELECT payload FROM events INDEXED BY events_kind_owner_idx
       WHERE ${FOLD_TERM} AND session_id = ? AND generation = ? AND type = 'question_asked'
         AND CASE WHEN json_valid(payload) THEN json_type(payload, '$.move') END = 'object'
       ORDER BY ordinal DESC LIMIT 1`,
   )
   const selectTheDecisionOn = db.prepare(
     `SELECT payload FROM events
-        INDEXED BY events_fold_idx
+        INDEXED BY events_kind_owner_idx
       WHERE ${FOLD_TERM} AND session_id = ? AND generation = ?
         AND type = 'user_decision'
         AND CASE WHEN json_valid(payload) THEN json_extract(payload, '$.requestId') END = ?
@@ -15403,9 +15420,27 @@ export function createSessionStore(
       return questionsRaisedInSession(sessionId, unread?.in(sessionId))
     },
     conversationsHoldingACopyOf(requestId) {
-      return (selectConversationsHoldingACopyOf.all(requestId) as { id: string }[]).map(
-        (row) => row.id,
-      )
+      // The copies only once they are full and indexed; until then, the exact read of the ledger.
+      const byCopy = questionCopiesReady(connection)
+        ? (selectConversationsByCopy ??= db.prepare(
+            `SELECT DISTINCT e.session_id AS id
+               FROM question_copy q INDEXED BY question_copy_key_idx
+               JOIN events e ON e.id = q.event_id
+              WHERE q.passed_up_from = ?
+                AND e.type = 'question_asked'
+                AND CASE WHEN json_valid(e.payload) THEN json_extract(e.payload, '$.passedUpFrom') END = ?
+              ORDER BY e.session_id`,
+          ))
+        : undefined
+      const rows =
+        byCopy === undefined
+          ? selectConversationsHoldingACopyOf.all(requestId)
+          : byCopy.all(requestId, requestId)
+      return (rows as { id: string }[]).map((row) => row.id)
+    },
+
+    fillQuestionCopies(rows, bytes) {
+      return fillQuestionCopies(connection, rows, bytes)
     },
     whoRoutedToWhom() {
       return (selectWhoRoutedToWhom.all() as { asker: string; parent: unknown }[]).flatMap((row) =>

@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3'
+import type { VerifyCopy } from './copy-check'
 import { randomUUID } from 'node:crypto'
 import { basename, dirname, join } from 'node:path'
 import type { OfferedCheckpoint, ProgressListener } from '../../shared/recovery'
@@ -319,6 +320,8 @@ export interface MakeCheckpointOptions {
   readonly log?: (line: string) => void
   /** Called before each step; a test throws from it to stop the copy there. */
   readonly beforeStep?: (step: CheckpointStep) => void
+  /** Checks the copy before it is kept: in the app, in a worker. */
+  readonly verifyCopy: VerifyCopy
 }
 
 /**
@@ -388,7 +391,15 @@ export async function makeCheckpoint(options: MakeCheckpointOptions): Promise<Ch
     report(pages)
 
     beforeStep('verify')
-    verifyTheCopy(copy)
+    // Checked off the main thread; the copy is released before the answer comes.
+    const checked = await options.verifyCopy(copy)
+    if (checked.kind === 'damaged')
+      throw new CheckpointFailed(
+        `BroCrew's copy of this workspace's data did not pass SQLite's own check (${checked.check}), so ` +
+          'BroCrew changed nothing in the data.',
+        false,
+      )
+    if (checked.kind === 'failed') throw new Error(checked.message)
     await leaveOneFile(userData, copy, fs)
     const recorded = await migrationsOf(copy, { fs })
     if (recorded.kind !== 'recorded') {
@@ -744,36 +755,6 @@ async function workspaceIdFor(userData: string, fs: RecoveryFs): Promise<string>
   const id = randomUUID()
   await writeAtomically(workspaceIdFile(userData), `${id}\n`, fs)
   return id
-}
-
-/**
- * Turns the copy, which the backup leaves marked for WAL like its source, into one rollback-mode
- * file that a read-only reader can open in place, and has SQLite check all of it.
- */
-function verifyTheCopy(copy: string): void {
-  const db = new Database(copy, { fileMustExist: true })
-  try {
-    const mode = String(db.pragma('journal_mode = DELETE', { simple: true }))
-    if (mode !== 'delete') {
-      throw new Error(`SQLite kept the copy in ${mode} mode, so it is not one file`)
-    }
-    // Some damage makes the check itself fail rather than report; either way the data is damaged.
-    let check: string
-    try {
-      check = String(db.pragma('integrity_check', { simple: true }))
-    } catch (error) {
-      check = messageOf(error)
-    }
-    if (check !== 'ok') {
-      throw new CheckpointFailed(
-        `BroCrew's copy of this workspace's data did not pass SQLite's own check (${check}), so ` +
-          'BroCrew changed nothing in the data.',
-        false,
-      )
-    }
-  } finally {
-    db.close()
-  }
 }
 
 /**

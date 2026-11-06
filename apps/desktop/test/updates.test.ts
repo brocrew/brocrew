@@ -1055,10 +1055,10 @@ describe('§5 · the wiring', () => {
     expect(ipc).toBeGreaterThan(-1)
     expect(started).toBeGreaterThan(ipc)
     expect(index).toContain(
-      '  stopArchiveWork: () => {\n    void stopProviderSetup?.()\n    updates?.stop()',
+      '  stopArchiveWork: () => {\n    void stopRecoveryWork()\n    void stopProviderSetup?.()\n    updates?.stop()',
     )
     expect(index).toContain(
-      '  drainArchiveWork: async () => {\n    await stopProviderSetup?.()\n    await updates?.drain()',
+      '  drainArchiveWork: async () => {\n    await stopRecoveryWork()\n    await stopProviderSetup?.()\n    await updates?.drain()',
     )
   })
 })

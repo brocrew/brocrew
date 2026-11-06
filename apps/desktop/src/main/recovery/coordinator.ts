@@ -54,6 +54,7 @@ import {
   type RecordOnDisk,
   type Recovered,
 } from './restore'
+import type { VerifyCopy } from './copy-check'
 
 /**
  * The start-up check: what a start may do with the workspace's data, decided before anything else
@@ -123,6 +124,8 @@ export interface CoordinatorDeps {
   readonly working?: (what: WorkingOn) => void
   /** That step's progress. */
   readonly progress?: ProgressListener
+  /** Checks a recovery copy before it is kept: in the app, in a worker. */
+  readonly verifyCopy: VerifyCopy
 }
 
 /** What this start may do with the workspace's data. Never throws. */
@@ -531,6 +534,7 @@ async function decide(
       build: deps.build,
       reason,
       fs,
+      verifyCopy: deps.verifyCopy,
       ...(deps.progress === undefined ? {} : { progress: quietly(deps.progress) }),
       ...(deps.now === undefined ? {} : { now: deps.now }),
       ...(deps.freeBytes === undefined ? {} : { freeBytes: deps.freeBytes }),
