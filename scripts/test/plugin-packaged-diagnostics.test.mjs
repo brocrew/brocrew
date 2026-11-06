@@ -72,7 +72,7 @@ function launcher({ delayedClose = false } = {}) {
 }
 
 describe.skipIf(process.platform === 'win32')('safe packaged gate failure diagnostics', () => {
-  it('keeps alternate-source acceptance failure across split late frames and zero exit, rejecting obsolete or raw packets', async () => {
+  it('keeps an install-source failure across split late frames and zero exit, rejecting obsolete or raw packets', async () => {
     const f = launcher({ delayedClose: true })
     const task = f.run(
       '/fictional/node',
@@ -83,12 +83,7 @@ describe.skipIf(process.platform === 'win32')('safe packaged gate failure diagno
       1000,
       'journey',
     )
-    const expected = diagnostics.stepFailure(
-      'journey',
-      'alternate-source-acceptance',
-      {},
-      'assertion',
-    )
+    const expected = diagnostics.stepFailure('journey', 'install-source', {}, 'assertion')
     const waiting = task.wait().catch((error) => error)
     for (const bad of [
       { ...expected, step: 'foreign-refusal' },

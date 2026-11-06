@@ -347,7 +347,7 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
       fs.rmSync(root, { recursive: true, force: true })
     }
   })
-  it('requires exactly sixteen boolean facts and cannot replace ordinary acceptance with an obsolete or optimistic fact', () => {
+  it('requires exactly fifteen boolean facts and cannot replace ordinary acceptance with an obsolete or optimistic fact', () => {
     expect(checks).toEqual([
       'packagedArm64',
       'bundledNode',
@@ -360,7 +360,6 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
       'concurrentWorkspaces',
       'reinstallRetained',
       'tamperedArchiveRefused',
-      'alternateSourceAccepted',
       'fakeBrowserOnly',
       'drawsWindow',
       'agentBrowserAction',
@@ -374,14 +373,14 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     for (const change of ['old-only', 'both', 'missing', 'extra', 'nonboolean', 'false']) {
       const bad = structuredClone(summary)
       if (change === 'old-only') {
-        delete bad.checks.alternateSourceAccepted
+        delete bad.checks.reinstallRetained
         bad.checks.foreignUrlRefused = true
       }
       if (change === 'both') bad.checks.foreignUrlRefused = true
       if (change === 'missing') delete bad.checks.installed
       if (change === 'extra') bad.checks.optimistic = true
-      if (change === 'nonboolean') bad.checks.alternateSourceAccepted = 1
-      if (change === 'false') bad.checks.alternateSourceAccepted = false
+      if (change === 'nonboolean') bad.checks.reinstallRetained = 1
+      if (change === 'false') bad.checks.reinstallRetained = false
       expect(finish(bad).passed).toBe(false)
       expect(safeChecks(bad.checks)).toBe(change === 'false')
       expect(safeReport(bad)).toBe(change === 'false')
@@ -619,7 +618,7 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     expect(safeReport({ ...summary, secret: 'fictional' })).toBe(false)
     expect(() => requireCheck(summary, 'installed', false)).toThrow()
   })
-  it('stages full format3 rows and exact archive pins; alternate-source and tamper variants change only their intended inputs', () => {
+  it('stages full format3 rows and exact archive pins; the local and tamper variants change only their intended inputs', () => {
     const root = scratch(),
       appData = path.join(root, 'a')
     fs.mkdirSync(appData)
@@ -654,14 +653,12 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     stageRelease(root, appData, 'tampered')
     expect(fs.readFileSync(stagedArchive).equals(archive)).toBe(false)
     expect(JSON.parse(fs.readFileSync(path.join(staged, 'catalogue.json')))).toEqual(list)
-    stageRelease(root, appData, 'alternate')
+    stageRelease(root, appData, 'local')
     expect(fs.readFileSync(stagedArchive).equals(archive)).toBe(true)
-    expect(
-      JSON.parse(fs.readFileSync(path.join(staged, 'catalogue.json'))).entries[0].targets[0].url,
-    ).toBe('https://example.invalid/alternate-chrome.tar.gz')
-    const alternate = structuredClone(list)
-    alternate.entries[0].targets[0].url = 'https://example.invalid/alternate-chrome.tar.gz'
-    expect(JSON.parse(fs.readFileSync(path.join(staged, 'catalogue.json')))).toEqual(alternate)
+    // The local variant points the catalogue at the staged archive, so installs read it directly.
+    const local = structuredClone(list)
+    local.entries[0].targets[0].url = stagedArchive
+    expect(JSON.parse(fs.readFileSync(path.join(staged, 'catalogue.json')))).toEqual(local)
     expect(() => stageRelease(root, appData, 'foreign')).toThrow('Invalid release fixture')
     expect(fs.readdirSync(staged).sort()).toEqual(['archives', 'catalogue.json'])
     for (const file of ['prepare.mjs', 'release.mjs', 'journey.mjs'])

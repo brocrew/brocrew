@@ -92,7 +92,6 @@ import assert from 'node:assert/strict';
 import {ownedRoot,digest} from ${JSON.stringify(path.join(repository, 'scripts/gates/plugin-packaged/contract.mjs'))};
 import {parseRepoPluginList} from ${JSON.stringify(path.join(repository, 'apps/desktop/src/main/plugins/catalogue/repo-list.ts'))};
 import {createRepoAwarePluginVerifier} from ${JSON.stringify(path.join(repository, 'apps/desktop/src/main/plugins/package-verifier.ts'))};
-import {PluginPackageVault} from ${JSON.stringify(path.join(repository, 'apps/desktop/src/main/plugins/lifecycle/vault.ts'))};
 const root=${JSON.stringify(root)};
 function directory(folder) {
   const relative=path.relative(root,folder);
@@ -116,7 +115,7 @@ export async function prepareCandidateCache() {
   assert.equal(source.entries.length,1);assert.equal(source.entries[0].id,'chrome');
   const expected=structuredClone(source),index=expected.entries[0].targets.findIndex(one=>one.os==='darwin'&&one.cpu==='arm64');
   assert.ok(index>=0);
-  expected.entries[0].targets[index].url='https://example.invalid/alternate-chrome.tar.gz';
+  expected.entries[0].targets[index].url=path.join(root,'a/repo-fixture/archives',expected.entries[0].targets[index].sha256+'.tar.gz');
   assert.deepEqual(staged,expected);
   const target=staged.entries[0].targets[index];
   const archive=read(path.join(root,'a/repo-fixture/archives',target.sha256+'.tar.gz'),128*1024*1024);
@@ -127,12 +126,8 @@ export async function prepareCandidateCache() {
   const verified=admitted.verifyPackage(release.id,release.version,archive);
   assert.ok(archive.equals(original));assert.equal(digest(archive),target.sha256);assert.equal(archive.length,target.bytes);
   assert.equal(digest(verified.readFile('plugin.json')),target.manifestSha256);
-  const vault=new PluginPackageVault(global,null,{os:'darwin',cpu:'arm64'},undefined,'999.0.0');
-  await vault.stage(release,archive,{bytes:parsed.bytes,signature:Buffer.alloc(0)},[]);
-  const loaded=await vault.load(release,[]),selection=await vault.selection(target.sha256);
-  assert.deepEqual(loaded.manifest,verified.manifest);assert.deepEqual(selection.package.manifest,verified.manifest);
-  assert.deepEqual(selection.release,release);assert.ok(Buffer.from(selection.archive).equals(archive));
-  assert.deepEqual(fs.readdirSync(global).sort(),['package-vault']);
+  // Nothing is pre-installed or cached: the app reads this verified archive like any download.
+  assert.deepEqual(fs.readdirSync(global),[]);
   const proof={cacheVerified:true,pristine:true,ref:{source:target.url,sha256:target.sha256,bytes:target.bytes},manifest:verified.manifest,manifestSha256:target.manifestSha256};
   directory(path.join(root,'proof'));
   fs.writeFileSync(path.join(root,'proof/candidate-cache.json'),JSON.stringify(proof),{mode:0o600,flag:'wx'});

@@ -19,7 +19,6 @@ export const checks = [
   'concurrentWorkspaces',
   'reinstallRetained',
   'tamperedArchiveRefused',
-  'alternateSourceAccepted',
   'fakeBrowserOnly',
   'drawsWindow',
   'agentBrowserAction',

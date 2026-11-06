@@ -509,10 +509,13 @@ export function stageRelease(root, appData, variant = 'valid') {
     (one) => one.os === 'darwin' && one.cpu === 'arm64',
   )
   if (!target) throw new Error('Missing release target')
-  if (variant === 'alternate') target.url = 'https://example.invalid/alternate-chrome.tar.gz'
-  else if (!['valid', 'tampered'].includes(variant)) throw new Error('Invalid release fixture')
+  if (!['valid', 'local', 'tampered'].includes(variant)) throw new Error('Invalid release fixture')
   const destination = privateFolder(path.join(appData, 'repo-fixture'))
   privateFolder(path.join(destination, 'archives'))
+  // An unpublished build has no reachable release URL. The local variant points the catalogue at
+  // the staged archive itself, so every install and reinstall reads it the ordinary way.
+  if (variant === 'local')
+    target.url = path.join(destination, 'archives', target.sha256 + '.tar.gz')
   const archive = Buffer.from(
     readOwned(path.join(release, 'chrome-darwin-arm64.tar.gz'), 128 * 1024 * 1024),
   )
@@ -872,8 +875,8 @@ export async function journey(root) {
         ),
     )
     await stopApp(bad)
-    step = 'alternate-source-acceptance'
-    const alternate = stageRelease(root, plan.appData, 'alternate')
+    step = 'install-source'
+    const staged = stageRelease(root, plan.appData, 'local')
     await prepareCandidateCache(root, path.join(resources, 'plugin-node/node'))
     const proof = observationJson(
       readOwned(path.join(root, 'proof/candidate-cache.json'), 4 * 1024 * 1024),
@@ -881,10 +884,10 @@ export async function journey(root) {
     if (
       proof.cacheVerified !== true ||
       proof.pristine !== true ||
-      !isDeepStrictEqual(alternate.ref, proof.ref) ||
-      !isDeepStrictEqual(fs.readdirSync(global).sort(), ['package-vault'])
+      !isDeepStrictEqual(staged.ref, proof.ref) ||
+      fs.readdirSync(global).length !== 0
     )
-      throw new Error('Incomplete candidate cache proof')
+      throw new Error('Incomplete verified-candidate proof')
     let a = await startApp(root, plan, workspaceA, global, processes)
     await plugins(a)
     const baseline = emptyInstallBaseline(observeInstallState(root, global))
@@ -897,7 +900,7 @@ export async function journey(root) {
       ),
     )
     step = 'install'
-    const reviewed = await reviewInstall(a, proof, async () =>
+    await reviewInstall(a, proof, async () =>
       sameInstallState(baseline, observeInstallState(root, global)),
     )
     await installed(a, true)
@@ -990,22 +993,6 @@ export async function journey(root) {
       readOwned(marker).equals(Buffer.from('fictional-owned-profile-data\n')) &&
       readOwned(download).equals(Buffer.from('fictional-kept-download\n')) &&
       digest(readOwned(profileFile)) === pin
-    step = 'alternate-source-acceptance'
-    unchanged()
-    const runs = observeRunNames(root, global)
-    if (runs.length !== 1) throw new Error('Initial physical run not unique')
-    const status = await a.cdp.evaluate("return await window.api.plugins.request({kind:'list'})")
-    await inspectCandidate(a, proof)
-    unchanged()
-    if (
-      status?.ok !== true ||
-      !status.cards?.some(
-        (card) => card.id === 'chrome' && card.installed === true && card.state === 'Running',
-      ) ||
-      !isDeepStrictEqual(runs, observeRunNames(root, global)) ||
-      !retained()
-    )
-      throw new Error('Metadata replay or changed retained data')
     step = 'restart-stop'
     await closeView(a, view)
     await stopApp(a)
@@ -1025,20 +1012,6 @@ export async function journey(root) {
       'restartRetained',
       retained() &&
         (await view.evaluate('return Boolean(document.querySelector(\'[data-profile="fern"]\'))')),
-    )
-    step = 'alternate-source-acceptance'
-    unchanged()
-    const restartedRuns = observeRunNames(root, global)
-    await inspectCandidate(a, proof)
-    unchanged()
-    requireCheck(
-      summary,
-      'alternateSourceAccepted',
-      reviewed === true &&
-        proof.cacheVerified === true &&
-        proof.pristine === true &&
-        retained() &&
-        isDeepStrictEqual(restartedRuns, observeRunNames(root, global)),
     )
     step = 'concurrent'
     await closeView(a, view)

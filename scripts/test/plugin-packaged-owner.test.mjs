@@ -123,9 +123,9 @@ describe.skipIf(process.platform === 'win32')(
         for (const old of [false, true]) {
           const f = fixture({ drained })
           const summary = f.summary()
-          summary.checks.alternateSourceAccepted = false
+          summary.checks.reinstallRetained = false
           if (old) {
-            delete summary.checks.alternateSourceAccepted
+            delete summary.checks.reinstallRetained
             summary.checks.foreignUrlRefused = true
           }
           summary.passed = true
@@ -141,18 +141,13 @@ describe.skipIf(process.platform === 'win32')(
           else {
             await ownerFunction('clean', f.io)(f.control)
             expect(f.summary().passed).toBe(false)
-            expect(f.summary().checks.alternateSourceAccepted).toBe(false)
+            expect(f.summary().checks.reinstallRetained).toBe(false)
           }
         }
     })
     it('retains the new journey failure through run and always cleanup ahead of a generic command failure', async () => {
       const f = fixture()
-      const expected = diagnostics.stepFailure(
-        'journey',
-        'alternate-source-acceptance',
-        {},
-        'assertion',
-      )
+      const expected = diagnostics.stepFailure('journey', 'install-source', {}, 'assertion')
       fs.writeFileSync(
         path.join(f.root, 'command-failure.json'),
         JSON.stringify(diagnostics.failureFor('prepare', {}, 'thrown')),

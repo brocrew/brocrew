@@ -115,11 +115,11 @@ function candidateFixture(root) {
 }
 
 describe.skipIf(process.platform === 'win32')('release verifier module admission', () => {
-  it('uses the real verifier and vault for alternate-source cache bytes, with no installed/run/profile effects or fetch', async () => {
+  it('uses the real verifier for the local candidate bytes, with no installed/run/profile effects, cache or fetch', async () => {
     for (const tamper of [false, true]) {
       const root = scratch(),
         original = candidateFixture(root)
-      stageRelease(root, path.join(root, 'a'), 'alternate')
+      stageRelease(root, path.join(root, 'a'), 'local')
       const cachedArchive = path.join(
         root,
         'a/repo-fixture/archives',
@@ -156,13 +156,13 @@ describe.skipIf(process.platform === 'win32')('release verifier module admission
           const proof = JSON.parse(fs.readFileSync(path.join(root, 'proof/candidate-cache.json')))
           expect(proof.manifest).toEqual(original.manifest)
           expect(proof.ref).toEqual({
-            source: 'https://example.invalid/alternate-chrome.tar.gz',
+            source: cachedArchive,
             sha256: digest(original.archive),
             bytes: original.archive.length,
           })
           expect(proof.cacheVerified).toBe(true)
           expect(proof.pristine).toBe(true)
-          expect(fs.readdirSync(path.join(root, 'g'))).toEqual(['package-vault'])
+          expect(fs.readdirSync(path.join(root, 'g'))).toEqual([])
         }
         expect(fetched).toBe(0)
         for (const name of ['state', 'host', 'profile-apply'])

@@ -60,7 +60,7 @@ export const diagnosticSteps = {
   journey: [
     'bootstrap',
     'packaged',
-    'alternate-source-acceptance',
+    'install-source',
     'tampered-refusal',
     'install',
     'profile-create',

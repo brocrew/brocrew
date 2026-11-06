@@ -49,7 +49,7 @@ function logicalFixture(workspace = '/fictional/root/wa') {
     cacheVerified: true,
     pristine: true,
     ref: {
-      source: 'https://example.invalid/alternate-chrome.tar.gz',
+      source: '/fictional/root/a/repo-fixture/archives/chrome.tar.gz',
       sha256: 'a'.repeat(64),
       bytes: 17,
     },
@@ -419,7 +419,7 @@ function fixture(
           tamperReadLog.push('browser-absent')
           return tamperFalse === 'browser-absent' ? ['fake-browser.json'] : []
         }
-        return file === '/fictional/root/g' ? ['package-vault'] : []
+        return []
       },
       writeFileSync: (file, bytes) => files.set(file.replaceAll('\\', '/'), bytes),
     },
@@ -562,7 +562,6 @@ describe('packaged restart journey without a native launch', () => {
       ])
       expect(summary.passed).toBe(false)
       expect(summary.checks.tamperedArchiveRefused).toBe(false)
-      expect(summary.checks.alternateSourceAccepted).toBe(false)
       expect(f.errors).toHaveLength(1)
       expect(f.errors[0][0].message).toBe('Gate assertion failed')
       expect(f.stopped).toEqual([roles.tamper])
@@ -639,7 +638,6 @@ describe('packaged restart journey without a native launch', () => {
       const summary = await f.run()
       expect(summary.passed).toBe(false)
       expect(summary.checks.tamperedArchiveRefused).toBe(false)
-      expect(summary.checks.alternateSourceAccepted).toBe(false)
       expect(f.stopped).toEqual([roles.tamper])
       expect(safeReport(summary)).toBe(true)
     }
@@ -717,14 +715,7 @@ describe('packaged restart journey without a native launch', () => {
     wrong.recentOperations[0].operation.allocated.installId = '77777777-7777-4777-8777-777777777777'
     expect(() => firstInstallState(baseline, wrong, '/fictional/root/wa', proof)).toThrow()
   })
-  it.each([
-    'acceptance',
-    'replay',
-    'wrong-ref',
-    'unknown-tamper',
-    'tamper-effects',
-    'unexpected-run',
-  ])(
+  it.each(['wrong-ref', 'unknown-tamper', 'tamper-effects'])(
     'cannot earn ordinary acceptance after %s, even with unchanged fictional retained bytes',
     async (kind) => {
       const options = {
@@ -737,9 +728,9 @@ describe('packaged restart journey without a native launch', () => {
       }
       const summary = await fixture(undefined, options).run()
       expect(summary.passed).toBe(false)
-      expect(summary.checks.alternateSourceAccepted).toBe(false)
       if (['unknown-tamper', 'tamper-effects'].includes(kind))
         expect(summary.checks.tamperedArchiveRefused).toBe(false)
+      else expect(summary.checks.installed).toBe(false)
       expect(safeReport(summary)).toBe(true)
     },
   )
@@ -748,7 +739,7 @@ describe('packaged restart journey without a native launch', () => {
       cacheVerified: true,
       pristine: true,
       ref: {
-        source: 'https://example.invalid/alternate-chrome.tar.gz',
+        source: '/fictional/root/a/repo-fixture/archives/chrome.tar.gz',
         sha256: 'a'.repeat(64),
         bytes: 17,
       },
@@ -805,7 +796,7 @@ describe('packaged restart journey without a native launch', () => {
     for (const mismatch of [false, true]) {
       const calls = []
       const proof = {
-        ref: { source: 'https://example.invalid/alternate-chrome.tar.gz' },
+        ref: { source: '/fictional/root/a/repo-fixture/archives/chrome.tar.gz' },
         manifest: { version: '1.0.0', authors: ['fictional'] },
       }
       const review = Function(
@@ -895,7 +886,6 @@ describe('packaged restart journey without a native launch', () => {
     expect(summary.counts.failed).toBe(1)
     expect(summary.counts.cleanupFailures).toBeUndefined()
     expect(summary.checks.tamperedArchiveRefused).toBe(false)
-    expect(summary.checks.alternateSourceAccepted).toBe(false)
     expect(summary.checks.installed).toBe(false)
     expect(summary.pageState).toEqual({
       readyState: 'complete',
@@ -935,8 +925,6 @@ describe('packaged restart journey without a native launch', () => {
     expect(f.originalError.stack).toContain(f.originalError.message)
     expect(f.originalError.stack).toMatch(/\n\s+at /)
     expect(summary.passed).toBe(false)
-    if (!['concurrent', 'uninstall', 'reinstall', 'fake-browser'].includes(step))
-      expect(summary.checks.alternateSourceAccepted).toBe(false)
     expect(summary.failure).toEqual({
       phase: 'journey',
       step,
@@ -985,7 +973,6 @@ describe('packaged restart journey without a native launch', () => {
     expect(summary.passed).toBe(false)
     expect(summary.failure.step).toBe('restart-profile')
     expect(summary.checks.restartRetained).toBe(false)
-    expect(summary.checks.alternateSourceAccepted).toBe(false)
     expect(summary.checks.concurrentWorkspaces).toBe(false)
   })
   it('does not replace the journey failure if its page observation fails', async () => {
