@@ -1,8 +1,9 @@
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { join } from 'node:path'
 import { query, type Options, type SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { expect, it } from 'vitest'
+import { listenLoopback as listen } from './loopback-test-support'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
 import { runEvidence, runScratch } from './run-paths'
 
@@ -118,16 +119,6 @@ const deadline = probeRunDeadline(
   runBudgetMs(Object.keys(STEPS).map(() => TURN_DEADLINE_MS)),
   TEARDOWN_MS,
 )
-
-async function listen(server: Server): Promise<number> {
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', resolve)
-  })
-  const address = server.address()
-  if (address === null || typeof address === 'string') throw new Error('no loopback port')
-  return address.port
-}
 
 /** A one-word streamed Messages answer — the six events the API sends, and nothing else. */
 function streamOk(response: ServerResponse, model: unknown, index: number): void {

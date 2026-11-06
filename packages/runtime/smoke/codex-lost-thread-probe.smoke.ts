@@ -25,6 +25,7 @@ import type { RuntimeEvent } from '../src/events'
 import { ResumeError, type SessionHandle } from '../src/runtime'
 import type { SessionRef } from '../src/session-ref'
 import { bundledCodexBinary } from './bundled-codex'
+import { captureProviderStanza } from './loopback-test-support'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
 import { runEvidence, runScratch } from './run-paths'
 
@@ -244,18 +245,11 @@ function oneWordModel(): { server: Server; requests: () => number } {
 }
 
 function providerStanza(port: number): string {
-  return [
-    `model = "${MODEL}"`,
-    'model_provider = "capture"',
-    '',
-    '[model_providers.capture]',
-    'name = "BroBot 706 lost-thread capture"',
-    `base_url = "http://127.0.0.1:${String(port)}/v1"`,
-    `env_key = "${KEY}"`,
-    'request_max_retries = 0',
-    'stream_max_retries = 0',
-    '',
-  ].join('\n')
+  return captureProviderStanza(port, {
+    model: MODEL,
+    name: 'BroBot 706 lost-thread capture',
+    envKey: KEY,
+  })
 }
 
 /** ⚑ Rule 40: the port the child is CONFIGURED with, read back from the file it reads. */

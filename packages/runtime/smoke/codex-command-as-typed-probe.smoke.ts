@@ -16,6 +16,7 @@ import { CodexRuntime, codexAppServerArgs, type TransportFactory } from '../src/
 import type { RuntimeEvent } from '../src/events'
 import type { SessionHandle } from '../src/runtime'
 import { bundledCodexBinary } from './bundled-codex'
+import { captureProviderStanza } from './loopback-test-support'
 import { A_PERSONS_FRAME } from './command-as-typed-evidence'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
 import { runEvidence, runScratch } from './run-paths'
@@ -276,18 +277,11 @@ function recordingModel(): { server: Server; bodies: unknown[] } {
 }
 
 function providerStanza(port: number): string {
-  return [
-    `model = "${MODEL}"`,
-    'model_provider = "capture"',
-    '',
-    '[model_providers.capture]',
-    'name = "BroBot 708 command capture"',
-    `base_url = "http://127.0.0.1:${String(port)}/v1"`,
-    `env_key = "${KEY}"`,
-    'request_max_retries = 0',
-    'stream_max_retries = 0',
-    '',
-  ].join('\n')
+  return captureProviderStanza(port, {
+    model: MODEL,
+    name: 'BroBot 708 command capture',
+    envKey: KEY,
+  })
 }
 
 /** ⚑ Rule 40: the port the child is CONFIGURED with, read back from the file it reads. */

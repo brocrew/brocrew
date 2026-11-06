@@ -26,6 +26,7 @@ import type { RuntimeEvent } from '../src/events'
 import type { PermissionOutcome } from '../src/permission'
 import type { SessionHandle } from '../src/runtime'
 import { bundledCodexBinary } from './bundled-codex'
+import { captureProviderStanza } from './loopback-test-support'
 import {
   addedMessages,
   excerptsAround,
@@ -373,18 +374,11 @@ function scriptedModel(script: ReadonlyMap<string, Action>): {
 }
 
 function providerStanza(port: number): string {
-  return [
-    `model = "${MODEL}"`,
-    'model_provider = "capture"',
-    '',
-    '[model_providers.capture]',
-    'name = "BroBot W4.189 work-folders capture"',
-    `base_url = "http://127.0.0.1:${String(port)}/v1"`,
-    `env_key = "${KEY}"`,
-    'request_max_retries = 0',
-    'stream_max_retries = 0',
-    '',
-  ].join('\n')
+  return captureProviderStanza(port, {
+    model: MODEL,
+    name: 'BroBot W4.189 work-folders capture',
+    envKey: KEY,
+  })
 }
 
 /** ⚑ Rule 40: the port the child is CONFIGURED with, read back from the file it reads. */

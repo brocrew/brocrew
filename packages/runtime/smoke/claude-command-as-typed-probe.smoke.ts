@@ -1,5 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer, type Server, type ServerResponse } from 'node:http'
+import { createServer, type ServerResponse } from 'node:http'
 import { join } from 'node:path'
 import {
   query,
@@ -9,6 +9,7 @@ import {
 } from '@anthropic-ai/claude-agent-sdk'
 import { expect, it } from 'vitest'
 import { buildChildEnv } from '../src/internal/child-env'
+import { listenLoopback as listen } from './loopback-test-support'
 import { A_PERSONS_FRAME, theStampMovedNothing, whatTheCliDid } from './command-as-typed-evidence'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
 import { runEvidence, runScratch } from './run-paths'
@@ -83,16 +84,6 @@ const deadline = probeRunDeadline(
   runBudgetMs(Array.from({ length: ARM_COUNT }, () => ARM_WAITS_MS).flat()),
   TEARDOWN_MS,
 )
-
-async function listen(server: Server): Promise<number> {
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', resolve)
-  })
-  const address = server.address()
-  if (address === null || typeof address === 'string') throw new Error('no loopback port')
-  return address.port
-}
 
 /** One streamed text reply, in the Messages API's shape. */
 function streamText(response: ServerResponse, model: string, text: string): void {

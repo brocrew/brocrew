@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer, type Server, type ServerResponse } from 'node:http'
+import { createServer, type ServerResponse } from 'node:http'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 // 🔒 **A deep import, deliberately.** The ordinary factory strips arbitrary environment
@@ -8,6 +8,7 @@ import { expect, it } from 'vitest'
 import { SpawnCodexTransport } from '../src/codex/codex-transport'
 import { ensureCodexMemoryConfig } from '../src/index'
 import { bundledCodexBinary } from './bundled-codex'
+import { listenLoopback as listen } from './loopback-test-support'
 import { executionEvidence, offers, type Frame } from './exec-approval-evidence'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
 import { runEvidence, runScratch } from './run-paths'
@@ -154,16 +155,6 @@ function providerConfig(port: number): string {
     'exec_permission_approvals = true',
     '',
   ].join('\n')
-}
-
-async function listen(server: Server): Promise<number> {
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', resolve)
-  })
-  const address = server.address()
-  if (address === null || typeof address === 'string') throw new Error('no loopback port')
-  return address.port
 }
 
 function usage(): Record<string, unknown> {
