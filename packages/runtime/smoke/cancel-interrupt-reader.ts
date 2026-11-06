@@ -1,3 +1,4 @@
+import { waitForPromise } from './probe-waits'
 import type { CodexIncoming } from '../src/codex/codex-transport'
 
 /**
@@ -67,22 +68,12 @@ export const wantedCalls = (plan: Plan): number =>
   plan === 'two-answer-one-then-interrupt' ? 2 : 1
 
 /** ⚠️ A bound on one promise (rule 13): a stalled call is NOT PERFORMED, never waited on. */
-export async function bounded<T>(what: string, work: Promise<T>, ms: number): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      work,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error(`NOT PERFORMED — ${what} did not answer in ${ms}ms`)),
-          ms,
-        )
-        timer.unref?.()
-      }),
-    ])
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
-  }
+export function bounded<T>(what: string, work: Promise<T>, ms: number): Promise<T> {
+  return waitForPromise(
+    work,
+    ms,
+    () => new Error(`NOT PERFORMED — ${what} did not answer in ${ms}ms`),
+  )
 }
 
 export function readArm(
