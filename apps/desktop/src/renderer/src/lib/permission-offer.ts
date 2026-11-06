@@ -99,8 +99,7 @@ const PLACE: Record<PermissionOutcome, number | 'apart'> = {
   // ({@link keptGrantOf}). ⚠️ **One card where the two meet**: on Codex's MCP card the kept rule IS
   // the whole tool, so the wider grant is the in-row one (`739` F-1; ruled — both on every surface,
   // drawn since `743`). ⚠️ Each
-  // numbered entry stays alone on its line: `smoke:ui` step 82 and `step-census.test.mjs` count them
-  // (`PERMISSION_MATRIX_UNITS`).
+  // numbered entry stays alone on its line so the permission matrix smoke can read the outcomes.
   allow_always: 2,
   deny: 3,
   cancel: 4,

@@ -32,9 +32,8 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
  *
  * ⚑ **`432`'s finding does not reach this reader**, and that is worth stating because the relay
  * was right to ask: the digest reads an EVENT WINDOW, so its old-open rows are the ones a bounded
- * read cannot see. This one has never had a window. What it pays instead is history — see §2 and
- * `scripts/waiting-set-probe.mjs` — and that cost is about how much has happened, not about how
- * old the thing you owe is.
+ * read cannot see. This one has never had a window. Its cost grows with the conversation's
+ * history, rather than the age of an open request.
  *
  * ⛔ **So the property is asserted TWICE and in two shapes**: behaviourally, against a ledger
  * whose oldest open request is 400 days older than everything else in it, and structurally,

@@ -1366,14 +1366,6 @@ async function main() {
  * @returns the number of failed steps, so the caller owns the exit code.
  */
 function reportRun() {
-  // ⚠️ **No `notReached` count, and that is a refusal rather than an omission** (`420` §4, H).
-  // `summarize` takes one and `ui-live-smoke.mjs` supplies it from `scripts/lib/step-census.mjs`
-  // — a list of every step token that file OFFERS, so the steps a run never got to can be
-  // subtracted from the steps that produced a row. ⛔ **There is no census for this script**, and
-  // the only number computable from `results` alone is zero by construction: a run that aborts
-  // stops calling `step()` and its later tokens leave no trace at all. A count nobody can compute
-  // is not invented; what an aborted run leaves instead is the missing rows themselves and a
-  // non-zero exit code.
   const summary = summarize(results, { evidence: EVIDENCE })
   console.log(`\n${summary.line}`)
   for (const line of summary.blanks) console.log(`  ${line}`)
