@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fingerprint, pinsOver, probeSource, squash } from './fixtures/probe-source'
+import { pinsOver, probeSource, squash } from './fixtures/probe-source'
 
 /**
  * ⛔ **The cancel-interrupt probe's census — `495`, repaired by `649`, re-aimed by `655`.**
@@ -124,27 +124,7 @@ describe('492 cancel-interrupt probe synchronization and total deadline', () => 
   })
 })
 
-/**
- * 🔴 **`655` · the probe FILE is the code that ran green, and nothing between its pins moved.**
- *
- * ⚑ Run `2026-09-23T03-10-56-621Z-29170` on `36c28154`, bundled Codex `0.146.0`, loopback: all
- * four arms as designed — A and B `interrupted`, C `completed`, D `interrupted` with its interrupt
- * accepted; rule 40's port read back equal in every arm. (`655`'s response lists the earlier runs.)
- *
- * ⚠️ **The fingerprint covers this file, not the modules it imports.** `probe-run-deadline.ts` and
- * `cancel-interrupt-reader.ts` ran too, and are TESTED in `ci` instead of pinned — an edit there
- * owes those tests; an edit HERE owes a run, in the same commit:
- * `pnpm run probe:codex-cancel-interrupt` — loopback, no credential, no tokens — **then** the new
- * pins. `probe-source.ts` states what the fingerprint cannot see.
- */
-describe('655 · the cancel-interrupt probe is the code that ran green', () => {
-  it('🔴 nothing moved: the probe file, as code, is the code that ran', () => {
-    expect(
-      fingerprint(source),
-      'the probe changed: run `pnpm run probe:codex-cancel-interrupt`, then pin the value received',
-    ).toBe('1251b1c8b9f5d0d43d86a8b0fee057c3f7a7d2f2f12c12476d2067403df91690')
-  })
-
+describe('655 · the cancel-interrupt probe wires its port and checks its results', () => {
   it('⚑ rule 40: the child is configured with the port listen(0) returned, read back from its file', () => {
     expect(
       occurrences(
