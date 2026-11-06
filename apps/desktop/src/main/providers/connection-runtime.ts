@@ -4,6 +4,7 @@ import type {
   ProviderRuntimeContext,
   ResumeOptions,
   SessionHandle,
+  StartOptions,
 } from '@brobot2/runtime'
 import { compatibilityConnectionId, type Provider, type ProviderConnection } from '@brobot2/shared'
 
@@ -90,7 +91,21 @@ export function onProviderConnection(
     async start(options) {
       const beganAt = revision()
       const id = admit(options)
-      return checked(attribution(id)(await runtime().start(options)), id, options, beganAt)
+      const wrap = attribution(id)
+      const scoped: StartOptions = options.onSessionCreated
+        ? {
+            ...options,
+            onSessionCreated: (handle) => {
+              try {
+                assertCurrent(id, options, beganAt)
+              } catch {
+                return
+              }
+              options.onSessionCreated!(wrap(handle))
+            },
+          }
+        : options
+      return checked(wrap(await runtime().start(scoped)), id, options, beganAt)
     },
     async resume(ref, options) {
       options.signal?.throwIfAborted()

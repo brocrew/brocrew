@@ -254,6 +254,41 @@ const has = (events: RuntimeEvent[], pred: (e: RuntimeEvent) => boolean) => () =
 const okThread = (id: string, cwd = '/tmp/x'): Record<string, unknown> =>
   threadStartResponse(id, cwd) as unknown as Record<string, unknown>
 
+it.each(['handshake', 'callback'] as const)(
+  'fresh allocation is owned before a failed %s and retains its unsettled exit witness',
+  async (failure) => {
+    const transport = new FakeTransport()
+    const die = transport.ownsAProcess()
+    transport.onRequest('initialize', () => {
+      throw new Error('fictional handshake failure')
+    })
+    const runtime = new CodexRuntime(adopt(transport))
+    let allocated: SessionHandle | undefined
+    await expect(
+      runtime.start({
+        cwd: '/tmp/x',
+        providerHome: '/tmp/x/home',
+        onSessionCreated(handle) {
+          allocated = handle
+          expect(transport.requests).toEqual([])
+          if (failure === 'callback') throw new Error('fictional callback failure')
+        },
+      }),
+    ).rejects.toThrow(`fictional ${failure} failure`)
+    expect(allocated).toBeDefined()
+    expect(transport.closeCount).toBe(1)
+    let exited = false
+    const witness = allocated!.awaitProcessExit!()!.then(() => {
+      exited = true
+    })
+    await Promise.resolve()
+    expect(exited).toBe(false)
+    die()
+    await witness
+    expect(exited).toBe(true)
+  },
+)
+
 async function startCodex(): Promise<{
   transport: FakeTransport
   handle: Awaited<ReturnType<CodexRuntime['start']>>

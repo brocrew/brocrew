@@ -531,6 +531,8 @@ export function isAutoApprove(context: { approvalMode?: ApprovalMode }): boolean
 
 /** Options for starting a fresh session. */
 export interface StartOptions extends ProviderRuntimeContext {
+  /** Retain ownership of an allocated fresh handle even if its handshake fails. */
+  onSessionCreated?: (handle: SessionHandle) => void
   /** Working directory the session runs in; becomes part of its `SessionRef`. */
   cwd: string
   /**

@@ -203,6 +203,41 @@ for (const provider of ['claude', 'codex'] as const) {
   })
 
   for (const changed of [false, true]) {
+    it(`${provider}: start callback ${changed ? 'withholds changed binding' : 'owns the same attributed handle'}`, async () => {
+      const f = fixture(provider)
+      const raw = new FakeRuntime(provider)
+      const start = raw.start.bind(raw)
+      const innerClose = vi.fn<() => Promise<void>>()
+      vi.spyOn(raw, 'start').mockImplementation(async (options) => {
+        const handle = await start(options)
+        innerClose.mockImplementation(handle.close.bind(handle))
+        handle.close = innerClose
+        if (changed) f.state.revision++
+        options.onSessionCreated?.(handle)
+        return handle
+      })
+      f.create.mockReturnValue(raw)
+      const callback = vi.fn()
+      const pending = f.runtime.start({
+        cwd: '/fictional/fern',
+        providerHome: '/fictional/state',
+        onSessionCreated: callback,
+      })
+      if (changed) {
+        await expect(pending).rejects.toThrow()
+        expect(callback).not.toHaveBeenCalled()
+        expect(innerClose).toHaveBeenCalledTimes(1)
+      } else {
+        const handle = await pending
+        handles.push(handle)
+        expect(callback).toHaveBeenCalledTimes(1)
+        expect(callback.mock.calls[0]![0]).toBe(handle)
+        expect(Reflect.get(handle, 'connectionId')).toBe(`${provider}:sign-in`)
+      }
+    })
+  }
+
+  for (const changed of [false, true]) {
     it(`${provider}: resume callback ${changed ? 'withholds changed binding' : 'owns the same attributed handle'}`, async () => {
       const f = fixture(provider)
       const first = await f.runtime.start({

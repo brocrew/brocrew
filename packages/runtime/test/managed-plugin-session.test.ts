@@ -3,10 +3,12 @@ import {
   withManagedPluginAttachments,
   PLUGIN_ATTACHMENT_WAIT_MS,
   MANAGED_PLUGIN_REOPEN_WITHIN_MS,
+  StoppedBeforeSend,
   type ManagedPluginAttachment,
   type ManagedPluginAttachmentSource,
 } from '../src/managed-plugin-session'
 import type { AgentRuntime, SessionHandle } from '../src/runtime'
+import { ResumeError } from '../src/runtime'
 import { AsyncQueue } from '../src/internal/async-queue'
 import type { RuntimeEvent } from '../src/events'
 import { TurnInProgress } from '../src/turn-in-progress'
@@ -22,6 +24,312 @@ const initial = {
   },
   model: 'fictional-model',
 }
+
+it('attaches a plugin served before the first input when the empty Codex thread cannot be resumed', async () => {
+  // Unit actor only. Actual no-account app-server controls and the native smoke qualify the wire.
+  const f = fixture(false, () => Promise.resolve())
+  const fern = { ...route, pluginId: 'fern' }
+  const chrome = { ...route, pluginId: 'chrome', name: 'plugin-chrome', capability: 'b'.repeat(64) }
+  f.change({
+    revision: 'starting',
+    servers: [fern],
+    plugins: { pending: ['chrome'], none: [], unknown: false },
+  })
+  const handle = await f.runtime.start(initial)
+  vi.mocked(f.raw.resume).mockRejectedValue(
+    new ResumeError(handle.ref!, 'fictional no rollout found', { noSuchSession: true }),
+  )
+  f.change({
+    revision: 'ready',
+    servers: [fern, chrome],
+    plugins: { pending: [], none: [], unknown: false },
+  })
+  try {
+    await handle.send('one original request')
+    expect(f.opened[0]!.send).not.toHaveBeenCalled()
+    const served = f.opened.filter((one) => one.send.mock.calls.length)
+    expect(served).toHaveLength(1)
+    expect(served[0]!.options).toMatchObject({ managedPluginMcp: [fern, chrome] })
+    expect(served[0]!.send).toHaveBeenCalledExactlyOnceWith('one original request')
+  } finally {
+    await handle.close()
+    await handle.awaitProcessExit?.()
+  }
+})
+
+it.each(['used', 'resumed', 'unknown', 'other-ref'] as const)(
+  'does not replace conversation history for a %s resume refusal',
+  async (kind) => {
+    const f = fixture(false, () => Promise.resolve())
+    const saved = {
+      provider: 'codex' as const,
+      sessionId: 'fictional-thread',
+      cwd: initial.cwd,
+      rotation: 0,
+    }
+    const handle =
+      kind === 'resumed' ? await f.runtime.resume(saved, initial) : await f.runtime.start(initial)
+    if (kind === 'used') await handle.send('earlier input')
+    const refusal =
+      kind === 'unknown'
+        ? new Error('fictional unknown launch failure')
+        : new ResumeError(
+            kind === 'other-ref' ? { ...saved, sessionId: 'another-thread' } : saved,
+            'fictional missing rollout',
+            { noSuchSession: true },
+          )
+    vi.mocked(f.raw.resume).mockRejectedValue(refusal)
+    f.change({ revision: 'next', servers: [{ ...route, capability: 'b'.repeat(64) }] })
+    try {
+      await handle.send('one new input')
+      expect(f.raw.start).toHaveBeenCalledTimes(kind === 'resumed' ? 0 : 1)
+      expect(f.opened).toHaveLength(1)
+      expect(f.opened[0]!.send).toHaveBeenLastCalledWith('one new input')
+    } finally {
+      await handle.close()
+      await handle.awaitProcessExit?.()
+    }
+  },
+)
+
+it('does not replace provider-originated history before any caller input', async () => {
+  const f = fixture(false, () => Promise.resolve())
+  const handle = await f.runtime.start(initial)
+  f.opened[0]!.queue.push({ type: 'provider_turn' })
+  await Promise.resolve()
+  vi.mocked(f.raw.resume).mockRejectedValue(
+    new ResumeError(handle.ref!, 'missing', { noSuchSession: true }),
+  )
+  f.change({ revision: 'next', servers: [] })
+  await handle.send('one new input')
+  expect(f.raw.start).toHaveBeenCalledTimes(1)
+  await handle.close()
+})
+
+it.each(['carryOn', 'compact'] as const)(
+  'never replaces history after %s work or uncertain acceptance',
+  async (method) => {
+    const f = fixture(false, () => Promise.resolve())
+    const handle = await f.runtime.start(initial)
+    Object.defineProperty(f.opened[0]!.handle, method, {
+      value: () => {
+        throw new Error('unknown work acceptance')
+      },
+    })
+    expect(() => handle[method]!()).toThrow('unknown work acceptance')
+    vi.mocked(f.raw.resume).mockRejectedValue(
+      new ResumeError(handle.ref!, 'missing', { noSuchSession: true }),
+    )
+    f.change({ revision: 'next', servers: [] })
+    await handle.send('later input')
+    expect(f.raw.start).toHaveBeenCalledTimes(1)
+    await handle.close()
+  },
+)
+
+it('never forgets a fast-path send whose synchronous failure leaves acceptance unknown', async () => {
+  const f = fixture(false, () => Promise.resolve())
+  const handle = await f.runtime.start(initial)
+  vi.spyOn(f.opened[0]!.handle, 'status').mockReturnValueOnce('working')
+  f.opened[0]!.send.mockImplementationOnce(() => {
+    throw new Error('unknown acceptance')
+  })
+  expect(() => handle.send('possibly accepted')).toThrow('unknown acceptance')
+  vi.mocked(f.raw.resume).mockRejectedValue(
+    new ResumeError(handle.ref!, 'missing', { noSuchSession: true }),
+  )
+  f.change({ revision: 'next', servers: [] })
+  await handle.send('later input')
+  expect(f.raw.start).toHaveBeenCalledTimes(1)
+  await handle.close()
+})
+
+it('consumes the one fresh attempt even if start throws and keeps both requests unsent', async () => {
+  const f = fixture(false, () => Promise.resolve())
+  const handle = await f.runtime.start(initial)
+  vi.mocked(f.raw.resume).mockRejectedValue(
+    new ResumeError(handle.ref!, 'missing', { noSuchSession: true }),
+  )
+  vi.mocked(f.raw.start).mockRejectedValue(new Error('failed fresh allocation'))
+  f.change({ revision: 'next', servers: [] })
+  await expect(handle.send('first')).rejects.toBeInstanceOf(StoppedBeforeSend)
+  await expect(handle.send('second')).rejects.toBeInstanceOf(StoppedBeforeSend)
+  expect(f.raw.start).toHaveBeenCalledTimes(2)
+  expect(f.opened[0]!.send).not.toHaveBeenCalled()
+  await handle.close()
+})
+
+it('keeps interruption of a later read unsent after an earlier selected repair failed', async () => {
+  const f = fixture(false, () => Promise.resolve())
+  const handle = await f.runtime.start(initial)
+  vi.mocked(f.raw.resume).mockRejectedValue(
+    new ResumeError(handle.ref!, 'missing', { noSuchSession: true }),
+  )
+  vi.mocked(f.raw.start).mockRejectedValue(new Error('failed fresh allocation'))
+  f.change({ revision: 'next', servers: [] })
+  await expect(handle.send('first')).rejects.toBeInstanceOf(StoppedBeforeSend)
+  let finish!: () => void
+  const held = new Promise<ManagedPluginAttachment>((resolve) => {
+    finish = () => resolve({ revision: 'later', servers: [] })
+  })
+  vi.mocked(f.source.read).mockReturnValue(held)
+  const later = handle.send('later original input')
+  void later.catch(() => {})
+  await Promise.resolve()
+  await handle.interrupt()
+  try {
+    await expect(later).rejects.toBeInstanceOf(StoppedBeforeSend)
+    expect(f.opened[0]!.send).not.toHaveBeenCalled()
+  } finally {
+    finish()
+    await handle.close()
+  }
+})
+
+it('carries the latest settings, grants and original first-turn lead to the committed fresh handle', async () => {
+  const f = fixture(false, () => Promise.resolve())
+  const handle = await f.runtime.start({ ...initial, systemHint: 'fixture system context' })
+  await handle.setModel('latest-model')
+  await handle.setReasoningEffort('high')
+  await handle.setApprovalMode('auto')
+  handle.setWorkFolders(['/fictional/extra'])
+  await handle.setPlanMode(false)
+  vi.mocked(f.raw.resume).mockRejectedValue(
+    new ResumeError(handle.ref!, 'missing', { noSuchSession: true }),
+  )
+  f.change({ revision: 'next', servers: [] })
+  const message = 'original first-turn lead\nOriginal request.'
+  await handle.send(message)
+  expect(f.opened[1]!.options).toMatchObject({
+    model: 'latest-model',
+    reasoningEffort: 'high',
+    approvalMode: 'auto',
+    workFolders: ['/fictional/extra'],
+    planMode: true,
+    planModeEnded: true,
+    externalMcp: initial.externalMcp,
+    systemHint: 'fixture system context',
+  })
+  expect(f.opened[0]!.send).not.toHaveBeenCalled()
+  expect(f.opened[1]!.send).toHaveBeenCalledExactlyOnceWith(message)
+  await handle.close()
+})
+
+it.each(['interrupt', 'close', 'settings', 'provider activity', 'late rejection'] as const)(
+  'owns a held fresh candidate through %s without publishing it or sending the input',
+  async (change) => {
+    let exited!: () => void
+    const candidateExit = new Promise<void>((resolve) => {
+      exited = resolve
+    })
+    const f = fixture(false, (index) => (index === 1 ? candidateExit : Promise.resolve()))
+    const handle = await f.runtime.start(initial)
+    const ordinaryStart = vi.mocked(f.raw.start).getMockImplementation()!
+    let finish!: () => void
+    const held = new Promise<void>((resolve) => {
+      finish = resolve
+    })
+    vi.mocked(f.raw.resume).mockRejectedValue(
+      new ResumeError(handle.ref!, 'missing', { noSuchSession: true }),
+    )
+    vi.mocked(f.raw.start).mockImplementation(async (options) => {
+      const candidate = await ordinaryStart(options)
+      options.onSessionCreated?.(candidate)
+      f.opened[1]!.queue.push({ type: 'session', state: 'started', ref: candidate.ref! })
+      await held
+      if (change === 'late rejection') throw new Error('late failed handshake')
+      return candidate
+    })
+    f.change({ revision: 'next', servers: [] })
+    const seen: RuntimeEvent[] = []
+    const pump = (async () => {
+      for await (const event of handle.events()) seen.push(event)
+    })()
+    const sending = handle.send('queued input')
+    void sending.catch(() => {})
+    await vi.waitFor(() => expect(f.opened).toHaveLength(2))
+    let closing: Promise<void> | undefined
+    if (change === 'settings') await handle.setModel('latest-model')
+    else if (change === 'close') closing = handle.close()
+    else if (change === 'provider activity') {
+      f.opened[0]!.queue.push({ type: 'provider_turn' })
+      await Promise.resolve()
+    } else await handle.interrupt()
+    finish()
+    await expect(sending).rejects.toBeInstanceOf(StoppedBeforeSend)
+    await closing
+    expect(f.opened.every((one) => one.send.mock.calls.length === 0)).toBe(true)
+    expect(f.opened[1]!.close).toHaveBeenCalledTimes(1)
+    expect(seen.some((one) => one.type === 'session')).toBe(false)
+    await handle.close()
+    let settled = false
+    const exit = handle.awaitProcessExit!()!.then(() => {
+      settled = true
+    })
+    await Promise.resolve()
+    expect(settled).toBe(false)
+    exited()
+    await exit
+    await pump
+  },
+)
+
+it('shares the preparation deadline instead of granting the fresh attempt another minute', async () => {
+  vi.useFakeTimers()
+  const f = fixture(false, () => Promise.resolve())
+  const handle = await f.runtime.start(initial)
+  const ordinaryStart = vi.mocked(f.raw.start).getMockImplementation()!
+  let finish!: () => void
+  const held = new Promise<void>((resolve) => {
+    finish = resolve
+  })
+  let freshSignal: AbortSignal | undefined
+  vi.mocked(f.raw.resume).mockImplementation(async () => {
+    await new Promise((resolve) => setTimeout(resolve, MANAGED_PLUGIN_REOPEN_WITHIN_MS - 25))
+    throw new ResumeError(handle.ref!, 'missing', { noSuchSession: true })
+  })
+  vi.mocked(f.raw.start).mockImplementation(async (options) => {
+    const candidate = await ordinaryStart(options)
+    options.onSessionCreated?.(candidate)
+    freshSignal = options.signal
+    await held
+    return candidate
+  })
+  f.change({ revision: 'next', servers: [] })
+  const sending = handle.send('queued input')
+  void sending.catch(() => {})
+  await vi.advanceTimersByTimeAsync(MANAGED_PLUGIN_REOPEN_WITHIN_MS - 25)
+  expect(f.raw.start).toHaveBeenCalledTimes(2)
+  expect(freshSignal?.aborted).toBe(false)
+  await vi.advanceTimersByTimeAsync(25)
+  expect(freshSignal?.aborted).toBe(true)
+  finish()
+  await expect(sending).rejects.toBeInstanceOf(StoppedBeforeSend)
+  expect(f.opened.every((one) => one.send.mock.calls.length === 0)).toBe(true)
+  await handle.close()
+})
+
+it('does not allocate or send while the failed resume candidate still lacks positive exit proof', async () => {
+  let exited!: () => void
+  const failedExit = new Promise<void>((resolve) => {
+    exited = resolve
+  })
+  const f = fixture(false, (index) => (index === 1 ? failedExit : Promise.resolve()))
+  const handle = await f.runtime.start(initial)
+  const ordinaryResume = vi.mocked(f.raw.resume).getMockImplementation()!
+  vi.mocked(f.raw.resume).mockImplementation(async (ref, options) => {
+    await ordinaryResume(ref, options)
+    throw new ResumeError(ref, 'missing', { noSuchSession: true })
+  })
+  f.change({ revision: 'next', servers: [] })
+  await expect(handle.send('first')).rejects.toBeInstanceOf(StoppedBeforeSend)
+  await expect(handle.send('still no exit proof')).rejects.toBeInstanceOf(StoppedBeforeSend)
+  expect(f.raw.start).toHaveBeenCalledTimes(1)
+  expect(f.opened.every((one) => one.send.mock.calls.length === 0)).toBe(true)
+  exited()
+  await handle.close()
+  await handle.awaitProcessExit?.()
+})
 afterEach(() => vi.useRealTimers())
 function fixture(refresh = false, exitFactory?: (index: number) => Promise<void> | undefined) {
   let next: ManagedPluginAttachment = { revision: 'one', servers: [route] }
@@ -49,7 +357,7 @@ function fixture(refresh = false, exitFactory?: (index: number) => Promise<void>
     })
     const handle = {
       ...(exitFactory ? { awaitProcessExit: () => exit } : {}),
-      ref: { provider: 'codex', sessionId: 'fictional-thread', cwd: initial.cwd },
+      ref: { provider: 'codex', sessionId: 'fictional-thread', cwd: initial.cwd, rotation: 0 },
       status: () => (ended ? 'ended' : 'idle'),
       events: () => queue,
       send,
