@@ -546,7 +546,7 @@ describe('735, D-017b · a person’s message continues a conversation in one ac
       expect(refused.running).toBeNull()
       expect(host.attachOpenSessions(window)).toEqual([])
       expect(launches.at(-1)?.handle.status(), 'the other sender’s turn was cut').not.toBe('ended')
-      expect(listed(id).running).toBe('without-a-window')
+      expect(listed(id).running).toBe('unwatched')
     })
 
     // ⚑ **D-017b** — the arm where the quit's stamp could not be PUT BACK is gone with the stamp's
