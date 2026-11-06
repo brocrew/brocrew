@@ -1,3 +1,5 @@
+import { CONVERSATIONS_LISTED } from './agent-directory'
+export { CONVERSATIONS_LISTED } from './agent-directory'
 import {
   providerAuthPolicies,
   legacyStartRefusalWords as A_START_ITS_SIGN_IN_REFUSED,
@@ -4921,13 +4923,6 @@ const whoseText = (whose: WhoseConversation): string => {
   if (whose.is !== 'an-identity-this-app-holds') return THIS_APP_CANNOT_NAME_IT
   return whose.name === whose.profile ? whose.profile : `${whose.name} (${whose.profile})`
 }
-
-/**
- * ⚑ **D-017 · R12 — how many conversations `list_agents` names**, the most recently active first,
- * and the answer says how many more there are. Any other can still be messaged and looked at by its
- * id.
- */
-export const CONVERSATIONS_LISTED = 50
 
 /**
  * ⚑ What a conversation's turn is stopped on until a person answers it, and that nothing sent to it
