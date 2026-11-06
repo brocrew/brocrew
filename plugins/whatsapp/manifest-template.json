@@ -54,10 +54,6 @@
       {
         "path": "ui/settings-load-state.js",
         "mime": "text/javascript"
-      },
-      {
-        "path": "ui/settings-load-state.css",
-        "mime": "text/css"
       }
     ],
     "methodSchemas": {

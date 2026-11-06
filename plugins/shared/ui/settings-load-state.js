@@ -5,7 +5,6 @@ window.settingsLoadState = (() => {
   let closed = false
   window.addEventListener('pagehide', () => (closed = true))
   function settled() {
-    status.dataset.loading = 'false'
     status.ariaBusy = 'false'
   }
   return {

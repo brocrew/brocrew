@@ -240,7 +240,7 @@ jobs:
           npm --version > artifact/npm-version.txt
           node -p "require('./plugins/whatsapp/node_modules/esbuild/package.json').version" > artifact/esbuild-version.txt
           go version > artifact/go-version.txt
-          sha256sum package-lock.json plugins/whatsapp/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs plugins/whatsapp/build.mjs .github/workflows/release.yml artifact/source-receipt.json > artifact/build-inputs.sha256
+          sha256sum package-lock.json plugins/whatsapp/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs plugins/whatsapp/build.mjs .github/workflows/release.yml > artifact/build-inputs.sha256
           sha256sum artifact/*.tar.gz artifact/plugin-list-entry.json > artifact/downloads.sha256
       - uses: actions/upload-artifact@v4
         with:
