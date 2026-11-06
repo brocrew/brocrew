@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -11,18 +12,13 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { scheduleHead } from '../src/renderer/src/lib/scheduled-work'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import type { AgentState, ScheduledRow, ScheduleLevel } from '../src/shared/agent-state'
 import { clockTime } from '../src/shared/clock'
-import type {
-  RuntimeEventMessage,
-  RuntimeStatesMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeStatesMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
 
 /**
  * # A scheduled job is listed, and leaves the listing, as it happens
@@ -92,17 +88,6 @@ async function settle(): Promise<void> {
     for (let turn = 0; turn < 5; turn++) await new Promise((resolve) => setImmediate(resolve))
     await new Promise((resolve) => setTimeout(resolve, 30))
   }
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 /** The provider double: every handle it issues, a start and a resume alike. */

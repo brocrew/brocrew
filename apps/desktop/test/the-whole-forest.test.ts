@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -15,10 +16,10 @@ import {
   type SessionStore,
 } from '../src/main/db/session-store'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { LEDGER_WALK_KINDS, WALK_COVERS } from '../src/shared/questions'
-import type { RuntimeChangeMessage, RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import type { RuntimeChangeMessage } from '../src/shared/runtime-ipc'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import {
   MAX_FOREST_CONVERSATIONS,
@@ -79,17 +80,6 @@ function nodeFor(forest: TheWholeForest, conversation: string): ForestConversati
   const found = conversationsOf(forest).find((row) => row.conversation === conversation)
   if (found === undefined) throw new Error(`no node for ${conversation}`)
   return found
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 describe('637 · the whole forest, from the person down', () => {

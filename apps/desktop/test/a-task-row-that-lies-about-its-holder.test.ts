@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -11,11 +12,10 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { undrivenSentence } from '../src/shared/tasks'
-import type { RuntimeEventMessage, UnqueuedMessageEvent } from '../src/shared/runtime-ipc'
+import type { UnqueuedMessageEvent } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **648 · a task row that lies about its holder.**
@@ -53,17 +53,6 @@ import type { RuntimeEventMessage, UnqueuedMessageEvent } from '../src/shared/ru
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /** ⛔ The provider double: it keeps every toolset, and it can move the machine credential. */
 class ToolWatchingRuntime extends FakeRuntime {

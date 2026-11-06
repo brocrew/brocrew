@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -18,12 +19,12 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
-import type { Caller, CallerIdentity, RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import type { Caller, CallerIdentity } from '../src/main/runtime/runtime-host'
 import { agentCallerId, type ToolName } from '../src/main/runtime/agent-tools'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { CAPABILITY_FIELDS, type ProfileCapabilities } from '../src/shared/capabilities'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { TranscriptEvent } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **373 · a parent that survives a restart.**
@@ -62,17 +63,6 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
   throw new Error(`timed out waiting for ${what}`)
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 /**

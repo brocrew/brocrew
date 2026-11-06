@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -12,7 +13,6 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand, runtimeCommandSchema } from '../src/main/runtime/ipc'
 import { AN_AGENT_THIS_APP_CANNOT_NAME } from '../src/main/runtime/reply-rails'
@@ -22,7 +22,6 @@ import type { DocumentForm } from '../src/shared/documents'
 import type {
   FilesKept,
   KeptFile,
-  RuntimeEventMessage,
   RuntimeStatesMessage,
   TranscriptEvent,
 } from '../src/shared/runtime-ipc'
@@ -282,17 +281,6 @@ describe('D-026 · the rule: a file is titled by what its own bytes say', () => 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // The rig: a real host, a real ledger, the real toolsets, the Fake provider only
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /**
  * A stretch of the event loop long enough for everything a provider row starts to have run: five

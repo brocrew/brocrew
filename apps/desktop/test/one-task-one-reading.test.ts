@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { WORK_STATE_WORD } from '../src/shared/work-state-words'
 import type { TaskState } from '../src/shared/tasks'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -13,13 +14,12 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { aPersonOwesAnAnswerIn } from '../src/shared/questions'
 import { MAX_FOREST_CONVERSATIONS } from '../src/shared/the-whole-forest'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { TranscriptEvent } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **664 · one task, one reading, in every place it is drawn** (`D32`, found by `654`).
@@ -86,17 +86,6 @@ const callsOf = (source: string, callee: RegExp): { reader: string; composed: bo
     reader: opened.filter((one) => one.at < m.index).at(-1)?.name ?? '(module scope)',
     composed: compositions.some((one) => one.from < m.index && m.index < one.to),
   }))
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 class ToolWatchingRuntime extends FakeRuntime {

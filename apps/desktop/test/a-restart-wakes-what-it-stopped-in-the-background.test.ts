@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -11,14 +12,9 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type {
-  RuntimeEventMessage,
-  RuntimeStatesMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeStatesMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
 
 /**
  * # ⚑ A restart wakes the conversations whose background work it stopped
@@ -41,17 +37,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 /** A moment on the Mac's wall clock in 2026, whatever the zone. */
 const local = (month: number, day: number, hour: number, minute: number, second = 0): number =>
   new Date(2026, month - 1, day, hour, minute, second).getTime()
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /** What a test can switch on the provider double. */
 interface ProviderControl {

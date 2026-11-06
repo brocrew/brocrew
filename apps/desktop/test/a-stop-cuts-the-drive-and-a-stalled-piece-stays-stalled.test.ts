@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { performance } from 'node:perf_hooks'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -18,10 +19,8 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/runtime-ipc'
 import { derivePieces, type PieceRow } from '../src/shared/tasks'
 
@@ -426,17 +425,6 @@ describe('§2 · the fold — a stop ends the drive it cut, and nothing else', (
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // §3 · the host
 // ─────────────────────────────────────────────────────────────────────────────────────────────
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 const traceFixturePhase = <T>(phase: string, operation: () => T): T => {
   const began = performance.now()

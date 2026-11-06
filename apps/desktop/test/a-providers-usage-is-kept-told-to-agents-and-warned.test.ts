@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { performance } from 'node:perf_hooks'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -10,7 +11,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
@@ -27,7 +28,7 @@ import {
   wallsFromUsage,
 } from '../src/shared/provider-limit'
 import { readingSays, usageSays } from '../src/renderer/src/lib/usage-limit'
-import type { ProviderUsageReading, RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import type { ProviderUsageReading } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 
 /**
@@ -52,17 +53,6 @@ import { ProviderDouble, anOpenGate } from './lib/provider-double'
  */
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 const WEEK = 7 * 24 * 60 * 60 * 1000
 

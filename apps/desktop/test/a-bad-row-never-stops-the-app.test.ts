@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -19,13 +20,9 @@ import {
   skipTheLedger,
   type SessionStore,
 } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  DEFAULT_PROFILE_ID,
-  type RuntimeEventMessage,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, type TranscriptEvent } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **D-017 · R8 — one bad row never stops the app**, pinned against `session-store.ts`'s
@@ -71,17 +68,6 @@ const nextLineAfter = (source: string, marker: string): string => {
   const eol = source.indexOf('\n', at)
   const nextEol = source.indexOf('\n', eol + 1)
   return source.slice(eol + 1, nextEol).trim()
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 /* ══════════════════ §1 · the two counters, pure — no database at all ══════════════════ */

@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import {
   existsSync,
   mkdirSync,
@@ -18,7 +19,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { workAnswered, workUndriven } from '../src/main/runtime/reply-rails'
@@ -28,7 +29,6 @@ import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript
 import type {
   PersistedEventInfo,
   ResourceReading,
-  RuntimeEventMessage,
   TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 
@@ -83,17 +83,6 @@ const at = (event: TranscriptEvent, ordinal: number): PersistedEventInfo =>
 const readReason = (result: ResourceReading): string => (result.ok ? 'ok' : result.reason)
 
 const readSource = (path: string): string => readFileSync(path, 'utf8')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 describe('510 · the id this app hands a person', () => {
   let userData: string

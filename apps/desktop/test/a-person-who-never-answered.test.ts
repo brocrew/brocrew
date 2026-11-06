@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -19,7 +20,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { distil } from '../src/main/runtime/digest'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   DIGEST_LINE_KINDS,
@@ -27,7 +28,7 @@ import {
   LINE_REGISTERS,
   type DigestRegister,
 } from '../src/shared/digest'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { TranscriptEvent } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **465 · a person who never answered** — `463`'s F1, and the type hole beside it.
@@ -83,17 +84,6 @@ const NEXT_TO = TO + 12 * HOUR
 const INSIDE_NEXT = TO + 6 * HOUR
 
 /** A window sink: `aPersonIsBehindIt` is what the person's answer door reads (`340`). */
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** Keep the provider handles, so a question can be raised through the real card path. */
 class ProviderDouble extends FakeRuntime {
   constructor(
