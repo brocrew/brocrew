@@ -322,7 +322,26 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
     }
     if (row === null) return failed('change-not-started')
     announce(one.slug)
-    const guard = namespace
+    const expected = new Map(
+      files.map((file) => [
+        file.name,
+        {
+          base64: file.before?.bytes.toString('base64') ?? null,
+          mode: file.before?.mode ?? null,
+        },
+      ]),
+    )
+    const guard = () => {
+      namespace()
+      for (const [name, before] of expected) {
+        const current = readMethodFileCapture(inputs, name)
+        if (
+          (current?.bytes.toString('base64') ?? null) !== before.base64 ||
+          (current?.mode ?? null) !== before.mode
+        )
+          throw new Error(`${join(inputs.folder, name)}: the saved method changed during this edit`)
+      }
+    }
     const stages = new Map<string, KnowledgeFileStage>()
     let operationFailed: unknown
     try {
@@ -368,6 +387,10 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
           guard()
           unlinkSync(join(inputs.folder, file.name))
         }
+        expected.set(file.name, {
+          base64: file.after === null ? null : content(file.after),
+          mode: file.afterMode,
+        })
       }
     } catch (error) {
       operationFailed = error

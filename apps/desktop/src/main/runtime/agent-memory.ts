@@ -502,6 +502,7 @@ export async function stageKnowledgeFile(
       check()
       guard()
       seams.beforeStagePublishOpen?.(staged)
+      guard()
       if (replace) renameSync(staged, destination)
       else {
         linkSync(staged, destination)
@@ -806,6 +807,7 @@ export function observeMemoryEntry(
     guard()
     const image = memoryImage(location)
     guard()
+    if (image !== null && !validText(image)) throw new Error(`${entry}: invalid UTF-8 text`)
     return { text: image?.bytes.toString('utf8') ?? null }
   } catch (error) {
     return { text: null, unreadable: true, cause: `${entry}: ${String(error)}` }
@@ -831,14 +833,17 @@ function captureMemoryEntry(
     namespace()
     const image = fromHistory ? memoryImage(location) : selected!.image
     if (image !== null && !validText(image)) return null
+    const text = image?.bytes.toString('utf8') ?? null
     const check = () => {
       namespace()
+      const current = memoryImage(location)
+      if (
+        (current !== null && !validText(current)) ||
+        (current?.bytes.toString('utf8') ?? null) !== text
+      )
+        throw new Error(`${entry}: the memory entry changed during this edit`)
     }
-    return {
-      entry: location.entry,
-      text: image?.bytes.toString('utf8') ?? null,
-      check,
-    }
+    return { entry: location.entry, text, check }
   }
 }
 
@@ -1067,6 +1072,7 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
     announce(slug)
     const guard = () => {
       access.check()
+      capture.check()
     }
     let effectError: unknown
     let effect: MemoryFileResult | undefined

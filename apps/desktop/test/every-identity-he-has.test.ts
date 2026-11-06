@@ -526,10 +526,9 @@ describe('558 · every identity he has', () => {
               name: 'review.md',
               before: {
                 base64: '',
-                fingerprint: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
                 mode: 0o600,
               },
-              after: null,
+              afterBase64: null,
               afterMode: null,
             },
           ],
@@ -552,7 +551,7 @@ describe('558 · every identity he has', () => {
           'lark',
           change.id,
           'done',
-          [{ name: 'review.md', fingerprint: null, mode: null }],
+          [{ name: 'review.md', base64: null, mode: null }],
           { who: 'a-person' },
         ),
       ).toBe(true)
@@ -575,10 +574,9 @@ describe('558 · every identity he has', () => {
                 name: 'review.md',
                 before: {
                   base64: '',
-                  fingerprint: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
                   mode: 0o600,
                 },
-                after: null,
+                afterBase64: null,
                 afterMode: null,
               },
             ],
