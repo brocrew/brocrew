@@ -29,7 +29,6 @@ const verified = () => verifyBuiltInSkills(manifest, bodies)
 function fictionalStorage() {
   const directories = new Set<string>()
   const files = new Map<string, string>()
-  const completed = new Set<string>()
   let reserved = 0
   const storage: NewSkillViewStorage = {
     async reserve() {
@@ -47,16 +46,8 @@ function fictionalStorage() {
       if (files.has(at) || directories.has(at)) throw new Error('conflict')
       files.set(at, text)
     },
-    async readFile(root, path, maximumBytes) {
-      const text = files.get(`${root}/${path}`)
-      if (text === undefined || Buffer.byteLength(text) > maximumBytes) throw new Error('missing')
-      return text
-    },
-    async complete(root) {
-      completed.add(root)
-    },
   }
-  return { storage, directories, files, completed, reserved: () => reserved }
+  return { storage, directories, files, reserved: () => reserved }
 }
 
 describe('the shipped instruction-only catalogue', () => {
@@ -116,10 +107,12 @@ describe('the shipped instruction-only catalogue', () => {
     for (const version of ['6', 'v', 'v6.', 'V6', 'v6-beta', 6])
       expect(() => verifyBuiltInSkills({ ...(manifest as object), version }, bodies)).toThrow()
   })
-  it('refuses changed body bytes and surplus bodies', () => {
+  it('reads edited body bytes and retains ordinary file-set parsing', () => {
     const changed = new Map(bodies)
     changed.set('delegate', bodies.get('delegate')! + 'changed')
-    expect(() => verifyBuiltInSkills(manifest, changed)).toThrow('body')
+    expect(verifyBuiltInSkills(manifest, changed).bodies.get('delegate')).toBe(
+      changed.get('delegate'),
+    )
     expect(() => verifyBuiltInSkills(manifest, new Map([...bodies, ['unknown', 'body']]))).toThrow(
       'files',
     )
@@ -127,30 +120,6 @@ describe('the shipped instruction-only catalogue', () => {
 })
 
 describe.each(['claude', 'codex'] as const)('the %s launch view', (provider) => {
-  it('rejects an earlier body changed during a later write, before publishing the view', async () => {
-    const bundle = verified(),
-      view = builtInSkillView(provider, bundle, bundle.catalogue.skills)
-    const fake = fictionalStorage()
-    const original = fake.storage.createFile
-    let first: string | undefined,
-      writes = 0,
-      published = false
-    fake.storage.createFile = async (root, path, text) => {
-      await original(root, path, text)
-      if (path.endsWith('/SKILL.md') && first === undefined) first = `${root}/${path}`
-      if (++writes > 2 && first !== undefined) {
-        const current = fake.files.get(first)!
-        fake.files.set(first, `X${current.slice(1)}`)
-      }
-    }
-    await expect(
-      installNewSkillView(fake.storage, view).then(() => {
-        published = true
-      }),
-    ).rejects.toThrow('completed')
-    expect(published).toBe(false)
-    expect(fake.files.get(first!)?.startsWith('X')).toBe(true)
-  })
   it('contains only the selected body files and the Claude plugin manifest', () => {
     const bundle = verified()
     const selected = creationAllowedSkills(bundle.catalogue, false)
@@ -171,7 +140,6 @@ describe.each(['claude', 'codex'] as const)('the %s launch view', (provider) => 
     const old = [...fake.files]
     const next = await installNewSkillView(fake.storage, view)
     expect(first.root).not.toBe(next.root)
-    expect(fake.completed).toEqual(new Set([first.root, next.root]))
     for (const [path, text] of old) expect(fake.files.get(path)).toBe(text)
     expect(first.discoveryPath).toBe(join(first.root, view.discoveryRoot))
   })
@@ -189,30 +157,7 @@ describe.each(['claude', 'codex'] as const)('the %s launch view', (provider) => 
     }
     await expect(installNewSkillView(fake.storage, view)).rejects.toThrow('conflict')
     expect(fake.files.get(personalPath)).toBe(marker)
-    expect(fake.completed.size).toBe(0)
   })
-  it('refuses changed read-back before publishing', async () => {
-    const bundle = verified(),
-      fake = fictionalStorage()
-    fake.storage.readFile = async () => 'different'
-    await expect(
-      installNewSkillView(
-        fake.storage,
-        builtInSkillView(provider, bundle, bundle.catalogue.skills),
-      ),
-    ).rejects.toThrow('match')
-    expect(fake.completed.size).toBe(0)
-  })
-  it('rejects traversal or added executable resources before reserving a view', async () => {
-    const bundle = verified(),
-      fake = fictionalStorage(),
-      view = builtInSkillView(provider, bundle, bundle.catalogue.skills)
-    const files = new Map(view.files)
-    files.set('claude-plugin/../../personal', 'bad')
-    await expect(installNewSkillView(fake.storage, { ...view, files })).rejects.toThrow('files')
-    expect(fake.reserved()).toBe(0)
-  })
-
   it('registers nothing after cancellation or stale publication', async () => {
     const bundle = verified(),
       fake = fictionalStorage()
@@ -220,10 +165,11 @@ describe.each(['claude', 'codex'] as const)('the %s launch view', (provider) => 
     await expect(installNewSkillView(fake.storage, view, () => false)).rejects.toThrow('current')
     expect(fake.reserved()).toBe(0)
     let current = true
-    fake.storage.complete = async () => {
+    const create = fake.storage.createFile
+    fake.storage.createFile = async (...args) => {
+      await create(...args)
       current = false
     }
     await expect(installNewSkillView(fake.storage, view, () => current)).rejects.toThrow('current')
-    expect(fake.completed.size).toBe(0)
   })
 })

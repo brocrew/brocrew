@@ -62,7 +62,7 @@ export function launchSkillSelections(db: AppDatabase, shipped: () => VerifiedBu
       return {
         revision: stamp,
         skills,
-        isCurrent: () => revision() === stamp && identity(profileId) === id,
+        isCurrent: () => identity(profileId) === id,
       }
     })()
   }

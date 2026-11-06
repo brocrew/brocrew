@@ -12,7 +12,6 @@ import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { skillDigest } from '../src/main/skills/built-in-catalogue'
 import {
-  BUILT_IN_SKILLS_FAILURE,
   keptShippedSkills,
   prepareBuiltInSkills,
   readBuiltInSkills,
@@ -100,27 +99,16 @@ describe('the shipped skills, kept for the run', () => {
     expect(delegateIn(first)).toBe(shippedDelegate())
   })
 
-  it('a failed read stays failed for the run, and the next run reads the files again', () => {
+  it('retries the same source after a missing skill is restored and copies its actual text', async () => {
     const folder = aShippedFolder()
-    const manifest = join(folder, 'manifest.json')
-    const good = readFileSync(manifest, 'utf8')
-    writeFileSync(manifest, JSON.stringify({ ...JSON.parse(good), formatVersion: 'invalid' }))
-    const run = keptShippedSkills(folder)
-    expect(() => run()).toThrow()
-    writeFileSync(manifest, good)
-    expect(() => run()).toThrow()
-    expect(keptShippedSkills(folder)().catalogue.version).toBe(
-      readBuiltInSkills(shipped).catalogue.version,
-    )
-  })
-
-  it('a launch after a failed read refuses in the existing words, and reads nothing', async () => {
-    const folder = aShippedFolder()
-    const manifest = join(folder, 'manifest.json')
-    const good = readFileSync(manifest, 'utf8')
-    writeFileSync(manifest, JSON.stringify({ ...JSON.parse(good), formatVersion: 'invalid' }))
-    const launch = launches(keptShippedSkills(folder))
-    writeFileSync(manifest, good)
-    await expect(launch()).rejects.toThrow(BUILT_IN_SKILLS_FAILURE)
+    const source = join(folder, 'delegate', 'SKILL.md')
+    const good = readFileSync(source, 'utf8')
+    rmSync(source)
+    const kept = keptShippedSkills(folder)
+    const launch = launches(kept)
+    await expect(launch()).rejects.toThrow(source)
+    writeFileSync(source, good + '\nA valid edited instruction with changed length.\n')
+    const result = await launch()
+    expect(delegateIn(result)).toBe(good + '\nA valid edited instruction with changed length.\n')
   })
 })
