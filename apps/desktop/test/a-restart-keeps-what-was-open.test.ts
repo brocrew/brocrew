@@ -1042,17 +1042,13 @@ describe('692 · a restart keeps what was open', () => {
     // ⛔ **`its parent’s end while its start is in flight leaves it closed` retired with `end_agent`
     // (D-017, commit 3)** — nothing ends a conversation now.
 
-    it('⚑ the quit writes its record only once everything it closed is down — a crash before then records nothing', async () => {
+    it('⚑ the quit records its open conversations before teardown starts', async () => {
       const { lead, children } = await theFourOpen()
       const quitting = store
       const seenWhenWritten: string[][] = []
       const write = quitting.closedByTheQuit.bind(quitting)
       quitting.closedByTheQuit = (ids, at) => {
-        // ⚑ **What the host is still running at the moment of the write** — nothing, or the write
-        // came before the teardown and a crash in between would have brought them back open.
-        // ⚠️ **By the RECORDED status, not by `running`** — a slot being torn down already reads
-        // `not-running`, so only the row the finalizer writes says the teardown is over (found by
-        // review, round two: a record written between the close and its end passed the old check).
+        // The open list is saved while these conversations are still running, before drains.
         seenWhenWritten.push(
           [lead, ...children].filter(
             (id) => quitting.resumable().find((row) => row.sessionId === id)?.status !== 'ended',
@@ -1061,7 +1057,7 @@ describe('692 · a restart keeps what was open', () => {
         write(ids, at)
       }
       await quitAndRelaunch()
-      expect(seenWhenWritten).toEqual([[]])
+      expect(seenWhenWritten).toEqual([[lead, ...children]])
       expect(listed(lead)).toEqual({ running: 'not-running' })
     })
 

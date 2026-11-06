@@ -3909,13 +3909,9 @@ export interface SessionStore extends OwnNotesStore {
    */
   reopened(sessionId: string, at: number): boolean
   /**
-   * 🔴 **692 · R34a — record which conversations the QUIT closed**, once it has closed them.
-   *
-   * ⚑ **Its one caller is `RuntimeHost.closeAll`**, which takes the set before its first `await` and
-   * hands it in after its teardown — only conversations nothing else was already ending: never one
-   * a person closed or was closing, one whose provider failed or ended on its own, or one an agent
-   * ended, even while the quit ran. ⛔ **One transaction**: all of them or none — and a crash before
-   * the call records none, which is R34c.
+   * Record the open conversations at the quit gesture, before asynchronous teardown.
+   * The host excludes conversations already closing, failed, ended or still starting.
+   * One transaction preserves the complete list even if a later drain never returns.
    *
    * ⚠️ **It never un-stamps.** A conversation that came back open and was never spoken to is not in
    * the host's slot map at the next quit, so this is not handed it — and its stamp from the previous

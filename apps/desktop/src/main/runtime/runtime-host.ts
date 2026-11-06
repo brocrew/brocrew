@@ -9071,9 +9071,8 @@ export class RuntimeHost implements LiveHost {
   /**
    * 🔴 **What the quit is about to cut, kept before it cuts it** — each conversation it closes whose
    * turn is running and waits on nobody: that turn's row, the account its life runs on, and the
-   * quit's moment. ⚑ Taken after the sign-ins are let go and before the first close, with nothing
-   * awaited between. ⚑ **Not that the quit finished** — `closed_by_the_quit_at` says that, after
-   * the teardown: a quit cut short still cut these. ⛔ It never throws: nothing stops a quit.
+   * quit's moment. Kept with the open list before any teardown wait. A quit cut short still
+   * preserves these conversations. It never throws: nothing stops a quit.
    */
   private keepTheTurnsTheQuitCuts(closing: readonly HostedSession[]): void {
     if (this.deps.turnsTheAppCut === undefined) return
@@ -46175,7 +46174,20 @@ export class RuntimeHost implements LiveHost {
    * for the same reason admission is: nothing new can be admitted after this line, so the snapshot
    * is complete, and taking it late would race a session that finished early out of the picture.
    */
+  recordOpenForQuit(): void {
+    if (this.quitRecorded) return
+    this.quitRecorded = true
+    const closing = this.whatTheQuitCloses()
+    this.keepTheTurnsTheQuitCuts(closing)
+    this.recordWhatTheQuitClosed(closing)
+    this.keepTheUsage()
+    this.launches.closeAdmission()
+  }
+
+  private quitRecorded = false
+
   async closeAll(): Promise<void> {
+    this.recordOpenForQuit()
     this.stopHearingCommits()
     const memoryClosed = this.deps.memoryKnowledge?.close() ?? Promise.resolve()
     this.deps.store.closePastWorkSearch?.()
@@ -46216,14 +46228,6 @@ export class RuntimeHost implements LiveHost {
     for (const { timer } of this.theResets.values()) clearTimeout(timer)
     this.theResets.clear()
     const terminated = settledWithin(this.launches.pending(), this.closeDrainTimeoutMs * 2)
-    // 🔴 **692 · R34a — which conversations THE QUIT closes, taken as the last thing before it
-    // closes them**, with nothing awaited in between: after the sign-ins' bounded cancel above, so a
-    // conversation a person closed, a parent ended or a provider failed during that wait is already
-    // on its way out and is left out — see {@link whatTheQuitCloses}.
-    const theQuitCloses = this.whatTheQuitCloses()
-    // 🔴 **…and which running turns it is about to cut, kept before it cuts them**, with nothing
-    // awaited between ({@link keepTheTurnsTheQuitCuts}).
-    this.keepTheTurnsTheQuitCuts(theQuitCloses)
     let confirmed: boolean
     try {
       ;[, confirmed] = await Promise.all([
@@ -46240,16 +46244,6 @@ export class RuntimeHost implements LiveHost {
     } finally {
       // A failed session close must still leave memory quiescent before SQLite closes.
       await Promise.allSettled([memoryClosed, teamProfileGraphsClosed])
-      // 🔴 **692 · …and recorded once the teardown is over** (R34c). ⛔ A crash, a kill or a forced
-      // exit that lands before this line records NOTHING, so what the quit was closing comes back
-      // closed — which is what R34c rules and what the rail's hover tells a person. ⚠️ **In a
-      // `finally`**: one conversation whose close rejected must not cost every other its record.
-      this.recordWhatTheQuitClosed(theQuitCloses)
-      // ⚑ **F096 — the usage readings as they stand at the quit**, each with the moment it was last
-      // received: a frame that said the same again moved that moment and wrote nothing
-      // ({@link takeTheUsage}), so the next launch would otherwise say an older one. ⚠️ In the
-      // `finally` for the same reason as the line above.
-      this.keepTheUsage()
     }
     // Bounded like every other wait a quit makes, and for the same reason: one adapter that will not
     // let go must not be able to hold the whole application open. What the bound costs is the same
@@ -46299,20 +46293,7 @@ export class RuntimeHost implements LiveHost {
     })
   }
 
-  /**
-   * 🔴 **692 · write down what the quit closed — once it HAS closed it** (R34a, R34c).
-   *
-   * ⚑ **The set is the one {@link whatTheQuitCloses} took just before the teardown; the write waits
-   * for the teardown.** ⛔ A crash, a kill, or the app's own last-resort exit that lands in between
-   * writes nothing, so everything the quit was closing comes back CLOSED — R34c's fallback, and what
-   * the rail's hover promises a person. ⚠️ Writing first would have brought them back open from a
-   * quit that never finished.
-   *
-   *
-   * ⛔ **It never stops a quit.** A failed write is warned about and the quit carries on: the price
-   * is R34c's fallback — those conversations come back closed, as every crash leaves them — which is
-   * the ordinary state of this app until this dispatch, never a worse one.
-   */
+  /** Keep the quit's open-conversation list before asynchronous teardown can delay it. */
   private recordWhatTheQuitClosed(closing: readonly HostedSession[]): void {
     const closed = closing.map((session) => session.id)
     if (closed.length === 0) return

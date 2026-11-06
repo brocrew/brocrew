@@ -2703,6 +2703,7 @@ function start(ownership: HostGateVerdict): void {
  * that can be loaded independently for tests.
  */
 const lifetime = createAppLifetime({
+  recordOpenSessions: () => host?.recordOpenForQuit(),
   // Announce closing to every window. Guard sends individually so one destroyed `webContents`
   // does not suppress notices to later windows. Check both objects: a live `BrowserWindow`
   // can still have destroyed contents.
