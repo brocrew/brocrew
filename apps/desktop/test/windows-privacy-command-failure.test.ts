@@ -82,8 +82,8 @@ it('does not retry a malformed owner SID', async () => {
 it('never retries a timed-out ACL mutation', async () => {
   const error = timeout()
   reply(error)
-  await expect(windowsAccessLists.restrict('C:\\fictional\\plugins', 'S-1-5-21-1', [])).rejects.toBe(
-    error,
-  )
+  await expect(
+    windowsAccessLists.restrict('C:\\fictional\\plugins', 'S-1-5-21-1', []),
+  ).rejects.toBe(error)
   expect(execFile).toHaveBeenCalledTimes(1)
 })
