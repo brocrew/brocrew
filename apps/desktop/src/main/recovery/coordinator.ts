@@ -23,6 +23,7 @@ import { STEPS, type HistoryOnlyGate, type RestoreKind, type Step } from './cont
 import {
   buildLineage,
   hasPendingMigrations,
+  isTheBuildsMigration,
   isLineagePrefix,
   lineageFit,
   migrationsOf,
@@ -503,13 +504,21 @@ async function decide(
   switch (lineageFit(applied, lineage)) {
     case 'newer':
       return newer(deps, applied.length, lineage, fs)
-    case 'foreign':
+    case 'foreign': {
+      const index = applied.findIndex(
+        (migration, at) => !isTheBuildsMigration(migration, lineage[at]),
+      )
+      const recorded = applied[index]!
+      const expected = lineage[index]
+      const build = `${deps.appVersion}${deps.build ? ` (${deps.build})` : ''}`
       return failed(
         'database-unreadable',
         false,
-        `${databaseFile(userData)} records migrations this version of BroCrew does not carry, and none later ` +
-          'than its own, so no version of BroCrew this one knows made it.',
+        `${databaseFile(userData)}: migration ${index + 1} records time ${recorded.createdAt} and hash ${recorded.hash}. ` +
+          `BroCrew ${build} ${expected ? `expects time ${expected.createdAt} and hash ${expected.hash}` : 'has no migration at that position'}. ` +
+          'This build cannot open that migration history.',
       )
+    }
     case 'fits':
       break
   }
