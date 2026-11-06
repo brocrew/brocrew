@@ -288,6 +288,34 @@ describe('a work wait is reconciled without a window', () => {
     for (const folder of [userData, root]) rmSync(folder, { recursive: true, force: true })
   })
 
+  it('uses the persisted wait event revision across restart and distinguishes waits at the same time', async () => {
+    type Reading = {
+      reconcileWork(): void
+      reconciliationReading(): { rows: ReconciliationPiece[] }
+    }
+    vi.spyOn(host as unknown as Reading, 'reconcileWork').mockImplementation(() => {})
+    const { owner, work } = await create()
+    freezeClock = true
+    waiting(owner, work.piece, { kind: 'agent', piece: 'missing-first', label: 'W99.1' })
+    const key = () =>
+      (host as unknown as Reading)
+        .reconciliationReading()
+        .rows.find((row) => row.piece === work.piece)?.issue?.waitKey
+    const first = key()
+    expect(first).toBe(
+      `${owner}:${store.theActiveGeneration(owner)}:${store.rootLines(work.piece).statusLine!.revision}`,
+    )
+    await host.closeAll()
+    host = build()
+    vi.spyOn(host as unknown as Reading, 'reconcileWork').mockImplementation(() => {})
+    expect(key()).toBe(first)
+    const at = store.rootLines(work.piece).statusLine!.at
+    waiting(owner, work.piece, { kind: 'agent', piece: 'missing-second', label: 'W99.2' })
+    expect(store.rootLines(work.piece).statusLine!.at).toBe(at)
+    expect(key()).toBeDefined()
+    expect(key()).not.toBe(first)
+  })
+
   it('a quiet pass reads no names and several notices share one narrow names read', async () => {
     keepTurnsOpen = true
     const reading = host as unknown as {
