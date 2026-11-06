@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { unlinkSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { isPathSegment } from '../shared/runtime-ipc'
@@ -11,12 +10,14 @@ import type {
   MethodChangeResult,
   MethodHistoryResult,
 } from '../shared/saved-method-library'
+import { parseSavedMethodLine } from './saved-method-index'
 import type {
   MethodChangeIntent,
   MethodChangeRecord,
   MethodChangeStore,
   MethodChangeReconciler,
   MethodFileState,
+  MethodFileChange,
 } from './db/method-changes'
 import {
   captureSavedMethodDeletion,
@@ -76,7 +77,7 @@ async function locked<T>(key: string, run: () => Promise<T>): Promise<T> {
     if (locks.get(key) === tail) locks.delete(key)
   }
 }
-const hash = (bytes: Buffer) => createHash('sha256').update(bytes).digest('hex')
+const content = (bytes: Buffer): string => bytes.toString('base64')
 /** Only a complete observation of unchanged bytes and permissions can be skipped for Undo. */
 function noEffect(row: MethodChangeRecord): boolean {
   if (row.outcome === 'pending' || row.actual === null) return false
@@ -86,7 +87,7 @@ function noEffect(row: MethodChangeRecord): boolean {
       actual !== undefined &&
       !actual.unreadable &&
       actual.mode !== undefined &&
-      actual.fingerprint === (file.before?.fingerprint ?? null) &&
+      actual.base64 === (file.before?.base64 ?? null) &&
       actual.mode === (file.before?.mode ?? null)
     )
   })
@@ -125,9 +126,15 @@ function observed(
   return names.map((name) => {
     try {
       const file = readMethodFileCapture(inputs, name)
-      return { name, fingerprint: file?.fingerprint ?? null, mode: file?.mode ?? null }
-    } catch {
-      return { name, fingerprint: null, mode: null, unreadable: true as const }
+      return { name, base64: file?.bytes.toString('base64') ?? null, mode: file?.mode ?? null }
+    } catch (error) {
+      return {
+        name,
+        base64: null,
+        mode: null,
+        unreadable: true as const,
+        cause: `${join(inputs.folder, name)}: ${String(error)}`,
+      }
     }
   })
 }
@@ -189,7 +196,39 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
     })
   }
 
-  function reversePlan(inputs: MethodLibraryInputs, row: MethodChangeRecord): readonly FilePlan[] {
+  function intendedAfter(
+    row: MethodChangeRecord,
+    file: MethodFileChange,
+    identityId: string,
+  ): string | null | undefined {
+    if (file.afterBase64 !== undefined) return file.afterBase64
+    // A historical digest is not bytes. Reconstruct only a completed ordinary operation.
+    if (row.outcome !== 'done') return undefined
+    if (row.operation === 'undo') {
+      const original = row.sourceId === null ? null : deps.changes.read(identityId, row.sourceId)
+      const restored = original?.files.find((one) => one.name === file.name)
+      return restored === undefined ? undefined : (restored.before?.base64 ?? null)
+    }
+    if (file.name === row.target) return null
+    if (file.name.toLowerCase() !== 'index.md' || file.before === null) return undefined
+    const bytes = Buffer.from(file.before.base64, 'base64')
+    const kept: Buffer[] = []
+    let start = 0
+    for (let end = 0; end <= bytes.length; end++) {
+      if (end !== bytes.length && bytes[end] !== 10) continue
+      const line = parseSavedMethodLine(bytes.subarray(start, end).toString('utf8'))
+      if (line === null || line.file.toLowerCase() !== row.target.toLowerCase())
+        kept.push(bytes.subarray(start, Math.min(end + 1, bytes.length)))
+      start = end + 1
+    }
+    return Buffer.concat(kept).toString('base64')
+  }
+
+  function reversePlan(
+    inputs: MethodLibraryInputs,
+    row: MethodChangeRecord,
+    identityId: string,
+  ): readonly FilePlan[] {
     if (
       row.outcome === 'pending' ||
       row.actual === null ||
@@ -199,24 +238,30 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
       throw new Error('This change cannot be reversed')
     return row.files.map((file) => {
       const actual = row.actual!.find((state) => state.name === file.name)
-      if (
-        file.afterMode === undefined ||
-        actual === undefined ||
-        actual.mode === undefined ||
-        actual.unreadable
-      )
-        throw new Error('Permissions or file state were not recorded')
-      const beforeFingerprint = file.before?.fingerprint ?? null
+      const after = intendedAfter(row, file, identityId)
+      if (actual === undefined || actual.unreadable || after === undefined)
+        throw new Error('The recorded content is unresolved')
       const beforeMode = file.before?.mode ?? null
-      const knownBefore = actual.fingerprint === beforeFingerprint && actual.mode === beforeMode
-      const knownAfter = actual.fingerprint === file.after && actual.mode === file.afterMode
-      if (!knownBefore && !knownAfter) throw new Error('The recorded state is external')
+      const afterMode =
+        file.afterMode === undefined ? (after === null ? null : beforeMode) : file.afterMode
       const before = readMethodFileCapture(inputs, file.name)
-      if (
-        (before?.fingerprint ?? null) !== actual.fingerprint ||
-        (before?.mode ?? null) !== actual.mode
-      )
-        throw new Error('The file changed after this operation')
+      const current = before?.bytes.toString('base64') ?? null
+      const currentMode = before?.mode ?? null
+      if (actual.base64 === undefined) {
+        // A completed old operation can be undone only when a fresh ordinary read matches its result.
+        if (row.outcome !== 'done' || current !== after || currentMode !== afterMode)
+          throw new Error('The file changed after this operation')
+      } else {
+        const knownBefore =
+          actual.base64 === (file.before?.base64 ?? null) && actual.mode === beforeMode
+        const knownAfter = actual.base64 === after && actual.mode === afterMode
+        if (
+          (!knownBefore && !knownAfter) ||
+          current !== actual.base64 ||
+          currentMode !== actual.mode
+        )
+          throw new Error('The file changed after this operation')
+      }
       return {
         name: file.name,
         before,
@@ -225,11 +270,16 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
       }
     })
   }
-  function canUndo(inputs: MethodLibraryInputs, row: MethodChangeRecord): boolean {
+  function canUndo(
+    inputs: MethodLibraryInputs,
+    row: MethodChangeRecord,
+    identityId: string,
+  ): boolean {
     try {
-      return reversePlan(inputs, row).some(
+      return reversePlan(inputs, row, identityId).some(
         (file) =>
-          (file.before?.fingerprint ?? null) !== (file.after === null ? null : hash(file.after)) ||
+          (file.before?.bytes.toString('base64') ?? null) !==
+            (file.after === null ? null : content(file.after)) ||
           (file.before?.mode ?? null) !== file.afterMode,
       )
     } catch {
@@ -258,10 +308,9 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
             ? null
             : {
                 base64: file.before.bytes.toString('base64'),
-                fingerprint: file.before.fingerprint,
                 mode: file.before.mode,
               },
-        after: file.after === null ? null : hash(file.after),
+        afterBase64: file.after === null ? null : content(file.after),
         afterMode: file.afterMode,
       })),
     }
@@ -283,7 +332,7 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
       for (const file of files) {
         if (
           file.after !== null &&
-          ((file.before?.fingerprint ?? null) !== hash(file.after) ||
+          ((file.before?.bytes.toString('base64') ?? null) !== content(file.after) ||
             file.before?.mode !== file.afterMode)
         ) {
           stages.set(
@@ -331,7 +380,7 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
     )
     const matches = actual.every((state) => {
       const plan = intent.files.find((file) => file.name === state.name)!
-      return !state.unreadable && state.fingerprint === plan.after && state.mode === plan.afterMode
+      return !state.unreadable && state.base64 === plan.afterBase64 && state.mode === plan.afterMode
     })
     try {
       if (
@@ -347,9 +396,11 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
         : {
             ok: false,
             reason: 'change-incomplete',
-            ...(operationFailed === undefined
+            ...((operationFailed ?? actual.find((state) => state.cause)?.cause) === undefined
               ? {}
-              : { cause: `${join(inputs.folder, target)}: ${String(operationFailed)}` }),
+              : {
+                  cause: `${join(inputs.folder, target)}: ${String(operationFailed ?? actual.find((state) => state.cause)?.cause)}`,
+                }),
             change: summary(saved),
           }
     } catch (error) {
@@ -402,7 +453,6 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
           indexProblem: 'unreadable',
           problem: 'unreadable',
           truncated: false,
-          indexFingerprint: null,
           malformedLines: 0,
           readAt: deps.now(),
         }
@@ -435,8 +485,8 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
       return mutate(slug, by, async (one, inputs) => {
         const row = undoCandidate(one.id)
         if (row === undefined || row.id !== id) return failed('not-latest-change')
-        const files = reversePlan(inputs, row)
-        if (!canUndo(inputs, row)) return failed('nothing-to-restore')
+        const files = reversePlan(inputs, row, one.id)
+        if (!canUndo(inputs, row, one.id)) return failed('nothing-to-restore')
         return apply(one, inputs, files, row.target, row)
       })
     },
@@ -461,7 +511,9 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
           const done = actual.every((state) => {
             const file = row.files.find((file) => file.name === state.name)!
             return (
-              !state.unreadable && state.fingerprint === file.after && state.mode === file.afterMode
+              !state.unreadable &&
+              state.base64 === file.afterBase64 &&
+              state.mode === file.afterMode
             )
           })
           if (
@@ -471,9 +523,17 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
           )
             return failed('settlement-pending')
           announce(slug)
-          return { ok: true, change: summary(deps.changes.read(one.id, row.id)!) }
-        } catch {
-          return failed('history-unreadable')
+          const change = summary(deps.changes.read(one.id, row.id)!)
+          const cause = actual.find((state) => state.cause)?.cause
+          return cause === undefined
+            ? { ok: true, change }
+            : { ok: false, reason: 'change-incomplete', cause, change }
+        } catch (error) {
+          return {
+            ok: false,
+            reason: 'history-unreadable',
+            cause: `${inputsOf(slug).folder}: ${String(error)}`,
+          }
         }
       })
     },
@@ -494,7 +554,7 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
         return {
           ok: true as const,
           changes: rows.map((row) =>
-            summary(row, row.id === newest?.id && canUndo(inputsOf(slug), row)),
+            summary(row, row.id === newest?.id && canUndo(inputsOf(slug), row, one.id)),
           ),
         }
       } catch (error) {

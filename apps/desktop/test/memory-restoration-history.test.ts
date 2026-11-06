@@ -169,14 +169,12 @@ describe('memory restoration keeps absence, source and author in the existing hi
         entry,
         act: 'removed',
         text: '',
-        fingerprint: '0'.repeat(64),
         confirmed: true,
       }).success,
     ).toBe(true)
     expect(
       runtimeCommandSchema.safeParse({
         kind: 'amendAgentMemory',
-        fingerprint: '0'.repeat(64),
         confirmed: true,
         profileId: 'lark',
         provider: 'claude',

@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -83,7 +82,6 @@ const homeOf = (provider: Provider, profileId: string): string =>
  */
 /** ⚠️ **Reset per test**, so a session id never depends on how many tests ran before it. */
 let counter = 0
-const originalFingerprint = createHash('sha256').update(THE_FALSE_NOTE).digest('hex')
 async function hostDeps(
   options: {
     store?: SessionStore
@@ -254,7 +252,6 @@ describe('§2 · 🔴 the act and its record land together', () => {
             profileId: 'brobot',
             provider: 'claude',
             entry: note,
-            fingerprint: originalFingerprint,
             confirmed: true,
             act,
             text,
@@ -300,7 +297,6 @@ describe('§2 · 🔴 the act and its record land together', () => {
         profileId: 'brobot',
         provider: 'claude',
         entry: note,
-        fingerprint: originalFingerprint,
         confirmed: true,
         act: 'removed',
         text: '',
@@ -332,7 +328,6 @@ describe('§2 · 🔴 the act and its record land together', () => {
         profileId: 'brobot',
         provider: 'claude',
         entry: note,
-        fingerprint: originalFingerprint,
         confirmed: true,
         act: 'corrected',
         text: 'BROBOT-625-A-PARKED-AGENT-IS-DISTINGUISHABLE\n',
@@ -357,7 +352,6 @@ describe('§2 · 🔴 the act and its record land together', () => {
         profileId: 'brobot',
         provider: 'claude',
         entry: join(userData, 'provider-homes', 'default', 'brobot', 'claude', 'memory', 'gone.md'),
-        fingerprint: originalFingerprint,
         confirmed: true,
         act: 'removed',
         text: '',
@@ -396,7 +390,6 @@ describe('§2 · 🔴 the act and its record land together', () => {
           profileId: 'brobot',
           provider: 'claude',
           entry: note,
-          fingerprint: originalFingerprint,
           confirmed: true,
           act: 'removed',
           text: '',
@@ -431,7 +424,6 @@ describe('§2 · 🔴 the act and its record land together', () => {
         profileId: 'ghost',
         provider: 'claude',
         entry: note,
-        fingerprint: originalFingerprint,
         confirmed: true,
         act: 'removed',
         text: '',
@@ -468,7 +460,6 @@ describe('§3 · ⚠️ a change reaches the agent from its NEXT conversation', 
             profileId: 'brobot',
             provider: 'claude',
             entry: note,
-            fingerprint: originalFingerprint,
             confirmed: true,
             act: 'removed',
             text: '',
@@ -571,7 +562,6 @@ describe('§4 · 🔒 the door, and who may reach it', () => {
         profileId: 'brobot',
         provider: 'claude',
         entry: note,
-        fingerprint: originalFingerprint,
         confirmed: true,
         act: 'removed',
         text: '',
@@ -586,7 +576,7 @@ describe('§4 · 🔒 the door, and who may reach it', () => {
 })
 
 describe('durable memory operations through the person window doors', () => {
-  it('requires confirmation and the displayed fingerprint before recording an intent', async () => {
+  it('requires primary confirmation before recording an intent', async () => {
     identity('lark')
     const { note } = plantTheNight('lark')
     const asked = {
@@ -595,13 +585,10 @@ describe('durable memory operations through the person window doors', () => {
       entry: note,
       act: 'removed' as const,
       text: '',
-      fingerprint: originalFingerprint,
       confirmed: true,
     }
     const no = await host.amendAgentMemory({ ...asked, confirmed: false }, sink)
     expect(no?.done === false && no.refused).toBe('confirmation-required')
-    const stale = await host.amendAgentMemory({ ...asked, fingerprint: '0'.repeat(64) }, sink)
-    expect(stale?.done === false && stale.refused).toBe('changed-or-unreadable')
     expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
     expect(host.agentMemory('lark').amendments).toEqual([])
   })
@@ -616,7 +603,6 @@ describe('durable memory operations through the person window doors', () => {
         entry: note,
         act: 'removed',
         text: '',
-        fingerprint: originalFingerprint,
         confirmed: true,
       },
       sink,
@@ -753,7 +739,6 @@ describe('durable memory operations through the person window doors', () => {
           entry: note,
           act: 'removed',
           text: '',
-          fingerprint: originalFingerprint,
           confirmed: true,
         },
         sink,
@@ -827,7 +812,6 @@ describe('memory shutdown and missing-service boundaries', () => {
             entry: note,
             act: 'removed',
             text: '',
-            fingerprint: originalFingerprint,
             confirmed: true,
           },
           sink,

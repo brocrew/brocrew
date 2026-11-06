@@ -1,5 +1,4 @@
 import ts from 'typescript'
-import { createHash } from 'node:crypto'
 import {
   existsSync,
   mkdirSync,
@@ -40,7 +39,6 @@ let store: SessionStore
 let service: MemoryService
 let host: RuntimeHost
 const text = 'A saved note.\r\nCafé.\n'
-const fingerprint = createHash('sha256').update(text).digest('hex')
 const sink: RuntimeEventSink = {
   alive: true,
   aPersonIsBehindIt: true,
@@ -49,14 +47,13 @@ const sink: RuntimeEventSink = {
   sendLiveness: () => {},
 }
 const home = (provider: Provider, slug: string) => join(root, 'homes', 'default', slug, provider)
-const asked = (change: { confirmed?: boolean; fingerprint?: string } = {}) => ({
+const asked = (change: { confirmed?: boolean } = {}) => ({
   profileId: 'lark',
   provider: 'claude' as const,
   entry,
   act: 'removed' as const,
   text: '',
   confirmed: true,
-  fingerprint,
   ...change,
 })
 
@@ -112,7 +109,7 @@ afterEach(async () => {
 })
 
 describe('the window host uses the durable memory service', () => {
-  it.each([{ confirmed: false }, { fingerprint: '0'.repeat(64) }])(
+  it.each([{ confirmed: false }])(
     'refuses a missing confirmation or stale displayed text: %j',
     async (change) => {
       const reply = await host.amendAgentMemory(asked(change), sink)

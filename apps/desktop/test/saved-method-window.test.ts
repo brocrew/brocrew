@@ -48,9 +48,6 @@ async function selection(): Promise<MethodDeleteSelection> {
   return {
     confirmed: true,
     key: item.key,
-    fingerprint: item.fingerprint,
-    indexState: listed.indexState,
-    indexFingerprint: listed.indexFingerprint,
   }
 }
 beforeEach(async () => {
@@ -131,9 +128,7 @@ describe('a person manages saved methods through bounded window commands', () =>
           selection: {
             confirmed: true,
             key: 'method:review.md',
-            fingerprint: null,
             indexState: 'absent',
-            indexFingerprint: null,
           },
         },
       ],
@@ -171,11 +166,7 @@ describe('a person manages saved methods through bounded window commands', () =>
     })
     expect(readFileSync(join(folder, 'review.md'), 'utf8')).toBe('# Review\nkept text')
   })
-  it('refuses stale displayed files and interruption checks without confirmation', async () => {
-    const selected = await selection()
-    writeFileSync(join(folder, 'review.md'), 'external')
-    expect(await read('removeAgentMethod', { selection: selected })).toMatchObject({ ok: false })
-    expect(readFileSync(join(folder, 'review.md'), 'utf8')).toBe('external')
+  it('keeps primary confirmation on interruption checks', async () => {
     expect(await read('checkInterruptedAgentMethods', { confirmed: false })).toMatchObject({
       ok: false,
       reason: 'confirmation-required',
@@ -189,16 +180,6 @@ describe('a person manages saved methods through bounded window commands', () =>
       { kind: 'agentMethodBody', key: 'x'.repeat(1025) },
       { kind: 'undoAgentMethod', changeId: '' },
       { kind: 'checkInterruptedAgentMethods' },
-      {
-        kind: 'removeAgentMethod',
-        selection: {
-          confirmed: true,
-          key: 'review.md',
-          fingerprint: 'wrong',
-          indexState: 'ok',
-          indexFingerprint: null,
-        },
-      },
       { kind: 'agentMethodBody', key: 'method:review.md', path: '/outside.md' },
     ])
       expect(

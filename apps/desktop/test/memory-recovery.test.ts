@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -12,7 +11,7 @@ import { agentIdentityRowId } from '../src/main/db/identity'
 import type { ActedBy } from '../src/shared/who-did-it'
 
 interface Observation {
-  fingerprint: string | null
+  text: string | null
   unreadable?: true
 }
 interface Write {
@@ -45,8 +44,8 @@ const app = { who: 'the-app-itself' } as const
 const agent = { who: 'an-agent', agent: 'ses-wren' } as const
 const entry = '/fictional/lark/memory/note.md'
 const text = 'Saved before.\r\nCafé.\n'
-const hash = (text: string) => createHash('sha256').update(text).digest('hex')
-const absent = { fingerprint: null }
+const hash = (text: string) => text
+const absent = { text: null }
 let root: string
 let db: AppDatabase
 let store: storage.SessionStore
@@ -169,9 +168,9 @@ describe('memory intent survives interruption before its single honest observati
     })
   })
   it.each([
-    [{ fingerprint: hash(text) }, 'unchanged'],
-    [{ fingerprint: hash('external') }, 'partial'],
-    [{ fingerprint: null, unreadable: true }, 'partial'],
+    [{ text: hash(text) }, 'unchanged'],
+    [{ text: hash('external') }, 'partial'],
+    [{ text: null, unreadable: true }, 'partial'],
   ] as const)('records a truthful observation %j as %s', (actual, outcome) => {
     const api = recovery()
     const saved = api.beginMemoryAmendment(remove(), clock++)!
@@ -185,9 +184,7 @@ describe('memory intent survives interruption before its single honest observati
       remove({ act: 'corrected', textAfter: 'After' }),
       clock++,
     )!
-    expect(
-      api.settleMemoryAmendment('lark', saved.id, { fingerprint: hash('After') }, person),
-    ).toBe(true)
+    expect(api.settleMemoryAmendment('lark', saved.id, { text: hash('After') }, person)).toBe(true)
     const inverse = api.beginMemoryAmendment(
       remove({
         act: 'corrected',
@@ -198,9 +195,7 @@ describe('memory intent survives interruption before its single honest observati
       clock++,
     )!
     expect(inverse).toMatchObject({ sourceId: saved.id, outcome: 'pending' })
-    expect(api.settleMemoryAmendment('lark', inverse.id, { fingerprint: hash(text) }, person)).toBe(
-      true,
-    )
+    expect(api.settleMemoryAmendment('lark', inverse.id, { text: hash(text) }, person)).toBe(true)
   })
   it('skips unchanged attempts for the source rule and refuses partial external sources', () => {
     const api = recovery()
@@ -217,9 +212,9 @@ describe('memory intent survives interruption before its single honest observati
     expect(api.memoryAmendment('lark', attempt.id)?.outcome).toBe('unchanged')
     const retry = api.beginMemoryAmendment(restore, clock++)!
     expect(retry).not.toBeNull()
-    expect(
-      api.settleMemoryAmendment('lark', retry.id, { fingerprint: hash('external') }, person),
-    ).toBe(true)
+    expect(api.settleMemoryAmendment('lark', retry.id, { text: hash('external') }, person)).toBe(
+      true,
+    )
     expect(api.beginMemoryAmendment(restore, clock++)).toBeNull()
     expect(
       api.beginMemoryAmendment(
@@ -354,7 +349,7 @@ describe('memory intent survives interruption before its single honest observati
   it('refuses invalid observations and bad clocks without settling or fabricating an absence', () => {
     const api = recovery()
     const saved = api.beginMemoryAmendment(remove(), clock++)!
-    for (const bad of [{}, { fingerprint: 'x' }, { fingerprint: hash(text), unreadable: true }])
+    for (const bad of [{}, { text: 1 }, { text: hash(text), unreadable: true }])
       expect(api.settleMemoryAmendment('lark', saved.id, bad as Observation, person)).toBe(false)
     const create = Reflect.get(storage, 'createMemoryAmendmentObserver') as typeof observer
     const badClock = (

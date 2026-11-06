@@ -40,7 +40,6 @@ export interface MethodReadSeams {
 
 export interface MethodFileCapture {
   readonly bytes: Buffer
-  readonly fingerprint: string
   readonly mode: number
 }
 type FileImage = MethodFileCapture
@@ -118,7 +117,7 @@ function image(
     }
     if (count > limit) throw new Refused('too-large', path)
     const bytes = buffer.subarray(0, count)
-    return { bytes, fingerprint: hash(bytes), mode: Number(opened.mode & 0o777n) }
+    return { bytes, mode: Number(opened.mode & 0o777n) }
   } finally {
     closeSync(fd)
   }
@@ -250,7 +249,6 @@ function item(
     name,
     kind: name === read.indexName ? 'index' : dangling ? 'missing-reference' : 'method',
     references,
-    fingerprint: bytes?.fingerprint ?? null,
     bytes: bytes?.bytes.length ?? null,
     canDelete:
       !read.truncated && read.indexProblem === undefined && (problem === undefined || dangling),
@@ -271,7 +269,6 @@ export function listSavedMethodLibrary(
     offset,
     nextOffset: null,
     indexState: 'absent',
-    indexFingerprint: null,
     malformedLines: 0,
     truncated: false,
     readAt: now,
@@ -303,7 +300,6 @@ export function listSavedMethodLibrary(
       indexState:
         read.indexProblem !== undefined ? 'problem' : read.index === null ? 'absent' : 'ok',
       ...(read.indexProblem === undefined ? {} : { indexProblem: read.indexProblem }),
-      indexFingerprint: read.index?.fingerprint ?? null,
       malformedLines: read.malformedLines,
       truncated: read.truncated,
       readAt: now,
@@ -337,7 +333,6 @@ export function readSavedMethodBody(
       key,
       text: found.bytes.toString('utf8'),
       bytes: found.bytes.length,
-      fingerprint: found.fingerprint,
     }
   } catch (error) {
     return { ok: false, problem: error instanceof Refused ? error.problem : 'unreadable' }
