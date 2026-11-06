@@ -2542,26 +2542,13 @@ const CHILD_READ_TIMEOUT_MS = 5_000
 const CHILD_INPUT_TIMEOUT_MS = 15_000
 
 /**
- * 🔴 **713 · how long an accepted compaction may take to START before its turn is given up.**
- *
- * ⚠️ **The one turn this adapter binds from a notification** — see {@link CodexTurn.bindsAtItsStart}
- * — so it is the one turn a missing `turn/started` would leave `working` forever, with a Stop that
- * cannot address it (an interrupt needs the provider's turn id). ⚑ Measured
- * (`probe:codex-command-as-typed`, bundled 0.146.0): `thread/compact/start` answered `{}` and its
- * `turn/started` followed **8 ms** later, on a thread with history and on an empty one. The model's
- * summary is written INSIDE the turn, after it starts, so this bounds the app-server rather than the
- * model — the same budget {@link CHILD_INPUT_TIMEOUT_MS} gives an accept, for the same reason.
- */
-const COMPACTION_START_TIMEOUT_MS = 15_000
-
-/**
- * 🔴 **713 · what a person reads when they ask again while a compaction the bound gave up on may
- * still start** — see {@link CodexSessionHandle.compactionOutstanding}. ⚑ It says why, and what
- * ends the wait.
+ * 🔴 **713 · what a person reads when they ask again while a compaction they stopped before Codex
+ * started it may still start** — see {@link CodexSessionHandle.compactionOutstanding}: a second
+ * compaction's start could otherwise be taken for that one's. ⚑ It says why, and what ends the wait.
  */
 export const A_COMPACTION_IS_STILL_OUTSTANDING =
-  'Codex accepted the last compaction but has not started it, and it may still run — BroCrew will ' +
-  'not ask for another until it does, or until your next message has finished. Nothing has been sent.'
+  'You stopped the last compaction before Codex started it, and Codex may still run it, so this one ' +
+  'was not asked for. Send a message: once it has finished, you can compact again.'
 
 /**
  * The correlation between ONE accepted local turn (the {@link SessionMachine} turn)
@@ -2634,8 +2621,9 @@ interface CodexTurn {
    * an idle session ({@link SessionMachine.beginTurn} refuses otherwise), so every turn this session
    * bound before it has already ended, and Codex writes a turn's `turn/started` before its
    * `turn/completed` on one ordered stream. ⚑ A delayed duplicate of the turn before — 037's hazard —
-   * is refused by id (see {@link CodexSessionHandle.bindsACompactionAt}), and a compaction the 15 s
-   * bound gave up on — ended here, not at Codex — blocks the next one until it shows itself (see
+   * is refused by id (see {@link CodexSessionHandle.bindsACompactionAt}), and a compaction the
+   * person stopped before it started — ended here, not at Codex — blocks the next one until it shows
+   * itself (see
    * {@link CodexSessionHandle.compactionOutstanding}).
    */
   bindsAtItsStart?: true
@@ -2737,7 +2725,8 @@ export class CodexSessionHandle implements SessionHandle {
    */
   private lastBoundTurnId: string | null = null
   /**
-   * 🔴 **713 · a compaction Codex accepted and the bound gave up on — which may still START.**
+   * 🔴 **713 · a compaction Codex accepted and the person stopped before it started — which may
+   * still START.**
    *
    * ⛔ **Its `turn/started` would carry nothing to tell it from a later compaction's**, so while it
    * is outstanding no other compaction begins ({@link CodexSessionHandle.compact} refuses, in words):
@@ -4179,7 +4168,7 @@ export class CodexSessionHandle implements SessionHandle {
     if (method === 'turn/completed') {
       // Correlated terminalization (037/029, 036/023 P1-C) — handled fully here.
       const ours = this.onTurnCompleted(params)
-      // 🔴 **713 · a turn of ours ran to its end**, so a compaction the bound gave up on is taken as
+      // 🔴 **713 · a turn of ours ran to its end**, so a compaction stopped before it started is taken as
       // gone — see {@link compactionOutstanding}, and its residual.
       if (ours) this.compactionOutstanding = false
       // ⛔ **The ONE edge Codex's background level has** (275), and it is here rather than at the
@@ -4237,9 +4226,13 @@ export class CodexSessionHandle implements SessionHandle {
         this.bindProviderTurn(startedId)
         return
       }
-      // 🔴 **713 · a turn nobody here bound has started** — a compaction the bound gave up on,
-      // showing itself. ⚑ Its frames stay dropped; a compaction may be asked for again.
-      if (!this.isCurrentProviderTurn(startedId)) this.compactionOutstanding = false
+      // 🔴 **713 · a turn nobody here bound has started** — a compaction stopped before it started,
+      // showing itself. ⚑ The person's Stop reaches it now that it has an id; its frames stay
+      // dropped, and a compaction may be asked for again.
+      if (!this.isCurrentProviderTurn(startedId)) {
+        if (this.compactionOutstanding && startedId) void this.sendInterruptRpc(startedId)
+        this.compactionOutstanding = false
+      }
       if (this.currentTurn?.interruptAsked && this.isCurrentProviderTurn(startedId)) {
         void this.sendInterruptRpc(startedId)
       }
@@ -6083,8 +6076,10 @@ export class CodexSessionHandle implements SessionHandle {
       commandsEnding: Promise.resolve(),
     }
     const params: ThreadCompactStartParams = { threadId: this._ref!.sessionId }
+    // ⚑ Accepted, the compaction is waited for until Codex starts it, however long that takes; a
+    // Stop before then ends it here ({@link interrupt}).
     void Promise.resolve(this.transport.request('thread/compact/start', params)).then(
-      () => this.onCompactStartAnswered(turn),
+      () => undefined,
       (error: unknown) => {
         // ⛔ Only the turn this request began (029's rule, as {@link send} keeps it).
         if (this.currentTurn?.localId !== turn) return
@@ -6092,31 +6087,6 @@ export class CodexSessionHandle implements SessionHandle {
         this.machine.failTurn(`thread/compact/start failed: ${errorMessage(error)}`)
       },
     )
-  }
-
-  /**
-   * ⚑ **713 · Codex accepted the compaction: now it must START it** — within
-   * {@link COMPACTION_START_TIMEOUT_MS}, or the turn is failed with a sentence saying so, rather than
-   * left `working` with a Stop that has no turn id to send.
-   *
-   * ⚠️ **A compaction that starts after that is not drawn**: its turn is no longer this session's,
-   * so the turn-scope gate drops its frames — ⛔ and until it shows itself no other compaction may
-   * begin, or its start would be taken for that one's ({@link compactionOutstanding}, 713's review).
-   * Measured at 8 ms against fifteen seconds.
-   */
-  private onCompactStartAnswered(localId: number): void {
-    const turn = this.currentTurn
-    if (this.terminated || turn?.localId !== localId || turn.providerTurnId !== null) return
-    const giveUp = setTimeout(() => {
-      if (this.terminated || this.currentTurn !== turn || turn.providerTurnId !== null) return
-      this.currentTurn = null
-      this.compactionOutstanding = true
-      this.machine.failTurn(
-        `Codex accepted the compaction and did not start it within ` +
-          `${String(COMPACTION_START_TIMEOUT_MS / 1000)} seconds`,
-      )
-    }, COMPACTION_START_TIMEOUT_MS)
-    giveUp.unref?.()
   }
 
   async respondPermission(id: string, decision: PermissionDecision): Promise<void> {
@@ -6342,6 +6312,15 @@ export class CodexSessionHandle implements SessionHandle {
       // ⛔ `false`: no RPC was sent, so nothing is owed. See `SessionMachine.forceEnd` for what a
       // debt nobody was asked to pay costs — the session goes deaf to this provider's out-of-turn
       // work until the user's next message.
+      this.machine.forceEnd(false)
+      return
+    }
+    // A compaction Codex has not started has no turn id to stop: it ends here, and Codex is asked to
+    // stop it the moment it starts. Until then no other compaction is asked for
+    // ({@link compactionOutstanding}).
+    if (this.currentTurn.bindsAtItsStart && this.currentTurn.providerTurnId === null) {
+      this.currentTurn = null
+      this.compactionOutstanding = true
       this.machine.forceEnd(false)
       return
     }

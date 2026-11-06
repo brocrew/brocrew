@@ -12540,50 +12540,50 @@ describe('CodexRuntime — 713 · R59, a compaction asked for', () => {
     await consumer
   })
 
-  it('⛔ an accepted compaction that never STARTS is given up, in words — not left `working`', async () => {
-    const { handle, events, consumer } = await startCodex()
+  it('🔴 an accepted compaction that is slow to START is waited for, and runs when Codex starts it', async () => {
+    const { transport, handle, events, consumer } = await startCodex()
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     try {
       await handle.compact?.()
       await vi.advanceTimersByTimeAsync(0)
-      await vi.advanceTimersByTimeAsync(14_999)
+      // Past the fifteen seconds an accepted compaction used to be given before it was failed.
+      await vi.advanceTimersByTimeAsync(16_000)
       expect(events.some((e) => e.type === 'turn' && e.state === 'failed')).toBe(false)
       expect(handle.status()).not.toBe('idle')
     } finally {
       vi.useRealTimers()
     }
-    await vi.waitFor(has(events, (e) => e.type === 'turn' && e.state === 'failed'))
-    expect(
-      events.some(
-        (e) =>
-          e.type === 'error' &&
-          e.message === 'Codex accepted the compaction and did not start it within 15 seconds',
-      ),
-    ).toBe(true)
-    expect(handle.status()).toBe('idle')
+    codexCompacts(transport, 'tn_slow')
+    await vi.waitFor(() =>
+      expect(events.filter((e) => e.type === 'turn' && e.state === 'completed')).toHaveLength(1),
+    )
+    expect(compactions(events).map((e) => e.compactionId)).toEqual(['cc_tn_slow'])
     await handle.close()
     await consumer
   })
 
-  /** ⚑ Let the bound give a compaction up: asked, answered `{}`, and never started. */
-  const aCompactionGivenUp = async (
-    handle: SessionHandle,
-    events: RuntimeEvent[],
-  ): Promise<void> => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    try {
-      await handle.compact?.()
-      await vi.advanceTimersByTimeAsync(0)
-      await vi.advanceTimersByTimeAsync(15_000)
-    } finally {
-      vi.useRealTimers()
-    }
-    await vi.waitFor(has(events, (e) => e.type === 'turn' && e.state === 'failed'))
+  it('⛔ Stop ends an accepted compaction Codex has not started, here and as a stop', async () => {
+    const { handle, events, consumer } = await startCodex()
+    await handle.compact?.()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await handle.interrupt()
+    await vi.waitFor(() => expect(handle.status()).toBe('idle'))
+    expect(events.some((e) => e.type === 'turn' && e.state === 'failed')).toBe(false)
+    await handle.close()
+    await consumer
+  })
+
+  /** ⚑ A compaction asked, answered `{}`, and stopped before Codex started it. */
+  const aCompactionStoppedBeforeItStarted = async (handle: SessionHandle): Promise<void> => {
+    await handle.compact?.()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await handle.interrupt()
+    await vi.waitFor(() => expect(handle.status()).toBe('idle'))
   }
 
-  it('⛔ after a give-up, a second compaction is refused until the first shows itself — its start is never taken for the second’s', async () => {
+  it('⛔ after such a stop, a second compaction is refused until the first shows itself — its start is never taken for the second’s', async () => {
     const { transport, handle, events, consumer } = await startCodex()
-    await aCompactionGivenUp(handle, events)
+    await aCompactionStoppedBeforeItStarted(handle)
     const asked = () => transport.requests.filter((r) => r.method === 'thread/compact/start').length
     expect(asked()).toBe(1)
     // ⛔ Asked again while the first may still start: refused in words, and Codex is asked nothing.
@@ -12607,7 +12607,7 @@ describe('CodexRuntime — 713 · R59, a compaction asked for', () => {
 
   it('⚑ …and a turn of OURS that runs to its end clears the wait — its own start does not', async () => {
     const { transport, handle, events, consumer } = await startCodex()
-    await aCompactionGivenUp(handle, events)
+    await aCompactionStoppedBeforeItStarted(handle)
     await handle.send('go')
     await vi.waitFor(() => expect(transport.lastTurnId).toBe('tn_1'))
     transport.notification('turn/started', turnStartedNotification('th_1', 'tn_1'))
