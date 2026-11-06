@@ -501,17 +501,19 @@ describe('494 · the act this app knows the author of', () => {
       }
       expect(Object.keys(producers).sort()).toEqual([...WHO_STOPPED_IT].sort())
       const host = codeOnly(sourceOf(join(mainRoot, 'runtime'), 'runtime-host.ts'))
-      expect(host).toContain("return { who: 'a-caller-this-app-cannot-name' }")
+      const caller = codeOnly(sourceOf(join(mainRoot, 'runtime'), 'conversation-caller.ts'))
+      expect(caller).toContain("return { who: 'a-caller-this-app-cannot-name' }")
       // 🔴 **501 · the writer asks the one derivation, and the negative is what keeps it asked.**
       // ⛔ `recordTheAsk` wrote `speaking === null ? 'a-person' : 'an-agent'` — a NEGATIVE test
       // that put every caller which is neither a window nor a conversation on the person's side —
       // and this file asserted that spelling until `501`. ⚑ `codeOnly` strips comments, so the
       // withdrawn line quoted in that method's docblock does not satisfy either assertion.
       expect(host).toContain('const actor = whoDidIt(by)')
-      expect(host).not.toContain("speaking === null ? 'a-person' : 'an-agent'")
+      expect([host, caller].join('\n')).not.toContain("speaking === null ? 'a-person' : 'an-agent'")
       // ⚠️ **The control for the negative** (standing rule 4): the same `toContain` shape over the
       // same text finds the spelling one function over, so the absence above is a measurement.
       expect(host).toContain('const speaking = sessionSpeakingAs(by)')
+      expect(caller).toContain('const speaking = sessionSpeakingAs(by)')
     })
   })
 

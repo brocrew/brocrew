@@ -1,3 +1,5 @@
+import { agentCallerId, type Caller } from './conversation-caller'
+export { agentCallerId, sessionSpeakingAs } from './conversation-caller'
 import {
   providerAuthPolicies,
   legacyStartRefusalWords as A_START_ITS_SIGN_IN_REFUSED,
@@ -91,7 +93,6 @@ import type {
   AgentCard,
   AgentRecord,
   APieceItHolds,
-  Caller,
   EndedPieceDetail,
   FoundFile,
   NewBriefDelivery,
@@ -4607,24 +4608,6 @@ function whatADeliveryMet(
     return refusalAnswer(refuseTool('that-conversation-has-not-started', { agent, said }))
   }
   return refusalAnswer(refuseTool('agent-cannot-take-a-message', { agent, said }))
-}
-
-export const agentCallerId = (sessionId: string): string => `agent:${sessionId}`
-
-/**
- * ⛔ **Which session is speaking, when the caller is an agent rather than a window** — the exact
- * inverse of {@link agentCallerId}, and `null` for every other kind of caller (347).
- *
- * ⚠️ **This is a decoder, not a permission.** It answers *"who is this"*, and every use of it has to
- * decide for itself what that entitles. It lives beside the encoder so the two spellings cannot
- * drift apart, which is the only reason a prefix scheme is safe to depend on.
- */
-export function sessionSpeakingAs(by: Caller): string | null {
-  if (typeof by !== 'object' || by === null) return null
-  const ownerId: unknown = (by as { ownerId?: unknown }).ownerId
-  if (typeof ownerId !== 'string' || !ownerId.startsWith('agent:')) return null
-  const said = ownerId.slice('agent:'.length)
-  return said.length === 0 ? null : said
 }
 
 /** What the tools are built against — the host, narrowed to what they may reach. */
