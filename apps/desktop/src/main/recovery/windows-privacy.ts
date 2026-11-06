@@ -310,15 +310,27 @@ export const windowsAccessLists: OwnedAccessLists & FileAccessLists = {
   async ownerSid(folder) {
     const encoded = Buffer.from(folder, 'utf8').toString('base64')
     const script = `$ErrorActionPreference='Stop'; $path=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encoded}')); [IO.Directory]::GetAccessControl($path).GetOwner([Security.Principal.SecurityIdentifier]).Value`
-    const sid = (
-      await run('WindowsPowerShell\\v1.0\\powershell.exe', [
+    const readOwner = () =>
+      run('WindowsPowerShell\\v1.0\\powershell.exe', [
         '-NoLogo',
         '-NoProfile',
         '-NonInteractive',
         '-Command',
         script,
       ])
-    ).trim()
+    let answer: string
+    try {
+      answer = await readOwner()
+    } catch (error) {
+      // A cold PowerShell can exhaust execFile's 15s limit on a loaded Windows host. Its timeout
+      // kills with SIGTERM and no exit code. Retry this read once; ACL denials, malformed answers,
+      // maxBuffer failures and externally signalled exits are not timeouts. Never retry mutations.
+      const failure = error as { killed?: unknown; signal?: unknown; code?: unknown } | null
+      if (failure?.killed !== true || failure.signal !== 'SIGTERM' || failure.code !== null)
+        throw error
+      answer = await readOwner()
+    }
+    const sid = answer.trim()
     if (!/^S-1-[0-9]+(?:-[0-9]+)+$/.test(sid)) throw new Error('unreadable folder owner')
     return sid
   },
