@@ -142,6 +142,46 @@ describe('person-window commands preserve stream ownership', () => {
     },
   )
 
+  it.each(['owned', 'unowned', 'agent-held'] as const)(
+    'a recorded-view first message reaches a %s session without transferring its stream',
+    async (kind) => {
+      const receiver =
+        kind === 'owned' ? owner : kind === 'agent-held' ? new RecordingSink('agent:helper') : null
+      if (kind !== 'owned')
+        sessionId = (await host.createSession({ provider: 'codex', cwd: dir }, receiver)).sessionId
+      const initial = host.unclaimedSessions().map((entry) => entry.sessionId)
+      await host.look(sessionId, stranger, false)
+      const answer = await ask(stranger, {
+        kind: 'startAndSend',
+        sessionId,
+        text: 'from the recorded view',
+      })
+      expect(answer).toMatchObject({
+        sent: { sessionId, handover: 'recorded', cannotTakeAMessage: null },
+      })
+      await waitFor(
+        () => store.events(sessionId).some((entry) => entry.event.type === 'user_turn'),
+        'recorded-view message',
+      )
+      expect(
+        store
+          .events(sessionId)
+          .filter(
+            (entry) =>
+              entry.event.type === 'user_turn' && entry.event.text === 'from the recorded view',
+          ),
+      ).toHaveLength(1)
+      expect(host.attachOpenSessions(stranger)).toEqual([])
+      expect(host.unclaimedSessions().map((entry) => entry.sessionId)).toEqual(initial)
+      await host.closeSessionsForOwner(stranger.ownerId)
+      expect(host.sessionIds).toContain(sessionId)
+      if (receiver)
+        expect(host.attachOpenSessions(receiver).map((entry) => entry.sessionId)).toContain(
+          sessionId,
+        )
+    },
+  )
+
   it('a second window changes approval mode without gaining the stream', async () => {
     await ask(stranger, { kind: 'setApprovalMode', sessionId, mode: 'auto' })
     expect(

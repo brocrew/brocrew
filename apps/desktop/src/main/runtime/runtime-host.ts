@@ -43770,38 +43770,9 @@ export class RuntimeHost implements LiveHost {
     return { sessionId: id }
   }
 
-  /**
-   * ⚑ **D-017b · a person's message from a conversation's full view, and the start it causes, in
-   * ONE act** — every conversation opens in one view whether or not anything runs it, and what a
-   * person sends there continues it (D-017 · R1, R5, R10).
-   *
-   * ⚑ **The order, and why each step is where it is:**
-   *  1. **One such message at a time** ({@link firstMessagesInFlight}): a second while the first is
-   *     on its way in is answered `already-starting`, and nothing is asked twice.
-   *  2. **Every refusal that is a fact about the MESSAGE, before anything starts** — the words, and
-   *     what is attached against the disk ({@link recheckHandedPaths}, the send's own check). ⛔ And
-   *     whether another window has it open, asked before the disk is read and AGAIN after (735 M4),
-   *     so a window that opened it during that read is refused on its own, never queued behind the
-   *     arrivals to be told the same.
-   *  3. **Where the words go, asked inside the conversation's arrivals entry**
-   *     ({@link afterWhatArrivedFirst}), so a delivery that arrives meanwhile waits behind them:
-   *     - another window has it open → `held-elsewhere`, and nothing is started;
-   *     - this window already holds it running (a start an answer or a send of its own caused, or
-   *       the one that took the place of a conversation that could never be reopened) → it is
-   *       attached, and the words go;
-   *     - it runs with no window → it is taken for this window ({@link mayClaim}, the press a
-   *       person makes in its view), and the words go;
-   *     - otherwise the person's own start ({@link reopenForAPerson}): a stop still settling is
-   *       waited out, a conversation that could never be reopened is replaced (R10), and the
-   *       window owns what starts.
-   *  4. **The send is the person's own send** ({@link sendAs}) — a lost race is held, as any send's is.
-   *  5. ⛔ **A refusal only the started conversation could make** stops what THIS act started
-   *     ({@link undoAStartNoMessageReached}); one it attached or took ran before the message, and
-   *     is handed over running.
-   *
-   * ⚑ **Answered, never rejected, for every refusal this door makes** ({@link FirstMessageAnswer}),
-   * and each is logged whole. ⛔ The wire's own refusals — a malformed command, the quit's door —
-   * still reject, before this.
+  /** Send in arrival order, starting a stopped conversation when necessary.
+   * A running conversation keeps its stream owner; a recorded view receives an updated record.
+   * Only a provider started by this act may be undone when its first send fails.
    */
   async startAndSend(
     sessionId: string,
@@ -43840,23 +43811,36 @@ export class RuntimeHost implements LiveHost {
       if (!hasSomethingToSend(text, attachments.length)) {
         return notSent('before-the-start', NOTHING_TO_SEND)
       }
-      if (this.heldByAnotherWindow(at, sink)) return notSent('held-elsewhere', HELD_ELSEWHERE)
       const cwd = this.slots.get(at)?.session?.cwd ?? this.deps.store.recordedOne(at)?.cwd ?? null
       if (cwd !== null) {
         const handed = await recheckHandedPaths(attachments, cwd)
         if ('refusal' in handed) return notSent('before-the-start', handed.refusal)
       }
-      // ⛔ **Asked AGAIN after the disk read** (735 M4): a window that opened it during that read is
-      // seen here, so these words are refused on their own — never queued behind whatever the
-      // conversation's arrivals already carry, only to be told the same thing when that finishes.
-      if (this.heldByAnotherWindow(at, sink)) return notSent('held-elsewhere', HELD_ELSEWHERE)
       // ⚑ **D-017 · R1 — the start and this message are ONE entry in the conversation's arrivals**
       // ({@link afterWhatArrivedFirst}): a delivery that arrives while it starts waits behind this
       // message, so the message that caused the start goes first. ⛔ Hence {@link sendAs} and not
       // {@link send} below: `send` would join the chain behind this very entry and wait on it.
       return await this.afterWhatArrivedFirst(at, async (): Promise<FirstMessageAnswer> => {
-        // ⚑ **Asked once more**: a delivery that arrived first may have started it meanwhile.
-        if (this.heldByAnotherWindow(at, sink)) return notSent('held-elsewhere', HELD_ELSEWHERE)
+        const inFlight = this.startsInFlight.get(at)
+        if (inFlight !== undefined) {
+          try {
+            await inFlight
+          } catch {
+            // The ordinary reopen below reports the launch failure.
+          }
+        }
+        const slot = this.slots.get(at)
+        if (slot?.session != null && !onItsWayOut(slot) && !mayControl(slot, sink)) {
+          try {
+            await this.sendAs(at, text, sink, attachments, {
+              facts: {},
+              ifItLosesTheRace: 'hold-it',
+            })
+            return { sent: this.recordedHandover(at, sink) }
+          } catch (error) {
+            return notSent('after-the-start', aSentence(errorMessage(error)), error)
+          }
+        }
         const running =
           this.attachHeldSession(at, sink, 'attach') ?? this.attachHeldSession(at, sink, 'claim')
         let resumed: ResumedSession
@@ -43883,22 +43867,6 @@ export class RuntimeHost implements LiveHost {
     } finally {
       this.firstMessagesInFlight.delete(sessionId)
     }
-  }
-
-  /**
-   * ⚑ **D-017b · another window has this conversation open**: running, owned, and not by this one —
-   * the one place a person's message from a conversation's view is refused before anything starts.
-   * ⚠️ A slot still starting or on its way out is not: the person's start joins or waits it out.
-   */
-  private heldByAnotherWindow(sessionId: string, sink: RuntimeEventSink): boolean {
-    const slot = this.slots.get(sessionId)
-    return (
-      slot !== undefined &&
-      slot.session !== null &&
-      !onItsWayOut(slot) &&
-      slot.ownerId !== null &&
-      !mayControl(slot, sink)
-    )
   }
 
   /**
@@ -45303,13 +45271,14 @@ export class RuntimeHost implements LiveHost {
       hasACommander: parent !== null,
       startedWithoutAWindow: parent !== null,
       mayHandItBack: false,
-      cannotTakeAMessage: heldElsewhere
-        ? HELD_ELSEWHERE
-        : aMessageContinuesIt(row, this.theServiceOf(sessionId) !== null)
-          ? null
-          : describeUnavailable('cannot-be-reopened', {
-              refusal: row.unresumableReason ?? undefined,
-            }),
+      cannotTakeAMessage:
+        heldElsewhere && !sink.aPersonIsBehindIt
+          ? HELD_ELSEWHERE
+          : aMessageContinuesIt(row, this.theServiceOf(sessionId) !== null)
+            ? null
+            : describeUnavailable('cannot-be-reopened', {
+                refusal: row.unresumableReason ?? undefined,
+              }),
       settingsFixed:
         slot !== undefined ||
         whyNoSettingForItsNextStart(row, this.replacedBy, this.theServiceOf(sessionId) !== null) !==
