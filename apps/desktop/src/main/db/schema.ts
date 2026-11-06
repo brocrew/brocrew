@@ -1667,17 +1667,14 @@ export const identityMemoryAmendment = sqliteTable(
   typeof(${t.settledAt}) = 'integer' AND ${t.settledAt} >= 0 AND ${t.settledAt} <= 9007199254740991 AND
   CASE WHEN json_valid(${t.actual}) THEN
     json_type(${t.actual}) IS 'object' AND
-    coalesce((
-      (json_type(${t.actual}, '$.text') IN ('null', 'text') AND
-        (json_type(${t.actual}, '$.text') = 'null' OR length(CAST(json_extract(${t.actual}, '$.text') AS BLOB)) <= 65536))
-      OR (json_type(${t.actual}, '$.text') IS NULL AND json_type(${t.actual}, '$.fingerprint') IN ('null', 'text'))
-    ), 0) AND
-    (json_type(${t.actual}, '$.cause') IS NULL OR
-      (json_type(${t.actual}, '$.cause') = 'text' AND length(json_extract(${t.actual}, '$.cause')) <= 8192)) AND
+    CASE json_type(${t.actual}, '$.fingerprint')
+      WHEN 'null' THEN 1
+      WHEN 'text' THEN length(json_extract(${t.actual}, '$.fingerprint')) = 64 AND json_extract(${t.actual}, '$.fingerprint') NOT GLOB '*[^0-9a-f]*'
+      ELSE 0
+    END AND
     CASE WHEN json_type(${t.actual}, '$.unreadable') IS NULL THEN 1
       WHEN json_type(${t.actual}, '$.unreadable') IS 'true' THEN
-        ${t.outcome} = 'partial' AND (json_type(${t.actual}, '$.text') IS 'null' OR
-          (json_type(${t.actual}, '$.text') IS NULL AND json_type(${t.actual}, '$.fingerprint') IS 'null'))
+        ${t.outcome} = 'partial' AND json_type(${t.actual}, '$.fingerprint') IS 'null'
       ELSE 0
     END
   ELSE 0 END AND

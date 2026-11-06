@@ -50,9 +50,11 @@ export function knownMemorySource(source: MemoryAmendment, before: string | null
 
 export function memoryObservation(value: unknown): MemoryObservation | null {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
-  const one = value as Record<string, unknown>
+  const one = { ...(value as Record<string, unknown>) }
   if (one.text === undefined && 'fingerprint' in one)
     return one.unreadable === true ? { unreadable: true } : {}
+  // The existing SQL envelope still requires this inert member; it is not an observation.
+  delete one.fingerprint
   if (one.text === undefined && Object.keys(one).length === 0) return {}
   if (
     Object.keys(one).some((key) => key !== 'text' && key !== 'unreadable' && key !== 'cause') ||
@@ -121,8 +123,14 @@ export function createMemoryRecoveryStore(db: AppDatabase, now: () => number = D
       SET outcome = ?, actual = ?, settled_by = ?, settled_at = ?
       WHERE identity_id = ? AND id = ? AND outcome = 'pending'`,
           )
-          .run(outcome, JSON.stringify(actual), JSON.stringify(observer), at, identity, id)
-          .changes === 1
+          .run(
+            outcome,
+            JSON.stringify({ ...actual, fingerprint: null }),
+            JSON.stringify(observer),
+            at,
+            identity,
+            id,
+          ).changes === 1
       )
     })()
   return {
