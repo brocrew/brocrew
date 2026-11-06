@@ -1,3 +1,6 @@
+import type { HandedPath } from '../../src/shared/attachment-contracts'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
+import type { WorkReport } from '../../src/shared/task-contracts'
 import { expandAgentCards } from './harness'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
@@ -20,18 +23,8 @@ import {
 } from '../../src/main/runtime/reply-rails'
 import type { IdentityUse } from '../../src/shared/agent-roster'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
-import {
-  DEFAULT_PROFILE_ID,
-  DEFAULT_PROFILE_LABEL,
-  agentName,
-  type AgentIdentities,
-  type AgentIdentity,
-  type HandedPath,
-  type ResumableSessionInfo,
-  type TranscriptEvent,
-  type UnresumableSessionInfo,
-} from '../../src/shared/runtime-ipc'
-import { UNDRIVEN_SENTENCES, type WorkReport } from '../../src/shared/tasks'
+import { DEFAULT_PROFILE_ID, DEFAULT_PROFILE_LABEL, agentName, type AgentIdentities, type AgentIdentity, type ResumableSessionInfo, type UnresumableSessionInfo } from '../../src/shared/runtime-ipc'
+import { UNDRIVEN_SENTENCES } from '../../src/shared/tasks'
 import { drawnReady } from './drawn'
 import { META, mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
 

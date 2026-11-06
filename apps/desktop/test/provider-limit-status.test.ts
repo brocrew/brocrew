@@ -1,6 +1,7 @@
+import type { AgentState } from '../src/shared/agent-state-contracts'
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import type { AgentState } from '../src/shared/agent-state'
+
 import type { QueuedMessageDisclosure } from '../src/shared/runtime-ipc'
 import {
   messageLimitDisplay,

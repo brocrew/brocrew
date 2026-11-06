@@ -1,3 +1,4 @@
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import {
   existsSync,
   mkdirSync,
@@ -25,12 +26,7 @@ import { workAnswered, workUndriven } from '../src/main/runtime/reply-rails'
 import { derivePieces } from '../src/shared/tasks'
 import { theResourcesAReportNames } from '../src/renderer/src/lib/the-document-a-report-names'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
-import type {
-  PersistedEventInfo,
-  ResourceReading,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { ResourceReading, RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 510 · the id this app hands a person and cannot open

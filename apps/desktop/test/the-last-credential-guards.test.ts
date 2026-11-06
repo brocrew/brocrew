@@ -1,3 +1,4 @@
+import type { ToolRefusedEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -13,7 +14,7 @@ import { readProviderConfig } from '../src/main/runtime/provider-config'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
 import { isRefusalRemedy } from '../src/shared/refusals'
-import type { ToolRefusedEvent } from '../src/shared/runtime-ipc'
+
 
 /**
  * 🔴 **733 · the last credential guards** — `731` F-2 and F-4, under R92 and R93.

@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { launchSkillSelections } from '../src/main/skills/launch-selection'
 import { SqliteSkillCatalogue } from '../src/main/skills/catalogue-store'
 import { readBuiltInSkills, prepareBuiltInSkills } from '../src/main/skills/prepare-built-in-skills'
@@ -49,7 +50,7 @@ import {
   type CurrentWorkInTheTurn,
 } from '../src/main/runtime/what-this-app-adds-to-a-turn'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 

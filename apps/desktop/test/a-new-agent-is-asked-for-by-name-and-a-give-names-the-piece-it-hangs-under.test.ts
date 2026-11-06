@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -15,12 +16,7 @@ import { RuntimeHost } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  agentName,
-  type IdentityCreator,
-  type RuntimeEventMessage,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { agentName, type IdentityCreator, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * # D-016 · what `give_work` asks of a NEW agent, and which piece a give hangs under

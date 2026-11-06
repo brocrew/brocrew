@@ -1,3 +1,5 @@
+import type { ConversationWait, HeldWork } from '../../../shared/task-contracts'
+import type { AgentState, AgentStateArmFacts, ScheduleLevel, StoppedPiece } from '../../../shared/agent-state-contracts'
 import {
   type LivenessState,
   type SessionStatus,
@@ -6,22 +8,11 @@ import {
 // ⚑ **636 · a TYPE only.** The waits are {@link TASK_STATES}' own `waiting-on-` family — a
 // conversation's are all but the one said on a piece only ({@link ConversationWait}, D-016 · commit
 // 6) — and this file names none of them a second time — see {@link AgentFacets.waiting}.
-import type { ConversationWait, HeldWork } from '../../../shared/tasks'
+
 // ⚑ **D-017 · R11 — the ONE state is `shared/agent-state.ts`'s** — its order, its details and its
 // words — which `main` says in `list_agents` and `get_agent_status`: this file feeds it what the
 // window holds and never ranks or words those states again.
-import {
-  SCHEDULED,
-  agentStateArm,
-  agentStateOf,
-  agentStateWords,
-  scheduleHeld,
-  somethingRunning,
-  type AgentState,
-  type AgentStateArmFacts,
-  type ScheduleLevel,
-  type StoppedPiece,
-} from '../../../shared/agent-state'
+import { SCHEDULED, agentStateArm, agentStateOf, agentStateWords, scheduleHeld, somethingRunning } from '../../../shared/agent-state'
 import { BACKGROUND_WORD } from './background-work'
 // 🔴 **636 · the WORD each wait is drawn with, DERIVED from the table that owns it** — the same
 // move `BACKGROUND_WORD` and `SCHEDULED` a few lines up are here for, and `222` §4's rule: a

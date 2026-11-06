@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -6,12 +7,7 @@ import SessionPanel from '../src/renderer/src/components/SessionPanel.vue'
 import SideRail from '../src/renderer/src/components/SideRail.vue'
 import { createSessionRecord, type SessionRecord } from '../src/renderer/src/lib/session-record'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
-import {
-  DEFAULT_PROFILE_ID,
-  DEFAULT_PROFILE_LABEL,
-  type CreatedSession,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, DEFAULT_PROFILE_LABEL, type CreatedSession } from '../src/shared/runtime-ipc'
 
 /**
  * # 250 · ⛔ **The two WORD surfaces, in markup**

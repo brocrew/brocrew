@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -20,7 +21,7 @@ import {
 } from '../src/renderer/src/lib/outgoing-card'
 import { tookOnForPerson } from '../src/main/runtime/agent-tool-answer-words'
 import { pieceLine } from '../src/shared/piece-called'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 
 /**
  * # 🔴 UI-003 · a request its conversation took on for the person, drawn as a card

@@ -1,20 +1,8 @@
+import type { ListedModel, ModelAndEffort, ModelList, WhatAPickBecame } from '../../../shared/model-choice-contracts'
 import { shallowRef } from 'vue'
-import type {
-  EffortChoice,
-  ModelList,
-  Provider,
-  RuntimeBridge,
-  WhatAPickBecame,
-} from '../../../shared/runtime-ipc'
+import type { EffortChoice, Provider, RuntimeBridge } from '../../../shared/runtime-ipc'
 import { DEFAULT_PROFILE_ID, PROVIDER_NAME } from '../../../shared/runtime-ipc'
-import {
-  sameModel,
-  theEffortLadder,
-  theEffortWhenNoneIsNamed,
-  theListedRow,
-  type ListedModel,
-  type ModelAndEffort,
-} from '../../../shared/model-choice'
+import { sameModel, theEffortLadder, theEffortWhenNoneIsNamed, theListedRow } from '../../../shared/model-choice'
 import type { LaunchChoices } from './launch-choices'
 import { readableError } from './session-record'
 import type { SessionStore } from './session-store'

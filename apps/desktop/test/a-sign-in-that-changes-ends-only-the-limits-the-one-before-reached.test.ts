@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -20,7 +21,7 @@ import {
 } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 
 /**

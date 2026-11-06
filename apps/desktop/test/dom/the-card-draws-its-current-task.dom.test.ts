@@ -1,3 +1,5 @@
+import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/question-contracts'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
@@ -5,8 +7,8 @@ import TeamForest from '../../src/renderer/src/components/TeamForest.vue'
 import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { DRAWER_W_MIN, DRAWER_W_MAX } from '../../src/renderer/src/lib/drawer'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
-import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/questions'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
+
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import { assertDrawn, cutsOf, drawnReady } from './drawn'
 import { conv, forestDrawn, task, viewOf } from './forest-fixture'

@@ -1,3 +1,5 @@
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
+import type { PieceRow } from '../src/shared/task-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -27,14 +29,8 @@ import {
   createTranscript,
   type NoticeItem,
 } from '../src/renderer/src/lib/transcript'
-import type {
-  ApiKeyCheck,
-  PersistedEventInfo,
-  ProvidersChangedMessage,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
-import { UNDRIVEN_SENTENCES, derivePieces, type PieceRow } from '../src/shared/tasks'
+import type { ApiKeyCheck, ProvidersChangedMessage, RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { UNDRIVEN_SENTENCES, derivePieces } from '../src/shared/tasks'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 
 /**

@@ -1,14 +1,8 @@
 <script setup lang="ts">
+import type { HandedPath } from '../../../shared/attachment-contracts'
+
 import { computed, ref, watch } from 'vue'
-import {
-  agentName,
-  providerName,
-  PROVIDER_NAME,
-  type CreateSessionInput,
-  type HandedPath,
-  type Provider,
-  type ProviderCapabilityMap,
-} from '../../../shared/runtime-ipc'
+import { agentName, providerName, PROVIDER_NAME, type CreateSessionInput, type Provider, type ProviderCapabilityMap } from '../../../shared/runtime-ipc'
 import { useAgentStore } from '../composables/useAgentStore'
 import type { AgentStore } from '../lib/agent-store'
 import { YOLO_MEANS } from '../lib/approval-mode'

@@ -1,11 +1,7 @@
+import type { AgentModelChoice } from '../../../shared/model-choice-contracts'
 import type { AgentIdentity, Provider } from '../../../shared/runtime-ipc'
 import { PROVIDER_NAME, agentName } from '../../../shared/runtime-ipc'
-import {
-  aChoiceInWords,
-  aChoiceIsInForce,
-  whatAModelChoiceReaches,
-  type AgentModelChoice,
-} from '../../../shared/model-choice'
+import { aChoiceInWords, aChoiceIsInForce, whatAModelChoiceReaches } from '../../../shared/model-choice'
 
 /**
  * # 🔴 685 · the control `677` built the doors for — a person chooses each agent's model and effort

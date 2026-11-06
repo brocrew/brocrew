@@ -1,3 +1,4 @@
+import type { ConversationWait, HeldWork, WhatEachConversationIsWaitingOn } from '../src/shared/task-contracts'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -23,11 +24,7 @@ import { applyEvent } from '../src/renderer/src/lib/transcript'
 import { WORK_STATE_WORD } from '../src/renderer/src/lib/work-report'
 import type { CreatedSession } from '../src/shared/runtime-ipc'
 import type { ForestNode, TheWholeForest } from '../src/shared/the-whole-forest'
-import type {
-  ConversationWait,
-  HeldWork,
-  WhatEachConversationIsWaitingOn,
-} from '../src/shared/tasks'
+
 import type { WhatIsBeingDone } from '../src/shared/what-is-being-done'
 
 /**

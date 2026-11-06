@@ -1,3 +1,5 @@
+import type { LedgerWalk, PersonsDecision } from '../src/shared/question-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -45,18 +47,8 @@ import {
 } from '../src/renderer/src/lib/user-input-offer'
 import * as said730 from '../src/renderer/src/lib/user-input-offer'
 import { ASKED_TO_STOP } from '../src/shared/how-work-stopped'
-import {
-  decisionReading,
-  readingSentence,
-  type LedgerWalk,
-  type PersonsDecision,
-} from '../src/shared/questions'
-import {
-  providerName,
-  type CreatedSession,
-  type RuntimeEventMessage,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { decisionReading, readingSentence } from '../src/shared/questions'
+import { providerName, type CreatedSession, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import {
   aHostOverScriptedCodex,
   waitFor,

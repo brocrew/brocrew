@@ -1,4 +1,5 @@
-import type { UserTurnEvent } from './runtime-ipc'
+import type { UserTurnEvent } from './human-answer-contracts'
+
 
 /**
  * ⚑ **A person's own words, as one message of a turn carries them** — a message or a command a

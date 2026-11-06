@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { A_RENEWED_SIGN_IN_SAYS } from '../src/shared/a-renewed-sign-in'
 import {
@@ -6,7 +7,7 @@ import {
   REOPENED_ON_A_RENEWED_SIGN_IN,
   type TranscriptState,
 } from '../src/renderer/src/lib/transcript'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 
 /**
  * # A sign-in this app renewed by itself is said in one short line

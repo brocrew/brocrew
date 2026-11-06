@@ -1,3 +1,5 @@
+import { TASK_STALL_CAUSES } from '../src/shared/task-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -16,13 +18,9 @@ import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { stalledPiecesSaid } from '../src/main/runtime/spawn-rails'
-import { TASK_STALL_CAUSES, undrivenSentence } from '../src/shared/tasks'
+import { undrivenSentence } from '../src/shared/tasks'
 import { readOfferedResource } from '../src/main/resources/resources'
-import {
-  theMessagesOf,
-  type RuntimeEventMessage,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { theMessagesOf, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 
 /**

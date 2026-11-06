@@ -1,3 +1,4 @@
+import type { ModelList } from '../../src/shared/model-choice-contracts'
 // The approved plain words replace the former labels; the state and gesture checks remain.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
@@ -5,17 +6,7 @@ import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
 import { createModelLists } from '../../src/renderer/src/lib/model-lists'
 import { clockTimeFrom } from '../../src/shared/clock'
 import type { ProviderCondition } from '../../src/shared/provider-limit'
-import {
-  DEFAULT_PROFILE_ID,
-  type ProviderHomesReprovision,
-  type ApiKeyChanged,
-  type ApiKeyCheck,
-  type ApiKeyStatus,
-  type AuthState,
-  type ModelList,
-  type ProviderCapabilityMap,
-  type ProviderUsageReading,
-} from '../../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, type ProviderHomesReprovision, type ApiKeyChanged, type ApiKeyCheck, type ApiKeyStatus, type AuthState, type ProviderCapabilityMap, type ProviderUsageReading } from '../../src/shared/runtime-ipc'
 import { useKeyAsked } from '../../src/renderer/src/composables/useKeyAsked'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 

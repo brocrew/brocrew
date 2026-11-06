@@ -1,3 +1,5 @@
+import type { InjectedInstruction, InjectedInstructionKind, SessionInstructions } from '../../shared/instruction-contracts'
+import type { UserTurnEvent } from '../../shared/human-answer-contracts'
 import {
   providerKnowledge,
   recordedNativeRead,
@@ -25,13 +27,7 @@ import {
   type OwnInstructions,
   type OwnInstructionsVersion,
 } from '../../shared/own-instructions'
-import {
-  theMessagesOf,
-  type InjectedInstruction,
-  type InjectedInstructionKind,
-  type SessionInstructions,
-  type UserTurnEvent,
-} from '../../shared/runtime-ipc'
+import { theMessagesOf } from '../../shared/runtime-ipc'
 import {
   sizeOf,
   sizesAdded,

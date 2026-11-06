@@ -1,3 +1,5 @@
+import type { InjectedInstruction, InjectedInstructionKind, RefusedInstruction } from '../../../shared/instruction-contracts'
+import type { MemoryLoadedEvent } from '../../../shared/conversation-events'
 import { given } from './given'
 import { workspaceInstructionFile as INSTRUCTION_FILENAME } from './layout.mjs'
 import { homedir } from 'node:os'
@@ -7,12 +9,7 @@ import { readClaudeAgentMemory, type ClaudeMemoryRead } from './memory'
 import { agentPreamble } from '../../runtime/agent-preamble'
 import type { InstructionInputs, SessionLaunchRead } from '../instruction-types'
 
-import type {
-  InjectedInstruction,
-  InjectedInstructionKind,
-  RefusedInstruction,
-  MemoryLoadedEvent,
-} from '../../../shared/runtime-ipc'
+
 import {
   allocate,
   theProfileFileOf,

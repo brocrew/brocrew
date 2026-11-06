@@ -1,3 +1,5 @@
+import type { HandedPath } from '../src/shared/attachment-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -14,7 +16,7 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
-import type { HandedPath, RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 
 /**

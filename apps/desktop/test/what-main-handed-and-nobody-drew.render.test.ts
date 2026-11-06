@@ -1,3 +1,6 @@
+import type { LedgerWalk, PersonsDecision } from '../src/shared/question-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import type { WorkReport } from '../src/shared/task-contracts'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -45,14 +48,9 @@ import {
 import { isRefusal } from '../src/renderer/src/lib/user-input-offer'
 import { WORK_REPORT_MARK } from '../src/renderer/src/lib/work-report'
 import { THE_APP_IS_THE_AUTHOR } from '../src/shared/app-notice'
-import {
-  decisionReading,
-  readingSentence,
-  type LedgerWalk,
-  type PersonsDecision,
-} from '../src/shared/questions'
-import { type TranscriptEvent } from '../src/shared/runtime-ipc'
-import { type WorkReport } from '../src/shared/tasks'
+import { decisionReading, readingSentence } from '../src/shared/questions'
+
+
 
 /**
  * 🔴 **701 · what main handed the renderer and nobody drew** — `701` §2, four facts main already

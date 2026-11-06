@@ -1,3 +1,4 @@
+import type { HandedPath } from '../shared/attachment-contracts'
 import { providerSetupServices } from './providers/program-compat'
 import { setupProcesses } from './provider-setup/process'
 import { registerProviderSetup } from './provider-setup/ipc'
@@ -71,12 +72,7 @@ import {
 import type { NativeImage, OpenDialogOptions, WebContents } from 'electron'
 import { providerRecord, SUPPORTED_PROVIDERS, appInfoSchema, type AppInfo } from '@brobot2/shared'
 import { withDeadline } from '@brobot2/runtime'
-import type {
-  ChosenAttachment,
-  ChosenCwd,
-  DroppedPathVerdict,
-  HandedPath,
-} from '../shared/runtime-ipc'
+import type { ChosenAttachment, ChosenCwd, DroppedPathVerdict } from '../shared/runtime-ipc'
 import {
   APP_CLOSING_CHANNEL,
   BUNDLE_SUFFIX,

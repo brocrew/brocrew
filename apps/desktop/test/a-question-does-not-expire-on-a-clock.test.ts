@@ -1,3 +1,6 @@
+import { TASK_STATES } from '../src/shared/task-contracts'
+import { REQUEST_STATES } from '../src/shared/question-contracts'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -14,13 +17,9 @@ import { RuntimeHost } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { TASK_IS_OPEN, TASK_STATES } from '../src/shared/tasks'
-import { REQUEST_IS_OPEN, REQUEST_STATES } from '../src/shared/questions'
-import type {
-  PersistedEventInfo,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { TASK_IS_OPEN } from '../src/shared/tasks'
+import { REQUEST_IS_OPEN } from '../src/shared/questions'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **591 · a question does not expire on a clock** — HO-082 §1–§4.1.

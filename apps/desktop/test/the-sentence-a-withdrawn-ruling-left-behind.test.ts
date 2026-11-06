@@ -441,7 +441,7 @@ describe('§3 · where this tree states the guarantee, it states the limit besid
 
   it('⚠️ the wire type that shows a person the composed string says what it can and cannot see', () => {
     const span = spanCarrying(
-      'apps/desktop/src/shared/runtime-ipc.ts',
+      'apps/desktop/src/shared/instruction-contracts.ts',
       'The SAME value that was sent',
     )
     // ⛔ It used to end *"the string in the prompt cannot disagree"*; the hand-off is the last step.

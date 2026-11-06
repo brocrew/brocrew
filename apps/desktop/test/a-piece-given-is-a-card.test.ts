@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -17,7 +18,7 @@ import {
   type OutgoingCardReading,
   type OutgoingCardWords,
 } from '../src/renderer/src/lib/outgoing-card'
-import type { AgentIdentity, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { AgentIdentity } from '../src/shared/runtime-ipc'
 import type { WorkEdge } from '../src/shared/who-called-whom'
 
 /**

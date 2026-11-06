@@ -1,3 +1,5 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
+import type { WorkGivenOut } from '../../src/shared/task-contracts'
 import { expandAgentCards } from './harness'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
@@ -18,8 +20,8 @@ import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { createSessionRecord } from '../../src/renderer/src/lib/session-record'
 import { applyEvent } from '../../src/renderer/src/lib/transcript'
 import type { WorkGivenOutReading } from '../../src/renderer/src/lib/work-given-out'
-import type { CreatedSession, TranscriptEvent } from '../../src/shared/runtime-ipc'
-import type { WorkGivenOut } from '../../src/shared/tasks'
+import type { CreatedSession } from '../../src/shared/runtime-ipc'
+
 import { CAPABILITY_FIXTURE } from '../provider-capability-fixture'
 import {
   META,

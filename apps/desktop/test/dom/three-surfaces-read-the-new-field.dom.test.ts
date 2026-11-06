@@ -1,3 +1,4 @@
+import type { ConversationWait, WhatEachConversationIsWaitingOn } from '../../src/shared/task-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import SessionHeader from '../../src/renderer/src/components/SessionHeader.vue'
@@ -6,7 +7,7 @@ import { createSessionRecord } from '../../src/renderer/src/lib/session-record'
 import { applyEvent } from '../../src/renderer/src/lib/transcript'
 import { STANDING_LABEL } from '../../src/renderer/src/lib/agent-state'
 import type { CreatedSession } from '../../src/shared/runtime-ipc'
-import type { ConversationWait, WhatEachConversationIsWaitingOn } from '../../src/shared/tasks'
+
 import { mount, unmountAll, visible, type Mounted } from './harness'
 
 /**

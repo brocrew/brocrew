@@ -1,3 +1,5 @@
+import type { HandedPath } from '../src/shared/attachment-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -25,15 +27,7 @@ import {
 } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  A_FIRST_MESSAGE_IS_STARTING_IT,
-  HELD_ELSEWHERE,
-  NOTHING_TO_SEND,
-  type FirstMessageAnswer,
-  type HandedPath,
-  type RuntimeEventMessage,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { A_FIRST_MESSAGE_IS_STARTING_IT, HELD_ELSEWHERE, NOTHING_TO_SEND, type FirstMessageAnswer, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **735 · `701` F-8 — a first message to a conversation the quit left open, and the start it

@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 /**
  * 🔴 **F009 · what an agent has done, read when a caller chooses whom to give work to** —
  * `list_profiles` naming a profile, measured on a real host with the fake runtime.
@@ -44,7 +45,7 @@ import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { howTheRulesBegin } from '../src/shared/own-instructions'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')

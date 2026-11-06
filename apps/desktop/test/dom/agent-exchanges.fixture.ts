@@ -1,4 +1,5 @@
-import type { AgentIdentity, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
+import type { AgentIdentity } from '../../src/shared/runtime-ipc'
 
 export const EXCHANGE_AT = Date.UTC(2026, 9, 7, 16, 55)
 export const EXCHANGE_OTHER = 'sess_0d870a6d-1c2b-4e5f-8a9b-0c1d2e3f4a5b'

@@ -1,25 +1,11 @@
+import type { ChainReading, LedgerWalk, LedgerWalkKind, PersonsDecision, PersonsQuestion, RequestOnlyAPersonCanSettle, RoutedRequest } from '../src/shared/question-contracts'
 import { describe, expect, it } from 'vitest'
 import {
   personsQueueView,
   type PersonsQueueRow,
   type PersonsQueueWorld,
 } from '../src/renderer/src/lib/persons-queue'
-import {
-  NOTHING_NAMED_THE_WORK,
-  aPersonsSince,
-  chainReading,
-  chainSentence,
-  decisionReading,
-  escalationChain,
-  readingSentence,
-  type ChainReading,
-  type LedgerWalk,
-  type LedgerWalkKind,
-  type PersonsDecision,
-  type PersonsQuestion,
-  type RequestOnlyAPersonCanSettle,
-  type RoutedRequest,
-} from '../src/shared/questions'
+import { NOTHING_NAMED_THE_WORK, aPersonsSince, chainReading, chainSentence, decisionReading, escalationChain, readingSentence } from '../src/shared/questions'
 import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { agentName, type AgentIdentity } from '../src/shared/runtime-ipc'
 

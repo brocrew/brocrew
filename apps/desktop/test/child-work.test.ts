@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import {
   mkdirSync,
   mkdtempSync,
@@ -23,7 +24,7 @@ import {
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 
 /**
  * 112 · Finding a sub-agent's own work on disk, and everything the door will not open.

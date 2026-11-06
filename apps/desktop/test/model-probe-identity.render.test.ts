@@ -1,6 +1,7 @@
+import type { ModelList } from '../src/shared/model-choice-contracts'
 import { describe, expect, it } from 'vitest'
 import { createModelLists } from '../src/renderer/src/lib/model-lists'
-import type { ModelList } from '../src/shared/runtime-ipc'
+
 
 /**
  * # 🟠 293 §5 · a pre-auth model probe overwrites the freshly re-probed menu (289 rank 5)

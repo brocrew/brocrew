@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import {
@@ -8,7 +9,7 @@ import {
 import { applyEvent } from '../../src/renderer/src/lib/transcript'
 import { META, mount, paneProps, record, unmountAll, visible } from './harness'
 import type { SessionRecord } from '../../src/renderer/src/lib/session-record'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 
 /**
  * 🔴 **What the go-ahead button actually EMITS, and what the conversation shows afterwards**

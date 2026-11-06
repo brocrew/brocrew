@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -6,7 +7,7 @@ import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/s
 import { pieceCalled } from '../src/shared/piece-called'
 import { stalledWorkLead } from '../src/renderer/src/lib/persons-queue'
 import type { StalledWork } from '../src/shared/stalled-work'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import { code, sourceFiles as rendererFiles, spellingsIn } from './lib/task-spellings'
 
 /**

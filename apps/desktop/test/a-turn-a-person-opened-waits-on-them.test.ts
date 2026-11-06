@@ -1,12 +1,10 @@
+import type { PieceRow, TaskState, WorkGivenEvent } from '../src/shared/task-contracts'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
+import type { UserTurnPart } from '../src/shared/human-answer-contracts'
 import { describe, expect, it } from 'vitest'
 import { TASK_IS_OPEN, aStallItsGiverCanBeToldOf, derivePieces } from '../src/shared/tasks'
-import type { PieceRow, TaskState } from '../src/shared/tasks'
-import type {
-  PersistedEventInfo,
-  TranscriptEvent,
-  UserTurnPart,
-  WorkGivenEvent,
-} from '../src/shared/runtime-ipc'
+
+
 
 /** The ledger keeps person waits through notes and clears them when the work is driven or ended. */
 

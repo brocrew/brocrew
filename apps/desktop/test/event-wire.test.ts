@@ -1,10 +1,11 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import type { RuntimeEvent } from '@brobot2/runtime'
 import { toWireEvent } from '../src/main/runtime/event-wire'
 // The renderer's own one-line summary, imported rather than restated: the claim below is that a
 // degraded frame is legible on the surface a live step reads, and only the real function can say so.
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 
 /**
  * Everything crossing to the renderer goes through here, so the two failure modes

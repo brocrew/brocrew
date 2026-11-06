@@ -1,5 +1,6 @@
+import type { InjectedInstruction, SessionInstructions } from '../../src/shared/instruction-contracts'
 import AgentInstructionsSheet from '../../src/renderer/src/components/AgentInstructionsSheet.vue'
-import type { InjectedInstruction, SessionInstructions } from '../../src/shared/runtime-ipc'
+
 import type { WhoseText } from '../../src/shared/whose-text'
 import { toldProps } from '../../test/dom/harness'
 import { defineComponent, h } from 'vue'

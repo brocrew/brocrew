@@ -1,22 +1,10 @@
+import type { LedgerWalk, PersonsDecision, PersonsQuestion, RequestOnlyAPersonCanSettle, RoutedRequest } from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, type PropType } from 'vue'
 import OverlayHost from '../../src/renderer/src/components/OverlayHost.vue'
 import { DID_WORDS, usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
-import {
-  NOTHING_NAMED_THE_WORK,
-  aPersonsSince,
-  chainReading,
-  chainSentence,
-  decisionReading,
-  escalationChain,
-  readingSentence,
-  type LedgerWalk,
-  type PersonsDecision,
-  type PersonsQuestion,
-  type RequestOnlyAPersonCanSettle,
-  type RoutedRequest,
-} from '../../src/shared/questions'
+import { NOTHING_NAMED_THE_WORK, aPersonsSince, chainReading, chainSentence, decisionReading, escalationChain, readingSentence } from '../../src/shared/questions'
 import type { AgentIdentities } from '../../src/shared/runtime-ipc'
 import {
   contrast,

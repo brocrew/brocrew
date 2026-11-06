@@ -1,3 +1,8 @@
+import { TASK_STATES } from '../src/shared/task-contracts'
+import type { PieceRow, TaskState, WorkStallTold } from '../src/shared/task-contracts'
+import { REQUEST_STATES } from '../src/shared/question-contracts'
+import { MAILBOX_KINDS } from '../src/shared/conversation-events'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -21,8 +26,8 @@ import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { TASK_IS_OPEN, TASK_STATES, undrivenSentence } from '../src/shared/tasks'
-import type { PieceRow, TaskState } from '../src/shared/tasks'
+import { TASK_IS_OPEN, undrivenSentence } from '../src/shared/tasks'
+
 
 /**
  * 🔴 **648 · `message_never_sent`'s sentence, RENDERED rather than restated.**
@@ -36,14 +41,9 @@ import type { PieceRow, TaskState } from '../src/shared/tasks'
  * was sent* and named one of its four producers. See `TaskStallCause.message_never_sent`.
  */
 const THE_MESSAGE_NEVER_WENT = undrivenSentence('message_never_sent')
-import { REQUEST_STATES } from '../src/shared/questions'
-import { MAILBOX_KINDS } from '../src/shared/runtime-ipc'
-import type {
-  PersistedEventInfo,
-  RuntimeEventMessage,
-  TranscriptEvent,
-  WorkStallTold,
-} from '../src/shared/runtime-ipc'
+
+
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **404 · the push that does not survive a launch** — `402`'s F6, and the seam `400` left.

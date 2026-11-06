@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -20,7 +21,7 @@ import {
 } from '../src/main/runtime/runtime-host'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
 import { agentStateWords } from '../src/shared/agent-state'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 

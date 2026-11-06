@@ -1,10 +1,7 @@
+import type { InjectedInstruction, InjectedInstructionKind, RefusedInstruction } from '../../shared/instruction-contracts'
 import { THIS_CONVERSATION_HEADER } from '../runtime/instruction-headings'
 import { agentPreamble, type PromptIdentity } from '../runtime/agent-preamble'
-import type {
-  InjectedInstruction,
-  InjectedInstructionKind,
-  RefusedInstruction,
-} from '../../shared/runtime-ipc'
+
 import type { InstructionSpan } from '../../shared/whose-text'
 import type { InstructionInputs, SessionLaunchRead, WorkspaceOwnFile } from './instruction-types'
 import { INSTRUCTION_TOTAL_CAP } from './instruction-limits'

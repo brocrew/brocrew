@@ -1,9 +1,11 @@
+import type { WorkReport } from '../../src/shared/task-contracts'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import { page } from 'vitest/browser'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import type { WorkReport } from '../../src/shared/tasks'
-import type { ResourceReading, TranscriptEvent } from '../../src/shared/runtime-ipc'
+
+import type { ResourceReading } from '../../src/shared/runtime-ipc'
 import { mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
 import { drawnReady, inkRects, notDrawn, describeClip } from './drawn'
 import { READ_THE_DOCUMENT_NAMED } from '../../src/renderer/src/lib/the-documents-a-reply-names'

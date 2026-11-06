@@ -1,5 +1,6 @@
+import type { TranscriptEvent } from '../../shared/conversation-events'
 import type { FileEdits } from '@brobot2/runtime'
-import type { TranscriptEvent } from '../../shared/runtime-ipc'
+
 
 /** One rebuilt entry, and when the provider says it happened. */
 export interface ImportedEntry {

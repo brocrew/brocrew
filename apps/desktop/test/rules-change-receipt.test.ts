@@ -1,5 +1,6 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 

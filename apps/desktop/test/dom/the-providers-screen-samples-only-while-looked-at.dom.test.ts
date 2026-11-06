@@ -1,3 +1,4 @@
+import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, type Component } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
@@ -10,17 +11,7 @@ import { hiddenDrawerTabs } from '../../src/renderer/src/lib/developer-views'
 import type { DrawerTab } from '../../src/renderer/src/lib/drawer'
 import { createModelLists } from '../../src/renderer/src/lib/model-lists'
 import { readingSays } from '../../src/renderer/src/lib/usage-limit'
-import type {
-  ApiKeyStatus,
-  AuthState,
-  ModelList,
-  Provider,
-  ProviderCapabilityMap,
-  ProviderResources,
-  ProvidersChangedMessage,
-  ProviderUsageReading,
-  ProviderVersion,
-} from '../../src/shared/runtime-ipc'
+import type { ApiKeyStatus, AuthState, Provider, ProviderCapabilityMap, ProviderResources, ProvidersChangedMessage, ProviderUsageReading, ProviderVersion } from '../../src/shared/runtime-ipc'
 import { drawerProps, mount, paneProps, unmountAll, type Mounted } from './harness'
 
 /**

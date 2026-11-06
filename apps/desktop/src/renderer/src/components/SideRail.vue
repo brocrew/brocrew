@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import type { AgentState as OneState } from '../../../shared/agent-state-contracts'
+import type { WhatEachConversationIsWaitingOn } from '../../../shared/task-contracts'
+
 import { chordKeys, chordSaid, platformHere } from '../lib/this-computer'
 import crewMark from '../assets/brocrew-mark.svg'
 import {
@@ -18,7 +21,7 @@ import type {
   RuntimeStatesMessage,
   UnresumableSessionInfo,
 } from '../../../shared/runtime-ipc'
-import { agentStateWords, type AgentState as OneState } from '../../../shared/agent-state'
+import { agentStateWords } from '../../../shared/agent-state'
 import {
   facetsOfState,
   NEEDS_YOU,
@@ -58,7 +61,7 @@ import {
   stoppedWorkIn,
 } from '../lib/conversation-waits'
 import { ROWS_UNREAD_LEAD } from '../lib/rows-unread'
-import type { WhatEachConversationIsWaitingOn } from '../../../shared/tasks'
+
 import type { ProviderLimitsView } from '../lib/persons-queue'
 import { providerLimitDisplay } from '../lib/provider-limit-status'
 import { createProviderBlockStore, type ProviderBlockStore } from '../lib/provider-limit-facts'

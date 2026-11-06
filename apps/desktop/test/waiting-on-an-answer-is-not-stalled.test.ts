@@ -1,3 +1,8 @@
+import { REQUEST_STATES } from '../src/shared/question-contracts'
+import type { RaisedQuestion, RoutedRequest } from '../src/shared/question-contracts'
+import { TASK_STALL_CAUSES, TASK_STATES } from '../src/shared/task-contracts'
+import type { PieceRow, WhatAConversationIsWaitingOn } from '../src/shared/task-contracts'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -14,32 +19,10 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  REQUEST_IS_OPEN,
-  REQUEST_STATES,
-  openQuestionsByWork,
-  type RaisedQuestion,
-  type RoutedRequest,
-} from '../src/shared/questions'
-import {
-  TASK_IS_OPEN,
-  TASK_STALL_CAUSES,
-  TASK_STATES,
-  TASK_WAITS,
-  UNDRIVEN_SENTENCES,
-  WAITING_STANDS_FOR,
-  composeWhatEachPieceIsWaitingOn,
-  derivePieces,
-  stalledWithACause,
-  type PieceRow,
-  type WhatAConversationIsWaitingOn,
-} from '../src/shared/tasks'
+import { REQUEST_IS_OPEN, openQuestionsByWork } from '../src/shared/questions'
+import { TASK_IS_OPEN, TASK_WAITS, UNDRIVEN_SENTENCES, WAITING_STANDS_FOR, composeWhatEachPieceIsWaitingOn, derivePieces, stalledWithACause } from '../src/shared/tasks'
 import { WORK_STATE_WORD, workReading } from '../src/renderer/src/lib/work-report'
-import type {
-  PersistedEventInfo,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **603 · waiting on an answer is not stalled** — `HO-018` §2.1, `HO-085`, `HO-091` §1.

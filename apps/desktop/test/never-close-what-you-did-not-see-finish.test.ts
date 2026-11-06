@@ -1,3 +1,8 @@
+import { TASK_STALL_CAUSES, TASK_STATES } from '../src/shared/task-contracts'
+import type { PieceRow, TaskState } from '../src/shared/task-contracts'
+import { REQUEST_STATES } from '../src/shared/question-contracts'
+import { MAILBOX_KINDS } from '../src/shared/conversation-events'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -21,23 +26,12 @@ import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  TASK_IS_OPEN,
-  AN_ASK_RIDES_ON,
-  TASK_STALL_CAUSES,
-  TASK_STATES,
-  UNDRIVEN_SENTENCES,
-  derivePieces,
-} from '../src/shared/tasks'
+import { TASK_IS_OPEN, AN_ASK_RIDES_ON, UNDRIVEN_SENTENCES, derivePieces } from '../src/shared/tasks'
 import { pieceLine } from '../src/shared/piece-called'
-import type { PieceRow, TaskState } from '../src/shared/tasks'
-import { REQUEST_IS_OPEN, REQUEST_STATES } from '../src/shared/questions'
-import { MAILBOX_KINDS } from '../src/shared/runtime-ipc'
-import type {
-  PersistedEventInfo,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+
+import { REQUEST_IS_OPEN } from '../src/shared/questions'
+
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **400 · never close what you did not see finish** — HO-018's three amendments, under one

@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { ContextReading } from '@brobot2/runtime'
@@ -5,7 +6,7 @@ import { normalizeMessage } from '../../../packages/runtime/src/claude/normalize
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { NO_SIZE_SINCE_A_COMPACTION } from '../src/main/runtime/what-this-agent-was-given'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import { F093World, waitFor, type Handed } from './lib/f093-host'
 
 /**

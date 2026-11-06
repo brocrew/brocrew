@@ -1,3 +1,4 @@
+import type { SessionInstructions } from '../src/shared/instruction-contracts'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -17,15 +18,7 @@ import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { thisAppWouldMintIt } from '../src/shared/agent-roster'
-import {
-  AGENT_DISPLAY_NAME_CHARS,
-  DEFAULT_PROFILE_ID,
-  DEFAULT_PROFILE_LABEL,
-  agentName,
-  foldProfileName,
-  type RuntimeEventMessage,
-  type SessionInstructions,
-} from '../src/shared/runtime-ipc'
+import { AGENT_DISPLAY_NAME_CHARS, DEFAULT_PROFILE_ID, DEFAULT_PROFILE_LABEL, agentName, foldProfileName, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { HUMAN_NAMES, aNameForANewAgent, aNameKey } from '../src/shared/human-names'
 
 /**

@@ -1,3 +1,4 @@
+import type { AboutWork, LedgerWalk, LedgerWalkKind, PersonsDecision, PersonsQuestion, RequestOnlyAPersonCanSettle, RoutedRequest, WorkInHand } from '../../src/shared/question-contracts'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, type PropType } from 'vue'
@@ -9,23 +10,7 @@ import { usePersonsQueue, type PersonsQueueRow } from '../../src/renderer/src/li
 import type { AttentionDecision, AttentionRequest } from '../../src/renderer/src/lib/attention'
 import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
-import {
-  NOTHING_NAMED_THE_WORK,
-  chainReading,
-  chainSentence,
-  decisionReading,
-  escalationChain,
-  readingSentence,
-  type AboutWork,
-  type LedgerWalk,
-  type PersonsDecision,
-  type PersonsQuestion,
-  type LedgerWalkKind,
-  type RoutedRequest,
-  type WorkInHand,
-  type RequestOnlyAPersonCanSettle,
-  aPersonsSince,
-} from '../../src/shared/questions'
+import { NOTHING_NAMED_THE_WORK, chainReading, chainSentence, decisionReading, escalationChain, readingSentence, aPersonsSince } from '../../src/shared/questions'
 import type { AgentIdentities } from '../../src/shared/runtime-ipc'
 import {
   contrast,

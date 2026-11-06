@@ -1,3 +1,4 @@
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it, vi } from 'vitest'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -21,19 +22,7 @@ import {
 } from '../src/renderer/src/lib/transcript'
 import { tailWindow } from '../src/renderer/src/lib/transcript-window'
 import { RETITLE_SAID } from '../src/shared/piece-called'
-import type {
-  AnswerAck,
-  CreatedSession,
-  PersistedEventInfo,
-  ResumedSession,
-  FirstMessageAnswer,
-  FirstMessageNotSent,
-  RuntimeBridge,
-  RuntimeEventMessage,
-  SessionLivenessMessage,
-  SessionLiveness,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { AnswerAck, CreatedSession, ResumedSession, FirstMessageAnswer, FirstMessageNotSent, RuntimeBridge, RuntimeEventMessage, SessionLivenessMessage, SessionLiveness } from '../src/shared/runtime-ipc'
 
 /**
  * Many conversations at once (090).

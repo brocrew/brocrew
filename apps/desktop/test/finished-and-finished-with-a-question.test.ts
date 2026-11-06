@@ -1,3 +1,6 @@
+import { TASK_OUTCOMES, TASK_STALL_CAUSES, TASK_STATES } from '../src/shared/task-contracts'
+import type { TaskState, WorkReport } from '../src/shared/task-contracts'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
@@ -16,20 +19,7 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { replyText, workAnswered, workUndriven } from '../src/main/runtime/reply-rails'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  A_PERSON_MUST_ACT,
-  A_PERSON_MUST_ACT_SENTENCE,
-  TASK_IS_OPEN,
-  TASK_OUTCOMES,
-  TASK_STALL_CAUSES,
-  TASK_STATES,
-  UNDRIVEN_SENTENCES,
-  derivePieces,
-  isAWorkReport,
-  undrivenSentence,
-  type TaskState,
-  type WorkReport,
-} from '../src/shared/tasks'
+import { A_PERSON_MUST_ACT, A_PERSON_MUST_ACT_SENTENCE, TASK_IS_OPEN, UNDRIVEN_SENTENCES, derivePieces, isAWorkReport, undrivenSentence } from '../src/shared/tasks'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { isVisibleIn } from '../src/renderer/src/lib/transcript-mode'
 import {
@@ -39,7 +29,7 @@ import {
   workReading,
 } from '../src/renderer/src/lib/work-report'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
-import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**

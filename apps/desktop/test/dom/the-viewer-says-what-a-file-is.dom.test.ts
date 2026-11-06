@@ -1,3 +1,5 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
+import type { WorkReport } from '../../src/shared/task-contracts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick } from 'vue'
@@ -12,8 +14,8 @@ import { keptFileLibraryReplies } from '../fixtures/kept-file-library-replies'
 import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { fullTime } from '../../src/renderer/src/lib/clock'
 import { clockTime } from '../../src/shared/clock'
-import type { KeptFile, ResourceReading, TranscriptEvent } from '../../src/shared/runtime-ipc'
-import type { WorkReport } from '../../src/shared/tasks'
+import type { KeptFile, ResourceReading } from '../../src/shared/runtime-ipc'
+
 import { assertClippedButTold, assertDrawn, drawnReady } from './drawn'
 import {
   META,

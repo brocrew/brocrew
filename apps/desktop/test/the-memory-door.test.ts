@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -24,7 +25,7 @@ import {
 } from '../src/main/runtime/runtime-host'
 import { WINDOW_CALLER_PREFIX } from '../src/main/runtime/window-caller'
 import { A_PERSON_DID_THIS, REFUSAL_MEANS } from '../src/shared/agent-memory'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 The memory door, through a real host (625, `EXT-015` §1 · §3)

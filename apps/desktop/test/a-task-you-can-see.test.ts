@@ -1,3 +1,6 @@
+import { TASK_STATES } from '../src/shared/task-contracts'
+import type { TaskState } from '../src/shared/task-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -20,8 +23,8 @@ import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import type { CallerIdentity, RuntimeEventSink } from './helpers/giver-notice-host'
 import { agentCallerId, type AgentToolHost, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { TASK_IS_OPEN, TASK_STATES, derivePieces, type TaskState } from '../src/shared/tasks'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import { TASK_IS_OPEN, derivePieces } from '../src/shared/tasks'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **379 · a task you can see** — Slice 4 S1, HO-006 §4.1, HO-007 S1 + criterion 2.

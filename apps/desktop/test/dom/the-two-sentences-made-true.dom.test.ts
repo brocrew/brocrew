@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
@@ -8,14 +9,7 @@ import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
 import { REOPENING_SAYS, type AConversationToReopen } from '../../src/renderer/src/lib/reopening'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 import { CAPABILITY_FIELDS, DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
-import {
-  DEFAULT_PROFILE_ID,
-  type AgentIdentities,
-  type AgentIdentity,
-  type ResumableSessionInfo,
-  type RuntimeBridge,
-  type TranscriptEvent,
-} from '../../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, type AgentIdentities, type AgentIdentity, type ResumableSessionInfo, type RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { assertClippedButTold, assertDrawn, drawnReady } from './drawn'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 

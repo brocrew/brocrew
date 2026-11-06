@@ -1,10 +1,11 @@
+import type { CardNobodyHolds } from '../../../shared/question-contracts'
 import type {
   CreatedSession,
   PermissionDecision,
   Provider,
   UserInputResponse,
 } from '../../../shared/runtime-ipc'
-import type { CardNobodyHolds } from '../../../shared/questions'
+
 
 import {
   ALLOW,

@@ -1,6 +1,7 @@
+import type { InjectedInstruction, RefusedInstruction } from '../../shared/instruction-contracts'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import type { InjectedInstruction, RefusedInstruction } from '../../shared/runtime-ipc'
+
 import type {
   AgentMemoryPage,
   AgentMemoryStoreRead,

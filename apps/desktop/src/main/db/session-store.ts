@@ -1,3 +1,13 @@
+import type { ReconciliationReceipt, WorkRecoveryEvent } from '../../shared/reconciliation-contracts'
+import type { LedgerWalk, LedgerWalkKind, ProviderRequestEvent, QuestionAskedEvent, RaisedQuestion, RequestOnlyAPersonCanSettle, RoutedRequest } from '../../shared/question-contracts'
+import { MAILBOX_KINDS } from '../../shared/conversation-events'
+import type { InstructionProposedEvent, InstructionSettledEvent, MailboxKind, McpServerRequestSettledEvent, McpServerRequestedEvent, MemoryNoteSeen, QueuedMessageEvent, TheQuestionItAsks, TranscriptEvent, UnqueuedMessageEvent, WorkerRegisteredEvent } from '../../shared/conversation-events'
+import type { MoveReceipt } from '../../shared/move-contracts'
+import type { AgentModelChoice, ModelAndEffort } from '../../shared/model-choice-contracts'
+import type { AnsweredQuestion, HumanAnswers, HumanFinalContext, HumanTurnAnswer, TurnAuthorship, UserTurnEvent, UserTurnPart } from '../../shared/human-answer-contracts'
+import type { PieceRow, PieceWaitingOnWhoWrote, StatusLine, WhatAConversationIsWaitingOn, WorkGivenEvent, WorkGivenOut, WorkReport } from '../../shared/task-contracts'
+import type { HandedPath } from '../../shared/attachment-contracts'
+import type { ScheduleLevel, ScheduledRow } from '../../shared/agent-state-contracts'
 import { createOwnNotesStore, type OwnNotesStore } from './own-notes'
 import { resolveProviderConnection } from './provider-connections'
 import {
@@ -18,21 +28,11 @@ import { committedChangesOf, committedRowOf, type Committed } from './committed-
 import { currentWorkTitle } from './current-work-title'
 import { searchPastWork, closePastWorkSearch, pastWorkSource } from './past-work-search'
 import type { PastWorkSearchResult, PastWorkSource } from '../../shared/past-work-search'
-import {
-  workRecoveryEvent,
-  reconciliationReceipt,
-  type WorkRecoveryEvent,
-  type ReconciliationReceipt,
-} from '../../shared/work-reconciliation'
-import type { QuestionAskedEvent, WorkerRegisteredEvent } from '../../shared/runtime-ipc'
+import { workRecoveryEvent, reconciliationReceipt } from '../../shared/work-reconciliation'
+
 import type { WorkerBorn } from '../profile-execution-file'
 import { workerRegistrationOf } from '../worker-registration'
-import {
-  moveOfferOf,
-  moveOriginOf,
-  moveReceiptOf,
-  type MoveReceipt,
-} from '../../shared/move-request'
+import { moveOfferOf, moveOriginOf, moveReceiptOf } from '../../shared/move-request'
 import {
   boundRaw,
   boundRecall,
@@ -97,26 +97,9 @@ import {
 } from '../../shared/provider-limit'
 import { NONE_STARTED } from '../../shared/agent-roster'
 import type { IdentityHistory, StartedOn } from '../../shared/agent-roster'
-import { sameModel, type AgentModelChoice, type ModelAndEffort } from '../../shared/model-choice'
+import { sameModel } from '../../shared/model-choice'
 import type { ChildDescent } from '../adopt/discover-sessions'
-import type {
-  InstructionProposedEvent,
-  InstructionSettledEvent,
-  McpServerRequestedEvent,
-  McpServerRequestSettledEvent,
-  AgentIdentity,
-  AgentIdentityName,
-  IdentityCreator,
-  NewAgent,
-  DerivedState,
-  LedgerStatus,
-  TheQuestionItAsks,
-  TranscriptEvent,
-  UserTurnEvent,
-  WorkGivenEvent,
-  UnqueuedMessageEvent,
-  QueuedMessageEvent,
-} from '../../shared/runtime-ipc'
+import type { AgentIdentity, AgentIdentityName, IdentityCreator, NewAgent, DerivedState, LedgerStatus } from '../../shared/runtime-ipc'
 import {
   DEFAULT_PROFILE_ID,
   agentName,
@@ -127,12 +110,7 @@ import {
 import { aNameForANewAgent } from '../../shared/human-names'
 import { NORMALIZER_VERSION, PRE_CONTRACT_NORMALIZER_VERSION } from '../archive/normalizer'
 import { HUMAN_CONTEXT_TERM, HUMAN_FINAL_TERM } from './human-answer-index'
-import {
-  humanPromptOf,
-  type HumanAnswers,
-  type HumanFinalContext,
-  type HumanTurnAnswer,
-} from '../../shared/human-turn-answer'
+import { humanPromptOf } from '../../shared/human-turn-answer'
 // ⚑ **F071 · what the ledger folds read, and the term that reads it through its index.**
 import {
   conversationTree,
@@ -181,29 +159,21 @@ export const THREAD_LEAD_EVENT_TYPES = [
 ] as const
 import { aPersonsOwnWords } from '../../shared/a-persons-own-words'
 import { DIGEST_EVENT_TYPES } from '../../shared/digest'
-import { MAX_HANDED_PATHS, type HandedPath } from '../../shared/runtime-ipc'
-import { MAILBOX_KINDS, type MailboxKind } from '../../shared/runtime-ipc'
+import { MAX_HANDED_PATHS } from '../../shared/runtime-ipc'
+
 // ⚑ **545 · the slug rule itself and not a number chosen beside it** — see
 // {@link boundRelayedIdentity}.
 import { isPathSegment } from '../../shared/runtime-ipc'
 // ⚑ **D-029 · a stored level, read back as the host holds one** — see {@link scheduleLevelOf}.
-import type { ScheduledRow, ScheduleLevel } from '../../shared/agent-state'
+
 // ⚑ **687 · what the launch sweep carries from a held row onto the ending it writes** — see
 // {@link authorshipStoredOn}.
-import {
-  TURN_AUTHORSHIP_KEYS,
-  type TurnAuthorship,
-  type AnsweredQuestion,
-} from '../../shared/runtime-ipc'
+import { TURN_AUTHORSHIP_KEYS } from '../../shared/runtime-ipc'
 import { REPLY_SUMMARY_LIMIT } from '../runtime/reply-rails'
 // ⚑ **D-027 · a turn's parts, each bounded as the row it would have been** — see
 // {@link boundTheParts}.
-import { MAX_TURN_PARTS, USER_TURN_PART_KEYS, type UserTurnPart } from '../../shared/runtime-ipc'
-import {
-  MEMORY_NOTES_PER_EVENT,
-  MEMORY_NOTE_TEXT_CAP,
-  type MemoryNoteSeen,
-} from '../../shared/runtime-ipc'
+import { MAX_TURN_PARTS, USER_TURN_PART_KEYS } from '../../shared/runtime-ipc'
+import { MEMORY_NOTES_PER_EVENT, MEMORY_NOTE_TEXT_CAP } from '../../shared/runtime-ipc'
 
 export type { DerivedState, LedgerStatus }
 import type { AppDatabase, AppStatement } from './connection'
@@ -217,48 +187,11 @@ import {
   readIdentityCreator,
 } from './identity'
 import { newEventId, newResourceId, newTurnId, newWorkId } from './ids'
-import {
-  // ⚑ **603/609 · the ONE composition every surface that reports a piece's state reads**
-  // (HO-091 §1), and it takes ONE source of everything a conversation is waiting on.
-  aStallItsGiverCanBeToldOf,
-  composeWhatEachPieceIsWaitingOn,
-  derivePieces,
-  isAWorkReport,
-  thePiecesTheTurnNames,
-  theWorkThatNamesItAmong,
-  waitsOnWhoWrote,
-  workGivenOut,
-  TASK_IS_OPEN,
-  aWaitNeedsClassifying,
-  theWaitItMarks,
-  type PieceRow,
-  type PieceWaitingOnWhoWrote,
-  type StatusLine,
-  type WhatAConversationIsWaitingOn,
-  type WorkGivenOut,
-  type WorkReport,
-} from '../../shared/tasks'
+import { aStallItsGiverCanBeToldOf, composeWhatEachPieceIsWaitingOn, derivePieces, isAWorkReport, thePiecesTheTurnNames, theWorkThatNamesItAmong, waitsOnWhoWrote, workGivenOut, TASK_IS_OPEN, aWaitNeedsClassifying, theWaitItMarks } from '../../shared/tasks'
 // ⚑ **D-016 · a piece's label** — `W1.4.2`, built and read by one module — and, since commit 7, the
 // work that names a conversation.
 import { pieceCalled, pieceNumbersOf, type WorkThatNamesIt } from '../../shared/piece-called'
-import {
-  REQUEST_IS_OPEN,
-  // ⚑ **609 · the permission half of *a person owes something here*.**
-  aPersonOwesAnAnswerIn,
-  deriveRoutedRequests,
-  // ⚑ **603 · the derivation the composition and the withdrawal door both resolve.**
-  openQuestionsByWork,
-  permissionShaped,
-  anActionAsked,
-  type LedgerWalk,
-  type LedgerWalkKind,
-  type ProviderRequestEvent,
-  type RaisedQuestion,
-  type RequestOnlyAPersonCanSettle,
-  type RoutedRequest,
-  aPersonsSince,
-  aWaitIsReadFrom,
-} from '../../shared/questions'
+import { REQUEST_IS_OPEN, aPersonOwesAnAnswerIn, deriveRoutedRequests, openQuestionsByWork, permissionShaped, anActionAsked, aPersonsSince, aWaitIsReadFrom } from '../../shared/questions'
 import {
   howWorkStopped,
   whoCancelledIt,
@@ -3658,7 +3591,7 @@ export interface SessionStore extends OwnNotesStore {
    * on a row that names none). `null` while nothing decided it.
    */
   generationOf?(sessionId: string): number
-  latestMoveOffer?(sessionId: string): import('../../shared/runtime-ipc').QuestionAskedEvent | null
+  latestMoveOffer?(sessionId: string): import('../../shared/question-contracts').QuestionAskedEvent | null
   theDecisionOn(
     sessionId: string,
     requestId: string,

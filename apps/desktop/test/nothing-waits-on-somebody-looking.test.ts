@@ -1,3 +1,5 @@
+import { REQUEST_STATES } from '../src/shared/question-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -23,8 +25,8 @@ import { TOOL_NAMES, agentToolsFor, type ToolName } from '../src/main/runtime/ag
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { mailboxOf } from '../src/shared/mailbox'
-import { REQUEST_IS_OPEN, REQUEST_STATES, deriveRoutedRequests } from '../src/shared/questions'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import { REQUEST_IS_OPEN, deriveRoutedRequests } from '../src/shared/questions'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **396 · nothing waits on somebody looking** — Slice 4 S6, and the last build dispatch before X.

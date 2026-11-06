@@ -1,3 +1,5 @@
+import type { LedgerWalk, PersonsDecision, PersonsQuestion } from './question-contracts'
+import type { McpServerRequestForAPerson } from './conversation-events'
 /**
  * The person's queue as one publication: all eight parts a person must see, under one
  * `{epoch, seq}`, each part with its own coverage. A window keeps one scope per part, so a part
@@ -5,8 +7,8 @@
  */
 import type { Coverage, PublicationEpoch } from './data-version'
 import type { InstructionAskWaiting } from './own-instructions'
-import type { LedgerWalk, PersonsDecision, PersonsQuestion } from './questions'
-import type { McpServerRequestForAPerson } from './runtime-ipc'
+
+
 import type { StalledWork } from './stalled-work'
 import type { StoppedWorkForAPerson } from './stopped-work'
 import type { WaitingOnWhoWrote } from './waiting-on-who-wrote'

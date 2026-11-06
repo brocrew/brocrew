@@ -1,3 +1,5 @@
+import type { QuestionAskedEvent, RequestRoutedEvent } from '../src/shared/question-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -27,13 +29,7 @@ import {
 } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
-import {
-  agentName,
-  type QuestionAskedEvent,
-  type RequestRoutedEvent,
-  type RuntimeEventMessage,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { agentName, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
 
 /**

@@ -1,9 +1,10 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { nextTick } from 'vue'
 import { afterEach, describe, expect, it } from 'vitest'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue'
 import { isVisibleIn } from '../../src/renderer/src/lib/transcript-mode'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { mount, paneProps, record, unmountAll } from './harness'
 
 /**

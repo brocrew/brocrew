@@ -1,9 +1,10 @@
+import type { MemoryLoadedEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
-import type { MemoryLoadedEvent } from '../src/shared/runtime-ipc'
+
 
 /**
  * 🔴 **604 · the launch row says when THIS APP looked at the store.**

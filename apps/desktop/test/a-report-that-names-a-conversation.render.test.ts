@@ -1,11 +1,13 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import type { WorkReport } from '../src/shared/task-contracts'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import SessionPanel from '../src/renderer/src/components/SessionPanel.vue'
 import WorkReportEntry from '../src/renderer/src/components/WorkReportEntry.vue'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
-import type { WorkReport } from '../src/shared/tasks'
+
+
 
 /**
  * 🔴 **The work report's row, rendered — the press and its two absences** (506).

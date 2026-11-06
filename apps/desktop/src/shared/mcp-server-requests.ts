@@ -1,3 +1,4 @@
+import type { McpServerRequestSettledEvent, McpServerRequestedEvent } from './conversation-events'
 /**
  * An agent asking the person to register an external MCP server: the words, the limits and the
  * fold that says which requests still wait.
@@ -7,7 +8,7 @@
  * contacted, until a person approves it. Only types are imported, so the renderer can use this
  * module without pulling in the host.
  */
-import type { McpServerRequestedEvent, McpServerRequestSettledEvent } from './runtime-ipc'
+
 
 /** Who a requested server would be for: every agent, or only the agents the request names. */
 export const MCP_SERVER_REQUEST_WHO = ['everyone', 'only-these-agents'] as const

@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -19,15 +20,7 @@ import {
 import type { WindowState } from '../src/renderer/src/lib/transcript-window'
 import { CAPABILITY_FIELDS, DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { ASKED_TO_STOP, stoppedBy } from '../src/shared/how-work-stopped'
-import {
-  DEFAULT_PROFILE_ID,
-  agentName,
-  providerName,
-  type AgentIdentity,
-  type CreatedSession,
-  type LibraryEntry,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, agentName, providerName, type AgentIdentity, type CreatedSession, type LibraryEntry } from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 737 · Draw 2, first half — the agent that asked a turn to stop, NAMED

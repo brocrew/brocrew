@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,12 +11,7 @@ import {
   WINDOW_MAX_EVENTS,
   WINDOW_RELEASE_CHUNK,
 } from '../src/renderer/src/lib/transcript-window'
-import {
-  HISTORY_WINDOW_MAX_EVENTS,
-  type HistoryWindow,
-  type RuntimeEventMessage,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { HISTORY_WINDOW_MAX_EVENTS, type HistoryWindow, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 Eleven hours you cannot scroll to (313 — friction log F3)

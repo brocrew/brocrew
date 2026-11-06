@@ -1,3 +1,4 @@
+import type { TaskWait } from '../src/shared/task-contracts'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -5,7 +6,7 @@ import ConversationPane from '../src/renderer/src/components/ConversationPane.vu
 import { STANDING_LABEL } from '../src/renderer/src/lib/agent-state'
 import { createSessionRecord } from '../src/renderer/src/lib/session-record'
 import type { CreatedSession, SessionLiveness } from '../src/shared/runtime-ipc'
-import type { TaskWait } from '../src/shared/tasks'
+
 
 /**
  * 🔴 **636 · the PANE forwards the wait into the object all three of its surfaces are drawn

@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { expect, it } from 'vitest'
 import EventStream from '../../src/renderer/src/components/EventStream.vue'
 import Baseline from './event-fold-baseline.vue'
@@ -6,7 +7,7 @@ import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcr
 import { clockTime } from '../../src/shared/clock'
 import { describeEvent } from '../../src/renderer/src/lib/describe-event'
 import { createWindow, WINDOW_MAX_EVENTS } from '../../src/renderer/src/lib/transcript-window'
-import type { RuntimeEventMessage, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll } from './harness'
 
 /**

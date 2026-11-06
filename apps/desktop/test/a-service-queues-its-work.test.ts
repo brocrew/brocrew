@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -20,7 +21,7 @@ import {
   type GiveOutcome,
   type RuntimeHost,
 } from '../src/main/runtime/runtime-host'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 /**

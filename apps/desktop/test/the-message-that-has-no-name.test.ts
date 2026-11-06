@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -10,13 +11,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { runtimeCommandSchema } from '../src/main/runtime/ipc'
-import {
-  theMessagesOf,
-  type RuntimeEventMessage,
-  type SessionLiveness,
-  type SessionLivenessMessage,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { theMessagesOf, type RuntimeEventMessage, type SessionLiveness, type SessionLivenessMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **354 · the held message has a name, and the name is what a cancel says.**

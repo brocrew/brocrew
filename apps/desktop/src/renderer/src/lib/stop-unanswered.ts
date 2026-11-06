@@ -1,12 +1,7 @@
+import type { StopUnansweredEvent } from '../../../shared/conversation-events'
+import type { WorkInterruptedEvent } from '../../../shared/task-contracts'
 import { ASKED_TO_STOP, stoppedBy } from '../../../shared/how-work-stopped'
-import {
-  agentName,
-  providerName,
-  type AgentIdentity,
-  type Provider,
-  type StopUnansweredEvent,
-  type WorkInterruptedEvent,
-} from '../../../shared/runtime-ipc'
+import { agentName, providerName, type AgentIdentity, type Provider } from '../../../shared/runtime-ipc'
 
 /**
  * # 🔴 730 · R83 — a Stop the provider has not answered, said

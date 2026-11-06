@@ -1,21 +1,10 @@
+import type { AskedQuestion, HowItWasRaised, LedgerWalk, PersonsDecision, PersonsQuestion, RoutedRequest } from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import PersonsQueue from '../../src/renderer/src/components/PersonsQueue.vue'
 import { usePersonsQueue, type PersonsQueueRow } from '../../src/renderer/src/lib/persons-queue'
 import type { AttentionDecision, AttentionRequest } from '../../src/renderer/src/lib/attention'
 import type { UserInputResponse } from '../../src/shared/runtime-ipc'
-import {
-  NOTHING_NAMED_THE_WORK,
-  aPersonsSince,
-  chainReading,
-  chainSentence,
-  escalationChain,
-  type AskedQuestion,
-  type HowItWasRaised,
-  type LedgerWalk,
-  type PersonsDecision,
-  type PersonsQuestion,
-  type RoutedRequest,
-} from '../../src/shared/questions'
+import { NOTHING_NAMED_THE_WORK, aPersonsSince, chainReading, chainSentence, escalationChain } from '../../src/shared/questions'
 import { mount, unmountAll } from './harness'
 
 /**

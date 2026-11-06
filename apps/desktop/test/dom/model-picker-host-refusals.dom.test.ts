@@ -1,8 +1,9 @@
+import type { ListedModel, ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import ModelPicker from '../../src/renderer/src/components/ModelPicker.vue'
 import { createModelLists } from '../../src/renderer/src/lib/model-lists'
-import type { ListedModel, ModelList, RuntimeBridge } from '../../src/shared/runtime-ipc'
+import type { RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, type Mounted } from './harness'
 
 afterEach(unmountAll)

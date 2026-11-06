@@ -1,3 +1,4 @@
+import type { ModelCatalogue, ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { computed, defineComponent, h, nextTick, ref, type Component } from 'vue'
@@ -8,14 +9,7 @@ import { createAttachmentBook, NEW_CONVERSATION } from '../../src/renderer/src/l
 import { NO_LAUNCH_CHOICES, type LaunchChoices } from '../../src/renderer/src/lib/launch-choices'
 import { createModelLists, type ModelLists } from '../../src/renderer/src/lib/model-lists'
 import { theList } from '../../src/shared/model-choice'
-import {
-  DEFAULT_PROFILE_ID,
-  type CreateSessionInput,
-  type ModelCatalogue,
-  type ModelChoice,
-  type ModelList,
-  type Provider,
-} from '../../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, type CreateSessionInput, type ModelChoice, type Provider } from '../../src/shared/runtime-ipc'
 import { MEASURED_CLAUDE } from '../fixtures/effort-launches'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 

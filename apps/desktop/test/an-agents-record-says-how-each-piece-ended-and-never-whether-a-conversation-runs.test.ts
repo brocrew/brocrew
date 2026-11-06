@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 /**
  * 🔴 **F009 · an agent's record, the cases its own test leaves open** — `list_profiles` naming a
  * profile, on a real host with the fake runtime and a temp SQLite store.
@@ -48,7 +49,7 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')

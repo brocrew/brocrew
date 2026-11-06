@@ -1,3 +1,4 @@
+import { LEDGER_WALK_KINDS } from '../src/shared/question-contracts'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -18,7 +19,7 @@ import {
   DIGEST_LINE_KINDS,
   type DigestLineKind,
 } from '../src/shared/digest'
-import { LEDGER_WALK_KINDS, WALK_COVERS } from '../src/shared/questions'
+import { WALK_COVERS } from '../src/shared/questions'
 import { PERMANENCE_SAID, RAIL_PERMANENCES } from '../src/shared/refusals'
 import { activitySays } from '../src/renderer/src/lib/recent-activity'
 import type { RecentActivityReading } from '../src/shared/recent-activity'

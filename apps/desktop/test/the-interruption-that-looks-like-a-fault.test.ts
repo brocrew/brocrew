@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -50,7 +51,7 @@ import { deriveRoutedRequests } from '../src/shared/questions'
 import { ENDING_SENTENCE } from '../src/renderer/src/lib/ending'
 import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
 import { askedToStopSays } from '../src/renderer/src/lib/stop-unanswered'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { agentName, type AgentIdentity } from '../src/shared/runtime-ipc'
 
 /**

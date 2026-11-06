@@ -1,3 +1,5 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import type { PieceRow } from '../src/shared/task-contracts'
 import { writeFileSync } from 'node:fs'
 import { TurnInProgress } from '@brobot2/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -10,8 +12,8 @@ import {
 } from '../src/main/runtime/runtime-host'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { pieceLine } from '../src/shared/piece-called'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
-import type { PieceRow } from '../src/shared/tasks'
+
+
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 /**

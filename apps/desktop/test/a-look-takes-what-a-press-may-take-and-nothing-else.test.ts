@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -19,15 +20,7 @@ import { executeRuntimeCommand, runtimeCommandSchema } from '../src/main/runtime
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
 import { createSessionStore } from '../src/renderer/src/lib/session-store'
-import {
-  HELD_ELSEWHERE,
-  type ResumedSession,
-  type RuntimeBridge,
-  type RuntimeCommand,
-  type RuntimeEventMessage,
-  type SessionLivenessMessage,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { HELD_ELSEWHERE, type ResumedSession, type RuntimeBridge, type RuntimeCommand, type RuntimeEventMessage, type SessionLivenessMessage } from '../src/shared/runtime-ipc'
 import { asTheWireWouldCarry, everythingOverTheWire } from './lib/the-wire'
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')

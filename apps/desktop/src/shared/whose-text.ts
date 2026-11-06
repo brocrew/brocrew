@@ -1,4 +1,5 @@
-import type { InjectedInstructionKind } from './runtime-ipc'
+import type { InjectedInstructionKind } from './instruction-contracts'
+
 import type { ToldLayerKind } from './told'
 
 /**

@@ -1,10 +1,11 @@
+import type { AgentState } from '../../src/shared/agent-state-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, reactive, ref } from 'vue'
 import { page } from 'vitest/browser'
 import AppTitleBar from '../../src/renderer/src/components/AppTitleBar.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
-import type { AgentState } from '../../src/shared/agent-state'
+
 import type {
   Provider,
   ResumableSessionInfo,

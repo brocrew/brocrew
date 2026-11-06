@@ -1,3 +1,4 @@
+import type { InjectedInstruction, SessionInstructions } from '../../src/shared/instruction-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import AgentInstructionsSheet from '../../src/renderer/src/components/AgentInstructionsSheet.vue'
@@ -7,7 +8,7 @@ import {
   NOTHING_OF_YOURS_YET,
   THIS_SHEET_CANNOT_SAY_WHAT_IS_YOURS,
 } from '../../src/renderer/src/lib/whose-groups'
-import type { InjectedInstruction, SessionInstructions } from '../../src/shared/runtime-ipc'
+
 import { mount, toldProps, unmountAll, type Mounted } from './harness'
 
 /**

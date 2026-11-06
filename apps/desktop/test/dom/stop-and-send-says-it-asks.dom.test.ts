@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick, reactive } from 'vue'
@@ -12,7 +13,7 @@ import {
   type SessionRecord,
 } from '../../src/renderer/src/lib/session-record'
 import { ASKED_TO_STOP } from '../../src/shared/how-work-stopped'
-import { agentName, type CreatedSession, type TranscriptEvent } from '../../src/shared/runtime-ipc'
+import { agentName, type CreatedSession } from '../../src/shared/runtime-ipc'
 import { assertDrawn, drawnReady } from './drawn'
 import { META, mount, paneProps, unmountAll, visible, type Mounted } from './harness'
 

@@ -1,3 +1,5 @@
+import type { RoutedRequest } from '../src/shared/question-contracts'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -28,12 +30,8 @@ import {
   deriveRoutedRequests,
   escalationChain,
 } from '../src/shared/questions'
-import type { RoutedRequest } from '../src/shared/questions'
-import type {
-  PersistedEventInfo,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **398 · the two clocks, and 612 removed the second** — HO-007 criterion **11**, and the record

@@ -1,3 +1,5 @@
+import type { HowItWasRaised, LedgerWalk, PersonsDecision, PersonsQuestion, RoutedRequest } from '../../src/shared/question-contracts'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
@@ -5,19 +7,8 @@ import PersonsQueue from '../../src/renderer/src/components/PersonsQueue.vue'
 import SessionPanel from '../../src/renderer/src/components/SessionPanel.vue'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import type { AttentionRequest } from '../../src/renderer/src/lib/attention'
-import {
-  NOTHING_NAMED_THE_WORK,
-  chainReading,
-  chainSentence,
-  escalationChain,
-  type HowItWasRaised,
-  type LedgerWalk,
-  type PersonsDecision,
-  type PersonsQuestion,
-  type RoutedRequest,
-  aPersonsSince,
-} from '../../src/shared/questions'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+import { NOTHING_NAMED_THE_WORK, chainReading, chainSentence, escalationChain, aPersonsSince } from '../../src/shared/questions'
+
 import { mount, record, unmountAll, visible } from './harness'
 
 /**

@@ -1,3 +1,5 @@
+import type { TaskState, WorkRetitledEvent, WorkStatusSetEvent } from '../src/shared/task-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -16,13 +18,8 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import * as rails from '../src/main/runtime/reply-rails'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { PIECE_TITLE_CHARS } from '../src/shared/piece-called'
-import { TASK_IS_OPEN, type TaskState } from '../src/shared/tasks'
-import type {
-  RuntimeEventMessage,
-  TranscriptEvent,
-  WorkRetitledEvent,
-  WorkStatusSetEvent,
-} from '../src/shared/runtime-ipc'
+import { TASK_IS_OPEN } from '../src/shared/tasks'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 
 /**

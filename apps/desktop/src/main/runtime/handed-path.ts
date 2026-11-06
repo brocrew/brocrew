@@ -1,16 +1,9 @@
+import type { HandedPath } from '../../shared/attachment-contracts'
 import { lstat, realpath, stat } from 'node:fs/promises'
 import { isTheSameFile, type FileIdentity } from '@brobot2/runtime'
 import { expandHome } from './scratch-cwd'
 import { isAbsolute, relative, sep, win32 } from 'node:path'
-import {
-  CONTROL_CHARACTER_IN_PATH,
-  MAX_HANDED_PATHS,
-  MAX_PATH_CHARS,
-  hasControlCharacter,
-  quotedLiteral,
-  type DroppedPathVerdict,
-  type HandedPath,
-} from '../../shared/runtime-ipc'
+import { CONTROL_CHARACTER_IN_PATH, MAX_HANDED_PATHS, MAX_PATH_CHARS, hasControlCharacter, quotedLiteral, type DroppedPathVerdict } from '../../shared/runtime-ipc'
 
 /**
  * # ⛔ A path a person handed the agent — and the rule that BroBot never opens it (216)

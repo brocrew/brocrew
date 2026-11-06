@@ -1,9 +1,7 @@
+import type { TranscriptEvent } from '../../../shared/conversation-events'
+import type { UserTurnEvent } from '../../../shared/human-answer-contracts'
 import { rulesChangeLabel } from '../../../shared/own-instructions'
-import {
-  theMessagesOf,
-  type TranscriptEvent,
-  type UserTurnEvent,
-} from '../../../shared/runtime-ipc'
+import { theMessagesOf } from '../../../shared/runtime-ipc'
 import { clockTime } from '../../../shared/clock'
 import { isRefusalRemedy } from '../../../shared/refusals'
 import { HOW_ITS_PIECE_ENDED } from '../../../shared/questions'

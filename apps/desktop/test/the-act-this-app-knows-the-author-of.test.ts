@@ -1,3 +1,5 @@
+import { TASK_STALL_CAUSES } from '../src/shared/task-contracts'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -16,8 +18,8 @@ import {
   type WhoStoppedIt,
 } from '../src/shared/how-work-stopped'
 import { WHO_DID_IT, WHO_DID_IT_SAYS, type ActedBy } from '../src/shared/who-did-it'
-import { TASK_STALL_CAUSES, UNDRIVEN_SENTENCES, derivePieces } from '../src/shared/tasks'
-import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/runtime-ipc'
+import { UNDRIVEN_SENTENCES, derivePieces } from '../src/shared/tasks'
+
 
 /**
  * 🔴 **494 · the act this app knows the author of** — `492` F2, repaired at the READER.

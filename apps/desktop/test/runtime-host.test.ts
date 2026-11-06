@@ -1,3 +1,5 @@
+import type { ModelCatalogue } from '../src/shared/model-choice-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -22,14 +24,7 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { childWorkRoot } from '../src/main/child-work'
 import { DEFAULT_PROFILE_ID, NOTHING_TO_SEND } from '../src/shared/runtime-ipc'
 
-import type {
-  CreateSessionInput,
-  ModelCatalogue,
-  RuntimeEventMessage,
-  SessionLiveness,
-  SessionLivenessMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { CreateSessionInput, RuntimeEventMessage, SessionLiveness, SessionLivenessMessage } from '../src/shared/runtime-ipc'
 
 /**
  * The host, driven end to end against `FakeRuntime` — the conformance double that

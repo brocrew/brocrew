@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { AgentModelChoice as HeldModelChoice } from '../../../shared/model-choice-contracts'
+
 import { computed, reactive, ref, watch } from 'vue'
 import {
   CAPABILITY_FIELDS,
@@ -27,7 +29,7 @@ import {
   whatAProviderPressWouldClear,
   whatTheProviderPressCleared,
 } from '../lib/agent-model-choice'
-import type { AgentModelChoice as HeldModelChoice } from '../../../shared/model-choice'
+
 import type { ModelLists } from '../lib/model-lists'
 import {
   aProviderNotChosenSays,

@@ -1,3 +1,4 @@
+import type { HandedPath } from '../src/shared/attachment-contracts'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -19,13 +20,7 @@ import {
   sweepDrafts,
   type DraftSweep,
 } from '../src/renderer/src/lib/drafts'
-import type {
-  HandedPath,
-  RuntimeBridge,
-  RuntimeCommand,
-  RuntimeEventMessage,
-  SessionLivenessMessage,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeBridge, RuntimeCommand, RuntimeEventMessage, SessionLivenessMessage } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
 
 /**

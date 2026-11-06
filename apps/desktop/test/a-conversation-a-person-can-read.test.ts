@@ -1,3 +1,4 @@
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -17,14 +18,7 @@ import {
 } from '../src/renderer/src/lib/transcript'
 import { THE_APP_IS_THE_AUTHOR } from '../src/shared/app-notice'
 import { writeReadingExport } from '../src/main/archive/write-reading'
-import {
-  MAX_READING_BYTES,
-  READING_NOTE,
-  READING_SUFFIX,
-  type HistoryWindow,
-  type PersistedEventInfo,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { MAX_READING_BYTES, READING_NOTE, READING_SUFFIX, type HistoryWindow } from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 A conversation a person can read (633)

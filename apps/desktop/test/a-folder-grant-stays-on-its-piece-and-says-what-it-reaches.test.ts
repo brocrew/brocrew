@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join, sep } from 'node:path'
@@ -18,13 +19,7 @@ import {
 } from '../src/main/runtime/runtime-host'
 import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  DEFAULT_PROFILE_ID,
-  type RuntimeEventMessage,
-  type SessionLiveness,
-  type SessionLivenessMessage,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, type RuntimeEventMessage, type SessionLiveness, type SessionLivenessMessage } from '../src/shared/runtime-ipc'
 import type { ProtectedPlaceNotice } from '../src/shared/work-folders'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 

@@ -1,3 +1,5 @@
+import type { PersistedEventInfo } from '../src/shared/conversation-events'
+import type { AgentState } from '../src/shared/agent-state-contracts'
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
@@ -31,13 +33,8 @@ import {
   sameLocalDay,
   type LocalZone,
 } from '../src/shared/local-time'
-import type {
-  LibraryEntry,
-  PersistedEventInfo,
-  RuntimeEventMessage,
-  RuntimeStatesMessage,
-} from '../src/shared/runtime-ipc'
-import type { AgentState } from '../src/shared/agent-state'
+import type { LibraryEntry, RuntimeEventMessage, RuntimeStatesMessage } from '../src/shared/runtime-ipc'
+
 import { calendarDay, fullTime } from '../src/renderer/src/lib/clock'
 import { proseSpans } from './lib/prose-spans'
 

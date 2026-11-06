@@ -1,3 +1,4 @@
+import type { MemoryNoteEvent, TranscriptEvent } from '../src/shared/conversation-events'
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -11,13 +12,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, NULL_SESSION_STORE } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import {
-  MEMORY_NOTES_PER_EVENT,
-  MEMORY_NOTE_TEXT_CAP,
-  type MemoryNoteEvent,
-  type RuntimeEventMessage,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { MEMORY_NOTES_PER_EVENT, MEMORY_NOTE_TEXT_CAP, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsDir = join(here, '../src/main/db/migrations')

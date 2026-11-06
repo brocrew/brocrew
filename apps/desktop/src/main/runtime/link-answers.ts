@@ -1,4 +1,5 @@
-import { agentStateWords, type AgentState } from '../../shared/agent-state'
+import type { AgentState } from '../../shared/agent-state-contracts'
+import { agentStateWords } from '../../shared/agent-state'
 import type { LinkResolution } from '../../shared/link-resolution'
 import type { LimitsWriterStamp } from '../db/fresh-limits-snapshot'
 import { sameWindowWriter } from '../db/window-routing-reads'

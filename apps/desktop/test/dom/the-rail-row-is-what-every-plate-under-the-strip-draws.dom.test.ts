@@ -1,3 +1,6 @@
+import type { AgentState } from '../../src/shared/agent-state-contracts'
+import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/question-contracts'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
@@ -10,14 +13,10 @@ import { facetsOfState } from '../../src/renderer/src/lib/agent-state'
 import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { createSessionRecord } from '../../src/renderer/src/lib/session-record'
 import { applyEvent } from '../../src/renderer/src/lib/transcript'
-import { agentStateWords, type AgentState } from '../../src/shared/agent-state'
+import { agentStateWords } from '../../src/shared/agent-state'
 import { clockTime } from '../../src/shared/clock'
-import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/questions'
-import type {
-  ResumableSessionInfo,
-  TranscriptEvent,
-  UnresumableSessionInfo,
-} from '../../src/shared/runtime-ipc'
+
+import type { ResumableSessionInfo, UnresumableSessionInfo } from '../../src/shared/runtime-ipc'
 import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import type { WhatIsBeingDone } from '../../src/shared/what-is-being-done'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'

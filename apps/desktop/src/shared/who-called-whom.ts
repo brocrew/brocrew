@@ -1,12 +1,14 @@
+import type { LedgerWalk } from './question-contracts'
+import type { PieceRow, TaskOutcome, TaskState } from './task-contracts'
 import type { ContextReading } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 // ⚑ **TYPES and nothing else, in both directions** (543) — `tasks.ts`' own rule, kept for the same
 // reason: an edge that is erased at build time cannot hand this module a database, a host or a
 // clock, and `runtime-ipc.ts` imports the shapes below the same way. ⛔ There is no value import
 // here at all, so nothing this file does can cost a renderer a bundle (`a-value-import-from-shared-costs-the-renderer-135kb`).
-import type { LedgerWalk } from './questions'
+
 import type { RunningState } from './runtime-ipc'
-import type { PieceRow, TaskOutcome, TaskState } from './tasks'
+
 
 /**
  * 🔴 **Who called whom — one conversation's own edges, in ids that name CONVERSATIONS** (543,

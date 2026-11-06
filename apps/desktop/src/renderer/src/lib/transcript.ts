@@ -1,41 +1,14 @@
-import {
-  moveOfferOf,
-  moveOriginOf,
-  moveReceiptOf,
-  type MoveOffer,
-  type MoveOrigin,
-  type MoveReceipt,
-} from '../../../shared/move-request'
-import type {
-  AnsweredQuestion,
-  BackgroundWork,
-  ContextReading,
-  DeclaredToolset,
-  FileChange,
-  HandedPath,
-  MemoryNoteSeen,
-  MemoryRecallEntry,
-  MessageSentEvent,
-  PermissionDecision,
-  ProviderCommandSet,
-  PublishedInventory,
-  QuestionAskedEvent,
-  QueuedMessageEvent,
-  RequestRoutedEvent,
-  RuntimeEvent,
-  ScheduledJob,
-  SessionRef,
-  SessionStatus,
-  ToolNaming,
-  TranscriptEvent,
-  UnknownCategory,
-  UserTurnPart,
-  WorkflowAgent,
-  WorkflowPhase,
-  WorkRepliedEvent,
-} from '../../../shared/runtime-ipc'
+import type { MoveOffer, MoveOrigin, MoveReceipt } from '../../../shared/move-contracts'
+import type { AnsweredQuestion, HumanAnswers, HumanFinalContext, UserTurnPart } from '../../../shared/human-answer-contracts'
+import type { HandedPath } from '../../../shared/attachment-contracts'
+import type { MemoryNoteSeen, MessageSentEvent, QueuedMessageEvent, TranscriptEvent } from '../../../shared/conversation-events'
+import type { ActionAsked, QuestionAskedEvent, RequestRoutedEvent } from '../../../shared/question-contracts'
+import type { AgentMessageKind, WorkRepliedEvent, WorkReport } from '../../../shared/task-contracts'
+import type { BackgroundRow, ScheduledRow } from '../../../shared/agent-state-contracts'
+import { moveOfferOf, moveOriginOf, moveReceiptOf } from '../../../shared/move-request'
+import type { BackgroundWork, ContextReading, DeclaredToolset, FileChange, MemoryRecallEntry, PermissionDecision, ProviderCommandSet, PublishedInventory, RuntimeEvent, ScheduledJob, SessionRef, SessionStatus, ToolNaming, UnknownCategory, WorkflowAgent, WorkflowPhase } from '../../../shared/runtime-ipc'
 // ⚑ **D-027 · a value import with no cycle** — `runtime-ipc.ts` imports only types.
-import { anActionAsked, type ActionAsked } from '../../../shared/questions'
+import { anActionAsked } from '../../../shared/questions'
 import { A_RENEWED_SIGN_IN_SAYS } from '../../../shared/a-renewed-sign-in'
 import { PROVIDER_NAME, theMessagesOf } from '../../../shared/runtime-ipc'
 import { aTurnsLimitSays } from './usage-limit'
@@ -44,12 +17,7 @@ import { scheduleLine } from './scheduled-work'
 // ⚠️ **`apps/desktop/src/shared/`, which is NOT `@brobot2/shared`** — the 135 kB zod measurement
 // is about the workspace PACKAGE, and this directory is inside the app. A value import here is
 // what every neighbour in this folder already does (`runtime-ipc.ts`'s `providerName`, `YOLO_LABEL`).
-import {
-  isAgentMessageKind,
-  isAWorkReport,
-  type AgentMessageKind,
-  type WorkReport,
-} from '../../../shared/tasks'
+import { isAgentMessageKind, isAWorkReport } from '../../../shared/tasks'
 import { endingMeans, rulesChangeLabel } from '../../../shared/own-instructions'
 import {
   anEarlierMcpServerRequestEnded,
@@ -59,7 +27,7 @@ import {
 // ⚑ **624 · a value import, and a cheap one** — `shared/app-notice.ts` holds two words, two
 // sentences and two readers over them, and imports NOTHING. See `refusals.ts` below for what makes
 // a shared import expensive.
-import type { BackgroundRow, ScheduledRow } from '../../../shared/agent-state'
+
 import type { BackgroundOutcome } from './background-work'
 import {
   knownRefusal,
@@ -106,7 +74,7 @@ import {
 import { pieceNumbersOf } from '../../../shared/piece-called'
 import { textPackRefusedSaid } from '../../../shared/text-pack'
 import { isClaudeLoginRefused, isClaudeSignInRetry } from './claude-sign-in'
-import type { HumanAnswers, HumanFinalContext } from '../../../shared/human-turn-answer'
+
 import { startHumanAnswer, finishHumanAnswer } from './human-answers'
 
 /**

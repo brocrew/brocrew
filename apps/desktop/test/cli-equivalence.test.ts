@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -11,11 +12,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { checkSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type {
-  RuntimeEventMessage,
-  SessionLiveness,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage, SessionLiveness } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **160 · match the CLI, unless the reason is NEIGHBOURS.**

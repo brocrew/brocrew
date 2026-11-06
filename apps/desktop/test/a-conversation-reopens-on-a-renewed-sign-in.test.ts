@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -24,12 +25,7 @@ import { createSessionStore as createRendererStore } from '../src/renderer/src/l
 import type { SessionRecord } from '../src/renderer/src/lib/session-record'
 import { REOPENED_ON_A_RENEWED_SIGN_IN, type NoticeItem } from '../src/renderer/src/lib/transcript'
 import { isVisibleIn } from '../src/renderer/src/lib/transcript-mode'
-import type {
-  ResumedSession,
-  RuntimeBridge,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { ResumedSession, RuntimeBridge, RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
 
 /**

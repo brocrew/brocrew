@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick, reactive } from 'vue'
@@ -9,7 +10,7 @@ import {
   createSessionRecord,
   type SessionRecord,
 } from '../../src/renderer/src/lib/session-record'
-import type { SessionLiveness, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { SessionLiveness } from '../../src/shared/runtime-ipc'
 import { drawnReady } from './drawn'
 import { META, mount, paneProps, unmountAll, visible, type Mounted } from './harness'
 

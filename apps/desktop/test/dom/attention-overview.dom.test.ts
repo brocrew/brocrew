@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import AttentionQueue from '../../src/renderer/src/components/AttentionQueue.vue'
@@ -5,7 +6,7 @@ import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import { attentionQueue, type AttentionRequest } from '../../src/renderer/src/lib/attention'
 import { acceptEvent, createSessionRecord } from '../../src/renderer/src/lib/session-record'
-import type { RuntimeEventMessage, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 
 /**

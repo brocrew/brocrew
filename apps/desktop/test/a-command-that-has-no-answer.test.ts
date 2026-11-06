@@ -1,14 +1,8 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSessionStore } from '../src/renderer/src/lib/session-store'
 import type { SessionRecord } from '../src/renderer/src/lib/session-record'
-import {
-  DEFAULT_PROFILE_ID,
-  type AnswerAck,
-  type ApprovalModeDisclosure,
-  type ResumedSession,
-  type RuntimeBridge,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, type AnswerAck, type ApprovalModeDisclosure, type ResumedSession, type RuntimeBridge } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
 
 /**

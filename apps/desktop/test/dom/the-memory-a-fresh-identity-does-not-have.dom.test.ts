@@ -1,9 +1,10 @@
+import type { InjectedInstruction, SessionInstructions } from '../../src/shared/instruction-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import { page } from 'vitest/browser'
 import AgentInstructionsSheet from '../../src/renderer/src/components/AgentInstructionsSheet.vue'
 import SessionInfo from '../../src/renderer/src/components/SessionInfo.vue'
-import type { InjectedInstruction, SessionInstructions } from '../../src/shared/runtime-ipc'
+
 import { TOLD_IS_THE_LAST_LAUNCH, TOLD_REMEMBERS_NOTHING } from '../../src/shared/told'
 import { assertDrawn, drawnReady } from './drawn'
 import { META, mount, toldProps, unmountAll, visible, type Mounted } from './harness'

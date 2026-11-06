@@ -1,7 +1,9 @@
 <script lang="ts">
+import type { TaskOutcome } from '../../../shared/task-contracts'
+
 // ⚠️ **A TYPE, and it is the whole cost of putting the task vocabulary here** — see
 // {@link TASK_OUTCOME_LOOK}.
-import type { TaskOutcome } from '../../../shared/tasks'
+
 
 /**
  * The task outcome's colour grammar, as data.

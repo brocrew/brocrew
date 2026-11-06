@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
@@ -18,7 +19,7 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { pieceNumbersOf } from '../src/shared/piece-called'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import { code, sourceFiles, spellingsIn } from './lib/task-spellings'
 

@@ -1,3 +1,5 @@
+import type { AgentState } from '../../src/shared/agent-state-contracts'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, reactive } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
@@ -11,14 +13,8 @@ import type { WhoCalledWhom } from '../../src/shared/who-called-whom'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import { createProviderBlockStore } from '../../src/renderer/src/lib/provider-limit-facts'
 import { acceptLiveness, acceptProviderBlock } from '../../src/renderer/src/lib/session-record'
-import type { AgentState } from '../../src/shared/agent-state'
-import type {
-  AgentStateMoved,
-  QueuedMessageDisclosure,
-  ResumableSessionInfo,
-  SessionLiveness,
-  TranscriptEvent,
-} from '../../src/shared/runtime-ipc'
+
+import type { AgentStateMoved, QueuedMessageDisclosure, ResumableSessionInfo, SessionLiveness } from '../../src/shared/runtime-ipc'
 import { applyEvent } from '../../src/renderer/src/lib/transcript'
 import { fullTime } from '../../src/renderer/src/lib/clock'
 import { clockTime } from '../../src/shared/clock'

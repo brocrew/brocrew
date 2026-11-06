@@ -1,10 +1,11 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import SessionHeader from '../../src/renderer/src/components/SessionHeader.vue'
 import { archiveConversation } from '../../src/renderer/src/lib/archive-and-delete'
 import type { ArchiveOutcome } from '../../src/shared/conversation-archive'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { META, mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
 
 /**

@@ -1,11 +1,12 @@
+import type { PieceRow, WorkGivenEvent } from '../src/shared/task-contracts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { PieceRow } from '../src/shared/tasks'
-import type { WorkGivenEvent } from '../src/shared/runtime-ipc'
+
+
 import { workEdge } from '../src/shared/who-called-whom'
 import { workReading } from '../src/renderer/src/lib/work-report'
 

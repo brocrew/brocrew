@@ -1,8 +1,9 @@
+import { TASK_OUTCOMES } from '../src/shared/task-contracts'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import StateBadge, { TASK_OUTCOME_LOOK } from '../src/renderer/src/components/StateBadge.vue'
-import { TASK_OUTCOMES } from '../src/shared/tasks'
+
 
 /**
  * The one place a state's colour is decided (Slice 2 · 007).

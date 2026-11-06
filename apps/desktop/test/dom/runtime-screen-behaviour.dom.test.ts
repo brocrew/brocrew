@@ -1,3 +1,4 @@
+import type { PersonsQuestion, RoutedRequest } from '../../src/shared/question-contracts'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { AttentionSignals, ATTENTION_SIGNAL_INTERVAL_MS } from '../../src/main/attention-signals'
@@ -5,13 +6,7 @@ import { isAttentionSignal, type AttentionSignal } from '../../src/shared/attent
 import { useAttentionSignals } from '../../src/renderer/src/composables/useAttentionSignals'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
-import {
-  chainReading,
-  escalationChain,
-  NOTHING_NAMED_THE_WORK,
-  type PersonsQuestion,
-  type RoutedRequest,
-} from '../../src/shared/questions'
+import { chainReading, escalationChain, NOTHING_NAMED_THE_WORK } from '../../src/shared/questions'
 import type { WorkIncident } from '../../src/shared/work-incidents'
 import RuntimeScreen from '../../src/renderer/src/components/RuntimeScreen.vue'
 import { createSessionStore, type SessionStore } from '../../src/renderer/src/lib/session-store'

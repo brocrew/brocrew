@@ -1,3 +1,4 @@
+import type { AgentModelChoice as Choice, ModelCatalogue, ModelChoiceSaved, ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, ref } from 'vue'
@@ -5,27 +6,9 @@ import AgentModelChoice from '../../src/renderer/src/components/AgentModelChoice
 import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
 import { createAgentStore, type AgentStore } from '../../src/renderer/src/lib/agent-store'
 import { createModelLists, type ModelLists } from '../../src/renderer/src/lib/model-lists'
-import {
-  MODEL_CHOICE_SAID,
-  judgeAgainstTheList,
-  refuseModelChoice,
-  theDefaultEffortOf,
-  theEffortsOf,
-  theList,
-  theListedRow,
-  type AgentModelChoice as Choice,
-  type ModelChoiceSaved,
-} from '../../src/shared/model-choice'
+import { MODEL_CHOICE_SAID, judgeAgainstTheList, refuseModelChoice, theDefaultEffortOf, theEffortsOf, theList, theListedRow } from '../../src/shared/model-choice'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
-import type {
-  AgentIdentities,
-  AgentIdentity,
-  ModelCatalogue,
-  ModelChoice,
-  ModelList,
-  Provider,
-  RuntimeBridge,
-} from '../../src/shared/runtime-ipc'
+import type { AgentIdentities, AgentIdentity, ModelChoice, Provider, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, type Mounted } from './harness'
 
 /**

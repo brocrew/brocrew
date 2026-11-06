@@ -1,3 +1,5 @@
+import type { LedgerWalk, PersonsDecision, PersonsQuestion, RoutedRequest } from '../src/shared/question-contracts'
+import type { PersistedEventInfo } from '../src/shared/conversation-events'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -15,24 +17,8 @@ import {
 } from '../src/renderer/src/lib/persons-queue'
 import { createSessionStore } from '../src/renderer/src/lib/session-store'
 import { requestDraft, type SessionRecord } from '../src/renderer/src/lib/session-record'
-import {
-  NOTHING_NAMED_THE_WORK,
-  chainReading,
-  chainSentence,
-  escalationChain,
-  type LedgerWalk,
-  type PersonsDecision,
-  type PersonsQuestion,
-  type RoutedRequest,
-  aPersonsSince,
-} from '../src/shared/questions'
-import type {
-  AnswerAck,
-  PersistedEventInfo,
-  ResumedSession,
-  RuntimeBridge,
-  RuntimeEventMessage,
-} from '../src/shared/runtime-ipc'
+import { NOTHING_NAMED_THE_WORK, chainReading, chainSentence, escalationChain, aPersonsSince } from '../src/shared/questions'
+import type { AnswerAck, ResumedSession, RuntimeBridge, RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
 
 /**

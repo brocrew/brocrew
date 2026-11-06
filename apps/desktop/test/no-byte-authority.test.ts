@@ -1,3 +1,4 @@
+import type { HandedPath } from '../src/shared/attachment-contracts'
 import { execFileSync } from 'node:child_process'
 import {
   mkdirSync,
@@ -20,11 +21,7 @@ import {
   outsideWorkingDirectory,
   recheckHandedPaths,
 } from '../src/main/runtime/handed-path'
-import {
-  CONTROL_CHARACTER_IN_PATH,
-  MAX_HANDED_PATHS,
-  type HandedPath,
-} from '../src/shared/runtime-ipc'
+import { CONTROL_CHARACTER_IN_PATH, MAX_HANDED_PATHS } from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 BroBot hands over a PATH and never opens it — as a RULE (216, acceptance 7)

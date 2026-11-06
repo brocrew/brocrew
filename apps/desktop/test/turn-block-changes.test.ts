@@ -1,6 +1,7 @@
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { derivePieces } from '../src/shared/tasks'
-import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import { EMPTY_TURN_BLOCK, turnBlockChanges } from '../src/main/runtime/turn-block-changes'
 import {
   TURN_BLOCK_WORDS,

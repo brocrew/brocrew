@@ -1,10 +1,11 @@
+import type { HandedPath } from '../../src/shared/attachment-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, type Component } from 'vue'
 import PromptComposer from '../../src/renderer/src/components/PromptComposer.vue'
 import QueuedMessage from '../../src/renderer/src/components/QueuedMessage.vue'
 import UserMessage from '../../src/renderer/src/components/UserMessage.vue'
 import { createAttachmentBook } from '../../src/renderer/src/lib/drafts'
-import type { ChosenAttachment, HandedPath } from '../../src/shared/runtime-ipc'
+import type { ChosenAttachment } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 
 /**

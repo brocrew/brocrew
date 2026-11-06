@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -24,12 +25,7 @@ import {
   standingOf,
 } from '../src/renderer/src/lib/agent-state'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
-import type {
-  RuntimeEventMessage,
-  SessionLiveness,
-  SessionLivenessMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage, SessionLiveness, SessionLivenessMessage } from '../src/shared/runtime-ipc'
 
 /**
  * **123 · Working outside a turn — four minutes of real work the app called `idle`.**

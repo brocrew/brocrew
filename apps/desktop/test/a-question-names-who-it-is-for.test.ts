@@ -1,3 +1,6 @@
+import { PASS_UP_RECIPIENTS } from '../src/shared/question-contracts'
+import type { RequestRoutedEvent, RoutedRequest, WhereARequestWent } from '../src/shared/question-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -18,26 +21,8 @@ import { QUESTION_RAILS, questionText } from '../src/main/runtime/question-rails
 import { messageNamingItsSender, theDirectionLine } from '../src/main/runtime/turn-origin'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
-import {
-  QUESTION_RECIPIENTS,
-  PASS_UP_RECIPIENTS,
-  RECIPIENT_MEANS,
-  REQUEST_IS_OPEN,
-  WENT_STANDS_FOR,
-  aPersonsSince,
-  escalationChain,
-  isQuestionRecipient,
-  permissionShaped,
-  theChannelRefusalIn,
-  whereItWent,
-  type RoutedRequest,
-  type WhereARequestWent,
-} from '../src/shared/questions'
-import type {
-  RequestRoutedEvent,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { QUESTION_RECIPIENTS, RECIPIENT_MEANS, REQUEST_IS_OPEN, WENT_STANDS_FOR, aPersonsSince, escalationChain, isQuestionRecipient, permissionShaped, theChannelRefusalIn, whereItWent } from '../src/shared/questions'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **611 · a question names who it is for** — `HO-088` §2, §3 and §4.1, and `HO-090` §4.
@@ -1131,8 +1116,8 @@ describe('611 · a question names who it is for', () => {
     })
 
     it('⚠️ and the docblock that ruled the invariant is REPLACED rather than left standing', () => {
-      const questions = proseOf('shared/questions.ts')
-      const ipc = proseOf('shared/runtime-ipc.ts')
+      const questions = proseOf('shared/question-contracts.ts')
+      const ipc = proseOf('shared/question-contracts.ts')
       // ⛔ **`619`'s hazard** — `a-description-hardens-into-a-ruling-in-the-docblock-it-leaves`. The
       // old sentence is QUOTED as history in both places and is not stated as a rule.
       expect(questions).toContain('if and only if')

@@ -1,7 +1,8 @@
+import type { HandedPath } from '../../src/shared/attachment-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
 import PromptComposer from '../../src/renderer/src/components/PromptComposer.vue'
-import type { DroppedPathVerdict, HandedPath } from '../../src/shared/runtime-ipc'
+import type { DroppedPathVerdict } from '../../src/shared/runtime-ipc'
 import {
   MAX_HANDED_PATHS,
   NO_IMAGE_ON_CLIPBOARD,

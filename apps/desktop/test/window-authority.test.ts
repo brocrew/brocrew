@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -11,13 +12,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
-import type {
-  RuntimeCommand,
-  RuntimeEventMessage,
-  SessionLiveness,
-  SessionLivenessMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeCommand, RuntimeEventMessage, SessionLiveness, SessionLivenessMessage } from '../src/shared/runtime-ipc'
 
 /**
  * **A window that was refused the conversation must not be able to act on it** (203, from 195 H1).

@@ -1,9 +1,11 @@
+import type { WaitOn } from '../../../shared/task-contracts'
+import type { LedgerWalk, PersonsQuestion } from '../../../shared/question-contracts'
 import { clockTime } from '../../../shared/clock'
 import { unreadSays } from './rows-unread'
 import { localFields, localFormat, sameLocalDay } from '../../../shared/local-time'
-import { undrivenSentence, type WaitOn } from '../../../shared/tasks'
+import { undrivenSentence } from '../../../shared/tasks'
 import type { WorkIncident, WorkIncidentKind } from '../../../shared/work-incidents'
-import type { LedgerWalk, PersonsQuestion } from '../../../shared/questions'
+
 import {
   RECOVERY_KINDS,
   type PersonTodo,

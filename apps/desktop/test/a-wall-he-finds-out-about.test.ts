@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -22,7 +23,7 @@ import {
   type PersonsQueueRow,
 } from '../src/renderer/src/lib/persons-queue'
 import { WALK_COVERS } from '../src/shared/questions'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 
 /**
  * 🔴 **533 · a wall he finds out about before he hits it** (HO-052 §4).

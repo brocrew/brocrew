@@ -1,3 +1,5 @@
+import type { ReconciliationReceipt, WorkReconciliationEvent } from '../src/shared/reconciliation-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -33,16 +35,9 @@ import {
   type CutRecord,
 } from '../src/main/turns-the-app-cut-file'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type {
-  ReconciliationReceipt,
-  WorkReconciliationEvent,
-} from '../src/shared/work-reconciliation'
+
 import type { ReconciliationPiece } from '../src/main/runtime/work-reconciliation'
-import {
-  DEFAULT_PROFILE_ID,
-  type RuntimeEventMessage,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')

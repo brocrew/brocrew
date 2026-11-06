@@ -1,3 +1,5 @@
+import type { AgentState, ScheduleLevel, ScheduledRow } from '../src/shared/agent-state-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -16,13 +18,9 @@ import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { scheduleHead } from '../src/renderer/src/lib/scheduled-work'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
-import type { AgentState, ScheduledRow, ScheduleLevel } from '../src/shared/agent-state'
+
 import { clockTime } from '../src/shared/clock'
-import type {
-  RuntimeEventMessage,
-  RuntimeStatesMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage, RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 
 /**
  * # A scheduled job is listed, and leaves the listing, as it happens

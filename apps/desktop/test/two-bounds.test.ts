@@ -1,3 +1,6 @@
+import type { WorkReport } from '../src/shared/task-contracts'
+import type { QueuedMessageEvent, UnqueuedMessageEvent } from '../src/shared/conversation-events'
+import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -7,12 +10,8 @@ import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { runtimeCommandSchema } from '../src/main/runtime/ipc'
-import { isAWorkReport, type WorkReport } from '../src/shared/tasks'
-import type {
-  QueuedMessageEvent,
-  UnqueuedMessageEvent,
-  UserTurnEvent,
-} from '../src/shared/runtime-ipc'
+import { isAWorkReport } from '../src/shared/tasks'
+
 
 /**
  * # 🔴 518 · what a REPLAYED work report may hand a person
@@ -48,8 +47,11 @@ import type {
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsDir = join(here, '../src/main/db/migrations')
 const STORE_SRC = join(here, '../src/main/db/session-store.ts')
-const TASKS_SRC = join(here, '../src/shared/tasks.ts')
-const WIRE_SRC = join(here, '../src/shared/runtime-ipc.ts')
+const TASKS_SRC = join(here, '../src/shared/task-contracts.ts')
+const WIRE_SRC = [
+  join(here, '../src/shared/human-answer-contracts.ts'),
+  join(here, '../src/shared/conversation-events.ts'),
+]
 
 /** ⚑ The ceiling is `session-store.ts`'s own and is not exported; §5 pins it against the wire. */
 const CEILING = 200
@@ -455,7 +457,7 @@ describe('518 §4 · the census that makes a ninth field somebody’s problem', 
     // test in this file green** — `boundWorkReport` names its three by hand. ⚑ The roster is
     // DERIVED from the declarations rather than typed out beside them
     // (`derive-a-roster-from-the-import-not-the-mention`).
-    const wire = withoutComments(readFileSync(WIRE_SRC, 'utf8'))
+    const wire = withoutComments(WIRE_SRC.map((path) => readFileSync(path, 'utf8')).join('\n'))
     const carriers = [...wire.matchAll(/export interface \w+\s*\{[\s\S]*?\n\}/g)].flatMap(
       (match) =>
         /\n\s*work\?:\s*WorkReport\b/.test(match[0])

@@ -1,17 +1,9 @@
 <script lang="ts">
+import type { HandedPath } from '../../../shared/attachment-contracts'
+
 import type { SendIntent } from '../lib/session-store'
 import { pathTail } from '../../../shared/path-tail'
-import {
-  MAX_HANDED_PATHS,
-  hasSomethingToSend,
-  isPastedImage,
-  noRoomForPastedImage,
-  nothingToSendYet,
-  onlyOnePastedImage,
-  pastedImageLabel,
-  type DroppedPathVerdict,
-  type HandedPath,
-} from '../../../shared/runtime-ipc'
+import { MAX_HANDED_PATHS, hasSomethingToSend, isPastedImage, noRoomForPastedImage, nothingToSendYet, onlyOnePastedImage, pastedImageLabel, type DroppedPathVerdict } from '../../../shared/runtime-ipc'
 
 /**
  * The composer's state is DERIVED from the session, never set by hand: a composer that could be

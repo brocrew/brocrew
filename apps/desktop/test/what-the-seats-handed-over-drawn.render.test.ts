@@ -1,3 +1,5 @@
+import type { AgentModelChoice } from '../src/shared/model-choice-contracts'
+import type { InstructionProposedEvent, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -44,17 +46,8 @@ import { absenceUnreadSays } from '../src/renderer/src/lib/rows-unread'
 import { readableError } from '../src/renderer/src/lib/session-record'
 import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
 import { HOLDING_SAYS, type AgentRemoved } from '../src/shared/agent-roster'
-import { aChoiceInWords, type AgentModelChoice } from '../src/shared/model-choice'
-import {
-  DEFAULT_PROFILE_ID,
-  PROVIDER_NAME,
-  type AgentIdentities,
-  type AgentIdentity,
-  type InstructionProposedEvent,
-  type RuntimeBridge,
-  type RuntimeEventMessage,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { aChoiceInWords } from '../src/shared/model-choice'
+import { DEFAULT_PROFILE_ID, PROVIDER_NAME, type AgentIdentities, type AgentIdentity, type RuntimeBridge, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { stalledWorkKey, type StalledWork } from '../src/shared/stalled-work'
 import { everythingOverTheWire } from './lib/the-wire'
 

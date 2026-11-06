@@ -1,10 +1,11 @@
+import type { InjectedInstruction, RefusedInstruction } from '../../../shared/instruction-contracts'
 import { given } from './given'
 import { CODEX_MEMORY_SUMMARY } from '@brobot2/runtime'
 import { readCodexAgentMemory, type CodexMemoryRead } from './memory'
 import { agentPreamble } from '../../runtime/agent-preamble'
 import type { InstructionInputs, SessionLaunchRead } from '../instruction-types'
 import type { BundlePublish } from '../../runtime/profile-bundle'
-import type { InjectedInstruction, RefusedInstruction } from '../../../shared/runtime-ipc'
+
 import { theProfileFileOf, composeSystemHint, BLOCK_SEPARATOR } from '../instruction-composition'
 
 export const NOTE_PROVIDER_READS_ITS_OWN =

@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -6,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 
 /**
  * 🔴 **F080's follow-ups — a turn its provider started by itself reads as its own, in the record**

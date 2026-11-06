@@ -1,3 +1,5 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -36,7 +38,7 @@ import {
   createTranscript,
   REOPENED_ON_A_RENEWED_SIGN_IN,
 } from '../src/renderer/src/lib/transcript'
-import type { RuntimeEventMessage, TranscriptEvent, UserTurnEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
 
 /**

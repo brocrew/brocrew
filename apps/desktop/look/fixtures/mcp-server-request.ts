@@ -1,5 +1,6 @@
+import type { McpServerRequestForAPerson } from '../../src/shared/conversation-events'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
-import type { McpServerRequestForAPerson } from '../../src/shared/runtime-ipc'
+
 
 /** A fictional local notes server, still waiting for the person to approve or refuse it. */
 export function aFictionalMcpServerRequest() {

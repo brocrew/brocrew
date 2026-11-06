@@ -1,3 +1,6 @@
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
+import { TASK_STALL_CAUSES, TASK_STATES } from '../src/shared/task-contracts'
+import type { PieceRow, TaskStallCause } from '../src/shared/task-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -13,21 +16,8 @@ import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { giverStallNotices, RuntimeHost, type RuntimeEventSink } from './helpers/giver-notice-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import type {
-  PersistedEventInfo,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
-import {
-  A_WAIT_ON_PURPOSE_OUTLASTS,
-  TASK_IS_OPEN,
-  TASK_STALL_CAUSES,
-  TASK_STATES,
-  derivePieces,
-  theStateAsRead,
-  type PieceRow,
-  type TaskStallCause,
-} from '../src/shared/tasks'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { A_WAIT_ON_PURPOSE_OUTLASTS, TASK_IS_OPEN, derivePieces, theStateAsRead } from '../src/shared/tasks'
 
 /**
  * # A conversation holding a stalled or parked piece still takes more work

@@ -1,7 +1,8 @@
+import type { InjectedInstruction, SessionInstructions } from '../../src/shared/instruction-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import AgentInstructionsSheet from '../../src/renderer/src/components/AgentInstructionsSheet.vue'
-import type { InjectedInstruction, SessionInstructions } from '../../src/shared/runtime-ipc'
+
 import { TOLD_IS_THE_LAST_LAUNCH, TOLD_REMEMBERS_NOTHING } from '../../src/shared/told'
 import { mount, toldProps, unmountAll, type Mounted } from './harness'
 

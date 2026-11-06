@@ -1,8 +1,10 @@
+import { LEDGER_WALK_KINDS } from '../src/shared/question-contracts'
+import type { LedgerWalkKind } from '../src/shared/question-contracts'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { LEDGER_WALK_KINDS, WALK_COVERS, type LedgerWalkKind } from '../src/shared/questions'
+import { WALK_COVERS } from '../src/shared/questions'
 import { openWorkOf } from '../src/shared/tasks'
 
 /**

@@ -1,3 +1,4 @@
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -17,15 +18,9 @@ import {
 } from '../src/main/runtime/runtime-host'
 import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  DEFAULT_PROFILE_ID,
-  type RuntimeEventMessage,
-  type SessionLiveness,
-  type SessionLivenessMessage,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, type RuntimeEventMessage, type SessionLiveness, type SessionLivenessMessage } from '../src/shared/runtime-ipc'
 import { derivePieces } from '../src/shared/tasks'
-import type { PersistedEventInfo } from '../src/shared/runtime-ipc'
+
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 
 /**

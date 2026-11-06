@@ -1,6 +1,7 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { applyEvent, createTranscript, type ToolItem } from '../../src/renderer/src/lib/transcript'
 import { messageCall, messageReceipt, messageResult } from './agent-card-facts.fixture'
 import { agentCardRecipient, mount, paneProps, record, unmountAll } from './harness'

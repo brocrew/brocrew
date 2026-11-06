@@ -1,3 +1,4 @@
+import type { ModelList } from '../src/shared/model-choice-contracts'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -21,7 +22,7 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { ModelList, RuntimeBridge, RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import type { RuntimeBridge, RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { aChoiceIsInForce, whatAModelChoiceReaches } from '../src/shared/model-choice'
 import {
   createAgentStore,

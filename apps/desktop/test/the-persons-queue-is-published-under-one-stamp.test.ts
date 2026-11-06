@@ -1,9 +1,10 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { aServiceWorld, RecordingSink, type AServiceWorld } from './helpers/a-service-world'
 import { openDatabase } from '../src/main/db/connection'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeChangeMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeChangeMessage } from '../src/shared/runtime-ipc'
 import { PERSONS_PARTS, PERSONS_ROW_KEY, type PersonsQueue } from '../src/shared/persons-published'
 import { acceptAnswer, emptyScope } from '../src/shared/data-version'
 

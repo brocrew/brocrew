@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -19,14 +20,7 @@ import {
   type TranscriptItem,
 } from '../src/renderer/src/lib/transcript'
 import { ASKED_TO_STOP, stoppedBy } from '../src/shared/how-work-stopped'
-import {
-  DEFAULT_PROFILE_ID,
-  providerName,
-  type LibraryEntry,
-  type CreatedSession,
-  type Provider,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, providerName, type LibraryEntry, type CreatedSession, type Provider } from '../src/shared/runtime-ipc'
 
 /** ⚑ A notice as the fold hands it out — the item, placed and timed. */
 type NoticeItem = Extract<TranscriptItem, { kind: 'notice' }>

@@ -1,3 +1,4 @@
+import type { LeadInFront } from '../src/shared/human-answer-contracts'
 import { describe, expect, it } from 'vitest'
 import type { ThreadLeadRow } from '../src/main/db/session-store'
 import {
@@ -10,7 +11,7 @@ import {
   type ThisConversationComposed,
 } from '../src/main/runtime/codex-lead'
 import { conversationBlock, THIS_CONVERSATION_HEADER } from '../src/main/runtime/instructions'
-import type { LeadInFront } from '../src/shared/runtime-ipc'
+
 import type { InstructionSpan } from '../src/shared/whose-text'
 
 /**

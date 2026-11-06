@@ -1,3 +1,6 @@
+import { TASK_STALL_CAUSES } from '../src/shared/task-contracts'
+import type { TaskStallCause } from '../src/shared/task-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { expectIdsOnlyInLinkTargets } from './helpers/navigation-reply'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -30,15 +33,10 @@ import {
   type AskToStop,
   type LastEndedTurn,
 } from '../src/shared/how-work-stopped'
-import {
-  AN_ASK_RIDES_ON,
-  TASK_STALL_CAUSES,
-  derivePieces,
-  type TaskStallCause,
-} from '../src/shared/tasks'
+import { AN_ASK_RIDES_ON, derivePieces } from '../src/shared/tasks'
 import { exchangePreviewLines } from '../src/shared/last-exchange'
 import { pieceLine, theConversationCalled } from '../src/shared/piece-called'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **484 · state a supervisor can trust** — HO-031 §2.1 and §2.2, and three of §3's defects.

@@ -1,3 +1,4 @@
+import type { ModelList } from '../src/shared/model-choice-contracts'
 import { describe, expect, it } from 'vitest'
 import { NO_LAUNCH_CHOICES } from '../src/renderer/src/lib/launch-choices'
 import {
@@ -5,7 +6,7 @@ import {
   theFormSends,
   thePickerRows,
 } from '../src/renderer/src/lib/model-lists'
-import type { ModelList } from '../src/shared/runtime-ipc'
+
 
 /**
  * # W4.42 · a model named in another letter case, or with spaces around it, is the same model

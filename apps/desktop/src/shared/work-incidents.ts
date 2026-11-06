@@ -1,4 +1,5 @@
-import type { TaskStallCause } from './tasks'
+import type { TaskStallCause } from './task-contracts'
+
 
 /**
  * What can be wrong with an open piece that no other list shows a person:

@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, provide } from 'vue'
@@ -12,7 +13,7 @@ import {
   wrappersOf,
   type InputMessage,
 } from '../../src/renderer/src/lib/agent-inputs'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import type {
   WhatThisAgentWasGiven,
   WhatTheModelGot,

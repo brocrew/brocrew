@@ -1,16 +1,10 @@
+import type { SessionInstructions } from '../../src/shared/instruction-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { fileManagerWord } from '../../src/renderer/src/lib/message-paths'
 import { defineComponent, h, nextTick, ref } from 'vue'
 import AgentInstructionsSheet from '../../src/renderer/src/components/AgentInstructionsSheet.vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import type {
-  CreatedSession,
-  InstructionSourceResult,
-  ProviderConfigInfo,
-  RevealResult,
-  SessionInstructions,
-  SessionPathTarget,
-} from '../../src/shared/runtime-ipc'
+import type { CreatedSession, InstructionSourceResult, ProviderConfigInfo, RevealResult, SessionPathTarget } from '../../src/shared/runtime-ipc'
 import { drawerProps, META, mount, unmountAll, type Mounted, toldProps } from './harness'
 
 /**

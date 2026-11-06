@@ -1,3 +1,6 @@
+import { REQUEST_STATES } from '../src/shared/question-contracts'
+import type { RequestState } from '../src/shared/question-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -22,9 +25,9 @@ import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { REQUEST_IS_OPEN, REQUEST_STATES, deriveRoutedRequests } from '../src/shared/questions'
-import type { RequestState } from '../src/shared/questions'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import { REQUEST_IS_OPEN, deriveRoutedRequests } from '../src/shared/questions'
+
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **397 · the word for a question nobody stopped** — Slice 4 S6, the last build dispatch of the

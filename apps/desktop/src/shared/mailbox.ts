@@ -1,4 +1,5 @@
-import type { MailboxKind, PersistedEventInfo } from './runtime-ipc'
+import type { MailboxKind, PersistedEventInfo } from './conversation-events'
+
 
 /**
  * 🔴 **The mailbox, DERIVED — what one conversation was handed to read, in order, and how each of

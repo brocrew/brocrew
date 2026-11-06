@@ -1,7 +1,8 @@
+import type { ModelList } from '../src/shared/model-choice-contracts'
 import { expect, it, vi } from 'vitest'
 import { createModelLists } from '../src/renderer/src/lib/model-lists'
 import { modelsAfterConnection } from '../src/renderer/src/lib/models-after-connection'
-import type { ModelList } from '../src/shared/runtime-ipc'
+
 
 const GOOD: ModelList = {
   provider: 'claude',

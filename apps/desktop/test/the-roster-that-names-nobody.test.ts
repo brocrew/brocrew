@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { navigationReply, expectIdsOnlyInLinkTargets } from './helpers/navigation-reply'
 import { conversationLink, agentLink, pieceLink } from '../src/shared/links'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -24,13 +25,7 @@ import {
   agentToolsFor,
   type ToolName,
 } from '../src/main/runtime/agent-tools'
-import {
-  DEFAULT_PROFILE_ID,
-  DEFAULT_PROFILE_LABEL,
-  agentName,
-  type RuntimeEventMessage,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, DEFAULT_PROFILE_LABEL, agentName, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { theOwnerOf } from '../src/shared/piece-called'
 
 const here = dirname(fileURLToPath(import.meta.url))

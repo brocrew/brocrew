@@ -1,3 +1,6 @@
+import type { HandedPath } from '../src/shared/attachment-contracts'
+import type { MessageSentEvent, QueuedMessageEvent, TranscriptEvent, UnqueuedMessageEvent } from '../src/shared/conversation-events'
+import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -14,17 +17,7 @@ import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type {
-  HandedPath,
-  MessageSentEvent,
-  QueuedMessageDisclosure,
-  QueuedMessageEvent,
-  RuntimeEventMessage,
-  SessionLivenessMessage,
-  TranscriptEvent,
-  UnqueuedMessageEvent,
-  UserTurnEvent,
-} from '../src/shared/runtime-ipc'
+import type { QueuedMessageDisclosure, RuntimeEventMessage, SessionLivenessMessage } from '../src/shared/runtime-ipc'
 import { GO_AHEAD_MESSAGE } from '../src/renderer/src/lib/plan-mode'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 

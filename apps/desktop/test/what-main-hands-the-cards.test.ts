@@ -1,3 +1,5 @@
+import type { MessageSentEvent, TranscriptEvent } from '../src/shared/conversation-events'
+import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -15,17 +17,7 @@ import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { REPLY_SUMMARY_LIMIT } from '../src/main/runtime/reply-rails'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  DEFAULT_PROFILE_ID,
-  DEFAULT_PROFILE_LABEL,
-  agentName,
-  type AgentIdentity,
-  type LibraryEntry,
-  type MessageSentEvent,
-  type RuntimeEventMessage,
-  type TranscriptEvent,
-  type UserTurnEvent,
-} from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, DEFAULT_PROFILE_LABEL, agentName, type AgentIdentity, type LibraryEntry, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * # 671 — what main hands the cards

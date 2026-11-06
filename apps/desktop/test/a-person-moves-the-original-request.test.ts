@@ -1,3 +1,5 @@
+import type { MoveOffer } from '../src/shared/move-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { writeFileSync, unlinkSync, realpathSync } from 'node:fs'
@@ -6,21 +8,14 @@ import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import { originalMoveRequest, recordMovedRequest } from '../src/main/runtime/move-request'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
-import {
-  DO_IT_HERE,
-  MOVE_IT,
-  MOVE_WORDS,
-  movedHereLine,
-  moveReceiptOf,
-  type MoveOffer,
-} from '../src/shared/move-request'
+import { DO_IT_HERE, MOVE_IT, MOVE_WORDS, movedHereLine, moveReceiptOf } from '../src/shared/move-request'
 import { conversationLink } from '../src/shared/links'
 import type { SessionStore } from '../src/main/db/session-store'
 import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { RecordingSink } from './helpers/a-service-world'
 import { answerCodexToolCall } from '../../../packages/runtime/src/codex/agent-tools'
 import type { AgentToolAnswer } from '@brobot2/runtime'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 
 const ORIGINAL = 'Please check the fictional release notes.'
 const PERSON = { who: 'a-person' as const }

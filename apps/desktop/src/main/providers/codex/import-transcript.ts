@@ -1,5 +1,6 @@
+import type { TranscriptEvent } from '../../../shared/conversation-events'
 import type { ResolveImagePath } from '../../archive/transcript-types'
-import type { TranscriptEvent } from '../../../shared/runtime-ipc'
+
 import { FileEdits, wrapUnknown } from '@brobot2/runtime'
 import { codexMessageAsKept, splitCodexMessage } from './codex-injected'
 import {
