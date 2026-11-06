@@ -65,7 +65,7 @@ import type { LaunchChoices } from '../lib/launch-choices'
 import { theFormSends, type ModelLists, type PickedModel } from '../lib/model-lists'
 import { useModelLists } from '../composables/useModelLists'
 import { CHANGEABLE_LIVE_IN } from '../lib/front-door-words'
-import { shouldRestoreDraft, type DraftHanding } from '../lib/drafts'
+import { puttingItBack, shouldRestoreDraft, type DraftHanding } from '../lib/drafts'
 import type { SendBlock } from '../lib/composer-notice'
 import { createSignInGesture } from '../lib/sign-in-gesture'
 import { signInFact } from '../composables/useProfileSignIn'
@@ -825,17 +825,14 @@ watch(
   () => props.busy,
   (busy, wasBusy) => {
     const settled = wasBusy && !busy
-    if (
-      shouldRestoreDraft({ busy, wasBusy, error: props.error, lastTried, current: props.draft })
-    ) {
-      emit('update:draft', lastTried)
+    if (shouldRestoreDraft({ busy, wasBusy, error: props.error, lastTried })) {
+      emit('update:draft', puttingItBack(props.draft, lastTried))
     }
     // ⛔ **The paths are handed back on their OWN condition** (found in review). Nested inside
     // `shouldRestoreDraft` they inherited its `lastTried !== ''` clause — so the one send shape
     // where the paths ARE the whole message, which `216` deliberately allows and this dispatch
-    // tests, was the one shape whose attachment was silently dropped. ⚑ The text clause exists to
-    // avoid overwriting newer typing; the attachment book guards itself the same way, so it does
-    // not need the same gate.
+    // tests, was the one shape whose attachment was silently dropped. ⚑ The attachment book merges
+    // what comes back with what is staged, so it needs no text clause.
     if (settled && props.error !== null && lastTriedPaths.length > 0) {
       props.handing.stage(lastTriedPaths)
     }

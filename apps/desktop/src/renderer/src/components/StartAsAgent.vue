@@ -12,7 +12,7 @@ import {
 import { useAgentStore } from '../composables/useAgentStore'
 import type { AgentStore } from '../lib/agent-store'
 import { YOLO_MEANS } from '../lib/approval-mode'
-import { shouldRestoreDraft } from '../lib/drafts'
+import { puttingItBack, shouldRestoreDraft } from '../lib/drafts'
 import PromptComposer from './PromptComposer.vue'
 import ModelPicker from './ModelPicker.vue'
 import type { ModelLists, PickedModel } from '../lib/model-lists'
@@ -210,7 +210,7 @@ const handed = ref<HandedPath[]>([])
 /**
  * ⚑ **718 · what was last sent from here, so a refusal can hand it back** — the launcher's
  * `lastTried`, and {@link shouldRestoreDraft} is ITS rule, imported rather than restated: on a
- * falling edge, only on failure, only with something to give, and never over newer typing.
+ * falling edge, only on failure, only with something to give, joining any newer typing.
  */
 let lastTried = ''
 
@@ -233,12 +233,9 @@ watch(
   (busy, wasBusy) => {
     const error = props.error ?? null
     const settled = wasBusy && !busy
-    const cancelledWithWords = settled && cancelledHere && lastTried !== '' && words.value === ''
-    if (
-      shouldRestoreDraft({ busy, wasBusy, error, lastTried, current: words.value }) ||
-      cancelledWithWords
-    ) {
-      words.value = lastTried
+    const cancelledWithWords = settled && cancelledHere && lastTried !== ''
+    if (shouldRestoreDraft({ busy, wasBusy, error, lastTried }) || cancelledWithWords) {
+      words.value = puttingItBack(words.value, lastTried)
     }
     // ⚑ Consumed once the attempt settles, however it ended — a later refusal never hands back an
     // earlier message.

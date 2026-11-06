@@ -588,7 +588,8 @@ MUTATIONS = [
     (
         "M47 · 🔴 **the sheet never hands the words back** · a refused start takes what was typed — "
         f"killed by `{DRAWN}`",
-        [(SHEET, "      words.value = lastTried\n", "      void lastTried\n")],
+        # Re-anchored in place, not retired: the words handed back now join newer typing.
+        [(SHEET, "      words.value = puttingItBack(words.value, lastTried)\n", "      void lastTried\n")],
     ),
     (
         "M48 · 🔴 **the sheet never shows its launch** · a press, and nothing on screen until it "
@@ -717,7 +718,8 @@ MUTATIONS = [
         [
             (
                 SHEET,
-                "    const cancelledWithWords = settled && cancelledHere && lastTried !== '' && words.value === ''\n",
+                # Re-anchored in place, not retired: a Cancel hands the words back over newer typing too.
+                "    const cancelledWithWords = settled && cancelledHere && lastTried !== ''\n",
                 "    const cancelledWithWords = false\n",
             )
         ],
