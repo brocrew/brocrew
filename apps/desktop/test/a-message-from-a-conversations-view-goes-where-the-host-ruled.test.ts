@@ -107,6 +107,7 @@ class AWindow implements RuntimeEventSink {
     const bridge: Partial<RuntimeBridge> = {
       createSession: (input) => run({ kind: 'createSession', ...input }),
       resume: (input) => run({ kind: 'resume', ...input }),
+      claim: (input) => run({ kind: 'claim', ...input }),
       startAndSend: (input) => run({ kind: 'startAndSend', ...input }),
       cancelLaunch: (input) => run({ kind: 'cancelLaunch', ...input }),
       attachOpen: () => run({ kind: 'attachOpen' }),

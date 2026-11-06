@@ -142,6 +142,7 @@ class AWindow {
     const bridge: Partial<RuntimeBridge> = {
       createSession: (input) => run({ kind: 'createSession', ...input }),
       resume: (input) => run({ kind: 'resume', ...input }),
+      claim: (input) => run({ kind: 'claim', ...input }),
       // ⚑ **737 · the first message's one door** (`735` §3) — ⚑ D-017b: every message from a
       // recorded view.
       startAndSend: (input) => run({ kind: 'startAndSend', ...input }),
