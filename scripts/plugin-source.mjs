@@ -9,8 +9,8 @@ const pluginId = (id) => {
   if (!ids.has(id)) throw new Error('Unknown plugin source')
   return id
 }
-function entries(root, revision, id) {
-  return git(root, ['ls-tree', '-rz', revision, '--', `plugins/${pluginId(id)}/`])
+function entries(root, revision, folder) {
+  return git(root, ['ls-tree', '-rz', revision, '--', `${folder}/`])
     .split('\0')
     .filter(Boolean)
     .map((entry) => {
@@ -18,23 +18,96 @@ function entries(root, revision, id) {
       const [mode, type, hash] = header.split(' ')
       if (!['100644', '100755'].includes(mode) || type !== 'blob')
         throw new Error('Only regular plugin source files are allowed')
-      return { mode, hash, name: name.slice(`plugins/${id}/`.length) }
+      return { mode, hash, name: name.slice(folder.length + 1) }
     })
 }
 
-// Export every tracked plugin file unchanged. Generated release tooling lives outside this tree.
-export function copyPluginSource(root, destination, id) {
-  const source = path.join(root, 'plugins', pluginId(id))
-  const files = entries(root, 'HEAD', id)
+function sharedUiTree(root, revision) {
+  let tree = null
+  for (const folder of ['plugins', 'plugins/shared', 'plugins/shared/ui']) {
+    const entry = git(root, ['ls-tree', '-z', revision, '--', folder])
+    if (!entry) return null
+    const [mode, type, hash] = entry.split('\t')[0].split(' ')
+    if (mode !== '040000' || type !== 'tree')
+      throw new Error('The canonical shared UI source must be a tree')
+    tree = hash
+  }
+  return tree
+}
+
+function sources(root, revision, id) {
+  const folder = `plugins/${pluginId(id)}`
+  const files = entries(root, revision, folder)
   if (!files.length) throw new Error('Missing plugin source tree')
+  const shared = 'plugins/shared/ui'
+  const tree = sharedUiTree(root, revision)
+  return [
+    { folder, files, dependencies: true },
+    { folder: shared, files: tree ? entries(root, revision, shared) : [], tree },
+  ]
+}
+
+function sharedDirectory(root, folder, optional) {
+  let current = root
+  for (const part of folder.split('/')) {
+    current = path.join(current, part)
+    const stat = fs.lstatSync(current, { throwIfNoEntry: false })
+    if (!stat) {
+      if (optional) return false
+      throw new Error('The shared UI source directory differs from the canonical tree')
+    }
+    if (stat.isSymbolicLink()) throw new Error('Linked shared UI source refused')
+    if (!stat.isDirectory()) throw new Error('Shared UI source must be a directory')
+  }
+  return true
+}
+
+function verifyFiles(root, canonicalRoot, source) {
+  const { folder, files, dependencies, tree } = source
+  const directory = path.join(root, folder)
+  const present = dependencies || sharedDirectory(root, folder, tree === null)
+  const actual = []
+  const visit = (dir, prefix = '') => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (dependencies && prefix === '' && entry.name === 'node_modules') continue
+      const name = prefix + entry.name
+      if (entry.isSymbolicLink()) throw new Error('Linked plugin source refused')
+      if (entry.isDirectory()) visit(path.join(dir, entry.name), name + '/')
+      else if (entry.isFile()) actual.push(name)
+      else throw new Error('Non-file plugin source refused')
+    }
+  }
+  if (present) visit(directory)
+  if (JSON.stringify(actual.sort()) !== JSON.stringify(files.map((one) => one.name).sort()))
+    throw new Error('The exported plugin file set differs from the canonical tree')
   for (const file of files) {
-    const from = path.join(source, file.name)
-    if (!fs.lstatSync(from).isFile() || fs.lstatSync(from).isSymbolicLink())
-      throw new Error('No linked export inputs')
-    const to = path.join(destination, 'plugins', id, file.name)
-    fs.mkdirSync(path.dirname(to), { recursive: true })
-    fs.copyFileSync(from, to)
-    fs.chmodSync(to, file.mode === '100755' ? 0o755 : 0o644)
+    const current = path.join(directory, file.name)
+    const bytes = execFileSync('git', ['-C', canonicalRoot, 'cat-file', 'blob', file.hash], {
+      maxBuffer: 64 * 1024 * 1024,
+    })
+    if (!fs.readFileSync(current).equals(bytes))
+      throw new Error('The exported plugin bytes differ from the canonical tree')
+    if (
+      process.platform !== 'win32' &&
+      Boolean(fs.statSync(current).mode & 0o111) !== (file.mode === '100755')
+    )
+      throw new Error('The exported plugin file mode differs from the canonical tree')
+  }
+}
+
+// Export tracked plugin and common UI sources; release tooling lives outside these trees.
+export function copyPluginSource(root, destination, id) {
+  for (const source of sources(root, 'HEAD', id)) {
+    if (!source.dependencies) verifyFiles(root, root, source)
+    for (const file of source.files) {
+      const from = path.join(root, source.folder, file.name)
+      if (!fs.lstatSync(from).isFile() || fs.lstatSync(from).isSymbolicLink())
+        throw new Error('No linked export inputs')
+      const to = path.join(destination, source.folder, file.name)
+      fs.mkdirSync(path.dirname(to), { recursive: true })
+      fs.copyFileSync(from, to)
+      fs.chmodSync(to, file.mode === '100755' ? 0o755 : 0o644)
+    }
   }
 }
 
@@ -64,39 +137,12 @@ export function verifyPluginSource({ root, canonicalRoot, id, sourceCommit }) {
       repository.replace(/\.git$/, '') !== 'https://github.com/brocrew/brocrew')
   )
     throw new Error('Use the exact public plugin or canonical repository')
-  const expected = entries(canonicalRoot, sourceCommit, id)
-  if (!expected.length) throw new Error('Missing canonical plugin tree')
-  const folder = path.join(root, 'plugins', id)
-  const actual = []
-  const visit = (dir, prefix = '') => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (prefix === '' && entry.name === 'node_modules') continue
-      const name = prefix + entry.name
-      if (entry.isSymbolicLink()) throw new Error('Linked plugin source refused')
-      if (entry.isDirectory()) visit(path.join(dir, entry.name), name + '/')
-      else if (entry.isFile()) actual.push(name)
-      else throw new Error('Non-file plugin source refused')
-    }
-  }
-  visit(folder)
-  if (JSON.stringify(actual.sort()) !== JSON.stringify(expected.map((one) => one.name).sort()))
-    throw new Error('The exported plugin file set differs from the canonical tree')
-  for (const file of expected) {
-    const current = path.join(folder, file.name)
-    const bytes = execFileSync('git', ['-C', canonicalRoot, 'cat-file', 'blob', file.hash], {
-      maxBuffer: 64 * 1024 * 1024,
-    })
-    if (!fs.readFileSync(current).equals(bytes))
-      throw new Error('The exported plugin bytes differ from the canonical tree')
-    if (
-      process.platform !== 'win32' &&
-      Boolean(fs.statSync(current).mode & 0o111) !== (file.mode === '100755')
-    )
-      throw new Error('The exported plugin file mode differs from the canonical tree')
-  }
+  const expected = sources(canonicalRoot, sourceCommit, id)
+  for (const source of expected) verifyFiles(root, canonicalRoot, source)
   return Object.freeze({
     sourceCommit,
     sourceTree: git(canonicalRoot, ['rev-parse', `${sourceCommit}:plugins/${id}`]),
+    ...(expected[1].tree ? { sharedUiTree: expected[1].tree } : {}),
     buildRepository: repository,
     buildCommit: git(root, ['rev-parse', 'HEAD']),
     exportCommit: exported ? git(root, ['rev-parse', 'HEAD']) : null,

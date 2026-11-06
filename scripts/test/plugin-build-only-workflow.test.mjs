@@ -99,6 +99,11 @@ for (const [plugin, exportPlugin] of [
     expect(
       dryRun.match(/git status --porcelain --untracked-files=all --ignored=matching/g),
     ).toHaveLength(2)
+    const sourceGuards = dryRun
+      .split('\n')
+      .filter((line) => line.includes('git status --porcelain'))
+    expect(sourceGuards).toHaveLength(2)
+    for (const guard of sourceGuards) expect(guard).toContain('plugins/shared/ui')
     for (const source of [
       'src',
       'ui',
@@ -116,6 +121,10 @@ for (const [plugin, exportPlugin] of [
     )
     expect(dryRun).toContain(`BROCREW_${plugin.toUpperCase()}_TEST_ARTIFACT:`)
     expect(dryRun).toContain('artifact/build-inputs.sha256')
+    const inputReceipt = dryRun
+      .split('\n')
+      .find((line) => line.includes('> artifact/build-inputs.sha256'))
+    expect(inputReceipt).toContain('artifact/source-receipt.json')
     expect(dryRun).toContain('artifact/downloads.sha256')
     expect(dryRun).toContain('artifact/source-commit.txt')
     const releaseTests = readFileSync(join(folder, `source/release-test/release.test.ts`), 'utf8')
