@@ -102,12 +102,30 @@ export function withManagedPluginAttachments(
   ): Promise<SessionHandle> {
     let unavailable: unknown
     let attachment: ManagedPluginAttachment = { revision: '', servers: [] }
+    // At most one source read at a time. One that outlived a send's wait keeps running; the next
+    // send does not wait for it again, and adopts its result once it has settled.
+    let outstanding:
+      { work: Promise<ManagedPluginAttachment>; settled: boolean; outlived: boolean } | undefined
     async function read(signal?: AbortSignal, within?: number) {
+      if (!outstanding) {
+        const one = { work: source.read(), settled: false, outlived: false }
+        void one.work.then(
+          () => (one.settled = true),
+          () => (one.settled = true),
+        )
+        outstanding = one
+      }
+      const one = outstanding
       let next: ManagedPluginAttachment
       try {
-        next = await bounded(source.read(), signal, within)
+        if (one.outlived && !one.settled)
+          throw new ManagedPluginFailure('attachment-read', 'pending')
+        next = await bounded(one.work, signal, within)
       } catch (error) {
+        if (!one.settled && !signal?.aborted) one.outlived = true
         throw managedPluginFailure(error, 'attachment-read')
+      } finally {
+        if (one.settled && outstanding === one) outstanding = undefined
       }
       try {
         if (next.revision.length > 256 || next.servers.length > 32)

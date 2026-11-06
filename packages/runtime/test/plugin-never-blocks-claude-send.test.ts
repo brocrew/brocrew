@@ -60,6 +60,7 @@ function claudeFixture() {
   } as unknown as AgentRuntime
   return {
     runtime: withManagedPluginAttachments(raw, source),
+    source,
     raw,
     send,
     close,
@@ -149,6 +150,45 @@ it('Stop during a slow refresh keeps that message unsent but leaves the next Sen
     expect(f.send).toHaveBeenCalledWith('next words')
   } finally {
     f.settle().resolve()
+    await a.close()
+  }
+})
+
+it('a hung route read delays only the first send; the next does not wait and adopts it later', async () => {
+  vi.useFakeTimers()
+  const f = claudeFixture()
+  const a = await f.runtime.start(initial)
+  let answer!: (value: ManagedPluginAttachment) => void
+  // This case is about the read; the refresh applies at once.
+  f.refreshManagedPlugins.mockReset()
+  f.refreshManagedPlugins.mockImplementation(async () => {})
+  const reads = vi.mocked(f.source.read)
+  reads.mockImplementationOnce(
+    () =>
+      new Promise<ManagedPluginAttachment>((resolve) => {
+        answer = resolve
+      }),
+  )
+  try {
+    const first = a.send('first words')
+    await vi.advanceTimersByTimeAsync(PLUGIN_ATTACHMENT_WAIT_MS + 1)
+    await first
+    expect(f.send).toHaveBeenCalledTimes(1)
+    // The read is still hung: the second message goes out with no wait at all.
+    let second = false
+    void a.send('second words').then(() => (second = true))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(second).toBe(true)
+    expect(f.send).toHaveBeenCalledTimes(2)
+    expect(reads).toHaveBeenCalledTimes(2)
+    // Once it answers, the next send adopts it instead of reading again.
+    answer({ revision: 'two', servers: [changed] })
+    await vi.advanceTimersByTimeAsync(0)
+    await a.send('third words')
+    expect(reads).toHaveBeenCalledTimes(2)
+    expect(f.refreshManagedPlugins).toHaveBeenCalledWith([changed])
+    expect(f.send).toHaveBeenCalledTimes(3)
+  } finally {
     await a.close()
   }
 })
