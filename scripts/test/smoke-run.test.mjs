@@ -302,8 +302,7 @@ describe('242 · the gate socket has to FIT, and the root is what decides', () =
 
     /**
      * ⛔ **The grep is bound to the product's own words, or it is a control that matches nothing.**
-     * This is the `DEGRADED_LABEL_PREFIX` shape `step-census.test.mjs` records: a hand-typed
-     * sentence in an instrument, pinned to the source it was copied from, so a rewording there fails
+     * The hand-typed sentence in the instrument is pinned to its source, so a rewording there fails
      * `ci` instead of silently turning both sweeps into permanent all-clears.
      */
     it('🔴 the sentence both sweeps look for is still the sentence the host writes', () => {

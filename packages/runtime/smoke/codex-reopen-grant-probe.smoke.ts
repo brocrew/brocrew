@@ -131,11 +131,6 @@ const TEARDOWN_MS = CLOSE_MS
  * ⚑ **704 · `672`'s escalated command shapes, each command as `672` wrote it** — `s-*` from its
  * `ZZ672_SHAPES`, `d-*` from its verifier's arm D; `x` and `y` are `x704.txt` and `y704.txt` in the
  * sweep arm's cwd. The two `use_default` entries are left out — the docblock says why.
- *
- * ⛔ **Literals and arrow functions only, and nothing imported**: `ARMS` reads these names, the
- * budget reads `ARMS`, and the deadline census evaluates that derivation in a sandbox that refuses
- * any imported value it reaches (`scripts/lib/smoke-deadline-census.mjs`) — so the paths are joined
- * in the sweep arm's script, never here.
  */
 type Shape = (at: { readonly x: string; readonly y: string; readonly cwd: string }) => Action
 const SWEEP_SHAPES: Readonly<Record<string, Shape>> = {
