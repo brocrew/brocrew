@@ -522,7 +522,7 @@ describe('735, D-017b · a person’s message continues a conversation in one ac
   })
 
   describe('§2c · when the start is not the first message’s alone, it is handed over, not stopped', () => {
-    it('🔴 another message reached it first — its turn is not cut, and the window gets the conversation', async () => {
+    it('another message reached it first — its turn and stream ownership survive a refused recorded-view send', async () => {
       const id = await aConversationTheQuitStopped()
       // ⚑ **D-017 · R1 — every delivery that arrives during a start waits behind the message that
       // caused it**, so another message is there first only when it ARRIVED first: the app's own
@@ -541,14 +541,12 @@ describe('735, D-017b · a person’s message continues a conversation in one ac
       const refused = notSentOf(await host.startAndSend(id, 'hello', window))
 
       expect(refused.refusedBy).toBe('after-the-start')
-      // ⚑ **D-017 · R5 — the window TOOK it**: nothing was started for this message, so nothing is
-      // stopped again, and it is handed over running. ⚑ **D-017b** — the send's own words alone.
       expect(refused.said).toBe('cannot send: refused after another message went in.')
       expect(launches.length - before, 'taken, not started a second time').toBe(0)
-      expect(refused.running?.sessionId, 'handed over, to adopt as a reopen').toBe(id)
-      expect(refused.running?.handover).toBe('attached')
+      expect(refused.running).toBeNull()
+      expect(host.attachOpenSessions(window)).toEqual([])
       expect(launches.at(-1)?.handle.status(), 'the other sender’s turn was cut').not.toBe('ended')
-      expect(listed(id).running).toBe('in-a-window')
+      expect(listed(id).running).toBe('without-a-window')
     })
 
     // ⚑ **D-017b** — the arm where the quit's stamp could not be PUT BACK is gone with the stamp's

@@ -373,11 +373,12 @@ describe('the SQLite skills catalogue', () => {
     catalogue.select('aid:recipe-worker', 'person/broken', 'on', revision())
     db.exec('DROP TRIGGER skill_version_no_update')
     const edited = draft('edited', 'Changed saved content with a different length.')
-    db.prepare('UPDATE skill_version SET body=? WHERE skill_id=?').run(edited.body, 'person/edited')
-    db.prepare('UPDATE skill_version SET metadata=? WHERE skill_id=?').run(
-      '{broken',
-      'person/broken',
+    db.prepare('UPDATE skill_version SET body=?, bytes=? WHERE skill_id=?').run(
+      edited.body,
+      edited.bytes,
+      'person/edited',
     )
+    db.prepare('UPDATE skill_version SET metadata=? WHERE skill_id=?').run('{}', 'person/broken')
     const ready = catalogue.resolve('aid:recipe-worker', capable).choices.filter((one) => one.ready)
     expect(ready.some((one) => one.skill.id === 'person/edited')).toBe(true)
     expect(ready.some((one) => one.skill.id === 'person/broken')).toBe(false)
@@ -392,7 +393,7 @@ describe('the SQLite skills catalogue', () => {
   it('opens a fresh catalogue and launch after a malformed built-in was saved', () => {
     db.exec('DROP TRIGGER skill_version_no_update')
     db.prepare('UPDATE skill_version SET metadata=? WHERE skill_id=?').run(
-      '{broken',
+      '{}',
       'built-in/delegate',
     )
     db.close()
