@@ -528,9 +528,11 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       await vi.waitFor(() => expect(f.call).toHaveBeenCalledOnce())
       rejectProof(new Error('fictional-private-proof-error'))
       expect(await pending).toMatchObject({ isError: true })
+      // The agents' plugin line names why: tools unavailable: proof-rejected.
       expect((await f.controller.status()).cards[0]).toMatchObject({
         state: 'Running',
         toolsUnavailable: true,
+        toolsCause: 'proof-rejected',
       })
       expect(await f.bridge.routes(owner, req)).toEqual([])
       expect(await f.bridge.routes(owner, request(f.local.sink.workspaceId))).toEqual([])

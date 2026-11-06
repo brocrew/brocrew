@@ -98,6 +98,8 @@ export class PluginLifecycleController {
   private readonly localOperations = new Set<string>()
   private readonly admittedCatalogues = new Map<string, readonly string[]>()
   private readonly cleanup = new Set<string>()
+  /** Why an installed plugin could not start at attach, as `stage: cause`, until it next starts. */
+  private readonly startFailures = new Map<string, string>()
   private preparedMutationPolicy?: Readonly<{ revision: number; required: boolean }>
   private get catalogueRevision(): number {
     return this.preparedMutationPolicy?.revision ?? 0
@@ -521,6 +523,14 @@ export class PluginLifecycleController {
                     : {}),
                 }
               : {}),
+            // An installed plugin that failed to start says why on the agents' plugin line.
+            ...(active &&
+            !this.runs.has(id) &&
+            !this.cleanup.has(id) &&
+            !this.blocks.has(id) &&
+            this.startFailures.has(id)
+              ? { toolsCause: this.startFailures.get(id)! }
+              : {}),
             installed:
               !!active ||
               (['uninstall', 'update'].includes(state.pending?.request.consent.action ?? '') &&
@@ -594,12 +604,20 @@ export class PluginLifecycleController {
       await this.options.state.withExclusive(async () => {
         for (const installed of this.options.state.exportActivation().entries) {
           workspace.installs.set(installed.pluginId, installed.installId)
+          let stage = 'vault-load'
           try {
             const checked = await this.vault.load(this.descriptor(installed), this.pins())
+            stage = 'start'
             await this.ensureRunning(installed, checked)
+            this.startFailures.delete(installed.pluginId)
           } catch (error) {
-            // One plugin that cannot start never hides the others; agents see it as pending.
-            console.error(`[plugins] attach could not start ${installed.pluginId}`, error)
+            // One plugin that cannot start never hides the others. Its stage and cause reach
+            // the agents' plugin line; the real message goes to the person's log.
+            const code = (error as { code?: unknown } | null)?.code
+            const cause =
+              typeof code === 'string' && /^[a-z][a-z0-9-]{0,63}$/.test(code) ? code : 'unknown'
+            this.startFailures.set(installed.pluginId, `${stage}: ${cause}`)
+            console.error(`[plugins] attach could not start ${installed.pluginId} (${stage})`, error)
           }
         }
       })
@@ -1017,6 +1035,7 @@ export class PluginLifecycleController {
   }
   /** Every live workspace now has this install; its consumers hear of a later detach or removal. */
   private given(install: Installation): void {
+    this.startFailures.delete(install.pluginId)
     for (const one of this.workspaces.values())
       if (one.live) one.installs.set(install.pluginId, install.installId)
     this.agentScopeChanged()
@@ -1508,6 +1527,8 @@ export class PluginLifecycleController {
         const run = this.runs.get(pluginId)
         if (this.blocks.has(pluginId)) return { pluginId, is: 'pending' }
         if (!installed) return { pluginId, is: 'off' }
+        // A plugin that failed to start is not starting: agents don't wait for it.
+        if (!run && this.startFailures.has(pluginId)) return { pluginId, is: 'off' }
         if (
           run?.installId === installed.installId &&
           (!run.package.manifest.server || !pluginContributions(run.package).tools)

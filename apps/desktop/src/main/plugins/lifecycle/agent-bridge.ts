@@ -146,7 +146,7 @@ export function createLifecycleAgentBridge(options: {
     (id: string): PluginToolDiagnostic =>
     (reason, detail) => {
       if (detail) lastCause.set(id, `${detail.stage}: ${detail.cause}`)
-      else if (/failed|unproven|capacity|collision|rate-limited/.test(reason))
+      else if (/failed|unproven|rejected|timeout|capacity|collision|rate-limited/.test(reason))
         lastCause.set(id, reason)
       if (lastCause.size > 256) lastCause.delete(lastCause.keys().next().value!)
       try {

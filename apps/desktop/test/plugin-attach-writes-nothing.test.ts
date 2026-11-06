@@ -10,6 +10,7 @@ import { PluginLifecycleController } from '../src/main/plugins/lifecycle/control
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { fictionalPublicKey, manifestFor, packageFixture, signed } from './plugin-package-fixtures'
+import { PluginHostError } from '../src/main/plugins/node-host-files'
 import {
   cleanupLifecycleFixtures,
   fixture,
@@ -111,19 +112,24 @@ it('one plugin that cannot start does not hide the others from a new agent', asy
     runtime: {
       ...opts.runtime,
       start: async (spec) => {
-        if (spec.package.manifest.id === 'whatsapp') throw new Error('fictional start failure')
+        if (spec.package.manifest.id === 'whatsapp') throw new PluginHostError('ready')
         return start(spec)
       },
     },
   })
   const agent = projection()
   await later.attach(agent.sink)
+  // A failed start is not starting: agents don't wait for it, and its plugin line says why.
   expect(
     later.agentScope(agent.sink.workspaceId).entries.map((one) => [one.pluginId, one.is]),
   ).toEqual([
     ['chrome', 'admitted'],
-    ['whatsapp', 'pending'],
+    ['whatsapp', 'off'],
   ])
+  expect((await later.status()).cards.find((card) => card.id === 'whatsapp')).toMatchObject({
+    state: 'Installed',
+    toolsCause: 'start: ready',
+  })
 })
 
 it('uninstall through the Settings connection takes the plugin away from an attached agent', async () => {

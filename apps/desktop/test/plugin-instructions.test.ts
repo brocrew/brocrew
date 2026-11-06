@@ -70,6 +70,25 @@ it('names the known stage and cause when access is on and tools are unavailable'
     }),
   ).toBeNull()
 })
+it('an installed plugin that failed to start reads as unavailable with its cause, never none', () => {
+  // As production.ts builds it from an Installed card carrying the start failure.
+  const text = pluginInstructionSection(
+    readPluginInstructions({
+      instructionCatalogue: () => [
+        {
+          ...AVAILABLE,
+          state: 'Installed' as const,
+          tools: 'unknown' as const,
+          toolHealth: 'unavailable' as const,
+          toolsCause: 'start: ready',
+          service: null,
+        },
+      ],
+    }),
+  )!
+  expect(text).toContain('— Installed; tools: unavailable: start: ready; service: none.')
+  expect(text).not.toContain('tools: none')
+})
 it('does not turn healthy broker state into a configured access grant', () => {
   const entry = {
     ...AVAILABLE,
