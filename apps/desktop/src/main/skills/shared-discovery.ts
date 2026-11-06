@@ -188,9 +188,9 @@ export class SharedSkillDiscovery {
             join(root, folder.name, 'SKILL.md'),
             constants.O_RDONLY | (constants.O_NONBLOCK ?? 0),
           )
-          const stat = await file.stat()
-          if (!stat.isFile()) continue
-          if (stat.size > 1024 * 1024) {
+          const fileInfo = await file.stat()
+          if (!fileInfo.isFile()) continue
+          if (fileInfo.size > 1024 * 1024) {
             skills.push({
               folder: folder.name,
               name: folder.name,
@@ -201,7 +201,7 @@ export class SharedSkillDiscovery {
             })
             continue
           }
-          const bytes = Buffer.alloc(Math.min(stat.size, 1024 * 1024))
+          const bytes = Buffer.alloc(Math.min(fileInfo.size, 1024 * 1024))
           let count = 0
           while (count < bytes.length) {
             const next = await file.read(bytes, count, bytes.length - count, null)
