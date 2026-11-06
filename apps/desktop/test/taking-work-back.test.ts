@@ -512,7 +512,8 @@ describe('429 · taking work back', () => {
       // (`rebriefing`) out beside the give.
       const tools = sourceOf(join(mainRoot, 'runtime'), 'agent-tools.ts')
       const host_ = sourceOf(join(mainRoot, 'runtime'), 'runtime-host.ts')
-      expect(host_).toContain(
+      const records = sourceOf(join(mainRoot, 'runtime'), 'message-records.ts')
+      expect(records).toContain(
         [
           "type FactsAQueueCarries = Omit<TurnFacts, 'giving' | 'rebriefing'> & {",
           '  readonly giving?: never',

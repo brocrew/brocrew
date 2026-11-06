@@ -41014,7 +41014,6 @@ export class RuntimeHost implements LiveHost {
     return this.modelCatalogues.forgetModels(provider, profileId)
   }
 
-
   private async askProviderForModels(
     provider: Provider,
     profileId: string,

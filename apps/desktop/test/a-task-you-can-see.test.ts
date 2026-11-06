@@ -1665,7 +1665,8 @@ describe('379 · a task you can see', () => {
       // commit 5** — the rail is spelled once, as `FactsAQueueCarries`, and it takes a new brief
       // (`rebriefing`, `update_work`'s alone) out beside the give.
       expect(codeOnly(host_).split('{ giving }')).toHaveLength(2)
-      expect(host_).toContain(
+      const records = sourceOf(join(mainRoot, 'runtime'), 'message-records.ts')
+      expect(records).toContain(
         [
           "type FactsAQueueCarries = Omit<TurnFacts, 'giving' | 'rebriefing'> & {",
           '  readonly giving?: never',

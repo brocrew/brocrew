@@ -500,10 +500,7 @@ export class ModelCatalogues {
   /** ⚑ **D-042 · a catalogue and a person's own models, as one list.** */
   private theListOf(provider: Provider, catalogue: ModelCatalogue): TheListAsked {
     return {
-      rows: theList(
-        catalogue.ok ? catalogue.models : [],
-        this.store.handAddedModels(provider),
-      ),
+      rows: theList(catalogue.ok ? catalogue.models : [], this.store.handAddedModels(provider)),
       notAsked: catalogue.ok ? null : catalogue,
     }
   }
@@ -516,10 +513,7 @@ export class ModelCatalogues {
    *
    * ⚑ **Synchronous**, so a give can ask it inside its stretch (D-016 · R2).
    */
-  theSelectedPairIfNamed(
-    provider: Provider,
-    profileSlug: string | null,
-  ): SelectedModel | null {
+  theSelectedPairIfNamed(provider: Provider, profileSlug: string | null): SelectedModel | null {
     const itsDefault = profileSlug === null ? null : this.store.modelChoiceOf(profileSlug)
     if (
       profileSlug !== null &&
