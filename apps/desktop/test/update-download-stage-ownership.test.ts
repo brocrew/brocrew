@@ -1,12 +1,10 @@
 import { createHash } from 'node:crypto'
 import {
-  existsSync,
   lstatSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
