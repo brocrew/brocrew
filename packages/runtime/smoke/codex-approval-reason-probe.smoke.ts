@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer, type Server, type ServerResponse } from 'node:http'
+import { createServer, type Server } from 'node:http'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 // 🔒 **A deep import, and deliberately** — `codex-reopen-grant-probe.smoke.ts`'s reason: this probe
@@ -25,6 +25,7 @@ import { bundledCodexBinary } from './bundled-codex'
 import { captureProviderStanza } from './loopback-test-support'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
 import { runEvidence, runScratch } from './run-paths'
+import { writeScriptedResponse as stream } from './scripted-response'
 
 /**
  * 🔴 **709 · who writes the words on a Codex approval card — and does the card carry them by their
@@ -337,31 +338,6 @@ function toolOutputOf(body: unknown): string | null {
         )
         .join('\n')
     : null
-}
-
-function stream(response: ServerResponse, id: string, item: Record<string, unknown>): void {
-  const send = (kind: string, payload: Record<string, unknown>): void => {
-    response.write(`event: ${kind}\ndata: ${JSON.stringify({ type: kind, ...payload })}\n\n`)
-  }
-  response.statusCode = 200
-  response.setHeader('content-type', 'text/event-stream')
-  response.setHeader('cache-control', 'no-cache')
-  response.setHeader('connection', 'keep-alive')
-  send('response.created', { response: { id } })
-  send('response.output_item.done', { output_index: 0, item })
-  send('response.completed', {
-    response: {
-      id,
-      usage: {
-        input_tokens: 11,
-        input_tokens_details: { cached_tokens: 0, cache_write_tokens: 0 },
-        output_tokens: 7,
-        output_tokens_details: { reasoning_tokens: 0 },
-        total_tokens: 18,
-      },
-    },
-  })
-  response.end()
 }
 
 /**
