@@ -80,7 +80,7 @@ import { A_PERSON_ADDRESSED } from './outgoing-card'
 /**
  * Distinguish conversation rows from work rows.
  */
-export type ForestRowKind = 'a-conversation' | 'a-task'
+type ForestRowKind = 'a-conversation' | 'a-task'
 
 /**
  * ⚑ **One row of the drawing**, in the order a person reads it.
@@ -177,7 +177,7 @@ export interface TaskRow {
  *
  * Disclose incomplete coverage for the whole forest. Large trees need this explanation even when the smaller conversation band omits general reassurance.
  */
-export interface ForestCoverage {
+interface ForestCoverage {
   /** ⛔ **The walk's own sentence**, or `null` for a word this build cannot spell (fail-closed). */
   readonly covers: string | null
   /** ⚑ **How many conversations this app has PLACED** — counted before the bound. */

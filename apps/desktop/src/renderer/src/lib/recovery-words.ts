@@ -99,7 +99,7 @@ export function newerWords(
 }
 
 /** The banner over the read-only history. */
-export function historyOnlyWords(
+function historyOnlyWords(
   verdict: Extract<StartupVerdict, { kind: 'history-only' }>,
   now?: number,
 ): RecoveryWords {
@@ -247,7 +247,7 @@ export function failedWords(
 }
 
 /** `open` never reaches this window on purpose; if it does, the data opened and BroBot can restart. */
-export function openWords(): RecoveryWords {
+function openWords(): RecoveryWords {
   return {
     heading: "This workspace's data can be opened normally",
     body: ['Close this window, then open BroCrew again.'],

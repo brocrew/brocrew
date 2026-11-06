@@ -160,8 +160,8 @@ export interface PathWords {
 }
 
 /** The attribute the Open control carries the text on, and the Copy control's. */
-export const PATH_ATTRIBUTE = 'data-message-path'
-export const COPY_ATTRIBUTE = 'data-message-path-copy'
+const PATH_ATTRIBUTE = 'data-message-path'
+const COPY_ATTRIBUTE = 'data-message-path-copy'
 
 /** A sprite glyph, named by its whole fragment (`#i-copy`). */
 const icon = (fragment: string): string =>
@@ -188,7 +188,7 @@ function pathAndCopy(kind: string, display: string, absolute: string, label?: st
  * One found path: its text, then Copy and Open. Copy takes main's resolved absolute path;
  * Open sends the text as written, and main decides whether it opens or only shows.
  */
-export function pathMarkup(
+function pathMarkup(
   found: FoundMessagePath,
   words: PathWords,
   display: string = found.text,
@@ -258,7 +258,7 @@ export function markPathsIn(
 
 /** The attributes a web link's Copy and Open controls carry the address on. */
 export const LINK_COPY_ATTRIBUTE = 'data-message-link-copy'
-export const LINK_ATTRIBUTE = 'data-message-link'
+const LINK_ATTRIBUTE = 'data-message-link'
 
 const A_WEB_ANCHOR = /<a href="(https?:\/\/[^"]*)"([^>]*)>((?:(?!<a[\s>])[\s\S])*?)<\/a>/gi
 

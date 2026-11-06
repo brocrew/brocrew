@@ -81,15 +81,3 @@ export function answerNotice(
     answeredQuestion: { requestId: 'req_menu', answeredBy, answer: ANSWER_WORDS, ...extra },
   }
 }
-export function cardFactsFixture(): TranscriptEvent[] {
-  return [
-    ...questionFixture(),
-    answerNotice(),
-    messageCall(),
-    messageReceipt(),
-    messageResult(),
-    messageCall('follow'),
-    messageResult('follow', SECOND_ACT),
-    messageReceipt(SECOND_ACT, { kind: 'follow-up', toProfile: 'brobot', toLabel: 'W1' }),
-  ]
-}

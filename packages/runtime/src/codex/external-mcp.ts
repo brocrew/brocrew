@@ -180,7 +180,7 @@ export interface CodexElicitation {
 }
 
 /** One property of an elicitation's `requestedSchema`, kept with the key it is answered under. */
-export interface ElicitationField {
+interface ElicitationField {
   readonly key: string
   readonly schema: Record<string, unknown>
   /**

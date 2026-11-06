@@ -39,7 +39,7 @@ export interface ToldNotice {
 }
 
 /** The newest run of a repeating job that a start was made for. */
-export interface StartedFor {
+interface StartedFor {
   /** That run's minute, epoch ms. */
   readonly runAt: number
   /** When the start was made, epoch ms: a level its provider states after it answers that start. */

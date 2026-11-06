@@ -201,7 +201,7 @@ export interface Move {
  * The move a rename makes, read from its paths: into the data folder is a file arriving live, out
  * of it a file set aside. Renames inside `recovery/` (the records) are not moves.
  */
-export function moveOf(userData: string, from: string, to: string): Move | null {
+function moveOf(userData: string, from: string, to: string): Move | null {
   if (dirname(to) === userData) return { live: basename(to), to: 'live' }
   if (dirname(from) === userData) return { live: basename(from), to: 'aside' }
   return null

@@ -22,7 +22,7 @@
  */
 
 /** Where the coordinator is in its lifetime. See the module note for what each state admits. */
-export type ArchiveGate = 'open' | 'background-closed' | 'closed'
+type ArchiveGate = 'open' | 'background-closed' | 'closed'
 
 /** What a refused submission says. Matched by {@link isArchiveRefused}, never parsed by eye. */
 const REFUSED = 'BroCrew is shutting down, so no new archive work was started'

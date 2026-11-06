@@ -7,7 +7,7 @@ export function isMessageAct(value: unknown): value is string {
 
 export const MESSAGE_ACT_META = 'brobot/message-act'
 
-export function messageActFromStructured(value: unknown): string | undefined {
+function messageActFromStructured(value: unknown): string | undefined {
   if (!isRecord(value)) return undefined
   return value.outcome === 'ok' &&
     (value.delivery === 'sent' || value.delivery === 'queued') &&

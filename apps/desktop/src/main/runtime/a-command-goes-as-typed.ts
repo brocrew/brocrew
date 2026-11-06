@@ -220,7 +220,7 @@ export class ACommandTakesNoAttachments extends Error {
 }
 
 /** ⚑ **713 · the word `R59` is about** — `/compact`, without its slash. */
-export const THE_COMPACTION = 'compact'
+const THE_COMPACTION = 'compact'
 
 /**
  * 🔴 **713 · `R59` — a person's typed `/compact`, on a conversation that compacts on request.**

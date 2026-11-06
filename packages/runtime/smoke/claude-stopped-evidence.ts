@@ -11,7 +11,7 @@
  */
 
 /** The probe's arms — one turn each. */
-export const STOP_ARMS = [
+const STOP_ARMS = [
   'finishes',
   'stopped-streaming',
   'stopped-in-tool',

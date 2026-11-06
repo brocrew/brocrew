@@ -26,7 +26,7 @@ export interface ConversationControlsSources {
 /** Said in every explanation of a change: no setting moves a turn already running. */
 export const CHANGES_APPLY_NEXT = 'Changes apply from your next message.'
 
-export const PLAN_OFF_WORD = 'Plan off'
+const PLAN_OFF_WORD = 'Plan off'
 export const PLANNING_WORD = 'Planning'
 
 const NOT_A_SAFETY_GATE =
@@ -38,7 +38,7 @@ export const FIXED_SAYS =
 const RECORDED_PLAN_SAYS =
   'Its next start leaves planning, so plan first can’t be turned on from here.'
 
-export interface PlanControl {
+interface PlanControl {
   /** What the chip shows: whether the conversation plans now, never what was asked for. */
   readonly word: string
   readonly state: 'off' | 'starting' | 'planning' | 'stopping' | 'deferred'
@@ -72,7 +72,7 @@ export interface ApprovalControl {
   readonly confirmWords: string
 }
 
-export interface PendingLine {
+interface PendingLine {
   readonly cy: string
   readonly text: string
 }

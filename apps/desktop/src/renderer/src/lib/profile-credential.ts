@@ -57,7 +57,7 @@ export type CredentialWhen =
   | 'new'
 
 /** Which register the sentence is drawn in — the launcher's existing note classes, no new token. */
-export type CredentialTone = 'note' | 'consequence'
+type CredentialTone = 'note' | 'consequence'
 
 export interface ProfileCredential {
   /** The whole sentence, adapter's words first. Never empty. */

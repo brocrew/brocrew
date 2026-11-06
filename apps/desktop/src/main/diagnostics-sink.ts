@@ -3,7 +3,7 @@ import { appendFile, mkdir, rename, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 
 /** How large `stalls.log` grows before it is moved aside to `stalls.1.log`. */
-export const STALL_LOG_MOST_BYTES = 8 * 1024 * 1024
+const STALL_LOG_MOST_BYTES = 8 * 1024 * 1024
 
 const MOST_ENTRIES = 512
 const MOST_BYTES = 256 * 1024
@@ -59,7 +59,7 @@ export interface DiagnosticsSinkOptions {
 }
 
 /** What a closing sink left behind at its deadline. */
-export interface SinkClosed {
+interface SinkClosed {
   /** Lines it had taken in that were never started. */
   readonly notStarted: number
   /** Lines of the batch already being written, which may still land after the deadline. */

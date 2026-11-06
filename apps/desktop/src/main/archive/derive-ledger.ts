@@ -69,7 +69,7 @@ export type DeriveOutcome =
    */
   | 'superseded'
 
-export interface DeriveTally {
+interface DeriveTally {
   eventsWritten: number
   unreadableLines: number
 }

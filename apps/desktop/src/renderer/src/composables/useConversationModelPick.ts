@@ -22,7 +22,7 @@ export interface ConversationModelPickSources {
 }
 
 /** The bindings `ModelPicker` takes for a conversation. */
-export interface ConversationPickerProps {
+interface ConversationPickerProps {
   readonly providers: readonly CreatedSession['provider'][]
   readonly profileId: string | undefined
   readonly shown: PickedModel | null

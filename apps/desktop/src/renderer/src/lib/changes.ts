@@ -60,15 +60,6 @@ export interface ChangeSet {
   readonly sources: string[]
 }
 
-export const EMPTY_CHANGE_SET: ChangeSet = {
-  rows: [],
-  turn: 0,
-  underDisclosed: 0,
-  dropped: 0,
-  droppedReports: 0,
-  sources: [],
-}
-
 /**
  * Fold a transcript into its change set.
  *

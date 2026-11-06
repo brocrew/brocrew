@@ -121,7 +121,7 @@ export type Schema = number
  */
 export type CheckpointFault = 'no-manifest' | 'copy-changed' | 'version-2' | 'another-workspace'
 
-export interface CheckpointSpec {
+interface CheckpointSpec {
   /** The schema of the database when the copy was made. */
   readonly migrations: Schema
   /** ISO. When not given, the copies are a day apart and the newest is a day before `now`. */
@@ -199,7 +199,7 @@ export interface FixtureCheckpoint {
   readonly conversations: readonly string[]
 }
 
-export interface FixtureRestore {
+interface FixtureRestore {
   readonly id: string
   readonly checkpointId: string
   /** As last written, or null once the restore finished and removed it. */

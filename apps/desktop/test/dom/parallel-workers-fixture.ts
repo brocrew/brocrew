@@ -4,7 +4,7 @@ import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 
 export const NOW = 1800000000000
-export const RECIPE_ID = 'aid:recipe-worker'
+const RECIPE_ID = 'aid:recipe-worker'
 export function workerRows(count = 3, finished = false): ResumableSessionInfo[] {
   return Array.from({ length: count }, (_, at) => {
     const number = at + 1

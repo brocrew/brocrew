@@ -5,7 +5,7 @@ import { afterAll, beforeAll, vi } from 'vitest'
 import { personalCodexAuthPath } from '@brobot2/runtime'
 
 /** What the fictional home's own Codex sign-in holds: fictional, and recognisable in a diff. */
-export const THE_FICTIONAL_HOMES_SIGN_IN = '{"tokens":{"access_token":"FICTIONAL-HOME-DECOY"}}'
+const THE_FICTIONAL_HOMES_SIGN_IN = '{"tokens":{"access_token":"FICTIONAL-HOME-DECOY"}}'
 
 /**
  * Runs the whole test file with HOME, USERPROFILE and CODEX_HOME in a fictional folder whose own

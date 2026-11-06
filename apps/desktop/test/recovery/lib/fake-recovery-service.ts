@@ -14,7 +14,7 @@ import type {
  */
 
 /** A scripted answer: a verdict, or an error the call rejects with. */
-export type FakeAnswer = StartupVerdict | Error
+type FakeAnswer = StartupVerdict | Error
 
 export interface FakeVerdicts {
   /** What `inspect()` answers until another call answers a verdict. */
@@ -29,7 +29,7 @@ export interface FakeVerdicts {
   readonly hold?: Promise<void>
 }
 
-export type FakeRecoveryCall =
+type FakeRecoveryCall =
   | { readonly call: 'inspect' }
   | { readonly call: 'restore'; readonly checkpointId: string }
   | { readonly call: 'returnToNewer' }

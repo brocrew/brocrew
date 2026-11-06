@@ -17,7 +17,7 @@ export interface ReviewConsent {
   preparation: string
   displayedDetailsHash?: string
 }
-export interface DisclosureDetails {
+interface DisclosureDetails {
   version: string
   digest: string
   manifestSha256: string

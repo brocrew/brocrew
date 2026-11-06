@@ -13,60 +13,6 @@ import {
 } from '../../shared/runtime-ipc'
 
 /**
- * # ⛔ A path a person handed the agent — and the rule that BroBot never opens it (216)
- *
- * Hand the agent a path to read with its own tools. BroBot does not read and encode attachment bytes, so this stays within the provider's existing text-turn contract.
- *
- * ⛔ **So this module STATS and never READS**, and that is written down as a rule rather than left
- * as a coincidence: `no-byte-authority.test.ts` is a census over this file and the two that call it,
- * and it fails on `readFileSync`, `readFile`, `createReadStream`, `read`, `readSync` and the rest.
- * ⚠️ **Somebody later "improving" this by loading the bytes in main would silently acquire the
- * authority `215` §3.3 priced, and nothing else in the app would notice.** That is what the census
- * exists to stop.
- *
- * ## ⛔ A staged chip is a RECORD OF CONSENT, not a cache (232)
- *
- * `227` found two HIGHs on this boundary and they are the same mistake made twice: a staged path
- * treated as a STRING. ⚑ **A person looked at a thing and agreed to hand it to a model**, so two
- * properties have to hold that a string does not have:
- *
- *  - **it must still be the same thing at the send** — {@link recheckHandedPaths} COMPARES rather
- *    than merely re-deriving, because re-asking the filesystem and then taking whatever it says is
- *    silent re-consent to whatever replaced it;
- *  - **it must reach the model as itself** — {@link messageWithHandedPaths} quotes, because a legal
- *    filename could otherwise write BroBot's own sentences.
- *
- * ## ⛔ Nothing here blocks the main process (232 §3, from 231)
- *
- * ⚠️ **Every filesystem call in this module is ASYNCHRONOUS, and that is a rule rather than a
- * style.** `runFlush` re-checks a queued message's paths with nobody at the keyboard; the synchronous
- * `realpathSync`/`statSync` it used to reach through would park Electron's entire main process on a
- * stalled network mount — no window, no menu, no quit, and no gesture that could have caused it.
- * ⚑ **One classifier, made async, rather than an async twin**: `197` is the dispatch about what two
- * classifiers for one fact cost, and a second one that exists only to be non-blocking would be that
- * defect with a good excuse.
- *
- * ## What this may decide, and what it may not
- *
- * ⚑ **`realResolve` is a CLASSIFIER** (`183`, `190`, `197`), and `215` §3.3 says
- * plainly they are *"not an attachment policy"*. Neither is this. It answers three questions a
- * person is entitled to have answered BEFORE they press Send (`106`, `118`, `169`):
- *
- *  - **does it exist**, so the refusal happens at the picker rather than after the send;
- *  - **is it a file or a directory**, because the agent will read them with different tools;
- *  - **is it outside this conversation's working directory**, because the agent's own permission
- *    card should not be the first time anybody notices.
- *
- * 🔒 **Outside the cwd is NOT refused.** The person chose it, and that is consent — `215`'s whole
- * point is that the read happens through the agent's tool, under the provider's own approval mode
- * (`ask` / `auto`), and BroBot adds no folder rule of its own (`726` · R92). What this does is make
- * sure the message SAYS so.
- */
-
-/** Why a chosen path cannot be handed over, or `null` when it can. */
-export type PathRefusal = string | null
-
-/**
  * ⛔ **A refusal, and whether the thing is still THERE** (232, found reviewing this diff).
  *
  * ⚠️ **`recheckHandedPaths` used to glue *"it was there when you attached it, so it has been moved

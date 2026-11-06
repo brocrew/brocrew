@@ -58,7 +58,7 @@ export class RecordingSink implements RuntimeEventSink {
 }
 
 /** Which writes of the services list fail: none, every one, or those holding this field. */
-export type WritesFail = 'none' | 'all' | keyof ProfileExecution
+type WritesFail = 'none' | 'all' | keyof ProfileExecution
 
 export interface AServiceWorld {
   readonly folder: string

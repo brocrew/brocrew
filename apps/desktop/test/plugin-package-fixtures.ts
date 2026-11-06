@@ -18,7 +18,7 @@ export const signed = (value: unknown) => {
   const bytes = Buffer.from(JSON.stringify(value))
   return { bytes, signature: sign(null, bytes, key) }
 }
-export const initialApi = () => ({ major: 1, minMinor: 0, maxMinor: 0, requiredFeatures: [] })
+const initialApi = () => ({ major: 1, minMinor: 0, maxMinor: 0, requiredFeatures: [] })
 export const payload = (): Map<string, Buffer> =>
   new Map([
     [

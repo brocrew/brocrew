@@ -371,7 +371,7 @@ function aFolderName(name: string): string {
 }
 
 /** Where new workspaces go unless the person chooses: `~/BroBot workspaces/`. */
-export const NEW_WORKSPACES_FOLDER = 'BroBot workspaces'
+const NEW_WORKSPACES_FOLDER = 'BroBot workspaces'
 
 /**
  * The folder a new workspace named `name` is offered: `<home>/BroBot workspaces/<name>`, or

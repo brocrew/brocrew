@@ -43,7 +43,7 @@ export function offers(params: unknown, decision: string): boolean {
   return Array.isArray(offered) && offered.includes(decision)
 }
 
-export interface CommandItem {
+interface CommandItem {
   readonly id: string
   readonly status: string | null
   readonly processId: string | null

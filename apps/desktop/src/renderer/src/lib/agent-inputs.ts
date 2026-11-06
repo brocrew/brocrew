@@ -116,7 +116,7 @@ export const MODEL_GOT_WHERE_WORDS: Readonly<Record<ModelGotWhere, string>> = {
 /** ⚑ Why a message has no whole text kept: it is from before BroBot kept it. */
 export const SENT_NOT_KEPT_YET = 'This message is from before BroCrew kept the whole text it sent.'
 /** ⚑ …or BroBot never sent it: a person's turn read back from the provider's own transcript. */
-export const SENT_BY_THE_PROVIDERS_TRANSCRIPT =
+const SENT_BY_THE_PROVIDERS_TRANSCRIPT =
   'This message was read from the provider’s own transcript: BroCrew didn’t send it, so it has no text of its own for it.'
 
 /** ⚑ Why an item has no `sent`, where the reason is not "from before it was kept". */

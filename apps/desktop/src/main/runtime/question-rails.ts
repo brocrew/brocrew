@@ -1,5 +1,5 @@
 import { refusalReason } from '../../shared/refusals'
-import { CHANNEL_REFUSAL_SENTENCES, type ChannelRefusal } from '@brobot2/runtime'
+import type { ChannelRefusal } from '@brobot2/runtime'
 import type { UserInputQuestion } from '@brobot2/runtime'
 import {
   REQUEST_IS_OPEN,
@@ -1157,8 +1157,4 @@ export function aToDoAnsweredText(
     `You asked: ${question.prompt}`,
     ...(note === '' ? [] : [`Their note: ${note}`]),
   ].join('\n\n')
-}
-
-export function describeRouting(because: ChannelRefusal): string {
-  return CHANNEL_REFUSAL_SENTENCES[because]
 }

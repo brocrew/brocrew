@@ -58,7 +58,7 @@ const ORDER: Readonly<Record<SetupStep, number>> = {
   ready: 3,
 }
 
-export function stepOrder(step: SetupStep): number {
+function stepOrder(step: SetupStep): number {
   return ORDER[step]
 }
 
@@ -78,7 +78,7 @@ export function couldNotCheck(state: SetupState): boolean {
 }
 
 /** `null` while a fact this step needs has not been read yet. */
-export function stateAt(step: SetupStep, facts: SetupFacts): SetupState | null {
+function stateAt(step: SetupStep, facts: SetupFacts): SetupState | null {
   switch (step) {
     case 'install': {
       if (facts.version === null) return null
