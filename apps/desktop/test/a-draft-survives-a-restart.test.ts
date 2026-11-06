@@ -813,15 +813,10 @@ describe('§4 · the file — in the app’s own userData, whole, and read as un
     },
   )
 
-  it('⛔ a file ANOTHER build wrote (another version) is unreadable too — left for a build that can read it', async () => {
-    writeFileSync(
-      join(userData, SAVED_DRAFTS_FILE),
-      JSON.stringify({ version: 2, drafts: [{ slot: NEW_CONVERSATION, text: 'x', attached: [] }] }),
-    )
-    expect(await readDraftsFile(userData)).toEqual({
-      kind: 'unreadable',
-      why: 'written as version 2, not 1',
-    })
+  it('⚑ a file ANOTHER build wrote (another version) is read as a book, so this build restores and saves', async () => {
+    const raw = { version: 2, drafts: [{ slot: NEW_CONVERSATION, text: 'x', attached: [] }] }
+    writeFileSync(join(userData, SAVED_DRAFTS_FILE), JSON.stringify(raw))
+    expect(await readDraftsFile(userData)).toEqual({ kind: 'book', raw })
   })
 
   it('⚑ saves that arrive while one is written are coalesced to the NEWEST — the file ends on the last book', async () => {

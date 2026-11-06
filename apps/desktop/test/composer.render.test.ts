@@ -8,7 +8,11 @@ import PromptComposer, {
   sendIntentFor,
   sendKeyLabel,
 } from '../src/renderer/src/components/PromptComposer.vue'
-import { createAttachmentBook, shouldRestoreDraft } from '../src/renderer/src/lib/drafts'
+import {
+  createAttachmentBook,
+  joiningTheBox,
+  shouldRestoreDraft,
+} from '../src/renderer/src/lib/drafts'
 import type { HandedPath } from '../src/shared/runtime-ipc'
 import { firstMessageBelongsTo } from '../src/renderer/src/components/RuntimeScreen.vue'
 
@@ -160,7 +164,6 @@ describe('a failed launch hands the message back (015), to the slot it came from
     wasBusy: true,
     error: 'no such directory',
     lastTried: 'the paragraphs I typed',
-    current: '',
   }
 
   it('restores when a launch attempt ENDS having failed with something to give back', () => {
@@ -180,10 +183,13 @@ describe('a failed launch hands the message back (015), to the slot it came from
     expect(shouldRestoreDraft({ ...attempt, lastTried: '' })).toBe(false)
   })
 
-  it('never overwrites what is being typed now — the launch flag is shared with REOPENING', () => {
-    // A failed reopen also ends a "launch", and this surface is still mounted through one. Handing
-    // back an older message over live typing would be the same class of bug 019 exists to kill.
-    expect(shouldRestoreDraft({ ...attempt, current: 'something I am typing' })).toBe(false)
+  it('hands back even when something is being typed now: the words join it, after a blank line', () => {
+    expect(shouldRestoreDraft(attempt)).toBe(true)
+    expect(joiningTheBox('something I am typing', attempt.lastTried)).toBe(
+      'something I am typing\n\nthe paragraphs I typed',
+    )
+    // …and a box that already holds the message is left as it is.
+    expect(joiningTheBox(attempt.lastTried, attempt.lastTried)).toBe(attempt.lastTried)
   })
 })
 

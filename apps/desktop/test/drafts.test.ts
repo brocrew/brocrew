@@ -4,6 +4,7 @@ import {
   createDraftBook,
   draftKey,
   draftSlot,
+  handRefusedBack,
   NEW_CONVERSATION,
   liveDraftSlots,
 } from '../src/renderer/src/lib/drafts'
@@ -186,6 +187,36 @@ describe('putting a refused message back (216)', () => {
     // used to answer `[OTHER]` — the newer edit kept, correctly, and the refused message's own
     // attachment dropped in silence. One box can hold one message; a list can hold both.
     expect(book.paths.read('s:1')).toEqual([OTHER, FILE])
+  })
+
+  it('🔴 a refused message handed back JOINS what was typed since, so neither is lost', () => {
+    const book = createDraftBook()
+    expect(handRefusedBack(book, 's:1', 'have a look at this', [FILE])).toBe(0)
+    expect(book.read('s:1')).toBe('have a look at this')
+    expect(book.paths.read('s:1')).toEqual([FILE])
+
+    const typing = createDraftBook()
+    typing.write('s:1', 'a different thought')
+    typing.paths.write('s:1', [OTHER])
+    expect(handRefusedBack(typing, 's:1', 'have a look at this', [FILE])).toBe(0)
+    expect(typing.read('s:1')).toBe('a different thought\n\nhave a look at this')
+    expect(typing.paths.read('s:1')).toEqual([OTHER, FILE])
+  })
+
+  it('⚑ …and is not joined a second time when the box already holds that message', () => {
+    const back = createDraftBook()
+    back.write('s:1', 'have a look at this')
+    handRefusedBack(back, 's:1', 'have a look at this', [])
+    expect(back.read('s:1')).toBe('have a look at this')
+
+    back.write('s:1', 'a different thought\n\nhave a look at this')
+    handRefusedBack(back, 's:1', 'have a look at this', [])
+    expect(back.read('s:1')).toBe('a different thought\n\nhave a look at this')
+
+    // Only a whole message counts: words that merely start the box are still handed back.
+    back.write('s:1', 'have a look at this one too')
+    handRefusedBack(back, 's:1', 'have a look at this', [])
+    expect(back.read('s:1')).toBe('have a look at this one too\n\nhave a look at this')
   })
 
   it('⚑ …and the two are guarded SEPARATELY, which is the case a single guard gets wrong', () => {
