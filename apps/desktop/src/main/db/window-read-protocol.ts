@@ -202,12 +202,14 @@ export class WindowReadUnavailable extends Error {
   constructor(
     readonly why: 'unavailable' | 'failed' | 'restart' | 'busy' = 'unavailable',
     readonly reason?: WindowReadFailure,
+    readonly readCause?: string,
   ) {
     super(
-      why === 'restart'
+      (why === 'restart'
         ? 'The window’s record could not be read. Restart BroCrew to try again.'
-        : 'The window’s record could not be read. Please try again.' +
-            (reason === undefined ? '' : ` (${reason})`),
+        : 'The window’s record could not be read. Please try again.') +
+        (reason === undefined ? '' : ` (${reason})`) +
+        (readCause === undefined ? '' : ` Cause: ${readCause}`),
     )
   }
 }

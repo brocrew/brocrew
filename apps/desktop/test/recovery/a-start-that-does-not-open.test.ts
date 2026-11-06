@@ -113,16 +113,14 @@ describe('the open path', () => {
     expect(count).toBeGreaterThan(init.indexOf('db = database'))
     expect(init.match(/recordSuccessfulStart\(/g)).toHaveLength(1)
     expect(CODE.match(/recordSuccessfulStart\(/g)).toHaveLength(1)
-    expect(init).toContain("theOneAppAnswer?.held() ?? 'unknown'")
+    expect(init).toContain('theOneAppAnswer')
     expect(CODE).toContain('withRecoveryCopies(async () => {')
     expect(CODE).not.toContain('armRecoveryExpiry')
     expect(CODE).not.toContain('scheduleRecoveryExpiry')
   })
 
   it('lets old copies go only for the sole app, as the one-app check last answered', () => {
-    expect(functionIn(CODE, 'async function letGoOfOldCopies(')).toContain(
-      "theOneAppAnswer?.held() ?? 'unknown',",
-    )
+    expect(functionIn(CODE, 'async function letGoOfOldCopies(')).toContain('theOneAppAnswer,')
   })
 
   it('says, on a hidden launch, that it opened the data for work, once the open and migrations passed', () => {
@@ -436,12 +434,10 @@ describe('a test keeping the recovery window on a hidden launch', () => {
 })
 
 describe('the one-app answer the check asks for', () => {
-  it('is the launch’s own, asked again on a retry while it is unknown', () => {
+  it('is the OS-lock answer, reused without a socket question', () => {
     const service = functionIn(CODE, 'function theRecoveryService(')
-    expect(service).toContain(
-      'const asker = ownershipFrom(launchOwnership, () => claimSoleHost(userData))',
-    )
-    expect(service).toContain('ownership: asker.ask,')
+    expect(service).toContain('theOneAppAnswer = launchOwnership')
+    expect(service).toContain('ownership: () => Promise.resolve(launchOwnership),')
   })
 })
 

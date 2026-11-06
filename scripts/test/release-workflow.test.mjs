@@ -180,35 +180,31 @@ describe('§3 · release.yml', () => {
       'run: node scripts/macos-packaged-check.mjs apps/desktop/dist/mac-arm64/BroCrew.app',
     )
     expect(job('macos')).toContain('run: node scripts/release-check.mjs apps/desktop/dist')
-    expect(job('publish')).toContain(
-      'needs: [plan, windows, macos, recovery-windows, recovery-macos]',
-    )
+    expect(job('publish')).toContain('needs: [plan, windows, macos]')
   })
 
   it('🔴 nothing is published unless the recovery window passed its real-entry check on both systems, in this run', () => {
     // Their evidence is an artifact of this run, and only the builds' files reach the release.
     expect(job('publish')).toMatch(/pattern: release-\*\n {10}path: release\n/)
-    for (const [name, runner] of [
-      ['recovery-windows', 'windows-2022'],
-      ['recovery-macos', "${{ vars.MAC_RUNNER || 'macos-15' }}"],
+    expect(workflow).not.toMatch(/^ {2}recovery-(?:windows|macos):/m)
+    for (const [name, program] of [
+      ['windows', 'apps/desktop/dist/win-unpacked/BroCrew.exe'],
+      ['macos', 'apps/desktop/dist/mac-arm64/BroCrew.app/Contents/MacOS/BroCrew'],
     ]) {
       const block = job(name)
-      expect(block).toContain('    uses: ./.github/workflows/recovery-real-entry.yml')
-      expect(block).toContain(`      runner: ${runner}`)
-      // Jobs of this run, never skipped by a condition, so `publish` cannot pass without them.
-      expect(block).not.toMatch(/^ {4}if:/m)
+      expect(block).toContain('timeout-minutes: 45')
+      expect(block.match(/recovery-real-entry-check\.mjs/g)).toHaveLength(1)
+      const step = block.slice(block.indexOf('      - name: Recovery real-entry check\n'))
+      const own = step.slice(0, step.indexOf('\n      - ', 1))
+      expect(own).toContain(`run: node scripts/recovery-real-entry-check.mjs --packaged ${program}`)
+      expect(own).not.toMatch(/continue-on-error|\n {8}if:/)
+      expect(block.indexOf('electron-builder')).toBeLessThan(
+        block.indexOf('recovery-real-entry-check.mjs'),
+      )
+      expect(block).toContain('BROBOT_RECOVERY_EVIDENCE: ${{ runner.temp }}/recovery-evidence')
+      expect(block).toMatch(/- name: Keep what the recovery check saw\n {8}if: always\(\)/)
+      expect(block).toContain(`name: recovery-evidence-${name}`)
     }
-    const called = readFileSync(
-      join(here, '../../.github/workflows/recovery-real-entry.yml'),
-      'utf8',
-    )
-    expect(called).toMatch(/^on:\n {2}workflow_call:\n/m)
-    expect(called).toContain('run: node scripts/recovery-real-entry-check.mjs --no-build')
-    // The check's own step fails the job: no `continue-on-error`, no condition.
-    const step = called.slice(called.indexOf('      - name: Recovery real-entry check\n'))
-    const own = step.slice(0, step.indexOf('\n      - ', 1))
-    expect(own).toContain('run: node scripts/recovery-real-entry-check.mjs --no-build')
-    expect(own).not.toMatch(/continue-on-error|\n {8}if:/)
   })
 
   it('⛔ a release reads its feed anonymously: no build names a private feed or a token', () => {

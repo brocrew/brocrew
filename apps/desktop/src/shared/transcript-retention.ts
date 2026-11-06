@@ -34,7 +34,7 @@ export function transcriptsClearedWords(read: TranscriptsCleared): string {
   const size = unit === 0 ? String(bytes) : bytes.toFixed(1)
   const period = read.days === 365 ? '1 year' : `${read.days} days`
   const prefix = read.stoppedEarly
-    ? `Transcript clearing stopped after ${TRANSCRIPT_CLEARING_DEADLINE_MS / 1000} seconds so agents could start. `
+    ? `Transcript clearing stopped after ${TRANSCRIPT_CLEARING_DEADLINE_MS / 1000} seconds. `
     : ''
   const rest = read.stoppedEarly ? ' The rest will be checked next time BroCrew starts.' : ''
   if (read.conversations === 0 && read.stoppedEarly)

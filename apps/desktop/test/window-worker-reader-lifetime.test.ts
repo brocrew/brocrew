@@ -60,6 +60,33 @@ describe('window reader owns its native connection until confirmed exit', () => 
     await reader.close()
   })
 
+  it('includes the read cause in the window error', async () => {
+    const worker = new ReadWorker()
+    const reader = new WindowWorkerReader(worker)
+    const answer = reader.read({ kind: 'routes' })
+    worker.emit('message', { type: 'ready' })
+    await drain()
+    worker.emit('message', {
+      type: 'failed',
+      id: 1,
+      reason: 'worker-read-failed',
+      cause: 'SQLITE_IOERR: fictional disk read failed',
+    })
+    await expect(answer).rejects.toThrow('SQLITE_IOERR: fictional disk read failed')
+    worker.emit('exit', 0)
+    await reader.close()
+  })
+
+  it('keeps a worker error when exit settles the pending window read', async () => {
+    const worker = new ReadWorker()
+    const reader = new WindowWorkerReader(worker)
+    const answer = reader.read({ kind: 'routes' })
+    worker.emit('error', new Error('fictional worker could not open the database'))
+    worker.emit('exit', 1)
+    await expect(answer).rejects.toThrow('fictional worker could not open the database')
+    await reader.close()
+  })
+
   const leadQuery = {
     kind: 'leads' as const,
     sessionId: 'fictional',
@@ -281,9 +308,9 @@ describe('window reader owns its native connection until confirmed exit', () => 
       throw new Error('fictional start failure')
     })
     const reader = new WindowReaderLifetime(start)
-    await expect(reader.read({ kind: 'routes' })).rejects.toThrow(WindowReadUnavailable)
-    await expect(reader.read({ kind: 'routes' })).rejects.toThrow(WindowReadUnavailable)
-    await expect(reader.read({ kind: 'routes' })).rejects.toThrow('Restart BroCrew')
+    await expect(reader.read({ kind: 'routes' })).rejects.toThrow('fictional start failure')
+    await expect(reader.read({ kind: 'routes' })).rejects.toThrow('fictional start failure')
+    await expect(reader.read({ kind: 'routes' })).rejects.toThrow('fictional start failure')
     expect(start).toHaveBeenCalledTimes(2)
     await reader.close()
   })

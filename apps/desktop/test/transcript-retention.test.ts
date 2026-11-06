@@ -358,7 +358,7 @@ it('a live agent or unsettled probe anywhere in the app admits no cleanup work',
   }
 })
 
-it('a launch requested during scanning waits until the whole clearing pass ends', async () => {
+it('a launch requested during scanning proceeds and stops further cleanup', async () => {
   const target = claude(OLD, 365)
   let release!: () => void
   let arrived!: () => void
@@ -381,13 +381,13 @@ it('a launch requested during scanning waits until the whole clearing pass ends'
       started++
     })
     await Promise.resolve()
-    expect(started).toBe(0)
+    expect(started).toBe(1)
     expect(existsSync(target)).toBe(true)
     release()
     await pass
     await launch
     expect(started).toBe(1)
-    expect(existsSync(target)).toBe(false)
+    expect(existsSync(target)).toBe(true)
   } finally {
     release()
     await pass
@@ -446,7 +446,7 @@ async function expectDeadlineReceipt(host: TranscriptRetentionHost) {
   expect(receipts).toHaveLength(1)
   expect(receipts[0]).toMatchObject({ conversations: 0, bytes: 0, stoppedEarly: true })
   expect(transcriptsClearedWords(receipts[0]!)).toBe(
-    'Transcript clearing stopped after 15 seconds so agents could start. No transcripts were cleared. The rest will be checked next time BroCrew starts.',
+    'Transcript clearing stopped after 15 seconds. No transcripts were cleared. The rest will be checked next time BroCrew starts.',
   )
 }
 
@@ -525,7 +525,7 @@ it.each(['suppressed', 'wrong', 'rejected'] as const)(
     try {
       await scan.arrived
       await host.beforeLaunch()
-      expect(save).toHaveBeenCalledTimes(1)
+      await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1))
       expect(existsSync(target)).toBe(true)
       if (fault !== 'suppressed') await persistence.arrived
       persistence.release()
@@ -593,6 +593,7 @@ it('a deletion already in flight settles, but no later deletion starts after the
     }
   }
   // Hold only the startup deadline behind filesystem setup; retries keep their real timers.
+  let deadlineReached = false
   const clock = vi.spyOn(performance, 'now').mockReturnValue(0)
   const realTimeout = globalThis.setTimeout
   const deadlineTimer = vi
@@ -602,6 +603,7 @@ it('a deletion already in flight settles, but no later deletion starts after the
       return realTimeout(() => {
         void arrived.then(() => {
           clock.mockReturnValue(60)
+          deadlineReached = true
           if (typeof callback === 'function') callback(...args)
         })
       }, delay)
@@ -612,6 +614,7 @@ it('a deletion already in flight settles, but no later deletion starts after the
     await arrived
     const launch = host.beforeLaunch()
     await launch
+    await vi.waitFor(() => expect(deadlineReached).toBe(true))
     release()
     await pass
     expect(existsSync(first)).toBe(false)
@@ -620,7 +623,7 @@ it('a deletion already in flight settles, but no later deletion starts after the
     const line = (await host.recent(0, NOW))[0]!
     expect(line).toMatchObject({ conversations: 1, stoppedEarly: true })
     expect(transcriptsClearedWords(line)).toBe(
-      `Transcript clearing stopped after 15 seconds so agents could start. Cleared the transcripts of 1 conversation unused for 90 days, freeing ${firstBytes} B. The rest will be checked next time BroCrew starts.`,
+      `Transcript clearing stopped after 15 seconds. Cleared the transcripts of 1 conversation unused for 90 days, freeing ${firstBytes} B. The rest will be checked next time BroCrew starts.`,
     )
   } finally {
     release()
@@ -1083,7 +1086,7 @@ it.each([30, 90, 365] as const)(
     ])
   },
 )
-it('a provider launch waits for a removal already in progress', async () => {
+it('a provider launch proceeds while background removal is in progress', async () => {
   const target = claude(OLD, 365)
   let release!: () => void
   let arrived!: () => void
@@ -1114,7 +1117,7 @@ it('a provider launch waits for a removal already in progress', async () => {
       started++
     })
     await Promise.resolve()
-    expect(started).toBe(0)
+    expect(started).toBe(1)
     release()
     await pass
     await provider

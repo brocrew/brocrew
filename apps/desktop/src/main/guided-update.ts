@@ -218,6 +218,7 @@ function removePrivateStage(name: string, owned: BigIntStats): void {
 async function checkedStage(
   fd: number,
   signal: AbortSignal,
+  progress: () => void,
 ): Promise<{ hash: string; version: BigIntStats }> {
   const before = fstatSync(fd, { bigint: true })
   const hash = createHash('sha512')
@@ -233,6 +234,7 @@ async function checkedStage(
     })
     if (count === 0) break
     hash.update(buffer.subarray(0, count))
+    progress()
     position += count
   }
   signal.throwIfAborted()
@@ -242,7 +244,12 @@ async function checkedStage(
 }
 
 /** Copy through the held files, including short writes, without reopening either pathname. */
-async function copyOpened(from: number, to: number, signal: AbortSignal): Promise<void> {
+async function copyOpened(
+  from: number,
+  to: number,
+  signal: AbortSignal,
+  progress: () => void,
+): Promise<void> {
   const buffer = Buffer.allocUnsafe(256 * 1024)
   let position = 0
   for (;;) {
@@ -265,6 +272,7 @@ async function copyOpened(from: number, to: number, signal: AbortSignal): Promis
       })
       if (length === 0) throw new Error(DOWNLOAD_CHANGED)
       written += length
+      progress()
     }
     position += count
   }
@@ -278,6 +286,7 @@ async function placeDownload(
   version: BigIntStats,
   signal: AbortSignal,
   placed: (name: string) => void,
+  progress: () => void,
 ): Promise<{ name: string; fd: number; close: boolean }> {
   const extension = extname(to)
   const stem = to.slice(0, to.length - extension.length)
@@ -317,7 +326,7 @@ async function placeDownload(
       verifying = openNotThroughALink(name, constants.O_RDONLY | constants.O_NONBLOCK)
       if (!sameFile(fstatSync(writer, { bigint: true }), fstatSync(verifying, { bigint: true })))
         throw new Error(DOWNLOAD_CHANGED)
-      await copyOpened(checkedFd, writer, signal)
+      await copyOpened(checkedFd, writer, signal, progress)
       closeSync(writer)
       writing = null
       const fd = verifying
@@ -406,12 +415,14 @@ export async function downloadChecked(options: {
   options.signal?.addEventListener('abort', cancel, { once: true })
   if (options.signal?.aborted) cancel()
   let timer: ReturnType<typeof setTimeout> | undefined
+  let waitingForDisk = false
   const watch = (): void => {
     clearTimeout(timer)
+    if (controller.signal.aborted || waitingForDisk) return
     timer = setTimeout(() => {
       stop(
         new Error(
-          `the download stalled: nothing arrived for ${String(Math.round(stallsAfterMs / 1000))} s`,
+          `the download stalled: no progress for ${String(Math.round(stallsAfterMs / 1000))} s`,
         ),
       )
     }, stallsAfterMs)
@@ -419,6 +430,16 @@ export async function downloadChecked(options: {
   const orStopped = <T>(waiting: Promise<T>): Promise<T> => {
     controller.signal.throwIfAborted()
     return Promise.race([waiting, interrupted])
+  }
+  const diskWork = async <T>(work: Promise<T>): Promise<T> => {
+    waitingForDisk = true
+    clearTimeout(timer)
+    try {
+      return await work
+    } finally {
+      waitingForDisk = false
+      watch()
+    }
   }
   const partial = `${aStagingName(join(options.stagingFolder, basename(to)))}.partial`
   let stageIdentity: BigIntStats | null = null
@@ -435,6 +456,7 @@ export async function downloadChecked(options: {
     const response = await orStopped(
       (options.fetch ?? globalThis.fetch)(url, { redirect: 'follow', signal: controller.signal }),
     )
+    watch()
     if (!response.ok || response.body === null) {
       throw new Error(`the download answered ${String(response.status)}`)
     }
@@ -467,37 +489,45 @@ export async function downloadChecked(options: {
       if (done) break
       watch()
       hash.update(value)
-      if (!out.write(value)) {
+      if (!out.write(value, () => watch())) {
         const writing = out
-        await orStopped(new Promise<void>((resolve) => writing.once('drain', () => resolve())))
+        await diskWork(
+          orStopped(new Promise<void>((resolve) => writing.once('drain', () => resolve()))),
+        )
+        watch()
       }
       received += value.byteLength
       if (total > 0) onPercent(Math.min(99, (received / total) * 100))
     }
+    watch()
     out.end()
-    await orStopped(written)
+    await diskWork(orStopped(written))
+    watch()
     if (hash.digest('base64') !== sha512) {
       throw new Error(
         'the download did not match the sha512 its release published, so it was deleted',
       )
     }
     controller.signal.throwIfAborted()
-    const checked = await checkedStage(checkedFd, controller.signal)
+    const checked = await diskWork(checkedStage(checkedFd, controller.signal, watch))
     if (checked.hash !== sha512) throw new Error(DOWNLOAD_CHANGED)
-    const publication = await placeDownload(
-      partial,
-      to,
-      checkedFd,
-      checked.version,
-      controller.signal,
-      (name) => {
-        placed = name
-      },
+    const publication = await diskWork(
+      placeDownload(
+        partial,
+        to,
+        checkedFd,
+        checked.version,
+        controller.signal,
+        (name) => {
+          placed = name
+        },
+        watch,
+      ),
     )
     if (publication.close) placedFd = publication.fd
     if (!isStillTheFileOpened(publication.name, publication.fd)) throw new Error(DOWNLOAD_CHANGED)
     // The destination may be a new copy. Check its own stored bytes before handing it to Finder.
-    const landed = await checkedStage(publication.fd, controller.signal)
+    const landed = await diskWork(checkedStage(publication.fd, controller.signal, watch))
     if (landed.hash !== sha512) throw new Error(DOWNLOAD_CHANGED)
     onPercent(100)
     controller.signal.throwIfAborted()

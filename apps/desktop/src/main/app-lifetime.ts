@@ -35,6 +35,8 @@
  */
 
 export interface AppLifetimeDeps {
+  /** Save what is open before any shutdown work can wait. */
+  recordOpenSessions?: () => void
   /**
    * ⛔ **Tell every window the app is closing — SYNCHRONOUSLY, before anything is awaited** (271 §2).
    *
@@ -490,6 +492,9 @@ export function createAppLifetime(deps: AppLifetimeDeps): AppLifetime {
     // running, connection left open, app gone.
     const keepUnsentDrafts = deps.keepUnsentDrafts
     for (const [what, run] of [
+      ...(deps.recordOpenSessions === undefined
+        ? []
+        : ([['record open sessions', deps.recordOpenSessions]] as const)),
       ['stop archive work', deps.stopArchiveWork],
       ['close its sessions', deps.closeAllSessions],
       ...(keepUnsentDrafts === undefined
