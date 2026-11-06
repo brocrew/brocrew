@@ -207,6 +207,12 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
       [published, absent],
     ])
       expect(() => installObservation.sameTamperInstallState(before, after)).toThrow()
+    for (const before of [absent, published])
+      for (const after of [
+        { ...before, identity: { ...before.identity, ino: before.identity.ino + 1 } },
+        { ...before, global: path.join(root, 'other') },
+      ])
+        expect(() => installObservation.sameTamperInstallState(before, after)).toThrow()
     for (const bad of [
       undefined,
       null,

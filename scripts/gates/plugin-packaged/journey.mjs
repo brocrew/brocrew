@@ -363,6 +363,69 @@ export function sameInstallState(before, after) {
   if (!isDeepStrictEqual(before, after)) return observationFailure()
   return true
 }
+// Tamper inspection may precede writable lifecycle bootstrap. Never invent persisted state.
+export function observeTamperInstallState(root, global) {
+  ownedRoot(root)
+  observedDirectory(root, global)
+  const before = fs.lstatSync(global),
+    state = path.join(global, 'state')
+  let absent = false
+  try {
+    fs.lstatSync(state)
+  } catch (error) {
+    if (error.code !== 'ENOENT' || error.syscall !== 'lstat' || error.path !== state) throw error
+    absent = true
+  }
+  const snapshot = absent ? undefined : emptyInstallBaseline(observeInstallState(root, global))
+  if (absent) {
+    // These are two checked endpoints, not proof of continuous absence between reads.
+    try {
+      fs.lstatSync(state)
+      return observationFailure()
+    } catch (error) {
+      if (error.code !== 'ENOENT' || error.syscall !== 'lstat' || error.path !== state) throw error
+    }
+  }
+  ownedRoot(root)
+  observedDirectory(root, global)
+  const after = fs.lstatSync(global)
+  if (before.dev !== after.dev || before.ino !== after.ino) return observationFailure()
+  const binding = { root, global, identity: { dev: before.dev, ino: before.ino } }
+  return absent ? { kind: 'absent', ...binding } : { kind: 'published', ...binding, snapshot }
+}
+export function sameTamperInstallState(before, after) {
+  for (const value of [before, after]) {
+    if (
+      !['absent', 'published'].includes(value?.kind) ||
+      !exactKeys(value, [
+        'kind',
+        'root',
+        'global',
+        'identity',
+        ...(value.kind === 'published' ? ['snapshot'] : []),
+      ]) ||
+      typeof value.root !== 'string' ||
+      !path.isAbsolute(value.root) ||
+      typeof value.global !== 'string' ||
+      !path.isAbsolute(value.global) ||
+      path.relative(value.root, value.global).startsWith('..') ||
+      path.isAbsolute(path.relative(value.root, value.global)) ||
+      !exactKeys(value.identity, ['dev', 'ino']) ||
+      !integer(value.identity.dev) ||
+      !integer(value.identity.ino)
+    )
+      return observationFailure()
+    if (value.kind === 'published') emptyInstallBaseline(value.snapshot)
+  }
+  if (
+    before.kind !== after.kind ||
+    before.root !== after.root ||
+    before.global !== after.global ||
+    !isDeepStrictEqual(before.identity, after.identity)
+  )
+    return observationFailure()
+  return before.kind === 'published' ? sameInstallState(before.snapshot, after.snapshot) : true
+}
 export function firstInstallState(baseline, completed, workspace, proof) {
   emptyInstallBaseline(baseline)
   validateInstallSnapshot(completed)
@@ -793,13 +856,13 @@ export async function journey(root) {
     const availability = await bad.cdp.evaluate(
       "return await window.api.plugins.request({kind:'availability'})",
     )
-    const badBaseline = emptyInstallBaseline(observeInstallState(root, badGlobal))
+    const badBaseline = observeTamperInstallState(root, badGlobal)
     const badRuns = observeRunNames(root, badGlobal)
     const refused = await bad.cdp.evaluate(
       `return await window.api.plugins.request({kind:'inspect',package:${JSON.stringify({ ...tampered.ref, source: tampered.archivePath })}})`,
     )
     const cards = await bad.cdp.evaluate("return await window.api.plugins.request({kind:'list'})")
-    sameInstallState(badBaseline, observeInstallState(root, badGlobal))
+    sameTamperInstallState(badBaseline, observeTamperInstallState(root, badGlobal))
     requireCheck(
       summary,
       'tamperedArchiveRefused',

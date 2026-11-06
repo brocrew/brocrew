@@ -173,13 +173,13 @@ function fixture(
     evaluate: async (text) => {
       if (text.includes("kind:'availability'")) return { ok: true, available: true }
       if (text.includes("kind:'inspect'")) {
-        calls.push({ tamper: 'inspect', text, role: number })
+        if (number === roles.tamper) calls.push({ tamper: 'inspect', text, role: number })
         return tamperReply
           ? { ok: false, detail: 'The package files do not match the selected bytes.' }
           : { ok: false, detail: 'A different refusal is not byte verification.' }
       }
       if (text.includes("kind:'list'")) {
-        calls.push({ tamper: 'list', role: number })
+        if (number === roles.tamper) calls.push({ tamper: 'list', role: number })
         return {
           ok: true,
           cards:
