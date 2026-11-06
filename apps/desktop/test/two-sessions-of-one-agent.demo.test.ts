@@ -578,17 +578,12 @@ describe('418 · two sessions of one agent', () => {
       // note): the window says it where the press was made (`RuntimeScreen.openConversation`).
     })
 
-
-    it('⚑ the door that DOES work is the take-over, and the rail’s one press is the one that makes it', async () => {
+    it('the rail’s press takes the stream and removes the conversation from the unclaimed list', async () => {
       await bringIdentityIntoBeing('worker')
       const parent = await personOpens('pm', 'auto')
       await storeA.attachOpen()
       const child = await anIdleChildOf(parent)
 
-      // ⛔ **The paired positive.** The same window, the same id, one method over — and the
-      // conversation opens. So the refusal above is about which door was knocked on, not about
-      // whether this person may have this conversation.
-      //
       // 🔴 **And the rail knocks on this one** — ⚑ D-017b: the row's one press is `store.look`, a
       // PRESS (`claim: true`), which takes a conversation running with no window for this window
       // and opens it — the same take-over `goToQuestion` has made for the escalated queue since
