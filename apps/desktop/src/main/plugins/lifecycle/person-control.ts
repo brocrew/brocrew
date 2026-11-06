@@ -349,15 +349,26 @@ export async function connectPersonPluginControl(options: {
   handle(input: unknown): Promise<unknown>
 }): Promise<PersonChannel> {
   return new Promise((resolve, reject) => {
-    const socket = createConnection(localEndpoint(options.path, 'person', options.key))
+    const endpoint = localEndpoint(options.path, 'person', options.key)
+    const socket = createConnection(endpoint)
     const timer = setTimeout(() => {
       socket.destroy()
-      reject(new PluginSupervisorError('unavailable'))
+      reject(
+        new PluginSupervisorError('unavailable', {
+          cause: new Error(`no connection to the plugin service at ${endpoint} within 2000 ms`),
+        }),
+      )
     }, 2000)
-    const failed = () => {
+    const failed = (error: Error) => {
       clearTimeout(timer)
       socket.destroy()
-      reject(new PluginSupervisorError('unavailable'))
+      reject(
+        new PluginSupervisorError('unavailable', {
+          cause: new Error(`could not connect to the plugin service at ${endpoint}`, {
+            cause: error,
+          }),
+        }),
+      )
     }
     socket.once('error', failed)
     socket.once('connect', () => {

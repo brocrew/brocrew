@@ -51,9 +51,12 @@ it('keeps every nested stdout and stderr byte, including bytes written just befo
     Buffer.alloc(300_000, 0xb2),
     Buffer.from('Error: fictional\n    at x (/fictional.js:1:1)'),
   ])
+  // The child builds the same bytes itself, so no payload crosses a platform command-line limit.
   const script = `
-    process.stderr.write(Buffer.from(process.argv[1], 'base64'))
-    process.stdout.write(Buffer.from(process.argv[2], 'base64'), () => process.exit(0))
+    const out = Buffer.concat([Buffer.from('nested-stdout:'), Buffer.alloc(300000, 0xa1), Buffer.from([0xff, 0xfe])])
+    const err = Buffer.concat([Buffer.from('nested-stderr:'), Buffer.alloc(300000, 0xb2), Buffer.from('Error: fictional\\n    at x (/fictional.js:1:1)')])
+    process.stderr.write(err)
+    process.stdout.write(out, () => process.exit(0))
   `
   const captured = []
   const write = process.stderr.write.bind(process.stderr)
@@ -67,13 +70,7 @@ it('keeps every nested stdout and stderr byte, including bytes written just befo
   let options
   const startApp = journeyStartApp((_exe, _args, given) => {
     options = given
-    return spawnChild(
-      process.execPath,
-      ['-e', script, err.toString('base64'), out.toString('base64')],
-      {
-        stdio: given.stdio,
-      },
-    )
+    return spawnChild(process.execPath, ['-e', script], { stdio: given.stdio })
   })
   const processes = []
   const run = await startApp(

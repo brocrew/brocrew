@@ -1,3 +1,4 @@
+import { inspect } from 'node:util'
 import { PluginSupervisorLaunchFailure } from '../src/main/plugins/startup-failure'
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
@@ -1538,7 +1539,7 @@ describe.skipIf(process.platform === 'win32')(
         'No package is selected for this plugin.',
       )
     })
-    it('logs a closed initialization failure instead of the private thrown message', async () => {
+    it('logs the plain notice, then the real thrown error with its stack', async () => {
       const f = await setup()
       const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
       seams.launch.mockImplementationOnce(() => {
@@ -1547,14 +1548,20 @@ describe.skipIf(process.platform === 'win32')(
       f.controller.start(f.options)
       await f.controller.ready!()
       await vi.waitFor(() => expect(warning).toHaveBeenCalled())
-      expect(warning.mock.calls).toEqual([
-        ["[plugins] service-start: BroCrew couldn't start the plugin service. Try again."],
+      expect(warning.mock.calls[0]).toEqual([
+        "[plugins] service-start: BroCrew couldn't start the plugin service. Try again.",
       ])
-      expect(JSON.stringify(warning.mock.calls)).not.toContain('fictional-private-error-with-key')
-      expect(f.supervisor.start).not.toHaveBeenCalled()
-      await expect(f.controller.install(f.pkg.release.id)).rejects.toThrow(
-        'Plugin unavailable. Try again.',
+      expect(warning.mock.calls[1]![0]).toMatch(
+        /^\[plugins\] service-start error: Error: fictional-private-error-with-key\n\s+at /,
       )
+      expect(f.supervisor.start).not.toHaveBeenCalled()
+      // A later refusal keeps its typed code and carries the real startup failure as its cause.
+      const refused = await f.controller.install(f.pkg.release.id).catch((error: unknown) => error)
+      expect(refused).toMatchObject({
+        code: 'unavailable',
+        message: 'Plugin unavailable. Try again.',
+      })
+      expect(JSON.stringify(inspect(refused))).toContain('fictional-private-error-with-key')
     })
     it('keeps the first catalogue response failure instead of relabeling it as a connection failure', async () => {
       const f = await setup()
@@ -1567,7 +1574,7 @@ describe.skipIf(process.platform === 'win32')(
         { state: 'Unavailable', unavailableReason: 'catalogue-response' },
       ])
       expect(f.peer.close).toHaveBeenCalled()
-      expect(JSON.stringify(warning.mock.calls)).not.toContain('fictional-private-catalogue-error')
+      expect(JSON.stringify(warning.mock.calls)).toContain('fictional-private-catalogue-error')
       f.peer.catalogue.mockResolvedValue([
         { id: f.pkg.release.id, name: 'Fictional Fir', installed: false, state: 'Available' },
       ])

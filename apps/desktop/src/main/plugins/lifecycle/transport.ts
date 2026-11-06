@@ -46,8 +46,8 @@ export class PersonChannel {
     void _challenge
     socket.setEncoding('utf8')
     socket.on('data', (bytes) => this.read(String(bytes)))
-    socket.on('error', () => this.close())
-    socket.on('close', () => this.close())
+    socket.on('error', (error) => this.close(error))
+    socket.on('close', () => this.close(new Error('the other side closed the plugin channel')))
   }
   get open(): boolean {
     return !this.closed
@@ -57,7 +57,7 @@ export class PersonChannel {
     return () => this.lost.delete(callback)
   }
   private send(packet: z.infer<typeof Packet>): void {
-    if (this.closed) throw new PluginSupervisorError('unavailable')
+    if (this.closed) throw new PluginSupervisorError('unavailable', { cause: this.why })
     this.socket.write(JSON.stringify(packet) + '\n')
   }
 
@@ -101,8 +101,9 @@ export class PersonChannel {
             .then(
               (value) =>
                 this.send({ kind: 'reply', id: packet.id, ok: true, value: value ?? null }),
-              (error) =>
-                this.send({
+              (error) => {
+                console.error(`[plugins] ${this.side} plugin-channel request failed`, error)
+                return this.send({
                   kind: 'reply',
                   id: packet.id,
                   ok: false,
@@ -116,42 +117,49 @@ export class PersonChannel {
                       : this.reportRefusals() && error instanceof Error
                         ? { pluginError: error.message }
                         : null,
-                }),
+                })
+              },
             )
-            .catch(() => this.close())
+            .catch((error) => this.close(error))
             .finally(() => {
               this.work.delete(work)
             })
           this.work.add(work)
         }
-      } catch {
-        this.close()
+      } catch (error) {
+        this.close(
+          new Error(`unreadable plugin channel packet: ${line.slice(0, 200)}`, { cause: error }),
+        )
         return
       }
     }
   }
   call(value: unknown, within: number = ANSWER_WITHIN[this.side]): Promise<unknown> {
-    if (this.closed) return Promise.reject(new PluginSupervisorError('unavailable'))
+    if (this.closed)
+      return Promise.reject(new PluginSupervisorError('unavailable', { cause: this.why }))
     const id = randomUUID()
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
-        this.close()
+        this.close(new Error(`no answer within ${within} ms`))
       }, within)
       this.pending.set(id, { resolve, reject, timer })
       try {
         this.send({ kind: 'call', id, value })
-      } catch {
-        this.close()
+      } catch (error) {
+        this.close(error)
       }
     })
   }
-  close(): void {
+  /** Why this channel closed, kept as the cause of every refusal it gives afterwards. */
+  private why: unknown
+  close(reason: unknown = new Error('the plugin channel was closed here')): void {
     if (this.closed) return
     this.closed = true
+    this.why = reason
     this.socket.destroy()
     for (const waiter of this.pending.values()) {
       clearTimeout(waiter.timer)
-      waiter.reject(new PluginSupervisorError('unavailable'))
+      waiter.reject(new PluginSupervisorError('unavailable', { cause: reason }))
     }
     this.pending.clear()
     for (const callback of this.lost) {

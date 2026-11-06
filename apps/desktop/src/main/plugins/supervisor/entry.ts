@@ -18,6 +18,8 @@ import { recordDrainTrace } from './drain-trace'
 import { PluginSupervisorError, ownerDiagnosticLine } from './protocol'
 
 export async function runPluginSupervisor(configPath: string, expectedDigest: string) {
+  // Diagnostics go to the app's pipe; once the app has gone, a failed write must not end the service.
+  process.stderr.on('error', () => {})
   const bytes = await sourceBytes(configPath, 1024 * 1024)
   if (!/^[a-f0-9]{64}$/.test(expectedDigest) || digest(bytes) !== expectedDigest)
     throw new Error('unavailable')
@@ -46,6 +48,8 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
     console.error(
       pluginStartupStderr(message, [config.lifecycle?.personKey ?? '']) ?? 'Plugin service failed',
     )
+    // The whole exception, with its stack and every cause, after the one-line summary.
+    console.error('[plugins] service failure', error)
   }
   const stop = async () => {
     if (await owner.shutdown()) {
@@ -146,6 +150,7 @@ if (typeof require !== 'undefined' && require.main === module) {
             : 'Invalid plugin service configuration',
       ) ?? 'Plugin service failed',
     )
+    console.error('[plugins] service failure', error)
     process.exitCode = 1
   })
 }

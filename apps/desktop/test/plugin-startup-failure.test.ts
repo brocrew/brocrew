@@ -178,7 +178,7 @@ it('does not turn a stderr lookalike into a typed reboot remedy', () => {
     }),
   ).toBeUndefined()
 })
-it('keeps a readable bounded log with an errno and no raw message or configuration', async () => {
+it('keeps the plain notice and errno, then the real error message', async () => {
   const root = await mkdtemp(join(tmpdir(), 'fictional-plugin-diagnostic-'))
   roots.push(root)
   const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -188,9 +188,8 @@ it('keeps a readable bounded log with an errno and no raw message or configurati
   const log = await readFile(join(root, 'plugin-startup.log'), 'utf8')
   expect(log).toContain("service-start: BroCrew couldn't start the plugin service.")
   expect(log).toContain('(EACCES)')
-  expect(log).not.toContain('fictional-secret-key-and-path')
-  expect(log.length).toBeLessThan(1024)
-  expect(warn).toHaveBeenCalledOnce()
+  expect(log).toContain('fictional-secret-key-and-path')
+  expect(warn).toHaveBeenCalledTimes(2)
   await recordPluginStartupFailure(root, 'connection')
   expect(await readFile(join(root, 'plugin-startup.log'), 'utf8')).not.toContain('(EACCES)')
 })
@@ -216,9 +215,13 @@ it('a log write failure does not replace the original startup failure or prevent
   ).resolves.toBeUndefined()
 })
 
-it('retains a split first stderr line and real child exit through wrappers into the same log text', async () => {
+it('keeps the one-line card text, forwards and logs all service stderr, replacing only the launch secret', async () => {
   const stderr = Object.assign(new EventEmitter(), { unref: vi.fn() })
   const child = { stderr, exitCode: null as number | null, signalCode: null }
+  const forwarded: Buffer[] = []
+  const write = vi
+    .spyOn(process.stderr, 'write')
+    .mockImplementation((chunk: string | Uint8Array) => (forwarded.push(Buffer.from(chunk)), true))
   const snapshot = observePluginSupervisorLaunch(child as unknown as ChildProcess, [
     'fictional-capability',
   ])
@@ -241,9 +244,15 @@ it('retains a split first stderr line and real child exit through wrappers into 
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   await recordPluginStartupFailure(root, 'service-start', wrapped)
   const log = await readFile(join(root, 'plugin-startup.log'), 'utf8')
+  write.mockRestore()
   expect(log).toContain(pluginStartupDiagnosticNotice(diagnostic))
+  expect(log).toContain('second private stack line')
   expect(log).not.toContain('fictional-capability')
-  expect(log).not.toContain('second private stack line')
+  // Every byte reached this process's stderr unchanged, as it arrived.
+  expect(Buffer.concat(forwarded).toString()).toBe(
+    'Error: fictional bridge could not bind; personKey=fictional-capability\nsecond private stack line' +
+      'x'.repeat(100_000),
+  )
 })
 it('does not invent a child exit or stderr at an attachment timeout and bounds escaped text', () => {
   const snapshot = observePluginSupervisorLaunch(

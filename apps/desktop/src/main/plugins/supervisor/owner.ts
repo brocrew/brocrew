@@ -198,7 +198,10 @@ export class PluginSupervisor {
       })
       storage.write(owner.record)
       owner.timer = setInterval(() => {
-        void owner.tick().catch(() => owner.fail())
+        void owner.tick().catch((error) => {
+          console.error('[plugins] owner tick failed', error)
+          owner.fail()
+        })
       }, options.tickEvery ?? 1_000)
       return owner
     } catch (error) {
@@ -207,9 +210,12 @@ export class PluginSupervisor {
       await owner.releaseDone?.catch(() => undefined)
       owner.fence?.release()
       storage.close()
+      console.error('[plugins] owner start failed', error)
       if (error instanceof PluginSupervisorError) throw error
-      if (error instanceof Error && 'code' in error && error.code === 'busy') refuse('busy')
-      refuse()
+      throw new PluginSupervisorError(
+        error instanceof Error && 'code' in error && error.code === 'busy' ? 'busy' : 'unavailable',
+        { cause: error },
+      )
     }
   }
   private fail(): boolean {
@@ -263,7 +269,8 @@ export class PluginSupervisor {
         if (end !== bytes.length - 1) refuse()
         request = Request.parse(unpack(this.record.key, 'request', bytes.toString('utf8', 0, end)))
         if (request.epoch !== this.record.epoch) refuse()
-      } catch {
+      } catch (error) {
+        console.error('[plugins] owner refused an unreadable request', error)
         socket.destroy()
         return
       }
@@ -306,7 +313,8 @@ export class PluginSupervisor {
                 }),
               )
             })
-            .catch(() => {
+            .catch((error) => {
+              console.error('[plugins] agent routes failed', error)
               socket.end(
                 pack(this.record.key, 'response', {
                   nonce: request.nonce,
@@ -320,6 +328,7 @@ export class PluginSupervisor {
         }
         result = { ok: true, value: this.command(request.command) }
       } catch (error) {
+        console.error(`[plugins] owner ${request.command.kind} refused`, error)
         result = {
           ok: false,
           code: error instanceof PluginSupervisorError ? error.code : 'unavailable',
@@ -521,7 +530,8 @@ export class PluginSupervisor {
       this.trace({ stage: 'closed', state: 'complete' })
       this.stopped()
       return true
-    })().catch(() => {
+    })().catch((error) => {
+      console.error('[plugins] owner drain failed', error)
       this.fail()
       return false
     })

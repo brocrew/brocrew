@@ -44,8 +44,8 @@ const Hello = z.strictObject({
 })
 /** A request that got no answer: the owner may or may not have acted on it. */
 class NoReply extends PluginSupervisorError {
-  constructor() {
-    super('unavailable')
+  constructor(cause?: unknown) {
+    super('unavailable', { cause })
   }
 }
 /** How soon a renewal that got no answer is tried again, so several tries fit in the expiry. */
@@ -82,13 +82,20 @@ export function supervisorRequest(
       if (error) reject(error)
       else resolve(value)
     }
-    const deadline = setTimeout(() => finish(new NoReply()), OWNER_LIMITS.request)
+    const deadline = setTimeout(
+      () =>
+        finish(
+          new NoReply(new Error(`no reply to ${command.kind} within ${OWNER_LIMITS.request} ms`)),
+        ),
+      OWNER_LIMITS.request,
+    )
     socket.once('connect', () => {
       socket.write(pack(record.key, 'request', { epoch: record.epoch, nonce, command }))
     })
-    socket.on('error', () => finish(new NoReply()))
+    socket.on('error', (error) => finish(new NoReply(error)))
     socket.on('close', () => {
-      if (!done) finish(new NoReply())
+      if (!done)
+        finish(new NoReply(new Error(`the plugin service closed ${command.kind} unanswered`)))
     })
     socket.on('data', (chunk: Buffer) => {
       bytes = Buffer.concat([bytes, chunk])
@@ -108,7 +115,9 @@ export function supervisorRequest(
         finish(undefined, response.value)
       } catch (error) {
         finish(
-          error instanceof PluginSupervisorError ? error : new PluginSupervisorError('unavailable'),
+          error instanceof PluginSupervisorError
+            ? error
+            : new PluginSupervisorError('unavailable', { cause: error }),
         )
       }
     })

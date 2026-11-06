@@ -9,6 +9,7 @@ import {
   type PluginUnavailableReason,
 } from '../../shared/plugin-settings'
 import { StringDecoder } from 'node:string_decoder'
+import { inspect } from 'node:util'
 import type { ChildProcess } from 'node:child_process'
 import { PluginSupervisorError, ownerDiagnosticLine } from './supervisor/protocol'
 
@@ -42,6 +43,8 @@ export class PluginSupervisorLaunchFailure extends Error {
   constructor(
     readonly diagnostic: PluginStartupDiagnostic,
     cause?: unknown,
+    /** Everything the service wrote to stderr so far, unchanged. */
+    readonly serviceStderr = '',
   ) {
     super('Plugin service launch failed', { cause })
   }
@@ -76,15 +79,23 @@ export function pluginStartupDiagnostic(error: unknown): PluginStartupDiagnostic
   }
   return undefined
 }
-/** Drain stderr without retaining more than its first bounded line or keeping Electron alive. */
+/**
+ * Forward the service's stderr unchanged to this process's stderr for as long as it runs, and keep
+ * up to 256 KiB of it for the startup log, without keeping Electron alive.
+ */
 export function observePluginSupervisorLaunch(child: ChildProcess, secrets: readonly string[]) {
   let stderr = ''
   const decoder = new StringDecoder('utf8')
   child.stderr?.on('data', (chunk: Buffer | string) => {
-    if (!/\S[^\n]*\n/.test(stderr) && stderr.length < 4096)
+    try {
+      process.stderr.write(chunk)
+    } catch {
+      /* Forwarding cannot change the launch. */
+    }
+    if (stderr.length < 256 * 1024)
       stderr += (typeof chunk === 'string' ? chunk : decoder.write(chunk)).slice(
         0,
-        4096 - stderr.length,
+        256 * 1024 - stderr.length,
       )
   })
   let ended = !child.stderr || child.stderr.readableEnded || child.stderr.destroyed
@@ -102,11 +113,19 @@ export function observePluginSupervisorLaunch(child: ChildProcess, secrets: read
   })
   ;(child.stderr as (NodeJS.ReadableStream & { unref?(): void }) | null)?.unref?.()
   const snapshot = () =>
-    new PluginSupervisorLaunchFailure({
-      exitCode: child.exitCode,
-      signal: child.signalCode,
-      stderr: pluginStartupStderr(stderr, secrets),
-    })
+    new PluginSupervisorLaunchFailure(
+      {
+        exitCode: child.exitCode,
+        signal: child.signalCode,
+        stderr: pluginStartupStderr(stderr, secrets),
+      },
+      undefined,
+      // Only the exact launch secrets are replaced; every other byte is kept as written.
+      secrets.reduce(
+        (text, secret) => (secret ? text.split(secret).join('[redacted]') : text),
+        stderr,
+      ),
+    )
   return Object.assign(snapshot, {
     async drainUntil(deadline: number): Promise<void> {
       if (ended) return
@@ -160,13 +179,14 @@ export function pluginStartupReason(
   }
   return fallback
 }
-/** Retain one bounded, readable failure. Only the bounded child diagnostic and recognized errno cross this boundary. */
+/** The plain notice, then the whole exception: its message, stack, every cause and any service stderr. */
 export async function recordPluginStartupFailure(
   root: string | undefined,
   reason: PluginUnavailableReason,
   error?: unknown,
 ): Promise<void> {
   const diagnostic = pluginStartupDiagnostic(error)
+  const original = error
   let code: string | undefined
   for (let depth = 0; depth < 6 && error && typeof error === 'object'; depth++) {
     const one = error as { code?: unknown; cause?: unknown }
@@ -178,11 +198,17 @@ export async function recordPluginStartupFailure(
     error = one.cause
   }
   const line = `[plugins] ${reason}: ${pluginUnavailableNotice(reason)}${code ? ` (${code})` : ''}${diagnostic ? ` ${pluginStartupDiagnosticNotice(diagnostic)}` : ''}`
+  const raw = original === undefined ? '' : inspect(original, { depth: 8, breakLength: Infinity })
   console.warn(line)
+  if (raw) console.warn(`[plugins] ${reason} error: ${raw}`)
   if (!root) return
   const temporary = join(root, `.plugin-startup-${randomUUID()}.log`)
   try {
-    await writeFile(temporary, `${new Date().toISOString()} ${line}\n`, { flag: 'wx', mode: 0o600 })
+    await writeFile(
+      temporary,
+      `${new Date().toISOString()} ${line}\n${raw ? `${raw.slice(0, 512 * 1024)}\n` : ''}`,
+      { flag: 'wx', mode: 0o600 },
+    )
     // Replacement never follows an existing diagnostic-file symlink.
     await rename(temporary, join(root, 'plugin-startup.log'))
   } catch {

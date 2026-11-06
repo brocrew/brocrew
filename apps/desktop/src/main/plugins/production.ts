@@ -64,6 +64,7 @@ export function productionPluginController() {
         acceptingBusy = { identity, since: now, observedAt: now, automaticFailures: 0 }
       else acceptingBusy.observedAt = now
     }
+    lastFailure = error
     failure = pluginStartupReason(error, reason)
     startupDiagnostic = pluginStartupDiagnostic(error)
     const root = diagnosticRoot,
@@ -188,8 +189,10 @@ export function productionPluginController() {
   let firstSettingsList = true
   let sourceVersion: 1 | 2 = 1
   let selectedCatalogueSource: string | undefined
+  // The last real startup or connection failure; a later refusal carries it as its cause.
+  let lastFailure: unknown
   const fail = (): never => {
-    throw new PluginSupervisorError('unavailable')
+    throw new PluginSupervisorError('unavailable', { cause: lastFailure })
   }
   let names: Readonly<Record<string, string>> = {}
   let loadCatalogue: (() => Promise<typeof catalogueEntries>) | undefined
