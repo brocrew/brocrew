@@ -3,9 +3,9 @@ import { linkTargetId } from './links'
 export interface MoveOffer {
   readonly destination: string
   readonly destinationName: string
-  readonly sourceOrdinal: number
-  readonly sourceGeneration: number
-  readonly sourceDigest: string
+  readonly sourceTurnId?: string
+  /** Older recorded offers named the same message by its ledger position. */
+  readonly sourceOrdinal?: number
 }
 
 export interface MoveOrigin {
@@ -60,18 +60,15 @@ export function moveOfferOf(value: unknown): MoveOffer | undefined {
     !record(value) ||
     !name(value.destination) ||
     !label(value.destinationName) ||
-    !ordinal(value.sourceOrdinal) ||
-    !ordinal(value.sourceGeneration) ||
-    typeof value.sourceDigest !== 'string' ||
-    !/^[0-9a-f]{64}$/.test(value.sourceDigest)
+    (!name(value.sourceTurnId) && !ordinal(value.sourceOrdinal))
   )
     return undefined
   return {
     destination: value.destination,
     destinationName: value.destinationName,
-    sourceOrdinal: value.sourceOrdinal,
-    sourceGeneration: value.sourceGeneration,
-    sourceDigest: value.sourceDigest,
+    ...(name(value.sourceTurnId)
+      ? { sourceTurnId: value.sourceTurnId }
+      : { sourceOrdinal: value.sourceOrdinal as number }),
   }
 }
 

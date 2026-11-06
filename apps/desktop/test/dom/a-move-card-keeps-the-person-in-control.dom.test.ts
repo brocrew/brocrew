@@ -31,9 +31,7 @@ import { mount, paneProps, record, unmountAll, visible } from './harness'
 const MOVE: MoveOffer = {
   destination: 'target',
   destinationName: 'W2 · Fictional release',
-  sourceOrdinal: 1,
-  sourceGeneration: 0,
-  sourceDigest: 'a'.repeat(64),
+  sourceTurnId: 'fictional-turn',
 }
 const reading = (): QuestionCardReading => ({
   move: MOVE,
