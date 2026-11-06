@@ -1,11 +1,12 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer, type Server, type ServerResponse } from 'node:http'
+import { createServer, type ServerResponse } from 'node:http'
 import { join } from 'node:path'
 import { createSdkMcpServer, query, tool, type SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { expect, it } from 'vitest'
 import { z } from 'zod'
 import { normalizeMessage, TOOL_SUMMARY_MAX } from '../src/claude/normalize'
 import { buildChildEnv } from '../src/internal/child-env'
+import { listenLoopback as listen } from './loopback-test-support'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
 import { runEvidence, runScratch } from './run-paths'
 
@@ -126,16 +127,6 @@ const deadline = probeRunDeadline(
   runBudgetMs(Object.keys(ARMS).flatMap(() => SERIAL_WAITS_MS)),
   TEARDOWN_MS,
 )
-
-async function listen(server: Server): Promise<number> {
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', resolve)
-  })
-  const address = server.address()
-  if (address === null || typeof address === 'string') throw new Error('no loopback port')
-  return address.port
-}
 
 /** The Messages API's streamed shape, one event at a time. */
 function sse(response: ServerResponse, events: readonly Record<string, unknown>[]): void {

@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { SpawnCodexTransport } from '../src/codex/codex-transport'
 import { bundledCodexBinary } from './bundled-codex'
+import { captureProviderStanza, listenLoopback } from './loopback-test-support'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
 import { runEvidence, runScratch } from './run-paths'
 
@@ -188,32 +189,18 @@ function completeResponse(response: ServerResponse, index: number): void {
 }
 
 function providerStanza(port: number): string {
-  return [
-    `model = "${MODEL}"`,
-    'model_provider = "capture"',
-    '',
-    '[model_providers.capture]',
-    'name = "BroBot 443 construction endpoint"',
-    `base_url = "http://127.0.0.1:${port}/v1"`,
-    'env_key = "BROBOT_443_CAPTURE_KEY"',
-    'request_max_retries = 0',
-    'stream_max_retries = 0',
-    '',
-  ].join('\n')
+  return captureProviderStanza(port, {
+    model: MODEL,
+    name: 'BroBot 443 construction endpoint',
+    envKey: 'BROBOT_443_CAPTURE_KEY',
+  })
 }
 
 async function listen(server: Server): Promise<number> {
-  await bounded(
-    'loopback listen',
-    HANDSHAKE_MS,
-    new Promise<void>((resolve, reject) => {
-      server.once('error', reject)
-      server.listen(0, '127.0.0.1', resolve)
-    }),
-  )
-  const address = server.address()
-  if (address === null || typeof address === 'string') throw new Error('no owned loopback port')
-  return address.port
+  return listenLoopback(server, {
+    waitForListening: (listening) => bounded('loopback listen', HANDSHAKE_MS, listening),
+    missingPortMessage: 'no owned loopback port',
+  })
 }
 
 /** ⚑ Rule 40: the port the child was CONFIGURED with, read back from the file it reads. */

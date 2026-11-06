@@ -1,5 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { dirname, join } from 'node:path'
 import { expect, it } from 'vitest'
 // 🔒 The same deep import `codex-memory-store.smoke.ts` justifies: `SpawnCodexTransport` is
@@ -11,6 +11,7 @@ import { SpawnCodexTransport } from '../src/codex/codex-transport'
 import { normalizeNotification } from '../src/codex/normalize'
 import { codexMemoryIndex, codexMemorySummary, ensureCodexMemoryConfig } from '../src/index'
 import { bundledCodexBinary } from './bundled-codex'
+import { captureProviderStanza, listenLoopback as listen } from './loopback-test-support'
 import { runEvidence, runScratch } from './run-paths'
 
 /**
@@ -73,28 +74,11 @@ const REPLY_CITED = [
 const REPLY_PLAIN = ANSWER
 
 function providerStanza(port: number): string {
-  return [
-    'model = "gpt-5.6-luna"',
-    'model_provider = "capture"',
-    '',
-    '[model_providers.capture]',
-    'name = "BroBot 318 answering endpoint"',
-    `base_url = "http://127.0.0.1:${port}/v1"`,
-    'env_key = "BROBOT_318_CAPTURE_KEY"',
-    'request_max_retries = 0',
-    'stream_max_retries = 0',
-    '',
-  ].join('\n')
-}
-
-async function listen(server: Server): Promise<number> {
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', resolve)
+  return captureProviderStanza(port, {
+    model: 'gpt-5.6-luna',
+    name: 'BroBot 318 answering endpoint',
+    envKey: 'BROBOT_318_CAPTURE_KEY',
   })
-  const address = server.address()
-  if (address === null || typeof address === 'string') throw new Error('no loopback port')
-  return address.port
 }
 
 /**

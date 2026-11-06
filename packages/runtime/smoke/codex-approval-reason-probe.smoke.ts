@@ -22,6 +22,7 @@ import {
   type CancelSeen,
 } from './approval-reason-evidence'
 import { bundledCodexBinary } from './bundled-codex'
+import { captureProviderStanza } from './loopback-test-support'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
 import { runEvidence, runScratch } from './run-paths'
 
@@ -415,20 +416,13 @@ function scriptedModel(script: ReadonlyMap<string, Action>): {
 }
 
 function providerStanza(port: number, features: boolean): string {
-  return [
-    `model = "${MODEL}"`,
-    'model_provider = "capture"',
-    '',
-    '[model_providers.capture]',
-    'name = "BroBot 709 approval-reason capture"',
-    `base_url = "http://127.0.0.1:${String(port)}/v1"`,
-    `env_key = "${KEY}"`,
-    'request_max_retries = 0',
-    'stream_max_retries = 0',
-    '',
-    // ⚑ **The one fact the second arm changes** — Codex's own feature, in the probe's own home.
-    ...(features ? ['[features]', 'request_permissions_tool = true', ''] : []),
-  ].join('\n')
+  const base = captureProviderStanza(port, {
+    model: MODEL,
+    name: 'BroBot 709 approval-reason capture',
+    envKey: KEY,
+  })
+  // The second arm changes Codex's feature in the probe's own home.
+  return base + (features ? '[features]\nrequest_permissions_tool = true\n' : '')
 }
 
 /** ⚑ Rule 40: the port the child is CONFIGURED with, read back from the file it reads. */

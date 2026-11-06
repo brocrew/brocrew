@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { join } from 'node:path'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
@@ -11,6 +11,7 @@ import { z } from 'zod'
 // the child environment, which `createSpawnTransportFactory` sanitizes away.
 import { SpawnCodexTransport } from '../src/codex/codex-transport'
 import { bundledCodexBinary } from './bundled-codex'
+import { captureProviderStanza, listenLoopback as listen } from './loopback-test-support'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
 import { runEvidence, runScratch } from './run-paths'
 
@@ -174,16 +175,6 @@ async function within<T>(what: string, promise: Promise<T>): Promise<T> {
   }
 }
 
-async function listen(server: Server): Promise<number> {
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', resolve)
-  })
-  const address = server.address()
-  if (address === null || typeof address === 'string') throw new Error('no loopback port')
-  return address.port
-}
-
 /** What the external MCP server did while an arm ran. */
 interface McpTraffic {
   /** Every JSON-RPC method the server was asked for, in order. */
@@ -312,18 +303,11 @@ async function startExternalMcpServer(
 
 /** The loopback model provider — one stanza, so the arms differ only in how the server is offered. */
 function providerStanza(port: number): string {
-  return [
-    'model = "gpt-5.6-luna"',
-    'model_provider = "capture"',
-    '',
-    '[model_providers.capture]',
-    'name = "BroBot 605 capture"',
-    `base_url = "http://127.0.0.1:${port}/v1"`,
-    'env_key = "BROBOT_605_CAPTURE_KEY"',
-    'request_max_retries = 0',
-    'stream_max_retries = 0',
-    '',
-  ].join('\n')
+  return captureProviderStanza(port, {
+    model: 'gpt-5.6-luna',
+    name: 'BroBot 605 capture',
+    envKey: 'BROBOT_605_CAPTURE_KEY',
+  })
 }
 
 /** How this arm offers the external server to the child. */

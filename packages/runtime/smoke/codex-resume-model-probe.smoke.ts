@@ -1,5 +1,5 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer, type Server, type ServerResponse } from 'node:http'
+import { createServer, type ServerResponse } from 'node:http'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 // 🔒 **A deep import, and deliberately** — `codex-dynamic-tools-probe.smoke.ts`'s reason, verbatim:
@@ -7,6 +7,7 @@ import { expect, it } from 'vitest'
 // environment, which `createSpawnTransportFactory` sanitizes away.
 import { SpawnCodexTransport } from '../src/codex/codex-transport'
 import { bundledCodexBinary } from './bundled-codex'
+import { captureProviderStanza, listenLoopback as listen } from './loopback-test-support'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
 import { runEvidence, runScratch } from './run-paths'
 
@@ -102,34 +103,17 @@ const deadline = probeRunDeadline(
 )
 
 function providerStanza(port: number): string {
-  return [
-    `model = "${M1}"`,
-    'model_provider = "capture"',
-    '',
-    '[model_providers.capture]',
-    'name = "BroBot 677 capture"',
-    `base_url = "http://127.0.0.1:${port}/v1"`,
-    'env_key = "BROBOT_677_CAPTURE_KEY"',
-    'request_max_retries = 0',
-    'stream_max_retries = 0',
-    '',
-  ].join('\n')
+  return captureProviderStanza(port, {
+    model: M1,
+    name: 'BroBot 677 capture',
+    envKey: 'BROBOT_677_CAPTURE_KEY',
+  })
 }
 
 /** ⚑ Rule 40: the port the child was CONFIGURED with, read back from the file it reads. */
 function configuredPortOf(config: string): number | null {
   const match = /^base_url = "http:\/\/127\.0\.0\.1:(\d+)\/v1"$/m.exec(config)
   return match === null ? null : Number(match[1])
-}
-
-async function listen(server: Server): Promise<number> {
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', resolve)
-  })
-  const address = server.address()
-  if (address === null || typeof address === 'string') throw new Error('no loopback port')
-  return address.port
 }
 
 /** A completed one-word turn — the shape `codex-tool-answer-probe`'s closing turn streams. */

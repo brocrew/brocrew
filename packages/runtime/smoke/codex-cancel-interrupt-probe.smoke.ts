@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer, type Server, type ServerResponse } from 'node:http'
+import { createServer, type ServerResponse } from 'node:http'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 // 🔒 **A deep import, and deliberately** — `codex-tool-answer-probe.smoke.ts`'s reason, verbatim:
@@ -7,6 +7,7 @@ import { expect, it } from 'vitest'
 // environment, which `createSpawnTransportFactory` sanitizes away.
 import { SpawnCodexTransport } from '../src/codex/codex-transport'
 import { bundledCodexBinary } from './bundled-codex'
+import { captureProviderStanza, listenLoopback as listen } from './loopback-test-support'
 import {
   bounded,
   readArm,
@@ -146,28 +147,11 @@ const EXEC_SOURCE_TWO = [
 ].join('\n')
 
 function providerStanza(port: number): string {
-  return [
-    'model = "gpt-5.6-luna"',
-    'model_provider = "capture"',
-    '',
-    '[model_providers.capture]',
-    'name = "BroBot 492 capture"',
-    `base_url = "http://127.0.0.1:${port}/v1"`,
-    'env_key = "BROBOT_492_CAPTURE_KEY"',
-    'request_max_retries = 0',
-    'stream_max_retries = 0',
-    '',
-  ].join('\n')
-}
-
-async function listen(server: Server): Promise<number> {
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', resolve)
+  return captureProviderStanza(port, {
+    model: 'gpt-5.6-luna',
+    name: 'BroBot 492 capture',
+    envKey: 'BROBOT_492_CAPTURE_KEY',
   })
-  const address = server.address()
-  if (address === null || typeof address === 'string') throw new Error('no loopback port')
-  return address.port
 }
 
 function usage(): Record<string, unknown> {
