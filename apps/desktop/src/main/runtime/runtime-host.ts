@@ -1,3 +1,4 @@
+import { ConversationIdle } from './conversation-idle'
 import {
   filesLibraryForWindow,
   teamProfileGraphForWindow,
@@ -5308,15 +5309,6 @@ const DEFAULT_DELIVERY_WAIT_MS = 15_000
 const DEFAULT_COMMAND_LIST_WAIT_MS = 5_000
 
 /**
- * How long a running conversation stays idle before this app stops its provider process. A running
- * process holds about 300 MB, so one minute frees it soon after an exchange ends; the next message to
- * a stopped conversation then waits a few seconds more while its history resumes. What counts as
- * idle is {@link RuntimeHost.idleEnoughToStop}'s rule, not this clock. A stop changes nothing about a
- * piece of work.
- */
-const DEFAULT_IDLE_STOP_AFTER_MS = 60_000
-
-/**
  * 🔴 **D-029 · how long before a one-shot fires its stopped conversation is started** (R1). ⚑ From
  * `05` §2: a stopped conversation's first output came 8.4–10.8 s after its message (10.0 s on a
  * 24 MB transcript), and its provider restores its jobs while it resumes that history, before any
@@ -6768,8 +6760,7 @@ export class RuntimeHost implements LiveHost {
   private readonly commandListWaitMs: number
   private readonly afterALimitResetsMs: number
   private readonly lookAtTheLimitAgainMs: number
-  /** ⚑ D-018 · see {@link DEFAULT_IDLE_STOP_AFTER_MS}. */
-  private readonly idleStopAfterMs: number
+  private readonly conversationIdle: ConversationIdle
   /** {@link RuntimeHostDeps.startGapMs}, or {@link RESTART_WAKE_GAP_MS}. */
   private readonly startGapMs: number
   /** The conversations a person archived ({@link RuntimeHostDeps.archived}). */
@@ -7063,14 +7054,6 @@ export class RuntimeHost implements LiveHost {
    * every conversation waiting on an answer, ⚑ or on work it gave out (D-036).
    */
   private rosterAsLastAnnounced: readonly AgentIdentity[] | null = null
-
-  /**
-   * 🔴 **D-018 · each running conversation's idle countdown, while it is idle** — armed by the flush
-   * that derives it idle ({@link sayWhatMoved}, {@link idleEnoughToStop}), dropped by every mark
-   * ({@link stateMayHaveMoved}) — the slot going is one — and run into {@link stopItIfStillIdle}.
-   * ⛔ One per conversation and never a sweep; it belongs to this host and dies with it.
-   */
-  private readonly idleCountdowns = new Map<string, ReturnType<typeof setTimeout>>()
 
   /**
    * 🔴 **D-029 · each stopped conversation's wake-up, while it holds jobs** — what its plan lists
@@ -7565,7 +7548,33 @@ export class RuntimeHost implements LiveHost {
     this.commandListWaitMs = deps.commandListWaitMs ?? DEFAULT_COMMAND_LIST_WAIT_MS
     this.afterALimitResetsMs = deps.afterALimitResetsMs ?? AFTER_THE_RESET_MS
     this.lookAtTheLimitAgainMs = deps.lookAtTheLimitAgainMs ?? LOOK_AT_THE_LIMIT_AGAIN_MS
-    this.idleStopAfterMs = deps.idleStopAfterMs ?? DEFAULT_IDLE_STOP_AFTER_MS
+    this.conversationIdle = new ConversationIdle(
+      {
+        closed: () => this.launches.closed,
+        isStillIdle: (conversation) => {
+          const state = this.stateOf(
+            conversation,
+            this.cardReads(),
+            rowsUnreadOnce(),
+            this.waitAsLastRead.get(conversation),
+            // ⚑ **D-036 · a helper's ledger that cannot be read is skipped and warned** (a note of its
+            // own, as {@link cardFor}'s), never the reason a stop is declined: waiting on the work it
+            // gave out is idle enough to stop ({@link idleEnoughToStop}).
+            this.workOutAsKept(this.oneWorkOutReadPerAnswer(rowsUnreadOnce())),
+            // ⚑ **F036 · read as kept** — owing an answer is idle enough to stop ({@link idleEnoughToStop}).
+            this.owedAsKept(
+              this.oneOwedReadPerAnswer(
+                this.ledgerAsKept(this.oneLedgerReadPerAnswer(rowsUnreadOnce())),
+              ),
+            ),
+          )
+          return this.idleEnoughToStop(conversation, state)
+        },
+        close: (conversation) => this.close(conversation, THE_APP_ITSELF),
+        errorMessage,
+      },
+      deps.idleStopAfterMs,
+    )
     this.startGapMs = deps.startGapMs ?? RESTART_WAKE_GAP_MS
     this.aProgramStartsAgainAfterMs =
       deps.aProgramStartsAgainAfterMs ?? A_PROGRAM_IS_STARTED_AGAIN_AFTER_MS
@@ -9736,11 +9745,7 @@ export class RuntimeHost implements LiveHost {
     this.moveThePersons()
     this.aServiceMayTakeItsNext(conversation)
     if (this.deps.statesMoved === undefined) return
-    const countdown = this.idleCountdowns.get(conversation)
-    if (countdown !== undefined) {
-      clearTimeout(countdown)
-      this.idleCountdowns.delete(conversation)
-    }
+    this.conversationIdle.cancel(conversation)
     this.statesToAsk.add(conversation)
     this.askTheFlush()
   }
@@ -10142,7 +10147,8 @@ export class RuntimeHost implements LiveHost {
         if (runs) this.waitAsLastRead.set(conversation, ledger)
         const state = this.stateOf(conversation, reads, unread, ledger, workOut, owed)
         // ⚑ **D-018 · counted from here while it is idle**, whatever the windows were last told.
-        if (this.idleEnoughToStop(conversation, state)) this.countTheIdleMinutes(conversation)
+        if (this.idleEnoughToStop(conversation, state))
+          this.conversationIdle.countTheIdleMinutes(conversation)
         const limits = this.providerBlockDisclosure(conversation)
         const said = JSON.stringify({ state, ...limits })
         if (this.stateSaid.get(conversation) === said) continue
@@ -10220,76 +10226,6 @@ export class RuntimeHost implements LiveHost {
         return []
       }
     })
-  }
-
-  /**
-   * ⚑ **D-018 · arm its idle countdown** ({@link idleCountdowns}) — the mark that asked for this
-   * flush already dropped any earlier one.
-   */
-  private countTheIdleMinutes(conversation: string): void {
-    const countdown = setTimeout(
-      () => void this.stopItIfStillIdle(conversation, countdown),
-      this.idleStopAfterMs,
-    )
-    // ⛔ Never the reason this process stays alive — {@link awaitLaunch}'s bound's idiom.
-    if (typeof countdown.unref === 'function') countdown.unref()
-    this.idleCountdowns.set(conversation, countdown)
-  }
-
-  /**
-   * 🔴 **D-018 · a countdown ran out: stop the process if nothing moved and it is still idle** —
-   * through the conversation's own close ({@link close}, {@link THE_APP_ITSELF}), the one a quit
-   * uses.
-   *
-   * ⛔ **A countdown a mark dropped says nothing**: it is no longer this conversation's, so
-   * something moved since it was armed. ⛔ **Nor once a quit has begun**
-   * ({@link LaunchRegistry.closed}): the quit stops every process itself, and the database is
-   * closing. ⚑ The one state is derived again at this instant, and {@link idleEnoughToStop}
-   * re-reads what it does not carry.
-   *
-   * ⚑ The provider writes `session: ended` and `status: ended`, the row's status is recorded, the
-   * slot goes and every window is told — D-019's marks and `conversations`. ⛔ No row of this app's,
-   * and no piece moves (D-016c). ⚑ Its next message starts it again (D-017 · R1).
-   */
-  private async stopItIfStillIdle(
-    conversation: string,
-    countdown: ReturnType<typeof setTimeout>,
-  ): Promise<void> {
-    if (this.launches.closed || this.idleCountdowns.get(conversation) !== countdown) return
-    this.idleCountdowns.delete(conversation)
-    try {
-      const state = this.stateOf(
-        conversation,
-        this.cardReads(),
-        rowsUnreadOnce(),
-        this.waitAsLastRead.get(conversation),
-        // ⚑ **D-036 · a helper's ledger that cannot be read is skipped and warned** (a note of its
-        // own, as {@link cardFor}'s), never the reason a stop is declined: waiting on the work it
-        // gave out is idle enough to stop ({@link idleEnoughToStop}).
-        this.workOutAsKept(this.oneWorkOutReadPerAnswer(rowsUnreadOnce())),
-        // ⚑ **F036 · read as kept** — owing an answer is idle enough to stop ({@link idleEnoughToStop}).
-        this.owedAsKept(
-          this.oneOwedReadPerAnswer(
-            this.ledgerAsKept(this.oneLedgerReadPerAnswer(rowsUnreadOnce())),
-          ),
-        ),
-      )
-      if (!this.idleEnoughToStop(conversation, state)) return
-    } catch (error) {
-      console.warn(
-        `runtime host could not tell whether ${conversation} is still idle: ${errorMessage(error)}`,
-      )
-      return
-    }
-    console.info(
-      `runtime host: ${conversation} was idle for ${this.idleStopAfterMs}ms — stopping its ` +
-        'process; its next message starts it again',
-    )
-    try {
-      await this.close(conversation, THE_APP_ITSELF)
-    } catch (error) {
-      console.warn(`runtime host could not stop ${conversation}, idle: ${errorMessage(error)}`)
-    }
   }
 
   /**
@@ -36737,7 +36673,6 @@ export class RuntimeHost implements LiveHost {
   private forgetTheConversations(ids: readonly string[]): void {
     const gone = new Set(ids)
     const keptByConversation: readonly { delete(id: string): boolean }[] = [
-      this.idleCountdowns,
       this.statesToAsk,
       this.stateSaid,
       this.waitAsLastRead,
@@ -36788,8 +36723,7 @@ export class RuntimeHost implements LiveHost {
       this.moveTheListing()
       this.providerBlockSaid.delete(id)
       this.forgetItsWakeUp(id)
-      const countdown = this.idleCountdowns.get(id)
-      if (countdown !== undefined) clearTimeout(countdown)
+      this.conversationIdle.cancel(id)
       for (const kept of keptByConversation) kept.delete(id)
       this.routedTo?.delete(id)
     }
