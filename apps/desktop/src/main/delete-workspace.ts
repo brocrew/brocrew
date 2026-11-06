@@ -6,7 +6,6 @@ import type { WorkspaceDeleted, WorkspaceDeleteVerdict } from '../shared/workspa
 import {
   DRAFTS_PART,
   EXPORTS_DIRNAME,
-  GATE_PRIVATE,
   MANIFEST,
   UPDATE_SETTINGS_PART,
   WORKSPACES_PART,
@@ -49,7 +48,7 @@ import { asStartedOn, BROBOT_FOLDER_SIGNS, forgetWorkspace, isBroBotsFolder } fr
 const BROBOTS_OWN = new Set(MANIFEST.map((entry) => entry.name))
 /** The instructions BroBot writes into a workspace's working folder: not the person's. */
 const INSTRUCTIONS = new Set(workspaceInstructionNames)
-const BROBOTS_OWN_PARTS = [DRAFTS_PART, UPDATE_SETTINGS_PART, WORKSPACES_PART, GATE_PRIVATE]
+const BROBOTS_OWN_PARTS = [DRAFTS_PART, UPDATE_SETTINGS_PART, WORKSPACES_PART]
 
 /**
  * ⚑ **What the browser BroBot is built on writes at the top of its data folder** — Chromium's

@@ -304,7 +304,6 @@ describe('§4 · who spells a quit:check verdict', () => {
     const tick = spelling('quit:check ✔')
     const stopped = spelling('quit:check ⚠️')
     expect([...new Set([...tick, ...stopped])].sort()).toEqual([
-      'apps/desktop/test/one-app.test.ts',
       'scripts/app-closes-check.mjs',
       'scripts/lib/quit-verdict.mjs',
       // ⚑ **The mutation table is a reader too**, and the census found it rather than being told:

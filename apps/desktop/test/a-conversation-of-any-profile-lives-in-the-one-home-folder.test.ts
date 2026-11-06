@@ -294,7 +294,7 @@ function times(haystack: string, needle: string): number {
 // The provider's bound home strategy prepares the profile it is given. The binding gets its paths
 // from the same pure facade as the read seam; neither call invents another layout.
 const PREPARE_SEAM =
-  'prepareProviderHome: async (provider, profileId) => { await transcriptRetention?.beforeLaunch() return providerModules[provider].home.prepare(profileId) },'
+  'prepareProviderHome: async (provider, profileId) => { transcriptRetention?.beforeLaunch() return providerModules[provider].home.prepare(profileId) },'
 const MODULE_PATHS =
   'const providerModules = createProviderModules((provider) => homePathsForProvider(userData, provider),'
 const PATH_SEAM =
