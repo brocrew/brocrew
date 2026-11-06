@@ -1,3 +1,4 @@
+import { ToolWatchingRuntime } from './lib/provider-double'
 import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -5,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { AgentToolset, StartOptions } from '@brobot2/runtime'
+import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
@@ -555,21 +556,6 @@ describe('D-017 · agent-tools.ts, by its source', () => {
 })
 
 /* ══════════════════ §7 · a healthy record never claims it could not be read ══════════════════ */
-
-class ToolWatchingRuntime extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handed: AgentToolset[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-    const handle = await super.start(options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
-  }
-}
 
 describe('D-017 · a healthy record never claims it could not be read', () => {
   let userData: string
