@@ -1,3 +1,4 @@
+import { collect as consume } from '../test/support/event-stream'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -7,7 +8,6 @@ import {
   claudeKeychainTokenProvider,
   provisionProviderHome,
   type RuntimeEvent,
-  type SessionHandle,
 } from '../src/index'
 
 /**
@@ -48,12 +48,6 @@ import {
 const CHEAP_CLAUDE = 'claude-haiku-4-5-20251001'
 /** The SDK's own floor for `Settings.autoCompactWindow`: an integer of at least 100,000. */
 const AUTO_COMPACT_WINDOW = 100_000
-
-function consume(handle: SessionHandle, sink: RuntimeEvent[]): Promise<void> {
-  return (async () => {
-    for await (const event of handle.events()) sink.push(event)
-  })()
-}
 
 async function waitFor(pred: () => boolean, timeoutMs: number, label: string): Promise<void> {
   const start = Date.now()

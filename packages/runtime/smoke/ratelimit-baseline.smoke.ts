@@ -1,3 +1,4 @@
+import { collect as consume } from '../test/support/event-stream'
 import { mkdirSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -15,7 +16,6 @@ import {
   type CodexIncoming,
   type CodexTransport,
   type RuntimeEvent,
-  type SessionHandle,
   type TransportFactory,
 } from '../src/index'
 import { bundledCodexTransportFactory } from './bundled-codex'
@@ -52,12 +52,6 @@ interface Exchange {
   method: string
   result?: unknown
   error?: string
-}
-
-function consume(handle: SessionHandle, sink: RuntimeEvent[]): Promise<void> {
-  return (async () => {
-    for await (const event of handle.events()) sink.push(event)
-  })()
 }
 
 async function waitFor(pred: () => boolean, timeoutMs: number, label: string): Promise<void> {

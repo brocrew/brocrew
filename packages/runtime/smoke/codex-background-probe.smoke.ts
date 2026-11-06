@@ -1,3 +1,4 @@
+import { collect as consume } from '../test/support/event-stream'
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -190,12 +191,6 @@ function teedFactory(seen: string[], hold: { transport?: CodexTransport }) {
       },
     }
   }
-}
-
-function consume(handle: SessionHandle, sink: RuntimeEvent[]): Promise<void> {
-  return (async () => {
-    for await (const event of handle.events()) sink.push(event)
-  })()
 }
 
 /** One `terminate`, rendered as the sentence it settled to — resolved value or rejection message. */

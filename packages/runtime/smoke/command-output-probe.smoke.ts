@@ -1,3 +1,4 @@
+import { collect as consume } from '../test/support/event-stream'
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -19,7 +20,6 @@ import {
   type CodexLaunchContext,
   type CodexTransport,
   type RuntimeEvent,
-  type SessionHandle,
 } from '../src/index'
 import { buildChildEnv } from '../src/internal/child-env'
 import { bundledCodexBinary, bundledCodexTransportFactory } from './bundled-codex'
@@ -198,12 +198,6 @@ function anyProcessMatching(pattern: string): number[] {
   } catch {
     return []
   }
-}
-
-function consume(handle: SessionHandle, sink: RuntimeEvent[]): Promise<void> {
-  return (async () => {
-    for await (const event of handle.events()) sink.push(event)
-  })()
 }
 
 function str(source: unknown, key: string): string {

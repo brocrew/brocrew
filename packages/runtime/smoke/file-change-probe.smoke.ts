@@ -1,3 +1,4 @@
+import { collect as consume } from '../test/support/event-stream'
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -11,7 +12,6 @@ import {
   type CodexIncoming,
   type CodexTransport,
   type RuntimeEvent,
-  type SessionHandle,
   type TransportFactory,
 } from '../src/index'
 import { bundledCodexTransportFactory } from './bundled-codex'
@@ -72,12 +72,6 @@ function teeing(inner: TransportFactory, sink: Map<string, number>): TransportFa
       },
     }) as CodexTransport
   }
-}
-
-function consume(handle: SessionHandle, sink: RuntimeEvent[]): Promise<void> {
-  return (async () => {
-    for await (const event of handle.events()) sink.push(event)
-  })()
 }
 
 async function waitFor(pred: () => boolean, timeoutMs: number, label: string): Promise<void> {

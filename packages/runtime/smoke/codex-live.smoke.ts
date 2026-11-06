@@ -1,3 +1,4 @@
+import { collect as consume } from '../test/support/event-stream'
 import {
   appendFileSync,
   existsSync,
@@ -84,11 +85,6 @@ function record(line: string, pass: boolean, evidence: string): void {
   appendFileSync(LOG, `${line_}\n`)
 }
 
-function consume(handle: SessionHandle, sink: RuntimeEvent[]): Promise<void> {
-  return (async () => {
-    for await (const event of handle.events()) sink.push(event)
-  })()
-}
 async function waitFor(
   pred: () => boolean,
   timeoutMs = TURN_MS,

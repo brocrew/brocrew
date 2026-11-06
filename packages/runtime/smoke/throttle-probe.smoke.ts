@@ -1,3 +1,4 @@
+import { collect as consume } from '../test/support/event-stream'
 import { mkdirSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -19,7 +20,6 @@ import {
   type CodexTransport,
   type QueryFactory,
   type RuntimeEvent,
-  type SessionHandle,
   type TransportFactory,
 } from '../src/index'
 import { bundledCodexTransportFactory } from './bundled-codex'
@@ -58,12 +58,6 @@ const CHEAP_CLAUDE = 'haiku'
 
 /** The one field the Codex gate reads for the wall — set on the injected copy, absent on the real one. */
 const INJECTED_REACHED = 'rate_limit_reached'
-
-function consume(handle: SessionHandle, sink: RuntimeEvent[]): Promise<void> {
-  return (async () => {
-    for await (const event of handle.events()) sink.push(event)
-  })()
-}
 
 async function waitFor(pred: () => boolean, timeoutMs: number, label: string): Promise<void> {
   const start = Date.now()

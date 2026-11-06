@@ -1,3 +1,4 @@
+import { collect as consume } from '../test/support/event-stream'
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
@@ -16,7 +17,6 @@ import {
   type CodexIncoming,
   type CodexTransport,
   type RuntimeEvent,
-  type SessionHandle,
   type TransportFactory,
 } from '../src/index'
 import { bundledCodexTransportFactory } from './bundled-codex'
@@ -211,12 +211,6 @@ function perms(events: RuntimeEvent[]): Extract<RuntimeEvent, { type: 'permissio
     (e): e is Extract<RuntimeEvent, { type: 'permission_request' }> =>
       e.type === 'permission_request',
   )
-}
-
-function consume(handle: SessionHandle, sink: RuntimeEvent[]): Promise<void> {
-  return (async () => {
-    for await (const event of handle.events()) sink.push(event)
-  })()
 }
 
 async function waitFor(pred: () => boolean, timeoutMs: number, label: string): Promise<void> {
