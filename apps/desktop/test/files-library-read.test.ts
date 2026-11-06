@@ -1,6 +1,7 @@
 import { afterEach, expect, it } from 'vitest'
 import { createHash } from 'node:crypto'
 import { serialize } from 'node:v8'
+import { FilesLibraryEngine } from '../src/main/db/files-library-engine'
 import {
   filesLibraryFixture,
   libraryContext,
@@ -297,6 +298,33 @@ it('has deterministic name and time comparison policies', () => {
     .sort((a, b) => compareLibraryFiles(a, b, 'name'))
     .map((row) => row.name)
   expect(sorted).toEqual(['😀.md', 'e.md', 'E.md', 'é.md', '\ue000.md'])
+})
+
+it('finishes the established SQLite snapshot across an external commit and sees it on a new read', () => {
+  const f = fixture()
+  f.owner('a')
+  const root = f.store.rootOf('a')!.piece
+  f.keep('before', root, sha('before'))
+  let committed = false
+  // The engine establishes its snapshot with the schema SELECT before the first traced query.
+  const engine = new FilesLibraryEngine(f.file, Date.now, () => {
+    if (committed) return
+    committed = true
+    f.keep('after', root, sha('after'))
+  })
+  try {
+    const first = files(engine.read({ operation: 'query', query: workspaceQuery }, libraryContext))
+    expect(committed).toBe(true)
+    expect([first.totalFiles, first.totalKeeps]).toEqual([1, 1])
+    expect(first.files.map((one) => one.file.sha256)).toEqual([sha('before')])
+    const next = files(engine.read({ operation: 'query', query: workspaceQuery }, libraryContext))
+    expect([next.totalFiles, next.totalKeeps]).toEqual([2, 2])
+    expect(new Set(next.files.map((one) => one.file.sha256))).toEqual(
+      new Set([sha('before'), sha('after')]),
+    )
+  } finally {
+    engine.close()
+  }
 })
 
 it('pages unique groups across interleaved keeps and preserves an immutable population after writes', () => {
