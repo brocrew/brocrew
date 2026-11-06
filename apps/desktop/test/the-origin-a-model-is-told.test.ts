@@ -1,4 +1,3 @@
-import { RecordingSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -12,7 +11,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import type { Caller } from './helpers/giver-notice-host'
+import type { Caller, RuntimeEventSink } from './helpers/giver-notice-host'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import {
@@ -26,6 +25,7 @@ import { messageNamingThePiece } from '../src/main/runtime/reply-rails'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { agentName } from '../src/shared/runtime-ipc'
 import type { WhereTheSenderStands } from '../src/main/runtime/turn-origin'
 import { theOwnerOf } from '../src/shared/piece-called'
@@ -107,6 +107,17 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
   throw new Error(`timed out waiting for ${what}`)
+}
+
+class RecordingSink implements RuntimeEventSink {
+  readonly aPersonIsBehindIt = true
+  readonly messages: RuntimeEventMessage[] = []
+  alive = true
+  constructor(readonly ownerId: string) {}
+  send(message: RuntimeEventMessage): void {
+    this.messages.push(message)
+  }
+  sendLiveness(): void {}
 }
 
 class ProviderDouble extends FakeRuntime {
