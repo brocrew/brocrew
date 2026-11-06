@@ -103,6 +103,11 @@ const listMessage = computed(() => {
   }
 })
 const unavailable = 'Plugin unavailable. Try again.'
+/** The refusal with what actually went wrong, when main said so. */
+function refusal(answer: PluginSettingsReply): string {
+  const detail = !answer.ok && 'detail' in answer ? answer.detail : undefined
+  return detail && detail !== unavailable ? `${unavailable} ${detail}` : unavailable
+}
 const failedRetries = ref(new Set<string>())
 const cannotStart = (card: PluginCard) => card.state === 'Unavailable'
 async function restartChrome() {
@@ -114,7 +119,7 @@ async function restartChrome() {
   if (!alive) return
   busy.value = false
   if (answer.ok && answer.cards) cards.value = answer.cards
-  else error.value = unavailable
+  else error.value = refusal(answer)
 }
 async function retry(card: PluginCard) {
   if (busy.value) return
@@ -237,7 +242,7 @@ async function preview(action: 'install' | 'update', card: PluginCard) {
     error.value =
       !answer.ok && 'mutationFailure' in answer && answer.mutationFailure
         ? pluginMutationFailureNotice(answer.mutationFailure)
-        : unavailable
+        : refusal(answer)
 }
 async function cancelReview() {
   reviews.value.clear()
@@ -288,7 +293,7 @@ async function change(kind: 'install' | 'update' | 'uninstall', card: PluginCard
     error.value =
       guarded && !answer.ok && 'mutationFailure' in answer && answer.mutationFailure
         ? pluginMutationFailureNotice(answer.mutationFailure)
-        : unavailable
+        : refusal(answer)
     if (guarded) {
       const listed = await request({ kind: 'list' })
       if (alive && listed.ok && listed.cards) cards.value = listed.cards

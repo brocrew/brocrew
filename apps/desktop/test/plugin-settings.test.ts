@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { EventEmitter } from 'node:events'
 import { ManagedPluginFailure } from '@brobot2/runtime'
+import { PluginVerificationError } from '../src/main/plugins/verification-error'
 import { registerPluginSettings, type PluginSettingsController } from '../src/main/plugins/settings'
 import { chromeUiFixture, FICTIONAL_CHROME } from './chrome-ui-fixture'
 import { pluginsBridge } from '../src/preload/plugins'
@@ -75,34 +76,65 @@ function setup(available = false, missing = false) {
 const screenId = '00000000-0000-0000-0000-000000000001'
 const nextScreenId = '00000000-0000-0000-0000-000000000002'
 const bounds = { x: 260, y: 240, width: 860, height: 500 }
-it('the shared Settings catch returns its known stage and cause, never an error body', async () => {
+it('the shared Settings catch keeps its typed refusal and shows the real error, stack and codes', async () => {
   const f = setup()
-  vi.mocked(f.controller.catalogue).mockRejectedValueOnce(
-    Object.assign(new Error('http://fictional.private/mcp Authorization=private-body'), {
-      code: 'EACCES',
-    }),
-  )
+  const error = Object.assign(new Error('fictional permission denied on /fictional/state'), {
+    code: 'EACCES',
+  })
+  vi.mocked(f.controller.catalogue).mockRejectedValueOnce(error)
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
   const answer = await f.call({ kind: 'status' })
-  expect(answer).toEqual({
+  expect(answer).toMatchObject({
     ok: false,
     error: 'Plugin unavailable. Try again.',
-    detail: 'Plugin unavailable at plugin-settings: io-denied.',
+    detail: 'fictional permission denied on /fictional/state',
+    codes: ['EACCES'],
+    stage: 'plugin-settings',
+    cause: 'io-denied',
   })
-  expect(JSON.stringify(answer)).not.toMatch(/fictional.private|private-body|Authorization/)
+  const { stack } = answer as { stack: string }
+  expect(stack).toContain('Error: fictional permission denied on /fictional/state')
+  expect(stack).toMatch(/\n\s+at /)
+  // The same stack reaches the app's own log.
+  expect(errors).toHaveBeenCalledWith('[plugins] settings-request-failed', stack)
+  errors.mockRestore()
 })
-it('the shared Settings catch preserves an already known originating stage', async () => {
+it('the shared Settings catch keeps a wrapped pre-install digest refusal word for word', async () => {
   const f = setup()
   vi.mocked(f.controller.catalogue).mockRejectedValueOnce(
-    Object.assign(new Error('outer private body'), {
+    new Error('The package files do not match the selected bytes.', {
+      cause: new PluginVerificationError('digest'),
+    }),
+  )
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  const answer = (await f.call({ kind: 'status' })) as Record<string, unknown>
+  expect(answer).toMatchObject({
+    ok: false,
+    error: 'Plugin unavailable. Try again.',
+    detail: 'The package files do not match the selected bytes.',
+    codes: ['digest'],
+  })
+  expect(answer.stack).toContain('[cause]: PluginVerificationError')
+  vi.mocked(console.error).mockRestore()
+})
+it('the shared Settings catch preserves an already known originating stage and its real message', async () => {
+  const f = setup()
+  vi.mocked(f.controller.catalogue).mockRejectedValueOnce(
+    Object.assign(new Error('outer fictional body'), {
       code: 'unavailable',
       cause: new ManagedPluginFailure('owner-features', 'timeout'),
     }),
   )
-  expect(await f.call({ kind: 'status' })).toEqual({
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  expect(await f.call({ kind: 'status' })).toMatchObject({
     ok: false,
     error: 'Plugin unavailable. Try again.',
-    detail: 'Plugin unavailable at owner-features: timeout.',
+    detail: 'outer fictional body',
+    codes: ['unavailable'],
+    stage: 'owner-features',
+    cause: 'timeout',
   })
+  vi.mocked(console.error).mockRestore()
 })
 it('the fixed preload carries only the request and only a bounded screen identity in lifecycle notifications', async () => {
   const ipc = { invoke: vi.fn(async () => ({ ok: true, cards: [] })), on: vi.fn(), off: vi.fn() },
@@ -315,10 +347,11 @@ it('Try again uses the existing catalogue/connect path and never invokes install
   f.controller.retry = vi.fn(async () => {
     throw new Error('fictional-private-owner-stack')
   })
-  expect(await f.call({ kind: 'retry', id: 'chrome' })).toEqual({
+  expect(await f.call({ kind: 'retry', id: 'chrome' })).toMatchObject({
     ok: false,
     error: 'Plugin unavailable. Try again.',
-    detail: 'Plugin unavailable at plugin-settings: unknown.',
+    stage: 'plugin-settings',
+    cause: 'unknown',
   })
 })
 

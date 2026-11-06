@@ -66,6 +66,8 @@ export interface PluginToolFailureDetail {
   stage: PluginFailureStage
   cause: PluginFailureCause
   correlation: string
+  /** The real messages of the errors behind it, outermost first. */
+  reason?: string
 }
 export type PluginToolDiagnostic = (
   reason: PluginToolFailureReason,
@@ -85,7 +87,7 @@ export function reportPluginToolFailure(
     /* A diagnostic cannot change a call or its proof. */
   }
 }
-/** Fixed reason words only. Detached supervisor stdio is not retained. */
+/** One line per failure, with the real error messages when they are known. */
 export function recordPluginToolFailure(
   root: string,
   pluginId: string,
@@ -112,7 +114,7 @@ export function recordPluginToolFailure(
         { pluginStage: detail.stage, pluginCause: detail.cause },
         'route-open',
       )
-      context = ` stage=${safe.pluginStage} cause=${safe.pluginCause} correlation=${detail.correlation}`
+      context = ` stage=${safe.pluginStage} cause=${safe.pluginCause} correlation=${detail.correlation}${detail.reason ? ` error=${JSON.stringify(detail.reason)}` : ''}`
     }
     const line = `${new Date().toISOString()} [plugins] tool-failure plugin=${pluginId} reason=${reason}${context}\n`
     // Keep accepting new reasons after the bounded history fills, without following another name.

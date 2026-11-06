@@ -412,6 +412,7 @@ export function createLifecycleAgentBridge(options: {
             stage: failure.pluginStage,
             cause: failure.pluginCause,
             correlation: randomUUID(),
+            reason: failure.pluginReason,
           }
           bindingFailures.set(bindingWork, detail)
           reportPluginToolFailure(report, 'binding-failed', detail)
@@ -466,6 +467,7 @@ export function createLifecycleAgentBridge(options: {
           stage: failure.pluginStage,
           cause: failure.pluginCause,
           correlation: randomUUID(),
+          reason: failure.pluginReason,
         }
         reportPluginToolFailure(
           diagnostic(id),

@@ -472,7 +472,7 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       expect((await f.controller.status()).cards[0]).not.toHaveProperty('toolsUnavailable')
     },
   )
-  it('records binding failure as a closed refusal without downstream names or error text', async () => {
+  it('records binding failure once with its stage, cause and real error message', async () => {
     const f = await live()
     const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
     f.binding.mockRejectedValueOnce(new Error('fictional-private-downstream-name'))
@@ -487,9 +487,9 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
         stage: 'route-binding',
         cause: 'unknown',
         correlation: expect.stringMatching(/^[a-f0-9-]{36}$/),
+        reason: 'fictional-private-downstream-name',
       })
       expect(failures[1]![2]).toEqual(failures[0]![2])
-      expect(JSON.stringify(failures)).not.toContain('fictional-private-downstream-name')
     } finally {
       log.mockRestore()
     }

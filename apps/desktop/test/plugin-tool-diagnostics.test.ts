@@ -61,6 +61,20 @@ it('persists a fixed origin stage and correlation but refuses arbitrary diagnost
   expect(readFileSync(f.path, 'utf8')).not.toMatch(/fictional-private-text|raw-body/)
   expect(readFileSync(f.path, 'utf8')).toContain('stage=route-open cause=unknown')
 })
+it('writes the real error messages on the same single line', () => {
+  const f = fixture()
+  recordPluginToolFailure(f.root, 'chrome', 'binding-failed', {
+    stage: 'binding-connect',
+    cause: 'io-denied',
+    correlation: '11111111-2222-4333-8444-555555555555',
+    reason: 'fictional connect refused\n    at line two <- inner fictional cause',
+  })
+  const lines = readFileSync(f.path, 'utf8').trimEnd().split('\n')
+  expect(lines).toHaveLength(1)
+  expect(lines[0]).toContain(
+    'stage=binding-connect cause=io-denied correlation=11111111-2222-4333-8444-555555555555 error="fictional connect refused\\n    at line two <- inner fictional cause"',
+  )
+})
 it.skipIf(process.platform === 'win32')(
   'does not write through symbolic or hard links or a public file',
   () => {
