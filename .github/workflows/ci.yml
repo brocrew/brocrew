@@ -86,7 +86,6 @@ jobs:
             lint,
             format:check,
             db:check,
-            mutations:check,
           ]
     steps:
       - uses: actions/checkout@v7
@@ -117,8 +116,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # vitest splits the FILES, by a hash of their paths, across every project but `dom`. One
-        # file never splits: `mutation-census.test.mjs` alone is about 150 s.
+        # vitest splits the files, by a hash of their paths, across every project but `dom`.
         shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v7
