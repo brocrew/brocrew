@@ -1,3 +1,4 @@
+import { collect as consume } from '../test/support/event-stream'
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -293,12 +294,6 @@ function teedFactory(
     hold.transport = teed
     return teed
   }
-}
-
-function consume(handle: SessionHandle, sink: RuntimeEvent[]): Promise<void> {
-  return (async () => {
-    for await (const event of handle.events()) sink.push(event)
-  })()
 }
 
 /** One `turn/steer`, rendered as the sentence it settled to — resolved value or rejection message. */

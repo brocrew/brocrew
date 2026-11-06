@@ -1,3 +1,4 @@
+import { collect } from './support/event-stream'
 import { EventEmitter } from 'node:events'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -272,12 +273,6 @@ const RUNTIME_MEMBERS: Record<RequiredRuntimeMember, string> = {
   start: 'open a fresh session',
   resume: 'reopen a persisted one, honestly (001 decision 5)',
   listModels: 'what this login may run today (058)',
-}
-
-function collect(handle: SessionHandle, sink: RuntimeEvent[]): Promise<void> {
-  return (async () => {
-    for await (const event of handle.events()) sink.push(event)
-  })()
 }
 
 async function waitUntil(

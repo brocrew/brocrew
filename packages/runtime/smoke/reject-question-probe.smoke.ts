@@ -1,3 +1,4 @@
+import { collect as consume } from '../test/support/event-stream'
 import { mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -9,7 +10,6 @@ import {
   type ClaudeQuery,
   type QueryFactory,
   type RuntimeEvent,
-  type SessionHandle,
 } from '../src/index'
 
 /**
@@ -119,12 +119,6 @@ function teeing(sink: Frame[], factory: QueryFactory): QueryFactory {
     }
     return wrapper
   }
-}
-
-function consume(handle: SessionHandle, sink: RuntimeEvent[]): Promise<void> {
-  return (async () => {
-    for await (const event of handle.events()) sink.push(event)
-  })()
 }
 
 async function waitFor(pred: () => boolean, timeoutMs: number, label: string): Promise<void> {

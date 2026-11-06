@@ -1,3 +1,4 @@
+import { collect as consume } from '../test/support/event-stream'
 import { mkdirSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -21,7 +22,6 @@ import {
   type AgentInfo,
   type ClaudeQuery,
   type RuntimeEvent,
-  type SessionHandle,
   type SessionRef,
 } from '../src/index'
 
@@ -60,12 +60,6 @@ const ASK = 'Reply with exactly one word: READY'
 const TURN_MS = 300_000
 
 /** Drain a handle's events into `sink`, answering nothing — no turn here needs a tool. */
-function consume(handle: SessionHandle, sink: RuntimeEvent[]): Promise<void> {
-  return (async () => {
-    for await (const event of handle.events()) sink.push(event)
-  })()
-}
-
 async function waitFor(pred: () => boolean, label: string): Promise<void> {
   const start = Date.now()
   while (!pred()) {

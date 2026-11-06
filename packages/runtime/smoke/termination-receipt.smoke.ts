@@ -1,3 +1,4 @@
+import { collect as consume } from '../test/support/event-stream'
 import { spawn } from 'node:child_process'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -57,12 +58,6 @@ function isAlive(pid: number): boolean {
   } catch {
     return false
   }
-}
-
-function consume(handle: SessionHandle, sink: RuntimeEvent[]): Promise<void> {
-  return (async () => {
-    for await (const event of handle.events()) sink.push(event)
-  })()
 }
 
 async function waitFor(pred: () => boolean, timeoutMs: number, label: string): Promise<void> {

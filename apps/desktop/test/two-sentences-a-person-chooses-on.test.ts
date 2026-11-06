@@ -1,3 +1,4 @@
+import { collect } from '../../../packages/runtime/test/support/event-stream'
 import { readFileSync } from 'node:fs'
 import type { CanUseTool, Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { describe, expect, it } from 'vitest'
@@ -202,15 +203,6 @@ async function waitUntil(pred: () => boolean, label: string, timeoutMs = 3000): 
     if (Date.now() - start > timeoutMs) throw new Error(`timed out waiting for ${label}`)
     await new Promise((resolve) => setTimeout(resolve, 5))
   }
-}
-
-function collect(
-  handle: { events(): AsyncIterable<RuntimeEvent> },
-  sink: RuntimeEvent[],
-): Promise<void> {
-  return (async () => {
-    for await (const event of handle.events()) sink.push(event)
-  })()
 }
 
 /** The newest `user_input_request` this window saw, narrowed — the shape §3 and §4 assert on. */
