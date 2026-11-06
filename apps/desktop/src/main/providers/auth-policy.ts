@@ -3,7 +3,7 @@ import type { ProviderSetup, SessionAccount, SessionHandle } from '@brobot2/runt
 
 export type IdentityHandle = Pick<SessionHandle, 'account' | 'signInTag'>
 
-/** Raw facts only; the host owns account waits, salts and persisted identity prefixes. */
+/** Raw facts only; the host owns account waits and persisted identity prefixes. */
 export type IdentityFact =
   | { readonly kind: 'account'; readonly account: SessionAccount }
   | { readonly kind: 'tag'; readonly tag: string; readonly launchOnly?: true }

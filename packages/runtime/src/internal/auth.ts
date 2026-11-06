@@ -584,15 +584,6 @@ export function credentialFingerprint(token: string): string {
 }
 
 /**
- * A tag for the sign-in a session launched on, from the fingerprint it already holds of it
- * ({@link SessionHandle.signInTag}). Digested once more and cut short, so what is kept on disk
- * beside a usage reading is not the fingerprint a sign-in is compared by.
- */
-export function signInTagOf(launchFingerprint: string): string {
-  return credentialFingerprint(`sign-in-tag:${launchFingerprint}`).slice(0, 32)
-}
-
-/**
  * Claude auth-health: ok iff the provider currently yields a token (login present + unexpired).
  *
  * ## What a Claude profile switch does to this app — measured, 098
