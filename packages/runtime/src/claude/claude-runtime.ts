@@ -2471,9 +2471,11 @@ export class ClaudeSessionHandle implements SessionHandle {
   }
 
   /**
-   * Ask the CLI who this session is signed in as, once, through {@link ClaudeQuery.accountInfo}. An
-   * answer that names no email, a query that cannot say, a call that fails and one that never
-   * answers all leave the account not known.
+   * Ask the CLI who this session is signed in as, once, through {@link ClaudeQuery.accountInfo}, and
+   * wait for the answer however long it takes: a slow answer is still the account. An answer that
+   * names no email, a query that cannot say and a call that fails leave the account not known; until
+   * the CLI answers, it is not known yet (`undefined`), and the host waits for it or for the life
+   * to end.
    * ⛔ The answer is held here and read through {@link account} only: no event carries it, and
    * nothing logs it.
    */
@@ -2485,11 +2487,7 @@ export class ClaudeSessionHandle implements SessionHandle {
     }
     let said: SessionAccount | null = null
     try {
-      const info = await withDeadline(
-        query.accountInfo(),
-        COMMAND_READ_TIMEOUT_MS,
-        'claude account',
-      )
+      const info = await query.accountInfo()
       said = sessionAccountFrom({ email: info.email, organization: info.organization })
     } catch {
       // Not known, and nothing to say about why: the reason could name the account.

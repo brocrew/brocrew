@@ -595,6 +595,28 @@ describe('ClaudeRuntime — who the session is signed in as', () => {
     await consumer
   })
 
+  it('🔴 an account the CLI names only after fifteen seconds is still the account', async () => {
+    let answer: (info: AccountInfo) => void = () => undefined
+    // The clock is faked before the start, so a bound the read arms at attach is on it.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const { fq, handle, consumer } = await startFake({
+      whoAmI: () => new Promise<AccountInfo>((resolve) => (answer = resolve)),
+    })
+    try {
+      // Past the fifteen seconds the read used to be given before it was taken as no account.
+      await vi.advanceTimersByTimeAsync(16_000)
+      expect(handle.account?.()).toBeUndefined()
+      answer({ email: EMAIL })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(handle.account?.()).toEqual({ email: EMAIL })
+    } finally {
+      vi.useRealTimers()
+    }
+    await handle.close()
+    fq.end()
+    await consumer
+  })
+
   it('⚑ until the CLI has answered, the account is not yet said', async () => {
     let answer: (info: AccountInfo) => void = () => undefined
     const { fq, handle, consumer } = await startFake({
