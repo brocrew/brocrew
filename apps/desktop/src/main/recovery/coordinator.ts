@@ -5,7 +5,6 @@ import type {
   StartupVerdict,
 } from '../../shared/recovery'
 import type { HostGateVerdict } from '../one-host-gate'
-import { PACKAGED_WORKSPACE_REFUSAL } from '../workspace-routing'
 import {
   CheckpointFailed,
   CheckpointNoRoom,
@@ -475,7 +474,11 @@ async function decide(
   })
   if (database.kind === 'absent') {
     if (deps.requireExistingDatabase)
-      return failed('database-unreadable', false, PACKAGED_WORKSPACE_REFUSAL)
+      return failed(
+        'database-unreadable',
+        false,
+        `Database ${databaseFile(userData)} does not exist (ENOENT).`,
+      )
     const stray = await strayData(userData, fs)
     return stray === null ? OPEN_NOT_NEEDED : failed('database-unreadable', false, stray)
   }
