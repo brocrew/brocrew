@@ -103,7 +103,6 @@
     "probe:credential-ownership": "vitest run --config vitest.smoke.config.ts apps/desktop/smoke/credential-ownership.smoke.ts",
     "probe:idle-truth": "vitest run --config vitest.smoke.config.ts apps/desktop/smoke/idle-is-not-true.smoke.ts",
     "probe:two-at-once": "vitest run --config vitest.smoke.config.ts apps/desktop/smoke/two-at-once.smoke.ts",
-    "mutations:scaffold": "python3 scripts/mutations/scaffold.py",
     "probe:codex-external-mcp": "vitest run --config vitest.smoke.config.ts packages/runtime/smoke/codex-external-mcp-probe.smoke.ts",
     "probe:codex-dynamic-tools": "vitest run --config vitest.smoke.config.ts packages/runtime/smoke/codex-dynamic-tools-probe.smoke.ts",
     "smoke:codex-spawn": "vitest run --config vitest.smoke.config.ts apps/desktop/smoke/a-codex-agent-spawns-an-agent.smoke.ts",

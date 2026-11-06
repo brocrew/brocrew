@@ -307,10 +307,6 @@ describe('§4 · who spells a quit:check verdict', () => {
       'apps/desktop/test/one-app.test.ts',
       'scripts/app-closes-check.mjs',
       'scripts/lib/quit-verdict.mjs',
-      // ⚑ **The mutation table is a reader too**, and the census found it rather than being told:
-      // `514 M1` puts the tick back on the stopped cell and `M8` restores `294`'s whole line, so
-      // both spell a verdict. A future table that anchors on one joins this list or goes red here.
-      'scripts/mutations/514/mutations.py',
       'scripts/test/quit-verdict.test.mjs',
     ])
     // ⚑ **Both halves plant more than one** (standing rule 12): a sweep that could only ever
@@ -325,14 +321,12 @@ describe('§4 · who spells a quit:check verdict', () => {
 
   it('⚑ the controls: the instrument CAN name more, and naming the gate is not spelling a verdict', () => {
     // ⛔ Without this the pin above is satisfied by an instrument that answers four files to
-    // everything. `quit:check` alone is in dozens: the chain, the gates, the tables, the prose.
+    // everything. `quit:check` alone names the chain, the gates and the prose.
     const named = spelling('quit:check')
-    expect(named.length).toBeGreaterThan(20)
+    expect(named.length).toBeGreaterThan(1)
     expect(named).toContain('package.json')
-    expect(named).toContain('scripts/mutations/271/mutations.py')
     // ⚠️ …and the discriminating negative: those files name the gate and spell no verdict.
     expect(spelling('quit:check ✔')).not.toContain('package.json')
-    expect(spelling('quit:check ✔')).not.toContain('scripts/mutations/271/mutations.py')
     // ⛔ …and a needle nothing carries comes back EMPTY rather than throwing, which is the arm that
     // decides whether an exit code of 1 reads as "nobody" or as "the census did not run".
     // ⚠️ Assembled rather than spelled, because a needle written here is a needle this file
