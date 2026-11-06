@@ -18,8 +18,9 @@ for (const [id, exportPlugin] of [
   ['whatsapp', exportWhatsAppPlugin],
 ]) {
   it(`${id} exports the loader assets declared by its settings page`, () => {
-    const root = fs.mkdtempSync(path.join(tmpdir(), 'fictional-ui-export-'))
-    folders.push(root)
+    const base = fs.mkdtempSync(path.join(tmpdir(), 'fictional-ui-export-'))
+    folders.push(base)
+    const root = path.join(base, 'export')
     exportPlugin(root)
     const template = JSON.parse(
       fs.readFileSync(path.join(root, `plugins/${id}/manifest-template.json`), 'utf8'),
