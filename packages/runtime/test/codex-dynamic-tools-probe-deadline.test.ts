@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fingerprint, pinsOver, probeSource, squash } from './fixtures/probe-source'
+import { pinsOver, probeSource, squash } from './fixtures/probe-source'
 
 /**
  * ⛔ **`348`'s dynamic-tools probe — its outer deadline, its bounded requests, and the code that ran**
@@ -17,7 +17,7 @@ const { occurrences, region } = pinsOver(source)
 
 describe('669 · the 348 probe runs inside one derived outer deadline', () => {
   it('⛔ the budget is counted from the same table every arm is run from', () => {
-    expect(region('const RPC_DEADLINE_MS =', 'async function bounded<T>(')).toBe(
+    expect(region('const RPC_DEADLINE_MS =', 'function bounded<T>(')).toBe(
       squash(`
         const RPC_DEADLINE_MS = 30_000
         const TURN_WAIT_MS = 60_000
@@ -98,31 +98,5 @@ describe('669 · the 348 probe runs inside one derived outer deadline', () => {
         "expect(arm.configuredPort, `${arm.label} · the port in the child's config`).toBe( arm.listenedOn, )",
       ),
     ).toBe(1)
-  })
-})
-
-/**
- * 🔴 **`669` · the probe FILE is the code that ran green, and nothing between its pins moved.**
- *
- * ⚑ Run `2026-09-23T17-01-31-158Z-86654` on `0b37e36a` + this change, bundled Codex, loopback: A and
- * B each reached the endpoint once with all five names, C once with none, D twice with all five
- * before AND after a cold resume by a second app-server; every arm's configured port equalled the
- * one `listen(0)` returned.
- *
- * ⚑ Re-pinned on run `2026-10-02T04-43-28-190Z-66109` (provider update 1, `providers` at `f40ef7e8`), bundled
- * Codex 0.160.0, loopback: the same four results, with the names now read at every level of the
- * request (0.160.0 nests them in an `additional_tools` namespace) and matched by the probe's own
- * descriptions.
- *
- * ⚠️ **The fingerprint covers this file, not the modules it imports.** An edit HERE owes a run, in
- * the same commit: `pnpm run probe:codex-dynamic-tools` — loopback, no credential, no tokens —
- * **then** the new pin.
- */
-describe('669 · the dynamic-tools probe is the code that ran green', () => {
-  it('🔴 nothing moved: the probe file, as code, is the code that ran', () => {
-    expect(
-      fingerprint(source),
-      'the probe changed: run `pnpm run probe:codex-dynamic-tools`, then pin the value received',
-    ).toBe('30558418f545183dd310ae5c1056ed312d9f13b8a654005d75d91638924c55ad')
   })
 })

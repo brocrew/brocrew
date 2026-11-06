@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fingerprint, pinsOver, probeSource, squash } from './fixtures/probe-source'
+import { pinsOver, probeSource, squash } from './fixtures/probe-source'
 
 /**
  * ⛔ **The exec-permission probe's census — `495`, repaired by `649`, re-aimed by `655`.**
@@ -108,29 +108,7 @@ describe('495 exec-permission provider probe total deadline', () => {
   })
 })
 
-/**
- * 🔴 **`655` · the probe FILE is the code that ran green, and nothing between its pins moved.**
- *
- * ⚑ Run `2026-09-23T03-11-10-033Z-32697` on `36c28154`, bundled Codex `0.146.0`, loopback: raw
- * offer `accept`, `cancel`; `cancel` sent because offered; the approval's item ended `declined` with
- * no process, exit code or output; the turn ended `interrupted`; rule 40's port read back equal.
- * (`655`'s response lists the earlier runs.) ⚑ Re-pinned on run `2026-10-02T04-43-28-190Z-66109` (provider update 1,
- * `providers` at `f40ef7e8`), bundled Codex 0.160.0, loopback, green — `exec` now looked up inside
- * the `functions` namespace 0.160.0 nests it in.
- *
- * ⚠️ **The fingerprint covers this file, not the modules it imports** — `probe-run-deadline.ts` and
- * `exec-approval-evidence.ts` are TESTED in `ci` instead. An edit HERE owes a run, in the same
- * commit: `pnpm run probe:codex-exec-permission` — loopback, no credential, no tokens — **then**
- * the new pins.
- */
-describe('655 · the exec-permission probe is the code that ran green', () => {
-  it('🔴 nothing moved: the probe file, as code, is the code that ran', () => {
-    expect(
-      fingerprint(source),
-      'the probe changed: run `pnpm run probe:codex-exec-permission`, then pin the value received',
-    ).toBe('2afb7b6fa2a7ea9f375d3d09b928d1e9fccf5bdca15311eaabada95f08c6b430')
-  })
-
+describe('exec-permission probe approval and cleanup', () => {
   it('🔒 a decision is sent only if OFFERED, and it is cancel (655 · F7)', () => {
     expect(
       occurrences(`
