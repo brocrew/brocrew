@@ -114,7 +114,11 @@ describe('§1 · "the provider you cannot" — the clause, against the absence t
         .map((f) => f.file)
         .sort(),
       'the identity-level chooser is gone, so the negative above has nothing to be narrower than',
-    ).toEqual(['main/db/session-store.ts', 'main/runtime/runtime-host.ts'])
+    ).toEqual([
+      'main/db/session-store.ts',
+      'main/runtime/model-catalogues.ts',
+      'main/runtime/runtime-host.ts',
+    ])
   })
 
   it('🔴 no command that names an EXISTING session carries a provider', () => {
