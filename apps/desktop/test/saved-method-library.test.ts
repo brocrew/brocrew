@@ -264,15 +264,30 @@ describe('saved methods in the agent book', () => {
       ).items.map((one) => one.name),
     ).toEqual(['review.md'])
     const key = listSavedMethodLibrary(inputs, 100).items[0]!.key
-    expect(
-      readSavedMethodBody(inputs, key, {
-        afterOpen: (name) => {
-          if (name !== 'review.md') return
+    let phase = 'before the method descriptor opens'
+    const completed: string[] = []
+    const answer = readSavedMethodBody(inputs, key, {
+      afterOpen: (name) => {
+        if (name !== 'review.md') return
+        try {
+          phase = 'rename the containing directory'
           renameSync(folder, `${folder}-old`)
+          completed.push(phase)
+          phase = 'link the replacement directory'
           symlinkSync(alternative, folder, 'dir')
-        },
-      }),
-    ).toMatchObject({ ok: true, text: 'Inside' })
+          completed.push(phase)
+          phase = 'callback complete; library fstat/read/close follows'
+        } catch (cause) {
+          console.error(
+            'Linked managed-root afterOpen failed',
+            { phase, completed, folder, renamed: `${folder}-old`, alternative },
+            cause,
+          )
+          throw cause
+        }
+      },
+    })
+    expect(answer, JSON.stringify({ phase, completed })).toMatchObject({ ok: true, text: 'Inside' })
   })
 
   it('reports truncation instead of pretending a capped directory scan was complete', () => {
