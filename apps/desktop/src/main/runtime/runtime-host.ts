@@ -40235,11 +40235,7 @@ export class RuntimeHost implements LiveHost {
         detail: { problems: [OWN_NOTES_BASELINE_PROBLEM] },
       }
     const page = this.deps.store.currentOwnNotesOf(author.profile)
-    if (
-      page === null ||
-      (page.current?.version ?? 0) !== said.expectedVersion ||
-      (page.current?.text ?? '') !== said.currentText
-    )
+    if (page === null || (page.current?.version ?? 0) !== said.expectedVersion)
       return {
         ok: false,
         rail: 'malformed-request',
@@ -40283,12 +40279,7 @@ export class RuntimeHost implements LiveHost {
     const actor = whoDidIt(by)
     if (actor.who !== 'a-person' || !ownNotesWriteFits(said)) return null
     const page = this.deps.store.currentOwnNotesOf(profile)
-    if (
-      page === null ||
-      (page.current?.version ?? 0) !== said.expectedVersion ||
-      (page.current?.text ?? '') !== said.currentText
-    )
-      return null
+    if (page === null || (page.current?.version ?? 0) !== said.expectedVersion) return null
     const written = this.deps.store.writeOwnNotes(profile, said, actor, this.now())
     if (written === null) return null
     this.theWorldMoved('agents')
@@ -40301,12 +40292,7 @@ export class RuntimeHost implements LiveHost {
       return null
     const current = this.deps.store.currentOwnNotesOf(profile)?.current
     if (current == null || current.version !== expectedVersion) return null
-    const written = this.deps.store.undoOwnNotes(
-      profile,
-      { expectedVersion, currentText: current.text },
-      actor,
-      this.now(),
-    )
+    const written = this.deps.store.undoOwnNotes(profile, { expectedVersion }, actor, this.now())
     if (written === null) return null
     this.theWorldMoved('agents')
     return this.agentOwnNotes(profile)
@@ -40454,7 +40440,6 @@ export class RuntimeHost implements LiveHost {
     if (
       !Number.isSafeInteger(said.expectedVersion) ||
       said.expectedVersion < 0 ||
-      typeof said.currentText !== 'string' ||
       typeof said.text !== 'string' ||
       said.text.length > OWN_INSTRUCTIONS_CHARS ||
       typeof said.why !== 'string' ||
@@ -40466,15 +40451,12 @@ export class RuntimeHost implements LiveHost {
         rail: 'malformed-request',
         detail: {
           problems: [
-            'read the current rules, provide their version and full text, and say why within the size limit',
+            'read the current rules, provide their version, and say why within the size limit',
           ],
         },
       }
     const previous = this.deps.store.ownInstructionsOf(profile).versions[0]
-    if (
-      (previous?.version ?? 0) !== said.expectedVersion ||
-      (previous?.text ?? '') !== said.currentText
-    )
+    if ((previous?.version ?? 0) !== said.expectedVersion)
       return {
         ok: false,
         rail: 'malformed-request',
@@ -40491,7 +40473,6 @@ export class RuntimeHost implements LiveHost {
         said: said.why.trim(),
         broughtBack: null,
         expectedVersion: said.expectedVersion,
-        currentText: said.currentText,
       },
       this.now(),
     )
@@ -42843,14 +42824,12 @@ export class RuntimeHost implements LiveHost {
     const current = this.deps.store.ownInstructionsOf(profileSlug).versions[0]
     const expected = baseline ?? {
       expectedVersion: current?.version ?? 0,
-      currentText: current?.text ?? '',
     }
     const written = this.deps.store.writeOwnInstructions(
       {
         profileSlug,
         text,
         expectedVersion: expected.expectedVersion,
-        currentText: expected.currentText,
         // ⛔ **`a-person` because the DOOR proved it** — `requireAPerson` stands in front of this
         // verb on the wire, so no other value is reachable here. ⚑ The relay and the approval have
         // their own entry points and write their own words.

@@ -12913,7 +12913,6 @@ export function createSessionStore(
         if (said.whoWroteIt === 'a-person' && said.by.who !== 'a-person') return null
         if (said.expectedVersion !== undefined && said.expectedVersion !== (newest?.version ?? 0))
           return null
-        if (said.currentText !== undefined && said.currentText !== (newest?.text ?? '')) return null
         let text = said.text
         if (said.broughtBack !== null) {
           if (said.by.who !== 'a-person' || said.whoWroteIt !== 'a-person') return null
@@ -12932,8 +12931,7 @@ export function createSessionStore(
             said.said.trim() === '' ||
             said.text.length > OWN_INSTRUCTIONS_CHARS ||
             said.said.length > OWN_INSTRUCTIONS_CHARS ||
-            said.expectedVersion === undefined ||
-            said.currentText === undefined)
+            said.expectedVersion === undefined)
         )
           return null
         if (said.whoWroteIt === 'an-agent-direct' && said.by.who === 'an-agent') {
@@ -12989,7 +12987,6 @@ export function createSessionStore(
             profileSlug,
             text: '',
             expectedVersion,
-            currentText: newest.text,
             whoWroteIt: 'a-person',
             by,
             conversation: null,

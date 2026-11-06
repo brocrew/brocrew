@@ -443,7 +443,6 @@ describe('470 · a grant that waits for the next launch', () => {
         const direct = {
           agent: 'worker',
           current_version: 0,
-          current_rules: '',
           rules: 'A fictional direct write.',
           why: 'A fixture checks the fixed caller boundary.',
         }
@@ -456,7 +455,6 @@ describe('470 · a grant that waits for the next launch', () => {
             {
               about: direct.agent,
               expectedVersion: direct.current_version,
-              currentText: direct.current_rules,
               text: direct.rules,
               why: direct.why,
             },
@@ -478,7 +476,6 @@ describe('470 · a grant that waits for the next launch', () => {
             {
               about: direct.agent,
               expectedVersion: direct.current_version,
-              currentText: direct.current_rules,
               text: direct.rules,
               why: direct.why,
             },

@@ -299,7 +299,6 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
     kind: 'saveOwnNotes',
     profileId: 'pm',
     expectedVersion: 0,
-    currentText: '',
     text: 'Keep scope.',
     why: 'Person edit.',
   },

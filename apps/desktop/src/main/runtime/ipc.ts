@@ -1271,9 +1271,7 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
    */
   z.object({
     kind: z.literal('instructAgent'),
-    baseline: z
-      .object({ expectedVersion: z.number().int().min(0), currentText: ownInstructions })
-      .optional(),
+    baseline: z.object({ expectedVersion: z.number().int().min(0) }).optional(),
     profileId: profileId.unwrap(),
     text: ownInstructions,
     broughtBack: z.number().int().min(1).optional(),
@@ -1345,7 +1343,6 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
       kind: z.literal('saveOwnNotes'),
       profileId: profileId.unwrap(),
       expectedVersion: ownNotesVersion,
-      currentText: ownNotesText,
       text: ownNotesText,
       why: ownNotesText.refine((value) => value.trim() !== '', OWN_NOTES_REASON_PROBLEM),
     })
