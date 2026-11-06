@@ -13,7 +13,12 @@ import { keepPluginRootPrivate } from '../src/main/plugins/private-files'
 import { pluginUnavailableNotice } from '../src/shared/plugin-settings'
 import { pluginStartupReason } from '../src/main/plugins/startup-failure'
 import { PluginStartupError } from '../src/main/plugins/startup-failure'
-import { PluginSupervisorError } from '../src/main/plugins/supervisor/protocol'
+import {
+  APP_HELD_CONNECTION,
+  OWNER_WIRE,
+  PluginSupervisorError,
+  type WireVersion,
+} from '../src/main/plugins/supervisor/protocol'
 
 const windowsStopWithin = process.platform === 'win32' ? 10_000 : undefined
 
@@ -61,7 +66,7 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     child = undefined
     releaseWitness = undefined
   }, 30_000)
-  async function fixture(now?: () => number) {
+  async function fixture(now?: () => number, wire?: WireVersion) {
     parent = await realpath(
       await mkdtemp(
         join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-owner-recovery-'),
@@ -71,7 +76,7 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     await keepPluginRootPrivate(root)
     const workspaceRoot = join(parent, 'workspace')
     await mkdir(workspaceRoot, { mode: 0o700 })
-    const options = { root, workspaceRoot, build: 'fictional', generation: randomUUID() }
+    const options = { root, workspaceRoot, build: 'fictional', generation: randomUUID(), wire }
     owner = await PluginSupervisor.start({
       root,
       workspaceRoots: [workspaceRoot],
@@ -139,9 +144,14 @@ describe('plugin owner recovery after the caller stops waiting', () => {
       releaseWitness!()
     }
   })
-  it('measures existing sixty-second orphan expiry while another workspace retains the same owner', async () => {
+  it("measures an older copy's sixty-second orphan expiry while another workspace retains the same owner", async () => {
     let now = 0
-    const { root, options } = await fixture(() => now)
+    // An older app copy has no held connection; its abandoned lease waits for the expiry.
+    // A current copy's lease ends when its connection closes (plugin-owner-held-connection).
+    const { root, options } = await fixture(() => now, {
+      ...OWNER_WIRE,
+      features: OWNER_WIRE.features.filter((one) => one !== APP_HELD_CONNECTION),
+    })
     const epoch = lease!.epoch
     const fence = await lstat(join(root, 'supervisor/owner-lock.sqlite'), { bigint: true })
     const otherWorkspace = join(parent, 'other-workspace')
