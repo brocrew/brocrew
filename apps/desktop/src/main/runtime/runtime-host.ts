@@ -91,7 +91,7 @@ import {
   BUILT_IN_SKILLS_FAILURE,
   permittedInstalledSkillReminders,
 } from '../../shared/built-in-skills'
-import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto'
+import { createHmac, randomBytes, randomUUID } from 'node:crypto'
 import { returnedDocumentIndex } from '../resources/returned-document-index'
 import type { ThemeStore } from '../themes/store'
 import type { AnsweredQuestion, ConversationProviderBlock } from '../../shared/runtime-ipc'
@@ -20891,12 +20891,10 @@ export class RuntimeHost implements LiveHost {
               since: folded.stalledAt,
             }
           }
-          if (issue !== null && line?.waiting === true)
+          if (issue !== null && line?.waiting === true && line.revision !== undefined)
             issue = {
               ...issue,
-              waitKey: createHash('sha256')
-                .update(JSON.stringify({ on: line.on ?? null, at: line.at }))
-                .digest('hex'),
+              waitKey: `${owner}:${line.revision}`,
             }
           const recovery = this.recoveryForPiece(work, driven, logins)
           const recovering = recovery?.kind === 'recovery-pending'
