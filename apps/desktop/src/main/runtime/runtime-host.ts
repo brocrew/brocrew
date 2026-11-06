@@ -20894,7 +20894,7 @@ export class RuntimeHost implements LiveHost {
           if (issue !== null && line?.waiting === true && line.revision !== undefined)
             issue = {
               ...issue,
-              waitKey: `${owner}:${line.revision}`,
+              waitKey: `${owner}:${this.deps.store.theActiveGeneration(owner)}:${line.revision}`,
             }
           const recovery = this.recoveryForPiece(work, driven, logins)
           const recovering = recovery?.kind === 'recovery-pending'
