@@ -13,7 +13,6 @@ import {
   type CodexLaunchContext,
   type CodexTransport,
   type RuntimeEvent,
-  type SessionHandle,
 } from '../src/index'
 import { bundledCodexBinary, bundledCodexTransportFactory } from './bundled-codex'
 import { runEvidence, runScratch } from './run-paths'
