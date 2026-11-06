@@ -130,6 +130,7 @@ interface Catalog {
   readonly indexName: string
   readonly index: FileImage | null
   readonly indexProblem?: MethodProblem
+  readonly indexCause?: string
   readonly malformedLines: number
   readonly truncated: boolean
 }
@@ -178,10 +179,12 @@ function catalog(inputs: MethodLibraryInputs, seams: MethodReadSeams): Catalog {
   const indexName = actualName(inputs, found, SAVED_METHODS_INDEX)
   let index: FileImage | null = null
   let indexProblem: MethodProblem | undefined
+  let indexCause: string | undefined
   try {
     index = image(inputs, indexName, INDEX_BYTES, seams)
   } catch (error) {
     indexProblem = error instanceof Refused ? error.problem : 'unreadable'
+    indexCause = String(error)
   }
   if (index !== null) {
     found.add(indexName)
@@ -216,6 +219,7 @@ function catalog(inputs: MethodLibraryInputs, seams: MethodReadSeams): Catalog {
     indexName,
     index,
     ...(indexProblem === undefined ? {} : { indexProblem }),
+    ...(indexCause === undefined ? {} : { indexCause }),
     malformedLines,
     truncated,
   }
