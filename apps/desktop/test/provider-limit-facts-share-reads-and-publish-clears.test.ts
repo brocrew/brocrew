@@ -11,6 +11,7 @@ import { LimitsReadEngine } from '../src/main/db/limits-read-engine'
 import { LimitsReaderLifetime, type LimitsReader } from '../src/main/db/limits-reader-lifetime'
 import type { LimitsReadInput, LimitsReadResult } from '../src/main/db/limits-read-protocol'
 import { limitsWriterSampler } from '../src/main/db/fresh-limits-snapshot'
+import type { KeptAccounts } from '../src/main/provider-accounts-file'
 import { NO_CUTS_KEPT } from '../src/main/turns-the-app-cut-file'
 import { CurrentProviderLimitFacts } from '../src/main/runtime/current-provider-limit-facts'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
@@ -299,6 +300,7 @@ describe('provider facts use existing reads and existing live carriers', () => {
     await host.closeAll()
     const account: { current: { email: string } | undefined } = { current: undefined }
     let kept = NO_CUTS_KEPT
+    let accounts: KeptAccounts = {}
     const issued = new FakeProviderSessions()
     host = anotherHost(true, {
       createRuntime: (provider) => {
@@ -315,6 +317,12 @@ describe('provider facts use existing reads and existing live carriers', () => {
         read: () => kept,
         write: (value) => {
           kept = value
+        },
+      },
+      accountsKept: {
+        read: () => accounts,
+        write: (value) => {
+          accounts = value
         },
       },
       accountWaitMs: 1000,

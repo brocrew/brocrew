@@ -542,7 +542,9 @@ describe('D-017b · a message from a conversation’s view goes where the host r
       const came = refusedOf(await store.startAndSend(id, 'hello', []))
 
       expect(came.refusal.refusedBy).toBe('after-the-start')
-      expect(store.isLive(id)).toBe(true)
+      expect(store.isLive(id)).toBe(false)
+      expect(store.get(id)?.phase).toBe('recorded')
+      expect(host.unclaimedSessions().map((one) => one.sessionId)).toContain(id)
       expect(store.get(id)?.error ?? '').toMatch(/holding the Claude sign-in it started with/)
       expect(store.get(id)?.meta?.liveness.signInSuperseded, 'the bar').toBe(true)
     })
@@ -555,6 +557,11 @@ describe('D-017b · a message from a conversation’s view goes where the host r
         expect(await store.look(id)).toBe(id)
         await host.resumeSession(id, null)
         expect(store.get(id)?.phase, 'the premise: a recorded view').toBe('recorded')
+        const beforeClaim = launches.length
+        const wordsBeforeClaim = turnsOf(id)
+        expect(await store.claim(id)).toBe(true)
+        expect(launches.length, 'claim starts no provider').toBe(beforeClaim)
+        expect(turnsOf(id), 'claim sends no words').toEqual(wordsBeforeClaim)
         // Only this life's sign-in moved: the one its reopen launches reads as current.
         itsSignInMoves(launches.at(-1)!.handle)
         const before = launches.length
@@ -622,6 +629,11 @@ describe('D-017b · a message from a conversation’s view goes where the host r
       stops.push(() => store.dispose())
       expect(await store.look(id)).toBe(id)
       await host.resumeSession(id, null)
+      const beforeClaim = launches.length
+      const wordsBeforeClaim = turnsOf(id)
+      expect(await store.claim(id)).toBe(true)
+      expect(launches.length, 'claim starts no provider').toBe(beforeClaim)
+      expect(turnsOf(id), 'claim sends no words').toEqual(wordsBeforeClaim)
       itsSignInMoves(launches.at(-1)!.handle)
 
       const coming = store.startAndSend(id, 'hello', [])

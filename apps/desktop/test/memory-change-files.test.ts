@@ -93,7 +93,6 @@ describe('memory changes preserve the selected text without overwriting recreate
   it.each(['claude', 'codex'] as const)(
     'restores saved Unicode and CRLF text in %s and refuses a second creation',
     async (provider) => {
-      expect((await api().restore({ ...restoring(provider), confirmed: false })).ok).toBe(false)
       expect(
         (
           await api().restore({

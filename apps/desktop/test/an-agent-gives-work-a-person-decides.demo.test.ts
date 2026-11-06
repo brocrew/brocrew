@@ -103,8 +103,8 @@ class FakeWindow {
   }
 
   /** The renderer end: a `RuntimeBridge` built by the SAME rule the preload builds one by. */
-  bridge(host: RuntimeHost): RuntimeBridge {
-    const sink = webContentsSink(this as unknown as WebContents)
+  bridge(host: RuntimeHost, aPersonIsBehindIt = true): RuntimeBridge {
+    const sink = { ...webContentsSink(this as unknown as WebContents), aPersonIsBehindIt }
     const subscriptions = {
       onEvent: (fn: (message: RuntimeEventMessage) => void) => {
         this.onEvent.push(fn)
@@ -229,7 +229,7 @@ describe('340 §5 · an agent gives the work, a person decides what it may do', 
     windowB = new FakeWindow(2)
     windowC = new FakeWindow(3)
     storeA = createRendererStore(windowA.bridge(host))
-    agent = windowB.bridge(host)
+    agent = windowB.bridge(host, false)
     outsider = windowC.bridge(host)
   })
 

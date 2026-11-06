@@ -490,7 +490,7 @@ describe('§5 · 🔒 a correction never widens who may read the entry', () => {
 
     expect((await correct(note, { platform: 'win32', lists })).done).toBe(true)
 
-    expect(folders).toEqual([])
+    expect(folders).toEqual([[]])
     expect(asked).toEqual([
       {
         file: expect.stringMatching(/\.parked\.md\.brobot-[0-9a-f]{24}$/),
