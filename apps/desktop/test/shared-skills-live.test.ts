@@ -4,7 +4,6 @@ import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { SharedSkillDiscovery } from '../src/main/skills/shared-discovery'
 import { SharedSkillLibrary } from '../src/main/skills/shared-library'
-import { nodeFs } from '../src/main/recovery/files'
 import { readBuiltInSkills } from '../src/main/skills/prepare-built-in-skills'
 
 let root: string

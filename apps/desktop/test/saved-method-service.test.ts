@@ -70,7 +70,6 @@ const app = { who: 'the-app-itself' } as const
 const agent = { who: 'an-agent', agent: 'ses-wren' } as const
 const line = '- Review | During review | verified 2026-10-21 | review.md\r\n'
 const bytes = Buffer.from([0xff, 0x00, 0x0d, 0x0a])
-const hash = (bytes: Buffer) => bytes.toString('base64')
 let root: string
 let homesRoot: string
 let db: AppDatabase

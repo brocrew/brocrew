@@ -11,7 +11,6 @@ import type { ActedBy } from '../src/shared/who-did-it'
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 const person = { who: 'a-person' } as const
 const agent = { who: 'an-agent', agent: 'ses-wren' } as const
-const hash = (bytes: Buffer) => bytes.toString('base64')
 const image = (bytes: Buffer) => ({
   base64: bytes.toString('base64'),
   mode: 0o600,

@@ -297,6 +297,13 @@ it('recovery folder creation cannot recreate its workspace root, even with recur
     code: 'ENOENT',
   })
   expect(existsSync(join(workspace, 'absent-parent'))).toBe(false)
+  const blocked = join(workspace, 'not-a-folder')
+  writeFileSync(blocked, 'keep this file')
+  await expect(existing.mkdir(join(blocked, 'child'), { recursive: true })).rejects.toMatchObject({
+    message: `${blocked}: not a directory`,
+    cause: { code: 'EEXIST', path: blocked },
+  })
+  expect(readFileSync(blocked, 'utf8')).toBe('keep this file')
   rmSync(workspace, { recursive: true })
   await expect(
     existing.mkdir(join(workspace, 'recovery', 'staged'), { recursive: true }),

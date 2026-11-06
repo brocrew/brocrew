@@ -12,7 +12,6 @@ import {
   withinWorkspace as within,
   WorkspaceRoutingError,
   WORKSPACE_POLICY_FILE,
-  WORKSPACE_LIST_REFUSAL,
   type RoutingDiagnostic,
 } from './workspace-routing-store'
 export { WORKSPACE_LIST_REFUSAL, WORKSPACE_POLICY_FILE } from './workspace-routing-store'

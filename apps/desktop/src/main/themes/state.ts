@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Stats } from 'node:fs'
-import { lstat, mkdir, open, realpath, rename, rm } from 'node:fs/promises'
+import { lstat, open, realpath, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { errorCode, retrying } from '../recovery/files'
 import {

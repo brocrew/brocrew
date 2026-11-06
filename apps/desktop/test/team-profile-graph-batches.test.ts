@@ -65,7 +65,7 @@ it('batches empty conversations and keeps every page on bounded seeks', () => {
   // A per-conversation probe regression makes this fail even on a very fast machine.
   expect(reads).toHaveLength(3 * Math.ceil(1025 / 64))
   expect(new Set(reads.map(({ sql }) => sql)).size).toBe(3)
-  for (const { sql, args } of reads) {
+  for (const { args } of reads) {
     expect(args.length).toBeLessThanOrEqual(72)
     expect(args.at(-1)).toBe(B.page)
   }

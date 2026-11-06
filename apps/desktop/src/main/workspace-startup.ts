@@ -40,7 +40,8 @@ export class ExistingWorkspace {
         await mkdir(at, { mode: options?.mode })
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-        if (!(await stat(at)).isDirectory()) throw new Error(`${at}: not a directory`)
+        if (!(await stat(at)).isDirectory())
+          throw new Error(`${at}: not a directory`, { cause: error })
       }
     }
   }
