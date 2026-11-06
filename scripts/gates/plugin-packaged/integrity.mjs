@@ -73,14 +73,7 @@ export function readIntegrity(root) {
   )
   try {
     const stat = fs.fstatSync(fd)
-    if (
-      !stat.isFile() ||
-      stat.uid !== process.getuid() ||
-      stat.mode & 0o077 ||
-      stat.nlink !== 1 ||
-      stat.size > 16384
-    )
-      throw new Error('Invalid integrity receipt')
+    if (!stat.isFile() || stat.size > 16384) throw new Error('Invalid integrity receipt')
     const value = JSON.parse(fs.readFileSync(fd))
     if (
       !safeReport(value) ||

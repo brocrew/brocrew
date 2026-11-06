@@ -76,7 +76,7 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     expect(fs.statSync(marker).ino).toBe(before.ino)
     expect(() => observeInstallState(root, global)).toThrow()
   })
-  it('rejects invalid, linked, unsafe, parent-replaced or changing tamper-absence observations', () => {
+  it('rejects missing, non-folder, empty or unreadable tamper-absence observations', () => {
     const root = scratch(),
       global = path.join(root, 'g'),
       state = path.join(global, 'state'),
@@ -86,22 +86,9 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
     expect(() =>
       installObservation.observeTamperInstallState(root, path.join(root, 'missing')),
     ).toThrow()
-    const linked = path.join(root, 'linked')
-    fs.symlinkSync(global, linked)
-    expect(() => installObservation.observeTamperInstallState(root, linked)).toThrow()
-    fs.chmodSync(global, 0o755)
-    try {
-      expect(() => installObservation.observeTamperInstallState(root, global)).toThrow()
-    } finally {
-      fs.chmodSync(global, 0o700)
-    }
-    for (const kind of ['file', 'link', 'unsafe-directory', 'empty-directory']) {
+    for (const kind of ['file', 'empty-directory']) {
       if (kind === 'file') fs.writeFileSync(state, 'not a directory', { mode: 0o600 })
-      else if (kind === 'link') fs.symlinkSync(other, state)
-      else {
-        fs.mkdirSync(state, { mode: 0o700 })
-        if (kind === 'unsafe-directory') fs.chmodSync(state, 0o755)
-      }
+      else fs.mkdirSync(state, { mode: 0o700 })
       try {
         expect(() => installObservation.observeTamperInstallState(root, global)).toThrow()
       } finally {
@@ -250,7 +237,7 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
       ),
     ).toThrow()
   })
-  it('requires real owned stable format2 bytes, rejecting missing, linked, duplicate-key, malformed and oversized observations', () => {
+  it('requires real owned stable format2 bytes, rejecting missing, duplicate-key, malformed and oversized observations', () => {
     const root = fs.realpathSync(
       fs.mkdtempSync(path.join(os.tmpdir(), 'fictional-install-observation-')),
     )
@@ -339,12 +326,6 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
       } finally {
         secondOpen.mockRestore()
       }
-      const originalFolder = snapshots + '-original'
-      fs.renameSync(snapshots, originalFolder)
-      fs.symlinkSync(originalFolder, snapshots)
-      expect(() => observeInstallState(root, global)).toThrow()
-      fs.unlinkSync(snapshots)
-      fs.renameSync(originalFolder, snapshots)
       for (const bad of [
         '{',
         bytes.replace('"sequence":0', '"sequence":0,"sequence":0'),

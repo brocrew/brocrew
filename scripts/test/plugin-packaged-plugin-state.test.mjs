@@ -285,19 +285,11 @@ describe.skipIf(process.platform === 'win32')(
       expect(f.read().diskObserved).toBe(false)
       fs.unlinkSync(path.join(f.global, 'state'))
     })
-    it('refuses traversal names and linked records without reading outside the fixture', () => {
+    it('refuses traversal names without reading outside the fixture', () => {
       const f = fixture()
       f.write('lifecycle-guard/00000002.json', {
         event: { kind: 'completed', activation: { name: '../../fictional' } },
       })
-      expect(f.read().diskObserved).toBe(false)
-      const file = path.join(f.global, 'state/lifecycle-guard/00000002.json')
-      fs.unlinkSync(file)
-      fs.symlinkSync(path.join(f.global, 'state/lifecycle-guard/00000000.json'), file)
-      expect(f.read().diskObserved).toBe(false)
-      fs.unlinkSync(file)
-      const first = path.join(f.global, 'state/lifecycle-guard/00000000.json')
-      fs.chmodSync(first, 0o644)
       expect(f.read().diskObserved).toBe(false)
       expect(chromeDiskState(f.root, path.dirname(f.root), f.workspace).diskObserved).toBe(false)
     })

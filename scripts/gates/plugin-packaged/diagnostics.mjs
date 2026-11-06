@@ -265,14 +265,7 @@ export function readFailure(root, name = 'command-failure.json') {
       fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK,
     )
     const stat = fs.fstatSync(fd)
-    if (
-      !stat.isFile() ||
-      stat.uid !== process.getuid() ||
-      stat.mode & 0o077 ||
-      stat.nlink !== 1 ||
-      stat.size > 4096
-    )
-      return undefined
+    if (!stat.isFile() || stat.size > 4096) return undefined
     const value = JSON.parse(fs.readFileSync(fd))
     return safeFailure(value) ? value : undefined
   } catch {

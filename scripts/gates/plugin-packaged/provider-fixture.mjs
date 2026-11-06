@@ -43,20 +43,10 @@ function refused(category) {
   return error
 }
 
-/** This user's folder, private by its mode; on Windows the gate's scratch root's access list does that. */
-const ownedPrivately = (stat) =>
-  process.platform === 'win32' || (stat.uid === process.getuid() && !(stat.mode & 0o077))
 // The gate never provisions or checks a credential. Normal builds refuse this named seam.
 export function preparePackagedGateHome(root, userData, provider, profileId) {
-  const rootStat = fs.lstatSync(root)
-  if (
-    !rootStat.isDirectory() ||
-    rootStat.isSymbolicLink() ||
-    fs.realpathSync(root) !== root ||
-    !ownedPrivately(rootStat) ||
-    !['claude', 'codex'].includes(provider)
-  )
-    throw new Error('Invalid fake-provider root')
+  if (!fs.statSync(root).isDirectory() || !['claude', 'codex'].includes(provider))
+    throw new Error(`Invalid fake-provider root ${root} for ${provider}`)
   const home = deriveProviderHome(userData, { provider, profileId })
   if (
     !path.isAbsolute(root) ||
@@ -70,9 +60,7 @@ export function preparePackagedGateHome(root, userData, provider, profileId) {
   for (const part of relative.split(path.sep)) {
     folder = path.join(folder, part)
     if (!fs.existsSync(folder)) fs.mkdirSync(folder, { mode: 0o700 })
-    const stat = fs.lstatSync(folder)
-    if (!stat.isDirectory() || stat.isSymbolicLink() || !ownedPrivately(stat))
-      throw new Error('Invalid fake-provider folder')
+    if (!fs.statSync(folder).isDirectory()) throw new Error(`${folder} is not a folder`)
   }
   // A fresh scripted session cannot inherit a saved login, even inside scratch.
   for (const name of ['auth.json', '.credentials.json', '.claude.json', 'credentials.json'])

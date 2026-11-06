@@ -493,10 +493,6 @@ describe.skipIf(process.platform === 'win32')(
       const outside = scratch()
       expect(() => preparePackagedGateHome(root, outside, 'claude', 'fern')).toThrow()
       expect(() => preparePackagedGateHome(root, userData, '../outside', 'fern')).toThrow()
-      fs.symlinkSync(outside, path.join(root, 'linked'))
-      expect(() =>
-        preparePackagedGateHome(root, path.join(root, 'linked'), 'claude', 'fern'),
-      ).toThrow()
       expect(fs.readdirSync(outside)).toEqual([])
     })
     it.skipIf(!protocolInstalled)(

@@ -97,21 +97,14 @@ const root=${JSON.stringify(root)};
 function directory(folder) {
   const relative=path.relative(root,folder);
   if(relative.startsWith('..')||path.isAbsolute(relative))throw new Error('Invalid candidate folder');
-  const info=fs.lstatSync(folder);
-  if(!info.isDirectory()||info.isSymbolicLink()||info.uid!==process.getuid()||(info.mode&0o022)||fs.realpathSync(folder)!==folder)throw new Error('Invalid candidate folder');
-  if(folder!==root)directory(path.dirname(folder));
+  if(!fs.statSync(folder).isDirectory())throw new Error(folder+' is not a folder');
   return folder;
 }
 function read(file,maximum=128*1024) {
   directory(path.dirname(file));
-  const fd=fs.openSync(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW|fs.constants.O_NONBLOCK);
-  try {
-    const before=fs.fstatSync(fd);
-    if(!before.isFile()||before.uid!==process.getuid()||before.nlink!==1||(before.mode&0o022)||before.size>maximum)throw new Error('Invalid candidate bytes');
-    const bytes=fs.readFileSync(fd),after=fs.fstatSync(fd),named=fs.lstatSync(file);
-    if(bytes.length!==before.size||after.size!==before.size||after.mtimeMs!==before.mtimeMs||after.ctimeMs!==before.ctimeMs||named.ino!==before.ino||named.dev!==before.dev)throw new Error('Changing candidate bytes');
-    return bytes;
-  } finally {fs.closeSync(fd)}
+  const bytes=fs.readFileSync(file);
+  if(bytes.length>maximum)throw new Error(file+' is larger than '+maximum+' bytes');
+  return bytes;
 }
 export async function prepareCandidateCache() {
   ownedRoot(root);

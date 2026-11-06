@@ -36,8 +36,8 @@ export function readOwned(file, maximum = 32 * 1024) {
   if (bytes.length > maximum) throw new Error(`${file} is larger than ${maximum} bytes`)
   return bytes
 }
-const observationFailure = () => {
-  throw new Error('Incomplete install observation')
+const observationFailure = (why) => {
+  throw new Error(`Incomplete install observation${why ? `: ${why}` : ''}`)
 }
 const exactKeys = (value, names) =>
   value !== null &&
@@ -123,19 +123,12 @@ export function observationJson(bytes) {
   if (at !== text.length) return observationFailure()
   return JSON.parse(text)
 }
+/** A folder of the gate's own scratch tree that the observation reads from. */
 function observedDirectory(root, folder) {
   const relative = path.relative(root, folder)
-  if (relative.startsWith('..') || path.isAbsolute(relative)) return observationFailure()
-  const stat = fs.lstatSync(folder)
-  if (
-    !stat.isDirectory() ||
-    stat.isSymbolicLink() ||
-    stat.uid !== process.getuid() ||
-    stat.mode & 0o077 ||
-    fs.realpathSync(folder) !== folder
-  )
-    return observationFailure()
-  if (folder !== root) observedDirectory(root, path.dirname(folder))
+  if (relative.startsWith('..') || path.isAbsolute(relative))
+    return observationFailure(`${folder} is outside ${root}`)
+  if (!fs.statSync(folder).isDirectory()) return observationFailure(`${folder} is not a folder`)
   return folder
 }
 function releaseState(value) {

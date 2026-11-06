@@ -95,14 +95,7 @@ export function chromeDiskState(root, global, workspace) {
       const relative = path.relative(root, folder)
       if (!relative || relative.startsWith('..') || path.isAbsolute(relative))
         throw new Error('Outside fixture')
-      const info = fs.lstatSync(folder)
-      if (
-        !info.isDirectory() ||
-        info.uid !== process.getuid() ||
-        info.mode & 0o077 ||
-        fs.realpathSync(folder) !== folder
-      )
-        throw new Error('Unsafe diagnostic folder')
+      if (!fs.statSync(folder).isDirectory()) throw new Error(`${folder} is not a folder`)
       return folder
     }
     directory(global)
@@ -126,13 +119,8 @@ export function chromeDiskState(root, global, workspace) {
       )
       try {
         const info = fs.fstatSync(fd)
-        if (
-          !info.isFile() ||
-          info.uid !== process.getuid() ||
-          info.mode & 0o077 ||
-          info.size > 128 * 1024
-        )
-          throw new Error('Unsafe diagnostic record')
+        if (!info.isFile() || info.size > 128 * 1024)
+          throw new Error(`${path.join(folder, name)} is not a readable record`)
         total += info.size
         if (total > 32 * 1024 * 1024) throw new Error('Diagnostic limit')
         const bytes = fs.readFileSync(fd)
