@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3'
+import { applyMigrations } from '../../src/main/db/migrate'
 import { createHash } from 'node:crypto'
 import {
   appendFile,
@@ -463,6 +464,48 @@ describe('a copy before a migration', () => {
     const [made] = await listCheckpoints(userData)
     expect(made?.manifest.reason).toBe('before-migration')
     expect(made?.manifest.database.migrations).toHaveLength(THIS_BUILD)
+  })
+
+  it('the real migrator rolls back a write when its second statement fails and keeps its checkpoint intact', async () => {
+    const userData = await aWorkspace({ migrations: THIS_BUILD, checkpoints: [] })
+    const before = new Database(databaseFile(userData))
+    before.exec("CREATE TABLE rollback_probe (x TEXT); INSERT INTO rollback_probe VALUES ('kept')")
+    before.close()
+    const buildMigrationsFolder = await aBuildWithOneMoreMigration()
+    const tag = `${String(BUILD_LINEAGE.length).padStart(4, '0')}_one_more`
+    await writeFile(
+      join(buildMigrationsFolder, `${tag}.sql`),
+      `INSERT INTO rollback_probe VALUES (migration_wrote('interrupted'));
+--> statement-breakpoint
+SELECT * FROM no_such_migration_table;`,
+    )
+    const { deps } = checkOf(userData, { buildMigrationsFolder })
+    expect(await inspect(deps)).toEqual({ kind: 'open', checkpoint: 'made' })
+    const [checkpoint] = await listCheckpoints(userData)
+    expect(checkpoint).toBeDefined()
+    const copyBefore = await sha256Of(join(checkpoint!.folder, 'database.sqlite'))
+    const db = new Database(databaseFile(userData))
+    let writes = 0
+    db.function('migration_wrote', (value) => {
+      writes++
+      return value
+    })
+    const snapshot = () => ({
+      rows: db.prepare('SELECT * FROM rollback_probe').all(),
+      schema: db.prepare('SELECT * FROM sqlite_master ORDER BY name').all(),
+      journal: db.prepare('SELECT * FROM __drizzle_migrations ORDER BY id').all(),
+    })
+    const prior = snapshot()
+    try {
+      expect(() => applyMigrations(db, buildMigrationsFolder)).toThrow('no_such_migration_table')
+      expect(writes).toBe(1)
+      expect(snapshot()).toEqual(prior)
+      expect(db.inTransaction).toBe(false)
+    } finally {
+      db.close()
+    }
+    expect(await isIntact(checkpoint!)).toBe(true)
+    expect(await sha256Of(join(checkpoint!.folder, 'database.sqlite'))).toBe(copyBefore)
   })
 
   it('is made once by a release: a retry after a failed migration reuses it', async () => {

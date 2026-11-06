@@ -155,6 +155,32 @@ describe('the recovery copy is checked off the main thread', () => {
     expect(started).toBe(1)
   })
 
+  it('a quit discards even an ok message received before the worker exits', async () => {
+    let worker!: Worker
+    let answered!: () => void
+    const message = new Promise<void>((resolve) => {
+      answered = resolve
+    })
+    const verifier = verifyInAWorker(() => {
+      worker = new Worker(
+        `const { parentPort } = require('node:worker_threads');
+        parentPort.postMessage({ kind: 'ok' });
+        setInterval(() => {}, 1000)`,
+        { eval: true },
+      )
+      worker.once('message', answered)
+      return worker
+    })
+    const checking = verifier.verify(aCopy())
+    try {
+      await message
+      await verifier.stop()
+      expect((await checking).kind).toBe('failed')
+    } finally {
+      await worker.terminate()
+    }
+  })
+
   describe('a checkpoint says each outcome as it did, and keeps nothing it could not check', () => {
     const aWorkspace = (): string => {
       const userData = join(aRoot(), 'data')
