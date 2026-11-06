@@ -27,7 +27,6 @@ import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   A_FIRST_MESSAGE_IS_STARTING_IT,
-  HELD_ELSEWHERE,
   NOTHING_TO_SEND,
   type FirstMessageAnswer,
   type HandedPath,
@@ -645,41 +644,16 @@ describe('735, D-017b · a person’s message continues a conversation in one ac
       expect(listed(id).running, 'the live conversation was stopped').toBe('in-a-window')
     })
 
-    it('⛔ another window’s conversation: this door neither starts nor sends to it', async () => {
-      const id = await aConversationTheQuitStopped()
-      await host.startAndSend(id, 'mine', window)
-      await waitFor(() => answered(id, 'mine'), 'the owner’s first message')
-      const stranger = new AWindow('webContents:9')
-      const before = launches.length
-
-      const refused = notSentOf(await host.startAndSend(id, 'not yours', stranger))
-
-      expect(refused).toEqual({
-        refusedBy: 'held-elsewhere',
-        said: HELD_ELSEWHERE,
-        launch: null,
-        running: null,
-      })
-      await letItSettle()
-      expect(launches.length - before).toBe(0)
-      expect(turnsOf(id)).not.toContain('not yours')
-      expect(listed(id).running).toBe('in-a-window')
-    })
-
-    it('⚑ the window is asked FIRST — another window’s conversation with a moved file is told it is held elsewhere, not about the file', async () => {
+    it('a recorded-view message reports a real moved attachment before any delivery', async () => {
       const id = await aConversationThisWindowRuns()
       const notes = attached('notes.md')
       rmSync(notes.path)
-
       const refused = notSentOf(
         await host.startAndSend(id, 'look', new AWindow('webContents:9'), [notes]),
       )
-
-      expect(refused.refusedBy).toBe('held-elsewhere')
-      // ⚑ **The control, one fact over**: the window that runs it is told about the file.
-      const own = notSentOf(await host.startAndSend(id, 'look', window, [notes]))
-      expect(own.refusedBy).toBe('before-the-start')
-      expect(own.said).toMatch(/moved or deleted/)
+      expect(refused.refusedBy).toBe('before-the-start')
+      expect(refused.said).toMatch(/moved or deleted/)
+      expect(turnsOf(id)).not.toContain('look')
     })
 
     it('⛔ a person’s Close that lands while the attachment is read is seen — and a message still continues it', async () => {
@@ -718,17 +692,15 @@ describe('735, D-017b · a person’s message continues a conversation in one ac
       gate.release()
       await theirs
 
-      const refused = notSentOf(await answering)
-
-      // ⚑ **D-017b** — the message joins the start in flight, and once it lands the conversation is
-      // theirs: the person reads the held-elsewhere sentence and nothing is sent. ⚠️ Measured: the
-      // join path answers it under `the-start` (the refused start's own word), not `held-elsewhere`
-      // — the window draws only the sentence, so the two read the same (reported, not pinned).
-      expect(['held-elsewhere', 'the-start']).toContain(refused.refusedBy)
-      expect(refused.said).toBe(HELD_ELSEWHERE)
-      expect(refused.running).toBeNull()
+      const answer = await answering
+      expect(answer).toMatchObject({ sent: { sessionId: id, handover: 'recorded' } })
+      await waitFor(
+        () => answered(id, 'hello'),
+        'the recorded-view message after the earlier start',
+      )
       expect(launches.length - before, 'one start: theirs').toBe(1)
-      expect(turnsOf(id)).not.toContain('hello')
+      expect(turnsOf(id).filter((text) => text === 'hello')).toHaveLength(1)
+      expect(host.attachOpenSessions(window)).toEqual([])
       expect(listed(id).running).toBe('in-a-window')
     })
 
