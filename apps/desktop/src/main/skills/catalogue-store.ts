@@ -375,7 +375,9 @@ export class SqliteSkillCatalogue implements SkillCatalogue {
       for (const item of verified.catalogue.skills) {
         if (this.row(`person/${item.name}`)) return refuse('duplicate-name')
         const existing = this.row(`built-in/${item.name}`)
-        if (existing && this.summary(existing).version === verified.catalogue.version) {
+        const summary = existing ? this.readable(existing, () => this.summary(existing)) : null
+        if (existing && summary === null) continue
+        if (existing && summary?.version === verified.catalogue.version) {
           changed =
             this.db
               .prepare('UPDATE skill_current SET active=1 WHERE id=? AND active<>1')

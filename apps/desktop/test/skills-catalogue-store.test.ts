@@ -15,6 +15,7 @@ import {
   SkillCatalogueError,
   skillAlias,
 } from '../src/main/skills/catalogue-store'
+import { launchSkillSelections } from '../src/main/skills/launch-selection'
 import { BUILT_IN_SKILL_NAMES } from '../src/shared/built-in-skills'
 import type { SkillDraft, PluginSkillBundle } from '../src/shared/skills-catalogue'
 
@@ -387,6 +388,24 @@ describe('the SQLite skills catalogue', () => {
     })
     expect(catalogue.detail('person/broken')).toBeNull()
     expect(catalogue.list().items.some((one) => one.id === 'person/edited')).toBe(true)
+  })
+  it('opens a fresh catalogue and launch after a malformed built-in was saved', () => {
+    db.exec('DROP TRIGGER skill_version_no_update')
+    db.prepare('UPDATE skill_version SET metadata=? WHERE skill_id=?').run(
+      '{broken',
+      'built-in/delegate',
+    )
+    db.close()
+    db = openDatabase(join(folder, 'catalogue.sqlite'))
+    catalogue = new SqliteSkillCatalogue(db, shipped())
+    expect(catalogue.detail('built-in/delegate')).toBeNull()
+    expect(catalogue.list().items).toHaveLength(7)
+    for (const profile of [null, 'recipe-worker']) {
+      const launch = launchSkillSelections(db, shipped)(profile, capable)
+      expect(launch.skills).toHaveLength(7)
+      expect(launch.skills.some((skill) => skill.id === 'built-in/delegate')).toBe(false)
+      expect(launch.skills.some((skill) => skill.id === 'built-in/hand-back')).toBe(true)
+    }
   })
   it('refuses a bad plugin hash or duplicate declaration before publication', () => {
     const before = catalogue.list()
