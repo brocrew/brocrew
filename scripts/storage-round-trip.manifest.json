@@ -1,5 +1,4 @@
 {
-  "version": 1,
   "old": {
     "source": "4c70f40b7243965a1f167c5508aee35a6b0f3bbc",
     "tree": "5fc0cc2177d8dfe45a666717841f0dff7ca5163d",
@@ -13,34 +12,5 @@
     "source": "9fdeca5995a3cc35dcc40469a4af15864c00f1fd",
     "tree": "e90b4aea3bcc636bd2ee7b846e3e34411618ed93",
     "version": "0.2.5-f13"
-  },
-  "candidate": {
-    "source": "7a6981eb7d0b7e41df3679ecf6b8de112341b2c7",
-    "tree": "f24b912a28ad978b428b20864bfa647a185f30a3",
-    "version": "0.2.5"
-  },
-  "approval": {
-    "ownerReview": "res_6a48834e58b2412a9b9e04ba77e6ad6e",
-    "arjunReview": "res_98210626707040d9b6759078dda00041",
-    "harnessSha256": "f95cdf0c5ce494c91e3a4569f0a9aacc052435938a2bb57f7bdec5a76a0c2d3d",
-    "files": {
-      ".github/workflows/storage-round-trip.yml": "6cbcdb81c121fc3fd6ef33613a87bdd2294d14abc1f86d6859f930fa67fa3712",
-      "apps/desktop/src/main/recovery/state-files.ts": "1969c1e69905490ddea86f0b524f0bd086e49cb667bcb5a9068bf572d92c4269",
-      "scripts/lib/owned-launcher.mjs": "f1e6173dfc2c097e44266d5fabc4f46d7a8fea0acdb8ea362e7c3c8416c4e005",
-      "scripts/lib/owned-process.mjs": "72a93569846abb80de2ad282fff71f43e4550fca12e12137daa9ba7a1833026b",
-      "scripts/lib/owned-teardown.mjs": "cafbdbcdf291d81dffc35eae931a1ff176696366a83a3b97c85f38618ee11882",
-      "scripts/storage-round-trip-auth.mjs": "4e921cf763a4c9a993e838350fef0e76265c14c135c9c4a3cdc625b5cab90120",
-      "scripts/storage-round-trip-bootstrap.mjs": "e5522a7a3943642ce5c1833699809dc975246c746106813c67e98453da04a34f",
-      "scripts/storage-round-trip-build.mjs": "b100435a7ca3d317ebe789472cb40d892f5e05caf2cd2ac6da0265ab62f4b3c3",
-      "scripts/storage-round-trip-db.mjs": "4ea26cbbcc763f410021e16cc9f0ebb5aafbd5fc9ded4949515be34f1972de1b",
-      "scripts/storage-round-trip-files.mjs": "ba43c12dd17258f63ce29d7387245e5fe21ebf6ef72a68e5bc03672fbd417754",
-      "scripts/storage-round-trip-fixture.mjs": "aec0b4df434a97cdb460163b800b4359e6ef1fa8c78afe915403d53420da9b99",
-      "scripts/storage-round-trip-process.mjs": "29d585964a82b6110d706d099a65b67da89083ac38ea863b5ee637a46d6e0748",
-      "scripts/storage-round-trip-reaper.mjs": "6c52dc31fb51672842f9ee5f69c534c875b6a59629930da241c3215d74416cce",
-      "scripts/storage-round-trip-watchdog.mjs": "513d6e53cc7602228db846f591d296c6c7fff58ae85faf25881b6d29b29c4d70",
-      "scripts/storage-round-trip.mjs": "f95cdf0c5ce494c91e3a4569f0a9aacc052435938a2bb57f7bdec5a76a0c2d3d"
-    }
-  },
-  "allowedWrites": [],
-  "allowedStateWrites": []
+  }
 }

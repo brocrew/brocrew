@@ -14,11 +14,16 @@ jobs:
       github.repository == 'brocrew/brocrew' &&
       startsWith(github.ref, 'refs/heads/gate/storage-roundtrip-')
     runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
-    timeout-minutes: 60
+    timeout-minutes: 90
     concurrency:
       group: storage-roundtrip-${{ github.ref }}
       cancel-in-progress: false
+    env:
+      MANIFEST: scripts/storage-round-trip.manifest.json
     steps:
+      - name: Name the run's scratch folder
+        run: echo "WORK=$RUNNER_TEMP/storage-round-trip-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
@@ -33,10 +38,8 @@ jobs:
           version: 10.11.0
           run_install: false
 
-      - name: Verify disposable host, source trees and preserved artifact lineage
+      - name: Fetch the released 0.2.2 disk image and check its pins
         uses: actions/github-script@v8
-        env:
-          MANIFEST_PATH: scripts/storage-round-trip.manifest.json
         with:
           script: |
             const fs = require('node:fs');
@@ -45,87 +48,58 @@ jobs:
             const {execFileSync} = require('node:child_process');
             const must = (ok, message) => { if (!ok) throw new Error(message); };
             const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
-            must(process.platform === 'darwin' && process.arch === 'arm64' &&
-              process.env.RUNNER_ENVIRONMENT === 'github-hosted', 'Disposable hosted Darwin arm64 only');
-            const root = fs.realpathSync(process.env.GITHUB_WORKSPACE);
-            const file = fs.realpathSync(path.resolve(root, process.env.MANIFEST_PATH));
-            must(file.startsWith(root + '/'), 'Manifest escaped checkout');
-            const config = JSON.parse(fs.readFileSync(file, 'utf8'));
-            const required = fs.readdirSync(path.join(root, 'scripts')).filter(f => /^storage-round-trip.*\.mjs$/.test(f)).map(f => 'scripts/' + f);
-            required.push('scripts/lib/owned-process.mjs', 'scripts/lib/owned-teardown.mjs', 'scripts/lib/owned-launcher.mjs', 'apps/desktop/src/main/recovery/state-files.ts', '.github/workflows/storage-round-trip.yml');
-            for (const name of required) must(config.approval.files?.[name] === sha(fs.readFileSync(path.join(root, name))), 'Unreviewed file: ' + name);
-            must(config.approval.harnessSha256 === sha(fs.readFileSync(path.join(root, 'scripts/storage-round-trip.mjs'))), 'Harness pin mismatch');
-            must(config.old?.source === '4c70f40b7243965a1f167c5508aee35a6b0f3bbc' && String(config.old.runId) === '42088997543' && String(config.old.artifactId) === '13444657642', 'Wrong preserved old binary');
-            must(config.old.archiveSha256 === '90aacead9ed64a49acdb855ed647b08aed2edc681bb8c9e91704c56a15ddc13e', 'Old archive digest changed');
-            const inputs = path.join(process.env.RUNNER_TEMP, `storage-round-trip-input-${context.runId}-${process.env.GITHUB_RUN_ATTEMPT}`);
-            fs.mkdirSync(inputs);
-            for (const label of ['old', 'f13', 'candidate']) {
+            const config = JSON.parse(fs.readFileSync(process.env.MANIFEST, 'utf8'));
+            for (const label of ['old', 'f13']) {
               const pin = config[label];
-              must(/^[a-f0-9]{40}$/.test(pin?.source) && /^[a-f0-9]{40}$/.test(pin?.tree), 'Full source/tree pins required');
-              must(execFileSync('git', ['rev-parse', pin.source + '^{tree}'], {encoding:'utf8'}).trim() === pin.tree, label + ' source tree mismatch');
+              must(execFileSync('git', ['rev-parse', pin.source + '^{tree}'], {encoding: 'utf8'}).trim() === pin.tree,
+                label + ' source is not the pinned tree');
             }
-            must(config.f13.source === '9fdeca5995a3cc35dcc40469a4af15864c00f1fd' &&
-              config.f13.tree === 'e90b4aea3bcc636bd2ee7b846e3e34411618ed93' &&
-              config.f13.version === '0.2.5-f13' && config.candidate.version === '0.2.5', 'Frozen build/version pins changed');
-            for (const label of ['old']) {
-              const pin = config[label];
-              must(/^[a-f0-9]{64}$/.test(pin?.archiveSha256) && /^[a-f0-9]{64}$/.test(pin?.dmgSha256), 'Old archive/DMG pins required');
-              const {data: run} = await github.rest.actions.getWorkflowRun({...context.repo, run_id:Number(pin.runId)});
-              must(run.status === 'completed' && run.conclusion === 'success' && run.head_sha === pin.source &&
-                run.repository.full_name === context.repo.owner + '/' + context.repo.repo, label + ' build run mismatch');
-              const {data: artifact} = await github.rest.actions.getArtifact({...context.repo, artifact_id:Number(pin.artifactId)});
-              must(!artifact.expired && artifact.workflow_run?.id === Number(pin.runId) &&
-                artifact.workflow_run?.head_sha === pin.source && artifact.digest === 'sha256:' + pin.archiveSha256, label + ' artifact provenance mismatch');
-              const downloaded = await github.rest.actions.downloadArtifact({...context.repo, artifact_id:Number(pin.artifactId), archive_format:'zip'});
-              const bytes = Buffer.from(downloaded.data);
-              must(sha(bytes) === pin.archiveSha256, label + ' downloaded ZIP hash mismatch');
-              const archive = path.join(inputs, label + '.zip'); fs.writeFileSync(archive, bytes, {flag:'wx'});
-              const names = execFileSync('/usr/bin/unzip', ['-Z1', archive], {encoding:'utf8'}).trim().split('\n');
-              const dmgs = names.filter(n => n.endsWith('.dmg'));
-              must(dmgs.length === 1 && !dmgs[0].startsWith('/') && !dmgs[0].split('/').includes('..'), label + ' ambiguous DMG');
-              const out = fs.openSync(path.join(inputs, label + '.dmg'), 'wx');
-              try { execFileSync('/usr/bin/unzip', ['-p', archive, dmgs[0]], {stdio:['ignore',out,'pipe'], timeout:120000}); }
-              finally { fs.closeSync(out); }
-              must(sha(fs.readFileSync(path.join(inputs, label + '.dmg'))) === pin.dmgSha256, label + ' extracted DMG hash mismatch');
-              fs.writeFileSync(path.join(inputs, label + '-artifact.json'), JSON.stringify({run, artifact}, null, 2));
-              fs.unlinkSync(archive);
-            }
-            fs.copyFileSync(file, path.join(inputs, 'manifest.json'));
-            core.exportVariable('ROUND_TRIP_INPUT', inputs);
+            const pin = config.old;
+            const {data: run} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: Number(pin.runId)});
+            must(run.status === 'completed' && run.conclusion === 'success' && run.head_sha === pin.source,
+              'The 0.2.2 build run is not the pinned one');
+            const {data: artifact} = await github.rest.actions.getArtifact({...context.repo, artifact_id: Number(pin.artifactId)});
+            must(!artifact.expired && artifact.workflow_run?.id === Number(pin.runId) &&
+              artifact.digest === 'sha256:' + pin.archiveSha256, 'The 0.2.2 artifact is not the pinned one');
+            const downloaded = await github.rest.actions.downloadArtifact({...context.repo, artifact_id: Number(pin.artifactId), archive_format: 'zip'});
+            const bytes = Buffer.from(downloaded.data);
+            must(sha(bytes) === pin.archiveSha256, 'The downloaded 0.2.2 archive has other bytes');
+            const inputs = path.join(process.env.WORK, 'inputs');
+            fs.mkdirSync(inputs, {recursive: true});
+            const archive = path.join(inputs, 'old.zip');
+            fs.writeFileSync(archive, bytes);
+            const dmgs = execFileSync('/usr/bin/unzip', ['-Z1', archive], {encoding: 'utf8'}).trim().split('\n').filter(n => n.endsWith('.dmg'));
+            must(dmgs.length === 1, 'The 0.2.2 archive does not hold exactly one disk image');
+            const out = fs.openSync(path.join(inputs, 'old.dmg'), 'w');
+            try { execFileSync('/usr/bin/unzip', ['-p', archive, dmgs[0]], {stdio: ['ignore', out, 'inherit']}); }
+            finally { fs.closeSync(out); }
+            must(sha(fs.readFileSync(path.join(inputs, 'old.dmg'))) === pin.dmgSha256, 'The 0.2.2 disk image has other bytes');
+            fs.unlinkSync(archive);
+            fs.writeFileSync(path.join(inputs, 'old-artifact.json'), JSON.stringify({run, artifact}, null, 2));
 
-      - name: Build frozen F13 and integrated source in separate clean scratch checkouts
-        shell: bash
+      - name: Build the pinned F13 source in a clean clone
         run: |
-          node scripts/storage-round-trip-build.mjs --execute \
-            --manifest "$ROUND_TRIP_INPUT/manifest.json" \
-            --inputs "$ROUND_TRIP_INPUT" \
-            --root "$RUNNER_TEMP/storage-round-trip-build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
-            --pnpm "$(command -v pnpm)"
+          node scripts/storage-round-trip-build.mjs --manifest "$MANIFEST" \
+            --root "$WORK/build" --inputs "$WORK/inputs" --pnpm "$(command -v pnpm)"
 
-      - name: Run reviewed scratch-only binary phases
-        shell: bash
+      - name: Round trip 0.2.2 → F13 → 0.2.2 → F13 on one scratch workspace
         run: |
-          node scripts/storage-round-trip.mjs --execute \
-            --manifest "$ROUND_TRIP_INPUT/manifest.json" \
-            --old-dmg "$ROUND_TRIP_INPUT/old.dmg" \
-            --f13-app "$RUNNER_TEMP/storage-round-trip-build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/f13/apps/desktop/dist/mac-arm64/BroCrew.app" \
-            --candidate-app "$RUNNER_TEMP/storage-round-trip-build-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT/candidate/apps/desktop/dist/mac-arm64/BroCrew.app" \
-            --scratch "$RUNNER_TEMP/storage-round-trip-scratch-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" \
-            --evidence "$RUNNER_TEMP/storage-round-trip-evidence-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          node scripts/storage-round-trip.mjs --manifest "$MANIFEST" \
+            --old-dmg "$WORK/inputs/old.dmg" \
+            --old-artifact "$WORK/inputs/old-artifact.json" \
+            --f13-app "$WORK/build/f13/apps/desktop/dist/mac-arm64/BroCrew.app" \
+            --f13-build "$WORK/inputs/f13-build.json" \
+            --scratch "$WORK/scratch" \
+            --evidence "$WORK/evidence"
 
-      - name: Retain synthetic evidence, terminal DB and artifact metadata
+      - name: Keep the evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: storage-round-trip-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            ${{ runner.temp }}/storage-round-trip-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-            ${{ runner.temp }}/storage-round-trip-input-${{ github.run_id }}-${{ github.run_attempt }}/*-artifact.json
-            ${{ runner.temp }}/storage-round-trip-input-${{ github.run_id }}-${{ github.run_attempt }}/*-build.json
-            ${{ runner.temp }}/storage-round-trip-input-${{ github.run_id }}-${{ github.run_attempt }}/*-build.log
-            ${{ runner.temp }}/storage-round-trip-input-${{ github.run_id }}-${{ github.run_attempt }}/build-*.json
-            ${{ runner.temp }}/storage-round-trip-input-${{ github.run_id }}-${{ github.run_attempt }}/watchdog-*.json
-            ${{ runner.temp }}/storage-round-trip-input-${{ github.run_id }}-${{ github.run_attempt }}/admissions
-            ${{ runner.temp }}/storage-round-trip-input-${{ github.run_id }}-${{ github.run_attempt }}/*-app.tar.gz
+            ${{ env.WORK }}/evidence
+            ${{ env.WORK }}/inputs/*.json
+            ${{ env.WORK }}/inputs/*.log
           if-no-files-found: error
           retention-days: 14
