@@ -2434,7 +2434,7 @@ const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
     "that piece wasn't taken back or closed: a conversation with a question about it is still starting. Try again in a moment.",
   // Said with the piece's label at each door (`aPieceNotEndedItsQuestionsUnread`).
   'its-questions-could-not-all-be-read':
-    "that piece wasn't taken back or closed: its questions couldn't all be read. Try again; if it fails again, ask a person.",
+    "that piece wasn't taken back or closed: its question ledger could not be read. Check that record, then retry this call.",
   // Grants do not select the app's direct writer.
   'may-not-write-rules':
     'Only BroBot writes other agents’ standing rules directly. You can propose a change with propose_agent_rules, and the person decides. Nothing was written.',
@@ -2785,8 +2785,9 @@ function takeBackDetail(
     case 'that-work-is-being-sent':
     case 'that-conversation-has-not-started':
     case 'a-conversation-with-its-questions-is-starting':
-    case 'its-questions-could-not-all-be-read':
       return { piece, label: refused.label }
+    case 'its-questions-could-not-all-be-read':
+      return { piece, label: refused.label, unreadQuestion: refused.unreadQuestion }
     default: {
       const exhaustive: never = refused
       void exhaustive
@@ -8296,7 +8297,11 @@ export function agentToolsFor(
           if (!outcome.ok && outcome.refused.rail === 'its-questions-could-not-all-be-read') {
             return refusalAnswer({
               ...refuseTool(outcome.refused.rail, takeBackDetail(piece, outcome.refused)),
-              reason: aPieceNotEndedItsQuestionsUnread(outcome.refused.label, 'work-withdrawn'),
+              reason: aPieceNotEndedItsQuestionsUnread(
+                outcome.refused.label,
+                'work-withdrawn',
+                outcome.refused.unreadQuestion,
+              ),
             })
           }
           if (!outcome.ok) {
@@ -9359,7 +9364,11 @@ export function agentToolsFor(
             if (updated.rail === 'its-questions-could-not-all-be-read') {
               return refusalAnswer({
                 ...refuseTool(updated.rail, { ...updated.detail }),
-                reason: aPieceNotEndedItsQuestionsUnread(updated.detail.label, 'work-closed'),
+                reason: aPieceNotEndedItsQuestionsUnread(
+                  updated.detail.label,
+                  'work-closed',
+                  updated.detail.unreadQuestion,
+                ),
               })
             }
             return refusalAnswer(refuseTool(updated.rail, updated.detail))

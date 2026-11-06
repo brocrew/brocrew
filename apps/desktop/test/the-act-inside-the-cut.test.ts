@@ -700,11 +700,11 @@ const ACT: Readonly<Record<string, string>> = {
   'TOOL_REFUSALS|that-conversation-has-not-started': 'make the same call again in a moment',
   'TOOL_REFUSALS|a-conversation-with-its-questions-is-starting': 'Try again in a moment',
   'TOOL_REFUSALS|a-conversation-with-its-questions-is-starting/its-label': 'Try again in a moment',
-  'TOOL_REFUSALS|its-questions-could-not-all-be-read': 'Try again; if it fails again, ask a person',
+  'TOOL_REFUSALS|its-questions-could-not-all-be-read': 'Check that record, then retry this call',
   'TOOL_REFUSALS|its-questions-could-not-all-be-read/its-label':
-    'Try again; if it fails again, ask a person',
+    'Check that record, then retry this call',
   'REPLY_RAILS|a-conversation-with-its-questions-is-starting': 'Try again in a moment',
-  'REPLY_RAILS|its-questions-could-not-all-be-read': 'Try again; if it fails again, ask a person',
+  'REPLY_RAILS|its-questions-could-not-all-be-read': 'Check that record, then retry this call',
   // ⚑ **D-012** — `read_transcript`'s two words: the other door, inside the cut.
   'TOOL_REFUSALS|not-a-conversation-below-you':
     'To ask any other agent something, use ask_question',

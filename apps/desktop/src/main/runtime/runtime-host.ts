@@ -965,6 +965,7 @@ import type {
   // 🔴 **611 · the two ends a question may be addressed to** (HO-088 §2.1).
   QuestionRecipient,
   RaisedQuestion,
+  UnreadQuestion,
   RequestOnlyAPersonCanSettle,
   RequestState,
   RoutedRequest,
@@ -4255,7 +4256,11 @@ export type TakeBackRefused =
       readonly label: string
     }
   /** The piece could not end with the copies passed up of its questions, so nothing was done. */
-  | { readonly rail: TheCopiesRefusal; readonly label: string }
+  | {
+      readonly rail: TheCopiesRefusal
+      readonly label: string
+      readonly unreadQuestion?: UnreadQuestion
+    }
   /**
    * 🔴 **657 · the piece is real and its owner is a launch in flight** (`650` F4) — the shared word,
    * carrying the label because the caller can act on it the moment the launch lands.
@@ -7308,7 +7313,11 @@ export type UpdateWorkOutcome =
   | {
       readonly ok: false
       readonly rail: TheCopiesRefusal
-      readonly detail: { readonly piece: string; readonly label: string }
+      readonly detail: {
+        readonly piece: string
+        readonly label: string
+        readonly unreadQuestion?: UnreadQuestion
+      }
     }
   | {
       readonly ok: false
@@ -15575,7 +15584,8 @@ export class RuntimeHost implements LiveHost {
     const itsTurn = queued ? null : this.theTurnOnThePieceItIsOn(piece, session)
     // ⚑ The copies passed up of its questions, which end with it: read before anything is written.
     const copies = this.theCopiesToEnd(piece.owner, piece.piece)
-    if (!copies.ok) return { ok: false, refused: { rail: copies.because, label: piece.label } }
+    if (!copies.ok)
+      return { ok: false, refused: { rail: copies.because, label: piece.label, ...copies.detail } }
     // ⚑ **The held messages go first, because they are the half that could still refuse** — the
     // brief, and any new brief: every message still waiting that carries the piece.
     const tookBackTheMessage = this.takeBackTheHeldMessages(piece, stands.held)
@@ -16712,7 +16722,11 @@ export class RuntimeHost implements LiveHost {
     if (!copies.ok) {
       return {
         ok: false,
-        refusal: refuseReply(copies.because, { piece: input.piece, label: piece.label }),
+        refusal: refuseReply(copies.because, {
+          piece: input.piece,
+          label: piece.label,
+          ...copies.detail,
+        }),
       }
     }
     const kept = this.keptFor(speaking, input.resourcePaths, (files) => {
@@ -18569,7 +18583,7 @@ export class RuntimeHost implements LiveHost {
     const folded = this.deps.store.piecesOwnedBy(row.owner).find((one) => one.piece === row.piece)
     if (folded === undefined || !TASK_IS_OPEN[folded.state]) return []
     const copies = this.whatWasPassedUpAbout(row.owner, row.piece)
-    return copies === null ? [] : this.theStartsUnderWay(copies)
+    return copies.ok ? this.theStartsUnderWay(copies.copies) : []
   }
 
   /**
@@ -18598,13 +18612,22 @@ export class RuntimeHost implements LiveHost {
     piece: string,
   ):
     | { readonly ok: true; readonly copies: PassedUpCopies }
-    | { readonly ok: false; readonly because: TheCopiesRefusal } {
-    const copies = this.whatWasPassedUpAbout(owner, piece)
-    if (copies === null) return { ok: false, because: 'its-questions-could-not-all-be-read' }
-    if (this.theStartsUnderWay(copies, owner).length > 0) {
+    | {
+        readonly ok: false
+        readonly because: TheCopiesRefusal
+        readonly detail?: { readonly unreadQuestion: UnreadQuestion }
+      } {
+    const read = this.whatWasPassedUpAbout(owner, piece)
+    if (!read.ok)
+      return {
+        ok: false,
+        because: 'its-questions-could-not-all-be-read',
+        detail: { unreadQuestion: read.unreadQuestion },
+      }
+    if (this.theStartsUnderWay(read.copies, owner).length > 0) {
       return { ok: false, because: 'a-conversation-with-its-questions-is-starting' }
     }
-    return { ok: true, copies }
+    return read
   }
 
   /**
@@ -18612,25 +18635,49 @@ export class RuntimeHost implements LiveHost {
    * those copies passed up in turn, each with the conversation that passed it up. ⚑ A question
    * passed up names no piece, so its own ledger's fold cannot end it. ⚑ Read before the transaction
    * that ends them, in the same synchronous stretch, where the store answers from what it keeps;
-   * a ledger's routings are read only where it passed one up. ⛔ `null` when a ledger, or a row of
-   * one, could not be read: a copy might stay open, so the piece does not end.
+   * a ledger's routings are read only where it passed one up. An unread result names the ledger or row that
+   * could not be read: a copy might stay open, so the piece does not end.
    */
-  private whatWasPassedUpAbout(owner: string, piece: string): PassedUpCopies | null {
-    const unread = rowsUnreadOnce()
-    const raisedIn = this.oneQuestionReadPerAnswer(unread)
+  private whatWasPassedUpAbout(
+    owner: string,
+    piece: string,
+  ):
+    | { readonly ok: true; readonly copies: PassedUpCopies }
+    | { readonly ok: false; readonly unreadQuestion: UnreadQuestion } {
+    let reading: { ledger: string; question?: string } = { ledger: owner }
+    let failure: UnreadQuestion | undefined
+    const counted = rowsUnreadOnce()
+    const unread: RowsUnread = {
+      in: (ledger) => (row, cause) => {
+        counted.in(ledger)(row, cause)
+        failure ??= {
+          ledger,
+          ...(typeof row === 'number' ? { row } : {}),
+          cause: cause ?? 'the question record could not be decoded',
+        }
+      },
+      get count() {
+        return counted.count
+      },
+      get ledgersSkipped() {
+        return counted.ledgersSkipped
+      },
+    }
+    const questions = this.oneQuestionReadPerAnswer(unread)
+    const raisedIn = (ledger: string): ReadonlyMap<string, RaisedQuestion> => {
+      reading = { ledger }
+      return questions(ledger)
+    }
     const routings = new Map<string, readonly RoutedRequest[]>()
     const routedIn = (conversation: string): readonly RoutedRequest[] => {
       const kept = routings.get(conversation)
       if (kept !== undefined) return kept
+      if (reading.ledger !== conversation) reading = { ledger: conversation }
       const read = this.deps.store.routedRequestsOf(conversation, unread)
       routings.set(conversation, read)
       return read
     }
     const copies: { readonly passer: string; readonly requestId: string }[] = []
-    const notRead = (why: string): null => {
-      console.warn(`runtime host could not read the questions passed up about ${piece}: ${why}`)
-      return null
-    }
     try {
       const toFollow = [...raisedIn(owner)]
         .filter(([, words]) => words.piece === piece)
@@ -18640,6 +18687,7 @@ export class RuntimeHost implements LiveHost {
         const key = aQuestionKey(asked.askedBy, asked.requestId)
         if (followed.has(key)) continue
         followed.add(key)
+        reading = { ledger: asked.askedBy, question: asked.requestId }
         const parent =
           routedIn(asked.askedBy)
             .filter((one) => one.requestId === asked.requestId)
@@ -18653,6 +18701,7 @@ export class RuntimeHost implements LiveHost {
         for (const passer of passers) {
           for (const [passedUp, words] of raisedIn(passer)) {
             if (words.passedUpFrom !== asked.requestId) continue
+            reading = { ledger: passer, question: passedUp }
             const open = routedIn(passer).some(
               (one) => one.requestId === passedUp && REQUEST_IS_OPEN[one.state],
             )
@@ -18662,14 +18711,9 @@ export class RuntimeHost implements LiveHost {
         }
       }
     } catch (error) {
-      return notRead(errorMessage(error))
+      failure ??= { ...reading, cause: errorMessage(error) }
     }
-    if (unread.count > 0 || unread.ledgersSkipped > 0) {
-      return notRead(
-        `${String(unread.count)} rows and ${String(unread.ledgersSkipped)} records could not be read`,
-      )
-    }
-    return copies
+    return failure === undefined ? { ok: true, copies } : { ok: false, unreadQuestion: failure }
   }
 
   /**
@@ -30646,7 +30690,8 @@ export class RuntimeHost implements LiveHost {
       input.close && held !== null
         ? this.theCopiesToEnd(row.owner, row.piece)
         : ({ ok: true, copies: [] } as const)
-    if (!copies.ok) return { ok: false, rail: copies.because, detail: named }
+    if (!copies.ok)
+      return { ok: false, rail: copies.because, detail: { ...named, ...copies.detail } }
     // ⚑ **R2 · the files, read, hashed and kept — the last thing that can refuse.**
     const kept = this.keptFor(caller, input.resources)
     if (!kept.ok) return { ok: false, resourceRefusal: kept.refusal }
