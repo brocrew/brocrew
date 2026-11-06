@@ -37,9 +37,10 @@ export function runVoiceHelper(
   const result = new Promise<VoiceResult>((done) => {
     resolve = done
   })
+  // Once the helper has handed over its text, nothing after it (a slow exit, a kill) replaces it.
   const fail = (error: VoiceError): void => {
     if (closed) return
-    answer = { ok: false, error }
+    if (answer?.ok !== true) answer = { ok: false, error }
     terminal = true
     clearTimeout(deadline)
     child.kill('SIGTERM')
@@ -114,20 +115,14 @@ export function runVoiceHelper(
     }
   })
   child.once('error', () => {
-    answer = { ok: false, error: 'unavailable' }
+    if (answer?.ok !== true) answer = { ok: false, error: 'unavailable' }
   })
-  child.once('close', (code) => {
+  child.once('close', () => {
     closed = true
     clearTimeout(deadline)
     clearTimeout(reap)
     resolve(
-      cancelled
-        ? { ok: false, error: 'cancelled' }
-        : code === 0 && answer
-          ? answer
-          : answer?.ok === false
-            ? answer
-            : { ok: false, error: 'protocol' },
+      cancelled ? { ok: false, error: 'cancelled' } : (answer ?? { ok: false, error: 'protocol' }),
     )
   })
   return {
