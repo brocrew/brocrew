@@ -9,6 +9,7 @@ import {
   PLUGIN_UNAVAILABLE_REASONS,
   PluginStartupDiagnosticSchema,
 } from '../../shared/plugin-settings'
+import { inspect } from 'node:util'
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron'
 import { PluginListError } from './catalogue/list-error'
 import {
@@ -32,6 +33,33 @@ import {
   type PluginSettingsReply,
 } from '../../shared/plugin-settings'
 /** Person-owned install/uninstall controller. Tests inject explicitly fictional fakes. */
+/**
+ * What a failed Settings request shows: the caught error's own message, its stack with every
+ * nested cause, and each typed code on that chain. Nothing is replaced by a generic stand-in.
+ */
+export function settingsFailureDetail(error: unknown): {
+  detail: string
+  stack: string
+  codes: string[]
+} {
+  const codes: string[] = []
+  const seen = new Set<unknown>()
+  for (
+    let one: unknown = error, depth = 0;
+    depth < 8 && one && typeof one === 'object' && !seen.has(one);
+    depth++
+  ) {
+    seen.add(one)
+    const code = (one as { code?: unknown }).code
+    if (typeof code === 'string' || typeof code === 'number') codes.push(String(code))
+    one = (one as { cause?: unknown }).cause
+  }
+  return {
+    detail: error instanceof Error ? error.message : inspect(error),
+    stack: inspect(error, { depth: 8, breakLength: Infinity }).slice(0, 32 * 1024),
+    codes,
+  }
+}
 export interface PluginSettingsController {
   host?: PluginHostConnection
   selectCatalogue?(source: string): Promise<PluginCard[]>
@@ -444,7 +472,17 @@ export function registerPluginSettings(
         return { ok: true, cards: await catalogue() }
       } catch (error) {
         await created?.close().catch(() => {})
-        return { ...refused, ...(error instanceof Error ? { detail: error.message } : {}) }
+        // Keep the typed refusal and say what actually happened: the caught message and stack,
+        // every typed code on its cause chain, and the stage and innermost typed cause.
+        const shown = settingsFailureDetail(error)
+        const failure = {
+          ...refused,
+          ...shown,
+          stage: 'plugin-settings',
+          cause: shown.codes.at(-1) ?? 'unknown',
+        }
+        console.error('[plugins] settings-request-failed', failure.stack)
+        return failure
       }
     },
   )

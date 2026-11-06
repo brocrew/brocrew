@@ -349,7 +349,14 @@ export type PluginSettingsReply =
       ok: false
       error: 'Plugin unavailable. Try again.'
       mutationFailure?: PluginMutationFailure
+      /** The caught error's own message. */
       detail?: string
+      /** Its stack, with every nested cause. */
+      stack?: string
+      /** Each typed code on its cause chain, outermost first. */
+      codes?: string[]
+      stage?: string
+      cause?: string
     }
 export interface PluginsClient {
   request(input: PluginSettingsRequest): Promise<PluginSettingsReply>
