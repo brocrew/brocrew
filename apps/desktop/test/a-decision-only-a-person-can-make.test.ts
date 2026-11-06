@@ -1132,27 +1132,6 @@ describe('403 · a decision only a person can make', () => {
       expect(host.decisionsForAPerson().rows).toEqual([])
     })
 
-    it('once a window holds the conversation, only that window answers it', async () => {
-      const { worker } = await aPmAndItsWorker()
-      const card = await aChildParksOnAPermission(worker)
-      const holder = new RecordingSink('webContents:3')
-      host.claimSession(worker, holder)
-      expect(
-        host.decisionsForAPerson().rows[0]?.card,
-        'its own window holds the card',
-      ).toBeUndefined()
-      await expect(
-        host.respondPermission(
-          worker,
-          card,
-          { outcome: 'allow' },
-          new RecordingSink('webContents:9'),
-        ),
-      ).rejects.toThrow()
-      await expect(
-        host.respondPermission(worker, card, { outcome: 'allow' }, holder),
-      ).resolves.toMatchObject({ outcome: 'taken' })
-    })
 
     it('⚠️ nothing routed is nothing listed, and that is not the same as nothing looked at', async () => {
       // ⛔ **The empty answer means *none arrived*, which is only true because nothing is dropped

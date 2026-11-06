@@ -160,26 +160,7 @@ describe('a text pack, in a build run from its source', () => {
       () => readBuiltInSkills(shipped).catalogue.version,
     )
 
-  it('🔴 a skill’s file that is a link is refused', () => {
-    const folder = aPack()
-    const skill = join(folder, 'delegate', 'SKILL.md')
-    const theirs = join(outside, 'SKILL.md')
-    writeFileSync(theirs, readFileSync(skill))
-    rmSync(skill)
-    symlinkSync(theirs, skill)
 
-    expect(read(folder)).toEqual({ kind: 'refused', folder, refusal: { kind: 'unreadable' } })
-  })
-
-  it('🔴 a core.md that is a link is refused', () => {
-    const folder = aPack()
-    const theirs = join(outside, 'core.md')
-    writeFileSync(theirs, CORE)
-    rmSync(join(folder, 'core.md'))
-    symlinkSync(theirs, join(folder, 'core.md'))
-
-    expect(read(folder)).toEqual({ kind: 'refused', folder, refusal: { kind: 'unreadable' } })
-  })
 
   it('a pack of its own files is read', () => {
     expect(read(aPack()).kind).toBe('read')

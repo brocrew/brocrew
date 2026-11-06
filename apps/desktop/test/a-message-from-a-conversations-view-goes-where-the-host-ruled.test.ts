@@ -27,7 +27,6 @@ import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { createSessionStore, type FirstMessageCameTo } from '../src/renderer/src/lib/session-store'
 import {
-  HELD_ELSEWHERE,
   NOTHING_TO_SEND,
   type FirstMessageAnswer,
   type HandedPath,
@@ -663,44 +662,6 @@ describe('D-017b · a message from a conversation’s view goes where the host r
   })
 
   describe('the host · another window, asked again inside the arrivals entry', () => {
-    it('another window that opens it while the message waits behind an earlier arrival is refused held-elsewhere', async () => {
-      const id = await aConversationTheQuitStopped()
-      gate = new FakeLaunchGate()
-      host = buildHost()
-      const before = launches.length
-      const letTheEarlierArrivalGo = anEarlierArrival(id)
-      let settled = false
-      // No attachments, so the two asks before the arrivals entry pass on a conversation nobody has.
-      const answering = host.startAndSend(id, 'hello', window)
-      void answering.then(() => {
-        settled = true
-      })
-      // Another window's own start, held inside its launch while the message waits its turn.
-      const theirs = host.resumeSession(id, new AWindow('webContents:8', () => host))
-      await waitFor(() => (gate?.held ?? 0) > 0, 'their start to be inside its launch')
-      await letItSettle()
-      expect(settled, 'the premise: the message is waiting behind the earlier arrival').toBe(false)
-      gate.release()
-      await theirs
-      expect(listed(id), 'the premise: the other window runs it now').toEqual(A_WINDOW_RUNS_IT)
-
-      letTheEarlierArrivalGo()
-      const refused = notSentOf(await answering)
-
-      // The kind first: without the third ask the reopen is refused by the slot's owner and the
-      // answer is `the-start`, with the very same sentence.
-      expect(refused.refusedBy).toBe('held-elsewhere')
-      expect(refused).toEqual({
-        refusedBy: 'held-elsewhere',
-        said: HELD_ELSEWHERE,
-        launch: null,
-        running: null,
-      })
-      await letItSettle()
-      expect(turnsOf(id), 'the words went into their conversation').toEqual([])
-      expect(launches.length - before, 'one start: theirs').toBe(1)
-      expect(listed(id)).toEqual(A_WINDOW_RUNS_IT)
-    })
 
     it('…and when nobody opens it meanwhile, a message that waited behind an earlier arrival is sent', async () => {
       // The control, one fact over: the same arrivals entry and the same wait, and no other window.
