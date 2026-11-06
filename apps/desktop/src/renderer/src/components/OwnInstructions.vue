@@ -99,7 +99,8 @@ const asked = ref(false)
 const draft = ref('')
 const refusal = ref<string | null>(null)
 const busy = ref(false)
-const editorBaseline = ref<RulesBaseline>({ expectedVersion: 0, currentText: '' })
+type RulesPreview = RulesBaseline & { readonly currentText: string }
+const editorBaseline = ref<RulesPreview>({ expectedVersion: 0, currentText: '' })
 
 const inForce = computed(() => (reading.value === null ? null : whatIsInForce(reading.value.own)))
 const history = computed(() => reading.value?.own.versions ?? [])
@@ -125,8 +126,7 @@ const tooLong = computed(() => draft.value.length > OWN_INSTRUCTIONS_CHARS)
 const olderDraft = computed(
   () =>
     reading.value !== null &&
-    (editorBaseline.value.expectedVersion !== (inForce.value?.version ?? 0) ||
-      editorBaseline.value.currentText !== (inForce.value?.text ?? '')),
+    editorBaseline.value.expectedVersion !== (inForce.value?.version ?? 0),
 )
 
 const unread = ref<InstructionUnread | null>(null)
@@ -134,8 +134,8 @@ const reviewElement = ref<HTMLElement | null>(null)
 const reviewCards = ref<
   readonly { version: OwnInstructionsVersion; before: string; personVersion: number | null }[]
 >([])
-const restoring = ref<{ version: OwnInstructionsVersion; baseline: RulesBaseline } | null>(null)
-const clearing = ref<RulesBaseline | null>(null)
+const restoring = ref<{ version: OwnInstructionsVersion; baseline: RulesPreview } | null>(null)
+const clearing = ref<RulesPreview | null>(null)
 let profileEpoch = 0
 let readSequence = 0
 let unreadSequence = 0
@@ -151,7 +151,7 @@ const unseen = computed(() =>
   ),
 )
 
-function baseline(): RulesBaseline {
+function baseline(): RulesPreview {
   return { expectedVersion: inForce.value?.version ?? 0, currentText: inForce.value?.text ?? '' }
 }
 
@@ -226,7 +226,9 @@ async function save(
   if (reading.value === null || busy.value) return
   const epoch = profileEpoch
   busy.value = true
-  const result = await store.value.instruct(props.profileSlug, text, broughtBack, against)
+  const result = await store.value.instruct(props.profileSlug, text, broughtBack, {
+    expectedVersion: against.expectedVersion,
+  })
   if (epoch !== profileEpoch) return
   refusal.value = result
   restoring.value = null

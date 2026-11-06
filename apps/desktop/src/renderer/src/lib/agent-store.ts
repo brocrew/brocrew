@@ -495,7 +495,6 @@ export function createAgentStore(bridge: RuntimeBridge): AgentStore {
             : {
                 baseline: {
                   expectedVersion: baseline.expectedVersion,
-                  currentText: baseline.currentText,
                 },
               }),
         })

@@ -5,7 +5,6 @@ export const OWN_NOTES_CHARACTERS = 4000
 
 export interface OwnNotesBaseline {
   readonly expectedVersion: number
-  readonly currentText: string
 }
 
 export interface OwnNotesWrite extends OwnNotesBaseline {
@@ -72,7 +71,7 @@ export interface OwnNotesReceipt {
 export const OWN_NOTES_TEXT_PROBLEM = 'Use at most 4000 characters of plain text.'
 export const OWN_NOTES_REASON_PROBLEM = 'Say why the notes should change.'
 export const OWN_NOTES_BASELINE_PROBLEM =
-  'Read the current notes, provide their exact version and full text, and say why within the size limit.'
+  'Read the current notes, provide their exact version, and say why within the size limit.'
 export const OWN_NOTES_STALE_PROBLEM = 'The notes changed; read them again before replacing them.'
 export const OWN_NOTES_SAVE_PROBLEM =
   'The notes could not be saved. Read them again before retrying.'
@@ -85,8 +84,6 @@ export function ownNotesWriteFits(said: OwnNotesWrite): boolean {
   return (
     Number.isSafeInteger(said.expectedVersion) &&
     said.expectedVersion >= 0 &&
-    typeof said.currentText === 'string' &&
-    ownNotesTextFits(said.currentText) &&
     typeof said.text === 'string' &&
     ownNotesTextFits(said.text) &&
     typeof said.why === 'string' &&
