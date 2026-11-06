@@ -180,10 +180,10 @@ export class SharedSkillDiscovery {
       for (const folder of (await readdir(root, { withFileTypes: true })).sort((a, b) =>
         a.name.localeCompare(b.name),
       )) {
-        if (folder.name.startsWith('.') || !(await stat(join(root, folder.name))).isDirectory())
-          continue
+        if (folder.name.startsWith('.')) continue
         let file
         try {
+          if (!(await stat(join(root, folder.name))).isDirectory()) continue
           file = await open(
             join(root, folder.name, 'SKILL.md'),
             constants.O_RDONLY | (constants.O_NONBLOCK ?? 0),
@@ -218,8 +218,7 @@ export class SharedSkillDiscovery {
             enabled,
           })
         } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
-            console.warn(`BroCrew skipped ${join(root, folder.name, 'SKILL.md')}: ${String(error)}`)
+          console.warn(`BroCrew skipped ${join(root, folder.name, 'SKILL.md')}: ${String(error)}`)
         } finally {
           await file?.close()
         }
@@ -259,15 +258,14 @@ export class SharedSkillDiscovery {
         a.name.localeCompare(b.name),
       )) {
         if (folder.name.startsWith('.')) continue
-        if (!(await stat(join(root, folder.name))).isDirectory()) continue
         const path = join(root, folder.name, 'SKILL.md')
         let file
         try {
+          if (!(await stat(join(root, folder.name))).isDirectory()) continue
           await assertSkillPathsAreReal(this.userData, [path], nodeFs)
           file = await open(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0))
         } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
-            console.warn(`BroCrew skipped ${join(root, folder.name, 'SKILL.md')}: ${String(error)}`)
+          console.warn(`BroCrew skipped ${join(root, folder.name, 'SKILL.md')}: ${String(error)}`)
           continue
         }
         try {

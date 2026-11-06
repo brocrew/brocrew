@@ -157,7 +157,9 @@ describe('the read-only Skills page in the agent book', () => {
 
   it('does not turn a failed reading into an empty inventory', async () => {
     const f = fixture()
-    f.skills.mockRejectedValue(new Error('Fictional unavailable metadata.'))
+    f.skills.mockRejectedValue(
+      new Error(`ENOENT: missing '/fictional/skills/recipe-check/SKILL.md'`),
+    )
     const view = mount(AgentBook, { profileSlug: 'quill', bridge: f.bridge, store: f.store })
     expect(view.host.querySelector('[data-cy="agent-book-tab-skills"]')).not.toBeNull()
     view.q('agent-book-tab-skills').click()
@@ -165,7 +167,7 @@ describe('the read-only Skills page in the agent book', () => {
       expect(view.host.querySelector('[data-cy="agent-skills-error"]')).not.toBeNull(),
     )
     expect(view.q('agent-skills-error').textContent).toContain(
-      'This app could not read the skills.',
+      `This app could not read the skills: ENOENT: missing '/fictional/skills/recipe-check/SKILL.md'`,
     )
     expect(view.host.querySelector('[data-cy="agent-skills-empty"]')).toBeNull()
     expect(view.all('agent-skill')).toHaveLength(0)
