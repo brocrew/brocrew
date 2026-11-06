@@ -10187,22 +10187,33 @@ export class RuntimeHost implements LiveHost {
     return `${provider}:${fact.launchOnly === true ? 'launch-credential' : 'sign-in'}:${fact.tag}`
   }
 
-  /** Reuse the existing account record before any launch identity or usage is frozen. */
-  private accountRecordFor(said: { email: string; organization?: string }): KnownAccount | null {
+  /** An exact recorded account, absent, or ambiguous; never infer it from the latest launch. */
+  private recordedAccountFor(said: {
+    email: string
+    organization?: string
+  }): KnownAccount | null | undefined {
     const matches = this.knownAccounts.filter(
       (one) => one.email === said.email && one.organization === said.organization,
     )
     if (new Set(matches.map((one) => one.id)).size > 1) return null
     const known = matches[0]
-    if (known !== undefined) {
-      if (
-        this.knownAccounts.some(
-          (one) =>
-            one.id === known.id &&
-            (one.email !== known.email || one.organization !== known.organization),
-        )
+    if (
+      known !== undefined &&
+      this.knownAccounts.some(
+        (one) =>
+          one.id === known.id &&
+          (one.email !== known.email || one.organization !== known.organization),
       )
-        return null
+    )
+      return null
+    return known
+  }
+
+  /** Reuse the existing account record before any launch identity or usage is frozen. */
+  private accountRecordFor(said: { email: string; organization?: string }): KnownAccount | null {
+    const known = this.recordedAccountFor(said)
+    if (known === null) return null
+    if (known !== undefined) {
       this.keepTheAccount(known)
       return known
     }
@@ -35895,10 +35906,9 @@ export class RuntimeHost implements LiveHost {
     const prefix = `${session.provider}:account:`
     if (frozen?.startsWith(prefix)) return { id: frozen.slice(prefix.length) }
     const said = fact.account
-    const known = this.knownAccount
-    if (known !== null && known.email === said.email && known.organization === said.organization) {
-      return { id: known.id }
-    }
+    const known = this.recordedAccountFor(said)
+    if (known === null) return null
+    if (known !== undefined) return { id: known.id, learned: known }
     const learned: KnownAccount = {
       id: randomBytes(16).toString('hex'),
       email: said.email,

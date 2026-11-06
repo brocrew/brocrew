@@ -28,6 +28,7 @@ import {
   writeKeptAccounts,
   providerAccountsFile,
 } from '../src/main/provider-accounts-file'
+import { readKeptUsage, writeKeptUsage, providerUsageFile } from '../src/main/provider-usage-file'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -321,6 +322,10 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
             if (stops.cutsCannotBeKept === true) throw new Error('the disk is full')
             writeKeptCuts(turnsTheAppCutFile(folder), kept)
           },
+        },
+        usageKept: {
+          read: () => readKeptUsage(providerUsageFile(folder)),
+          write: (kept) => writeKeptUsage(providerUsageFile(folder), kept),
         },
         accountsKept: {
           read: () => readKeptAccounts(providerAccountsFile(folder)),
@@ -651,6 +656,38 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       await waitFor(() => stateOf(id) === 'sent', 'A’s cut continuation after switching back')
       expect(readKeptAccounts(providerAccountsFile(userData)).claude!.id).toBe(before.id)
       expect(continuations(id)).toHaveLength(1)
+    })
+
+    it('attributes late account usage to the existing history without relabeling an unknown life', async () => {
+      const a = { id: 'a'.repeat(32), email: EMAIL.ada }
+      const b = { id: 'b'.repeat(32), email: EMAIL.bea }
+      writeKeptAccounts(providerAccountsFile(userData), { claude: b, claudeAccounts: [a, b] })
+      const id = await aTurnRunsIn({ account: 'never' })
+      const handle = handles.at(-1)!
+      ;(handle as unknown as { account: () => unknown }).account = () => ({ email: EMAIL.ada })
+      handle.simulateProviderUsage([{ window: 'five_hour', usedPercent: 12, resetsAt: null }])
+      await waitFor(
+        () => now.host.providerUsage().claude.some((one) => one.usedPercent === 12),
+        'late usage',
+      )
+      await now.host.closeAll()
+      const kept = readKeptAccounts(providerAccountsFile(userData))
+      expect(kept.claudeAccounts).toEqual([a, b])
+      expect(readKeptUsage(providerUsageFile(userData)).readings.claude).toEqual([
+        expect.objectContaining({ window: 'five_hour', account: a.id, usedPercent: 12 }),
+      ])
+      expect(readKeptCuts(turnsTheAppCutFile(userData)).cuts[id]!.expected).toBeNull()
+      starts(SOON, { account: 'ada' })
+      await waitFor(() => typeof stateOf(id) === 'object', 'unknown cut decision')
+      expect(stateOf(id)).toEqual({ ended: 'account-not-known' })
+      expect(continuations(id)).toEqual([])
+      await now.host.createSession(
+        { provider: 'claude', profileId: 'agent-a', approvalMode: 'auto', cwd: root },
+        window,
+      )
+      await settle()
+      expect(readKeptAccounts(providerAccountsFile(userData)).claude!.id).toBe(a.id)
+      expect(readKeptAccounts(providerAccountsFile(userData)).claudeAccounts).toEqual([a, b])
     })
 
     it('does not claim a durable account identity when its ordinary account file cannot be saved', async () => {
