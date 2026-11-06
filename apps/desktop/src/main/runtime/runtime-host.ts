@@ -34543,7 +34543,10 @@ export class RuntimeHost implements LiveHost {
     }
     const slot = this.slots.get(askedBy)
     const aPersons = aPersonsSince(request) !== null
-    const inTheirWindow = slot !== undefined && (aPersonTypedIt(by) || mayAnswerAsAHuman(slot, by))
+    const inTheirWindow =
+      slot !== undefined &&
+      ((aPersonTypedIt(by) && (by as RuntimeEventSink).aPersonIsBehindIt === true) ||
+        mayAnswerAsAHuman(slot, by))
     if (!aPersonIsAsking(by) || (!aPersons && !inTheirWindow)) {
       return {
         outcome: 'refused',
@@ -46621,7 +46624,11 @@ export class RuntimeHost implements LiveHost {
 
   /** Person windows can command any conversation without changing its stream owner. */
   private assertMayControl(slot: SessionSlot, by: Caller): void {
-    if (aPersonTypedIt(by) || mayControl(slot, by)) return
+    if (
+      (aPersonTypedIt(by) && (by as RuntimeEventSink).aPersonIsBehindIt === true) ||
+      mayControl(slot, by)
+    )
+      return
     throw this.refusalTranslated(
       new SessionUnavailable(
         slot.ownerId === null ? 'held-by-nobody' : 'not-yours',
@@ -46686,7 +46693,11 @@ export class RuntimeHost implements LiveHost {
    * refused here for exactly that reason.
    */
   private assertMayAnswer(slot: SessionSlot, by: Caller, requestId: string): void {
-    if (aPersonTypedIt(by) || this.aPersonAnswersWhereNobodyHolds(slot, requestId, by)) return
+    if (
+      (aPersonTypedIt(by) && (by as RuntimeEventSink).aPersonIsBehindIt === true) ||
+      this.aPersonAnswersWhereNobodyHolds(slot, requestId, by)
+    )
+      return
     if (mayAnswerAsAHuman(slot, by)) return
     if (!mayCommand(this.commandedNow(slot), by)) this.assertMayControl(slot, by)
     throw this.refusalTranslated(
