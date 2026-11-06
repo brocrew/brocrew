@@ -93,12 +93,11 @@ describe('a method delete is planned from the confirmed current inventory', () =
     expect(plan.files[0]?.after).toBeNull()
     expect(existsSync(join(folder, 'review.md'))).toBe(true)
   })
-  it('retains an absent target in dangling-reference cleanup so recreation conflicts', () => {
+  it('retains an absent target while removing its dangling references', () => {
     rmSync(join(folder, 'review.md'))
     const plan = capture()
     expect(plan.files[1]).toEqual({ name: 'review.md', before: null, after: null })
     expect(plan.files[0]?.after).toEqual(Buffer.alloc(0))
-    writeFileSync(join(folder, 'review.md'), 'new')
   })
   it('refuses a caller supplied path instead of a key', () => {
     capture()
