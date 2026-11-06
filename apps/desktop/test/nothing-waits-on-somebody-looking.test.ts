@@ -1009,14 +1009,12 @@ describe('396 · nothing waits on somebody looking', () => {
       expect(body).not.toContain('if (!session.sink.alive) return')
     })
 
-    it('⛔ every `sink.alive` reader in the host is a DELIVERY — the family, enumerated', () => {
-      // ⚠️ **A negative needs a search shape** (standing rule 4). The claim is *"nothing else in this
-      // class gates WORK on whether anybody is looking"*, and the shape it is measured against is
-      // every line of `runtime-host.ts` that reads `sink.alive` — named, classified, and asserted
-      // equal, so a new reader arrives here as a red list rather than as a line nobody read.
-      const code = codeOnly(sourceOf(join(mainRoot, 'runtime'), 'runtime-host.ts'))
-      const readers = code
-        .split('\n')
+    it('⛔ every `sink.alive` reader in the host and window reads is a DELIVERY — the family, enumerated', () => {
+      // Enumerate delivery guards in the host and its window reads. A new reader must be
+      // classified here; moving a guard between these sources does not remove it from the census.
+      const sources = ['runtime-host.ts', 'window-reads.ts']
+      const readers = sources
+        .flatMap((file) => codeOnly(sourceOf(join(mainRoot, 'runtime'), file)).split('\n'))
         .map((line) => line.trim())
         .filter((line) => line.includes('sink.alive'))
         .sort()
@@ -1057,8 +1055,8 @@ describe('396 · nothing waits on somebody looking', () => {
           // A row written into a ledger nothing runs, shown to a window that has it open.
           'if (!sink.alive) {',
           // A Files query belongs to its window and has no work to deliver after that window closes.
-          'if (libraries === undefined || this.launches.closed || !sink.alive)',
-          "if (this.launches.closed || !sink.alive) return libraryUnavailable('closed')",
+          "if (libraries === undefined || read.closed() || !sink.alive) return libraryUnavailable('closed')",
+          "if (read.closed() || !sink.alive) return libraryUnavailable('closed')",
         ].sort(),
       )
       // ⚑ **The member is a DELIVERY only if `watching` chooses the sink and nothing else** — no
