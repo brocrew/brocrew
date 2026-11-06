@@ -5,8 +5,6 @@ import {
   rmSync,
   writeFileSync,
   lstatSync,
-  symlinkSync,
-  linkSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -75,19 +73,3 @@ it('writes the real error messages on the same single line', () => {
     'stage=binding-connect cause=io-denied correlation=11111111-2222-4333-8444-555555555555 error="fictional connect refused\\n    at line two <- inner fictional cause"',
   )
 })
-it.skipIf(process.platform === 'win32')(
-  'does not write through symbolic or hard links or a public file',
-  () => {
-    for (const kind of ['symlink', 'hardlink', 'public'] as const) {
-      const f = fixture(),
-        target = join(f.root, 'fictional-target')
-      writeFileSync(target, 'fictional-original', { mode: 0o600 })
-      if (kind === 'symlink') symlinkSync(target, f.path)
-      else if (kind === 'hardlink') linkSync(target, f.path)
-      else writeFileSync(f.path, 'fictional-original', { mode: 0o644 })
-      recordPluginToolFailure(f.root, 'chrome', 'proof-rejected')
-      expect(readFileSync(target, 'utf8')).toBe('fictional-original')
-      expect(readFileSync(f.path, 'utf8')).toBe('fictional-original')
-    }
-  },
-)

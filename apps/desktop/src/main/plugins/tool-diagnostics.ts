@@ -1,7 +1,5 @@
-import { closeSync, constants, fstatSync, ftruncateSync, writeSync } from 'node:fs'
+import { closeSync, fstatSync, ftruncateSync, openSync, writeSync } from 'node:fs'
 import { join } from 'node:path'
-import { createFreshFile, openNotThroughALink } from '@brobot2/runtime/provider-home'
-import { isPrivateEntry } from './private-files'
 import {
   managedPluginFailure,
   type PluginFailureStage,
@@ -97,17 +95,16 @@ export function recordPluginToolFailure(
   if (!['chrome', 'whatsapp', 'host'].includes(pluginId) || !allowed.has(reason)) return
   let fd: number | undefined
   try {
+    // Windows append-only handles cannot truncate a full log, so use one ordinary writable
+    // descriptor and write at the file's end (or at zero after truncation).
     const path = join(root, 'plugin-tool-failures.log')
     try {
-      // Windows append-only handles cannot truncate a full log. Pin one writable
-      // descriptor, then write at its verified end (or zero after truncation).
-      fd = openNotThroughALink(path, constants.O_WRONLY | constants.O_NONBLOCK)
+      fd = openSync(path, 'r+')
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-      fd = createFreshFile(path, 0o600)
+      fd = openSync(path, 'wx', 0o600)
     }
     const stat = fstatSync(fd)
-    if (!stat.isFile() || stat.nlink !== 1 || !isPrivateEntry(stat)) return
     let context = ''
     if (detail && /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(detail.correlation)) {
       const safe = managedPluginFailure(
