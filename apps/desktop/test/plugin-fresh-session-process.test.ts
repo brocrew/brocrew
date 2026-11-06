@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { createServer } from 'node:http'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { AddressInfo } from 'node:net'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -17,6 +17,10 @@ import {
   type RuntimeEvent,
 } from '@brobot2/runtime'
 import { PLUGIN_ATTACHMENT_WAIT_MS } from '../../../packages/runtime/src/managed-plugin-session'
+import { encodeState, type JournalRecord } from '../src/main/plugins/state/format'
+import { foldRecord } from '../src/main/plugins/state/machine'
+import { pluginSha256 } from '../src/main/plugins/package-digests'
+import type { PluginStateDisk } from '../src/main/plugins/state/disk'
 import { fixture, cleanupLifecycleFixtures, deferred } from './plugin-lifecycle-fixtures'
 import { manifestFor, packageFixture, signed } from './plugin-package-fixtures'
 import { bundleAWorker } from './helpers/bundle-a-worker'
@@ -189,10 +193,39 @@ it.each([
     await f.controller.install(f.handle, 'whatsapp')
     const historyWorkspace = randomUUID(),
       receipt = f.state.emptyProjection(historyWorkspace, 'chrome')
-    for (let i = 0; i < history; i++)
-      f.state.recordProjection(historyWorkspace, 'chrome', i % 2 ? null : receipt)
     await f.controller.drain()
+    const head = (f.state as unknown as { disk: PluginStateDisk }).disk.load()
+    const beforeHistory = head.sequence
     f.state.close()
+    // Seed the fictional closed journal once. Measuring route reads must not first
+    // perform O(n²) fsync/replay setup, especially under Windows Defender.
+    // The new process still opens and verifies every real record and seal.
+    for (let i = 0; i < history; i++) {
+      const record: JournalRecord = {
+        sequence: head.sequence + 1,
+        previous: head.head,
+        publicationId: randomUUID(),
+        event: {
+          kind: 'projected',
+          workspaceId: historyWorkspace,
+          pluginId: 'chrome',
+          receipt: i % 2 ? null : receipt,
+        },
+      }
+      const bytes = encodeState(record),
+        checksum = pluginSha256(bytes)
+      foldRecord(head, record, checksum)
+      const name = String(record.sequence).padStart(8, '0')
+      writeFileSync(join(f.root, 'state/lifecycle-guard', name + '.json'), bytes, {
+        mode: 0o600,
+        flag: 'wx',
+      })
+      writeFileSync(join(f.root, 'state/lifecycle-guard', name + '-' + checksum + '.seal'), '', {
+        mode: 0o600,
+        flag: 'wx',
+      })
+    }
+    expect(head.sequence - beforeHistory).toBe(history)
     const bundle = await bundleAWorker(
       'test/fixtures/plugin-restart-process.ts',
       join(f.parent, 'bundle'),

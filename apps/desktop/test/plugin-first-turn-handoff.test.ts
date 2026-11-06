@@ -76,6 +76,7 @@ async function fixture(
   }> = []
   const raw = new Proxy(new FakeRuntime('codex'), {
     get(target, key) {
+      if (key === 'canRecreateMissingUnusedSession') return true
       if (key === 'resume')
         return async (ref: SessionRef, options: ResumeOptions) => {
           if (holdResumeExit && resumeAttempts++ === 0) {
