@@ -10588,7 +10588,7 @@ export class RuntimeHost implements LiveHost {
     const id = this.deps.newSessionId()
     const itsName = foldProfileName(profile)
     // Read before the reservation, so nothing between it and the row can leave it standing.
-    const pair = this.theSelectedPairIfNamed(provider, itsName)
+    const pair = this.modelCatalogues.theSelectedPairIfNamed(provider, itsName)
     const cwd = this.deps.resolveCwd(id, undefined)
     this.keepTheProfileEntry(agent.identity, { ...entry, reserved: id }, true)
     try {
@@ -10879,7 +10879,7 @@ export class RuntimeHost implements LiveHost {
     const agent = this.deps.store.identityOf(conversation)
     const provider = this.theProviderOfConversation(conversation)
     if (agent === null || provider === null) return null
-    return this.theSelectedPairIfNamed(provider, agent.profileSlug)
+    return this.modelCatalogues.theSelectedPairIfNamed(provider, agent.profileSlug)
   }
 
   /**
@@ -24274,7 +24274,7 @@ export class RuntimeHost implements LiveHost {
     const row = live === null ? this.deps.store.recordedOne(sessionId) : null
     const provider = live?.provider ?? row?.provider
     if (provider === undefined) throw new Error('there is no record of this conversation here')
-    const list = await this.theListFor(
+    const list = await this.modelCatalogues.theListFor(
       provider,
       live?.profileId ?? row?.profileId ?? DEFAULT_PROFILE_ID,
     )
@@ -24290,7 +24290,7 @@ export class RuntimeHost implements LiveHost {
       )
     }
     const effortOf = (model: string): string | null =>
-      said(model, this.theEffortOfAModelNamedAlone(list, provider, model))
+      said(model, this.modelCatalogues.theEffortOfAModelNamedAlone(list, provider, model))
     const runs = this.thePairItRunsOn(sessionId)
     if (change.kind === 'reasoningEffort') {
       return {
@@ -24299,7 +24299,8 @@ export class RuntimeHost implements LiveHost {
       }
     }
     const model =
-      change.model ?? this.theProvidersDefaultIn(list, provider, runs?.effort ?? undefined)?.model
+      change.model ??
+      this.modelCatalogues.theProvidersDefaultIn(list, provider, runs?.effort ?? undefined)?.model
     if (model === undefined) {
       throw new Error(
         list.notAsked === null
@@ -27692,7 +27693,7 @@ export class RuntimeHost implements LiveHost {
       // the launch and the answer read one resolution. ⚠️ Left to the launch only where R1 has no
       // whole pair here: the provider's default off its list (Codex's), or a model that offers no
       // effort, which the launch resolves the same way.
-      const resolved = this.theSelectedPairIfNamed(start.provider, start.profileId)
+      const resolved = this.modelCatalogues.theSelectedPairIfNamed(start.provider, start.profileId)
       const startsOn: ModelAndEffort | null = choice ?? (resolved?.effort == null ? null : resolved)
       const from: WhereItCameFrom = named.model
         ? 'named'
@@ -27795,7 +27796,7 @@ export class RuntimeHost implements LiveHost {
             ? asked.profile
             : STAND_IN_PROFILE
           : (this.profileOf(found) ?? STAND_IN_PROFILE)
-      return this.theListFor(provider, home)
+      return this.modelCatalogues.theListFor(provider, home)
     }
     return (async () => {
       const first = preferred === null ? null : await listFor(preferred)
@@ -27809,7 +27810,7 @@ export class RuntimeHost implements LiveHost {
           ? null
           : { provider: preferred, list: first, theNamedModels: null }
       }
-      const theNamedModels = await this.theProviderWhoseListAloneHolds(asked.model)
+      const theNamedModels = await this.modelCatalogues.theProviderWhoseListAloneHolds(asked.model)
       const provider =
         fixed ??
         theProviderAStartRunsOn(
@@ -27827,10 +27828,6 @@ export class RuntimeHost implements LiveHost {
         theNamedModels,
       }
     })()
-  }
-
-  private theProviderWhoseListAloneHolds(model: string): Promise<Provider | null> {
-    return this.modelCatalogues.theProviderWhoseListAloneHolds(model)
   }
 
   private itsProvider(profileSlug: string): ItsProvider {
@@ -27949,11 +27946,11 @@ export class RuntimeHost implements LiveHost {
     }
     const otherwise =
       'made' in at
-        ? (this.theSelectedPairIfNamed(provider, at.made.profile) ??
-          this.theProvidersDefaultIn(choosing.list, provider, asked.effort))
+        ? (this.modelCatalogues.theSelectedPairIfNamed(provider, at.made.profile) ??
+          this.modelCatalogues.theProvidersDefaultIn(choosing.list, provider, asked.effort))
         : (this.thePairItRunsOn(at.existing) ??
-          this.theSelectedPairIfNamed(provider, this.profileOf(at.existing)) ??
-          this.theProvidersDefaultIn(choosing.list, provider, asked.effort))
+          this.modelCatalogues.theSelectedPairIfNamed(provider, this.profileOf(at.existing)) ??
+          this.modelCatalogues.theProvidersDefaultIn(choosing.list, provider, asked.effort))
     return judgeAnAgentsChoice(
       {
         ...(asked.model === undefined ? {} : { model: asked.model }),
@@ -40298,38 +40295,8 @@ export class RuntimeHost implements LiveHost {
     return this.modelCatalogues.judgeTheDefaultItNames(me, named, asked)
   }
 
-  private theListFor(
-    provider: Provider,
-    profileId: string,
-  ): Promise<TheListAsked & { readonly standIn: string | null }> {
-    return this.modelCatalogues.theListFor(provider, profileId)
-  }
-
   private theListsAsLastRead(): ListsAsLastRead {
     return this.modelCatalogues.theListsAsLastRead()
-  }
-
-  private theSelectedPairIfNamed(
-    provider: Provider,
-    profileSlug: string | null,
-  ): SelectedModel | null {
-    return this.modelCatalogues.theSelectedPairIfNamed(provider, profileSlug)
-  }
-
-  private theProvidersDefaultIn(
-    list: TheListAsked,
-    provider: Provider,
-    carried?: string,
-  ): SelectedModel | null {
-    return this.modelCatalogues.theProvidersDefaultIn(list, provider, carried)
-  }
-
-  private theEffortOfAModelNamedAlone(
-    list: TheListAsked,
-    provider: Provider,
-    model: string,
-  ): string | null | undefined {
-    return this.modelCatalogues.theEffortOfAModelNamedAlone(list, provider, model)
   }
 
   private theSelectedModel(
