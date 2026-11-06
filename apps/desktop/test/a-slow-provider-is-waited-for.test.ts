@@ -286,6 +286,72 @@ describe.each<Provider>(['claude', 'codex'])('a slow %s provider is waited for',
     await closing
   })
 
+  it.each(['its Stop', 'its window going away'] as const)(
+    'a reopen waiting for the last session to be put away ends on %s, and starts nothing after',
+    async (how) => {
+      const closeHeld = held()
+      controls.closeHeld = closeHeld
+      const sink = new RecordingSink()
+      const sessionId = await anOpenConversation(sink)
+      controls.closeHeld = null
+      const closing = host.close(sessionId, sink)
+      await pause(PAST_THE_OLD_BOUNDS_MS)
+
+      const window = new RecordingSink('owner:2')
+      const reopening = host.resumeSession(sessionId, window, 'k-reopen')
+      reopening.catch(() => undefined)
+      await pause(50)
+      expect(await standing(reopening)).toBe('pending')
+
+      if (how === 'its Stop') expect(await host.cancelLaunch('k-reopen', 'owner:2')).toBe(true)
+      else await host.closeSessionsForOwner('owner:2')
+      const ended = await standing(reopening.then(() => undefined))
+      expect(ended).not.toBe('pending')
+      expect(ended).not.toBe('resolved')
+      // The old provider is still being put away, and still owned: nothing cut it short.
+      expect([...host.workInFlight()]).toContain(sessionId)
+
+      const asked = controls.launchesAsked.length
+      closeHeld.release()
+      await closing
+      await pause(PAST_THE_OLD_BOUNDS_MS)
+      expect(controls.launchesAsked.length).toBe(asked)
+    },
+  )
+
+  it('a Stop the host acknowledges, at any moment as the last close ends, means the reopen does not happen', async () => {
+    // Every point between the close ending and the reopen taking its place is tried in turn.
+    for (let ticks = 0; ticks <= 30; ticks++) {
+      const closeHeld = held()
+      controls.closeHeld = closeHeld
+      const sink = new RecordingSink()
+      const sessionId = await anOpenConversation(sink)
+      controls.closeHeld = null
+      const closing = host.close(sessionId, sink)
+      await pause(PAST_THE_OLD_BOUNDS_MS / 10)
+      const owner = `owner:stop-${ticks}`
+      const window = new RecordingSink(owner)
+      const reopening = host.resumeSession(sessionId, window, `k-${ticks}`)
+      const outcome = reopening.then(
+        () => 'reopened' as const,
+        () => 'refused' as const,
+      )
+      await pause(5)
+      closeHeld.release()
+      for (let i = 0; i < ticks; i++) await Promise.resolve()
+      const acknowledged = await host.cancelLaunch(`k-${ticks}`, owner)
+      await closing
+      if (acknowledged)
+        expect(await outcome, `a Stop ${ticks} ticks after the close`).toBe('refused')
+      else await outcome
+      // Whichever window holds it now puts it away before the next moment is tried.
+      for (const holder of [window, sink])
+        await Promise.resolve()
+          .then(() => host.close(sessionId, holder))
+          .catch(() => undefined)
+    }
+  }, 60_000)
+
   it('a message sent while the last session is still being put away goes in after it', async () => {
     const closeHeld = held()
     controls.closeHeld = closeHeld

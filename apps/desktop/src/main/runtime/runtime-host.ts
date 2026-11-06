@@ -7566,6 +7566,23 @@ function tieInWords(how: TiedOutside['how'], here: string, other: string): strin
   }
 }
 
+/**
+ * Work a surface owns before it holds a slot (a reopen waiting for the last session to be put
+ * away). `stop` ends that wait at once, for a person's Cancel or the surface going away; what was
+ * being put away goes on, and stays owned, without it.
+ */
+interface OwnedWait {
+  readonly ownerId: string
+  /** What the window calls this request, so its Cancel can find it; null when it named none. */
+  readonly launchKey: string | null
+  released: boolean
+  cancelled: boolean
+  /** Past the fence before its reservation: from here its own launch slot answers a Cancel. */
+  handedOver: boolean
+  readonly stopped: Promise<void>
+  readonly stop: () => void
+}
+
 export class RuntimeHost implements LiveHost {
   /**
    * Every session id this host owns — from the moment it is RESERVED, not from the moment a
@@ -7635,7 +7652,7 @@ export class RuntimeHost implements LiveHost {
    * each has to be able to end on its own — a count would have to be right in both directions across
    * every throw path, and the wrong direction leaves a window permanently unable to reopen anything.
    */
-  private readonly ownedWaits = new Set<{ readonly ownerId: string; released: boolean }>()
+  private readonly ownedWaits = new Set<OwnedWait>()
   private readonly slots = new Map<string, SessionSlot>()
   /**
    * **Every provider spawn this host has asked for, owned before it exists** (070, from 068 findings
@@ -13934,7 +13951,22 @@ export class RuntimeHost implements LiveHost {
         candidate.session === null &&
         !onItsWayOut(candidate),
     )
-    if (slot === undefined) return false
+    if (slot === undefined) {
+      // A reopen still waiting for the last session to be put away holds no slot yet: its wait is
+      // what is cancelled. The old provider stays owned until it is confirmed down.
+      const waiting = [...this.ownedWaits].find(
+        (one) =>
+          one.launchKey === launchKey &&
+          one.ownerId === ownerId &&
+          !one.released &&
+          !one.cancelled &&
+          !one.handedOver,
+      )
+      if (waiting === undefined) return false
+      waiting.cancelled = true
+      waiting.stop()
+      return true
+    }
     // Awaited, so the answer means the provider is confirmed down rather than merely asked to stop
     // — bounded inside `awaitArrival`, and past that bound the slot stays marked and the launch
     // stays owned, so the id keeps being refused. Acceptance 4's second half is that path.
@@ -44015,16 +44047,18 @@ export class RuntimeHost implements LiveHost {
     // with no surface there is no departure to reach it, and {@link closeSessionsForOwner} is only
     // ever asked about a real owner. ⛔ Registering one under {@link NO_SURFACE}'s `ownerId` would
     // be a fence no release can ever trip — a line that looks like a guard and guards nothing.
-    const waiting = sink === null ? null : this.beginOwnedWait(sink.ownerId)
+    const waiting = sink === null ? null : this.beginOwnedWait(sink.ownerId, launchKey)
     try {
-      await this.settleTeardown(sessionId)
+      await this.untilTheOwnerStopsIt(this.settleTeardown(sessionId), waiting, sessionId)
       // ⛔ **The generation fence.** Between the line above and this one the window may have been
       // reloaded, crashed or destroyed, and `closeSessionsForOwner` will have closed the slots that
       // existed without ever seeing this reopen. Asked BEFORE {@link attachHeldSession}, so a
       // released surface is not handed a live session either. ⚠️ Translated like every other refusal
       // on this path (100), so the id stays in the log and the sentence carries none.
+      // ⚑ …and a Cancel that landed after the teardown ended but before this line is honoured too.
       if (waiting !== null) {
-        this.refusalsTranslated(() => this.assertSurfaceIsStillThere(waiting, sessionId))
+        this.refuseIfTheOwnerStoppedIt(waiting, sessionId)
+        waiting.handedOver = true
       }
       // ⚠️ **After the wait, before the reservation, and synchronously** (100). After, because a
       // session still tearing down is not one to hand back and 075's wait is what decides that;
@@ -44174,10 +44208,52 @@ export class RuntimeHost implements LiveHost {
    * release it, so {@link resumeSession} registers nothing rather than a wait under an owner id no
    * release will ever name.
    */
-  private beginOwnedWait(ownerId: string): { readonly ownerId: string; released: boolean } {
-    const waiting = { ownerId, released: false }
+  private beginOwnedWait(ownerId: string, launchKey: string | null = null): OwnedWait {
+    let stop: () => void = () => {}
+    const stopped = new Promise<void>((resolve) => {
+      stop = resolve
+    })
+    const waiting: OwnedWait = {
+      ownerId,
+      launchKey,
+      released: false,
+      cancelled: false,
+      handedOver: false,
+      stopped,
+      stop,
+    }
     this.ownedWaits.add(waiting)
     return waiting
+  }
+
+  /**
+   * Wait for `work` until it settles or the owner stops the wait: its Cancel, or its window going
+   * away. A stopped wait refuses its request; `work` itself goes on for whatever else waits on it.
+   */
+  private async untilTheOwnerStopsIt(
+    work: Promise<void>,
+    waiting: OwnedWait | null,
+    sessionId: string,
+  ): Promise<void> {
+    if (waiting === null) return work
+    const stoppedFirst = await Promise.race([
+      work.then(() => false),
+      waiting.stopped.then(() => true),
+    ])
+    if (stoppedFirst) this.refuseIfTheOwnerStoppedIt(waiting, sessionId)
+  }
+
+  /** Refuse a reopen whose owner cancelled it or went away while it waited. Synchronous. */
+  private refuseIfTheOwnerStoppedIt(waiting: OwnedWait, sessionId: string): void {
+    if (waiting.cancelled) {
+      throw this.refusalTranslated(
+        new SessionUnavailable(
+          'cancelled',
+          `session ${sessionId}'s reopen was cancelled while its last session was being put away`,
+        ),
+      )
+    }
+    this.refusalsTranslated(() => this.assertSurfaceIsStillThere(waiting, sessionId))
   }
 
   /**
@@ -45938,7 +46014,9 @@ export class RuntimeHost implements LiveHost {
     // them. It is also why `released` is mutable state rather than a set membership — an entry the
     // waiter deletes on its own way out must not be resurrectable by a second release.
     for (const waiting of this.ownedWaits) {
-      if (waiting.ownerId === ownerId) waiting.released = true
+      if (waiting.ownerId !== ownerId) continue
+      waiting.released = true
+      waiting.stop()
     }
     // ⚑ A window that went or reloaded has no conversation open: none of what it looked at is
     // shown to it again until it looks again.
