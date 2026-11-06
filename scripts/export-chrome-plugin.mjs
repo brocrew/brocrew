@@ -211,7 +211,7 @@ jobs:
         run: |
           set -eu
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/chrome/src plugins/chrome/ui plugins/chrome/bridge plugins/chrome/build.mjs plugins/chrome/manifest-template.json plugins/chrome/package.json plugins/chrome/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs package.json package-lock.json)"
+          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/chrome/src plugins/chrome/ui plugins/shared/ui plugins/chrome/bridge plugins/chrome/build.mjs plugins/chrome/manifest-template.json plugins/chrome/package.json plugins/chrome/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs package.json package-lock.json)"
       - run: npm run build -- artifact
       - run: npm run build -- artifact-repeat
       - name: Verify reproducible archive bytes
@@ -223,12 +223,12 @@ jobs:
         run: |
           set -eu
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/chrome/src plugins/chrome/ui plugins/chrome/bridge plugins/chrome/build.mjs plugins/chrome/manifest-template.json plugins/chrome/package.json plugins/chrome/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs package.json package-lock.json)"
+          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/chrome/src plugins/chrome/ui plugins/shared/ui plugins/chrome/bridge plugins/chrome/build.mjs plugins/chrome/manifest-template.json plugins/chrome/package.json plugins/chrome/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs package.json package-lock.json)"
           git rev-parse HEAD > artifact/source-commit.txt
           node --version > artifact/node-version.txt
           npm --version > artifact/npm-version.txt
           node -p "require('./plugins/chrome/node_modules/esbuild/package.json').version" > artifact/esbuild-version.txt
-          sha256sum package-lock.json plugins/chrome/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs plugins/chrome/build.mjs .github/workflows/release.yml > artifact/build-inputs.sha256
+          sha256sum package-lock.json plugins/chrome/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs plugins/chrome/build.mjs .github/workflows/release.yml artifact/source-receipt.json > artifact/build-inputs.sha256
           sha256sum artifact/*.tar.gz artifact/plugin-list-entry.json > artifact/downloads.sha256
       - uses: actions/upload-artifact@v4
         with:

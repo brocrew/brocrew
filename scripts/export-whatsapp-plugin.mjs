@@ -222,7 +222,7 @@ jobs:
         run: |
           set -eu
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/whatsapp/src plugins/whatsapp/ui plugins/whatsapp/bridge plugins/whatsapp/build.mjs plugins/whatsapp/manifest-template.json plugins/whatsapp/package.json plugins/whatsapp/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs package.json package-lock.json)"
+          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/whatsapp/src plugins/whatsapp/ui plugins/shared/ui plugins/whatsapp/bridge plugins/whatsapp/build.mjs plugins/whatsapp/manifest-template.json plugins/whatsapp/package.json plugins/whatsapp/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs package.json package-lock.json)"
       - run: BROCREW_GO="$(command -v go)" npm run build -- artifact
       - run: BROCREW_GO="$(command -v go)" npm run build -- artifact-repeat
       - name: Verify reproducible archive bytes
@@ -234,13 +234,13 @@ jobs:
         run: |
           set -eu
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/whatsapp/src plugins/whatsapp/ui plugins/whatsapp/bridge plugins/whatsapp/build.mjs plugins/whatsapp/manifest-template.json plugins/whatsapp/package.json plugins/whatsapp/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs package.json package-lock.json)"
+          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/whatsapp/src plugins/whatsapp/ui plugins/shared/ui plugins/whatsapp/bridge plugins/whatsapp/build.mjs plugins/whatsapp/manifest-template.json plugins/whatsapp/package.json plugins/whatsapp/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs package.json package-lock.json)"
           git rev-parse HEAD > artifact/source-commit.txt
           node --version > artifact/node-version.txt
           npm --version > artifact/npm-version.txt
           node -p "require('./plugins/whatsapp/node_modules/esbuild/package.json').version" > artifact/esbuild-version.txt
           go version > artifact/go-version.txt
-          sha256sum package-lock.json plugins/whatsapp/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs plugins/whatsapp/build.mjs .github/workflows/release.yml > artifact/build-inputs.sha256
+          sha256sum package-lock.json plugins/whatsapp/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs plugins/whatsapp/build.mjs .github/workflows/release.yml artifact/source-receipt.json > artifact/build-inputs.sha256
           sha256sum artifact/*.tar.gz artifact/plugin-list-entry.json > artifact/downloads.sha256
       - uses: actions/upload-artifact@v4
         with:

@@ -29,25 +29,172 @@ function commit(root, repository) {
   )
   return git(root, 'rev-parse', 'HEAD')
 }
-function fixture() {
+function fixture({ shared = false, id = 'chrome' } = {}) {
   const base = fs.mkdtempSync(path.join(tmpdir(), 'fictional-source-pin-'))
   folders.push(base)
   const canonicalRoot = path.join(base, 'canonical')
   const root = path.join(base, 'export')
   for (const leaf of ['src/tool.js', 'ui/index.html', 'test/old.test.ts', 'build.mjs']) {
-    const file = path.join(canonicalRoot, 'plugins/chrome', leaf)
+    const file = path.join(canonicalRoot, 'plugins', id, leaf)
     fs.mkdirSync(path.dirname(file), { recursive: true })
     fs.writeFileSync(file, 'fictional source: ' + leaf)
   }
+  if (shared) {
+    fs.mkdirSync(path.join(canonicalRoot, 'plugins/shared'), { recursive: true })
+    if (shared === 'blob')
+      fs.writeFileSync(path.join(canonicalRoot, 'plugins/shared/ui'), 'fictional non-tree input')
+    else {
+      fs.mkdirSync(path.join(canonicalRoot, 'plugins/shared/ui'))
+      fs.writeFileSync(path.join(canonicalRoot, 'plugins/shared/ui/load.js'), 'fictional shared UI')
+    }
+  }
   const sourceCommit = commit(canonicalRoot, 'https://github.com/brocrew/brocrew.git')
-  copyPluginSource(canonicalRoot, root, 'chrome')
+  copyPluginSource(canonicalRoot, root, id)
   fs.writeFileSync(
     path.join(root, 'README.md'),
     'Fictional export tooling outside the plugin subtree',
   )
-  commit(root, 'https://github.com/brocrew/brocrew-plugin-chrome.git')
-  return { base, root, canonicalRoot, sourceCommit, id: 'chrome' }
+  commit(root, `https://github.com/brocrew/brocrew-plugin-${id}.git`)
+  return { base, root, canonicalRoot, sourceCommit, id }
 }
+
+it.each(['chrome', 'whatsapp'])('exports and pins shared UI for %s standalone builds', (id) => {
+  const options = fixture({ shared: true, id })
+  expect(fs.readFileSync(path.join(options.root, 'plugins/shared/ui/load.js'), 'utf8')).toBe(
+    'fictional shared UI',
+  )
+  expect(verifyPluginSource(options).sharedUiTree).toBe(
+    git(options.canonicalRoot, 'rev-parse', 'HEAD:plugins/shared/ui'),
+  )
+})
+
+it.each(['changed', 'missing', 'extra ignored'])(
+  'refuses %s shared UI in an exported build',
+  (change) => {
+    const options = fixture({ shared: true })
+    const folder = path.join(options.root, 'plugins/shared/ui')
+    // Supply the expected files separately so this also checks verification if copying breaks.
+    fs.cpSync(path.join(options.canonicalRoot, 'plugins/shared/ui'), folder, { recursive: true })
+    const file = path.join(folder, 'load.js')
+    if (change === 'changed') fs.writeFileSync(file, 'fictional changed bytes')
+    else if (change === 'missing') fs.unlinkSync(file)
+    else fs.writeFileSync(path.join(folder, '.DS_Store'), 'fictional ignored bytes')
+    expect(() => verifyPluginSource(options)).toThrow(/differs? from the canonical tree/)
+  },
+)
+
+it.each(['plugins', 'plugins/shared', 'plugins/shared/ui'])(
+  'refuses a linked shared source ancestor at %s',
+  (linkedPath) => {
+    const options = fixture({ shared: true })
+    fs.cpSync(
+      path.join(options.canonicalRoot, 'plugins/shared/ui'),
+      path.join(options.root, 'plugins/shared/ui'),
+      { recursive: true },
+    )
+    const linked = path.join(options.root, linkedPath)
+    const moved = path.join(options.base, 'moved-shared-source')
+    fs.renameSync(linked, moved)
+    fs.symlinkSync(moved, linked, process.platform === 'win32' ? 'junction' : 'dir')
+    expect(() => verifyPluginSource(options)).toThrow(/linked/i)
+  },
+)
+
+it('refuses a linked child and does not exempt dependencies inside shared UI', () => {
+  for (const linked of [true, false]) {
+    const options = fixture({ shared: true })
+    const folder = path.join(options.root, 'plugins/shared/ui')
+    fs.cpSync(path.join(options.canonicalRoot, 'plugins/shared/ui'), folder, { recursive: true })
+    const dependency = path.join(folder, 'node_modules')
+    if (linked) {
+      const outside = path.join(options.base, 'outside-shared-ui')
+      fs.mkdirSync(outside)
+      fs.symlinkSync(outside, dependency, process.platform === 'win32' ? 'junction' : 'dir')
+    } else {
+      fs.mkdirSync(dependency)
+      fs.writeFileSync(path.join(dependency, 'extra.js'), 'fictional extra dependency')
+    }
+    expect(() => verifyPluginSource(options)).toThrow(
+      linked ? /linked/i : /differs? from the canonical tree/,
+    )
+  }
+})
+
+it.each(['plugins/shared', 'plugins/shared/ui'])(
+  'does not copy from a linked canonical shared source at %s',
+  (linkedPath) => {
+    const options = fixture({ shared: true })
+    const linked = path.join(options.canonicalRoot, linkedPath)
+    const moved = path.join(options.base, 'moved-canonical-shared-source')
+    fs.renameSync(linked, moved)
+    fs.symlinkSync(moved, linked, process.platform === 'win32' ? 'junction' : 'dir')
+    expect(() =>
+      copyPluginSource(options.canonicalRoot, path.join(options.base, 'new-export'), options.id),
+    ).toThrow(/linked/i)
+  },
+)
+
+it('keeps legacy pinned sources without a shared UI tree valid', () => {
+  const options = fixture()
+  expect(verifyPluginSource(options)).not.toHaveProperty('sharedUiTree')
+  expect(fs.existsSync(path.join(options.root, 'plugins/shared/ui'))).toBe(false)
+})
+
+it('refuses a pinned non-tree common path instead of treating it as legacy absence', () => {
+  expect(() => fixture({ shared: 'blob' })).toThrow(/shared.*tree/i)
+})
+
+it.each(['canonical', 'export'])(
+  'checks missing, changed and ignored common inputs in the %s build root',
+  (buildRoot) => {
+    for (const change of ['changed', 'missing directory', 'ignored dependency']) {
+      const options = fixture({ shared: true })
+      fs.cpSync(
+        path.join(options.canonicalRoot, 'plugins/shared/ui'),
+        path.join(options.root, 'plugins/shared/ui'),
+        { recursive: true },
+      )
+      const root = buildRoot === 'canonical' ? options.canonicalRoot : options.root
+      const folder = path.join(root, 'plugins/shared/ui')
+      if (change === 'changed') fs.writeFileSync(path.join(folder, 'load.js'), 'changed input')
+      else if (change === 'missing directory') fs.rmSync(folder, { recursive: true })
+      else {
+        fs.mkdirSync(path.join(folder, 'node_modules'))
+        fs.writeFileSync(path.join(folder, 'node_modules/extra.js'), 'ignored input')
+      }
+      expect(() => verifyPluginSource({ ...options, root })).toThrow()
+    }
+  },
+)
+
+it.skipIf(process.platform === 'win32').each(['canonical', 'export'])(
+  'refuses executable-mode changes and linked common files in the %s build root',
+  (buildRoot) => {
+    for (const linked of [true, false]) {
+      const options = fixture({ shared: true })
+      fs.cpSync(
+        path.join(options.canonicalRoot, 'plugins/shared/ui'),
+        path.join(options.root, 'plugins/shared/ui'),
+        { recursive: true },
+      )
+      const root = buildRoot === 'canonical' ? options.canonicalRoot : options.root
+      const file = path.join(root, 'plugins/shared/ui/load.js')
+      if (linked) {
+        const moved = path.join(options.base, 'moved-common-file.js')
+        fs.renameSync(file, moved)
+        fs.symlinkSync(moved, file)
+      } else fs.chmodSync(file, 0o755)
+      expect(() => verifyPluginSource({ ...options, root })).toThrow(linked ? /linked/i : /mode/i)
+    }
+  },
+)
+
+it('does not inject current local common files into a legacy source pin', () => {
+  const options = fixture()
+  fs.mkdirSync(path.join(options.root, 'plugins/shared/ui'), { recursive: true })
+  fs.writeFileSync(path.join(options.root, 'plugins/shared/ui/extra.js'), 'unverified common input')
+  expect(() => verifyPluginSource(options)).toThrow(/differs? from the canonical tree/)
+})
 
 it.each([undefined, '', 'main', 'a'.repeat(39)])(
   'refuses a missing or malformed explicit pin: %s',

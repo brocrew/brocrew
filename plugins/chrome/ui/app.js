@@ -511,6 +511,7 @@ function draw(snapshot) {
   if (focused) refocus(focused)
   if (caret && document.activeElement === renaming?.input)
     renaming.input.setSelectionRange(...caret)
+  window.settingsLoadState.ready()
 }
 // Redraws go through here, so none lands in the middle of a composition.
 function redraw() {
@@ -522,14 +523,15 @@ function show(snapshot) {
   try {
     draw(snapshot)
   } catch {
-    say(UNAVAILABLE, 'warn')
+    window.settingsLoadState.fail()
   }
 }
 async function refresh() {
   try {
-    show(await rpc('read', { surface: 'chrome' }))
+    const snapshot = await rpc('read', { surface: 'chrome' })
+    if (!closed) show(snapshot)
   } catch {
-    say(UNAVAILABLE, 'warn')
+    window.settingsLoadState.fail()
   }
 }
 document.querySelector('#create').addEventListener('submit', (event) => {

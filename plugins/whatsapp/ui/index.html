@@ -5,14 +5,23 @@
     <meta name="viewport" content="width=device-width" />
     <title>WhatsApp</title>
     <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="settings-load-state.css" />
   </head>
   <body>
     <main>
       <header class="screen-heading">
         <h1>WhatsApp</h1>
-        <p id="status" role="status">Connecting…</p>
+        <p
+          id="status"
+          class="settings-load-state"
+          role="status"
+          aria-busy="true"
+          data-loading="true"
+        >
+          Loading…
+        </p>
       </header>
-      <section id="link" aria-label="Phone">
+      <section id="link" aria-label="Phone" data-settings-content hidden>
         <p id="account" hidden></p>
         <div id="pairing" hidden>
           <canvas id="code" width="0" height="0" aria-label="QR code"></canvas>
@@ -35,20 +44,20 @@
           <button id="unlink-confirmed" class="danger" hidden>Log out</button>
         </div>
       </section>
-      <section class="setting">
+      <section class="setting" data-settings-content hidden>
         <label class="switch"
           ><input id="read" type="checkbox" role="switch" disabled /> Read conversations</label
         >
         <p class="help">Agents can read your chats, messages and contacts.</p>
       </section>
-      <section class="setting">
+      <section class="setting" data-settings-content hidden>
         <label class="switch"
           ><input id="prefix" type="checkbox" role="switch" disabled /> Start messages with
           🤖</label
         >
         <p class="help">Messages agents send begin with 🤖.</p>
       </section>
-      <section class="setting">
+      <section class="setting" data-settings-content hidden>
         <h2>Groups</h2>
         <p class="help">Agents can send only to groups you turn on.</p>
         <div class="group-controls">
@@ -64,6 +73,7 @@
         <ul id="groups"></ul>
       </section>
     </main>
+    <script src="settings-load-state.js"></script>
     <script type="module" src="app.js"></script>
   </body>
 </html>
