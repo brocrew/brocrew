@@ -572,10 +572,20 @@ export function puttingItBack(draft: string, text: string): string {
 }
 
 /**
+ * A refused message's words, handed back into a box: they join what is there
+ * ({@link puttingItBack}), unless the box already holds that whole message.
+ */
+export function joiningTheBox(draft: string, text: string): string {
+  const message = text.trim()
+  if (message !== '' && `\n\n${draft.trim()}\n\n`.includes(`\n\n${message}\n\n`)) return draft
+  return puttingItBack(draft, text)
+}
+
+/**
  * Whether a launch attempt that just ended should hand the message back to the box.
  *
  * Only on the falling edge of a failed launch, and only when something was tried. The words join
- * any text typed since ({@link puttingItBack}). The launcher and the start-as-agent sheet both
+ * any text typed since ({@link joiningTheBox}). The launcher and the start-as-agent sheet both
  * follow this one rule, so it lives here rather than in either component.
  */
 export function shouldRestoreDraft(input: {
@@ -589,7 +599,7 @@ export function shouldRestoreDraft(input: {
 
 /**
  * Hand a refused message back to its slot: its words join what was typed since
- * ({@link puttingItBack}), and its paths join what is staged. Returns how many paths did not fit.
+ * ({@link joiningTheBox}), and its paths join what is staged. Returns how many paths did not fit.
  */
 export function handBack(
   book: DraftBook,
@@ -597,7 +607,7 @@ export function handBack(
   text: string,
   attachments: readonly HandedPath[],
 ): number {
-  book.write(key, puttingItBack(book.read(key), text))
+  book.write(key, joiningTheBox(book.read(key), text))
   return book.restore(key, '', attachments)
 }
 

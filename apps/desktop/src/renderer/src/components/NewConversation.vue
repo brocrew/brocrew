@@ -65,7 +65,7 @@ import type { LaunchChoices } from '../lib/launch-choices'
 import { theFormSends, type ModelLists, type PickedModel } from '../lib/model-lists'
 import { useModelLists } from '../composables/useModelLists'
 import { CHANGEABLE_LIVE_IN } from '../lib/front-door-words'
-import { puttingItBack, shouldRestoreDraft, type DraftHanding } from '../lib/drafts'
+import { joiningTheBox, shouldRestoreDraft, type DraftHanding } from '../lib/drafts'
 import type { SendBlock } from '../lib/composer-notice'
 import { createSignInGesture } from '../lib/sign-in-gesture'
 import { signInFact } from '../composables/useProfileSignIn'
@@ -826,7 +826,7 @@ watch(
   (busy, wasBusy) => {
     const settled = wasBusy && !busy
     if (shouldRestoreDraft({ busy, wasBusy, error: props.error, lastTried })) {
-      emit('update:draft', puttingItBack(props.draft, lastTried))
+      emit('update:draft', joiningTheBox(props.draft, lastTried))
     }
     // ⛔ **The paths are handed back on their OWN condition** (found in review). Nested inside
     // `shouldRestoreDraft` they inherited its `lastTried !== ''` clause — so the one send shape

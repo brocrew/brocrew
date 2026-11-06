@@ -3,7 +3,7 @@ import { lutimesSync, readFileSync, realpathSync } from 'node:fs'
 import { readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { isPastedImage } from '../shared/runtime-ipc'
-import { conversationOfSlot, type SavedDrafts } from '../shared/saved-drafts'
+import { conversationOfSlot, type SavedDraft, type SavedDrafts } from '../shared/saved-drafts'
 import { pastedImagesRoot } from './runtime/pasted-image'
 import { savedDraftsFrom } from './saved-drafts'
 
@@ -60,7 +60,8 @@ export type DraftsFile =
  * ⚑ **None** when there is no file, or when it is not JSON — which a rename-written file cannot be
  * halfway to, so nothing of this app's is lost by writing over it.
  *
- * ⚑ **A book whichever build wrote it**: `savedDraftsFrom` keeps the drafts it recognises.
+ * ⚑ **A book whichever build wrote it**: `savedDraftsFrom` keeps the drafts it recognises, and every
+ * save writes the rest back unchanged ({@link bookToWrite}).
  *
  * ⚠️ **Unreadable when it is there and could not be read (`EACCES`, `EIO`, a directory)**: that is
  * not an empty book, and a window told it was would save its own empty book over drafts it never
@@ -105,6 +106,44 @@ export interface DraftWriter {
 }
 
 /**
+ * ⚑ **The file to write: this build's drafts, and everything else the file held left as it was.**
+ * Another build may keep fields and entries this one does not read; a save here never drops them.
+ * An entry of a slot this build reads is replaced by this build's draft (keeping that entry's other
+ * fields) or, when the slot holds none any more, removed. Every other entry is written back unchanged.
+ */
+export function bookToWrite(
+  found: unknown,
+  drafts: readonly SavedDraft[],
+): Record<string, unknown> {
+  const file =
+    typeof found === 'object' && found !== null && !Array.isArray(found)
+      ? (found as Record<string, unknown>)
+      : {}
+  const listed: unknown[] = Array.isArray(file.drafts) ? file.drafts : []
+  const slotOf = (entry: unknown): unknown =>
+    typeof entry === 'object' && entry !== null
+      ? (entry as Record<string, unknown>).slot
+      : undefined
+  const read = new Set(savedDraftsFrom(found).drafts.map((draft) => draft.slot))
+  const written = new Set(drafts.map((draft) => draft.slot))
+  const entryOf = new Map<unknown, object>()
+  for (const entry of listed) {
+    if (read.has(slotOf(entry) as string) && !entryOf.has(slotOf(entry))) {
+      entryOf.set(slotOf(entry), entry as object)
+    }
+  }
+  const untouched = listed.filter((entry) => {
+    const slot = slotOf(entry) as string
+    return !read.has(slot) && !written.has(slot)
+  })
+  return {
+    ...file,
+    version: DRAFTS_FILE_VERSION,
+    drafts: [...drafts.map((draft) => ({ ...entryOf.get(draft.slot), ...draft })), ...untouched],
+  }
+}
+
+/**
  * ⚑ **The one writer of the file** — each save written whole under a private name and RENAMED into
  * place (`pasted-image.ts`' rule, for its reason), readable by this user only (`0600`: what somebody
  * typed and did not send).
@@ -119,6 +158,8 @@ export interface DraftWriter {
 export function createDraftWriter(userData: string): DraftWriter {
   let pending: SavedDrafts | null = null
   let kept: SavedDrafts = { drafts: [] }
+  // What the file held at start, so what this build does not read is written back with every save.
+  let found: unknown = null
   let quitting = false
   let writing: Promise<void> | null = null
   let expected = 0
@@ -152,13 +193,9 @@ export function createDraftWriter(userData: string): DraftWriter {
     const path = savedDraftsPath(userData)
     const part = `${path}.${randomBytes(6).toString('hex')}.part`
     try {
-      await writeFile(
-        part,
-        JSON.stringify({ version: DRAFTS_FILE_VERSION, drafts: saved.drafts }),
-        {
-          mode: 0o600,
-        },
-      )
+      await writeFile(part, JSON.stringify(bookToWrite(found, saved.drafts)), {
+        mode: 0o600,
+      })
       await rename(part, path)
       return true
     } catch (error) {
@@ -200,7 +237,8 @@ export function createDraftWriter(userData: string): DraftWriter {
               return
             }
             if (!loaded) {
-              kept = savedDraftsFrom(file.kind === 'book' ? file.raw : null)
+              found = file.kind === 'book' ? file.raw : null
+              kept = savedDraftsFrom(found)
               loaded = true
             }
             while (pending !== null) {

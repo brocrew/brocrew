@@ -589,7 +589,7 @@ MUTATIONS = [
         "M47 · 🔴 **the sheet never hands the words back** · a refused start takes what was typed — "
         f"killed by `{DRAWN}`",
         # Re-anchored in place, not retired: the words handed back now join newer typing.
-        [(SHEET, "      words.value = puttingItBack(words.value, lastTried)\n", "      void lastTried\n")],
+        [(SHEET, "      words.value = joiningTheBox(words.value, lastTried)\n", "      void lastTried\n")],
     ),
     (
         "M48 · 🔴 **the sheet never shows its launch** · a press, and nothing on screen until it "
