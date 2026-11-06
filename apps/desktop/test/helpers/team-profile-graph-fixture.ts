@@ -8,8 +8,6 @@ import { graphCutoff, graphOracle } from '../fixtures/team-profile-graph-oracle'
 import type { TeamProfileGraphReadContext } from '../../src/shared/team-profile-graph'
 
 export const graphContext: TeamProfileGraphReadContext = {
-  workspaceNonce: 'fictional-workspace',
-  ownerNonce: 'fictional-window',
   hostRevision: '0',
   timezone: '+00:00',
   readAt: graphCutoff,
