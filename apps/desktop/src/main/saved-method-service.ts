@@ -342,7 +342,7 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
         return { ok: false, reason: 'settlement-pending', change: summary(row) }
       const saved = deps.changes.read(one.id, row.id)!
       announce(one.slug)
-      return matches && !operationFailed
+      return matches && operationFailed === undefined
         ? { ok: true, change: summary(saved) }
         : {
             ok: false,
