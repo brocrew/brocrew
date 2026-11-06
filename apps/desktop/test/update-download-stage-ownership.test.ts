@@ -113,7 +113,10 @@ it('refuses a link planted at even the fresh stage name without writing or remov
   const other = join(root, 'Brook.txt')
   writeFileSync(other, 'A fictional draft')
   disk.plantLinkTo = other
-  await expect(download()).rejects.toMatchObject({ message: expect.stringContaining(to), cause: { code: expect.stringMatching(/EEXIST|ELOOP/) } })
+  await expect(download()).rejects.toMatchObject({
+    message: expect.stringContaining(to),
+    cause: { code: expect.stringMatching(/EEXIST|ELOOP/) },
+  })
   expect(disk.stage).not.toBeNull()
   expect(lstatSync(disk.stage!).isSymbolicLink()).toBe(true)
   expect(readFileSync(other, 'utf8')).toBe('A fictional draft')
@@ -149,14 +152,20 @@ it('notices a write failure while the response is still waiting, then closes and
           }),
         ),
     }),
-  ).rejects.toMatchObject({ message: expect.stringContaining(to), cause: { code: 'EIO' } })
+  ).rejects.toMatchObject({
+    message: expect.stringContaining(to),
+    cause: { code: 'EIO' },
+  })
   expect(cancelled).toBe(true)
   expect(readdirSync(root)).toEqual([])
 })
 
 it('cleans its partial file when final placement is refused', async () => {
   disk.failPlacement = true
-  await expect(download()).rejects.toMatchObject({ message: expect.stringContaining(to), cause: { code: 'EACCES' } })
+  await expect(download()).rejects.toMatchObject({
+    message: expect.stringContaining(to),
+    cause: { code: 'EACCES' },
+  })
   expect(readdirSync(root)).toEqual([])
 })
 

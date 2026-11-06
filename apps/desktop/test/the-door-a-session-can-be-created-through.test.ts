@@ -113,15 +113,7 @@ function saidIn(handed: ResumedSession): string[] {
   return handed.history.entries.flatMap((entry) => markerIn(entry.event))
 }
 
-/**
- * 🔴 **421 · the sentence a window reads when it reaches for a session NOBODY owns.**
- *
- * ⛔ **It was `not-yours` until 421** — *"This conversation belongs to another window… switch to
- * that window"* — which is the one thing that cannot be true of a session whose whole subject is
- * that no window has it. ⚑ 336 built the door; this is the refusal on the other side of it finally
- * saying which door to use. {@link NOT_YOURS} is kept and asserted below, over the case it is
- * true of, so the split is a discriminant rather than a rename.
- */
+/** A non-person command aimed at an unowned session names no nonexistent window. */
 const HELD_BY_NOBODY = describeUnavailable('held-by-nobody')
 
 describe('336 · a session created through a door no renderer opened', () => {

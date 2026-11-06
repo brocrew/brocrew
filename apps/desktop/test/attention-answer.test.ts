@@ -62,7 +62,6 @@ describe('answering from the overview', () => {
   let store: SessionStore
   let host: RuntimeHost
   let owner: ReturnType<typeof sinkNamed>
-  let stranger: ReturnType<typeof sinkNamed>
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'brobot2-overview-'))
@@ -90,7 +89,6 @@ describe('answering from the overview', () => {
       }),
     })
     owner = sinkNamed('webContents:1')
-    stranger = sinkNamed('webContents:2')
   })
 
   afterEach(async () => {
