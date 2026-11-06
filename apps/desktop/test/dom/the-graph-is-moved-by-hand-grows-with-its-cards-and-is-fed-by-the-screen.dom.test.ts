@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, shallowRef } from 'vue'
@@ -6,7 +7,7 @@ import TeamForest from '../../src/renderer/src/components/TeamForest.vue'
 import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { ForestView } from '../../src/renderer/src/lib/the-forest'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
-import type { AgentIdentity, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { AgentIdentity } from '../../src/shared/runtime-ipc'
 import { conv, forestDrawn, task, viewOf } from './forest-fixture'
 import { mount, paneProps, record, unmountAll, type Mounted } from './harness'
 

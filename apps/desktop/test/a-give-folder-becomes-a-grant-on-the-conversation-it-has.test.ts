@@ -1,3 +1,4 @@
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -22,10 +23,9 @@ import {
   type RuntimeEventMessage,
   type SessionLiveness,
   type SessionLivenessMessage,
-  type TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 import { derivePieces } from '../src/shared/tasks'
-import type { PersistedEventInfo } from '../src/shared/runtime-ipc'
+
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 
 /**

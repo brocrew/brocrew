@@ -1,8 +1,9 @@
+import type { AgentState } from '../../src/shared/agent-state-contracts'
 import { scene } from '../capture'
 import { rightPanelStage } from '../fixtures/right-panel'
 import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { facetsOfState } from '../../src/renderer/src/lib/agent-state'
-import { agentStateWords, type AgentState } from '../../src/shared/agent-state'
+import { agentStateWords } from '../../src/shared/agent-state'
 
 /**
  * 🎨 **The right panel's Sub agents, one of them waiting on an answer** — its state is longer than

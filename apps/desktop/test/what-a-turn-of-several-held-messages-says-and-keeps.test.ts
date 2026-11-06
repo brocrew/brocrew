@@ -1,3 +1,8 @@
+import type { HandedPath } from '../src/shared/attachment-contracts'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
+import type { SessionInstructions } from '../src/shared/instruction-contracts'
+import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
+import type { PieceRow } from '../src/shared/task-contracts'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -36,15 +41,10 @@ import { exchangePreviewLines, whatATurnDelivered } from '../src/shared/last-exc
 import {
   MAX_TURN_PARTS,
   theMessagesOf,
-  type HandedPath,
-  type PersistedEventInfo,
   type RuntimeEventMessage,
-  type SessionInstructions,
   type SessionLivenessMessage,
-  type TranscriptEvent,
-  type UserTurnEvent,
 } from '../src/shared/runtime-ipc'
-import { derivePieces, theDriveOfTheTurn, type PieceRow } from '../src/shared/tasks'
+import { derivePieces, theDriveOfTheTurn } from '../src/shared/tasks'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 

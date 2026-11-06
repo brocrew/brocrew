@@ -1,3 +1,9 @@
+import type { DecideMoveRequestInput, MoveRequestAck } from '../shared/move-contracts'
+import type { LedgerWalk, PersonsDecision, PersonsQuestion } from '../shared/question-contracts'
+import type { WhatEachConversationIsWaitingOn, WorkGivenOut } from '../shared/task-contracts'
+import type { McpServerRequestForAPerson } from '../shared/conversation-events'
+import type { HandedPath } from '../shared/attachment-contracts'
+import type { SessionSettingChanged } from '../shared/model-choice-contracts'
 import type { ListingAnswer } from '../shared/listing-published'
 import type { PublicationEpoch } from '../shared/data-version'
 import type { PersonsQueueAnswer } from '../shared/persons-published'
@@ -24,7 +30,7 @@ import {
   type NavigationDirection,
 } from '../shared/app-navigation'
 import type { LinkResolution } from '../shared/link-resolution'
-import type { DecideMoveRequestInput, MoveRequestAck } from '../shared/move-request'
+
 import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron'
 import { themesBridge } from './themes'
 import { themeBeforePaint } from './theme-before-paint'
@@ -62,7 +68,7 @@ import {
   type PageReportAnswer,
 } from '../shared/page-performance'
 import type { ExternalMcpServerReach, ExternalMcpServerRow } from '../shared/external-mcp'
-import type { LedgerWalk, PersonsDecision, PersonsQuestion } from '../shared/questions'
+
 import type { ProviderLimitSeen } from '../shared/provider-limit'
 import {
   LIMITS_DISPLAY_CHANGED_CHANNEL,
@@ -76,7 +82,7 @@ import type { WaitingOnWhoWrote } from '../shared/waiting-on-who-wrote'
 import type { WhoCalledWhom } from '../shared/who-called-whom'
 import type { WorkspaceReading } from '../shared/workspace-reading'
 import type { WhatIsBeingDone } from '../shared/what-is-being-done'
-import type { WhatEachConversationIsWaitingOn, WorkGivenOut } from '../shared/tasks'
+
 import type { TheWholeForest } from '../shared/the-whole-forest'
 import type { DigestReading } from '../shared/digest'
 import type { RecentActivityReading } from '../shared/recent-activity'
@@ -95,7 +101,6 @@ import {
   type RuntimeStatesMessage,
   type ProcessMemory,
   type AnswerAck,
-  type McpServerRequestForAPerson,
   type ApprovalModeDisclosure,
   type AuthState,
   type RuntimeChangeMessage,
@@ -132,7 +137,6 @@ import {
   type ToolAnswer,
   type ChosenAttachment,
   type DroppedPathVerdict,
-  type HandedPath,
   type ImportedBundle,
   type ImportedFromHome,
   type ImportedRecording,
@@ -168,7 +172,6 @@ import {
   type ChosenCwd,
   type SetApprovalModeInput,
   type SetSessionSettingInput,
-  type SessionSettingChanged,
   type UnresumableSessionInfo,
   type CwdVerdict,
   type AgentIdentities,

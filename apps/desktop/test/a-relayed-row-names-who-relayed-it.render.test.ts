@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -28,7 +29,7 @@ import { createAttachmentBook, draftKey } from '../src/renderer/src/lib/drafts'
 import { AN_UNNAMED_RELAYER, relayedSender } from '../src/renderer/src/lib/relayed-turn'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { agentName } from '../src/shared/runtime-ipc'
-import type { AgentIdentity, CreatedSession, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { AgentIdentity, CreatedSession } from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 545 · a relayed row names the conversation that relayed it

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
+
 /*
  * ⛔ **`EventStream.vue` AS IT SHIPPED AT `c0d71fe`, frozen** — the "before" column of `263` §2's
  * measurement, and nothing else in this repo may import it.
@@ -24,7 +26,7 @@
  * `pnpm run probe:event-append`.
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { useStickToBottom } from '../../src/renderer/src/composables/useStickToBottom'
 import { clockTime } from '../../src/shared/clock'
 import { describeEvent } from '../../src/renderer/src/lib/describe-event'

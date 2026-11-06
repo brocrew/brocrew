@@ -1,3 +1,4 @@
+import type { LedgerWalk } from '../src/shared/question-contracts'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
@@ -10,7 +11,6 @@ import {
 import { limitsDisplayLane, type LimitsDisplayState } from '../src/renderer/src/lib/limits-display'
 import { readProviderLimit, type ProviderLimitSeen } from '../src/shared/provider-limit'
 import { oneReadAtATime } from '../src/renderer/src/lib/one-read-at-a-time'
-import type { LedgerWalk } from '../src/shared/questions'
 
 const screen = readFileSync(
   fileURLToPath(new URL('../src/renderer/src/components/RuntimeScreen.vue', import.meta.url)),

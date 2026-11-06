@@ -1,3 +1,11 @@
+import type {
+  LedgerWalk,
+  LedgerWalkKind,
+  PersonsDecision,
+  PersonsQuestion,
+  RequestOnlyAPersonCanSettle,
+  RoutedRequest,
+} from '../src/shared/question-contracts'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,12 +19,6 @@ import {
   decisionReading,
   escalationChain,
   readingSentence,
-  type PersonsDecision,
-  type PersonsQuestion,
-  type LedgerWalk,
-  type LedgerWalkKind,
-  type RequestOnlyAPersonCanSettle,
-  type RoutedRequest,
 } from '../src/shared/questions'
 import {
   DID_WORDS,

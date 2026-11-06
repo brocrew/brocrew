@@ -1,8 +1,9 @@
 <script setup lang="ts">
+import type { SessionInstructions as Instructions } from '../../../shared/instruction-contracts'
+
 import type {
   InstructionSourceResult,
   RevealResult,
-  SessionInstructions as Instructions,
   SessionPathTarget,
 } from '../../../shared/runtime-ipc'
 import type { ToolRegistry } from '../lib/transcript'

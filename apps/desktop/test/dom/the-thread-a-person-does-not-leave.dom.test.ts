@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, ref } from 'vue'
 import AgentInstructionsSheet from '../../src/renderer/src/components/AgentInstructionsSheet.vue'
@@ -16,7 +17,7 @@ import {
   createTranscript,
   type TranscriptState,
 } from '../../src/renderer/src/lib/transcript'
-import type { CreatedSession, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { CreatedSession } from '../../src/shared/runtime-ipc'
 import {
   META,
   contrast,

@@ -1,3 +1,4 @@
+import type { InjectedInstruction, SessionInstructions } from '../src/shared/instruction-contracts'
 import { describe, expect, it } from 'vitest'
 import { legacyWorkspaceFiles } from './helpers/legacy-workspace-files'
 import {
@@ -12,7 +13,7 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { InjectedInstruction, SessionInstructions } from '../src/shared/runtime-ipc'
+
 import {
   INSTRUCTION_FILE_CAP,
   readSessionInstructions,

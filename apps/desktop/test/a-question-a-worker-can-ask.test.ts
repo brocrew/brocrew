@@ -1,3 +1,5 @@
+import { TASK_STATES } from '../src/shared/task-contracts'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -15,15 +17,11 @@ import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { REPLY_ADDRESSING_KEYS, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { QUESTION_RAILS } from '../src/main/runtime/question-rails'
-import { TASK_IS_OPEN, TASK_STATES, derivePieces } from '../src/shared/tasks'
+import { TASK_IS_OPEN, derivePieces } from '../src/shared/tasks'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { stillHeld } from '../src/shared/mailbox'
-import type {
-  PersistedEventInfo,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **437 · the question a worker can ask its parent** — criterion 29, HO-019 §1.

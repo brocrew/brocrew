@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -50,7 +51,7 @@ import { deriveRoutedRequests } from '../src/shared/questions'
 import { ENDING_SENTENCE } from '../src/renderer/src/lib/ending'
 import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
 import { askedToStopSays } from '../src/renderer/src/lib/stop-unanswered'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { agentName, type AgentIdentity } from '../src/shared/runtime-ipc'
 
 /**
@@ -1579,7 +1580,7 @@ describe('395 · the interruption that looks like a provider fault', () => {
       // ⚑ **The ledger shape is still a TYPE** — `tasks.ts` and `mailbox.ts`'s property, so *"how
       // work stopped is a function of the ledger"* is checked by the compiler on every build rather
       // than by a test that has to remember to drop something.
-      const ledgerShape = imports.filter((one) => one.includes('./runtime-ipc'))
+      const ledgerShape = imports.filter((one) => one.includes('./conversation-events'))
       expect(ledgerShape).toHaveLength(1)
       expect(ledgerShape[0]).toContain('import type')
       // 🔴 **494 · a SECOND import, and it is a VALUE — so the claim is asserted TRANSITIVELY

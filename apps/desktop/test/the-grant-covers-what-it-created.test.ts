@@ -1,3 +1,4 @@
+import type { SessionInstructions } from '../src/shared/instruction-contracts'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -26,7 +27,6 @@ import {
   IDENTITY_ORIGINS,
   type IdentityCreator,
   type RuntimeEventMessage,
-  type SessionInstructions,
 } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))

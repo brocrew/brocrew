@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
@@ -6,7 +7,7 @@ import SessionHeader from '../../src/renderer/src/components/SessionHeader.vue'
 import { STANDING_LABEL } from '../../src/renderer/src/lib/agent-state'
 import { HAND_IT_BACK } from '../../src/renderer/src/lib/handing-it-back'
 import { ANOTHER_CALLER_IS_ON_IT } from '../../src/renderer/src/lib/standing-grants'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { assertDrawn, cutsOf, drawnReady, titleRecovers } from './drawn'
 import {
   META,

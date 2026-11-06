@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -23,7 +24,7 @@ import { agentCallerId, type ToolName } from '../src/main/runtime/agent-tools'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { CAPABILITY_FIELDS, type ProfileCapabilities } from '../src/shared/capabilities'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **373 · a parent that survives a restart.**

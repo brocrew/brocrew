@@ -1,8 +1,9 @@
+import type { SessionInstructions } from '../../src/shared/instruction-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import { page } from 'vitest/browser'
 import AgentInstructionsSheet from '../../src/renderer/src/components/AgentInstructionsSheet.vue'
-import type { SessionInstructions } from '../../src/shared/runtime-ipc'
+
 import { TOLD_HAS_AN_EARLIER_LIFE, type ToldLayerKind } from '../../src/shared/told'
 import { WHOSE_LAYER } from '../../src/shared/whose-text'
 import { mount, toldProps, unmountAll, visible, type Mounted } from './harness'

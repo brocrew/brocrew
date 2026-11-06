@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import type { HandedPath } from '../../../shared/attachment-contracts'
+
 import { computed, onUnmounted, reactive, ref } from 'vue'
-import type { HandedPath } from '../../../shared/runtime-ipc'
+
 import { assetUrl } from '../../../shared/asset-url'
 import { runtimePathCalls, useMessagePaths, type PathsHere } from '../composables/useMessagePaths'
 

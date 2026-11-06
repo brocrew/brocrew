@@ -1,3 +1,4 @@
+import { AGENT_MESSAGE_KINDS } from '../src/shared/task-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -21,7 +22,7 @@ import {
   DEFAULT_CAPABILITIES,
 } from '../src/shared/capabilities'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { AGENT_MESSAGE_KINDS, TASK_IS_OPEN } from '../src/shared/tasks'
+import { TASK_IS_OPEN } from '../src/shared/tasks'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')

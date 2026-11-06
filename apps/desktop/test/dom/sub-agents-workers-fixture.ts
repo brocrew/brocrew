@@ -1,5 +1,6 @@
+import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/question-contracts'
 import type { AgentIdentity, ResumableSessionInfo } from '../../src/shared/runtime-ipc'
-import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/questions'
+
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import type { CastReading } from '../../src/renderer/src/lib/working-together'
 import { identities, workerRows, NOW } from './parallel-workers-fixture'

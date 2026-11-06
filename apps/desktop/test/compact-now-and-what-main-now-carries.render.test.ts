@@ -1,3 +1,5 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import type { WorkGivenOut } from '../src/shared/task-contracts'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -33,9 +35,8 @@ import type {
   CreateSessionInput,
   CreatedSession,
   RuntimeBridge,
-  TranscriptEvent,
 } from '../src/shared/runtime-ipc'
-import type { WorkGivenOut } from '../src/shared/tasks'
+
 import type { WhoCalledWhom, WorkEdge } from '../src/shared/who-called-whom'
 import { everythingOverTheWire } from './lib/the-wire'
 import { CLAUDE_COMPACTION_NOTE, CODEX_COMPACTION_NOTE } from './provider-capability-fixture'

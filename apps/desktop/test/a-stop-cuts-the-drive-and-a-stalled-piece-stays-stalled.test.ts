@@ -1,3 +1,5 @@
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
+import type { PieceRow } from '../src/shared/task-contracts'
 import { performance } from 'node:perf_hooks'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -22,8 +24,8 @@ import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/runtime-ipc'
-import { derivePieces, type PieceRow } from '../src/shared/tasks'
+
+import { derivePieces } from '../src/shared/tasks'
 
 /**
  * 🔴 **D-016c · a stop changes nothing about a piece — the four places it is decided**

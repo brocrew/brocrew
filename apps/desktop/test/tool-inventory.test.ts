@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
@@ -24,7 +25,7 @@ import {
 } from '../../../packages/runtime/src/tool-inventory'
 import { applyEvent, createTranscript, type ToolRegistry } from '../src/renderer/src/lib/transcript'
 import { carryForward, foldWindow } from '../src/renderer/src/lib/transcript-window'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **358 · what tools this conversation has — the reading, and the three states it can be in.**

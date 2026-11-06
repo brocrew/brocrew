@@ -1,16 +1,12 @@
+import type { ModelList, WhatAPickBecame } from '../../src/shared/model-choice-contracts'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { userEvent } from 'vitest/browser'
 import { defineComponent, h, nextTick, type Component } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import type { PickedModel } from '../../src/renderer/src/lib/model-lists'
 import { theList } from '../../src/shared/model-choice'
-import type {
-  ModelChoice,
-  ModelList,
-  Provider,
-  TranscriptEvent,
-  WhatAPickBecame,
-} from '../../src/shared/runtime-ipc'
+import type { ModelChoice, Provider } from '../../src/shared/runtime-ipc'
 import { META, mount, paneProps, record, unmountAll, type Mounted } from './harness'
 
 /**

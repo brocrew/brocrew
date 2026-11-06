@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { defineComponent, h, nextTick, ref, shallowRef } from 'vue'
@@ -15,7 +16,6 @@ import type {
   MessagePathTarget,
   OpenMessagePathResult,
   RevealResult,
-  TranscriptEvent,
 } from '../../src/shared/runtime-ipc'
 import type { HistoryEvent } from '../../src/shared/recovery'
 import { mount, paneProps, permission, record, unmountAll, type Mounted } from './harness'

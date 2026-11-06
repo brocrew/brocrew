@@ -1,7 +1,8 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import { RAIL_PERMANENCES } from '../src/shared/refusals'
 import { BACKGROUND_WORD } from '../src/renderer/src/lib/background-work'
 import {

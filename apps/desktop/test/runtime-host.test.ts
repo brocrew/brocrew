@@ -1,3 +1,5 @@
+import type { ModelCatalogue } from '../src/shared/model-choice-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -24,11 +26,9 @@ import { DEFAULT_PROFILE_ID, NOTHING_TO_SEND } from '../src/shared/runtime-ipc'
 
 import type {
   CreateSessionInput,
-  ModelCatalogue,
   RuntimeEventMessage,
   SessionLiveness,
   SessionLivenessMessage,
-  TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 
 /**

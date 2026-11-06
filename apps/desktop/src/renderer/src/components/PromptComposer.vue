@@ -1,4 +1,6 @@
 <script lang="ts">
+import type { HandedPath } from '../../../shared/attachment-contracts'
+
 import type { SendIntent } from '../lib/session-store'
 import { pathTail } from '../../../shared/path-tail'
 import {
@@ -10,7 +12,6 @@ import {
   onlyOnePastedImage,
   pastedImageLabel,
   type DroppedPathVerdict,
-  type HandedPath,
 } from '../../../shared/runtime-ipc'
 
 /**

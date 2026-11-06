@@ -1,6 +1,8 @@
+import type { LedgerWalkKind } from '../../../shared/question-contracts'
+import type { WhatEachConversationIsWaitingOn } from '../../../shared/task-contracts'
 import type { AgentIdentityName } from '../../../shared/runtime-ipc'
 import { agentName, DEFAULT_PROFILE_ID, foldProfileName } from '../../../shared/runtime-ipc'
-import type { LedgerWalkKind } from '../../../shared/questions'
+
 import { walkCovers } from '../../../shared/questions'
 import type {
   ForestConversation,
@@ -10,7 +12,7 @@ import type {
 } from '../../../shared/the-whole-forest'
 import type { ConversationAtWork, WhatIsBeingDone } from '../../../shared/what-is-being-done'
 import { byConversation, whatAPlateCanDraw } from '../../../shared/what-is-being-done'
-import type { WhatEachConversationIsWaitingOn } from '../../../shared/tasks'
+
 import { TASK_IS_OPEN } from '../../../shared/tasks'
 import { theWaitIn, theWorkIn, whatTheWaitsCouldNotRead } from './conversation-waits'
 import {

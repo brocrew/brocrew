@@ -1,3 +1,4 @@
+import type { BackgroundRow } from '../src/shared/agent-state-contracts'
 import { describe, expect, it } from 'vitest'
 import type { RuntimeEvent } from '@brobot2/runtime'
 import { MAX_BACKGROUND_TEXT } from '../../../packages/runtime/src/background-work'
@@ -5,11 +6,7 @@ import { TOOL_SUMMARY_MAX } from '../../../packages/runtime/src/claude/normalize
 import { quotedLiteral } from '../src/shared/runtime-ipc'
 import { messageWithHandedPaths } from '../src/main/runtime/handed-path'
 // ⚑ D-017 · R11 — what a row runs is `shared/agent-state.ts`'s, so `main` names it as the row does.
-import {
-  BACKGROUND_COMMAND_CHARS,
-  backgroundWhat,
-  type BackgroundRow,
-} from '../src/shared/agent-state'
+import { BACKGROUND_COMMAND_CHARS, backgroundWhat } from '../src/shared/agent-state'
 import { cutNote } from '../src/renderer/src/lib/background-work'
 import {
   applyEvent,

@@ -26,6 +26,8 @@ const AVATAR: Record<Exclude<Doing, 'unknown'>, string> = {
 </script>
 
 <script setup lang="ts">
+import type { AgentState as OneState } from '../../../shared/agent-state-contracts'
+import type { ConversationWait, HeldWork } from '../../../shared/task-contracts'
 import { computed, useId } from 'vue'
 import {
   accessibleName,
@@ -46,14 +48,13 @@ import {
   type Needing,
   type SizeName,
 } from '../lib/agent-state'
-import type { AgentState as OneState } from '../../../shared/agent-state'
+
 import { clockTime } from '../../../shared/clock'
 // ⚑ **645 · a TYPE only**, exactly as `lib/agent-state.ts` takes it — a conversation's waits are
 // `TASK_STATES`' own `waiting-on-` family, less the one said on a piece only (D-016 · commit 6),
 // and this component names none of them a second time.
 // ⛔ `import type` and not a value import: a value out of `shared` costs the renderer a bundle it
 // does not need (`a-value-import-from-shared-costs-the-renderer-135kb`), and this one erases.
-import type { ConversationWait, HeldWork } from '../../../shared/tasks'
 
 /**
  * One live agent, drawn (081/082).

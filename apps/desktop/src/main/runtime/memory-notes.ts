@@ -1,12 +1,8 @@
+import type { MemoryNoteEvent, MemoryNoteSeen } from '../../shared/conversation-events'
 import { lstatSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Provider } from '@brobot2/shared'
-import {
-  MEMORY_NOTES_PER_EVENT,
-  MEMORY_NOTE_TEXT_CAP,
-  type MemoryNoteEvent,
-  type MemoryNoteSeen,
-} from '../../shared/runtime-ipc'
+import { MEMORY_NOTES_PER_EVENT, MEMORY_NOTE_TEXT_CAP } from '../../shared/runtime-ipc'
 import { newestMemoryNotes as adHocNotes, readInstructionFile } from '../providers/instruction-io'
 import { providerKnowledge } from '../providers/knowledge-definitions'
 

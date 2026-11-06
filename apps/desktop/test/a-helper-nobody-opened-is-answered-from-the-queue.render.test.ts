@@ -1,3 +1,5 @@
+import type { CardNobodyHolds, LedgerWalk, PersonsDecision } from '../src/shared/question-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -29,8 +31,8 @@ import {
   type PersonsQueueRow,
 } from '../src/renderer/src/lib/persons-queue'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
-import type { CardNobodyHolds, LedgerWalk, PersonsDecision } from '../src/shared/questions'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * A helper an agent started in Ask mode, parked on a permission, that no window has opened: its row

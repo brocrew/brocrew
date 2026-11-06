@@ -1,9 +1,10 @@
+import type { WhatEachConversationIsWaitingOn } from '../src/shared/task-contracts'
 import { describe, expect, it } from 'vitest'
 import { forestView, type ForestViewInput } from '../src/renderer/src/lib/the-forest'
 import { MAX_FOREST_CONVERSATIONS } from '../src/shared/the-whole-forest'
 import type { ForestNode, TheWholeForest } from '../src/shared/the-whole-forest'
 import type { WhatIsBeingDone } from '../src/shared/what-is-being-done'
-import type { WhatEachConversationIsWaitingOn } from '../src/shared/tasks'
+
 import type { AgentIdentity } from '../src/shared/runtime-ipc'
 
 /**

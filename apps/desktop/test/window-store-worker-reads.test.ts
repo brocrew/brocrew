@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { EventEmitter } from 'node:events'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -15,7 +16,7 @@ import {
   WindowWorkerReader,
   type WindowReadWorker,
 } from '../src/main/db/window-worker-reader'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import {
   WINDOW_READ_BOUNDS,
   WindowReadUnavailable,

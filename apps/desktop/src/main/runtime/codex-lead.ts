@@ -1,7 +1,8 @@
+import type { LeadInFront } from '../../shared/human-answer-contracts'
 import { WHAT_CHANGED_HEADER } from './instruction-headings'
 export { WHAT_CHANGED_HEADER } from './instruction-headings'
 import type { InstructionSpan } from '../../shared/whose-text'
-import type { LeadInFront } from '../../shared/runtime-ipc'
+
 import type { ThreadLeadRow } from '../db/session-store'
 import { conversationBlock } from './instructions'
 

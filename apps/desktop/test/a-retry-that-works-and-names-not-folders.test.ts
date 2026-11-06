@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -19,7 +20,7 @@ import { stalledWorkLead } from '../src/renderer/src/lib/persons-queue'
 import { incidentSays } from '../src/renderer/src/lib/work-waits'
 import { agentName } from '../src/shared/runtime-ipc'
 import { theConversationCalled } from '../src/shared/piece-called'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 
 /**

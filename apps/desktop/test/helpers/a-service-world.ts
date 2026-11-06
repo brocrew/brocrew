@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { RuntimeHost as GiverNoticeHost } from './giver-notice-host'
 import { makeWorkerPieceFolder } from '../../src/main/worker-piece-folder'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -33,7 +34,7 @@ import {
 } from '../../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../../src/main/resources/resources'
 import { resolveSessionCwd } from '../../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 
 /**
  * A data folder with a database and a services list, and hosts over it, for the tests of service

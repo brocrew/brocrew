@@ -1,3 +1,5 @@
+import type { AgentModelChoice, WhereItCameFrom } from '../../shared/model-choice-contracts'
+import type { TaskStallCause } from '../../shared/task-contracts'
 import type { WorkerBindingReading } from '../../shared/worker-reading'
 import { DONE_CONDITION_CHARS, WORK_BRIEF_CHARS, WORK_FIELD_WORDS } from '../../shared/work-fields'
 import { refusalReason } from '../../shared/refusals'
@@ -22,9 +24,9 @@ import {
 import type { ItsProvider, StartedOn } from '../../shared/agent-roster'
 import { PIECE_TITLE_CHARS } from '../../shared/piece-called'
 import { MAX_RESOURCES_PER_REPLY } from '../../shared/documents'
-import { type AgentModelChoice, type WhereItCameFrom } from '../../shared/model-choice'
+
 import type { RailPermanence, RefusalRemedy } from '../../shared/refusals'
-import { undrivenSentence, type TaskStallCause } from '../../shared/tasks'
+import { undrivenSentence } from '../../shared/tasks'
 // ⚠️ **Type-only, and it has to stay that way.** `runtime-host.ts` imports this module for real, so
 // a value import back would be a runtime cycle; `CallerIdentity` is erased at compile time and the
 // two files stay one-directional.

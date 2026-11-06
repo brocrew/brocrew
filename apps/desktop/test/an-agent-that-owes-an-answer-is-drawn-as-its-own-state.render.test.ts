@@ -1,3 +1,5 @@
+import type { AgentState } from '../src/shared/agent-state-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -20,8 +22,8 @@ import { whoItOwesIn } from '../src/renderer/src/lib/conversation-waits'
 import { sessionPanel } from '../src/renderer/src/lib/session-panel'
 import { createSessionRecord } from '../src/renderer/src/lib/session-record'
 import { applyEvent } from '../src/renderer/src/lib/transcript'
-import { agentStateWords, type AgentState } from '../src/shared/agent-state'
-import type { CreatedSession, SessionLiveness, TranscriptEvent } from '../src/shared/runtime-ipc'
+import { agentStateWords } from '../src/shared/agent-state'
+import type { CreatedSession, SessionLiveness } from '../src/shared/runtime-ipc'
 
 /**
  * # F036 · the window half — an agent that owes another an answer is drawn as its own state (`09ca7541`)

@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -38,7 +39,7 @@ import {
 } from '../src/shared/who-did-it'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import type { RuntimeEvent } from '@brobot2/runtime'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **477 · who did it** — HO-029 §2, landed.

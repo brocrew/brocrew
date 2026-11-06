@@ -1,3 +1,4 @@
+import type { LedgerWalkKind } from '../src/shared/question-contracts'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -10,7 +11,7 @@ import {
 import { createSessionRecord, type SessionRecord } from '../src/renderer/src/lib/session-record'
 import { sessionPanel } from '../src/renderer/src/lib/session-panel'
 import { applyEvent, isAwaitingAnswer } from '../src/renderer/src/lib/transcript'
-import { decisionReading, readingSentence, type LedgerWalkKind } from '../src/shared/questions'
+import { decisionReading, readingSentence } from '../src/shared/questions'
 import type { CreatedSession, RuntimeEvent } from '../src/shared/runtime-ipc'
 import { runtimeCommandSchema } from '../src/main/runtime/ipc'
 

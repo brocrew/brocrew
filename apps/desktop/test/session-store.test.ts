@@ -1,3 +1,4 @@
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it, vi } from 'vitest'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -24,7 +25,6 @@ import { RETITLE_SAID } from '../src/shared/piece-called'
 import type {
   AnswerAck,
   CreatedSession,
-  PersistedEventInfo,
   ResumedSession,
   FirstMessageAnswer,
   FirstMessageNotSent,
@@ -32,7 +32,6 @@ import type {
   RuntimeEventMessage,
   SessionLivenessMessage,
   SessionLiveness,
-  TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 
 /**

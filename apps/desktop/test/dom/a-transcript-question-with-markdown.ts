@@ -1,5 +1,6 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { mount, paneProps, record } from './harness'
 
 export const QUESTION_MARKDOWN =

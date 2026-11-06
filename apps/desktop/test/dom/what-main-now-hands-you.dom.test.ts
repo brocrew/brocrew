@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { agentCardSides } from './harness'
 import { expandAgentCards } from './harness'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -7,12 +8,7 @@ import ConversationPane from '../../src/renderer/src/components/ConversationPane
 import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
-import type {
-  AgentIdentities,
-  AgentIdentity,
-  RuntimeBridge,
-  TranscriptEvent,
-} from '../../src/shared/runtime-ipc'
+import type { AgentIdentities, AgentIdentity, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { mount, paneProps, record, unmountAll, type Mounted } from './harness'
 import { assertDrawn, drawnReady } from './drawn'
 

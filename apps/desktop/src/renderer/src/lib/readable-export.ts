@@ -1,3 +1,4 @@
+import type { PersistedEventInfo } from '../../../shared/conversation-events'
 import { didIt } from '../../../shared/who-did-it'
 // ⛔ **`READING_NOTE` is the SHARED copy** — the host returns the same string on the answer, and
 // two spellings is how the artefact comes to promise something the popup does not.
@@ -8,7 +9,7 @@ import { GO_AHEAD_SENDER } from './plan-mode'
 import { THE_GO_AHEAD_WAS_NOT_SENT } from '../../../shared/the-go-ahead'
 import { AN_UNNAMED_RELAYER, RELAYED_MARK } from './relayed-turn'
 import { WORK_REPORT_MARK } from './work-report'
-import type { HistoryWindow, PersistedEventInfo } from '../../../shared/runtime-ipc'
+import type { HistoryWindow } from '../../../shared/runtime-ipc'
 import { toldClause, type TranscriptItem } from './transcript'
 // ⚑ **The ONE public fold** — see `readWholeConversation`. ⛔ Not a second reader of the ledger.
 import { foldWindow } from './transcript-window'

@@ -1,3 +1,4 @@
+import type { AgentStateArmFacts, AgentStateFacts } from '../src/shared/agent-state-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -22,8 +23,6 @@ import {
   agentStateArm,
   agentStateOf,
   agentStateWords,
-  type AgentStateArmFacts,
-  type AgentStateFacts,
 } from '../src/shared/agent-state'
 import { workLeftBehind } from '../src/renderer/src/lib/agent-state'
 

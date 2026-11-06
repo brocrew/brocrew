@@ -1,3 +1,4 @@
+import type { McpServerRequestForAPerson } from '../../src/shared/conversation-events'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
@@ -8,11 +9,7 @@ import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
 import { createModelLists } from '../../src/renderer/src/lib/model-lists'
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
-import type {
-  AgentIdentities,
-  RuntimeBridge,
-  McpServerRequestForAPerson,
-} from '../../src/shared/runtime-ipc'
+import type { AgentIdentities, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
 import { mount, unmountAll } from './harness'
 

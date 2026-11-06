@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { nextTick } from 'vue'
 import { afterEach, describe, expect, it } from 'vitest'
 import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue'
@@ -7,7 +8,7 @@ import {
   type TranscriptState,
 } from '../../src/renderer/src/lib/transcript'
 import { visibleItems } from '../../src/renderer/src/lib/transcript-mode'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { mount, unmountAll } from './harness'
 
 /**

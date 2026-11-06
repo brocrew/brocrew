@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -30,11 +31,7 @@ import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentCallerId, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type {
-  RuntimeChangeMessage,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeChangeMessage, RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { stalledWorkSaid } from '../src/shared/stalled-work'
 import { undrivenSentence } from '../src/shared/tasks'
 import {

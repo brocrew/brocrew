@@ -1,6 +1,7 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, reactive, ref } from 'vue'
-import type { CreatedSession, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { CreatedSession } from '../../src/shared/runtime-ipc'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { createSessionRecord, type SessionRecord } from '../../src/renderer/src/lib/session-record'
 import { applyEvent } from '../../src/renderer/src/lib/transcript'

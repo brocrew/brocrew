@@ -1,3 +1,4 @@
+import type { HandedPath } from '../../src/shared/attachment-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
 import { allProviderCapabilities } from '../../../../packages/runtime/src/capabilities'
@@ -5,7 +6,7 @@ import NewConversation from '../../src/renderer/src/components/NewConversation.v
 // ⚑ **Four imports left with 417** (HO-022 §2): `LaunchDraft` — the module is deleted —
 // `DEFAULT_PROFILE_ID` and `DEFAULT_PROJECT_ID`, which were the `profiles` prop and the launch
 // draft's project choice, and `CwdVerdict`, which was the folder row's verdict on what was typed.
-import type { CreateSessionInput, HandedPath } from '../../src/shared/runtime-ipc'
+import type { CreateSessionInput } from '../../src/shared/runtime-ipc'
 import { createAttachmentBook, NEW_CONVERSATION } from '../../src/renderer/src/lib/drafts'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 import { NO_LAUNCH_CHOICES } from '../../src/renderer/src/lib/launch-choices'

@@ -1,7 +1,9 @@
+import type { HandedPath } from '../src/shared/attachment-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { nextTick, ref } from 'vue'
 import type { DeletePart, DeleteVerdict } from '../src/shared/conversation-archive'
-import type { HandedPath, TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import {
   RECOVERY_COPIES_STAY,
   archiveConversation,

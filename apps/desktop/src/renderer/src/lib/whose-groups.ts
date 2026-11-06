@@ -2,7 +2,8 @@ import type {
   InjectedInstruction,
   InjectedInstructionKind,
   SessionInstructions,
-} from '../../../shared/runtime-ipc'
+} from '../../../shared/instruction-contracts'
+
 import type { ToldLayer } from '../../../shared/told'
 import { pathTail } from '../../../shared/path-tail'
 import {

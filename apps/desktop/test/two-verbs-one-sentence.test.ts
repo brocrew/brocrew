@@ -1,3 +1,4 @@
+import type { SessionInstructions } from '../src/shared/instruction-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -13,7 +14,7 @@ import {
 import { claudeMcpServersFor } from '../../../packages/runtime/src/claude/agent-tools'
 import { codexDynamicToolsFor } from '../../../packages/runtime/src/codex/agent-tools'
 import type { Provider } from '@brobot2/shared'
-import type { SessionInstructions } from '../src/shared/runtime-ipc'
+
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'

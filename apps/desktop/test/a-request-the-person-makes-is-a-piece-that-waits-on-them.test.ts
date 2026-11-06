@@ -1,3 +1,6 @@
+import type { PieceRow, TaskState, WorkGivenEvent } from '../src/shared/task-contracts'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
+import type { QuestionAskedEvent, RequestRoutedEvent } from '../src/shared/question-contracts'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -28,15 +31,8 @@ import {
   derivePieces,
   givenByAConversation,
 } from '../src/shared/tasks'
-import type { PieceRow, TaskState } from '../src/shared/tasks'
-import type {
-  PersistedEventInfo,
-  QuestionAskedEvent,
-  RequestRoutedEvent,
-  RuntimeEventMessage,
-  TranscriptEvent,
-  WorkGivenEvent,
-} from '../src/shared/runtime-ipc'
+
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * D-016 · commit 6 · a request the person makes is a piece that waits on them.

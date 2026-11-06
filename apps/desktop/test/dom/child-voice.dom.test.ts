@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { nextTick } from 'vue'
 import { afterEach, describe, expect, it } from 'vitest'
 import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue'
@@ -5,7 +6,7 @@ import AgentState from '../../src/renderer/src/components/AgentState.vue'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 import type { TranscriptState } from '../../src/renderer/src/lib/transcript'
 import { NEEDING_TOKEN } from '../../src/renderer/src/lib/agent-state'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { contrast, mount, paintedInk, parseColor, show, unmountAll } from './harness'
 
 /**

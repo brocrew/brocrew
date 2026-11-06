@@ -1,3 +1,4 @@
+import type { HandedPath } from '../src/shared/attachment-contracts'
 import { describe, expect, it } from 'vitest'
 import {
   attachmentsNotRestored,
@@ -7,7 +8,7 @@ import {
   NEW_CONVERSATION,
   liveDraftSlots,
 } from '../src/renderer/src/lib/drafts'
-import { MAX_HANDED_PATHS, type HandedPath } from '../src/shared/runtime-ipc'
+import { MAX_HANDED_PATHS } from '../src/shared/runtime-ipc'
 
 /**
  * Per-conversation drafts (Slice 2 · 019) — the fix for cross-thread draft bleed.

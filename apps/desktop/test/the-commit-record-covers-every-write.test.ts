@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -9,7 +10,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import type { Committed } from '../src/main/db/committed-changes'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 const here = dirname(fileURLToPath(import.meta.url))

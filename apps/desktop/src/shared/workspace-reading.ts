@@ -1,4 +1,5 @@
-import type { LedgerWalk } from './questions'
+import type { LedgerWalk } from './question-contracts'
+
 // ⚑ **TYPES and nothing else from the workspace package** (567) — `who-called-whom.ts`' rule, kept
 // for its reason: an edge erased at build time cannot hand this module a database, a host or a
 // clock, and nothing here can cost a renderer a bundle

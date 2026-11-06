@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import {
   applyEvent,
@@ -21,7 +22,7 @@ import {
   questionInTheConversation,
   type QuestionCardReading,
 } from '../src/renderer/src/lib/question-card'
-import type { AgentIdentity, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { AgentIdentity } from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 A question this conversation sent, drawn as a card

@@ -1,3 +1,4 @@
+import type { AgentStateFacts } from '../src/shared/agent-state-contracts'
 import { describe, expect, it, vi } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -23,7 +24,6 @@ import {
   nextWake,
   NOTHING_IN_THE_BACKGROUND,
   scheduleHeld,
-  type AgentStateFacts,
 } from '../src/shared/agent-state'
 import { clockTime } from '../src/shared/clock'
 

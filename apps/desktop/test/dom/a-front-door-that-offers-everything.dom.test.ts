@@ -1,3 +1,4 @@
+import type { ModelCatalogue, ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { computed, defineComponent, h, nextTick, ref, type Component } from 'vue'
@@ -11,9 +12,7 @@ import { theList } from '../../src/shared/model-choice'
 import {
   DEFAULT_PROFILE_ID,
   type CreateSessionInput,
-  type ModelCatalogue,
   type ModelChoice,
-  type ModelList,
   type Provider,
 } from '../../src/shared/runtime-ipc'
 import { MEASURED_CLAUDE } from '../fixtures/effort-launches'

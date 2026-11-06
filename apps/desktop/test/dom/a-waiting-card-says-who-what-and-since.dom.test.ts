@@ -1,3 +1,9 @@
+import type {
+  CardNobodyHolds,
+  LedgerWalk,
+  PersonsDecision,
+  RequestOnlyAPersonCanSettle,
+} from '../../src/shared/question-contracts'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { defineComponent, h, nextTick, type Component } from 'vue'
@@ -9,14 +15,7 @@ import {
   type AttentionRequest,
 } from '../../src/renderer/src/lib/attention'
 import { usePersonsQueue, type PersonsQueueRow } from '../../src/renderer/src/lib/persons-queue'
-import {
-  decisionReading,
-  readingSentence,
-  type CardNobodyHolds,
-  type LedgerWalk,
-  type PersonsDecision,
-  type RequestOnlyAPersonCanSettle,
-} from '../../src/shared/questions'
+import { decisionReading, readingSentence } from '../../src/shared/questions'
 import { assertDrawn, clipsOf, cutsOf, drawnReady, lineCount } from './drawn'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 

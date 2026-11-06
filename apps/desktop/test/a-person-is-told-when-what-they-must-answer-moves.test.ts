@@ -1,7 +1,8 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeChangeMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeChangeMessage } from '../src/shared/runtime-ipc'
 
 /**
  * A window is told `persons` whenever what a person must answer may have moved — announced from

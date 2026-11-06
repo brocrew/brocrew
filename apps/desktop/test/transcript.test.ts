@@ -1,7 +1,8 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { RUNTIME_EVENT_TYPES, type RuntimeEvent, type SessionRef } from '@brobot2/runtime'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { aLaunchRecordIn } from '../src/main/runtime/what-this-agent-was-given'
 import { REOPEN_COSTS } from '../src/renderer/src/lib/reopening'

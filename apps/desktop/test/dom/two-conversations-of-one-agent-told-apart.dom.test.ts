@@ -1,16 +1,15 @@
+import type {
+  LedgerWalk,
+  PersonsDecision,
+  RequestOnlyAPersonCanSettle,
+} from '../../src/shared/question-contracts'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
 import * as persons from '../../src/renderer/src/lib/persons-queue'
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
-import {
-  decisionReading,
-  readingSentence,
-  type LedgerWalk,
-  type PersonsDecision,
-  type RequestOnlyAPersonCanSettle,
-} from '../../src/shared/questions'
+import { decisionReading, readingSentence } from '../../src/shared/questions'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import { agentName, type AgentIdentity } from '../../src/shared/runtime-ipc'
 import { assertDrawn, drawnReady } from './drawn'

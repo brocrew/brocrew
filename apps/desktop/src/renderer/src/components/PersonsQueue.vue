@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { WorkInHand } from '../../../shared/question-contracts'
+
 import { computed, ref, useId } from 'vue'
 // 🔴 **`KIND_WORDS` and `sinceWords` were declared HERE until `452 relay 1`** — *one derivation,
 // wherever it lives* is `persons-queue.ts`' rule: two sentences for one `kind` are free to
@@ -25,7 +27,7 @@ import {
   OPEN_IT_BEFORE_YOU_ALLOW_IT,
   type AttentionDecision,
 } from '../lib/attention'
-import type { WorkInHand } from '../../../shared/questions'
+
 import {
   LIMIT_WORDS,
   WHAT_COMES_AFTER_IS_NOT_OURS,

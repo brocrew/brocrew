@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import type { TranscriptEvent } from '../../../shared/conversation-events'
+
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import type { RuntimeEventMessage, TranscriptEvent } from '../../../shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../../../shared/runtime-ipc'
 import { useStickToBottom } from '../composables/useStickToBottom'
 import { clockTime } from '../../../shared/clock'
 import { fullTime } from '../lib/clock'

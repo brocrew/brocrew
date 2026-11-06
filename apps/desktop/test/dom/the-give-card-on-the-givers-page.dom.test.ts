@@ -1,9 +1,10 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { agentCardRecipient } from './harness'
 import { expandAgentCards } from './harness'
 import { afterEach, describe, expect, it } from 'vitest'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
-import type { AgentIdentity, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { AgentIdentity } from '../../src/shared/runtime-ipc'
 import type { WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import { mount, paneProps, record, unmountAll, visible } from './harness'
 

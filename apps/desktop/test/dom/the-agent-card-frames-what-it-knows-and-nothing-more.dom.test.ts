@@ -1,3 +1,5 @@
+import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/question-contracts'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import SessionPanel from '../../src/renderer/src/components/SessionPanel.vue'
@@ -8,8 +10,7 @@ import {
 import { plateWord } from '../../src/renderer/src/lib/agent-state'
 import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
-import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/questions'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import { assertClippedButTold, assertDrawn, cutsOf, drawnReady } from './drawn'
 import { META, allTasks, drawerProps, mount, unmountAll, visible, type Mounted } from './harness'

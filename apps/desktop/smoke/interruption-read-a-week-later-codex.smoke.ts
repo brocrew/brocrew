@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
@@ -25,7 +26,7 @@ import {
 } from '../src/main/runtime/provider-homes'
 import { bundledCodexTransportFactory } from '../../../packages/runtime/smoke/bundled-codex'
 import { runEvidence, runScratch } from '../../../packages/runtime/smoke/run-paths'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 443 relay 1: the same criterion-8 observation through the product's live Codex path.

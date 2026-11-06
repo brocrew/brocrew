@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { writeFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -10,7 +11,7 @@ import {
 } from '../src/main/profile-execution-file'
 import type { GiveOutcome, RuntimeHost } from '../src/main/runtime/runtime-host'
 import { createAgentStore } from '../src/renderer/src/lib/agent-store'
-import type { AgentIdentity, RuntimeBridge, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { AgentIdentity, RuntimeBridge } from '../src/shared/runtime-ipc'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 type Given = Extract<GiveOutcome, { ok: true }>

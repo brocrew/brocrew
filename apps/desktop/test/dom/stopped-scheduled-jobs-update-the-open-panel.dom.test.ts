@@ -1,8 +1,9 @@
+import type { AgentState } from '../../src/shared/agent-state-contracts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { createSessionStore, type SessionStore } from '../../src/renderer/src/lib/session-store'
-import type { AgentState } from '../../src/shared/agent-state'
+
 import {
   type ResumedSession,
   type RuntimeBridge,

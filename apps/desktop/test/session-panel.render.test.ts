@@ -1,7 +1,8 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import SessionPanel from '../src/renderer/src/components/SessionPanel.vue'
 import { sessionPanel } from '../src/renderer/src/lib/session-panel'
 import { formatTokens, groupTokens } from '../src/renderer/src/lib/context-meter'

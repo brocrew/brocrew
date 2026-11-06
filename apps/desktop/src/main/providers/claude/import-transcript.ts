@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../../shared/conversation-events'
 import {
   truncate,
   type ImportedEntry,
@@ -10,7 +11,6 @@ import {
   wrapUnknown,
   type RuntimeEvent,
 } from '@brobot2/runtime'
-import type { TranscriptEvent } from '../../../shared/runtime-ipc'
 
 /**
  * Turn Claude's own transcript records into the entries our ledger holds (088), so an adopted

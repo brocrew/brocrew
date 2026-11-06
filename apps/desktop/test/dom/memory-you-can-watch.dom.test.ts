@@ -1,9 +1,10 @@
+import type { MemoryNoteSeen, TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue'
 import SessionInstructions from '../../src/renderer/src/components/SessionInstructions.vue'
-import type { MemoryNoteSeen, TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { mount, paneProps, record, unmountAll } from './harness'
 
 /**

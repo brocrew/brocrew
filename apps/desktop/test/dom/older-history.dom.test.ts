@@ -1,9 +1,10 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
 import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue'
 import { foldWindow } from '../../src/renderer/src/lib/transcript-window'
 import type { TranscriptItem } from '../../src/renderer/src/lib/transcript'
-import type { RuntimeEventMessage, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, type Mounted } from './harness'
 
 /**

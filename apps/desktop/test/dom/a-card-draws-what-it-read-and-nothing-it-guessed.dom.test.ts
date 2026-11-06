@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { agentCardRecipient } from './harness'
 import { expandAgentCards } from './harness'
 import { nextTick } from 'vue'
@@ -10,7 +11,7 @@ import {
   SHORTEST_JSON_DRAWN,
   type WordsPart,
 } from '../../src/renderer/src/lib/words-with-json'
-import type { AgentIdentity, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { AgentIdentity } from '../../src/shared/runtime-ipc'
 import { mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
 
 /**

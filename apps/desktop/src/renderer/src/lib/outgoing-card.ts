@@ -1,6 +1,7 @@
+import type { AgentMessageKind } from '../../../shared/task-contracts'
 import { agentName, type AgentIdentity } from '../../../shared/runtime-ipc'
 import type { RefusalTold } from '../../../shared/refusals'
-import type { AgentMessageKind } from '../../../shared/tasks'
+
 import type {
   OutgoingGive,
   OutgoingRebrief,

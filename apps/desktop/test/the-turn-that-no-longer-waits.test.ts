@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -16,7 +17,7 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **608 · the turn that no longer waits** — `HO-084` §4 (B1), held behind `603` by `HO-085` §4.
@@ -834,7 +835,7 @@ describe('608 · the turn that no longer waits', () => {
       // that asked it is BLOCKED until somebody answers*.** ⛔ That is now true of a
       // PROVIDER-raised question only; an `ask_parent` question blocks nobody, and the exemption
       // survives for a different reason on that side.
-      const ipc = proseOf('shared/runtime-ipc.ts')
+      const ipc = proseOf('shared/conversation-events.ts')
       expect(ipc).toContain('question no longer blocks anybody')
       // ⚑ **D-010 · the host half went with the exemption itself**: every message is held now, so
       // the rail whose note gave the reason is retired, and there is no exemption left to justify.

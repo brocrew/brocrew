@@ -1,7 +1,8 @@
+import type { WhatEachConversationIsWaitingOn } from '../src/shared/task-contracts'
 import { describe, expect, it } from 'vitest'
 import { whatTheWaitsCouldNotRead } from '../src/renderer/src/lib/conversation-waits'
 import { forestView } from '../src/renderer/src/lib/the-forest'
-import type { WhatEachConversationIsWaitingOn } from '../src/shared/tasks'
+
 import type { ForestNode, TheWholeForest } from '../src/shared/the-whole-forest'
 
 /**

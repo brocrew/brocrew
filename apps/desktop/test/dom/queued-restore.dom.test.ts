@@ -1,8 +1,10 @@
+import type { HandedPath } from '../../src/shared/attachment-contracts'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, type Component } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { createAttachmentBook, draftKey } from '../../src/renderer/src/lib/drafts'
-import type { HandedPath, TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { mount, paneProps, record, unmountAll } from './harness'
 
 /**

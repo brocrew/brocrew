@@ -1,6 +1,8 @@
-import type { MoveOffer, MoveReceipt } from '../../../shared/move-request'
+import type { MoveOffer, MoveReceipt } from '../../../shared/move-contracts'
+import type { AskedQuestion, OfferedAnswer } from '../../../shared/question-contracts'
+
 import { agentName, type AgentIdentity, type UserInputResponse } from '../../../shared/runtime-ipc'
-import type { AskedQuestion, OfferedAnswer } from '../../../shared/questions'
+
 import { clockTime } from '../../../shared/clock'
 import { whoAnsweredIt } from '../../../shared/who-did-it'
 import { fullTime } from './clock'

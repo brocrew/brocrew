@@ -1,3 +1,4 @@
+import type { ModelList, SessionSettingChanged } from '../src/shared/model-choice-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -11,7 +12,6 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import type { ModelList, SessionSettingChanged } from '../src/shared/runtime-ipc'
 
 /**
  * # A person's pick in a conversation, while the provider's list could not be read
