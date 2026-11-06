@@ -35,9 +35,14 @@ function canonicalSource(base, sourceCommit) {
     'checkout',
     sourceCommit,
     '--',
+    '.gitattributes',
     'plugins/chrome',
     'plugins/whatsapp',
     'plugins/shared/ui',
+  )
+  expect(fs.existsSync(path.join(root, '.gitattributes'))).toBe(true)
+  expect(fs.readFileSync(path.join(root, 'plugins/chrome/ui/index.html'))).toEqual(
+    execFileSync('git', ['-C', repository, 'show', `${sourceCommit}:plugins/chrome/ui/index.html`]),
   )
   git(root, 'update-ref', 'HEAD', sourceCommit)
   return root
