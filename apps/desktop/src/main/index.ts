@@ -798,7 +798,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     Date.now,
     transcriptStartupWasInterrupted(store),
   ))
-  retention.start()
+  setImmediate(() => retention.start())
   // Recovery observes interrupted operations before any host door can remove their identity.
   let knowledgeChanged: (slug: string) => void = () => {}
   const methodKnowledge = await createSavedMethodService({
@@ -944,10 +944,10 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
       Object.values(providerModules).flatMap((module) => module.connections?.list() ?? []),
     // Derive the profile from the session; keep its provider home under `HOME_FOLDER`.
     beforeProviderLaunch: async () => {
-      await transcriptRetention?.beforeLaunch()
+      transcriptRetention?.beforeLaunch()
     },
     prepareProviderHome: async (provider, profileId) => {
-      await transcriptRetention?.beforeLaunch()
+      transcriptRetention?.beforeLaunch()
       return providerModules[provider].home.prepare(profileId)
     },
     prepareBuiltInSkills: ({ pack, ...input }) =>
