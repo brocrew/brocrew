@@ -31,7 +31,8 @@ import { INTERPOLATION, typescriptAt } from '../lib/page-ipc-census.mjs'
  *  3. **The pages** — every argument an executor is handed, followed to its text: a literal, a
  *     `const` (`READ`), what a local or imported function returns (`CLICK('x')`,
  *     `ACTIVE_TAB_EXPRESSION`), both arms of a `?:`, and a parameter — to its callers, or through the
- *     function an anonymous callback is handed to (`assertTabFlow`'s `readActiveTab`).
+ *     function an anonymous callback is handed to (`assertTabFlow`'s `readActiveTab`). Direct named
+ *     imports of exported executor classes are followed to their caller pages too.
  *
  * ⚑ **Each `${…}` is cooked the way the page receives it.** A hole Node fills from FIXED text — a
  * `const`, `paperFields('pane')` — is inlined, because that text is code the page parses: a stand-in
@@ -52,8 +53,8 @@ import { INTERPOLATION, typescriptAt } from '../lib/page-ipc-census.mjs'
  * executor (`readJson(body)` → `this.evaluate(`…${body}…`)`) — that hole is cooked as a value and
  * the helper's callers are not read; every parameter hole in a page template today is a value (the
  * `722` review, round 2); a page built inside ANOTHER program's text (`nav-order-probe`'s
- * `String.raw` main process calls `executeJavaScript` from inside a string); an executor defined in
- * one file and called in another (none today: each script owns its CDP class); every value a hole
+ * `String.raw` main process calls `executeJavaScript` from inside a string); cross-file executors
+ * reached through re-exports or namespace imports; every value a hole
  * can take — one stand-in per hole, the first fixed text or the identifier; and whether a page does
  * what its step claims. It proves a page can RUN, which is what step 78 could not.
  */
@@ -474,9 +475,43 @@ function pageCensus(files, readText = (file) => readFileSync(join(root, file), '
     let throughCalls = 0
     const own = executorsOf(source)
     for (const [name, { wrapper, outer, index }] of own) {
-      for (const call of callsNamed(source, name)) {
-        if (call.arguments[index])
-          throughCalls += add(pagesFrom(call.arguments[index]), wrapper, outer)
+      // An exported client's pages live at its importers, with their original source positions.
+      const classes = source.statements.filter(
+        (node) =>
+          ts.isClassDeclaration(node) &&
+          node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) &&
+          node.members.some((member) => member.name?.getText(source) === name),
+      )
+      const importers =
+        classes.length === 0
+          ? []
+          : files
+              .map(load)
+              .filter((candidate) =>
+                candidate.statements.some(
+                  (node) =>
+                    ts.isImportDeclaration(node) &&
+                    node.moduleSpecifier.text.startsWith('.') &&
+                    posix.join(posix.dirname(candidate.fileName), node.moduleSpecifier.text) ===
+                      file &&
+                    node.importClause?.namedBindings &&
+                    ts.isNamedImports(node.importClause.namedBindings) &&
+                    node.importClause.namedBindings.elements.some((binding) =>
+                      classes.some(
+                        (client) =>
+                          client.name?.text === (binding.propertyName ?? binding.name).text,
+                      ),
+                    ),
+                ),
+              )
+      for (const caller of [source, ...importers]) {
+        let carried = 0
+        for (const call of callsNamed(caller, name)) {
+          if (call.arguments[index])
+            carried += add(pagesFrom(call.arguments[index]), wrapper, outer)
+        }
+        throughCalls += carried
+        if (caller !== source && carried === 0) quiet.push(caller.fileName)
       }
     }
     let direct = 0
@@ -670,6 +705,25 @@ describe('722 · every page a smoke sends parses, wrapped the way its executor r
     expect(plant.pages.map(({ text }) => text).join('\n')).toContain(
       `first: ${INTERPOLATION}.id, second: ${INTERPOLATION}.title,`,
     )
+    const importedFiles = {
+      'client.mjs': 'export ' + PLANT.slice(0, 5).join('\n'),
+      'caller.mjs': "import { Cdp as Client } from './client.mjs'\ncdp.evaluate(`return 1`)",
+      'broken.mjs': "import { Cdp } from './client.mjs'\ncdp.evaluate(`const value =`)",
+      'quiet.mjs': "import { Cdp } from './client.mjs'\ncdp['evaluate'](`return 2`)",
+    }
+    const imported = pageCensus(Object.keys(importedFiles), (file) => importedFiles[file])
+    expect(
+      imported.pages
+        .filter(({ file }) => file !== 'client.mjs')
+        .map(({ file, text, wrapper }) => ({ file, text, wrapper })),
+    ).toEqual([
+      { file: 'caller.mjs', text: 'return 1', wrapper: 'async' },
+      { file: 'broken.mjs', text: 'const value =', wrapper: 'async' },
+    ])
+    expect(refusedByV8(imported.pages).map(({ file, line }) => ({ file, line }))).toEqual([
+      { file: 'broken.mjs', line: 2 },
+    ])
+    expect(imported.quiet).toEqual(['quiet.mjs'])
     expect(plant.unresolved).toEqual([
       {
         file: 'planted.mjs',
