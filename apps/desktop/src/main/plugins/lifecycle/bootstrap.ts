@@ -4,7 +4,7 @@ import { devPluginArchive } from '../catalogue/dev-source'
 import { createPublicKey } from 'node:crypto'
 import { join } from 'node:path'
 import { GlobalPluginState } from '../state/store'
-import { sourceBytes, verifyImmutableFile } from '../node-host-files'
+import { sourceBytes } from '../node-host-files'
 import { PLUGIN_LIMITS, pluginSha256 } from '../package-digests'
 import { thisMachine } from '../package-schema'
 import { createRepoAwarePluginVerifier } from '../package-verifier'
@@ -44,7 +44,6 @@ export async function bootstrapPluginLifecycle(options: {
     if (!repo.appVersion)
       throw new Error('The plugin launch plan has a repo list but no app version')
     const bytes = await sourceBytes(repo.repoList.path, PLUGIN_LIMITS.catalogueBytes)
-    await verifyImmutableFile(repo.repoList.path, bytes)
     const got = pluginSha256(bytes)
     if (got !== repo.repoList.sha256)
       throw new Error(
@@ -64,7 +63,6 @@ export async function bootstrapPluginLifecycle(options: {
     if (!repo.appVersion)
       throw new Error('The plugin launch plan has a legacy repo list but no app version')
     const bytes = await sourceBytes(repo.legacyRepoList.path, PLUGIN_LIMITS.catalogueBytes)
-    await verifyImmutableFile(repo.legacyRepoList.path, bytes)
     const got = pluginSha256(bytes)
     if (got !== repo.legacyRepoList.sha256)
       throw new Error(

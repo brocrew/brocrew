@@ -793,6 +793,8 @@ export function productionPluginController() {
                   },
             lifecycle: {
               source: 'repo-list',
+              // The version these entries were loaded with, so the owner's refresh asks for the same.
+              sourceVersion,
               appVersion: options.appVersion,
               catalogue: catalogueEntries.catalogue,
               catalogueSha256: catalogueEntries.sha256,

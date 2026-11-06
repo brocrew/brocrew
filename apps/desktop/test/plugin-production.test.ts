@@ -905,6 +905,7 @@ describe.skipIf(process.platform === 'win32')(
       const launch = seams.launch.mock.calls[0]![0] as unknown as {
         lifecycle: {
           source: string
+          sourceVersion?: number
           catalogueSha256: string
           personKey: string
           downloads?: unknown
@@ -912,6 +913,8 @@ describe.skipIf(process.platform === 'win32')(
         }
       }
       expect(launch.lifecycle.source).toBe('repo-list')
+      // The owner's catalogue refresh asks for the same source version the app loaded.
+      expect(launch.lifecycle.sourceVersion).toBe(1)
       expect(launch.lifecycle.catalogueSha256).toMatch(/^[a-f0-9]{64}$/)
       expect(launch.lifecycle.publicKey).toBeUndefined()
       expect(f.fetch).toHaveBeenCalledOnce()
