@@ -669,7 +669,9 @@ describe('349 · a sink that says whether a person is behind it', () => {
       // ⛔ Prose stripped first: this file argues about the field at length, and a docblock quoting
       // it would count as a reader.
       const code = ['runtime-host.ts', 'conversation-caller.ts']
-        .map((file) => strippedOfProse(readFileSync(join(here, '../src/main/runtime', file), 'utf8')))
+        .map((file) =>
+          strippedOfProse(readFileSync(join(here, '../src/main/runtime', file), 'utf8')),
+        )
         .join('\n')
       // ⛔ **Every mention, then the writes subtracted — NOT a pattern for the one read shape.**
       // A search for `slot.ownerIsAPerson &&` can only see a read written as the left conjunct of
