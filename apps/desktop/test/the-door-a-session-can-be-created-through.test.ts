@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -13,7 +14,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   RuntimeHost,
   THE_APP_ITSELF,
@@ -145,9 +145,7 @@ describe('336 · a session created through a door no renderer opened', () => {
     let counter = 0
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       // ⚠️ **One runtime per provider, HELD**, so a test can reach the provider end of a session it
       // started — the only way to make an unclaimed session produce events, since no caller can.
       createRuntime: (provider: Provider) => {

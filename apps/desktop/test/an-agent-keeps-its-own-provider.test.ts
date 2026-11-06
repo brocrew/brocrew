@@ -1,3 +1,4 @@
+import { fixtureProviderConfig } from './lib/host-fixture'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -159,13 +160,7 @@ describe('through the host: a give never changes an agent’s provider', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${String(++counter)}`,
       now: tick,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       readInstructions: () => ({
         instructions: NOTHING_INJECTED,
         systemHint: undefined,

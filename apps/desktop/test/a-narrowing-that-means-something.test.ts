@@ -1,3 +1,4 @@
+import { syntheticProviderHome } from './lib/host-fixture'
 import {
   lstatSync,
   mkdirSync,
@@ -166,11 +167,7 @@ describe('371 · a narrowing that means something', () => {
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) => new FakeRuntime(provider),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       // ⚑ **339's own rule, wired in rather than faked** — the folder refusals below are
       // `checkSessionCwd`'s own sentences, reached through the seam a launch uses.

@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -14,7 +15,6 @@ import type { SessionInstructions } from '../src/shared/runtime-ipc'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
@@ -127,9 +127,7 @@ describe('419 · creating an agent, and the provider it runs on', () => {
   const buildHost = (): RuntimeHost =>
     new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new WatchingRuntime(provider, handed, sessions),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
         const home = join(userData, 'provider-homes', 'default', profileId ?? 'default', provider)

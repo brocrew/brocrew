@@ -1,4 +1,4 @@
-import { RecordingSink } from './lib/host-fixture'
+import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
 import { expectIdsOnlyInLinkTargets } from './helpers/navigation-reply'
 /**
  * ⚑ **A piece's label names the conversation that owns it — and no more** (W1.2).
@@ -32,7 +32,7 @@ import { expectIdsOnlyInLinkTargets } from './helpers/navigation-reply'
  * a root and takes the next label: opening a helper first, to bring its identity into being, would
  * make the parent `W2` and the literals below `W2.1`.
  */
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -129,11 +129,7 @@ describe('a label names the conversation that owns the piece, and no more', () =
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) =>
         new ProviderDouble(provider, handles, issued, resumeGate),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

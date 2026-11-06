@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { syntheticProviderHome } from './lib/host-fixture'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -101,11 +102,7 @@ describe('573 · the grant prose scopes its own claim', () => {
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) => new WatchingRuntime(provider, handed, sessions),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

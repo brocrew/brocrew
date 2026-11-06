@@ -1,3 +1,4 @@
+import { syntheticProviderHome } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -377,11 +378,7 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
             new ScriptedCodex(launch.providerHome, script, `th_${String(++threads)}`),
         )
       },
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider, profileId: string) =>
         join(userData, 'provider-homes', profileId, provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),

@@ -1,3 +1,4 @@
+import { fixtureProviderConfig } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -134,13 +135,7 @@ describe('F093 · R3 · the popup’s provider slot', () => {
       providerHomesRoot: () => join(userData, 'provider-homes'),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${String(++counter)}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       whichBuild: () => ({ id: commit.slice(0, 7), commit, dirty: false, schema: 7 }),
       ...(versions === undefined ? {} : { providerVersions: () => Promise.resolve(versions) }),
       ...(seam === null ? {} : { providerSnapshot: seam }),

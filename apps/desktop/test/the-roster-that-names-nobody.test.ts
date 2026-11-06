@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { navigationReply, expectIdsOnlyInLinkTargets } from './helpers/navigation-reply'
 import { conversationLink, agentLink, pieceLink } from '../src/shared/links'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -10,7 +11,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   AN_IDENTITY_THIS_APP_CANNOT_NAME,
   RuntimeHost,
@@ -113,9 +113,7 @@ describe('610 · the roster that names nobody', () => {
     holdTheHome = null
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: () => new FakeRuntime('claude', { sessions }),
       prepareProviderHome: async (provider: Provider, profileId?: string) => {
         const home = join(userData, 'provider-homes', profileId ?? 'default', provider)

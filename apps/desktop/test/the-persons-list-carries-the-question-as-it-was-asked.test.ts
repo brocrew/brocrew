@@ -1,5 +1,5 @@
-import { RecordingSink } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -163,11 +163,7 @@ describe('D-046 · the person’s list carries each question as it was asked', (
           decorateNextHandle = null
           return decorate?.(handle) ?? handle
         }),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${String(++counter)}`,

@@ -1,4 +1,4 @@
-import { RecordingSink } from './lib/host-fixture'
+import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
 /**
  * An agent's profile name reaches its conversation at `message_agent` and `ask_question`.
  *
@@ -14,7 +14,7 @@ import { RecordingSink } from './lib/host-fixture'
  * The fixture: a person's conversation `W1` gives `W1.1` to a new `worker`; a person's second
  * conversation, `W2`, run by `reviewer`, is the caller that gave nothing.
  */
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -86,11 +86,7 @@ describe('a profile name reaches its one conversation', () => {
       exportDirectory: () => join(userData, 'exports'),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

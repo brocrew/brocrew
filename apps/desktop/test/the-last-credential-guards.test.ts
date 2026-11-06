@@ -1,10 +1,10 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeRuntime } from '@brobot2/runtime'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
@@ -66,9 +66,7 @@ describe('§1 · a config file the Info panel lists opens like any other file (`
     let counter = 0
     host = new RuntimeHost({
       store: createSessionStore(db),
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider) => new FakeRuntime(provider),
       prepareProviderHome: () => home,
       providerHomePath: () => home,

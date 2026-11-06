@@ -1,4 +1,4 @@
-import { RecordingSink } from './lib/host-fixture'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -10,7 +10,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { refuseInterrupt } from '../src/main/runtime/interrupt-rails'
@@ -97,9 +96,7 @@ describe('657 · hold the second message instead of refusing it', () => {
   const buildHost = (deliveryWaitMs?: number): RuntimeHost =>
     new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => {
         const inner = new FakeRuntime(provider, { sessions })
         const bind = <T extends object>(target: T, prop: string | symbol): unknown => {

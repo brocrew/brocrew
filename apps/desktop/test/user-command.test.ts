@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -8,7 +9,6 @@ import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
@@ -74,9 +74,7 @@ describe('the user_command breadcrumb (097)', () => {
         files: [],
       }),
       store: createSessionStore(db),
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider) => new FakeRuntime(provider),
       prepareProviderHome: (provider, profileId) =>
         join(userData, 'provider-homes', profileId, provider),

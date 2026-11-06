@@ -1,4 +1,4 @@
-import { RecordingSink } from './lib/host-fixture'
+import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
 import { navigationReply } from './helpers/navigation-reply'
 import { conversationLink, agentLink, pieceLink } from '../src/shared/links'
 import { createHash } from 'node:crypto'
@@ -98,11 +98,7 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
       exportDirectory: () => join(userData, 'exports'),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions: issued }),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

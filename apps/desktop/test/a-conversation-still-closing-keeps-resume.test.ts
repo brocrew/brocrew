@@ -1,3 +1,4 @@
+import { fixtureProviderConfig } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -124,13 +125,7 @@ describe('716 · R62, D-017b — a conversation still closing says no process wo
       newSessionId: () => `sess_${++counter}`,
       // ⚠️ A bound on the MACHINE, not on the rule (`418`'s note): one arm parks a teardown.
       closeDrainTimeoutMs: 40,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 

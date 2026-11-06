@@ -1,4 +1,4 @@
-import { RecordingSink } from './lib/host-fixture'
+import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -97,11 +97,7 @@ describe('724 · `717` F-2 — the folder it ran in is gone', () => {
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued, gate),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

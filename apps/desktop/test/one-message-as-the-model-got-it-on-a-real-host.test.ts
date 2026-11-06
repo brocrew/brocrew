@@ -1,4 +1,4 @@
-import { RecordingSink } from './lib/host-fixture'
+import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -83,11 +83,7 @@ describe('F093 · C9 d · one message as the model got it, on a real host', () =
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) =>
         new ProviderDouble(provider, handles, issued, anOpenGate()),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider, profileId: string) =>
         join(userData, 'provider-homes', profileId, provider),
       providerHomesRoot: () => join(userData, 'provider-homes'),

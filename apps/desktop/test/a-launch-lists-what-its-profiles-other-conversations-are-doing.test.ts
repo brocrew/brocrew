@@ -1,3 +1,4 @@
+import { syntheticProviderHome } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -347,11 +348,7 @@ describe('§3 · a launch lists the profile’s other conversations', () => {
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) =>
         new LaunchWatchingRuntime(provider, handed, launches, neverResumable, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

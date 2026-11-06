@@ -1,3 +1,4 @@
+import { fixtureProviderConfig } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -145,13 +146,7 @@ describe('F093 · what an agent was given', () => {
       providerHomesRoot: () => join(userData, 'provider-homes'),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       whichBuild: () => ({ id: 'abc1234', commit: 'abc1234def', dirty: false, schema: 7 }),
       // ⚑ `main/index.ts`'s own wiring: the snapshots this build carries.
       providerSnapshot: (provider, model) => snapshotFor(provider, model),

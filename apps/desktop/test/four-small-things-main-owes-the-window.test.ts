@@ -1,4 +1,4 @@
-import { RecordingSink } from './lib/host-fixture'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 import {
   existsSync,
   mkdirSync,
@@ -25,7 +25,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import type { ToolName } from '../src/main/runtime/agent-tools'
@@ -128,9 +127,7 @@ describe('689 · four small things main owes the window', () => {
   function buildHost(over: SessionStore): RuntimeHost {
     const built = new RuntimeHost({
       store: over,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new Watching(provider),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
         const home = join(homes(), profileId ?? 'brobot', provider)

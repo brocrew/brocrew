@@ -1,4 +1,4 @@
-import { RecordingSink } from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -107,13 +107,7 @@ describe('W4.109 · B1 · what a restart of this app would stop', () => {
       resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
       newSessionId: () => `sess_${String(++counter)}`,
       closeDrainTimeoutMs: 40,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 

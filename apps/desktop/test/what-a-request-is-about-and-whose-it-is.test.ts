@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { syntheticProviderHome } from './lib/host-fixture'
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -151,11 +152,7 @@ describe('474 · what a request is about, and whose it is', () => {
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) =>
         new FakeRuntime(provider, { sessions: new FakeProviderSessions() }),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${String(++counter)}`,

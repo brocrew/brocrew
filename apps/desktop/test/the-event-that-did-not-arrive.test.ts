@@ -1,5 +1,5 @@
-import { RecordingSink } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -86,11 +86,7 @@ describe('§1 · a refused call and its retry take contiguous ordinals', () => {
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: () => new FakeRuntime('claude', { sessions }),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

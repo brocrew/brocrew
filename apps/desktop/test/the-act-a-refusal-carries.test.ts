@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { syntheticProviderHome } from './lib/host-fixture'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -150,11 +151,7 @@ describe('685 §2.1 · the act a refusal carries, on its notice', () => {
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: () => new FakeRuntime('claude', { sessions }),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

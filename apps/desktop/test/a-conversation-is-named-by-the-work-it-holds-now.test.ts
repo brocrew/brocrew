@@ -1,4 +1,4 @@
-import { RecordingSink } from './lib/host-fixture'
+import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
 /**
  * 🔴 **F033 · a conversation is named by the work it holds NOW, and a sentence about one piece by
  * that piece** — measured on a real host with the fake runtime, one case per rule.
@@ -18,7 +18,7 @@ import { RecordingSink } from './lib/host-fixture'
  *
  * ⛔ **The expected words are literals**; `nameByItsWork` is the subject, never the oracle.
  */
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -112,11 +112,7 @@ describe('F033 · a conversation is named by the work it holds now', () => {
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) =>
         new ProviderDouble(provider, handles, issued, resumeGate),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

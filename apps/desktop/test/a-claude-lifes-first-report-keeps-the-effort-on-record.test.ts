@@ -1,3 +1,4 @@
+import { syntheticProviderHome } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -116,11 +117,7 @@ describe('the effort on record across a Claude conversation’s lives', () => {
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) =>
         new ReportingDouble(provider, handles, sessions, anOpenGate(), reporting),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${String(++counter)}`,

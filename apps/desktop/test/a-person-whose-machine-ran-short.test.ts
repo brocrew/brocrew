@@ -1,4 +1,4 @@
-import { RecordingSink } from './lib/host-fixture'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -96,7 +96,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand, withoutItsClassName } from '../src/main/runtime/ipc'
@@ -221,9 +220,7 @@ describe('710 · R52 — a person whose machine ran short', () => {
     armed.readFails = null
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => {
         const double = new ProviderDouble(provider, handles, issued, gate)
         const fails = probeFails
@@ -773,9 +770,7 @@ describe('716 · `710` F-4 — a re-copy the machine ran short for', () => {
   const aHostWhoseRecopy = (): RuntimeHost =>
     new RuntimeHost({
       store: createSessionStore(db),
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: () => {
         throw new Error('no launch in this section')
       },

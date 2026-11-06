@@ -1,3 +1,4 @@
+import { fixtureProviderConfig } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -238,13 +239,7 @@ describe('336 §5 · a conversation nobody asked for, taken over and shown', () 
       providerHomePath: () => join(userData, 'provider-homes', 'claude'),
       resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
       newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     windowA = new FakeWindow(1)
     windowB = new FakeWindow(2)

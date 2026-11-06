@@ -1,4 +1,4 @@
-import { RecordingSink } from './lib/host-fixture'
+import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
 /**
  * 🔴 **F009 · what an agent has done, read when a caller chooses whom to give work to** —
  * `list_profiles` naming a profile, measured on a real host with the fake runtime.
@@ -19,7 +19,7 @@ import { RecordingSink } from './lib/host-fixture'
  *
  * ⛔ **The expected words are literals**; the record is the subject, never the oracle.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -125,11 +125,7 @@ describe('F009 · what an agent has done, read on demand', () => {
       exportDirectory: () => join(userData, 'exports'),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

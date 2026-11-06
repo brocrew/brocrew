@@ -1,3 +1,4 @@
+import { syntheticProviderHome } from './lib/host-fixture'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -106,11 +107,7 @@ describe('F046 · titleTheOlderFiles', () => {
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions }),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       ...(withResources ? { resourcesRoot: () => resourcesRoot(userData) } : {}),

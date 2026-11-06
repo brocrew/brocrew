@@ -1,4 +1,4 @@
-import { RecordingSink } from './lib/host-fixture'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -10,7 +10,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
@@ -91,9 +90,7 @@ describe('M55 · a Close counts as a stop before its own finalize', () => {
   ): RuntimeHost =>
     new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => {
         const inner = new FakeRuntime(provider, { sessions })
         const thisLaunch = ++launches

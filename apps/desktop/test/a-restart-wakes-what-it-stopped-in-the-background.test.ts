@@ -1,5 +1,5 @@
-import { RecordingSink } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -101,11 +101,7 @@ describe('a restart wakes what it stopped in the background', () => {
       exportDirectory: () => join(userData, 'exports'),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, control, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

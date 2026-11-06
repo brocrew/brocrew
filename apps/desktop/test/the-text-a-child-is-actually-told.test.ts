@@ -1,3 +1,4 @@
+import { syntheticProviderHome } from './lib/host-fixture'
 import { legacyWorkspaceFiles } from './helpers/legacy-workspace-files'
 import {
   lstatSync,
@@ -1182,11 +1183,7 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) => new ContextWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

@@ -1,3 +1,4 @@
+import { fixtureProviderConfig } from './lib/host-fixture'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -173,13 +174,7 @@ describe('696 §1–§5 · what a person reads about a model choice under R31', 
       resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
       listProfiles: () => [...folders],
       newSessionId: () => `sess_${Math.random().toString(36).slice(2)}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     const run = async <T>(kind: string, input: Record<string, unknown> = {}): Promise<T> =>
       (await executeRuntimeCommand(host, window, { kind, ...input } as Parameters<
@@ -506,13 +501,7 @@ describe('696 §6 · D-042 — a default a stand-in’s list admitted is what it
         ...(existsSync(homes()) ? readdirSync(homes()).filter((one) => one !== 'brobot') : []),
       ],
       newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 

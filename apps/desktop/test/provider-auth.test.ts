@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -18,7 +19,6 @@ import {
 } from '../src/main/runtime/runtime-host'
 import type { CodexSignIn, ProviderAuthOps } from '../src/main/runtime/provider-homes'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 
 /**
  * The credential commands across the IPC boundary (098) — driven through
@@ -269,9 +269,7 @@ describe('the credential commands, at the boundary that validates them (098)', (
   const buildHost = (): RuntimeHost =>
     new RuntimeHost({
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: () => {
         throw new Error('no session is started in this file')
       },
@@ -857,9 +855,7 @@ describe('the credential commands, at the boundary that validates them (098)', (
   it('a host with no credential seam says `unknown`, never that the credential is fine', async () => {
     const bare = new RuntimeHost({
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: () => {
         throw new Error('unused')
       },

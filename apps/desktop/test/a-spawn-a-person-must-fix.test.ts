@@ -1,4 +1,4 @@
-import { RecordingSink } from './lib/host-fixture'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 import { spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -38,7 +38,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -115,9 +114,7 @@ describe('710 · R51 — a spawn a person must fix', () => {
     armed.next = null
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued, gate),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
         if (homeFails !== undefined) throw homeFails()

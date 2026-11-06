@@ -1,4 +1,4 @@
-import { RecordingSink } from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -108,13 +108,7 @@ describe('676 M13 · a closed child’s torn assignment is missed by the plates 
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

@@ -1,3 +1,4 @@
+import { fixtureProviderConfig } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -109,13 +110,7 @@ describe('stall deliveries read limits only for automatic mail', () => {
       newSessionId: () => `sess_wave_${++serial}`,
       now: () => clock++,
       signInChanges: { read: () => new Map([['claude', NOW - 1]]), write: () => {} },
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     boundary = host as unknown as DeliveryBoundary
   })

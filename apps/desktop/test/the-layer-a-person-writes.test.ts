@@ -1,5 +1,6 @@
+import { syntheticProviderHome } from './lib/host-fixture'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -98,11 +99,7 @@ describe('582 · the layer a person writes', () => {
       exportDirectory: () => join(userData, 'exports'),
       resourcesRoot: () => join(userData, 'resources'),
       createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions }),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

@@ -1,3 +1,4 @@
+import { fixtureProviderConfig } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -239,13 +240,7 @@ describe('§4 · R71 over the real host — the mark the machine wrote is the on
       // ⚠️ Bounds on the MACHINE, not on the rule: nothing here waits on a real provider.
       interruptWaitMs: 40,
       closeDrainTimeoutMs: 40,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 

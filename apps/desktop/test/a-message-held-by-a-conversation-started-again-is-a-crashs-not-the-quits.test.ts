@@ -1,5 +1,5 @@
-import { RecordingSink } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -77,11 +77,7 @@ describe('692 · R34c · a conversation started again after a quit is a crash’
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: () => new FakeRuntime('claude', { sessions }),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
