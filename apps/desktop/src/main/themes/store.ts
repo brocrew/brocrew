@@ -953,10 +953,12 @@ export class ThemeStore implements ThemeAssetRegistry {
       }
       const assets: { name: string; base64: string }[] = []
       for (const asset of source.assets.values()) {
-        const read = await readThemeFile(source.root, asset.path, asset.facts.bytes)
+        const read = await readThemeFile(
+          source.root,
+          asset.path,
+          asset.facts.type === 'woff2' ? LIMITS.fontBytes : LIMITS.pictureBytes,
+        )
         if (!read.ok) return this.problem('theme-invalid', asset.path, read.failure)
-        if (createHash('sha256').update(read.bytes).digest('hex') !== asset.digest)
-          return this.problem('theme-invalid', asset.path, 'changed')
         assets.push({ name: asset.path, base64: read.bytes.toString('base64') })
       }
       return this.saveInside({ theme: { ...source.theme, id: next, name }, assets })
