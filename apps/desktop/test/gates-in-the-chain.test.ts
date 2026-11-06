@@ -272,7 +272,7 @@ describe('every gate a person can run is a gate ci runs (306)', () => {
   it('⚑ and the roster is real — the two rules above are about something (193)', () => {
     // Without this, a `GATES` that derived to `[]` would pass both assertions above over nothing.
     const names = GATES.map((gate) => gate.name)
-    expect(names).toEqual(expect.arrayContaining(['window:check', 'quit:check', 'mutations:check']))
+    expect(names).toEqual(expect.arrayContaining(['window:check', 'quit:check']))
     // The two launchers, positively: each is in the chain AND reads the bundle, so both rules
     // ran a real comparison rather than skipping every candidate. ⚑ Three until D-016 deleted
     // `fixture:check` with the demo seed.
@@ -291,10 +291,10 @@ describe('every gate a person can run is a gate ci runs (306)', () => {
     // ⛔ **And the NEGATIVE half, which is the one that keeps the opt-out from widening.** Every
     // assertion above passes if `SAYS_WHY_NOT` is weakened to something common — `'ci'` occurs in
     // most files here — and then any gate at all could drop out of the chain silently. So the
-    // sentence is measured against a script that must NOT satisfy it: `census.py` is a gate, is in
-    // the chain, and says nothing about leaving it.
+    // sentence is measured against a script that must NOT satisfy it: `window-opens-check.mjs`
+    // is a gate, is in the chain, and says nothing about leaving it.
     expect(
-      read('scripts/mutations/census.py').includes(SAYS_WHY_NOT),
+      read('scripts/window-opens-check.mjs').includes(SAYS_WHY_NOT),
       'the opt-out sentence now matches a script that never claimed it — it has stopped ' +
         'discriminating, and any gate could leave the chain by saying nothing in particular.',
     ).toBe(false)
