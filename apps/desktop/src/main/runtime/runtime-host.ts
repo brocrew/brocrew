@@ -1,10 +1,6 @@
 import { ConversationIdle } from './conversation-idle'
 import { ModelCatalogues } from './model-catalogues'
-import {
-  filesLibraryForWindow,
-  teamProfileGraphForWindow,
-  closeWindowRead,
-} from './window-reads'
+import { filesLibraryForWindow, teamProfileGraphForWindow } from './window-reads'
 import type {
   FactsAQueueCarries,
   Giving,
@@ -22721,35 +22717,43 @@ export class RuntimeHost implements LiveHost {
     return this.keptFiles.filesKeptForWindow(conversation)
   }
 
-  async filesLibraryForWindow(
+  filesLibraryForWindow(
     request: FilesLibraryRequest,
     sink: RuntimeEventSink,
   ): Promise<FilesLibraryResult> {
-    return filesLibraryForWindow(request, sink, {
-      libraries: this.deps.filesLibraries,
-      revision: () => this.deps.filesLibraryRevision?.(),
-      closed: () => this.launches.closed,
-      givers: (conversation) => this.theIdsItStandsFor(conversation),
-    })
+    try {
+      return filesLibraryForWindow(request, sink, {
+        libraries: this.deps.filesLibraries,
+        revision: () => this.deps.filesLibraryRevision?.(),
+        closed: () => this.launches.closed,
+        givers: (conversation) => this.theIdsItStandsFor(conversation),
+      })
+    } catch (error) {
+      return Promise.reject(error)
+    }
   }
 
-  async teamProfileGraphForWindow(
+  teamProfileGraphForWindow(
     request: TeamProfileGraphRequest,
     sink: RuntimeEventSink,
   ): Promise<TeamProfileGraphResult> {
-    return teamProfileGraphForWindow(request, sink, {
-      graphs: this.deps.teamProfileGraphs,
-      revision: () => this.deps.teamProfileGraphRevision?.(),
-      closed: () => this.launches.closed,
-    })
+    try {
+      return teamProfileGraphForWindow(request, sink, {
+        graphs: this.deps.teamProfileGraphs,
+        revision: () => this.deps.teamProfileGraphRevision?.(),
+        closed: () => this.launches.closed,
+      })
+    } catch (error) {
+      return Promise.reject(error)
+    }
   }
 
   async closeTeamProfileGraphWindow(owner: string): Promise<void> {
-    await closeWindowRead(owner, this.deps.teamProfileGraphs)
+    await this.deps.teamProfileGraphs?.closeWindow(owner)
   }
 
   async closeFilesLibraryWindow(owner: string): Promise<void> {
-    await closeWindowRead(owner, this.deps.filesLibraries)
+    await this.deps.filesLibraries?.closeWindow(owner)
   }
 
   searchWork(asAgent: string, input: WorkSearchQuery): Promise<WorkSearchResult> {
