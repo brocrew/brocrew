@@ -1237,7 +1237,8 @@ describe('414 · the origin a model is told', () => {
       // **and `rebriefing`**, a new brief of one (`update_work`'s alone). ⚑ The rail is spelled
       // ONCE, as `FactsAQueueCarries`, each key beside its `never`, and `queueMessage` takes that
       // type rather than an inline copy of it.
-      expect(source).toContain(
+      const records = codeOnly(readFileSync(join(mainRoot, 'runtime/message-records.ts'), 'utf8'))
+      expect(records).toContain(
         [
           "type FactsAQueueCarries = Omit<TurnFacts, 'giving' | 'rebriefing'> & {",
           '  readonly giving?: never',
