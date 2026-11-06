@@ -113,7 +113,6 @@ import {
   type ClaudeAuthTokenProvider,
   type ClaudeAuthTokenProviderAsync,
   credentialFingerprint,
-  signInTagOf,
 } from '../internal/auth'
 import { buildChildEnv } from '../internal/child-env'
 import {
@@ -3451,7 +3450,7 @@ export class ClaudeSessionHandle implements SessionHandle {
 
   /** Of the login this session launched with, so a renewed login answers another tag. */
   signInTag(): string | null {
-    return this.launchCredential === null ? null : signInTagOf(this.launchCredential)
+    return this.launchCredential === null ? null : `credential:${this.launchCredential}`
   }
 
   /**

@@ -91,7 +91,7 @@ import {
   BUILT_IN_SKILLS_FAILURE,
   permittedInstalledSkillReminders,
 } from '../../shared/built-in-skills'
-import { createHmac, randomBytes, randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { returnedDocumentIndex } from '../resources/returned-document-index'
 import type { ThemeStore } from '../themes/store'
 import type { AnsweredQuestion, ConversationProviderBlock } from '../../shared/runtime-ipc'
@@ -1247,7 +1247,6 @@ import {
 import {
   isFinal,
   newNoticeId,
-  newSalt,
   NO_CUTS_KEPT,
   withoutOldCuts,
   type CutKind,
@@ -10148,9 +10147,8 @@ export class RuntimeHost implements LiveHost {
 
   /**
    * 🔴 **The account a life runs on, as an id compared and never shown** — from what that life was
-   * launched on, so it never changes for that life: a Claude account by a digest of the email and
-   * organisation its provider names, keyed with this app's own salt; else the tag the life's runtime
-   * makes of the credential or the account it launched on. ⚑ Kept for its conversation once known,
+   * launched on, so it never changes for that life: the existing persisted account record,
+   * or the runtime's opaque credential/account revision with its own namespace. ⚑ Kept for its conversation once known,
    * for the next launch to read if a crash cuts this life. ⚑ `null` when it cannot be told within
    * {@link accountWaitMs}. ⛔ It never rejects.
    */
@@ -10181,22 +10179,25 @@ export class RuntimeHost implements LiveHost {
   /** Identity encodings already kept on disk remain the host's responsibility. */
   private identityFromFacts(provider: Provider, fact: IdentityFact | undefined): string | null {
     if (fact == null) return null
-    return fact.kind === 'account'
-      ? `${provider}:${this.digestOfAnAccount(fact.account.email, fact.account.organization)}`
-      : `${provider}${fact.launchOnly === true ? '-launch' : ''}:${fact.tag}`
+    if (fact.kind === 'account') {
+      const known = this.accountRecordFor(fact.account)
+      return `${provider}:account:${known.id}`
+    }
+    return `${provider}:${fact.launchOnly === true ? 'launch-credential' : 'sign-in'}:${fact.tag}`
   }
 
-  /** ⚑ A Claude account's id: a digest keyed with this app's own salt. No email is kept. */
-  private digestOfAnAccount(email: string, organization: string | undefined): string {
-    let salt = this.cutsKept.salt
-    if (salt === null) {
-      salt = newSalt()
-      if (!this.keepTheCuts({ ...this.cutsKept, salt })) this.cutsKept = { ...this.cutsKept, salt }
+  /** Reuse the existing account record before any launch identity or usage is frozen. */
+  private accountRecordFor(said: { email: string; organization?: string }): KnownAccount {
+    const known = this.knownAccount
+    if (known !== null && known.email === said.email && known.organization === said.organization)
+      return known
+    const learned: KnownAccount = {
+      id: randomBytes(16).toString('hex'),
+      email: said.email,
+      ...(said.organization === undefined ? {} : { organization: said.organization }),
     }
-    return createHmac('sha256', salt)
-      .update(`${email}\n${organization ?? ''}`)
-      .digest('hex')
-      .slice(0, 32)
+    this.keepTheAccount(learned)
+    return learned
   }
 
   /** ⚑ What was kept of deleted conversations' cuts and lives, let go. ⛔ It never throws. */
@@ -35876,6 +35877,9 @@ export class RuntimeHost implements LiveHost {
     const fact = providerAuthPolicies[session.provider].identity.limit(session.handle)
     if (fact === null) return null
     if (fact.kind === 'tag') return { id: fact.tag }
+    const frozen = this.identityKnown.get(session)
+    const prefix = `${session.provider}:account:`
+    if (frozen?.startsWith(prefix)) return { id: frozen.slice(prefix.length) }
     const said = fact.account
     const known = this.knownAccount
     if (known !== null && known.email === said.email && known.organization === said.organization) {

@@ -6,6 +6,11 @@ import { MAX_INSTANT } from '../shared/clock'
 import type { ProviderUsageReading, UsageWindowSeen } from '../shared/runtime-ipc'
 import { AN_ACCOUNT_ID } from './provider-accounts-file'
 
+/** Existing opaque identities plus legacy tags, which remain distinct from new namespaces. */
+const opaqueTag = (tag: unknown): tag is string =>
+  typeof tag === 'string' &&
+  /^(?:[0-9a-f]{32}|(?:credential|account):[0-9a-f]{64}|api-revision:[0-9]+)$/.test(tag)
+
 /**
  * 🔴 **F096 — each provider's newest usage reading per window, kept across a restart.**
  *
@@ -74,7 +79,7 @@ export function readKeptUsage(file: string): KeptUsage {
   const readOn: Partial<Record<Provider, string>> = {}
   for (const provider of SUPPORTED_PROVIDERS) {
     const tag = tags[provider]
-    if (typeof tag === 'string' && /^[0-9a-f]{32}$/.test(tag)) readOn[provider] = tag
+    if (opaqueTag(tag)) readOn[provider] = tag
   }
   return {
     readings: perProvider(whole['readings'], aReading),
@@ -146,7 +151,10 @@ function aReading(row: unknown): KeptReading | null {
   if (percent === undefined) return null
   if (resetsAt !== null && !aTime(resetsAt)) return null
   // An account that is not one is read as not known, as a reading kept before there were any.
-  const readOn = typeof account === 'string' && AN_ACCOUNT_ID.test(account) ? account : undefined
+  const readOn =
+    typeof account === 'string' && (AN_ACCOUNT_ID.test(account) || opaqueTag(account))
+      ? account
+      : undefined
   return {
     window,
     usedPercent: percent,
