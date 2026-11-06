@@ -109,16 +109,22 @@ export function verifyBuiltInSkills(
   manifest: unknown,
   bodies: ReadonlyMap<string, string>,
 ): VerifiedBuiltInSkills {
-  const declared = BuiltInSkillCatalogueSchema.parse(manifest)
-  const catalogue = {
-    ...declared,
-    skills: declared.skills.map((item) => {
-      const body = bodies.get(item.name)
-      return body === undefined
-        ? item
-        : { ...item, bytes: Buffer.byteLength(body, 'utf8'), sha256: skillDigest(body) }
-    }),
-  }
+  const source =
+    manifest !== null &&
+    typeof manifest === 'object' &&
+    'skills' in manifest &&
+    Array.isArray(manifest.skills)
+      ? {
+          ...manifest,
+          skills: manifest.skills.map((item) => {
+            if (item === null || typeof item !== 'object' || typeof item.name !== 'string')
+              return item
+            const body = bodies.get(item.name) ?? ''
+            return { ...item, bytes: Buffer.byteLength(body, 'utf8'), sha256: skillDigest(body) }
+          }),
+        }
+      : manifest
+  const catalogue = BuiltInSkillCatalogueSchema.parse(source)
   if (bodies.size !== catalogue.skills.length) throw new Error('Unexpected built-in skill files.')
   for (const item of catalogue.skills) {
     const text = bodies.get(item.name)

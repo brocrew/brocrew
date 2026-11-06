@@ -399,7 +399,8 @@ export async function downloadChecked(options: {
       if (error instanceof Error && error.name !== 'Error') kept.name = error.name
       throw kept
     }
-    throw error
+    if (error instanceof Error && error.name === 'AbortError') throw error
+    throw new Error(`${to}: ${String(error)}`, { cause: error })
   } finally {
     clearTimeout(timer)
     options.signal?.removeEventListener('abort', cancel)

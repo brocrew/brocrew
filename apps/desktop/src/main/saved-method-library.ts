@@ -75,21 +75,15 @@ function folderAt(inputs: MethodLibraryInputs): BigIntStats {
   const root = resolve(inputs.homesRoot)
   const folder = resolve(inputs.folder)
   if (!within(root, folder)) throw new Refused('link')
-  const rootStat = at(root)
-  if (rootStat === null) throw new Refused('missing')
-  if (rootStat.isSymbolicLink()) throw new Refused('link')
-  if (!rootStat.isDirectory()) throw new Refused('not-a-file')
-  let path = root
-  let stat = rootStat
-  for (const segment of relative(root, folder).split(sep)) {
-    path = join(path, segment)
-    const entry = at(path)
-    if (entry === null) throw new Refused('missing')
-    if (entry.isSymbolicLink()) throw new Refused('link')
-    if (!entry.isDirectory()) throw new Refused('not-a-file')
-    stat = entry
+  try {
+    const directory = statSync(folder, { bigint: true })
+    if (!directory.isDirectory()) throw new Refused('not-a-file', folder)
+    return directory
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+      throw new Refused('missing', `${folder}: ${String(error)}`)
+    throw error
   }
-  return stat
 }
 
 function hash(bytes: Buffer | string): string {
