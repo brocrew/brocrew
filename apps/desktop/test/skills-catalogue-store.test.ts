@@ -365,6 +365,29 @@ describe('the SQLite skills catalogue', () => {
       secondDb.close()
     }
   })
+  it('reads valid saved edits without old digest seals and skips only a malformed neighbor', () => {
+    catalogue.savePersonal(draft('edited'), revision())
+    catalogue.savePersonal(draft('broken'), revision())
+    catalogue.select('aid:recipe-worker', 'person/edited', 'on', revision())
+    catalogue.select('aid:recipe-worker', 'person/broken', 'on', revision())
+    db.exec('DROP TRIGGER skill_version_no_update')
+    const edited = draft('edited', 'Changed saved content with a different length.')
+    db.prepare('UPDATE skill_version SET body=? WHERE skill_id=?').run(edited.body, 'person/edited')
+    db.prepare('UPDATE skill_version SET metadata=? WHERE skill_id=?').run(
+      '{broken',
+      'person/broken',
+    )
+    const ready = catalogue.resolve('aid:recipe-worker', capable).choices.filter((one) => one.ready)
+    expect(ready.some((one) => one.skill.id === 'person/edited')).toBe(true)
+    expect(ready.some((one) => one.skill.id === 'person/broken')).toBe(false)
+    expect(catalogue.detail('person/edited')).toMatchObject({
+      body: edited.body,
+      bytes: edited.bytes,
+      sha256: edited.sha256,
+    })
+    expect(catalogue.detail('person/broken')).toBeNull()
+    expect(catalogue.list().items.some((one) => one.id === 'person/edited')).toBe(true)
+  })
   it('refuses a bad plugin hash or duplicate declaration before publication', () => {
     const before = catalogue.list()
     const bad = bundle('1', ['first-check', 'second-check'])
