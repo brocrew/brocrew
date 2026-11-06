@@ -1,4 +1,4 @@
-import { syntheticProviderHome } from './lib/host-fixture'
+import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 import { navigationReply } from './helpers/navigation-reply'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -10,7 +10,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { permanenceOf, retryableOf, refuse } from '../src/main/runtime/spawn-rails'
@@ -118,9 +117,7 @@ describe('405 · a refusal you can see', () => {
   const aHostOn = (on: SessionStore): RuntimeHost =>
     new RuntimeHost({
       store: on,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => join(userData, 'resources'),
       createRuntime: () => new FakeRuntime('claude', { sessions }),
       prepareProviderHome: syntheticProviderHome(() => userData),
