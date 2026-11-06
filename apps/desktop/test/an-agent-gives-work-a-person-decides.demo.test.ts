@@ -3,27 +3,22 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeRuntime, type FakeSessionHandle, type StartOptions } from '@brobot2/runtime'
-import type { WebContents } from 'electron'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { executeRuntimeCommand, webContentsSink } from '../src/main/runtime/ipc'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
 import { createSessionStore as createRendererStore } from '../src/renderer/src/lib/session-store'
 import type { SessionStore as RendererStore } from '../src/renderer/src/lib/session-store'
 import { NOT_REACHED_THIS_WINDOW, type SessionRecord } from '../src/renderer/src/lib/session-record'
 import {
-  RUNTIME_EVENT_CHANNEL,
-  RUNTIME_LIVENESS_CHANNEL,
   type RuntimeBridge,
   type RuntimeEventMessage,
-  type SessionLivenessMessage,
   type TranscriptEvent,
 } from '../src/shared/runtime-ipc'
-import { asTheWireWouldCarry } from './lib/the-wire'
+import { DemoWindow, IssuedSessionRuntime } from './lib/demo-runtime-window'
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
@@ -59,95 +54,6 @@ const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/m
  * too. Window B below has no renderer store, because an agent has no screen; it has a bridge,
  * because that is what "over the wire" means.
  */
-
-class CapturingRuntime extends FakeRuntime {
-  readonly issued: FakeSessionHandle[] = []
-  override async start(opts: StartOptions): Promise<FakeSessionHandle> {
-    const handle = await super.start(opts)
-    this.issued.push(handle)
-    return handle
-  }
-  latest(): FakeSessionHandle {
-    const handle = this.issued.at(-1)
-    if (handle === undefined) throw new Error('no session has been started on this runtime')
-    return handle
-  }
-}
-
-/** One window, as far as the main process can tell — the three members `webContentsSink` reads. */
-class FakeWindow {
-  private destroyed = false
-  readonly received: RuntimeEventMessage[] = []
-  private onEvent: ((message: RuntimeEventMessage) => void)[] = []
-  private onLiveness: ((message: SessionLivenessMessage) => void)[] = []
-
-  constructor(readonly id: number) {}
-
-  isDestroyed(): boolean {
-    return this.destroyed
-  }
-
-  send(channel: string, message: unknown): void {
-    if (channel === RUNTIME_EVENT_CHANNEL) {
-      const event = message as RuntimeEventMessage
-      this.received.push(event)
-      for (const listener of this.onEvent) listener(event)
-    }
-    if (channel === RUNTIME_LIVENESS_CHANNEL) {
-      for (const listener of this.onLiveness) listener(message as SessionLivenessMessage)
-    }
-  }
-
-  destroy(): void {
-    this.destroyed = true
-  }
-
-  /** The renderer end: a `RuntimeBridge` built by the SAME rule the preload builds one by. */
-  bridge(host: RuntimeHost): RuntimeBridge {
-    const sink = webContentsSink(this as unknown as WebContents)
-    const subscriptions = {
-      onEvent: (fn: (message: RuntimeEventMessage) => void) => {
-        this.onEvent.push(fn)
-        return () => {
-          this.onEvent = this.onEvent.filter((listener) => listener !== fn)
-        }
-      },
-      onLiveness: (fn: (message: SessionLivenessMessage) => void) => {
-        this.onLiveness.push(fn)
-        return () => {
-          this.onLiveness = this.onLiveness.filter((listener) => listener !== fn)
-        }
-      },
-    }
-    return new Proxy(subscriptions, {
-      get: (base, name: string) =>
-        name in base
-          ? base[name as keyof typeof base]
-          : (input?: Record<string, unknown>) => {
-              // 🔴 **The clone `ipcRenderer.invoke` performs** (361 §2). This double already runs
-              // the real dispatcher, so the schema and the host method are exercised — but a direct
-              // call hands the payload over BY REFERENCE, and the wire does not. ⚠️ It rejects
-              // rather than throwing, because Electron's `invoke` is an `async` function and that
-              // is how the refusal really travels to a caller.
-              //
-              // ⛔ Written here rather than by wrapping the bridge from outside: `Object.entries`
-              // over this `Proxy` sees only the two subscriptions, so a wrapper built from its keys
-              // would silently delete every command it forwards.
-              let carried: unknown
-              try {
-                carried = asTheWireWouldCarry(name, { kind: name, ...(input ?? {}) })
-              } catch (refusal) {
-                return Promise.reject(refusal as Error)
-              }
-              return executeRuntimeCommand(
-                host,
-                sink,
-                carried as Parameters<typeof executeRuntimeCommand>[2],
-              )
-            },
-    }) as unknown as RuntimeBridge
-  }
-}
 
 async function waitFor(predicate: () => boolean, what: string): Promise<void> {
   for (let attempt = 0; attempt < 400; attempt++) {
@@ -185,13 +91,13 @@ describe('340 §5 · an agent gives the work, a person decides what it may do', 
   let db: AppDatabase
   let host: RuntimeHost
   let ledger: SessionStore
-  let provider: CapturingRuntime
+  let provider: IssuedSessionRuntime
   /** The person's window. It has a screen, so it has a renderer store. */
-  let windowA: FakeWindow
+  let windowA: DemoWindow
   /** The commanding caller. It has a channel and no screen, so it has a bridge and no store. */
-  let windowB: FakeWindow
+  let windowB: DemoWindow
   /** The control: present the whole time, given nothing. */
-  let windowC: FakeWindow
+  let windowC: DemoWindow
   let storeA: RendererStore
   let agent: RuntimeBridge
   let outsider: RuntimeBridge
@@ -200,7 +106,7 @@ describe('340 §5 · an agent gives the work, a person decides what it may do', 
     userData = mkdtempSync(join(tmpdir(), 'brobot2-commanded-demo-'))
     db = openDatabase(join(userData, 'brobot2.sqlite'))
     applyMigrations(db, migrationsFolder)
-    provider = new CapturingRuntime('claude')
+    provider = new IssuedSessionRuntime('claude')
     ledger = createSessionStore(db)
     let counter = 0
     host = new RuntimeHost({
@@ -225,9 +131,9 @@ describe('340 §5 · an agent gives the work, a person decides what it may do', 
         files: [],
       }),
     })
-    windowA = new FakeWindow(1)
-    windowB = new FakeWindow(2)
-    windowC = new FakeWindow(3)
+    windowA = new DemoWindow(1)
+    windowB = new DemoWindow(2)
+    windowC = new DemoWindow(3)
     storeA = createRendererStore(windowA.bridge(host))
     agent = windowB.bridge(host)
     outsider = windowC.bridge(host)
