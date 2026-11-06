@@ -48,10 +48,9 @@ export function launchSkillSelections(db: AppDatabase, shipped: () => VerifiedBu
               .map((choice) => choice.skill)
       const stamp = revision()
       const skills = summaries
-        .map((skill) => {
+        .flatMap((skill) => {
           const detail = store.detail(skill.id, skill.versionId)
-          if (!detail) throw new Error('Skill source unavailable.')
-          return detail
+          return detail === null ? [] : [detail]
         })
         .sort((a, b) => {
           const order = (one: SkillDetail) =>
