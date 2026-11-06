@@ -76,7 +76,7 @@ import type {
   WorkerBorn,
 } from '../profile-execution-file'
 import { RUNTIME_CHANGE_SUBJECTS, TURN_ATTRIBUTION_KEYS } from '../../shared/runtime-ipc'
-import { moveRequestDigest, originalMoveRequest, recordMovedRequest } from './move-request'
+import { originalMoveRequest, recordMovedRequest } from './move-request'
 import {
   DO_IT_HERE,
   MOVE_IT,
@@ -3493,7 +3493,7 @@ interface HostedSession {
    */
   aPersonsWordsOpenedIt: boolean
   /** The exact committed pure person turn; absent during a provider handoff. */
-  moveRequestTurn: { ordinal: number; generation: number; digest: string } | null
+  moveRequestTurn: { id: string } | null
   moveRequestRowPending: boolean
   moveRequestHandoff: object | null
   /**
@@ -17983,13 +17983,8 @@ export class RuntimeHost implements LiveHost {
     const original = this.deps.store.atomically(() => {
       const current = session.moveRequestTurn
       if (current === null) return null
-      const message = originalMoveRequest(this.deps.store, session.id, current.ordinal)
-      const generation = this.deps.store.generationOf?.(session.id)
-      return message === null ||
-        generation !== current.generation ||
-        moveRequestDigest(message) !== current.digest
-        ? null
-        : { message, generation, digest: current.digest }
+      const message = originalMoveRequest(this.deps.store, session.id, current.id)
+      return message === null ? null : { message, id: current.id }
     })
     const destination = this.theConversationAddressed(moveTo, by, session.id, 'messaging')
     if (original === null || destination === session.id) {
@@ -18012,9 +18007,7 @@ export class RuntimeHost implements LiveHost {
       move: {
         destination,
         destinationName: this.nameByItsWork(destination),
-        sourceOrdinal: original.message.ordinal,
-        sourceGeneration: original.generation,
-        sourceDigest: original.digest,
+        sourceTurnId: original.id,
       },
     }
   }
@@ -27701,21 +27694,17 @@ export class RuntimeHost implements LiveHost {
     if (moveHandoff !== undefined && session.moveRequestHandoff === moveHandoff) {
       session.moveRequestTurn = null
       session.moveRequestRowPending = false
-      const generation = this.deps.store.generationOf?.(session.id)
+      const turn = this.deps.store.theOpenTurn(session.id)
       if (
         committedTurn.type === 'user_turn' &&
         session.recordingFailure === null &&
-        generation !== undefined &&
+        turn !== null &&
         committedTurn.parts === undefined &&
         TURN_ATTRIBUTION_KEYS.every(
           (key) => key === 'movedFrom' || committedTurn[key] === undefined,
         )
       ) {
-        session.moveRequestTurn = {
-          ordinal: written.ordinal,
-          generation,
-          digest: moveRequestDigest({ ...written, event: committedTurn }),
-        }
+        session.moveRequestTurn = { id: turn.id }
       }
     }
     this.emitOurs(session, written)
@@ -34385,13 +34374,12 @@ export class RuntimeHost implements LiveHost {
       )
     )
       return { outcome: 'refused', reason: MOVE_WORDS.unavailable }
-    const original = originalMoveRequest(this.deps.store, input.sessionId, offer.sourceOrdinal)
-    if (
-      original === null ||
-      this.deps.store.generationOf?.(input.sessionId) !== offer.sourceGeneration ||
-      moveRequestDigest(original) !== offer.sourceDigest
+    const original = originalMoveRequest(
+      this.deps.store,
+      input.sessionId,
+      offer.sourceTurnId ?? offer.sourceOrdinal,
     )
-      return { outcome: 'refused', reason: MOVE_WORDS.noOriginal }
+    if (original === null) return { outcome: 'refused', reason: MOVE_WORDS.noOriginal }
     if (this.runsNow(offer.destination)) {
       try {
         this.aPersonsWindowTakesIt(offer.destination, theSurfaceAsking(by))

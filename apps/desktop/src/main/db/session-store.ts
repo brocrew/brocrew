@@ -2656,6 +2656,10 @@ export interface SessionStore extends OwnNotesStore {
   whatACrashLeftRunning(running: ReadonlySet<string>): readonly LeftRunning[]
   /** ⚑ A conversation's open turn in its active generation, or `null` when none is open. */
   recordedTurnOpening(sessionId: string, turnId: string): UserTurnEvent | null
+  recordedTurnMessage(
+    sessionId: string,
+    turnId: string,
+  ): (PersistedEvent & { event: UserTurnEvent }) | null
   ensurePersonalRoot(sessionId: string, at: number): WorkRow
   theOpenTurn(sessionId: string): OpenTurn | null
   /** ⚑ The id of a conversation's newest turn, in any generation, or `null` when it has none. */
@@ -4193,6 +4197,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   settleOrphanRuns: () => 0,
   whatACrashLeftRunning: () => [],
   recordedTurnOpening: () => null,
+  recordedTurnMessage: () => null,
   ensurePersonalRoot: () => {
     throw new Error('work is not being recorded')
   },
@@ -13959,6 +13964,20 @@ export function createSessionStore(
             lastAt: last?.at ?? null,
           }
         })
+    },
+
+    recordedTurnMessage(sessionId, turnId) {
+      const row = db
+        .prepare(
+          `SELECT e.ordinal, e.payload, e.created_at FROM events e
+        JOIN turn t ON t.id=e.turn_id AND t.session_id=e.session_id AND t.generation=e.generation
+        WHERE t.id=? AND t.session_id=? AND e.type='user_turn' ORDER BY e.ordinal LIMIT 1`,
+        )
+        .get(turnId, sessionId) as EventRow | undefined
+      const message = row === undefined ? undefined : toPersistedEvents([row])[0]
+      return message?.event.type === 'user_turn'
+        ? (message as PersistedEvent & { event: UserTurnEvent })
+        : null
     },
 
     recordedTurnOpening(sessionId, turnId) {
