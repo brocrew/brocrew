@@ -30,6 +30,9 @@ const disk = vi.hoisted(() => ({
   abortAtCacheStat: null as null | { path: string; controller: AbortController },
   cacheEnded: false,
   holdClose: false,
+  slowReads: false,
+  holdRead: false,
+  releaseRead: null as (() => void) | null,
   releaseClose: null as (() => void) | null,
 }))
 
@@ -78,6 +81,15 @@ vi.mock('node:fs', async (importOriginal) => {
       }
       return result
     }) as typeof fs.lstatSync,
+    read: ((...args: Parameters<typeof fs.read>) => {
+      if (disk.holdRead)
+        disk.releaseRead = () => {
+          disk.holdRead = false
+          fs.read(...args)
+        }
+      else if (disk.slowReads) setTimeout(() => fs.read(...args), 60)
+      else fs.read(...args)
+    }) as typeof fs.read,
     createWriteStream: ((path, options) => {
       const stream = fs.createWriteStream(path, {
         ...(typeof options === 'string' ? { encoding: options } : options),
@@ -152,6 +164,9 @@ beforeEach(() => {
     abortAtCacheStat: null,
     cacheEnded: false,
     holdClose: false,
+    slowReads: false,
+    holdRead: false,
+    releaseRead: null,
     releaseClose: null,
   })
 })
@@ -406,4 +421,43 @@ it('waits for an aborted writer to close before removing its partial and settlin
   await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
   await observed
   expect(readdirSync(root)).toEqual([])
+})
+
+it('disk hash progress keeps a download alive beyond the stall interval', async () => {
+  const bytes = new Uint8Array(3 * 1024 * 1024).fill(7)
+  disk.slowReads = true
+  await expect(
+    download({
+      sha512: createHash('sha512').update(bytes).digest('base64'),
+      fetch: async () => new Response(bytes),
+      stallsAfterMs: 200,
+    }),
+  ).resolves.toBe(to)
+  expect(readFileSync(to)).toEqual(Buffer.from(bytes))
+})
+
+it('cancellation waits for an admitted disk hash read before closing its file', async () => {
+  disk.holdRead = true
+  const cancel = new AbortController()
+  let settled = false
+  const observed = download({ signal: cancel.signal }).then(
+    () => {
+      settled = true
+      return null
+    },
+    (error: unknown) => {
+      settled = true
+      return error
+    },
+  )
+  try {
+    await vi.waitFor(() => expect(disk.releaseRead).not.toBeNull())
+    cancel.abort()
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    expect(settled).toBe(false)
+  } finally {
+    disk.releaseRead?.()
+  }
+  expect(await observed).toMatchObject({ name: 'AbortError' })
+  expect(readdirSync(staging)).toEqual([])
 })
