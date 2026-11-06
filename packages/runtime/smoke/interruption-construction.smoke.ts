@@ -4,6 +4,7 @@ import { loadavg } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { SpawnCodexTransport } from '../src/codex/codex-transport'
+import { waitForPromise } from './probe-waits'
 import { bundledCodexBinary } from './bundled-codex'
 import { captureProviderStanza, listenLoopback } from './loopback-test-support'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
@@ -127,21 +128,13 @@ function load(label: string, into: string[]): void {
   )
 }
 
-async function bounded<T>(name: string, milliseconds: number, action: Promise<T>): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      action,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error(`${name}: NOT PERFORMED after ${milliseconds} ms`)),
-          milliseconds,
-        )
-      }),
-    ])
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
-  }
+function bounded<T>(name: string, milliseconds: number, action: Promise<T>): Promise<T> {
+  return waitForPromise(
+    action,
+    milliseconds,
+    () => new Error(`${name}: NOT PERFORMED after ${milliseconds} ms`),
+    false,
+  )
 }
 
 async function until(

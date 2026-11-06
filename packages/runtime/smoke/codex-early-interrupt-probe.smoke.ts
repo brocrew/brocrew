@@ -15,6 +15,7 @@ import {
 import { CodexRuntime, codexAppServerArgs, type TransportFactory } from '../src/codex/codex-runtime'
 import type { RuntimeEvent } from '../src/events'
 import type { SessionHandle } from '../src/runtime'
+import { waitForAbortableWork as bounded } from './probe-waits'
 import { bundledCodexBinary } from './bundled-codex'
 import { captureProviderStanza } from './loopback-test-support'
 import { earlyInterruptVerdict, renamed, type Arm, type TurnSeen } from './early-interrupt-evidence'
@@ -343,30 +344,6 @@ function configuredPortOf(home: string): number | null {
     readFileSync(join(home, 'config.toml'), 'utf8'),
   )
   return match === null ? null : Number(match[1])
-}
-
-/** ⛔ Every `await` on a launch or a turn is bounded; a stall is NOT PERFORMED, never waited on. */
-async function bounded<T>(
-  what: string,
-  ms: number,
-  work: (signal: AbortSignal) => Promise<T>,
-): Promise<T> {
-  const giveUp = new AbortController()
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      work(giveUp.signal),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          giveUp.abort()
-          reject(new Error(`NOT PERFORMED — ${what} did not finish in ${String(ms)}ms`))
-        }, ms)
-        timer.unref?.()
-      }),
-    ])
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
-  }
 }
 
 const until = async (what: string, ms: number, done: () => boolean): Promise<void> =>

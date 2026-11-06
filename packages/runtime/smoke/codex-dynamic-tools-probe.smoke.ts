@@ -6,6 +6,7 @@ import { expect, it } from 'vitest'
 // the same reason: this probe owns its spawn so it can put the loopback provider's `env_key` in the
 // child environment, which `createSpawnTransportFactory` sanitizes away.
 import { SpawnCodexTransport } from '../src/codex/codex-transport'
+import { waitForPromise } from './probe-waits'
 import { bundledCodexBinary } from './bundled-codex'
 import { captureProviderStanza, listenLoopback as listen } from './loopback-test-support'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
@@ -99,22 +100,12 @@ const deadline = probeRunDeadline(
 )
 
 /** Bounded, standing rule 13 — a request that never answers is NOT PERFORMED, never waited on. */
-async function bounded<T>(what: string, work: Promise<T>): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      work,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error(`NOT PERFORMED — ${what} did not answer in ${RPC_DEADLINE_MS}ms`)),
-          RPC_DEADLINE_MS,
-        )
-        timer.unref?.()
-      }),
-    ])
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
-  }
+function bounded<T>(what: string, work: Promise<T>): Promise<T> {
+  return waitForPromise(
+    work,
+    RPC_DEADLINE_MS,
+    () => new Error(`NOT PERFORMED — ${what} did not answer in ${RPC_DEADLINE_MS}ms`),
+  )
 }
 
 /** ⚑ Rule 40: the port the child was CONFIGURED with, read back from the file it reads. */

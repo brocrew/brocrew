@@ -7,6 +7,7 @@ import { expect, it } from 'vitest'
 // extra value the child receives. No credential is copied into the home.
 import { SpawnCodexTransport } from '../src/codex/codex-transport'
 import { ensureCodexMemoryConfig } from '../src/index'
+import { waitForPromise } from './probe-waits'
 import { bundledCodexBinary } from './bundled-codex'
 import { listenLoopback as listen } from './loopback-test-support'
 import { executionEvidence, offers, type Frame } from './exec-approval-evidence'
@@ -284,22 +285,12 @@ interface Captured {
   readonly root: string
 }
 
-async function bounded<T>(what: string, work: Promise<T>): Promise<T> {
-  let timer: NodeJS.Timeout | undefined
-  try {
-    return await Promise.race([
-      work,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error(`NOT PERFORMED — ${what} did not answer in ${RPC_DEADLINE_MS}ms`)),
-          RPC_DEADLINE_MS,
-        )
-        timer.unref?.()
-      }),
-    ])
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
-  }
+function bounded<T>(what: string, work: Promise<T>): Promise<T> {
+  return waitForPromise(
+    work,
+    RPC_DEADLINE_MS,
+    () => new Error(`NOT PERFORMED — ${what} did not answer in ${RPC_DEADLINE_MS}ms`),
+  )
 }
 
 /** ⚑ Rule 40: the port the child was CONFIGURED with, read back after the shipped merger ran. */

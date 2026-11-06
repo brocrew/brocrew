@@ -24,6 +24,7 @@ import { CodexRuntime, codexAppServerArgs, type TransportFactory } from '../src/
 import type { RuntimeEvent } from '../src/events'
 import { ResumeError, type SessionHandle } from '../src/runtime'
 import type { SessionRef } from '../src/session-ref'
+import { waitForAbortableWork as bounded } from './probe-waits'
 import { bundledCodexBinary } from './bundled-codex'
 import { captureProviderStanza } from './loopback-test-support'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
@@ -258,30 +259,6 @@ function configuredPortOf(home: string): number | null {
     readFileSync(join(home, 'config.toml'), 'utf8'),
   )
   return match === null ? null : Number(match[1])
-}
-
-/** ⛔ Every `await` on a launch or a turn is bounded; a stall is NOT PERFORMED, never waited on. */
-async function bounded<T>(
-  what: string,
-  ms: number,
-  work: (signal: AbortSignal) => Promise<T>,
-): Promise<T> {
-  const giveUp = new AbortController()
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      work(giveUp.signal),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          giveUp.abort()
-          reject(new Error(`NOT PERFORMED — ${what} did not finish in ${String(ms)}ms`))
-        }, ms)
-        timer.unref?.()
-      }),
-    ])
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
-  }
 }
 
 /** Every rollout file under a home whose name carries the thread id — the thread's history on disk. */
