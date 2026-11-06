@@ -155,13 +155,6 @@
       "when": 1793674220660,
       "tag": "0021_provider_connections",
       "breakpoints": true
-    },
-    {
-      "idx": 22,
-      "version": "6",
-      "when": 1793991385669,
-      "tag": "0022_memory_observed_text",
-      "breakpoints": true
     }
   ]
 }

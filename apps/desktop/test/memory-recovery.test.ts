@@ -13,6 +13,7 @@ import type { ActedBy } from '../src/shared/who-did-it'
 interface Observation {
   text: string | null
   unreadable?: true
+  cause?: string
 }
 interface Write {
   profileSlug: string
@@ -260,6 +261,133 @@ describe('memory intent survives interruption before its single honest observati
     ).toThrow(/CHECK/)
     expect(recovery().memoryAmendment('lark', saved.id)?.outcome).toBe('pending')
   })
+  it.each([18, 21])(
+    'roundtrips ordinary data and inert legacy history on the existing post-%i schema',
+    (last) => {
+      const journal = JSON.parse(readFileSync(join(migrations, 'meta/_journal.json'), 'utf8'))
+      const prefix = join(root, `through-${last}`)
+      mkdirSync(join(prefix, 'meta'), { recursive: true })
+      const entries = journal.entries.filter((one: { idx: number }) => one.idx <= last)
+      for (const one of entries)
+        copyFileSync(join(migrations, one.tag + '.sql'), join(prefix, one.tag + '.sql'))
+      writeFileSync(join(prefix, 'meta/_journal.json'), JSON.stringify({ ...journal, entries }))
+      const file = join(root, 'compatibility.sqlite')
+      let saved = openDatabase(file)
+      try {
+        applyMigrations(saved, prefix)
+        legacyIdentity(saved, 'lark', 'codex')
+        const identity = agentIdentityRowId('lark')
+        const insert = saved.prepare(`INSERT INTO identity_memory_amendment
+        (id, identity_id, seq, provider, entry, act, by, text_before, text_after, created_at, outcome, actual, settled_by, settled_at)
+        VALUES (?, ?, ?, 'claude', ?, 'removed', ?, ?, NULL, ?, ?, ?, ?, ?)`)
+        for (const [seq, outcome] of ['done', 'partial', 'unchanged', 'pending'].entries()) {
+          const pending = outcome === 'pending'
+          insert.run(
+            `old-${outcome}`,
+            identity,
+            seq + 1,
+            entry,
+            JSON.stringify(person),
+            text,
+            seq + 1,
+            outcome,
+            pending
+              ? null
+              : JSON.stringify({ fingerprint: outcome === 'done' ? null : 'a'.repeat(64) }),
+            pending ? null : JSON.stringify(app),
+            pending ? null : 10,
+          )
+        }
+        const rows = () =>
+          saved.prepare('SELECT * FROM identity_memory_amendment ORDER BY seq').all()
+        const originalRows = rows()
+        const schema = () =>
+          saved
+            .prepare(
+              "SELECT name, sql FROM sqlite_master WHERE tbl_name='identity_memory_amendment' ORDER BY name",
+            )
+            .all()
+        const originalSchema = schema()
+        applyMigrations(saved, migrations)
+        let api = storage.createSessionStore(saved, () => clock++)
+        for (const outcome of ['done', 'partial', 'unchanged']) {
+          expect(api.memoryAmendment('lark', `old-${outcome}`)).toMatchObject({
+            outcome,
+            actual: {},
+          })
+        }
+        expect(api.memoryAmendment('lark', 'old-pending')?.outcome).toBe('pending')
+        expect(
+          api.settleMemoryAmendment(
+            'lark',
+            'old-pending',
+            { fingerprint: null } as unknown as Observation,
+            person,
+          ),
+        ).toBe(false)
+        expect(rows()).toEqual(originalRows)
+        const writtenJournal = saved.prepare('SELECT * FROM __drizzle_migrations ORDER BY id').all()
+        saved.close()
+        saved = openDatabase(file)
+        applyMigrations(saved, migrations)
+        api = storage.createSessionStore(saved, () => clock++)
+        expect(rows()).toEqual(originalRows)
+        expect(schema()).toEqual(originalSchema)
+        expect(saved.prepare('SELECT * FROM __drizzle_migrations ORDER BY id').all()).toEqual(
+          writtenJournal,
+        )
+        expect(saved.prepare('PRAGMA foreign_key_check').all()).toEqual([])
+        expect(api.settleMemoryAmendment('lark', 'old-pending', { text: 'External' }, person)).toBe(
+          true,
+        )
+        expect(api.memoryAmendment('lark', 'old-pending')?.outcome).toBe('partial')
+        const observations: readonly Observation[] = [
+          { text: 'After' },
+          { text },
+          { text: 'External' },
+          { text: null },
+          { text: null, unreadable: true, cause: 'ENOENT: /fictional/note.md' },
+        ]
+        const expected = ['done', 'unchanged', 'partial', 'done', 'partial']
+        for (const [index, actual] of observations.entries()) {
+          const removed = actual.text === null && !actual.unreadable
+          const row = api.beginMemoryAmendment(
+            remove(removed ? {} : { act: 'corrected', textAfter: 'After' }),
+            clock++,
+          )!
+          expect(api.settleMemoryAmendment('lark', row.id, actual, person)).toBe(true)
+          expect(api.memoryAmendment('lark', row.id)).toMatchObject({
+            outcome: expected[index],
+            actual,
+          })
+          expect(api.memoryAmendment('lark', row.id)?.actual).not.toHaveProperty('fingerprint')
+          const stored = saved
+            .prepare('SELECT actual FROM identity_memory_amendment WHERE id=?')
+            .get(row.id) as { actual: string }
+          expect(JSON.parse(stored.actual)).toEqual({ ...actual, fingerprint: null })
+        }
+        const pending = api.beginMemoryAmendment(remove(), clock++)!
+        saved.exec(`CREATE TRIGGER fail_observation BEFORE UPDATE ON identity_memory_amendment
+        BEGIN SELECT RAISE(ABORT, 'fictional settlement failure'); END`)
+        expect(() => api.settleMemoryAmendment('lark', pending.id, { text: null }, person)).toThrow(
+          'fictional settlement failure',
+        )
+        expect(api.memoryAmendment('lark', pending.id)).toMatchObject({ outcome: 'pending' })
+        expect(api.memoryAmendment('lark', pending.id)?.actual).toBeUndefined()
+        saved.exec('DROP TRIGGER fail_observation')
+        expect(api.settleMemoryAmendment('lark', pending.id, { text: null }, person)).toBe(true)
+        const settledRows = rows()
+        saved.close()
+        saved = openDatabase(file)
+        expect(rows()).toEqual(settledRows)
+        expect(schema()).toEqual(originalSchema)
+        expect(saved.prepare('PRAGMA foreign_key_check').all()).toEqual([])
+      } finally {
+        saved.close()
+      }
+    },
+  )
+
   it('upgrades populated legacy links twice without inventing observations or changing original fields', () => {
     const journal = JSON.parse(readFileSync(join(migrations, 'meta/_journal.json'), 'utf8'))
     const cut = journal.entries.findIndex(
