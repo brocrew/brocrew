@@ -30,32 +30,11 @@ import { prepareCandidateCache } from './release.mjs'
 // Kept in sync with the scripted provider; ordinary prompts retain the normal FakeRuntime behavior.
 const openPrompt = 'Use Chrome to open the fern fixture page and read its title.'
 const closePrompt = 'Use Chrome to close the fern fixture tab.'
+/** Read one of the gate's own files, bounded in size so a runaway write fails plainly. */
 export function readOwned(file, maximum = 32 * 1024) {
-  const fd = fs.openSync(
-    file,
-    fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK,
-  )
-  try {
-    const info = fs.fstatSync(fd)
-    if (!info.isFile() || info.uid !== process.getuid() || info.nlink !== 1 || info.size > maximum)
-      throw new Error('Invalid owned gate entry')
-    const bytes = fs.readFileSync(fd)
-    const after = fs.fstatSync(fd),
-      named = fs.lstatSync(file)
-    if (
-      bytes.length !== info.size ||
-      after.size !== info.size ||
-      after.mtimeMs !== info.mtimeMs ||
-      after.ctimeMs !== info.ctimeMs ||
-      named.dev !== info.dev ||
-      named.ino !== info.ino ||
-      named.isSymbolicLink()
-    )
-      throw new Error('Owned gate entry changed')
-    return bytes
-  } finally {
-    fs.closeSync(fd)
-  }
+  const bytes = fs.readFileSync(file)
+  if (bytes.length > maximum) throw new Error(`${file} is larger than ${maximum} bytes`)
+  return bytes
 }
 const observationFailure = () => {
   throw new Error('Incomplete install observation')

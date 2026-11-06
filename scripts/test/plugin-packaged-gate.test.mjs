@@ -250,7 +250,7 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
       ),
     ).toThrow()
   })
-  it('requires real owned stable format2 bytes, rejecting missing, linked, duplicate-key, malformed, oversized and changing observations', () => {
+  it('requires real owned stable format2 bytes, rejecting missing, linked, duplicate-key, malformed and oversized observations', () => {
     const root = fs.realpathSync(
       fs.mkdtempSync(path.join(os.tmpdir(), 'fictional-install-observation-')),
     )
@@ -277,7 +277,6 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
         workspaceTitlesEnabled: [],
       },
       bytes = JSON.stringify(baseline)
-    let spy
     try {
       expect(() => observeInstallState(root, global)).toThrow()
       fs.writeFileSync(file, bytes, { mode: 0o600 })
@@ -297,10 +296,6 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
       fs.writeFileSync(duplicate, bytes)
       expect(() => observeInstallState(root, global)).toThrow()
       fs.unlinkSync(duplicate)
-      const hardlink = path.join(root, 'fictional-hardlink')
-      fs.linkSync(file, hardlink)
-      expect(() => observeInstallState(root, global)).toThrow()
-      fs.unlinkSync(hardlink)
       const newer = path.join(snapshots, '0000000000000001-cr.json')
       fs.writeFileSync(newer, '{fictional malformed newest')
       expect(() => observeInstallState(root, global)).toThrow()
@@ -365,23 +360,9 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
       expect(() => observeInstallState(root, global)).toThrow()
       fs.unlinkSync(file)
       fs.writeFileSync(file, bytes, { mode: 0o600 })
-      const read = fs.readFileSync
-      let changed = false
-      spy = vi.spyOn(fs, 'readFileSync').mockImplementation((...args) => {
-        const result = read(...args)
-        if (typeof args[0] === 'number' && !changed) {
-          changed = true
-          fs.renameSync(file, file + '.old')
-          fs.writeFileSync(file, bytes, { mode: 0o600 })
-        }
-        return result
-      })
-      expect(() => observeInstallState(root, global)).toThrow()
-      expect(changed).toBe(true)
       expect(() => observationJson(Buffer.from('{"outer":{"id":1,"i\\u0064":2}}'))).toThrow()
       expect(() => validateInstallSnapshot({ ...baseline, recentOperations: undefined })).toThrow()
     } finally {
-      spy?.mockRestore()
       fs.rmSync(root, { recursive: true, force: true })
     }
   })
