@@ -520,6 +520,7 @@ describe('638 · a change to a conversation’s work announces itself', () => {
   describe('§5 · one signal, one reader', () => {
     it('⚑ every announcement is at a VERB, after its append — never in the shared plumbing', () => {
       const host_ = codeOf('main/runtime/runtime-host.ts')
+      const keptFiles = codeOf('main/runtime/kept-files.ts')
       // ⛔ **These call sites and no more** — the count is the assertion's. ⚠️ One in `publishOurs`, `recordOurs` or `deliver`
       // would make EVERY ledger append announce, which is §4's firehose — and that property, not
       // the number, is what this guards.
@@ -582,7 +583,10 @@ describe('638 · a change to a conversation’s work announces itself', () => {
       // `work_closed` row.
       // +1: `rebuildLedger` — a replaced ledger can take work away from its giver's drawer,
       // announced once after the new generation is promoted.
-      expect(host_.split("this.theWorldMoved('work')").length - 1).toBe(37)
+      expect(
+        host_.split("this.theWorldMoved('work')").length - 1 +
+          keptFiles.split("this.operations.theWorldMoved('work')").length - 1,
+      ).toBe(37)
       for (const verb of [
         'private declineMoveOffersFromText(',
         'async decideMoveRequest(',
