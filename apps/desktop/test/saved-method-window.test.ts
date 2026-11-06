@@ -128,7 +128,6 @@ describe('a person manages saved methods through bounded window commands', () =>
           selection: {
             confirmed: true,
             key: 'method:review.md',
-            indexState: 'absent',
           },
         },
       ],

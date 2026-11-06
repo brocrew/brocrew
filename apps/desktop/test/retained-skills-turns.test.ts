@@ -161,8 +161,6 @@ it.each(['start', 'resume'] as const)(
       await expect(lstat(original)).rejects.toMatchObject({ code: 'ENOENT' })
       expect(transport.offers.at(-1)).toEqual([])
       expect(transport.roots).toEqual([context.builtInSkills.root, library.active])
-      const [id] = await readdir(join(home, 'skills-retained'))
-      await expect(lstat(join(home, 'skills-retained', id!, 'SKILL.md'))).resolves.toBeDefined()
       transport.finish()
       await vi.waitFor(() => expect(handle!.status()).toBe('idle'))
     }

@@ -715,7 +715,7 @@ describe('413 · words the person did not say', () => {
       for (const call of calls.filter((one) => one.path === 'runtime/agent-tools.ts')) {
         expect(call.call, call.call).toMatch(/,\s*by\s*[,)]/)
       }
-      // 🔴 **735 · one host call passes a window, and it is the window `ipc.ts` handed it** —
+      // The host passes only the window that IPC handed it, for a recorded or a newly opened view.
       // `RuntimeHost.startAndSend`'s own send of the person's first message, the person's words.
       // ⛔ Every other call in the host names no window (they pass `THE_APP_ITSELF` or their own
       // caller), and the door is reached from `ipc.ts` alone, with the channel's `sink`.
@@ -725,6 +725,7 @@ describe('413 · words the person did not say', () => {
       // ⚑ **D-017 · R1 — the same window, now handed to `send`'s body** once the start is made:
       // `startAndSend` reopens it for the person's window and `sendTheFirstMessage` sends.
       expect(windowsInTheHost.map((one) => one.line)).toEqual([
+        'await this.sendAs(at, text, sink, attachments, {',
         'await this.sendAs(sessionId, text, sink, attachments, {',
       ])
       // ⛔ …and that method is reached from `startAndSend` alone, with the `sink` it was handed.
