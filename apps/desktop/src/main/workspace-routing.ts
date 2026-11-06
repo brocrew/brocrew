@@ -24,16 +24,7 @@ export const PACKAGED_WORKSPACE_REFUSAL = "This workspace can't be opened in thi
 export const DEVELOPMENT_BUILD_REFUSAL =
   'This workspace opens in a development build of BroCrew, not in this app. Open it from that build.'
 export function workspaceLaunchMessage(error: unknown): string {
-  if (error instanceof WorkspaceRoutingError) return `${WORKSPACE_LIST_REFUSAL} (${error.reason})`
-  return error instanceof Error &&
-    [
-      OTHER_BUILD_REFUSAL,
-      DEVELOPMENT_BUILD_REFUSAL,
-      PACKAGED_WORKSPACE_REFUSAL,
-      WORKSPACE_LIST_REFUSAL,
-    ].includes(error.message)
-    ? error.message
-    : WORKSPACE_LIST_REFUSAL
+  return error instanceof Error ? error.message : String(error)
 }
 interface Entry {
   path: string
@@ -64,7 +55,7 @@ function existingFolder(folder: string, file: string): boolean {
     return statSync(folder).isDirectory()
   } catch (error) {
     if (['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) return false
-    return routingFailure('workspace-stat-failed', file, folder)
+    return routingFailure('workspace-stat-failed', file, folder, error)
   }
 }
 
@@ -94,8 +85,8 @@ export function workspaceRouting(
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
         }
-      } catch {
-        return routingFailure('list-seed-failed', listFile, legacyPath)
+      } catch (error) {
+        return routingFailure('list-seed-failed', listFile, legacyPath, error)
       } finally {
         rmSync(temporary, { force: true })
       }
@@ -160,6 +151,8 @@ export function requiresWorkspacePolicy(appPath: string): boolean {
     return routingFailure(
       error instanceof SyntaxError ? 'malformed-bundle-metadata' : 'bundle-read-failed',
       file,
+      file,
+      error,
     )
   }
 }

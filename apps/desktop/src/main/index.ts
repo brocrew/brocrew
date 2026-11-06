@@ -570,6 +570,7 @@ function initDatabase(): AppDatabase {
       return openDatabase(dbPath, existing ? { fileMustExist: true } : undefined)
     } catch (error) {
       existing?.assertDatabase()
+      if (existing) throw new WorkspaceUnavailable(dbPath, error)
       throw error
     }
   })()
