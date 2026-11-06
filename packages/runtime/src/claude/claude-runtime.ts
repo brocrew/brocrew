@@ -120,6 +120,7 @@ import {
   assertNotCancelled,
   cancelWith,
   didNotAnswerInTime,
+  untilCancelled,
   withDeadline,
   withTimeout,
 } from '../internal/bounded'
@@ -5282,10 +5283,18 @@ export class ClaudeRuntime implements AgentRuntime {
   /**
    * Read the launch's key once, without blocking, and only read the login when no key is saved.
    */
-  private async authForALaunch(): Promise<{ key: string | null; login?: string | null }> {
-    const key = (await this.apiKeyProvider?.()) ?? null
+  /**
+   * The key or login a launch runs on, waited for however long the Keychain or key storage takes —
+   * a prompt there is the person being asked — and released at once when the launch is cancelled.
+   */
+  private async authForALaunch(
+    signal: AbortSignal | undefined,
+  ): Promise<{ key: string | null; login?: string | null }> {
+    const read = <T>(work: T | Promise<T>): Promise<T> =>
+      untilCancelled(Promise.resolve(work), signal, 'claude launch')
+    const key = (await read(this.apiKeyProvider?.())) ?? null
     if (key !== null && key !== '') return { key }
-    return { key: null, login: await this.launchTokenProvider?.() }
+    return { key: null, login: await read(this.launchTokenProvider?.()) }
   }
 
   /** ⚑ What a launch with nothing to run on says — see the constructor. */
@@ -5373,7 +5382,7 @@ export class ClaudeRuntime implements AgentRuntime {
       opts.workFolders,
     )
     handle.noteAlwaysRulesFile()
-    const auth = await this.authForALaunch()
+    const auth = await this.authForALaunch(opts.signal)
     assertNotCancelled(opts.signal, 'claude start')
     // ⚑ Read without holding the thread: the repository gate asks git.
     const kept = await keptRulesForALaunch(
@@ -5540,7 +5549,7 @@ export class ClaudeRuntime implements AgentRuntime {
    */
   async listModels(context: ProviderRuntimeContext): Promise<ModelChoice[]> {
     assertNotCancelled(context.signal, 'claude model list') // a probe is a launch (070)
-    const auth = await this.authForALaunch()
+    const auth = await this.authForALaunch(context.signal)
     assertNotCancelled(context.signal, 'claude model list')
     // ⚑ `740` · `null`: a model list runs in no project, so no project's kept rules are read.
     const kept = await keptRulesForALaunch(context.providerHome, null, context.signal)
@@ -5742,7 +5751,7 @@ export class ClaudeRuntime implements AgentRuntime {
         // go of a conversation for `noSuchSession`, never for a missing cause (`705` F-3).
         throw new ResumeError(ref, `session not found: ${ref.sessionId}`, { noSuchSession: true })
       }
-      const auth = await this.authForALaunch()
+      const auth = await this.authForALaunch(options.signal)
       // Asked again on the far side of the FIRST await this launch makes, and that is where it earns
       // its keep: the precheck is a filesystem probe over a provider home, and a cancel that lands
       // during it must stop the launch BEFORE the query below spawns a CLI — not after, where the

@@ -113,9 +113,6 @@ export function whyNotAKey(key: string): string | null {
   return null
 }
 
-/** How long BroBot waits for encryption or decryption before offering recovery. */
-export const KEY_STORAGE_TIMEOUT_MS = 15_000
-
 type OpenKey = { readonly key: string; readonly setAt: number }
 type ReadState = { sealed: string; setAt: number; unreadableReason?: string }
 
@@ -175,7 +172,7 @@ export class ApiKeys {
     const change = this.changes.get(provider)
     const work = (async (): Promise<OpenKey> => {
       try {
-        const key = await this.bounded(provider, () => this.cipher.open(kept.sealed))
+        const key = await this.oneAtATime(provider, () => this.cipher.open(kept.sealed))
         if (!key || !this.stillCurrent(provider, kept, change)) throw new Error('key changed')
         // The seal carries no check of its own: a wrong sealing key can open to garbage. What
         // opened is held to the rule every saved key passed.
@@ -200,14 +197,17 @@ export class ApiKeys {
   async set(provider: Provider, key: string): Promise<string | null> {
     const why = whyNotAKey(key)
     if (why !== null) return why
-    if (this.operations.has(provider)) return this.saveRefusal()
+    // A read or save already out finishes first, as it began: a launch reading the key now gets it.
+    await this.operations.get(provider)?.then(
+      () => undefined,
+      () => undefined,
+    )
     const change = (this.changes.get(provider) ?? 0) + 1
     this.changes.set(provider, change)
     this.reads.delete(provider)
     try {
-      const sealed = await this.bounded(provider, async (signal) => {
-        if (!(await this.cipher.available()) || signal.aborted)
-          throw new Error('encryption unavailable')
+      const sealed = await this.oneAtATime(provider, async () => {
+        if (!(await this.cipher.available())) throw new Error('encryption unavailable')
         return await this.cipher.seal(key.trim())
       })
       if (this.changes.get(provider) !== change)
@@ -254,34 +254,22 @@ export class ApiKeys {
     )
   }
 
-  private async bounded<T>(
-    provider: Provider,
-    action: (signal: AbortSignal) => T | Promise<T>,
-  ): Promise<T> {
-    // A deadline releases BroBot, not the native operation. Keep its slot until it really settles.
-    if (this.operations.has(provider)) throw new KeyStorageNotAnswering('still waiting')
-    const cancelled = new AbortController()
-    const native = Promise.resolve().then(() => action(cancelled.signal))
+  /**
+   * Runs one native key operation for a provider after the one before it has settled, however long
+   * either takes: macOS may be asking the person for permission, which is not a failure.
+   */
+  private async oneAtATime<T>(provider: Provider, action: () => T | Promise<T>): Promise<T> {
+    const before = this.operations.get(provider) ?? Promise.resolve()
+    const native = before.then(
+      () => action(),
+      () => action(),
+    )
     this.operations.set(provider, native)
     const release = (): void => {
       if (this.operations.get(provider) === native) this.operations.delete(provider)
     }
     void native.then(release, release)
-    let timer: ReturnType<typeof setTimeout> | undefined
-    try {
-      return await Promise.race([
-        native,
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(
-            () => reject(new KeyStorageNotAnswering('timed out')),
-            KEY_STORAGE_TIMEOUT_MS,
-          )
-        }),
-      ])
-    } finally {
-      cancelled.abort()
-      clearTimeout(timer)
-    }
+    return await native
   }
 }
 

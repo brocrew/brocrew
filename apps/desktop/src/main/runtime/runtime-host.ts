@@ -169,6 +169,7 @@ import {
   startFailureOf,
   // ⚑ **D-042 · R1 — a provider's own default, by name**, where no list need be read to know it.
   theDefaultByName,
+  untilCancelled,
   withDeadline,
   MAX_TOOL_TEXT,
   MAX_USAGE_WINDOWS,
@@ -373,24 +374,6 @@ import {
   type ResourceRefusal,
 } from '../resources/resources'
 import { PROVIDER_HAS_NOT_REPORTED } from '../../shared/runtime-ipc'
-
-/**
- * How long a sign-in may stay open before the host gives up on it (098).
- *
- * Five minutes is the OAuth flow's own comfortable ceiling — open a browser, sign in, approve — and
- * the bound exists for the person who closes the tab and walks away: without it, the app-server
- * holding the loopback redirect port would live for the rest of the app's run.
- */
-const SIGN_IN_TIMEOUT_MS = 5 * 60_000
-
-/**
- * How long a credential CHECK may take before it is reported as unaskable (098, review finding 14).
- *
- * For Codex the check spawns a real app-server — measured at ~0.6 s — so ten seconds is generous.
- * The bound is not about speed: without it a wedged spawn leaves the renderer's buttons disabled on
- * a promise that can never settle, which is a worse answer than "could not ask".
- */
-const AUTH_CHECK_TIMEOUT_MS = 10_000
 
 /**
  * What a sign-in check the host could not get an answer to says. A check that ran out of time is
@@ -24828,8 +24811,14 @@ export class RuntimeHost implements LiveHost {
     }
     await this.homeCopyJobs.get(profileSignInKey(provider, profileId))
     const renewedForIt = sessionId !== undefined && this.renewedForItsReopen.delete(sessionId)
-    const prepare = (): string | Promise<string> =>
-      this.deps.prepareProviderHome(provider, profileId)
+    // The home's preparation may wait on the Keychain or the key storage, which may be asking the
+    // person: waited for however long it takes, and released at once if this launch is cancelled.
+    const prepare = (): Promise<string> =>
+      untilCancelled(
+        Promise.resolve().then(() => this.deps.prepareProviderHome(provider, profileId)),
+        launch?.signal,
+        'preparing the conversation',
+      )
     const renewal = this.deps.loginRenewal?.(provider)
     if (renewal === undefined || this.aKeyIsSaved(provider)) {
       return { home: await prepare(), loginRenewed: renewedForIt }
@@ -36078,9 +36067,8 @@ export class RuntimeHost implements LiveHost {
     }
     // ⚠️ **`finish` is called immediately and ownership OUTLIVES it** (068 finding 2, and the whole
     // of 191 H2). `probeCodexAuthInHome` closes its transport in a `finally`, and `close()` is a
-    // bounded stdin→SIGTERM→SIGKILL of the group — so this promise settling IS the child being down,
-    // whereas the ten-second deadline below settles only the waiter. Registering the un-deadlined
-    // promise is what makes `closeAll`'s drain wait for the process rather than for our patience.
+    // bounded stdin→SIGTERM→SIGKILL of the group — so this promise settling IS the child being down.
+    // Registering it is what makes `closeAll`'s drain wait for the process.
     if (this.deps.beforeProviderLaunch) {
       try {
         await this.deps.beforeProviderLaunch()
@@ -36107,7 +36095,7 @@ export class RuntimeHost implements LiveHost {
     })
     this.launches.finish(launch, work)
     try {
-      const result = await withDeadline(work, AUTH_CHECK_TIMEOUT_MS, 'provider sign-in check')
+      const result = await work
       if (launch.signal.aborted || this.launches.closed)
         return { state: 'unknown', reason: 'The sign-in check was cancelled.' }
       if (result.state !== 'usable' || result.login === 'api-key' || this.aKeyIsSaved(provider))
@@ -36695,15 +36683,13 @@ export class RuntimeHost implements LiveHost {
     this.signIns.set(key, { profileId, signIn })
     try {
       // The URL is opened by the MAIN process (095's rule: the renderer never decides what opens).
-      // ⚠️ **Not awaited into the race** — `shell.openExternal` shells out to the OS handler and can
-      // sit there (no default browser, a blocked chooser dialog), which used to strand this whole
-      // method before the deadline below was even armed. A failure to open is also not a failure to
-      // sign in: the flow is live and the URL could still be pasted, so it is fired and forgotten.
+      // ⚠️ **Not awaited** — `shell.openExternal` shells out to the OS handler and can sit there (no
+      // default browser, a blocked chooser dialog). A failure to open is also not a failure to sign
+      // in: the flow is live and the URL could still be pasted, so it is fired and forgotten.
       void this.deps.openExternal?.(signIn.authUrl).catch(() => {})
-      const outcome = await Promise.race([
-        signIn.completed,
-        this.signInDeadline(SIGN_IN_TIMEOUT_MS),
-      ])
+      // A sign-in ends when the person finishes it in the browser, when it fails, or when they
+      // press Cancel ({@link cancelProviderSignIn}) — never because it took long.
+      const outcome = await signIn.completed
       return {
         success: outcome.success,
         ...(outcome.error ? { detail: outcome.error } : {}),
@@ -36714,7 +36700,7 @@ export class RuntimeHost implements LiveHost {
       // ⛔ **A settled sign-in is the one moment a catalogue can genuinely change under a running
       // app** (257 §2), so this is where the memoized menu for that home is dropped. Unconditionally,
       // not only on success: from out here we cannot tell whether a credential landed — a flow can
-      // fail after writing one, and the timeout path has no outcome at all — and the cost of being
+      // fail after writing one — and the cost of being
       // wrong is one short-lived child on the NEXT ask, against a menu that silently describes
       // somebody else's account. Nothing re-probes on its own; see {@link providerModels}.
       this.forgetModels(provider, profileId)
@@ -36824,22 +36810,6 @@ export class RuntimeHost implements LiveHost {
       error instanceof Error ? error.message : String(error),
     )
     return {}
-  }
-
-  /** Resolve as a failed outcome after `ms` — the bound on a sign-in nobody finished. */
-  private signInDeadline(ms: number): Promise<Awaited<ProviderSignIn['completed']>> {
-    return new Promise((resolve) => {
-      const timer = setTimeout(
-        () =>
-          resolve({
-            success: false,
-            error: 'the sign-in was not completed in time',
-            state: { state: 'unknown', reason: 'the sign-in was not completed in time' },
-          }),
-        ms,
-      )
-      if (typeof timer.unref === 'function') timer.unref()
-    })
   }
 
   /**

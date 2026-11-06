@@ -2,13 +2,14 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeRuntime, type AgentRuntime, type SessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
+import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 import {
   RuntimeHost,
   type RuntimeEventSink,
@@ -326,3 +327,92 @@ describe.each<Provider>(['claude', 'codex'])('a slow %s provider is waited for',
   }, 20_000)
 })
 
+describe('a sign-in nobody has finished yet stays open until it is finished or cancelled', () => {
+  let dir: string
+  let host: RuntimeHost
+  let finish: ((outcome: { success: boolean; state: { state: 'usable' } }) => void) | null
+  let cancelled: number
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'brobot2-slow-sign-in-'))
+    finish = null
+    cancelled = 0
+    let settle: (outcome: {
+      success: boolean
+      state: { state: 'usable' | 'unknown'; reason?: string }
+    }) => void
+    const auth = {
+      credentialHome: (provider: Provider, profileId: string) =>
+        join(dir, 'provider-homes', profileId, provider),
+      check: async () => ({ state: 'usable' as const }),
+      reprovision: async () => 'replaced' as const,
+      signIn: async () => ({
+        authUrl: 'https://example.invalid/fictional-login',
+        completed: new Promise<{
+          success: boolean
+          state: { state: 'usable' | 'unknown'; reason?: string }
+        }>((resolve) => {
+          settle = resolve
+          finish = resolve
+        }),
+        // As the real flow does: a cancel ends the sign-in it withdraws.
+        cancel: async () => {
+          cancelled += 1
+          settle({ success: false, state: { state: 'unknown', reason: 'canceled' } })
+        },
+      }),
+    }
+    host = new RuntimeHost({
+      store: NULL_SESSION_STORE,
+      discoverSessions: NO_DISCOVERY,
+      nativeTranscriptPath: () => null,
+      exportDirectory: () => join(dir, 'exports'),
+      createRuntime: (provider) => new FakeRuntime(provider),
+      prepareProviderHome: (provider, profileId) =>
+        join(dir, 'provider-homes', profileId, provider),
+      providerHomePath: (provider, profileId) => join(dir, 'provider-homes', profileId, provider),
+      resolveCwd: (sessionId, requested) => requested ?? join(dir, 'scratch', sessionId),
+      newSessionId: () => 'sess_1',
+      listProfiles: () => ['default'],
+      providerAuth: auth as unknown as RuntimeHostDeps['providerAuth'],
+      openExternal: async () => {},
+      readProviderConfig: (_provider, home) => ({
+        home,
+        homeEnv: 'CODEX_HOME',
+        model: 'programmatic',
+        authNote: null,
+        files: [],
+      }),
+    })
+  })
+
+  afterEach(async () => {
+    vi.useRealTimers()
+    await host.closeAll()
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('is still open past five minutes, and completes when the person finishes in the browser', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const flow = host.signInProvider('codex', 'default')
+    let outcome: unknown = null
+    void flow.then((result) => {
+      outcome = result
+    })
+    await vi.advanceTimersByTimeAsync(5 * 60_000 + 1_000)
+    expect(outcome).toBeNull()
+    expect(cancelled).toBe(0)
+    finish?.({ success: true, state: { state: 'usable' } })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(await flow).toMatchObject({ success: true })
+  })
+
+  it('ends when the person cancels it', async () => {
+    const flow = host.signInProvider('codex', 'default')
+    await vi.waitFor(() => expect(finish).not.toBeNull())
+    await host.cancelProviderSignIn('codex', 'default')
+    expect(await flow).toMatchObject({ success: false })
+    // Asked once by the Cancel, and once more by the sign-in's own clean-up, as on every path.
+    expect(cancelled).toBeGreaterThanOrEqual(1)
+  })
+})

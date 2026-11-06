@@ -172,23 +172,29 @@ const CLAUDE_KEYCHAIN_SERVICE = 'Claude Code-credentials'
 const KEYCHAIN_ARGS = ['find-generic-password', '-s', CLAUDE_KEYCHAIN_SERVICE, '-w'] as const
 
 /**
- * How long `security` gets to answer before we give up on it (149, from 148 H4).
- *
- * ⛔ **There was no bound at all, and one of the two readers blocks the thread it runs on.** macOS
- * `security` is not guaranteed to return: a locked Keychain, an access-control prompt, or a stalled
- * `securityd` all leave it sitting there. On the synchronous reader that is Electron's MAIN thread —
- * so the app freezes, and close/reopen freeze with it, which takes away the very escape this
- * feature's remedy is.
- *
- * Two seconds because this is a local IPC to a running daemon that costs **19–26 ms** when it works
- * (measured over seven runs, 147 §3). Two orders of magnitude of headroom is not a guess about the
- * slow case; it is far enough out that only a genuinely stuck `security` reaches it.
- *
- * ⚠️ **A read that times out yields `null`, which is "cannot tell" — never "superseded".** See
- * {@link claudeKeychainTokenProvider} and `ClaudeSessionHandle.checkSignIn` for why that direction
- * is the safe one.
+ * How long a read that FAILS OPEN gives `security` before it reads as "cannot tell" (149, from 148
+ * H4): the synchronous library reader, which blocks its thread, and the turn gate's, whose `null`
+ * lets the turn go ahead. Neither refuses anything at the bound. ⛔ The launch's reader has no bound:
+ * a Keychain prompt is the person being asked, and what it answers decides the launch.
  */
 export const KEYCHAIN_READ_TIMEOUT_MS = 2_000
+
+/** `security find-generic-password`'s exit status when the Keychain holds no such item. */
+const KEYCHAIN_ITEM_NOT_FOUND = 44
+
+/**
+ * What a launch is told when the Keychain answered with something other than the login or "no such
+ * item": the Keychain's own words, so a person is never sent to sign in again over a login that is
+ * there.
+ */
+function theKeychainDidNotGiveIt(error: unknown, stderr: string): AuthUnavailableError {
+  const code = (error as { code?: unknown } | null)?.code
+  const said = stderr.trim() || `security exited with ${String(code ?? 'an error')}`
+  return new AuthUnavailableError(
+    'claude',
+    `The Keychain did not give BroCrew this Mac's Claude login: ${said}`,
+  )
+}
 
 /**
  * Read the macOS Keychain credential blob for the Claude login (`security
@@ -242,9 +248,9 @@ export function defaultKeychainReader(): string | null {
  * ⛔ **This is the one the turn gate uses, and the reason it exists is that the gate runs on
  * Electron's main process.** `execFileSync` there is a freeze of the whole app for as long as
  * `security` takes; `execFile` is a spawn the event loop keeps turning through, so a Keychain that
- * never answers costs this turn {@link KEYCHAIN_READ_TIMEOUT_MS} and costs the window nothing.
+ * never answers costs this turn {@link KEYCHAIN_READ_TIMEOUT_MS} and then lets it go ahead.
  *
- * Absent item, denied access, timeout and a non-zero exit are all "unavailable" — and ⚠️ **unlike
+ * Absent item, denied access, the bound and a non-zero exit are all "unavailable" — and ⚠️ **unlike
  * the synchronous one since `710` (R52), so is a machine that ran short**: this is the turn gate's
  * reader, whose `null` is *cannot tell* and fails open on purpose (`ClaudeSessionHandle.checkSignIn`),
  * while the throw belongs to a launch, which has a person's sentence to turn it into. The value is a
@@ -259,17 +265,13 @@ export async function defaultKeychainReaderAsync(): Promise<string | null> {
   // `null` too.
   return new Promise((resolve) => {
     try {
+      // ⚑ Bounded, and it refuses nothing: past the bound the read is "cannot tell", and the turn
+      // goes ahead (`ClaudeSessionHandle.checkSignIn`). A wedged Keychain never holds a send.
       execFile(
         'security',
         [...KEYCHAIN_ARGS],
-        {
-          encoding: 'utf8',
-          timeout: KEYCHAIN_READ_TIMEOUT_MS,
-          killSignal: 'SIGKILL',
-        },
+        { encoding: 'utf8', timeout: KEYCHAIN_READ_TIMEOUT_MS, killSignal: 'SIGKILL' },
         (error, stdout) => {
-          // ⚠️ **`error` covers the timeout too** — Node reports a killed child as a failure with
-          // `killed: true` — so there is no separate deadline to race here and no timer to clear.
           resolve(error ? null : stdout.trim())
         },
       )
@@ -280,29 +282,25 @@ export async function defaultKeychainReaderAsync(): Promise<string | null> {
 }
 
 /**
- * The read a launch makes, without blocking the thread: the login, or `null` when there is none —
- * and, as {@link defaultKeychainReader} does, a machine that ran short throws rather than reading as
- * no login. On a Mac it waits on `security` off the thread; elsewhere the login is a file, or none.
+ * The read a launch makes, without blocking the thread: the login, or `null` when the Keychain has
+ * none. It waits for `security` however long it takes — a Keychain prompt is waiting for the
+ * person. A machine that ran short throws as it came, as {@link defaultKeychainReader} does; any
+ * other failure throws {@link AuthUnavailableError} in the Keychain's own words, never "no login".
+ * Elsewhere than a Mac the login is a file, or none.
  */
 export async function defaultKeychainReaderForALaunch(): Promise<string | null> {
   if (process.platform !== 'darwin') return defaultKeychainReader()
   return new Promise((resolve, reject) => {
-    const settle = (error: unknown): void => {
-      if (transientSetupFailureOf(error) !== null) reject(error)
-      else resolve(null)
-    }
     try {
-      execFile(
-        'security',
-        [...KEYCHAIN_ARGS],
-        { encoding: 'utf8', timeout: KEYCHAIN_READ_TIMEOUT_MS, killSignal: 'SIGKILL' },
-        (error, stdout) => {
-          if (error) settle(error)
-          else resolve(stdout.trim())
-        },
-      )
+      execFile('security', [...KEYCHAIN_ARGS], { encoding: 'utf8' }, (error, stdout, stderr) => {
+        if (!error) resolve(stdout.trim())
+        else if (transientSetupFailureOf(error) !== null) reject(error)
+        else if ((error as { code?: unknown }).code === KEYCHAIN_ITEM_NOT_FOUND) resolve(null)
+        else reject(theKeychainDidNotGiveIt(error, String(stderr ?? '')))
+      })
     } catch (error) {
-      settle(error)
+      if (transientSetupFailureOf(error) !== null) reject(error)
+      else reject(theKeychainDidNotGiveIt(error, ''))
     }
   })
 }

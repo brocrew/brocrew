@@ -84,6 +84,8 @@ async function claudeHealth(
     )
   } catch (error) {
     if (error instanceof ApiKeyUnreadableError) return { ok: false, reason: error.message }
+    // The Keychain answered with an error of its own: said in its words, not as a missing login.
+    if (error instanceof AuthUnavailableError) return { ok: false, reason: error.message }
     throw error
   }
 }
