@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3'
 import type { AppDatabase } from './connection'
-import { rowsUnreadOnce, type SessionStore } from './session-store'
+import type { SessionStore } from './session-store'
+import { rowsUnreadOnce } from './rows-unread'
 import { conversationLink, pieceLink } from '../../shared/links'
 import { aPersonsOwnWords } from '../../shared/a-persons-own-words'
 import { theMessagesOf, type UserTurnEvent } from '../../shared/runtime-ipc'

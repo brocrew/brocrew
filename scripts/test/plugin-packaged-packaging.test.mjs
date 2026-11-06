@@ -4,7 +4,7 @@ import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { command, buildEnvironment } from '../gates/plugin-packaged/prepare.mjs'
+import { command, buildEnvironment } from '../gates/plugin-packaged/fixture-command.mjs'
 import { digest, safeReport } from '../gates/plugin-packaged/contract.mjs'
 import { builderOutputClass, printFailure } from '../gates/plugin-packaged/diagnostics.mjs'
 import {

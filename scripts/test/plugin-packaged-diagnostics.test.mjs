@@ -10,12 +10,12 @@ import * as providerState from '../gates/plugin-packaged/provider-state.mjs'
 import * as pageState from '../gates/plugin-packaged/page-state.mjs'
 import * as pluginState from '../gates/plugin-packaged/plugin-state.mjs'
 import { preflight } from '../gates/plugin-packaged/preflight.mjs'
+import { prepareBuild } from '../gates/plugin-packaged/prepare.mjs'
 import {
   command,
   fixtureEnvironment,
   buildEnvironment,
-  prepareBuild,
-} from '../gates/plugin-packaged/prepare.mjs'
+} from '../gates/plugin-packaged/fixture-command.mjs'
 import { bounded } from '../gates/plugin-packaged/processes.mjs'
 import { safeReport } from '../gates/plugin-packaged/contract.mjs'
 

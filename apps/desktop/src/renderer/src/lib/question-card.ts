@@ -23,7 +23,8 @@ import {
   withoutHandles,
 } from './outgoing-card'
 import { THIS_CONVERSATION_FIRST } from './from-outside'
-import { sinceWords, type PersonsQueueRow } from './persons-queue'
+import type { PersonsQueueRow } from './persons-queue'
+import { sinceWords } from './queue-time'
 
 /**
  * # 🔴 UI-009 · A question is answered where it is asked, and in *Waiting on you*

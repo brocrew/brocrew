@@ -756,9 +756,9 @@ import {
   eachOrSkipped,
   ledgersSkippedOf,
   readOrSkip,
-  rowsUnreadOnce,
   skipTheLedger,
 } from '../db/session-store'
+import { rowsUnreadOnce } from '../db/rows-unread'
 import {
   committedRowOf,
   type Committed,
@@ -778,12 +778,12 @@ import type {
   RecordedSession,
   ResumableSession,
   ResourceRow,
-  RowsUnread,
   SessionStore,
   ThreadLeadRow,
   WaitingMessage,
   WorkRow,
 } from '../db/session-store'
+import type { RowsUnread } from '../db/rows-unread'
 import { toWireEvent } from './event-wire'
 import {
   AGENT_TOOL_SERVER,

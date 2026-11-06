@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as processes from '../gates/plugin-packaged/processes.mjs'
 import * as diagnostics from '../gates/plugin-packaged/diagnostics.mjs'
 import * as contract from '../gates/plugin-packaged/contract.mjs'
+import * as fixtureGuards from '../gates/plugin-packaged/fixture-guards.mjs'
 import * as matrix from '../gates/plugin-packaged/matrix.mjs'
 import * as providerState from '../gates/plugin-packaged/provider-state.mjs'
 import * as pageState from '../gates/plugin-packaged/page-state.mjs'
@@ -17,7 +18,8 @@ import {
   registerChild,
   bestEffortDrain,
 } from '../gates/plugin-packaged/runner-processes.mjs'
-import { fixtureEnvironment, removeFixture } from '../gates/plugin-packaged/prepare.mjs'
+import { removeFixture } from '../gates/plugin-packaged/prepare.mjs'
+import { fixtureEnvironment } from '../gates/plugin-packaged/fixture-command.mjs'
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const ownerSource = fs.readFileSync(
   path.join(repository, 'scripts/gates/plugin-packaged/owner.mjs'),
@@ -63,6 +65,7 @@ function fixture({ drained = true, failAt, rows = [] } = {}) {
     ...processes,
     ...diagnostics,
     ...contract,
+    ...fixtureGuards,
     ...matrix,
     ...pageState,
     ...providerState,

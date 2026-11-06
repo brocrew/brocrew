@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
-import { rowsUnreadOnce } from '../src/main/db/session-store'
+import { rowsUnreadOnce } from '../src/main/db/rows-unread'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { mcpRequestWorld, type McpRequestWorld } from './helpers/mcp-server-request-world'

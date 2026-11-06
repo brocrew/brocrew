@@ -2,7 +2,10 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { fixtureEnvironment, fixtureAppEnvironment } from '../gates/plugin-packaged/prepare.mjs'
+import {
+  fixtureEnvironment,
+  fixtureAppEnvironment,
+} from '../gates/plugin-packaged/fixture-command.mjs'
 import {
   hostedSystemEnvironment,
   environmentKeyDiff,

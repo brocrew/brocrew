@@ -15,10 +15,10 @@ import {
   eachOrSkipped,
   ledgersSkippedOf,
   readOrSkip,
-  rowsUnreadOnce,
   skipTheLedger,
   type SessionStore,
 } from '../src/main/db/session-store'
+import { rowsUnreadOnce } from '../src/main/db/rows-unread'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {

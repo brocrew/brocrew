@@ -1,7 +1,7 @@
 import type { AppDatabase, AppStatement } from './connection'
 import { LimitsMaterialization } from './bounded-limits-statements'
 import { LimitsReadUnavailable } from './limits-read-protocol'
-import { rowsUnreadOnce, type RowsUnread } from './session-store'
+import { rowsUnreadOnce, type RowsUnread } from './rows-unread'
 import { WORK_SEARCH_BOUNDS } from '../../shared/work-search'
 
 export class WorkSearchPageBudget {

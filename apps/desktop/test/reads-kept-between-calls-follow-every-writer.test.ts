@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { WALL_QUEUE_AT_MOST } from '../src/main/db/provider-wall-watch'
-import { createSessionStore, rowsUnreadOnce, type SessionStore } from '../src/main/db/session-store'
+import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import { rowsUnreadOnce } from '../src/main/db/rows-unread'
 import type { TranscriptEvent } from '../src/shared/runtime-ipc'
 
 /**

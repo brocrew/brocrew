@@ -2,7 +2,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
-import { digest, ownedRoot, safeReport } from './contract.mjs'
+import { digest, safeReport } from './contract.mjs'
+import { ownedRoot } from './fixture-guards.mjs'
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 function tools() {
   const app = createRequire(path.join(repository, 'apps/desktop/package.json'))

@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
-import { ownedRoot, requireCI } from './contract.mjs'
+import { ownedRoot, requireCI } from './fixture-guards.mjs'
 import { connectDiagnosticPage } from './page-state.mjs'
 import { bounded } from './processes.mjs'
 import { closedFrames } from './diagnostics.mjs'

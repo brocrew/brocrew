@@ -1,3 +1,4 @@
+import type { BlockedSinceIs } from './queue-time'
 import { computed, reactive, ref, type ComputedRef, type Ref } from 'vue'
 import { NOTHING_NAMED_THE_WORK, WALK_COVERS } from '../../../shared/questions'
 import type {
@@ -554,24 +555,6 @@ export interface PersonsQueueRow {
 }
 
 /**
- * ⛔ **Which of the two clocks {@link PersonsQueueRow.blockedSince} is, or that there was
- * none** (434).
- *
- * ⚠️ **`told` and `routed` are not the same event and the difference is criterion 17's.** A
- * question escalated after a wait was BLOCKED before it escalated — what `escalatedAt` stamps is
- * the moment a PERSON was told, which is the moment it became theirs. A permission was a person's
- * from the instant it was routed and nothing ever announced it. ⛔ Sorting one list by *arrival*
- * and calling it *blocked-since* would be a third meaning neither row carries.
- */
-export type BlockedSinceIs =
-  /** `escalatedAt` — the moment a person was told, on an `escalated` row. */
-  | 'told'
-  /** The routing's own `at` — the moment it became a person's, on `a-decision`. */
-  | 'routed'
-  /** ⛔ **No instant crossed the wire at all** — see {@link byBlockedSince} for where it sorts. */
-  | 'not-recorded'
-
-/**
  * ⛔ **Why a row cannot be settled from the queue** (434) — one value, and every one of them is a
  * different next move for the person reading it.
  */
@@ -687,8 +670,8 @@ export interface QueueCoverage {
  * two group labels and the short-list disclosure. The destination's own group label is the SCREEN's
  * chrome and not this queue's.
  *
- * ⚑ {@link KIND_WORDS} and {@link sinceWords} are exported from this module, and the ones only
- * `PersonsQueue.vue` draws are its own.
+ * Shared kind words are exported here; time wording lives in queue-time.ts.
+ * Words only `PersonsQueue.vue` draws are its own.
  */
 export interface PersonsQueueView {
   /**
@@ -976,35 +959,6 @@ export const DID_WORDS: Readonly<Record<PersonsQueueDid, string>> = {
   // ⛔ **Not *could not answer*, which is what `HO-088` §6 wrote** — see {@link PersonsQueueDid}.
   // ⚑ It is the strongest claim the walk establishes about one participant.
   'has-not-answered': 'has not answered',
-}
-
-/**
- * ⛔ **What each instant means, said rather than implied** (434; in this module for
- * {@link KIND_WORDS}'s reason) — see {@link PersonsQueueRow.blockedSinceIs}.
- *
- * ⚠️ *Yours since* is a claim that a person was TOLD at that moment, which is true of an escalation
- * and false of a routing nothing ever announced. 🔴 **And the third arm says where the row SORTS**,
- * because the list is ordered oldest-first and a row at the bottom with no words on it reads as the
- * newest thing in it — which is the one claim an unrecorded instant cannot make.
- */
-export function sinceWords(row: PersonsQueueRow): string {
-  if (row.blockedSinceIs === 'not-recorded') return 'no time recorded — listed last, not first'
-  return SINCE_PHRASE[row.blockedSinceIs](row.since)
-}
-
-/**
- * ⛔ **One phrase per instant, exhaustively** (446) — `told` / `routed`, with `not-recorded`
- * answered above because it is the one arm that says nothing about a time.
- *
- * ⚠️ **`434` wrote this as a ternary on `told`, so every non-`told` instant fell through to one
- * phrase.** ⛔ That is the shape `a-loop-over-a-literal-variant-list-is-not-exhaustive` names: a new
- * word would silently borrow the routing's sentence.
- */
-const SINCE_PHRASE: Readonly<
-  Record<Exclude<BlockedSinceIs, 'not-recorded'>, (since: string | null) => string>
-> = {
-  told: (since) => `yours since ${since}`,
-  routed: (since) => `waiting since ${since}`,
 }
 
 /**

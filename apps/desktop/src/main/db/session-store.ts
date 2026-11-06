@@ -1,3 +1,4 @@
+import { rowsUnreadOnce, THE_WHOLE_LEDGER, type RowsUnread, type SkipNote } from './rows-unread'
 import { createOwnNotesStore, type OwnNotesStore } from './own-notes'
 import { resolveProviderConnection } from './provider-connections'
 import {
@@ -1263,45 +1264,6 @@ export function underWhat(parent: string | null, drawn: ReadonlySet<string>): Fo
 }
 
 /**
- * 🔴 **The ledger rows ONE walk could not read — each counted ONCE, wherever it was met** (671 ·
- * R18, and `664` F4).
- *
- * ## ⛔ Why a SET, when {@link walkLedgers} counted with `+= 1` for eleven dispatches
- *
- * ⚠️ **A walk that folds each candidate once and reads nothing else meets each unreadable row
- * once.** ⛔ **A COMPOSED walk reads beyond its candidates** (since `603`/`664`, uncounted until
- * `671`): a wait
- * read opens the holder's routings and questions and the ledger of every conversation
- * the holder gave work to — so one torn row in a child's ledger is met by the forest's own fold of
- * that child AND by its parent's wait read. ⚑ Counted by `+= 1` that is one row reported as many;
- * keyed by the ledger and the row's place in it, it is one.
- *
- * ⚑ **The key is `(ledger, ordinal)` in the ledger's ACTIVE generation**, which is the generation
- * every fold in this file reads (`events.generation`'s rule: *a superseded projection's rows are
- * garbage, not history*). ⚠️ The scan that crosses generations — the routing scan (`676`) — notes
- * only the active one's torn rows for that reason; see `selectSessionsRoutingTo`.
- *
- * ⚠️ **A count, still, and never a cause** — {@link LedgerWalk.rowsUnread}'s own rule.
- */
-export interface RowsUnread {
-  /** ⚑ The skip note for ONE ledger — see {@link SkipNote}. */
-  in(sessionId: string): SkipNote
-  /** How many distinct rows have been noted. */
-  readonly count: number
-  /** ⚑ **D-017 · R8** — how many distinct ledgers were skipped whole. */
-  readonly ledgersSkipped: number
-}
-
-/** ⚑ **D-017 · R8** — what a skip note is handed for a ledger whose fold threw. */
-const THE_WHOLE_LEDGER = 'the-whole-ledger'
-
-/**
- * ⚑ **The skip note for ONE ledger** — the `(ordinal) => void` every fold here takes, and since
- * D-017 {@link THE_WHOLE_LEDGER} when a fold over that ledger threw.
- */
-export type SkipNote = (ordinal: number | typeof THE_WHOLE_LEDGER) => void
-
-/**
  * ⚑ **F033 · one piece a conversation holds, as much as naming it reads** — a fold's row less its
  * brief, which a name never reads and a memo must not keep. ⚑ **F009 · and as much as an agent's
  * record reads** ({@link SessionStore.newestPiecesHeldIn}): who gave it and when, and its outcome.
@@ -1318,28 +1280,6 @@ type PieceForAName = Pick<
  * fold's own word for an open piece is not the word `list_tasks` composes, so a reader says *open*.
  */
 export type PieceHeld = PieceForAName
-
-/** ⚑ **A fresh {@link RowsUnread}, for one walk or one answer** — never shared across two. */
-export function rowsUnreadOnce(): RowsUnread {
-  const seen = new Set<string>()
-  const skipped = new Set<string>()
-  return {
-    // ⚠️ **A NUL between the two halves**, so no conversation id and ordinal can spell another's.
-    in: (sessionId) => (ordinal) => {
-      if (ordinal === THE_WHOLE_LEDGER) {
-        skipped.add(sessionId)
-        return
-      }
-      seen.add(`${sessionId}\u0000${String(ordinal)}`)
-    },
-    get count() {
-      return seen.size
-    },
-    get ledgersSkipped() {
-      return skipped.size
-    },
-  }
-}
 
 /**
  * 🔴 **D-017 · R8 — one bad row never stops the app.** A ledger that throws is skipped, warned

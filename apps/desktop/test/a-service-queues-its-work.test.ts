@@ -9,9 +9,9 @@ import {
 import {
   DEFAULT_CAPABILITIES,
   skipTheLedger,
-  type RowsUnread,
   type SessionStore,
 } from '../src/main/db/session-store'
+import { type RowsUnread } from '../src/main/db/rows-unread'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { admitGive, type GiveFacts, type ServiceAtAGive } from '../src/main/runtime/spawn-rails'
 import {

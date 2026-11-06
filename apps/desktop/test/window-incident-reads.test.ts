@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { WindowIncidentReads, INCIDENT_READ_LIMIT } from '../src/main/db/window-incident-reads'
-import { rowsUnreadOnce, type SessionStore } from '../src/main/db/session-store'
+import type { SessionStore } from '../src/main/db/session-store'
+import { rowsUnreadOnce } from '../src/main/db/rows-unread'
 import type { WindowWriterStamp } from '../src/main/db/window-writer-stamp'
 import type { LimitsWriterStamp } from '../src/main/db/fresh-limits-snapshot'
 import { WindowReadUnavailable, type WindowIncidents } from '../src/main/db/window-read-protocol'

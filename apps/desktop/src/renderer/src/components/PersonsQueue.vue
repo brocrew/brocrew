@@ -1,9 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, useId } from 'vue'
-// 🔴 **`KIND_WORDS` and `sinceWords` were declared HERE until `452 relay 1`** — *one derivation,
-// wherever it lives* is `persons-queue.ts`' rule: two sentences for one `kind` are free to
-// disagree about who else might still pick a row up. See `KIND_WORDS` there, and note that
-// `403 M23`'s anchor moved with `SINCE_PHRASE`'s lines.
+// Shared kind and time wording is read by both queue and conversation cards.
 import {
   DID_WORDS,
   KIND_WORDS,
@@ -11,7 +8,6 @@ import {
   actionLinesOf,
   broaderLinesOf,
   isAPrimaryAnswer,
-  sinceWords,
   usePersonsQueue,
   namesakeSays,
   namesakesIn,
@@ -19,6 +15,7 @@ import {
   type PersonsQueueRow,
   type StalledWorkRow,
 } from '../lib/persons-queue'
+import { sinceWords } from '../lib/queue-time'
 import {
   BROADER_THAN_SHOWN,
   charactersNotShown,
