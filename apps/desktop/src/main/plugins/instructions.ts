@@ -7,7 +7,12 @@ export interface PluginInstructionEntry {
   readonly name?: string
   readonly description?: string
   readonly state: PluginState
-  readonly tools: 'all agents' | 'none'
+  /** Configured access only. Broker health must never manufacture a grant or an off setting. */
+  readonly tools: 'all agents' | 'none' | 'unknown'
+  /** Absent only on legacy instruction producers. This is independent of configured access. */
+  readonly toolHealth?: 'ready' | 'unavailable' | 'unknown'
+  /** Fixed-vocabulary `stage: cause` behind unavailable health, when known. */
+  readonly toolsCause?: string
   readonly service: string | null
 }
 export interface PluginInstructionSource {
@@ -43,7 +48,12 @@ export function readPluginInstructions(
           (entry.name === undefined || line(entry.name, 128)) &&
           (entry.description === undefined || line(entry.description, 240)) &&
           PLUGIN_STATES.includes(entry.state) &&
-          ['all agents', 'none'].includes(entry.tools) &&
+          ['all agents', 'none', 'unknown'].includes(entry.tools) &&
+          (entry.toolHealth === undefined ||
+            ['ready', 'unavailable', 'unknown'].includes(entry.toolHealth)) &&
+          (entry.toolsCause === undefined ||
+            (typeof entry.toolsCause === 'string' &&
+              /^[a-z][a-z0-9-]{0,63}(?:: [a-z][a-z0-9-]{0,63})?$/.test(entry.toolsCause))) &&
           (entry.service === null || line(entry.service, 128)) &&
           (entry.state !== 'Available' || (entry.tools === 'none' && entry.service === null)),
       ) ||
@@ -63,7 +73,7 @@ export function pluginInstructionParagraphs(
     PLUGIN_TRUST,
     ...entries.map(
       (entry) =>
-        `Plugins: ${entry.name ?? entry.id} — ${entry.state}; tools: ${entry.tools}; service: ${entry.service ?? 'none'}.${entry.description === undefined ? '' : ` ${entry.description}`}`,
+        `Plugins: ${entry.name ?? entry.id} — ${entry.state}; tools: ${entry.tools === 'none' ? 'none' : entry.toolHealth === 'unavailable' ? `unavailable${entry.toolsCause ? `: ${entry.toolsCause}` : ''}` : entry.toolHealth === 'unknown' ? 'unknown' : entry.tools}; service: ${entry.service ?? 'none'}.${entry.description === undefined ? '' : ` ${entry.description}`}`,
     ),
   ]
 }

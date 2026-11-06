@@ -255,6 +255,12 @@ it('cause formatting bounds cycles and survives hostile diagnostic properties', 
   })
   expect(() => pluginFailureCause(hostile)).not.toThrow()
 })
+it('cause diagnostics keep the real error text, including addresses and paths', () => {
+  const value = pluginFailureCause(
+    new Error('http://127.0.0.1:8123/mcp /fictional/private sdk-body-contents'),
+  )
+  expect(value).toBe('Error: http://127.0.0.1:8123/mcp /fictional/private sdk-body-contents')
+})
 it('catalogue logs retain the typed refusal code when its public Error message is generic', async () => {
   const root = await mkdtemp(join(tmpdir(), 'fictional-typed-catalogue-error-'))
   roots.push(root)

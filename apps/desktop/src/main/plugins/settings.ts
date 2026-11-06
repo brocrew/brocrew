@@ -3,8 +3,10 @@ import {
   PluginStartupDiagnosticSchema,
 } from '../../shared/plugin-settings'
 import { randomUUID } from 'node:crypto'
+import { inspect } from 'node:util'
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron'
 import { PluginSupervisorError } from './supervisor/protocol'
+import { managedPluginFailure } from '@brobot2/runtime'
 import { displayedDetailsHash } from './mutation-disclosure'
 import { PluginListError } from './catalogue/list-error'
 import {
@@ -31,6 +33,33 @@ import {
   type PluginScreenBounds,
   type PluginSettingsReply,
 } from '../../shared/plugin-settings'
+/**
+ * What a failed Settings request shows: the caught error's own message, its stack with every
+ * nested cause, and each typed code on that chain. Nothing is replaced by a generic stand-in.
+ */
+export function settingsFailureDetail(error: unknown): {
+  detail: string
+  stack: string
+  codes: string[]
+} {
+  const codes: string[] = []
+  const seen = new Set<unknown>()
+  for (
+    let one: unknown = error, depth = 0;
+    depth < 8 && one && typeof one === 'object' && !seen.has(one);
+    depth++
+  ) {
+    seen.add(one)
+    const code = (one as { code?: unknown }).code
+    if (typeof code === 'string' || typeof code === 'number') codes.push(String(code))
+    one = (one as { cause?: unknown }).cause
+  }
+  return {
+    detail: error instanceof Error ? error.message : inspect(error),
+    stack: inspect(error, { depth: 8, breakLength: Infinity }).slice(0, 32 * 1024),
+    codes,
+  }
+}
 /** Person-owned install/uninstall controller. Tests inject explicitly fictional fakes. */
 export interface PluginSettingsController {
   features?(): readonly string[]
@@ -153,6 +182,7 @@ export function registerPluginSettings(
               'installed',
               'priorityClamped',
               'toolsUnavailable',
+              'toolsCause',
               'canRestart',
               'installedVersion',
               'updateVersion',
@@ -173,6 +203,10 @@ export function registerPluginSettings(
               PluginStartupDiagnosticSchema.safeParse(card.startupDiagnostic).success)) &&
           (card.toolsUnavailable === undefined ||
             (card.state === 'Running' && card.toolsUnavailable === true)) &&
+          (card.toolsCause === undefined ||
+            (card.toolsUnavailable === true &&
+              typeof card.toolsCause === 'string' &&
+              /^[a-z][a-z0-9-]{0,63}(?:: [a-z][a-z0-9-]{0,63})?$/.test(card.toolsCause))) &&
           (card.canRestart === undefined ||
             (card.canRestart === true &&
               card.id === 'chrome' &&
@@ -515,6 +549,16 @@ export function registerPluginSettings(
         return { ok: true, cards: await catalogue() }
       } catch (error) {
         await created?.close().catch(() => {})
+        // Keep the typed refusal and say what actually happened: the caught message and stack,
+        // every typed code on its cause chain, and the known stage and cause.
+        const classified = managedPluginFailure(error, 'plugin-settings')
+        const failure = {
+          ...refused,
+          ...settingsFailureDetail(error),
+          stage: classified.pluginStage,
+          cause: classified.pluginCause,
+        }
+        console.error('[plugins] settings-request-failed', failure.stack)
         if (mutationContext) {
           const code = error instanceof PluginSupervisorError ? error.code : 'unavailable'
           const mutationFailure: PluginMutationFailure =
@@ -523,9 +567,9 @@ export function registerPluginSettings(
               : ['policy-refused', 'source-mismatch', 'network'].includes(code)
                 ? (code as PluginMutationFailure)
                 : 'unavailable'
-          return { ...refused, mutationFailure }
+          return { ...failure, mutationFailure }
         }
-        return refused
+        return failure
       }
     },
   )

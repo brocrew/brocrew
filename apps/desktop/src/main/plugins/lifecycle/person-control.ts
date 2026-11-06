@@ -23,6 +23,7 @@ const Request = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('list') }),
   z.strictObject({ kind: z.literal('list-v2') }),
   z.strictObject({ kind: z.literal('list-tool-health') }),
+  z.strictObject({ kind: z.literal('list-tool-cause') }),
   z.strictObject({ kind: z.literal('features') }),
   z.strictObject({ kind: z.literal('restart-chrome') }),
   z.strictObject({ kind: z.literal('mutation-policy'), catalogueDigest: Hex }),
@@ -255,6 +256,7 @@ export async function servePersonPluginControl(options: {
               features: [
                 ...PLUGIN_FRAMEWORK_FEATURES,
                 'tool-health-v1',
+                'tool-cause-v1',
                 ...(options.restartChrome ? ['chrome-recovery-v1'] : []),
                 ...(options.controller.preparedMutationFeature()
                   ? ['authors-v1', 'prepared-mutations-v1']
@@ -279,9 +281,19 @@ export async function servePersonPluginControl(options: {
               .map((card) => {
                 const legacy = { ...card }
                 delete legacy.toolsUnavailable
+                delete legacy.toolsCause
                 return legacy
               })
           case 'list-tool-health':
+            // Its clients validate strictly; the cause needs its own negotiated list.
+            return (await options.controller.status()).cards
+              .filter((card) => visible(card.id))
+              .map((card) => {
+                const health = { ...card }
+                delete health.toolsCause
+                return health
+              })
+          case 'list-tool-cause':
             return (await options.controller.status()).cards.filter((card) => visible(card.id))
           case 'restart-chrome':
             if (!options.restartChrome || !visible('chrome'))

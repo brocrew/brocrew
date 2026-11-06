@@ -95,6 +95,7 @@ async function live(
   const f = await fixture({
     deny: (id) => consumer.bridge?.deny(id),
     toolsUnavailable: (id) => consumer.bridge?.toolsUnavailable?.(id) ?? false,
+    toolsCause: (id) => consumer.bridge?.toolsCause?.(id),
     onChromeHostExit: (runId) => consumer.bridge?.hostExited?.(runId),
   })
   if (firstExit || firstStop) {
@@ -472,13 +473,26 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       expect((await f.controller.status()).cards[0]).not.toHaveProperty('toolsUnavailable')
     },
   )
-  it('records binding failure as a closed refusal without downstream names or error text', async () => {
+  it('records binding failure once with its stage, cause and real error message', async () => {
     const f = await live()
     const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
     f.binding.mockRejectedValueOnce(new Error('fictional-private-downstream-name'))
     try {
       expect(await f.bridge.routes(lease(), request(f.local.sink.workspaceId))).toEqual([])
       expect(log.mock.calls).toEqual([['Some plugin tools were refused.']])
+      const failures = f.diagnostic.mock.calls.filter(([, reason]) =>
+        ['binding-failed', 'route-open-failed'].includes(reason),
+      )
+      expect(failures).toHaveLength(2)
+      expect(failures[0]![2]).toMatchObject({
+        stage: 'route-binding',
+        cause: 'unknown',
+        correlation: expect.stringMatching(/^[a-f0-9-]{36}$/),
+        reason: 'fictional-private-downstream-name',
+      })
+      expect(failures[1]![2]).toEqual(failures[0]![2])
+      // The same fixed stage and cause reach the card, and from there the agent's launch line.
+      expect(f.bridge.toolsCause(failures[0]![0])).toBe('route-binding: unknown')
     } finally {
       log.mockRestore()
     }
@@ -792,7 +806,11 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
         })
         expect(f.binding).toHaveBeenCalledTimes(2)
         expect(f.call).toHaveBeenCalledOnce()
-        expect(f.diagnostic).toHaveBeenCalledWith('chrome', 'route-stale')
+        expect(f.diagnostic).toHaveBeenCalledWith(
+          'chrome',
+          'route-stale',
+          expect.objectContaining({ correlation: expect.any(String) }),
+        )
         expect((await f.controller.status()).cards[0]).toMatchObject({ state: 'Running' })
         expect((await f.controller.status()).cards[0]).not.toHaveProperty('toolsUnavailable')
       } finally {
