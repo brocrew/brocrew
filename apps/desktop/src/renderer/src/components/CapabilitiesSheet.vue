@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SheetShell from './SheetShell.vue'
 import { computed, reactive, ref, watch } from 'vue'
 import {
   CAPABILITY_FIELDS,
@@ -691,12 +692,17 @@ function onKey(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <section class="capabilities-sheet" data-cy="capabilities-sheet" @keydown="onKey">
-    <div class="sheet-header">
-      <div class="sheet-glyph">{{ profileSlug.slice(0, 1).toUpperCase() }}</div>
-      <div class="sheet-header-copy">
-        <strong data-cy="capabilities-title">{{ called }}</strong>
-        <!-- 🔴 **464 · WHOSE grant this is, said before anything else** (`460` F1, and `464` §1.2).
+  <SheetShell
+    :glyph="profileSlug.slice(0, 1).toUpperCase()"
+    style="--sheet-width: 660px; --sheet-body-min-height: auto"
+    class="capabilities-sheet"
+    data-cy="capabilities-sheet"
+    @keydown="onKey"
+    @close="emit('close')"
+  >
+    <template #header>
+      <strong data-cy="capabilities-title">{{ called }}</strong>
+      <!-- 🔴 **464 · WHOSE grant this is, said before anything else** (`460` F1, and `464` §1.2).
              ⛔ **It said *"Every rail below is enforced when an agent asks to create a
              conversation"*, and BOTH halves had gone wrong.** The verb is the one `456` took off
              this act, and a sentence that DESCRIBES which rails fire when goes stale every time
@@ -711,52 +717,43 @@ function onKey(event: KeyboardEvent): void {
              would sit directly above the paragraph saying there is no such identity. ⚠️ The
              sentence it replaces was vague enough to survive that state; this one is not, and a
              sentence that contradicts the paragraph under it is worse than the one removed. -->
-        <small v-if="identity" data-cy="capabilities-owner"
-          >This is {{ called }}’s own row: every grant below is stored on it and read when a
-          conversation is running as {{ called }}. Any agent may start a conversation as
-          {{ called }}, and that conversation holds these grants.</small
-        >
-      </div>
-      <span class="spacer"></span>
-      <button
-        class="icon-button"
-        type="button"
-        aria-label="Close"
-        data-cy="close-overlay"
-        @click="emit('close')"
+      <small v-if="identity" data-cy="capabilities-owner"
+        >This is {{ called }}’s own row: every grant below is stored on it and read when a
+        conversation is running as {{ called }}. Any agent may start a conversation as {{ called }},
+        and that conversation holds these grants.</small
       >
-        <svg class="icon"><use href="#i-x" /></svg>
-      </button>
-    </div>
+    </template>
 
-    <p v-if="!store.loaded.value" class="sheet-state" data-cy="capabilities-loading">
-      Reading the agent identities…
-    </p>
-    <p
-      v-else-if="store.loadError.value"
-      class="sheet-state err"
-      data-cy="capabilities-load-error"
-      role="alert"
-    >
-      <svg class="icon"><use href="#i-alert" /></svg>
-      <span>{{ store.loadError.value }}</span>
-    </p>
-    <!-- ⛔ **A profile with no row is a REAL state and this is what the surface does with it** (§4).
+    <template #state>
+      <p v-if="!store.loaded.value" class="sheet-state" data-cy="capabilities-loading">
+        Reading the agent identities…
+      </p>
+      <p
+        v-else-if="store.loadError.value"
+        class="sheet-state err"
+        data-cy="capabilities-load-error"
+        role="alert"
+      >
+        <svg class="icon"><use href="#i-alert" /></svg>
+        <span>{{ store.loadError.value }}</span>
+      </p>
+      <!-- ⛔ **A profile with no row is a REAL state and this is what the surface does with it** (§4).
          It is not an error and it is not an empty form: there is nothing to configure, because
          `setCapabilities` refuses to create the row that would make it configurable. ⚠️ Opening this
          sheet does not bring one into being. -->
-    <!-- ⚠️ **678 · re-worded (rule 8.1).** It said *"…in this project yet. An identity exists once a
+      <!-- ⚠️ **678 · re-worded (rule 8.1).** It said *"…in this project yet. An identity exists once a
          conversation has actually run as it"* — false since `419` (an identity is created with New
          agent, before any conversation) and never scoped to a project — and it named the spawn
          *rails*, a word this app shows a person nowhere else. ⚑ Now `agent-store.ts`' refusal, in
          the same words, rendered from the Team page's own button label. -->
-    <p v-else-if="!identity" class="sheet-state" data-cy="capabilities-no-row">
-      There is no agent identity called <code>{{ profileSlug }}</code
-      >, so there is nothing to configure — opening this sheet does not create one. Create it
-      {{ WHERE_AGENTS_ARE_CREATED }}, or one appears once a conversation has run as it.
-    </p>
+      <p v-else-if="!identity" class="sheet-state" data-cy="capabilities-no-row">
+        There is no agent identity called <code>{{ profileSlug }}</code
+        >, so there is nothing to configure — opening this sheet does not create one. Create it
+        {{ WHERE_AGENTS_ARE_CREATED }}, or one appears once a conversation has run as it.
+      </p>
+    </template>
 
-    <div v-else class="sheet-body">
+    <template v-if="identity && store.loaded.value && !store.loadError.value" #body>
       <div class="identity" data-cy="capabilities-identity">
         <div class="fact">
           <span>Slug</span><strong data-cy="capabilities-slug">{{ identity.slug }}</strong>
@@ -1172,12 +1169,12 @@ function onKey(event: KeyboardEvent): void {
         <svg class="icon"><use href="#i-alert" /></svg>
         <span>{{ saveRefusal }}</span>
       </p>
-    </div>
+    </template>
 
     <!-- ⛔ **The SAME condition the body is drawn under** (review). It was `v-if="identity"` alone, so
          a failed re-read drew the error line, no controls at all, and a live Save button — which
          would have written every field of a row nobody could see. -->
-    <div v-if="identity && store.loaded.value && !store.loadError.value" class="sheet-actions">
+    <template v-if="identity && store.loaded.value && !store.loadError.value" #actions>
       <!-- 🔴 **The other door HO-023 §2 promised** (423 relay 1). ⛔ **It does not save first**:
            this sheet's Save is its own gesture and a control that quietly committed an edit on
            the way past would be doing work nobody asked for — the grants a conversation reads are
@@ -1200,80 +1197,11 @@ function onKey(event: KeyboardEvent): void {
       >
         {{ saving ? 'Saving…' : 'Save' }}
       </button>
-    </div>
-  </section>
+    </template>
+  </SheetShell>
 </template>
 
 <style scoped>
-/* ⛔ **`min(…, 92vw)` and `max-height: 88vh`, never a flat width** — 335's rule. The reference
-   prototype clips its dispatch sheet because a fixed-width dialog sits inside an oversized frame;
-   ours is anchored to the WINDOW by `OverlayHost` and sized against it, and
-   `capabilities-sheet-fits.dom.test.ts` is what keeps both halves true. */
-.capabilities-sheet {
-  display: flex;
-  width: min(660px, 92vw);
-  max-height: 88vh;
-  flex-direction: column;
-  overflow: hidden;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-  box-shadow: var(--shadow);
-}
-
-.sheet-header {
-  display: flex;
-  min-height: var(--surface-header-h);
-  flex: 0 0 auto;
-  align-items: center;
-  padding: var(--space-5) var(--space-7) var(--space-5) var(--space-9);
-  border-bottom: var(--border-width) solid var(--line);
-  gap: var(--space-6);
-}
-
-.sheet-glyph {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 auto;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-md);
-  background: var(--panel-2);
-  color: var(--muted);
-  font: var(--fw-bold) var(--type-caption) / 1 var(--font-mono);
-  place-items: center;
-}
-
-.sheet-header-copy strong {
-  display: block;
-  color: var(--text);
-  font-size: var(--type-body);
-  font-weight: var(--fw-bold);
-}
-
-.sheet-header-copy small {
-  display: block;
-  margin-top: var(--space-2);
-  color: var(--muted);
-  font-size: var(--type-caption);
-}
-
-.spacer {
-  flex: 1;
-}
-
-.icon-button {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-md);
-  background: var(--wash-2);
-  color: var(--muted);
-  place-items: center;
-}
-
 .icon {
   width: 14px;
   height: 14px;
@@ -1297,16 +1225,6 @@ function onKey(event: KeyboardEvent): void {
 .identity-note.not-chosen {
   color: var(--waiting-text-label);
   font-weight: var(--fw-semibold);
-}
-
-/* ⚠️ `overflow-y: auto` here and `flex: 0 0 auto` on the header and the actions, so a short window
-   degrades to a scrollbar with Save still on screen rather than to a clipped sheet (335). */
-.sheet-body {
-  display: flex;
-  flex-direction: column;
-  padding: var(--space-8) var(--space-9);
-  overflow-y: auto;
-  gap: var(--space-7);
 }
 
 .identity {
@@ -1530,29 +1448,5 @@ function onKey(event: KeyboardEvent): void {
 .note .icon {
   flex: 0 0 auto;
   margin-top: 1px;
-}
-
-/* ⚑ **The launch gesture sits at the left end and the two about THIS sheet at the right** (423
-   relay 1) — `justify-content: flex-end` still spaces the right-hand pair, and the spacer between
-   is what keeps "open a conversation" from reading as a third step of saving. */
-.sheet-actions .spacer {
-  flex: 1;
-}
-
-.sheet-actions {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: flex-end;
-  padding: var(--space-6) var(--space-9);
-  border-top: var(--border-width) solid var(--line);
-  gap: var(--space-4);
-}
-
-/* ⚠️ Padding and size only — `button` and `button.primary` are global in `base.css`, and restating
-   them here would be a second answer free to drift from every other confirming surface. */
-.sheet-actions button {
-  padding: var(--space-4) var(--space-7);
-  font-size: var(--type-caption);
 }
 </style>

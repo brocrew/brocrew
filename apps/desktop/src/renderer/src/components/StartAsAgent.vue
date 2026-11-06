@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SheetShell from './SheetShell.vue'
 import { computed, ref, watch } from 'vue'
 import {
   agentName,
@@ -276,26 +277,19 @@ function startWith(text: string, _intent?: unknown, attachments: HandedPath[] = 
 </script>
 
 <template>
-  <section class="start-as-agent" data-cy="start-as-agent">
-    <div class="sheet-header">
-      <div class="sheet-glyph">{{ props.profileSlug.slice(0, 1).toUpperCase() }}</div>
-      <div class="sheet-header-copy">
-        <strong data-cy="start-as-agent-title">New conversation as {{ who }}</strong>
-        <small>It will run on {{ providerName(provider) }}, in the folder below.</small>
-      </div>
-      <span class="spacer"></span>
-      <button
-        class="icon-button"
-        type="button"
-        aria-label="Close"
-        data-cy="close-overlay"
-        @click="emit('close')"
-      >
-        <svg class="icon"><use href="#i-x" /></svg>
-      </button>
-    </div>
+  <SheetShell
+    :glyph="props.profileSlug.slice(0, 1).toUpperCase()"
+    style="--sheet-width: 620px; --sheet-body-padding: var(--space-8) var(--space-9) var(--space-6)"
+    class="start-as-agent"
+    data-cy="start-as-agent"
+    @close="emit('close')"
+  >
+    <template #header>
+      <strong data-cy="start-as-agent-title">New conversation as {{ who }}</strong>
+      <small>It will run on {{ providerName(provider) }}, in the folder below.</small>
+    </template>
 
-    <div class="sheet-body">
+    <template #body>
       <div class="field">
         <span class="lbl">Model</span>
         <ModelPicker
@@ -350,33 +344,34 @@ function startWith(text: string, _intent?: unknown, attachments: HandedPath[] = 
         {{ YOLO_MEANS }}
         <span v-if="yoloReach" data-cy="yolo-reach">{{ yoloReach }}</span>
       </p>
-    </div>
-
-    <!-- ⛔ **The SAME composer the front door uses** (013, 217 §1). Not a second implementation:
+    </template>
+    <template #footer>
+      <!-- ⛔ **The SAME composer the front door uses** (013, 217 §1). Not a second implementation:
          one `canSend`, one chip list, one picker call — and the first message IS the conversation,
          so this sheet can never create an empty one. -->
-    <!-- 🔴 **718 · `710` F-9 — the refusal, where the press was made.** ⚑ The launcher's own box —
+      <!-- 🔴 **718 · `710` F-9 — the refusal, where the press was made.** ⚑ The launcher's own box —
          its words, its register — because it is the same failure at the second door. ⚠️ The
          `data-cy` is on the SENTENCE, as the launcher's is, so a reader of it reads the host's words
          and nothing else. -->
-    <div v-if="props.error" class="blocker" data-cy="start-as-agent-refused">
-      <p class="b-head">
-        <svg class="icon"><use href="#i-alert" /></svg>The launch didn’t start
-      </p>
-      <p class="b-body" data-cy="start-as-agent-error">{{ props.error }}</p>
-    </div>
+      <div v-if="props.error" class="blocker" data-cy="start-as-agent-refused">
+        <p class="b-head">
+          <svg class="icon"><use href="#i-alert" /></svg>The launch didn’t start
+        </p>
+        <p class="b-body" data-cy="start-as-agent-error">{{ props.error }}</p>
+      </div>
 
-    <PromptComposer
-      :state="props.busy ? 'starting' : 'idle'"
-      :who="who"
-      :placeholder="`Tell ${who} what this conversation is about…`"
-      :draft="words"
-      :can-attach="false"
-      @send="startWith"
-      @interrupt="cancel"
-      @update:draft="(text: string) => (words = text)"
-    />
-  </section>
+      <PromptComposer
+        :state="props.busy ? 'starting' : 'idle'"
+        :who="who"
+        :placeholder="`Tell ${who} what this conversation is about…`"
+        :draft="words"
+        :can-attach="false"
+        @send="startWith"
+        @interrupt="cancel"
+        @update:draft="(text: string) => (words = text)"
+      />
+    </template>
+  </SheetShell>
 </template>
 
 <style scoped>
@@ -387,85 +382,9 @@ function startWith(text: string, _intent?: unknown, attachments: HandedPath[] = 
   color: var(--text-soft);
 }
 
-/* The sheet shell — declarations, never borrowed class names: `scoped` styles are per-component,
-   so a name shared with another file shares nothing. */
-.start-as-agent {
-  display: flex;
-  width: min(620px, 92vw);
-  max-height: 88vh;
-  flex-direction: column;
-  overflow: hidden;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-  box-shadow: var(--shadow);
-}
-
-.sheet-header {
-  display: flex;
-  min-height: var(--surface-header-h);
-  flex: 0 0 auto;
-  align-items: center;
-  padding: var(--space-5) var(--space-7) var(--space-5) var(--space-9);
-  border-bottom: var(--border-width) solid var(--line);
-  gap: var(--space-6);
-}
-
-.sheet-glyph {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 auto;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-md);
-  background: var(--panel-2);
-  color: var(--muted);
-  font: var(--fw-bold) var(--type-caption) / 1 var(--font-mono);
-  place-items: center;
-}
-
-.sheet-header-copy strong {
-  display: block;
-  color: var(--text);
-  font-size: var(--type-body);
-  font-weight: var(--fw-bold);
-}
-
-.sheet-header-copy small {
-  display: block;
-  margin-top: var(--space-2);
-  color: var(--muted);
-  font-size: var(--type-caption);
-}
-
-.spacer {
-  flex: 1;
-}
-
-.icon-button {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-md);
-  background: var(--wash-2);
-  color: var(--muted);
-  place-items: center;
-}
-
 .icon {
   width: 14px;
   height: 14px;
-}
-
-.sheet-body {
-  display: flex;
-  min-height: 0;
-  flex-direction: column;
-  padding: var(--space-8) var(--space-9) var(--space-6);
-  overflow-y: auto;
-  gap: var(--space-7);
 }
 
 .field {
