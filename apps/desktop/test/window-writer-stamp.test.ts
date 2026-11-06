@@ -350,45 +350,60 @@ describe('window writer revisions follow the selected facts', () => {
       usPerRow: number
     }[] = []
     const writes = 3000
-    for (let round = 0; round < 5; round++)
-      for (const leadWatchers of [0, 1, 8, 256]) {
-        const modes =
-          round % 2 === 0 ? (['plain', 'watched'] as const) : (['watched', 'plain'] as const)
-        for (const mode of modes) {
-          const writeDb = openDatabase(join(directory, `${round}-${leadWatchers}-${mode}.sqlite`))
-          try {
-            applyMigrations(writeDb, migrations)
-            createSessionStore(writeDb).create({
-              id: 'alpha',
-              provider: 'codex',
-              cwd: directory,
-              approvalMode: 'ask',
-              profileId: 'fictional',
-            })
-            if (mode === 'watched') {
-              const watched = windowWriterSampler(writeDb, () => true)
-              for (let i = 0; i < leadWatchers; i++)
-                watched({ ...leads, before: Number.MAX_SAFE_INTEGER - i })
-            }
-            const insert = writeDb.prepare(`INSERT INTO events
+    for (const leadWatchers of [0, 1, 8, 256]) {
+      const databases: AppDatabase[] = []
+      try {
+        // Keep an equally populated pair across rounds. Rebuilding and migrating forty databases
+        // (and autocommitting every warmup row) measured fixture I/O against the test's deadline,
+        // although none of that work belongs in the per-row counter measurement.
+        const prepare = (mode: 'plain' | 'watched') => {
+          const writeDb = openDatabase(join(directory, `${leadWatchers}-${mode}.sqlite`))
+          databases.push(writeDb)
+          applyMigrations(writeDb, migrations)
+          createSessionStore(writeDb).create({
+            id: 'alpha',
+            provider: 'codex',
+            cwd: directory,
+            approvalMode: 'ask',
+            profileId: 'fictional',
+          })
+          if (mode === 'watched') {
+            const watched = windowWriterSampler(writeDb, () => true)
+            expect(watched(routes)).not.toBeNull()
+            for (let i = 0; i < leadWatchers; i++)
+              expect(watched({ ...leads, before: Number.MAX_SAFE_INTEGER - i })).not.toBeNull()
+          }
+          const insert = writeDb.prepare(`INSERT INTO events
             (id, session_id, generation, ordinal, type, payload, created_at)
             VALUES (?, 'alpha', 0, ?, ?, ?, 1000)`)
+          writeDb.transaction(() => {
             insert.run('seed', 0, 'request_routed', '{"type":"request_routed","requestId":"seed"}')
             for (let i = 0; i < 100; i++)
               insert.run(`warm-${i}`, i + 1, 'text', '{"type":"text","text":"warm"}')
-            for (const kind of ['ordinary', 'relevant'] as const) {
-              const inputs = Array.from({ length: writes }, (_, i) => {
-                const type = kind === 'ordinary' ? (i % 2 ? 'status' : 'text') : 'request_resolved'
-                return {
-                  id: kind + i,
-                  ordinal: 101 + i + (kind === 'ordinary' ? 0 : writes),
-                  type,
-                  payload:
-                    type === 'status'
-                      ? '{"type":"status","state":"working"}'
-                      : JSON.stringify({ type, id: 'fictional', text: 'fictional stream' }),
-                }
-              })
+          })()
+          return { writeDb, insert }
+        }
+        const pair = { plain: prepare('plain'), watched: prepare('watched') }
+        for (let round = 0; round < 5; round++) {
+          const modes =
+            round % 2 === 0 ? (['plain', 'watched'] as const) : (['watched', 'plain'] as const)
+          for (const kind of ['ordinary', 'relevant'] as const) {
+            const inputs = Array.from({ length: writes }, (_, i) => {
+              const type = kind === 'ordinary' ? (i % 2 ? 'status' : 'text') : 'request_resolved'
+              return {
+                id: `${round}-${kind}-${i}`,
+                ordinal: 101 + round * writes * 2 + i + (kind === 'ordinary' ? 0 : writes),
+                type,
+                payload:
+                  type === 'status'
+                    ? '{"type":"status","state":"working"}'
+                    : JSON.stringify({ type, id: 'fictional', text: 'fictional stream' }),
+              }
+            })
+            // Adjacent measurements use the same inputs and starting row count. Alternate which
+            // side goes first, keeping payload construction and all setup outside both timers.
+            for (const mode of modes) {
+              const { writeDb, insert } = pair[mode]
               const began = performance.now()
               writeDb.transaction(() => {
                 for (const input of inputs)
@@ -405,11 +420,12 @@ describe('window writer revisions follow the selected facts', () => {
                 usPerRow: (elapsedMs * 1000) / writes,
               })
             }
-          } finally {
-            writeDb.close()
           }
         }
+      } finally {
+        for (const writeDb of databases) writeDb.close()
       }
+    }
     const evidence = process.env['BROBOT_WINDOW_WRITE_OVERHEAD']
     if (evidence !== undefined)
       writeFileSync(evidence, JSON.stringify(measurements, null, 2) + '\n')

@@ -47,10 +47,15 @@ const alive = (pid: number): boolean => {
     return false
   }
 }
-async function goneWithin(pid: number, ms: number): Promise<number | null> {
+async function goneAndDrainedWithin(
+  app: { pid: number; closedAt: () => number | null },
+  ms: number,
+): Promise<number | null> {
   const began = Date.now()
   while (Date.now() - began < ms) {
-    if (!alive(pid)) return Date.now() - began
+    // PID disappearance can precede the data/close events on the inherited stderr pipe. The
+    // closer owns that pipe too: only close means its final sentence has all been collected.
+    if (!alive(app.pid) && app.closedAt() !== null) return Date.now() - began
     await sleep(25)
   }
   return null
@@ -129,10 +134,47 @@ describe('the last-resort exit (294)', () => {
       await sleep(700)
       expect(alive(app.pid), 'it left on a signal it was written to ignore').toBe(true)
 
-      const took = await goneWithin(app.pid, 8_000)
-      expect(took, 'the app that would not leave is still here').not.toBeNull()
+      const took = await goneAndDrainedWithin(app, 8_000)
+      expect(took, 'the app or its closer output pipe is still open').not.toBeNull()
       expect(app.said()).toContain('is being stopped now')
     } finally {
+      app.kill()
+    }
+  })
+
+  it('collects inherited closer output even when the app pid disappears first', async () => {
+    const file = join(scratch(), 'delayed-output.cjs')
+    const release = join(scratch(), 'release-output')
+    writeFileSync(
+      file,
+      `const {spawn}=require('node:child_process');` +
+        // The test opens this gate only after observing PID disappearance. The inherited pipe
+        // stays open until then, so a PID-only observer cannot accidentally collect the line.
+        `const program=${JSON.stringify(
+          `const {existsSync}=require('node:fs');` +
+            `const tick=setInterval(()=>{if(existsSync(${JSON.stringify(release)})){` +
+            `clearInterval(tick);console.error('delayed closer output')}},25);` +
+            `setTimeout(()=>process.exit(1),8000).unref();`,
+        )};` +
+        `spawn(process.execPath,['-e',program],{detached:true,stdio:['ignore','inherit','inherit']}).unref();` +
+        `require('node:fs').writeSync(2,'stubborn '+process.pid+'\\n');process.exit(0);`,
+    )
+    const app = await launch(file)
+    expect(Number.isInteger(app.pid)).toBe(true)
+    try {
+      const stopped = goneAndDrainedWithin(app, 8_000)
+      let settled = false
+      void stopped.then(() => (settled = true))
+      const until = Date.now() + 8_000
+      while (Date.now() < until && alive(app.pid)) await sleep(25)
+      expect(alive(app.pid)).toBe(false)
+      await sleep(50)
+      expect(settled, 'PID disappearance alone completed the observation').toBe(false)
+      writeFileSync(release, '')
+      expect(await stopped).not.toBeNull()
+      expect(app.said()).toContain('delayed closer output')
+    } finally {
+      writeFileSync(release, '')
       app.kill()
     }
   })
