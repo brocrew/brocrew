@@ -366,8 +366,11 @@ export function captureSavedMethodDeletion(
   const read = catalog(inputs, seams)
   const name = read.names.find((one) => keyOf(one, read.indexName) === selection.key)
   if (name === undefined) throw new Refused('missing')
-  const selected = item(inputs, read, name, seams)
-  if (!selected.canDelete) throw new Error(`${join(inputs.folder, name)}: cannot be deleted`)
+  if (read.indexProblem !== undefined)
+    throw new Error(
+      `${join(inputs.folder, read.indexName)}: ${read.indexCause ?? read.indexProblem}`,
+    )
+  if (read.truncated) throw new Error(`${inputs.folder}: method listing exceeded its read bound`)
   const captured = (file: string) =>
     image(
       inputs,
