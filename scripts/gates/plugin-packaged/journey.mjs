@@ -863,23 +863,46 @@ export async function journey(root) {
     )
     const cards = await bad.cdp.evaluate("return await window.api.plugins.request({kind:'list'})")
     sameTamperInstallState(badBaseline, observeTamperInstallState(root, badGlobal))
+    console.error('tamper replies', { availability, refused, cards })
+    const tamperCondition = (name, value) => {
+      console.error('tamper condition', name, value)
+      return value
+    }
     requireCheck(
       summary,
       'tamperedArchiveRefused',
-      availability?.ok === true &&
-        availability.available === true &&
-        refused?.ok === false &&
-        refused.detail === 'The package files do not match the selected bytes.' &&
-        cards?.ok === true &&
-        Array.isArray(cards.cards) &&
-        cards.cards.every((card) => card.installed === false) &&
-        badRuns.length === 0 &&
-        observeRunNames(root, badGlobal).length === 0 &&
-        !fs.existsSync(path.join(badGlobal, 'package-vault', tampered.ref.sha256)) &&
-        !fs.existsSync(path.join(badGlobal, 'host/data/chrome/profiles.json')) &&
-        noBrowser() &&
-        readOwned(badMarker).equals(Buffer.from('fictional-owned-profile-data\n')) &&
-        readOwned(badDownload).equals(Buffer.from('fictional-kept-download\n')),
+      tamperCondition('availability-ok', availability?.ok === true) &&
+        tamperCondition('availability-available', availability.available === true) &&
+        tamperCondition('inspection-refused', refused?.ok === false) &&
+        tamperCondition(
+          'inspection-byte-mismatch',
+          refused.detail === 'The package files do not match the selected bytes.',
+        ) &&
+        tamperCondition('list-ok', cards?.ok === true) &&
+        tamperCondition('cards-array', Array.isArray(cards.cards)) &&
+        tamperCondition(
+          'cards-uninstalled',
+          cards.cards.every((card) => card.installed === false),
+        ) &&
+        tamperCondition('baseline-runs-empty', badRuns.length === 0) &&
+        tamperCondition('current-runs-empty', observeRunNames(root, badGlobal).length === 0) &&
+        tamperCondition(
+          'archive-not-cached',
+          !fs.existsSync(path.join(badGlobal, 'package-vault', tampered.ref.sha256)),
+        ) &&
+        tamperCondition(
+          'profile-config-absent',
+          !fs.existsSync(path.join(badGlobal, 'host/data/chrome/profiles.json')),
+        ) &&
+        tamperCondition('browser-absent', noBrowser()) &&
+        tamperCondition(
+          'profile-marker-unchanged',
+          readOwned(badMarker).equals(Buffer.from('fictional-owned-profile-data\n')),
+        ) &&
+        tamperCondition(
+          'download-unchanged',
+          readOwned(badDownload).equals(Buffer.from('fictional-kept-download\n')),
+        ),
     )
     await stopApp(bad)
     step = 'alternate-source-acceptance'
