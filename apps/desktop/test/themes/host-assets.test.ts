@@ -74,7 +74,7 @@ describe('theme asset registry and scheme', () => {
     expect(
       await themeAssetResponse(themeAssetUrl('mine', own.path, own.version), store, read),
     ).toEqual({ bytes: RED_PNG, contentType: 'image/png' })
-    expect(read).toHaveBeenCalledWith(own.root, own.path, RED_PNG.length)
+    expect(read).toHaveBeenCalledWith(own.root, own.path, LIMITS.pictureBytes)
     const reading = store.reading('mine')
     if (!('theme' in reading)) throw new Error('expected fictional reading')
     const effect = reading.theme?.effects?.[0]
@@ -136,25 +136,84 @@ describe('theme asset registry and scheme', () => {
     expect(read).toHaveBeenCalledTimes(1)
   })
 
-  it('refuses a changed digest or size and a leaf link after admission', async () => {
+  it('serves a valid edited picture with different content and length after admission', async () => {
     const folder = await putTheme(fixture.library, 'mine', childTheme('mine'), {
       'assets/red.png': RED_PNG,
     })
     const store = fixture.store()
     await store.start()
     const url = themeAssetUrl('mine', 'assets/red.png')
-    expect(await themeAssetResponse(url, store)).not.toBeNull()
-    const changed = Buffer.from(RED_PNG)
-    changed[changed.length - 1] = changed[changed.length - 1]! ^ 1
+    expect(await themeAssetResponse(url, store)).toEqual({
+      bytes: RED_PNG,
+      contentType: 'image/png',
+    })
+    const changed = await readFile(
+      new URL('../../resources/themes/crew-night/assets/logo.png', import.meta.url),
+    )
+    expect(changed).not.toEqual(RED_PNG)
+    expect(changed.length).not.toBe(RED_PNG.length)
     await writeFile(join(folder, 'assets/red.png'), changed)
-    expect(await themeAssetResponse(url, store)).toBeNull()
-    await writeFile(join(folder, 'assets/red.png'), Buffer.concat([RED_PNG, Buffer.from([0])]))
-    expect(await themeAssetResponse(url, store)).toBeNull()
+    expect(await themeAssetResponse(url, store)).toEqual({
+      bytes: changed,
+      contentType: 'image/png',
+    })
+  })
+
+  it('names a missing or denied picture and preserves its system cause', async () => {
+    const folder = await putTheme(fixture.library, 'mine', childTheme('mine'), {
+      'assets/red.png': RED_PNG,
+    })
+    const store = fixture.store()
+    await store.start()
+    const path = join(folder, 'assets/red.png')
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await rm(path)
+    expect(await themeAssetResponse(themeAssetUrl('mine', 'assets/red.png'), store)).toBeNull()
+    expect(warning).toHaveBeenLastCalledWith(
+      expect.stringContaining(path),
+      expect.objectContaining({ code: 'ENOENT' }),
+    )
+    await writeFile(path, RED_PNG)
+    const denied = Object.assign(new Error(`EACCES: permission denied, open '${path}'`), {
+      code: 'EACCES',
+    })
+    const read = (root: string, file: string, maximum: number) =>
+      readThemeFile(root, file, maximum, {
+        ...THEME_READ_FILES,
+        open: async () => {
+          throw denied
+        },
+      })
+    expect(
+      await themeAssetResponse(themeAssetUrl('mine', 'assets/red.png'), store, read),
+    ).toBeNull()
+    expect(warning).toHaveBeenLastCalledWith(expect.stringContaining(path), denied)
+  })
+
+  it('keeps genuine format and maximum-size bounds for edited pictures', async () => {
+    const folder = await putTheme(fixture.library, 'mine', childTheme('mine'), {
+      'assets/red.png': RED_PNG,
+    })
+    const store = fixture.store()
+    await store.start()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await writeFile(join(folder, 'assets/red.png'), 'not a picture')
+    expect(await themeAssetResponse(themeAssetUrl('mine', 'assets/red.png'), store)).toBeNull()
+    await writeFile(join(folder, 'assets/red.png'), Buffer.alloc(LIMITS.pictureBytes + 1))
+    expect(await themeAssetResponse(themeAssetUrl('mine', 'assets/red.png'), store)).toBeNull()
+  })
+
+  it('retains the unrelated theme leaf-link policy', async () => {
+    const folder = await putTheme(fixture.library, 'mine', childTheme('mine'), {
+      'assets/red.png': RED_PNG,
+    })
+    const store = fixture.store()
+    await store.start()
     const outside = join(fixture.outside, 'red.png')
     await writeFile(outside, RED_PNG)
     await rm(join(folder, 'assets/red.png'))
     await symlink(outside, join(folder, 'assets/red.png'))
-    expect(await themeAssetResponse(url, store)).toBeNull()
+    expect(await themeAssetResponse(themeAssetUrl('mine', 'assets/red.png'), store)).toBeNull()
     expect(await readFile(outside)).toEqual(RED_PNG)
   })
 

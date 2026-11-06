@@ -1,14 +1,9 @@
-import { lstat, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, lstat, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { THEME_JSON_BYTES } from '../../src/main/themes/files'
 import { CLASSIC_THEME } from '../../src/main/themes/defaults'
-import {
-  ACTIVE_THEME_FILE,
-  themeRoots,
-  themeWriteLock,
-  writeActiveTheme,
-} from '../../src/main/themes/state'
+import { ACTIVE_THEME_FILE, themeRoots, writeActiveTheme } from '../../src/main/themes/state'
 import { LIMITS } from '../../src/shared/themes/assets'
 import type { ThemeSaveInput } from '../../src/shared/theme-library'
 import { DEFINED } from './fixtures'
@@ -881,28 +876,18 @@ describe('theme intake and publication', () => {
     expect(await readdir(fixture.userData)).toEqual([])
   })
 
-  it('refuses a second writer holding the same id lock and succeeds after release', async () => {
-    const first = fixture.store()
-    const second = fixture.store({ userData: fixture.otherUserData })
-    await first.start()
-    await second.start()
-    const release = await themeWriteLock(fixture.library, 'locked')
-    expect(release).not.toBeNull()
-    if (!release) throw new Error('expected fictional lock')
-    try {
-      expect(await second.save({ theme: childTheme('locked') })).toMatchObject({
-        outcome: 'refused',
-        problems: [{ at: 'theme.json', says: 'fictional:busy' }],
-      })
-      expect(await readdir(fixture.library)).toEqual(['.theme-locked.lock'])
-    } finally {
-      await release()
-    }
-    expect(await first.save({ theme: childTheme('locked') })).toMatchObject({ outcome: 'ok' })
-    expect((await second.refresh()).themes).toEqual(
+  it('saves normally after a crashed writer left an old lock directory', async () => {
+    const store = fixture.store()
+    await store.start()
+    await mkdir(join(fixture.library, '.theme-locked.lock'))
+    expect(await store.save({ theme: childTheme('locked') })).toMatchObject({
+      outcome: 'ok',
+      id: 'locked',
+    })
+    expect((await store.refresh()).themes).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: 'locked', status: 'ok' })]),
     )
-    await cleanLibrary()
+    expect(await readdir(fixture.library)).toContain('.theme-locked.lock')
   })
 })
 

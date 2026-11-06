@@ -1,5 +1,4 @@
 import type { ThemeStoreProblem } from './store'
-import { PRODUCT_NAME } from '../../shared/product-name'
 
 const PROBLEMS: Readonly<Record<ThemeStoreProblem, string>> = {
   unreadable: 'The file could not be read.',
@@ -17,7 +16,6 @@ const PROBLEMS: Readonly<Record<ThemeStoreProblem, string>> = {
   base64: 'The asset is not valid base64.',
   decode: 'The picture could not be decoded.',
   save: 'The theme could not be saved.',
-  busy: `Another ${PRODUCT_NAME} window is saving this theme. Try again when it finishes.`,
   choice: 'The theme choice could not be saved.',
   trash: 'The theme could not be moved to the Trash.',
   'open-folder': 'The themes folder could not be opened.',
