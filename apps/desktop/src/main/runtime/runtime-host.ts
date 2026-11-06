@@ -1027,6 +1027,7 @@ import type { LimitsDisplayAnswer } from '../../shared/limits-display'
 import type { LimitsReaderLifetime } from '../db/limits-reader-lifetime'
 import type { WorkSearchReader } from '../db/work-search-reader'
 import type { WorkSearchQuery, WorkSearchResult } from '../../shared/work-search'
+import { WorkSearch } from './work-search'
 import {
   completeCanonicalLimits,
   freshLimitsSnapshot,
@@ -6773,6 +6774,7 @@ export class RuntimeHost implements LiveHost {
   private readonly startGapMs: number
   /** The conversations a person archived ({@link RuntimeHostDeps.archived}). */
   private readonly archived: ArchivedConversations
+  private readonly workSearch: WorkSearch
   /**
    * The conversations an archive or a delete is stopping now, with which: nothing starts them until
    * it is over ({@link resumeSession}), and no notice, held message or schedule asks to.
@@ -7545,6 +7547,7 @@ export class RuntimeHost implements LiveHost {
     }
 
     this.archived = deps.archived ?? archivedInMemory()
+    this.workSearch = new WorkSearch(this.deps, this.launches, this.archived)
     this.closeDrainTimeoutMs = deps.closeDrainTimeoutMs ?? DEFAULT_CLOSE_DRAIN_TIMEOUT_MS
     this.interruptWaitMs = deps.interruptWaitMs ?? DEFAULT_INTERRUPT_WAIT_MS
     this.launchTimeouts = providerRecord((provider) => {
@@ -22760,35 +22763,11 @@ export class RuntimeHost implements LiveHost {
   }
 
   async searchWork(asAgent: string, input: WorkSearchQuery): Promise<WorkSearchResult> {
-    if (
-      this.deps.store.conversationBinding(asAgent) === null ||
-      this.deps.workSearchReader === undefined
-    )
-      return { ok: false, reason: 'unavailable' }
-    try {
-      return await this.deps.workSearchReader.read(asAgent, input)
-    } catch {
-      return { ok: false, reason: 'unavailable' }
-    }
+    return this.workSearch.searchWork(asAgent, input)
   }
 
   async searchPastWork(asAgent: string, words: string): Promise<PastWorkSearchResult> {
-    const source = this.deps.store.pastWorkSearchSource(asAgent)
-    if (source === null || this.deps.pastWorkSearchReader === undefined || this.launches.closed)
-      return { ok: false, reason: 'unavailable' }
-    const found = await this.deps.pastWorkSearchReader.read(source, asAgent, words)
-    if (this.launches.closed) return { ok: false, reason: 'unavailable' }
-    if (!found.ok) return found
-    const current = this.deps.store.pastWorkSearchSource(asAgent)
-    if (current === null || current.profile !== source.profile)
-      return { ok: false, reason: 'unavailable' }
-    const allowed = new Set(current.versions.map(([conversation]) => conversation))
-    if (found.hits.some((hit) => !allowed.has(hit.conversation)))
-      return { ok: false, reason: 'unavailable' }
-    return {
-      ok: true,
-      hits: found.hits.map((hit) => ({ ...hit, archived: this.archived.has(hit.conversation) })),
-    }
+    return this.workSearch.searchPastWork(asAgent, words)
   }
 
   /**
