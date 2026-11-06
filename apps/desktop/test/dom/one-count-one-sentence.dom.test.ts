@@ -1,3 +1,10 @@
+import type {
+  LedgerWalk,
+  LedgerWalkKind,
+  PersonsDecision,
+  PersonsQuestion,
+} from '../../src/shared/question-contracts'
+import type { WorkGivenOut } from '../../src/shared/task-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
@@ -11,14 +18,9 @@ import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { forestView } from '../../src/renderer/src/lib/the-forest'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import type { AttentionRequest } from '../../src/renderer/src/lib/attention'
-import type {
-  LedgerWalk,
-  LedgerWalkKind,
-  PersonsDecision,
-  PersonsQuestion,
-} from '../../src/shared/questions'
+
 import type { StalledWork } from '../../src/shared/stalled-work'
-import type { WorkGivenOut } from '../../src/shared/tasks'
+
 import type { ForestNode, TheWholeForest } from '../../src/shared/the-whole-forest'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import { META, drawerProps, mount, unmountAll, visible } from './harness'

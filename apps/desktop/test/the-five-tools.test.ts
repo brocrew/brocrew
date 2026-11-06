@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -40,7 +41,6 @@ import {
   DEFAULT_PROFILE_ID,
   DEFAULT_PROFILE_LABEL,
   type RuntimeEventMessage,
-  type TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 

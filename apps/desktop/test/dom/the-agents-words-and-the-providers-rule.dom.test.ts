@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
@@ -14,7 +15,6 @@ import {
   type AgentIdentity,
   type CreatedSession,
   type RuntimeEventMessage,
-  type TranscriptEvent,
 } from '../../src/shared/runtime-ipc'
 import { assertDrawn, drawnReady } from './drawn'
 import {

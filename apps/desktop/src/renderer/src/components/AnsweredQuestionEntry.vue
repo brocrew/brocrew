@@ -1,10 +1,8 @@
 <script setup lang="ts">
+import type { AnsweredQuestion } from '../../../shared/human-answer-contracts'
+
 import { computed } from 'vue'
-import type {
-  AgentIdentity,
-  AnsweredQuestion,
-  QueuedMessageDisclosure,
-} from '../../../shared/runtime-ipc'
+import type { AgentIdentity, QueuedMessageDisclosure } from '../../../shared/runtime-ipc'
 import type { AnswerItem } from '../lib/answered-question'
 import type { FilesOnScreen } from '../lib/files-kept'
 import type { WorkEdge } from '../../../shared/who-called-whom'

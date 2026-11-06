@@ -1,3 +1,4 @@
+import type { LedgerWalk } from '../../shared/question-contracts'
 import { SUPPORTED_PROVIDERS } from '@brobot2/shared'
 import { providerDefinitions } from '../providers/definitions'
 import { CHANNEL_REFUSAL_SENTENCES } from '@brobot2/runtime'
@@ -17,7 +18,7 @@ import {
 } from '../../shared/digest'
 import { PERMANENCE_SAID, isRailPermanence } from '../../shared/refusals'
 import { nothingRecordsWho, whoDidItSays } from '../../shared/who-did-it'
-import { whereItWent, type LedgerWalk } from '../../shared/questions'
+import { whereItWent } from '../../shared/questions'
 import { ASKED_TO_STOP } from '../../shared/how-work-stopped'
 // ⚑ **D-016 · a piece is its label beside its title** (`shared/piece-called`), in `shared/` so main
 // spells it as the window does — and the `tool-answered` line quotes tools' receipts, which name

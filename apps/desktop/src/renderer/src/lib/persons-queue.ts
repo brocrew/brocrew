@@ -1,17 +1,17 @@
-import { computed, reactive, ref, type ComputedRef, type Ref } from 'vue'
-import { NOTHING_NAMED_THE_WORK, WALK_COVERS } from '../../../shared/questions'
 import type {
   AboutWork,
   ChainHop,
   LedgerWalk,
-  // ⚑ **619 · what the asker offered** — the one part a question's card has where its words are
-  // not in this window (UI-009, D-046).
+  LedgerWalkKind,
   OfferedAnswer,
   PersonsDecision,
   PersonsQuestion,
-  LedgerWalkKind,
   WorkInHand,
-} from '../../../shared/questions'
+} from '../../../shared/question-contracts'
+import type { McpServerRequestForAPerson } from '../../../shared/conversation-events'
+import { computed, reactive, ref, type ComputedRef, type Ref } from 'vue'
+import { NOTHING_NAMED_THE_WORK, WALK_COVERS } from '../../../shared/questions'
+
 // ⚑ **557 · the second band the queue carries beside its rows** — see {@link StalledWorkView} for
 // the table that decides it is a band and not a fourth row.
 import { stalledWorkKey, stalledWorkSaid } from '../../../shared/stalled-work'
@@ -25,7 +25,7 @@ import { waitingOnWhoWroteKey, type WaitingOnWhoWrote } from '../../../shared/wa
 // ⚑ **D-017 · R19 · the asks against an identity's rules, carried beside the rows** — see
 // {@link InstructionAsksView} for why they are beside them and not one of them.
 import type { InstructionAskWaiting } from '../../../shared/own-instructions'
-import type { AnswerAck, McpServerRequestForAPerson } from '../../../shared/runtime-ipc'
+import type { AnswerAck } from '../../../shared/runtime-ipc'
 // ⚑ **533 · the wall the queue carries beside its rows** — see {@link ProviderLimitsView} for why
 // it is beside them and not one of them.
 import { providerConditions } from '../../../shared/provider-limit'

@@ -1,3 +1,6 @@
+import { TASK_STATES } from '../src/shared/task-contracts'
+import type { PieceRow } from '../src/shared/task-contracts'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -21,12 +24,8 @@ import {
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { clockTime } from '../src/shared/clock'
-import { TASK_IS_OPEN, TASK_STATES, derivePieces, type PieceRow } from '../src/shared/tasks'
-import type {
-  PersistedEventInfo,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { TASK_IS_OPEN, derivePieces } from '../src/shared/tasks'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * D-025 · a reply refused for an ended piece says who ended it and when.

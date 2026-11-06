@@ -1,6 +1,7 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import type { SessionRef } from '@brobot2/runtime'
-import { quotedLiteral, type TranscriptEvent } from '../src/shared/runtime-ipc'
+import { quotedLiteral } from '../src/shared/runtime-ipc'
 import { clockTime, clockTimeFrom } from '../src/shared/clock'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { composeReadable } from '../src/renderer/src/lib/readable-export'

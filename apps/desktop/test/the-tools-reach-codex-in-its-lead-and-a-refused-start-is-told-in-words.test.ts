@@ -1,3 +1,5 @@
+import type { SessionInstructions } from '../src/shared/instruction-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -69,11 +71,7 @@ import { A_PERSON_SENT_IT } from '../src/main/runtime/turn-origin'
 import { toldView } from '../src/renderer/src/lib/told'
 import { whoseGroups } from '../src/renderer/src/lib/whose-groups'
 import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
-import type {
-  RuntimeEventMessage,
-  SessionInstructions,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble as GatedDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 

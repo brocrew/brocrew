@@ -1,3 +1,10 @@
+import type {
+  AboutWork,
+  AboutWorkIs,
+  RoutedRequest,
+  WorkInHand,
+} from '../src/shared/question-contracts'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
@@ -17,14 +24,9 @@ import {
   NOTHING_NAMED_THE_WORK,
   aboutTheWork,
   escalationChain,
-  type AboutWork,
-  type AboutWorkIs,
-  type RoutedRequest,
-  type WorkInHand,
 } from '../src/shared/questions'
 import { derivePieces, openWorkOf, workNamed } from '../src/shared/tasks'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
-import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **474 · what a request is about, and whose it is** — `463`'s F4 and F2, which are two halves of

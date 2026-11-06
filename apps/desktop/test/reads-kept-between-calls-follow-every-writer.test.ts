@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -7,7 +8,6 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { WALL_QUEUE_AT_MOST } from '../src/main/db/provider-wall-watch'
 import { createSessionStore, rowsUnreadOnce, type SessionStore } from '../src/main/db/session-store'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
 
 /**
  * The reads the main thread repeats are kept between calls and carried forward with the rows

@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, reactive, ref, type Component } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
@@ -9,7 +10,7 @@ import {
   createWindow,
   type WindowState,
 } from '../../src/renderer/src/lib/transcript-window'
-import type { CreatedSession, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { CreatedSession } from '../../src/shared/runtime-ipc'
 import { drawerProps, META, mount, paneProps, unmountAll, type Mounted } from './harness'
 
 /**

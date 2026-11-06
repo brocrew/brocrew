@@ -1,3 +1,5 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import type { WorkReport } from '../src/shared/task-contracts'
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -10,8 +12,6 @@ import {
   type TranscriptState,
 } from '../src/renderer/src/lib/transcript'
 import { workIsWith } from '../src/renderer/src/lib/where-the-work-is'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
-import type { WorkReport } from '../src/shared/tasks'
 
 /**
  * 🔴 **A report that names a conversation, and can take you there** (506).

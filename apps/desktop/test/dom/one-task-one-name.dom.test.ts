@@ -1,3 +1,12 @@
+import type {
+  AboutWork,
+  LedgerWalk,
+  PersonsDecision,
+  PersonsQuestion,
+  RoutedRequest,
+  WorkInHand,
+} from '../../src/shared/question-contracts'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { expandAgentCards } from './harness'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
@@ -14,15 +23,9 @@ import {
   chainReading,
   chainSentence,
   escalationChain,
-  type AboutWork,
-  type LedgerWalk,
-  type PersonsDecision,
-  type PersonsQuestion,
-  type RoutedRequest,
-  type WorkInHand,
 } from '../../src/shared/questions'
 import type { StalledWork } from '../../src/shared/stalled-work'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { mount, unmountAll, visible } from './harness'
 
 /**

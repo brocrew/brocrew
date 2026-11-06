@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import type { AgentState as OneState } from '../../../shared/agent-state-contracts'
+
 import type { ProviderLimitDisplay } from '../lib/provider-limit-status'
 import { computed } from 'vue'
-import type { AgentState as OneState } from '../../../shared/agent-state'
+
 import { plateWord, priorityDotToken, standingOf, type AgentFacets } from '../lib/agent-state'
 import AgentState from './AgentState.vue'
 

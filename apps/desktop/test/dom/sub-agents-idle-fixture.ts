@@ -1,8 +1,9 @@
+import type { AgentState } from '../../src/shared/agent-state-contracts'
 import type { AgentIdentity, ResumableSessionInfo } from '../../src/shared/runtime-ipc'
 import type { AgentPanelSubAgent } from '../../src/renderer/src/lib/agent-panel'
 import type { CastReading } from '../../src/renderer/src/lib/working-together'
 import { facetsOfState, type RailSays } from '../../src/renderer/src/lib/agent-state'
-import { agentStateWords, type AgentState } from '../../src/shared/agent-state'
+import { agentStateWords } from '../../src/shared/agent-state'
 import { panelIdentities } from './sub-agents-workers-fixture'
 import { workerRows } from './parallel-workers-fixture'
 

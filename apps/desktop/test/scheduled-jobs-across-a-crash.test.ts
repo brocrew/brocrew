@@ -1,3 +1,5 @@
+import type { AgentState } from '../src/shared/agent-state-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -23,8 +25,8 @@ import {
   scheduleAttemptsFile,
   writeKeptAttempts,
 } from '../src/main/schedule-attempts-file'
-import type { AgentState } from '../src/shared/agent-state'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * # Scheduled jobs across a crash

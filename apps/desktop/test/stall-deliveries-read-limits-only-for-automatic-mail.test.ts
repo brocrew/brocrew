@@ -1,3 +1,5 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import type { PieceRow } from '../src/shared/task-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -17,8 +19,8 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { THE_PERSON_AT_A_WINDOW } from '../src/main/runtime/turn-origin'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { MainThreadWork } from '../src/main/stall-watch'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
-import { aStallItsGiverCanBeToldOf, type PieceRow } from '../src/shared/tasks'
+
+import { aStallItsGiverCanBeToldOf } from '../src/shared/tasks'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 const NOW = Date.UTC(2026, 9, 5, 9)

@@ -1,10 +1,11 @@
+import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import WorkingTogether from '../../src/renderer/src/components/WorkingTogether.vue'
 import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { AgentPanelSubAgent } from '../../src/renderer/src/lib/agent-panel'
 import { DRAWER_W_MAX } from '../../src/renderer/src/lib/drawer'
-import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/questions'
+
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import { META, mount, unmountAll } from './harness'
 

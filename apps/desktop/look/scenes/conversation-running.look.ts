@@ -1,5 +1,6 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { META, paneProps, record } from '../../test/dom/harness'
 import { scene } from '../capture'
 

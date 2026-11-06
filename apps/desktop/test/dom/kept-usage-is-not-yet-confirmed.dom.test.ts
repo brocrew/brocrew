@@ -1,3 +1,4 @@
+import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import ProviderCard from '../../src/renderer/src/components/ProviderCard.vue'
@@ -5,11 +6,7 @@ import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
 import { createModelLists } from '../../src/renderer/src/lib/model-lists'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { providerConditions, type ProviderLimitSeen } from '../../src/shared/provider-limit'
-import type {
-  ModelList,
-  ProviderUsageReading,
-  ProvidersChangedMessage,
-} from '../../src/shared/runtime-ipc'
+import type { ProviderUsageReading, ProvidersChangedMessage } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, type Mounted } from './harness'
 import { usageCards } from './usage-cards'
 

@@ -1,3 +1,8 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import type {
+  ConversationWait,
+  WhatEachConversationIsWaitingOn,
+} from '../src/shared/task-contracts'
 import { describe, expect, it } from 'vitest'
 import {
   STANDINGS,
@@ -17,13 +22,8 @@ import { everyFacetState } from '../src/renderer/src/lib/status-projection'
 import { WORK_STATE_WORD } from '../src/renderer/src/lib/work-report'
 import { applyEvent } from '../src/renderer/src/lib/transcript'
 import { createSessionRecord, type SessionRecord } from '../src/renderer/src/lib/session-record'
-import type { CreatedSession, TranscriptEvent } from '../src/shared/runtime-ipc'
-import {
-  CONVERSATION_WAITS,
-  TASK_WAITS,
-  type ConversationWait,
-  type WhatEachConversationIsWaitingOn,
-} from '../src/shared/tasks'
+import type { CreatedSession } from '../src/shared/runtime-ipc'
+import { CONVERSATION_WAITS, TASK_WAITS } from '../src/shared/tasks'
 
 /**
  * 🔴 **636 · three surfaces read the new field, and one word is not reused** — `621` §5's table

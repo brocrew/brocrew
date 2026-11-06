@@ -1,3 +1,5 @@
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
+import type { StoppedOnALimit } from '../src/shared/task-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -30,12 +32,8 @@ import {
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { clockTime } from '../src/shared/clock'
 import type { Exchange } from '../src/shared/last-exchange'
-import type {
-  PersistedEventInfo,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
-import { derivePieces, UNDRIVEN_SENTENCES, type StoppedOnALimit } from '../src/shared/tasks'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { derivePieces, UNDRIVEN_SENTENCES } from '../src/shared/tasks'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 

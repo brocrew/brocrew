@@ -1,3 +1,5 @@
+import type { RoutedRequest } from '../src/shared/question-contracts'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -28,12 +30,8 @@ import {
   deriveRoutedRequests,
   escalationChain,
 } from '../src/shared/questions'
-import type { RoutedRequest } from '../src/shared/questions'
-import type {
-  PersistedEventInfo,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **398 · the two clocks, and 612 removed the second** — HO-007 criterion **11**, and the record
@@ -993,6 +991,8 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       for (const file of [
         'tasks.ts',
         'questions.ts',
+        'task-contracts.ts',
+        'question-contracts.ts',
         'how-work-stopped.ts',
         'who-did-it.ts',
         'a-persons-own-words.ts',
@@ -1004,6 +1004,8 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
         // vocabulary its second producer states an actor in, and (F097) `tasks.ts` reading whose
         // words opened a turn the way the host reads it.
         const allowed = [
+          "import { AGENT_MESSAGE_KINDS, TASK_STATES } from './task-contracts'",
+          "import { PASS_UP_RECIPIENTS } from './question-contracts'",
           "import { whoCancelledIt, type AskToStop } from './how-work-stopped'",
           "import { WHO_DID_IT, WHO_DID_IT_SAYS, type ActedBy, type WhoDidIt } from './who-did-it'",
           "import { aPersonsOwnWords } from './a-persons-own-words'",

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { TranscriptEvent } from '../../../shared/conversation-events'
+
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { absenceUnreadSays } from '../lib/rows-unread'
 import type {
@@ -6,7 +8,6 @@ import type {
   ChildStateResult,
   ChildTalkRefusal,
   ChildWorkResult,
-  TranscriptEvent,
 } from '../../../shared/runtime-ipc'
 import { appClosing } from '../lib/app-closing'
 import { applyEvent, createTranscript, markReadOnly } from '../lib/transcript'

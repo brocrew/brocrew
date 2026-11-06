@@ -1,3 +1,6 @@
+import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/question-contracts'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
+import type { WorkReport } from '../../src/shared/task-contracts'
 import { expandAgentCards } from './harness'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, type Component } from 'vue'
@@ -18,9 +21,9 @@ import {
 import { forestView, type ForestRow } from '../../src/renderer/src/lib/the-forest'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { IdentityUse } from '../../src/shared/agent-roster'
-import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/questions'
-import type { AgentIdentities, AgentIdentity, TranscriptEvent } from '../../src/shared/runtime-ipc'
-import type { WorkReport } from '../../src/shared/tasks'
+
+import type { AgentIdentities, AgentIdentity } from '../../src/shared/runtime-ipc'
+
 import type { ForestConversation, TheWholeForest } from '../../src/shared/the-whole-forest'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import { assertDrawn, drawnReady } from './drawn'

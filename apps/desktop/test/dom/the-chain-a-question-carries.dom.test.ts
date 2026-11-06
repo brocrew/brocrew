@@ -1,3 +1,10 @@
+import type {
+  LedgerWalk,
+  PersonsDecision,
+  PersonsQuestion,
+  RequestOnlyAPersonCanSettle,
+  RoutedRequest,
+} from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, type PropType } from 'vue'
@@ -11,11 +18,6 @@ import {
   decisionReading,
   escalationChain,
   readingSentence,
-  type LedgerWalk,
-  type PersonsDecision,
-  type PersonsQuestion,
-  type RequestOnlyAPersonCanSettle,
-  type RoutedRequest,
 } from '../../src/shared/questions'
 import type { AgentIdentities } from '../../src/shared/runtime-ipc'
 import {

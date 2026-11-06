@@ -1,4 +1,4 @@
-import type { HandedPath } from './runtime-ipc'
+import type { HandedPath } from './attachment-contracts'
 
 /**
  * # 🔴 744 · R100 — what a person typed and did not send, as it crosses to disk and back

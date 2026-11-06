@@ -1,3 +1,5 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import type { WorkSentEvent } from '../src/shared/task-contracts'
 import { describe, expect, it } from 'vitest'
 import {
   applyEvent,
@@ -16,7 +18,7 @@ import {
   type OutgoingCardReading,
   type OutgoingCardWords,
 } from '../src/renderer/src/lib/outgoing-card'
-import type { AgentIdentity, TranscriptEvent, WorkSentEvent } from '../src/shared/runtime-ipc'
+import type { AgentIdentity } from '../src/shared/runtime-ipc'
 import type { WorkEdge } from '../src/shared/who-called-whom'
 
 /**

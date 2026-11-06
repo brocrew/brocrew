@@ -1,3 +1,5 @@
+import { AGENT_MESSAGE_KINDS } from '../src/shared/task-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
@@ -18,8 +20,8 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { composeProfileBundle } from '../src/main/runtime/factory-text'
 import { REPLY_DELIVERIES, REPLY_LANDED } from '../src/main/runtime/reply-rails'
 import { stillHeld } from '../src/shared/mailbox'
-import { AGENT_MESSAGE_KINDS, TASK_IS_OPEN } from '../src/shared/tasks'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import { TASK_IS_OPEN } from '../src/shared/tasks'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **415 · a question is not work** — HO-021 §1, the three properties, and the fourth this

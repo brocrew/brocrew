@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import type { HandedPath } from '../../../shared/attachment-contracts'
+import type { WhatAPickBecame } from '../../../shared/model-choice-contracts'
+import type { AgentState, StoppedPiece } from '../../../shared/agent-state-contracts'
+import type { ConversationWait, HeldWork } from '../../../shared/task-contracts'
+
 import {
   computed,
   nextTick,
@@ -26,8 +31,6 @@ import type {
   RevealResult,
   ConfigFileResult,
   SessionPathTarget,
-  HandedPath,
-  WhatAPickBecame,
 } from '../../../shared/runtime-ipc'
 import { PROVIDER_NAME } from '../../../shared/runtime-ipc'
 import { DEFAULT_CONVERSATION_PROVIDER } from '@brobot2/shared'
@@ -47,11 +50,11 @@ import {
   stateHere,
   type SessionFacetInput,
 } from '../lib/agent-state'
-import type { AgentState, StoppedPiece } from '../../../shared/agent-state'
+
 import type { WorkThatNamesIt } from '../../../shared/piece-called'
 // ⚑ **636 · a TYPE only** — see {@link ConversationPane.waiting}, which is narrowed before it
 // arrives and is never derived here.
-import type { ConversationWait, HeldWork } from '../../../shared/tasks'
+
 import { scheduleHeld, somethingRunning } from '../../../shared/agent-state'
 import { whoItOwesIn } from '../lib/conversation-waits'
 import type { WorkGivenOutReading } from '../lib/work-given-out'

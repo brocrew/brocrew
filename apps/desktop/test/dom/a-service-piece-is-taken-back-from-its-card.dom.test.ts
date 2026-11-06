@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
@@ -5,7 +6,7 @@ import ConversationPane from '../../src/renderer/src/components/ConversationPane
 import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { TAKE_BACK, takeBackThrough } from '../../src/renderer/src/lib/take-back'
 import type { WorkTakenBackByAPerson } from '../../src/shared/piece-called'
-import type { AgentIdentity, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { AgentIdentity } from '../../src/shared/runtime-ipc'
 import type { WorkEdge } from '../../src/shared/who-called-whom'
 import { assertDrawn, drawnReady } from './drawn'
 import {

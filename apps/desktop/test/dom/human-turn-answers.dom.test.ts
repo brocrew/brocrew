@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, reactive, type Component } from 'vue'
 import AgentCard from '../../src/renderer/src/components/AgentCard.vue'
@@ -14,7 +15,7 @@ import SYNTHWAVE from '../../resources/themes/synthwave/theme.json'
 import { facetsOfState } from '../../src/renderer/src/lib/agent-state'
 import { sessionPanel } from '../../src/renderer/src/lib/session-panel'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { mount, unmountAll, contrast, type Rgba } from './harness'
 
 const canvas = document.createElement('canvas')

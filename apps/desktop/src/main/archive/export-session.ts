@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../shared/conversation-events'
 import {
   closeSync,
   mkdirSync,
@@ -10,7 +11,7 @@ import {
 import { dirname } from 'node:path'
 import type { SessionRef } from '@brobot2/runtime'
 import { type Provider, type SessionStatus } from '@brobot2/shared'
-import type { TranscriptEvent } from '../../shared/runtime-ipc'
+
 import { readLines } from './native-io'
 import { providerDefinitions } from '../providers/definitions'
 

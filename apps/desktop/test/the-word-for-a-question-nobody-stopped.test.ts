@@ -1,3 +1,6 @@
+import { REQUEST_STATES } from '../src/shared/question-contracts'
+import type { RequestState } from '../src/shared/question-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -22,9 +25,9 @@ import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { REQUEST_IS_OPEN, REQUEST_STATES, deriveRoutedRequests } from '../src/shared/questions'
-import type { RequestState } from '../src/shared/questions'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import { REQUEST_IS_OPEN, deriveRoutedRequests } from '../src/shared/questions'
+
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **397 · the word for a question nobody stopped** — Slice 4 S6, the last build dispatch of the
@@ -815,7 +818,20 @@ describe('397 · the word for a question nobody stopped', () => {
         expect(fold, machinery).not.toContain(machinery)
       }
       const imports = [...fold.matchAll(/^import .*$/gm)].map((one) => one[0])
-      expect(imports.every((line) => line.startsWith('import type'))).toBe(true)
+      expect(
+        imports.every(
+          (line) =>
+            line.startsWith('import type') ||
+            line === "import { PASS_UP_RECIPIENTS } from './question-contracts'",
+        ),
+      ).toBe(true)
+      const contracts = sourceOf(join(here, '../src/shared'), 'question-contracts.ts')
+      for (const line of contracts.matchAll(/^import .*$/gm)) {
+        expect(line[0].startsWith('import type'), line[0]).toBe(true)
+      }
+      for (const machinery of ['setTimeout', 'setInterval', 'Date.now']) {
+        expect(codeOnly(contracts), machinery).not.toContain(machinery)
+      }
       const stopper = codeOnly(sourceOf(join(mainRoot, 'runtime'), 'runtime-host.ts'))
       const at = stopper.indexOf('private askTheWorkToStop(')
       expect(at).toBeGreaterThan(0)

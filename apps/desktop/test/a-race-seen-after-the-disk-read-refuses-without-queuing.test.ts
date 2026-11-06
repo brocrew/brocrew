@@ -1,3 +1,4 @@
+import type { HandedPath } from '../src/shared/attachment-contracts'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -11,7 +12,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { type FirstMessageAnswer, type HandedPath } from '../src/shared/runtime-ipc'
+import { type FirstMessageAnswer } from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 735 M4 · the second ask, asked AGAIN after the disk read, must refuse on its own

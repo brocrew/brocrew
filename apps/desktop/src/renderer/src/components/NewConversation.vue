@@ -47,12 +47,12 @@ export function blockingGroupShows(input: {
 </script>
 
 <script setup lang="ts">
+import type { HandedPath } from '../../../shared/attachment-contracts'
 import { defaultModel } from '../lib/provider-models'
 import { computed, nextTick, onMounted, ref, useId, watch } from 'vue'
 import type {
   CapabilityStatus,
   CreateSessionInput,
-  HandedPath,
   Provider,
   ProviderCapabilityMap,
   ProviderProgram,

@@ -1,5 +1,7 @@
+import type { TaskState } from '../src/shared/task-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { WORK_STATE_WORD } from '../src/shared/work-state-words'
-import type { TaskState } from '../src/shared/tasks'
+
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -19,7 +21,7 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { aPersonOwesAnAnswerIn } from '../src/shared/questions'
 import { MAX_FOREST_CONVERSATIONS } from '../src/shared/the-whole-forest'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **664 · one task, one reading, in every place it is drawn** (`D32`, found by `654`).

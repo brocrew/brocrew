@@ -1,3 +1,5 @@
+import type { LedgerWalk, PersonsDecision, RoutedRequest } from '../src/shared/question-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { describe, expect, it } from 'vitest'
@@ -25,14 +27,7 @@ import {
   type NoPositiveBecause,
   type PermissionOutcome,
 } from '../src/renderer/src/lib/transcript'
-import {
-  decisionReading,
-  readingSentence,
-  type LedgerWalk,
-  type PersonsDecision,
-  type RoutedRequest,
-} from '../src/shared/questions'
-import { type TranscriptEvent } from '../src/shared/runtime-ipc'
+import { decisionReading, readingSentence } from '../src/shared/questions'
 
 /**
  * 🔴 **487 · the card a person could not answer at all, and the sentence above it** (`483`'s

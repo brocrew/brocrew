@@ -1,3 +1,4 @@
+import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { fictionalSkills } from '../../look/fixtures/skills'
@@ -10,7 +11,6 @@ import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import type {
   AgentIdentities,
-  ModelList,
   Provider,
   RuntimeBridge,
   ResumedSession,

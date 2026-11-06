@@ -1,3 +1,5 @@
+import type { LedgerWalk, PersonsDecision } from '../src/shared/question-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -29,12 +31,7 @@ import {
   type TranscriptItem,
   type UserInputItem,
 } from '../src/renderer/src/lib/transcript'
-import {
-  decisionReading,
-  readingSentence,
-  type LedgerWalk,
-  type PersonsDecision,
-} from '../src/shared/questions'
+import { decisionReading, readingSentence } from '../src/shared/questions'
 import {
   agentName,
   providerName,
@@ -42,7 +39,6 @@ import {
   type CreatedSession,
   type Provider,
   type RuntimeEventMessage,
-  type TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 
 /**

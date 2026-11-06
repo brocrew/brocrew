@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { userEvent } from 'vitest/browser'
 import { nextTick, reactive } from 'vue'
@@ -10,7 +11,7 @@ import { applyEvent } from '../../src/renderer/src/lib/transcript'
 import { defineComponent, h } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
 import {
   agentExchangeFixture,

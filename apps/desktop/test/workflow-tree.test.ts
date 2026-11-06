@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import {
   applyEvent,
@@ -11,7 +12,7 @@ import {
 import { sessionPanel } from '../src/renderer/src/lib/session-panel'
 import { attentionTraces, tracesOutsideDrawer } from '../src/renderer/src/lib/drawer'
 import { workflowAgentFacets, workflowRunFacets } from '../src/renderer/src/lib/agent-state'
-import type { TranscriptEvent, WorkflowAgent } from '../src/shared/runtime-ipc'
+import type { WorkflowAgent } from '../src/shared/runtime-ipc'
 
 /**
  * 108 · The workflow tree: what the fold does with twelve frames, and what the drawer does not do

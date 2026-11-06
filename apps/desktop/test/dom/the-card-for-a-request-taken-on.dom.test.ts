@@ -1,7 +1,8 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { agentCardEdgesFixture, EXCHANGE_INVENTORY } from './agent-exchanges.fixture'
 import { drawnReady } from './drawn'
 import { mount, paneProps, record, unmountAll, visible } from './harness'

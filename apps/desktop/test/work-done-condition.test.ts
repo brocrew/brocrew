@@ -1,3 +1,4 @@
+import type { WorkGivenEvent } from '../src/shared/task-contracts'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -11,7 +12,6 @@ import { WorkSearchEngine } from '../src/main/db/work-search-engine'
 import { workSearchInWords } from '../src/shared/work-search-words'
 import { workEdge } from '../src/shared/who-called-whom'
 import { workReading } from '../src/renderer/src/lib/work-report'
-import type { WorkGivenEvent } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const CONDITION = 'Both fictional outputs are recorded and the comparison passes.'

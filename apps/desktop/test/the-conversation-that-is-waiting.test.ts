@@ -1,3 +1,5 @@
+import type { PieceRow, WhatAConversationIsWaitingOn } from '../src/shared/task-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -26,14 +28,8 @@ import {
   composeWhatEachPieceIsWaitingOn,
   theWaitAConversationIsIn,
   whereTheWorkItHoldsStands,
-  type PieceRow,
-  type WhatAConversationIsWaitingOn,
 } from '../src/shared/tasks'
-import {
-  DEFAULT_PROFILE_ID,
-  type RuntimeEventMessage,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **621 · the conversation that is waiting, with no task to say so** — `EXT-014` §5 and

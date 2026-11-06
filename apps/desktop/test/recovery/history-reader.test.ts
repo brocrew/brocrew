@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import Database from 'better-sqlite3'
 import { createHash } from 'node:crypto'
 import {
@@ -22,7 +23,7 @@ import { nodeFs, type RecoveryFs } from '../../src/main/recovery/files'
 import { createHistoryReader } from '../../src/main/recovery/history-reader'
 import { theWorkThatNamesItSaid } from '../../src/shared/piece-called'
 import type { HistoryConversation, HistoryEvent } from '../../src/shared/recovery'
-import { DEFAULT_PROFILE_ID, type TranscriptEvent } from '../../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const MIGRATIONS = join(here, '../../src/main/db/migrations')

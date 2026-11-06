@@ -1,3 +1,13 @@
+import type { AgentState } from '../../src/shared/agent-state-contracts'
+import type {
+  AskedQuestion,
+  LedgerWalk,
+  OfferedAnswer,
+  PersonsDecision,
+  PersonsQuestion,
+  RoutedRequest,
+} from '../../src/shared/question-contracts'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { expandAgentCards } from './harness'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, reactive, ref, type Component } from 'vue'
@@ -25,7 +35,7 @@ import {
 } from '../../src/renderer/src/lib/transcript'
 import { foldWindow } from '../../src/renderer/src/lib/transcript-window'
 import { usageSays } from '../../src/renderer/src/lib/usage-limit'
-import type { AgentState } from '../../src/shared/agent-state'
+
 import type { ProviderCondition } from '../../src/shared/provider-limit'
 import {
   NOTHING_NAMED_THE_WORK,
@@ -33,18 +43,11 @@ import {
   chainReading,
   chainSentence,
   escalationChain,
-  type AskedQuestion,
-  type LedgerWalk,
-  type OfferedAnswer,
-  type PersonsDecision,
-  type PersonsQuestion,
-  type RoutedRequest,
 } from '../../src/shared/questions'
 import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import type {
   ResumableSessionInfo,
   RuntimeEventMessage,
-  TranscriptEvent,
   UnresumableSessionInfo,
   UserInputResponse,
 } from '../../src/shared/runtime-ipc'

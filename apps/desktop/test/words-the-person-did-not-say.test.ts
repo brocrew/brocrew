@@ -1,3 +1,4 @@
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
@@ -34,7 +35,7 @@ import { AN_UNNAMED_RELAYER, RELAYED_MARK } from '../src/renderer/src/lib/relaye
 import { WORK_REPORT_MARK } from '../src/renderer/src/lib/work-report'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import type { TranscriptItem } from '../src/renderer/src/lib/transcript'
-import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import { TURN_AUTHORSHIP_KEYS, agentName } from '../src/shared/runtime-ipc'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { pieceLine, theOwnerOf } from '../src/shared/piece-called'

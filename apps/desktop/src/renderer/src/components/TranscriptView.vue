@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import type { HandedPath } from '../../../shared/attachment-contracts'
+
 import { computed, nextTick, onScopeDispose, ref } from 'vue'
 import type {
   AgentIdentity,
   CapabilityStatus,
   ChildWorkInput,
   CommandTail,
-  HandedPath,
   PermissionDecision,
   Provider,
   UserInputResponse,

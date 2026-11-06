@@ -1,3 +1,4 @@
+import { LEDGER_WALK_KINDS } from '../src/shared/question-contracts'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -17,7 +18,7 @@ import {
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { LEDGER_WALK_KINDS, WALK_COVERS } from '../src/shared/questions'
+import { WALK_COVERS } from '../src/shared/questions'
 import type { RuntimeChangeMessage, RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import {

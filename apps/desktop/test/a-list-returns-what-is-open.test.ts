@@ -1,9 +1,9 @@
+import type { VisibleQuestion } from '../src/shared/question-contracts'
+import type { PieceRow, TaskState } from '../src/shared/task-contracts'
 import { describe, expect, it } from 'vitest'
 import type { AgentToolset } from '@brobot2/runtime'
 import { agentToolsFor, ENDED_LISTED, type AgentToolHost } from '../src/main/runtime/agent-tools'
 import type { PieceBoard } from '../src/main/runtime/runtime-host'
-import type { VisibleQuestion } from '../src/shared/questions'
-import type { PieceRow, TaskState } from '../src/shared/tasks'
 
 /**
  * `list_tasks` and `list_questions` list what is open. A long history is counted, and listed only

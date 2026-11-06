@@ -1,3 +1,4 @@
+import type { ReconciliationReceipt } from '../src/shared/reconciliation-contracts'
 import { describe, expect, it } from 'vitest'
 import {
   WorkReconciler,
@@ -5,7 +6,6 @@ import {
   type ReconciliationPiece,
   type ReminderProgress,
 } from '../src/main/runtime/work-reconciliation'
-import type { ReconciliationReceipt } from '../src/shared/work-reconciliation'
 
 function fixture() {
   let clock = 100

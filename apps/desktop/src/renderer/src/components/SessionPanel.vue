@@ -1,8 +1,11 @@
 <script setup lang="ts">
+import type { AgentState as OneState } from '../../../shared/agent-state-contracts'
+import type { WhatAPickBecame } from '../../../shared/model-choice-contracts'
+
 import type { ProviderLimitDisplay } from '../lib/provider-limit-status'
 import type { OwnWait } from '../lib/conversation-list'
 import { computed, watch } from 'vue'
-import type { AgentState as OneState } from '../../../shared/agent-state'
+
 import type { WorkThatNamesIt } from '../../../shared/piece-called'
 import type { AgentFacets } from '../lib/agent-state'
 import { sessionPanel, type PanelAsset } from '../lib/session-panel'
@@ -16,7 +19,6 @@ import type {
   RevealResult,
   SessionPathTarget,
   SetSessionSettingInput,
-  WhatAPickBecame,
 } from '../../../shared/runtime-ipc'
 import type { PickedModel } from '../lib/model-lists'
 import { useAgentPanel } from '../composables/useAgentPanel'

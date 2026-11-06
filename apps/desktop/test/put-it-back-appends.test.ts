@@ -1,6 +1,7 @@
+import type { HandedPath } from '../src/shared/attachment-contracts'
 import { describe, expect, it } from 'vitest'
 import { attachmentsNotRestored, puttingItBack, withTheseToo } from '../src/renderer/src/lib/drafts'
-import { MAX_HANDED_PATHS, type HandedPath } from '../src/shared/runtime-ipc'
+import { MAX_HANDED_PATHS } from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 D-010 · *Put it back* appends — the words and the files

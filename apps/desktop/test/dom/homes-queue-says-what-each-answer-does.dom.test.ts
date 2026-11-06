@@ -1,3 +1,9 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
+import type {
+  LedgerWalk,
+  PersonsDecision,
+  RequestOnlyAPersonCanSettle,
+} from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import AttentionQueue from '../../src/renderer/src/components/AttentionQueue.vue'
@@ -18,14 +24,8 @@ import {
 } from '../../src/renderer/src/lib/user-input-offer'
 import { acceptEvent, createSessionRecord } from '../../src/renderer/src/lib/session-record'
 import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
-import {
-  decisionReading,
-  readingSentence,
-  type LedgerWalk,
-  type PersonsDecision,
-  type RequestOnlyAPersonCanSettle,
-} from '../../src/shared/questions'
+
+import { decisionReading, readingSentence } from '../../src/shared/questions'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 
 /**

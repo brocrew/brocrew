@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import type { RuntimeEvent } from '@brobot2/runtime'
 import {
@@ -22,7 +23,7 @@ import {
   markReadOnly,
   markReopened,
 } from '../src/renderer/src/lib/transcript'
-import type { CreatedSession, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { CreatedSession } from '../src/shared/runtime-ipc'
 
 /**
  * # 250 · ⛔ **"Idle" is not true — and the three surfaces have to agree about it**

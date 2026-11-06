@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
@@ -17,7 +18,6 @@ import {
   type ResumedSession,
   type RuntimeBridge,
   type RuntimeEventMessage,
-  type TranscriptEvent,
 } from '../../src/shared/runtime-ipc'
 import { META, mount, paneProps, permission, record, unmountAll, visible } from './harness'
 import type { Mounted } from './harness'

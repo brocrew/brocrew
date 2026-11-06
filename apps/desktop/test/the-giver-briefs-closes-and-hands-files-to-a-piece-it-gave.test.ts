@@ -1,3 +1,5 @@
+import { REQUEST_STATES } from '../src/shared/question-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -19,13 +21,9 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { MAX_RESOURCES_PER_REPLY } from '../src/shared/documents'
 import { stillHeld } from '../src/shared/mailbox'
 import { pieceLine } from '../src/shared/piece-called'
-import { REQUEST_IS_OPEN, REQUEST_STATES } from '../src/shared/questions'
+import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
-import {
-  theMessagesOf,
-  type RuntimeEventMessage,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { theMessagesOf, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 
 /**

@@ -1,3 +1,8 @@
+import type {
+  LedgerWalk,
+  PersonsDecision,
+  PersonsQuestion,
+} from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
@@ -7,7 +12,7 @@ import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
 import type { AttentionRequest } from '../../src/renderer/src/lib/attention'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { clockTime } from '../../src/shared/clock'
-import type { LedgerWalk, PersonsDecision, PersonsQuestion } from '../../src/shared/questions'
+
 import type { StalledWork } from '../../src/shared/stalled-work'
 import type { StoppedWorkForAPerson } from '../../src/shared/stopped-work'
 import { assertDrawn, drawnReady } from './drawn'

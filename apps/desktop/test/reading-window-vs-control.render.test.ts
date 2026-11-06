@@ -1,7 +1,8 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import type { CreatedSession, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { CreatedSession } from '../src/shared/runtime-ipc'
 import ConversationPane from '../src/renderer/src/components/ConversationPane.vue'
 import TranscriptView from '../src/renderer/src/components/TranscriptView.vue'
 import {

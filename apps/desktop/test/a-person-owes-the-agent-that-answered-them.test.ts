@@ -1,3 +1,6 @@
+import type { AgentState } from '../src/shared/agent-state-contracts'
+import type { PieceRow } from '../src/shared/task-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -23,13 +26,11 @@ import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { AgentState } from '../src/shared/agent-state'
-import type { PieceRow } from '../src/shared/tasks'
+
 import {
   DEFAULT_PROFILE_ID,
   type RuntimeEventMessage,
   type RuntimeStatesMessage,
-  type TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 
 /**

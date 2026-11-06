@@ -1,3 +1,4 @@
+import type { SessionInstructions } from '../src/shared/instruction-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -21,11 +22,7 @@ import {
   type InstructionContext,
 } from '../src/main/runtime/factory-text'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  DEFAULT_PROFILE_ID,
-  type RuntimeEventMessage,
-  type SessionInstructions,
-} from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')

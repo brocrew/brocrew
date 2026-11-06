@@ -1,3 +1,9 @@
+import type { HandedPath } from '../src/shared/attachment-contracts'
+import type {
+  QueuedMessageEvent,
+  TranscriptEvent,
+  UnqueuedMessageEvent,
+} from '../src/shared/conversation-events'
 import {
   existsSync,
   mkdirSync,
@@ -30,14 +36,7 @@ import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type {
-  HandedPath,
-  QueuedMessageEvent,
-  RuntimeChangeMessage,
-  RuntimeEventMessage,
-  TranscriptEvent,
-  UnqueuedMessageEvent,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeChangeMessage, RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * # 689 — four small things main owes the window

@@ -1,3 +1,4 @@
+import type { MessageSentEvent, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -19,10 +20,8 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { HELD_ELSEWHERE } from '../src/shared/runtime-ipc'
 import type {
   CreatedSession,
-  MessageSentEvent,
   RuntimeEventMessage,
   SessionLivenessMessage,
-  TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 import ConversationPane from '../src/renderer/src/components/ConversationPane.vue'
 import QueuedMessage from '../src/renderer/src/components/QueuedMessage.vue'

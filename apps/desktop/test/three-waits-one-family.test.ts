@@ -1,3 +1,7 @@
+import { TASK_STATES } from '../src/shared/task-contracts'
+import type { PieceRow, WhatAConversationIsWaitingOn } from '../src/shared/task-contracts'
+import type { RoutedRequest } from '../src/shared/question-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -22,18 +26,15 @@ import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   TASK_IS_OPEN,
-  TASK_STATES,
   TASK_WAITS,
   WAITING_STANDS_FOR,
   composeWhatEachPieceIsWaitingOn,
   stalledWithACause,
   theWaitIn,
-  type PieceRow,
-  type WhatAConversationIsWaitingOn,
 } from '../src/shared/tasks'
 import { WORK_STATE_WORD } from '../src/renderer/src/lib/work-report'
-import { aPersonOwesAnAnswerIn, type RoutedRequest } from '../src/shared/questions'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import { aPersonOwesAnAnswerIn } from '../src/shared/questions'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **609 · three waits, one family** — `HO-088` §5, straight after B1 (`608`).

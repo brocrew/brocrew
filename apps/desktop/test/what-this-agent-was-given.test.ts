@@ -1,3 +1,5 @@
+import type { LaunchedEvent, TranscriptEvent } from '../src/shared/conversation-events'
+import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -54,12 +56,7 @@ import {
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { SNAPSHOT_FILES, snapshotFor } from '../src/main/provider-snapshots'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import type {
-  LaunchedEvent,
-  RuntimeEventMessage,
-  TranscriptEvent,
-  UserTurnEvent,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 import { howYouWork } from './lib/the-core'
 

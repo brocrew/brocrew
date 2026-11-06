@@ -1,3 +1,6 @@
+import type { LaunchedEvent, TranscriptEvent } from '../src/shared/conversation-events'
+import type { SessionInstructions } from '../src/shared/instruction-contracts'
+import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -53,13 +56,7 @@ import {
   ensureWorkspace,
   workspaceOwnFilesIn,
 } from '../src/main/runtime/workspace'
-import type {
-  LaunchedEvent,
-  RuntimeEventMessage,
-  SessionInstructions,
-  TranscriptEvent,
-  UserTurnEvent,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { THE_MODEL_LIST } from './lib/scripted-codex-host'
 
 /**

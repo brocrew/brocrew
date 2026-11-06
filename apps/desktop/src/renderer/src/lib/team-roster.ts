@@ -1,3 +1,4 @@
+import type { AgentState } from '../../../shared/agent-state-contracts'
 import type { WorkThatNamesIt } from '../../../shared/piece-called'
 import type { WorkerBindingReading } from '../../../shared/worker-reading'
 import { agentName, type AgentIdentities, type AgentIdentity } from '../../../shared/runtime-ipc'
@@ -16,7 +17,7 @@ import {
   type WhatIsBeingDone,
 } from '../../../shared/what-is-being-done'
 import { providerLimitDisplay } from './provider-limit-status'
-import { agentStateWords, type AgentState } from '../../../shared/agent-state'
+import { agentStateWords } from '../../../shared/agent-state'
 import { theWorkThatNamesItSaid } from '../../../shared/piece-called'
 import {
   activityLine,

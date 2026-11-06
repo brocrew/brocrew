@@ -1,8 +1,8 @@
+import type { ReconciliationReceipt } from '../../src/shared/reconciliation-contracts'
 import { afterEach, expect } from 'vitest'
 import type { SessionStore } from '../../src/main/db/session-store'
 import { RuntimeHost as ProductRuntimeHost } from '../../src/main/runtime/runtime-host'
 import type { ReconciliationPiece } from '../../src/main/runtime/work-reconciliation'
-import type { ReconciliationReceipt } from '../../src/shared/work-reconciliation'
 
 import { theMessagesOf } from '../../src/shared/runtime-ipc'
 

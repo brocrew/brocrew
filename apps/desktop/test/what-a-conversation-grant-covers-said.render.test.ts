@@ -1,3 +1,5 @@
+import type { LedgerWalk, PersonsDecision } from '../src/shared/question-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -40,17 +42,8 @@ import {
   whatThisAnswerDoes,
   type AttentionDecision,
 } from '../src/renderer/src/lib/user-input-offer'
-import {
-  decisionReading,
-  readingSentence,
-  type LedgerWalk,
-  type PersonsDecision,
-} from '../src/shared/questions'
-import {
-  DEFAULT_PROFILE_ID,
-  type CreatedSession,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { decisionReading, readingSentence } from '../src/shared/questions'
+import { DEFAULT_PROFILE_ID, type CreatedSession } from '../src/shared/runtime-ipc'
 import { ScriptedAppServer, waitFor } from './lib/scripted-codex-host'
 
 /**

@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
@@ -15,7 +16,7 @@ import {
   type PermissionItem,
   type PermissionOutcome,
 } from '../../src/renderer/src/lib/transcript'
-import type { RuntimeEventMessage, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 import { assertDrawn, drawnReady } from './drawn'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 

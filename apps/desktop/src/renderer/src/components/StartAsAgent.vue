@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import type { HandedPath } from '../../../shared/attachment-contracts'
+
 import { computed, ref, watch } from 'vue'
 import {
   agentName,
   providerName,
   PROVIDER_NAME,
   type CreateSessionInput,
-  type HandedPath,
   type Provider,
   type ProviderCapabilityMap,
 } from '../../../shared/runtime-ipc'

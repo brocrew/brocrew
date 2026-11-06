@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -10,7 +11,7 @@ import { HUMAN_FINAL_TERM, HUMAN_CONTEXT_TERM } from '../src/main/db/human-answe
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { FakeRuntime } from '@brobot2/runtime'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import {
   acceptEvent,
   createSessionRecord,

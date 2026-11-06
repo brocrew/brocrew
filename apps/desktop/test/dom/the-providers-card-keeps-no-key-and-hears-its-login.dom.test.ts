@@ -1,3 +1,4 @@
+import type { ModelList } from '../../src/shared/model-choice-contracts'
 // The approved plain words replace the former labels; the state and gesture checks remain.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
@@ -12,7 +13,6 @@ import {
   type ApiKeyCheck,
   type ApiKeyStatus,
   type AuthState,
-  type ModelList,
   type ProviderCapabilityMap,
   type ProviderUsageReading,
 } from '../../src/shared/runtime-ipc'

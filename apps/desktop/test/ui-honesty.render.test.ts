@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -16,7 +17,7 @@ import {
 } from '../src/renderer/src/lib/transcript'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { renderChatMarkdown, renderMarkdown } from '../src/renderer/src/lib/markdown'
-import type { RuntimeEvent, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEvent } from '../src/shared/runtime-ipc'
 
 /**
  * **Six places the app told the user something that was not true** (074, from 069 §2).

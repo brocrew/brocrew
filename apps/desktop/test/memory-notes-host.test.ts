@@ -1,3 +1,4 @@
+import type { MemoryNoteEvent, TranscriptEvent } from '../src/shared/conversation-events'
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -14,9 +15,7 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import {
   MEMORY_NOTES_PER_EVENT,
   MEMORY_NOTE_TEXT_CAP,
-  type MemoryNoteEvent,
   type RuntimeEventMessage,
-  type TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))

@@ -1,8 +1,9 @@
+import type { TaskState } from '../../src/shared/task-contracts'
 import { nextTick } from 'vue'
 import type { RailSays } from '../../src/renderer/src/lib/agent-state'
 import { forestView, type ForestView } from '../../src/renderer/src/lib/the-forest'
 import type { AgentIdentity } from '../../src/shared/runtime-ipc'
-import type { TaskState } from '../../src/shared/tasks'
+
 import type { ForestNode, TheWholeForest } from '../../src/shared/the-whole-forest'
 
 /**

@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -16,7 +17,7 @@ import {
   type Discovery,
 } from '../src/main/adopt/discover-sessions'
 import { importClaudeTranscript } from '../src/main/archive/import-claude'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import { nativeTranscriptPath } from '../src/main/archive/native-file'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'

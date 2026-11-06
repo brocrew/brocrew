@@ -1,3 +1,5 @@
+import type { LaunchedEvent, TranscriptEvent } from '../../src/shared/conversation-events'
+import type { UserTurnEvent } from '../../src/shared/human-answer-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -32,12 +34,7 @@ import {
 } from '../../src/main/runtime/workspace'
 import { resolveSessionCwd } from '../../src/main/runtime/scratch-cwd'
 import { resourcesRoot } from '../../src/main/resources/resources'
-import type {
-  LaunchedEvent,
-  RuntimeEventMessage,
-  TranscriptEvent,
-  UserTurnEvent,
-} from '../../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 
 /**
  * # F093 · one world for the gap tests: a real host on the fake runtime, on throwaway folders

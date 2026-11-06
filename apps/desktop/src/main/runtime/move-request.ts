@@ -1,21 +1,14 @@
+import type { MoveOffer, MoveReceipt } from '../../shared/move-contracts'
+import type { HandedPath } from '../../shared/attachment-contracts'
+import type { UserTurnEvent } from '../../shared/human-answer-contracts'
+import type { QueuedMessageEvent } from '../../shared/conversation-events'
 import { createHash } from 'node:crypto'
 import type { ActedBy } from '../../shared/who-did-it'
 import type { SessionStore, PersistedEvent } from '../db/session-store'
 import { REQUEST_IS_OPEN, aPersonsSince } from '../../shared/questions'
-import {
-  MOVE_WORDS,
-  moveReceiptLine,
-  type MoveOffer,
-  type MoveReceipt,
-} from '../../shared/move-request'
+import { MOVE_WORDS, moveReceiptLine } from '../../shared/move-request'
 import { conversationLink } from '../../shared/links'
-import {
-  TURN_ATTRIBUTION_KEYS,
-  type HandedPath,
-  type RuntimeEventMessage,
-  type UserTurnEvent,
-  type QueuedMessageEvent,
-} from '../../shared/runtime-ipc'
+import { TURN_ATTRIBUTION_KEYS, type RuntimeEventMessage } from '../../shared/runtime-ipc'
 
 export function moveRequestDigest(row: PersistedEvent & { event: UserTurnEvent }): string {
   return createHash('sha256')

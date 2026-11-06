@@ -1,4 +1,5 @@
-import type { AnsweredQuestion } from '../../../shared/runtime-ipc'
+import type { AnsweredQuestion } from '../../../shared/human-answer-contracts'
+
 import type { TranscriptItem } from './transcript'
 
 export function readAnsweredQuestion(value: unknown): AnsweredQuestion | undefined {

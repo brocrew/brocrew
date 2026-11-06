@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { navigationReply, expectIdsOnlyInLinkTargets } from './helpers/navigation-reply'
 import { conversationLink, agentLink, pieceLink } from '../src/shared/links'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -29,7 +30,6 @@ import {
   DEFAULT_PROFILE_LABEL,
   agentName,
   type RuntimeEventMessage,
-  type TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 import { theOwnerOf } from '../src/shared/piece-called'
 

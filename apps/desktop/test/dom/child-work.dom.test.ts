@@ -1,8 +1,9 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { nextTick } from 'vue'
 import { afterEach, describe, expect, it } from 'vitest'
 import ChildWorkViewer from '../../src/renderer/src/components/ChildWorkViewer.vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import type { ChildWorkInput, ChildWorkResult, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { ChildWorkInput, ChildWorkResult } from '../../src/shared/runtime-ipc'
 import {
   luminance,
   mount,
