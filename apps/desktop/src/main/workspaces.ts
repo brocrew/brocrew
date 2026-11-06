@@ -24,7 +24,6 @@ import {
   WORKSPACE_FILE,
   WORKSPACE_NAME_MAX,
 } from './data-folder'
-import { gateFits } from './one-host-gate'
 import { keepToThisUser, NotKeptToThisUser, type AccessLists } from './recovery/windows-privacy'
 import { PROVIDER_HOMES_DIRNAME } from './runtime/provider-homes'
 import { insideBySpelling, samePath } from './same-folder'
@@ -295,9 +294,6 @@ export function checkWorkspaceFolder(
   const isBroBots = isDirectory && isBroBotsFolder(path)
   const real = onTheDisk(path)
   const warnings = [
-    !gateFits(real, options.platform)
-      ? 'This folder’s path is long: BroCrew opens it, but cannot stop a second copy of BroCrew from starting on it at the same moment.'
-      : null,
     CLOUD_SYNCED.test(real)
       ? 'A cloud service syncs this folder: BroCrew’s database may be copied while it is being written.'
       : null,

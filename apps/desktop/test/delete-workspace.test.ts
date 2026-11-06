@@ -21,7 +21,7 @@ import {
   whereDeletedFoldersGo,
   type DeleteContext,
 } from '../src/main/delete-workspace'
-import { claimSoleHost, whoIsOn } from '../src/main/one-host-gate'
+import { publishWorkspacePresence, whoIsOn } from '../src/main/one-host-gate'
 import { pastedImagesRoot } from '../src/main/runtime/pasted-image'
 import { readWorkspaceList, rememberWorkspace } from '../src/main/workspaces'
 
@@ -167,7 +167,7 @@ describe('§1 · every refusal, in words', () => {
       'This workspace is open. Quit it first, then delete it.',
     )
     // ⚑ The real gate, held here as a running BroBot holds it.
-    expect(await claimSoleHost(open)).toBe('sole')
+    await publishWorkspacePresence(open)
     expect(await refusalOf(open, aContext(root, [open], { ask: (one) => whoIsOn(one) }))).toBe(
       'This workspace is open. Quit it first, then delete it.',
     )

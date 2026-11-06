@@ -100,7 +100,7 @@ import { startWorkSearch } from './db/start-work-search'
 import { startPastWorkSearch } from './db/start-past-work-search'
 import { createAppLifetime } from './app-lifetime'
 import { armLastResortExit } from './last-resort-exit'
-import { ownershipFrom, runAsSoleInstance, type OwnershipAsked } from './single-instance'
+import { runAsSoleInstance } from './single-instance'
 import {
   KEPT_OUT_OF_SIGHT,
   keepOutOfSight,
@@ -109,7 +109,7 @@ import {
   PERSONS_TITLE,
   windowTitleFor,
 } from './launch-presentation'
-import { claimSoleHost, type HostGateVerdict } from './one-host-gate'
+import { publishWorkspacePresence, type HostGateVerdict } from './one-host-gate'
 import {
   AGENTS_LINE_LAG_MS,
   AGENTS_MEMORY_STEP_BYTES,
@@ -442,7 +442,7 @@ function stopRecoveryWork(): Promise<void> {
 /** A test's hidden launch keeps its recovery window instead of exiting (unpackaged builds only). */
 let keepTheRecoveryWindowHidden: boolean | null = null
 /** The one-app check's answer, asked again on a retry while it is still `unknown`. */
-let theOneAppAnswer: OwnershipAsked | null = null
+let theOneAppAnswer: HostGateVerdict = 'unknown'
 /** This build's migrations, read by the start-up check of a start that opens its data. */
 let thisBuildsMigrations: readonly BuildMigration[] | null = null
 
@@ -620,7 +620,7 @@ function initDatabase(): AppDatabase {
   // Count a successful database open once, even if a provider or window fails later.
   recoveryStartRecorded = withRecoveryCopies(() =>
     recordSuccessfulStart(app.getPath('userData'), theBuildsMigrations(), {
-      ownership: theOneAppAnswer?.held() ?? 'unknown',
+      ownership: theOneAppAnswer,
       currentAppVersion: app.getVersion(),
     }),
   )
@@ -1429,7 +1429,7 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
     clearCache: () => clearHttpCache(storage, () => session.defaultSession.clearCache()),
     pruneBackups: () =>
       withRecoveryCopies(async () => {
-        if (!recoveryStartSucceeded || theOneAppAnswer?.held() !== 'sole')
+        if (!recoveryStartSucceeded || theOneAppAnswer !== 'sole')
           throw new StorageFailure('unavailable')
         let failed = false
         await prune(app.getPath('userData'), theBuildsMigrations(), {
@@ -1471,7 +1471,7 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
   ipcMain.handle(RECOVERY_RETENTION_CHANNELS.read, () =>
     withRecoveryCopies(() =>
       retainedCopyInfo(app.getPath('userData'), theBuildsMigrations(), {
-        ownership: theOneAppAnswer?.held() ?? 'unknown',
+        ownership: theOneAppAnswer,
         currentAppVersion: app.getVersion(),
       }),
     ),
@@ -1482,7 +1482,7 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
         !recoveryStartSucceeded ||
         typeof id !== 'string' ||
         !(await deleteRetainedCopy(app.getPath('userData'), theBuildsMigrations(), id, {
-          ownership: theOneAppAnswer?.held() ?? 'unknown',
+          ownership: theOneAppAnswer,
           currentAppVersion: app.getVersion(),
         }))
       )
@@ -1857,8 +1857,7 @@ function theRecoveryService(launchOwnership: HostGateVerdict): RecoveryService {
   existing?.assertDatabase()
   const { commit } = buildIdentity()
   const userData = app.getPath('userData')
-  const asker = ownershipFrom(launchOwnership, () => claimSoleHost(userData))
-  theOneAppAnswer = asker
+  theOneAppAnswer = launchOwnership
   const deps: CoordinatorDeps = {
     userData,
     buildMigrationsFolder: resolveMigrationsFolder(),
@@ -1871,7 +1870,7 @@ function theRecoveryService(launchOwnership: HostGateVerdict): RecoveryService {
           fs: { ...recoveryFiles, mkdir: existing.mkdir.bind(existing) },
         }
       : {}),
-    ownership: asker.ask,
+    ownership: () => Promise.resolve(launchOwnership),
     log: sayAtOnce,
     working: (what) => sayWorkingIfItTakesLong(what),
     progress: (done, total) => recoveryCalls?.progress(done, total),
@@ -2197,7 +2196,7 @@ async function letGoOfOldCopies(): Promise<void> {
     try {
       await recoveryStartRecorded
       const removed = await prune(app.getPath('userData'), theBuildsMigrations(), {
-        ownership: theOneAppAnswer?.held() ?? 'unknown',
+        ownership: theOneAppAnswer,
         currentAppVersion: app.getVersion(),
       })
       if (removed.length > 0) {
@@ -2373,6 +2372,10 @@ function startTheDockLabel(): void {
 function start(ownership: HostGateVerdict): void {
   // Only the one app on this data may change which agents are services.
   soleAtThisLaunch = ownership === 'sole'
+  // Presence is for the workspace chooser and deletion check; it does not decide ownership.
+  void publishWorkspacePresence(app.getPath('userData')).catch((error: unknown) =>
+    console.warn('BroCrew could not announce this open workspace:', error),
+  )
 
   // The teardown's two entrances. Registered here rather than at module scope so that a second
   // launch — which has nothing to tear down and no database to close — never gets a `before-quit`
@@ -2812,9 +2815,6 @@ const lifetime = createAppLifetime({
  */
 void runAsSoleInstance({
   requestLock: () => app.requestSingleInstanceLock(),
-  // Use the same `userData` directory for the cross-process backstop and Chromium's lock.
-  // The backstop fails open if it cannot establish its verdict; see `one-host-gate.ts`.
-  claimGate: () => claimSoleHost(app.getPath('userData')),
   onSecondLaunch: (handler) => app.on('second-instance', () => handler()),
   focusExisting: () => {
     // Do not create a window after startup failed; the error may still be on screen.
