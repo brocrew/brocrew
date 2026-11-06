@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runInNewContext } from 'node:vm'
+import { fileURLToPath } from 'node:url'
 import { Worker } from 'node:worker_threads'
 import ts from 'typescript'
 import { afterAll, beforeAll, expect, it } from 'vitest'
@@ -19,7 +20,7 @@ import { bundleAWorker } from './helpers/bundle-a-worker'
 
 const index = readFileSync(new URL('../src/main/index.ts', import.meta.url), 'utf8')
 const parsed = ts.createSourceFile('index.ts', index, ts.ScriptTarget.ESNext, true)
-const migrations = new URL('../src/main/db/migrations', import.meta.url).pathname
+const migrations = fileURLToPath(new URL('../src/main/db/migrations', import.meta.url))
 const gate = () => {
   let resolve!: () => void
   const promise = new Promise<void>((done) => {
