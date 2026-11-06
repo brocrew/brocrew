@@ -50,11 +50,6 @@ const LAYOUT_MS = 400
 /**
  * **A string constant read out of the app's own source rather than copied into this file.**
  *
- * ⚑ The idiom is the repository's: `scripts/test/step-census.test.mjs` reads
- * `DEGRADED_LABEL_PREFIX` out of `packages/runtime/src/events.ts` with exactly this shape, for
- * exactly this reason — *"a rename there and nothing here would leave the control silently matching
- * nothing, which is a control that reports an all-clear it never checked."*
- *
  * ⛔ **A miss THROWS rather than answering `undefined`.** The one thing this probe asserts about a
  * live provider is that a particular string comes back; a canary that quietly became `undefined`
  * would make the refusal below test `includes(undefined)` — a refusal that cannot fire, which is
