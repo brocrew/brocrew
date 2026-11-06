@@ -994,7 +994,6 @@ import type {
   PieceRow,
   StatusLine,
   TaskOutcome,
-  TaskState,
   TaskStallCause,
   WhatAConversationIsWaitingOn,
   WhatEachConversationIsWaitingOn,
