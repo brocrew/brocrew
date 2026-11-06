@@ -2986,10 +2986,6 @@ export interface RuntimeHostDeps {
    * {@link DEFAULT_INTERRUPT_WAIT_MS}.
    */
   interruptWaitMs?: number
-  /** How long a launch may go unanswered; also overrides the resume limit unless given separately. */
-  launchTimeoutMs?: number
-  /** Per-provider resume limits, before the shared launch limit or provider default. */
-  resumeTimeouts?: Partial<Record<Provider, number>>
   /**
    * How long a reopened Codex thread's leads read may still take once its provider has answered;
    * past it the whole text is owed. {@link DEFAULT_REOPEN_LEADS_GRACE_MS} when not given.
@@ -5703,8 +5699,8 @@ interface SessionSlot {
    *
    * Only `starting` exposes this timestamp. A second gesture can report how long the launch has been pending, helping the person decide whether to keep waiting.
    *
-   * ⚠️ It is no longer the phase with **no way out** (102): {@link DEFAULT_LAUNCH_TIMEOUT_MS} ends
-   * a launch that cannot complete, and {@link RuntimeHost.cancelLaunch} lets the user end it first.
+   * ⚠️ It is no longer the phase with **no way out** (102): it ends when the provider answers, fails
+   * or exits, and {@link RuntimeHost.cancelLaunch} lets the user end it first.
    */
   readonly since: number
   /**
@@ -5899,7 +5895,6 @@ const REFUSALS_IN_THIS_APPS_OWN_WORDS: ReadonlySet<Unavailable> = new Set<Unavai
   'shutting-down',
   'cancelled',
   'lost-its-place',
-  'took-too-long',
   'still-closing',
   'not-confirmed-stopped',
 ])
@@ -7673,9 +7668,6 @@ export class RuntimeHost implements LiveHost {
   private readonly archives = createArchiveCoordinator()
   private readonly closeDrainTimeoutMs: number
   private readonly interruptWaitMs: number
-  private readonly launchTimeouts: Readonly<
-    Record<Provider, { readonly fresh: number; readonly resume: number }>
-  >
   private readonly reopenLeadsGraceMs: number
   private readonly recordStartAttempt: ((line: StartAttemptLine) => void) | undefined
   private readonly monotonicNow: () => number
@@ -8464,13 +8456,6 @@ export class RuntimeHost implements LiveHost {
     this.archived = deps.archived ?? archivedInMemory()
     this.closeDrainTimeoutMs = deps.closeDrainTimeoutMs ?? DEFAULT_CLOSE_DRAIN_TIMEOUT_MS
     this.interruptWaitMs = deps.interruptWaitMs ?? DEFAULT_INTERRUPT_WAIT_MS
-    this.launchTimeouts = providerRecord((provider) => {
-      const defaults = providerDescriptor(provider).launch
-      return {
-        fresh: deps.launchTimeoutMs ?? defaults.freshTimeoutMs,
-        resume: deps.resumeTimeouts?.[provider] ?? deps.launchTimeoutMs ?? defaults.resumeTimeoutMs,
-      }
-    })
     this.reopenLeadsGraceMs = deps.reopenLeadsGraceMs ?? DEFAULT_REOPEN_LEADS_GRACE_MS
     this.recordStartAttempt = deps.recordStartAttempt
     this.monotonicNow = deps.monotonicNow ?? (() => performance.now())
@@ -9501,13 +9486,15 @@ export class RuntimeHost implements LiveHost {
 
   /**
    * ⚑ **Nothing newer in this life than the cut** — no turn has gone in it, its provider is not
-   * running one of its own, nothing is being sent, stopped or closed, and what waits is this app's
-   * own notices only, which go with the continuation.
+   * running one of its own, nothing is being sent, stopped or closed, no delivery is on its way in
+   * (one that waited for this start with it, however long that took), and what waits is this
+   * app's own notices only, which go with the continuation.
    */
   private freshForTheContinuation(session: HostedSession): boolean {
     const slot = this.slots.get(session.id)
     return (
       slot !== undefined &&
+      !this.arrivals.has(session.id) &&
       slot.session === session &&
       !onItsWayOut(slot) &&
       !this.aTurnWentIn.has(session) &&
@@ -10433,10 +10420,9 @@ export class RuntimeHost implements LiveHost {
           `session ${id} is still closing — it could not be reopened yet`,
         )
       }
-      // Reserved, and the provider has not arrived. Bounded since 102 — the launch gives up on
-      // itself at {@link DEFAULT_LAUNCH_TIMEOUT_MS} — so this is now a state that ENDS rather than
-      // one nothing transitions out of; what it still cannot say is when, so the elapsed time
-      // remains the fact worth reporting about it.
+      // Reserved, and the provider has not arrived. It ends when the provider answers, fails or
+      // exits, or a person cancels it; what it cannot say is when, so the elapsed time remains the
+      // fact worth reporting about it.
       if (existing.session === null) {
         const openingForMs = this.now() - existing.since
         throw new SessionUnavailable(
@@ -13836,32 +13822,15 @@ export class RuntimeHost implements LiveHost {
   }
 
   /**
-   * **Wait for a launch — but not forever, and never at the cost of forgetting it** (102).
-   *
-   * The one unbounded await this host made. Every other wait it takes is bounded and says so —
-   * {@link awaitArrival}, {@link settleTeardown}, `doStopProvider`, `closeAll`, the sign-in and its
-   * cancel — and the sibling probe has been bounded at fifteen seconds since 058, for a reason that
-   * reads across word for word: *"a hang is strictly worse than a failure, because a failure is a
-   * state the layer above already knows how to handle."* Here the layer above is a person, the
-   * state was a launcher that never settled, and 100 measured what it cost: quitting the app.
-   *
-   * ⚠️ **Stopping the wait is the easy half and it is NOT the contract** — that is 070's whole
-   * sentence, and `withDeadline` says it out loud: *"rejecting only releases the AWAITER; it does
-   * not release the work."* So expiring does three things in order, and the third is the one that
-   * would be missed:
-   *
-   *  1. **abort**, which is what reaches a provider whose handle we never got. Codex spawns its
-   *     detached child before the handshake it is now failing to answer.
-   *  2. **keep owning it**, by handing the launch its own aftermath. The reservation goes so the
-   *     user can try again; the LAUNCH stays, so `reserve` keeps refusing that id until the process
-   *     is confirmed gone — the same split {@link handBack} makes for the same reason.
-   *  3. **close whatever still arrives.** A handshake that answers one millisecond after we gave up
-   *     hands back a live provider that nobody is awaiting any more. Without this line that child
-   *     runs on, unowned, and the retry that follows puts a SECOND provider on the same transcript —
-   *     which is the exact failure 070 exists to prevent.
+   * **Wait for a launch for as long as its provider takes** — a slow provider is still starting,
+   * never a failed one. The wait ends when the provider answers, when it fails or its process
+   * exits (the adapter rejects), or when the person cancels: Cancel and a window going away abort
+   * {@link SessionSlot.launch}, which reaches a provider whose handle we never got, and the adapter
+   * then rejects. Meanwhile the conversation reads `still-opening`, and what is sent to it waits
+   * for the start ({@link deliverWhenItRuns}).
    *
    * `launch` is a thunk rather than a promise so an adapter that throws synchronously is a rejection
-   * here rather than an exception that escapes the bound entirely.
+   * here rather than an exception thrown before the launch is recorded.
    */
   private async awaitLaunch(
     slot: SessionSlot,
@@ -13876,49 +13845,14 @@ export class RuntimeHost implements LiveHost {
           'The launch was cancelled while cleanup finished.',
         )
     }
-    const timeoutMs = this.launchTimeouts[opening.provider][opening.kind]
-    const timing = this.timeTheLaunch(slot.id, opening, timeoutMs)
-    const started = (async () =>
-      this.startedAfterARefusedCopy(
+    const timing = this.timeTheLaunch(slot.id, opening)
+    try {
+      const handle = await this.startedAfterARefusedCopy(
         opening.provider,
         slot.profileId,
         () => launch(timing.phase),
         () => !this.launches.closed && this.slots.get(slot.id) === slot && !onItsWayOut(slot),
-      ))()
-    let stopClock = (): void => {}
-    const expiry = new Promise<'expired'>((resolve) => {
-      const timer = setTimeout(() => resolve('expired'), timeoutMs)
-      // Unref'd like every other bound in this app: a launch nobody is waiting for must not be the
-      // reason a quit waits for the start limit.
-      if (typeof timer.unref === 'function') timer.unref()
-      stopClock = () => clearTimeout(timer)
-    })
-    // Settled EITHER WAY, deliberately: this race asks only whether the launch is over. What it
-    // answered with is `await started` below, which is the one place a rejection is reported from —
-    // reporting it from here would swallow the adapter's own error.
-    const over = started.then(
-      () => 'over' as const,
-      () => 'over' as const,
-    )
-    let expired: boolean
-    try {
-      expired = (await Promise.race([over, expiry])) === 'expired'
-    } finally {
-      stopClock()
-    }
-    if (expired) {
-      timing.end('timed-out')
-      this.giveUpOnLaunch(slot, started)
-      const openingForMs = this.now() - slot.since
-      throw new SessionUnavailable(
-        'took-too-long',
-        `session ${slot.id} was given up on: its provider did not answer within ` +
-          `${timeoutMs}ms (reserved ${openingForMs}ms ago by ${ownerName(slot.ownerId)})`,
-        { waitedForMs: timeoutMs, openingForMs },
       )
-    }
-    try {
-      const handle = await started
       timing.end('ready')
       return handle
     } catch (error) {
@@ -13946,7 +13880,6 @@ export class RuntimeHost implements LiveHost {
   private timeTheLaunch(
     session: string,
     opening: { readonly provider: Provider; readonly kind: 'fresh' | 'resume' },
-    timeoutMs: number,
   ): { readonly phase: StartPhaseSink; readonly end: (outcome: StartAttemptOutcome) => void } {
     const write = this.recordStartAttempt
     const of = {
@@ -13955,7 +13888,6 @@ export class RuntimeHost implements LiveHost {
       session,
       provider: opening.provider,
       opening: opening.kind,
-      timeoutMs,
     }
     const began = this.monotonicNow()
     const phases: Partial<Record<StartPhase, number>> = {}
@@ -13992,44 +13924,6 @@ export class RuntimeHost implements LiveHost {
         })
       },
     }
-  }
-
-  /**
-   * Stop waiting for a launch, and keep owning it until it is really gone (102).
-   *
-   * Split out of {@link awaitLaunch} because it is the half that has nothing to do with waiting:
-   * whatever made us give up, from here the rules are 070's and they do not vary.
-   */
-  private giveUpOnLaunch(slot: SessionSlot, started: Promise<SessionHandle>): void {
-    // Reaches the process, not the promise. See {@link ProviderRuntimeContext.signal}.
-    this.launches.cancel(slot.launch)
-    this.launches.finish(
-      slot.launch,
-      started.then(
-        async (handle) => {
-          // It answered after we stopped listening. Nobody else holds this handle — the caller has
-          // already been told the launch failed — so it is stopped here or it is never stopped.
-          console.warn(
-            `runtime session ${slot.id}: its provider arrived after the launch was given up on — ` +
-              'stopping it rather than registering it',
-          )
-          // ⛔ **…and owned until the process is proven gone, not until `close()` answers** (233).
-          // This is the third of the three hand-back sites; see {@link terminationOf}. The close's
-          // own failure is swallowed here rather than propagated, because on this path a rejection
-          // used to be the registry's release signal — and "the teardown threw" is not evidence that
-          // the child died. Holding is the conservative half of the same trade `runFinalize` makes.
-          const closing = (async () => handle.close())().catch((error: unknown) => {
-            const home = this.homeLaunches.get(slot.launch)
-            if (home !== undefined) home.uncertain = true
-            console.warn(
-              `runtime session ${slot.id} failed to close after being given up on: ${errorMessage(error)}`,
-            )
-          })
-          await this.terminationOf(handle, closing, slot.launch)
-        },
-        (error: unknown) => this.rejectedConnectionTermination(error, slot.launch),
-      ),
-    )
   }
 
   /**
@@ -27970,13 +27864,11 @@ export class RuntimeHost implements LiveHost {
    * hit the very overlap the runtime rejects.
    *
    * A plain `send` remains the right call when the session is idle — this is the "I've changed my
-   * mind, do this instead" path. ⚠️ **704 · it does not always SEND**: Claude's interrupt bounds its
-   * ack and forces its own terminal (074); Codex's awaits its `turn/interrupt` request with no bound
-   * of its own (395), so the host bounds that wait itself — {@link interruptAgent}'s bound, since
-   * `709` — and then gives {@link waitForIdle} its five seconds. A Codex turn still running at their
-   * end refuses the words, which the composer then gives back. ⚑ `704` made the common Codex case
-   * end: an interrupt asked before the turn was running used to be refused by Codex and the turn run
-   * to its end (`smoke:ui` step 48).
+   * mind, do this instead" path. Claude's interrupt bounds its ack and forces its own terminal
+   * (074); Codex ends the turn when it ends it. Either way the words wait for the turn's end
+   * ({@link untilIdleOrStopped}) and are never refused because the provider is slow to stop.
+   * ⚑ `704` made the common Codex case end: an interrupt asked before the turn was running used to
+   * be refused by Codex and the turn run to its end (`smoke:ui` step 48).
    */
   async sendInterrupting(
     sessionId: string,
@@ -28002,7 +27894,7 @@ export class RuntimeHost implements LiveHost {
     // THE INTERRUPT** (found in review). `interrupt()` terminalizes the running turn, which emits
     // `status: idle` — the exact signal {@link flushQueued} waits for. That event is delivered on a
     // microtask scheduled inside `interrupt()`, so it lands BEFORE this function resumes: the queued
-    // message starts its own turn, `waitForIdle` below then sees `working` again, and by the time
+    // message starts its own turn, the wait for idle below then sees `working` again, and by the time
     // the replacement is sent the user has had two turns where they asked for one, in the wrong
     // order, having pressed a button that means "instead of".
     //
@@ -28111,27 +28003,18 @@ export class RuntimeHost implements LiveHost {
       // that genuinely belongs to it: an idle session is not interrupted at all, and a row saying it
       // was would be `039`'s rule broken — *the ledger may not claim a gesture happened*.
       //
-      // 🔴 **709 · the ask is BOUNDED, as {@link interruptAgent}'s is** (`704` H-8). ⛔ It was awaited
-      // whole, and Codex's `interrupt()` awaits its `turn/interrupt` request with no bound of its own
-      // (395) — so an app-server that never answered held this verb for good, kept `holdingQueue`
-      // up, and held every queued message behind it, even when Codex had already ENDED the turn it
-      // was asked about. ⚑ `settledWithin` releases the WAITER, not the work: the request stays in
-      // flight, and whatever Codex does with it later still ends the turn.
+      // The ask itself is not awaited: Codex's `interrupt()` may never answer its `turn/interrupt`
+      // request even once it has ended the turn. What this verb waits for is the turn's end.
       const asked = this.askTheWorkToStop(session, by)
       // 🔴 **723 · R83 — this ask is said when it goes unanswered, too**, and a person's Stop joins it.
       this.sayWhenTheStopGoesUnanswered(session, asked, by)
-      // ⛔ **`void`-ed on the timeout path rather than left unhandled** — {@link interruptAgent}'s
-      // reason: the interrupt is still running, and a rejection nobody awaits is an unhandled one.
       asked.catch((error: unknown) => {
         console.warn(`runtime session ${session.id} failed to interrupt: ${errorMessage(error)}`)
       })
-      await settledWithin(asked, this.interruptWaitMs)
-      // A retired handle cannot become idle; carry only the replacement words after its exit.
+      // However long the provider takes to stop, the words wait for it. If the session ends under
+      // them instead, they start it again as a plain send does.
+      await this.untilIdleOrStopped(session)
       if (this.itStoppedUnder(session)) return this.send(session.id, text, by, attachments)
-      // ⚠️ **704 · on Codex this is the only bound on the TURN.** Claude's `interrupt()` bounds its
-      // own ack and forces the terminal (074); Codex's forces nothing while a turn is open, so a
-      // Codex turn still running at the end of these five seconds refuses the send.
-      await this.waitForIdle(session.handle)
     }
     // 🔴 **D-027 · R2 — after the stop, these words go in with everything that waits, oldest
     // first** ({@link itJoinsWhatWaits}): held last, then sent together by the flush this press lets
@@ -28166,10 +28049,9 @@ export class RuntimeHost implements LiveHost {
       return
     }
     // ⛔ **Asked AGAIN, immediately before the send** (149, from 148 M1). The check at the top of
-    // `sendInterrupting` was made one interrupt and up to seven seconds ago — the interrupt wait
-    // (709) plus `waitForIdle`'s own five — and this is the only send path with an await that long
-    // between deciding and doing. The
-    // machine credential can move inside that window, and a replacement turn is exactly the kind
+    // `sendInterrupting` was made before the stop, which can take as long as the provider takes to
+    // end its turn, and this is the only send path with an await that long between deciding and
+    // doing. The machine credential can move inside that window, and a replacement turn is exactly the kind
     // that would then go out on the child the user is trying to leave behind. Cheap in the ordinary
     // case: the answer latches, so a session already refused never reads the Keychain twice.
     // ⚑ **708 · the same `this.originOf(by)` as the handover below** — see {@link sendAs}.
@@ -28197,8 +28079,8 @@ export class RuntimeHost implements LiveHost {
       )
       return
     }
-    // ⚠️ Asked a second time, for the same reason the gate above it is: `waitForIdle` is up to five
-    // seconds, and a file can go away inside that window too. `sendInterrupting` asks first so the
+    // ⚠️ Asked a second time, for the same reason the gate above it is: the wait for the turn's end
+    // can be long, and a file can go away inside that window too. `sendInterrupting` asks first so the
     // interrupt never happens for a message that was never going to send; this one is the honest
     // answer about what is on disk NOW.
     const handed = await recheckHandedPaths(attachments, session.cwd)
@@ -31473,7 +31355,8 @@ export class RuntimeHost implements LiveHost {
 
   /**
    * ⚑ **D-017 · R1 — a conversation on its way out, or whose provider has just stopped, waited out**:
-   * its pump, then its teardown — both bounded ({@link settleTeardown}).
+   * its pump, then its teardown and its provider's exit, however long they take
+   * ({@link settleTeardown}).
    */
   private async whenItHasStopped(slot: SessionSlot): Promise<void> {
     const session = slot.session
@@ -34100,16 +33983,10 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /** Wait for the handle to leave the busy states, bounded so a wedged session still reports. */
-  private async waitForIdle(handle: SessionHandle, timeoutMs = 5000): Promise<void> {
-    const deadline = Date.now() + timeoutMs
-    while (handle.status() !== 'idle' && Date.now() < deadline) {
+  /** Wait until the session's turn has ended, or the session itself has stopped. */
+  private async untilIdleOrStopped(session: HostedSession): Promise<void> {
+    while (session.handle.status() !== 'idle' && !this.itStoppedUnder(session)) {
       await new Promise((resolve) => setTimeout(resolve, 25))
-    }
-    if (handle.status() !== 'idle') {
-      throw new Error(
-        `cannot send: the session is still ${handle.status()} after interrupting the running turn`,
-      )
     }
   }
 
@@ -37066,22 +36943,34 @@ export class RuntimeHost implements LiveHost {
    * be over first. Nothing here weakens {@link reserve}, which stays synchronous and is still the
    * only gate — this just stops asking it a question whose answer was about to change.
    *
-   * **Bounded**, for {@link awaitArrival}'s reason and with {@link tearDown}'s own stated worst
-   * case: a wedged provider must not turn a refused reopen into a hung one. Past the bound the slot
-   * is still there and `reserve` refuses — now saying *"still closing"*, which is true.
+   * **However long it takes**: the teardown, and then the last provider's confirmed exit
+   * ({@link LaunchRegistry.gone}), are waited for rather than refused on a clock, so a slow close
+   * holds the reopen and the message it carries instead of turning them away.
    *
    * A slot with nothing being torn down is left completely alone, so an ordinary reopen pays one
    * map lookup and two null checks.
    */
   private async settleTeardown(sessionId: string): Promise<void> {
     const slot = this.slots.get(sessionId)
-    if (slot === undefined) return
-    // Closed before its provider ever arrived: the teardown is the arrival, and `awaitArrival`
-    // already bounds and reports exactly that case. `phase` is the only thing that can say so —
-    // there is no session yet to hold a promise.
+    if (slot !== undefined && !(await this.itsTeardownEnded(slot))) return
+    // What is waited for is the LAST life's provider: a life that started meanwhile is not.
+    const now = this.slots.get(sessionId)
+    await this.launches.gone(
+      sessionId,
+      now !== undefined && !onItsWayOut(now) ? now.launch : undefined,
+    )
+  }
+
+  /**
+   * Waits for the slot's teardown to end; false, at once, when nothing is tearing it down.
+   */
+  private async itsTeardownEnded(slot: SessionSlot): Promise<boolean> {
+    // Closed before its provider ever arrived: the teardown is the arrival. `phase` is the only
+    // thing that can say so — there is no session yet to hold a promise.
     if (slot.session === null) {
-      if (onItsWayOut(slot)) await this.awaitArrival(slot)
-      return
+      if (!onItsWayOut(slot)) return false
+      await slot.arrived
+      return true
     }
     // ⚠️ **The question is "is a teardown running", NOT "is the phase closing"** — they are not the
     // same, and the difference is a second door onto the same defect. `phase` becomes `closing` only
@@ -37094,12 +36983,9 @@ export class RuntimeHost implements LiveHost {
     // `closing` is the Close button's teardown, `finalizing` is the other door, and both end with
     // `slots.delete`. Both null means nothing is being torn down and there is nothing to wait for.
     const teardown = slot.session.closing ?? slot.session.finalizing
-    if (teardown === null) return
-    if (await settledWithin(teardown, this.closeDrainTimeoutMs * 2)) return
-    console.warn(
-      `runtime session ${sessionId}: still closing after ${this.closeDrainTimeoutMs * 2}ms — ` +
-        'refusing the reopen rather than starting a second provider onto the same transcript',
-    )
+    if (teardown === null) return false
+    await teardown.catch(() => undefined)
+    return true
   }
 
   private async tearDown(session: HostedSession): Promise<void> {
@@ -37197,9 +37083,9 @@ export class RuntimeHost implements LiveHost {
   /**
    * ⛔ **What a launch is owned against once we stop waiting for it** (233, from 229 H1).
    *
-   * One function because there are three places that give a launch back while holding a handle —
-   * {@link doStopProvider}, {@link handBack} and {@link giveUpOnLaunch} — and the first version of
-   * this dispatch changed only the first. The other two went on registering the bounded teardown,
+   * One function because there are places that give a launch back while holding a handle —
+   * {@link doStopProvider} and {@link handBack} — and the first version of this dispatch changed
+   * only the first. The other went on registering the bounded teardown,
    * so `handBack`'s own comment (*"the id stays refused for exactly as long as we do not know"*) was
    * false for Claude on the one path a user reaches by pressing Close during a start and Reopen
    * straight after. A rule that has to be remembered at three call sites is a rule that will be
@@ -45195,7 +45081,9 @@ export class RuntimeHost implements LiveHost {
       const status = session.handle.status()
       if (status === 'ended' || status === 'errored') {
         await settledWithin(session.pump, this.closeDrainTimeoutMs)
-        await this.settleTeardown(sessionId)
+        // A look only shows the record, so it waits a while for the teardown and then shows it as
+        // it stands; it refuses nothing.
+        await settledWithin(this.settleTeardown(sessionId), this.closeDrainTimeoutMs * 2)
       } else {
         const handed = mayControl(slot, sink)
           ? this.attachHeldSession(sessionId, sink, 'attach')

@@ -818,7 +818,6 @@ describe('203 · a window refused the conversation cannot drive it (195 H1)', ()
         authNote: null,
         files: [],
       }),
-      launchTimeoutMs: 60_000,
       // The launch never answers, so the quit below must not wait the default bound for it.
       closeDrainTimeoutMs: 50,
     })

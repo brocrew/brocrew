@@ -67,8 +67,7 @@ import type { MemoryLoadedItem, TranscriptItem } from '../lib/transcript'
  * `publishOurs`, which passes no `stamped` for this row — when the row is APPENDED inside
  * `onRegistered`. ⚑ **The look happens far earlier**, in `readClaudeAgentMemory` during
  * `readSessionInstructions`, and **`await this.awaitLaunch(…)` sits between them**: a provider
- * spawn whose wait is `deps.launchTimeoutMs ?? DEFAULT_LAUNCH_TIMEOUT_MS`, 15 s by default and
- * injectable, with the ledger write after it unbounded. ⚠️ **`prepareProviderHome` is NOT in this
+ * spawn, waited for however long its provider takes, with the ledger write after it. ⚠️ **`prepareProviderHome` is NOT in this
  * interval** — it runs above the read, so the *"can legitimately be slow on a first run"* note at
  * the `awaitLaunch` call is about a different span (checked, because it would have widened this
  * one).

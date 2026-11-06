@@ -8995,8 +8995,7 @@ export interface RuntimeCommandResults {
   /**
    * Ask whatever is running to stop, then send once it has ended — the "do this instead" path
    * (074). ⚠️ Since R43 (`709`) the provider may finish the turn first; the words go either way
-   * (`739`, `737` F-7) — unless the turn has not ended within the host's bounded wait (the ask's,
-   * then `waitForIdle`'s), when the send is refused and the words come back.
+   * (`739`, `737` F-7), however long the provider takes to end the turn.
    */
   sendInterrupting: void
   /**

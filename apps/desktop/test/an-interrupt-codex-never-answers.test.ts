@@ -19,11 +19,11 @@ import {
  * ⛔ **The finding, as `704` measured it:** `sendInterrupting` awaited the adapter's `interrupt()`,
  * and Codex's awaits its `turn/interrupt` request with no bound of its own — so an app-server that
  * never answers that request held the verb for good, kept `holdingQueue` up, and held every queued
- * message behind it. `waitForIdle`'s five seconds never started.
+ * message behind it.
  *
- * ⚑ **The fix is `interruptAgent`'s, one door over**: the ask is raced against
- * `DEFAULT_INTERRUPT_WAIT_MS` with `settledWithin`, which releases the WAITER and not the work — the
- * request stays in flight, and whatever Codex does with it later still ends the turn.
+ * ⚑ **What the verb waits for is the turn's end, never the ask's answer**: the request stays in
+ * flight, and whatever Codex does with it later still ends the turn. However long that takes, the
+ * replacement waits for it and is never refused for slowness.
  *
  * ⚠️ **The REAL `CodexRuntime`, over a transport scripted like an app-server** — not a handle whose
  * `interrupt` is made to hang. The finding is about where the adapter's await sits, so a double that
@@ -32,7 +32,7 @@ import {
  * | arm | what the app-server does with `turn/interrupt` | what the verb must do |
  * |---|---|---|
  * | **§1** | ends the turn `interrupted` and never ANSWERS the request | send the replacement with the queued message, as one turn |
- * | **§2** | never answers and never ends the turn | refuse after its bounded waits, and let the queue go when the turn does end |
+ * | **§2** | never answers, and ends the turn only much later | wait for that end, then send the replacement with the queued message, as one turn |
  * | **§3** control | answers, and ends the turn `interrupted` | exactly what it always did |
  *
  * ⚑ **D-027 · R2 moved what "the replacement goes" means**: with a message queued, a person's Stop
@@ -154,23 +154,19 @@ describe('709 · an interrupt Codex never answers still gives interrupt-and-send
     expect(server.turnsAsked()).toHaveLength(2)
   })
 
-  it('🔴 §2 · Codex never answers and never ends the turn — the verb refuses after its bounded waits, and the queue is released', async () => {
+  it('🔴 §2 · Codex never answers and ends the turn only much later — the verb waits, then sends the replacement with the queued message', async () => {
     const { id, server } = await aRunningTurnWithOneWaiting()
     server.interruptAnswer = 'never'
     const verb = host.sendInterrupting(id, 'no, do THIS', window)
-    // ⚑ **Bounded**: the host's interrupt wait, then `waitForIdle`'s five seconds — and a turn
-    // still running at their end refuses the words, which the composer hands back.
-    const said = await within(8_000, verb)
-    expect(said).toEqual({
-      state: 'rejected',
-      message: 'cannot send: the session is still working after interrupting the running turn',
-    })
+    // ⚑ Past the two seconds and five seconds the host used to wait before refusing the words.
+    expect(await within(7_500, verb)).toEqual({ state: 'pending' })
     expect(server.turnsAsked()).toEqual(['count to sixty'])
-    // ⛔ **The latch is DOWN**: when Codex does end the turn, the message that was waiting goes —
-    // on `main` it stayed held behind a verb that never returned.
+    // ⚑ When Codex does end the turn, the replacement goes with the message that was waiting.
     server.end(server.lastTurn, 'completed')
-    await waitFor(() => server.turnsAsked().length === 2, 'the queued message')
-    expect(server.turnsAsked()).toEqual(['count to sixty', 'the one that was waiting'])
+    expect(await within(2_000, verb)).toEqual({ state: 'resolved' })
+    await waitFor(() => server.turnsAsked().length === 2, 'the one turn after the stop')
+    expect(server.turnsAsked()).toEqual(['count to sixty', 'no, do THIS'])
+    expect(theMessagesOfTheLastTurn(id)).toEqual(['the one that was waiting', 'no, do THIS'])
   }, 20_000)
 
   it('⚑ §3 CONTROL · Codex answers the ask and ends the turn — the verb does exactly what it always did', async () => {
@@ -307,7 +303,7 @@ describe('709 · the ask’s own bound is patience too (704 H-8)', () => {
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
   })
 
-  it('⚑ a Codex that answers the ask and ends the turn 5.5 s later — inside the ask’s 2 s plus `waitForIdle`’s 5 — still takes the replacement', async () => {
+  it('⚑ a Codex that answers the ask and ends the turn 5.5 s later still takes the replacement', async () => {
     const { sessionId: id } = await host.createSession(
       { provider: 'codex', approvalMode: 'ask', cwd: root },
       window,
