@@ -2737,6 +2737,12 @@ export class CodexSessionHandle implements SessionHandle {
    * turns has ended is taken as gone, and a compaction asked for then could still meet it.
    */
   private compactionOutstanding = false
+  /**
+   * A `turn/started` this session could not place while a compaction the person stopped was
+   * outstanding and a message of ours still waited for its `turn/start` answer: either that
+   * message's own start or the stopped compaction's. The answer decides ({@link settleTheStartNobodyClaimed}).
+   */
+  private startNobodyClaimed: string | null = null
   /** Server-request handlers in flight; `close()` drains them so their wire writes flush first. */
   private readonly inFlight = new Set<Promise<void>>()
   /**
@@ -4230,8 +4236,17 @@ export class CodexSessionHandle implements SessionHandle {
       // showing itself. ⚑ The person's Stop reaches it now that it has an id; its frames stay
       // dropped, and a compaction may be asked for again.
       if (!this.isCurrentProviderTurn(startedId)) {
-        if (this.compactionOutstanding && startedId) void this.sendInterruptRpc(startedId)
-        this.compactionOutstanding = false
+        const turn = this.currentTurn
+        const ourStartIsUnanswered =
+          turn !== null && turn.providerTurnId === null && turn.bindsAtItsStart !== true
+        if (this.compactionOutstanding && startedId && ourStartIsUnanswered) {
+          // Ours or the stopped compaction's: the authoritative `turn/start` answer decides.
+          this.startNobodyClaimed = startedId
+        } else if (this.compactionOutstanding && startedId) {
+          this.stopTheStoppedCompaction(startedId)
+        } else {
+          this.compactionOutstanding = false
+        }
       }
       if (this.currentTurn?.interruptAsked && this.isCurrentProviderTurn(startedId)) {
         void this.sendInterruptRpc(startedId)
@@ -4437,10 +4452,29 @@ export class CodexSessionHandle implements SessionHandle {
     if (!turn || turn.providerTurnId !== null || !providerTurnId) return
     turn.providerTurnId = providerTurnId
     this.lastBoundTurnId = providerTurnId
+    this.settleTheStartNobodyClaimed(providerTurnId)
     if (turn.interruptPending) {
       turn.interruptPending = false
       void this.sendInterruptRpc(providerTurnId) // the early interrupt, now that the id is known
     }
+  }
+
+  /**
+   * Place the `turn/started` held in {@link startNobodyClaimed} once our turn's own id is known, or
+   * known never to come (`null`): a start that is not ours is the compaction the person stopped,
+   * and Codex is asked to stop it now that it has an id.
+   */
+  private settleTheStartNobodyClaimed(ours: string | null): void {
+    const held = this.startNobodyClaimed
+    if (held === null) return
+    this.startNobodyClaimed = null
+    if (held !== ours) this.stopTheStoppedCompaction(held)
+  }
+
+  /** The compaction the person stopped before it started has shown itself: stop it there too. */
+  private stopTheStoppedCompaction(startedId: string): void {
+    void this.sendInterruptRpc(startedId)
+    this.compactionOutstanding = false
   }
 
   /**
@@ -4453,7 +4487,10 @@ export class CodexSessionHandle implements SessionHandle {
   private onTurnStartResult(localId: number, result: unknown): void {
     if (this.terminated) return
     // The turn may already be gone (interrupted/closed before the response resolved).
-    if (this.currentTurn?.localId !== localId) return
+    if (this.currentTurn?.localId !== localId) {
+      this.settleTheStartNobodyClaimed(null)
+      return
+    }
     const providerTurnId = readString(isRecord(result) ? result['turn'] : undefined, 'id')
     if (!providerTurnId) {
       this.finishUnexpected(
@@ -5864,6 +5901,7 @@ export class CodexSessionHandle implements SessionHandle {
           // but ONLY if it is still the current turn (never terminalize a later one).
           if (this.currentTurn?.localId === localId) {
             this.currentTurn = null
+            this.settleTheStartNobodyClaimed(null)
             // The profile rode on that request, so a request that never landed adopted nothing. The
             // overstatement above is only tolerable because the next turn corrects it; there is no
             // next turn here, so it is corrected now. `requested` survives — the user's choice did

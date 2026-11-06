@@ -12605,6 +12605,38 @@ describe('CodexRuntime — 713 · R59, a compaction asked for', () => {
     await consumer
   })
 
+  it.each([
+    ['its own start', 'tn_mine', 'tn_mine', []],
+    ['the stopped compaction', 'tn_stray', 'tn_mine', ['tn_stray']],
+  ] as const)(
+    '🔴 after such a stop, a start seen before the next message is answered is placed by that answer: %s',
+    async (_, startedFirst, answered, interrupted) => {
+      const { transport, handle, events, consumer } = await startCodex()
+      await aCompactionStoppedBeforeItStarted(handle)
+      transport.deferNextTurnStart()
+      await handle.send('the next message')
+      await vi.waitFor(() =>
+        expect(transport.requests.filter((r) => r.method === 'turn/start')).toHaveLength(1),
+      )
+      // A start arrives before that message's `turn/start` is answered.
+      transport.notification('turn/started', turnStartedNotification('th_1', startedFirst))
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      expect(transport.requests.filter((r) => r.method === 'turn/interrupt')).toEqual([])
+      transport.settleTurnStart(answered)
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      // Never the next message; the stopped compaction only once its id is known not to be ours.
+      expect(
+        transport.requests
+          .filter((r) => r.method === 'turn/interrupt')
+          .map((r) => (r.params as { turnId: string }).turnId),
+      ).toEqual(interrupted)
+      expect(handle.status()).not.toBe('idle')
+      expect(events.filter((e) => e.type === 'turn' && e.state === 'interrupted')).toHaveLength(1)
+      await handle.close()
+      await consumer
+    },
+  )
+
   it('⚑ …and a turn of OURS that runs to its end clears the wait — its own start does not', async () => {
     const { transport, handle, events, consumer } = await startCodex()
     await aCompactionStoppedBeforeItStarted(handle)
