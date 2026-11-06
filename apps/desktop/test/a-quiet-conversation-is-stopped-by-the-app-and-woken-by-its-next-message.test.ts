@@ -679,9 +679,11 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
 
   /** ⚑ W4.210 · the countdown the host holds for this one conversation. */
   const countdownOf = (id: string): Countdown => {
-    const timer = (host as unknown as { idleCountdowns: Map<string, unknown> }).idleCountdowns.get(
-      id,
-    )
+    const timer = (
+      host as unknown as {
+        conversationIdle: { idleCountdowns: Map<string, unknown> }
+      }
+    ).conversationIdle.idleCountdowns.get(id)
     const found = live().find((one) => one.timer === timer)
     if (found === undefined) throw new Error(`${id} holds no live countdown`)
     return found
