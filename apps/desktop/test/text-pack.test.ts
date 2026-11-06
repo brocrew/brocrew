@@ -250,7 +250,14 @@ describe('a text pack, read only by a build run from its source', () => {
   for (const [what, make, refusal] of refusals) {
     it(`refuses ${what}, and the launch keeps the shipped texts`, () => {
       const folder = make(aPack())
-      expect(read(folder)).toEqual({ kind: 'refused', folder, refusal })
+      const answer = read(folder)
+      if (refusal.kind === 'unreadable') {
+        expect(answer).toMatchObject({
+          kind: 'refused',
+          folder,
+          refusal: { kind: 'unreadable', cause: expect.stringContaining(folder) },
+        })
+      } else expect(answer).toEqual({ kind: 'refused', folder, refusal })
     })
   }
 
