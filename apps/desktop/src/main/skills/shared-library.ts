@@ -22,7 +22,6 @@ interface Receipt {
   name?: string
   keptBoth?: SkillImportNotice
   retained?: boolean
-  startId?: string
   quarantine?: string
 }
 interface Conversion {
@@ -40,7 +39,6 @@ const folderName = (name: string) =>
     .replace(/[^a-z0-9-]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 64) || 'skill'
-const appStartId = randomUUID()
 const lanes = new Map<string, Promise<unknown>>()
 async function serialized<T>(root: string, run: () => Promise<T>): Promise<T> {
   const prior = lanes.get(root) ?? Promise.resolve()
@@ -80,7 +78,6 @@ export class SharedSkillLibrary {
     private readonly fs: RecoveryFs = nodeFs,
     private readonly now = Date.now,
     private readonly platform: NodeJS.Platform = process.platform,
-    private readonly startId: string = appStartId,
   ) {
     this.active = join(userData, SHARED_SKILLS_DIRNAME)
     this.off = join(userData, OFF_SKILLS_DIRNAME)
@@ -156,18 +153,12 @@ export class SharedSkillLibrary {
       await assertSkillPathsAreReal(this.userData, [original, parent], this.fs)
       if (!receipt.quarantine) {
         receipt.quarantine = randomUUID()
-        receipt.startId = this.startId
         await commit()
       }
       const hidden = join(parent, receipt.quarantine)
       await assertSkillPathsAreReal(this.userData, [hidden], this.fs)
       if (!(await exists(hidden, this.fs)) && (await exists(original, this.fs))) {
         await privateDir(parent, this.fs)
-        // Stamp a retried intent before renaming, even if a prior app recorded it.
-        if (receipt.startId !== this.startId) {
-          receipt.startId = this.startId
-          await commit()
-        }
         // Keep the original and retry next turn if this same-volume move fails.
         try {
           await this.fs.rename(original, hidden)
@@ -183,8 +174,6 @@ export class SharedSkillLibrary {
         await commit()
         continue
       }
-      // A later process must observe the published destination before deleting this copy.
-      if (receipt.startId === undefined || receipt.startId === this.startId) continue
       const targets = [join(this.active, receipt.target!), join(this.off, receipt.target!)]
       for (const target of targets) {
         await assertSkillPathsAreReal(this.userData, [target], this.fs)
@@ -204,9 +193,6 @@ export class SharedSkillLibrary {
       await assertSkillPathsAreReal(this.userData, [this.marker], this.fs)
       const state = await this.readConversion()
       await this.hideRetained(state)
-      const retainedAtStart = state.receipts.filter(
-        (one) => one.retained && one.startId !== undefined && one.startId !== this.startId,
-      )
       const commit = () => writeAtomically(this.marker, `${JSON.stringify(state)}\n`, this.fs)
       const imports = join(this.off, '.imports')
       await assertSkillPathsAreReal(this.userData, [imports], this.fs)
@@ -394,18 +380,8 @@ export class SharedSkillLibrary {
           let retained = false
           if (await exists(source, this.fs)) {
             await assertSkillPathsAreReal(this.userData, [source], this.fs)
-            const confirmed = retainedAtStart.find(
-              (one) => one.source.startsWith(`moved/${profile}/${name}/`) && one.target === chosen,
-            )
-            const sameRunRetention = state.receipts.some(
-              (one) =>
-                one.retained &&
-                one.source.startsWith(`moved/${profile}/${name}/`) &&
-                (one.startId === undefined || one.startId === this.startId),
-            )
-            if ((!sameRunRetention && directoriesFlushed) || confirmed) {
+            if (directoriesFlushed) {
               await this.fs.rm(source, { recursive: true })
-              if (confirmed) confirmed.retained = false
             } else retained = true
           }
           await syncFolder(sourceRoot, this.fs)
@@ -423,7 +399,7 @@ export class SharedSkillLibrary {
             target: chosen,
             stage: null,
             done: true,
-            ...(retained ? { retained: true, startId: this.startId } : {}),
+            ...(retained ? { retained: true } : {}),
             ...(chosen !== folderName(name) && !identical
               ? { keptBoth: collision(key, name, chosen) }
               : {}),
@@ -467,8 +443,6 @@ export class SharedSkillLibrary {
           typeof r.source !== 'string' ||
           typeof r.done !== 'boolean' ||
           (r.retained !== undefined && typeof r.retained !== 'boolean') ||
-          (r.startId !== undefined &&
-            (typeof r.startId !== 'string' || r.startId.length === 0 || r.startId.length > 128)) ||
           (r.quarantine !== undefined &&
             (typeof r.quarantine !== 'string' || !/^[0-9a-f-]{36}$/.test(r.quarantine))) ||
           (r.retained === true &&

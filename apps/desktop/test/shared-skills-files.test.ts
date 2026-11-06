@@ -74,9 +74,7 @@ describe('one writable shared skills tree', () => {
     const library = new SharedSkillLibrary(root)
     await expect(library.convert(async () => [])).resolves.toBeUndefined()
     if (process.platform === 'win32')
-      await new SharedSkillLibrary(root, nodeFs, Date.now, 'win32', 'next-app').convert(
-        async () => [],
-      )
+      await new SharedSkillLibrary(root, nodeFs, Date.now, 'win32').convert(async () => [])
     const names = await folders(library.active)
     expect(names).toHaveLength(2)
     expect(names[0]).toBe('recipe-check')
@@ -149,7 +147,7 @@ describe('one writable shared skills tree', () => {
     const library = new SharedSkillLibrary(root)
     await library.convert(personal)
     if (process.platform === 'win32')
-      await new SharedSkillLibrary(root, nodeFs, Date.now, 'win32', 'next-app').convert(personal)
+      await new SharedSkillLibrary(root, nodeFs, Date.now, 'win32').convert(personal)
     const names = await folders(library.active)
     expect(names).toHaveLength(2)
     await library.save('recipe-check/SKILL.md', body('Edited in the shared folder.'))
@@ -332,9 +330,7 @@ describe('one writable shared skills tree', () => {
             async () => [],
           )
           expect((await lstat(path)).isDirectory()).toBe(true)
-          await new SharedSkillLibrary(root, fs, Date.now, platform, 'next-app').convert(
-            async () => [],
-          )
+          await new SharedSkillLibrary(root, fs, Date.now, platform).convert(async () => [])
         }
         await expect(lstat(path)).rejects.toMatchObject({ code: 'ENOENT' })
       }
@@ -396,9 +392,7 @@ describe('one writable shared skills tree', () => {
     const library = new SharedSkillLibrary(root, cross)
     await library.convert(async () => [])
     if (process.platform === 'win32')
-      await new SharedSkillLibrary(root, cross, Date.now, 'win32', 'next-app').convert(
-        async () => [],
-      )
+      await new SharedSkillLibrary(root, cross, Date.now, 'win32').convert(async () => [])
     await expect(lstat(home)).rejects.toMatchObject({ code: 'ENOENT' })
     expect(verifiedBeforeRemoval).toBe(true)
     expect((await readSkillTree(join(library.active, 'recipe-check'))).sha256).toBe(original.sha256)

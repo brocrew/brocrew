@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { join, resolve, sep } from 'node:path'
+import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { SharedSkillDiscovery } from '../src/main/skills/shared-discovery'
 import { SharedSkillLibrary } from '../src/main/skills/shared-library'
@@ -118,9 +118,7 @@ it('moves new native folders before discovery on every start or resume, for all 
   await writeFile(join(original, 'SKILL.md'), text('recipe-check'))
   await service.prepareLaunch()
   if (process.platform === 'win32')
-    await new SharedSkillLibrary(root, undefined, Date.now, 'win32', 'next-app').convert(
-      async () => [],
-    )
+    await new SharedSkillLibrary(root, undefined, Date.now, 'win32').convert(async () => [])
   await expect(lstat(original)).rejects.toMatchObject({ code: 'ENOENT' })
   expect((await service.list()).find((one) => one.folder === 'recipe-check')?.body).toBe(
     text('recipe-check'),
@@ -132,47 +130,10 @@ it('moves new native folders before discovery on every start or resume, for all 
   await writeFile(join(original, 'SKILL.md'), text('recipe-check', 'A replacement recipe.'))
   await service.prepareLaunch()
   if (process.platform === 'win32')
-    await new SharedSkillLibrary(root, undefined, Date.now, 'win32', 'next-app').convert(
-      async () => [],
-    )
+    await new SharedSkillLibrary(root, undefined, Date.now, 'win32').convert(async () => [])
   await expect(lstat(original)).rejects.toMatchObject({ code: 'ENOENT' })
   expect((await service.list()).find((one) => one.folder === 'recipe-check')?.enabled).toBe(false)
   expect((await service.list()).find((one) => one.folder === 'recipe-check-2')?.body).toContain(
     'A replacement recipe.',
   )
-})
-
-it('keeps a retained native original through startup and repeated prepareLaunch calls in the same app', async () => {
-  const home = join(root, 'provider-homes/default/cora/codex/skills/recipe-check')
-  await mkdir(home, { recursive: true })
-  await writeFile(join(home, 'SKILL.md'), text('recipe-check'))
-  const fs = {
-    ...nodeFs,
-    open: async (...args: Parameters<typeof nodeFs.open>) => {
-      if (
-        (await nodeFs.lstat(args[0]).catch(() => null))?.isDirectory() &&
-        (args[0] === join(root, 'skills') || args[0].startsWith(join(root, 'skills') + sep))
-      )
-        throw Object.assign(new Error('fictional Windows directory'), { code: 'EISDIR' })
-      return nodeFs.open(...args)
-    },
-  }
-  const first = new SharedSkillLibrary(root, fs, Date.now, 'win32', 'one-app')
-  await first.convert(async () => [])
-  service.close()
-  service = new SharedSkillDiscovery(
-    root,
-    Promise.resolve(),
-    shipped,
-    new SharedSkillLibrary(root, fs, Date.now, 'win32', 'one-app'),
-  )
-  await service.prepareLaunch()
-  await service.prepareLaunch()
-  await expect(lstat(home)).resolves.toBeDefined()
-  // Even if directory sync becomes available, this app cannot confirm its own publication.
-  await new SharedSkillLibrary(root, nodeFs, Date.now, 'win32', 'one-app').convert(async () => [])
-  await expect(lstat(home)).resolves.toBeDefined()
-  const next = new SharedSkillLibrary(root, fs, Date.now, 'win32', 'another-app')
-  await next.convert(async () => [])
-  await expect(lstat(home)).rejects.toMatchObject({ code: 'ENOENT' })
 })
