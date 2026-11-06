@@ -2,15 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { pinsOver, probeSource, squash } from './fixtures/probe-source'
 
 /**
- * ⛔ **`605`'s external-MCP probe — its outer deadline, and the code that ran** (`655`, from
+ * ⛔ **`605`'s external-MCP probe — its outer deadline** (`655`, from
  * `649` F3).
  *
  * This probe runs only under `vitest.smoke.config.ts`, so `pnpm run ci` never executes it. ⚠️ Until
  * `655` it had no bound but vitest's 20-minute per-test default, which is BELOW its own seven arms'
  * worst case — so a hang would have surfaced as a bare vitest timeout naming no step, and that
  * timeout frees the awaiter, not the child. ⚑ It now uses `smoke/probe-run-deadline.ts` (tested
- * under fake timers); what is measured HERE is how it wires that in, and that the code is the code
- * that ran.
+ * under fake timers); what is measured HERE is how it wires that in.
  */
 
 const source = probeSource('codex-external-mcp-probe.smoke.ts')
