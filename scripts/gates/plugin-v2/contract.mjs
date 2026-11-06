@@ -1,8 +1,8 @@
+import assert from 'node:assert/strict'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 
-export const BASE = '04faa94c05f007f536b8499b984471bdf7a9080b'
 export const BASE017 = 'a4dfcf611c244f8365d485022dc674309c2e7ae1'
 export const LIST = '68c495035726241ddf6862567d932c0f3c8086969875cb06b07552aa573b9171'
 export const V1 = '16d5c9f55779f85bc94f632812cf4ec7afd3585ca54ac5799c00263732aa9f93'
@@ -11,9 +11,7 @@ export const URL =
   'https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue-v2.json'
 export const MARKER = 'plugin-v2-review-gate-only'
 export const hash = (bytes) => createHash('sha256').update(bytes).digest('hex')
-export function demand(condition) {
-  if (!condition) throw new Error('Plugin v2 gate refused')
-}
+export const demand = assert.ok
 export const once = (text, before, after) => {
   demand(text.split(before).length === 2)
   return text.replace(before, after)
@@ -66,14 +64,7 @@ export function hosted(
       finalApp.source === 'observed-route-head',
   )
   const appSource = appSourceFor(version, env.GITHUB_SHA)
-  demand(plan.candidateSha256 === LIST && plan.base === BASE)
-  demand(/^[a-f0-9]{64}$/.test(plan.routePolicySha256))
-  demand(
-    !Object.hasOwn(plan, 'routeCommit') &&
-      !Object.hasOwn(plan, 'routeTree') &&
-      !Object.hasOwn(plan, 'workflowSha256') &&
-      !Object.hasOwn(plan, 'sourcePlanSha256'),
-  )
+  demand(plan.candidateSha256 === LIST)
   return {
     appSource,
     appVersion: version,

@@ -50,7 +50,12 @@ export function project(repo, options) {
     download: fs.readFileSync(download, 'utf8'),
   }
   demand(!fs.existsSync(shim))
-  const p = projectBuild(config, original.main, options.appData, options.browser)
+  // Normalize the historical runtime call only for the shared disposable projection.
+  const mainInput = original.main.replace(
+    'providerModules[provider].createRuntime()',
+    'providerModules[provider].createRuntime(connectionId)',
+  )
+  const p = projectBuild(config, mainInput, options.appData, options.browser)
   const fixture = `            /* packaged-plugin-gate-only */ fixtureSource: ${JSON.stringify(path.join(options.appData, 'repo-fixture'))},\n`
   // Drive-qualified ESM imports must use forward slashes in the Windows Vite build.
   const provider = path.join(
@@ -64,11 +69,7 @@ export function project(repo, options) {
   demand(!entry.includes('fixtureSource:') && !entry.includes('repo-fixture'))
   const transport =
     `// ${MARKER}\nimport {gateFetch} from './v2-gate-fetch';\n` +
-    once(
-      original.download,
-      '(options.fetch ?? fetch)(url, {',
-      '(options.fetch ?? gateFetch)(url, {',
-    )
+    once(original.download, '(options.fetch ?? fetch)(', '(options.fetch ?? gateFetch)(')
   fs.writeFileSync(shim, fetchSource(options), { flag: 'wx', mode: 0o600 })
   fs.writeFileSync(main, entry)
   fs.writeFileSync(download, transport)
