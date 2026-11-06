@@ -24979,10 +24979,23 @@ export class RuntimeHost implements LiveHost {
     } catch (cause) {
       throw new Error(`${BUILT_IN_SKILLS_FAILURE} ${String(cause)}`, { cause })
     }
-    const isCurrent = () =>
-      this.whyNotOurs(slot) === null &&
-      !slot.launch.signal.aborted &&
-      (selection?.isCurrent() ?? true)
+    const isCurrent = () => {
+      const current = permissions()
+      const grantsRemain = selection
+        ? selection.skills.every(
+            (skill) =>
+              skill.requirement === null ||
+              current.canCreateAgents ||
+              (skill.requirement === 'create-agents-or-coordinator' && current.isCoordinator),
+          )
+        : !selected.canCreateAgents || current.canCreateAgents
+      return (
+        this.whyNotOurs(slot) === null &&
+        !slot.launch.signal.aborted &&
+        grantsRemain &&
+        (selection?.isCurrent() ?? true)
+      )
+    }
     const installed = await this.deps.prepareBuiltInSkills({
       provider,
       providerHome,
@@ -45492,11 +45505,15 @@ export class RuntimeHost implements LiveHost {
         'hand a conversation back',
       )
     }
-    // ⚑ **Borrowed whole, and the borrow is exact** — the same refusal `send`, `close` and every
-    // other strict-owner gesture reads, so a stranger is told one thing whether it tried to drive
-    // this conversation or to give it away. ⚠️ It is also what makes the `null` owner arm right:
-    // a conversation nobody holds is `held-by-nobody`, which is TRUE of a hand-back asked twice.
-    this.assertMayControl(slot, by)
+    // Handing a stream back belongs to its owner, even when another person window may send.
+    if (!mayControl(slot, by))
+      throw this.refusalTranslated(
+        new SessionUnavailable(
+          slot.ownerId === null ? 'held-by-nobody' : 'not-yours',
+          `session ${slot.id} is held for ${ownerName(slot.ownerId)}, and ${callerName(by)} asked to hand it back`,
+        ),
+        'act on a session',
+      )
     if (!mayHandBack(slot, by)) {
       throw this.refusalTranslated(
         new SessionUnavailable(

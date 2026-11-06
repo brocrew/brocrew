@@ -867,6 +867,9 @@ export async function correctMemoryEntry(
       namespace()
     }
     guard()
+    if ((seams.platform ?? process.platform) !== 'win32')
+      sweepKnowledgeStages(selected.location.inputs.folder, namespace)
+    guard()
     stage = await stageKnowledgeFile(
       selected.location.entry,
       bytes,
