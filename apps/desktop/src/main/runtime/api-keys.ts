@@ -121,6 +121,8 @@ export class ApiKeys {
   private readonly changes = new Map<Provider, number>()
   private readonly lastSavedAt = new Map<Provider, number>()
   private readonly operations = new Map<Provider, Promise<unknown>>()
+  /** How many times each provider's key was removed, so a save asked for before one is not kept. */
+  private readonly removals = new Map<Provider, number>()
   private readonly reads = new Map<
     Provider,
     { sealed: string; setAt: number; work: Promise<OpenKey> }
@@ -197,11 +199,15 @@ export class ApiKeys {
   async set(provider: Provider, key: string): Promise<string | null> {
     const why = whyNotAKey(key)
     if (why !== null) return why
+    // A removal from here on cancels this save, even one made while it waits its turn below.
+    const removedBefore = this.removals.get(provider) ?? 0
+    const removedSince = (): boolean => (this.removals.get(provider) ?? 0) !== removedBefore
     // A read or save already out finishes first, as it began: a launch reading the key now gets it.
     await this.operations.get(provider)?.then(
       () => undefined,
       () => undefined,
     )
+    if (removedSince()) return 'The saved key changed while this save was waiting. Try again.'
     const change = (this.changes.get(provider) ?? 0) + 1
     this.changes.set(provider, change)
     this.reads.delete(provider)
@@ -210,7 +216,7 @@ export class ApiKeys {
         if (!(await this.cipher.available())) throw new Error('encryption unavailable')
         return await this.cipher.seal(key.trim())
       })
-      if (this.changes.get(provider) !== change)
+      if (this.changes.get(provider) !== change || removedSince())
         return 'The saved key changed while this save was waiting. Try again.'
       const previous = Math.max(
         this.lastSavedAt.get(provider) ?? -1,
@@ -240,6 +246,7 @@ export class ApiKeys {
     const setAt = this.store.keptApiKey(provider)?.setAt
     if (setAt !== undefined) this.lastSavedAt.set(provider, setAt)
     this.changes.set(provider, (this.changes.get(provider) ?? 0) + 1)
+    this.removals.set(provider, (this.removals.get(provider) ?? 0) + 1)
     this.readability.delete(provider)
     this.reads.delete(provider)
     return this.store.forgetApiKey(provider)

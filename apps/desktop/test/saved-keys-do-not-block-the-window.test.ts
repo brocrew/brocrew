@@ -289,6 +289,24 @@ describe('saved keys and the window', () => {
     expect(saved.rows.get('claude')?.sealed).toBe(Buffer.from('late-ciphertext').toString('base64'))
   })
 
+  it('🔴 removing the key while a save waits behind a slow read cancels that save', async () => {
+    const native = storage()
+    const door = held<{ result: string; shouldReEncrypt: boolean }>()
+    native.decryptStringAsync.mockReturnValueOnce(door.promise)
+    const saved = store()
+    const keys = new ApiKeys(saved, safeStorageCipher(native))
+    const reading = keys.current('claude').catch(() => null)
+    await Promise.resolve()
+    const saving = keys.set('claude', 'another-fictional-key')
+    await Promise.resolve()
+    keys.remove('claude')
+    door.resolve({ result: FAKE_KEY, shouldReEncrypt: false })
+    await reading
+    expect(await saving).toContain('saved key changed')
+    expect(saved.rows.size).toBe(0)
+    expect(keys.status('claude').set).toBe(false)
+  })
+
   it('removing a key while its replacement is encrypting cancels the late save', async () => {
     const native = storage()
     const door = held<Buffer>()
