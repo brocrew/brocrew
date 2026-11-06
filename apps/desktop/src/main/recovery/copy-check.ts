@@ -128,12 +128,12 @@ export function verifyInAWorker(
           worker.once('exit', (code) => {
             live.delete(worker)
             resolve(
-              answer ?? {
-                kind: 'failed',
-                message: stopped
-                  ? 'its check was ended, as BroCrew is closing'
-                  : `its check ended without an answer (exit ${String(code)})`,
-              },
+              stopped
+                ? { kind: 'failed', message: 'its check was ended, as BroCrew is closing' }
+                : (answer ?? {
+                    kind: 'failed',
+                    message: `its check ended without an answer (exit ${String(code)})`,
+                  }),
             )
             exited()
           })

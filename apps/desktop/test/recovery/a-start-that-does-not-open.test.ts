@@ -286,22 +286,22 @@ describe('a start that never opened its data', () => {
     )
     // The check is what that flag spans.
     expect(functionIn(CODE, 'async function theVerdictBeforeTheData(')).toMatch(
-      /checkingTheData = true\s+try \{\s+const verdict = await service\.inspect\(\)[\s\S]*\} finally \{\s+checkingTheData = false/,
+      /checkingTheData = true\s+try \{\s+const verdict = await withRecoveryWork\(\(\) => service\.inspect\(\)\)[\s\S]*\} finally \{\s+checkingTheData = false/,
     )
   })
 
   it('ends a quit through the teardown with code 1, unless the data opened and the start held', () => {
     expect(CODE).toContain(
-      'quit: () => (theDataOpened && !startFailed ? app.quit() : app.exit(1)),',
+      'quitAfterShutdown: () => (theDataOpened && !startFailed ? app.quit() : app.exit(1)),',
     )
   })
 
   it('never leaves its exit code to a quit: a failed start ends by app.exit(1)', () => {
     expect(CODE).not.toContain('process.exitCode')
-    // At once when it opened nothing; else the teardown closes what it opened, and its last step
+    // After recovery work releases its copies when it opened nothing; else teardown closes what it opened, and its last step
     // (above) is app.exit(1) for a start that failed.
     expect(functionIn(CODE, 'function endTheProcess(')).toMatch(
-      /if \(host === null && db === null\) \{\s+app\.exit\(code\)\s+return\s+\}\s+app\.quit\(\)/,
+      /if \(host === null && db === null\) \{\s+void stopRecoveryWork\(\)\s+\.then\(\(\) => app\.exit\(code\)\)[\s\S]*?\s+return\s+\}\s+app\.quit\(\)/,
     )
     // A relaunch from the recovery window leaves through the same door, so a host that started is
     // closed in its order before the new start.
@@ -362,7 +362,7 @@ describe('a start that never opened its data', () => {
       ),
     ).toBe(false)
     const drainsArchiveWork =
-      /drainArchiveWork: async \(\) => \{\s+await stopProviderSetup\?\.\(\)\s+await updates\?\.drain\(\)\s+await transcriptRetention\?\.stop\(\)\s+await \(stoppingTheStart \?\? host\?\.drainArchiveWork\(\) \?\? Promise\.resolve\(\)\)\s+await themes\?\.close\(\)\s+await theStallSink\?\.close\(500\)\s+\}/
+      /drainArchiveWork: async \(\) => \{\s+await stopRecoveryWork\(\)\s+await stopProviderSetup\?\.\(\)\s+await updates\?\.drain\(\)\s+await transcriptRetention\?\.stop\(\)\s+await \(stoppingTheStart \?\? host\?\.drainArchiveWork\(\) \?\? Promise\.resolve\(\)\)\s+await themes\?\.close\(\)\s+await theStallSink\?\.close\(500\)\s+\}/
     expect(CODE).toMatch(drainsArchiveWork)
     for (const replacement of ['', 'void stopProviderSetup?.()']) {
       expect(

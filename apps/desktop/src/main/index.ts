@@ -412,6 +412,33 @@ const recoveryCopyVerifier = verifyInAWorker((request) =>
     resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
   }),
 )
+/** Recovery operations admitted before quit, including their unfinished-copy cleanup. */
+const recoveryWork = new Set<Promise<unknown>>()
+let stoppingRecoveryWork: Promise<void> | null = null
+
+/** Admit recovery work only while this process still accepts it. */
+function withRecoveryWork<T>(work: () => Promise<T>): Promise<T> {
+  if (stoppingRecoveryWork !== null) {
+    return Promise.reject(new Error('BroCrew is closing, so recovery work cannot start'))
+  }
+  const admitted = Promise.resolve().then(work)
+  recoveryWork.add(admitted)
+  const finished = () => {
+    recoveryWork.delete(admitted)
+  }
+  void admitted.then(finished, finished)
+  return admitted
+}
+
+/** Stop checks first, then join the operations that release their unfinished folders. */
+function stopRecoveryWork(): Promise<void> {
+  stoppingRecoveryWork ??= (async () => {
+    await recoveryCopyVerifier.stop()
+    await Promise.allSettled([...recoveryWork])
+  })()
+  return stoppingRecoveryWork
+}
+
 /** A test's hidden launch keeps its recovery window instead of exiting (unpackaged builds only). */
 let keepTheRecoveryWindowHidden: boolean | null = null
 /** The one-app check's answer, asked again on a retry while it is still `unknown`. */
@@ -1878,7 +1905,7 @@ async function theVerdictBeforeTheData(launchOwnership: HostGateVerdict): Promis
   recoveryService = service
   checkingTheData = true
   try {
-    const verdict = await service.inspect()
+    const verdict = await withRecoveryWork(() => service.inspect())
     workspaceStartup(app)?.assertDatabase()
     // The open reads the database against the same migrations, to refuse one that changed since.
     if (verdict.kind === 'open') {
@@ -2083,13 +2110,15 @@ function showRecovery(verdict: StartupVerdict): void {
     recoveryCalls = createRecoveryCalls({
       // A retry reads the data only once a failed start has stopped writing it.
       service: {
-        inspect: () => service.inspect(),
-        restore: (checkpointId, progress) => service.restore(checkpointId, progress),
-        returnToNewer: (progress) => service.returnToNewer(progress),
-        retry: async () => {
-          await stoppingTheStart
-          return service.retry()
-        },
+        inspect: () => withRecoveryWork(() => service.inspect()),
+        restore: (checkpointId, progress) =>
+          withRecoveryWork(() => service.restore(checkpointId, progress)),
+        returnToNewer: (progress) => withRecoveryWork(() => service.returnToNewer(progress)),
+        retry: () =>
+          withRecoveryWork(async () => {
+            await stoppingTheStart
+            return service.retry()
+          }),
       },
       verdict,
       openReader: (database) => createHistoryReader(database),
@@ -2181,13 +2210,17 @@ async function letGoOfOldCopies(): Promise<void> {
 }
 
 /**
- * Ends this process: at once with `code` when the start opened nothing, else through the ordinary
- * teardown, which closes the host and the database in their order, and whose last step exits with
- * code 1 for a start that did not finish.
+ * Ends this process after recovery work releases its copies when the start opened nothing, else
+ * through the ordinary teardown, which closes the host and the database in their order, and whose
+ * last step exits with code 1 for a start that did not finish.
  */
 function endTheProcess(code: number): void {
   if (host === null && db === null) {
-    app.exit(code)
+    void stopRecoveryWork()
+      .then(() => app.exit(code))
+      .catch((error: unknown) => {
+        sayAtOnce(`BroCrew could not finish its recovery work before closing: ${inspect(error)}`)
+      })
     return
   }
   app.quit()
@@ -2699,6 +2732,7 @@ const lifetime = createAppLifetime({
   // (046 review, P2): a pass still running when the connection closes would throw against it. It
   // ends at the next boundary.
   stopArchiveWork: () => {
+    void stopRecoveryWork()
     void stopProviderSetup?.()
     updates?.stop()
     void transcriptRetention?.stop()
@@ -2714,12 +2748,11 @@ const lifetime = createAppLifetime({
   },
   // …and then WAIT for the work already admitted, so the database closes under nobody (062).
   drainArchiveWork: async () => {
+    await stopRecoveryWork()
     await stopProviderSetup?.()
     await updates?.drain()
     await transcriptRetention?.stop()
     await (stoppingTheStart ?? host?.drainArchiveWork() ?? Promise.resolve())
-    // A recovery copy's check under way, as when a quit comes before the data opens.
-    await recoveryCopyVerifier.stop()
     await themes?.close()
     // Stall lines still queued, and the notice of what was left, get half a second in all.
     await theStallSink?.close(500)
@@ -2728,8 +2761,10 @@ const lifetime = createAppLifetime({
     db?.close()
     db = null
   },
+  // Every first quit, including the last recovery window on Windows or Linux, enters teardown.
+  quit: () => app.quit(),
   // A start that never opened its data, or failed, ends with code 1 once the teardown is done.
-  quit: () => (theDataOpened && !startFailed ? app.quit() : app.exit(1)),
+  quitAfterShutdown: () => (theDataOpened && !startFailed ? app.quit() : app.exit(1)),
   // Force `exit` on a repeated quit signal without raising another `before-quit` or waiting
   // for the teardown the person has already asked to stop.
   exit: (code) => app.exit(code),

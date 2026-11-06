@@ -60,11 +60,13 @@ function wire(context: Record<string, unknown>) {
       ts.isExpressionStatement(node) &&
       ts.isCallExpression(node.expression) &&
       node.expression.expression.getText(parsed) === 'app.on' &&
-      node.expression.arguments[0]?.getText(parsed) === "'before-quit'",
+      ["'before-quit'", "'window-all-closed'"].includes(
+        node.expression.arguments[0]?.getText(parsed) ?? '',
+      ),
   )
   const code =
     [...functions, lifetime, ...listeners].map((node) => node.getText(parsed)).join('\n') +
-    '\nglobalThis.quitWindow = openTheRecoveryWindow; globalThis.inspect = theVerdictBeforeTheData; globalThis.shutdown = () => lifetime.shuttingDown'
+    '\nglobalThis.quitWindow = openTheRecoveryWindow; globalThis.beginInspection = theVerdictBeforeTheData; globalThis.shutdown = () => lifetime.shuttingDown'
   runInNewContext(
     ts.transpileModule(code, {
       compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
@@ -73,7 +75,12 @@ function wire(context: Record<string, unknown>) {
   )
 }
 
-for (const route of ['before-quit', 'recovery window close'] as const) {
+for (const route of [
+  'before-quit',
+  'recovery window close',
+  'last recovery window on Linux',
+  'last recovery window on Windows',
+] as const) {
   it(`${route} terminates the held verifier and waits for unfinished cleanup before exit`, async () => {
     const folder = mkdtempSync(join(root, 'workspace-'))
     const userData = join(folder, 'data')
@@ -103,7 +110,7 @@ for (const route of ['before-quit', 'recovery window close'] as const) {
     // The same guard also runs on the original function-only verifier at the reviewed base.
     const verify: VerifyCopy = typeof verifier === 'function' ? verifier : verifier.verify
     let checking: Promise<unknown> | undefined
-    const listeners: ((event: { preventDefault(): void }) => void)[] = []
+    const listeners = new Map<string, ((event: { preventDefault(): void }) => void)[]>()
     let closeWindow!: () => void
     const context: Record<string, unknown> = {
       recoveryCopyVerifier: verifier,
@@ -181,7 +188,12 @@ for (const route of ['before-quit', 'recovery window close'] as const) {
       theLastDraftSaves: async () => {},
       armLastResortExit: () => {},
       spawn: () => {},
-      process: { pid: 0, execPath: '', env: {} },
+      process: {
+        pid: 0,
+        execPath: '',
+        env: {},
+        platform: route.endsWith('Windows') ? 'win32' : 'linux',
+      },
       theDataOpened: false,
       startFailed: false,
       sayAtOnce: () => {},
@@ -191,26 +203,34 @@ for (const route of ['before-quit', 'recovery window close'] as const) {
       STDERR_FD: 2,
       console: { error: () => {} },
       app: {
-        on: (_event: string, listener: (event: { preventDefault(): void }) => void) =>
-          listeners.push(listener),
+        on: (event: string, listener: (event: { preventDefault(): void }) => void) => {
+          const list = listeners.get(event) ?? []
+          list.push(listener)
+          listeners.set(event, list)
+        },
         exit: () => {
           order.push('process exit')
           shutdown.resolve()
         },
         quit: () => {
-          for (const listener of listeners) listener({ preventDefault() {} })
+          for (const listener of listeners.get('before-quit') ?? [])
+            listener({ preventDefault() {} })
         },
       },
     }
     wire(context)
-    const inspecting = (context.inspect as () => Promise<unknown>)()
+    const inspecting = (context.beginInspection as () => Promise<unknown>)()
     try {
       await started.promise
       if (route === 'before-quit') {
-        for (const listener of listeners) listener({ preventDefault() {} })
+        for (const listener of listeners.get('before-quit') ?? []) listener({ preventDefault() {} })
       } else {
         ;(context.quitWindow as () => void)()
         closeWindow()
+        if (route.startsWith('last recovery window')) {
+          for (const listener of listeners.get('window-all-closed') ?? [])
+            listener({ preventDefault() {} })
+        }
       }
       // An ordinary completion is ten seconds away. This observes a real termination, then holds
       // the actual filesystem cleanup so worker exit alone cannot satisfy either quit route.

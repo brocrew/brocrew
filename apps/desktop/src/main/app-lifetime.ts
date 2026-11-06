@@ -87,6 +87,8 @@ export interface AppLifetimeDeps {
   closeDatabase: () => void
   /** Ask Electron to quit again, now that the deferral is over. */
   quit: () => void
+  /** Finish quitting once every shutdown step has returned. Defaults to the ordinary quit. */
+  quitAfterShutdown?: () => void
   /**
    * **Leave NOW, teardown or no teardown** — `app.exit()`, which raises no `before-quit` and waits
    * for nothing.
@@ -420,7 +422,8 @@ export function createAppLifetime(deps: AppLifetimeDeps): AppLifetime {
   const askElectronToQuit = (failure: string): void => {
     issuingQuit = true
     try {
-      deps.quit()
+      if (readyToExit && deps.quitAfterShutdown !== undefined) deps.quitAfterShutdown()
+      else deps.quit()
     } catch (error) {
       deps.log(failure, error)
     } finally {

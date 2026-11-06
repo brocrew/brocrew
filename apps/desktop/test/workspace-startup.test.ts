@@ -128,6 +128,7 @@ async function startup(fake: PinnableApp, beforeThemes?: () => void) {
     resolveMigrationsFolder: () => migrations,
     ownershipFrom: () => ({ ask: async () => 'unknown' }),
     createRecoveryService,
+    withRecoveryWork: <T>(work: () => Promise<T>) => work(),
     // The app checks a recovery copy in a worker; here the same check runs in this thread.
     recoveryCopyVerifier: { verify: checkTheCopyHere, stop: async () => {} },
     mainThreadWork: { timed: <T>(_what: string, work: () => T): T => work() },
