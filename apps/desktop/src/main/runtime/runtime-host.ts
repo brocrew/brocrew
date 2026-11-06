@@ -1,3 +1,9 @@
+import {
+  filesLibraryForWindow,
+  teamProfileGraphForWindow,
+  closeTeamProfileGraphWindow,
+  closeFilesLibraryWindow,
+} from './window-reads'
 import type {
   FactsAQueueCarries,
   Giving,
@@ -75,17 +81,12 @@ import {
   withManagedPluginAttachments,
 } from '@brobot2/runtime'
 import type { WorkspacePluginAttachments } from '../plugins/attachments'
-import {
-  libraryUnavailable,
-  type FilesLibraryRequest,
-  type FilesLibraryResult,
-} from '../../shared/files-library'
+import type { FilesLibraryRequest, FilesLibraryResult } from '../../shared/files-library'
 import type { FilesLibraryWindows } from '../db/files-library-windows'
 import type { TeamProfileGraphWindows } from '../db/team-profile-graph-windows'
-import {
-  graphUnavailable,
-  type TeamProfileGraphRequest,
-  type TeamProfileGraphResult,
+import type {
+  TeamProfileGraphRequest,
+  TeamProfileGraphResult,
 } from '../../shared/team-profile-graph'
 import {
   readPluginInstructions,
@@ -22732,63 +22733,31 @@ export class RuntimeHost implements LiveHost {
     request: FilesLibraryRequest,
     sink: RuntimeEventSink,
   ): Promise<FilesLibraryResult> {
-    const libraries = this.deps.filesLibraries
-    if (libraries === undefined || this.launches.closed || !sink.alive)
-      return libraryUnavailable('closed')
-    const admission = libraries.admit(sink.ownerId)
-    const givers =
-      request.operation === 'query' && request.query.scope.type === 'conversationWork'
-        ? this.theIdsItStandsFor(request.query.scope.id)
-        : undefined
-    for (let attempt = 0; attempt < 2; attempt++) {
-      if (!libraries.isCurrent(sink.ownerId, admission)) return libraryUnavailable('cancelled')
-      const before = this.deps.filesLibraryRevision?.()
-      if (before === null || before === undefined) return libraryUnavailable('changed')
-      const result = await libraries.read(sink.ownerId, request, before, givers)
-      if (this.launches.closed || !sink.alive) return libraryUnavailable('closed')
-      if (!libraries.isCurrent(sink.ownerId, admission)) return libraryUnavailable('cancelled')
-      if (result.type === 'unavailable' && result.cause === 'cancelled') return result
-      const after = this.deps.filesLibraryRevision?.()
-      if (before === after) return result
-      if (request.operation !== 'query' && request.operation !== 'tasks') {
-        return result.type === 'files' || result.type === 'provenance'
-          ? { ...result, stale: true }
-          : result
-      }
-    }
-    return libraryUnavailable('changed')
+    return filesLibraryForWindow(request, sink, {
+      libraries: this.deps.filesLibraries,
+      revision: () => this.deps.filesLibraryRevision?.(),
+      closed: () => this.launches.closed,
+      givers: (conversation) => this.theIdsItStandsFor(conversation),
+    })
   }
 
   async teamProfileGraphForWindow(
     request: TeamProfileGraphRequest,
     sink: RuntimeEventSink,
   ): Promise<TeamProfileGraphResult> {
-    const graphs = this.deps.teamProfileGraphs
-    if (!graphs || this.launches.closed || !sink.aPersonIsBehindIt)
-      return graphUnavailable('closed')
-    if (request.operation === 'release') {
-      await graphs.closeWindow(sink.ownerId)
-      return { type: 'released' }
-    }
-    const admission = graphs.admit(sink.ownerId)
-    const before = this.deps.teamProfileGraphRevision?.()
-    if (before === null || before === undefined) return graphUnavailable('changed')
-    const result = await graphs.read(sink.ownerId, request, before)
-    if (this.launches.closed) return graphUnavailable('closed')
-    if (!graphs.isCurrent(sink.ownerId, admission)) return graphUnavailable('cancelled')
-    const after = this.deps.teamProfileGraphRevision?.()
-    return before !== after &&
-      (result.type === 'snapshot' || result.type === 'nodes' || result.type === 'edges')
-      ? { ...result, stale: true }
-      : result
+    return teamProfileGraphForWindow(request, sink, {
+      graphs: this.deps.teamProfileGraphs,
+      revision: () => this.deps.teamProfileGraphRevision?.(),
+      closed: () => this.launches.closed,
+    })
   }
 
   async closeTeamProfileGraphWindow(owner: string): Promise<void> {
-    await this.deps.teamProfileGraphs?.closeWindow(owner)
+    await closeTeamProfileGraphWindow(owner, this.deps.teamProfileGraphs)
   }
 
   async closeFilesLibraryWindow(owner: string): Promise<void> {
-    await this.deps.filesLibraries?.closeWindow(owner)
+    await closeFilesLibraryWindow(owner, this.deps.filesLibraries)
   }
 
   async searchWork(asAgent: string, input: WorkSearchQuery): Promise<WorkSearchResult> {
