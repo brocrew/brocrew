@@ -38,6 +38,7 @@ import {
   writableRootsOf,
 } from './codex-work-folders-evidence'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
+import { waitForAbortableWork as bounded } from './probe-waits'
 import { runEvidence, runScratch } from './run-paths'
 import { writeScriptedResponse as stream } from './scripted-response'
 
@@ -366,28 +367,6 @@ function configuredPortOf(home: string): number | null {
 }
 
 /** ⛔ Every `await` on a launch or a turn is bounded; a stall is NOT PERFORMED, never waited on. */
-async function bounded<T>(
-  what: string,
-  ms: number,
-  work: (signal: AbortSignal) => Promise<T>,
-): Promise<T> {
-  const giveUp = new AbortController()
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      work(giveUp.signal),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          giveUp.abort()
-          reject(new Error(`NOT PERFORMED — ${what} did not finish in ${String(ms)}ms`))
-        }, ms)
-        timer.unref?.()
-      }),
-    ])
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
-  }
-}
 
 /** One card the product published, as the rig saw it, and whether the denial was TAKEN. */
 interface CardSeen {

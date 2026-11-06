@@ -19,6 +19,7 @@ import type { SessionHandle } from '../src/runtime'
 import { bundledCodexBinary } from './bundled-codex'
 import { captureProviderStanza } from './loopback-test-support'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
+import { waitForAbortableWork as bounded } from './probe-waits'
 import {
   cardsThatOverpromise,
   reopenVerdict,
@@ -328,28 +329,6 @@ const patchUpdate = (file: string, from: string, to: string): string =>
   `*** Begin Patch\n*** Update File: ${file}\n@@\n-${from}\n+${to}\n*** End Patch\n`
 
 /** ⛔ Every `await` on a launch or a turn is bounded; a stall is NOT PERFORMED, never waited on. */
-async function bounded<T>(
-  what: string,
-  ms: number,
-  work: (signal: AbortSignal) => Promise<T>,
-): Promise<T> {
-  const giveUp = new AbortController()
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      work(giveUp.signal),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          giveUp.abort()
-          reject(new Error(`NOT PERFORMED — ${what} did not finish in ${String(ms)}ms`))
-        }, ms)
-        timer.unref?.()
-      }),
-    ])
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
-  }
-}
 
 /** One conversation: its events, the cards it published, and a turn driver that answers them. */
 class Conversation {

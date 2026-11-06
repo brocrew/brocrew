@@ -26,6 +26,7 @@ import type { SessionHandle } from '../src/runtime'
 import { bundledCodexBinary } from './bundled-codex'
 import { captureProviderStanza } from './loopback-test-support'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
+import { waitForAbortableWork as bounded } from './probe-waits'
 import { runEvidence, runScratch } from './run-paths'
 import { writeScriptedResponse as stream } from './scripted-response'
 
@@ -453,28 +454,6 @@ function configuredPortOf(home: string): number | null {
 }
 
 /** ⛔ Every `await` on a launch or a turn is bounded; a stall is NOT PERFORMED, never waited on. */
-async function bounded<T>(
-  what: string,
-  ms: number,
-  work: (signal: AbortSignal) => Promise<T>,
-): Promise<T> {
-  const giveUp = new AbortController()
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      work(giveUp.signal),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          giveUp.abort()
-          reject(new Error(`NOT PERFORMED — ${what} did not finish in ${String(ms)}ms`))
-        }, ms)
-        timer.unref?.()
-      }),
-    ])
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
-  }
-}
 
 /** ⚑ A poll that STOPS when its bound gives up (`704`'s review) — never a spin past the deadline. */
 const until = (what: string, ms: number, done: () => boolean): Promise<void> =>
