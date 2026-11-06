@@ -371,18 +371,10 @@ export class SharedSkillLibrary {
               }
             }
           }
-          const directoriesFlushed = await flushSkillTree(
-            target,
-            this.fs,
-            this.platform,
-            this.userData,
-          )
-          let retained = false
+          await flushSkillTree(target, this.fs, this.platform, this.userData)
           if (await exists(source, this.fs)) {
             await assertSkillPathsAreReal(this.userData, [source], this.fs)
-            if (directoriesFlushed) {
-              await this.fs.rm(source, { recursive: true })
-            } else retained = true
+            await this.fs.rm(source, { recursive: true })
           }
           await syncFolder(sourceRoot, this.fs)
           for (const previous of state.receipts) {
@@ -399,7 +391,6 @@ export class SharedSkillLibrary {
             target: chosen,
             stage: null,
             done: true,
-            ...(retained ? { retained: true } : {}),
             ...(chosen !== folderName(name) && !identical
               ? { keptBoth: collision(key, name, chosen) }
               : {}),
