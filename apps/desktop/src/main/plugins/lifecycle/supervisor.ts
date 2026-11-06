@@ -45,7 +45,8 @@ export async function createSupervisorLifecycle(options: {
     controller,
     binding: (view, diagnostic) =>
       requirePluginAdapter(view.installation.pluginId).broker(view, refused, diagnostic),
-    diagnostic: (id, reason) => recordPluginToolFailure(options.lifecycle.root, id, reason),
+    diagnostic: (id, reason, detail) =>
+      recordPluginToolFailure(options.lifecycle.root, id, reason, detail),
     refused,
     recoverChromeHost: (view, stopped) => controller.restartChromeTools(view.runId, stopped),
     restartChromeHost: () => controller.restartChromeTools(undefined, () => {}),

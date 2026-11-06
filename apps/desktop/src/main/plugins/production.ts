@@ -5,6 +5,7 @@ import {
   recordPluginStartupFailure,
 } from './startup-failure'
 import { pluginAdapter } from './lifecycle/adapters'
+import { ManagedPluginFailure } from '@brobot2/runtime'
 import { join } from 'node:path'
 import { lstat } from 'node:fs/promises'
 import { PluginListError } from './catalogue/list-error'
@@ -150,8 +151,12 @@ export function productionPluginController() {
   const markUnavailable = () => {
     startupCatalogueVerifiedAt = undefined
     entries =
-      entries?.map((one) => ({ ...one, state: 'Unavailable', tools: 'none', service: null })) ??
-      null
+      entries?.map((one) => ({
+        ...one,
+        state: 'Unavailable',
+        toolHealth: 'unavailable',
+        service: null,
+      })) ?? null
     clearInterval(timer)
   }
   const recover = (): boolean => {
@@ -232,11 +237,12 @@ export function productionPluginController() {
       const admittedCards = await connection.catalogue()
       stage = 'composition'
       if (ended || connected !== connection) return fail()
-      if (!catalogueEntries) throw new Error('Catalogue composition has no verified releases')
+      if (!catalogueEntries)
+        throw new ManagedPluginFailure('catalogue-composition', 'invalid-reply')
       const releases = catalogueEntries.releases
       if (connection.refreshCatalogue && !refreshFailed) {
         if (releases.some((release) => !admittedCards.some((card) => card.id === release.id)))
-          throw new Error('Catalogue composition is missing admitted release cards')
+          throw new ManagedPluginFailure('catalogue-composition', 'invalid-reply')
       }
       // Installed cards come from the authenticated owner, independently of today's offers.
       let hints: PluginCard[] | undefined
@@ -280,7 +286,10 @@ export function productionPluginController() {
         name: names[card.id] ?? card.id,
         description: catalogueEntries!.entries.find((one) => one.id === card.id)?.description,
         state: card.state,
-        tools: card.state === 'Running' && !card.toolsUnavailable ? 'all agents' : 'none',
+        // The owner cards report lifecycle/broker health, not configured tool-access scope.
+        // A verified absent installation has no tools; otherwise access is unknown here.
+        tools: card.installed === false ? 'none' : 'unknown',
+        toolHealth: card.state === 'Running' && !card.toolsUnavailable ? 'ready' : 'unavailable',
         service: card.state === 'Running' ? (names[card.id] ?? card.id) : null,
       }))
       return cards
@@ -295,8 +304,12 @@ export function productionPluginController() {
       failed('catalogue-response', diagnostic)
       // Preserve a still-live channel for explicit retry/quit to detach with its acknowledgments.
       entries =
-        entries?.map((one) => ({ ...one, state: 'Unavailable', tools: 'none', service: null })) ??
-        null
+        entries?.map((one) => ({
+          ...one,
+          state: 'Unavailable',
+          toolHealth: 'unavailable',
+          service: null,
+        })) ?? null
       throw new PluginStartupError(failure, error)
     }
   }
@@ -538,7 +551,8 @@ export function productionPluginController() {
               name: one.name,
               description: one.description,
               state: 'Unavailable',
-              tools: 'none',
+              tools: 'unknown',
+              toolHealth: 'unavailable',
               service: null,
             }))
           if (!catalogueEntries.releases.length) {

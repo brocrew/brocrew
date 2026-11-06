@@ -6,6 +6,7 @@ import { SupervisorStorage } from './storage'
 import { isSocketFile } from '../local-endpoint'
 import type { DrainTrace } from './drain-trace'
 import { pluginFailureCause } from '../startup-failure'
+import { recordLeaseTrace } from './lease-trace'
 import {
   compatible,
   OWNER_LIMITS,
@@ -412,6 +413,15 @@ export class PluginSupervisor {
   }
   private command(command: Command): unknown {
     if (command.kind === 'probe') return { phase: this.record.phase }
+    const received = performance.now()
+    if (command.kind === 'renew')
+      recordLeaseTrace(this.options.root, {
+        role: 'owner',
+        stage: 'request-received',
+        epoch: this.record.epoch,
+        generation: command.generation,
+        counter: command.counter,
+      })
     this.expire()
     if (this.record.phase !== 'accepting')
       refuse('busy', {
@@ -453,8 +463,22 @@ export class PluginSupervisor {
       }
     }
     const lease = this.leases.get(command.lease)
-    if (!lease || lease.workspace !== command.workspace || lease.generation !== command.generation)
+    if (
+      !lease ||
+      lease.workspace !== command.workspace ||
+      lease.generation !== command.generation
+    ) {
+      if (command.kind === 'renew')
+        recordLeaseTrace(this.options.root, {
+          role: 'owner',
+          stage: 'renewal-refused',
+          epoch: this.record.epoch,
+          generation: command.generation,
+          counter: command.counter,
+          cause: 'lease-not-current',
+        })
       refuse()
+    }
     if (command.kind === 'renew') {
       // The next renewal, or the last one again when its reply was lost. The fresh challenge
       // proves a retry is not a captured packet; an older counter, or another renewal under
@@ -464,7 +488,26 @@ export class PluginSupervisor {
         command.renewal !== undefined &&
         command.counter === lease.counter &&
         command.renewal === lease.renewal
-      if (!retry && command.counter !== lease.counter + 1) refuse()
+      if (!retry && command.counter !== lease.counter + 1) {
+        recordLeaseTrace(this.options.root, {
+          role: 'owner',
+          stage: 'renewal-refused',
+          epoch: this.record.epoch,
+          generation: lease.generation,
+          counter: command.counter,
+          cause: 'counter',
+        })
+        refuse()
+      }
+      recordLeaseTrace(this.options.root, {
+        role: 'owner',
+        stage: 'renewal-accepted',
+        epoch: this.record.epoch,
+        generation: lease.generation,
+        counter: command.counter,
+        elapsedMs: Math.max(0, performance.now() - received),
+        leaseAgeMs: Math.max(0, now - lease.renewedAt),
+      })
       lease.counter = command.counter
       lease.renewal = command.renewal
       lease.renewedAt = now
@@ -507,7 +550,17 @@ export class PluginSupervisor {
     if (this.record.phase !== 'accepting') return
     const now = this.clock()
     for (const lease of this.leases.values())
-      if (now - lease.renewedAt >= OWNER_LIMITS.expires) this.remove(lease, 'lease-expired')
+      if (now - lease.renewedAt >= OWNER_LIMITS.expires) {
+        recordLeaseTrace(this.options.root, {
+          role: 'owner',
+          stage: 'lease-expired',
+          epoch: this.record.epoch,
+          generation: lease.generation,
+          counter: lease.counter,
+          leaseAgeMs: now - lease.renewedAt,
+        })
+        this.remove(lease, 'lease-expired')
+      }
   }
   /** Consumers recheck this on dispatch; expiry never resurrects an old capability. */
   valid(id: string, epoch: string): boolean {

@@ -43,6 +43,24 @@ it('keeps the diagnostic bounded and records the newest failure after reaching c
   expect(lstatSync(f.path).size).toBeLessThanOrEqual(1024 * 1024)
   expect(readFileSync(f.path, 'utf8')).toContain('reason=proof-timeout')
 })
+it('persists a fixed origin stage and correlation but refuses arbitrary diagnostic fields', () => {
+  const f = fixture()
+  const correlation = '11111111-2222-4333-8444-555555555555'
+  recordPluginToolFailure(f.root, 'chrome', 'binding-failed', {
+    stage: 'binding-inventory',
+    cause: 'timeout',
+    correlation,
+  })
+  const log = readFileSync(f.path, 'utf8')
+  expect(log).toContain(`stage=binding-inventory cause=timeout correlation=${correlation}`)
+  recordPluginToolFailure(f.root, 'chrome', 'route-open-failed', {
+    stage: 'fictional-private-text' as never,
+    cause: 'raw-body' as never,
+    correlation,
+  })
+  expect(readFileSync(f.path, 'utf8')).not.toMatch(/fictional-private-text|raw-body/)
+  expect(readFileSync(f.path, 'utf8')).toContain('stage=route-open cause=unknown')
+})
 it.skipIf(process.platform === 'win32')(
   'does not write through symbolic or hard links or a public file',
   () => {

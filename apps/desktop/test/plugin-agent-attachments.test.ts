@@ -479,6 +479,17 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
     try {
       expect(await f.bridge.routes(lease(), request(f.local.sink.workspaceId))).toEqual([])
       expect(log.mock.calls).toEqual([['Some plugin tools were refused.']])
+      const failures = f.diagnostic.mock.calls.filter(([, reason]) =>
+        ['binding-failed', 'route-open-failed'].includes(reason),
+      )
+      expect(failures).toHaveLength(2)
+      expect(failures[0]![2]).toMatchObject({
+        stage: 'route-binding',
+        cause: 'unknown',
+        correlation: expect.stringMatching(/^[a-f0-9-]{36}$/),
+      })
+      expect(failures[1]![2]).toEqual(failures[0]![2])
+      expect(JSON.stringify(failures)).not.toContain('fictional-private-downstream-name')
     } finally {
       log.mockRestore()
     }
@@ -792,7 +803,11 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
         })
         expect(f.binding).toHaveBeenCalledTimes(2)
         expect(f.call).toHaveBeenCalledOnce()
-        expect(f.diagnostic).toHaveBeenCalledWith('chrome', 'route-stale')
+        expect(f.diagnostic).toHaveBeenCalledWith(
+          'chrome',
+          'route-stale',
+          expect.objectContaining({ correlation: expect.any(String) }),
+        )
         expect((await f.controller.status()).cards[0]).toMatchObject({ state: 'Running' })
         expect((await f.controller.status()).cards[0]).not.toHaveProperty('toolsUnavailable')
       } finally {

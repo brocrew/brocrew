@@ -60,15 +60,20 @@ it.each(['owner-check', 'rpc', 'schema'] as const)(
     spy.mockRestore()
     expect(failure).toBeInstanceOf(PluginStartupError)
     expect(failure).toMatchObject({ catalogueStage: stage })
+    if (stage === 'owner-check') {
+      expect(failure).toMatchObject({ detailStage: 'owner-features' })
+      expect((failure as Error).message).toContain('owner-features')
+    }
     if (stage !== 'schema') expect((failure as Error).cause).toBe(original)
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     await recordPluginStartupFailure(f.root, 'catalogue-response', failure)
     const log = await readFile(join(f.root, 'plugin-startup.log'), 'utf8')
     expect(log).toContain(`stage=${stage}`)
+    if (stage === 'owner-check') expect(log).toContain('detail=owner-features')
     if (stage !== 'schema') {
-      expect(log).toContain('owner-invalidated')
-      expect(log).toContain('broker already closed')
-    } else expect(log).toContain('invalid_type')
+      expect(log).toContain('Error cause=unknown')
+      expect(log).not.toMatch(/owner-invalidated|broker already closed/)
+    } else expect(log).toContain('ZodError cause=invalid-reply')
     expect(log).not.toMatch(/fictional-key|fictional-password/)
   },
 )

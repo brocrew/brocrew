@@ -13,6 +13,7 @@ import { AsyncQueue } from '../src/internal/async-queue'
 import type { RuntimeEvent } from '../src/events'
 import { TurnInProgress } from '../src/turn-in-progress'
 import { ManagedPluginOwnership } from '../src/managed-plugin-ownership'
+import { ManagedPluginFailure } from '../src/managed-plugin-failure'
 
 const route = { name: 'plugin-fern', url: 'http://127.0.0.1:8123/mcp', capability: 'a'.repeat(64) }
 const initial = {
@@ -540,6 +541,54 @@ it('a dead attachment source cannot stop an ordinary start or turn', async () =>
   expect(f.opened[0]!.options).toMatchObject({ managedPluginMcp: [] })
   expect(f.opened[0]!.send).toHaveBeenCalledOnce()
   await a.close()
+})
+it('names the attachment read stage and normalized cause without exposing provider error text', async () => {
+  const f = fixture()
+  f.source.read = vi.fn(async () => {
+    throw Object.assign(new Error('https://fictional.invalid/private token=do-not-log'), {
+      code: 'EACCES',
+    })
+  })
+  const handle = await f.runtime.start(initial)
+  const event = await handle.events()[Symbol.asyncIterator]().next()
+  expect(event.value).toMatchObject({
+    type: 'unknown',
+    raw: { method: 'plugin/attachment', stage: 'attachment-read', cause: 'io-denied' },
+  })
+  expect(JSON.stringify(event.value)).not.toMatch(/fictional.invalid|do-not-log|EACCES/)
+  await handle.send('ordinary input still works')
+  expect(f.opened[0]!.send).toHaveBeenCalledOnce()
+  await handle.close()
+})
+it('distinguishes the attachment deadline from a timely source refusal', async () => {
+  vi.useFakeTimers()
+  const f = fixture()
+  f.source.read = vi.fn(() => new Promise<ManagedPluginAttachment>(() => {}))
+  const opening = f.runtime.start(initial)
+  await vi.advanceTimersByTimeAsync(PLUGIN_ATTACHMENT_WAIT_MS)
+  const handle = await opening
+  const event = await handle.events()[Symbol.asyncIterator]().next()
+  expect(event.value).toMatchObject({
+    type: 'unknown',
+    raw: { stage: 'wrapper-wait', cause: 'timeout' },
+  })
+  await handle.close()
+})
+it('keeps the inner normalized stage through a generic unavailable wrapper', async () => {
+  const f = fixture()
+  f.source.read = vi.fn(async () => {
+    throw Object.assign(
+      new Error('outer private details', {
+        cause: new ManagedPluginFailure('admission-read', 'corrupt'),
+      }),
+      { code: 'unavailable' },
+    )
+  })
+  const handle = await f.runtime.start(initial)
+  const event = await handle.events()[Symbol.asyncIterator]().next()
+  expect(event.value).toMatchObject({ raw: { stage: 'admission-read', cause: 'corrupt' } })
+  expect(JSON.stringify(event.value)).not.toContain('private details')
+  await handle.close()
 })
 it('bounds held discovery before ordinary start', async () => {
   vi.useFakeTimers()

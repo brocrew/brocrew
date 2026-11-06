@@ -29,7 +29,11 @@ import { pluginSha256, verifyPluginDigest, PLUGIN_LIMITS } from '../package-dige
 import { strictPluginJson } from '../strict-json'
 import type { PluginMutationBlocked, PluginMutationConsent } from '../../../shared/plugin-settings'
 import { PluginSupervisorError } from '../supervisor/protocol'
-import { PluginStartupError, pluginStartupReason } from '../startup-failure'
+import {
+  PluginStartupError,
+  pluginStartupReason,
+  type PluginOwnerCheckStage,
+} from '../startup-failure'
 
 const Cards = z
   .array(
@@ -223,10 +227,15 @@ export async function connectPluginSettings(options: {
         ? 'owner-incompatible'
         : null
   }
-  async function readFeatures(ticket: number) {
+  async function readFeatures(ticket: number, noteStage?: (stage: PluginOwnerCheckStage) => void) {
     if (!modern || !featureReadable) return
+    noteStage?.('owner-features')
     const reply = await channel.call({ kind: 'features' })
-    if (!alive || generation !== ticket) return failPolicy()
+    if (!alive || generation !== ticket) {
+      noteStage?.('owner-generation')
+      return failPolicy()
+    }
+    noteStage?.('owner-response')
     const next = z
       .strictObject({ features: z.array(z.string().regex(/^[a-z][a-z0-9-]{0,63}$/)).max(32) })
       .parse(reply).features
@@ -264,11 +273,12 @@ export async function connectPluginSettings(options: {
           : 'owner-incompatible'
     }
   }
-  async function checkOwner() {
+  async function checkOwner(noteStage?: (stage: PluginOwnerCheckStage) => void) {
+    noteStage?.('owner-local-state')
     if (!alive) throw new PluginSupervisorError('unavailable')
     if (switching) return failPolicy()
     const ticket = generation
-    await readFeatures(ticket)
+    await readFeatures(ticket, noteStage)
     if (badSource) {
       blocked = 'source-mismatch'
       return
@@ -289,12 +299,20 @@ export async function connectPluginSettings(options: {
     }
     try {
       const digest = pluginSha256(catalogueProof.bytes)
+      noteStage?.('owner-mutation-status')
       const reply = await channel.call({ kind: 'mutation-status', catalogueDigest: digest })
-      if (!alive || generation !== ticket) return failPolicy()
+      if (!alive || generation !== ticket) {
+        noteStage?.('owner-generation')
+        return failPolicy()
+      }
+      noteStage?.('owner-response')
       z.strictObject({ format: z.literal(1), catalogueDigest: z.literal(digest) }).parse(reply)
       blocked = null
     } catch (error) {
-      if (generation !== ticket) return failPolicy()
+      if (generation !== ticket) {
+        noteStage?.('owner-generation')
+        return failPolicy()
+      }
       invalidateConsent()
       if (error instanceof PluginSupervisorError && error.code === 'source-mismatch')
         blocked = 'source-mismatch'
@@ -486,8 +504,11 @@ export async function connectPluginSettings(options: {
       for (;;) {
         while (switching) await catalogueRefresh
         const ticket = generation
+        let detail: PluginOwnerCheckStage = 'owner-local-state'
         try {
-          await checkOwner()
+          await checkOwner((stage) => {
+            detail = stage
+          })
           break
         } catch (error) {
           if (!switching && generation === ticket)
@@ -495,6 +516,7 @@ export async function connectPluginSettings(options: {
               pluginStartupReason(error, 'catalogue-response'),
               error,
               'owner-check',
+              detail,
             )
         }
       }

@@ -7,6 +7,11 @@ import { managedPluginHttpServers } from './managed-plugin-mcp'
 import { AsyncQueue } from './internal/async-queue'
 import { ManagedPluginOwnership } from './managed-plugin-ownership'
 import { RejectedSessionLaunch } from './rejected-session-launch'
+import {
+  ManagedPluginFailure,
+  managedPluginFailure,
+  type PluginFailureStage,
+} from './managed-plugin-failure'
 
 export interface ManagedPluginAttachment {
   readonly revision: string
@@ -68,8 +73,11 @@ async function bounded<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {
     return await Promise.race([
       work,
       new Promise<never>((_, reject) => {
-        stop = () => reject(new Error('Plugin unavailable. Try again.'))
-        timer = setTimeout(stop, PLUGIN_ATTACHMENT_WAIT_MS)
+        stop = () => reject(new ManagedPluginFailure('wrapper-wait', 'cancelled'))
+        timer = setTimeout(
+          () => reject(new ManagedPluginFailure('wrapper-wait', 'timeout')),
+          PLUGIN_ATTACHMENT_WAIT_MS,
+        )
         signal?.addEventListener('abort', stop, { once: true })
         if (signal?.aborted) stop()
       }),
@@ -88,13 +96,22 @@ export function withManagedPluginAttachments(
     options: StartOptions | ResumeOptions,
     ref?: NonNullable<SessionHandle['ref']>,
   ): Promise<SessionHandle> {
-    let unavailable = false
+    let unavailable: unknown
     let attachment: ManagedPluginAttachment = { revision: '', servers: [] }
     async function read(signal?: AbortSignal) {
-      const next = await bounded(source.read(), signal)
-      if (next.revision.length > 256 || next.servers.length > 32)
-        throw new Error('Plugin unavailable. Try again.')
-      managedPluginHttpServers(next.servers)
+      let next: ManagedPluginAttachment
+      try {
+        next = await bounded(source.read(), signal)
+      } catch (error) {
+        throw managedPluginFailure(error, 'attachment-read')
+      }
+      try {
+        if (next.revision.length > 256 || next.servers.length > 32)
+          throw new ManagedPluginFailure('attachment-schema', 'invalid-reply')
+        managedPluginHttpServers(next.servers)
+      } catch {
+        throw new ManagedPluginFailure('attachment-schema', 'invalid-reply')
+      }
       return {
         revision: next.revision,
         servers: retained(attachment.servers, next).map((one) => ({ ...one })),
@@ -102,8 +119,8 @@ export function withManagedPluginAttachments(
     }
     try {
       attachment = await read(options.signal)
-    } catch {
-      unavailable = true
+    } catch (error) {
+      unavailable = error
     }
     const launch = { ...options, managedPluginMcp: attachment.servers }
     let inner: SessionHandle
@@ -119,23 +136,26 @@ export function withManagedPluginAttachments(
     ownership.track(inner)
     const events = new AsyncQueue<RuntimeEvent>()
     let reported = false
-    function noteUnavailable() {
+    function noteUnavailable(error?: unknown, stage: PluginFailureStage = 'attachment-read') {
       if (reported) return
       reported = true
+      const failure = managedPluginFailure(error, stage)
       events.push(
         wrapUnknown(
           runtime.provider,
           {
             method: 'plugin/attachment',
             outcome: 'unavailable',
-            message: 'Plugin unavailable. Try again.',
+            stage: failure.pluginStage,
+            cause: failure.pluginCause,
+            message: failure.message,
           },
           'lifecycle',
           'plugin/attachment',
         ),
       )
     }
-    if (unavailable) noteUnavailable()
+    if (unavailable) noteUnavailable(unavailable)
     let closed = false,
       generation = 0,
       pending: AbortController | undefined
@@ -215,8 +235,8 @@ export function withManagedPluginAttachments(
                 let next: ManagedPluginAttachment | undefined
                 try {
                   next = await read(wait.signal)
-                } catch {
-                  noteUnavailable()
+                } catch (error) {
+                  noteUnavailable(error)
                 }
                 let stale: readonly string[] = []
                 // Retained routes stay configured while pending, but their retired endpoints
@@ -264,7 +284,7 @@ export function withManagedPluginAttachments(
                       )
                       await bounded(refreshing, wait.signal)
                       attachment = next
-                    } catch {
+                    } catch (error) {
                       if (!settled) {
                         refreshRefusal =
                           wait.signal.aborted && !closed
@@ -274,7 +294,7 @@ export function withManagedPluginAttachments(
                         void proxy.close().catch(() => undefined)
                         throw refreshRefusal
                       }
-                      noteUnavailable()
+                      noteUnavailable(error, 'sdk-refresh')
                     }
                   } else if (
                     inner.ref &&
@@ -373,7 +393,7 @@ export function withManagedPluginAttachments(
                           replacement = await reopen(next.servers, true)
                         } else {
                           if (closed || wait.signal.aborted) throw error
-                          noteUnavailable()
+                          noteUnavailable(error, 'provider-reopen')
                         }
                       }
                     } catch (error) {
@@ -388,7 +408,7 @@ export function withManagedPluginAttachments(
                     ) {
                       await ownership.retire(replacement).catch(() => undefined)
                       replacement = undefined
-                      noteUnavailable()
+                      noteUnavailable(undefined, 'provider-reopen')
                       if (freshRepair) throw new StoppedBeforeSend()
                     }
                     if (replacement) {
@@ -416,10 +436,12 @@ export function withManagedPluginAttachments(
                       attachment = next
                       freshRepairPending = false
                       listen(inner)
-                      await ownership.retire(previous).catch(() => noteUnavailable())
+                      await ownership
+                        .retire(previous)
+                        .catch((error) => noteUnavailable(error, 'provider-retire'))
                     }
                   } else {
-                    noteUnavailable()
+                    noteUnavailable(undefined, 'provider-reopen')
                   }
                 }
                 if (closed || wait.signal.aborted)

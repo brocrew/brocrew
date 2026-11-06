@@ -32,6 +32,38 @@ const AVAILABLE: PluginInstructionEntry = {
   tools: 'none',
   service: null,
 }
+it.each(['all agents', 'none', 'unknown'] as const)(
+  'keeps configured access %s separate from a failed running service',
+  (tools) => {
+    const entry = {
+      ...AVAILABLE,
+      state: 'Running' as const,
+      tools,
+      toolHealth: 'unavailable' as const,
+      service: 'fictional-service',
+    }
+    const read = readPluginInstructions({ instructionCatalogue: () => [entry] })
+    expect(read).not.toBeNull()
+    const text = pluginInstructionSection(read)!
+    expect(text).toContain(`tools: ${tools === 'none' ? 'none' : 'unavailable'}`)
+    if (tools !== 'none') expect(text).not.toContain('tools: none')
+    if (tools === 'none') expect(text).not.toContain('tools: all agents')
+  },
+)
+it('does not turn healthy broker state into a configured access grant', () => {
+  const entry = {
+    ...AVAILABLE,
+    state: 'Running' as const,
+    tools: 'unknown' as const,
+    toolHealth: 'ready' as const,
+    service: 'fictional-service',
+  }
+  const text = pluginInstructionSection(
+    readPluginInstructions({ instructionCatalogue: () => [entry] }),
+  )!
+  expect(text).toContain('tools: unknown')
+  expect(text).not.toContain('tools: all agents')
+})
 function context(plugins: readonly PluginInstructionEntry[] | null): InstructionContext {
   return {
     profileSlug: 'fictional-writer',

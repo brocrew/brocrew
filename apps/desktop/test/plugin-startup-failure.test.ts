@@ -228,8 +228,8 @@ it('catalogue logs include stage and bounded sanitized nested causes only on tha
   )
   const log = await readFile(join(root, 'plugin-startup.log'), 'utf8')
   expect(log).toContain('stage=rpc')
-  expect(log).toContain('owner-invalidated')
-  expect(log).toContain('broker closed')
+  expect(log).toContain('Error cause=unknown')
+  expect(log).not.toMatch(/owner-invalidated|broker closed/)
   expect(log).not.toMatch(/fictional-token|fictional-password/)
   expect(log).not.toContain(String.fromCharCode(27))
   expect(log.length).toBeLessThan(1024)
@@ -241,19 +241,26 @@ it('catalogue logs include stage and bounded sanitized nested causes only on tha
 it('cause formatting bounds cycles and survives hostile diagnostic properties', () => {
   const cyclic = new Error('owner-invalidated')
   cyclic.cause = cyclic
-  expect(pluginFailureCause(cyclic)).toContain('owner-invalidated')
+  expect(pluginFailureCause(cyclic)).toBe('Error cause=unknown')
   expect(
     pluginFailureCause(new Error('x'.repeat(10000), { cause: new Error('actual leaf') })).length,
   ).toBeLessThanOrEqual(512)
   expect(
     pluginFailureCause(new Error('x'.repeat(10000), { cause: new Error('actual leaf') })),
-  ).toContain('actual leaf')
+  ).toBe('Error cause=unknown <- Error cause=unknown')
   const hostile = Object.defineProperty({}, 'message', {
     get() {
       throw new Error('getter')
     },
   })
   expect(() => pluginFailureCause(hostile)).not.toThrow()
+})
+it('cause diagnostics never copy an unknown error body, address or path', () => {
+  const value = pluginFailureCause(
+    new Error('http://127.0.0.1:8123/mcp /fictional/private sdk-body-contents'),
+  )
+  expect(value).not.toMatch(/127\.0\.0\.1|fictional|sdk-body-contents|mcp/)
+  expect(value).toContain('Error')
 })
 it('catalogue logs retain the typed refusal code when its public Error message is generic', async () => {
   const root = await mkdtemp(join(tmpdir(), 'fictional-typed-catalogue-error-'))
