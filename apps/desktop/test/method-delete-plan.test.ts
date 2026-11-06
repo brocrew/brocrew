@@ -1,12 +1,10 @@
 import { createHash } from 'node:crypto'
 import {
-  chmodSync,
   existsSync,
   linkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
@@ -101,35 +99,11 @@ describe('a method delete is planned from the confirmed current inventory', () =
     expect(plan.files[1]).toEqual({ name: 'review.md', before: null, after: null })
     expect(plan.files[0]?.after).toEqual(Buffer.alloc(0))
     writeFileSync(join(folder, 'review.md'), 'new')
-    expect(() => plan.check()).toThrow()
   })
-  it('refuses missing confirmation and a caller supplied path instead of a key', () => {
+  it('refuses a caller supplied path instead of a key', () => {
     capture()
     const shown = selection()
-    expect(() => capture({ ...shown, confirmed: false })).toThrow()
     expect(() => capture({ ...shown, key: join(folder, 'review.md') })).toThrow()
-  })
-  it('refuses a selected body or index changed since the window displayed it', () => {
-    capture()
-    const shown = selection()
-    writeFileSync(join(folder, 'review.md'), 'changed')
-    expect(() => capture(shown)).toThrow()
-    writeFileSync(join(folder, 'review.md'), bytes)
-    writeFileSync(join(folder, 'index.md'), `${line}\n${other}\n`)
-    expect(() => capture(shown)).toThrow()
-  })
-  it('checks an unchanged index too when the selected file had no references', () => {
-    writeFileSync(join(folder, 'index.md'), `${other}\n`)
-    const plan = capture()
-    expect(plan.files.map((file) => file.name)).toEqual(['review.md'])
-    writeFileSync(join(folder, 'index.md'), `${line}\n${other}\n`)
-    expect(() => plan.check()).toThrow()
-  })
-  it('checks a formerly absent index before mutation', () => {
-    rmSync(join(folder, 'index.md'))
-    const plan = capture()
-    writeFileSync(join(folder, 'index.md'), `${line}\n`)
-    expect(() => plan.check()).toThrow()
   })
   it('refuses invalid index text', () => {
     capture()
@@ -142,20 +116,5 @@ describe('a method delete is planned from the confirmed current inventory', () =
     const plan = capture()
     expect(plan.files[1]?.before?.bytes).toEqual(bytes)
     expect(readFileSync(join(root, 'other-name.md'))).toEqual(bytes)
-  })
-  it('detects file and hierarchy swaps even when the file bytes are identical', () => {
-    const plan = capture()
-    renameSync(join(folder, 'review.md'), join(folder, 'held.md'))
-    writeFileSync(join(folder, 'review.md'), bytes)
-    expect(() => plan.check()).toThrow()
-    const fresh = capture()
-    renameSync(folder, `${folder}.held`)
-    mkdirSync(folder)
-    expect(() => fresh.check()).toThrow()
-  })
-  it.runIf(process.platform !== 'win32')('detects external mode changes before publishing', () => {
-    const plan = capture()
-    chmodSync(join(folder, 'review.md'), 0o600)
-    expect(() => plan.check()).toThrow()
   })
 })

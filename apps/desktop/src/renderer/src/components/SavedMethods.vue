@@ -182,7 +182,7 @@ async function readHistory(): Promise<void> {
     historyNext.value = answer?.ok === true && answer.changes.length > PAGE
     if (!answer?.ok)
       historyError.value = answer
-        ? refusal(answer.reason)
+        ? [refusal(answer.reason), answer.cause].filter(Boolean).join(' ')
         : "Change history isn't available for this agent."
   } catch {
     if (generation !== epoch || sequence !== historySequence) return
@@ -322,7 +322,7 @@ async function confirm(): Promise<void> {
       })
     if (generation !== epoch) return
     if (!result.ok) {
-      message.value = refusal(result.reason)
+      message.value = [refusal(result.reason), result.cause].filter(Boolean).join(' ')
       previewRefused.value = true
     } else {
       message.value =

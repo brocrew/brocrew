@@ -189,7 +189,8 @@ async function confirm() {
       return
     }
     accept(result.reading)
-    if (!result.done) error.value = REFUSAL_MEANS[result.refused]
+    if (!result.done)
+      error.value = [REFUSAL_MEANS[result.refused], result.cause].filter(Boolean).join(' ')
   } catch {
     if (generation === epoch) {
       preview.value = null

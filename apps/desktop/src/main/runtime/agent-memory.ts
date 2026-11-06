@@ -1,24 +1,20 @@
 import { createHash } from 'node:crypto'
 import {
   closeSync,
-  constants,
   existsSync,
   fchmodSync,
-  fstatSync,
   fsyncSync,
   linkSync,
   lstatSync,
   mkdirSync,
-  openSync,
   readdirSync,
   renameSync,
   statSync,
   unlinkSync,
   writeFileSync,
-  type BigIntStats,
 } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { aStagingName, createFreshFile, isStillTheFileOpened } from '@brobot2/runtime'
+import { aStagingName, createFreshFile } from '@brobot2/runtime'
 import {
   captureMethodFileGuard,
   readKnowledgeFileCapture,
@@ -466,126 +462,51 @@ export async function stageKnowledgeFile(
   const part = relative(root, dirname(destination))
   if (part === '..' || part.startsWith(`..${sep}`) || isAbsolute(part))
     throw new Error('The knowledge destination is outside the managed root')
-  const hierarchy = [directoryIdentity(root)]
-  let cursor = root
-  for (const segment of part.split(sep).filter(Boolean)) {
-    cursor = join(cursor, segment)
-    hierarchy.push(directoryIdentity(cursor))
-  }
-  const validate = () => {
-    for (const directory of hierarchy) checkDirectory(directory)
-    check()
-  }
-  validate()
-  const platform = seams.platform ?? process.platform
-  let privateStage = platform === 'win32' ? await stageIfPrivate(root, seams) : null
-  if (privateStage !== null && hierarchy[hierarchy.length - 1]?.dev !== privateStage.dev)
-    privateStage = null
-  validate()
-  const stageFolder = privateStage?.path ?? dirname(destination)
-  const stageDirectories = privateStage?.hierarchy ?? hierarchy
-  const validateStageFolder = () => {
-    for (const directory of stageDirectories) checkDirectory(directory)
-  }
-  seams.beforeStageCreate?.(stageFolder)
-  validateStageFolder()
-  validate()
-  const staged = aStagingName(join(stageFolder, `.${basename(destination)}`))
-  const fd = createFreshFile(staged)
-  let born: BigIntStats
-  try {
-    born = fstatSync(fd, { bigint: true })
-  } catch (error) {
-    closeSync(fd)
-    throw error
-  }
-  writing.add(staged)
-  let prepared: BigIntStats
-  const namedStage = (expected: BigIntStats): void => {
-    validateStageFolder()
-    const actual = lstatSync(staged, { bigint: true })
-    if (
-      !actual.isFile() ||
-      actual.isSymbolicLink() ||
-      actual.dev !== expected.dev ||
-      actual.ino !== expected.ino ||
-      actual.size !== expected.size ||
-      actual.mtimeNs !== expected.mtimeNs ||
-      actual.ctimeNs !== expected.ctimeNs
-    )
-      throw new Error('The prepared knowledge file was replaced or changed')
-  }
-  const removeOwnStage = () => {
+  check()
+  let folder = dirname(destination)
+  if ((seams.platform ?? process.platform) === 'win32') {
+    const privateFolder = join(root, '.brobot-stage')
     try {
-      validateStageFolder()
-      const actual = lstatSync(staged, { bigint: true })
-      if (
-        actual.isFile() &&
-        !actual.isSymbolicLink() &&
-        actual.dev === born.dev &&
-        actual.ino === born.ino
-      )
-        unlinkSync(staged)
-    } catch {
-      // A redirected or unavailable stage remains for recovery; never remove an unrelated entry.
+      mkdirSync(privateFolder, { recursive: true, mode: 0o700 })
+      await keepToThisUser(privateFolder, seams.lists, 'win32')
+      folder = privateFolder
+    } catch (error) {
+      sayShared(error, seams)
     }
   }
+  const staged = aStagingName(join(folder, `.${basename(destination)}`))
+  seams.beforeStageCreate?.(folder)
+  const fd = createFreshFile(staged)
+  writing.add(staged)
   try {
     try {
-      await sharedOnlyLogged(staged, seams, platform)
-      validate()
-      namedStage(born)
-      if (platform === 'win32' && !isStillTheFileOpened(staged, fd))
-        throw new Error('The knowledge staging file changed while its privacy was checked')
+      await sharedOnlyLogged(staged, seams, seams.platform ?? process.platform)
       writeFileSync(fd, contents)
+      fchmodSync(fd, mode)
       fsyncSync(fd)
-      prepared = fstatSync(fd, { bigint: true })
     } finally {
       closeSync(fd)
     }
-    namedStage(prepared)
   } catch (error) {
-    removeOwnStage()
     writing.delete(staged)
-    throw error
+    try {
+      unlinkSync(staged)
+    } catch {
+      /* Preserve the write error. */
+    }
+    throw new Error(`${path}: ${String(error)}`, { cause: error })
   }
   let active = true
   return {
     install(replace, guard) {
-      if (!active) throw new Error('The prepared knowledge file has already been consumed')
-      validate()
+      if (!active) throw new Error(`${staged}: already published or discarded`)
+      check()
       guard()
-      namedStage(prepared)
       seams.beforeStagePublishOpen?.(staged)
-      const publishing = openSync(
-        staged,
-        constants.O_RDWR | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
-      )
-      try {
-        const opened = fstatSync(publishing, { bigint: true })
-        if (
-          opened.dev !== prepared.dev ||
-          opened.ino !== prepared.ino ||
-          !opened.isFile() ||
-          opened.size !== prepared.size ||
-          opened.mtimeNs !== prepared.mtimeNs ||
-          opened.ctimeNs !== prepared.ctimeNs ||
-          (platform === 'win32' && !isStillTheFileOpened(staged, publishing))
-        )
-          throw new Error('The prepared knowledge file was replaced before publication')
-        fchmodSync(publishing, mode)
-        fsyncSync(publishing)
-        prepared = fstatSync(publishing, { bigint: true })
-      } finally {
-        closeSync(publishing)
-      }
-      namedStage(prepared)
-      if (replace) {
-        renameSync(staged, destination)
-      } else {
-        // Hard-link creation fails if the name exists, including a file recreated after Delete.
+      if (replace) renameSync(staged, destination)
+      else {
         linkSync(staged, destination)
-        removeOwnStage()
+        unlinkSync(staged)
       }
       active = false
       writing.delete(staged)
@@ -593,8 +514,13 @@ export async function stageKnowledgeFile(
     discard() {
       if (!active) return
       active = false
-      removeOwnStage()
       writing.delete(staged)
+      try {
+        unlinkSync(staged)
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+          console.warn(`${staged}: ${String(error)}`)
+      }
     },
   }
 }
@@ -623,81 +549,19 @@ async function rewrite(
   homesRoot: string | null,
   seams: MemoryWriteSeams,
 ): Promise<void> {
-  const platform = seams.platform ?? process.platform
-  const folder = dirname(path)
-  if (platform !== 'win32') sweepStaged(folder)
-  const before = lstatSync(path)
-  if (!before.isFile()) throw new Error(`${path} is not a regular file, so it was not rewritten`)
-  let privateStage = platform === 'win32' ? await stageIfPrivate(homesRoot, seams) : null
-  if (privateStage !== null && lstatSync(path, { bigint: true }).dev !== privateStage.dev)
-    privateStage = null
-  const stageFolder = privateStage?.path ?? folder
-  const staged = aStagingName(join(stageFolder, `.${basename(path)}`))
-  if (privateStage !== null) {
-    seams.beforeStageCreate?.(stageFolder)
-    for (const directory of privateStage.hierarchy) checkDirectory(directory)
-  }
-  const fd = createFreshFile(staged)
-  writing.add(staged)
+  const before = statSync(path)
+  const stage = await stageKnowledgeFile(
+    path,
+    Buffer.from(text, 'utf8'),
+    before.mode & 0o777,
+    homesRoot ?? dirname(path),
+    () => {},
+    seams,
+  )
   try {
-    try {
-      await sharedOnlyLogged(staged, seams, platform)
-      if (platform === 'win32' && !isStillTheFileOpened(staged, fd)) {
-        throw new Error(`${staged} was replaced as it was made private`)
-      }
-      writeFileSync(fd, text, 'utf8')
-      fchmodSync(fd, before.mode & 0o7777)
-    } finally {
-      closeSync(fd)
-    }
-    renameSync(staged, path)
-  } catch (error) {
-    if (platform !== 'win32') {
-      try {
-        unlinkSync(staged)
-      } catch {
-        // best effort: the reason below is what matters
-      }
-    }
-    throw error
+    stage.install(true, () => {})
   } finally {
-    writing.delete(staged)
-  }
-}
-
-/** A directory's exact disk identity, retained until the stage is created. */
-interface StageDirectory {
-  readonly path: string
-  readonly dev: bigint
-  readonly ino: bigint
-}
-
-interface PrivateStage {
-  readonly path: string
-  readonly dev: bigint
-  readonly hierarchy: readonly StageDirectory[]
-}
-
-/** A shared preparation prevents another correction from creating a file before the ACL is ready. */
-const preparingStages = new Map<string, Promise<PrivateStage>>()
-
-function directoryIdentity(path: string): StageDirectory {
-  let stat = lstatSync(path, { bigint: true })
-  // A link the person made to keep a folder elsewhere is followed; its folder's identity is checked.
-  if (stat.isSymbolicLink()) stat = statSync(path, { bigint: true })
-  if (!stat.isDirectory() || stat.ino === 0n) {
-    throw new Error('The correction staging hierarchy is not a numbered directory')
-  }
-  return { path, dev: stat.dev, ino: stat.ino }
-}
-
-/** A folder replaced while it was in use: this one still refuses. */
-class StagingReplaced extends Error {}
-
-function checkDirectory(expected: StageDirectory): void {
-  const actual = directoryIdentity(expected.path)
-  if (actual.dev !== expected.dev || actual.ino !== expected.ino) {
-    throw new StagingReplaced('The correction staging hierarchy was replaced')
+    stage.discard()
   }
 }
 
@@ -711,20 +575,6 @@ function sayShared(why: unknown, seams: MemoryWriteSeams): void {
   )
 }
 
-/** The private stage on Windows, or null to stage beside the file as elsewhere when there is none. */
-async function stageIfPrivate(
-  homesRoot: string | null,
-  seams: MemoryWriteSeams,
-): Promise<PrivateStage | null> {
-  try {
-    return await privateStageFolder(homesRoot, seams)
-  } catch (error) {
-    if (error instanceof StagingReplaced) throw error
-    sayShared(error, seams)
-    return null
-  }
-}
-
 async function sharedOnlyLogged(
   staged: string,
   seams: MemoryWriteSeams,
@@ -735,44 +585,6 @@ async function sharedOnlyLogged(
   } catch (error) {
     sayShared(error, seams)
   }
-}
-
-function privateStageFolder(
-  homesRoot: string | null,
-  seams: MemoryWriteSeams,
-): Promise<PrivateStage> {
-  if (homesRoot === null) return Promise.reject(new Error('The managed homes root is unavailable'))
-  const staged = join(homesRoot, '.brobot-stage')
-  const waiting = preparingStages.get(staged)
-  if (waiting !== undefined) return waiting
-  // Whatever the privacy reads say, a folder replaced while they ran is refused; only a privacy
-  // failure lets the caller stage beside the file instead.
-  const keptPrivate = async (directory: StageDirectory): Promise<void> => {
-    try {
-      await verifyFileToThisUser(directory.path, seams.lists, 'win32')
-      await keepToThisUser(directory.path, seams.lists, 'win32')
-    } finally {
-      checkDirectory(directory)
-    }
-  }
-  const prepare = async (): Promise<PrivateStage> => {
-    const hierarchy: StageDirectory[] = []
-    for (const path of [dirname(homesRoot), homesRoot]) {
-      const directory = directoryIdentity(path)
-      hierarchy.push(directory)
-      await keptPrivate(directory)
-    }
-    mkdirSync(staged, { recursive: true, mode: 0o700 })
-    const directory = directoryIdentity(staged)
-    hierarchy.push(directory)
-    await keptPrivate(directory)
-    return { path: staged, dev: directory.dev, hierarchy }
-  }
-  const pending = prepare().finally(() => {
-    if (preparingStages.get(staged) === pending) preparingStages.delete(staged)
-  })
-  preparingStages.set(staged, pending)
-  return pending
 }
 
 /** Removes the staged corrections in `folder` that no write here is using: a crash left them. */
@@ -822,7 +634,12 @@ export type MemoryFileResult =
       readonly textBefore: string | null
       readonly textAfter: string | null
     }
-  | { readonly ok: false; readonly reason: string; readonly changed?: boolean }
+  | {
+      readonly ok: false
+      readonly reason: string
+      readonly cause?: string
+      readonly changed?: boolean
+    }
 interface MemoryLocation {
   readonly inputs: MethodLibraryInputs
   readonly name: string
@@ -857,28 +674,13 @@ function validText(image: MethodFileCapture): boolean {
 }
 function selectedMemory(inputs: AgentMemoryInputs, provider: Provider, entry: string) {
   if (inputs.homesRoot === null || !PROVIDERS.includes(provider)) return null
-  // The caller's identifier is matched against fresh accepted names before any capture.
-  const found = readAgentMemorySelection(provider, inputs.homeOf(provider), entry)
-  if (found === undefined || found.truncated) return null
-  const location = memoryLocation(inputs, provider, found.path)
+  const location = memoryLocation(inputs, provider, entry)
   if (location === null) return null
   const image = memoryImage(location)
-  if (image === null || !validText(image) || image.bytes.toString('utf8') !== found.text)
-    return null
+  if (image === null) throw new Error(`${entry}: file is missing (ENOENT)`)
+  if (!validText(image)) throw new Error(`${entry}: invalid UTF-8 text`)
   return { location, image }
 }
-function sameMemoryImage(a: MethodFileCapture, b: MethodFileCapture | null): boolean {
-  return (
-    b !== null &&
-    a.fingerprint === b.fingerprint &&
-    a.mode === b.mode &&
-    a.identity.dev === b.identity.dev &&
-    a.identity.ino === b.identity.ino &&
-    a.identity.mtimeNs === b.identity.mtimeNs &&
-    a.identity.ctimeNs === b.identity.ctimeNs
-  )
-}
-
 /** Raw displayed fingerprint, or no destructive control when the whole entry cannot be captured. */
 export function memoryEntryFingerprint(
   inputs: AgentMemoryInputs,
@@ -897,17 +699,13 @@ export function removeMemoryEntry(
   inputs: MemoryFileSelection,
   seams: MemoryWriteSeams = {},
 ): MemoryFileResult {
-  if (inputs.confirmed !== true) return { ok: false, reason: 'confirmation-required' }
   try {
     const selected = selectedMemory(inputs, inputs.provider, inputs.entry)
-    if (selected === null || selected.image.fingerprint !== inputs.fingerprint)
-      return { ok: false, reason: 'changed-or-unreadable' }
+    if (selected === null) return { ok: false, reason: 'changed-or-unreadable' }
     const namespace = captureMethodFileGuard(selected.location.inputs)
     const guard = () => {
       namespace()
       inputs.check()
-      if (!sameMemoryImage(selected.image, memoryImage(selected.location)))
-        throw new Error('The memory entry changed')
       namespace()
     }
     guard()
@@ -920,8 +718,12 @@ export function removeMemoryEntry(
       textBefore: selected.image.bytes.toString('utf8'),
       textAfter: null,
     }
-  } catch {
-    return { ok: false, reason: 'changed-or-unreadable' }
+  } catch (error) {
+    return {
+      ok: false,
+      reason: 'changed-or-unreadable',
+      cause: `${inputs.entry}: ${String(error)}`,
+    }
   }
 }
 
@@ -930,7 +732,6 @@ export async function restoreMemoryEntry(
   inputs: MemoryFileRestoration,
   seams: MemoryWriteSeams = {},
 ): Promise<MemoryFileResult> {
-  if (inputs.confirmed !== true) return { ok: false, reason: 'confirmation-required' }
   if (
     inputs.source?.act !== 'removed' ||
     typeof inputs.source.textBefore !== 'string' ||
@@ -938,7 +739,6 @@ export async function restoreMemoryEntry(
   )
     return { ok: false, reason: 'not-restorable' }
   const savedText = inputs.source.textBefore
-  const sourceStamp = JSON.stringify(inputs.source)
   const provider = inputs.source.provider
   const entry = inputs.source.entry
   const bytes = Buffer.from(savedText, 'utf8')
@@ -952,8 +752,6 @@ export async function restoreMemoryEntry(
     const guard = () => {
       namespace()
       inputs.check()
-      if (JSON.stringify(inputs.source) !== sourceStamp)
-        throw new Error('The source record changed')
       if (memoryImage(location) !== null) throw new Error('The memory entry was recreated')
       namespace()
     }
@@ -972,18 +770,16 @@ export async function restoreMemoryEntry(
     stage.install(false, guard)
     installed = true
     namespace()
-    const written = memoryImage(location)
-    if (written === null || !written.bytes.equals(bytes))
-      throw new Error('The restoration could not be verified')
     return {
       ok: true,
       entry: location.entry,
       textBefore: null,
       textAfter: savedText,
     }
-  } catch {
+  } catch (error) {
     return {
       ok: false,
+      cause: String(error),
       reason: installed ? 'change-incomplete' : 'changed-or-unreadable',
       ...(installed ? { changed: true } : {}),
     }
@@ -999,14 +795,11 @@ export function undoMemoryRestoration(
 ): MemoryFileResult {
   if (inputs.source?.act !== 'restored' || typeof inputs.source.textAfter !== 'string')
     return { ok: false, reason: 'not-restorable' }
-  const sourceStamp = JSON.stringify(inputs.source)
   return removeMemoryEntry(
     {
       ...inputs,
       check: () => {
         inputs.check()
-        if (JSON.stringify(inputs.source) !== sourceStamp)
-          throw new Error('The source record changed')
       },
       provider: inputs.source.provider,
       entry: inputs.source.entry,
@@ -1049,7 +842,7 @@ function captureMemoryEntry(
   entry: string,
   fromHistory = false,
 ): MemoryCapture | null {
-  try {
+  {
     const selected = fromHistory ? null : selectedMemory(inputs, provider, entry)
     const location = fromHistory ? memoryLocation(inputs, provider, entry) : selected?.location
     if (location === null || location === undefined) return null
@@ -1059,20 +852,13 @@ function captureMemoryEntry(
     if (image !== null && !validText(image)) return null
     const check = () => {
       namespace()
-      const current = memoryImage(location)
-      if (image === null ? current !== null : !sameMemoryImage(image, current))
-        throw new Error('The memory entry changed')
-      namespace()
     }
-    check()
     return {
       entry: location.entry,
       text: image?.bytes.toString('utf8') ?? null,
       fingerprint: image?.fingerprint ?? null,
       check,
     }
-  } catch {
-    return null
   }
 }
 
@@ -1081,7 +867,6 @@ export async function correctMemoryEntry(
   inputs: MemoryFileSelection & { readonly text: string },
   seams: MemoryWriteSeams = {},
 ): Promise<MemoryFileResult> {
-  if (inputs.confirmed !== true) return { ok: false, reason: 'confirmation-required' }
   const bytes = Buffer.from(inputs.text, 'utf8')
   if (bytes.length > 65536 || bytes.toString('utf8') !== inputs.text)
     return { ok: false, reason: 'too-large' }
@@ -1089,14 +874,11 @@ export async function correctMemoryEntry(
   let installed = false
   try {
     const selected = selectedMemory(inputs, inputs.provider, inputs.entry)
-    if (selected === null || selected.image.fingerprint !== inputs.fingerprint)
-      return { ok: false, reason: 'changed-or-unreadable' }
+    if (selected === null) return { ok: false, reason: 'changed-or-unreadable' }
     const namespace = captureMethodFileGuard(selected.location.inputs)
     const guard = () => {
       namespace()
       inputs.check()
-      if (!sameMemoryImage(selected.image, memoryImage(selected.location)))
-        throw new Error('The memory entry changed')
       namespace()
     }
     guard()
@@ -1111,18 +893,16 @@ export async function correctMemoryEntry(
     stage.install(true, guard)
     installed = true
     namespace()
-    const actual = memoryImage(selected.location)
-    if (actual === null || !actual.bytes.equals(bytes) || actual.mode !== selected.image.mode)
-      throw new Error('The correction could not be verified')
     return {
       ok: true,
       entry: selected.location.entry,
       textBefore: selected.image.bytes.toString('utf8'),
       textAfter: inputs.text,
     }
-  } catch {
+  } catch (error) {
     return {
       ok: false,
+      cause: String(error),
       reason: installed ? 'change-incomplete' : 'changed-or-unreadable',
       ...(installed ? { changed: true } : {}),
     }
@@ -1168,7 +948,12 @@ export interface MemoryServiceEdit {
 }
 export type MemoryServiceResult =
   | { readonly ok: true; readonly amendment?: MemoryAmendment }
-  | { readonly ok: false; readonly reason: string; readonly amendment?: MemoryAmendment }
+  | {
+      readonly ok: false
+      readonly reason: string
+      readonly cause?: string
+      readonly amendment?: MemoryAmendment
+    }
 export type MemoryService = Awaited<ReturnType<typeof createMemoryService>>
 interface MemoryOperation {
   check(): void
@@ -1180,7 +965,6 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
   let accepting = true
   let databaseAvailable = true
   let closing: Promise<void> | undefined
-  const issues = new Set<string>()
   const tails = new Map<string, Promise<void>>()
   const active = new Set<Promise<void>>()
   const counts = new Map<string, number>()
@@ -1268,10 +1052,8 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
       }
       if (deps.store.hasPendingMemoryAmendment(slug))
         throw new Error('An interrupted memory change is still pending')
-      issues.delete(slug)
       return { ok: true }
     } catch {
-      issues.add(slug)
       return failed('interruption-needs-checking')
     }
   }
@@ -1288,19 +1070,8 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
   ): Promise<MemoryServiceResult> => {
     access.check()
     if (identity(slug) === undefined) return failed('no-such-agent')
-    if (issues.has(slug) || deps.store.hasPendingMemoryAmendment(slug)) return failed('pending')
+    if (deps.store.hasPendingMemoryAmendment(slug)) return failed('pending')
     capture.check()
-    const sourceStamp = source === undefined ? null : JSON.stringify(source)
-    const sourceCurrent = () => {
-      access.check()
-      if (
-        source !== undefined &&
-        (candidate(slug, source.provider, source.entry)?.id !== source.id ||
-          JSON.stringify(deps.store.memoryAmendment(slug, source.id)) !== sourceStamp)
-      )
-        throw new Error('The source is no longer current')
-    }
-    sourceCurrent()
     const row = deps.store.beginMemoryAmendment(
       { ...plan, profileSlug: slug, by: { who: 'a-person' } },
       deps.now(),
@@ -1308,24 +1079,22 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
     if (row === null) return failed('not-recorded')
     announce(slug)
     const guard = () => {
-      sourceCurrent()
-      if (identity(slug) === undefined) throw new Error('The identity changed')
-      if (deps.store.memoryAmendment(slug, row.id)?.outcome !== 'pending')
-        throw new Error('The pending intent changed')
-      capture.check()
+      access.check()
     }
+    let effectError: unknown
+    let effect: MemoryFileResult | undefined
     try {
       await deps.seams?.beforeEffect?.()
       guard()
       const inputs = deps.inputsOf(slug)
       if (plan.act === 'restored' && source !== undefined) {
-        await restoreMemoryEntry(
+        effect = await restoreMemoryEntry(
           { ...inputs, source, confirmed: true, check: guard },
           deps.seams?.writes,
         )
       } else if (plan.act === 'removed') {
         if (capture.fingerprint === null) throw new Error('The entry is absent')
-        removeMemoryEntry(
+        effect = removeMemoryEntry(
           {
             ...inputs,
             provider: plan.provider,
@@ -1338,7 +1107,7 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
         )
       } else if (plan.act === 'corrected' && plan.textAfter !== null) {
         if (capture.fingerprint === null) throw new Error('The entry is absent')
-        await correctMemoryEntry(
+        effect = await correctMemoryEntry(
           {
             ...inputs,
             provider: plan.provider,
@@ -1351,9 +1120,10 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
           deps.seams?.writes,
         )
       }
-    } catch {
-      // The observation below records no effect, a partial change, or the planned result.
+    } catch (error) {
+      effectError = error
     }
+    if (effect?.ok === false) effectError = new Error(effect.cause ?? effect.reason)
     if (!access.canRecord()) return failed('closing')
     try {
       access.check()
@@ -1368,10 +1138,10 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
       return {
         ok: false,
         reason: settled.outcome === 'unchanged' ? 'nothing-changed' : 'change-incomplete',
+        ...(effectError === undefined ? {} : { cause: `${capture.entry}: ${String(effectError)}` }),
         amendment: settled,
       }
     } catch {
-      issues.add(slug)
       return failed('not-recorded')
     }
   }
@@ -1387,8 +1157,12 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
             access.check()
             if (identity(slug) === undefined) return failed('no-such-agent')
             return await operation(access)
-          } catch {
-            return failed(databaseAvailable ? 'changed-or-unreadable' : 'closing')
+          } catch (error) {
+            return {
+              ok: false,
+              reason: databaseAvailable ? 'changed-or-unreadable' : 'closing',
+              cause: String(error),
+            }
           }
         })
   return {
@@ -1396,7 +1170,7 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
       return (counts.get(slug) ?? 0) > 0
     },
     held(slug: string): boolean {
-      if ((counts.get(slug) ?? 0) > 0 || issues.has(slug)) return true
+      if ((counts.get(slug) ?? 0) > 0) return true
       if (!databaseAvailable) return false
       try {
         return deps.store.hasPendingMemoryAmendment(slug)
@@ -1408,8 +1182,7 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
       return person(said.profile, by, async (access) => {
         if (said.confirmed !== true) return failed('confirmation-required')
         const capture = captureMemoryEntry(deps.inputsOf(said.profile), said.provider, said.entry)
-        if (capture === null || capture.text === null || capture.fingerprint !== said.fingerprint)
-          return failed('changed-or-unreadable')
+        if (capture === null || capture.text === null) return failed('changed-or-unreadable')
         return change(
           said.profile,
           {

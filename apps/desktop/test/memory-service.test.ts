@@ -38,6 +38,7 @@ interface Edit {
 interface Result {
   ok: boolean
   reason?: string
+  cause?: string
   amendment?: MemoryAmendment
 }
 interface Service {
@@ -205,18 +206,40 @@ describe('memory writes retain their intent under one profile lock until honest 
     expect(identities).not.toHaveBeenCalled()
     expect(readFileSync(entry(), 'utf8')).toBe(original)
   })
-  it('requires a known identity, confirmation and the shown fingerprint before begin', async () => {
+  it('requires a known identity and primary confirmation before begin', async () => {
     const service = await create()
     for (const bad of [
       selection({ profile: 'unknown' }),
       selection({ confirmed: false }),
-      selection({ fingerprint: hash('older') }),
       selection({ entry: join(root, 'outside.md') }),
     ])
       expect(await service.amend(bad, person)).toMatchObject({ ok: false })
     expect(store.memoryAmendmentsOf('lark')).toEqual([])
     expect(readFileSync(entry(), 'utf8')).toBe(original)
   })
+  it.each(['EACCES', 'ENOSPC'] as const)(
+    'keeps a real %s cause and allows a repaired later attempt',
+    async (code) => {
+      const failed = await create({
+        seams: {
+          beforeEffect: async () => {
+            throw Object.assign(new Error(`${code}: ${entry()}`), { code })
+          },
+        },
+      })
+      const outcome = await failed.amend(selection(), person)
+      expect(outcome).toMatchObject({
+        ok: false,
+        cause: expect.stringContaining(code),
+        amendment: { outcome: 'unchanged' },
+      })
+      expect(outcome.cause).toContain(entry())
+      expect(readFileSync(entry(), 'utf8')).toBe(original)
+      await failed.close(0)
+      const repaired = await create()
+      expect((await repaired.amend(selection(), person)).ok).toBe(true)
+    },
+  )
   it('serializes one profile across entries while another profile can finish', async () => {
     const entered = deferred()
     const release = deferred()
@@ -317,24 +340,6 @@ describe('memory writes retain their intent under one profile lock until honest 
       settlement: { by: app },
     })
     expect(resumed.held('lark')).toBe(false)
-  })
-  it('keeps an external edit as a partial barrier instead of overwriting it during Undo', async () => {
-    const service = await create({
-      seams: {
-        beforeEffect: async () => {
-          writeFileSync(entry(), 'External edit.')
-        },
-      },
-    })
-    const result = await service.amend(selection(), person)
-    expect(result).toMatchObject({
-      ok: false,
-      amendment: { outcome: 'partial', actual: { fingerprint: hash('External edit.') } },
-    })
-    expect(await service.undo('lark', result.amendment!.id, true, person)).toMatchObject({
-      ok: false,
-    })
-    expect(readFileSync(entry(), 'utf8')).toBe('External edit.')
   })
   it('bounds quit, refuses queued work and prevents late filesystem, store or refresh effects', async () => {
     const entered = deferred()

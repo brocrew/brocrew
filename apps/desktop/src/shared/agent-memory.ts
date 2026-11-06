@@ -395,6 +395,7 @@ export type AgentMemoryAmended =
   | {
       readonly done: false
       readonly refused: AmendmentRefused
+      readonly cause?: string
       readonly reading: AgentMemoryReading
     }
 
@@ -441,6 +442,7 @@ export type MemoryChecked =
   | {
       readonly done: false
       readonly refused: AmendmentRefused
+      readonly cause?: string
       readonly reading: AgentMemoryReading
     }
 
