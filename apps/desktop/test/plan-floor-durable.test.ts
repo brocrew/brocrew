@@ -17,6 +17,7 @@ import type {
   SessionLivenessMessage,
   TranscriptEvent,
 } from '../src/shared/runtime-ipc'
+import { ScriptedQueryMessages } from './lib/scripted-query-messages'
 
 /**
  * 🔴 **150 §0 · the DURABLE half of a plan mode the provider moved.**
@@ -37,31 +38,9 @@ import type {
  * happened.
  */
 
-class FakeQuery {
-  private resolve: ((value: IteratorResult<SDKMessage>) => void) | null = null
-  private readonly buffer: SDKMessage[] = []
-  private done = false
+class FakeQuery extends ScriptedQueryMessages {
   /** Every mode the adapter asked the SDK for — so "we told the provider" is checkable. */
   readonly modes: string[] = []
-
-  emit(message: SDKMessage): void {
-    if (this.resolve) {
-      const resolve = this.resolve
-      this.resolve = null
-      resolve({ value: message, done: false })
-      return
-    }
-    this.buffer.push(message)
-  }
-
-  end(): void {
-    this.done = true
-    if (this.resolve) {
-      const resolve = this.resolve
-      this.resolve = null
-      resolve({ value: undefined as never, done: true })
-    }
-  }
 
   async interrupt(): Promise<void> {}
   async setPermissionMode(mode: string): Promise<void> {
@@ -71,17 +50,8 @@ class FakeQuery {
     this.end()
   }
 
-  [Symbol.asyncIterator](): AsyncIterator<SDKMessage> {
-    return this.cli.over({
-      next: (): Promise<IteratorResult<SDKMessage>> => {
-        const queued = this.buffer.shift()
-        if (queued) return Promise.resolve({ value: queued, done: false })
-        if (this.done) return Promise.resolve({ value: undefined as never, done: true })
-        return new Promise((resolve) => {
-          this.resolve = resolve
-        })
-      },
-    })
+  override [Symbol.asyncIterator](): AsyncIterator<SDKMessage> {
+    return this.cli.over(super[Symbol.asyncIterator]())
   }
 
   /** ⚑ F080: it reads what the adapter sends, and each `result` names the message it answers. */

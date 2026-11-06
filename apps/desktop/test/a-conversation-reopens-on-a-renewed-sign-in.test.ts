@@ -31,6 +31,7 @@ import type {
   TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
+import { ScriptedQueryMessages } from './lib/scripted-query-messages'
 
 /**
  * 🔴 **D-004 · R101 — a Claude conversation killed by a login renewed elsewhere on this Mac reopens
@@ -48,30 +49,8 @@ import { everythingOverTheWire } from './lib/the-wire'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
-class FakeQuery {
-  private resolve: ((value: IteratorResult<SDKMessage>) => void) | null = null
-  private readonly buffer: SDKMessage[] = []
-  private done = false
+class FakeQuery extends ScriptedQueryMessages {
   readonly sent: unknown[] = []
-
-  emit(message: SDKMessage): void {
-    if (this.resolve) {
-      const resolve = this.resolve
-      this.resolve = null
-      resolve({ value: message, done: false })
-      return
-    }
-    this.buffer.push(message)
-  }
-
-  end(): void {
-    this.done = true
-    if (this.resolve) {
-      const resolve = this.resolve
-      this.resolve = null
-      resolve({ value: undefined as never, done: true })
-    }
-  }
 
   async interrupt(): Promise<void> {}
   async setPermissionMode(): Promise<void> {}
@@ -79,17 +58,8 @@ class FakeQuery {
     this.end()
   }
 
-  [Symbol.asyncIterator](): AsyncIterator<SDKMessage> {
-    return this.cli.over({
-      next: (): Promise<IteratorResult<SDKMessage>> => {
-        const queued = this.buffer.shift()
-        if (queued) return Promise.resolve({ value: queued, done: false })
-        if (this.done) return Promise.resolve({ value: undefined as never, done: true })
-        return new Promise((resolve) => {
-          this.resolve = resolve
-        })
-      },
-    })
+  override [Symbol.asyncIterator](): AsyncIterator<SDKMessage> {
+    return this.cli.over(super[Symbol.asyncIterator]())
   }
 
   /** ⚑ F080: it reads what the adapter sends, and each `result` names the message it answers. */
