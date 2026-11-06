@@ -933,7 +933,7 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
       }
     })
 
-    it('uses the existing document reader for cross-profile hit ids and still refuses missing or changed bytes', async () => {
+    it('reads cross-profile hit ids and local edits while refusing missing resources', async () => {
       const producer = await workWasGiven('searchable resource')
       const landed = await reply(producer.worker, {
         piece: producer.task,
@@ -961,9 +961,11 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
         const row = store.resource(resource)!
         writeFileSync(join(resourcesRoot(userData), row.sha256, row.name), '# Changed bytes')
         expect(await callOn(toolsOf(caller), 'read_document', { resource })).toMatchObject({
-          outcome: 'refused',
-          rail: 'resource-bytes-changed',
+          outcome: 'ok',
+          content: { as: 'markdown' },
         })
+        const reader = toolsOf(caller).tools.find((tool) => tool.name === 'read_document')!
+        expect((await reader.call({ resource })).text).toBe('# Changed bytes')
       } finally {
         engine.close()
       }

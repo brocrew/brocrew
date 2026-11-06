@@ -42,7 +42,7 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  * ## ⚑ D-016 · the document became a RESOURCE, and HO-057 carried
  *
  * ⚠️ The document registry is gone: a reply's files are kept as RESOURCES, and `read_document`
- * reads one by its `res_…` id — any agent, any resource, the bytes re-checked against their hash.
+ * reads one by its `res_…` id — any agent, any resource, using the current local bytes.
  * ⛔ **`list_documents` went with the registry**, so the listing §2 measured has no subject and §2
  * is gone; a resource is found through `list_tasks`, naming its piece.
  *
@@ -333,9 +333,7 @@ describe('549 · two withdrawals — open what was scoped', () => {
       expect(tool?.description).not.toContain('you kept')
       expect(tool?.description).not.toContain('you gave')
       expect(tool?.description).toContain('Read a resource this app keeps')
-      // ⚑ **And it still names what did NOT widen**, because a reader told only *any document* has
-      // no way to know the bytes are re-checked.
-      expect(tool?.description).toContain('hash')
+      expect(tool?.description).not.toContain('hash')
     })
   })
 
@@ -345,11 +343,11 @@ describe('549 · two withdrawals — open what was scoped', () => {
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────
-  // §3 · HO-057 §1.4 · the hash did NOT move
+  // Local edits remain readable across profiles.
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('§3 · widening who may read did not widen what may be returned', () => {
-    it('🔴 a tampered canonical copy refuses the reader who did not write it too', async () => {
+  describe('reading local edits', () => {
+    it('returns edited bytes to a reader who did not write the resource', async () => {
       const { readerTools, mine, theirs } = await twoConversations()
       // ⚑ **D-016** · the kept copy is `<resources>/<sha256>/<name>`, off the resource's own row.
       const row = store.resource(theirs)
@@ -360,10 +358,10 @@ describe('549 · two withdrawals — open what was scoped', () => {
       writeFileSync(at, 'somebody edited this\n')
 
       const answered = await callOn(readerTools, 'read_document', { resource: theirs })
-      expect(answered.rail).toBe('resource-bytes-changed')
-      expect(answered.content).toBeUndefined()
-      // ⛔ **The bytes on disk never leave the process**, which is the property the rail exists for.
-      expect(JSON.stringify(answered)).not.toContain('somebody edited this')
+      expect(answered.outcome).toBe('ok')
+      expect(answered.content).toEqual({ as: 'markdown' })
+      const reader = readerTools.tools.find((tool) => tool.name === 'read_document')!
+      expect((await reader.call({ resource: theirs })).text).toBe('somebody edited this\n')
 
       // ⚑ **The control that plants TWO** — the untouched resource, same caller, same call.
       const untouched = await callOn(readerTools, 'read_document', { resource: mine })
