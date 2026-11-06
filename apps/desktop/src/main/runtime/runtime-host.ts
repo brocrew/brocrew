@@ -27975,7 +27975,6 @@ export class RuntimeHost implements LiveHost {
     if (!this.runsNow(sessionId) && theSurfaceAsking(by) !== null) {
       return this.send(sessionId, text, by, attachments)
     }
-    this.aPersonsWindowTakesIt(sessionId, theSurfaceAsking(by))
     const session = this.requireToCommand(sessionId, by)
     // ⛔ **The message capability, because this verb delivers words** (374). The interrupt half
     // needs no grant: `requireToCommand` above made this caller the conversation's commander, and
@@ -28333,8 +28332,6 @@ export class RuntimeHost implements LiveHost {
     let heldForServices: boolean
     try {
       now = this.takesADeliveryNow(sessionId)
-      // ⚑ **R5** — a person writing to a conversation nobody spawned that runs with no window takes it.
-      if (now) this.aPersonsWindowTakesIt(sessionId, theSurfaceAsking(by))
       heldForServices = !now && this.servicesHoldItBack(sessionId, by)
     } catch (error) {
       return Promise.reject(error)
@@ -34166,8 +34163,6 @@ export class RuntimeHost implements LiveHost {
     decision: PermissionDecision,
     by: Caller,
   ): Promise<ProviderAnswerAck> {
-    // ⚑ **D-017 · R5** — a person answering a card in a conversation nobody spawned takes it.
-    this.aPersonsWindowTakesIt(sessionId, theSurfaceAsking(by))
     const over = this.aPersonsAnswerComesTooLate(sessionId, requestId, by)
     if (over !== null) return over
     const session = this.requireToAnswer(sessionId, by, requestId)
@@ -34518,8 +34513,6 @@ export class RuntimeHost implements LiveHost {
         by,
       )
     }
-    // ⚑ **D-017 · R5** — a person answering a card in a conversation nobody spawned takes it.
-    this.aPersonsWindowTakesIt(sessionId, theSurfaceAsking(by))
     const over = this.aPersonsAnswerComesTooLate(sessionId, requestId, by)
     if (over !== null) return over
     const session = this.requireToAnswer(sessionId, by, requestId)
@@ -34563,7 +34556,7 @@ export class RuntimeHost implements LiveHost {
     }
     const slot = this.slots.get(askedBy)
     const aPersons = aPersonsSince(request) !== null
-    const inTheirWindow = slot !== undefined && mayAnswerAsAHuman(slot, by)
+    const inTheirWindow = slot !== undefined && (aPersonTypedIt(by) || mayAnswerAsAHuman(slot, by))
     if (!aPersonIsAsking(by) || (!aPersons && !inTheirWindow)) {
       return {
         outcome: 'refused',
@@ -35420,7 +35413,7 @@ export class RuntimeHost implements LiveHost {
     // defect with a different actor. ⚑ What the ledger does hold for a commanded turn is the turn
     // itself; naming the agent that asked for it needs an event that says so, and inventing one here
     // would be this dispatch writing the tools dispatch's vocabulary.
-    if (slot && !mayControl(slot, by)) return
+    if (slot && !aPersonTypedIt(by) && !mayControl(slot, by)) return
     const session = slot?.session
     if (!session) return
     this.publishOurs(session, { type: 'user_command', command, ...(target ? { target } : {}) })
@@ -46636,39 +46629,13 @@ export class RuntimeHost implements LiveHost {
     return slot.session
   }
 
-  /**
-   * Refuse a gesture from a surface this conversation was not given to (203).
-   *
-   * The diagnostic names both owners because that is what a log is for; the SENTENCE is keyed by
-   * the reason alone and carries no id — 100's split, on the class 195 found.
-   */
+  /** Person windows can command any conversation without changing its stream owner. */
   private assertMayControl(slot: SessionSlot, by: Caller): void {
-    if (mayControl(slot, by)) return
+    if (aPersonTypedIt(by) || mayControl(slot, by)) return
     throw this.refusalTranslated(
       new SessionUnavailable(
-        // 🔴 **The same absent window, in the gesture a person reaches for when the other two
-        // fail** (421, HO-023 §2.3). `not-yours` says the conversation *"belongs to another window …
-        // switch to that window to answer it, send to it, or close it"*, and for `ownerId === null`
-        // there is no other window and no window at all: 062's loser is being told to go somewhere
-        // that does not exist. ⚠️ **One `throw`, two reasons, and deliberately not two throws** —
-        // `send-refusals.ts`'s census counts the throws on the send path, and what changed here is
-        // which sentence one refusal reads, not how many refusals there are.
-        //
-        // ⛔ **The policy this encodes, and 421 §2.1 asked for it out loud: a person takes the
-        // conversation over and THEN closes it.** Widening `mayControl` for a null owner was the
-        // one-line alternative and it is the wrong line: this predicate answers *"whose stream is
-        // this"* and *"whose departure ends it"* as well as *"who may drive it"* (340), so admitting
-        // every window to an unowned conversation would hand a stranger the send, the approval and
-        // the interrupt on a conversation an agent is commanding — and its explicit `close` with
-        // them. ⚠️ **The third clause here used to read *"and would make a window's reload end
-        // it"*, and `523` found it false as a mechanism**: {@link closeSessionsForOwner} selects on
-        // `slot.ownerId !== ownerId` and never asks this predicate, so an unowned slot is walked
-        // past whatever `mayControl` answers. ⛔ The argument stands on the two clauses that are
-        // true. The claim is one press away, on the row `421` fixed — and since `523` the way back
-        // out is {@link releaseSession}.
         slot.ownerId === null ? 'held-by-nobody' : 'not-yours',
-        `session ${slot.id} is held for ${ownerName(slot.ownerId)}, and ${callerName(by)} asked ` +
-          'to control it',
+        `session ${slot.id} is held for ${ownerName(slot.ownerId)}, and ${callerName(by)} asked to control it`,
       ),
       'act on a session',
     )
@@ -46729,7 +46696,7 @@ export class RuntimeHost implements LiveHost {
    * refused here for exactly that reason.
    */
   private assertMayAnswer(slot: SessionSlot, by: Caller, requestId: string): void {
-    if (this.aPersonAnswersWhereNobodyHolds(slot, requestId, by)) return
+    if (aPersonTypedIt(by) || this.aPersonAnswersWhereNobodyHolds(slot, requestId, by)) return
     if (mayAnswerAsAHuman(slot, by)) return
     if (!mayCommand(this.commandedNow(slot), by)) this.assertMayControl(slot, by)
     throw this.refusalTranslated(
