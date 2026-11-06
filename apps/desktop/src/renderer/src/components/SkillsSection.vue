@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { readableError } from '../lib/session-record'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { SharedSkill, SkillsWindow } from '../../../shared/skills-window'
 
@@ -34,7 +35,7 @@ async function refresh(): Promise<void> {
     status.value = ''
   } catch (cause) {
     if (alive && turn === serial)
-      status.value = `Skills could not be read: ${cause instanceof Error ? cause.message : String(cause)}`
+      status.value = `Skills could not be read: ${readableError(cause)}`
   } finally {
     if (alive && turn === serial) loading.value = false
   }
@@ -55,7 +56,7 @@ async function toggle(skill: SharedSkill): Promise<void> {
     await refresh()
   } catch (cause) {
     if (alive)
-      status.value = `The skill was not saved: ${cause instanceof Error ? cause.message : String(cause)}`
+      status.value = `The skill was not saved: ${readableError(cause)}`
   } finally {
     if (alive) saving.value = false
   }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { readableError } from '../lib/session-record'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { Provider } from '@brobot2/shared'
 import { providerName, type RuntimeBridge } from '../../../shared/runtime-ipc'
@@ -187,7 +188,7 @@ async function confirm() {
   } catch (cause) {
     if (generation === epoch) {
       preview.value = null
-      error.value = `${REFUSAL_MEANS['change-incomplete']} ${cause instanceof Error ? cause.message : String(cause)}`
+      error.value = `${REFUSAL_MEANS['change-incomplete']} ${readableError(cause)}`
     }
   } finally {
     if (generation === epoch) busy.value = false

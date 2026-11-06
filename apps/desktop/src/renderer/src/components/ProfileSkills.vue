@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { readableError } from '../lib/session-record'
 import { onBeforeUnmount, ref, watch } from 'vue'
 import type { RuntimeBridge } from '../../../shared/runtime-ipc'
 import type { ProfileSkillMetadata } from '../../../shared/skills-window'
@@ -34,7 +35,7 @@ async function read(offset = 0): Promise<void> {
     loaded.value = true
   } catch (cause) {
     if (generation === epoch && request === sequence && props.active)
-      error.value = cause instanceof Error ? cause.message : String(cause)
+      error.value = readableError(cause)
   } finally {
     if (generation === epoch && request === sequence) loading.value = false
   }

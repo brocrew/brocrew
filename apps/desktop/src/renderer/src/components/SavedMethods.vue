@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { readableError } from '../lib/session-record'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { RuntimeBridge } from '../../../shared/runtime-ipc'
 import type {
@@ -321,7 +322,7 @@ async function confirm(): Promise<void> {
   } catch (cause) {
     if (generation !== epoch) return
     previewRefused.value = true
-    message.value = `BroCrew couldn't confirm the result. ${cause instanceof Error ? cause.message : String(cause)}`
+    message.value = `BroCrew couldn't confirm the result. ${readableError(cause)}`
   } finally {
     if (generation === epoch) {
       busy.value = false
