@@ -59,6 +59,7 @@ import {
 } from '../../../src/main/recovery/layout'
 import { restore, RestoreStopped } from '../../../src/main/recovery/restore'
 import { APP_STATE_FILES, type AppStateFile } from '../../../src/main/recovery/state-files'
+import { checkTheCopyHere } from '../../helpers/check-the-copy-here'
 
 /**
  * A data folder for recovery tests, laid down from real files: a database built by the app's own
@@ -573,6 +574,7 @@ async function checkpointByTheWriter(
     await source.backup(databaseFile(writing))
     await writeStateFiles(writing, texts)
     made = await writeACheckpoint({
+      verifyCopy: checkTheCopyHere,
       userData: writing,
       ownership: 'sole',
       appVersion: plan.appVersion,

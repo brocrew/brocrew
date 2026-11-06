@@ -60,6 +60,7 @@ import { CHECKPOINT_LINE } from '../../src/main/recovery/log-lines'
 import { APP_STATE_FILES } from '../../src/main/recovery/state-files'
 import type { CheckpointDeletion } from '../../src/main/recovery/checkpoint-deletion'
 import { accessEntries, windowsAccessLists } from '../../src/main/recovery/windows-privacy'
+import { checkTheCopyHere } from '../helpers/check-the-copy-here'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const MIGRATIONS = join(here, '../../src/main/db/migrations')
@@ -186,6 +187,7 @@ const SOLE: PruneOptions = { ownership: 'sole' }
 
 function make(userData: string, options: Partial<MakeCheckpointOptions> = {}): Promise<Checkpoint> {
   return makeCheckpoint({
+    verifyCopy: checkTheCopyHere,
     userData,
     ownership: 'sole',
     appVersion: '0.1.0',

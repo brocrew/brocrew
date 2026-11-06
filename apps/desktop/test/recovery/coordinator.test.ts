@@ -52,6 +52,7 @@ import {
   makeRecoveryFixture,
   type RecoveryFixtureOptions,
 } from './lib/recovery-fixture'
+import { checkTheCopyHere } from '../helpers/check-the-copy-here'
 
 /**
  * The start-up check, on real data folders: databases built by the app's own migrations, copies
@@ -91,6 +92,7 @@ function checkOf(
     deps: {
       userData,
       buildMigrationsFolder: MIGRATIONS_FOLDER,
+      verifyCopy: checkTheCopyHere,
       appVersion: THIS_VERSION,
       build: null,
       packaged: false,
@@ -277,6 +279,7 @@ describe('a copy before a migration', () => {
     const newest = fixture.checkpoints[4]!
     const { deps } = checkOf(userData, {
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+      verifyCopy: checkTheCopyHere,
       now: () => now,
       freeBytes: () => (existsSync(oldest.dir) ? 0 : 1_000_000_000),
     })
@@ -300,6 +303,7 @@ describe('a copy before a migration', () => {
     const before = await treeOf(backupsDir(userData))
     const { deps } = checkOf(userData, {
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+      verifyCopy: checkTheCopyHere,
       now: () => now,
       freeBytes: () => 0,
     })
@@ -316,6 +320,7 @@ describe('a copy before a migration', () => {
     })
     const { deps } = checkOf(userData, {
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+      verifyCopy: checkTheCopyHere,
       now: () => now,
       freeBytes: () => 0,
     })
@@ -344,6 +349,7 @@ describe('a copy before a migration', () => {
     })
     const { deps } = checkOf(userData, {
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+      verifyCopy: checkTheCopyHere,
       now: () => now,
       freeBytes: () => 0,
     })
@@ -379,6 +385,7 @@ describe('a copy before a migration', () => {
       const reached: { step: string; fallbackExists: boolean }[] = []
       const { deps, seen } = checkOf(userData, {
         buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+        verifyCopy: checkTheCopyHere,
         now: () => now,
         freeBytes: () => 1_000_000_000,
         beforeCheckpointStep: (step) => {
@@ -444,6 +451,7 @@ describe('a copy before a migration', () => {
     const live = await sha256Of(databaseFile(userData))
     const { deps, seen } = checkOf(userData, {
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+      verifyCopy: checkTheCopyHere,
     })
     expect(await inspect(deps)).toEqual({ kind: 'open', checkpoint: 'made' })
     expect(seen.lines).toEqual([CHECKPOINT_LINE])
@@ -461,6 +469,7 @@ describe('a copy before a migration', () => {
     const userData = await aWorkspace({ migrations: THIS_BUILD, checkpoints: [] })
     const { deps, seen } = checkOf(userData, {
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+      verifyCopy: checkTheCopyHere,
       packaged: true,
     })
     expect(await inspect(deps)).toEqual({ kind: 'open', checkpoint: 'made' })
@@ -521,6 +530,7 @@ describe('a copy before a migration', () => {
       fs: recording,
       working: said,
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+      verifyCopy: checkTheCopyHere,
       packaged: true,
     })
     expect(await inspect(reusing.deps)).toEqual({ kind: 'open', checkpoint: 'made' })
@@ -554,6 +564,7 @@ describe('a copy before a migration', () => {
     const before = await treeOf(userData)
     const { deps, seen } = checkOf(userData, {
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+      verifyCopy: checkTheCopyHere,
       freeBytes: () => 0,
     })
     const verdict = await inspect(deps)
@@ -821,6 +832,7 @@ describe('only the sole app on the folder changes its data', () => {
       const { deps, seen } = checkOf(userData, {
         ...owned(ownership),
         buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+        verifyCopy: checkTheCopyHere,
       })
       expect(await inspect(deps)).toEqual(notTheOnlyApp(ownership))
       expect(seen.lines).toEqual([])
@@ -891,6 +903,7 @@ describe('a start the one-app check could not decide', () => {
     const service = createRecoveryService(
       checkOf(userData, {
         buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+        verifyCopy: checkTheCopyHere,
         ownership: () => Promise.resolve(answers.shift() ?? 'unknown'),
       }).deps,
     )

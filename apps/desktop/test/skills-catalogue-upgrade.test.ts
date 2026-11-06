@@ -27,6 +27,7 @@ import {
 } from '../src/main/recovery/database-facts'
 import { makeCheckpoint } from '../src/main/recovery/checkpoint'
 import { restore, returnToNewer } from '../src/main/recovery/restore'
+import { checkTheCopyHere } from './helpers/check-the-copy-here'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrations = join(here, '../src/main/db/migrations')
@@ -172,6 +173,7 @@ describe('skills follow the database upgrade and recovery boundary', () => {
     expect(db.prepare("SELECT name FROM sqlite_schema WHERE name LIKE 'skill_%'").all()).toEqual([])
     db.close()
     const checkpoint = await makeCheckpoint({
+      verifyCopy: checkTheCopyHere,
       userData,
       ownership: 'sole',
       appVersion: 'fictional-before-skills',
@@ -242,6 +244,7 @@ describe('skills follow the database upgrade and recovery boundary', () => {
     catalogue.select('aid:recipe-worker', first.id, 'on', catalogue.list().revision)
     db.close()
     const checkpoint = await makeCheckpoint({
+      verifyCopy: checkTheCopyHere,
       userData,
       ownership: 'sole',
       appVersion: 'fictional',

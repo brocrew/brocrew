@@ -26,6 +26,7 @@ import {
   HIDDEN_BASE_THEME_IDS,
   themeDefaultsFor,
 } from '../src/main/themes/defaults'
+import { checkTheCopyHere } from './helpers/check-the-copy-here'
 
 const hooks = vi.hoisted(() => ({
   afterStat: undefined as ((file: unknown) => void) | undefined,
@@ -274,6 +275,7 @@ it('configured recovery refuses a missing database with the fixed line, ordinary
   const deps = {
     userData: workspace,
     buildMigrationsFolder: migrations,
+    verifyCopy: checkTheCopyHere,
     appVersion: '0.0.0',
     build: null,
     packaged: true,

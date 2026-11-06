@@ -13,6 +13,8 @@ import { PLUGIN_SCHEME } from './plugins/ui/assets'
 import { installPluginUiRpc } from './plugins/ui/host'
 import { ipcMain } from './app-ipc'
 import startStorageWorker from './storage.worker?nodeWorker'
+import startRecoveryVerifier from './recovery-verify.worker?nodeWorker'
+import { verifyInAWorker } from './recovery/copy-check'
 import { StorageService } from './storage/service'
 import { clearHttpCache, httpCacheFolder } from './storage/cache'
 import { registerStorageIpc } from './storage/ipc'
@@ -545,7 +547,10 @@ function initDatabase(): AppDatabase {
     folder: app.getPath('userData'),
   })
   try {
-    applyMigrations(database, migrationsFolder)
+    // Timed apart: a slow migration before the window is not read as the runtime's work.
+    mainThreadWork.timed('database migrations before the window', () =>
+      applyMigrations(database, migrationsFolder),
+    )
   } catch (error) {
     try {
       database.close()
@@ -562,6 +567,11 @@ function initDatabase(): AppDatabase {
     if (compaction === 'compacted') console.info('BroCrew gave its free database space back')
     if (compaction === 'compacted-log-held') {
       console.info('BroCrew gave its free database space back; its log file shrinks later')
+    }
+    if (compaction === 'deferred-too-large') {
+      console.info(
+        'BroCrew kept its free database space: the file is too large to compact at launch',
+      )
     }
     if (compaction === 'not-enough-disk') {
       console.warn('BroCrew kept its free database space: the disk has no room to compact it')
@@ -1831,6 +1841,12 @@ function theRecoveryService(launchOwnership: HostGateVerdict): RecoveryService {
     log: sayAtOnce,
     working: (what) => sayWorkingIfItTakesLong(what),
     progress: (done, total) => recoveryCalls?.progress(done, total),
+    verifyCopy: verifyInAWorker((request) =>
+      startRecoveryVerifier({
+        workerData: request,
+        resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
+      }),
+    ),
   }
   const asked = app.commandLine.getSwitchValue(RECOVERY_FAULT_SWITCH)
   if (asked === '') return createRecoveryService(deps)

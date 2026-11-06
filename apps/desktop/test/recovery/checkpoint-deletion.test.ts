@@ -30,6 +30,7 @@ import {
 } from '../../src/main/recovery/checkpoint'
 import { nodeFs } from '../../src/main/recovery/files'
 import { beginCheckpointDeletion } from '../../src/main/recovery/checkpoint-deletion'
+import { checkTheCopyHere } from '../helpers/check-the-copy-here'
 
 const roots: string[] = []
 afterEach(() => {
@@ -56,6 +57,7 @@ async function fixture(withTrees = false) {
     }
   const lineage = await buildLineage(migrations)
   const copy = await makeCheckpoint({
+    verifyCopy: checkTheCopyHere,
     userData,
     ownership: 'sole',
     appVersion: '0.1.9',
@@ -493,6 +495,7 @@ it('removes both fixed copied trees bottom-up without recursive rm', async () =>
     writeFileSync(join(userData, name, 'fictional', 'nested', 'SKILL.md'), 'fictional copied skill')
   }
   const copy = await makeCheckpoint({
+    verifyCopy: checkTheCopyHere,
     userData,
     ownership: 'sole',
     appVersion: '0.1.9',
@@ -536,6 +539,7 @@ it('failed writer cleanup uses the fixed names and preserves a personal addition
   }
   await expect(
     makeCheckpoint({
+      verifyCopy: checkTheCopyHere,
       userData,
       ownership: 'sole',
       appVersion: '0.1.9',
@@ -619,6 +623,7 @@ it('ordinary retention pruning also preserves a note arriving at final rmdir and
   const { userData, lineage, copy, options } = await fixture()
   for (let n = 1; n <= 2; n++)
     await makeCheckpoint({
+      verifyCopy: checkTheCopyHere,
       userData,
       ownership: 'sole',
       appVersion: '0.1.9',
