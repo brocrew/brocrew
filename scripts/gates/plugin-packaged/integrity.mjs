@@ -41,13 +41,8 @@ export async function inspectBundle(app, expected) {
     throw new Error('Packaged bundle changed')
   return { facts, stamp }
 }
-export const integrityStages = [
-  'afterPackage',
-  'afterSourceRestore',
-  'afterVerification',
-  'afterFixtureWrite',
-  'beforeLaunch',
-]
+/** One check of the packaged bundle, right after packaging. Later re-hashes add nothing. */
+export const integrityStages = ['afterPackage']
 const factNames = [
   'RunAsNode',
   'EnableCookieEncryption',

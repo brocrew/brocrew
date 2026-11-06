@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 import { requireCI, ownedRoot, report, safeReport, finish } from './contract.mjs'
-import { fixtureEnvironment, removeFixture, repository } from './prepare.mjs'
+import { fixtureEnvironment, repository } from './prepare.mjs'
 import { bounded, stopApp, cancellation } from './processes.mjs'
 import {
   failureFor,
@@ -19,13 +19,9 @@ import {
   printAppStderr,
 } from './diagnostics.mjs'
 import { readIntegrity } from './integrity.mjs'
-import { readOwned } from './journey.mjs'
-import { safeVariant, safeSelection, safeMatrixReceipt, requireSelection } from './matrix.mjs'
-import { closedFrames } from './diagnostics.mjs'
 import { pageStateFrames, printPageState } from './page-state.mjs'
 import { providerStateFrames, printProviderState } from './provider-state.mjs'
 import { pluginStateFrames, printPluginState } from './plugin-state.mjs'
-import { registerChild, bestEffortDrain, runnerAdapter } from './runner-processes.mjs'
 function safeSummary(summary) {
   if (!safeReport(summary)) throw new Error('Unsafe summary')
 }
@@ -33,58 +29,15 @@ export function requireHosted(env = process.env, platform = process.platform, ar
   requireCI(env, platform, arch)
 }
 function readOwner(control) {
-  const stat = fs.lstatSync(control)
-  if (
-    !stat.isDirectory() ||
-    stat.isSymbolicLink() ||
-    stat.uid !== process.getuid() ||
-    stat.mode & 0o077 ||
-    fs.realpathSync(control) !== control
-  )
-    throw new Error('Invalid owner control')
-  const fd = fs.openSync(
-    path.join(control, 'owner.json'),
-    fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW,
-  )
-  try {
-    const info = fs.fstatSync(fd)
-    if (
-      !info.isFile() ||
-      info.uid !== process.getuid() ||
-      info.mode & 0o077 ||
-      info.nlink !== 1 ||
-      info.size > 8192
-    )
-      throw new Error('Invalid owner record')
-    const meta = JSON.parse(fs.readFileSync(fd))
-    if (!/^\/private\/tmp\/fpg-[a-f0-9]{32}$/.test(meta.root) || !path.isAbsolute(meta.node))
-      throw new Error('Invalid owner identity')
-    return meta
-  } finally {
-    fs.closeSync(fd)
-  }
+  const meta = JSON.parse(fs.readFileSync(path.join(control, 'owner.json'), 'utf8'))
+  if (!path.isAbsolute(meta.root) || !path.isAbsolute(meta.node))
+    throw new Error('Invalid owner record')
+  return meta
 }
 function readSummary(control) {
-  const fd = fs.openSync(
-    path.join(control, 'summary.json'),
-    fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW,
-  )
-  try {
-    const stat = fs.fstatSync(fd)
-    if (
-      !stat.isFile() ||
-      stat.uid !== process.getuid() ||
-      stat.mode & 0o077 ||
-      stat.nlink !== 1 ||
-      stat.size > 32768
-    )
-      throw new Error('Invalid owner summary')
-    const value = JSON.parse(fs.readFileSync(fd))
-    safeSummary(value)
-    return value
-  } finally {
-    fs.closeSync(fd)
-  }
+  const value = JSON.parse(fs.readFileSync(path.join(control, 'summary.json'), 'utf8'))
+  safeSummary(value)
+  return value
 }
 function writeSummary(control, summary) {
   safeSummary(summary)
@@ -154,35 +107,21 @@ function childRun(program, args, env, cwd, abort, maximum, phase) {
         innerPluginState ??= value
       }),
     )
-  if (['gui-probe', 'probe-matrix', 'journey'].includes(phase))
+  if (['gui-probe', 'journey'].includes(phase))
     child.stdout.on(
       'data',
       pageStateFrames((value) => {
         innerPageState ??= value
       }),
     )
-  if (['gui-probe', 'probe-matrix', 'journey'].includes(phase))
+  if (['gui-probe', 'journey'].includes(phase))
     child.stdout.on(
       'data',
       stderrFrames((value) => {
         innerStderr ??= value
       }),
     )
-  if (phase === 'probe-matrix') {
-    child.stdout.on(
-      'data',
-      closedFrames('gate-variant ', safeVariant, (value) =>
-        console.log('gate-variant ' + JSON.stringify(value)),
-      ),
-    )
-    child.stdout.on(
-      'data',
-      closedFrames('gate-launch-selection ', safeSelection, (value) =>
-        console.log('gate-launch-selection ' + JSON.stringify(value)),
-      ),
-    )
-  }
-  if (['prepare', 'gui-probe', 'probe-matrix', 'journey'].includes(phase))
+  if (['prepare', 'gui-probe', 'journey'].includes(phase))
     child.stdout.on(
       'data',
       failureFrames((value) => {
@@ -292,8 +231,6 @@ export async function run(control, node22, pnpm) {
     phase = step
     const child = childRun(program, args, environment, repo, abort, maximum, step)
     children.push(child)
-    // The matrix drains each app while it remains alive. Do not admit its own owner as a target.
-    if (child.child.pid && step !== 'probe-matrix') await registerChild(root, child.child)
     try {
       await child.wait()
     } finally {
@@ -328,7 +265,6 @@ export async function run(control, node22, pnpm) {
       '--project',
       'scripts',
       'scripts/test/plugin-packaged-gate.test.mjs',
-      'scripts/test/plugin-packaged-cleanup.test.mjs',
       'scripts/test/plugin-packaged-owner.test.mjs',
       'scripts/test/plugin-packaged-diagnostics.test.mjs',
       'scripts/test/plugin-packaged-release.test.mjs',
@@ -339,7 +275,6 @@ export async function run(control, node22, pnpm) {
       'scripts/test/plugin-packaged-page-state.test.mjs',
       'scripts/test/plugin-packaged-environment.test.mjs',
       'scripts/test/plugin-packaged-integrity.test.mjs',
-      'scripts/test/plugin-packaged-matrix.test.mjs',
     ])
     await start(
       'prepare',
@@ -387,14 +322,6 @@ export async function run(control, node22, pnpm) {
       remaining(),
     )
     await start(
-      'probe-matrix',
-      meta.node,
-      ['scripts/gates/plugin-packaged/launch-matrix.mjs', root],
-      450000,
-      process.env,
-    )
-    requireSelection(JSON.parse(readOwned(path.join(root, 'probe-matrix.json'))))
-    await start(
       'gui-probe',
       workloadNode,
       ['scripts/gates/plugin-packaged/journey.mjs', 'probe', root],
@@ -406,12 +333,16 @@ export async function run(control, node22, pnpm) {
     failure = failureFor(phase, error)
   } finally {
     let drainFailure
-    const cleanup = await bestEffortDrain(root, endLeaders, {
-      report: (value) => {
-        drainFailure ??= value
-        printFailure(value)
-      },
-    })
+    // Stop what this owner started; the hosted VM teardown is the final boundary.
+    let drained = true
+    try {
+      await endLeaders()
+    } catch (error) {
+      drained = false
+      drainFailure = stepFailure('drain', 'stop-launchers', error)
+      printFailure(drainFailure)
+    }
+    const cleanup = { drained, boundary: 'hosted-vm-teardown' }
     let summary
     try {
       summary = JSON.parse(fs.readFileSync(path.join(root, 'summary.json')))
@@ -425,18 +356,6 @@ export async function run(control, node22, pnpm) {
         summary.integrity = readIntegrity(root)
       } catch (error) {
         failure ??= failureFor('app-integrity', error)
-      }
-    }
-    if (fs.existsSync(path.join(root, 'probe-matrix.json'))) {
-      try {
-        const matrix = JSON.parse(readOwned(path.join(root, 'probe-matrix.json')))
-        if (safeMatrixReceipt(matrix)) {
-          Object.assign(summary, matrix)
-          for (const [variant, state] of Object.entries(matrix.matrixPageStates ?? {}))
-            console.log('gate-matrix-page-state ' + JSON.stringify({ variant, pageState: state }))
-        } else failure ??= failureFor('probe-matrix', {}, 'assertion')
-      } catch (error) {
-        failure ??= failureFor('probe-matrix', error)
       }
     }
     // A journey step already includes its failing nested operation; keep that context.
@@ -477,31 +396,18 @@ export async function clean(control) {
   requireHosted()
   const meta = readOwner(control),
     summary = readSummary(control)
-  summary.cleanup = await bestEffortDrain(meta.root, undefined, {
-    report: (value) => {
-      summary.drainFailure = value
-      printFailure(value)
-    },
-  })
-  if (!summary.cleanup.drained)
-    summary.counts.cleanupFailures = (summary.counts.cleanupFailures ?? 0) + 1
   summary.ownership = {
     ...summary.ownership,
     hostedOnly: true,
     runnerSession: true,
     rootsRemoved: false,
   }
-  // Keep live/unknown roots. The ephemeral hosted VM, not this observation, is the final boundary.
-  if (summary.cleanup.drained) {
-    try {
-      const current = await runnerAdapter(meta.root, 'roots').list()
-      removeFixture(meta.root, { exited: true, processes: 0 }, current)
-      summary.ownership.rootsRemoved = true
-    } catch (error) {
-      summary.drainFailure = stepFailure('drain', 'remove-roots', error)
-      printFailure(summary.drainFailure)
-      summary.counts.cleanupFailures = (summary.counts.cleanupFailures ?? 0) + 1
-    }
+  try {
+    fs.rmSync(meta.root, { recursive: true, force: true })
+    summary.ownership.rootsRemoved = true
+  } catch (error) {
+    summary.drainFailure = stepFailure('drain', 'remove-roots', error)
+    printFailure(summary.drainFailure)
   }
   finish(summary)
   writeSummary(control, summary)

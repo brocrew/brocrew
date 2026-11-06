@@ -17,14 +17,11 @@ import {
   requireCheck,
 } from './contract.mjs'
 import { bounded, stopApp } from './processes.mjs'
-import { registerChild } from './runner-processes.mjs'
 import { observeApp, probeStep, waitDevtools } from './probe.mjs'
-import { failureFor, printFailure, stepFailure, printAppStderr, phaseStep } from './diagnostics.mjs'
-import { integrityCheckpoint } from './integrity.mjs'
+import { failureFor, printFailure, stepFailure, printAppStderr } from './diagnostics.mjs'
 import { pageStateSnapshot, printPageState } from './page-state.mjs'
 import { pluginStateSnapshot, printPluginState, unknownPluginState } from './plugin-state.mjs'
 import { openPlugins, enabledProfile, pluginPage, switchOnProfile, waitFor } from './cdp.mjs'
-import { requireSelection } from './matrix.mjs'
 import { serveFixture, createProviderTurn, browserEvidence, waitTabs } from './browser-journey.mjs'
 import { fixtureTitle } from './fake-browser.mjs'
 import { providerState, printProviderState } from './provider-state.mjs'
@@ -562,12 +559,8 @@ export function stageRelease(root, appData, variant = 'valid') {
 async function startApp(root, plan, workspace, global, processes, diagnose = false) {
   if (plan.argv?.length !== 1 || plan.argv[0] !== HIDDEN_LAUNCH_ARG)
     throw new Error('Missing hidden launch plan')
-  await phaseStep(root, 'app-integrity', () =>
-    integrityCheckpoint(root, plan.app, 'beforeLaunch', plan.bundleStamp),
-  )
   const port = await freePort(),
     exe = path.join(plan.app, 'Contents/MacOS/BroCrew')
-  requireSelection(JSON.parse(readOwned(path.join(root, 'probe-matrix.json'))))
   // The measured fixture recipe runs directly; the outer sandbox is diagnostic-only.
   const step = diagnose ? probeStep : async (_name, work) => work()
   let run
@@ -605,7 +598,6 @@ async function startApp(root, plan, workspace, global, processes, diagnose = fal
     const error = await observed.started
     if (error) throw error
   })
-  await registerChild(root, run.child)
   if (diagnose) {
     await step('devtools-port', (signal) => waitDevtools(port, false, signal), run, 20_000)
     await step('first-window', (signal) => waitDevtools(port, true, signal), run, 20_000)
@@ -749,7 +741,6 @@ export async function guiProbe(root) {
         processes.push({ ...observed, stopped: false })
         const error = await observed.started
         if (error) throw error
-        await registerChild(root, browser)
         await probeStep(
           'fake-browser-start',
           () => waitFor(() => fs.existsSync(path.join(data, 'fake-browser.json')), 5000),

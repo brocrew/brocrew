@@ -230,7 +230,10 @@ describe.skipIf(process.platform === 'win32')(
         [{ ...expected[0], name: 'renamed' }, ...expected.slice(1)],
         [{ ...expected[0], inputSchema: { type: 'object' } }, ...expected.slice(1)],
         [{ ...expected[0], annotations: { readOnlyHint: true } }, ...expected.slice(1)],
-        [{ ...expected[0], metadata: { template: '/fictional/$&/downloads' } }, ...expected.slice(1)],
+        [
+          { ...expected[0], metadata: { template: '/fictional/$&/downloads' } },
+          ...expected.slice(1),
+        ],
       ])
         expect(definitions(changed)).not.toEqual(definitions(expected))
     })

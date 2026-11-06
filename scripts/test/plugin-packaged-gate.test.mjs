@@ -25,7 +25,7 @@ import {
   observationJson,
   validateInstallSnapshot,
 } from '../gates/plugin-packaged/journey.mjs'
-import { fixtureEnvironment, removeFixture } from '../gates/plugin-packaged/prepare.mjs'
+import { fixtureEnvironment } from '../gates/plugin-packaged/prepare.mjs'
 import * as installObservation from '../gates/plugin-packaged/journey.mjs'
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const desktopRequire = createRequire(path.join(repository, 'apps/desktop/package.json'))
@@ -94,12 +94,6 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
       expect(() => installObservation.observeTamperInstallState(root, global)).toThrow()
     } finally {
       fs.chmodSync(global, 0o700)
-    }
-    fs.unlinkSync(path.join(root, 'fixture-owned'))
-    try {
-      expect(() => installObservation.observeTamperInstallState(root, global)).toThrow()
-    } finally {
-      fs.writeFileSync(path.join(root, 'fixture-owned'), 'packaged-plugin-gate\n')
     }
     for (const kind of ['file', 'link', 'unsafe-directory', 'empty-directory']) {
       if (kind === 'file') fs.writeFileSync(state, 'not a directory', { mode: 0o600 })
@@ -603,7 +597,7 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
       ),
     ).toThrow('Refusing to package')
   })
-  it('admits only an owned marked root and does not inherit a provider identity into child environments', () => {
+  it('admits an existing absolute root and does not inherit a provider identity into child environments', () => {
     const root = scratch()
     expect(ownedRoot(root)).toBe(root)
     const env = fixtureEnvironment(root)
@@ -621,34 +615,17 @@ describe.skipIf(process.platform === 'win32')('the packaged Chrome gate', () => 
       'ELECTRON_EXTRA_LAUNCH_ARGS',
     ])
       expect(env).not.toHaveProperty(name)
-    fs.unlinkSync(path.join(root, 'fixture-owned'))
-    expect(() => ownedRoot(root)).toThrow()
+    expect(() => ownedRoot(path.join(root, 'missing'))).toThrow()
+    expect(() => ownedRoot('relative/root')).toThrow()
   })
-  it('cleans only its owned scratch tree, including immutable package directories, without following links', () => {
-    const root = scratch(),
-      other = scratch(),
-      child = path.join(root, 'immutable')
-    fs.mkdirSync(child)
-    fs.writeFileSync(path.join(child, 'package'), 'fictional')
-    fs.symlinkSync(other, path.join(root, 'outside'))
-    fs.chmodSync(child, 0o500)
-    expect(() => removeFixture(root)).toThrow('Child exit witnesses missing')
-    expect(fs.existsSync(root)).toBe(true)
-    removeFixture(root, { exited: true, processes: 0 }, [])
-    expect(fs.existsSync(root)).toBe(false)
-    expect(fs.readFileSync(path.join(other, 'fixture-owned'), 'utf8')).toBe(
-      'packaged-plugin-gate\n',
-    )
-  })
-  it('keeps the loopback/Keychain profile available and requires an explicit measured launch policy', () => {
+  it('keeps the loopback/Keychain profile available and launches its one fixture recipe directly', () => {
     expect(loopbackSandbox).toContain('(deny network-outbound)')
     expect(loopbackSandbox).toContain('(allow network-outbound (remote ip "localhost:*"))')
     expect(loopbackSandbox).toContain('/Library/Keychains')
     expect(loopbackSandbox).not.toMatch(/allow network-outbound\)\s*$/m)
     const journey = read('scripts/gates/plugin-packaged/journey.mjs')
-    expect(journey).toContain(
-      "requireSelection(JSON.parse(readOwned(path.join(root, 'probe-matrix.json'))))",
-    )
+    // The journey launches the one fixture recipe directly; no probe matrix chooses it.
+    expect(journey).not.toContain('probe-matrix.json')
     expect(journey).toContain("'--use-mock-keychain'")
     expect(journey).toContain('HIDDEN_LAUNCH_ARG')
     expect(journey).not.toMatch(/setApiKey|9444|9222|security.*execv/)

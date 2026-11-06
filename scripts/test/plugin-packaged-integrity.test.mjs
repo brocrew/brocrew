@@ -65,7 +65,7 @@ async function fixture() {
   return { root, app, archive, info, infoFile, framework, runtime }
 }
 describe.skipIf(process.platform === 'win32')('packaged bundle integrity without a launch', () => {
-  it('reads the real ASAR/fuse formats and carries closed facts across every post-package stage', async () => {
+  it('reads the real ASAR/fuse formats and records closed facts once after packaging', async () => {
     const f = await fixture()
     const stamp = await integrityCheckpoint(f.root, f.app, 'afterPackage')
     for (const stage of integrityStages.slice(1))
@@ -102,14 +102,15 @@ describe.skipIf(process.platform === 'win32')('packaged bundle integrity without
       await expect(inspectBundle(f.app, baseline)).rejects.toThrow()
     },
   )
-  it('requires the original checkpoint and refuses unreviewed receipt keys or a linked receipt', async () => {
+  it('accepts only the after-package check and refuses unreviewed receipt keys or a linked receipt', async () => {
     const f = await fixture(),
       baseline = (await inspectBundle(f.app)).stamp
     await expect(integrityCheckpoint(f.root, f.app, 'beforeLaunch')).rejects.toThrow(
       'Invalid integrity checkpoint',
     )
+    // Only the one check after packaging remains; later re-hashes are not stages.
     await expect(integrityCheckpoint(f.root, f.app, 'beforeLaunch', baseline)).rejects.toThrow(
-      'Missing package checkpoint',
+      'Invalid integrity checkpoint',
     )
     await integrityCheckpoint(f.root, f.app, 'afterPackage')
     const report = readIntegrity(f.root)

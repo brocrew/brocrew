@@ -89,7 +89,7 @@ export const diagnosticSteps = {
     'window-drawn',
     'fake-browser-start',
   ],
-  drain: ['stop-launchers', 'groups', 'roots', 'admission', 'remove-roots'],
+  drain: ['stop-launchers', 'remove-roots'],
 }
 const signals = [
   null,

@@ -6,7 +6,6 @@ import { fileURLToPath } from 'node:url'
 import { inspect } from 'node:util'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as diagnostics from '../gates/plugin-packaged/diagnostics.mjs'
-import * as matrix from '../gates/plugin-packaged/matrix.mjs'
 import * as providerState from '../gates/plugin-packaged/provider-state.mjs'
 import * as pageState from '../gates/plugin-packaged/page-state.mjs'
 import * as pluginState from '../gates/plugin-packaged/plugin-state.mjs'
@@ -52,7 +51,6 @@ function launcher({ delayedClose = false } = {}) {
     lines = []
   const io = {
     ...diagnostics,
-    ...matrix,
     ...pageState,
     ...providerState,
     ...pluginState,
@@ -110,52 +108,6 @@ describe.skipIf(process.platform === 'win32')('safe packaged gate failure diagno
     expect((await waiting).failure).toEqual(expected)
     expect(safeReport({ failure: expected })).toBe(true)
     expect(() => diagnostics.stepFailure('journey', 'foreign-refusal', {})).toThrow()
-  })
-  it('forwards only closed variant and selection frames, including split frames and late pipe bytes', async () => {
-    const f = launcher({ delayedClose: true })
-    const task = f.run(
-      '/fictional/node',
-      [],
-      {},
-      '/fictional',
-      { signal: new AbortController().signal },
-      1000,
-      'probe-matrix',
-    )
-    const record = {
-      variant: 'V2F',
-      drew: true,
-      devtools: true,
-      exit: null,
-      stderrCategory: 'other',
-    }
-    const selected = {
-      variant: 'V2F',
-      rule: 'fixture-variant-must-draw',
-      sandbox: false,
-      fixtureEnvironment: true,
-      droppedFences: { loopbackOutbound: true, keychainDataDeny: true },
-    }
-    f.child.stdout.emit(
-      'data',
-      Buffer.from(
-        'HOME=/fictional argv=madeup\ngate-variant ' +
-          JSON.stringify({ ...record, path: '/fictional' }) +
-          '\n',
-      ),
-    )
-    const line = 'gate-variant ' + JSON.stringify(record) + '\n'
-    f.child.stdout.emit('data', Buffer.from(line.slice(0, 17)))
-    f.child.stdout.emit('data', Buffer.from(line.slice(17)))
-    f.child.emit('exit', 0, null)
-    f.child.stdout.emit(
-      'data',
-      Buffer.from('gate-launch-selection ' + JSON.stringify(selected) + '\n'),
-    )
-    f.child.emit('close', 0, null)
-    await task.wait()
-    expect(f.lines).toEqual([line.trim(), 'gate-launch-selection ' + JSON.stringify(selected)])
-    expect(f.lines.join('')).not.toMatch(/fictional|HOME|argv|madeup|path/)
   })
   it('launches the declared program directly in its scratch cwd and environment, with its own group', async () => {
     const { child, run, launches } = launcher()
@@ -355,38 +307,46 @@ describe.skipIf(process.platform === 'win32')('safe packaged gate failure diagno
     ['ENOTFOUND', 'network'],
     ['ERR_PNPM_META_FETCH_FAIL', 'network'],
     ['gyp ERR!', 'native-build'],
-  ])('classifies %s while keeping child paths, env and argv out of structured records', async (token, kind) => {
-    const { child, run } = launcher()
-    const task = run(
-      '/fictional/node',
-      ['fictional-argument'],
-      { HOME: '/fictional/home', MADE_UP_VALUE: 'fictional-value' },
-      '/fictional/cwd',
-      { signal: new AbortController().signal },
-      1000,
-      'dependencies',
-    )
-    child.stdout.emit(
-      'data',
-      Buffer.from(
-        '/private/fictional/path HOME=/fictional/home MADE_UP_VALUE=fictional-value ' + token,
-      ),
-    )
-    child.stderr.emit('data', Buffer.from('argv=fictional-argument'))
-    child.emit('exit', 7, null)
-    let failure
-    await task.wait().catch((error) => {
-      failure = error.failure
-    })
-    expect(failure).toEqual({ phase: 'dependencies', errorClass: kind, exitCode: 7, signal: null })
-    const printed = []
-    diagnostics.printFailure(failure, (line) => printed.push(line))
-    const summary = { failure }
-    expect(safeReport(summary)).toBe(true)
-    const bytes = printed.join('') + JSON.stringify(summary)
-    expect(bytes).not.toMatch(/private|fictional|HOME|MADE_UP_VALUE|argv|cwd/)
-    expect(JSON.parse(printed[0].slice('gate-failure '.length))).toEqual(failure)
-  })
+  ])(
+    'classifies %s while keeping child paths, env and argv out of structured records',
+    async (token, kind) => {
+      const { child, run } = launcher()
+      const task = run(
+        '/fictional/node',
+        ['fictional-argument'],
+        { HOME: '/fictional/home', MADE_UP_VALUE: 'fictional-value' },
+        '/fictional/cwd',
+        { signal: new AbortController().signal },
+        1000,
+        'dependencies',
+      )
+      child.stdout.emit(
+        'data',
+        Buffer.from(
+          '/private/fictional/path HOME=/fictional/home MADE_UP_VALUE=fictional-value ' + token,
+        ),
+      )
+      child.stderr.emit('data', Buffer.from('argv=fictional-argument'))
+      child.emit('exit', 7, null)
+      let failure
+      await task.wait().catch((error) => {
+        failure = error.failure
+      })
+      expect(failure).toEqual({
+        phase: 'dependencies',
+        errorClass: kind,
+        exitCode: 7,
+        signal: null,
+      })
+      const printed = []
+      diagnostics.printFailure(failure, (line) => printed.push(line))
+      const summary = { failure }
+      expect(safeReport(summary)).toBe(true)
+      const bytes = printed.join('') + JSON.stringify(summary)
+      expect(bytes).not.toMatch(/private|fictional|HOME|MADE_UP_VALUE|argv|cwd/)
+      expect(JSON.parse(printed[0].slice('gate-failure '.length))).toEqual(failure)
+    },
+  )
   it('carries a chunked inner failure frame across a generic prepare exit independently of raw output', async () => {
     const { child, run } = launcher()
     const task = run(

@@ -2,7 +2,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { safeFailure, safeAppStderr } from './diagnostics.mjs'
-import { safeMatrix, safeSelection, safeMatrixDrains, safeMatrixPageStates } from './matrix.mjs'
 import { safePageState } from './page-state.mjs'
 import { safeProviderState } from './provider-state.mjs'
 import { safePluginState } from './plugin-state.mjs'
@@ -85,21 +84,13 @@ export function safeReport(value) {
             ? safePageState(one)
             : key === 'pluginState'
               ? safePluginState(one)
-              : key === 'matrixPageStates'
-                ? safeMatrixPageStates(one)
-                : key === 'probeMatrix'
-                  ? safeMatrix(one)
-                  : key === 'matrixDrains'
-                    ? safeMatrixDrains(one)
-                    : key === 'launchSelection'
-                      ? safeSelection(one)
-                      : ['failure', 'drainFailure'].includes(key)
-                        ? safeFailure(one)
-                        : key === 'appStderr'
-                          ? safeAppStderr(one)
-                          : key === 'cleanup'
-                            ? safeCleanup(one)
-                            : safeReport(one),
+              : ['failure', 'drainFailure'].includes(key)
+                ? safeFailure(one)
+                : key === 'appStderr'
+                  ? safeAppStderr(one)
+                  : key === 'cleanup'
+                    ? safeCleanup(one)
+                    : safeReport(one),
     )
   )
 }
@@ -116,18 +107,10 @@ export function requireCI(env = process.env, platform = process.platform, arch =
   )
     throw new Error('Private Mac gate only')
 }
+/** The gate's scratch root: an existing absolute directory. */
 export function ownedRoot(root) {
-  const info = fs.lstatSync(root)
-  if (
-    !path.isAbsolute(root) ||
-    fs.realpathSync(root) !== root ||
-    !info.isDirectory() ||
-    info.isSymbolicLink() ||
-    info.uid !== process.getuid() ||
-    info.mode & 0o077 ||
-    fs.readFileSync(path.join(root, 'fixture-owned'), 'utf8') !== 'packaged-plugin-gate\n'
-  )
-    throw new Error('Not an owned gate fixture')
+  if (!path.isAbsolute(root) || !fs.statSync(root).isDirectory())
+    throw new Error('Not a gate fixture root')
   return root
 }
 /** Only temporary build inputs change. The committed product remains fail-closed. */

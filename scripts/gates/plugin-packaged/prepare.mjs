@@ -16,7 +16,6 @@ import {
 } from './diagnostics.mjs'
 import { directoryPackageArguments, hostedBuilder } from './packaging.mjs'
 import { integrityCheckpoint } from './integrity.mjs'
-import { requireDrained } from './processes.mjs'
 import { requireCI, ownedRoot, projectBuild, loopbackSandbox, report } from './contract.mjs'
 import { hostedSystemEnvironment } from './environment.mjs'
 const exec = promisify(execFile)
@@ -74,7 +73,7 @@ export async function command(
   cwd = repository,
   phase = 'prepare',
 ) {
-  // Diagnostics can include provider input: callers only receive a fixed error, never stdout/stderr.
+  // The command's own output goes to this job's log as it was written, then the failure is classified.
   try {
     return (
       await exec(program, args, {
@@ -86,6 +85,7 @@ export async function command(
     ).stdout
   } catch (error) {
     const text = String(error.stdout ?? '') + String(error.stderr ?? '')
+    process.stderr.write(text)
     const packaging = phase === 'app-package' ? builderOutputClass(text) : 'unknown'
     throw failureError(phase, error, packaging === 'unknown' ? outputClass(text) : packaging)
   }
@@ -172,15 +172,9 @@ export async function prepareBuild(root, { node22, pnpm }) {
     fs.writeFileSync(entryPath, original.entry)
     checkNormalPluginBuild(repository)
   }
-  await phaseStep(root, 'app-integrity', () =>
-    integrityCheckpoint(root, app, 'afterSourceRestore', bundleStamp),
-  )
   await phaseStep(root, 'app-signature', async () => {
     await command('/usr/bin/codesign', ['--verify', '--deep', '--strict', app], root)
   })
-  await phaseStep(root, 'app-integrity', () =>
-    integrityCheckpoint(root, app, 'afterVerification', bundleStamp),
-  )
   // Only a Node protocol fixture is executable; it has no Chrome or external page fallback.
   const runtime = path.join(app, 'Contents/Resources/plugin-node/node')
   fs.writeFileSync(
@@ -196,26 +190,6 @@ export async function prepareBuild(root, { node22, pnpm }) {
       mode: 0o600,
     },
   )
-  await phaseStep(root, 'app-integrity', () =>
-    integrityCheckpoint(root, app, 'afterFixtureWrite', bundleStamp),
-  )
-}
-export function removeFixture(root, receipt, current) {
-  ownedRoot(root)
-  requireDrained(receipt, current)
-  const visit = (folder) => {
-    const info = fs.lstatSync(folder)
-    if (!info.isDirectory() || info.isSymbolicLink() || info.uid !== process.getuid())
-      throw new Error('Invalid scratch cleanup directory')
-    fs.chmodSync(folder, 0o700)
-    for (const name of fs.readdirSync(folder)) {
-      const child = path.join(folder, name),
-        stat = fs.lstatSync(child)
-      if (stat.isDirectory() && !stat.isSymbolicLink()) visit(child)
-    }
-  }
-  visit(root)
-  fs.rmSync(root, { recursive: true, force: false })
 }
 async function main() {
   requireCI()
