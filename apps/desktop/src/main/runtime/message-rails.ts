@@ -6,7 +6,7 @@ import type { MessagingReach } from '../../shared/capabilities'
 // *"precisely so this dispatch would not reinvent it"*, and `agent-tools.ts` publishes both
 // grammars to one model through one set of tools. A new permanence added over there is a type
 // error here on the day it lands.
-import type { RailPermanence } from './spawn-rails'
+import type { RailPermanence } from '../../shared/refusals'
 // ⚑ **425 · from `shared/refusals.ts` and not through `spawn-rails.ts`'s re-export.** That
 // re-export exists so `405` could move `RailPermanence` without touching seven readers; a word
 // added today has no such history and names its own home.
