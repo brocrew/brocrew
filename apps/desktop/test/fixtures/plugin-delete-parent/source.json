@@ -59,8 +59,31 @@
         "../../../src/main/plugins/lifecycle/./download": "./download",
         "../../../src/main/plugins/lifecycle/./files": "./files",
         "../../../src/main/plugins/lifecycle/./vault": "./vault",
-        "../../../src/main/plugins/lifecycle/./types": "./types",
-        "../../../src/main/plugins/lifecycle/../../../shared/plugin-settings": "../../../shared/plugin-settings"
+        "../../../src/main/plugins/lifecycle/../../../shared/plugin-settings": "../../../shared/plugin-settings",
+        "./types": "./types"
+      }
+    },
+    {
+      "path": "apps/desktop/src/main/plugins/state/store.ts",
+      "file": "store.ts",
+      "sourceSha256": "9e2448ee349cef561a15f8ba5cabc55f4860b3e379d79982b7b1678c58f95366",
+      "imports": {
+        "../../../src/main/plugins/state/format": "./format",
+        "../../../src/main/plugins/state/disk": "./disk",
+        "../../../src/main/plugins/state/machine": "./machine"
+      }
+    },
+    {
+      "path": "apps/desktop/src/main/plugins/lifecycle/types.ts",
+      "file": "types.ts",
+      "sourceSha256": "ac046e1fcfda3d762a09ed490ea0db7fc1ef6104bef896073513eb426f449853",
+      "imports": {
+        "../../../src/shared/plugin-settings": "../../../shared/plugin-settings",
+        "../../../src/main/plugins/package-verifier": "../package-verifier",
+        "../../../src/main/plugins/package-schema": "../package-schema",
+        "./store": "../state/store",
+        "../../../src/main/plugins/state/format": "../state/format",
+        "../../../src/main/plugins/node-host": "../node-host"
       }
     }
   ]

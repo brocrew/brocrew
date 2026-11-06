@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { randomBytes, randomUUID, createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { PluginLifecycleController as AuthorsController } from './fixtures/plugin-disclosure-mixed/authors-controller'
 import { servePersonPluginControl as authorsServer } from './fixtures/plugin-disclosure-mixed/authors-person-control'
 import frozenSources from './fixtures/plugin-disclosure-mixed/source.json'
+import { GlobalPluginState as OlderState } from './fixtures/plugin-delete-parent/store'
 import { fixture, projection, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
 import { packageFixture, signed } from './plugin-package-fixtures'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
@@ -90,21 +92,26 @@ async function oldOwner(installed: boolean, localVersion = 2) {
     expect(seeded.guards[0]?.release.version).toBe(first.release.version)
   }
   offered = next
+  // The authors-only owner is an older copy: it runs its own store over the same root.
+  f.state.close()
+  const state = OlderState.open({ root: join(f.root, 'state'), workspaceRoots: [f.workspace] })
+  closers.push(async () => state.close())
   const controller = await AuthorsController.open({
     ...options,
+    state,
     catalogue: { bytes: next.bytes, signature: next.signature },
-  })
+  } as never)
   const key = randomBytes(32).toString('hex'),
     peer = await authorsServer({ root: f.root, key, controller, read: async () => null })
   closers.push(() => peer.close())
   const c = await client(f, { ...peer, key }, localVersion === 2 ? next : f.pkg)
   const footprint = () => ({
-    state: structuredClone(f.state.inspect()),
+    state: structuredClone(state.inspect()),
     starts: f.starts(),
     events: [...f.events],
     downloads: options.download.mock.calls.length,
   })
-  return { f, c, controller, footprint }
+  return { f, c, controller, footprint, state }
 }
 async function future(installed = false, localVersion = 2, digest?: string) {
   const f = await fixture(),
@@ -128,7 +135,7 @@ describe('new client mutation admission', () => {
   it.each(['install', 'update'] as const)(
     'never sends raw %s to an authors-only owner and keeps management',
     async (action) => {
-      const { f, c, footprint } = await oldOwner(action === 'update')
+      const { c, footprint, state } = await oldOwner(action === 'update')
       const wire = vi.spyOn(PersonChannel.prototype, 'call'),
         before = footprint()
       await expect(mutate(c, action)).rejects.toThrow()
@@ -145,14 +152,14 @@ describe('new client mutation admission', () => {
       if (action === 'update') {
         await c.screen('chrome')
         await c.uninstall('chrome')
-        expect(f.state.exportActivation().entries).toHaveLength(0)
+        expect(state.exportActivation().entries).toHaveLength(0)
       }
     },
   )
   it.each(['install', 'update'] as const)(
     'a v1 client refuses held authors-only owner %s before dispatch and keeps management',
     async (action) => {
-      const { c, f, footprint } = await oldOwner(action === 'update', 1)
+      const { c, footprint, state } = await oldOwner(action === 'update', 1)
       const wire = vi.spyOn(PersonChannel.prototype, 'call'),
         before = footprint()
       expect((await c.catalogue())[0]).toMatchObject({ mutationBlocked: 'owner-incompatible' })
@@ -164,7 +171,7 @@ describe('new client mutation admission', () => {
       if (action === 'update') {
         await c.screen('chrome')
         await c.uninstall('chrome')
-        expect(f.state.exportActivation().entries).toHaveLength(0)
+        expect(state.exportActivation().entries).toHaveLength(0)
       }
     },
   )
