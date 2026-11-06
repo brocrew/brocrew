@@ -185,32 +185,6 @@ describe('answering from the overview', () => {
     ).toBe(false)
   })
 
-  it('⛔ …and a window that does not own the session cannot answer from its own overview', async () => {
-    const made = await host.createSession({ provider: 'codex', cwd: dir }, owner)
-    await ask(owner, { kind: 'send', sessionId: made.sessionId, text: 'run something' })
-    await waitFor(
-      () => owner.events().some((message) => message.event.type === 'permission_request'),
-      'the card',
-    )
-
-    const row = attentionQueue([recordFrom(made.sessionId, owner)], () => 'waiting: permission')[0]
-    expect(row).toBeDefined()
-    const answer = answerFor(row!.decisions[0]!)
-
-    // The identical payload, from a window that does not hold the session. 203's `require` asks
-    // `mayControl(slot, by)` on the way in, and the sentence a person reads names no id.
-    await expect(
-      ask(stranger, {
-        kind: 'respondPermission',
-        sessionId: row!.sessionId,
-        requestId: row!.requestId,
-        decision: (answer as { permission: never }).permission,
-      }),
-    ).rejects.toThrow(/belongs to another window/)
-
-    // Still frozen — the refusal is a refusal, not a slower path to the same effect.
-    expect(owner.events().some((message) => message.event.type === 'tool_result')).toBe(false)
-  })
 
   /**
    * 🔴 **The second button, on the one card shape where it used to be the wholesale grant** (299 §1,

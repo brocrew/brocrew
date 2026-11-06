@@ -287,7 +287,7 @@ describe.each(['claude', 'codex'] as const)(
           return selection.isCurrent()
         },
       })
-      expect(first.context.skills.some((one) => one.name === 'remember')).toBe(true)
+      expect(first.context.skills.some((one) => one.name === `${provider === 'claude' ? 'brobot:' : ''}remember`)).toBe(true)
       const next = select('recipe-writer', grants)
       const second = await prepareBuiltInSkills({
         provider,
@@ -298,7 +298,7 @@ describe.each(['claude', 'codex'] as const)(
         selection: next,
         isCurrent: next.isCurrent,
       })
-      expect(second.context.skills.some((one) => one.name === 'remember')).toBe(false)
+      expect(second.context.skills.some((one) => one.name === `${provider === 'claude' ? 'brobot:' : ''}remember`)).toBe(false)
     })
     it('cancels actual copying without publishing a view', async () => {
       const selection = select('recipe-writer', grants)
@@ -342,7 +342,7 @@ describe.each(['claude', 'codex'] as const)(
             isCurrent: next.isCurrent,
           })
         ).context.skills.map((one) => one.name),
-      ).toEqual(['remember'])
+      ).toEqual([`${provider === 'claude' ? 'brobot:' : ''}remember`])
     })
     it('copies an edited shipped source at the same label without resealing saved catalogue rows', async () => {
       const original = shipped()
@@ -360,7 +360,7 @@ describe.each(['claude', 'codex'] as const)(
         selection,
         isCurrent: selection.isCurrent,
       })
-      const entry = installed.context.skills.find((one) => one.name === 'delegate')!
+      const entry = installed.context.skills.find((one) => one.name === `${provider === 'claude' ? 'brobot:' : ''}delegate`)!
       expect(readFileSync(entry.path, 'utf8')).toBe(bodies.get('delegate'))
       expect(installed.versions?.find((one) => one.id === 'built-in/delegate')?.sourceSha256).toBe(
         hash(bodies.get('delegate')!),
