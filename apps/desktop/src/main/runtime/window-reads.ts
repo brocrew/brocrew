@@ -80,16 +80,9 @@ export async function teamProfileGraphForWindow(
     : result
 }
 
-export async function closeTeamProfileGraphWindow(
+export async function closeWindowRead(
   owner: string,
-  graphs: TeamProfileGraphWindows | undefined,
+  reader: { closeWindow(owner: string): Promise<void> } | undefined,
 ): Promise<void> {
-  await graphs?.closeWindow(owner)
-}
-
-export async function closeFilesLibraryWindow(
-  owner: string,
-  libraries: FilesLibraryWindows | undefined,
-): Promise<void> {
-  await libraries?.closeWindow(owner)
+  await reader?.closeWindow(owner)
 }
