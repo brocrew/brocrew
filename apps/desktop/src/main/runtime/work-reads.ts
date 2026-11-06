@@ -79,7 +79,8 @@ export class WorkReads {
       this.sources.store.piecesOwnedBy(sessionId, unread),
       waiting,
     )
-    const gave = this.sources.theIdsItStandsFor(sessionId)
+    const gave = this.sources
+      .theIdsItStandsFor(sessionId)
       .flatMap((giver) =>
         composeWhatEachPieceIsWaitingOn(this.sources.store.piecesGivenBy(giver, unread), waiting),
       )

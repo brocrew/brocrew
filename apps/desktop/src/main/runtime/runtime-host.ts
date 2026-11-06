@@ -893,12 +893,7 @@ import type {
   WorkRow,
 } from '../db/session-store'
 import { toWireEvent } from './event-wire'
-import {
-  AGENT_TOOL_SERVER,
-  TOOL_NAMES,
-  aWakeThatDidNotHappen,
-  agentToolsFor,
-} from './agent-tools'
+import { AGENT_TOOL_SERVER, TOOL_NAMES, aWakeThatDidNotHappen, agentToolsFor } from './agent-tools'
 // ⚑ **516 · the registry's rules and its row shape** — a `src/shared` module, so the renderer names
 // the same row this host writes.
 import {
