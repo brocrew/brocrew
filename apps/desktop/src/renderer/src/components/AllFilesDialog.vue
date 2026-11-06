@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ListDialogShell from './ListDialogShell.vue'
 import { computed, ref } from 'vue'
 import { clockTime } from '../../../shared/clock'
 import type { KeptFile } from '../../../shared/runtime-ipc'
@@ -58,30 +59,18 @@ function open(file: KeptFile): void {
 </script>
 
 <template>
-  <section class="list-dialog" aria-labelledby="all-files-title" data-cy="all-files-dialog">
-    <header class="list-head">
-      <h2 id="all-files-title" class="bb-title">All files</h2>
-      <button
-        class="bb-button bb-button--icon"
-        type="button"
-        aria-label="Close"
-        data-cy="close-overlay"
-        @click="emit('close')"
-      >
-        <svg class="icon"><use href="#i-x" /></svg>
-      </button>
-    </header>
-    <div class="list-body">
-      <label class="list-search">
-        <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
-        <input
-          v-model="query"
-          type="search"
-          placeholder="Search files, types or task labels…"
-          aria-label="Search all files"
-          data-cy="all-files-search"
-        />
-      </label>
+  <ListDialogShell title-id="all-files-title" data-cy="all-files-dialog" @close="emit('close')">
+    <template #title>All files</template>
+    <template #search>
+      <input
+        v-model="query"
+        type="search"
+        placeholder="Search files, types or task labels…"
+        aria-label="Search all files"
+        data-cy="all-files-search"
+      />
+    </template>
+    <template #controls>
       <div class="list-controls">
         <div class="list-filters" role="group" aria-label="Show files">
           <button
@@ -104,6 +93,8 @@ function open(file: KeptFile): void {
       <p class="list-count" role="status" data-cy="all-files-count">
         {{ shown.length }} {{ shown.length === 1 ? 'file' : 'files' }}
       </p>
+    </template>
+    <template #results>
       <ul v-if="shown.length > 0" class="file-rows">
         <li v-for="file in shown" :key="file.resourceId">
           <component
@@ -135,134 +126,11 @@ function open(file: KeptFile): void {
         </li>
       </ul>
       <p v-else class="list-empty" data-cy="all-files-empty">No file matches this view.</p>
-    </div>
-  </section>
+    </template>
+  </ListDialogShell>
 </template>
 
 <style scoped>
-.list-dialog {
-  display: flex;
-  width: min(560px, calc(100% - 2 * var(--lane-clear)));
-  max-height: min(var(--dialog-max-h), calc(100dvh - var(--dialog-gutter) * 2));
-  flex-direction: column;
-  overflow: hidden;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-  box-shadow: var(--shadow);
-  color: var(--text);
-}
-
-.list-head {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--dialog-padding);
-  border-bottom: var(--border-width) solid var(--line);
-  gap: var(--control-gap);
-}
-
-.list-head h2 {
-  margin: 0;
-}
-
-.list-body {
-  display: grid;
-  min-height: 0;
-  padding: var(--dialog-padding);
-  overflow: auto;
-  align-content: start;
-  gap: var(--space-4);
-  /* ⚑ F100 · each row as tall as its content, however many there are: the body scrolls instead. */
-  grid-auto-rows: max-content;
-}
-
-.list-search {
-  display: flex;
-  align-items: center;
-  padding: 0 var(--space-4);
-  border: var(--border-width) solid var(--control-border);
-  border-radius: var(--radius-md);
-  color: var(--muted);
-  gap: var(--space-3);
-}
-
-.list-search:focus-within {
-  outline: var(--focus-ring-width) solid var(--focus-ring-color);
-  outline-offset: var(--focus-ring-offset);
-}
-
-.list-search .icon {
-  width: 13px;
-  height: 13px;
-  flex: none;
-}
-
-.list-search input {
-  min-width: 0;
-  flex: 1;
-  padding: var(--space-3) 0;
-  border: 0;
-  background: transparent;
-  color: var(--text);
-  font-size: var(--type-small);
-  outline: none;
-}
-
-.list-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.list-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.list-filter {
-  display: inline-flex;
-  align-items: center;
-  padding: var(--space-1) var(--space-4);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text-soft);
-  cursor: pointer;
-  font-size: var(--type-small);
-  gap: var(--space-2);
-}
-
-.list-filter[aria-pressed='true'] {
-  border-color: var(--accent);
-  background: var(--accent-mix-10);
-  color: var(--accent-text);
-}
-
-.list-filter-count {
-  color: var(--muted);
-}
-
-.list-sort {
-  padding: var(--space-1) var(--space-3);
-  border: var(--border-width) solid var(--control-border);
-  border-radius: var(--radius-sm);
-  background: var(--panel);
-  color: var(--text-soft);
-  font-size: var(--type-small);
-}
-
-.list-count,
-.list-empty {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--type-caption);
-}
-
 .file-rows {
   display: grid;
   margin: 0;
