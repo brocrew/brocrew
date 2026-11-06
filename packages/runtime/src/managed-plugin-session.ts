@@ -333,7 +333,7 @@ export function withManagedPluginAttachments(
                       } catch (error) {
                         const missingUnusedThread =
                           !ref &&
-                          runtime.provider === 'codex' &&
+                          runtime.canRecreateMissingUnusedSession === true &&
                           !dispatched &&
                           !providerActive &&
                           error instanceof ResumeError &&

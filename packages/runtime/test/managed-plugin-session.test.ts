@@ -375,6 +375,7 @@ function fixture(refresh = false, exitFactory?: (index: number) => Promise<void>
   }
   const raw = {
     provider: 'codex',
+    canRecreateMissingUnusedSession: true,
     start: vi.fn(make),
     resume: vi.fn(async (_ref, options) => {
       const handle = await make(options)
@@ -1491,3 +1492,23 @@ it('a route kept while its scope could not be read is not awaited, and is awaite
   expect(f.raw.resume).not.toHaveBeenCalled()
   await a.close()
 })
+
+it.each([undefined, false] as const)(
+  'does not recreate a missing unused session without an explicit runtime capability (%s)',
+  async (capability) => {
+    const f = fixture(false, () => Promise.resolve())
+    Object.defineProperty(f.raw, 'canRecreateMissingUnusedSession', { value: capability })
+    const handle = await f.runtime.start(initial)
+    vi.mocked(f.raw.resume).mockRejectedValue(
+      new ResumeError(handle.ref!, 'missing', { noSuchSession: true }),
+    )
+    f.change({ revision: 'next', servers: [] })
+    try {
+      await handle.send('original request')
+      expect(f.raw.start).toHaveBeenCalledTimes(1)
+      expect(f.opened[0]!.send).toHaveBeenCalledExactlyOnceWith('original request')
+    } finally {
+      await handle.close()
+    }
+  },
+)

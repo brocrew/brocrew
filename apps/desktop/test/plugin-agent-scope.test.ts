@@ -13,9 +13,13 @@ it('only committed absence is off; an installed plugin missing its projection is
   expect(scope()).toEqual([{ pluginId: 'chrome', is: 'off' }])
   await f.controller.install(f.handle, 'chrome')
   expect(scope()).toMatchObject([{ pluginId: 'chrome', is: 'admitted' }])
-  const hidden = vi.spyOn(f.controller, 'agentAttachments').mockReturnValue([])
+  const workspace = (
+    f.controller as unknown as { workspaces: Map<unknown, { receipts: Map<string, unknown> }> }
+  ).workspaces.get(f.handle)!
+  const receipt = workspace.receipts.get('chrome')
+  workspace.receipts.delete('chrome')
   expect(scope()).toEqual([{ pluginId: 'chrome', is: 'pending' }])
-  hidden.mockRestore()
+  workspace.receipts.set('chrome', receipt)
   await f.controller.uninstall(f.handle, 'chrome')
   expect(scope()).toEqual([{ pluginId: 'chrome', is: 'off' }])
 })

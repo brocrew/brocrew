@@ -149,6 +149,15 @@ async function aWorkspace(
           }),
       }
     }),
+    withAgentScope<T>(
+      workspaceId: string,
+      decide: (
+        scope: ReturnType<PluginLifecycleController['agentScope']>,
+        current: (view: AgentAttachmentView) => boolean,
+      ) => T extends PromiseLike<unknown> ? never : T,
+    ): T {
+      return decide(this.agentScope(workspaceId), (view) => view.current())
+    },
     onHostChanged: vi.fn((listener: (workspaceId: string) => void) => {
       listeners.add(listener)
       return () => listeners.delete(listener)

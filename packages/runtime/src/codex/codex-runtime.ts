@@ -6697,6 +6697,7 @@ function questionText(params: unknown): string {
  */
 export class CodexRuntime implements AgentRuntime {
   readonly provider = 'codex' as const
+  readonly canRecreateMissingUnusedSession = true
   private readonly transportFactory: TransportFactory
   private readonly authHealth: ((providerHome: string) => AuthHealth) | undefined
 

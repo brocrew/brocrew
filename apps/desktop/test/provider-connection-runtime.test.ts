@@ -425,6 +425,7 @@ for (const provider of ['claude', 'codex'] as const) {
 it('composed privately withheld start allocation keeps aggregate cleanup pending until actual exit', async () => {
   const f = fixture('codex')
   const raw = new FakeRuntime('codex')
+  Object.defineProperty(raw, 'canRecreateMissingUnusedSession', { value: true })
   const start = raw.start.bind(raw)
   let allocations = 0,
     finishExit!: () => void
@@ -487,3 +488,72 @@ it('composed privately withheld start allocation keeps aggregate cleanup pending
     await handle.close()
   }
 })
+
+for (const capability of [true, false, undefined]) {
+  it(`forwards the adapter recovery capability ${String(capability)} without creating runtimes on reads`, async () => {
+    const f = fixture('codex')
+    f.create.mockImplementation(() => {
+      const raw = new FakeRuntime('codex', { sessions: f.sessions })
+      Object.defineProperty(raw, 'canRecreateMissingUnusedSession', { value: capability })
+      return raw
+    })
+    for (let i = 0; i < 3; i++)
+      expect(Reflect.get(f.runtime, 'canRecreateMissingUnusedSession')).toBeUndefined()
+    expect(f.create).toHaveBeenCalledTimes(0)
+    const handle = await f.runtime.start({
+      cwd: '/fictional/capability',
+      providerHome: '/fictional/state',
+    })
+    handles.push(handle)
+    expect(Reflect.get(f.runtime, 'canRecreateMissingUnusedSession')).toBe(capability)
+    await f.runtime.listModels({ providerHome: '/fictional/state' })
+    expect(Reflect.get(f.runtime, 'canRecreateMissingUnusedSession')).toBe(capability)
+    expect(f.create).toHaveBeenCalledTimes(2)
+  })
+}
+
+it('exposes the actual adapter capability after a typed failed resume without extra factory work', async () => {
+  const f = fixture('codex')
+  const raw = new FakeRuntime('codex')
+  Object.defineProperty(raw, 'canRecreateMissingUnusedSession', { value: true })
+  const ref: SessionRef = {
+    provider: 'codex',
+    cwd: '/fictional/capability',
+    sessionId: 'missing',
+    rotation: 0,
+  }
+  vi.spyOn(raw, 'resume').mockRejectedValue(
+    new ResumeError(ref, 'fictional missing', { noSuchSession: true }),
+  )
+  f.create.mockReturnValue(raw)
+  await expect(f.runtime.resume(ref, { providerHome: '/fictional/state' })).rejects.toBeInstanceOf(
+    ResumeError,
+  )
+  expect(Reflect.get(f.runtime, 'canRecreateMissingUnusedSession')).toBe(true)
+  expect(f.create).toHaveBeenCalledTimes(1)
+  f.create.mockImplementation(() => {
+    throw new Error('fictional construction failure')
+  })
+  await expect(f.runtime.listModels({ providerHome: '/fictional/state' })).rejects.toThrow(
+    'fictional construction failure',
+  )
+  expect(Reflect.get(f.runtime, 'canRecreateMissingUnusedSession')).toBeUndefined()
+})
+
+for (const capability of [true, false, undefined]) {
+  it(`concurrent operations on an immutable adapter preserve capability ${String(capability)}`, async () => {
+    const f = fixture('codex')
+    f.create.mockImplementation(() => {
+      const raw = new FakeRuntime('codex', { sessions: f.sessions })
+      Object.defineProperty(raw, 'canRecreateMissingUnusedSession', { value: capability })
+      return raw
+    })
+    const [handle] = await Promise.all([
+      f.runtime.start({ cwd: '/fictional/concurrent', providerHome: '/fictional/state' }),
+      f.runtime.listModels({ providerHome: '/fictional/state' }),
+    ])
+    handles.push(handle)
+    expect(f.create).toHaveBeenCalledTimes(2)
+    expect(Reflect.get(f.runtime, 'canRecreateMissingUnusedSession')).toBe(capability)
+  })
+}

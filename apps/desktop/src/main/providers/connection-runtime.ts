@@ -8,7 +8,11 @@ import type {
 } from '@brobot2/runtime'
 import { compatibilityConnectionId, type Provider, type ProviderConnection } from '@brobot2/shared'
 
-/** Bind each child to admitted metadata without changing its credential or state services. */
+/**
+ * Bind each child to admitted metadata without changing its credential or state services.
+ * `create` is the bound module's concrete adapter factory: its immutable recovery
+ * capability must be consistent across instances, including concurrent operations.
+ */
 export function onProviderConnection(
   provider: Provider,
   create: () => AgentRuntime,
@@ -35,9 +39,14 @@ export function onProviderConnection(
     return connection.id
   }
 
+  // The bound module factory always constructs the same concrete adapter, whose
+  // capability is immutable. Reading it must not allocate a runtime or authenticate.
+  let recoveryCapability: boolean | undefined
   function runtime(): AgentRuntime {
+    recoveryCapability = undefined
     const inner = create()
     if (inner.provider !== provider) throw new Error('The selected provider is unavailable')
+    recoveryCapability = inner.canRecreateMissingUnusedSession
     return inner
   }
 
@@ -128,6 +137,9 @@ export function onProviderConnection(
 
   return {
     provider,
+    get canRecreateMissingUnusedSession() {
+      return recoveryCapability
+    },
     async start(options) {
       const beganAt = revision()
       const id = admit(options)

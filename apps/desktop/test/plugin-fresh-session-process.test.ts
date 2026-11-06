@@ -49,10 +49,11 @@ afterEach(async () => {
 })
 
 const program = `
-const {PluginSupervisor,PluginLifecycleController,GlobalPluginState,sharedLifecycleWorkspaces,createLifecycleAgentBridge,servePersonPluginControl,requirePluginAdapter,fictionalPublicKey}=require(process.argv[1]);
+const {PluginSupervisor,PluginLifecycleController,GlobalPluginState,sharedLifecycleWorkspaces,createLifecycleAgentBridge,servePersonPluginControl,requirePluginAdapter,fictionalPublicKey,keepPluginRootPrivate}=require(process.argv[1]);
 const {randomUUID}=require('node:crypto');
 const c=JSON.parse(process.argv[2]);
 (async()=>{
+ await keepPluginRootPrivate(c.root);
  const state=GlobalPluginState.open({root:c.root+'/state',workspaceRoots:[c.workspace]});
  let loads=0,loadMs=0;const originalLoad=state.disk.load.bind(state.disk);state.disk.load=(...args)=>{const began=performance.now();try{return originalLoad(...args)}finally{loads++;loadMs+=performance.now()-began}};
  const controller=sharedLifecycleWorkspaces(await PluginLifecycleController.open({root:c.root,state,pinnedPublicKey:fictionalPublicKey,target:c.target,catalogue:{bytes:Buffer.from(c.bytes,'hex'),signature:Buffer.from(c.signature,'hex')},names:{chrome:'Chrome',whatsapp:'WhatsApp'},deny(){},runtime:{previousOwnerClean:async()=>true,removeCode:async()=>{},removeData:async()=>{},start:async spec=>{let end;const exited=new Promise(resolve=>end=resolve);return {runId:randomUUID(),exited,ready:async()=>({serverPid:404941,origin:c.origin,mcp:()=>({url:c.origin+'/'+spec.package.manifest.id+'/mcp',headers:{Authorization:'Bearer '+c.token}}),admin:()=>({url:c.origin+'/'+spec.package.manifest.id+'/admin',headers:{Authorization:'Bearer '+c.token}})}),stop:async()=>end()}}}}));
@@ -212,7 +213,7 @@ it.each([
         env: { ...process.env, NODE_OPTIONS: '' },
       })
       child.on('message', (value: Record<string, unknown>) => {
-        if (value.profile) record({ history, generation, ...value })
+        if (value.profile) record({ history, generation, provider, ...value })
       })
       close.push(async () => {
         if (child.exitCode === null && child.signalCode === null) {
@@ -302,7 +303,16 @@ it.each([
         async read() {
           const began = performance.now()
           const value = await baseSource.read()
-          parsedReads.push({ value, elapsedMs: performance.now() - began })
+          const elapsedMs = performance.now() - began
+          parsedReads.push({ value, elapsedMs })
+          record({
+            history,
+            generation,
+            provider,
+            stage: 'parsed-read',
+            elapsedMs,
+            first: parsedReads.length === 1,
+          })
           return value
         },
         close: () => baseSource.close(),
@@ -361,6 +371,8 @@ it.each([
         stage: 'fixture-start-offer',
         names: offered.map((server) => server.name),
       })
+      expect(parsedReads[0]).toBeDefined()
+      expect(parsedReads[0]!.elapsedMs).toBeLessThan(PLUGIN_ATTACHMENT_WAIT_MS)
       if (history === 0 || offered.length > 0) expect(offered.length).toBeGreaterThan(0)
       else {
         // A timely named unknown/pending reply may launch without routes; rejection/timeout may not.

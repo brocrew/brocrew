@@ -7,3 +7,5 @@ export { createLifecycleAgentBridge } from '../../src/main/plugins/lifecycle/age
 export { servePersonPluginControl } from '../../src/main/plugins/lifecycle/person-control'
 export { requirePluginAdapter } from '../../src/main/plugins/lifecycle/adapters'
 export { fictionalPublicKey } from '../plugin-package-fixtures'
+
+export { keepPluginRootPrivate } from '../../src/main/plugins/private-files'

@@ -118,6 +118,11 @@ export class GlobalPluginState {
     this.disk.resolve(state, success)
   }
   private active(state: LifecycleState): ActivationSnapshot {
+    const snapshot = this.activation(state)
+    if (this.disk.load().head !== state.head) refuseState('conflict')
+    return snapshot
+  }
+  private activation(state: LifecycleState): ActivationSnapshot {
     if (state.pending !== null) refuseState('busy')
     if (state.activation === null) {
       if (state.guards.size !== 0) refuseState('corrupt')
@@ -133,7 +138,6 @@ export class GlobalPluginState {
       )
     )
       refuseState('corrupt')
-    if (this.disk.load().head !== state.head) refuseState('conflict')
     return snapshot
   }
   /** Back up only this data. lifecycle-guard is explicitly excluded from every restore set. */
@@ -143,9 +147,16 @@ export class GlobalPluginState {
   }
   /** One fresh, verified read for a synchronous workspace admission decision. Never retain it. */
   readWorkspaceAdmission(workspaceId: string) {
+    return this.withWorkspaceAdmission(workspaceId, (read) => read)
+  }
+  /** Authority exists only within this synchronous computation; validate again before return. */
+  withWorkspaceAdmission<T>(
+    workspaceId: string,
+    decide: (read: WorkspaceAdmission) => T extends PromiseLike<unknown> ? never : T,
+  ): T {
     const state = this.disk.load()
-    const installations = state.pending ? [] : this.active(state).entries
-    return frozen({
+    const installations = state.pending ? [] : this.activation(state).entries
+    const read = frozen({
       sequence: state.sequence,
       pending: state.pending !== null,
       guardIds: [...state.guards.keys()],
@@ -157,6 +168,19 @@ export class GlobalPluginState {
         ),
       ),
     })
+    const result = decide(read)
+    if (result && typeof (result as { then?: unknown }).then === 'function') refuseState('conflict')
+    const after = this.disk.load()
+    if (
+      after.rootId !== state.rootId ||
+      after.epoch !== state.epoch ||
+      after.sequence !== state.sequence ||
+      after.head !== state.head ||
+      !equalState(after.pending, state.pending) ||
+      !equalState(after.activation, state.activation)
+    )
+      refuseState('conflict')
+    return result
   }
   emptyProjection(workspaceId: string, pluginId: string): Receipt | null {
     const state = this.disk.load()
@@ -230,4 +254,12 @@ export class GlobalPluginState {
       selectionPolicy: sameInstallation ? 'preserve-surviving' : 'off',
     })
   }
+}
+
+export interface WorkspaceAdmission {
+  readonly sequence: number
+  readonly pending: boolean
+  readonly guardIds: readonly string[]
+  readonly installations: readonly ActivationSnapshot['entries'][number][]
+  readonly receipts: readonly ProjectionReceipt[]
 }

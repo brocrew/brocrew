@@ -650,6 +650,8 @@ export interface ResumeOptions extends ProviderRuntimeContext {
  */
 export interface AgentRuntime {
   readonly provider: Provider
+  /** Immutable adapter support for recreating an unused missing session, subject to ownership checks. */
+  readonly canRecreateMissingUnusedSession?: boolean
 
   /**
    * Start a new session.

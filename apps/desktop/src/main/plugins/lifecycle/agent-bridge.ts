@@ -30,14 +30,14 @@ interface Route {
   pluginId: string
   identity: string
   route: ManagedPluginRoute
-  current: () => boolean
+  current: (check?: (view: View) => boolean) => boolean
 }
 /** Lives only in the supervisor. Workspace callers receive scoped routes, never private ports. */
 export function createLifecycleAgentBridge(options: {
   owner: Pick<PluginSupervisor, 'valid'>
   controller: Pick<
     PluginLifecycleController,
-    'agentAttachments' | 'agentScope' | 'onHostChanged' | 'attach' | 'detach'
+    'agentAttachments' | 'agentScope' | 'withAgentScope' | 'onHostChanged' | 'attach' | 'detach'
   >
   refused?: () => void | Promise<void>
   diagnostic?: (pluginId: string, reason: Parameters<PluginToolDiagnostic>[0]) => void
@@ -364,12 +364,19 @@ export function createLifecycleAgentBridge(options: {
             occupiedNamespaces: [],
             occupiedQualifiedNames: [],
             isAllowed: (who, use) => {
-              const active = options.controller
-                .agentAttachments(who.workspaceId)
-                .some(
-                  (item) =>
-                    item.installation.installId === view.installation.installId && item.current(),
+              let active = false
+              try {
+                active = options.controller.withAgentScope(who.workspaceId, (scope, current) =>
+                  scope.entries.some(
+                    (item) =>
+                      item.is === 'admitted' &&
+                      item.view.installation.installId === view.installation.installId &&
+                      current(item.view),
+                  ),
                 )
+              } catch {
+                /* An unreadable admission is unavailable, as with standalone views. */
+              }
               return active && binding.isAllowed(who, use)
             },
           })
@@ -394,7 +401,7 @@ export function createLifecycleAgentBridge(options: {
       }
       try {
         const entry = await work
-        if (!live() || !valid(lease) || !view.current() || retired.has(caller)) return
+        if (!live()) return
         let workspace = entry.workspaces.get(lease.id)
         if (!workspace) {
           workspace = entry.broker.owner.attach(request.workspaceId)
@@ -411,13 +418,7 @@ export function createLifecycleAgentBridge(options: {
           diagnostic(id),
         )
         track(route)
-        if (
-          !live() ||
-          !valid(lease) ||
-          !view.current() ||
-          retired.has(caller) ||
-          !entry.broker.status().available
-        ) {
+        if (!live() || !entry.broker.status().available) {
           await closeRoute(route)
           return
         }
@@ -428,9 +429,9 @@ export function createLifecycleAgentBridge(options: {
           pluginId: id,
           identity,
           route,
-          current: () =>
+          current: (check = (one) => one.current()) =>
             valid(lease) &&
-            view.current() &&
+            check(view) &&
             !retired.has(caller) &&
             entries.get(id) === work &&
             entry.broker.status().available,
@@ -440,8 +441,7 @@ export function createLifecycleAgentBridge(options: {
         if (liveEntries.get(id) === entry) rebuilding.delete(id)
       } catch {
         // A retired attempt may be diagnosed, but cannot degrade its replacement's health.
-        const current =
-          live() && valid(lease) && view.current() && (versions.get(id) ?? 0) === version
+        const current = live() && (versions.get(id) ?? 0) === version
         if (current) failRoute(key, id)
         reportPluginToolFailure(diagnostic(id), current ? 'route-open-failed' : 'route-stale')
         try {
@@ -507,6 +507,7 @@ export function createLifecycleAgentBridge(options: {
     request: Request,
     scope: readonly AgentScopeEntry[] | null,
     held: ReadonlySet<string> = new Set(),
+    check?: (view: View) => boolean,
   ): Answer {
     const caller = `${lease.id}:${request.incarnation}`
     const servers: Answer['servers'] = []
@@ -515,7 +516,7 @@ export function createLifecycleAgentBridge(options: {
         if (
           item.lease.id === lease.id &&
           item.incarnation === request.incarnation &&
-          item.current() &&
+          item.current(check) &&
           !request.occupied.some(
             (name) => name.toLowerCase() === item.route.server.name.toLowerCase(),
           )
@@ -620,51 +621,78 @@ export function createLifecycleAgentBridge(options: {
         if (!valid(lease) || retired.has(caller)) return empty
         if (performance.now() - asked >= answerWithin) return snapshot(lease, request, null)
         const woke = wake
-        let scope: readonly AgentScopeEntry[]
+        // Plan without effects under one operation-local, byte-verified decision.
+        let plan: {
+          scope: readonly AgentScopeEntry[]
+          discard: Array<[string, Route]>
+          views: View[]
+        }
+        const taken = new Set(request.occupied.map((one) => one.toLowerCase()))
         try {
-          scope = options.controller.agentScope(request.workspaceId).entries
+          plan = options.controller.withAgentScope(request.workspaceId, (scope, current) => ({
+            scope: scope.entries,
+            discard: [...routes].filter(
+              ([, item]) =>
+                item.lease.id === lease.id &&
+                item.incarnation === request.incarnation &&
+                (!item.current(current) ||
+                  !scope.entries.some(
+                    (one) =>
+                      one.pluginId === item.pluginId &&
+                      one.is === 'admitted' &&
+                      identityOf(one.view) === item.identity,
+                  ) ||
+                  taken.has(item.route.server.name.toLowerCase())),
+            ),
+            views: scope.entries.flatMap((one) => {
+              if (one.is !== 'admitted' || !current(one.view)) return []
+              const key = `${caller}:${one.pluginId}:${identityOf(one.view)}`
+              return routes.get(`${caller}:${one.pluginId}`)?.current(current) ||
+                failedHere.has(key)
+                ? []
+                : [one.view]
+            }),
+          }))
         } catch {
           return snapshot(lease, request, null)
         }
-        const taken = new Set(request.occupied.map((one) => one.toLowerCase()))
-        for (const [key, item] of routes)
-          if (
-            item.lease.id === lease.id &&
-            item.incarnation === request.incarnation &&
-            (!item.current() ||
-              !scope.some(
-                (one) =>
-                  one.pluginId === item.pluginId &&
-                  one.is === 'admitted' &&
-                  identityOf(one.view) === item.identity,
-              ) ||
-              taken.has(item.route.server.name.toLowerCase()))
-          ) {
-            routes.delete(key)
-            if (taken.has(item.route.server.name.toLowerCase())) {
-              failedHere.add(`${caller}:${item.pluginId}:${item.identity}`)
-              failRoute(key, item.pluginId)
-              reportPluginToolFailure(diagnostic(item.pluginId), 'name-collision')
-            }
-            void closeRoute(item.route).catch(() => undefined)
+        for (const [key, item] of plan.discard) {
+          routes.delete(key)
+          if (taken.has(item.route.server.name.toLowerCase())) {
+            failedHere.add(`${caller}:${item.pluginId}:${item.identity}`)
+            failRoute(key, item.pluginId)
+            reportPluginToolFailure(diagnostic(item.pluginId), 'name-collision')
           }
+          void closeRoute(item.route).catch(() => undefined)
+        }
         const warming: Warmup[] = []
         const capacityPending = new Set<string>()
-        for (const one of scope)
-          if (one.is === 'admitted' && one.view.current()) {
-            const key = `${caller}:${one.pluginId}:${identityOf(one.view)}`
-            const route = routes.get(`${caller}:${one.pluginId}`)
-            if (route?.current() || failedHere.has(key)) continue
-            const opening = warm(lease, request, one.view)
-            if (!opening) {
-              capacityPending.add(one.pluginId)
-              if (!capacityReported) {
-                capacityReported = true
-                reportPluginToolFailure(diagnostic(one.pluginId), 'attachment-capacity')
-              }
-            } else if (!opening.settled) warming.push(opening)
-          }
-        const now = snapshot(lease, request, scope, capacityPending)
+        for (const view of plan.views) {
+          const opening = warm(lease, request, view)
+          if (!opening) {
+            capacityPending.add(view.installation.pluginId)
+            if (!capacityReported) {
+              capacityReported = true
+              reportPluginToolFailure(diagnostic(view.installation.pluginId), 'attachment-capacity')
+            }
+          } else if (!opening.settled) warming.push(opening)
+        }
+        // Effects and async warmup never inherit the planning snapshot. Answer using a
+        // new verified decision after those synchronous effects have been started.
+        let scope: readonly AgentScopeEntry[], now: Answer
+        try {
+          const answer = options.controller.withAgentScope(
+            request.workspaceId,
+            (scope, current) => ({
+              entries: scope.entries,
+              answer: snapshot(lease, request, scope.entries, capacityPending, current),
+            }),
+          )
+          scope = answer.entries
+          now = answer.answer
+        } catch {
+          return snapshot(lease, request, null)
+        }
         if (now.servers.length || !now.pending.length) return now
         const next = await Promise.race([
           woke.then(() => 'wake' as const),
