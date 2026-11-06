@@ -100,6 +100,21 @@ it('returns a partial page on a slow large ledger and continues without losing o
     expect(
       engine.read('fictional_0', { ...query, words: 'changed', cursor: initial.page.next_cursor }),
     ).toEqual({ ok: false, reason: 'cursor-invalid' })
+    for (const changed of [
+      { scope: 'this-conversation' as const },
+      { state: 'working' as const },
+      { limit: 1 },
+    ])
+      expect(
+        engine.read('fictional_0', { ...query, ...changed, cursor: initial.page.next_cursor }),
+      ).toEqual({ ok: false, reason: 'cursor-invalid' })
+    expect(engine.read('fictional_1', { ...query, cursor: initial.page.next_cursor })).toEqual({
+      ok: false,
+      reason: 'cursor-invalid',
+    })
+    expect(JSON.parse(Buffer.from(initial.page.next_cursor, 'base64url').toString()).query).toBe(
+      JSON.stringify(['fictional_0', query.scope, null, [], query.limit]),
+    )
   } finally {
     engine.close()
   }
