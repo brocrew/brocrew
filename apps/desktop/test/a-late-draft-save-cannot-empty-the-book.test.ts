@@ -68,17 +68,20 @@ it('an incomplete last book preserves the other saved slots through a fresh writ
   expect(read(path).drafts.find((draft) => draft.slot === fern)?.text.length).toBe(8000)
 })
 
-it('a last handover arriving after its deadline cannot replace a saved draft', async () => {
+it('a last handover arriving after the quit stopped waiting is still saved, and still cannot clear', async () => {
   const path = folder()
   const writer = createDraftWriter(path)
   await writer.write(packet(fern, 'f'.repeat(8000)))
   writer.expectQuitSaves(1)
   expect(await writer.quitSaves(1)).toBe('unanswered')
-  await writer.write({ ...packet(fern, 'stale'), last: true, cleared: [fern] })
-  expect(read(path).drafts[0]?.text.length).toBe(8000)
+  await writer.write({ ...packet(brook, 'typed last'), last: true, cleared: [fern] })
+  expect(read(path).drafts.map((draft) => [draft.slot, draft.text.length])).toEqual([
+    [fern, 8000],
+    [brook, 10],
+  ])
 })
 
-it('a last handover stalled while writing cannot rename over the saved book after the deadline', async () => {
+it('a last handover still writing when the quit stops waiting is renamed into place, and so is the save behind it', async () => {
   const path = folder()
   const writer = createDraftWriter(path)
   await writer.write(packet(fern, 'f'.repeat(8000)))
@@ -96,12 +99,18 @@ it('a last handover stalled while writing cannot rename over the saved book afte
   }
   writer.expectQuitSaves(1)
   const waiting = writer.quitSaves(30)
-  const saving = writer.write({ ...packet(fern, 'stale'), last: true })
+  const saving = writer.write({ ...packet(fern, 'typed before quit'), last: true })
   await began
+  const behind = writer.write(packet(brook, 'typed while it wrote'))
   expect(await waiting).toBe('unanswered')
+  disk.hold = null
   release()
-  await saving
-  expect(read(path).drafts[0]?.text.length).toBe(8000)
+  await Promise.all([saving, behind])
+  await writer.settled()
+  expect(read(path).drafts.map((draft) => [draft.slot, draft.text])).toEqual([
+    [fern, 'typed before quit'],
+    [brook, 'typed while it wrote'],
+  ])
   expect(readdirSync(path)).toEqual(['drafts.json'])
 })
 
@@ -399,14 +408,28 @@ it('a newer edit queued during a failed removal wins when the next save retries 
   }
 })
 
-it('main protects a file it cannot read even while the renderer independently hands over new slots', async () => {
-  const path = folder()
-  const raw = JSON.stringify({ version: 2, ...packet(brook, 'kept for another build') })
-  writeFileSync(join(path, 'drafts.json'), raw)
-  const writer = createDraftWriter(path)
-  await writer.write(packet(fern, 'new local words'))
-  expect(readFileSync(join(path, 'drafts.json'), 'utf8')).toBe(raw)
-})
+it.each([{ version: 2 }, {}])(
+  'a drafts file another build wrote (%o) is restored as far as it reads, and saving goes on',
+  async (written) => {
+    const path = folder()
+    writeFileSync(
+      join(path, 'drafts.json'),
+      JSON.stringify({ ...written, ...packet(brook, 'kept by another build') }),
+    )
+    const file = await readDraftsFile(path)
+    expect(file.kind).toBe('book')
+    const saved = await restoreSavedDrafts(file.kind === 'book' ? file.raw : null, {
+      exists: () => true,
+    })
+    expect(saved.drafts.map((draft) => draft.text)).toEqual(['kept by another build'])
+    const writer = createDraftWriter(path)
+    await writer.write(packet(fern, 'new local words'))
+    expect(read(path).drafts.map((draft) => [draft.slot, draft.text])).toEqual([
+      [brook, 'kept by another build'],
+      [fern, 'new local words'],
+    ])
+  },
+)
 
 it('a slot sent and a keeper stopped in the same tick still persists its explicit removal', async () => {
   const path = folder()
