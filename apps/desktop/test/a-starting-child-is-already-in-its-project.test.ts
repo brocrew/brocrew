@@ -1,4 +1,4 @@
-import { syntheticProviderHome } from './lib/host-fixture'
+import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -113,13 +113,7 @@ describe('681 · a starting child is already in its project', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new PersonSink('webContents:1')
   })

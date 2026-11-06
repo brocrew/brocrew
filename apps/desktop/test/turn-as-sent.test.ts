@@ -1,4 +1,4 @@
-import { syntheticProviderHome } from './lib/host-fixture'
+import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
 import ts from 'typescript'
 import { createHash } from 'node:crypto'
 import {
@@ -536,13 +536,7 @@ describe('§4 · the host: a ledger message, read from the provider’s file', (
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_turn_${String(tick())}`,
       now: tick,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 

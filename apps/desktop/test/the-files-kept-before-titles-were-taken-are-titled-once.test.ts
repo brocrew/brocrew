@@ -1,4 +1,4 @@
-import { syntheticProviderHome } from './lib/host-fixture'
+import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -114,13 +114,7 @@ describe('F046 · titleTheOlderFiles', () => {
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       announce: (change) => said.push(change),
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
 
   beforeEach(() => {

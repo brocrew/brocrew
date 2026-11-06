@@ -1,4 +1,4 @@
-import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink, syntheticProviderHome } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -444,13 +444,7 @@ describe('D-026 · the doors: every way a file is kept writes the title its byte
       resourcesRoot: () => resourcesRoot(userData),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 

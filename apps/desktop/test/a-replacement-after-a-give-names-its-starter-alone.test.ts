@@ -1,4 +1,4 @@
-import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink, syntheticProviderHome } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -66,13 +66,7 @@ describe('3d1eb064 · a replacement after a give names its starter alone', () =>
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       readInstructions: (provider, cwd, providerHome, context) => {
         seen.push({ profileSlug: context.profileSlug, context })
         const bundle = publishProfileBundle(provider, providerHome, composeProfileBundle(context))

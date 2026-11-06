@@ -1,4 +1,4 @@
-import { syntheticProviderHome } from './lib/host-fixture'
+import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -156,13 +156,7 @@ describe('685 §2.1 · the act a refusal carries, on its notice', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: () => clock++,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 

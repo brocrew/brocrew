@@ -1,4 +1,4 @@
-import { syntheticProviderHome } from './lib/host-fixture'
+import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -86,13 +86,7 @@ describe('M77 · a second answer to an already-answered question', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:1')
   })

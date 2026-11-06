@@ -1,4 +1,4 @@
-import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink, syntheticProviderHome } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -160,13 +160,7 @@ describe('the idle stop and what is on its way into a conversation that needs yo
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       // The dep that arms the countdown at all.
       statesMoved: (message) => {
         pushed.push(message)

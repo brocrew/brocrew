@@ -1,4 +1,4 @@
-import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink, syntheticProviderHome } from './lib/host-fixture'
 import { performance } from 'node:perf_hooks'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -222,13 +222,7 @@ describe('§2–§4 · on a host', () => {
           writeKeptUsage(providerUsageFile(userData), usage)
         },
       },
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   }
 

@@ -1,4 +1,4 @@
-import { syntheticProviderHome } from './lib/host-fixture'
+import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -148,13 +148,7 @@ describe('708 · R42 — a person’s command goes to the provider exactly as ty
       // ⚑ Short, so the arm whose provider never answers ends in this test's time and not in five
       // seconds — the bound is what is under test there, not its length.
       commandListWaitMs: 60,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink(sinkOwnerId({ id: 1 }))
   })

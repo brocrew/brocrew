@@ -1,4 +1,4 @@
-import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink, syntheticProviderHome } from './lib/host-fixture'
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -82,13 +82,7 @@ describe('692 · R34c · a conversation started again after a quit is a crash’
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

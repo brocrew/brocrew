@@ -1,4 +1,4 @@
-import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink, syntheticProviderHome } from './lib/host-fixture'
 /**
  * 🔴 **F009 · an agent's record, the cases its own test leaves open** — `list_profiles` naming a
  * profile, on a real host with the fake runtime and a temp SQLite store.
@@ -146,13 +146,7 @@ describe('F009 · an agent’s record — the cases beyond the dev’s own', () 
       now: tick,
       interruptWaitMs: 40,
       announce: () => {},
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 

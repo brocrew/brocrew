@@ -1,4 +1,4 @@
-import { syntheticProviderHome } from './lib/host-fixture'
+import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -234,13 +234,7 @@ describe('§2 · draw 2 (`702` GAP-3) — a giver told nothing is named so on th
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built
@@ -488,13 +482,7 @@ describe('§4 · draw 4 (R56, `696` L2) — the provider control says what its p
       resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
       listProfiles: () => [...folders],
       newSessionId: () => `sess_${Math.random().toString(36).slice(2)}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     const seat = new Seat('webContents:1')
     const run = async <T>(kind: string, input: Record<string, unknown> = {}): Promise<T> =>

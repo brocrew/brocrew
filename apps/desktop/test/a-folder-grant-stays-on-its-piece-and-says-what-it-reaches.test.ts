@@ -1,4 +1,4 @@
-import { syntheticProviderHome } from './lib/host-fixture'
+import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join, sep } from 'node:path'
@@ -101,13 +101,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${String(++counter)}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       protectedPlaceOf: (folder) => placeOf(folder),
     })
   }
