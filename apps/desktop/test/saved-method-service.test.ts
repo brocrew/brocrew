@@ -58,7 +58,11 @@ interface Inputs {
   stage: typeof memory.stageKnowledgeFile
   sweep: (folder: string, check: () => void) => void
   changed?: (slug: string) => void
-  seams?: { beforePrepare?: () => Promise<void>; beforeUnlink?: (name: string) => void }
+  seams?: {
+    beforePrepare?: () => Promise<void>
+    beforeUnlink?: (name: string) => void
+    writes?: memory.MemoryWriteSeams
+  }
 }
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 const person = { who: 'a-person' } as const
@@ -196,6 +200,65 @@ describe('saved methods change only through a confirmed, recoverable profile ope
     expect((await api.remove('lark', selection(api), person)).ok).toBe(true)
     expect(readFileSync(join(root, 'other-name.md'))).toEqual(bytes)
   })
+  it.each([
+    'beforePrepare',
+    'beforeStageCreate',
+    'beforeStagePublishOpen',
+    'beforeUnlink',
+  ] as const)(
+    'preserves an external index/body writer at %s with truthful partial history',
+    async (at) => {
+      const changed = at === 'beforeUnlink' ? 'review.md' : 'index.md'
+      const external = Buffer.from('External writer bytes.\r\n')
+      const write = () => writeFileSync(path(changed), external)
+      const api = await service({
+        seams:
+          at === 'beforePrepare'
+            ? { beforePrepare: async () => write() }
+            : at === 'beforeUnlink'
+              ? { beforeUnlink: write }
+              : { writes: { [at]: write } },
+      })
+      const result = await api.remove('lark', selection(api), person)
+      expect(result).toMatchObject({
+        ok: false,
+        cause: expect.stringContaining('changed during this edit'),
+        change: { outcome: 'partial' },
+      })
+      expect(readFileSync(path(changed))).toEqual(external)
+      expect(existsSync(path('review.md'))).toBe(true)
+      const recorded = changes.read(agentIdentityRowId('lark'), result.change!.id)!
+      expect(recorded.actual).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: changed, base64: external.toString('base64') }),
+        ]),
+      )
+      if (at === 'beforeUnlink')
+        expect(readFileSync(path('index.md'), 'utf8')).toBe('# Keep\r\nuntouched')
+      else expect(readFileSync(path('review.md'))).toEqual(bytes)
+      const reopened = await service()
+      expect((await reopened.undo('lark', result.change!.id, person)).ok).toBe(false)
+      expect(readFileSync(path(changed))).toEqual(external)
+    },
+  )
+
+  it('does not overwrite a writer interleaved with a completed operation’s Undo', async () => {
+    const api = await service()
+    const deleted = await api.remove('lark', selection(api), person)
+    expect(deleted.ok).toBe(true)
+    const undoing = await service({
+      seams: {
+        beforePrepare: async () => {
+          writeFileSync(path('index.md'), 'External index.')
+        },
+      },
+    })
+    const result = await undoing.undo('lark', deleted.change!.id, person)
+    expect(result).toMatchObject({ ok: false, change: { outcome: 'partial' } })
+    expect(readFileSync(path('index.md'), 'utf8')).toBe('External index.')
+    expect(existsSync(path('review.md'))).toBe(false)
+  })
+
   it('records a partial phase and restores only its known states', async () => {
     const api = await service({
       seams: {

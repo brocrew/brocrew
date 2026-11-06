@@ -291,6 +291,82 @@ describe('memory writes retain their intent under one profile lock until honest 
     expect(service.held('lark')).toBe(false)
     expect(existsSync(entry())).toBe(false)
   })
+  it.each([
+    { valid: false, position: 'before' },
+    { valid: false, position: 'after' },
+    { valid: true, position: 'before' },
+    { valid: true, position: 'after' },
+  ])(
+    'observes UTF-8 losslessly when replacement text is $position (valid=$valid)',
+    async ({ valid, position }) => {
+      const row = store.beginMemoryAmendment(
+        {
+          profileSlug: 'lark',
+          provider: 'codex',
+          entry: entry(),
+          act: 'corrected',
+          by: person,
+          textBefore: position === 'before' ? '\uFFFD' : original,
+          textAfter: position === 'after' ? '\uFFFD' : 'Changed.',
+        },
+        clock++,
+      )!
+      writeFileSync(entry(), valid ? Buffer.from('\uFFFD', 'utf8') : Buffer.from([0xff]))
+      const api = await create()
+      const observed = store.memoryAmendment('lark', row.id)!
+      expect(observed.outcome).toBe(
+        valid ? (position === 'after' ? 'done' : 'unchanged') : 'partial',
+      )
+      if (valid) expect(observed.actual).toEqual({ text: '\uFFFD' })
+      else {
+        expect(observed.actual).toMatchObject({
+          text: null,
+          unreadable: true,
+          cause: expect.stringContaining('invalid UTF-8'),
+        })
+        expect(observed.actual?.cause).toContain(entry())
+        expect((await api.undo('lark', row.id, true, person)).ok).toBe(false)
+        expect(readFileSync(entry())).toEqual(Buffer.from([0xff]))
+      }
+    },
+  )
+
+  it.each([
+    'beforeEffect',
+    'beforeStageCreate',
+    'beforeStagePublishOpen',
+    'beforeMemoryUnlink',
+  ] as const)(
+    'keeps an external edit as a partial barrier instead of overwriting it during Undo: %s',
+    async (at) => {
+      const write = () => writeFileSync(entry(), 'External edit.')
+      const api = await create({
+        seams:
+          at === 'beforeEffect'
+            ? { beforeEffect: async () => write() }
+            : { writes: { [at]: write } },
+      })
+      const result = await api.amend(
+        selection(
+          at === 'beforeMemoryUnlink' ? {} : { act: 'corrected', text: 'Our replacement.' },
+        ),
+        person,
+      )
+      expect(result).toMatchObject({
+        ok: false,
+        cause: expect.stringContaining('changed during this edit'),
+        amendment: {
+          outcome: 'partial',
+          textBefore: original,
+          actual: { text: 'External edit.' },
+        },
+      })
+      expect(readFileSync(entry(), 'utf8')).toBe('External edit.')
+      expect((await api.undo('lark', result.amendment!.id, true, person)).ok).toBe(false)
+      expect(readFileSync(entry(), 'utf8')).toBe('External edit.')
+    },
+  )
+
   it('records unreadable namespace as partial instead of inventing an absence', async () => {
     const row = store.beginMemoryAmendment(
       {

@@ -25,7 +25,6 @@ interface Plan {
 interface Selection {
   confirmed: boolean
   key: string
-  indexState: 'ok' | 'absent' | 'problem'
 }
 let root: string
 let homesRoot: string

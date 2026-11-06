@@ -282,9 +282,6 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
     selection: {
       confirmed: true,
       key: 'method:review.md',
-      fingerprint: null,
-      indexState: 'absent',
-      indexFingerprint: null,
     },
   },
   undoAgentMethod: { kind: 'undoAgentMethod', profileId: 'lark', changeId: 'method-change-one' },
@@ -315,7 +312,6 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   whatTheModelGot: { kind: 'whatTheModelGot', sessionId: SESSION, ordinal: 0 },
   amendAgentMemory: {
     kind: 'amendAgentMemory',
-    fingerprint: '0'.repeat(64),
     confirmed: true,
     profileId: 'pm',
     provider: 'claude',

@@ -165,36 +165,6 @@ describe('the app records interrupted method outcomes without impersonating the 
     expect(api.read(lark, started.id)).toEqual(settled)
   })
 
-  it('continues to refuse external post-state bytes when undo is requested after observation', () => {
-    const started = begin()
-    const other = Buffer.from('A later edit')
-    const otherHash = other.toString('base64')
-    expect(reconcile(lark, started.id, [{ name: 'review.md', base64: otherHash }], app)).toBe(true)
-    expect(
-      api.begin(
-        lark,
-        {
-          operation: 'undo',
-          sourceId: started.id,
-          target: intent.target,
-          files: [
-            {
-              name: 'review.md',
-              before: {
-                base64: other.toString('base64'),
-                base64: otherHash,
-                mode: 0o600,
-              },
-              afterBase64: base64,
-            },
-          ],
-        },
-        person,
-        1002,
-      ),
-    ).toBeNull()
-  })
-
   it('does not write invalid observer clocks or erase a pending outcome', () => {
     const started = begin()
     for (const value of [-1, 0.5, Number.NaN, Number.POSITIVE_INFINITY]) {

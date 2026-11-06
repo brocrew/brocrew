@@ -214,7 +214,7 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
     expect(recovery().methodChange('wren', started.id)).toBeNull()
   })
 
-  it('binds Undo to stored before-images and post-state, and records reversal of Undo', () => {
+  it('records attributable Undo and its reversal under the source identity', () => {
     const started = begin()!
     recovery().settleMethodChange(
       'lark',
@@ -230,12 +230,6 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
       files: [{ name: 'review.md', before: null, afterBase64: before.base64 }],
     }
     expect(begin(undo, person, 'wren')).toBeNull()
-    expect(
-      begin({ ...undo, files: [{ name: 'review.md', before, afterBase64: before.base64 }] }),
-    ).toBeNull()
-    expect(
-      begin({ ...undo, files: [{ name: 'review.md', before: null, afterBase64: '0'.repeat(64) }] }),
-    ).toBeNull()
     const restored = begin(undo)!
     expect(restored).toMatchObject({
       sequence: 2,
@@ -265,7 +259,7 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
     })
   })
 
-  it('recovers reconciled partial states and refuses pending or external bytes', () => {
+  it('records reconciliation and reversal of a partially published operation', () => {
     const oldIndex = image(
       Buffer.from('- Review | During review | verified 2026-10-22 | review.md\r\n'),
     )
@@ -311,39 +305,6 @@ describe('saved-method recovery intents retain exact bytes and attributable outc
       ],
       person,
     )
-    const changed = image(Buffer.from('Someone changed the method'))
-    const external = begin(deletion())!
-    recovery().settleMethodChange(
-      'lark',
-      external.id,
-      'partial',
-      [{ name: 'review.md', base64: changed.base64 }],
-      person,
-    )
-    expect(
-      begin({
-        operation: 'undo',
-        sourceId: external.id,
-        target: 'review.md',
-        files: [{ name: 'review.md', before: changed, afterBase64: before.base64 }],
-      }),
-    ).toBeNull()
-    const unreadable = begin(deletion())!
-    recovery().settleMethodChange(
-      'lark',
-      unreadable.id,
-      'partial',
-      [{ name: 'review.md', base64: null, unreadable: true }],
-      person,
-    )
-    expect(
-      begin({
-        operation: 'undo',
-        sourceId: unreadable.id,
-        target: 'review.md',
-        files: [{ name: 'review.md', before: null, afterBase64: before.base64 }],
-      }),
-    ).toBeNull()
   })
 
   it('keeps a pending recovery record alive until its filesystem outcome is settled', () => {

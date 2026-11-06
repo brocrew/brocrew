@@ -125,15 +125,27 @@ const indexes = (db: AppDatabase) =>
 it.each([18, 21])(
   'keeps every populated post-%i memory row, relation and outcome through migration and second open',
   (last) => {
-    const { db } = fixture(last)
+    const saved = fixture(last)
+    let db = saved.db
+    const root = saved.root
     const before = rows(db)
     const priorIndexes = indexes(db)
     applyMigrations(db, migrations)
     expect(rows(db)).toEqual(before)
     expect(indexes(db)).toEqual(priorIndexes)
     expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([])
+    const writtenJournal = db.prepare('SELECT * FROM __drizzle_migrations ORDER BY id').all()
+    databases.splice(databases.indexOf(db), 1)
+    db.close()
+    db = openDatabase(join(root, 'workspace.sqlite'))
+    databases.push(db)
     applyMigrations(db, migrations)
     expect(rows(db)).toEqual(before)
+    expect(indexes(db)).toEqual(priorIndexes)
+    expect(db.prepare('PRAGMA foreign_key_check').all()).toEqual([])
+    expect(db.prepare('SELECT * FROM __drizzle_migrations ORDER BY id').all()).toEqual(
+      writtenJournal,
+    )
     const store = createSessionStore(db)
     expect(store.memoryAmendment('lark', 'pending')?.outcome).toBe('pending')
     expect(store.memoryAmendment('lark', 'partial')).toMatchObject({
