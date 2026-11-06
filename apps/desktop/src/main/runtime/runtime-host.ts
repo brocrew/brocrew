@@ -303,7 +303,6 @@ import {
   doneConditionSchema,
   workBriefSchema,
   theProviderAStartRunsOn,
-  wasAdmitted,
 } from './spawn-rails'
 import {
   judgeAnAgentsChoice,
@@ -11381,7 +11380,7 @@ export class RuntimeHost implements LiveHost {
   private theServiceAgent(
     profile: string,
   ):
-    | { readonly is: 'normal' | 'unknown' }
+    | { readonly is: 'normal' | 'unknown'; readonly why?: string }
     | { readonly is: 'service'; readonly identity: string; readonly conversation: string | null } {
     const folded = foldProfileName(profile)
     const identity = this.deps.store.agentIdentities().find((one) => one.slug === folded)
@@ -11389,7 +11388,7 @@ export class RuntimeHost implements LiveHost {
     const born = (): boolean =>
       this.deps.store.servicesBorn().some((one) => one.identity === identity.id)
     const read = this.profileExecution
-    if (!read.readable) return { is: born() ? 'unknown' : 'normal' }
+    if (!read.readable) return { is: born() ? 'unknown' : 'normal', why: read.why }
     const kind = kindOf(read, this.profileExecutionConflicts, identity.id, identity.createdAt)
     if (kind === 'unknown') return { is: born() ? 'unknown' : 'normal' }
     if (kind === 'normal') return { is: 'normal' }
@@ -14152,21 +14151,8 @@ export class RuntimeHost implements LiveHost {
     if (this.isAServicesAgent(input.profileId ?? DEFAULT_PROFILE_ID)) {
       throw new Error(NOT_STARTED_A_SERVICE)
     }
-    // ⚠️ **This pair is asked FIRST of the two, so BOTH guards are reachable.** With the token
-    // check above it, a call that made both mistakes could only ever report one of them and this
-    // line would be one no mutation can kill.
     if (spawn !== null && commandedBy !== null) {
       throw new Error('a spawn carries its own commanding caller; do not pass a second one')
-    }
-    // ⛔ **The forged-token check, and it is the reason `wasAdmitted` exists** (341 §2, applied to
-    // this door). `as unknown as AdmittedSpawn` type-checks, and a tool written in a hurry is
-    // exactly where such a cast appears. Nothing is reserved above this line, so a refusal here
-    // leaves no session, no home and no profile — which is criterion 10's *"and no idle session
-    // created"* holding for the case that got past the schema entirely.
-    if (spawn !== null && !wasAdmitted(spawn)) {
-      throw new Error(
-        'a spawn must be admitted by the rails before a session can be created for it',
-      )
     }
     // One source for the answer, never two — see the parameter above.
     const commander = spawn === null ? commandedBy : spawn.commandedBy
