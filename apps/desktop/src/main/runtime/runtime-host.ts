@@ -80,6 +80,7 @@ import {
   whatItSaysIsNotStarted,
   type NoticeAboutAJob,
   type WordOwed,
+  type AWordOfThisApps,
 } from './schedule-notices'
 export { scheduleNoticesText, type NoticeAboutAJob } from './schedule-notices'
 
@@ -1298,10 +1299,7 @@ import {
   nextCronOccurrence,
   type CalendarSource,
 } from '../../shared/schedule-wake'
-import {
-  planReceiptSchedule,
-  type ReceiptSchedulePlan,
-} from '../../shared/schedule-receipts'
+import { planReceiptSchedule, type ReceiptSchedulePlan } from '../../shared/schedule-receipts'
 import {
   planScheduleAdmission,
   recordScheduleAdmission,

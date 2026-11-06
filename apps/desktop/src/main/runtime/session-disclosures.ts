@@ -47,7 +47,9 @@ export type ProviderLimitDisclosure = Pick<
 }
 
 /** ⚑ **F076** — one ending a `background_work` row states, as the provider stated it. */
-export type BackgroundWorkEnded = NonNullable<Extract<RuntimeEvent, { type: 'background_work' }>['ended']>
+export type BackgroundWorkEnded = NonNullable<
+  Extract<RuntimeEvent, { type: 'background_work' }>['ended']
+>
 
 /**
  * 🔴 **F076 — what a turn ended by a refused login was for** ({@link HostedSession.whatItsFailedTurnWasFor}):

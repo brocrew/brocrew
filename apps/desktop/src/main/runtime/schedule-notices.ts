@@ -18,7 +18,7 @@ const MISSED_JOB_WORDS = 80
  * conversation was reset (`not-listed-since-a-reset`), or that it could not read enough of the
  * conversation's history to plan the job (`history-not-read-in-full`).
  */
-type AWordOfThisApps =
+export type AWordOfThisApps =
   'time-not-known' | 'not-started' | 'not-listed-since-a-reset' | 'history-not-read-in-full'
 
 /** One notice about a job, with what the job was last listed as asking. */
