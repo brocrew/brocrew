@@ -9,6 +9,11 @@ title = "brobot"
 useDefault = true
 
 [[allowlists]]
+# False positive: the SHA-256 of storage-round-trip-auth.mjs in the historical harness manifest.
+description = "historical storage harness file hash false positive"
+commits = ["94d1c92a0c4a0c5ef2baacc7f1f7ad6c6bdb06c9"]
+
+[[allowlists]]
 description = "a probe's own made-up nonce, recorded in a wire fixture"
 regexTarget = "match"
 regexes = ['''WIRE327_\d+_\d+''']
