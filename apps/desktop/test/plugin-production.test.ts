@@ -1555,12 +1555,14 @@ describe.skipIf(process.platform === 'win32')(
         /^\[plugins\] service-start error: Error: fictional-private-error-with-key\n\s+at /,
       )
       expect(f.supervisor.start).not.toHaveBeenCalled()
-      // A later refusal keeps its typed code and carries the real startup failure as its cause.
+      // A later refusal keeps its typed code and shows the real startup failure beside itself.
       const refused = await f.controller.install(f.pkg.release.id).catch((error: unknown) => error)
       expect(refused).toMatchObject({
         code: 'unavailable',
         message: 'Plugin unavailable. Try again.',
       })
+      // Never as its own cause, so no classifier reads the old failure as this refusal's.
+      expect((refused as { cause?: unknown }).cause).toBeUndefined()
       expect(JSON.stringify(inspect(refused))).toContain('fictional-private-error-with-key')
     })
     it('keeps the first catalogue response failure instead of relabeling it as a connection failure', async () => {
@@ -1635,6 +1637,11 @@ describe.skipIf(process.platform === 'win32')(
         true,
       )
       expect(f.peer.install).not.toHaveBeenCalled()
+      // After a successful connect, a new refusal carries no earlier failure at all.
+      const later = await f.controller.retry!('fictional-unlisted').catch((error: unknown) => error)
+      expect(later).toMatchObject({ code: 'unavailable' })
+      expect(later).not.toHaveProperty('earlierFailure')
+      expect((later as { cause?: unknown }).cause).toBeUndefined()
     })
     it('connection failure keeps the card unavailable and refuses Install', async () => {
       const f = await setup()

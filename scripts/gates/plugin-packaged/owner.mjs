@@ -30,7 +30,8 @@ export function requireHosted(env = process.env, platform = process.platform, ar
 }
 function readOwner(control) {
   const meta = JSON.parse(fs.readFileSync(path.join(control, 'owner.json'), 'utf8'))
-  if (!path.isAbsolute(meta.root) || !path.isAbsolute(meta.node))
+  // clean() removes this root, so it must be the gate's own scratch shape.
+  if (!/^\/private\/tmp\/fpg-[a-f0-9]{32}$/.test(meta.root) || !path.isAbsolute(meta.node))
     throw new Error('Invalid owner record')
   return meta
 }
