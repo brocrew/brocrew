@@ -80,18 +80,34 @@ function anAnswer(value: unknown): value is CopyCheck {
   )
 }
 
+/** Checks copies in workers, and stops them all when the app quits. */
+export interface CopyVerifier {
+  readonly verify: VerifyCopy
+  /**
+   * Refuses new checks, ends every check under way, and resolves once each of their workers has
+   * exited, so nothing holds a copy once the app goes on to close.
+   */
+  stop(): Promise<void>
+}
+
 /**
  * Checks each copy in a worker `start` makes. The answer is taken only once the worker has exited,
  * so the copy is closed and released before anything touches it next. A worker that cannot start,
- * fails, or exits with no answer says the check could not run, which is retried, and the copy is
- * never kept unchecked.
+ * fails, exits with no answer, or is ended by a quit says the check could not run, which is
+ * retried, and the copy is never kept unchecked.
  */
 export function verifyInAWorker(
   start: (request: CopyCheckRequest) => Worker,
   holdMs?: number,
-): VerifyCopy {
-  return (copy) =>
+): CopyVerifier {
+  const live = new Map<Worker, Promise<void>>()
+  let stopped = false
+  const verify: VerifyCopy = (copy) =>
     new Promise((resolve) => {
+      if (stopped) {
+        resolve({ kind: 'failed', message: 'its check was not started, as BroCrew is closing' })
+        return
+      }
       let worker: Worker
       try {
         worker = start(holdMs === undefined ? { copy } : { copy, holdMs })
@@ -101,18 +117,36 @@ export function verifyInAWorker(
       }
       let answer: CopyCheck | undefined
       worker.on('message', (message: unknown) => {
-        if (answer === undefined && anAnswer(message)) answer = message
+        if (answer === undefined && !stopped && anAnswer(message)) answer = message
       })
       worker.on('error', (error) => {
         answer ??= { kind: 'failed', message: `its check stopped: ${messageOf(error)}` }
       })
-      worker.once('exit', (code) => {
-        resolve(
-          answer ?? {
-            kind: 'failed',
-            message: `its check ended without an answer (exit ${String(code)})`,
-          },
-        )
-      })
+      live.set(
+        worker,
+        new Promise<void>((exited) => {
+          worker.once('exit', (code) => {
+            live.delete(worker)
+            resolve(
+              answer ?? {
+                kind: 'failed',
+                message: stopped
+                  ? 'its check was ended, as BroCrew is closing'
+                  : `its check ended without an answer (exit ${String(code)})`,
+              },
+            )
+            exited()
+          })
+        }),
+      )
     })
+  return {
+    verify,
+    async stop() {
+      stopped = true
+      const exits = [...live.values()]
+      for (const worker of live.keys()) void worker.terminate()
+      await Promise.all(exits)
+    },
+  }
 }

@@ -405,6 +405,13 @@ let saidItDidNotStart = false
 let saidOpenedForRecovery = false
 /** A failed start's stop of what it started, once begun; a quit's teardown waits for it. */
 let stoppingTheStart: Promise<void> | null = null
+/** Checks recovery copies in workers; the teardown ends any check under way before the data closes. */
+const recoveryCopyVerifier = verifyInAWorker((request) =>
+  startRecoveryVerifier({
+    workerData: request,
+    resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
+  }),
+)
 /** A test's hidden launch keeps its recovery window instead of exiting (unpackaged builds only). */
 let keepTheRecoveryWindowHidden: boolean | null = null
 /** The one-app check's answer, asked again on a retry while it is still `unknown`. */
@@ -1841,12 +1848,7 @@ function theRecoveryService(launchOwnership: HostGateVerdict): RecoveryService {
     log: sayAtOnce,
     working: (what) => sayWorkingIfItTakesLong(what),
     progress: (done, total) => recoveryCalls?.progress(done, total),
-    verifyCopy: verifyInAWorker((request) =>
-      startRecoveryVerifier({
-        workerData: request,
-        resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
-      }),
-    ),
+    verifyCopy: recoveryCopyVerifier.verify,
   }
   const asked = app.commandLine.getSwitchValue(RECOVERY_FAULT_SWITCH)
   if (asked === '') return createRecoveryService(deps)
@@ -2716,6 +2718,8 @@ const lifetime = createAppLifetime({
     await updates?.drain()
     await transcriptRetention?.stop()
     await (stoppingTheStart ?? host?.drainArchiveWork() ?? Promise.resolve())
+    // A recovery copy's check under way, as when a quit comes before the data opens.
+    await recoveryCopyVerifier.stop()
     await themes?.close()
     // Stall lines still queued, and the notice of what was left, get half a second in all.
     await theStallSink?.close(500)

@@ -129,10 +129,7 @@ async function startup(fake: PinnableApp, beforeThemes?: () => void) {
     ownershipFrom: () => ({ ask: async () => 'unknown' }),
     createRecoveryService,
     // The app checks a recovery copy in a worker; here the same check runs in this thread.
-    verifyInAWorker: () => checkTheCopyHere,
-    startRecoveryVerifier: () => {
-      throw new Error('no worker in this sandbox')
-    },
+    recoveryCopyVerifier: { verify: checkTheCopyHere, stop: async () => {} },
     mainThreadWork: { timed: <T>(_what: string, work: () => T): T => work() },
     buildLineage: async () => [],
     recoveryService: null,
