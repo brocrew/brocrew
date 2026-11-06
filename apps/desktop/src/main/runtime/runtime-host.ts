@@ -42724,6 +42724,7 @@ export class RuntimeHost implements LiveHost {
       : {
           done: false,
           refused: memoryChangeRefusal(result?.ok === false ? result.reason : undefined),
+          ...(result?.ok === false && result.cause ? { cause: result.cause } : {}),
           reading,
         }
   }
@@ -42745,6 +42746,7 @@ export class RuntimeHost implements LiveHost {
       : {
           done: false,
           refused: memoryChangeRefusal(result?.ok === false ? result.reason : undefined),
+          ...(result?.ok === false && result.cause ? { cause: result.cause } : {}),
           reading,
         }
   }
@@ -42768,6 +42770,7 @@ export class RuntimeHost implements LiveHost {
       : {
           done: false,
           refused: memoryChangeRefusal(result?.ok === false ? result.reason : undefined),
+          ...(result?.ok === false && result.cause ? { cause: result.cause } : {}),
           reading,
         }
   }

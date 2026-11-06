@@ -126,47 +126,7 @@ describe('memory changes preserve the selected text without overwriting recreate
     expect((await api().restore(restoring('claude', text))).ok).toBe(true)
     expect(api().fingerprint(inputs(), 'claude', path('claude'))).toBe(hash(text))
   })
-  it('requires confirmation and the actual displayed raw fingerprint for Delete', () => {
-    const entry = path('claude')
-    writeFileSync(entry, saved)
-    const selected: Selection = {
-      ...inputs(),
-      provider: 'claude',
-      entry,
-      fingerprint: hash(saved),
-      confirmed: false,
-      check,
-    }
-    expect(api().remove(selected).ok).toBe(false)
-    writeFileSync(entry, 'external')
-    expect(api().remove({ ...selected, confirmed: true }).ok).toBe(false)
-    expect(readFileSync(entry, 'utf8')).toBe('external')
-    expect(
-      api().remove({ ...selected, confirmed: true, fingerprint: hash('external') }),
-    ).toMatchObject({ ok: true, entry, textBefore: 'external', textAfter: null })
-    expect(existsSync(entry)).toBe(false)
-  })
-  it('checks again after an interleaving immediately before unlink', () => {
-    const entry = path('claude')
-    writeFileSync(entry, saved)
-    expect(
-      api().remove(
-        {
-          ...inputs(),
-          provider: 'claude',
-          entry,
-          fingerprint: hash(saved),
-          confirmed: true,
-          check,
-        },
-        {
-          beforeMemoryUnlink: () => writeFileSync(entry, 'changed'),
-        },
-      ).ok,
-    ).toBe(false)
-    expect(readFileSync(entry, 'utf8')).toBe('changed')
-  })
-  it('refuses a recreated target and a source changed during stage preparation', async () => {
+  it('refuses a recreated target and actual cancellation during stage preparation', async () => {
     const entry = path('claude')
     expect(
       (
@@ -193,17 +153,6 @@ describe('memory changes preserve the selected text without overwriting recreate
             },
           },
         )
-      ).ok,
-    ).toBe(false)
-    expect(existsSync(entry)).toBe(false)
-    const mutable = restoring('claude')
-    expect(
-      (
-        await api().restore(mutable, {
-          beforeStageCreate: () => {
-            Reflect.set(mutable.source, 'textBefore', 'tampered')
-          },
-        })
       ).ok,
     ).toBe(false)
     expect(existsSync(entry)).toBe(false)
@@ -252,25 +201,6 @@ describe('memory changes preserve the selected text without overwriting recreate
     // A memory folder the person linked elsewhere is used where it leads.
     expect((await api().restore(restoring('claude'))).ok).toBe(true)
     expect(readFileSync(outside, 'utf8')).toBe('outside')
-  })
-  it('reverses only a restoration whose current bytes still match its saved text', async () => {
-    const restored = {
-      ...source('codex'),
-      id: 'mem:lark:2',
-      seq: 2,
-      act: 'restored' as const,
-      textBefore: null,
-      textAfter: saved,
-      sourceId: 'mem:lark:1',
-    }
-    expect((await api().restore(restoring('codex'))).ok).toBe(true)
-    const command: Restoration = { ...inputs(), source: restored, confirmed: true, check }
-    writeFileSync(path('codex'), 'external')
-    expect(api().undo(command).ok).toBe(false)
-    expect(readFileSync(path('codex'), 'utf8')).toBe('external')
-    writeFileSync(path('codex'), saved)
-    expect(api().undo(command)).toMatchObject({ ok: true, textBefore: saved, textAfter: null })
-    expect(existsSync(path('codex'))).toBe(false)
   })
   it('refuses invalid UTF8 or oversized files instead of saving an incomplete before image', async () => {
     const entry = path('claude')

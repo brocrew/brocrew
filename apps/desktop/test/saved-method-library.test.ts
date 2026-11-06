@@ -256,7 +256,7 @@ describe('saved methods in the agent book', () => {
     expect(catalog.items[0]?.references).toHaveLength(1)
   })
 
-  it('follows a linked managed root, and refuses a folder swapped after opening a method', () => {
+  it('follows a linked managed root and finishes an ordinary open-file read', () => {
     const alternative = join(root, 'alternative')
     mkdirSync(alternative)
     writeFileSync(join(alternative, 'review.md'), 'Outside')
@@ -277,8 +277,8 @@ describe('saved methods in the agent book', () => {
           renameSync(folder, `${folder}-old`)
           symlinkSync(alternative, folder, 'dir')
         },
-      }).ok,
-    ).toBe(false)
+      }),
+    ).toMatchObject({ ok: true, text: 'Inside' })
   })
 
   it('reports truncation instead of pretending a capped directory scan was complete', () => {

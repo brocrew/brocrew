@@ -73,7 +73,12 @@ export interface MethodChangeSummary {
 }
 export type MethodChangeResult =
   | { readonly ok: true; readonly change: MethodChangeSummary }
-  | { readonly ok: false; readonly reason: string; readonly change?: MethodChangeSummary }
+  | {
+      readonly ok: false
+      readonly reason: string
+      readonly cause?: string
+      readonly change?: MethodChangeSummary
+    }
 export type MethodHistoryResult =
   | { readonly ok: true; readonly changes: readonly MethodChangeSummary[] }
-  | { readonly ok: false; readonly reason: string }
+  | { readonly ok: false; readonly reason: string; readonly cause?: string }

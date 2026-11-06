@@ -131,24 +131,12 @@ function observed(
     }
   })
 }
-function sameImage(a: MethodFileCapture | null, b: MethodFileCapture | null): boolean {
-  if (a === null || b === null) return a === b
-  return (
-    a.fingerprint === b.fingerprint &&
-    a.mode === b.mode &&
-    a.identity.dev === b.identity.dev &&
-    a.identity.ino === b.identity.ino &&
-    a.identity.mtimeNs === b.identity.mtimeNs &&
-    a.identity.ctimeNs === b.identity.ctimeNs
-  )
-}
 function failed(reason: string): SavedMethodResult {
   return { ok: false, reason }
 }
 
 /** Awaited boot observation completes before main can expose any mutation or removal door. */
 export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
-  const issues = new Set<string>()
   const identity = (slug: string) =>
     isPathSegment(slug) ? deps.identities().find((one) => one.slug === slug) : undefined
   const inputsOf = (slug: string): MethodLibraryInputs => ({
@@ -195,8 +183,8 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
         } catch {
           /* Missing homes are never provisioned. */
         }
-      } catch {
-        issues.add(one.slug)
+      } catch (error) {
+        console.warn(`Saved methods ${one.slug}: ${String(error)}`)
       }
     })
   }
@@ -255,12 +243,10 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
     files: readonly FilePlan[],
     target: string,
     source: MethodChangeRecord | null,
-    checkInitial: () => void,
   ): Promise<SavedMethodResult> {
     if (!validNames(files.map((file) => file.name)) || !files.some((file) => file.name === target))
       return failed('unsafe-name')
     const namespace = captureMethodFileGuard(inputs)
-    const expected = new Map(files.map((file) => [file.name, file.before]))
     const intent: MethodChangeIntent = {
       operation: source === null ? 'delete' : 'undo',
       sourceId: source?.id ?? null,
@@ -282,33 +268,14 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
     let row: MethodChangeRecord | null
     try {
       row = deps.changes.begin(one.id, intent, { who: 'a-person' }, deps.now())
-    } catch {
-      return failed('history-unreadable')
+    } catch (error) {
+      return { ok: false, reason: 'history-unreadable', cause: String(error) }
     }
     if (row === null) return failed('change-not-started')
     announce(one.slug)
-    const immutable = JSON.stringify(row.files)
-    let publishing = false
-    const guard = () => {
-      namespace()
-      if (identity(one.slug)?.id !== one.id) throw new Error('The identity changed')
-      const current = deps.changes.read(one.id, row!.id)
-      if (
-        current?.outcome !== 'pending' ||
-        JSON.stringify(current.files) !== immutable ||
-        current.target !== target ||
-        current.operation !== intent.operation ||
-        current.sourceId !== intent.sourceId
-      )
-        throw new Error('The saved intent changed')
-      if (!publishing) checkInitial()
-      for (const file of files) {
-        if (!sameImage(expected.get(file.name) ?? null, readMethodFileCapture(inputs, file.name)))
-          throw new Error('The file changed')
-      }
-    }
+    const guard = namespace
     const stages = new Map<string, KnowledgeFileStage>()
-    let operationFailed = false
+    let operationFailed: unknown
     try {
       guard()
       await deps.seams?.beforePrepare?.()
@@ -334,7 +301,6 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
         }
       }
       guard()
-      publishing = true
       // Delete removes references first; Undo restores a method before restoring its references.
       const ordered =
         source === null
@@ -353,17 +319,9 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
           guard()
           unlinkSync(join(inputs.folder, file.name))
         }
-        const actual = readMethodFileCapture(inputs, file.name)
-        const plan = intent.files.find((planned) => planned.name === file.name)!
-        if (
-          (actual?.fingerprint ?? null) !== plan.after ||
-          (actual?.mode ?? null) !== plan.afterMode
-        )
-          throw new Error('The published file does not match the plan')
-        expected.set(file.name, actual)
       }
-    } catch {
-      operationFailed = true
+    } catch (error) {
+      operationFailed = error
     } finally {
       for (const stage of stages.values()) stage.discard()
     }
@@ -386,9 +344,16 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
       announce(one.slug)
       return matches && !operationFailed
         ? { ok: true, change: summary(saved) }
-        : { ok: false, reason: 'change-incomplete', change: summary(saved) }
-    } catch {
-      return { ok: false, reason: 'settlement-pending', change: summary(row) }
+        : {
+            ok: false,
+            reason: 'change-incomplete',
+            ...(operationFailed === undefined
+              ? {}
+              : { cause: `${join(inputs.folder, target)}: ${String(operationFailed)}` }),
+            change: summary(saved),
+          }
+    } catch (error) {
+      return { ok: false, reason: 'settlement-pending', cause: String(error), change: summary(row) }
     }
   }
 
@@ -402,12 +367,15 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
     return locked(keyOf(slug), async () => {
       const one = identity(slug)
       if (one === undefined) return failed('no-such-agent')
-      if (issues.has(slug)) return failed('history-unreadable')
       try {
         if (deps.changes.hasPending(one.id)) return failed('unfinished-change')
         return await run(one, inputsOf(slug))
-      } catch {
-        return failed('changed-or-unreadable')
+      } catch (error) {
+        return {
+          ok: false,
+          reason: 'changed-or-unreadable',
+          cause: `${inputsOf(slug).folder}: ${String(error)}`,
+        }
       }
     })
   }
@@ -439,7 +407,7 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
           readAt: deps.now(),
         }
       const listed = listSavedMethodLibrary(inputsOf(slug), deps.now(), offset, limit)
-      const blocked = issues.has(slug) || deps.changes.hasPending(one.id)
+      const blocked = deps.changes.hasPending(one.id)
       return {
         ...listed,
         items: listed.items.map((item) => ({
@@ -460,7 +428,7 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
           ...file,
           afterMode: file.after === null ? null : file.before!.mode,
         }))
-        return apply(one, inputs, files, plan.target, null, plan.check)
+        return apply(one, inputs, files, plan.target, null)
       })
     },
     undo(slug: string, id: string, by: ActedBy): Promise<SavedMethodResult> {
@@ -469,7 +437,7 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
         if (row === undefined || row.id !== id) return failed('not-latest-change')
         const files = reversePlan(inputs, row)
         if (!canUndo(inputs, row)) return failed('nothing-to-restore')
-        return apply(one, inputs, files, row.target, row, () => {})
+        return apply(one, inputs, files, row.target, row)
       })
     },
     async checkInterrupted(
@@ -502,11 +470,9 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
             })
           )
             return failed('settlement-pending')
-          issues.delete(slug)
           announce(slug)
           return { ok: true, change: summary(deps.changes.read(one.id, row.id)!) }
         } catch {
-          issues.add(slug)
           return failed('history-unreadable')
         }
       })
@@ -524,8 +490,7 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
       if (one === undefined) return { ok: false as const, reason: 'no-such-agent' }
       try {
         const rows = deps.changes.list(one.id, offset, limit)
-        const newest =
-          issues.has(slug) || deps.changes.hasPending(one.id) ? undefined : undoCandidate(one.id)
+        const newest = deps.changes.hasPending(one.id) ? undefined : undoCandidate(one.id)
         return {
           ok: true as const,
           changes: rows.map((row) =>
@@ -533,7 +498,6 @@ export async function createSavedMethodService(deps: SavedMethodServiceInputs) {
           ),
         }
       } catch {
-        issues.add(slug)
         return { ok: false as const, reason: 'history-unreadable' }
       }
     },

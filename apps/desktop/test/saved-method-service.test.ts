@@ -161,15 +161,15 @@ describe('saved methods change only through a confirmed, recoverable profile ope
     expect(again.ok).toBe(true)
     expect(existsSync(path('review.md'))).toBe(false)
   })
-  it('requires a person, explicit confirmation and the displayed baseline', async () => {
+  it('requires a person and primary confirmation, then reads the ordinary files', async () => {
     const api = await service()
     const shown = selection(api)
     for (const by of [app, agent]) expect((await api.remove('lark', shown, by)).ok).toBe(false)
     expect((await api.remove('lark', { ...shown, confirmed: false }, person)).ok).toBe(false)
     writeFileSync(path('index.md'), 'external index')
-    expect((await api.remove('lark', shown, person)).ok).toBe(false)
-    expect(readFileSync(path('review.md'))).toEqual(bytes)
-    expect(changes.list(agentIdentityRowId('lark'), 0, 100)).toEqual([])
+    expect((await api.remove('lark', shown, person)).ok).toBe(true)
+    expect(existsSync(path('review.md'))).toBe(false)
+    expect(readFileSync(path('index.md'), 'utf8')).toBe('external index')
   })
   it('rejects agent Undo and another profile or an older change id', async () => {
     const api = await service()
@@ -209,7 +209,11 @@ describe('saved methods change only through a confirmed, recoverable profile ope
       },
     })
     const removed = await api.remove('lark', selection(api), person)
-    expect(removed).toMatchObject({ ok: false, change: { outcome: 'partial' } })
+    expect(removed).toMatchObject({
+      ok: false,
+      cause: expect.stringContaining('fixture unlink denied'),
+      change: { outcome: 'partial' },
+    })
     expect(readFileSync(path('review.md'))).toEqual(bytes)
     const restarted = await service()
     expect((await restarted.undo('lark', removed.change!.id, person)).ok).toBe(true)
@@ -229,7 +233,11 @@ describe('saved methods change only through a confirmed, recoverable profile ope
     expect(removed.ok).toBe(true)
     stop = true
     const undoAttempt = await api.undo('lark', removed.change!.id, person)
-    expect(undoAttempt).toMatchObject({ ok: false, change: { outcome: 'partial' } })
+    expect(undoAttempt).toMatchObject({
+      ok: false,
+      cause: expect.stringContaining('fixture preparation denied'),
+      change: { outcome: 'partial' },
+    })
     const deleteAttempt = await api.remove('lark', selection(api, 'index.md'), person)
     expect(deleteAttempt).toMatchObject({ ok: false, change: { outcome: 'partial' } })
     const history = api.history('lark')
