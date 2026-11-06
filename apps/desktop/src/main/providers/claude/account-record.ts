@@ -10,8 +10,8 @@ import { dirname, join } from 'node:path'
  * the email. A recovery copy does not carry this file (`recovery/state-files.ts`), no log line says
  * what it holds, and nothing in it is given to an agent or a window.
  *
- * ⚑ One account at a time: a later conversation on another account replaces it. Codex needs none:
- * its sign-in tag is already of its account.
+ * The latest account remains available to current consumers; ordinary account records retain
+ * IDs referenced by earlier lives, cuts and readings. Codex already supplies an opaque account ID.
  */
 export interface KnownAccount {
   /** The id its readings are stamped with: 32 hex digits, random. */
@@ -22,12 +22,34 @@ export interface KnownAccount {
 
 export interface KeptAccounts {
   readonly claude?: KnownAccount
+  readonly claudeAccounts?: readonly KnownAccount[]
 }
 
 /** The persisted one-account format has a fixed native field; keep its bytes across providers. */
 export const legacyAccountRecordFormat = {
   accountIn: (record: KeptAccounts): KnownAccount | null => record.claude ?? null,
-  forAccount: (account: KnownAccount): KeptAccounts => ({ claude: account }),
+  accountsIn: (record: KeptAccounts): readonly KnownAccount[] =>
+    [...(record.claudeAccounts ?? []), ...(record.claude ? [record.claude] : [])].filter(
+      (one, index, rows) =>
+        rows.findIndex(
+          (other) =>
+            other.id === one.id &&
+            other.email === one.email &&
+            other.organization === one.organization,
+        ) === index,
+    ),
+  forAccount: (account: KnownAccount, previous: readonly KnownAccount[] = []): KeptAccounts => ({
+    claude: account,
+    claudeAccounts: [...previous, account].filter(
+      (one, index, rows) =>
+        rows.findIndex(
+          (other) =>
+            other.id === one.id &&
+            other.email === one.email &&
+            other.organization === one.organization,
+        ) === index,
+    ),
+  }),
 }
 
 /** Where a data folder keeps the account its Claude readings were read on. */
@@ -53,7 +75,17 @@ export function readKeptAccounts(file: string): KeptAccounts {
     return {}
   }
   const claude = aKnownAccount(aRecord(said)['claude'])
-  return claude === null ? {} : { claude }
+  const stored = aRecord(said)['claudeAccounts']
+  const accounts = Array.isArray(stored)
+    ? stored.flatMap((value) => {
+        const one = aKnownAccount(value)
+        return one ? [one] : []
+      })
+    : []
+  return {
+    ...(claude === null ? {} : { claude }),
+    ...(accounts.length === 0 ? {} : { claudeAccounts: accounts }),
+  }
 }
 
 /** Write the account, replacing what the file held; beside it first, then renamed. */

@@ -8255,6 +8255,7 @@ export class RuntimeHost implements LiveHost {
   private readonly usage = new Map<Provider, Map<string, KeptReading>>()
   /** The Claude account this computer was last seen on, and the id its readings carry. */
   private knownAccount: KnownAccount | null = null
+  private knownAccounts: readonly KnownAccount[] = []
   /**
    * The sign-in each provider's latest reading was read on, as the conversation that reported it
    * tagged it ({@link SessionHandle.signInTag}), and when the latest life that reported on that
@@ -9424,7 +9425,7 @@ export class RuntimeHost implements LiveHost {
       if (record === undefined || record.noticeId !== noticeId || isFinal(record.state)) return
       // ⚑ Only ids of one kind are compared: a Claude account named by its email is not told apart
       // from one named by its launch credential, whose account read may only have failed.
-      const idKind = (id: string): string => id.slice(0, id.indexOf(':'))
+      const idKind = (id: string): string => id.slice(0, id.lastIndexOf(':'))
       const comparable =
         record.expected !== null &&
         identity !== null &&
@@ -10181,23 +10182,36 @@ export class RuntimeHost implements LiveHost {
     if (fact == null) return null
     if (fact.kind === 'account') {
       const known = this.accountRecordFor(fact.account)
-      return `${provider}:account:${known.id}`
+      return known === null ? null : `${provider}:account:${known.id}`
     }
     return `${provider}:${fact.launchOnly === true ? 'launch-credential' : 'sign-in'}:${fact.tag}`
   }
 
   /** Reuse the existing account record before any launch identity or usage is frozen. */
-  private accountRecordFor(said: { email: string; organization?: string }): KnownAccount {
-    const known = this.knownAccount
-    if (known !== null && known.email === said.email && known.organization === said.organization)
+  private accountRecordFor(said: { email: string; organization?: string }): KnownAccount | null {
+    const matches = this.knownAccounts.filter(
+      (one) => one.email === said.email && one.organization === said.organization,
+    )
+    if (new Set(matches.map((one) => one.id)).size > 1) return null
+    const known = matches[0]
+    if (known !== undefined) {
+      if (
+        this.knownAccounts.some(
+          (one) =>
+            one.id === known.id &&
+            (one.email !== known.email || one.organization !== known.organization),
+        )
+      )
+        return null
+      this.keepTheAccount(known)
       return known
+    }
     const learned: KnownAccount = {
       id: randomBytes(16).toString('hex'),
       email: said.email,
       ...(said.organization === undefined ? {} : { organization: said.organization }),
     }
-    this.keepTheAccount(learned)
-    return learned
+    return this.keepTheAccount(learned) ? learned : null
   }
 
   /** ⚑ What was kept of deleted conversations' cuts and lives, let go. ⛔ It never throws. */
@@ -35905,7 +35919,9 @@ export class RuntimeHost implements LiveHost {
     const kept = this.deps.accountsKept
     if (kept === undefined) return
     try {
-      this.knownAccount = legacyAccountRecordFormat.accountIn(kept.read())
+      const record = kept.read()
+      this.knownAccount = legacyAccountRecordFormat.accountIn(record)
+      this.knownAccounts = legacyAccountRecordFormat.accountsIn(record)
     } catch (error) {
       console.warn(
         `runtime host could not read the account usage was read on: ${errorMessage(error)}`,
@@ -35917,14 +35933,18 @@ export class RuntimeHost implements LiveHost {
    * Hold `account` as the one this computer is on now, and keep it. ⛔ A write that fails is said
    * in the log without a word of what was written, and changes nothing in this run.
    */
-  private keepTheAccount(account: KnownAccount): void {
-    this.knownAccount = account
+  private keepTheAccount(account: KnownAccount): boolean {
     try {
-      this.deps.accountsKept?.write(legacyAccountRecordFormat.forAccount(account))
+      const record = legacyAccountRecordFormat.forAccount(account, this.knownAccounts)
+      // In-memory hosts can attribute usage; they cannot claim a durable cut identity.
+      if (this.deps.accountsKept === undefined) return false
+      this.deps.accountsKept.write(record)
+      this.knownAccount = account
+      this.knownAccounts = legacyAccountRecordFormat.accountsIn(record)
+      return true
     } catch (error) {
-      console.warn(
-        `runtime host could not keep the account usage was read on: ${errorMessage(error)}`,
-      )
+      console.warn(`runtime host could not keep the account record: ${errorMessage(error)}`)
+      return false
     }
   }
 

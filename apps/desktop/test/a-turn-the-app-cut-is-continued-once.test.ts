@@ -138,6 +138,7 @@ interface Stops {
   beforeTheWordsAreTaken?: Held
   /** The cut-turns file cannot be written. */
   cutsCannotBeKept?: boolean
+  accountsCannotBeKept?: boolean
   /** No window listens to this life, so its launch continues nothing. */
   nobodyListens?: boolean
   /** Services run in this life, as the services list in its data folder says which agents are. */
@@ -323,7 +324,11 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
         },
         accountsKept: {
           read: () => readKeptAccounts(providerAccountsFile(folder)),
-          write: (kept) => writeKeptAccounts(providerAccountsFile(folder), kept),
+          write: (kept) => {
+            if (stops.accountsCannotBeKept)
+              throw new Error(`EACCES: cannot write '${providerAccountsFile(folder)}'`)
+            writeKeptAccounts(providerAccountsFile(folder), kept)
+          },
         },
         accountWaitMs: ACCOUNT_WAIT,
         startGapMs: GAP,
@@ -626,6 +631,39 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
   })
 
   describe('the account, frozen to the life', () => {
+    it.each([
+      { account: 'bea' as const },
+      { account: 'ada' as const, organization: 'Another organization' },
+    ])('keeps A’s cut identity across an intervening account and restart: %j', async (other) => {
+      const id = await aTurnRunsIn({ account: 'ada' })
+      await now.host.closeAll()
+      const before = readKeptAccounts(providerAccountsFile(userData)).claude!
+      starts(CUT + 1000, { ...other, nobodyListens: true })
+      await now.host.createSession(
+        { provider: 'claude', profileId: 'agent-a', approvalMode: 'auto', cwd: root },
+        window,
+      )
+      await settle()
+      const intervening = readKeptAccounts(providerAccountsFile(userData)).claude!
+      expect(intervening.id).not.toBe(before.id)
+      await now.host.closeAll()
+      starts(SOON, { account: 'ada' })
+      await waitFor(() => stateOf(id) === 'sent', 'A’s cut continuation after switching back')
+      expect(readKeptAccounts(providerAccountsFile(userData)).claude!.id).toBe(before.id)
+      expect(continuations(id)).toHaveLength(1)
+    })
+
+    it('does not claim a durable account identity when its ordinary account file cannot be saved', async () => {
+      const id = await aTurnRunsIn({ accountsCannotBeKept: true })
+      await now.host.closeAll()
+      expect(readKeptAccounts(providerAccountsFile(userData))).toEqual({})
+      expect(readKeptCuts(turnsTheAppCutFile(userData)).cuts[id]!.expected).toBeNull()
+      starts(SOON)
+      await waitFor(() => typeof stateOf(id) === 'object', 'unknown account cut')
+      expect(continuations(id)).toEqual([])
+      expect(stateOf(id)).toEqual({ ended: 'account-not-known' })
+    })
+
     it('a life on a key: the same key is the same account; another key is not', async () => {
       const a = await aTurnRunsIn({ account: 'none', tag: 'key-a' })
       await now.host.closeAll()
