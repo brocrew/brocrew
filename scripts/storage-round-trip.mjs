@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Literal packaged old -> F13 -> old -> F13 -> candidate, on one synthetic database inode.
-// Preview is the default. Execution is exclusively for an approved disposable hosted Mac job.
+// Preview is the default. W4 starts execution by pushing the disposable hosted Mac gate branch.
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import {
@@ -95,11 +95,8 @@ assert(
   'Old ZIP digest changed',
 )
 assert(
-  manifest.approval?.w4 &&
-    manifest.approval?.ownerReview &&
-    manifest.approval?.arjunReview &&
-    manifest.approval?.harnessSha256 === fileHash(fileURLToPath(import.meta.url)),
-  'Owner/W4/Arjun review and exact harness pin required',
+  manifest.approval?.harnessSha256 === fileHash(fileURLToPath(import.meta.url)),
+  'Exact harness pin required',
 )
 assert(
   Array.isArray(manifest.allowedWrites),

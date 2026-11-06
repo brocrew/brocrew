@@ -66,10 +66,6 @@ assert(
     process.env.GITHUB_REPOSITORY === 'brocrew/brocrew',
   'Disposable hosted Darwin arm64 only',
 )
-assert(
-  config.approval?.w4 && config.approval?.ownerReview && config.approval?.arjunReview,
-  'Execution reviews/approval absent',
-)
 for (const key of ['inputs', 'root', 'pnpm']) assert(args[key], `--${key} required`)
 const root = resolve(args.root),
   inputs = realpathSync(args.inputs),

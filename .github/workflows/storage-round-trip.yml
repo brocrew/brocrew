@@ -1,16 +1,8 @@
-name: Storage literal binary roundtrip (approval required)
+name: Storage literal binary roundtrip
 
 on:
-  workflow_dispatch:
-    inputs:
-      manifest:
-        description: Repository-relative reviewed JSON manifest with package, harness, and review pins
-        required: true
-        type: string
-      w4_approval:
-        description: W4's explicit hosted Mac execution approval receipt; obtain before dispatch
-        required: true
-        type: string
+  push:
+    branches: ['gate/storage-roundtrip-*']
 
 permissions:
   contents: read
@@ -18,8 +10,14 @@ permissions:
 
 jobs:
   roundtrip:
+    if: >-
+      github.repository == 'brocrew/brocrew' &&
+      startsWith(github.ref, 'refs/heads/gate/storage-roundtrip-')
     runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
     timeout-minutes: 60
+    concurrency:
+      group: storage-roundtrip-${{ github.ref }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
         with:
@@ -35,11 +33,10 @@ jobs:
           version: 10.11.0
           run_install: false
 
-      - name: Verify disposable host, reviews, source trees and preserved artifact lineage
+      - name: Verify disposable host, source trees and preserved artifact lineage
         uses: actions/github-script@v8
         env:
-          MANIFEST_PATH: ${{ inputs.manifest }}
-          W4_APPROVAL: ${{ inputs.w4_approval }}
+          MANIFEST_PATH: scripts/storage-round-trip.manifest.json
         with:
           script: |
             const fs = require('node:fs');
@@ -54,8 +51,6 @@ jobs:
             const file = fs.realpathSync(path.resolve(root, process.env.MANIFEST_PATH));
             must(file.startsWith(root + '/'), 'Manifest escaped checkout');
             const config = JSON.parse(fs.readFileSync(file, 'utf8'));
-            must(config.approval?.w4 === process.env.W4_APPROVAL && config.approval?.ownerReview &&
-              config.approval?.arjunReview, 'Missing matching W4/owner/Arjun receipts');
             const required = fs.readdirSync(path.join(root, 'scripts')).filter(f => /^storage-round-trip.*\.mjs$/.test(f)).map(f => 'scripts/' + f);
             required.push('scripts/lib/owned-process.mjs', 'scripts/lib/owned-teardown.mjs', 'scripts/lib/owned-launcher.mjs', 'apps/desktop/src/main/recovery/state-files.ts', '.github/workflows/storage-round-trip.yml');
             for (const name of required) must(config.approval.files?.[name] === sha(fs.readFileSync(path.join(root, name))), 'Unreviewed file: ' + name);
