@@ -13596,11 +13596,7 @@ export class RuntimeHost implements LiveHost {
    * {@link agentsVisibleTo} leaves out, under the same reach and the same cut.
    */
   archivedVisibleTo(by: Caller, me: string | null): ArchivedListed {
-    return archivedVisibleTo(
-      this.conversationsVisibleTo(by, me),
-      this.archived,
-      () => this.now(),
-    )
+    return archivedVisibleTo(this.conversationsVisibleTo(by, me), this.archived, () => this.now())
   }
 
   /** When a person archived `id`, epoch ms, or `null` when it is not archived. */
