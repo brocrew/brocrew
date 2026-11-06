@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -22,7 +23,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { distil } from '../src/main/runtime/digest'
-import { RuntimeHost, type RuntimeEventSink } from './helpers/giver-notice-host'
+import { RuntimeHost } from './helpers/giver-notice-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import PersonsQueue from '../src/renderer/src/components/PersonsQueue.vue'
 import TranscriptView from '../src/renderer/src/components/TranscriptView.vue'
@@ -57,12 +58,7 @@ import {
 } from '../src/shared/digest'
 import { PERMANENCE_SAID, RAIL_PERMANENCES } from '../src/shared/refusals'
 import { pieceLine, theOwnerOf } from '../src/shared/piece-called'
-import {
-  agentName,
-  type CreatedSession,
-  type RuntimeEventMessage,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { agentName, type CreatedSession, type TranscriptEvent } from '../src/shared/runtime-ipc'
 import { TASK_OUTCOMES, TASK_STALL_CAUSES, UNDRIVEN_SENTENCES } from '../src/shared/tasks'
 
 /**
@@ -197,17 +193,6 @@ const REFUSAL_CASE = {
 } as const satisfies Readonly<
   Record<(typeof RAIL_PERMANENCES)[number], { readonly tool: string; readonly rail: string }>
 >
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /** Keep the provider handles so the criterion-18 case can be raised through the real host door. */
 class ProviderDouble extends FakeRuntime {

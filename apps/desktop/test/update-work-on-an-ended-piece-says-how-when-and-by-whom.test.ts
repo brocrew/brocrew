@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -10,7 +11,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { EndedPieceDetail, RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import type { EndedPieceDetail } from '../src/main/runtime/runtime-host'
 import {
   agentToolsFor,
   anEndedPieceSaid,
@@ -21,11 +22,7 @@ import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { clockTime, clockTimeFrom } from '../src/shared/clock'
 import { sameLocalDay } from '../src/shared/local-time'
-import type {
-  PersistedEventInfo,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/runtime-ipc'
 
 /**
  * F059 · `update_work` on a piece that has ended says how, when and by whom it ended (`1abdb8ab`).
@@ -74,17 +71,6 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
   throw new Error(`timed out waiting for ${what}`)
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────

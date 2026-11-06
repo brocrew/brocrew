@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -11,12 +12,10 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -64,17 +63,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  * re-aimed rather than duplicated. ⛔ **The published inventory** — *no tool queues work for
  * somebody not named yet* — is `the-five-tools.test.ts` §5's exhaustive `Record<ToolName, …>`.
  */
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /** ⚑ **A `FakeRuntime` that keeps the toolset it was launched with** — `431`'s device. */
 class ToolWatchingRuntime extends FakeRuntime {

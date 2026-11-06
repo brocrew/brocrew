@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -10,12 +11,11 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { clockTime, clockTimeFrom } from '../src/shared/clock'
 import { sameLocalDay } from '../src/shared/local-time'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
 
 /**
@@ -57,17 +57,6 @@ const anEndedHeldPiece = (label: string, how: string): string =>
 /** F089 · the caller's own root, whole. */
 const itsOwnRoot = (label: string): string =>
   `ask a person with ask_question naming it, and answer the person here when it is done: ${label} is this conversation’s own work, from a person, so nothing was taken back. withdraw_task takes back only a piece you gave.`
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /** `FakeRuntime` with the toolset each launch was handed captured, so a test can act as that agent. */
 class ToolWatchingRuntime extends FakeRuntime {

@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import {
   mkdirSync,
   mkdtempSync,
@@ -17,7 +18,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
@@ -26,7 +27,7 @@ import {
   refuseResource,
   resourcesRoot,
 } from '../src/main/resources/resources'
-import type { ResourceReading, RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import type { ResourceReading } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -72,17 +73,6 @@ const mainRoot = join(here, '../src/main')
  * a raw `UPDATE`, never into an argument. Neither door takes a path — the id is a primary key — so
  * an argument-shaped plant would measure a door that does not exist.
  */
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /** ⚠️ Prose quotes code, so a census that reads source has to read the code only. */
 const codeOnly = (source: string): string =>

@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
@@ -18,7 +19,7 @@ import {
   aPersonTypedIt,
   whoseWordsTheseAre,
 } from '../src/main/runtime/runtime-host'
-import type { Caller, RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import type { Caller } from '../src/main/runtime/runtime-host'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import {
   WINDOW_CALLER_PREFIX,
@@ -36,7 +37,6 @@ import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import type { TranscriptItem } from '../src/renderer/src/lib/transcript'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/runtime-ipc'
 import { TURN_AUTHORSHIP_KEYS, agentName } from '../src/shared/runtime-ipc'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { pieceLine, theOwnerOf } from '../src/shared/piece-called'
 import { theDirectionLine } from '../src/main/runtime/turn-origin'
 import { replyText } from '../src/main/runtime/reply-rails'
@@ -79,17 +79,6 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
   throw new Error(`timed out waiting for ${what}`)
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 /** ⛔ **Comment-stripped**, so a census reads what the code does and not what a docblock says. */

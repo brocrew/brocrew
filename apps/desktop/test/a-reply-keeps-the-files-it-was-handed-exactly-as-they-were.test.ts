@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { navigationReply } from './helpers/navigation-reply'
 import { conversationLink, agentLink, pieceLink } from '../src/shared/links'
 import { createHash } from 'node:crypto'
@@ -28,14 +29,13 @@ import type { WorkSearchPage } from '../src/shared/work-search'
 import { workSearchQuery, clippedWorkText } from '../src/shared/work-search'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { keepResource, resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { CAPABILITY_FIELDS, MAX_CAPABILITY_COUNT } from '../src/shared/capabilities'
 import { MAX_RESOURCES_PER_REPLY, RESOURCE_ROLES } from '../src/shared/documents'
 import { PIECE_EVENT_TYPES } from '../src/shared/tasks'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { TranscriptEvent } from '../src/shared/runtime-ipc'
 
 /**
  * D-016b · a reply keeps the files it was handed exactly as they were, and the tables that hold
@@ -74,17 +74,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** An INDEPENDENT hash: never the app's own, so a writer and its reader cannot agree on a mistake. */
 const shaOf = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 describe('D-016b · a reply keeps the files it was handed exactly as they were', () => {
   let userData: string

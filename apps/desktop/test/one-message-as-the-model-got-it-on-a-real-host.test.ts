@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -10,11 +11,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { classifyHandedPath } from '../src/main/runtime/handed-path'
-import {
-  RuntimeHost,
-  THE_APP_ITSELF,
-  type RuntimeEventSink,
-} from '../src/main/runtime/runtime-host'
+import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { toolsToldInTextFor } from '../src/main/runtime/agent-tools'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { profileBundleSpans, thisConversationSpans } from '../src/main/runtime/factory-text'
@@ -27,12 +24,7 @@ import {
 } from '../src/main/runtime/workspace'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
-import type {
-  HandedPath,
-  RuntimeEventMessage,
-  TranscriptEvent,
-  UserTurnEvent,
-} from '../src/shared/runtime-ipc'
+import type { HandedPath, TranscriptEvent, UserTurnEvent } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 
 /**
@@ -56,17 +48,6 @@ import { ProviderDouble, anOpenGate } from './lib/provider-double'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 async function waitFor(predicate: () => boolean, what: string, timeoutMs = 4_000): Promise<void> {
   const deadline = Date.now() + timeoutMs

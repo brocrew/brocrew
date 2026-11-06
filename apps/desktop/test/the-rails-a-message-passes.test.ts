@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -11,7 +12,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { CallerIdentity, RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import type { CallerIdentity } from '../src/main/runtime/runtime-host'
 import {
   TOOL_REFUSALS,
   agentCallerId,
@@ -32,7 +33,6 @@ import {
 import { SPAWN_RAILS, describeRail, permanenceOf } from '../src/main/runtime/spawn-rails'
 import { CAPABILITY_FIELDS, MESSAGING_REACH, capabilityField } from '../src/shared/capabilities'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **374 · the rails a message passes** — Slice 4 P3, the last rail dispatch before the S-work.
@@ -80,17 +80,6 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /** `373`'s double, and its registry is shared for `373`'s reason — see {@link issued}. */
 class ToolWatchingRuntime extends FakeRuntime {

@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -11,11 +12,9 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { resourcesRoot } from '../src/main/resources/resources'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * # 676 M13 — the plates' own wait read must count a row no OTHER reader meets
@@ -57,17 +56,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** A row the ledger cannot parse — the whole of what "torn" means here. */
 const TORN = '{not json'
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /** ⚑ `the-rest-of-r18…`'s own double: a test has to BE the provider to answer its tool calls. */
 class ProviderDouble extends FakeRuntime {

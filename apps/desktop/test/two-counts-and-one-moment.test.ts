@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -14,14 +15,13 @@ import {
   type SessionStore,
 } from '../src/main/db/session-store'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { RuntimeHost, type RuntimeEventSink } from './helpers/giver-notice-host'
+import { RuntimeHost } from './helpers/giver-notice-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { personsQueueView, type PersonsQueueKind } from '../src/renderer/src/lib/persons-queue'
 import { RUNTIME_CHANGE_SUBJECTS } from '../src/shared/runtime-ipc'
 import type {
   RuntimeChangeMessage,
   RuntimeCommand,
-  RuntimeEventMessage,
   TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 import {
@@ -92,17 +92,6 @@ const A_PROVIDER_WALL =
 /** ⛔ **Prose stripped before anything is counted** — a docblock quoting a call is not a call. */
 function code(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1')
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 describe('567 · two counts and one moment', () => {

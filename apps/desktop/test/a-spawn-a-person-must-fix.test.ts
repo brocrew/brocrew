@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -39,11 +40,10 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { TranscriptEvent } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import { aSpawnRefusedAfterItsPipes } from '../../../packages/runtime/test/fixtures/a-spawn-that-failed'
 
@@ -83,17 +83,6 @@ const SHORTAGE = 'agent-could-not-start-just-now'
 /** The shape Node throws AT ONCE for a spawn it will not defer — `new ErrnoException(err, 'spawn')`. */
 const thrownAtOnce = (code: string): Error =>
   Object.assign(new Error(`spawn ${code}`), { code, syscall: 'spawn' })
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 describe('710 · R51 — a spawn a person must fix', () => {
   let userData: string

@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -21,7 +22,6 @@ import {
   type RuntimeEventSink,
 } from '../src/main/runtime/runtime-host'
 import { BeingDoneTracker } from '../src/main/runtime/being-done'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import {
   ACTIVITY_PHASES,
   NOTHING_WAS_SAID,
@@ -74,17 +74,6 @@ const withoutComments = (source: string): string =>
 
 /** ⚑ **A conversation nobody is watching** — the population this feature is mostly about. */
 const NOBODY_IS_WATCHING = null
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 class CapturingRuntime extends FakeRuntime {
   readonly issued: Awaited<ReturnType<FakeRuntime['start']>>[] = []

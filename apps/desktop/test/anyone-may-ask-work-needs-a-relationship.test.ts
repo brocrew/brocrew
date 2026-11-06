@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -11,7 +12,6 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { admitReachAtAll } from '../src/main/runtime/message-rails'
@@ -20,7 +20,7 @@ import {
   capabilityField,
   DEFAULT_CAPABILITIES,
 } from '../src/shared/capabilities'
-import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { AGENT_MESSAGE_KINDS, TASK_IS_OPEN } from '../src/shared/tasks'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -76,17 +76,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  * ⛔ **The exhaustive act and rail tables** are `the-rails-a-message-passes.test.ts` and
  * `a-floor-under-the-most-destructive-verb.test.ts` §7, which `553` re-aimed rather than copied.
  */
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /** ⚑ **A `FakeRuntime` that keeps the toolset it was launched with** — `431`'s device. */
 class ToolWatchingRuntime extends FakeRuntime {

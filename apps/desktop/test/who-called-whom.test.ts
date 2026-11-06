@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -14,12 +15,12 @@ import {
   type SessionStore,
 } from '../src/main/db/session-store'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { openElsewhere } from '../src/renderer/src/lib/taking-over'
 import { LEDGER_WALK_KINDS, walkCovers } from '../src/shared/questions'
 import { RUNTIME_CHANGE_SUBJECTS } from '../src/shared/runtime-ipc'
-import type { RuntimeChangeMessage, RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import type { RuntimeChangeMessage } from '../src/shared/runtime-ipc'
 import { TASK_IS_OPEN, TASK_STATES } from '../src/shared/tasks'
 import type { WhoCalledWhom } from '../src/shared/who-called-whom'
 
@@ -62,17 +63,6 @@ const NOW = 1_800_000_000_000
 /** ⛔ **Prose stripped before anything is counted** — a docblock quoting a call is not a call. */
 function code(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1')
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 describe('543 · who called whom', () => {
