@@ -60,6 +60,18 @@ it('freshly opens and closes all journal files while eliminating only duplicate 
     ).length
     expect(count, name).toBe(process.platform === 'win32' ? 2 : 1)
   }
+  const directoryChecks = new Map<number, number>()
+  held.mock.results.forEach((result, index) => {
+    if (result.type === 'return' && result.value.isDirectory()) {
+      const fd = held.mock.calls[index]![0]
+      directoryChecks.set(fd, (directoryChecks.get(fd) ?? 0) + 1)
+    }
+  })
+  // Every file starts with a full check; the same owned directory descriptors
+  // need no duplicate held-identity observation at that file's post-read point.
+  // Load and exclusive-lease entry/exit remain full checks; path checks stay.
+  expect(directoryChecks.size).toBeGreaterThan(0)
+  for (const count of directoryChecks.values()) expect(count).toBe(f.files.length + 4)
   const metrics = {
     kind: 'journal-read-syscalls',
     files: f.files.length,
@@ -105,6 +117,88 @@ it('closes transient reads after repeated read failures and recovers after fresh
   expect(closed).not.toHaveBeenCalled()
   expect(f.disk.load().rootId).toBeTruthy()
 })
+for (const interruption of ['reentry', 'pin change'] as const) {
+  it(`restores the full post-read check after ${interruption} during a file read`, async () => {
+    const f = await installed()
+    const methods = f.disk as unknown as { check(): void; pin(path: string): void }
+    const full = vi.spyOn(methods, 'check')
+    const read = vi.mocked(fs.readSync),
+      closed = vi.mocked(fs.closeSync)
+    const nativeRead = read.getMockImplementation()!,
+      nativeClose = closed.getMockImplementation()!
+    let outerFd = -1,
+      afterInterruption = -1,
+      atOuterClose = -1
+    closed.mockImplementation((fd) => {
+      if (fd === outerFd && atOuterClose < 0) atOuterClose = full.mock.calls.length
+      return nativeClose(fd)
+    })
+    read.mockImplementationOnce((...args) => {
+      outerFd = args[0]
+      const result = Reflect.apply(nativeRead, fs, args) as number
+      if (interruption === 'reentry') f.disk.load()
+      else {
+        const extra = join(f.parent, 'extra-pin')
+        fs.mkdirSync(extra, { mode: 0o700 })
+        methods.pin(extra)
+      }
+      afterInterruption = full.mock.calls.length
+      return result
+    })
+    try {
+      expect(f.disk.load().rootId).toBeTruthy()
+      expect(afterInterruption).toBeGreaterThan(0)
+      expect(atOuterClose).toBeGreaterThan(afterInterruption)
+    } finally {
+      closed.mockImplementation(nativeClose)
+      f.disk.close()
+    }
+  })
+}
+it('refuses a read interrupted by close even if the OS reuses a released descriptor', async () => {
+  const f = await installed()
+  const path = join(f.parent, 'unrelated-file')
+  fs.writeFileSync(path, 'fictional', { mode: 0o600 })
+  const read = vi.mocked(fs.readSync),
+    nativeRead = read.getMockImplementation()!
+  let replacement: number | undefined
+  read.mockImplementationOnce((...args) => {
+    const result = Reflect.apply(nativeRead, fs, args) as number
+    f.disk.close()
+    replacement = fs.openSync(path, fs.constants.O_RDONLY)
+    return result
+  })
+  try {
+    expect(() => f.disk.load()).toThrow()
+    expect(replacement).toBeDefined()
+    expect(fs.fstatSync(replacement!).isFile()).toBe(true)
+  } finally {
+    if (replacement !== undefined) fs.closeSync(replacement)
+  }
+})
+it.skipIf(process.platform === 'win32')(
+  'still checks a pinned path replacement after each file even when its held directory is unchanged',
+  async () => {
+    const f = await installed()
+    const path = join(f.root, 'state/activations'),
+      saved = path + '.saved'
+    const read = vi.mocked(fs.readSync),
+      nativeRead = read.getMockImplementation()!
+    read.mockImplementationOnce((...args) => {
+      const result = Reflect.apply(nativeRead, fs, args) as number
+      fs.renameSync(path, saved)
+      fs.mkdirSync(path, { mode: 0o700 })
+      return result
+    })
+    try {
+      expect(() => f.disk.load()).toThrow()
+    } finally {
+      fs.rmdirSync(path)
+      fs.renameSync(saved, path)
+    }
+    expect(f.disk.load().rootId).toBeTruthy()
+  },
+)
 for (const kind of ['record', 'seal']) {
   it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
     `matches the original fresh-open refusal after ${kind} owner-read permission is removed`,

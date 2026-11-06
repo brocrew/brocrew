@@ -57,9 +57,9 @@ export interface PluginDiskOptions {
   fault?: (point: 'staged' | 'published' | 'durable') => void
 }
 interface Pin {
-  path: string
-  stat: BigIntStats
-  fd: number
+  readonly path: string
+  readonly stat: BigIntStats
+  readonly fd: number
 }
 interface Counterpart {
   folder: string
@@ -75,7 +75,8 @@ class ReplayCacheChanged extends Error {}
 
 /** Shared pinned journal reader. The display entry point never opens the writer disk or fence. */
 class PluginJournalReader {
-  protected readonly pins: Pin[] = []
+  readonly #pins: Pin[] = []
+  #pinRevision = 0
   readonly root: string
   readonly guard: string
   readonly activations: string
@@ -153,20 +154,49 @@ class PluginJournalReader {
       const held = fstatSync(fd, { bigint: true })
       this.privateDirectory(held)
       if (!same(stat, held)) refuseState('unsafe-path')
-      this.pins.push({ path, stat, fd })
+      this.#pins.push({ path, stat, fd })
+      this.#pinRevision++
     } catch (error) {
       closeSync(fd)
       throw error
     }
   }
   protected check(): void {
+    const revision = ++this.#pinRevision
+    this.checkPins(true)
+    this.checkFence()
+    if (revision !== this.#pinRevision) refuseState('conflict')
+  }
+  /** The writer adds its unchanged SQLite fence proof to every directory check. */
+  protected checkFence(): void {}
+  private checkPins(held: boolean): void {
     if (this.closed) refuseState('unsafe-path')
-    for (const pin of this.pins) {
+    for (const pin of this.#pins) {
       const now = lstatSync(pin.path, { bigint: true })
       this.privateDirectory(now)
-      if (!same(now, pin.stat) || !same(fstatSync(pin.fd, { bigint: true }), pin.stat))
+      if (!same(now, pin.stat) || (held && !same(fstatSync(pin.fd, { bigint: true }), pin.stat)))
         refuseState('unsafe-path')
     }
+  }
+  private checkAfterRead(revision: number): void {
+    // Only this uninterrupted read frame may reuse the held directory identity.
+    // Reentry or any ownership transition restores the entire check instead.
+    if (revision !== this.#pinRevision) return this.check()
+    const checked = ++this.#pinRevision
+    this.checkPins(false)
+    this.checkFence()
+    if (checked !== this.#pinRevision) this.check()
+  }
+  protected syncPinnedDirectory(path: string): void {
+    const pin = this.#pins.find((pin) => pin.path === path)
+    if (this.closed || !pin) refuseState('unsafe-path')
+    syncDirectory(pin.fd)
+  }
+  protected unpin(path: string): void {
+    this.#pinRevision++
+    if (this.closed) return
+    if (this.#pins.at(-1)?.path !== path) refuseState('unsafe-path')
+    closeSync(this.#pins.pop()!.fd)
   }
   protected file(stat: BigIntStats): void {
     if (
@@ -217,6 +247,7 @@ class PluginJournalReader {
     prove: (held: BigIntStats, read: (counterparts: readonly Counterpart[]) => Buffer) => Buffer,
   ): Buffer {
     this.check()
+    const initialRevision = this.#pinRevision
     const path = join(folder, name)
     const noFollow = constants.O_NOFOLLOW as number | undefined
     const fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK | (noFollow ?? 0))
@@ -235,7 +266,11 @@ class PluginJournalReader {
       return prove(held, (counterparts) => {
         // Reservation dispatch may add a temporary directory pin after the open.
         // It must be checked before bytes, and remains pinned through the post-check.
-        if (counterparts.length) this.check()
+        let revision = initialRevision
+        if (counterparts.length) {
+          this.check()
+          revision = this.#pinRevision
+        }
         this.links(folder, name, held, counterparts)
         const bytes = Buffer.alloc(Number(held.size) + 1)
         let at = 0
@@ -253,7 +288,7 @@ class PluginJournalReader {
           !same(lstatSync(path, { bigint: true }), held)
         )
           refuseState('corrupt')
-        this.check()
+        this.checkAfterRead(revision)
         const result = bytes.subarray(0, at)
         this.readIdentities.set(result, held)
         return result
@@ -372,9 +407,10 @@ class PluginJournalReader {
   }
   close(): void {
     this.replayCache = undefined
+    this.#pinRevision++
     if (this.closed) return
-    for (const pin of this.pins.splice(0)) closeSync(pin.fd)
     this.closed = true
+    for (const pin of this.#pins.splice(0)) closeSync(pin.fd)
   }
   protected repairSeal(_name: string, _reservation: string | undefined, _source: string): void {
     void _name
@@ -435,7 +471,7 @@ export class PluginStateDisk extends PluginJournalReader {
       if (create) {
         mkdirSync(this.guard, { mode: 0o700 })
         mkdirSync(this.activations, { mode: 0o700 })
-        syncDirectory(this.pins[1]!.fd)
+        this.syncPinnedDirectory(this.root)
       }
       this.pin(this.guard)
       this.pin(this.activations)
@@ -446,19 +482,18 @@ export class PluginStateDisk extends PluginJournalReader {
           throw error
         this.check()
         mkdirSync(this.reservations, { mode: 0o700 })
-        syncDirectory(this.pins[1]!.fd)
+        this.syncPinnedDirectory(this.root)
       }
       this.pin(this.reservations)
       this.fence = PluginFence.acquire(join(this.root, 'writer-lock.sqlite'), existingOnly)
       this.check()
-      if (create) syncDirectory(this.pins[0]!.fd)
+      if (create) this.syncPinnedDirectory(dirname(this.root))
     } catch (error) {
       this.close()
       throw error instanceof PluginStateError ? error : new PluginStateError('unsafe-path')
     }
   }
-  protected override check(): void {
-    super.check()
+  protected override checkFence(): void {
     this.fence?.check(join(this.root, 'writer-lock.sqlite'))
   }
   protected override file(stat: BigIntStats): void {
@@ -477,13 +512,13 @@ export class PluginStateDisk extends PluginJournalReader {
     if (create) {
       if (readdirSync(this.reservations).length >= STATE_LIMITS.records * 2) refuseState('limit')
       mkdirSync(folder, { mode: 0o700 })
-      syncDirectory(this.pins.find((pin) => pin.path === this.reservations)!.fd)
+      this.syncPinnedDirectory(this.reservations)
     }
     this.pin(folder)
     try {
       return run(folder)
     } finally {
-      closeSync(this.pins.pop()!.fd)
+      this.unpin(folder)
     }
   }
   protected override repairSeal(
@@ -580,7 +615,7 @@ export class PluginStateDisk extends PluginJournalReader {
         refuseState('conflict')
     }
     this.options.fault?.('published')
-    syncDirectory(this.pins.find((pin) => pin.path === folder)!.fd)
+    this.syncPinnedDirectory(folder)
     this.options.fault?.('durable')
     this.check()
   }
@@ -607,18 +642,17 @@ export class PluginStateDisk extends PluginJournalReader {
           this.check()
           if (!same(lstatSync(stage, { bigint: true }), held)) refuseState('unsafe-path')
           unlinkSync(stage)
-          syncDirectory(this.pins.find((pin) => pin.path === folder)!.fd)
+          this.syncPinnedDirectory(folder)
           refuseState('conflict')
         }
       }
       this.options.fault?.('published')
-      const pin = this.pins.find((pin) => pin.path === folder)!
-      syncDirectory(pin.fd)
+      this.syncPinnedDirectory(folder)
       this.options.fault?.('durable')
       this.check()
       if (!same(lstatSync(stage, { bigint: true }), held)) refuseState('unsafe-path')
       unlinkSync(stage)
-      syncDirectory(pin.fd)
+      this.syncPinnedDirectory(folder)
     } finally {
       closeSync(fd)
     }
@@ -694,11 +728,11 @@ export class PluginStateDisk extends PluginJournalReader {
         )
           refuseState('corrupt')
         for (const name of files) this.removeFile(folder, name)
-        syncDirectory(this.pins.find((pin) => pin.path === folder)!.fd)
+        this.syncPinnedDirectory(folder)
         this.check()
         rmdirSync(folder)
       })
-      syncDirectory(this.pins.find((pin) => pin.path === this.reservations)!.fd)
+      this.syncPinnedDirectory(this.reservations)
     }
     const activations = readdirSync(this.activations)
     if (activations.length > STATE_LIMITS.records * 2) refuseState('limit')
@@ -707,7 +741,7 @@ export class PluginStateDisk extends PluginJournalReader {
       if (!stageName.test(name) && !/^\d{8}-[a-f0-9]{64}\.json$/.test(name)) refuseState('corrupt')
       this.removeFile(this.activations, name)
     }
-    syncDirectory(this.pins.find((pin) => pin.path === this.activations)!.fd)
+    this.syncPinnedDirectory(this.activations)
   }
   private journalSize(): number {
     return readdirSync(this.guard)
