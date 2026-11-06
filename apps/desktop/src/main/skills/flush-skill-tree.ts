@@ -2,7 +2,7 @@ import { openWritableSkillFile } from './open-skill-file'
 import { dirname, join, resolve } from 'node:path'
 import { assertSkillPathsAreReal } from './skill-paths'
 import { errorCode, type RecoveryFs } from '../recovery/files'
-import { readSkillTree } from '../recovery/trees'
+import { ordinarySkillTree } from './ordinary-tree'
 
 /** Flush files, their directories and the containing names up to the owned data folder. */
 export async function flushSkillTree(
@@ -12,15 +12,15 @@ export async function flushSkillTree(
   userData: string,
 ): Promise<boolean> {
   await assertSkillPathsAreReal(userData, [root], fs)
-  const tree = await readSkillTree(root, fs)
+  const tree = await ordinarySkillTree(root, fs)
   for (const entry of tree.entries.filter((one) => !one.directory)) {
     const path = join(root, ...entry.path.split('/'))
     const file =
       platform === 'win32'
         ? await openWritableSkillFile(userData, path, fs)
-        : await fs.open(path, 'r', undefined, true)
+        : await fs.open(path, 'r')
     try {
-      if (!(await file.stat?.())?.isFile()) throw new Error('Skills could not be read.')
+      if (!(await file.stat?.())?.isFile()) throw new Error(`${path}: not a regular skill file`)
       await file.sync()
     } finally {
       await file.close()
