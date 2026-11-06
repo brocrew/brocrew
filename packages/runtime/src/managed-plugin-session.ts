@@ -66,7 +66,11 @@ export class StoppedBeforeSend extends Error {
     super("Your message wasn't sent. Press Send to try again.")
   }
 }
-async function bounded<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {
+async function bounded<T>(
+  work: Promise<T>,
+  signal?: AbortSignal,
+  within: number = PLUGIN_ATTACHMENT_WAIT_MS,
+): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
   let stop!: () => void
   try {
@@ -76,7 +80,7 @@ async function bounded<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {
         stop = () => reject(new ManagedPluginFailure('wrapper-wait', 'cancelled'))
         timer = setTimeout(
           () => reject(new ManagedPluginFailure('wrapper-wait', 'timeout')),
-          PLUGIN_ATTACHMENT_WAIT_MS,
+          within,
         )
         signal?.addEventListener('abort', stop, { once: true })
         if (signal?.aborted) stop()
@@ -98,10 +102,10 @@ export function withManagedPluginAttachments(
   ): Promise<SessionHandle> {
     let unavailable: unknown
     let attachment: ManagedPluginAttachment = { revision: '', servers: [] }
-    async function read(signal?: AbortSignal) {
+    async function read(signal?: AbortSignal, within?: number) {
       let next: ManagedPluginAttachment
       try {
-        next = await bounded(source.read(), signal)
+        next = await bounded(source.read(), signal, within)
       } catch (error) {
         throw managedPluginFailure(error, 'attachment-read')
       }
@@ -161,7 +165,9 @@ export function withManagedPluginAttachments(
       pending: AbortController | undefined
     let pendingSend: Promise<void> | undefined
     let closing: Promise<void> | undefined
-    let refreshRefusal: Error | undefined
+    // A plugin refresh still running after the send's wait. It keeps going and is adopted when
+    // it settles; later sends neither wait for it again nor start another.
+    let refreshing: Promise<void> | undefined
     let dispatched = false,
       providerActive = false,
       freshAttempted = false,
@@ -213,11 +219,9 @@ export function withManagedPluginAttachments(
       get(_target, key) {
         if (key === 'events') return () => events
         if (key === 'awaitProcessExit') return () => ownership.awaitProcessExit()
-        if (key === 'status' && refreshRefusal) return () => 'ended'
         if (key === 'status' && pending) return () => 'working'
         if (key === 'send')
           return (...args: Parameters<SessionHandle['send']>) => {
-            if (refreshRefusal) return Promise.reject(refreshRefusal)
             if (pending) return Promise.reject(new TurnInProgress())
             if (closed || inner.status() !== 'idle') {
               if (freshRepairPending) return Promise.reject(new StoppedBeforeSend())
@@ -231,10 +235,14 @@ export function withManagedPluginAttachments(
               let handedInput = false
               let preparationAbort: AbortController | undefined
               let preparationDeadline: ReturnType<typeof setTimeout> | undefined
+              // One shared wait for plugin work before this message goes out. It never refuses:
+              // whatever is not ready by then attaches at a later send.
+              const until = performance.now() + PLUGIN_ATTACHMENT_WAIT_MS
+              const left = () => Math.max(0, until - performance.now())
               try {
                 let next: ManagedPluginAttachment | undefined
                 try {
-                  next = await read(wait.signal)
+                  next = await read(wait.signal, left())
                 } catch (error) {
                   noteUnavailable(error)
                 }
@@ -253,9 +261,13 @@ export function withManagedPluginAttachments(
                           old.pluginId === one.pluginId,
                       ),
                   ) ?? []
-                if (health.length && inner.managedPluginHealth) {
+                if (health.length && inner.managedPluginHealth && !refreshing) {
                   try {
-                    const failed = await bounded(inner.managedPluginHealth(health), wait.signal)
+                    const failed = await bounded(
+                      inner.managedPluginHealth(health),
+                      wait.signal,
+                      left(),
+                    )
                     // Only names from this handle's admitted routes may authorize recovery.
                     stale = failed?.filter((name) => health.some((one) => one.name === name)) ?? []
                   } catch {
@@ -265,36 +277,43 @@ export function withManagedPluginAttachments(
                 if (closed || wait.signal.aborted)
                   throw new Error('the turn was stopped before its message could be sent')
                 if (inner.status() !== 'idle') throw new TurnInProgress()
-                if (next && (signature(next) !== signature(attachment) || stale.length)) {
+                if (
+                  next &&
+                  !refreshing &&
+                  (signature(next) !== signature(attachment) || stale.length)
+                ) {
                   if (inner.refreshManagedPlugins) {
+                    const offered = next
                     let settled = false
+                    const applying = (
+                      stale.length
+                        ? inner.refreshManagedPlugins(offered.servers, stale)
+                        : inner.refreshManagedPlugins(offered.servers)
+                    ).then(
+                      () => {
+                        settled = true
+                        if (!closed) attachment = offered
+                      },
+                      (error: unknown) => {
+                        settled = true
+                        throw error
+                      },
+                    )
                     try {
-                      const refreshing = (
-                        stale.length
-                          ? inner.refreshManagedPlugins(next.servers, stale)
-                          : inner.refreshManagedPlugins(next.servers)
-                      ).then(
-                        () => {
-                          settled = true
-                        },
-                        (error: unknown) => {
-                          settled = true
-                          throw error
-                        },
-                      )
-                      await bounded(refreshing, wait.signal)
-                      attachment = next
+                      await bounded(applying, wait.signal, left())
                     } catch (error) {
-                      if (!settled) {
-                        refreshRefusal =
-                          wait.signal.aborted && !closed
-                            ? new StoppedBeforeSend()
-                            : new Error("Your message wasn't sent. Press Send to try again.")
-                        // The host can retry only after this handle's retirement confirms exit.
-                        void proxy.close().catch(() => undefined)
-                        throw refreshRefusal
+                      if (settled) noteUnavailable(error, 'sdk-refresh')
+                      else {
+                        // Still applying: keep the usable handle, let the refresh finish on its
+                        // own and adopt it then. The message goes out (or, after Stop, does not).
+                        refreshing = applying
+                        void applying
+                          .catch((late: unknown) => noteUnavailable(late, 'sdk-refresh'))
+                          .finally(() => {
+                            if (refreshing === applying) refreshing = undefined
+                          })
+                        if (wait.signal.aborted && !closed) throw new StoppedBeforeSend()
                       }
-                      noteUnavailable(error, 'sdk-refresh')
                     }
                   } else if (
                     inner.ref &&

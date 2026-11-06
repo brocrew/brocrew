@@ -1,8 +1,4 @@
 import type { ManagedPluginMcpServer } from '../managed-plugin-mcp'
-import {
-  waitForClaudeManagedPlugins,
-  CLAUDE_MANAGED_PLUGIN_READY_WITHIN_MS,
-} from './managed-plugin-readiness'
 import { managedTranscriptSettings } from './app-transcript-retention'
 import { randomUUID } from 'node:crypto'
 import {
@@ -72,12 +68,7 @@ import {
 } from '../codex/external-mcp'
 import { ApprovalModeSwitch, type ApprovalModeState } from '../approval-mode'
 import { NextTurnSetting } from '../next-turn'
-import {
-  boundPermissionDetail,
-  MAX_PERMISSION_DETAIL_CHARS,
-  wrapUnknown,
-  type RuntimeEvent,
-} from '../events'
+import { boundPermissionDetail, MAX_PERMISSION_DETAIL_CHARS, type RuntimeEvent } from '../events'
 import {
   answerToForward,
   duplicateAnswerKey,
@@ -1732,66 +1723,12 @@ export class ClaudeSessionHandle implements SessionHandle {
   ) => NonNullable<Options['mcpServers']>
   private managedPluginServers: readonly ManagedPluginMcpServer[] = []
   private managedPluginGeneration = 0
-  private managedPluginsAwaited?: readonly string[]
-  private managedPluginWait?: AbortController
   configurePluginRefresh(
     build: NonNullable<ClaudeSessionHandle['pluginRefresh']>,
     servers: readonly ManagedPluginMcpServer[] = [],
   ): void {
     this.pluginRefresh = build
     this.managedPluginServers = servers.map((server) => ({ ...server }))
-  }
-  awaitManagedPlugins(names: readonly string[]): void {
-    this.cancelManagedPluginWait()
-    this.managedPluginGeneration++
-    const configured = new Set(this.managedPluginServers.map((server) => server.name))
-    this.managedPluginsAwaited = [...new Set(names.filter((name) => configured.has(name)))]
-  }
-  private cancelManagedPluginWait(): void {
-    this.managedPluginWait?.abort()
-    this.managedPluginWait = undefined
-  }
-  private async awaitManagedPluginInventory(turnId: number): Promise<void> {
-    const query = this.query
-    const generation = this.managedPluginGeneration
-    const awaited = this.managedPluginsAwaited
-    const servers = this.managedPluginServers.filter((server) =>
-      awaited ? awaited.includes(server.name) : !server.retained,
-    )
-    if (!servers.length) return
-    const waiting = new AbortController()
-    this.managedPluginWait = waiting
-    const outcome = query?.mcpServerStatus
-      ? await waitForClaudeManagedPlugins(() => query.mcpServerStatus!(), servers, waiting.signal)
-      : 'unavailable'
-    if (this.managedPluginWait === waiting) this.managedPluginWait = undefined
-    if (
-      waiting.signal.aborted ||
-      this.isShuttingDown ||
-      this.machine.activeTurnId !== turnId ||
-      this.query !== query ||
-      this.managedPluginGeneration !== generation
-    ) {
-      // No provider input was queued. A config change can cancel this wait without a separate
-      // interrupt; end only this local turn so the next message is not stranded behind it.
-      if (!this.isShuttingDown && this.machine.activeTurnId === turnId) this.machine.forceEnd()
-      throw new Error('the turn was stopped before its message could be sent')
-    }
-    if (outcome !== 'ready')
-      this.emit(
-        wrapUnknown(
-          'claude',
-          {
-            method: 'managed-plugin/discovery',
-            stage: 'sdk-inventory',
-            outcome,
-            withinMs: CLAUDE_MANAGED_PLUGIN_READY_WITHIN_MS,
-            message: 'Plugin attachment unavailable at sdk-inventory.',
-          },
-          'lifecycle',
-          'managed-plugin/discovery',
-        ),
-      )
   }
   async managedPluginHealth(
     servers: readonly ManagedPluginMcpServer[],
@@ -1816,7 +1753,6 @@ export class ClaudeSessionHandle implements SessionHandle {
     servers: readonly ManagedPluginMcpServer[],
     reconnect: readonly string[] = [],
   ): Promise<void> {
-    this.cancelManagedPluginWait()
     const generation = ++this.managedPluginGeneration
     const query = this.query
     const next = servers.map((server) => ({ ...server }))
@@ -3365,7 +3301,6 @@ export class ClaudeSessionHandle implements SessionHandle {
    * the input queue so nothing leaks even if the app never calls close() afterward.
    */
   private releaseProvider(): void {
-    this.cancelManagedPluginWait()
     this.detachQuery()
     this.input.close()
     this.terminated = true
@@ -3644,18 +3579,6 @@ export class ClaudeSessionHandle implements SessionHandle {
     // the replacement. Sending this message into it would attribute the stopped turn's text to the
     // one that replaced it, which is the shape 042 measured from the other end.
     if (this.terminated || this.machine.activeTurnId !== turnId) {
-      throw new Error('the turn was stopped before its message could be sent')
-    }
-    const pluginGeneration = this.managedPluginGeneration
-    const pluginQuery = this.query
-    await this.awaitManagedPluginInventory(turnId)
-    if (
-      this.isShuttingDown ||
-      this.machine.activeTurnId !== turnId ||
-      this.query !== pluginQuery ||
-      this.managedPluginGeneration !== pluginGeneration
-    ) {
-      if (!this.isShuttingDown && this.machine.activeTurnId === turnId) this.machine.forceEnd()
       throw new Error('the turn was stopped before its message could be sent')
     }
     // 🔴 **662 · who wrote these words, in the SDK's field for it** — see {@link claudeOriginOf}.
@@ -3951,7 +3874,6 @@ export class ClaudeSessionHandle implements SessionHandle {
    * task with it.
    */
   async interrupt(): Promise<void> {
-    this.cancelManagedPluginWait()
     if (this.machine.isTerminal || !this.query) return
     if (!this.machine.hasProviderWork && this.machine.waiting === 0) return
     this.machine.requestInterrupt()
@@ -4037,7 +3959,6 @@ export class ClaudeSessionHandle implements SessionHandle {
    * drops any late provider event.
    */
   close(): Promise<void> {
-    this.cancelManagedPluginWait()
     // Single-flight: every concurrent caller awaits the SAME teardown promise, so
     // caller 2 never resolves before caller 1's provider teardown finishes (023 P1-A).
     // NOT `async` — an async wrapper would return a fresh promise per call, breaking
