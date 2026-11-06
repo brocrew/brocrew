@@ -79,10 +79,3 @@ export async function teamProfileGraphForWindow(
     ? { ...result, stale: true }
     : result
 }
-
-export async function closeWindowRead(
-  owner: string,
-  reader: { closeWindow(owner: string): Promise<void> } | undefined,
-): Promise<void> {
-  await reader?.closeWindow(owner)
-}
