@@ -1,4 +1,9 @@
-import type { AboutWork, AboutWorkIs, RoutedRequest, WorkInHand } from '../src/shared/question-contracts'
+import type {
+  AboutWork,
+  AboutWorkIs,
+  RoutedRequest,
+  WorkInHand,
+} from '../src/shared/question-contracts'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -14,10 +19,14 @@ import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { distil } from '../src/main/runtime/digest'
-import { ABOUT_WORK_SAYS, NOTHING_NAMED_THE_WORK, aboutTheWork, escalationChain } from '../src/shared/questions'
+import {
+  ABOUT_WORK_SAYS,
+  NOTHING_NAMED_THE_WORK,
+  aboutTheWork,
+  escalationChain,
+} from '../src/shared/questions'
 import { derivePieces, openWorkOf, workNamed } from '../src/shared/tasks'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
-
 
 /**
  * 🔴 **474 · what a request is about, and whose it is** — `463`'s F4 and F2, which are two halves of

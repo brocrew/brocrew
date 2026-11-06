@@ -25,7 +25,12 @@ import {
   agentToolsFor,
   type ToolName,
 } from '../src/main/runtime/agent-tools'
-import { DEFAULT_PROFILE_ID, DEFAULT_PROFILE_LABEL, agentName, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import {
+  DEFAULT_PROFILE_ID,
+  DEFAULT_PROFILE_LABEL,
+  agentName,
+  type RuntimeEventMessage,
+} from '../src/shared/runtime-ipc'
 import { theOwnerOf } from '../src/shared/piece-called'
 
 const here = dirname(fileURLToPath(import.meta.url))

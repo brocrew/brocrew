@@ -15,7 +15,6 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
 import { isRefusalRemedy } from '../src/shared/refusals'
 
-
 /**
  * 🔴 **733 · the last credential guards** — `731` F-2 and F-4, under R92 and R93.
  *

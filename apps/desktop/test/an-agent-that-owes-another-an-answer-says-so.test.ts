@@ -24,7 +24,13 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
-import { DEFAULT_PROFILE_ID, type ResumableSessionInfo, type RuntimeEventMessage, type RuntimeStatesMessage, type UnresumableSessionInfo } from '../src/shared/runtime-ipc'
+import {
+  DEFAULT_PROFILE_ID,
+  type ResumableSessionInfo,
+  type RuntimeEventMessage,
+  type RuntimeStatesMessage,
+  type UnresumableSessionInfo,
+} from '../src/shared/runtime-ipc'
 
 /**
  * # F036 · an agent that owes another an answer says so — the host half (`80bff428`)

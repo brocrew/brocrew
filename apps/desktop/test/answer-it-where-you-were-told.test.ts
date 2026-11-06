@@ -1,6 +1,22 @@
-import type { AskedQuestion, HowItWasRaised, LedgerWalk, OfferedAnswer, PersonsDecision, PersonsQuestion, RaisedQuestion, RoutedRequest } from '../src/shared/question-contracts'
+import type {
+  AskedQuestion,
+  HowItWasRaised,
+  LedgerWalk,
+  OfferedAnswer,
+  PersonsDecision,
+  PersonsQuestion,
+  RaisedQuestion,
+  RoutedRequest,
+} from '../src/shared/question-contracts'
 import { describe, expect, it } from 'vitest'
-import { NOTHING_NAMED_THE_WORK, aPersonsSince, chainReading, chainSentence, escalationChain, whatTheAskerOffered } from '../src/shared/questions'
+import {
+  NOTHING_NAMED_THE_WORK,
+  aPersonsSince,
+  chainReading,
+  chainSentence,
+  escalationChain,
+  whatTheAskerOffered,
+} from '../src/shared/questions'
 import type { UserInputQuestion } from '@brobot2/runtime'
 import {
   personsQueueView,

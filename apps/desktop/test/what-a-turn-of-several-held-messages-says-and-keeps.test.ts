@@ -38,7 +38,12 @@ import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { exchangePreviewLines, whatATurnDelivered } from '../src/shared/last-exchange'
-import { MAX_TURN_PARTS, theMessagesOf, type RuntimeEventMessage, type SessionLivenessMessage } from '../src/shared/runtime-ipc'
+import {
+  MAX_TURN_PARTS,
+  theMessagesOf,
+  type RuntimeEventMessage,
+  type SessionLivenessMessage,
+} from '../src/shared/runtime-ipc'
 import { derivePieces, theDriveOfTheTurn } from '../src/shared/tasks'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'

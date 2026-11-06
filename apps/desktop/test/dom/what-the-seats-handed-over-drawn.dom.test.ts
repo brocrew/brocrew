@@ -1,4 +1,8 @@
-import type { LedgerWalk, PersonsDecision, PersonsQuestion } from '../../src/shared/question-contracts'
+import type {
+  LedgerWalk,
+  PersonsDecision,
+  PersonsQuestion,
+} from '../../src/shared/question-contracts'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import type { WorkReport } from '../../src/shared/task-contracts'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -16,7 +20,13 @@ import { useSpawnSafety } from '../../src/renderer/src/lib/spawn-safety'
 import { workReading } from '../../src/renderer/src/lib/work-report'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 
-import { type AgentIdentities, type AgentIdentity, type ChildWorkResult, type ResumableSessionInfo, type WorkflowOutputResult } from '../../src/shared/runtime-ipc'
+import {
+  type AgentIdentities,
+  type AgentIdentity,
+  type ChildWorkResult,
+  type ResumableSessionInfo,
+  type WorkflowOutputResult,
+} from '../../src/shared/runtime-ipc'
 import type { StalledWork } from '../../src/shared/stalled-work'
 import { pieceCalled } from '../../src/shared/piece-called'
 

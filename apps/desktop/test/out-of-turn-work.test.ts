@@ -25,7 +25,11 @@ import {
   standingOf,
 } from '../src/renderer/src/lib/agent-state'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
-import type { RuntimeEventMessage, SessionLiveness, SessionLivenessMessage } from '../src/shared/runtime-ipc'
+import type {
+  RuntimeEventMessage,
+  SessionLiveness,
+  SessionLivenessMessage,
+} from '../src/shared/runtime-ipc'
 
 /**
  * **123 · Working outside a turn — four minutes of real work the app called `idle`.**

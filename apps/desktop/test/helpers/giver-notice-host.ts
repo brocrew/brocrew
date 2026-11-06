@@ -4,7 +4,6 @@ import type { SessionStore } from '../../src/main/db/session-store'
 import { RuntimeHost as ProductRuntimeHost } from '../../src/main/runtime/runtime-host'
 import type { ReconciliationPiece } from '../../src/main/runtime/work-reconciliation'
 
-
 import { theMessagesOf } from '../../src/shared/runtime-ipc'
 
 export * from '../../src/main/runtime/runtime-host'

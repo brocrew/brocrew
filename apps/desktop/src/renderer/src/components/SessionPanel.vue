@@ -11,7 +11,15 @@ import type { AgentFacets } from '../lib/agent-state'
 import { sessionPanel, type PanelAsset } from '../lib/session-panel'
 import type { TranscriptState } from '../lib/transcript'
 import type { TranscriptMode } from '../lib/transcript-mode'
-import type { AgentIdentity, CreatedSession, KeptFile, ProviderCapabilityMap, RevealResult, SessionPathTarget, SetSessionSettingInput } from '../../../shared/runtime-ipc'
+import type {
+  AgentIdentity,
+  CreatedSession,
+  KeptFile,
+  ProviderCapabilityMap,
+  RevealResult,
+  SessionPathTarget,
+  SetSessionSettingInput,
+} from '../../../shared/runtime-ipc'
 import type { PickedModel } from '../lib/model-lists'
 import { useAgentPanel } from '../composables/useAgentPanel'
 import { useConversationControls } from '../composables/useConversationControls'

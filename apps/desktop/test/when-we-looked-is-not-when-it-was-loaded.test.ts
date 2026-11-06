@@ -5,7 +5,6 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 
-
 /**
  * 🔴 **604 · the launch row says when THIS APP looked at the store.**
  *

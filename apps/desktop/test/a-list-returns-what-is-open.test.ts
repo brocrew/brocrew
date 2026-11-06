@@ -5,8 +5,6 @@ import type { AgentToolset } from '@brobot2/runtime'
 import { agentToolsFor, ENDED_LISTED, type AgentToolHost } from '../src/main/runtime/agent-tools'
 import type { PieceBoard } from '../src/main/runtime/runtime-host'
 
-
-
 /**
  * `list_tasks` and `list_questions` list what is open. A long history is counted, and listed only
  * when asked for, a line each, newest first and no more than a limit: so an answer stays the size of

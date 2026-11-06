@@ -21,7 +21,11 @@ import {
   type SessionRecord,
 } from '../../src/renderer/src/lib/session-record'
 import { markAnswerRefused } from '../../src/renderer/src/lib/transcript'
-import type { CreatedSession, PermissionDecision, RuntimeEventMessage } from '../../src/shared/runtime-ipc'
+import type {
+  CreatedSession,
+  PermissionDecision,
+  RuntimeEventMessage,
+} from '../../src/shared/runtime-ipc'
 import { asTheWireWouldCarry } from '../lib/the-wire'
 import { assertDrawn, drawnReady } from './drawn'
 import { META, mount, paneProps, unmountAll, visible, type Mounted } from './harness'

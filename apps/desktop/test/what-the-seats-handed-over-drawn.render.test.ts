@@ -47,7 +47,14 @@ import { readableError } from '../src/renderer/src/lib/session-record'
 import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
 import { HOLDING_SAYS, type AgentRemoved } from '../src/shared/agent-roster'
 import { aChoiceInWords } from '../src/shared/model-choice'
-import { DEFAULT_PROFILE_ID, PROVIDER_NAME, type AgentIdentities, type AgentIdentity, type RuntimeBridge, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import {
+  DEFAULT_PROFILE_ID,
+  PROVIDER_NAME,
+  type AgentIdentities,
+  type AgentIdentity,
+  type RuntimeBridge,
+  type RuntimeEventMessage,
+} from '../src/shared/runtime-ipc'
 import { stalledWorkKey, type StalledWork } from '../src/shared/stalled-work'
 import { everythingOverTheWire } from './lib/the-wire'
 

@@ -4,7 +4,6 @@ import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversa
 import { describe, expect, it } from 'vitest'
 import { ITS_OWNER_RUNNING_AGAIN_DRIVES_IT, derivePieces } from '../src/shared/tasks'
 
-
 /**
  * 🔴 **D-005 · F019 — a turn starting on an owner puts its work back to `working`.**
  *

@@ -19,7 +19,12 @@ import {
 } from '../src/main/runtime/runtime-host'
 import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DEFAULT_PROFILE_ID, type RuntimeEventMessage, type SessionLiveness, type SessionLivenessMessage } from '../src/shared/runtime-ipc'
+import {
+  DEFAULT_PROFILE_ID,
+  type RuntimeEventMessage,
+  type SessionLiveness,
+  type SessionLivenessMessage,
+} from '../src/shared/runtime-ipc'
 import type { ProtectedPlaceNotice } from '../src/shared/work-folders'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 

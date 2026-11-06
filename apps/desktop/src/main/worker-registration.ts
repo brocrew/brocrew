@@ -1,6 +1,5 @@
 import type { WorkerRegisteredEvent } from '../shared/conversation-events'
 
-
 const id = (value: unknown): value is string =>
   typeof value === 'string' && value.length > 0 && value.length <= 200
 

@@ -24,7 +24,14 @@ import { isGiverStallNotice, RuntimeHost } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { TASK_IS_OPEN, TASK_WAITS, WAITING_STANDS_FOR, composeWhatEachPieceIsWaitingOn, stalledWithACause, theWaitIn } from '../src/shared/tasks'
+import {
+  TASK_IS_OPEN,
+  TASK_WAITS,
+  WAITING_STANDS_FOR,
+  composeWhatEachPieceIsWaitingOn,
+  stalledWithACause,
+  theWaitIn,
+} from '../src/shared/tasks'
 import { WORK_STATE_WORD } from '../src/renderer/src/lib/work-report'
 import { aPersonOwesAnAnswerIn } from '../src/shared/questions'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'

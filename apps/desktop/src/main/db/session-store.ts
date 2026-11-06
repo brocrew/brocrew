@@ -1,11 +1,50 @@
-import type { ReconciliationReceipt, WorkRecoveryEvent } from '../../shared/reconciliation-contracts'
-import type { LedgerWalk, LedgerWalkKind, ProviderRequestEvent, QuestionAskedEvent, RaisedQuestion, RequestOnlyAPersonCanSettle, RoutedRequest } from '../../shared/question-contracts'
+import type {
+  ReconciliationReceipt,
+  WorkRecoveryEvent,
+} from '../../shared/reconciliation-contracts'
+import type {
+  LedgerWalk,
+  LedgerWalkKind,
+  ProviderRequestEvent,
+  QuestionAskedEvent,
+  RaisedQuestion,
+  RequestOnlyAPersonCanSettle,
+  RoutedRequest,
+} from '../../shared/question-contracts'
 import { MAILBOX_KINDS } from '../../shared/conversation-events'
-import type { InstructionProposedEvent, InstructionSettledEvent, MailboxKind, McpServerRequestSettledEvent, McpServerRequestedEvent, MemoryNoteSeen, QueuedMessageEvent, TheQuestionItAsks, TranscriptEvent, UnqueuedMessageEvent, WorkerRegisteredEvent } from '../../shared/conversation-events'
+import type {
+  InstructionProposedEvent,
+  InstructionSettledEvent,
+  MailboxKind,
+  McpServerRequestSettledEvent,
+  McpServerRequestedEvent,
+  MemoryNoteSeen,
+  QueuedMessageEvent,
+  TheQuestionItAsks,
+  TranscriptEvent,
+  UnqueuedMessageEvent,
+  WorkerRegisteredEvent,
+} from '../../shared/conversation-events'
 import type { MoveReceipt } from '../../shared/move-contracts'
 import type { AgentModelChoice, ModelAndEffort } from '../../shared/model-choice-contracts'
-import type { AnsweredQuestion, HumanAnswers, HumanFinalContext, HumanTurnAnswer, TurnAuthorship, UserTurnEvent, UserTurnPart } from '../../shared/human-answer-contracts'
-import type { PieceRow, PieceWaitingOnWhoWrote, StatusLine, WhatAConversationIsWaitingOn, WorkGivenEvent, WorkGivenOut, WorkReport } from '../../shared/task-contracts'
+import type {
+  AnsweredQuestion,
+  HumanAnswers,
+  HumanFinalContext,
+  HumanTurnAnswer,
+  TurnAuthorship,
+  UserTurnEvent,
+  UserTurnPart,
+} from '../../shared/human-answer-contracts'
+import type {
+  PieceRow,
+  PieceWaitingOnWhoWrote,
+  StatusLine,
+  WhatAConversationIsWaitingOn,
+  WorkGivenEvent,
+  WorkGivenOut,
+  WorkReport,
+} from '../../shared/task-contracts'
 import type { HandedPath } from '../../shared/attachment-contracts'
 import type { ScheduleLevel, ScheduledRow } from '../../shared/agent-state-contracts'
 import { createOwnNotesStore, type OwnNotesStore } from './own-notes'
@@ -99,7 +138,14 @@ import { NONE_STARTED } from '../../shared/agent-roster'
 import type { IdentityHistory, StartedOn } from '../../shared/agent-roster'
 import { sameModel } from '../../shared/model-choice'
 import type { ChildDescent } from '../adopt/discover-sessions'
-import type { AgentIdentity, AgentIdentityName, IdentityCreator, NewAgent, DerivedState, LedgerStatus } from '../../shared/runtime-ipc'
+import type {
+  AgentIdentity,
+  AgentIdentityName,
+  IdentityCreator,
+  NewAgent,
+  DerivedState,
+  LedgerStatus,
+} from '../../shared/runtime-ipc'
 import {
   DEFAULT_PROFILE_ID,
   agentName,
@@ -187,11 +233,32 @@ import {
   readIdentityCreator,
 } from './identity'
 import { newEventId, newResourceId, newTurnId, newWorkId } from './ids'
-import { aStallItsGiverCanBeToldOf, composeWhatEachPieceIsWaitingOn, derivePieces, isAWorkReport, thePiecesTheTurnNames, theWorkThatNamesItAmong, waitsOnWhoWrote, workGivenOut, TASK_IS_OPEN, aWaitNeedsClassifying, theWaitItMarks } from '../../shared/tasks'
+import {
+  aStallItsGiverCanBeToldOf,
+  composeWhatEachPieceIsWaitingOn,
+  derivePieces,
+  isAWorkReport,
+  thePiecesTheTurnNames,
+  theWorkThatNamesItAmong,
+  waitsOnWhoWrote,
+  workGivenOut,
+  TASK_IS_OPEN,
+  aWaitNeedsClassifying,
+  theWaitItMarks,
+} from '../../shared/tasks'
 // ⚑ **D-016 · a piece's label** — `W1.4.2`, built and read by one module — and, since commit 7, the
 // work that names a conversation.
 import { pieceCalled, pieceNumbersOf, type WorkThatNamesIt } from '../../shared/piece-called'
-import { REQUEST_IS_OPEN, aPersonOwesAnAnswerIn, deriveRoutedRequests, openQuestionsByWork, permissionShaped, anActionAsked, aPersonsSince, aWaitIsReadFrom } from '../../shared/questions'
+import {
+  REQUEST_IS_OPEN,
+  aPersonOwesAnAnswerIn,
+  deriveRoutedRequests,
+  openQuestionsByWork,
+  permissionShaped,
+  anActionAsked,
+  aPersonsSince,
+  aWaitIsReadFrom,
+} from '../../shared/questions'
 import {
   howWorkStopped,
   whoCancelledIt,
@@ -3591,7 +3658,9 @@ export interface SessionStore extends OwnNotesStore {
    * on a row that names none). `null` while nothing decided it.
    */
   generationOf?(sessionId: string): number
-  latestMoveOffer?(sessionId: string): import('../../shared/question-contracts').QuestionAskedEvent | null
+  latestMoveOffer?(
+    sessionId: string,
+  ): import('../../shared/question-contracts').QuestionAskedEvent | null
   theDecisionOn(
     sessionId: string,
     requestId: string,

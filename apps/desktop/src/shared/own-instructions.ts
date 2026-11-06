@@ -59,7 +59,6 @@ import type { ActedBy } from './who-did-it'
 // build time, and this module must stay reachable from a renderer without pulling `runtime-ipc.ts`
 // in as a value.
 
-
 /**
  * ⛔ **The longest rule set a person may save, in characters.**
  *

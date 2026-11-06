@@ -3,7 +3,11 @@ import type { AgentModelChoice } from '../../../shared/model-choice-contracts'
 
 import { computed, ref, watch } from 'vue'
 import type { Provider, ProviderCapabilityMap } from '../../../shared/runtime-ipc'
-import { aChoiceInWords, aChoiceIsInForce, whatAModelChoiceReaches } from '../../../shared/model-choice'
+import {
+  aChoiceInWords,
+  aChoiceIsInForce,
+  whatAModelChoiceReaches,
+} from '../../../shared/model-choice'
 import type { AgentStore } from '../lib/agent-store'
 import {
   aChoiceForAnotherProviderSays,

@@ -1,4 +1,8 @@
-import type { InjectedInstruction, InjectedInstructionKind, RefusedInstruction } from '../../../shared/instruction-contracts'
+import type {
+  InjectedInstruction,
+  InjectedInstructionKind,
+  RefusedInstruction,
+} from '../../../shared/instruction-contracts'
 import type { MemoryLoadedEvent } from '../../../shared/conversation-events'
 import { given } from './given'
 import { workspaceInstructionFile as INSTRUCTION_FILENAME } from './layout.mjs'
@@ -8,7 +12,6 @@ import { AUTO_MEMORY_INDEX } from '@brobot2/runtime'
 import { readClaudeAgentMemory, type ClaudeMemoryRead } from './memory'
 import { agentPreamble } from '../../runtime/agent-preamble'
 import type { InstructionInputs, SessionLaunchRead } from '../instruction-types'
-
 
 import {
   allocate,

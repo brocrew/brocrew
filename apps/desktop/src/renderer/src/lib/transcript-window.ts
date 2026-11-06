@@ -1,5 +1,11 @@
 import type { PersistedEventInfo, TranscriptEvent } from '../../../shared/conversation-events'
-import { HISTORY_WINDOW_MAX_EVENTS, type HistoryWindow, type RuntimeEventMessage, type SessionRef, type SessionStatus } from '../../../shared/runtime-ipc'
+import {
+  HISTORY_WINDOW_MAX_EVENTS,
+  type HistoryWindow,
+  type RuntimeEventMessage,
+  type SessionRef,
+  type SessionStatus,
+} from '../../../shared/runtime-ipc'
 import {
   applyEvent,
   createTranscript,

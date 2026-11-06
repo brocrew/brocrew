@@ -13,7 +13,11 @@ import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { isVisibleIn } from '../src/renderer/src/lib/transcript-mode'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
-import type { RuntimeEventMessage, SessionLiveness, SessionLivenessMessage } from '../src/shared/runtime-ipc'
+import type {
+  RuntimeEventMessage,
+  SessionLiveness,
+  SessionLivenessMessage,
+} from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 A message BroBot should sign (278, from 276)

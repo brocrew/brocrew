@@ -27,8 +27,11 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
-
-import { DEFAULT_PROFILE_ID, type RuntimeEventMessage, type RuntimeStatesMessage } from '../src/shared/runtime-ipc'
+import {
+  DEFAULT_PROFILE_ID,
+  type RuntimeEventMessage,
+  type RuntimeStatesMessage,
+} from '../src/shared/runtime-ipc'
 
 /**
  * F097 · a person owes the agent that answered them — the host half.

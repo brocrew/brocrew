@@ -16,7 +16,11 @@ import { createSessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from './helpers/giver-notice-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
-import type { RuntimeEventMessage, SessionLiveness, SessionLivenessMessage } from '../src/shared/runtime-ipc'
+import type {
+  RuntimeEventMessage,
+  SessionLiveness,
+  SessionLivenessMessage,
+} from '../src/shared/runtime-ipc'
 
 /**
  * # The giver's `list_tasks` row says what the words held for its helper wait for

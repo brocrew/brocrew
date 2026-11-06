@@ -1,5 +1,9 @@
 import type { LedgerWalk, LedgerWalkKind } from '../src/shared/question-contracts'
-import type { TaskState, TaskWait, WhatEachConversationIsWaitingOn } from '../src/shared/task-contracts'
+import type {
+  TaskState,
+  TaskWait,
+  WhatEachConversationIsWaitingOn,
+} from '../src/shared/task-contracts'
 import ts from 'typescript'
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import { camelize, capitalize, createSSRApp, h } from 'vue'

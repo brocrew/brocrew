@@ -2,7 +2,15 @@ import type { PastedImage } from '../../shared/attachment-contracts'
 import { createHash, randomBytes } from 'node:crypto'
 import { mkdir, readdir, rename, stat, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
-import { MAX_PASTED_IMAGE_BYTES, MAX_PASTED_IMAGE_PIXELS, isPastedImageName, pastedImageName, pastedImageTooBig, pastedImageTooManyPixels, type DroppedPathVerdict } from '../../shared/runtime-ipc'
+import {
+  MAX_PASTED_IMAGE_BYTES,
+  MAX_PASTED_IMAGE_PIXELS,
+  isPastedImageName,
+  pastedImageName,
+  pastedImageTooBig,
+  pastedImageTooManyPixels,
+  type DroppedPathVerdict,
+} from '../../shared/runtime-ipc'
 import { classifyHandedPath } from './handed-path'
 
 /**

@@ -10,7 +10,6 @@ import { applyEvent } from '../../src/renderer/src/lib/transcript'
 import { META, mount, paneProps, record, unmountAll, visible } from './harness'
 import type { SessionRecord } from '../../src/renderer/src/lib/session-record'
 
-
 /**
  * 🔴 **What the go-ahead button actually EMITS, and what the conversation shows afterwards**
  * (278 §3).

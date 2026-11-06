@@ -1,4 +1,9 @@
-import type { CardNobodyHolds, LedgerWalk, PersonsDecision, RequestOnlyAPersonCanSettle } from '../../src/shared/question-contracts'
+import type {
+  CardNobodyHolds,
+  LedgerWalk,
+  PersonsDecision,
+  RequestOnlyAPersonCanSettle,
+} from '../../src/shared/question-contracts'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { defineComponent, h, nextTick, type Component } from 'vue'

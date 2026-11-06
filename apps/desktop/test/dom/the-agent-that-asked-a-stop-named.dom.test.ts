@@ -10,7 +10,14 @@ import {
 } from '../../src/renderer/src/lib/session-record'
 import { CAPABILITY_FIELDS, DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import { ASKED_TO_STOP, stoppedBy } from '../../src/shared/how-work-stopped'
-import { AGENT_DISPLAY_NAME_CHARS, DEFAULT_PROFILE_ID, agentName, providerName, type AgentIdentity, type CreatedSession } from '../../src/shared/runtime-ipc'
+import {
+  AGENT_DISPLAY_NAME_CHARS,
+  DEFAULT_PROFILE_ID,
+  agentName,
+  providerName,
+  type AgentIdentity,
+  type CreatedSession,
+} from '../../src/shared/runtime-ipc'
 import { assertDrawn, drawnReady, lineCount } from './drawn'
 import { META, mount, paneProps, unmountAll, visible, type Mounted } from './harness'
 

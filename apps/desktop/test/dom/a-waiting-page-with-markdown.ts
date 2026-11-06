@@ -1,9 +1,23 @@
-import type { AskedQuestion, LedgerWalk, PersonsQuestion, RequestOnlyAPersonCanSettle, RoutedRequest } from '../../src/shared/question-contracts'
+import type {
+  AskedQuestion,
+  LedgerWalk,
+  PersonsQuestion,
+  RequestOnlyAPersonCanSettle,
+  RoutedRequest,
+} from '../../src/shared/question-contracts'
 import { nextTick } from 'vue'
 import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
 import { attentionToACardNobodyHolds } from '../../src/renderer/src/lib/attention'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
-import { NOTHING_NAMED_THE_WORK, aPersonsSince, chainReading, chainSentence, decisionReading, escalationChain, readingSentence } from '../../src/shared/questions'
+import {
+  NOTHING_NAMED_THE_WORK,
+  aPersonsSince,
+  chainReading,
+  chainSentence,
+  decisionReading,
+  escalationChain,
+  readingSentence,
+} from '../../src/shared/questions'
 import { mount } from './harness'
 
 export const MARKDOWN_NOW = Date.UTC(2026, 8, 21, 14)

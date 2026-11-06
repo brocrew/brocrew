@@ -5,7 +5,11 @@ import { describe, expect, it } from 'vitest'
 import { providerForALaunch } from '../src/renderer/src/lib/agent-store'
 import { NO_LAUNCH_CHOICES } from '../src/renderer/src/lib/launch-choices'
 import { theDraftEffort, theFormSends } from '../src/renderer/src/lib/model-lists'
-import { DEFAULT_PROFILE_ID, type AgentIdentities, type ModelChoice } from '../src/shared/runtime-ipc'
+import {
+  DEFAULT_PROFILE_ID,
+  type AgentIdentities,
+  type ModelChoice,
+} from '../src/shared/runtime-ipc'
 
 /**
  * 435 · **A front door that asks nothing and offers everything** (HO-025 §4/§5).

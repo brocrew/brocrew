@@ -16,7 +16,13 @@ import { describeUnavailable } from '../src/main/runtime/session-unavailable'
 import { createSessionStore as createRendererStore } from '../src/renderer/src/lib/session-store'
 import type { SessionStore as RendererStore } from '../src/renderer/src/lib/session-store'
 import { NOT_REACHED_THIS_WINDOW, type SessionRecord } from '../src/renderer/src/lib/session-record'
-import { RUNTIME_EVENT_CHANNEL, RUNTIME_LIVENESS_CHANNEL, type RuntimeBridge, type RuntimeEventMessage, type SessionLivenessMessage } from '../src/shared/runtime-ipc'
+import {
+  RUNTIME_EVENT_CHANNEL,
+  RUNTIME_LIVENESS_CHANNEL,
+  type RuntimeBridge,
+  type RuntimeEventMessage,
+  type SessionLivenessMessage,
+} from '../src/shared/runtime-ipc'
 import { asTheWireWouldCarry } from './lib/the-wire'
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')

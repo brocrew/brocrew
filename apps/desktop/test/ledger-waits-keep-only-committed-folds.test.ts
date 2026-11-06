@@ -8,7 +8,6 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, rowsUnreadOnce, type SessionStore } from '../src/main/db/session-store'
 
-
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
 describe('ledger waits keep only committed folds', () => {

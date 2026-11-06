@@ -5,7 +5,6 @@ import { aServiceWorld, RecordingSink, type AServiceWorld } from './helpers/a-se
 import { openDatabase } from '../src/main/db/connection'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 
-
 /**
  * Each answer of the person's queue is composed once and shared by every window that asks, until
  * something it reads moves: a commit holding a row the queue reads, another connection's commit, an

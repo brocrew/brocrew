@@ -1,8 +1,9 @@
 import type { PieceRow, TaskStallCause } from '../../shared/task-contracts'
-import type { ReconciliationReceipt, WorkReconciliationEvent } from '../../shared/reconciliation-contracts'
+import type {
+  ReconciliationReceipt,
+  WorkReconciliationEvent,
+} from '../../shared/reconciliation-contracts'
 import type { WorkIncidentKind } from '../../shared/work-incidents'
-
-
 
 export const WORK_RECONCILIATION_MS = 60_000
 

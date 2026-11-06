@@ -1,12 +1,26 @@
-
 import type { DecideMoveRequestInput, MoveRequestAck } from './move-contracts'
-import type { LedgerWalk, LedgerWalkKind, PersonsDecision, PersonsQuestion } from './question-contracts'
+import type {
+  LedgerWalk,
+  LedgerWalkKind,
+  PersonsDecision,
+  PersonsQuestion,
+} from './question-contracts'
 import type { AgentModelChoice, ModelChoiceSaved } from './model-choice-contracts'
 import type { WaitOn, WhatEachConversationIsWaitingOn, WorkGivenOut } from './task-contracts'
 import type { AgentState } from './agent-state-contracts'
 import type { SessionInstructions } from './instruction-contracts'
-import type { ModelList, ReportedModel, SessionSettingChanged, SessionSettingsDisclosure } from './model-choice-contracts'
-import type { MailboxKind, McpServerRequestForAPerson, PersistedEventInfo, TranscriptEvent } from './conversation-events'
+import type {
+  ModelList,
+  ReportedModel,
+  SessionSettingChanged,
+  SessionSettingsDisclosure,
+} from './model-choice-contracts'
+import type {
+  MailboxKind,
+  McpServerRequestForAPerson,
+  PersistedEventInfo,
+  TranscriptEvent,
+} from './conversation-events'
 import type { TurnAuthorship, UserTurnEvent, UserTurnPart } from './human-answer-contracts'
 import type { HandedPath, PastedImage } from './attachment-contracts'
 import type { ListingAnswer } from './listing-published'
@@ -25,7 +39,6 @@ import { pathTail } from './path-tail'
 export type { LinkResolution } from './link-resolution'
 
 import type { WorkerBindingReading } from './worker-reading'
-
 
 // ⚑ **533 · a type-only edge to the wall recogniser.** ⛔ That module imports `PROVIDER_NAME` from
 // THIS one as a value, so the edge back must stay erased: a value cycle here would load `runtime-ipc`
@@ -83,7 +96,43 @@ import type {
   WorkTakenBackByAPerson,
   WorkThatNamesIt,
 } from './piece-called'
-import type { AuthState, BackgroundWork, BackgroundWorkEnding, CapabilityState, CapabilityStatus, ChildThreadState, CommandTail, ContextReading, DeclaredTool, DeclaredToolset, EffortChoice, FileChange, MemoryRecallEntry, ModelChoice, PermissionDecision, ProviderCapabilities, ProviderCommand, ProviderSetup, ProviderCommandSet, PublishedInventory, PublishedServer, ReasoningEffort, ReprovisionOutcome, RuntimeEvent, ScheduledJob, SessionRef, ToolAnswer, ToolAnswerPart, ToolNaming, ToolParameter, UnknownCategory, UserInputQuestion, UserInputResponse, WorkflowAgent, WorkflowPhase } from '@brobot2/runtime'
+import type {
+  AuthState,
+  BackgroundWork,
+  BackgroundWorkEnding,
+  CapabilityState,
+  CapabilityStatus,
+  ChildThreadState,
+  CommandTail,
+  ContextReading,
+  DeclaredTool,
+  DeclaredToolset,
+  EffortChoice,
+  FileChange,
+  MemoryRecallEntry,
+  ModelChoice,
+  PermissionDecision,
+  ProviderCapabilities,
+  ProviderCommand,
+  ProviderSetup,
+  ProviderCommandSet,
+  PublishedInventory,
+  PublishedServer,
+  ReasoningEffort,
+  ReprovisionOutcome,
+  RuntimeEvent,
+  ScheduledJob,
+  SessionRef,
+  ToolAnswer,
+  ToolAnswerPart,
+  ToolNaming,
+  ToolParameter,
+  UnknownCategory,
+  UserInputQuestion,
+  UserInputResponse,
+  WorkflowAgent,
+  WorkflowPhase,
+} from '@brobot2/runtime'
 import {
   DEFAULT_IDENTITY_PROVIDER,
   providerDescriptor,

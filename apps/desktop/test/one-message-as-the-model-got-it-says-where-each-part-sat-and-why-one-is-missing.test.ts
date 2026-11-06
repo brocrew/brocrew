@@ -13,7 +13,6 @@ import {
   type WhatALaunchGave,
 } from '../src/shared/what-this-agent-was-given'
 
-
 /**
  * # 🔴 F093 · C9 d — one message as the model got it: where each part sat, and why one is missing
  *

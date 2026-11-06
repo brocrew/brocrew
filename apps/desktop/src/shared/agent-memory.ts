@@ -49,7 +49,6 @@ import type { ActedBy } from './who-did-it'
 // in the checker and is erased at build time, and this module must stay reachable from a renderer
 // without pulling `runtime-ipc.ts` in as a value.
 
-
 /**
  * 🔴 **What this app can say about one provider's memory store for one agent — a CLOSED
  * vocabulary, because a bare empty list is the thing this field exists to stop.**

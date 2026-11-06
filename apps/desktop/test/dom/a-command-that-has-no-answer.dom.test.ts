@@ -8,7 +8,13 @@ import { attentionQueue } from '../../src/renderer/src/lib/attention'
 import { GO_AHEAD_NOTE } from '../../src/renderer/src/lib/plan-mode'
 import { createSessionRecord, type SessionRecord } from '../../src/renderer/src/lib/session-record'
 import { createSessionStore } from '../../src/renderer/src/lib/session-store'
-import type { AnswerAck, CreatedSession, PermissionDecision, ResumedSession, RuntimeBridge } from '../../src/shared/runtime-ipc'
+import type {
+  AnswerAck,
+  CreatedSession,
+  PermissionDecision,
+  ResumedSession,
+  RuntimeBridge,
+} from '../../src/shared/runtime-ipc'
 import { everythingOverTheWire } from '../lib/the-wire'
 import { assertDrawn, drawnReady } from './drawn'
 import { META, mount, paneProps, permission, unmountAll, visible, type Mounted } from './harness'

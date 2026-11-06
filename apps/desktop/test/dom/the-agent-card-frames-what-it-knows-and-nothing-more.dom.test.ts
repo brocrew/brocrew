@@ -11,7 +11,6 @@ import { plateWord } from '../../src/renderer/src/lib/agent-state'
 import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 
-
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import { assertClippedButTold, assertDrawn, cutsOf, drawnReady } from './drawn'
 import { META, allTasks, drawerProps, mount, unmountAll, visible, type Mounted } from './harness'

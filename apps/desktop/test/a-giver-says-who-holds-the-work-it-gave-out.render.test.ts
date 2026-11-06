@@ -1,6 +1,10 @@
 import type { AgentState, AgentStateFacts } from '../src/shared/agent-state-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import type { ConversationWaiting, PieceRow, WhatEachConversationIsWaitingOn } from '../src/shared/task-contracts'
+import type {
+  ConversationWaiting,
+  PieceRow,
+  WhatEachConversationIsWaitingOn,
+} from '../src/shared/task-contracts'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -43,8 +47,21 @@ import { theWaitIn, whoseWorkIn } from '../src/renderer/src/lib/conversation-wai
 import { sessionPanel } from '../src/renderer/src/lib/session-panel'
 import { createSessionRecord } from '../src/renderer/src/lib/session-record'
 import { applyEvent } from '../src/renderer/src/lib/transcript'
-import { agentStateOf, agentStateWords, NOTHING_IN_THE_BACKGROUND, NOTHING_SCHEDULED } from '../src/shared/agent-state'
-import { DEFAULT_PROFILE_ID, type CreatedSession, type ResumableSessionInfo, type RuntimeEventMessage, type RuntimeStatesMessage, type SessionLiveness, type UnresumableSessionInfo } from '../src/shared/runtime-ipc'
+import {
+  agentStateOf,
+  agentStateWords,
+  NOTHING_IN_THE_BACKGROUND,
+  NOTHING_SCHEDULED,
+} from '../src/shared/agent-state'
+import {
+  DEFAULT_PROFILE_ID,
+  type CreatedSession,
+  type ResumableSessionInfo,
+  type RuntimeEventMessage,
+  type RuntimeStatesMessage,
+  type SessionLiveness,
+  type UnresumableSessionInfo,
+} from '../src/shared/runtime-ipc'
 
 import { proseSpans } from './lib/prose-spans'
 

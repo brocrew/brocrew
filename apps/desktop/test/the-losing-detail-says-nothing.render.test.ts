@@ -18,7 +18,13 @@ import {
 } from '../src/renderer/src/lib/transcript'
 // ⚑ **D-017 · R11 — the one state, its details and its words are `shared/agent-state.ts`'s**, which
 // `main` says in `list_agents`; the window feeds it through `stateHere` and words it the same way.
-import { agentStateOf, inTheBackground, nextWake, NOTHING_IN_THE_BACKGROUND, scheduleHeld } from '../src/shared/agent-state'
+import {
+  agentStateOf,
+  inTheBackground,
+  nextWake,
+  NOTHING_IN_THE_BACKGROUND,
+  scheduleHeld,
+} from '../src/shared/agent-state'
 import { clockTime } from '../src/shared/clock'
 
 /**

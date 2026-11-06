@@ -1,4 +1,8 @@
-import type { InjectedInstruction, InjectedInstructionKind, SessionInstructions } from '../../shared/instruction-contracts'
+import type {
+  InjectedInstruction,
+  InjectedInstructionKind,
+  SessionInstructions,
+} from '../../shared/instruction-contracts'
 import type { UserTurnEvent } from '../../shared/human-answer-contracts'
 import {
   providerKnowledge,

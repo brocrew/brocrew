@@ -23,7 +23,6 @@ import type { ToolName } from '../src/main/runtime/agent-tools'
 import { A_PERSONS_ANSWER_TO_AN_ENDED_QUESTION } from '../src/main/runtime/question-rails'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
-
 /**
  * 🔴 **D-017 · R6 — an answer a quit cannot lose** (D-017 §3, decision 4's queue case, and the
  * landing agent's own D-009 defect: *"a person can't answer a question that survived a quit"*).

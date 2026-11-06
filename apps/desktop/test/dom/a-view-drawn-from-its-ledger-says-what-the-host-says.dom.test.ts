@@ -12,7 +12,13 @@ import {
   TAKE_IT_OVER_TO_ANSWER_HERE,
 } from '../../src/renderer/src/lib/taking-over'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
-import { HELD_ELSEWHERE, type AgentIdentity, type ResumedSession, type RuntimeBridge, type RuntimeEventMessage } from '../../src/shared/runtime-ipc'
+import {
+  HELD_ELSEWHERE,
+  type AgentIdentity,
+  type ResumedSession,
+  type RuntimeBridge,
+  type RuntimeEventMessage,
+} from '../../src/shared/runtime-ipc'
 import { META, mount, paneProps, permission, record, unmountAll, visible } from './harness'
 import type { Mounted } from './harness'
 

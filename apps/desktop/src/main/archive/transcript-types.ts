@@ -1,7 +1,6 @@
 import type { TranscriptEvent } from '../../shared/conversation-events'
 import type { FileEdits } from '@brobot2/runtime'
 
-
 /** One rebuilt entry, and when the provider says it happened. */
 export interface ImportedEntry {
   /** Epoch ms, parsed from the record's own ISO-8601 `timestamp`. */

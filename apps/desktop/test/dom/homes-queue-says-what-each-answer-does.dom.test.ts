@@ -1,5 +1,9 @@
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
-import type { LedgerWalk, PersonsDecision, RequestOnlyAPersonCanSettle } from '../../src/shared/question-contracts'
+import type {
+  LedgerWalk,
+  PersonsDecision,
+  RequestOnlyAPersonCanSettle,
+} from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import AttentionQueue from '../../src/renderer/src/components/AttentionQueue.vue'

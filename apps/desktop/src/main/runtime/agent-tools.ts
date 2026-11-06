@@ -1,7 +1,21 @@
-import { AGENT_MESSAGE_KINDS, TASK_OUTCOMES, TASK_STATES as WORK_SEARCH_TASK_STATES } from '../../shared/task-contracts'
-import type { AgentMessageKind, PieceRow, StatusLine, TaskOutcome } from '../../shared/task-contracts'
+import {
+  AGENT_MESSAGE_KINDS,
+  TASK_OUTCOMES,
+  TASK_STATES as WORK_SEARCH_TASK_STATES,
+} from '../../shared/task-contracts'
+import type {
+  AgentMessageKind,
+  PieceRow,
+  StatusLine,
+  TaskOutcome,
+} from '../../shared/task-contracts'
 import { PASS_UP_RECIPIENTS } from '../../shared/question-contracts'
-import type { PassUpRecipient, QuestionRecipient, RequestState, VisibleQuestion } from '../../shared/question-contracts'
+import type {
+  PassUpRecipient,
+  QuestionRecipient,
+  RequestState,
+  VisibleQuestion,
+} from '../../shared/question-contracts'
 import type { AgentModelChoice } from '../../shared/model-choice-contracts'
 import {
   providerAuthPolicies,
@@ -167,7 +181,16 @@ import {
   type InterruptRefusal,
 } from './interrupt-rails'
 import { TASK_IS_OPEN, WAITING_STANDS_FOR, theWaitIn, isAgentMessageKind } from '../../shared/tasks'
-import { QUESTION_RECIPIENTS, RECIPIENT_MEANS, isPassUpRecipient, REQUEST_IS_OPEN, isQuestionRecipient, theChannelRefusalIn, aPieceNotEndedItsQuestionsUnread, aPieceNotEndedWhileAQuestionStarts } from '../../shared/questions'
+import {
+  QUESTION_RECIPIENTS,
+  RECIPIENT_MEANS,
+  isPassUpRecipient,
+  REQUEST_IS_OPEN,
+  isQuestionRecipient,
+  theChannelRefusalIn,
+  aPieceNotEndedItsQuestionsUnread,
+  aPieceNotEndedWhileAQuestionStarts,
+} from '../../shared/questions'
 // ⚑ **484 · one phrasing for an actor, imported rather than re-spelled** — `stoppedBy`'s own rule,
 // and one COMPOSITION for the clause, shared with the notice a parent is pushed.
 import {

@@ -1,10 +1,13 @@
-import type { InjectedInstruction, RefusedInstruction, SessionInstructions } from '../../shared/instruction-contracts'
+import type {
+  InjectedInstruction,
+  RefusedInstruction,
+  SessionInstructions,
+} from '../../shared/instruction-contracts'
 import type { MemoryLoadedEvent } from '../../shared/conversation-events'
 import type { Provider } from '@brobot2/shared'
 import type { PromptIdentity } from '../runtime/agent-preamble'
 import type { BundlePublish } from '../runtime/profile-bundle'
 import type { InstructionSpan } from '../../shared/whose-text'
-
 
 export type InstructionRefusal =
   'symlink' | 'not-a-regular-file' | 'too-large' | 'not-utf8' | 'unreadable'

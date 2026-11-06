@@ -6,7 +6,6 @@ import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 
-
 import { workEdge } from '../src/shared/who-called-whom'
 import { workReading } from '../src/renderer/src/lib/work-report'
 

@@ -36,7 +36,11 @@ import {
   type AttentionDecision,
 } from '../src/renderer/src/lib/user-input-offer'
 import { decisionReading, readingSentence } from '../src/shared/questions'
-import { type ProviderAnswerAck, type CreatedSession, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import {
+  type ProviderAnswerAck,
+  type CreatedSession,
+  type RuntimeEventMessage,
+} from '../src/shared/runtime-ipc'
 import {
   aHostOverScriptedCodex,
   waitFor,

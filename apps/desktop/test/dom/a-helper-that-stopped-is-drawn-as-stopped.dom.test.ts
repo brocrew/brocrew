@@ -1,4 +1,8 @@
-import type { LedgerWalk, PersonsDecision, PersonsQuestion } from '../../src/shared/question-contracts'
+import type {
+  LedgerWalk,
+  PersonsDecision,
+  PersonsQuestion,
+} from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'

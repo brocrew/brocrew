@@ -19,7 +19,15 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { replyText, workAnswered, workUndriven } from '../src/main/runtime/reply-rails'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { A_PERSON_MUST_ACT, A_PERSON_MUST_ACT_SENTENCE, TASK_IS_OPEN, UNDRIVEN_SENTENCES, derivePieces, isAWorkReport, undrivenSentence } from '../src/shared/tasks'
+import {
+  A_PERSON_MUST_ACT,
+  A_PERSON_MUST_ACT_SENTENCE,
+  TASK_IS_OPEN,
+  UNDRIVEN_SENTENCES,
+  derivePieces,
+  isAWorkReport,
+  undrivenSentence,
+} from '../src/shared/tasks'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { isVisibleIn } from '../src/renderer/src/lib/transcript-mode'
 import {

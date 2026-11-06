@@ -14,7 +14,14 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DEFAULT_PROFILE_ID, DEFAULT_PROFILE_LABEL, SEEDED_PROVIDERS, agentName, type AgentIdentity, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import {
+  DEFAULT_PROFILE_ID,
+  DEFAULT_PROFILE_LABEL,
+  SEEDED_PROVIDERS,
+  agentName,
+  type AgentIdentity,
+  type RuntimeEventMessage,
+} from '../src/shared/runtime-ipc'
 import { HUMAN_NAMES, aNameForANewAgent } from '../src/shared/human-names'
 
 /**

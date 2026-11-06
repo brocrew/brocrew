@@ -1,5 +1,9 @@
 import { PASS_UP_RECIPIENTS } from '../src/shared/question-contracts'
-import type { RequestRoutedEvent, RoutedRequest, WhereARequestWent } from '../src/shared/question-contracts'
+import type {
+  RequestRoutedEvent,
+  RoutedRequest,
+  WhereARequestWent,
+} from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -21,7 +25,18 @@ import { QUESTION_RAILS, questionText } from '../src/main/runtime/question-rails
 import { messageNamingItsSender, theDirectionLine } from '../src/main/runtime/turn-origin'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
-import { QUESTION_RECIPIENTS, RECIPIENT_MEANS, REQUEST_IS_OPEN, WENT_STANDS_FOR, aPersonsSince, escalationChain, isQuestionRecipient, permissionShaped, theChannelRefusalIn, whereItWent } from '../src/shared/questions'
+import {
+  QUESTION_RECIPIENTS,
+  RECIPIENT_MEANS,
+  REQUEST_IS_OPEN,
+  WENT_STANDS_FOR,
+  aPersonsSince,
+  escalationChain,
+  isQuestionRecipient,
+  permissionShaped,
+  theChannelRefusalIn,
+  whereItWent,
+} from '../src/shared/questions'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**

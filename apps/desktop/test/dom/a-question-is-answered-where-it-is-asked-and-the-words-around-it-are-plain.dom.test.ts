@@ -1,5 +1,12 @@
 import type { AgentState } from '../../src/shared/agent-state-contracts'
-import type { AskedQuestion, LedgerWalk, OfferedAnswer, PersonsDecision, PersonsQuestion, RoutedRequest } from '../../src/shared/question-contracts'
+import type {
+  AskedQuestion,
+  LedgerWalk,
+  OfferedAnswer,
+  PersonsDecision,
+  PersonsQuestion,
+  RoutedRequest,
+} from '../../src/shared/question-contracts'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { expandAgentCards } from './harness'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -30,9 +37,20 @@ import { foldWindow } from '../../src/renderer/src/lib/transcript-window'
 import { usageSays } from '../../src/renderer/src/lib/usage-limit'
 
 import type { ProviderCondition } from '../../src/shared/provider-limit'
-import { NOTHING_NAMED_THE_WORK, aPersonsSince, chainReading, chainSentence, escalationChain } from '../../src/shared/questions'
+import {
+  NOTHING_NAMED_THE_WORK,
+  aPersonsSince,
+  chainReading,
+  chainSentence,
+  escalationChain,
+} from '../../src/shared/questions'
 import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
-import type { ResumableSessionInfo, RuntimeEventMessage, UnresumableSessionInfo, UserInputResponse } from '../../src/shared/runtime-ipc'
+import type {
+  ResumableSessionInfo,
+  RuntimeEventMessage,
+  UnresumableSessionInfo,
+  UserInputResponse,
+} from '../../src/shared/runtime-ipc'
 import { drawnReady, inkRects, lineCount } from './drawn'
 import { mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
 

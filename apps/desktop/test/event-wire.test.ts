@@ -6,7 +6,6 @@ import { toWireEvent } from '../src/main/runtime/event-wire'
 // degraded frame is legible on the surface a live step reads, and only the real function can say so.
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 
-
 /**
  * Everything crossing to the renderer goes through here, so the two failure modes
  * that would silently break the stream are covered: an event the adapter got wrong,

@@ -25,7 +25,6 @@ import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript
 import { isVisibleIn } from '../src/renderer/src/lib/transcript-mode'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 
-
 /**
  * 🔴 **586 · a success retracts a wall** (`HO-080` §1, §1.2, §1.3, §2).
  *

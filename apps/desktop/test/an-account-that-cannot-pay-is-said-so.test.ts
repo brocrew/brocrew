@@ -29,7 +29,11 @@ import {
   createTranscript,
   type NoticeItem,
 } from '../src/renderer/src/lib/transcript'
-import type { ApiKeyCheck, ProvidersChangedMessage, RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import type {
+  ApiKeyCheck,
+  ProvidersChangedMessage,
+  RuntimeEventMessage,
+} from '../src/shared/runtime-ipc'
 import { UNDRIVEN_SENTENCES, derivePieces } from '../src/shared/tasks'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 

@@ -6,7 +6,17 @@ import type { ProviderLimitDisplay } from '../lib/provider-limit-status'
 import type { OwnWait } from '../lib/conversation-list'
 import { profileItRunsAs, whoIsIn } from '../lib/session-record'
 import { computed, ref, useId } from 'vue'
-import type { AgentIdentity, CreatedSession, ProviderCapabilityMap, RevealResult, ConfigFileResult, SessionPathTarget, SessionRef, SessionStatus, SetSessionSettingInput } from '../../../shared/runtime-ipc'
+import type {
+  AgentIdentity,
+  CreatedSession,
+  ProviderCapabilityMap,
+  RevealResult,
+  ConfigFileResult,
+  SessionPathTarget,
+  SessionRef,
+  SessionStatus,
+  SetSessionSettingInput,
+} from '../../../shared/runtime-ipc'
 
 import type { PickedModel } from '../lib/model-lists'
 import type { WorkThatNamesIt } from '../../../shared/piece-called'

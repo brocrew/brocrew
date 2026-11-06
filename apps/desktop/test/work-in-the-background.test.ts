@@ -25,7 +25,6 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { derivePieces } from '../src/shared/tasks'
 
-
 /**
  * # 🔴 D-013 · work running in the background isn't stalled (plan §3.7, §7)
  *

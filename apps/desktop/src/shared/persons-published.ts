@@ -8,7 +8,6 @@ import type { McpServerRequestForAPerson } from './conversation-events'
 import type { Coverage, PublicationEpoch } from './data-version'
 import type { InstructionAskWaiting } from './own-instructions'
 
-
 import type { StalledWork } from './stalled-work'
 import type { StoppedWorkForAPerson } from './stopped-work'
 import type { WaitingOnWhoWrote } from './waiting-on-who-wrote'

@@ -1,4 +1,12 @@
-import type { AskedQuestion, LedgerWalk, PersonsDecision, PersonsQuestion, RequestOnlyAPersonCanSettle, RoutedRequest, WorkInHand } from '../../src/shared/question-contracts'
+import type {
+  AskedQuestion,
+  LedgerWalk,
+  PersonsDecision,
+  PersonsQuestion,
+  RequestOnlyAPersonCanSettle,
+  RoutedRequest,
+  WorkInHand,
+} from '../../src/shared/question-contracts'
 import type { McpServerRequestForAPerson } from '../../src/shared/conversation-events'
 import { nextTick } from 'vue'
 import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
@@ -13,7 +21,15 @@ import {
   type ProviderLimitSeen,
 } from '../../src/shared/provider-limit'
 import type { InstructionAskWaiting } from '../../src/shared/own-instructions'
-import { NOTHING_NAMED_THE_WORK, aPersonsSince, chainReading, chainSentence, decisionReading, escalationChain, readingSentence } from '../../src/shared/questions'
+import {
+  NOTHING_NAMED_THE_WORK,
+  aPersonsSince,
+  chainReading,
+  chainSentence,
+  decisionReading,
+  escalationChain,
+  readingSentence,
+} from '../../src/shared/questions'
 
 import type { StalledWork } from '../../src/shared/stalled-work'
 import type { StoppedWorkForAPerson } from '../../src/shared/stopped-work'

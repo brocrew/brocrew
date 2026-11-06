@@ -38,7 +38,12 @@ import {
   type WhatItRunsOn,
 } from '../src/main/runtime/spawn-rails'
 import { judgeAnAgentsChoice } from '../src/main/runtime/model-rails'
-import { MODEL_CHOICE_SAID, judgeAgainstTheList, theList, whatAModelChoiceReaches } from '../src/shared/model-choice'
+import {
+  MODEL_CHOICE_SAID,
+  judgeAgainstTheList,
+  theList,
+  whatAModelChoiceReaches,
+} from '../src/shared/model-choice'
 import { agentCallerId, whatItRunsOnSaid } from '../src/main/runtime/agent-tools'
 
 /**

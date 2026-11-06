@@ -11,7 +11,11 @@ import {
   WINDOW_MAX_EVENTS,
   WINDOW_RELEASE_CHUNK,
 } from '../src/renderer/src/lib/transcript-window'
-import { HISTORY_WINDOW_MAX_EVENTS, type HistoryWindow, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import {
+  HISTORY_WINDOW_MAX_EVENTS,
+  type HistoryWindow,
+  type RuntimeEventMessage,
+} from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 Eleven hours you cannot scroll to (313 — friction log F3)

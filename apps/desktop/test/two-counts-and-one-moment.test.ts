@@ -19,7 +19,11 @@ import { RuntimeHost, type RuntimeEventSink } from './helpers/giver-notice-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { personsQueueView, type PersonsQueueKind } from '../src/renderer/src/lib/persons-queue'
 import { RUNTIME_CHANGE_SUBJECTS } from '../src/shared/runtime-ipc'
-import type { RuntimeChangeMessage, RuntimeCommand, RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import type {
+  RuntimeChangeMessage,
+  RuntimeCommand,
+  RuntimeEventMessage,
+} from '../src/shared/runtime-ipc'
 import {
   WHAT_A_READING_COUNTS,
   WHAT_NEEDS_A_PERSON,

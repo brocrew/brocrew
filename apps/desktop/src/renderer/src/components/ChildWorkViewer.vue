@@ -3,7 +3,12 @@ import type { TranscriptEvent } from '../../../shared/conversation-events'
 
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { absenceUnreadSays } from '../lib/rows-unread'
-import type { ChildSendResult, ChildStateResult, ChildTalkRefusal, ChildWorkResult } from '../../../shared/runtime-ipc'
+import type {
+  ChildSendResult,
+  ChildStateResult,
+  ChildTalkRefusal,
+  ChildWorkResult,
+} from '../../../shared/runtime-ipc'
 import { appClosing } from '../lib/app-closing'
 import { applyEvent, createTranscript, markReadOnly } from '../lib/transcript'
 import DocumentBody from './DocumentBody.vue'

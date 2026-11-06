@@ -22,7 +22,12 @@ import {
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DEFAULT_PROFILE_ID, IDENTITY_ORIGINS, type IdentityCreator, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import {
+  DEFAULT_PROFILE_ID,
+  IDENTITY_ORIGINS,
+  type IdentityCreator,
+  type RuntimeEventMessage,
+} from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const srcRoot = join(here, '../src')

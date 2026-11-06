@@ -8,7 +8,6 @@ import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalle
 import { DRAWER_W_MIN, DRAWER_W_MAX } from '../../src/renderer/src/lib/drawer'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 
-
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import { assertDrawn, cutsOf, drawnReady } from './drawn'
 import { conv, forestDrawn, task, viewOf } from './forest-fixture'

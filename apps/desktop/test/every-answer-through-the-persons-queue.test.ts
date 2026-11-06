@@ -1,4 +1,10 @@
-import type { LedgerWalk, LedgerWalkKind, PersonsDecision, PersonsQuestion, RoutedRequest } from '../src/shared/question-contracts'
+import type {
+  LedgerWalk,
+  LedgerWalkKind,
+  PersonsDecision,
+  PersonsQuestion,
+  RoutedRequest,
+} from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -39,9 +45,19 @@ import {
   whatThisAnswerDoes,
   type AttentionDecision,
 } from '../src/renderer/src/lib/user-input-offer'
-import { NOTHING_NAMED_THE_WORK, decisionReading, readingSentence, aPersonsSince } from '../src/shared/questions'
+import {
+  NOTHING_NAMED_THE_WORK,
+  decisionReading,
+  readingSentence,
+  aPersonsSince,
+} from '../src/shared/questions'
 import type { ChannelRefusal } from '@brobot2/runtime'
-import { DEFAULT_PROFILE_ID, type CreatedSession, type RuntimeCommand, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import {
+  DEFAULT_PROFILE_ID,
+  type CreatedSession,
+  type RuntimeCommand,
+  type RuntimeEventMessage,
+} from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 476's instrument: what every compact answer promises, what crosses, and what actually lands.

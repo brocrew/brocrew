@@ -1,4 +1,9 @@
-import type { LedgerWalk, LedgerWalkKind, PersonsQuestion, RoutedRequest } from '../../src/shared/question-contracts'
+import type {
+  LedgerWalk,
+  LedgerWalkKind,
+  PersonsQuestion,
+  RoutedRequest,
+} from '../../src/shared/question-contracts'
 import type { HandedPath } from '../../src/shared/attachment-contracts'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import type { WorkReport } from '../../src/shared/task-contracts'
@@ -27,8 +32,24 @@ import { foldWindow, type WindowState } from '../../src/renderer/src/lib/transcr
 import { workReading } from '../../src/renderer/src/lib/work-report'
 import { aNoticeALaterFactRetracted } from '../../src/main/runtime/reply-rails'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
-import { chainReading, chainSentence, escalationChain, aPersonsSince, NOTHING_NAMED_THE_WORK } from '../../src/shared/questions'
-import { DEFAULT_PROFILE_ID, type AgentIdentities, type AgentIdentity, type LibraryEntry, type ResumableSessionInfo, type ResumedSession, type RuntimeBridge, type RuntimeEventMessage, type UnresumableSessionInfo } from '../../src/shared/runtime-ipc'
+import {
+  chainReading,
+  chainSentence,
+  escalationChain,
+  aPersonsSince,
+  NOTHING_NAMED_THE_WORK,
+} from '../../src/shared/questions'
+import {
+  DEFAULT_PROFILE_ID,
+  type AgentIdentities,
+  type AgentIdentity,
+  type LibraryEntry,
+  type ResumableSessionInfo,
+  type ResumedSession,
+  type RuntimeBridge,
+  type RuntimeEventMessage,
+  type UnresumableSessionInfo,
+} from '../../src/shared/runtime-ipc'
 import { UNDRIVEN_SENTENCES } from '../../src/shared/tasks'
 import { assertDrawn, drawnReady } from './drawn'
 import {

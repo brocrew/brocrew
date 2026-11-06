@@ -26,7 +26,12 @@ import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { TASK_IS_OPEN, AN_ASK_RIDES_ON, UNDRIVEN_SENTENCES, derivePieces } from '../src/shared/tasks'
+import {
+  TASK_IS_OPEN,
+  AN_ASK_RIDES_ON,
+  UNDRIVEN_SENTENCES,
+  derivePieces,
+} from '../src/shared/tasks'
 import { pieceLine } from '../src/shared/piece-called'
 
 import { REQUEST_IS_OPEN } from '../src/shared/questions'

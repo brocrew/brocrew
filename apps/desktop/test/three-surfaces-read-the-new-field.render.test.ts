@@ -7,7 +7,6 @@ import { STANDING_LABEL } from '../src/renderer/src/lib/agent-state'
 import { createSessionRecord } from '../src/renderer/src/lib/session-record'
 import type { CreatedSession, SessionLiveness } from '../src/shared/runtime-ipc'
 
-
 /**
  * 🔴 **636 · the PANE forwards the wait into the object all three of its surfaces are drawn
  * from** — `facetInput`, which feeds the header's pill, the shelf and the drawer's plate.

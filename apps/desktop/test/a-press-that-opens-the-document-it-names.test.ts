@@ -19,7 +19,6 @@ import {
 } from '../src/renderer/src/lib/the-documents-a-reply-names'
 import { OPEN_THE_DOCUMENT } from '../src/renderer/src/lib/the-document-a-report-names'
 
-
 /**
  * # 🔴 562 · a press that opens the document it names
  *

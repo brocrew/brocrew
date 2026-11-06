@@ -1,5 +1,10 @@
 import type { PersistedEventInfo } from '../../../shared/conversation-events'
-import type { CreatedSession, HistoryWindow, RuntimeEventMessage, SessionLiveness } from '../../../shared/runtime-ipc'
+import type {
+  CreatedSession,
+  HistoryWindow,
+  RuntimeEventMessage,
+  SessionLiveness,
+} from '../../../shared/runtime-ipc'
 import { agentName, HELD_ELSEWHERE, providerName } from '../../../shared/runtime-ipc'
 import type { AgentIdentity } from '../../../shared/runtime-ipc'
 import {

@@ -1,4 +1,10 @@
-import type { LedgerWalk, PersonsDecision, PersonsQuestion, RoutedRequest, WorkInHand } from '../../src/shared/question-contracts'
+import type {
+  LedgerWalk,
+  PersonsDecision,
+  PersonsQuestion,
+  RoutedRequest,
+  WorkInHand,
+} from '../../src/shared/question-contracts'
 import type { WaitOn } from '../../src/shared/task-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
@@ -11,7 +17,13 @@ import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
 import type { AttentionRequest } from '../../src/renderer/src/lib/attention'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { clockTime } from '../../src/shared/clock'
-import { NOTHING_NAMED_THE_WORK, aPersonsSince, chainReading, chainSentence, escalationChain } from '../../src/shared/questions'
+import {
+  NOTHING_NAMED_THE_WORK,
+  aPersonsSince,
+  chainReading,
+  chainSentence,
+  escalationChain,
+} from '../../src/shared/questions'
 import type { ResumableSessionInfo } from '../../src/shared/runtime-ipc'
 import type { StalledWork } from '../../src/shared/stalled-work'
 import type { StoppedWorkForAPerson } from '../../src/shared/stopped-work'

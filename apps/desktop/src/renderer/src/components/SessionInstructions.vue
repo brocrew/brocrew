@@ -1,10 +1,17 @@
 <script setup lang="ts">
-import type { InstructionScope, SessionInstructions as Instructions } from '../../../shared/instruction-contracts'
+import type {
+  InstructionScope,
+  SessionInstructions as Instructions,
+} from '../../../shared/instruction-contracts'
 
 import { fileManagerHere } from '../lib/this-computer'
 import { pathTail as basename } from '../../../shared/path-tail'
 import { computed, ref, useId, watch } from 'vue'
-import type { InstructionSourceResult, RevealResult, SessionPathTarget } from '../../../shared/runtime-ipc'
+import type {
+  InstructionSourceResult,
+  RevealResult,
+  SessionPathTarget,
+} from '../../../shared/runtime-ipc'
 import type { ToolRegistry } from '../lib/transcript'
 import { layerBytes, toldView } from '../lib/told'
 import { REGISTER_WORDS } from '../lib/digest'

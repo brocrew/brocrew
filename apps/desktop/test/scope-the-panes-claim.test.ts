@@ -1,4 +1,11 @@
-import type { HowItWasRaised, LedgerWalk, PersonsDecision, PersonsQuestion, RequestOnlyAPersonCanSettle, RoutedRequest } from '../src/shared/question-contracts'
+import type {
+  HowItWasRaised,
+  LedgerWalk,
+  PersonsDecision,
+  PersonsQuestion,
+  RequestOnlyAPersonCanSettle,
+  RoutedRequest,
+} from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -23,8 +30,15 @@ import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript
 import { personsQueueView, type PersonsQueueWorld } from '../src/renderer/src/lib/persons-queue'
 import { attentionQueue, type AttentionRequest } from '../src/renderer/src/lib/attention'
 import { createSessionRecord } from '../src/renderer/src/lib/session-record'
-import { NOTHING_NAMED_THE_WORK, chainReading, chainSentence, decisionReading, escalationChain, readingSentence, aPersonsSince } from '../src/shared/questions'
-
+import {
+  NOTHING_NAMED_THE_WORK,
+  chainReading,
+  chainSentence,
+  decisionReading,
+  escalationChain,
+  readingSentence,
+  aPersonsSince,
+} from '../src/shared/questions'
 
 /**
  * 🔴 **602 · the pane may only claim what it looked at, and nothing may send a person to a card

@@ -1,4 +1,8 @@
-import type { QuestionRecipient, RequestState, RoutedRequest } from '../../shared/question-contracts'
+import type {
+  QuestionRecipient,
+  RequestState,
+  RoutedRequest,
+} from '../../shared/question-contracts'
 import { refusalReason } from '../../shared/refusals'
 import { CHANNEL_REFUSAL_SENTENCES, type ChannelRefusal } from '@brobot2/runtime'
 import type { UserInputQuestion } from '@brobot2/runtime'

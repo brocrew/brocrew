@@ -10,7 +10,13 @@ import UserMessage from '../../src/renderer/src/components/UserMessage.vue'
 import QueuedMessage from '../../src/renderer/src/components/QueuedMessage.vue'
 import PersonsQueue from '../../src/renderer/src/components/PersonsQueue.vue'
 import { usePersonsQueue, type PersonsQueueRow } from '../../src/renderer/src/lib/persons-queue'
-import { aPersonsSince, escalationChain, chainReading, chainSentence, NOTHING_NAMED_THE_WORK } from '../../src/shared/questions'
+import {
+  aPersonsSince,
+  escalationChain,
+  chainReading,
+  chainSentence,
+  NOTHING_NAMED_THE_WORK,
+} from '../../src/shared/questions'
 import { moveRequestFromWindow } from '../../src/renderer/src/lib/move-request'
 import type { QuestionCardReading } from '../../src/renderer/src/lib/question-card'
 import type { RequestDraft } from '../../src/renderer/src/lib/session-record'

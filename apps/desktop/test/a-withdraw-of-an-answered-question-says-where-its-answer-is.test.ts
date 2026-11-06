@@ -25,7 +25,6 @@ import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
-
 /**
  * An agent's own ended question reports when it ended. Answered and declined questions also
  * explain where to read the reply. Unknown ids, other askers and provider questions stay private.

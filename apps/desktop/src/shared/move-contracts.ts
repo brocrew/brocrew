@@ -1,4 +1,3 @@
-
 export interface MoveOffer {
   readonly destination: string
   readonly destinationName: string

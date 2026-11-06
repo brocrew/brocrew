@@ -10,7 +10,11 @@ import type { Options, PermissionResult, SDKMessage } from '@anthropic-ai/claude
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventMessage, SessionLiveness, SessionLivenessMessage } from '../src/shared/runtime-ipc'
+import type {
+  RuntimeEventMessage,
+  SessionLiveness,
+  SessionLivenessMessage,
+} from '../src/shared/runtime-ipc'
 
 /**
  * A stranded turn must have a way to end.

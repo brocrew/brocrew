@@ -1,5 +1,10 @@
 import type { InstructionProposedEvent } from '../../src/shared/conversation-events'
-import type { LedgerWalk, LedgerWalkKind, PersonsDecision, PersonsQuestion } from '../../src/shared/question-contracts'
+import type {
+  LedgerWalk,
+  LedgerWalkKind,
+  PersonsDecision,
+  PersonsQuestion,
+} from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick } from 'vue'
 import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'

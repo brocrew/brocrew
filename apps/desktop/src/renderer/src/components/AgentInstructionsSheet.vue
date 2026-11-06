@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import type { SessionInstructions as Instructions } from '../../../shared/instruction-contracts'
 
-import type { InstructionSourceResult, RevealResult, SessionPathTarget } from '../../../shared/runtime-ipc'
+import type {
+  InstructionSourceResult,
+  RevealResult,
+  SessionPathTarget,
+} from '../../../shared/runtime-ipc'
 import type { ToolRegistry } from '../lib/transcript'
 import { SUBJECT_WORDS } from '../lib/what-survives-the-conversation'
 import SessionInstructions from './SessionInstructions.vue'

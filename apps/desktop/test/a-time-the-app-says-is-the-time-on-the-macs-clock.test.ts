@@ -33,7 +33,11 @@ import {
   sameLocalDay,
   type LocalZone,
 } from '../src/shared/local-time'
-import type { LibraryEntry, RuntimeEventMessage, RuntimeStatesMessage } from '../src/shared/runtime-ipc'
+import type {
+  LibraryEntry,
+  RuntimeEventMessage,
+  RuntimeStatesMessage,
+} from '../src/shared/runtime-ipc'
 
 import { calendarDay, fullTime } from '../src/renderer/src/lib/clock'
 import { proseSpans } from './lib/prose-spans'

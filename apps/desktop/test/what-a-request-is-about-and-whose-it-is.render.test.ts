@@ -1,11 +1,22 @@
-import type { AboutWork, LedgerWalk, PersonsQuestion, RoutedRequest, WorkInHand } from '../src/shared/question-contracts'
+import type {
+  AboutWork,
+  LedgerWalk,
+  PersonsQuestion,
+  RoutedRequest,
+  WorkInHand,
+} from '../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import PersonsQueue from '../src/renderer/src/components/PersonsQueue.vue'
 import { usePersonsQueue } from '../src/renderer/src/lib/persons-queue'
 import type { PersonsQueueDoors } from '../src/renderer/src/lib/persons-queue'
-import { chainReading, chainSentence, escalationChain, aPersonsSince } from '../src/shared/questions'
+import {
+  chainReading,
+  chainSentence,
+  escalationChain,
+  aPersonsSince,
+} from '../src/shared/questions'
 
 /**
  * 🔴 **474 · an absent edge and a dropped edge, both DRAWN** — `463` F4's §3.4.

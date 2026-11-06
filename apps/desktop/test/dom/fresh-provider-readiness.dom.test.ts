@@ -9,7 +9,15 @@ import { forgetProfileSignIns } from '../../src/renderer/src/composables/useProf
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
 import { providersBridge } from '../../look/fixtures/providers'
 import { CAPABILITY_FIXTURE } from '../provider-capability-fixture'
-import type { AgentIdentities, AuthState, CreatedSession, CreateSessionInput, Provider, RefusedLaunch, RuntimeBridge } from '../../src/shared/runtime-ipc'
+import type {
+  AgentIdentities,
+  AuthState,
+  CreatedSession,
+  CreateSessionInput,
+  Provider,
+  RefusedLaunch,
+  RuntimeBridge,
+} from '../../src/shared/runtime-ipc'
 import type { ProviderSetupBridge, ProviderSetupState } from '../../src/shared/provider-setup'
 import { mount, unmountAll, META } from './harness'
 

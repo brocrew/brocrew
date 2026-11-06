@@ -8,7 +8,6 @@ import WorkReportEntry from '../src/renderer/src/components/WorkReportEntry.vue'
 import { OPEN_THE_DOCUMENT } from '../src/renderer/src/lib/the-document-a-report-names'
 import type { ResourceReading } from '../src/shared/runtime-ipc'
 
-
 /**
  * 🔴 **510 · the press that opens the document, and the panel behind it** — rendered.
  *

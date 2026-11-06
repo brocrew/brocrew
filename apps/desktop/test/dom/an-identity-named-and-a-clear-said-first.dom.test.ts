@@ -1,4 +1,8 @@
-import type { AgentModelChoice, ModelCatalogue, ModelList } from '../../src/shared/model-choice-contracts'
+import type {
+  AgentModelChoice,
+  ModelCatalogue,
+  ModelList,
+} from '../../src/shared/model-choice-contracts'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
@@ -26,9 +30,23 @@ import {
   DEFAULT_CAPABILITIES,
   type AnyCapabilityField,
 } from '../../src/shared/capabilities'
-import { judgeAgainstTheList, theDefaultEffortOf, theList, theListedRow } from '../../src/shared/model-choice'
+import {
+  judgeAgainstTheList,
+  theDefaultEffortOf,
+  theList,
+  theListedRow,
+} from '../../src/shared/model-choice'
 import type { AgentInstructionsReading } from '../../src/shared/own-instructions'
-import { DEFAULT_PROFILE_ID, DEFAULT_PROFILE_LABEL, agentName, type AgentIdentities, type AgentIdentity, type ModelChoice, type Provider, type RuntimeBridge } from '../../src/shared/runtime-ipc'
+import {
+  DEFAULT_PROFILE_ID,
+  DEFAULT_PROFILE_LABEL,
+  agentName,
+  type AgentIdentities,
+  type AgentIdentity,
+  type ModelChoice,
+  type Provider,
+  type RuntimeBridge,
+} from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 
 /**

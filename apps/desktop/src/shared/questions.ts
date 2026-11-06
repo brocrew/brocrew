@@ -1,11 +1,28 @@
-
 import type { PersistedEventInfo, TranscriptEvent } from './conversation-events'
 import type { QuestionEndedWithItsPieceEvent, RequestRoutedEvent } from './question-contracts'
 import { PASS_UP_RECIPIENTS } from './question-contracts'
-import type { AboutWork, AboutWorkIs, ActionAsked, ActionFile, ChainHop, ChainReading, EscalationChain, EscalationLink, LedgerWalkKind, OfferedAnswer, PassUpRecipient, QuestionRecipient, RaisedQuestion, RequestOnlyAPersonCanSettle, RequestState, RoutedRequest, WhereARequestWent, WorkInHand } from './question-contracts'
+import type {
+  AboutWork,
+  AboutWorkIs,
+  ActionAsked,
+  ActionFile,
+  ChainHop,
+  ChainReading,
+  EscalationChain,
+  EscalationLink,
+  LedgerWalkKind,
+  OfferedAnswer,
+  PassUpRecipient,
+  QuestionRecipient,
+  RaisedQuestion,
+  RequestOnlyAPersonCanSettle,
+  RequestState,
+  RoutedRequest,
+  WhereARequestWent,
+  WorkInHand,
+} from './question-contracts'
 
 import type { ChannelRefusal } from '@brobot2/runtime'
-
 
 /** ⛔ **Whether this request is still somebody's to answer** — one table rather than a `!==` list. */
 export const REQUEST_IS_OPEN: Readonly<Record<RequestState, boolean>> = {

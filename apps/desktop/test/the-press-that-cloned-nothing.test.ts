@@ -1,4 +1,9 @@
-import type { LedgerWalk, PersonsDecision, PersonsQuestion, RoutedRequest } from '../src/shared/question-contracts'
+import type {
+  LedgerWalk,
+  PersonsDecision,
+  PersonsQuestion,
+  RoutedRequest,
+} from '../src/shared/question-contracts'
 import type { PersistedEventInfo } from '../src/shared/conversation-events'
 import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -23,8 +28,19 @@ import {
 } from '../src/renderer/src/lib/session-store'
 import type { SessionRecord } from '../src/renderer/src/lib/session-record'
 import { isAwaitingAnswer, type PermissionOutcome } from '../src/renderer/src/lib/transcript'
-import { NOTHING_NAMED_THE_WORK, chainReading, chainSentence, escalationChain, aPersonsSince } from '../src/shared/questions'
-import type { AnswerAck, ResumedSession, RuntimeBridge, RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import {
+  NOTHING_NAMED_THE_WORK,
+  chainReading,
+  chainSentence,
+  escalationChain,
+  aPersonsSince,
+} from '../src/shared/questions'
+import type {
+  AnswerAck,
+  ResumedSession,
+  RuntimeBridge,
+  RuntimeEventMessage,
+} from '../src/shared/runtime-ipc'
 import { asTheWireWouldCarry, everythingOverTheWire } from './lib/the-wire'
 
 /**

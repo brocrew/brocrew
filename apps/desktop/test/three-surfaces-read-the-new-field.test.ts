@@ -1,5 +1,8 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import type { ConversationWait, WhatEachConversationIsWaitingOn } from '../src/shared/task-contracts'
+import type {
+  ConversationWait,
+  WhatEachConversationIsWaitingOn,
+} from '../src/shared/task-contracts'
 import { describe, expect, it } from 'vitest'
 import {
   STANDINGS,

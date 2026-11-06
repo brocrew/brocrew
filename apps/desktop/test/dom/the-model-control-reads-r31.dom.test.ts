@@ -1,4 +1,8 @@
-import type { AgentModelChoice as Choice, ModelCatalogue, ModelList } from '../../src/shared/model-choice-contracts'
+import type {
+  AgentModelChoice as Choice,
+  ModelCatalogue,
+  ModelList,
+} from '../../src/shared/model-choice-contracts'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { expandAgentCards } from './harness'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -11,9 +15,20 @@ import { createAgentStore, type AgentStore } from '../../src/renderer/src/lib/ag
 import { createModelLists, type ModelLists } from '../../src/renderer/src/lib/model-lists'
 import { GO_AHEAD_MESSAGE } from '../../src/renderer/src/lib/plan-mode'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
-import { judgeAgainstTheList, theDefaultEffortOf, theList, theListedRow } from '../../src/shared/model-choice'
+import {
+  judgeAgainstTheList,
+  theDefaultEffortOf,
+  theList,
+  theListedRow,
+} from '../../src/shared/model-choice'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
-import type { AgentIdentities, AgentIdentity, ModelChoice, Provider, RuntimeBridge } from '../../src/shared/runtime-ipc'
+import type {
+  AgentIdentities,
+  AgentIdentity,
+  ModelChoice,
+  Provider,
+  RuntimeBridge,
+} from '../../src/shared/runtime-ipc'
 import { mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
 
 /**

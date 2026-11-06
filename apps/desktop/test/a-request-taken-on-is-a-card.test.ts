@@ -22,7 +22,6 @@ import {
 import { tookOnForPerson } from '../src/main/runtime/agent-tool-answer-words'
 import { pieceLine } from '../src/shared/piece-called'
 
-
 /**
  * # 🔴 UI-003 · a request its conversation took on for the person, drawn as a card
  *

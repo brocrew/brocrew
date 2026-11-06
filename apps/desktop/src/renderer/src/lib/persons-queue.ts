@@ -1,4 +1,13 @@
-import type { AboutWork, ChainHop, LedgerWalk, LedgerWalkKind, OfferedAnswer, PersonsDecision, PersonsQuestion, WorkInHand } from '../../../shared/question-contracts'
+import type {
+  AboutWork,
+  ChainHop,
+  LedgerWalk,
+  LedgerWalkKind,
+  OfferedAnswer,
+  PersonsDecision,
+  PersonsQuestion,
+  WorkInHand,
+} from '../../../shared/question-contracts'
 import type { McpServerRequestForAPerson } from '../../../shared/conversation-events'
 import { computed, reactive, ref, type ComputedRef, type Ref } from 'vue'
 import { NOTHING_NAMED_THE_WORK, WALK_COVERS } from '../../../shared/questions'

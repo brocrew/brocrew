@@ -3,7 +3,6 @@ import type { WorkReport } from '../../src/shared/task-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 
-
 import { mount, paneProps, record, unmountAll, visible } from './harness'
 
 /**

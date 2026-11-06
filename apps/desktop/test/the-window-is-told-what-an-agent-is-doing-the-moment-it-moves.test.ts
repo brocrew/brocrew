@@ -21,7 +21,13 @@ import { aWaitIsReadFrom } from '../src/shared/questions'
 import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
-import type { AgentIdentity, ResumableSessionInfo, RuntimeEventMessage, RuntimeStatesMessage, UnresumableSessionInfo } from '../src/shared/runtime-ipc'
+import type {
+  AgentIdentity,
+  ResumableSessionInfo,
+  RuntimeEventMessage,
+  RuntimeStatesMessage,
+  UnresumableSessionInfo,
+} from '../src/shared/runtime-ipc'
 import { proseSpans } from './lib/prose-spans'
 
 /**

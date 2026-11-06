@@ -1,6 +1,11 @@
 import { TASK_STALL_CAUSES } from './task-contracts'
 import type { TaskStallCause } from './task-contracts'
-import type { ReconciliationOutcome, ReconciliationReceipt, ReconciliationStep, WorkRecoveryEvent } from './reconciliation-contracts'
+import type {
+  ReconciliationOutcome,
+  ReconciliationReceipt,
+  ReconciliationStep,
+  WorkRecoveryEvent,
+} from './reconciliation-contracts'
 
 import { WORK_INCIDENT_KINDS, type WorkIncidentKind } from './work-incidents'
 

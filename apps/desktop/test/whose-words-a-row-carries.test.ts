@@ -15,8 +15,6 @@ import {
   whoseWordsOf,
 } from '../src/renderer/src/lib/from-outside'
 
-
-
 /**
  * # 🔴 658 · Whose words a row carries — and so whether it may be drawn as a participant's
  *

@@ -26,8 +26,12 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
-
-import type { ResumableSessionInfo, RuntimeEventMessage, RuntimeStatesMessage, UnresumableSessionInfo } from '../src/shared/runtime-ipc'
+import type {
+  ResumableSessionInfo,
+  RuntimeEventMessage,
+  RuntimeStatesMessage,
+  UnresumableSessionInfo,
+} from '../src/shared/runtime-ipc'
 
 /**
  * # D-018 · a quiet conversation is stopped by the app, and woken by its next message

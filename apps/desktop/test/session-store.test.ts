@@ -22,7 +22,17 @@ import {
 } from '../src/renderer/src/lib/transcript'
 import { tailWindow } from '../src/renderer/src/lib/transcript-window'
 import { RETITLE_SAID } from '../src/shared/piece-called'
-import type { AnswerAck, CreatedSession, ResumedSession, FirstMessageAnswer, FirstMessageNotSent, RuntimeBridge, RuntimeEventMessage, SessionLivenessMessage, SessionLiveness } from '../src/shared/runtime-ipc'
+import type {
+  AnswerAck,
+  CreatedSession,
+  ResumedSession,
+  FirstMessageAnswer,
+  FirstMessageNotSent,
+  RuntimeBridge,
+  RuntimeEventMessage,
+  SessionLivenessMessage,
+  SessionLiveness,
+} from '../src/shared/runtime-ipc'
 
 /**
  * Many conversations at once (090).

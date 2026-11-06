@@ -1,6 +1,11 @@
 import type { HandedPath } from '../../../shared/attachment-contracts'
 import { reactive, shallowReactive, watch, type WatchStopHandle } from 'vue'
-import { MAX_HANDED_PATHS, alreadyStagedAs, sameFileDifferentCase, type DroppedPathVerdict } from '../../../shared/runtime-ipc'
+import {
+  MAX_HANDED_PATHS,
+  alreadyStagedAs,
+  sameFileDifferentCase,
+  type DroppedPathVerdict,
+} from '../../../shared/runtime-ipc'
 
 /**
  * What you have typed but not sent, kept per conversation (019).

@@ -8,7 +8,6 @@ import {
   type TranscriptState,
 } from '../src/renderer/src/lib/transcript'
 
-
 /**
  * # A sign-in this app renewed by itself is said in one short line
  *

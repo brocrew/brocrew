@@ -1,4 +1,8 @@
-import type { LedgerWalk, PersonsDecision, RequestOnlyAPersonCanSettle } from '../../src/shared/question-contracts'
+import type {
+  LedgerWalk,
+  PersonsDecision,
+  RequestOnlyAPersonCanSettle,
+} from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'

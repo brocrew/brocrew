@@ -11,7 +11,16 @@ import { hiddenDrawerTabs } from '../../src/renderer/src/lib/developer-views'
 import type { DrawerTab } from '../../src/renderer/src/lib/drawer'
 import { createModelLists } from '../../src/renderer/src/lib/model-lists'
 import { readingSays } from '../../src/renderer/src/lib/usage-limit'
-import type { ApiKeyStatus, AuthState, Provider, ProviderCapabilityMap, ProviderResources, ProvidersChangedMessage, ProviderUsageReading, ProviderVersion } from '../../src/shared/runtime-ipc'
+import type {
+  ApiKeyStatus,
+  AuthState,
+  Provider,
+  ProviderCapabilityMap,
+  ProviderResources,
+  ProvidersChangedMessage,
+  ProviderUsageReading,
+  ProviderVersion,
+} from '../../src/shared/runtime-ipc'
 import { drawerProps, mount, paneProps, unmountAll, type Mounted } from './harness'
 
 /**

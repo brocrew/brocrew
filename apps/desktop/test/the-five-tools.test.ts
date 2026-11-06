@@ -37,7 +37,11 @@ import {
   sessionSpeakingAs,
   type ToolName,
 } from '../src/main/runtime/agent-tools'
-import { DEFAULT_PROFILE_ID, DEFAULT_PROFILE_LABEL, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import {
+  DEFAULT_PROFILE_ID,
+  DEFAULT_PROFILE_LABEL,
+  type RuntimeEventMessage,
+} from '../src/shared/runtime-ipc'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 
 const here = dirname(fileURLToPath(import.meta.url))

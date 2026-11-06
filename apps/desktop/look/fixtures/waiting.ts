@@ -1,4 +1,7 @@
-import type { PersonsDecision, RequestOnlyAPersonCanSettle } from '../../src/shared/question-contracts'
+import type {
+  PersonsDecision,
+  RequestOnlyAPersonCanSettle,
+} from '../../src/shared/question-contracts'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'

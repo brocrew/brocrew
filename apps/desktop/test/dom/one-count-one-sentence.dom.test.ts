@@ -1,4 +1,9 @@
-import type { LedgerWalk, LedgerWalkKind, PersonsDecision, PersonsQuestion } from '../../src/shared/question-contracts'
+import type {
+  LedgerWalk,
+  LedgerWalkKind,
+  PersonsDecision,
+  PersonsQuestion,
+} from '../../src/shared/question-contracts'
 import type { WorkGivenOut } from '../../src/shared/task-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'

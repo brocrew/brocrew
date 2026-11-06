@@ -13,8 +13,6 @@ import {
 } from '../src/renderer/src/lib/transcript'
 import { workIsWith } from '../src/renderer/src/lib/where-the-work-is'
 
-
-
 /**
  * 🔴 **A report that names a conversation, and can take you there** (506).
  *

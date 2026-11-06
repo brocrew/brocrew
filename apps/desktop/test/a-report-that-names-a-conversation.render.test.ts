@@ -7,8 +7,6 @@ import SessionPanel from '../src/renderer/src/components/SessionPanel.vue'
 import WorkReportEntry from '../src/renderer/src/components/WorkReportEntry.vue'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 
-
-
 /**
  * 🔴 **The work report's row, rendered — the press and its two absences** (506).
  *

@@ -32,7 +32,14 @@ import {
   type UserInputItem,
 } from '../src/renderer/src/lib/transcript'
 import { decisionReading, readingSentence } from '../src/shared/questions'
-import { agentName, providerName, type AgentIdentity, type CreatedSession, type Provider, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import {
+  agentName,
+  providerName,
+  type AgentIdentity,
+  type CreatedSession,
+  type Provider,
+  type RuntimeEventMessage,
+} from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 725 · Draws 1 and 2 — the agent's words and the provider's rule, on every card that carries them

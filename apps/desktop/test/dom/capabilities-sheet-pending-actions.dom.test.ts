@@ -5,7 +5,12 @@ import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesShe
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
 import { createModelLists } from '../../src/renderer/src/lib/model-lists'
 import { DEFAULT_CAPABILITIES, MAX_CAPABILITY_COUNT } from '../../src/shared/capabilities'
-import type { AgentIdentities, AgentIdentity, AgentProviderSet, RuntimeBridge } from '../../src/shared/runtime-ipc'
+import type {
+  AgentIdentities,
+  AgentIdentity,
+  AgentProviderSet,
+  RuntimeBridge,
+} from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, type Mounted } from './harness'
 
 afterEach(unmountAll)

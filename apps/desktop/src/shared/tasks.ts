@@ -1,7 +1,25 @@
 import type { PersistedEventInfo, TranscriptEvent } from './conversation-events'
 import type { WorkInHand } from './question-contracts'
 import { AGENT_MESSAGE_KINDS, TASK_STATES } from './task-contracts'
-import type { AgentMessageKind, ConversationWait, HeldWork, PieceAConversationGave, PieceRow, PieceWaitingOnWhoWrote, StatusLine, StoppedOnALimit, StoppedOnALogin, TaskStallCause, TaskState, TaskWait, TurnLimitOnTheRow, WaitOn, WhatAConversationIsWaitingOn, WorkGivenOut, WorkReport } from './task-contracts'
+import type {
+  AgentMessageKind,
+  ConversationWait,
+  HeldWork,
+  PieceAConversationGave,
+  PieceRow,
+  PieceWaitingOnWhoWrote,
+  StatusLine,
+  StoppedOnALimit,
+  StoppedOnALogin,
+  TaskStallCause,
+  TaskState,
+  TaskWait,
+  TurnLimitOnTheRow,
+  WaitOn,
+  WhatAConversationIsWaitingOn,
+  WorkGivenOut,
+  WorkReport,
+} from './task-contracts'
 import { whoCancelledIt, type AskToStop } from './how-work-stopped'
 
 import { aPersonsOwnWords } from './a-persons-own-words'
@@ -10,7 +28,6 @@ import { aPersonsOwnWords } from './a-persons-own-words'
 // cannot give it one. ⚠️ `questions.ts` does not import this file, so the checker sees no cycle.
 
 import type { HowAPieceEnded, WorkThatNamesIt } from './piece-called'
-
 
 /** ⚑ **The same waits as data**, filtered out of {@link TASK_STATES} rather than retyped. */
 export const TASK_WAITS: readonly TaskWait[] = TASK_STATES.filter((state): state is TaskWait =>

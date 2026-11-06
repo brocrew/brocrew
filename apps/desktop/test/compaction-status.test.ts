@@ -18,7 +18,11 @@ import {
   standingOf,
 } from '../src/renderer/src/lib/agent-state'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
-import type { RuntimeEventMessage, SessionLiveness, SessionLivenessMessage } from '../src/shared/runtime-ipc'
+import type {
+  RuntimeEventMessage,
+  SessionLiveness,
+  SessionLivenessMessage,
+} from '../src/shared/runtime-ipc'
 
 /**
  * **133 · ninety-one seconds of `idle` while a 90,000-token context was compacted.**

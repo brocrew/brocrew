@@ -10,7 +10,13 @@ import {
   useMessagePaths,
 } from '../../src/renderer/src/composables/useMessagePaths'
 import { fileManagerWord } from '../../src/renderer/src/lib/message-paths'
-import type { MessagePath, MessagePathAsk, MessagePathTarget, OpenMessagePathResult, RevealResult } from '../../src/shared/runtime-ipc'
+import type {
+  MessagePath,
+  MessagePathAsk,
+  MessagePathTarget,
+  OpenMessagePathResult,
+  RevealResult,
+} from '../../src/shared/runtime-ipc'
 import type { HistoryEvent } from '../../src/shared/recovery'
 import { mount, paneProps, permission, record, unmountAll, type Mounted } from './harness'
 import {

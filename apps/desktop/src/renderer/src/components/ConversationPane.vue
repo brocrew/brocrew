@@ -14,7 +14,24 @@ import {
   shallowReactive,
   watch,
 } from 'vue'
-import type { AgentIdentity, PermissionDecision, ProviderCapabilityMap, SetSessionSettingInput, UserInputResponse, ChildWorkInput, ChildSendResult, ChildStateResult, ChildWorkResult, CommandTail, ToolAnswer, WorkflowOutputResult, InstructionSourceResult, RevealResult, ConfigFileResult, SessionPathTarget } from '../../../shared/runtime-ipc'
+import type {
+  AgentIdentity,
+  PermissionDecision,
+  ProviderCapabilityMap,
+  SetSessionSettingInput,
+  UserInputResponse,
+  ChildWorkInput,
+  ChildSendResult,
+  ChildStateResult,
+  ChildWorkResult,
+  CommandTail,
+  ToolAnswer,
+  WorkflowOutputResult,
+  InstructionSourceResult,
+  RevealResult,
+  ConfigFileResult,
+  SessionPathTarget,
+} from '../../../shared/runtime-ipc'
 import { PROVIDER_NAME } from '../../../shared/runtime-ipc'
 import { DEFAULT_CONVERSATION_PROVIDER } from '@brobot2/shared'
 import { stopJoinsThatAsk } from '../lib/stop-unanswered'

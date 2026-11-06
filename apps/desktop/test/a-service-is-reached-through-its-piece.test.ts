@@ -13,7 +13,6 @@ import {
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { pieceLine } from '../src/shared/piece-called'
 
-
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 /**

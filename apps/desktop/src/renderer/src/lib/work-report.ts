@@ -1,7 +1,12 @@
 import { TASK_OUTCOMES } from '../../../shared/task-contracts'
 import type { TaskOutcome, WorkReport } from '../../../shared/task-contracts'
 import { WORK_STATE_WORD } from '../../../shared/work-state-words'
-import { A_PERSON_MUST_ACT, UNDRIVEN_SENTENCES, undrivenSentence, WAITING_STANDS_FOR } from '../../../shared/tasks'
+import {
+  A_PERSON_MUST_ACT,
+  UNDRIVEN_SENTENCES,
+  undrivenSentence,
+  WAITING_STANDS_FOR,
+} from '../../../shared/tasks'
 
 /**
  * 🔴 **What came back from work this conversation gave out, in words** (406, HO-019 §2).

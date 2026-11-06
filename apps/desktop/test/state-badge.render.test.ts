@@ -4,7 +4,6 @@ import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import StateBadge, { TASK_OUTCOME_LOOK } from '../src/renderer/src/components/StateBadge.vue'
 
-
 /**
  * The one place a state's colour is decided (Slice 2 · 007).
  *

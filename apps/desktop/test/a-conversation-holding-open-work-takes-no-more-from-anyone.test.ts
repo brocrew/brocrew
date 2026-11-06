@@ -17,7 +17,12 @@ import { giverStallNotices, RuntimeHost, type RuntimeEventSink } from './helpers
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { A_WAIT_ON_PURPOSE_OUTLASTS, TASK_IS_OPEN, derivePieces, theStateAsRead } from '../src/shared/tasks'
+import {
+  A_WAIT_ON_PURPOSE_OUTLASTS,
+  TASK_IS_OPEN,
+  derivePieces,
+  theStateAsRead,
+} from '../src/shared/tasks'
 
 /**
  * # A conversation holding a stalled or parked piece still takes more work

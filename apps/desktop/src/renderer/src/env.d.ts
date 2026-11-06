@@ -7,7 +7,12 @@ import type { AttentionSignal } from '../../shared/attention-signals'
 import type { DockLabel, DockLabelChange } from '../../shared/dock-label'
 /// <reference types="vite/client" />
 import type { AppInfo, Provider } from '@brobot2/shared'
-import type { ChosenAttachment, ChosenCwd, DroppedPathVerdict, RuntimeBridge } from '../../shared/runtime-ipc'
+import type {
+  ChosenAttachment,
+  ChosenCwd,
+  DroppedPathVerdict,
+  RuntimeBridge,
+} from '../../shared/runtime-ipc'
 import type { PagePerformanceReport, PageReportAnswer } from '../../shared/page-performance'
 import type { WindowControl, WindowControlEffect } from '../../shared/window-controls'
 import type { SavedDrafts } from '../../shared/saved-drafts'

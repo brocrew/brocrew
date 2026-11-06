@@ -12,7 +12,6 @@ import {
   type RuntimeEvent,
 } from '@brobot2/runtime'
 
-
 /**
  * Turn Claude's own transcript records into the entries our ledger holds (088), so an adopted
  * session shows the conversation it already had instead of an empty chat.

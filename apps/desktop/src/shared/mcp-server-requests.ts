@@ -9,7 +9,6 @@ import type { McpServerRequestSettledEvent, McpServerRequestedEvent } from './co
  * module without pulling in the host.
  */
 
-
 /** Who a requested server would be for: every agent, or only the agents the request names. */
 export const MCP_SERVER_REQUEST_WHO = ['everyone', 'only-these-agents'] as const
 

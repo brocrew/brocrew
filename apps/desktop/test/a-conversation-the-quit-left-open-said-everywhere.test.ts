@@ -22,7 +22,6 @@ import {
   type WorkingTogetherInput,
 } from '../src/renderer/src/lib/working-together'
 
-
 import type { ForestConversation, TheWholeForest } from '../src/shared/the-whole-forest'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../src/shared/who-called-whom'
 

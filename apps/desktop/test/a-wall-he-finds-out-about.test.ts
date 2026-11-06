@@ -24,7 +24,6 @@ import {
 } from '../src/renderer/src/lib/persons-queue'
 import { WALK_COVERS } from '../src/shared/questions'
 
-
 /**
  * 🔴 **533 · a wall he finds out about before he hits it** (HO-052 §4).
  *

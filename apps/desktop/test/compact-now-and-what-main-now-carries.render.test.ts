@@ -30,7 +30,12 @@ import {
 } from '../src/renderer/src/lib/transcript'
 import { workingTogetherView } from '../src/renderer/src/lib/working-together'
 import { workGivenOutView } from '../src/renderer/src/lib/work-given-out'
-import type { CapabilityStatus, CreateSessionInput, CreatedSession, RuntimeBridge } from '../src/shared/runtime-ipc'
+import type {
+  CapabilityStatus,
+  CreateSessionInput,
+  CreatedSession,
+  RuntimeBridge,
+} from '../src/shared/runtime-ipc'
 
 import type { WhoCalledWhom, WorkEdge } from '../src/shared/who-called-whom'
 import { everythingOverTheWire } from './lib/the-wire'

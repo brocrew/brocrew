@@ -9,7 +9,12 @@ import { createModelLists } from '../../src/renderer/src/lib/model-lists'
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
-import type { AgentIdentities, Provider, RuntimeBridge, ResumedSession } from '../../src/shared/runtime-ipc'
+import type {
+  AgentIdentities,
+  Provider,
+  RuntimeBridge,
+  ResumedSession,
+} from '../../src/shared/runtime-ipc'
 import type { ResolvedMessageLink } from '../../src/renderer/src/lib/message-links'
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
 import {

@@ -28,7 +28,16 @@ import {
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { createSessionStore, type FirstMessageCameTo } from '../src/renderer/src/lib/session-store'
-import { HELD_ELSEWHERE, NOTHING_TO_SEND, type FirstMessageAnswer, type RuntimeBridge, type RuntimeChangeMessage, type RuntimeCommand, type RuntimeEventMessage, type SessionLivenessMessage } from '../src/shared/runtime-ipc'
+import {
+  HELD_ELSEWHERE,
+  NOTHING_TO_SEND,
+  type FirstMessageAnswer,
+  type RuntimeBridge,
+  type RuntimeChangeMessage,
+  type RuntimeCommand,
+  type RuntimeEventMessage,
+  type SessionLivenessMessage,
+} from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
 
 /**

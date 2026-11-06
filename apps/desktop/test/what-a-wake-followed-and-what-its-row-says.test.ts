@@ -9,7 +9,6 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { exchangePreviewLines } from '../src/shared/last-exchange'
 
-
 /**
  * # 🔴 F080 — a turn its provider started, in the store: what it followed, where it stands, and
  * what the last exchange says after it

@@ -7,7 +7,6 @@ import {
   type ReminderProgress,
 } from '../src/main/runtime/work-reconciliation'
 
-
 function fixture() {
   let clock = 100
   let id = 0

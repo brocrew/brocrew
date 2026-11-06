@@ -24,7 +24,14 @@ import { stalledWorkView } from '../src/renderer/src/lib/persons-queue'
 import { OPEN_THE_CONVERSATION } from '../src/renderer/src/lib/taking-over'
 import type { StalledWork } from '../src/shared/stalled-work'
 
-import type { ResumableSessionInfo, RuntimeBridge, RuntimeChangeMessage, RuntimeCommand, RuntimeEventMessage, SessionLivenessMessage } from '../src/shared/runtime-ipc'
+import type {
+  ResumableSessionInfo,
+  RuntimeBridge,
+  RuntimeChangeMessage,
+  RuntimeCommand,
+  RuntimeEventMessage,
+  SessionLivenessMessage,
+} from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
 import { proseSpans } from './lib/prose-spans'
 

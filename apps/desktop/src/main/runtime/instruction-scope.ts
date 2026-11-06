@@ -1,7 +1,6 @@
 import type { InstructionScope } from '../../shared/instruction-contracts'
 import { dirname, resolve, sep } from 'node:path'
 
-
 /**
  * 🔴 **Which layer a provider-reported instruction file belongs to** (356 §3, from 357's verdict).
  *

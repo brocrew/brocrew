@@ -29,7 +29,6 @@ import {
 } from '../src/renderer/src/lib/transcript'
 import { decisionReading, readingSentence } from '../src/shared/questions'
 
-
 /**
  * 🔴 **487 · the card a person could not answer at all, and the sentence above it** (`483`'s
  * repair 1, §1.2 and the three surfaces of §1.3).

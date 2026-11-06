@@ -1,5 +1,9 @@
 import type { MoveRequestAck } from '../../../shared/move-contracts'
-import type { LedgerWalk, PersonsDecision, PersonsQuestion } from '../../../shared/question-contracts'
+import type {
+  LedgerWalk,
+  PersonsDecision,
+  PersonsQuestion,
+} from '../../../shared/question-contracts'
 import type { McpServerRequestForAPerson } from '../../../shared/conversation-events'
 import type { WhatEachConversationIsWaitingOn, WorkGivenOut } from '../../../shared/task-contracts'
 import type { WhatAPickBecame } from '../../../shared/model-choice-contracts'
@@ -22,7 +26,35 @@ import type { WorkspaceReading } from '../../../shared/workspace-reading'
 import { activityOf, type WhatIsBeingDone } from '../../../shared/what-is-being-done'
 
 import type { TheWholeForest } from '../../../shared/the-whole-forest'
-import type { AnswerAck, ProviderAnswerAck, CreateSessionInput, PermissionDecision, ReleasedSession, ResumedSession, RuntimeBridge, SetSessionSettingInput, UserInputResponse, ChildWorkInput, ChildSendResult, ChildStateResult, CommandTail, ToolAnswer, ChildWorkResult, ResourceDrawing, ResourceReading, ResourceReveal, WorkflowOutputResult, InstructionSourceResult, RevealResult, ConfigFileResult, SessionPathTarget, LaunchRefusal, FirstMessageNotSent, ProcessMemory, RuntimeStatesMessage } from '../../../shared/runtime-ipc'
+import type {
+  AnswerAck,
+  ProviderAnswerAck,
+  CreateSessionInput,
+  PermissionDecision,
+  ReleasedSession,
+  ResumedSession,
+  RuntimeBridge,
+  SetSessionSettingInput,
+  UserInputResponse,
+  ChildWorkInput,
+  ChildSendResult,
+  ChildStateResult,
+  CommandTail,
+  ToolAnswer,
+  ChildWorkResult,
+  ResourceDrawing,
+  ResourceReading,
+  ResourceReveal,
+  WorkflowOutputResult,
+  InstructionSourceResult,
+  RevealResult,
+  ConfigFileResult,
+  SessionPathTarget,
+  LaunchRefusal,
+  FirstMessageNotSent,
+  ProcessMemory,
+  RuntimeStatesMessage,
+} from '../../../shared/runtime-ipc'
 import { markAnswerRefused, markReopened, markRequestFailed } from './transcript'
 import { createProviderBlockStore, type ProviderBlockStore } from './provider-limit-facts'
 import {

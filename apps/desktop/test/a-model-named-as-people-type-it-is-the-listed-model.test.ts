@@ -7,7 +7,6 @@ import {
   thePickerRows,
 } from '../src/renderer/src/lib/model-lists'
 
-
 /**
  * # W4.42 · a model named in another letter case, or with spaces around it, is the same model
  * (`5d5a991a`)

@@ -24,7 +24,6 @@ import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
-
 /**
  * # 🔴 Message now · `message_agent` and `answer_question` with `interrupt: true`
  *

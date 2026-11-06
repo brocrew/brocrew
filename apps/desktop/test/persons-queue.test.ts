@@ -1,9 +1,30 @@
-import type { AboutWork, EscalationChain, HowItWasRaised, LedgerWalk, LedgerWalkKind, OfferedAnswer, PersonsDecision, PersonsQuestion, RequestOnlyAPersonCanSettle, RoutedRequest, WorkInHand } from '../src/shared/question-contracts'
+import type {
+  AboutWork,
+  EscalationChain,
+  HowItWasRaised,
+  LedgerWalk,
+  LedgerWalkKind,
+  OfferedAnswer,
+  PersonsDecision,
+  PersonsQuestion,
+  RequestOnlyAPersonCanSettle,
+  RoutedRequest,
+  WorkInHand,
+} from '../src/shared/question-contracts'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { CHAIN_HOP_LIMIT, chainReading, NOTHING_NAMED_THE_WORK, chainSentence, decisionReading, escalationChain, readingSentence, aPersonsSince } from '../src/shared/questions'
+import {
+  CHAIN_HOP_LIMIT,
+  chainReading,
+  NOTHING_NAMED_THE_WORK,
+  chainSentence,
+  decisionReading,
+  escalationChain,
+  readingSentence,
+  aPersonsSince,
+} from '../src/shared/questions'
 import { ACTIVITY_READ_EVERY_MS } from '../src/renderer/src/lib/recent-activity'
 import { homeAttention } from '../src/renderer/src/lib/home-attention'
 import {

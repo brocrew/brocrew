@@ -16,7 +16,12 @@ import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
-import { DEFAULT_PROFILE_ID, RUNTIME_CHANGE_SUBJECTS, type RuntimeChangeMessage, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import {
+  DEFAULT_PROFILE_ID,
+  RUNTIME_CHANGE_SUBJECTS,
+  type RuntimeChangeMessage,
+  type RuntimeEventMessage,
+} from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **638 · work moved and nothing announced it** — `631` §6.2, in the frontend seat's own words:

@@ -20,7 +20,6 @@ import {
 import { WHO_DID_IT, WHO_DID_IT_SAYS, type ActedBy } from '../src/shared/who-did-it'
 import { UNDRIVEN_SENTENCES, derivePieces } from '../src/shared/tasks'
 
-
 /**
  * 🔴 **494 · the act this app knows the author of** — `492` F2, repaired at the READER.
  *

@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest'
 import { CurrentProviderLimitFacts } from '../src/main/runtime/current-provider-limit-facts'
 import type { ProviderLimitSeen } from '../src/shared/provider-limit'
 
-
 const AT = Date.UTC(2026, 9, 8, 21)
 const RESET = AT + 3 * 60 * 60_000
 const wall = (resetsAt: number | null): ProviderLimitSeen => ({

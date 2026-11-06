@@ -6,7 +6,6 @@ import type {
   UserInputResponse,
 } from '../../../shared/runtime-ipc'
 
-
 import {
   ALLOW,
   I_OPENED_IT,

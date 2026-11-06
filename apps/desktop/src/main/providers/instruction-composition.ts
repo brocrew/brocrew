@@ -1,4 +1,8 @@
-import type { InjectedInstruction, InjectedInstructionKind, RefusedInstruction } from '../../shared/instruction-contracts'
+import type {
+  InjectedInstruction,
+  InjectedInstructionKind,
+  RefusedInstruction,
+} from '../../shared/instruction-contracts'
 import { THIS_CONVERSATION_HEADER } from '../runtime/instruction-headings'
 import { agentPreamble, type PromptIdentity } from '../runtime/agent-preamble'
 

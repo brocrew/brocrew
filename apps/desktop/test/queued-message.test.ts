@@ -11,7 +11,11 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
 import { messageNamingItsSender, THE_PERSON_AT_A_WINDOW } from '../src/main/runtime/turn-origin'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
-import type { RuntimeEventMessage, SessionLiveness, SessionLivenessMessage } from '../src/shared/runtime-ipc'
+import type {
+  RuntimeEventMessage,
+  SessionLiveness,
+  SessionLivenessMessage,
+} from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 
 /**

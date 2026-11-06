@@ -2,7 +2,15 @@
 import type { HandedPath } from '../../../shared/attachment-contracts'
 
 import { computed, nextTick, onScopeDispose, ref } from 'vue'
-import type { AgentIdentity, CapabilityStatus, ChildWorkInput, CommandTail, PermissionDecision, Provider, UserInputResponse } from '../../../shared/runtime-ipc'
+import type {
+  AgentIdentity,
+  CapabilityStatus,
+  ChildWorkInput,
+  CommandTail,
+  PermissionDecision,
+  Provider,
+  UserInputResponse,
+} from '../../../shared/runtime-ipc'
 import type { WorkEdge } from '../../../shared/who-called-whom'
 import { useOlderHistory } from '../composables/useOlderHistory'
 import { useStickToBottom } from '../composables/useStickToBottom'

@@ -1,13 +1,116 @@
-import type { ReconciliationReceipt, WorkReconciliationEvent, WorkRecoveryEvent } from '../../shared/reconciliation-contracts'
-import type { DecideMoveRequestInput, MoveOffer, MoveOrigin, MoveRequestAck } from '../../shared/move-contracts'
-import type { AnsweredQuestion, LeadInFront, TurnAuthorship, UserTurnEvent } from '../../shared/human-answer-contracts'
-import type { AgentModelChoice, ModelAndEffort, ModelCatalogue, ModelChoiceSaved, ModelList, ReportedModel, SelectedModel, SessionSettingChanged, SessionSettingsDisclosure, WhatAPickBecame, WhereItCameFrom } from '../../shared/model-choice-contracts'
-import type { InstructionChangedEvent, InstructionProposedEvent, InstructionSettledEvent, LaunchedEvent, MailboxKind, McpServerRequestForAPerson, McpServerRequestSettledEvent, McpServerRequestedEvent, MemoryLoadedEvent, MemoryNoteEvent, MessageSentEvent, QueuedMessageEvent, ReopenedEvent, ReplacedByEvent, ReplacesEvent, ReplyUndeliveredEvent, RestoredFromTheArchiveEvent, StopUnansweredEvent, TheQuestionItAsks, ToolRefusedEvent, TranscriptEvent, UnqueuedMessageEvent, UserCommandEvent, UserDecisionEvent } from '../../shared/conversation-events'
+import type {
+  ReconciliationReceipt,
+  WorkReconciliationEvent,
+  WorkRecoveryEvent,
+} from '../../shared/reconciliation-contracts'
+import type {
+  DecideMoveRequestInput,
+  MoveOffer,
+  MoveOrigin,
+  MoveRequestAck,
+} from '../../shared/move-contracts'
+import type {
+  AnsweredQuestion,
+  LeadInFront,
+  TurnAuthorship,
+  UserTurnEvent,
+} from '../../shared/human-answer-contracts'
+import type {
+  AgentModelChoice,
+  ModelAndEffort,
+  ModelCatalogue,
+  ModelChoiceSaved,
+  ModelList,
+  ReportedModel,
+  SelectedModel,
+  SessionSettingChanged,
+  SessionSettingsDisclosure,
+  WhatAPickBecame,
+  WhereItCameFrom,
+} from '../../shared/model-choice-contracts'
+import type {
+  InstructionChangedEvent,
+  InstructionProposedEvent,
+  InstructionSettledEvent,
+  LaunchedEvent,
+  MailboxKind,
+  McpServerRequestForAPerson,
+  McpServerRequestSettledEvent,
+  McpServerRequestedEvent,
+  MemoryLoadedEvent,
+  MemoryNoteEvent,
+  MessageSentEvent,
+  QueuedMessageEvent,
+  ReopenedEvent,
+  ReplacedByEvent,
+  ReplacesEvent,
+  ReplyUndeliveredEvent,
+  RestoredFromTheArchiveEvent,
+  StopUnansweredEvent,
+  TheQuestionItAsks,
+  ToolRefusedEvent,
+  TranscriptEvent,
+  UnqueuedMessageEvent,
+  UserCommandEvent,
+  UserDecisionEvent,
+} from '../../shared/conversation-events'
 import type { HandedPath } from '../../shared/attachment-contracts'
 import type { SessionInstructions } from '../../shared/instruction-contracts'
-import type { ActionAsked, ActionFile, CardNobodyHolds, LedgerWalk, PersonsDecision, PersonsQuestion, QuestionAskedEvent, QuestionEndedWithItsPieceEvent, QuestionRecipient, QuestionRecipientEndedEvent, QuestionWithdrawnEvent, RaisedQuestion, RequestEscalatedEvent, RequestInterruptedEvent, RequestOnlyAPersonCanSettle, RequestRoutedEvent, RequestState, RoutedRequest, VisibleQuestion, WorkInHand } from '../../shared/question-contracts'
-import type { AgentMessageKind, ConversationWaiting, PieceAConversationGave, PieceRow, StatusLine, TaskOutcome, TaskStallCause, TaskState, WaitOn, WhatAConversationIsWaitingOn, WhatEachConversationIsWaitingOn, WorkClosedEvent, WorkGivenEvent, WorkGivenOut, WorkInterruptedEvent, WorkRebriefedEvent, WorkRepliedEvent, WorkReport, WorkRestartedEvent, WorkRetitledEvent, WorkSentEvent, WorkStallTold, WorkStatusSetEvent, WorkTakenBackEvent } from '../../shared/task-contracts'
-import type { AgentState, BackgroundCommand, BackgroundLevel, ScheduleLevel, ScheduledRow } from '../../shared/agent-state-contracts'
+import type {
+  ActionAsked,
+  ActionFile,
+  CardNobodyHolds,
+  LedgerWalk,
+  PersonsDecision,
+  PersonsQuestion,
+  QuestionAskedEvent,
+  QuestionEndedWithItsPieceEvent,
+  QuestionRecipient,
+  QuestionRecipientEndedEvent,
+  QuestionWithdrawnEvent,
+  RaisedQuestion,
+  RequestEscalatedEvent,
+  RequestInterruptedEvent,
+  RequestOnlyAPersonCanSettle,
+  RequestRoutedEvent,
+  RequestState,
+  RoutedRequest,
+  VisibleQuestion,
+  WorkInHand,
+} from '../../shared/question-contracts'
+import type {
+  AgentMessageKind,
+  ConversationWaiting,
+  PieceAConversationGave,
+  PieceRow,
+  StatusLine,
+  TaskOutcome,
+  TaskStallCause,
+  TaskState,
+  WaitOn,
+  WhatAConversationIsWaitingOn,
+  WhatEachConversationIsWaitingOn,
+  WorkClosedEvent,
+  WorkGivenEvent,
+  WorkGivenOut,
+  WorkInterruptedEvent,
+  WorkRebriefedEvent,
+  WorkRepliedEvent,
+  WorkReport,
+  WorkRestartedEvent,
+  WorkRetitledEvent,
+  WorkSentEvent,
+  WorkStallTold,
+  WorkStatusSetEvent,
+  WorkTakenBackEvent,
+} from '../../shared/task-contracts'
+import type {
+  AgentState,
+  BackgroundCommand,
+  BackgroundLevel,
+  ScheduleLevel,
+  ScheduledRow,
+} from '../../shared/agent-state-contracts'
 import type { ProviderHomesReprovision } from '../../shared/runtime-ipc'
 import { providerKnowledge } from '../providers/knowledge-definitions'
 import { legacyAccountRecordFormat, providerAuthPolicies } from '../providers/auth-definitions'
@@ -248,7 +351,19 @@ import {
   HELD_ELSEWHERE,
   PROVIDER_NAME,
 } from '../../shared/runtime-ipc'
-import type { AgentIdentities, AgentIdentity, AgentIdentityName, IdentityCreator, CwdVerdict, NewAgent, ProviderSignInResult, RuntimeChangeMessage, AgentStateMoved, RuntimeStatesMessage, ProcessMemory } from '../../shared/runtime-ipc'
+import type {
+  AgentIdentities,
+  AgentIdentity,
+  AgentIdentityName,
+  IdentityCreator,
+  CwdVerdict,
+  NewAgent,
+  ProviderSignInResult,
+  RuntimeChangeMessage,
+  AgentStateMoved,
+  RuntimeStatesMessage,
+  ProcessMemory,
+} from '../../shared/runtime-ipc'
 import type { CapabilityGrant } from '../../shared/capabilities'
 // ⚑ **A VALUE from that module**: a launch's instructions read the one default set for an identity
 // whose first row is not written yet.
@@ -604,7 +719,80 @@ import { createLaunchRegistry, type Launch } from './launch-registry'
 import { claimResource, type ResourceClaim } from './held-resources'
 import { joinLiveHosts, workRunningElsewhere, type LiveHost } from './live-hosts'
 import { describeOutcome, importFromHome, type HomeConversation } from '../archive/import-from-home'
-import { HISTORY_WINDOW_MAX_EVENTS, HISTORY_WINDOW_TURNS, providerName, type AdoptionReport, type ApiKeyChanged, type ApiKeyCheck, type ProviderResources, type ProvidersChangedMessage, type ProviderUsageReading, type UsageWindowSeen, type ProviderVersion, type KeptRuleRemoved, type KeptRules, type ProviderSetup, type ApiKeyStatus, type AnswerAck, type ProviderAnswerAck, type ApprovalModeDisclosure, type PlanGoAheadDisclosure, type CreateSessionInput, type CreatedSession, type ProviderConfigInfo, READING_NOTE, READING_SUFFIX, type ExportAsked, type ExportedSession, type HistoryWindow, type ImportedBundle, type ImportedFromHome, type ImportedRecording, type LedgerStatus, type RebuiltLedger, type ProviderCapabilityMap, type AgentProviderSet, type ReleasedSession, type ResumedSession, type FirstMessageAnswer, type FirstMessageRefusal, type LaunchRefusal, type RuntimeEventMessage, type SessionLiveness, type SessionLivenessMessage, type SkippedSessionInfo, type QueuedMessageDisclosure, type QueueOutcome, type SessionHandover, type ChildSendResult, type ChildStateResult, type ChildWorkInput, type ChildWorkResult, type CommandTail, type ToolAnswer, type ResourceReading, type ResourceDrawing, type ResourceReveal, type FilesKept, type FilesKeptScope, type KeptFile, type WorkflowOutputResult, type InstructionSourceResult, type RevealResult, type MessagePath, type MessagePathAsk, type MessagePathTarget, type OpenMessagePathResult, type ConfigFileResult, type SessionPathTarget, type ResumableSessionInfo, type RunningState, type UnresumableSessionInfo, MAX_TURN_PARTS, theMessagesOf } from '../../shared/runtime-ipc'
+import {
+  HISTORY_WINDOW_MAX_EVENTS,
+  HISTORY_WINDOW_TURNS,
+  providerName,
+  type AdoptionReport,
+  type ApiKeyChanged,
+  type ApiKeyCheck,
+  type ProviderResources,
+  type ProvidersChangedMessage,
+  type ProviderUsageReading,
+  type UsageWindowSeen,
+  type ProviderVersion,
+  type KeptRuleRemoved,
+  type KeptRules,
+  type ProviderSetup,
+  type ApiKeyStatus,
+  type AnswerAck,
+  type ProviderAnswerAck,
+  type ApprovalModeDisclosure,
+  type PlanGoAheadDisclosure,
+  type CreateSessionInput,
+  type CreatedSession,
+  type ProviderConfigInfo,
+  READING_NOTE,
+  READING_SUFFIX,
+  type ExportAsked,
+  type ExportedSession,
+  type HistoryWindow,
+  type ImportedBundle,
+  type ImportedFromHome,
+  type ImportedRecording,
+  type LedgerStatus,
+  type RebuiltLedger,
+  type ProviderCapabilityMap,
+  type AgentProviderSet,
+  type ReleasedSession,
+  type ResumedSession,
+  type FirstMessageAnswer,
+  type FirstMessageRefusal,
+  type LaunchRefusal,
+  type RuntimeEventMessage,
+  type SessionLiveness,
+  type SessionLivenessMessage,
+  type SkippedSessionInfo,
+  type QueuedMessageDisclosure,
+  type QueueOutcome,
+  type SessionHandover,
+  type ChildSendResult,
+  type ChildStateResult,
+  type ChildWorkInput,
+  type ChildWorkResult,
+  type CommandTail,
+  type ToolAnswer,
+  type ResourceReading,
+  type ResourceDrawing,
+  type ResourceReveal,
+  type FilesKept,
+  type FilesKeptScope,
+  type KeptFile,
+  type WorkflowOutputResult,
+  type InstructionSourceResult,
+  type RevealResult,
+  type MessagePath,
+  type MessagePathAsk,
+  type MessagePathTarget,
+  type OpenMessagePathResult,
+  type ConfigFileResult,
+  type SessionPathTarget,
+  type ResumableSessionInfo,
+  type RunningState,
+  type UnresumableSessionInfo,
+  MAX_TURN_PARTS,
+  theMessagesOf,
+} from '../../shared/runtime-ipc'
 // ⚑ **F097** — whose words a turn's messages are, read the same way by the fold.
 import { aPersonsOwnWords } from '../../shared/a-persons-own-words'
 import {
@@ -736,7 +924,24 @@ import {
   type ReplyRefusal,
 } from './reply-rails'
 // ⚑ **`TASK_IS_OPEN` — what *open* means for a piece**, the one predicate every door asks.
-import { TASK_IS_OPEN, openWorkOf, workNamed, aStallItsGiverCanBeToldOf, givenByAConversation, ITS_OWNER_RUNNING_AGAIN_DRIVES_IT, composeWhatEachPieceIsWaitingOn, theWaitAConversationIsIn, whereTheWorkItHoldsStands, onePieceAsItStands, theAnswerItCarries, AN_ANSWER_HELD_THEN_LOST, NOTHING_IT_WAITS_ON, theDriveOfTheTurn, thePiecesTheTurnNames, PIECE_EVENT_TYPES } from '../../shared/tasks'
+import {
+  TASK_IS_OPEN,
+  openWorkOf,
+  workNamed,
+  aStallItsGiverCanBeToldOf,
+  givenByAConversation,
+  ITS_OWNER_RUNNING_AGAIN_DRIVES_IT,
+  composeWhatEachPieceIsWaitingOn,
+  theWaitAConversationIsIn,
+  whereTheWorkItHoldsStands,
+  onePieceAsItStands,
+  theAnswerItCarries,
+  AN_ANSWER_HELD_THEN_LOST,
+  NOTHING_IT_WAITS_ON,
+  theDriveOfTheTurn,
+  thePiecesTheTurnNames,
+  PIECE_EVENT_TYPES,
+} from '../../shared/tasks'
 
 import {
   REQUEST_IS_OPEN,
@@ -915,7 +1120,19 @@ import {
 } from './codex-lead'
 import { identityUse, theProviderOfAnAgent, whatHoldsIt } from '../../shared/agent-roster'
 import type { AgentRemoved, IdentityUse, ItsProvider } from '../../shared/agent-roster'
-import { STAND_IN_PROFILE, aChoiceIsInForce, judgeAgainstTheList, refuseModelChoice, theEffortLadder, theEffortWhenNoneIsNamed, theEffortsOf, theList, sameModel, theListedRow, theListsSpelling } from '../../shared/model-choice'
+import {
+  STAND_IN_PROFILE,
+  aChoiceIsInForce,
+  judgeAgainstTheList,
+  refuseModelChoice,
+  theEffortLadder,
+  theEffortWhenNoneIsNamed,
+  theEffortsOf,
+  theList,
+  sameModel,
+  theListedRow,
+  theListsSpelling,
+} from '../../shared/model-choice'
 import {
   admitAnswer,
   A_PERSONS_ANSWER_TO_AN_ENDED_QUESTION,
@@ -967,7 +1184,15 @@ import { LivenessTracker, type LivenessOptions } from './liveness'
 // same line of {@link RuntimeHost.deliver} and for the same reason.
 import { BeingDoneTracker } from './being-done'
 import type { ConversationAtWork, WhatIsBeingDone } from '../../shared/what-is-being-done'
-import { agentStateOf, agentStateWords, backgroundWhat, NOTHING_IN_THE_BACKGROUND, NOTHING_SCHEDULED, scheduleHeld, somethingRunning } from '../../shared/agent-state'
+import {
+  agentStateOf,
+  agentStateWords,
+  backgroundWhat,
+  NOTHING_IN_THE_BACKGROUND,
+  NOTHING_SCHEDULED,
+  scheduleHeld,
+  somethingRunning,
+} from '../../shared/agent-state'
 // ⚑ **D-029 · a job's time, with its day where that is not today** — {@link scheduleNoticesText}.
 import { clockTimeFrom } from '../../shared/clock'
 import { theZoneReadNow, type LocalZone } from '../../shared/local-time'

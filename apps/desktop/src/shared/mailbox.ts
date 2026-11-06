@@ -1,6 +1,5 @@
 import type { MailboxKind, PersistedEventInfo } from './conversation-events'
 
-
 /**
  * 🔴 **The mailbox, DERIVED — what one conversation was handed to read, in order, and how each of
  * them ended** (394, HO-007 S4).

@@ -21,7 +21,6 @@ import {
   type TranscriptState,
 } from '../src/renderer/src/lib/transcript'
 
-
 /**
  * # 🔴 725 · Draw 3 — R71: an ending THIS APP wrote is drawn as the app's word
  *

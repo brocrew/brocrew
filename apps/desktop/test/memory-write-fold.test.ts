@@ -10,7 +10,6 @@ import {
   type TranscriptState,
 } from '../src/renderer/src/lib/transcript'
 
-
 /**
  * 330 · 🔴 **The fold and the raw stream, for a memory write.**
  *

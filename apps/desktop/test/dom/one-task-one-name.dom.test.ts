@@ -1,4 +1,11 @@
-import type { AboutWork, LedgerWalk, PersonsDecision, PersonsQuestion, RoutedRequest, WorkInHand } from '../../src/shared/question-contracts'
+import type {
+  AboutWork,
+  LedgerWalk,
+  PersonsDecision,
+  PersonsQuestion,
+  RoutedRequest,
+  WorkInHand,
+} from '../../src/shared/question-contracts'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { expandAgentCards } from './harness'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -10,7 +17,13 @@ import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 import type { AttentionRequest } from '../../src/renderer/src/lib/attention'
-import { NOTHING_NAMED_THE_WORK, aPersonsSince, chainReading, chainSentence, escalationChain } from '../../src/shared/questions'
+import {
+  NOTHING_NAMED_THE_WORK,
+  aPersonsSince,
+  chainReading,
+  chainSentence,
+  escalationChain,
+} from '../../src/shared/questions'
 import type { StalledWork } from '../../src/shared/stalled-work'
 
 import { mount, unmountAll, visible } from './harness'

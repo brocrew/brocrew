@@ -14,7 +14,12 @@ import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import { createProviderBlockStore } from '../../src/renderer/src/lib/provider-limit-facts'
 import { acceptLiveness, acceptProviderBlock } from '../../src/renderer/src/lib/session-record'
 
-import type { AgentStateMoved, QueuedMessageDisclosure, ResumableSessionInfo, SessionLiveness } from '../../src/shared/runtime-ipc'
+import type {
+  AgentStateMoved,
+  QueuedMessageDisclosure,
+  ResumableSessionInfo,
+  SessionLiveness,
+} from '../../src/shared/runtime-ipc'
 import { applyEvent } from '../../src/renderer/src/lib/transcript'
 import { fullTime } from '../../src/renderer/src/lib/clock'
 import { clockTime } from '../../src/shared/clock'

@@ -25,7 +25,6 @@ import {
 } from '../src/renderer/src/lib/transcript'
 import { composeReadable } from '../src/renderer/src/lib/readable-export'
 
-
 /**
  * # 🔴 685 · §2.1 — the act a refusal carries, on the notice a person reads (`675` F-d)
  *

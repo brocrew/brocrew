@@ -20,7 +20,12 @@ import { AN_AGENT_THIS_APP_CANNOT_NAME } from '../src/main/runtime/reply-rails'
 import { resourceTitle, resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { DocumentForm } from '../src/shared/documents'
-import type { FilesKept, KeptFile, RuntimeEventMessage, RuntimeStatesMessage } from '../src/shared/runtime-ipc'
+import type {
+  FilesKept,
+  KeptFile,
+  RuntimeEventMessage,
+  RuntimeStatesMessage,
+} from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 
 /**

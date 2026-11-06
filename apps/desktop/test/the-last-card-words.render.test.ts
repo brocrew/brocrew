@@ -27,7 +27,6 @@ import {
 import { whatThisAnswerDoes } from '../src/renderer/src/lib/user-input-offer'
 import { decisionReading, readingSentence } from '../src/shared/questions'
 
-
 /**
  * # 🔴 743 · The last card words — `739` F-1 (ruled), F-7 and F-8
  *

@@ -9,7 +9,12 @@ import { createAttachmentBook, NEW_CONVERSATION } from '../../src/renderer/src/l
 import { NO_LAUNCH_CHOICES, type LaunchChoices } from '../../src/renderer/src/lib/launch-choices'
 import { createModelLists, type ModelLists } from '../../src/renderer/src/lib/model-lists'
 import { theList } from '../../src/shared/model-choice'
-import { DEFAULT_PROFILE_ID, type CreateSessionInput, type ModelChoice, type Provider } from '../../src/shared/runtime-ipc'
+import {
+  DEFAULT_PROFILE_ID,
+  type CreateSessionInput,
+  type ModelChoice,
+  type Provider,
+} from '../../src/shared/runtime-ipc'
 import { MEASURED_CLAUDE } from '../fixtures/effort-launches'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 

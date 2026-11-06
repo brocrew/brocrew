@@ -1,4 +1,7 @@
-import type { InjectedInstruction, SessionInstructions } from '../../src/shared/instruction-contracts'
+import type {
+  InjectedInstruction,
+  SessionInstructions,
+} from '../../src/shared/instruction-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import { page } from 'vitest/browser'

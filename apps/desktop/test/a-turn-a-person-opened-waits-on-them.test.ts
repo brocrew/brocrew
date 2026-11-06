@@ -4,8 +4,6 @@ import type { UserTurnPart } from '../src/shared/human-answer-contracts'
 import { describe, expect, it } from 'vitest'
 import { TASK_IS_OPEN, aStallItsGiverCanBeToldOf, derivePieces } from '../src/shared/tasks'
 
-
-
 /** The ledger keeps person waits through notes and clears them when the work is driven or ended. */
 
 let ordinal = 0

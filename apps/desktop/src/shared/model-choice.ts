@@ -1,4 +1,11 @@
-import type { AgentModelChoice, ListedModel, ModelAndEffort, ModelChoiceRail, ModelChoiceRefusalDetail, ModelChoiceSaved } from './model-choice-contracts'
+import type {
+  AgentModelChoice,
+  ListedModel,
+  ModelAndEffort,
+  ModelChoiceRail,
+  ModelChoiceRefusalDetail,
+  ModelChoiceSaved,
+} from './model-choice-contracts'
 import type { Provider } from '@brobot2/shared'
 import type { ModelChoice } from '@brobot2/runtime'
 import { DEFAULT_PROFILE_ID, PROVIDER_NAME } from './runtime-ipc'

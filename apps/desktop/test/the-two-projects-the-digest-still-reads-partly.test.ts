@@ -10,7 +10,6 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { distil } from '../src/main/runtime/digest'
 import { DIGEST_EVENT_TYPES } from '../src/shared/digest'
 
-
 /**
  * 🔴 **475 · the two projects the digest still read *partly*** — `466`'s remainder, and the
  * SELECTION question the PM asked underneath it.

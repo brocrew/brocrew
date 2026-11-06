@@ -6,7 +6,6 @@ import { nextTick, reactive } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { applyEvent } from '../../src/renderer/src/lib/transcript'
 
-
 import { mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
 
 /**

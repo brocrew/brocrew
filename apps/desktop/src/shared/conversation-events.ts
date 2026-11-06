@@ -3,13 +3,41 @@ import type { AppNotice } from './app-notice'
 import type { HandedPath } from './attachment-contracts'
 import type { WhoStoppedIt } from './how-work-stopped'
 import type { AnsweredQuestion, UserTurnEvent } from './human-answer-contracts'
-import type { McpServerRequestEnding, McpServerRequestWaiting, McpServerRequestWho } from './mcp-server-requests'
+import type {
+  McpServerRequestEnding,
+  McpServerRequestWaiting,
+  McpServerRequestWho,
+} from './mcp-server-requests'
 import type { MoveOrigin, MoveReceipt } from './move-contracts'
 import type { InstructionAsk, InstructionEnding, RulesAuthor } from './own-instructions'
-import type { QuestionAskedEvent, QuestionEndedWithItsPieceEvent, QuestionRecipientEndedEvent, QuestionWithdrawnEvent, RequestEscalatedEvent, RequestInterruptedEvent, RequestRoutedEvent, RequestStrandedEvent } from './question-contracts'
+import type {
+  QuestionAskedEvent,
+  QuestionEndedWithItsPieceEvent,
+  QuestionRecipientEndedEvent,
+  QuestionWithdrawnEvent,
+  RequestEscalatedEvent,
+  RequestInterruptedEvent,
+  RequestRoutedEvent,
+  RequestStrandedEvent,
+} from './question-contracts'
 import type { WorkReconciliationEvent, WorkRecoveryEvent } from './reconciliation-contracts'
 import type { RailPermanence, RefusalRemedy, RefusalTold } from './refusals'
-import type { AgentMessageKind, WorkClosedEvent, WorkGivenEvent, WorkInterruptedEvent, WorkRebriefedEvent, WorkRepliedEvent, WorkReport, WorkRestartedEvent, WorkRetitledEvent, WorkSentEvent, WorkStallSetRightEvent, WorkStallToldEvent, WorkStatusSetEvent, WorkTakenBackEvent } from './task-contracts'
+import type {
+  AgentMessageKind,
+  WorkClosedEvent,
+  WorkGivenEvent,
+  WorkInterruptedEvent,
+  WorkRebriefedEvent,
+  WorkRepliedEvent,
+  WorkReport,
+  WorkRestartedEvent,
+  WorkRetitledEvent,
+  WorkSentEvent,
+  WorkStallSetRightEvent,
+  WorkStallToldEvent,
+  WorkStatusSetEvent,
+  WorkTakenBackEvent,
+} from './task-contracts'
 import type { WhatALaunchGave } from './what-this-agent-was-given'
 import type { ActedBy } from './who-did-it'
 import type { PermissionDecision, RuntimeEvent } from '@brobot2/runtime'

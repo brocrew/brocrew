@@ -28,7 +28,6 @@ import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN, undrivenSentence } from '../src/shared/tasks'
 
-
 /**
  * 🔴 **648 · `message_never_sent`'s sentence, RENDERED rather than restated.**
  *
@@ -41,7 +40,6 @@ import { TASK_IS_OPEN, undrivenSentence } from '../src/shared/tasks'
  * was sent* and named one of its four producers. See `TaskStallCause.message_never_sent`.
  */
 const THE_MESSAGE_NEVER_WENT = undrivenSentence('message_never_sent')
-
 
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 

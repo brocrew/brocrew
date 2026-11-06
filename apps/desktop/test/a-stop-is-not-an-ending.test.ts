@@ -17,7 +17,6 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
-
 /**
  * 🔴 **D-017 · a stop is not an ending — two lives the landed suite does not yet pin.**
  *

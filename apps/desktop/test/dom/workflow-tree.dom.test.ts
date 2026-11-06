@@ -6,7 +6,11 @@ import type { WorkflowRunCard } from '../../src/renderer/src/lib/transcript'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import SessionPanel from '../../src/renderer/src/components/SessionPanel.vue'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
-import type { ChildWorkInput, ChildWorkResult, WorkflowOutputResult } from '../../src/shared/runtime-ipc'
+import type {
+  ChildWorkInput,
+  ChildWorkResult,
+  WorkflowOutputResult,
+} from '../../src/shared/runtime-ipc'
 import {
   mount,
   paintedBackground,

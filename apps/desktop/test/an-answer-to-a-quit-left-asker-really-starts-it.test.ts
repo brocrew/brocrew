@@ -16,7 +16,6 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
-
 /**
  * 🔴 **D-009 · F012, decision 4's answer half — an answer to an asker the quit left open STARTS
  * it, rather than only recording words nobody is running to read.**

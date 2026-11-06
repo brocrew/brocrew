@@ -1,4 +1,7 @@
-import type { ReconciliationReceipt, WorkReconciliationEvent } from '../src/shared/reconciliation-contracts'
+import type {
+  ReconciliationReceipt,
+  WorkReconciliationEvent,
+} from '../src/shared/reconciliation-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'

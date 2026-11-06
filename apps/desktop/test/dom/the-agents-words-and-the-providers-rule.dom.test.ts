@@ -10,7 +10,12 @@ import * as since725 from '../../src/renderer/src/lib/permission-offer'
 import { acceptEvent, createSessionRecord } from '../../src/renderer/src/lib/session-record'
 import { applyEvent } from '../../src/renderer/src/lib/transcript'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
-import { agentName, type AgentIdentity, type CreatedSession, type RuntimeEventMessage } from '../../src/shared/runtime-ipc'
+import {
+  agentName,
+  type AgentIdentity,
+  type CreatedSession,
+  type RuntimeEventMessage,
+} from '../../src/shared/runtime-ipc'
 import { assertDrawn, drawnReady } from './drawn'
 import {
   META,

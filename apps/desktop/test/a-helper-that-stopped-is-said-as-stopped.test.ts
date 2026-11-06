@@ -1,6 +1,11 @@
 import type { AgentStateFacts } from '../src/shared/agent-state-contracts'
 import { describe, expect, it } from 'vitest'
-import { agentStateOf, agentStateWords, NOTHING_IN_THE_BACKGROUND, NOTHING_SCHEDULED } from '../src/shared/agent-state'
+import {
+  agentStateOf,
+  agentStateWords,
+  NOTHING_IN_THE_BACKGROUND,
+  NOTHING_SCHEDULED,
+} from '../src/shared/agent-state'
 import { clockTime } from '../src/shared/clock'
 
 /**

@@ -13,7 +13,6 @@ import { workSearchInWords } from '../src/shared/work-search-words'
 import { workEdge } from '../src/shared/who-called-whom'
 import { workReading } from '../src/renderer/src/lib/work-report'
 
-
 const here = dirname(fileURLToPath(import.meta.url))
 const CONDITION = 'Both fictional outputs are recorded and the comparison passes.'
 const request = {

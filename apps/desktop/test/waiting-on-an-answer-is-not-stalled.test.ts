@@ -20,7 +20,15 @@ import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { REQUEST_IS_OPEN, openQuestionsByWork } from '../src/shared/questions'
-import { TASK_IS_OPEN, TASK_WAITS, UNDRIVEN_SENTENCES, WAITING_STANDS_FOR, composeWhatEachPieceIsWaitingOn, derivePieces, stalledWithACause } from '../src/shared/tasks'
+import {
+  TASK_IS_OPEN,
+  TASK_WAITS,
+  UNDRIVEN_SENTENCES,
+  WAITING_STANDS_FOR,
+  composeWhatEachPieceIsWaitingOn,
+  derivePieces,
+  stalledWithACause,
+} from '../src/shared/tasks'
 import { WORK_STATE_WORD, workReading } from '../src/renderer/src/lib/work-report'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 

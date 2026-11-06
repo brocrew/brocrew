@@ -1,4 +1,11 @@
-import type { PieceRow, StoppedOnALogin, TaskOutcome, TaskStallCause, TaskState, WorkReport } from '../../shared/task-contracts'
+import type {
+  PieceRow,
+  StoppedOnALogin,
+  TaskOutcome,
+  TaskStallCause,
+  TaskState,
+  WorkReport,
+} from '../../shared/task-contracts'
 import type { RequestState } from '../../shared/question-contracts'
 import { DEFAULT_IDENTITY_PROVIDER, providerDescriptor } from '@brobot2/shared'
 import { refusalReason } from '../../shared/refusals'

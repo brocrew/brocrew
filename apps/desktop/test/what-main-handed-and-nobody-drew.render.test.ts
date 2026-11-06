@@ -50,8 +50,6 @@ import { WORK_REPORT_MARK } from '../src/renderer/src/lib/work-report'
 import { THE_APP_IS_THE_AUTHOR } from '../src/shared/app-notice'
 import { decisionReading, readingSentence } from '../src/shared/questions'
 
-
-
 /**
  * 🔴 **701 · what main handed the renderer and nobody drew** — `701` §2, four facts main already
  * carried that no surface said; two of them are still measured here.

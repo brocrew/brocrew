@@ -20,7 +20,12 @@ import {
   sweepDrafts,
   type DraftSweep,
 } from '../src/renderer/src/lib/drafts'
-import type { RuntimeBridge, RuntimeCommand, RuntimeEventMessage, SessionLivenessMessage } from '../src/shared/runtime-ipc'
+import type {
+  RuntimeBridge,
+  RuntimeCommand,
+  RuntimeEventMessage,
+  SessionLivenessMessage,
+} from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
 
 /**

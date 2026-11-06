@@ -1,5 +1,9 @@
 import type { HandedPath } from '../src/shared/attachment-contracts'
-import type { QueuedMessageEvent, TranscriptEvent, UnqueuedMessageEvent } from '../src/shared/conversation-events'
+import type {
+  QueuedMessageEvent,
+  TranscriptEvent,
+  UnqueuedMessageEvent,
+} from '../src/shared/conversation-events'
 import {
   existsSync,
   mkdirSync,

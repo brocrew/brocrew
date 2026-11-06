@@ -12,7 +12,6 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { runtimeCommandSchema } from '../src/main/runtime/ipc'
 import { isAWorkReport } from '../src/shared/tasks'
 
-
 /**
  * # 🔴 518 · what a REPLAYED work report may hand a person
  *

@@ -1,7 +1,9 @@
-import type { McpServerRequestSettledEvent, McpServerRequestedEvent } from '../src/shared/conversation-events'
+import type {
+  McpServerRequestSettledEvent,
+  McpServerRequestedEvent,
+} from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
-
 
 const request: McpServerRequestedEvent = {
   type: 'mcp_server_requested',

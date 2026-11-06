@@ -1,4 +1,7 @@
-import type { ConversationWait, WhatEachConversationIsWaitingOn } from '../../src/shared/task-contracts'
+import type {
+  ConversationWait,
+  WhatEachConversationIsWaitingOn,
+} from '../../src/shared/task-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import SessionHeader from '../../src/renderer/src/components/SessionHeader.vue'

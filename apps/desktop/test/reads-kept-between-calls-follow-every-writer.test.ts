@@ -9,7 +9,6 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { WALL_QUEUE_AT_MOST } from '../src/main/db/provider-wall-watch'
 import { createSessionStore, rowsUnreadOnce, type SessionStore } from '../src/main/db/session-store'
 
-
 /**
  * The reads the main thread repeats are kept between calls and carried forward with the rows
  * written since: the provider walls, with the launches and turns that date and retract them, and

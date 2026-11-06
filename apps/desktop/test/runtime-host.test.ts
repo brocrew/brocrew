@@ -24,7 +24,12 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { childWorkRoot } from '../src/main/child-work'
 import { DEFAULT_PROFILE_ID, NOTHING_TO_SEND } from '../src/shared/runtime-ipc'
 
-import type { CreateSessionInput, RuntimeEventMessage, SessionLiveness, SessionLivenessMessage } from '../src/shared/runtime-ipc'
+import type {
+  CreateSessionInput,
+  RuntimeEventMessage,
+  SessionLiveness,
+  SessionLivenessMessage,
+} from '../src/shared/runtime-ipc'
 
 /**
  * The host, driven end to end against `FakeRuntime` — the conformance double that

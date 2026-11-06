@@ -11,7 +11,6 @@ import { backgroundTheRestartStoppedText } from '../src/main/runtime/runtime-hos
 import { theStoppedWork, whatStoppedWithIt } from '../src/main/runtime/reply-rails'
 import { clockTime } from '../src/shared/clock'
 
-
 /**
  * # ⚑ A restart says what it stopped in the background
  *

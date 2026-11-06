@@ -12,7 +12,6 @@ import {
 } from '../src/renderer/src/lib/model-lists'
 import type { SessionRecord } from '../src/renderer/src/lib/session-record'
 
-
 /**
  * UI-012 · **the one model picker's holder and its arithmetic** — landing coverage for what the
  * commit's re-aimed tests do not drive: the holder's read/re-read rules, what the form starts on and

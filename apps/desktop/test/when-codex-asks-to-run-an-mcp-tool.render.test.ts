@@ -48,7 +48,11 @@ import {
 import * as said730 from '../src/renderer/src/lib/user-input-offer'
 import { ASKED_TO_STOP } from '../src/shared/how-work-stopped'
 import { decisionReading, readingSentence } from '../src/shared/questions'
-import { providerName, type CreatedSession, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import {
+  providerName,
+  type CreatedSession,
+  type RuntimeEventMessage,
+} from '../src/shared/runtime-ipc'
 import {
   aHostOverScriptedCodex,
   waitFor,

@@ -1,12 +1,43 @@
 import type { MoveOffer, MoveOrigin, MoveReceipt } from '../../../shared/move-contracts'
-import type { AnsweredQuestion, HumanAnswers, HumanFinalContext, UserTurnPart } from '../../../shared/human-answer-contracts'
+import type {
+  AnsweredQuestion,
+  HumanAnswers,
+  HumanFinalContext,
+  UserTurnPart,
+} from '../../../shared/human-answer-contracts'
 import type { HandedPath } from '../../../shared/attachment-contracts'
-import type { MemoryNoteSeen, MessageSentEvent, QueuedMessageEvent, TranscriptEvent } from '../../../shared/conversation-events'
-import type { ActionAsked, QuestionAskedEvent, RequestRoutedEvent } from '../../../shared/question-contracts'
+import type {
+  MemoryNoteSeen,
+  MessageSentEvent,
+  QueuedMessageEvent,
+  TranscriptEvent,
+} from '../../../shared/conversation-events'
+import type {
+  ActionAsked,
+  QuestionAskedEvent,
+  RequestRoutedEvent,
+} from '../../../shared/question-contracts'
 import type { AgentMessageKind, WorkRepliedEvent, WorkReport } from '../../../shared/task-contracts'
 import type { BackgroundRow, ScheduledRow } from '../../../shared/agent-state-contracts'
 import { moveOfferOf, moveOriginOf, moveReceiptOf } from '../../../shared/move-request'
-import type { BackgroundWork, ContextReading, DeclaredToolset, FileChange, MemoryRecallEntry, PermissionDecision, ProviderCommandSet, PublishedInventory, RuntimeEvent, ScheduledJob, SessionRef, SessionStatus, ToolNaming, UnknownCategory, WorkflowAgent, WorkflowPhase } from '../../../shared/runtime-ipc'
+import type {
+  BackgroundWork,
+  ContextReading,
+  DeclaredToolset,
+  FileChange,
+  MemoryRecallEntry,
+  PermissionDecision,
+  ProviderCommandSet,
+  PublishedInventory,
+  RuntimeEvent,
+  ScheduledJob,
+  SessionRef,
+  SessionStatus,
+  ToolNaming,
+  UnknownCategory,
+  WorkflowAgent,
+  WorkflowPhase,
+} from '../../../shared/runtime-ipc'
 // ⚑ **D-027 · a value import with no cycle** — `runtime-ipc.ts` imports only types.
 import { anActionAsked } from '../../../shared/questions'
 import { A_RENEWED_SIGN_IN_SAYS } from '../../../shared/a-renewed-sign-in'

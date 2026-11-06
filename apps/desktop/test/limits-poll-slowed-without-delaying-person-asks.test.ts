@@ -12,7 +12,6 @@ import { limitsDisplayLane, type LimitsDisplayState } from '../src/renderer/src/
 import { readProviderLimit, type ProviderLimitSeen } from '../src/shared/provider-limit'
 import { oneReadAtATime } from '../src/renderer/src/lib/one-read-at-a-time'
 
-
 const screen = readFileSync(
   fileURLToPath(new URL('../src/renderer/src/components/RuntimeScreen.vue', import.meta.url)),
   'utf8',

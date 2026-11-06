@@ -13,7 +13,6 @@ import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 
-
 /**
  * # A person's pick in a conversation, while the provider's list could not be read
  *

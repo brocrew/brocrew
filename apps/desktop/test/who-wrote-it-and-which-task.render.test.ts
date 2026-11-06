@@ -18,7 +18,11 @@ import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { HELD_ELSEWHERE } from '../src/shared/runtime-ipc'
-import type { CreatedSession, RuntimeEventMessage, SessionLivenessMessage } from '../src/shared/runtime-ipc'
+import type {
+  CreatedSession,
+  RuntimeEventMessage,
+  SessionLivenessMessage,
+} from '../src/shared/runtime-ipc'
 import ConversationPane from '../src/renderer/src/components/ConversationPane.vue'
 import QueuedMessage from '../src/renderer/src/components/QueuedMessage.vue'
 import RelayedEntry from '../src/renderer/src/components/RelayedEntry.vue'

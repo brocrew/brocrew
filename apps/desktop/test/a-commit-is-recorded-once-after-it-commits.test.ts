@@ -9,7 +9,6 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { committedChangesOf, type Committed } from '../src/main/db/committed-changes'
 
-
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
 /**

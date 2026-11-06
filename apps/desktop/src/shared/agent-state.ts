@@ -1,4 +1,14 @@
-import type { AgentState, AgentStateArmFacts, AgentStateFacts, AgentStateName, BackgroundLevel, BackgroundRow, BackgroundWhat, ScheduleLevel, ScheduledRow } from './agent-state-contracts'
+import type {
+  AgentState,
+  AgentStateArmFacts,
+  AgentStateFacts,
+  AgentStateName,
+  BackgroundLevel,
+  BackgroundRow,
+  BackgroundWhat,
+  ScheduleLevel,
+  ScheduledRow,
+} from './agent-state-contracts'
 import { clockTime } from './clock'
 import { hasControlCharacter, hasReorderingCharacter, quotedLiteral } from './runtime-ipc'
 
