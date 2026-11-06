@@ -12075,7 +12075,7 @@ export function createSessionStore(
           ORDER BY ordinal DESC LIMIT 1`,
       ),
       newestLine: db.prepare(
-        `SELECT payload, created_at FROM events INDEXED BY events_kind_owner_idx
+        `SELECT payload, created_at, ordinal FROM events INDEXED BY events_kind_owner_idx
           WHERE session_id = ? AND generation = ?
             AND type = ?
             AND CASE WHEN json_valid(payload) THEN CASE WHEN json_type(payload, '$.piece') = 'text' AND length(CAST(json_extract(payload, '$.piece') AS BLOB)) BETWEEN 1 AND 512 THEN json_extract(payload, '$.piece') END END = ?
@@ -12084,7 +12084,7 @@ export function createSessionStore(
       ),
       // A malformed newest row could name this root; never skip it to claim absence.
       turnRootLine: db.prepare(
-        `SELECT payload, created_at FROM events INDEXED BY events_kind_owner_idx
+        `SELECT payload, created_at, ordinal FROM events INDEXED BY events_kind_owner_idx
           WHERE session_id = ? AND generation = ?
             AND type = ?
             AND CASE WHEN json_valid(payload)
@@ -12353,10 +12353,10 @@ export function createSessionStore(
     type: 'work_retitled' | 'work_status_set',
   ): Record<string, unknown> | null => {
     const found = workSql().newestLine.get(piece.owner_session_id, generation, type, piece.id) as
-      { payload: string; created_at: number } | undefined
+      { payload: string; created_at: number; ordinal: number } | undefined
     if (found === undefined) return null
     const stored = aStoredObject(found.payload)
-    return stored === null ? null : { ...stored, at: found.created_at }
+    return stored === null ? null : { ...stored, at: found.created_at, revision: found.ordinal }
   }
 
   /**
@@ -14815,6 +14815,7 @@ export function createSessionStore(
                 text: statusSet.line,
                 by: statusSet.by,
                 at: statusSet.at,
+                revision: statusSet.revision as number,
                 ...theWaitItMarks(statusSet),
               }
             : null,
@@ -14827,11 +14828,11 @@ export function createSessionStore(
       const generation = activeGeneration(row.owner_session_id)
       const read = (type: 'work_retitled' | 'work_status_set') => {
         const found = workSql().turnRootLine.get(row.owner_session_id, generation, type, root) as
-          { payload: string; created_at: number } | undefined
+          { payload: string; created_at: number; ordinal: number } | undefined
         if (found === undefined) return { kind: 'absent' as const }
         const payload = aStoredObject(found.payload)
         if (payload?.piece !== root || payload.type !== type) return { kind: 'unread' as const }
-        return { kind: 'present' as const, payload, at: found.created_at }
+        return { kind: 'present' as const, payload, at: found.created_at, revision: found.ordinal }
       }
       const title = read('work_retitled')
       const status = read('work_status_set')
@@ -14853,6 +14854,7 @@ export function createSessionStore(
                 text: status.payload.line as string,
                 by: status.payload.by as string,
                 at: status.at,
+                revision: status.revision,
               }
             : null,
       }
