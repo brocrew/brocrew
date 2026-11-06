@@ -94,9 +94,9 @@ export function selectedSkillView(
     versions.push({
       id: source.id,
       versionId: source.versionId,
-      version: source.version,
+      version,
       alias: source.alias,
-      sourceSha256: source.sha256,
+      sourceSha256: draft.sha256,
       sha256: installed.sha256,
       bytes,
       requirement: source.requirement,

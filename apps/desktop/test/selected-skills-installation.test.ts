@@ -344,6 +344,28 @@ describe.each(['claude', 'codex'] as const)(
         ).context.skills.map((one) => one.name),
       ).toEqual(['remember'])
     })
+    it('copies an edited shipped source at the same label without resealing saved catalogue rows', async () => {
+      const original = shipped()
+      const bodies = new Map(original.bodies)
+      bodies.set('delegate', bodies.get('delegate')! + '\nA valid changed shipped instruction.\n')
+      const edited = verifyBuiltInSkills(original.catalogue, bodies)
+      const choose = launchSkillSelections(db, () => edited)
+      const selection = choose('recipe-writer', grants)
+      const installed = await prepareBuiltInSkills({
+        provider,
+        managedRoot: root,
+        providerHome: home,
+        shipped: () => edited,
+        ...grants,
+        selection,
+        isCurrent: selection.isCurrent,
+      })
+      const entry = installed.context.skills.find((one) => one.name === 'delegate')!
+      expect(readFileSync(entry.path, 'utf8')).toBe(bodies.get('delegate'))
+      expect(installed.versions?.find((one) => one.id === 'built-in/delegate')?.sourceSha256).toBe(
+        hash(bodies.get('delegate')!),
+      )
+    })
     it('keeps a text-pack override out of saved sources and selections', async () => {
       add('crumb-check')
       const source = shipped()
