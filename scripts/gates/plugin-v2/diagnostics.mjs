@@ -34,7 +34,9 @@ function gateChild(child, plugin) {
       (source) =>
         helper('supervisor') +
         once(
-          once(source, "stdio: 'ignore',", "stdio: ['ignore', 'ignore', 'pipe'],"),
+          source.includes("stdio: 'ignore',")
+            ? once(source, "stdio: 'ignore',", "stdio: ['ignore', 'ignore', 'pipe'],")
+            : source,
           '      let failed = false',
           "      gateChild(child, 'supervisor')\n      let failed = false",
         ),
@@ -67,16 +69,24 @@ function gateChild(child, plugin) {
           "  gateChild(child, config.pluginId)\n  child.on('message', (message) => {",
         ),
     )
-    change(
-      'apps/desktop/src/main/plugins/supervisor/entry.ts',
-      (source) =>
+    change('apps/desktop/src/main/plugins/supervisor/entry.ts', (source) => {
+      const modern =
+        'void runPluginSupervisor(process.argv[2]!, process.argv[3]!).catch((error) => {'
+      return (
         helper('owner') +
-        once(
-          source,
-          '.catch(() => {\n    process.exitCode = 1',
-          ".catch((error) => {\n    gateLog('fatal', {error: error?.stack ?? String(error)})\n    process.exitCode = 1",
-        ),
-    )
+        (source.includes(modern)
+          ? once(
+              source,
+              modern,
+              modern + "\n    gateLog('fatal', {error: error?.stack ?? String(error)})",
+            )
+          : once(
+              source,
+              '.catch(() => {\n    process.exitCode = 1',
+              ".catch((error) => {\n    gateLog('fatal', {error: error?.stack ?? String(error)})\n    process.exitCode = 1",
+            ))
+      )
+    })
   } catch (error) {
     for (const [file, original] of originals) fs.writeFileSync(file, original)
     throw error

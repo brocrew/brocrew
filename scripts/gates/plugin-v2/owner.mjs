@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createRequire } from 'node:module'
 import { randomBytes } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
+import { verifySource } from './source-binding.mjs'
 import { stageSource, projectedVersionArguments } from './staging.mjs'
 import { esbuildInvocation } from './tool-entry.mjs'
 import { prepareNativeEsbuild, readDependency } from './native-dependency.mjs'
@@ -59,41 +60,20 @@ export async function observe(version, records, root, { gitMs = 30000 } = {}) {
     plan = readJSON(file)
   const selected = hosted(plan, version)
   const git = (...args) => command('git', args, root, records, { cwd: repository, ms: gitMs })
-  const commit = (await git('rev-parse', 'HEAD')).trim(),
-    tree = (await git('rev-parse', 'HEAD^{tree}')).trim()
-  demand(commit === process.env.GITHUB_SHA && /^[a-f0-9]{40}$/.test(tree))
+  const commit = (await git('rev-parse', 'HEAD')).trim()
+  verifySource(commit, process.env.GITHUB_SHA)
   demand((await git('status', '--porcelain=v1')).trim() === '')
-  for (const f of plan.files) demand(hash(readFile(path.join(repository, f.path))) === f.sha256)
-  const changed = (await git('diff', '--name-only', plan.base, commit))
-    .trim()
-    .split('\n')
-    .filter(Boolean)
-  demand(changed.every((p) => plan.allowedChanges.includes(p)))
-  demand(
-    hash(readFile(path.join(routeDirectory, 'policy.proposed.json'))) === plan.routePolicySha256,
-  )
-  demand(
-    /^\d+$/.test(process.env.GITHUB_RUN_ID ?? '') &&
-      /^\d+$/.test(process.env.GITHUB_RUN_ATTEMPT ?? ''),
-  )
-  // These are measurements, NOT an independent approval or a self-authenticating own-commit pin.
   return {
     ...selected,
     schema: 2,
-    identityAuthority: 'observed-awaiting-external-operator-contract',
     routeCommit: commit,
-    routeTree: tree,
     ref: process.env.GITHUB_REF,
     repository: process.env.GITHUB_REPOSITORY,
     event: process.env.GITHUB_EVENT_NAME,
     runId: process.env.GITHUB_RUN_ID,
     attempt: process.env.GITHUB_RUN_ATTEMPT,
-    sourcePlanSha256: hash(readFile(file)),
-    workflowSha256: hash(readFile(path.join(repository, selected.workflow))),
-    routePolicySha256: plan.routePolicySha256,
     platform: process.platform,
     arch: process.arch,
-    externalAdmissionVerified: null,
   }
 }
 export function owned(root) {
@@ -111,7 +91,6 @@ export async function stage(version) {
   return stageSource(version, {
     temp,
     repository,
-    readPlan: () => readJSON(path.join(routeDirectory, 'source-plan.json')),
     observe,
     command,
     privateRoot,
@@ -250,7 +229,6 @@ export async function run(root) {
     summary.source = {
       app: a.appSource,
       route: a.routeCommit,
-      tree: a.routeTree,
       appVersion: a.appVersion,
     }
     checkNormalPluginBuild(repo)
@@ -492,17 +470,10 @@ export function scopeSdk(version) {
       encoding: 'utf8',
       windowsHide: true,
     }).trim()
-  const commit = git('rev-parse', 'HEAD'),
-    tree = git('rev-parse', 'HEAD^{tree}')
-  demand(
-    commit === process.env.GITHUB_SHA &&
-      /^[a-f0-9]{40}$/.test(tree) &&
-      git('status', '--porcelain=v1') === '',
-  )
-  const plan = readJSON(path.join(routeDirectory, 'source-plan.json'))
-  hosted(plan, version)
-  for (const file of plan.files)
-    demand(hash(readFile(path.join(repository, file.path))) === file.sha256)
+  const commit = git('rev-parse', 'HEAD')
+  verifySource(commit, process.env.GITHUB_SHA)
+  demand(git('status', '--porcelain=v1') === '')
+  hosted(readJSON(path.join(routeDirectory, 'source-plan.json')), version)
   return {
     schema: 1,
     scope: 'installed-sdk-role-scope',
@@ -510,9 +481,7 @@ export function scopeSdk(version) {
     sdkApplicable: version === '0.1.8',
     matrixVersion: version,
     routeCommit: commit,
-    routeTree: tree,
     appQualification: null,
-    identityAuthority: 'observed-awaiting-external-operator-contract',
   }
 }
 async function sdkCleanup(root, records) {
@@ -952,22 +921,20 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       JSON.stringify({
         execution: false,
         publication: false,
-        required:
-          'external exact operation contract; no-input ref-selected source plan; runtime identity is observed only',
+        required: 'hosted workflow_dispatch on the tested source SHA',
       }),
     )
   else if (mode === 'stage')
     stage(arg).then(
       (p) => console.log(p),
-      () => {
-        console.error('Plugin v2 staging refused')
+      (error) => {
+        console.error(error?.stack ?? String(error))
         process.exitCode = 1
       },
     )
   else if (mode === 'install') {
     const diagnostic = {}
     install(arg, diagnostic).catch((error) => {
-      console.error('Plugin v2 install refused')
       printFailure(error, diagnostic)
       process.exitCode = 1
     })
@@ -976,16 +943,16 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       (s) => {
         process.exitCode = s.passed ? 0 : 1
       },
-      () => {
-        console.error('Plugin v2 route refused')
+      (error) => {
+        console.error(error?.stack ?? String(error))
         process.exitCode = 1
       },
     )
   else if (mode === 'sdk-scope') {
     try {
       console.log(JSON.stringify(scopeSdk(arg)))
-    } catch {
-      console.error('SDK scope refused')
+    } catch (error) {
+      console.error(error?.stack ?? String(error))
       process.exitCode = 1
     }
   } else if (mode === 'sdk-stage') {
@@ -993,7 +960,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
     stageSdk(diagnostic).then(
       (root) => console.log(root),
       (error) => {
-        console.error('SDK stage refused')
         printFailure(error, diagnostic)
         console.error(
           'SDK stage witness:',
@@ -1010,8 +976,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
   } else if (mode === 'sdk-install')
     installSdk(arg)
       .then(() => installSdk(arg, true))
-      .catch(() => {
-        console.error('SDK install refused')
+      .catch((error) => {
+        console.error(error?.stack ?? String(error))
         process.exitCode = 1
       })
   else if (mode === 'sdk-run')
@@ -1019,8 +985,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       (s) => {
         process.exitCode = s.passed ? 0 : 1
       },
-      () => {
-        console.error('SDK run refused')
+      (error) => {
+        console.error(error?.stack ?? String(error))
         process.exitCode = 1
       },
     )

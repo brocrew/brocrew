@@ -1,4 +1,4 @@
-// BOUNDED SOURCE CONTROLS ONLY. Authored/frozen for Priya; not executed by the author.
+// Bounded source controls.
 // No app, network, provider, plugin, subprocess or dependency installation.
 import test from 'node:test'
 import assert from 'node:assert/strict'
@@ -15,10 +15,10 @@ import { pressInPlugins } from '../plugin-packaged/cdp.mjs'
 import { projectedVersionArguments, stageSource } from './staging.mjs'
 import { esbuildInvocation, nativeEsbuildTarget } from './tool-entry.mjs'
 import { fileURLToPath } from 'node:url'
-import { hash, hosted, receipt, LIST, BASE, BASE017, appSourceFor, MARKER } from './contract.mjs'
+import { hash, hosted, receipt, LIST, BASE017, appSourceFor, MARKER } from './contract.mjs'
 import { fetchSource, project, bundleProof } from './projection.mjs'
-import { verifyOperation } from './verify-operation.mjs'
 import { checkNormalPluginBuild } from '../../check-no-plugin-gate-inputs.mjs'
+import { verifyOperation } from './verify-operation.mjs'
 import { projectDiagnostics } from './diagnostics.mjs'
 
 test('projected child diagnostics capture raw stderr, spawn errors and exits and restore sources', () => {
@@ -154,7 +154,7 @@ test('candidate bytes are the exact previously reviewed two-row list', () => {
     ],
   )
 })
-test('no-input observed source plan refuses local, wrong role/source or self-authenticating records', () => {
+test('no-input observed source plan refuses local, wrong role or source', () => {
   const plan = JSON.parse(fs.readFileSync(new URL('./source-plan.json', import.meta.url)))
   const env = {
     GITHUB_ACTIONS: 'true',
@@ -167,8 +167,6 @@ test('no-input observed source plan refuses local, wrong role/source or self-aut
   assert.doesNotThrow(() => hosted(plan, '0.1.8', env, 'darwin', 'arm64'))
   assert.throws(() => hosted(plan, '0.1.8', {}, 'darwin', 'arm64'))
   assert.throws(() => hosted(plan, '0.1.9', env, 'darwin', 'arm64'))
-  for (const key of ['routeCommit', 'routeTree', 'workflowSha256', 'sourcePlanSha256'])
-    assert.throws(() => hosted({ ...plan, [key]: 'a'.repeat(64) }, '0.1.8', env, 'darwin', 'arm64'))
   assert.throws(() => hosted({ ...plan, candidateSha256: null }, '0.1.8', env, 'darwin', 'arm64'))
   assert.throws(() =>
     hosted(
@@ -204,38 +202,79 @@ test('fixed URL shim keeps native archive transport and rejects changed candidat
   assert.ok(source.includes(MARKER))
   assert.throws(() => fetchSource({ ...options, candidate: Buffer.from('{}') }))
 })
-test('projection selects production v2, normal source packaging refuses, restore is exact', () =>
-  scratch((root) => {
-    for (const name of [
-      'apps/desktop/src/main/index.ts',
-      'apps/desktop/src/main/plugins/catalogue/build-config.ts',
-      'apps/desktop/src/main/plugins/catalogue/download.ts',
-      'apps/desktop/src/main/plugins/catalogue/dev-source.ts',
-    ]) {
-      const file = path.join(root, name)
-      fs.mkdirSync(path.dirname(file), { recursive: true })
-      fs.writeFileSync(file, fs.readFileSync(path.join(repo, name)), { flag: 'wx', mode: 0o600 })
-    }
-    checkNormalPluginBuild(root)
-    const original = fs.readFileSync(path.join(root, 'apps/desktop/src/main/index.ts'), 'utf8')
-    const p = project(root, {
-      root,
-      token: 'b'.repeat(64),
-      candidate,
-      appData: path.join(root, 'a'),
-      browser: path.join(root, 'no-browser'),
-    })
-    const entry = fs.readFileSync(path.join(root, 'apps/desktop/src/main/index.ts'), 'utf8')
-    assert.ok(!entry.includes('fixtureSource:'))
-    assert.ok(!entry.includes('repo-fixture'))
-    assert.throws(() => checkNormalPluginBuild(root))
-    p.restore()
-    assert.equal(
-      fs.readFileSync(path.join(root, 'apps/desktop/src/main/index.ts'), 'utf8'),
-      original,
-    )
-    checkNormalPluginBuild(root)
-  }))
+for (const historical of [false, true])
+  test(`projection selects v2 and restores the ${historical ? 'historical' : 'current'} runtime call exactly`, () =>
+    scratch((root) => {
+      for (const name of [
+        'apps/desktop/src/main/index.ts',
+        'apps/desktop/src/main/plugins/catalogue/build-config.ts',
+        'apps/desktop/src/main/plugins/catalogue/download.ts',
+        'apps/desktop/src/main/plugins/catalogue/dev-source.ts',
+      ]) {
+        const file = path.join(root, name)
+        fs.mkdirSync(path.dirname(file), { recursive: true })
+        fs.writeFileSync(file, fs.readFileSync(path.join(repo, name)), { flag: 'wx', mode: 0o600 })
+      }
+      if (historical) {
+        const main = path.join(root, 'apps/desktop/src/main/index.ts')
+        fs.writeFileSync(
+          main,
+          fs
+            .readFileSync(main, 'utf8')
+            .replace(
+              'providerModules[provider].createRuntime(connectionId)',
+              'providerModules[provider].createRuntime()',
+            ),
+        )
+      }
+      checkNormalPluginBuild(root)
+      const original = fs.readFileSync(path.join(root, 'apps/desktop/src/main/index.ts'), 'utf8')
+      const p = project(root, {
+        root,
+        token: 'b'.repeat(64),
+        candidate,
+        appData: path.join(root, 'a'),
+        browser: path.join(root, 'no-browser'),
+      })
+      const entry = fs.readFileSync(path.join(root, 'apps/desktop/src/main/index.ts'), 'utf8')
+      assert.ok(!entry.includes('fixtureSource:'))
+      assert.ok(!entry.includes('repo-fixture'))
+      assert.throws(() => checkNormalPluginBuild(root))
+      p.restore()
+      assert.equal(
+        fs.readFileSync(path.join(root, 'apps/desktop/src/main/index.ts'), 'utf8'),
+        original,
+      )
+      checkNormalPluginBuild(root)
+    }))
+
+test('passive network observation preserves both download APIs and native responses', async () => {
+  const source = fs.readFileSync(new URL('./network-entry.ts', import.meta.url), 'utf8')
+  const start = source.indexOf('  globalThis.fetch = async ')
+  const body = source.slice(start, source.indexOf('\n  try {', start))
+  const calls = [],
+    hops = [],
+    response = { status: 200 }
+  const context = vm.createContext({
+    URL,
+    hops,
+    request: 'chrome',
+    native: async (input, init) => {
+      calls.push({ input, init })
+      return response
+    },
+  })
+  vm.runInContext(body, context)
+  for (const init of [{ signal: undefined }, { redirect: 'manual', credentials: 'omit' }]) {
+    const url = 'https://github.com/brocrew/fictional/releases/download/v1/archive.zip'
+    assert.equal(await context.fetch(url, init), response)
+    assert.equal(calls.at(-1).input, url)
+    assert.equal(calls.at(-1).init, init)
+  }
+  assert.equal(hops.length, 2)
+  assert.ok(hops.every((hop) => hop.host === 'github.com' && hop.status === 200))
+})
+
 test('one bundled path alone cannot establish both-path admission', () =>
   scratch((root) => {
     const paths = [
@@ -290,6 +329,16 @@ test('missing runtime/package/consent/management/drain evidence fails closed', (
     unmodifiedNetwork: networkFixture(),
   }
   assert.doesNotThrow(() => receipt(s))
+  const sha = 'a'.repeat(40)
+  const summary = Buffer.from(
+    JSON.stringify({
+      ...s,
+      passed: true,
+      observedIdentity: { routeCommit: sha, appVersion: '0.1.8', appSource: sha },
+    }),
+  )
+  assert.equal(verifyOperation(sha, summary).accepted, true)
+  assert.throws(() => verifyOperation('b'.repeat(40), summary), /Source SHA mismatch/)
   for (const changed of [
     { ...s, packageSha256: null },
     { ...s, runtimePaths: { client: true, owner: false } },
@@ -344,170 +393,6 @@ test('every ordinary job is excluded on both test-role prefixes; no new workflow
   assert.ok(!fs.existsSync(path.join(repo, '.github/workflows/plugin-v2-mac.yml')))
   assert.ok(!fs.existsSync(path.join(repo, '.github/workflows/plugin-v2-windows.yml')))
 })
-test('external admission nulls or identity mismatch cannot be replaced by runtime observations', () => {
-  const template = JSON.parse(
-    fs.readFileSync(new URL('./operator-operation.template.json', import.meta.url)),
-  )
-  assert.throws(() => verifyOperation(template, {}, Buffer.from('{}')))
-  assert.throws(() =>
-    verifyOperation({ ...template, executionAdmitted: true }, {}, Buffer.from('{}')),
-  )
-  const e = {
-    ...template,
-    workflow: '.github/workflows/macos.yml',
-    ref: 'refs/heads/gate/plugin-v2-mac-closed',
-    platform: 'darwin',
-    arch: 'arm64',
-    appVersion: '0.1.8',
-    appSource: 'a'.repeat(40),
-    routeCommit: 'a'.repeat(40),
-    routeTree: 'b'.repeat(40),
-    sourcePlanSha256: 'c'.repeat(64),
-    workflowSha256: 'd'.repeat(64),
-    routePolicySha256: 'e'.repeat(64),
-    brokerPolicySha256: '1'.repeat(64),
-    requiredPublicChecks: ['commit messages and identities', 'secret scan'],
-    reviewSha256: 'f'.repeat(64),
-    executionAdmitted: true,
-  }
-  const p = {
-    review: true,
-    cancelZeroInstalls: true,
-    staleRefused: true,
-    confirmed: true,
-    running: true,
-    emptyManaged: true,
-    configured: true,
-    removed: true,
-    nativeDetailsMatched: true,
-    bridgeObserved: true,
-  }
-  const s = {
-    schema: 1,
-    scope: 'synthetic-v2-review',
-    publicBinary: false,
-    publication: false,
-    platformMeasured: true,
-    packageSha256: 'a'.repeat(64),
-    passed: true,
-    cleanup: { directClosed: true, twoEmptySamples: true },
-    bundlePaths: { main: true, owner: true },
-    runtimePaths: { client: true, owner: true },
-    measurement: { platform: 'darwin', arch: 'arm64' },
-    normalBuildRefused: true,
-    normalOutputRefused: true,
-    plugins: { chrome: { ...p }, whatsapp: { ...p } },
-    unmodifiedNetwork: networkFixture(),
-    observedIdentity: {
-      ...e,
-      identityAuthority: 'observed-awaiting-external-operator-contract',
-      externalAdmissionVerified: null,
-      runId: '123',
-      attempt: '1',
-    },
-  }
-  const publicPlan = JSON.parse(
-    fs.readFileSync(new URL('./public-checks-plan.json', import.meta.url)),
-  )
-  e.publicChecksWorkflowSha256 = publicPlan.workflowSha256
-  const bytes = Buffer.from(JSON.stringify(s))
-  const evidence = {
-    source: 'operator-broker-api-readback',
-    repository: e.repository,
-    workflow: e.workflow,
-    headSha: e.routeCommit,
-    ref: e.ref,
-    event: e.event,
-    runId: '123',
-    attempt: '1',
-    jobKey: 'plugin-v2-review',
-    jobName: 'Plugin v2 Review (0.1.8)',
-    jobId: 456,
-    appVersion: '0.1.8',
-    conclusion: 'success',
-    workflowConclusion: 'success',
-    reviewSha256: e.reviewSha256,
-    brokerReceipt: { policy_sha256: e.brokerPolicySha256 },
-    matrixJobs: ['0.1.7', '0.1.8'].map((v) => ({
-      id: v === e.appVersion ? 456 : 455,
-      name: `Plugin v2 Review (${v})`,
-      conclusion: 'success',
-    })),
-    publicChecks: {
-      workflow: publicPlan.workflow,
-      workflowSha256: publicPlan.workflowSha256,
-      event: 'push',
-      ref: e.ref,
-      headSha: e.routeCommit,
-      runId: '789',
-      attempt: '1',
-      conclusion: 'success',
-      jobs: Object.entries(publicPlan.jobs).map(([name, p], i) => ({
-        id: 800 + i,
-        name,
-        conclusion: 'success',
-        steps: p.required_steps.map((name) => ({ name, conclusion: 'success' })),
-      })),
-    },
-    steps: [
-      'Plugin qualification source controls',
-      'Stage the observed ref-selected source plan',
-      'Install the frozen app source dependencies in scratch',
-      'Product HTTPS then projected package Review journey',
-      'Keep the closed required evidence',
-    ].map((name) => ({ name, conclusion: 'success' })),
-    ordinaryJobs: ['flags', 'macos', 'guided-update-rehearsal', 'recovery-real-entry'].map(
-      (id) => ({ id, conclusion: 'skipped' }),
-    ),
-    summarySha256: hash(bytes),
-    artifact: 'plugin-v2-macos-0.1.8',
-  }
-  assert.equal(verifyOperation(e, evidence, bytes).accepted, true)
-  for (const altered of [
-    { ...e, sourcePlanSha256: null },
-    { ...e, routeCommit: '0'.repeat(40) },
-    { ...e, ref: 'refs/heads/gate/plugin-v2-mac-other' },
-  ])
-    assert.throws(() => verifyOperation(altered, evidence, bytes))
-  assert.throws(() => verifyOperation({ ...e, appSource: BASE }, evidence, bytes))
-  assert.throws(() => verifyOperation(e, { ...evidence, headSha: '0'.repeat(40) }, bytes))
-  assert.throws(() => verifyOperation(e, { ...evidence, ordinaryJobs: [] }, bytes))
-  assert.throws(() => verifyOperation(e, { ...evidence, summarySha256: '0'.repeat(64) }, bytes))
-  assert.throws(() =>
-    verifyOperation(
-      e,
-      { ...evidence, brokerReceipt: { policy_sha256: e.routePolicySha256 } },
-      bytes,
-    ),
-  )
-  assert.throws(() =>
-    verifyOperation(e, { ...evidence, matrixJobs: evidence.matrixJobs.slice(1) }, bytes),
-  )
-  assert.throws(() =>
-    verifyOperation(
-      e,
-      { ...evidence, publicChecks: { ...evidence.publicChecks, event: 'workflow_dispatch' } },
-      bytes,
-    ),
-  )
-  assert.throws(() =>
-    verifyOperation(
-      e,
-      {
-        ...evidence,
-        publicChecks: {
-          ...evidence.publicChecks,
-          jobs: evidence.publicChecks.jobs.map((j, i) => (i ? j : { ...j, steps: [] })),
-        },
-      },
-      bytes,
-    ),
-  )
-  assert.throws(() =>
-    verifyOperation({ ...e, requiredPublicChecks: ['secret scan'] }, evidence, bytes),
-  )
-})
-
 test('generated framing emits separate LF records, not a literal backslash-n', async () => {
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'plugin-v2-framing-')))
   try {
@@ -587,7 +472,6 @@ test('the actual staging body reaches017 from0.0.0 and refuses wrong source/vers
     const boundaries = {
       temp,
       repository: source,
-      readPlan: () => ({ files: [] }),
       privateRoot: async () => {
         protection++
       },
@@ -605,6 +489,7 @@ test('the actual staging body reaches017 from0.0.0 and refuses wrong source/vers
           )
           return ''
         }
+        if (args[0] === 'ls-files') return ''
         assert.deepEqual(args, ['rev-parse', 'HEAD'])
         return wrongGit ? '0'.repeat(40) : observedSource
       },
@@ -836,7 +721,7 @@ test('source intent refuses historical final-app literals and altered baselines'
   for (const appSources of [
     [
       { version: '0.1.7', commit: BASE017 },
-      { version: '0.1.8', commit: BASE },
+      { version: '0.1.8', commit: 'b'.repeat(40) },
     ],
     [
       { version: '0.1.7', commit: 'b'.repeat(40) },
@@ -849,7 +734,6 @@ test('source intent refuses historical final-app literals and altered baselines'
     ],
   ])
     assert.throws(() => hosted({ ...plan, appSources }, '0.1.8', env, 'darwin', 'arm64'))
-  assert.throws(() => hosted({ ...plan, base: BASE017 }, '0.1.8', env, 'darwin', 'arm64'))
   assert.throws(() => hosted(plan, '0.1.8', { ...env, GITHUB_SHA: null }, 'darwin', 'arm64'))
 })
 
