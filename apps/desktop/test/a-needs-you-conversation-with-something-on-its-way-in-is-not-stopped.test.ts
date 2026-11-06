@@ -115,7 +115,7 @@ interface Countdown {
 
 /** The host's private parts this file reaches. */
 interface HostInsides {
-  idleCountdowns: Map<string, unknown>
+  conversationIdle: { idleCountdowns: Map<string, unknown> }
   arrivals: Map<string, Promise<void>>
   startsInFlight: Map<string, Promise<string>>
   stateMayHaveMoved: (conversation: string) => void
@@ -229,7 +229,7 @@ describe('the idle stop and what is on its way into a conversation that needs yo
 
   /** The countdown the host holds for this one conversation. */
   const countdownOf = (id: string): Countdown => {
-    const timer = insides().idleCountdowns.get(id)
+    const timer = insides().conversationIdle.idleCountdowns.get(id)
     const found = live().find((one) => one.timer === timer)
     if (found === undefined) throw new Error(`${id} holds no live countdown`)
     return found
