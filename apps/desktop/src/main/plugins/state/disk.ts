@@ -9,6 +9,7 @@ import {
   linkSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readSync,
   readdirSync,
   rmdirSync,
@@ -207,33 +208,56 @@ class PluginJournalReader {
       refuseState('unsafe-path')
   }
   protected read(folder: string, name: string, counterparts: readonly Counterpart[] = []): Buffer {
+    return this.readWithProof(folder, name, (_held, read) => read(counterparts))
+  }
+  /** One fresh safe open owns both link dispatch and the complete bounded read. */
+  protected readWithProof(
+    folder: string,
+    name: string,
+    prove: (held: BigIntStats, read: (counterparts: readonly Counterpart[]) => Buffer) => Buffer,
+  ): Buffer {
     this.check()
     const path = join(folder, name)
-    const fd = openNotThroughALink(path, constants.O_RDONLY | constants.O_NONBLOCK)
+    const noFollow = constants.O_NOFOLLOW as number | undefined
+    const fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK | (noFollow ?? 0))
     try {
+      // Windows follows links at open. Prove the regular path against this same
+      // immediate held observation before dispatch or any file bytes are read.
+      const before = noFollow === undefined ? lstatSync(path, { bigint: true }) : undefined
       const held = fstatSync(fd, { bigint: true })
+      if (before && (!before.isFile() || !same(before, held)))
+        throw Object.assign(new Error(`ELOOP: ${path} is a link, so it was not read`), {
+          code: 'ELOOP',
+          path,
+          syscall: 'open',
+        })
       this.file(held)
-      this.links(folder, name, held, counterparts)
-      const bytes = Buffer.alloc(Number(held.size) + 1)
-      let at = 0
-      for (;;) {
-        const n = readSync(fd, bytes, at, bytes.length - at, null)
-        if (n === 0) break
-        at += n
-        if (at === bytes.length) refuseState('corrupt')
-      }
-      const after = fstatSync(fd, { bigint: true })
-      if (
-        at !== Number(held.size) ||
-        !same(held, after) ||
-        held.size !== after.size ||
-        !same(lstatSync(path, { bigint: true }), held)
-      )
-        refuseState('corrupt')
-      this.check()
-      const result = bytes.subarray(0, at)
-      this.readIdentities.set(result, held)
-      return result
+      return prove(held, (counterparts) => {
+        // Reservation dispatch may add a temporary directory pin after the open.
+        // It must be checked before bytes, and remains pinned through the post-check.
+        if (counterparts.length) this.check()
+        this.links(folder, name, held, counterparts)
+        const bytes = Buffer.alloc(Number(held.size) + 1)
+        let at = 0
+        for (;;) {
+          const n = readSync(fd, bytes, at, bytes.length - at, null)
+          if (n === 0) break
+          at += n
+          if (at === bytes.length) refuseState('corrupt')
+        }
+        const after = fstatSync(fd, { bigint: true })
+        if (
+          at !== Number(held.size) ||
+          !same(held, after) ||
+          held.size !== after.size ||
+          !same(lstatSync(path, { bigint: true }), held)
+        )
+          refuseState('corrupt')
+        this.check()
+        const result = bytes.subarray(0, at)
+        this.readIdentities.set(result, held)
+        return result
+      })
     } finally {
       closeSync(fd)
     }
@@ -479,37 +503,40 @@ export class PluginStateDisk extends PluginJournalReader {
     reservation: string,
     source: string,
   ): Buffer {
-    if (lstatSync(join(folder, name), { bigint: true }).nlink === 1n) return this.read(folder, name)
-    return this.withReservation(reservation, false, (reserved) =>
-      this.read(folder, name, [{ folder: reserved, name: source }]),
+    return this.readWithProof(folder, name, (held, read) =>
+      held.nlink === 1n
+        ? read([])
+        : this.withReservation(reservation, false, (reserved) =>
+            read([{ folder: reserved, name: source }]),
+          ),
     )
   }
   protected override readJournal(name: string, prior: ResolutionReservation | null): Buffer {
-    if (lstatSync(join(this.guard, name), { bigint: true }).nlink === 1n)
-      return this.read(this.guard, name)
-    if (prior)
-      return this.withReservation(prior.id, false, (folder) =>
-        this.read(this.guard, name, [
-          { folder, name: 'complete.record' },
-          { folder, name: 'abort.record' },
-        ]),
-      )
-    const target = lstatSync(join(this.guard, name), { bigint: true })
-    for (const id of readdirSync(this.reservations)) {
-      const found = this.withReservation(id, false, (folder) => {
-        try {
-          if (!same(lstatSync(join(folder, 'prepare.record'), { bigint: true }), target))
-            return null
-        } catch (error) {
-          if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null
-          throw error
-        }
-        return this.read(this.guard, name, [{ folder, name: 'prepare.record' }])
-      })
-      if (found !== null) return found
-    }
-    // Completed legacy publications may still have their verified guard-local crash stage.
-    return this.read(this.guard, name)
+    return this.readWithProof(this.guard, name, (held, read) => {
+      if (held.nlink === 1n) return read([])
+      if (prior)
+        return this.withReservation(prior.id, false, (folder) =>
+          read([
+            { folder, name: 'complete.record' },
+            { folder, name: 'abort.record' },
+          ]),
+        )
+      for (const id of readdirSync(this.reservations)) {
+        const found = this.withReservation(id, false, (folder) => {
+          try {
+            if (!same(lstatSync(join(folder, 'prepare.record'), { bigint: true }), held))
+              return null
+          } catch (error) {
+            if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null
+            throw error
+          }
+          return read([{ folder, name: 'prepare.record' }])
+        })
+        if (found !== null) return found
+      }
+      // Completed legacy publications may still have their verified guard-local crash stage.
+      return read([])
+    })
   }
   private exclusive<T>(run: () => T): T {
     this.check()
