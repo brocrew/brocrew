@@ -59,7 +59,7 @@ MUTATIONS: list[tuple[str, list[tuple[str, str, str]]]] = [
     (
         "M5 · a turn of several leaves out what the life still owes · D-024's first-turn lead is dropped from handTogetherToProvider's send, so a resumed Codex conversation never gets its own text — killed by `the-origin-a-model-is-told.test.ts`, `what-a-turn-of-several-held-messages-says-and-keeps.test.ts`",
         [
-            (RUNTIME_HOST, "      this.withWhatThisLifeOwes(session, turn, currentPiece),\n", "      turn,\n"),
+            (RUNTIME_HOST, "    const words = this.withWhatThisLifeOwes(session, turn, currentPiece)\n", "    const words = turn\n"),
         ],
     ),
     (
