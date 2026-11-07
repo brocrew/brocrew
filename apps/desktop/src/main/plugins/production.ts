@@ -780,7 +780,7 @@ export function productionPluginController() {
           if (attempt?.connection) await detach(attempt)
           return false
         } finally {
-          admission(connected ? undefined : new Error('startup incomplete'))
+          admission()
           storage?.close()
         }
       }

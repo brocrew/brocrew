@@ -284,7 +284,7 @@ export function createPluginStartupTrace(now = () => performance.now()) {
       return finish
     },
     failure(phase: string, error?: unknown) {
-      for (const finish of active) finish(error ?? new Error(phase))
+      for (const finish of active) finish(error ?? phase)
       let stderr = ''
       for (let cause = error, depth = 0; depth < 6 && cause && typeof cause === 'object'; depth++) {
         if (cause instanceof PluginSupervisorLaunchFailure) {
