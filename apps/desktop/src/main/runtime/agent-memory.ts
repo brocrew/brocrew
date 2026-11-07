@@ -550,6 +550,7 @@ async function rewrite(
   seams: MemoryWriteSeams,
 ): Promise<void> {
   const before = statSync(path)
+  if ((seams.platform ?? process.platform) !== 'win32') sweepStaged(dirname(path))
   const stage = await stageKnowledgeFile(
     path,
     Buffer.from(text, 'utf8'),
