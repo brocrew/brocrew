@@ -54,6 +54,7 @@ async function ended(child: ChildProcess, within = 1500) {
   await expect
     .poll(() => child.exitCode !== null || child.signalCode !== null, { timeout: within })
     .toBe(true)
+  return child.exitCode
 }
 beforeAll(async () => {
   folder = await realpath(
@@ -147,19 +148,15 @@ async function fixture(name: string, mode: string, fault?: string) {
   return { root, workspaceRoot, child, options, lease, runId }
 }
 describe('blocked standalone owner self-exit under its unchanged fence', () => {
-  // The event: on Windows a held owner.json kept a childless blocked owner alive forever, retrying
-  // its record. The record only advises the next start, so the owner now tries once and exits.
+  // A held owner.json must not retain a childless blocked owner: try advice once, then exit.
   it.each(['proven', 'revoke-hung'])(
     'exits when its blocked record stays refused with %s runs, and a successor starts',
     async (mode) => {
       const target = await fixture('blocked-write-held-' + mode, mode, 'blocked-write-held')
       const fence = await lstat(join(target.root, 'supervisor/owner-lock.sqlite'), { bigint: true })
       await target.lease.close()
-      await ended(target.child)
-      expect(target.child.exitCode).toBe(0)
-      expect(
-        (await readOwner(target.root)).phase,
-      ).not.toBe('blocked')
+      expect(await ended(target.child)).toBe(0)
+      expect((await readOwner(target.root)).phase).not.toBe('blocked')
       const trace = await readFile(join(target.root, 'plugin-drain.log'), 'utf8')
       const attempts = [...trace.matchAll(/stage=blocked-write state=\w+ attempt=\d+/g)]
       expect(attempts.map((match) => match[0])).toEqual([
@@ -193,8 +190,7 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
       const before = await readOwner(bystander.root)
       const fence = await lstat(join(target.root, 'supervisor/owner-lock.sqlite'), { bigint: true })
       await target.lease.close()
-      await ended(target.child)
-      expect(target.child.exitCode).toBe(0)
+      expect(await ended(target.child)).toBe(0)
       expect((await readOwner(target.root)).phase).toBe(fault ? 'draining' : 'blocked')
       if (fault)
         expect(await readFile(join(target.root, 'plugin-drain.log'), 'utf8')).toContain(
@@ -206,8 +202,7 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
       const bytes = proof ? await readFile(proof) : undefined
       if (proof) {
         await unlink(proof)
-        // Without its receipt a run is proven only through its process record. This one names a
-        // group whose number now belongs to another process, so only the receipt can prove it.
+        // The process record names a stranger's reused group; only the receipt proves exit.
         const stranger = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
           detached: true,
           stdio: 'ignore',
@@ -246,8 +241,7 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
       await expect(bystander.lease.renew()).resolves.toBeUndefined()
       expect(bystander.child.exitCode).toBeNull()
       expect(await bystander.lease.close()).toBe(!fault)
-      await ended(bystander.child)
-      expect(bystander.child.exitCode).toBe(0)
+      expect(await ended(bystander.child)).toBe(0)
       if (fault)
         expect(await readFile(join(bystander.root, 'plugin-drain.log'), 'utf8')).toContain(
           'stage=stopped-write state=failed attempt=1 errno=EPERM',
@@ -278,12 +272,7 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
       const target = await fixture('target-' + mode, mode)
       const closing = target.lease.close()
       if (mode === 'start-failure') {
-        await expect
-          .poll(
-            async () =>
-              (await readOwner(target.root)).phase,
-          )
-          .toBe('draining')
+        await expect.poll(async () => (await readOwner(target.root)).phase).toBe('draining')
         target.child.send('fail-start')
       }
       expect(await closing).toBe(false)

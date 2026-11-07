@@ -34,8 +34,7 @@ import {
 
 const windowsStopWithin = process.platform === 'win32' ? 10_000 : undefined
 
-// These exercise the real SQLite fence and local socket. They do not qualify legacy Windows
-// process retirement or the standalone production lifecycle.
+// Fixture SQLite/socket proof only; no legacy Windows retirement or standalone qualification.
 describe('plugin owner recovery after the caller stops waiting', () => {
   let parent = ''
   const trace: DrainTrace[] = []
@@ -191,17 +190,9 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     }
   })
   it.each([
-    {
-      name: 'finishes after a delayed real child exit witness, even after shutdown returned false',
-      physical: true,
-      within: 1500,
-    },
-    {
-      name: 'does not turn a still-pending witness into a clean stop or overlap a successor',
-      physical: false,
-      within: 1000,
-    },
-  ])('$name', async ({ physical, within }) => {
+    ['finishes after a delayed real child exit witness', true, 1500],
+    ['refuses overlap until the pending witness resolves', false, 1000],
+  ] as const)('%s', async (_name, physical, within) => {
     const { root, options } = await fixture()
     const sentinel = join(root, 'profile-sentinel')
     let realExit: Promise<unknown> = Promise.resolve()
@@ -222,13 +213,14 @@ describe('plugin owner recovery after the caller stops waiting', () => {
         child?.kill()
       },
       exited: realExit.then(() => delivery),
-      descendantsGone: async () =>
-        !physical || child!.exitCode !== null || child!.signalCode !== null,
+      async descendantsGone() {
+        await realExit
+        return !physical || child!.exitCode !== null || child!.signalCode !== null
+      },
     })
     expect(await owner!.shutdown()).toBe(false)
     await realExit
-    const phase = async () =>
-      (await readOwner()).phase
+    const phase = async () => (await readOwner()).phase
     expect(await phase()).not.toBe('stopped')
     if (!physical) {
       await expect(
@@ -257,7 +249,9 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     }
     expect(await phase()).toBe(process.platform === 'win32' ? 'draining' : 'stopped')
     if (process.platform === 'win32')
-      expect(trace.filter((event) => event.stage === 'stopped-write' && event.state === 'failed')).toMatchObject([{ attempt: 1, errno: 'EPERM' }])
+      expect(
+        trace.filter((event) => event.stage === 'stopped-write' && event.state === 'failed'),
+      ).toMatchObject([{ attempt: 1, errno: 'EPERM' }])
     if (physical)
       expect(await readFile(sentinel, 'utf8')).toBe('fictional-profile-and-installation')
   })
@@ -288,9 +282,7 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     })
     expect(launch).not.toHaveBeenCalled()
     await expect(lease.renew()).resolves.toBeUndefined()
-    expect((await readOwner()).phase).toBe(
-      'accepting',
-    )
+    expect((await readOwner()).phase).toBe('accepting')
   })
   it.each(['blocked', 'draining'] as const)(
     'does not infer reboot advice from a %s pipe timeout and failed runtime launch',
@@ -428,9 +420,7 @@ describe('plugin owner recovery after the caller stops waiting', () => {
         },
       })
       expect(await readFile(join(run, 'exit.json'), 'utf8')).toBe(JSON.stringify(proof))
-      expect(
-        (await readOwner()).epoch,
-      ).not.toBe(record.epoch)
+      expect((await readOwner()).epoch).not.toBe(record.epoch)
     },
   )
   // A guardian whose exit receipt could not be written (a held file, a full disk) left only its
@@ -610,8 +600,7 @@ describe('plugin owner recovery after the caller stops waiting', () => {
       if (value.phase === 'stopped' && held) {
         if (process.platform === 'win32') {
           if (!readers.length) readers.push(openSync(this.record, 'r'))
-        }
-        else throw Object.assign(new Error('fictional rename denial'), { code: 'EPERM' })
+        } else throw Object.assign(new Error('fictional rename denial'), { code: 'EPERM' })
       }
       return original.call(this, value)
     })
@@ -621,9 +610,7 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     // closed resolves only after the fence is released.
     await previous.closed
     owner = undefined
-    expect((await readOwner()).phase).not.toBe(
-      'stopped',
-    )
+    expect((await readOwner()).phase).not.toBe('stopped')
     const start = () =>
       PluginSupervisor.start({
         root,
@@ -639,9 +626,7 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     held = false
     for (const fd of readers.splice(0)) closeSync(fd)
     owner = await start()
-    expect((await readOwner()).phase).toBe(
-      'accepting',
-    )
+    expect((await readOwner()).phase).toBe('accepting')
   })
   it('makes a transient record read retryable and emits closed phase diagnostics', async () => {
     const { options } = await fixture()
