@@ -12,6 +12,7 @@
  * Use a fresh data directory, free debug port and owned process group; clear inherited
  * `ELECTRON_RUN_AS_NODE` and verify listener ownership before driving anything.
  */
+import { freePort } from './lib/free-port.mjs'
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { createServer } from 'node:net'
@@ -40,16 +41,6 @@ const SHOT_DIR = (() => {
   return at === -1 ? null : (process.argv[at + 1] ?? null)
 })()
 
-function freePort() {
-  return new Promise((resolve, reject) => {
-    const server = createServer()
-    server.on('error', reject)
-    server.listen(0, '127.0.0.1', () => {
-      const { port } = server.address()
-      server.close(() => resolve(port))
-    })
-  })
-}
 
 async function waitFor(what, read, budgetMs) {
   const deadline = Date.now() + budgetMs

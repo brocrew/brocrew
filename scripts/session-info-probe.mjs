@@ -17,9 +17,9 @@
  * The app provisions the provider home and performs its copy-once personal-auth inheritance;
  * this probe itself does not read, write or copy a credential.
  */
+import { freePort } from './lib/free-port.mjs'
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -133,16 +133,6 @@ const arg = (flag) => {
 const SHOT_DIR = arg('--shot')
 const LABEL = arg('--label') ?? 'now'
 
-function freePort() {
-  return new Promise((resolve, reject) => {
-    const server = createServer()
-    server.on('error', reject)
-    server.listen(0, '127.0.0.1', () => {
-      const { port } = server.address()
-      server.close(() => resolve(port))
-    })
-  })
-}
 
 async function waitFor(what, read, budgetMs) {
   const deadline = Date.now() + budgetMs

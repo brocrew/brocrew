@@ -10,9 +10,9 @@
  * and Home zones separately. Report observed behaviour rather than assuming zones agree.
  * Outside `ci`: an isolated hidden Electron window, no provider, network or login.
  */
+import { freePort } from './lib/free-port.mjs'
 import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -208,16 +208,6 @@ async function connect(port) {
 const wait = (ms) => new Promise((done) => setTimeout(done, ms))
 
 /** A port nothing holds, from the kernel (`listen(0)`) — never a fixed one another tool may own. */
-function freePort() {
-  return new Promise((resolve, reject) => {
-    const server = createServer()
-    server.on('error', reject)
-    server.listen(0, '127.0.0.1', () => {
-      const { port } = server.address()
-      server.close(() => resolve(port))
-    })
-  })
-}
 
 /**
  * 🔒 **The debugger this probe drives is its OWN launch's** — polled until it listens, and refused

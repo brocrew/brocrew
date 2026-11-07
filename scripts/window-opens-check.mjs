@@ -14,9 +14,9 @@
  * Quiesce and reap all captured identities before removing data; a group signal alone can
  * miss detached children still writing into the directory. This check runs in `ci`.
  */
+import { freePort } from './lib/free-port.mjs'
 import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -55,16 +55,6 @@ const POLL_MS = 250
 const OWNERSHIP_MS = 10_000
 
 /** A port nothing holds, handed over by the kernel rather than guessed. */
-function freePort() {
-  return new Promise((resolve, reject) => {
-    const server = createServer()
-    server.on('error', reject)
-    server.listen(0, '127.0.0.1', () => {
-      const { port } = server.address()
-      server.close(() => resolve(port))
-    })
-  })
-}
 
 /**
  * The DevTools targets, or null while nothing answers yet.
