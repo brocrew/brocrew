@@ -58,19 +58,6 @@ import ProviderInstall from './ProviderInstall.vue'
 import ProviderSetupProgress from './ProviderSetupProgress.vue'
 import ProviderConnections from './ProviderConnections.vue'
 
-/**
- * # W4.10 · one provider on the Providers screen
- *
- * ⚑ One provider, for BroBot's own profile — the one a new conversation runs on: whether it is
- * ready and on which login, its API key, its program's version, its usage, what its agents use right
- * now, and its models. ⚑ W4.26 · the screen reads the provider-wide facts (version, usage, what is
- * running, the change notices) and hands them down; the card reads the login and the key itself.
- *
- * 🔒 **The key field**: the key is in the field until it is sent, and the field is cleared as it is
- * sent. Nothing answers with the key, and nothing here logs it.
- *
- * ⛔ **No provider is named here**: every name is `PROVIDER_NAME`'s (`provider-neutrality.test.ts`).
- */
 const props = withDefaults(
   defineProps<{
     setupRequested?: boolean
@@ -87,28 +74,21 @@ const props = withDefaults(
     limitsRead: boolean | null
     limitsDisplay?: LimitsDisplayState
     clock: number
-    /**
-     * The program's version, `null` before the read lands. `program` says which one runs, from
-     * where — one a person installed, or the copy BroBot carries — and how it stands against the
-     * tested versions where a range applies.
-     */
+
     version: ProviderVersion | null
     /** The newest reading per window — `null` before the read lands; `[]` is *no reading yet*. */
     readings: readonly ProviderUsageReading[] | null
     /** What its agents use right now — `null` before the first sample. */
     resources: ProviderResources | null
-    /** ⚑ The screen stopped sampling: the window is not in front. */
+
     resourcesPaused: boolean
     /** Why the last sample failed, or `null`. */
     resourcesError: string | null
-    /** ⚑ Moves when the provider says its login changed — the card asks again. */
+
     loginMoved: number
     /** Injectable for tests; the window's one holder otherwise. */
     lists?: ModelLists
-    /**
-     * How its tool is installed and signed in here: `null` when there is nothing to set up outside
-     * BroBot, absent while main does not report it.
-     */
+
     setup?: ProviderSetupSays | null
     /** Reads the program and its version again; resolves once it answered. */
     readVersions?: () => Promise<void>
@@ -159,10 +139,7 @@ const PENDING: CapabilityStatus = {
   reason: 'Still asking this provider what it can do.',
   checkedAgainst: 'the capability fetch has not returned yet',
 }
-/**
- * ⚑ **A saved key outranks a sign-in** — while one is saved, a sign-in or a copy is refused by the
- * host, so the panel offers neither and says why (an offer that could only refuse is not one).
- */
+
 function whileAKeyIsSaved(status: CapabilityStatus): CapabilityStatus {
   if (status.state !== 'available' || keyStatus.value?.set !== true) return status
   return {
@@ -181,8 +158,6 @@ const signIn = computed(() =>
 const reprovision = computed(() =>
   whileAKeyIsSaved(props.capabilities?.[props.provider]?.reprovisionAuth ?? PENDING),
 )
-
-/* ------------------------------------------------------------------ status */
 
 const access =
   props.access ??
@@ -238,7 +213,6 @@ async function copyMachineSignIn(): Promise<void> {
       noticeSays(readableError(error), true)
     }
   })
-  // ⚑ No check here: a copy that landed is a login notice, which asks again (`loginMoved`).
 }
 
 async function signInHere(): Promise<void> {
@@ -340,7 +314,6 @@ function copyHomeReason(
   }
 }
 
-/** ⚑ The plan in the provider's own word, as a person writes it: `max` → *Max*. */
 const plan = computed(() => {
   const said = auth.value?.state === 'usable' ? auth.value.plan : undefined
   return said === undefined || said === '' ? null : `${said[0]!.toUpperCase()}${said.slice(1)}`
@@ -348,10 +321,6 @@ const plan = computed(() => {
 
 const dayFormat = localFormat({ day: 'numeric', month: 'long', year: 'numeric' })
 
-/**
- * What a usable login runs on, with an expiry only where the provider gives one. BroBot runs on the
- * person's own login and keeps none of its own, so the line never says BroBot signed anyone in.
- */
 const loginSays = computed<string | null>(() => {
   const state = auth.value
   if (state?.state !== 'usable') return null
@@ -376,8 +345,6 @@ const configured = computed(
   () => standing.value?.tone === 'ready' || standing.value?.tone === 'at-limit',
 )
 
-/* ------------------------------------------------------------------ API key */
-
 const keyStatus = access.keyStatus
 /** A key is saved and this computer can't read it; one not yet read is not that. */
 const keyCantBeRead = computed(() => theKeyCantBeRead(keyStatus.value))
@@ -398,11 +365,6 @@ async function readKey(): Promise<void> {
   if (access.keyError.value !== null) keySaid.value = { text: access.keyError.value, tone: 'warn' }
 }
 
-/**
- * 🔒 **The key leaves the field as it is sent** — the field is cleared before the call, and nothing
- * else keeps it. ⚑ A refusal says why in the host's words; the person pastes it again.
- * ⚑ No check here: a saved key is a login notice, which asks again (`loginMoved`).
- */
 async function saveKey(): Promise<void> {
   if (keyBusy.value) return
   const key = keyDraft.value.trim()
@@ -453,9 +415,6 @@ async function removeKey(): Promise<void> {
   }
 }
 
-/**
- * Only a confirmed sign-in can be offered as what runs after removing the saved key.
- */
 const loginBehindTheKey = computed(() => {
   const state = auth.value
   return (
@@ -484,10 +443,6 @@ const checkSpends = computed(() =>
     : `Checking only asks ${name.value} for its model list, which costs nothing.`,
 )
 
-/**
- * What a start sends when the provider renews an expired login with a short message. Said only
- * while no key is saved, since a saved key is what a start runs on then.
- */
 const renewalSends = computed(() =>
   props.capabilities?.[props.provider]?.loginRenewalMessage?.state === 'available' &&
   keyStatus.value !== null &&
@@ -496,7 +451,6 @@ const renewalSends = computed(() =>
     : null,
 )
 
-/** ⚑ One real request to the provider — a few seconds, so the button says it is checking. */
 const keyChecking = ref(false)
 async function checkKey(): Promise<void> {
   if (keyBusy.value) return
@@ -523,11 +477,6 @@ async function checkKey(): Promise<void> {
   }
 }
 
-/**
- * The saved key's account can't pay, said where the key is, with the ways out: credit for that
- * account, another key, or the login, where removing the key leaves one this provider runs on.
- * `null` while nothing has been refused.
- */
 const keyRefusedSays = computed<string | null>(() => {
   const refused = keyStatus.value?.set === true ? keyStatus.value.refusedForBilling : undefined
   if (refused === undefined) return null
@@ -546,8 +495,6 @@ function cancelKeyEdit(): void {
   keyDraft.value = ''
   keyEditing.value = false
 }
-
-/* ------------------------------------------------------------------ models */
 
 const modelsRefreshing = ref(false)
 let modelRefresh: AbortController | null = null
@@ -609,10 +556,7 @@ const startsOn = computed(() => {
   const model = inTheListsSpelling(list.value, pair.model)
   return pair.effort === null ? model : `${model} · ${pair.effort}`
 })
-/**
- * ⚑ Why it is that pair, and how to change it. ⛔ Read-only by design: a new conversation starts on
- * the last pair a person picked, and there is no app-wide default to set here.
- */
+
 const startsOnWhy = computed(() =>
   list.value?.lastPicked != null
     ? 'the last one you picked. Pick another on the new-conversation form to change it.'
@@ -655,8 +599,6 @@ async function removeModel(id: string): Promise<void> {
 function readModelsAgain(): void {
   void lists.value.read(props.provider)
 }
-
-/* ------------------------------------------------------------------ usage */
 
 function warningHistoryLabel(display: LimitsDisplayState): string {
   return limitsDisplayLabel(display, (at) => `No limit warnings recorded as of ${fullTime(at)}`)
@@ -723,7 +665,6 @@ const atItsLimit = computed(() => {
     : limitsDisplayWords.condition(words, reading.evaluatedAt)
 })
 
-/** ⚑ Each window's newest reading, in words — `null` before the read lands. */
 const readingLines = computed(() =>
   props.readings === null
     ? null
@@ -743,13 +684,11 @@ const readingLines = computed(() =>
       }),
 )
 
-/** ⚑ Bytes as a person reads them: MB under a gigabyte, else GB to a tenth. */
 function memoryWords(bytes: number): string {
   const mb = bytes / (1024 * 1024)
   return mb < 1024 ? `${Math.round(mb)} MB` : `${(mb / 1024).toFixed(1)} GB`
 }
 
-/** ⚑ *"2 agents running · 1.2 GB memory · 34% CPU"* — one line, or why it can't be said. */
 const resourcesSays = computed<{ text: string; tone: 'note' | 'warn' }>(() => {
   const now = props.resources
   if (now === null) {
@@ -774,8 +713,6 @@ const resourcesTitle = computed(() =>
     ? undefined
     : `Measured ${fullTime(props.resources.at)}. 100% CPU is one full core.`,
 )
-
-/* ------------------------------------------------------------------ setup */
 
 const settingUp = ref(false)
 const cardRoot = ref<HTMLElement | null>(null)
@@ -903,7 +840,6 @@ watch(
   { immediate: true },
 )
 
-/** ⚑ The provider said its login moved (a key, a sign-in, a copy): ask again. */
 watch(
   () => props.loginMoved,
   () => {
@@ -929,25 +865,6 @@ watch(programMissing, (missing) => {
   if (!missing) void lists.value.read(props.provider, undefined, { once: true })
 })
 
-/* ------------------------------------------------------------------ folding */
-
-/**
- * What each part has to say that a person must not miss, or `null`. A part whose words change to
- * something new opens itself, though it was folded: a refusal that answers an operation after its
- * part was folded, a warning that arrives while it is folded, or one already there when the screen
- * is shown. Words a person has already seen stay folded if they fold the part again.
- *
- * - Login: a login that is not usable, and a sign-in, copy or cancel that failed or changed nothing.
- *   A notice that says how a gesture is going, or that it landed, opens nothing.
- * - API key: a refused save, a warning a key operation answers with, and a saved key not in use.
- * - Version: a program standing that warns, or one that could not be read.
- * - Usage: a usage warning (a provider at or near its limit, or warnings that could not be read).
- *   A window whose usage runs ahead of its time is a steady pace note and opens nothing.
- * - Running now: a sample that could not be measured.
- * - Models: a refused add or removal, a model already in the list, and a list that warns.
- *
- * Outside the parts, the card's top always shows: the at-limit line and the limits reading.
- */
 const whatEachPartSays = computed<Record<ProviderPart, string | null>>(() => {
   const loginSays = [
     auth.value !== null && auth.value.state !== 'usable' && auth.value.state !== 'absent'
@@ -962,9 +879,7 @@ const whatEachPartSays = computed<Record<ProviderPart, string | null>>(() => {
     key:
       keyRefusedSays.value ??
       (keySaid.value?.tone === 'warn' ? keySaid.value.text : null) ??
-      (theKeyCantBeRead(key)
-        ? keyInUseSays.value
-        : null),
+      (theKeyCantBeRead(key) ? keyInUseSays.value : null),
     version:
       version === null
         ? null
@@ -1413,11 +1328,7 @@ defineExpose({ beginSetup })
               keyStatus.setAt === null ? '' : `, since ${fullTime(keyStatus.setAt)}`
             }}.
           </p>
-          <p
-            class="line"
-            :class="{ warn: keyCantBeRead }"
-            data-cy="provider-key-in-use"
-          >
+          <p class="line" :class="{ warn: keyCantBeRead }" data-cy="provider-key-in-use">
             {{ keyInUseSays }}
           </p>
           <div

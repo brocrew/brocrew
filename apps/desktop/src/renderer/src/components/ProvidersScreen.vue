@@ -39,26 +39,6 @@ import ProviderMark from './ProviderMark.vue'
 import ProviderOptions from './ProviderOptions.vue'
 import OverlayHost from './OverlayHost.vue'
 
-/**
- * # W4.10 · the Providers screen — one card per provider
- *
- * Show each provider's status and sign-in controls. Reach this screen from the rail,
- * palette, Settings and a sign-in problem on the new-conversation form.
- *
- * ⛔ **Providers are iterated, never named** (`provider-neutrality.test.ts`).
- *
- * ## ⚑ W4.26 · the provider-wide facts, read here once for both cards
- *
- * - **Versions**: on mount, on a person's Check again, and on a return to the window — so a program
- *   updated in a terminal shows. The host keeps each answer while the same file answers.
- * - **Usage**: the window's one holder ({@link useProviderUsage}), read when the first surface
- *   needs it and again on each `usage` or `login` notice — no timer.
- * - **What is running**: `providerResources()` is read-driven, so this screen asks every
- *   {@link SAMPLE_MS} — ⛔ **only while it is mounted, the window is in front and the page is
- *   visible**. A sample is asked only after the last one answered, so two never overlap. Nothing runs
- *   when nobody is looking: the CPU fix this follows must not be undone by a screen left open.
- * - **Notices**: `onProvidersChanged` while mounted, unsubscribed on unmount.
- */
 const props = withDefaults(
   defineProps<{
     /** Registry injection for preview and provider-extension controls. */
@@ -76,7 +56,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{
   authChanged: [profileId: string]
-  /** ⚑ W4.63 · a provider's usage moved: the walls (and so *at its limit*) are worth reading now. */
+
   usageMoved: []
   /** A provider's setup reached Ready and the person chose to start a conversation. */
   startConversation: []
@@ -187,10 +167,6 @@ watch(
   { immediate: true },
 )
 
-/**
- * Which parts of the cards are open, one state per part for every card, so a fold keeps them level.
- * Remembered on this computer.
- */
 const openParts = Object.fromEntries(
   PROVIDER_PARTS.map((part) => [part, usePersistentToggle(partKey(part), OPEN_AT_FIRST[part])]),
 ) as Record<ProviderPart, Ref<boolean>>
@@ -198,14 +174,12 @@ const open = computed(() =>
   Object.fromEntries(PROVIDER_PARTS.map((part) => [part, openParts[part].value])),
 )
 
-/* ------------------------------------------------------------------ provider-wide facts */
-
 const versions = shallowRef<Readonly<Record<Provider, ProviderVersion>> | null>(null)
-/** ⚑ The window's one holder: the title bar reads the same answer, asked once, newest ask first. */
+
 const usage = useProviderUsage()
 const resources = shallowRef<Readonly<Record<Provider, ProviderResources>> | null>(null)
 const resourcesError = ref<string | null>(null)
-/** ⚑ Per provider, moved on each `login` notice — the card asks its login and key again. */
+
 const loginMoved = ref<Partial<Record<Provider, number>>>({})
 
 /** How each tool is installed and signed in here; `null` while main reports none. */
@@ -214,11 +188,6 @@ const setup = shallowRef<Awaited<ReturnType<typeof readProviderSetup>>>(null)
 /** Which read is the newest, so an older one that answers late never draws over it. */
 let versionsAsked = 0
 
-/**
- * The programs as this computer has them now: their versions, and the setup facts main words from
- * the same lookup, such as the sign-in command with the program's full path. Both are read again
- * whenever the versions are, so a program installed from the setup steps is named by its path.
- */
 async function readVersions(): Promise<void> {
   const mine = ++versionsAsked
   void readProviderSetup().then((said) => {
@@ -237,15 +206,14 @@ async function readVersions(): Promise<void> {
   if (mine === versionsAsked) versions.value = read
 }
 
-/** ⚑ How often what is running is sampled while a person is looking (the host lists at most this often). */
 const SAMPLE_MS = 5_000
 
 let timer: ReturnType<typeof setTimeout> | null = null
 let sampling = false
 let mounted = false
-/** ⚑ Whether a person can see this screen: mounted, the window in front, the page visible. */
+
 const looking = ref(false)
-/** ⚑ Whether a person has seen it since it mounted, so a return to it is told from the first look. */
+
 let seenBefore = false
 
 function canSee(): boolean {
@@ -263,7 +231,7 @@ async function sample(): Promise<void> {
   } finally {
     sampling = false
   }
-  // ⛔ The next one only after this one answered, and only while someone is still looking.
+
   if (looking.value && timer === null) timer = setTimeout(tick, SAMPLE_MS)
 }
 
@@ -272,14 +240,13 @@ function tick(): void {
   if (looking.value) void sample()
 }
 
-/** ⚑ Start or stop sampling as the window comes to the front or leaves it. */
 function lookAgain(): void {
   const now = canSee()
   if (now === looking.value) return
   looking.value = now
   if (now) {
     void sample()
-    // ⚑ Back at the window after updating a program in a terminal: its version is read again.
+
     if (seenBefore) void readVersions()
     seenBefore = true
   } else if (timer !== null) {
@@ -374,7 +341,6 @@ const runningOf = (provider: Provider) => {
 </script>
 
 <template>
-  <!-- ⚑ Light paper, like every body surface inside `<main>`. -->
   <section
     ref="surface"
     class="providers-surface"
@@ -390,8 +356,7 @@ const runningOf = (provider: Provider) => {
         <p>
           Connect an AI service to start a conversation. Check your account and connection below.
         </p>
-        <!-- ⚑ A3 · a fact of every workspace (A2): saved API keys live in its own database. Sign-ins
-             are expected to be per workspace too, but not yet confirmed, so not said. -->
+
         <p class="per-workspace" data-cy="providers-per-workspace">
           API keys you save here are kept in this workspace only: another workspace asks for its
           own.

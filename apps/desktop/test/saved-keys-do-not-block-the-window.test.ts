@@ -159,8 +159,12 @@ describe('saved keys and the window', () => {
     native.decryptStringAsync.mockRejectedValue(new Error(`fictional native refusal ${FAKE_KEY}`))
     const keys = new ApiKeys(store(), safeStorageCipher(native))
     const states: unknown[] = []
-    keys.onReadStateChanged(() => { throw new Error('fictional window observer failed') })
-    keys.onReadStateChanged((provider) => { states.push(keys.status(provider)) })
+    keys.onReadStateChanged(() => {
+      throw new Error('fictional window observer failed')
+    })
+    keys.onReadStateChanged((provider) => {
+      states.push(keys.status(provider))
+    })
     await expect(keys.current('claude')).rejects.toBeInstanceOf(ApiKeyUnreadableError)
     expect(states).toHaveLength(2)
     expect(states[0]).toMatchObject({ readState: 'reading' })

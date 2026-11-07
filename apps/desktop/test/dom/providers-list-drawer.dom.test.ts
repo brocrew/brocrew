@@ -47,7 +47,9 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     const stops: ReturnType<typeof vi.fn>[] = []
     const listen = vi.fn<typeof window.api.runtime.onProvidersChanged>((listener) => {
       listeners.add(listener)
-      const stop = vi.fn(() => { listeners.delete(listener) })
+      const stop = vi.fn(() => {
+        listeners.delete(listener)
+      })
       stops.push(stop)
       return stop
     })
@@ -56,14 +58,30 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     const key = vi.spyOn(window.api.runtime, 'apiKeyStatus')
     const models = vi.spyOn(window.api.runtime, 'modelList')
     const connections = vi.spyOn(window.api.runtime, 'providerConnections')
-    key.mockImplementation(async ({ provider }) => ({ provider, set: true, setAt: NOW, inUse: true }))
+    key.mockImplementation(async ({ provider }) => ({
+      provider,
+      set: true,
+      setAt: NOW,
+      inUse: true,
+    }))
     const m = screen()
     await settle()
     const listenersBeforeDrawer = listen.mock.calls.length
     row(m, 'claude').click()
     await settle()
-    const before = { auth: auth.mock.calls.length, key: key.mock.calls.length, models: models.mock.calls.length, connections: connections.mock.calls.length }
-    key.mockResolvedValue({ provider: 'claude', set: true, setAt: NOW, inUse: false, readState: 'reading' } as never)
+    const before = {
+      auth: auth.mock.calls.length,
+      key: key.mock.calls.length,
+      models: models.mock.calls.length,
+      connections: connections.mock.calls.length,
+    }
+    key.mockResolvedValue({
+      provider: 'claude',
+      set: true,
+      setAt: NOW,
+      inUse: false,
+      readState: 'reading',
+    } as never)
     for (const listener of listeners) listener({ what: 'key-read', provider: 'claude' } as never)
     await settle()
     expect(listen).toHaveBeenCalledTimes(listenersBeforeDrawer)

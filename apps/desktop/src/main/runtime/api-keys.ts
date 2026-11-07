@@ -64,13 +64,18 @@ export class ApiKeys {
     const read = this.readability.get(provider)
     const known = read?.sealed === kept.sealed && read.setAt === kept.setAt ? read : undefined
     const pending = this.reads.get(provider)
-    const reading = pending !== undefined && this.stillCurrent(provider, pending, pending.generation)
+    const reading =
+      pending !== undefined && this.stillCurrent(provider, pending, pending.generation)
     return {
       provider,
       set: true,
       setAt: kept.setAt,
       inUse: known !== undefined && known.unreadableReason === undefined,
-      ...(reading ? { readState: 'reading' as const } : known === undefined ? { readState: 'not-checked' as const } : {}),
+      ...(reading
+        ? { readState: 'reading' as const }
+        : known === undefined
+          ? { readState: 'not-checked' as const }
+          : {}),
       ...(reading || known?.unreadableReason === undefined
         ? {}
         : { readState: 'unreadable' as const, unreadableReason: known.unreadableReason }),
@@ -88,7 +93,9 @@ export class ApiKeys {
 
   onReadStateChanged(listener: (provider: Provider) => void): () => void {
     this.readObservers.add(listener)
-    return () => { this.readObservers.delete(listener) }
+    return () => {
+      this.readObservers.delete(listener)
+    }
   }
 
   private readStateChanged(provider: Provider): void {
@@ -105,7 +112,8 @@ export class ApiKeys {
     const kept = this.store.keptApiKey(provider)
     if (kept === null) return Promise.resolve(null)
     const reading = this.reads.get(provider)
-    if (reading !== undefined && this.stillCurrent(provider, reading, reading.generation)) return reading.work
+    if (reading !== undefined && this.stillCurrent(provider, reading, reading.generation))
+      return reading.work
     const change = this.changes.get(provider)
     const work = (async (): Promise<OpenKey> => {
       try {

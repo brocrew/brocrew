@@ -76,7 +76,17 @@ export function createProviderAccess(
     }
   }
 
-  return { auth, authBusy, keyStatus, keyError, asked, withGesture, check, readKey, invalidateKeyRead }
+  return {
+    auth,
+    authBusy,
+    keyStatus,
+    keyError,
+    asked,
+    withGesture,
+    check,
+    readKey,
+    invalidateKeyRead,
+  }
 }
 
 export type ProviderAccess = ReturnType<typeof createProviderAccess>

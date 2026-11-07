@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { DEFAULT_PROFILE_ID, type RuntimeBridge, type Provider, type ApiKeyStatus } from '../src/shared/runtime-ipc'
+import {
+  DEFAULT_PROFILE_ID,
+  type RuntimeBridge,
+  type Provider,
+  type ApiKeyStatus,
+} from '../src/shared/runtime-ipc'
 import { createProviderAccess } from '../src/renderer/src/lib/provider-access'
 
 function fixture() {
@@ -28,32 +33,47 @@ function fixture() {
   }
 }
 describe('the list and provider controls share one serialized login reading', () => {
-  it.each(['answer', 'error'] as const)('ignores an older key refresh %s after newer facts arrive', async (late) => {
-    const { runtime, access, changed } = fixture()
-    let resolve!: (status: ApiKeyStatus) => void
-    let reject!: (error: Error) => void
-    runtime.apiKeyStatus.mockImplementationOnce(() => new Promise((yes, no) => {
-      resolve = yes
-      reject = no
-    }))
-    const old = access.readKey()
-    await access.readKey()
-    const newer = access.keyStatus.value
-    if (late === 'answer') resolve({ provider: 'claude', set: true, setAt: 1, inUse: true })
-    else reject(new Error('fictional obsolete response'))
-    await old
-    expect(access.keyStatus.value).toBe(newer)
-    expect(access.keyError.value).toBeNull()
-    expect(runtime.checkProviderAuth).not.toHaveBeenCalled()
-    expect(changed).not.toHaveBeenCalled()
-  })
+  it.each(['answer', 'error'] as const)(
+    'ignores an older key refresh %s after newer facts arrive',
+    async (late) => {
+      const { runtime, access, changed } = fixture()
+      let resolve!: (status: ApiKeyStatus) => void
+      let reject!: (error: Error) => void
+      runtime.apiKeyStatus.mockImplementationOnce(
+        () =>
+          new Promise((yes, no) => {
+            resolve = yes
+            reject = no
+          }),
+      )
+      const old = access.readKey()
+      await access.readKey()
+      const newer = access.keyStatus.value
+      if (late === 'answer') resolve({ provider: 'claude', set: true, setAt: 1, inUse: true })
+      else reject(new Error('fictional obsolete response'))
+      await old
+      expect(access.keyStatus.value).toBe(newer)
+      expect(access.keyError.value).toBeNull()
+      expect(runtime.checkProviderAuth).not.toHaveBeenCalled()
+      expect(changed).not.toHaveBeenCalled()
+    },
+  )
 
   it('does not apply an answer after its provider owner changes', async () => {
     const { runtime, changed } = fixture()
     let provider: Provider = 'claude'
     let release!: (status: ApiKeyStatus) => void
-    runtime.apiKeyStatus.mockImplementationOnce(() => new Promise((done) => { release = done }))
-    const access = createProviderAccess(() => provider, changed, () => runtime)
+    runtime.apiKeyStatus.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          release = done
+        }),
+    )
+    const access = createProviderAccess(
+      () => provider,
+      changed,
+      () => runtime,
+    )
     const reading = access.readKey()
     provider = 'codex'
     release({ provider: 'claude', set: true, setAt: 1, inUse: true })
@@ -65,7 +85,12 @@ describe('the list and provider controls share one serialized login reading', ()
   it('invalidates an outstanding reply when its owner closes or supplies mutation facts', async () => {
     const { runtime, access } = fixture()
     let release!: (status: ApiKeyStatus) => void
-    runtime.apiKeyStatus.mockImplementationOnce(() => new Promise((done) => { release = done }))
+    runtime.apiKeyStatus.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          release = done
+        }),
+    )
     const reading = access.readKey()
     const invalidate = Reflect.get(access, 'invalidateKeyRead') as (() => void) | undefined
     expect(invalidate).toBeTypeOf('function')
