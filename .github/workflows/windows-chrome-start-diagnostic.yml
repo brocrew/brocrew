@@ -1,6 +1,7 @@
 name: Windows published Chrome startup DIAGNOSTIC
 on:
-  workflow_dispatch:
+  push:
+    branches: [diagnostic/windows-chrome-start-0211]
 permissions:
   contents: read
   actions: read
@@ -42,7 +43,9 @@ jobs:
         shell: pwsh
         run: |
           $resources = Join-Path $env:LOCALAPPDATA 'Programs/BroCrew/resources'
-          node windows-chrome-start-diagnostic.mjs $resources chrome-win32-x64.tar.gz evidence
+          node windows-chrome-start-diagnostic.mjs $resources chrome-win32-x64.tar.gz evidence current-011
+          if ($LASTEXITCODE -ne 0) { throw "diagnostic driver exit $LASTEXITCODE" }
+          node windows-chrome-start-diagnostic.mjs $resources chrome-win32-x64.tar.gz evidence old-0136
           if ($LASTEXITCODE -ne 0) { throw "diagnostic driver exit $LASTEXITCODE" }
       - uses: actions/upload-artifact@v4
         if: always()
