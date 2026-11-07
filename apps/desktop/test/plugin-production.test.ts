@@ -1410,11 +1410,13 @@ describe.skipIf(process.platform === 'win32')(
       f.controller.start(f.options)
       await f.controller.ready!()
       await vi.waitFor(() =>
-        expect(warning.mock.calls.filter(([line]) => String(line).startsWith('[plugins]'))).toEqual([
-          ["[plugins] service-start: BroCrew couldn't start the plugin service. Try again."],
-        ]),
+        expect(warning.mock.calls.filter(([line]) => String(line).startsWith('[plugins]'))).toEqual(
+          [["[plugins] service-start: BroCrew couldn't start the plugin service. Try again."]],
+        ),
       )
-      expect(warning.mock.calls.some(([line]) => String(line).includes('controller-admission failure'))).toBe(true)
+      expect(
+        warning.mock.calls.some(([line]) => String(line).includes('controller-admission failure')),
+      ).toBe(true)
       expect(JSON.stringify(warning.mock.calls)).not.toContain('fictional-private-error-with-key')
       expect(f.supervisor.start).not.toHaveBeenCalled()
       await expect(f.controller.install(f.pkg.release.id)).rejects.toThrow(

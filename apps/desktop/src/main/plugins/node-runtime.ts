@@ -160,22 +160,22 @@ export async function runtimeFiles(
 ): Promise<Readonly<{ node: string; guardian: string }>> {
   const finish = pluginStartupTrace.begin('runtime-files-verify')
   try {
-  const paths = prepared.get(runtime)
-  if (!paths) throw new PluginHostError('runtime')
-  if (digest(await sourceBytes(paths.node, 256 * 1024 * 1024)) !== paths.digest)
-    throw new PluginHostError('runtime')
-  for (const [name, bytes] of paths.scripts)
-    if (
-      !(
-        await sourceBytes(
-          join(paths.guardian, '..', name),
-          name === 'LICENSE' ? 512 * 1024 : 64 * 1024,
-        )
-      ).equals(bytes)
-    )
+    const paths = prepared.get(runtime)
+    if (!paths) throw new PluginHostError('runtime')
+    if (digest(await sourceBytes(paths.node, 256 * 1024 * 1024)) !== paths.digest)
       throw new PluginHostError('runtime')
-  finish()
-  return Object.freeze({ node: paths.node, guardian: paths.guardian })
+    for (const [name, bytes] of paths.scripts)
+      if (
+        !(
+          await sourceBytes(
+            join(paths.guardian, '..', name),
+            name === 'LICENSE' ? 512 * 1024 : 64 * 1024,
+          )
+        ).equals(bytes)
+      )
+        throw new PluginHostError('runtime')
+    finish()
+    return Object.freeze({ node: paths.node, guardian: paths.guardian })
   } catch (error) {
     finish(error)
     throw error

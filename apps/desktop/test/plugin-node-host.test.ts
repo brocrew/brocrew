@@ -850,7 +850,9 @@ process.send({ channel: 'brocrew-plugin-node:v1', runId: process.env.BROCREW_PLU
     await expect(runtimeFiles(runtime)).rejects.toThrow('plugin-host-runtime')
     await pluginStartupTrace.flush()
     pluginStartupTrace.destination(undefined)
-    expect(await readFile(join(root, 'plugin-startup-trace.log'), 'utf8')).toContain('runtime-files-verify failure')
+    expect(await readFile(join(root, 'plugin-startup-trace.log'), 'utf8')).toContain(
+      'runtime-files-verify failure',
+    )
   })
   it('retries the same runtime after an interrupted private copy without publishing partial bytes', async () => {
     pluginStartupTrace.destination(root)
