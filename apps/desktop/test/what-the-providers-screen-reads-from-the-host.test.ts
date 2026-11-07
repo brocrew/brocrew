@@ -310,7 +310,7 @@ describe('what the Providers screen reads from the host', () => {
         cpuPercent: null,
         reason: 'ps timed out',
       })
-      expect(failed.codex.reason).toBe('ps timed out')
+      expect(failed.codex).toHaveProperty('reason', 'ps timed out')
       // The failure is the answer for the five seconds an answer holds, and then it is asked again.
       expect(await host.providerResources()).toBe(failed)
       expect(listed).toBe(1)
