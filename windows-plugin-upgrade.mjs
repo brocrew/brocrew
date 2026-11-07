@@ -10,7 +10,7 @@ import { createRequire } from 'node:module'
 import { parseArgs } from 'node:util'
 import { chromeCompatibilityResult, appCompatibilityVerdict, freshClosedChromeRuns } from './chrome-compatibility-result.mjs'
 import { public019Profile } from './public-019-profile.mjs'
-import { readCustomPluginInputs } from './custom-plugin-inputs.mjs'
+import { readCustomPluginInputs, manifestTarExecutable } from './custom-plugin-inputs.mjs'
 import { transportLabel, readTransportFixture, assertUnusedInspectorPort, coldMainArgument, attachColdMain, attachSupervisor } from './instrumented-plugin-transport.mjs'
 
 const { values: args } = parseArgs({ options: {
@@ -299,7 +299,8 @@ function snapshot(label) {
     const folder=join(pluginRoot,'package-vault',wanted.sha256),archive=readFileSync(join(folder,'archive')),catalogue=readFileSync(join(folder,'catalogue.json'))
     assert.equal(archive.length,wanted.bytes);assert.equal(digest(archive),wanted.sha256);assert.equal(readFileSync(join(folder,'catalogue.sha256'),'utf8'),digest(catalogue))
     const entries=JSON.parse(catalogue).entries,release=entries.find(e=>e.id===id);assert(release);assert.equal(release.manifestSha256,wanted.manifest);assert.equal(release.archive.sha256,wanted.sha256)
-    const manifest=spawnSync('tar.exe',['-xOzf','-','plugin.json'],{input:archive,encoding:null,timeout:30000,maxBuffer:1048576});keep(`${label}-${id}-manifest-extraction.json`,{executable:'tar.exe',argv:['-xOzf','-','plugin.json'],archivePath:join(folder,'archive'),stdinBytes:archive.length,stdinSha256:digest(archive),cwd:process.cwd(),status:manifest.status,signal:manifest.signal,errorCode:manifest.error?.code,stderrBytes:manifest.stderr?.length??0,stderr:manifest.stderr?.subarray(0,16384).toString('utf8'),stderrTruncated:(manifest.stderr?.length??0)>16384,stdoutBytes:manifest.stdout?.length??0,stdoutSha256:manifest.stdout?digest(manifest.stdout):null});assert.ifError(manifest.error);assert.equal(manifest.status,0,'manifest extraction failed; see retained extraction receipt');assert.equal(digest(manifest.stdout),wanted.manifest)
+    const tarExecutable=manifestTarExecutable(),tarSha256=digest(readFileSync(tarExecutable)),tarVersion=run(tarExecutable,['--version']);
+    const manifest=spawnSync(tarExecutable,['-xOzf','-','plugin.json'],{input:archive,encoding:null,timeout:30000,maxBuffer:1048576});keep(`${label}-${id}-manifest-extraction.json`,{executable:tarExecutable,executableSha256:tarSha256,executableVersion:tarVersion,argv:['-xOzf','-','plugin.json'],archivePath:join(folder,'archive'),stdinBytes:archive.length,stdinSha256:digest(archive),cwd:process.cwd(),status:manifest.status,signal:manifest.signal,errorCode:manifest.error?.code,stderrBytes:manifest.stderr?.length??0,stderr:manifest.stderr?.subarray(0,16384).toString('utf8'),stderrTruncated:(manifest.stderr?.length??0)>16384,stdoutBytes:manifest.stdout?.length??0,stdoutSha256:manifest.stdout?digest(manifest.stdout):null});assert.ifError(manifest.error);assert.equal(manifest.status,0,'manifest extraction failed; see retained extraction receipt');assert.equal(digest(manifest.stdout),wanted.manifest)
     if(wanted.sourceCommit)assert.equal(JSON.parse(manifest.stdout).sourceCommit,wanted.sourceCommit)
     keep(`${label}-${id}-plugin.json`,manifest.stdout);keep(`${label}-${id}-catalogue.json`,catalogue)
     vault.push({id,archiveSha256:wanted.sha256,manifestSha256:wanted.manifest,bytes:archive.length})

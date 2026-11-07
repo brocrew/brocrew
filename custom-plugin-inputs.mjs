@@ -2,10 +2,16 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { readFileSync, lstatSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { basename, join, win32 } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
+export function manifestTarExecutable(platform=process.platform, systemRoot=process.env.SystemRoot) {
+  if(platform!=='win32')return 'tar'
+  assert.equal(typeof systemRoot,'string','Windows SystemRoot required for native tar')
+  assert(win32.isAbsolute(systemRoot),'absolute Windows SystemRoot required')
+  return win32.join(systemRoot,'System32','tar.exe')
+}
 export function readCustomPluginInputs(directory, receiptSha256, publicCatalogue, origin) {
   assert.match(receiptSha256, /^[a-f0-9]{64}$/)
   assert.match(String(origin.runId), /^[0-9]+$/)
@@ -42,7 +48,7 @@ export function readCustomPluginInputs(directory, receiptSha256, publicCatalogue
     assert(stat.isFile() && !stat.isSymbolicLink())
     const bytes = readFileSync(path)
     assert.equal(bytes.length, target.bytes); assert.equal(sha256(bytes), target.sha256)
-    const extracted = spawnSync(process.platform === 'win32' ? 'tar.exe' : 'tar', ['-xOzf', '-', 'plugin.json'], {input: bytes, maxBuffer: 4 * 1024 * 1024, timeout: 30000})
+    const extracted = spawnSync(manifestTarExecutable(), ['-xOzf', '-', 'plugin.json'], {input: bytes, maxBuffer: 4 * 1024 * 1024, timeout: 30000})
     assert.ifError(extracted.error); assert.equal(extracted.status, 0, `manifest extraction failed: ${extracted.stderr?.subarray(0,16384).toString('utf8')}`)
     assert.equal(sha256(extracted.stdout), target.manifestSha256)
     const manifest = JSON.parse(extracted.stdout)

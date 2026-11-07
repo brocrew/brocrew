@@ -4,9 +4,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
-import { readCustomPluginInputs } from './custom-plugin-inputs.mjs'
+import { readCustomPluginInputs, manifestTarExecutable } from './custom-plugin-inputs.mjs'
 const root=mkdtempSync(join(tmpdir(),process.platform==='win32'?'plugin-input-control-':'C:plugin-input-control-')),sha=b=>createHash('sha256').update(b).digest('hex')
 try {
+ assert.equal(manifestTarExecutable('win32','C:\\Windows'),'C:\\Windows\\System32\\tar.exe')
+ assert.throws(()=>manifestTarExecutable('win32','relative'),/absolute/)
+ assert.throws(()=>manifestTarExecutable('win32',''),/absolute/)
+ assert.equal(manifestTarExecutable('linux',undefined),'tar')
  const manifest={format:2,id:'chrome',version:'0.1.9',sourceCommit:'a'.repeat(40),platforms:[{os:'win32',cpu:'x64'}]}
  const manifestBytes=Buffer.from(JSON.stringify(manifest));writeFileSync(join(root,'plugin.json'),manifestBytes)
  const filename='chrome-win32-x64.tar.gz'
@@ -31,5 +35,5 @@ try {
  writeFileSync(join(root,filename),bytes)
  const wrongManifest=structuredClone(receipt);wrongManifest.plugins[0].manifestSha256='e'.repeat(64);wrongManifest.plugins[0].catalogueEntry.targets[0].manifestSha256='e'.repeat(64)
  assert.throws(()=>invoke(wrongManifest))
- console.log(JSON.stringify({passed:8,colonPath:root.includes('C:'),corruptArchiveRejected:true,manifestHashStillRequired:true,scope:'real GNU tar stdin extraction and synthetic identity controls; Windows/installed proof unrun'}))
+ console.log(JSON.stringify({passed:12,nativeTarBindingControls:4,colonPath:root.includes('C:'),corruptArchiveRejected:true,manifestHashStillRequired:true,scope:'real GNU tar stdin extraction and synthetic identity controls; Windows/installed proof unrun'}))
 } finally {rmSync(root,{recursive:true,force:true})}
