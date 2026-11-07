@@ -28,11 +28,12 @@ export function codexDesktopInputs(
   const key: CodexKeySeam = {
     current: () => context.keys.current('codex'),
     isSaved: () => context.keys.status('codex').set,
-    change: (home, change) =>
+    change: (home, change, signal) =>
       (seams.changeKey ?? changeCodexKeyInHome)(
         (seams.transportFactory ?? createSpawnTransportFactory)(program().path),
         home,
         change,
+        signal === undefined ? context.signal : AbortSignal.any([context.signal, signal]),
       ),
   }
   return {

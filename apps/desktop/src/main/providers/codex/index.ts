@@ -24,6 +24,7 @@ import {
   removeStaleCodexPermissionConfig,
   reprovisionCodexAuth,
   startCodexLogin,
+  untilCancelled,
   type AgentRuntime,
   type TransportFactory,
 } from '@brobot2/runtime'
@@ -69,13 +70,14 @@ function codexKeyStampOf(home: string): number | null {
 export function bringTheCodexKeyTo(
   home: string,
   codexKey: CodexKeySeam,
+  signal?: AbortSignal,
 ): Promise<'the-key' | 'its-login'> {
   const before = keyChangesInFlight.get(home) ?? Promise.resolve()
-  const mine = before.catch(() => undefined).then(() => bringTheCodexKeyToNow(home, codexKey))
-  const settled = mine.then(
-    () => undefined,
-    () => undefined,
-  )
+  const mine = untilCancelled(before.catch(() => undefined), signal, 'waiting to prepare Codex').then(() => {
+    signal?.throwIfAborted()
+    return bringTheCodexKeyToNow(home, codexKey, signal)
+  })
+  const settled = Promise.allSettled([before, mine]).then(() => undefined)
   keyChangesInFlight.set(home, settled)
   void settled.then(() => {
     if (keyChangesInFlight.get(home) === settled) keyChangesInFlight.delete(home)
@@ -88,19 +90,25 @@ const keyChangesInFlight = new Map<string, Promise<void>>()
 async function bringTheCodexKeyToNow(
   home: string,
   codexKey: CodexKeySeam,
+  signal?: AbortSignal,
 ): Promise<'the-key' | 'its-login'> {
   let current: Awaited<ReturnType<CodexKeySeam['current']>>
   try {
-    current = await codexKey.current()
+    current = await untilCancelled(Promise.resolve().then(() => {
+      signal?.throwIfAborted()
+      return codexKey.current()
+    }), signal, 'reading the saved Codex key')
   } catch (error) {
     if (error instanceof ApiKeyUnreadableError)
       throw new AuthUnavailableError('codex', error.message)
     throw error
   }
+  signal?.throwIfAborted()
   const stamp = codexKeyStampOf(home)
   if (current !== null) {
     if (stamp === current.setAt && existsSync(join(home, 'auth.json'))) return 'the-key'
-    const done = await codexKey.change(home, { to: 'the-key', apiKey: current.key })
+    const done = await codexKey.change(home, { to: 'the-key', apiKey: current.key }, signal)
+    signal?.throwIfAborted()
     if (!done.ok) throw new AuthUnavailableError('codex', `${done.reason} Try again in a moment.`)
     if (done.authMethod !== 'apikey') {
       throw new AuthUnavailableError(
@@ -115,7 +123,8 @@ async function bringTheCodexKeyToNow(
     return 'the-key'
   }
   if (stamp === null) return 'its-login'
-  const done = await codexKey.change(home, { to: 'no-key' })
+  const done = await codexKey.change(home, { to: 'no-key' }, signal)
+  signal?.throwIfAborted()
   if (!done.ok) throw new AuthUnavailableError('codex', `${done.reason} Try again in a moment.`)
   rmSync(join(home, CODEX_KEY_STAMP), { force: true })
   return 'its-login'
@@ -142,17 +151,21 @@ export async function prepareCodexHome(
   paths: ProviderHomePaths,
   profileId: string,
   seams: CodexHomeSeams,
+  signal?: AbortSignal,
 ): Promise<string> {
+  signal?.throwIfAborted()
   const home = await prepareStateHome(paths, profileId, seams.provisionHome)
+  signal?.throwIfAborted()
 
   removeStaleCodexPermissionConfig(home)
 
   ensureCodexMemoryConfig(home)
 
-  if (seams.key !== undefined && (await bringTheCodexKeyTo(home, seams.key)) === 'the-key') {
+  if (seams.key !== undefined && (await bringTheCodexKeyTo(home, seams.key, signal)) === 'the-key') {
     return home
   }
 
+  signal?.throwIfAborted()
   if (seams.provisionCodexAuth) await seams.provisionCodexAuth(home)
   else await provisionCodexAuth(home, theCodexCopy(paths, home, seams))
   return home
@@ -295,7 +308,7 @@ export const codexModuleFactory = {
     () =>
       codexRuntime(seams),
   home: (paths: ProviderHomePaths, seams: CodexHomeSeams): ProviderHomeStrategy => ({
-    prepare: (profileId) => prepareCodexHome(paths, profileId, seams),
+    prepare: (profileId, signal) => prepareCodexHome(paths, profileId, seams, signal),
   }),
   auth: codexAuth,
 }

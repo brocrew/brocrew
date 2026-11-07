@@ -21,6 +21,7 @@ import {
   claudeKeychainTokenProviderAsync,
   claudeLoginState,
   claudeLoginStateWithAKey,
+  untilCancelled,
   type AgentRuntime,
   type AuthHealth,
   type AuthState,
@@ -66,11 +67,19 @@ function claudeCommandFor(seams: { readonly programFound?: () => string | null }
 async function claudeHealth(
   apiKey: (() => string | null | Promise<string | null>) | undefined,
   command: () => string,
+  signal?: AbortSignal,
 ): Promise<AuthHealth> {
   try {
+    const readLogin = claudeKeychainTokenProviderForALaunch()
     return await claudeAuthHealthAsync(
-      claudeKeychainTokenProviderForALaunch(),
-      apiKey === undefined ? undefined : () => apiKey(),
+      () => {
+        signal?.throwIfAborted()
+        return readLogin()
+      },
+      apiKey === undefined ? undefined : () => untilCancelled(Promise.resolve().then(() => {
+        signal?.throwIfAborted()
+        return apiKey()
+      }), signal, 'reading the saved Claude key'),
       command,
     )
   } catch (error) {
@@ -122,10 +131,16 @@ export async function prepareClaudeHome(
   paths: ProviderHomePaths,
   profileId: string,
   seams: ClaudeHomeSeams,
+  signal?: AbortSignal,
 ): Promise<string> {
+  signal?.throwIfAborted()
   const home = await prepareStateHome(paths, profileId, seams.provisionHome)
+  signal?.throwIfAborted()
 
-  const health = await (seams.health ?? (() => claudeHealth(seams.key, claudeCommandFor(seams))))()
+  const health = await untilCancelled(Promise.resolve().then(() =>
+    (seams.health ?? (() => claudeHealth(seams.key, claudeCommandFor(seams), signal)))(),
+  ), signal, 'preparing the Claude login')
+  signal?.throwIfAborted()
   if (!health.ok) {
     throw new AuthUnavailableError('claude', health.reason ?? 'Claude machine login unavailable')
   }
@@ -228,7 +243,7 @@ export const claudeModuleFactory = {
     () =>
       claudeRuntime(seams),
   home: (paths: ProviderHomePaths, seams: ClaudeHomeSeams): ProviderHomeStrategy => ({
-    prepare: (profileId) => prepareClaudeHome(paths, profileId, seams),
+    prepare: (profileId, signal) => prepareClaudeHome(paths, profileId, seams, signal),
   }),
   auth: claudeAuth,
 }

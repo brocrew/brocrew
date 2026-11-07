@@ -13030,12 +13030,20 @@ export class RuntimeHost implements LiveHost {
     }
     await this.homeCopyJobs.get(profileSignInKey(provider, profileId))
     const renewedForIt = sessionId !== undefined && this.renewedForItsReopen.delete(sessionId)
-    const prepare = (): Promise<string> =>
-      untilCancelled(
-        Promise.resolve().then(() => this.deps.prepareProviderHome(provider, profileId)),
-        launch?.signal,
+    const prepare = (): Promise<string> => {
+      const preparation = this.launches.open(`${provider} conversation home preparation`)
+      const signal = launch === undefined ? preparation.signal : AbortSignal.any([preparation.signal, launch.signal])
+      const work = Promise.resolve().then(() => {
+        signal.throwIfAborted()
+        return this.deps.prepareProviderHome(provider, profileId, signal)
+      })
+      this.launches.finish(preparation, work)
+      return untilCancelled(
+        work,
+        signal,
         'preparing the conversation',
       )
+    }
     const renewal = this.deps.loginRenewal?.(provider)
     if (renewal === undefined || this.aKeyIsSaved(provider)) {
       return { home: await prepare(), loginRenewed: renewedForIt }
@@ -24492,8 +24500,13 @@ export class RuntimeHost implements LiveHost {
       try {
         if (this.deps.beforeProviderLaunch) await this.deps.beforeProviderLaunch()
         preparation.signal.throwIfAborted()
+        const work = Promise.resolve().then(() => {
+          preparation.signal.throwIfAborted()
+          return this.deps.prepareProviderHome(provider, profileId, preparation.signal)
+        })
+        this.launches.finish(preparation, work)
         providerHome = await untilCancelled(
-          Promise.resolve().then(() => this.deps.prepareProviderHome(provider, profileId)),
+          work,
           preparation.signal,
           'preparing the model catalogue',
         )

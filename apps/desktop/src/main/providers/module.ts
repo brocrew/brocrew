@@ -32,13 +32,8 @@ export interface HomeAuthOperations {
   ): Promise<SignInCopySource | 'not-tried'>
 }
 
-/**
- * The provider chooses preparation; its credential services are bound separately from state paths.
- * Today state folders also establish profile existence. A later shared-login strategy must retain
- * those folders, or first provide a profile registry. Existing conversations keep their paths.
- */
 export interface ProviderHomeStrategy {
-  prepare(profileId: string): Promise<string>
+  prepare(profileId: string, signal?: AbortSignal): Promise<string>
 }
 
 /** Metadata only; providers retain all existing credential and state operations. */

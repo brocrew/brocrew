@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { FakeRuntime, type CodexIncoming, type CodexTransport } from '@brobot2/runtime'
+import { FakeRuntime, untilCancelled, type CodexIncoming, type CodexTransport } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 import { ApiKeys } from '../src/main/runtime/api-keys'
@@ -36,8 +36,8 @@ function pendingKey(provider: Provider) {
     store: NULL_SESSION_STORE,
     ...neutralHostDeps(() => '/fictional-user-data'),
     createRuntime: () => runtime,
-    prepareProviderHome: async (of) => {
-      await keys.read(of)
+    prepareProviderHome: async (of, _profile, signal) => {
+      await untilCancelled(keys.read(of), signal, 'reading a fictional key')
       homesCompleted += 1
       return join('/fictional-user-data', 'provider-homes', of)
     },
@@ -101,7 +101,7 @@ function codexPreparation(holdKey: boolean) {
     notify: () => {},
     respond: () => {},
     respondError: () => {},
-    incoming: async function* (): AsyncIterable<CodexIncoming> {},
+    incoming: async function* (): AsyncIterable<CodexIncoming> { yield* [] },
     close: vi.fn(() => {
       login.reject(new Error('fictional child stopped'))
       return cleanup.promise
