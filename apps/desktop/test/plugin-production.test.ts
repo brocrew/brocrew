@@ -389,7 +389,10 @@ describe('automatic initial service recovery', () => {
     const f = await failingStart()
     let admit!: (lease: never) => void
     f.attach.mockImplementationOnce(
-      () => new Promise((resolve) => { admit = resolve }),
+      () =>
+        new Promise((resolve) => {
+          admit = resolve
+        }),
     )
     try {
       await vi.advanceTimersByTimeAsync(1000)
@@ -407,6 +410,19 @@ describe('automatic initial service recovery', () => {
       await f.controller.close()
       await f.supervisor.quit()
     }
+  })
+  it('Try again during blocked cleanup preserves autonomous recovery', async () => {
+    const f = await setup()
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    f.controller.start(f.options)
+    await f.controller.ready!()
+    ;(seams.connect.mock.calls[0]![0] as { lost(): void }).lost()
+    await f.controller.retry!(f.pkg.release.id)
+    expect(seams.connect).toHaveBeenCalledOnce()
+    f.supervisor.stoppedCleanly.mockReturnValue(true)
+    await vi.advanceTimersByTimeAsync(1000)
+    await f.controller.ready!()
+    expect(seams.connect).toHaveBeenCalledTimes(2)
   })
   it.each(['close', 'manual'] as const)('%s cancels the pending backoff', async (action) => {
     const f = await failingStart()

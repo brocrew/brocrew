@@ -441,7 +441,7 @@ export function productionPluginController() {
       firstSettingsList = false
       startupCatalogueVerifiedAt = undefined
       catalogueRefresh = undefined
-      clearTimeout(recovery)
+      if (initialRetries !== undefined) clearTimeout(recovery)
       initialRetries = undefined
       recover()
       await enter(true)
