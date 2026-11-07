@@ -18,7 +18,6 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
@@ -28,8 +27,13 @@ import {
   theWaitAConversationIsIn,
   whereTheWorkItHoldsStands,
 } from '../src/shared/tasks'
-import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
+import {
+  fixtureProviderConfig,
+  syntheticProviderHome,
+  neutralHostDeps,
+  RecordingSink,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **621 · the conversation that is waiting, with no task to say so** — `EXT-014` §5 and
@@ -110,17 +114,6 @@ function holdingItsClose(handle: SessionHandle, gate: Promise<void>): SessionHan
 }
 
 describe('621 · the conversation that is waiting', () => {
-  class RecordingSink implements RuntimeEventSink {
-    readonly aPersonIsBehindIt = true
-    readonly messages: RuntimeEventMessage[] = []
-    alive = true
-    constructor(readonly ownerId: string) {}
-    send(message: RuntimeEventMessage): void {
-      this.messages.push(message)
-    }
-    sendLiveness(): void {}
-  }
-
   class ToolWatchingRuntime extends FakeRuntime {
     constructor(
       provider: Provider,

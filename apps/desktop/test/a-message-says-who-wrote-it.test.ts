@@ -16,7 +16,6 @@ import {
   nameTheConversation,
   whoseConversationIs,
 } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
@@ -37,9 +36,13 @@ import type { Exchange } from '../src/shared/last-exchange'
 import { UNDRIVEN_SENTENCES } from '../src/shared/tasks'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import type { TranscriptState } from '../src/renderer/src/lib/transcript'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import {
+  syntheticProviderHome,
+  fixtureProviderConfig,
+  neutralHostDeps,
+  RecordingSink,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **624 · a message says who wrote it, and a report says what is true** — ordered by
@@ -88,17 +91,6 @@ const codeOf = (file: string): string =>
     .replace(/^[ \t]*\/\/.*$/gm, ' ')
 
 describe('624 · a message says who wrote it', () => {
-  class RecordingSink implements RuntimeEventSink {
-    readonly aPersonIsBehindIt = true
-    readonly messages: RuntimeEventMessage[] = []
-    alive = true
-    constructor(readonly ownerId: string) {}
-    send(message: RuntimeEventMessage): void {
-      this.messages.push(message)
-    }
-    sendLiveness(): void {}
-  }
-
   let userData: string
   let root: string
   let db: AppDatabase

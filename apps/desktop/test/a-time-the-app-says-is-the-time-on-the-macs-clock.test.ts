@@ -1,4 +1,4 @@
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/host-fixture'
 import { registerCalendarRevisionCases } from './helpers/calendar-revision-cases'
 import type { PersistedEventInfo } from '../src/shared/conversation-events'
 import type { AgentState } from '../src/shared/agent-state-contracts'
@@ -17,7 +17,6 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { keepTheSystemZone } from '../src/main/system-zone'
@@ -32,11 +31,7 @@ import {
   sameLocalDay,
   type LocalZone,
 } from '../src/shared/local-time'
-import type {
-  LibraryEntry,
-  RuntimeEventMessage,
-  RuntimeStatesMessage,
-} from '../src/shared/runtime-ipc'
+import type { LibraryEntry, RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 
 import { calendarDay, fullTime } from '../src/renderer/src/lib/clock'
 import { proseSpans } from './lib/prose-spans'
@@ -1476,17 +1471,6 @@ describe('§5 · the window, main and the host agree on the zone', () => {
 })
 
 // ─── The host half ─────────────────────────────────────────────────────────────────────────────
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 class ProviderDouble extends FakeRuntime {
   constructor(

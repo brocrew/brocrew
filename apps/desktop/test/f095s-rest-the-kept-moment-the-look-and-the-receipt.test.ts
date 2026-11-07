@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, RecordingSink } from './lib/host-fixture'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -10,11 +10,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { resourcesRoot } from '../src/main/resources/resources'
-import {
-  RuntimeHost,
-  THE_APP_ITSELF,
-  type RuntimeEventSink,
-} from '../src/main/runtime/runtime-host'
+import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   readSignInChanges,
@@ -23,7 +19,6 @@ import {
   writeSignInChanges,
 } from '../src/main/sign-in-changes'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 
 /**
@@ -147,17 +142,6 @@ describe('F095 · W4.172’s rest', () => {
 
   describe('§2–§4 · on a host', () => {
     /** ⚑ A window: the one surface a person's words come through. */
-    class RecordingSink implements RuntimeEventSink {
-      readonly aPersonIsBehindIt = true
-      readonly messages: RuntimeEventMessage[] = []
-      alive = true
-      constructor(readonly ownerId: string) {}
-      send(message: RuntimeEventMessage): void {
-        this.messages.push(message)
-      }
-      sendLiveness(): void {}
-    }
-
     let userData: string
     let root: string
     let db: AppDatabase

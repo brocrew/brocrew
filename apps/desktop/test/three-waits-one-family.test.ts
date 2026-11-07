@@ -20,7 +20,6 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { isGiverStallNotice, RuntimeHost } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
@@ -33,9 +32,13 @@ import {
 } from '../src/shared/tasks'
 import { WORK_STATE_WORD } from '../src/renderer/src/lib/work-report'
 import { aPersonOwesAnAnswerIn } from '../src/shared/questions'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { spacedCode, expectNoDeadlineDeps } from './helpers/source-contracts'
-import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  syntheticProviderHome,
+  neutralHostDeps,
+  RecordingSink,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **609 · three waits, one family** — `HO-088` §5, straight after B1 (`608`).
@@ -82,17 +85,6 @@ const srcRoot = join(here, '../src')
 const codeOf = (file: string): string => spacedCode(readFileSync(join(srcRoot, file), 'utf8'))
 
 describe('609 · three waits, one family', () => {
-  class RecordingSink implements RuntimeEventSink {
-    readonly aPersonIsBehindIt = true
-    readonly messages: RuntimeEventMessage[] = []
-    alive = true
-    constructor(readonly ownerId: string) {}
-    send(message: RuntimeEventMessage): void {
-      this.messages.push(message)
-    }
-    sendLiveness(): void {}
-  }
-
   class ToolWatchingRuntime extends FakeRuntime {
     constructor(
       provider: Provider,

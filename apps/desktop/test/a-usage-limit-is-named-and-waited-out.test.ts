@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, RecordingSink } from './lib/host-fixture'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import type { StoppedOnALimit } from '../src/shared/task-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -17,11 +17,7 @@ import {
   undrivenWorkText,
   theLimitItStoppedOn,
 } from '../src/main/runtime/reply-rails'
-import {
-  RuntimeHost,
-  THE_APP_ITSELF,
-  type RuntimeEventSink,
-} from '../src/main/runtime/runtime-host'
+import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   readSignInChanges,
@@ -32,7 +28,6 @@ import {
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { clockTime } from '../src/shared/clock'
 import type { Exchange } from '../src/shared/last-exchange'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { derivePieces, UNDRIVEN_SENTENCES } from '../src/shared/tasks'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
@@ -330,17 +325,6 @@ describe('F074 · a usage limit is named, and what the app would start waits for
 
   describe('§4 · the hold', () => {
     /** ⚑ A window: the one surface a person's words come through. */
-    class RecordingSink implements RuntimeEventSink {
-      readonly aPersonIsBehindIt = true
-      readonly messages: RuntimeEventMessage[] = []
-      alive = true
-      constructor(readonly ownerId: string) {}
-      send(message: RuntimeEventMessage): void {
-        this.messages.push(message)
-      }
-      sendLiveness(): void {}
-    }
-
     let userData: string
     let root: string
     let db: AppDatabase

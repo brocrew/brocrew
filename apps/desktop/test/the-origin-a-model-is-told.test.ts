@@ -1,4 +1,4 @@
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -13,7 +13,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import type { Caller, RuntimeEventSink } from './helpers/giver-notice-host'
+import type { Caller } from './helpers/giver-notice-host'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import {
@@ -27,7 +27,6 @@ import { messageNamingThePiece } from '../src/main/runtime/reply-rails'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { expectQueueFactsExcludeBriefs } from './helpers/queue-facts-source'
 import { agentName } from '../src/shared/runtime-ipc'
 import type { WhereTheSenderStands } from '../src/main/runtime/turn-origin'
@@ -103,17 +102,6 @@ const codeOnly = (source: string): string =>
 /** The host's source, comments stripped — the subject of every census in this file. */
 const hostSource = (): string =>
   codeOnly(readFileSync(join(mainRoot, 'runtime/runtime-host.ts'), 'utf8'))
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 class ProviderDouble extends FakeRuntime {
   constructor(
