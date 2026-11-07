@@ -368,6 +368,25 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
     expect(JSON.stringify(ready)).not.toContain('Bearer')
     expect(await handle.stop()).toEqual({ exited: true })
   })
+  it('starts packages that require the published bootstrap file mode under an ordinary umask', async () => {
+    const priorMask = process.umask(0o022)
+    try {
+      const { host } = await context()
+      const publishedBootstrap = source.replace(
+        "const auth = JSON.parse(fs.readFileSync(process.env.BROCREW_CHROME_AUTH, 'utf8'));",
+        `const authPath = process.env.BROCREW_CHROME_AUTH;
+const stat = fs.lstatSync(authPath);
+if (!stat.isFile() || stat.size > 16384 || (stat.mode & 0o077) !== 0)
+  throw new Error('published plugin rejected bootstrap file mode');
+const auth = JSON.parse(fs.readFileSync(authPath, 'utf8'));`,
+      )
+      const child = await host.start(fixture(publishedBootstrap))
+      expect((await child.ready()).origin).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/)
+      expect(await child.stop()).toEqual({ exited: true })
+    } finally {
+      process.umask(priorMask)
+    }
+  })
   it('removes the bootstrap auth file at listening, before the first authenticated readiness check', async () => {
     const { host, home } = await context()
     const body = source.replace(

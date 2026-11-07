@@ -20,6 +20,7 @@ import {
 import { runtimeFiles, type PluginNodeRuntime } from './node-runtime'
 import { windowsSystemEnvironment } from './system-environment'
 import { sharedDataEnvironment, type SharedDataOwner } from './shared-data'
+import { createFileNotThroughALink } from './private-files'
 import {
   endWindowsTree,
   stopGroups,
@@ -289,12 +290,16 @@ export function createPluginNodeHost(options: {
     const mcpToken = randomBytes(32).toString('hex'),
       adminToken = randomBytes(32).toString('hex'),
       hookToken = randomBytes(32).toString('hex')
-    await immutableFile(
-      join(run, 'auth.json'),
-      Buffer.from(
+    // Published plugins require this bootstrap file to have no group or other mode bits.
+    const authFile = await createFileNotThroughALink(join(run, 'auth.json'), 0o600)
+    try {
+      await authFile.writeFile(
         JSON.stringify(hosted.transport === 'hooks' ? { hookToken } : { mcpToken, adminToken }),
-      ),
-    )
+      )
+      await authFile.sync()
+    } finally {
+      await authFile.close()
+    }
     await immutableFile(
       join(run, 'launch.json'),
       Buffer.from(
