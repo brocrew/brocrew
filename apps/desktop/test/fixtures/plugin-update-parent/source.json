@@ -55,8 +55,8 @@
         "../../../src/main/plugins/lifecycle/download": "./download",
         "./lifecycle-files": "./files",
         "../../../src/main/plugins/lifecycle/vault": "./vault",
-        "../../../src/main/plugins/lifecycle/types": "./types",
-        "../../../src/shared/plugin-settings": "../../../shared/plugin-settings"
+        "../../../src/shared/plugin-settings": "../../../shared/plugin-settings",
+        "../plugin-delete-parent/types": "./types"
       }
     },
     {
@@ -79,8 +79,8 @@
         "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol",
         "../../../src/main/plugins/lifecycle/transport": "./transport",
         "./lifecycle-controller": "./controller",
-        "../../../src/main/plugins/lifecycle/types": "./types",
-        "./state-format": "../state/format"
+        "./state-format": "../state/format",
+        "../plugin-delete-parent/types": "./types"
       }
     },
     {
@@ -96,11 +96,11 @@
         "../../../src/main/plugins/package-schema": "../package-schema",
         "../../../src/main/plugins/lifecycle/vault": "./vault",
         "./lifecycle-person-control": "./person-control",
-        "../../../src/main/plugins/lifecycle/types": "./types",
         "./state-format": "../state/format",
         "../../../src/shared/plugin-settings": "../../../shared/plugin-settings",
         "../../../src/main/plugins/package-verifier": "../package-verifier",
-        "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol"
+        "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol",
+        "../plugin-delete-parent/types": "./types"
       }
     },
     {

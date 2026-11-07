@@ -232,9 +232,16 @@ describe('a cold agent gets each plugin that is ready', () => {
       first = request()
     const closing = deferred<void>()
     try {
-      expect((await w.bridge.agentRoutes(l, first)).pending).toEqual(['aster'])
-      for (let n = 1; n < 1100; n++)
-        expect((await w.bridge.agentRoutes(l, request())).pending).toEqual(['aster'])
+      const answered = async (req: Request) => {
+        const answer = await w.bridge.agentRoutes(l, req)
+        return { pending: answer.pending, reply: JSON.stringify(answer) }
+      }
+      const one = await answered(first)
+      expect(one.pending, one.reply).toEqual(['aster'])
+      for (let n = 1; n < 1100; n++) {
+        const each = await answered(request())
+        expect(each.pending, `read ${n}: ${each.reply}`).toEqual(['aster'])
+      }
       expect(
         w.diagnostic.mock.calls.filter(([, reason]) => reason === 'attachment-capacity'),
       ).toHaveLength(76)
@@ -244,7 +251,8 @@ describe('a cold agent gets each plugin that is ready', () => {
       w.state.get('aster')!.close = closing.promise
       const releasing = w.bridge.agentRoutes(l, { ...first, release: true })
       await vi.waitFor(() => expect(w.closed).toHaveLength(1))
-      expect((await w.bridge.agentRoutes(l, request())).pending).toEqual(['aster'])
+      const during = await answered(request())
+      expect(during.pending, during.reply).toEqual(['aster'])
       expect(w.opened).toHaveLength(1024)
       closing.resolve()
       await releasing
@@ -254,6 +262,30 @@ describe('a cold agent gets each plugin that is ready', () => {
     } finally {
       binding.resolve(undefined as unknown as Binding)
       closing.resolve()
+    }
+  })
+
+  it('a read whose time runs out after a wake answers with what it read, never unknown', async () => {
+    const w = await aWorkspace(['aster'], 400, Promise.resolve(), true)
+    const binding = deferred<Binding>()
+    w.state.get('aster')!.binding = binding.promise
+    w.commit('aster', { is: 'admitted' })
+    const real = performance.now.bind(performance)
+    let skew = 0
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => real() + skew)
+    try {
+      const reading = w.bridge.agentRoutes(lease(), request())
+      // The read has planned once and is waiting on the opening route.
+      await vi.waitFor(() => expect(w.controller.onHostChanged).toHaveBeenCalled())
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      // Its time runs out, then a committed change wakes it.
+      skew = 10_000
+      w.commit('aster', {})
+      const answer = await reading
+      expect(answer, JSON.stringify(answer)).toMatchObject({ pending: ['aster'], unknown: false })
+    } finally {
+      clock.mockRestore()
+      binding.resolve(undefined as unknown as Binding)
     }
   })
 

@@ -27,6 +27,7 @@ import {
   supervisorRequest,
 } from '../src/main/plugins/supervisor/client'
 import {
+  APP_HELD_CONNECTION,
   OWNER_LIMITS,
   OWNER_WIRE,
   pack,
@@ -72,6 +73,11 @@ function fixture() {
   const workspaces = Array.from({ length: 4 }, (_, index) => join(parent, `workspace-${index}`))
   for (const workspace of workspaces) mkdirSync(workspace, { mode: 0o700 })
   return { parent, root, workspaces }
+}
+/** An older app copy: it renews, and its lease expires without a held connection. */
+const renewingWire = {
+  ...OWNER_WIRE,
+  features: OWNER_WIRE.features.filter((one) => one !== APP_HELD_CONNECTION),
 }
 async function attach(
   root: string,
@@ -431,8 +437,8 @@ describe.skipIf(process.platform === 'win32')(
       })
       owners.push(owner)
       const generation = randomUUID()
-      const first = await attach(root, workspaces[0]!),
-        second = await attach(root, workspaces[1]!, { generation })
+      const first = await attach(root, workspaces[0]!, { wire: renewingWire }),
+        second = await attach(root, workspaces[1]!, { generation, wire: renewingWire })
       now = 30_000
       await second.renew()
       now = OWNER_LIMITS.expires
@@ -731,7 +737,7 @@ describe.skipIf(process.platform === 'win32')(
         tickEvery: 60_000,
       })
       owners.push(owner)
-      await attach(expired.root, expired.workspaces[0]!)
+      await attach(expired.root, expired.workspaces[0]!, { wire: renewingWire })
       now = OWNER_LIMITS.expires
       await owner.tick()
       expect(stopReason(expired.root)).toMatchObject({ phase: 'stopped', reason: 'lease-expired' })

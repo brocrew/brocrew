@@ -315,12 +315,16 @@ export function createPluginNodeHost(options: {
     }
     const forkedAt = Date.now()
     let guardianEndedAt = 0
+    /** The guardian's last 16 KiB of stderr, the cause when it dies before its plugin is ready. */
+    let guardianStderr = ''
     const child: ChildProcess = fork(runtime.guardian, [join(run, 'launch.json')], {
       execPath: runtime.node,
       execArgv: [],
       cwd: home,
       detached: true,
-      stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+      // The guardian's own stderr is kept so a guardian that dies names why; its plugin
+      // server is started with its own output ignored (guardian.mjs).
+      stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
       env: {
         ...(windows
           ? {
@@ -512,12 +516,25 @@ export function createPluginNodeHost(options: {
       }
     })
     let finished = false
-    const finish = async () => {
+    const finish = async (
+      exit?: { code: number | null; signal: NodeJS.Signals | null },
+      failure?: Error,
+    ) => {
       if (finished) return
       finished = true
       stopped = true
       clearTimeout(timer)
-      ready.reject(new PluginHostError(unsupported ? 'unsupported' : 'ready'))
+      const said = guardianStderr.trim()
+      ready.reject(
+        new PluginHostError(unsupported ? 'unsupported' : 'ready', {
+          cause:
+            failure ??
+            new Error(
+              `the plugin guardian exited (code ${exit?.code ?? 'none'}, signal ${exit?.signal ?? 'none'})` +
+                (said ? `: ${said}` : ' and wrote nothing to stderr'),
+            ),
+        }),
+      )
       // A guardian crash is not an exit receipt; independently clean the groups already admitted.
       // On Windows that is the guardian's whole tree, its job keeper and the server's children
       // included: only a reading that finds none of it running is proof.
@@ -551,12 +568,16 @@ export function createPluginNodeHost(options: {
       if (clean) starts.delete(manifest.id)
       exited.resolve({ exited: clean })
     }
-    child.once('error', () => {
-      void finish()
+    child.stderr?.setEncoding('utf8')
+    child.stderr?.on('data', (chunk: string) => {
+      guardianStderr = (guardianStderr + chunk).slice(-16 * 1024)
     })
-    child.once('close', () => {
+    child.once('error', (error) => {
+      void finish(undefined, error)
+    })
+    child.once('close', (code, signal) => {
       guardianEndedAt = Date.now()
-      void finish()
+      void finish({ code, signal })
     })
     return Object.freeze({
       runId,

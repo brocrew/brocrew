@@ -1721,8 +1721,14 @@ export class ClaudeSessionHandle implements SessionHandle {
   private pluginRefresh?: (
     servers: readonly ManagedPluginMcpServer[],
   ) => NonNullable<Options['mcpServers']>
-  configurePluginRefresh(build: NonNullable<ClaudeSessionHandle['pluginRefresh']>): void {
+  private managedPluginServers: readonly ManagedPluginMcpServer[] = []
+  private managedPluginGeneration = 0
+  configurePluginRefresh(
+    build: NonNullable<ClaudeSessionHandle['pluginRefresh']>,
+    servers: readonly ManagedPluginMcpServer[] = [],
+  ): void {
     this.pluginRefresh = build
+    this.managedPluginServers = servers.map((server) => ({ ...server }))
   }
   async managedPluginHealth(
     servers: readonly ManagedPluginMcpServer[],
@@ -1747,10 +1753,13 @@ export class ClaudeSessionHandle implements SessionHandle {
     servers: readonly ManagedPluginMcpServer[],
     reconnect: readonly string[] = [],
   ): Promise<void> {
+    const generation = ++this.managedPluginGeneration
+    const query = this.query
+    const next = servers.map((server) => ({ ...server }))
     try {
-      if (!this.query?.setMcpServers || !this.pluginRefresh)
+      if (!query?.setMcpServers || !this.pluginRefresh)
         throw new Error('Plugin unavailable. Try again.')
-      const result = await this.query.setMcpServers(this.pluginRefresh(servers))
+      const result = await query.setMcpServers(this.pluginRefresh(next))
       if (
         result &&
         typeof result === 'object' &&
@@ -1761,10 +1770,23 @@ export class ClaudeSessionHandle implements SessionHandle {
         throw new Error('Plugin unavailable. Try again.')
       // Applying an identical configuration may keep the failed SDK connection.
       for (const name of new Set(reconnect)) {
-        if (!servers.some((one) => one.name === name)) continue
-        if (!this.query.reconnectMcpServer) throw new Error('Plugin unavailable. Try again.')
-        await this.query.reconnectMcpServer(name)
+        if (
+          this.query !== query ||
+          this.managedPluginGeneration !== generation ||
+          this.isShuttingDown
+        )
+          throw new Error('Plugin unavailable. Try again.')
+        if (!next.some((one) => one.name === name)) continue
+        if (!query.reconnectMcpServer) throw new Error('Plugin unavailable. Try again.')
+        await query.reconnectMcpServer(name)
       }
+      if (
+        this.query !== query ||
+        this.managedPluginGeneration !== generation ||
+        this.isShuttingDown
+      )
+        throw new Error('Plugin unavailable. Try again.')
+      this.managedPluginServers = next
     } catch {
       throw new Error('Plugin unavailable. Try again.')
     }
@@ -5947,6 +5969,7 @@ export class ClaudeRuntime implements AgentRuntime {
     const mcpServers = claudeMcpServersFor(agentTools, externalMcp?.servers ?? [], managedPluginMcp)
     handle.configurePluginRefresh(
       (next) => claudeMcpServersFor(agentTools, externalMcp?.servers ?? [], next) ?? {},
+      managedPluginMcp,
     )
     // ⛔ **The same argument, read a second time and for the surface** (358). `353` proved the
     // ordinary path really does put these five into the child's inventory and that a launch without

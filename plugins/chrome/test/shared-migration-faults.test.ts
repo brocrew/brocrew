@@ -18,7 +18,7 @@ function fixture() {
   fs.mkdirSync(home)
   const local = createProfileStore({ home })
   local.create('fern', 'panel')
-  local.setFlags('fern', { enabled: true, keepRunning: true })
+  local.setFlags('fern', { enabled: true })
   const source = local.dirOf('fern')
   fs.writeFileSync(path.join(source, 'fictional-sign-in'), 'signed-in-fixture')
   const open = (over = {}) =>
@@ -49,7 +49,7 @@ for (const boundary of ['reserved', 'renamed', 'moved', 'local-retired', 'retire
     ).toThrow('simulated-crash')
     const a = f.open()
     const name = a.shared.restoreName('fern')
-    expect(a.get(name)).toMatchObject({ enabled: true, keepRunning: true })
+    expect(a.get(name)).toMatchObject({ enabled: true })
     expect(fs.statSync(a.dirOf(name)).ino).toBe(inode)
     expect(fs.readFileSync(path.join(a.dirOf(name), 'fictional-sign-in'), 'utf8')).toBe(
       'signed-in-fixture',
@@ -118,7 +118,7 @@ it('disabled legacy flags stay disabled and only the originating workspace recei
   const f = fixture()
   createProfileStore({ home: f.home }).setFlags('fern', { enabled: false })
   const a = f.open()
-  expect(a.get('fern')).toMatchObject({ enabled: false, keepRunning: true })
+  expect(a.get('fern')).toMatchObject({ enabled: false })
   fs.mkdirSync(path.join(f.root, 'other'))
   const other = createSharedProfileStore({
     home: path.join(f.root, 'other'),
@@ -126,7 +126,7 @@ it('disabled legacy flags stay disabled and only the originating workspace recei
     workspaceId: 'beta',
     workspaceLabel: 'Beta',
   })
-  expect(other.get('fern')).toMatchObject({ enabled: false, keepRunning: false })
+  expect(other.get('fern')).toMatchObject({ enabled: false })
 })
 it('collision suffixes stay within 32 characters and reserved local-prefix legacy names migrate safely', () => {
   const f = fixture()

@@ -1,4 +1,4 @@
-import { fork, type ChildProcess } from 'node:child_process'
+import { fork, spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import {
@@ -145,64 +145,43 @@ async function fixture(name: string, mode: string, fault?: string) {
   return { root, workspaceRoot, child, options, lease, runId }
 }
 describe('blocked standalone owner self-exit under its unchanged fence', () => {
-  it.each([
-    ['proven', 'blocked-write-once'],
-    ['revoke-hung', 'blocked-write-once'],
-    ['proven', 'blocked-write-twice'],
-  ])(
-    'keeps the blocked publication after a transient sharing refusal with %s runs (%s)',
-    async (mode, fault) => {
-      const target = await fixture(fault + '-' + mode, mode, fault)
+  // The event: on Windows a held owner.json kept a childless blocked owner alive forever, retrying
+  // its record. The record only advises the next start, so the owner now tries once and exits.
+  it.each(['proven', 'revoke-hung'])(
+    'exits when its blocked record stays refused with %s runs, and a successor starts',
+    async (mode) => {
+      const target = await fixture('blocked-write-held-' + mode, mode, 'blocked-write-held')
+      const fence = await lstat(join(target.root, 'supervisor/owner-lock.sqlite'), { bigint: true })
       await target.lease.close()
       await ended(target.child)
       expect(target.child.exitCode).toBe(0)
       expect(
         JSON.parse(await readFile(join(target.root, 'supervisor/owner.json'), 'utf8')).phase,
-      ).toBe('blocked')
+      ).not.toBe('blocked')
       const trace = await readFile(join(target.root, 'plugin-drain.log'), 'utf8')
+      const attempts = [...trace.matchAll(/stage=blocked-write state=\w+ attempt=\d+/g)]
+      expect(attempts.map((match) => match[0])).toEqual([
+        'stage=blocked-write state=failed attempt=1',
+      ])
       expect(trace).toContain('stage=blocked-write state=failed attempt=1 errno=EPERM')
-      const events = [...trace.matchAll(/stage=blocked-write state=(\w+) attempt=(\d+)/g)].map(
-        (match) => ({ state: match[1], attempt: Number(match[2]) }),
-      )
-      const final = events.at(-1)!
-      expect(final.state).toBe('complete')
-      expect(final.attempt).toBeGreaterThanOrEqual(fault === 'blocked-write-twice' ? 3 : 2)
-      const expected = [{ state: 'failed', attempt: 1 }]
-      for (let attempt = 2; attempt <= final.attempt; attempt++) {
-        expected.push({ state: 'waiting', attempt })
-        expected.push({ state: attempt === final.attempt ? 'complete' : 'failed', attempt })
-      }
-      // Real Windows sharing refusals may add attempts after the injected one.
-      // Every retry must remain ordered, ending in publication before actual exit.
-      expect(events).toEqual(expected)
       // Cause logging follows the existing credential formatter and keeps the actual path.
       expect(trace).not.toContain('fictional-secret')
       expect(trace).toContain(
         'cause=Error code=EPERM: Bearer [redacted] /fictional/private-owner-path',
       )
-    },
-  )
-  it('holds the same fence before blocked publication succeeds, even with positive physical proofs', async () => {
-    const target = await fixture('blocked-write-held', 'proven', 'blocked-write-held')
-    const fence = await lstat(join(target.root, 'supervisor/owner-lock.sqlite'), { bigint: true })
-    expect(await target.lease.close()).toBe(false)
-    expect(target.child.exitCode).toBeNull()
-    await expect(
-      PluginSupervisor.start({
+      const advice = vi.fn()
+      const successor = await PluginSupervisor.start({
         root: target.root,
         workspaceRoots: [target.workspaceRoot],
-        recoverPrevious: () => previousRunsProvenStopped(target.root),
-      }),
-    ).rejects.toMatchObject({ code: 'busy' })
-    target.child.send('allow-blocked-write')
-    await ended(target.child)
-    expect(target.child.exitCode).toBe(0)
-    expect(
-      JSON.parse(await readFile(join(target.root, 'supervisor/owner.json'), 'utf8')).phase,
-    ).toBe('blocked')
-    const after = await lstat(join(target.root, 'supervisor/owner-lock.sqlite'), { bigint: true })
-    expect([after.dev, after.ino]).toEqual([fence.dev, fence.ino])
-  })
+        recoverPrevious: (previous) =>
+          previousRunsProvenStopped(target.root, { previous, onRebootRequired: advice }),
+      })
+      successors.push(successor)
+      expect(advice).not.toHaveBeenCalled()
+      const after = await lstat(join(target.root, 'supervisor/owner-lock.sqlite'), { bigint: true })
+      expect([after.dev, after.ino]).toEqual([fence.dev, fence.ino])
+    },
+  )
   it.each(['none', 'proven', 'hung', 'revoke-hung'])(
     'exits after synthetic failure with %s physical runs, rechecks receipts, and leaves another slot untouched',
     async (mode) => {
@@ -220,7 +199,29 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
         ? join(target.root, 'host/runs', target.runId, 'exit.json')
         : undefined
       const bytes = proof ? await readFile(proof) : undefined
-      if (proof) await unlink(proof)
+      if (proof) {
+        await unlink(proof)
+        // Without its receipt a run is proven only through its process record. This one names a
+        // group whose number now belongs to another process, so only the receipt can prove it.
+        const stranger = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+          detached: true,
+          stdio: 'ignore',
+        })
+        children.push(stranger)
+        await once(stranger, 'spawn')
+        await writeFile(
+          join(target.root, 'host/runs', target.runId!, 'process.json'),
+          JSON.stringify({
+            format: 1,
+            runId: target.runId,
+            pluginId: 'fictional',
+            releaseDigest: 'f'.repeat(64),
+            guardianPid: 404941,
+            groups: [[stranger.pid, '0:a birth this number no longer has']],
+          }),
+          { mode: 0o600 },
+        )
+      }
       const start = () =>
         PluginSupervisor.start({
           root: target.root,

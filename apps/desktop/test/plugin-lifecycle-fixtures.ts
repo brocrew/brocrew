@@ -4,11 +4,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
-import type {
-  LifecycleOptions,
-  WorkspaceProjection,
-  ProjectionReceipt,
-} from '../src/main/plugins/lifecycle/types'
+import type { LifecycleOptions, PersonProjection } from '../src/main/plugins/lifecycle/types'
 import { packageFixture, manifestFor, fictionalPublicKey } from './plugin-package-fixtures'
 import { keepPluginRootPrivate, realPath } from '../src/main/plugins/private-files'
 import { keepToThisUser } from '../src/main/recovery/windows-privacy'
@@ -17,44 +13,25 @@ const homes: string[] = [],
 
 export function deferred<T>() {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>((yes) => {
+  let reject!: (error: Error) => void
+  const promise = new Promise<T>((yes, no) => {
     resolve = yes
+    reject = no
   })
-  return { promise, resolve }
+  return { promise, resolve, reject }
 }
 export function projection(events: string[] = []) {
-  const rows = new Map<string, ProjectionReceipt>()
-  let writeFails = false,
-    revokeFails = false
-  const sink: WorkspaceProjection = {
+  // The app's side of a workspace; a current owner sends it only revoke.
+  const sink: PersonProjection = {
     workspaceId: randomUUID(),
-    async applied(id, receipt) {
-      events.push('receipt')
-      if (writeFails) {
-        writeFails = false
-        throw new Error('fictional write')
-      }
-      if (receipt) rows.set(id, receipt)
-      else rows.delete(id)
-    },
+    async applied() {},
     async revoke() {
       events.push('revoke')
-      return !revokeFails
+      return true
     },
-    async reconcile(change) {
-      events.push(change.receipt ? 'bind' : 'clear')
-    },
+    async reconcile() {},
   }
-  return {
-    sink,
-    rows,
-    failWrite: () => {
-      writeFails = true
-    },
-    failRevoke: () => {
-      revokeFails = true
-    },
-  }
+  return { sink }
 }
 export async function fixture(
   change: Partial<LifecycleOptions> = {},

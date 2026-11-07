@@ -609,7 +609,13 @@ describe.skipIf(process.platform === 'win32')(
         expect(await f.controller.catalogue()).toEqual([running])
         expect(await f.controller.catalogue(true)).toEqual([running])
         expect(readPluginInstructions(f.controller)).toMatchObject([
-          { id: 'whatsapp', state: 'Running', tools: 'all agents', service: 'Fictional WhatsApp' },
+          {
+            id: 'whatsapp',
+            state: 'Running',
+            tools: 'unknown',
+            toolHealth: 'ready',
+            service: 'Fictional WhatsApp',
+          },
         ])
         expect(f.peer.uninstall).toHaveBeenCalledExactlyOnceWith('chrome')
         expect(f.peer.install).not.toHaveBeenCalled()
@@ -627,7 +633,13 @@ describe.skipIf(process.platform === 'win32')(
         { id: f.pkg.release.id, state: 'Unavailable' },
       ])
       expect(readPluginInstructions(f.controller)).toMatchObject([
-        { id: f.pkg.release.id, state: 'Unavailable', tools: 'none', service: null },
+        {
+          id: f.pkg.release.id,
+          state: 'Unavailable',
+          tools: 'none',
+          toolHealth: 'unavailable',
+          service: null,
+        },
       ])
       expect(f.peer.install).not.toHaveBeenCalled()
     })
@@ -1935,7 +1947,9 @@ it('catalogue composition reports missing admitted cards at its own stage', asyn
   f.controller.start(f.options)
   await f.controller.ready!()
   await vi.waitFor(() => expect(JSON.stringify(warn.mock.calls)).toContain('stage=composition'))
-  expect(JSON.stringify(warn.mock.calls)).toContain('missing admitted release')
+  expect(JSON.stringify(warn.mock.calls)).toContain(
+    'origin=catalogue-composition cause=invalid-reply',
+  )
 })
 
 it('catalogue diagnostics retain existing busy classification', async () => {

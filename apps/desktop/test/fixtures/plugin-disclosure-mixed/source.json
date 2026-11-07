@@ -12,8 +12,8 @@
       "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol",
       "../../../src/main/plugins/lifecycle/transport": "./transport",
       "./authors-controller": "./controller",
-      "../../../src/main/plugins/lifecycle/types": "./types",
-      "../../../src/main/plugins/state/format": "../state/format"
+      "../../../src/main/plugins/state/format": "../state/format",
+      "../plugin-delete-parent/types": "./types"
     }
   },
   {
@@ -34,9 +34,9 @@
       "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol",
       "../../../src/main/plugins/lifecycle/download": "./download",
       "../../../src/main/plugins/lifecycle/files": "./files",
-      "../../../src/main/plugins/lifecycle/types": "./types",
       "../../../src/shared/plugin-settings": "../../../shared/plugin-settings",
-      "./authors-vault": "./vault"
+      "./authors-vault": "./vault",
+      "../plugin-delete-parent/types": "./types"
     }
   },
   {

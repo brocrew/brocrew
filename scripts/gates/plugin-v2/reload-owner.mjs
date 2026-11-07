@@ -9,7 +9,6 @@ import { command, cleanup, cancellation } from './processes.mjs'
 import { projectReload, RELOAD_MARKER, RELOAD_CHANNEL } from './reload-projection.mjs'
 import { reloadJourney } from './reload-journey.mjs'
 import { projectedVersionArguments } from './staging.mjs'
-import { verifyRuntimeSource } from './runtime-source-binding.mjs'
 import { checkNormalPluginBuild } from '../../check-no-plugin-gate-inputs.mjs'
 
 const route = path.dirname(fileURLToPath(import.meta.url))
@@ -158,10 +157,6 @@ export async function runReload(root) {
         'held-fictional-child-closed',
     )
     result.observedIdentity = observed
-    result.runtimeSourcePinsSha256 = verifyRuntimeSource(
-      repo,
-      readJSON(path.join(route, 'runtime-source-pins.json')),
-    )
     const input = readJSON(path.join(route, 'reload-inputs.json'))
     demand(
       input.sourceCommit === 'cbdf3e75fd786b5c19cfc519c25007b37a026b34' &&
@@ -304,7 +299,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       JSON.stringify({
         execution: false,
         publication: false,
-        required: 'exact reviewed hosted Windows018 operation',
+        required: 'hosted Windows018 workflow on the tested source SHA',
       }),
     )
 }

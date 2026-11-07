@@ -31,16 +31,18 @@ function fixture() {
   }
   return { root, shared, home, open }
 }
-it('one list, creator on, other workspace off, global flags and scoped Keep running', () => {
+it('one list, creator on, other workspace off, global flags and a scoped on/off', () => {
   const f = fixture()
   const a = f.open()
   const b = f.open('beta')
   a.create('fern', 'panel')
   expect(a.get('fern')?.enabled).toBe(true)
   expect(b.get('fern')?.enabled).toBe(false)
-  b.setFlags('fern', { enabled: true, keepRunning: true, allowExtensions: false })
-  expect(a.get('fern')).toMatchObject({ keepRunning: false, allowExtensions: false })
-  expect(b.get('fern')?.keepRunning).toBe(true)
+  b.setFlags('fern', { enabled: true, allowExtensions: false })
+  expect(a.get('fern')).toMatchObject({ enabled: true, allowExtensions: false })
+  a.setFlags('fern', { enabled: false })
+  expect(a.get('fern')?.enabled).toBe(false)
+  expect(b.get('fern')?.enabled).toBe(true)
 })
 it('temporary names cannot shadow a shared name and never leave the workspace', () => {
   const f = fixture()
@@ -60,7 +62,7 @@ it('unknown fields survive revisions; unsupported formats cannot run or write', 
   raw.future = { a: 1 }
   raw.profiles[0].future = 3
   fs.writeFileSync(p, JSON.stringify(raw))
-  a.setFlags('fern', { keepRunning: true })
+  a.setFlags('fern', { enabled: false })
   const next = JSON.parse(fs.readFileSync(p, 'utf8'))
   expect(next.future).toEqual({ a: 1 })
   expect(next.profiles[0].future).toBe(3)
@@ -437,7 +439,7 @@ it('unknown migration inspection stays usable with a fixed warning and retries o
   const f = fixture()
   const local = createProfileStore({ home: f.home })
   local.create('fern', 'panel')
-  local.setFlags('fern', { enabled: true, keepRunning: true })
+  local.setFlags('fern', { enabled: true })
   const source = local.dirOf('fern')
   fs.writeFileSync(path.join(source, 'fictional-sign-in'), 'fictional account')
   const before = fs.statSync(source).ino
@@ -447,7 +449,7 @@ it('unknown migration inspection stays usable with a fixed warning and retries o
     shared: false,
     migration: 'chrome-unknown',
   })
-  expect(profile).toMatchObject({ enabled: true, keepRunning: true })
+  expect(profile).toMatchObject({ enabled: true })
   expect(held.dirOf(profile.name)).toBe(source)
   const lease = held.shared.acquire(profile.name)
   lease.release()
@@ -508,7 +510,7 @@ it.each(['destination', 'source'])(
     const f = fixture()
     const local = createProfileStore({ home: f.home })
     local.create('fern', 'panel')
-    local.setFlags('fern', { enabled: true, keepRunning: true })
+    local.setFlags('fern', { enabled: true })
     const source = local.dirOf('fern')
     fs.writeFileSync(path.join(source, 'fictional-sign-in'), 'fictional account')
     const inode = fs.statSync(source).ino
@@ -524,7 +526,7 @@ it.each(['destination', 'source'])(
       },
     })
     const p = held.list().find((entry) => entry.name.startsWith('local-'))!
-    expect(p).toMatchObject({ enabled: true, keepRunning: true })
+    expect(p).toMatchObject({ enabled: true })
     expect(held.shared.view(p.name)).toMatchObject({ shared: false, migration: 'chrome-unknown' })
     expect(held.dirOf(p.name)).toBe(source)
     held.shared.acquire(p.name).release()
@@ -699,4 +701,31 @@ it.each(
   expect(sourceCalls).toBe(1)
   expect(fs.statSync(source).ino).toBe(inode)
   expect(fs.readFileSync(path.join(source, 'fictional-sign-in'), 'utf8')).toBe('fictional account')
+})
+// Keep running is removed: the person and agents open and close profiles. A profile saved with it
+// on loads like any other and is never held open by it; what is written still carries
+// keepRunning: false, which older plugin copies require.
+it('a profile saved with keep running on loads like any other, in the local and the shared store', () => {
+  const f = fixture()
+  const local = createProfileStore({ home: f.home })
+  local.create('fern', 'panel')
+  const file = path.join(f.home, 'profiles.json')
+  const saved = JSON.parse(fs.readFileSync(file, 'utf8'))
+  saved.profiles[0].keepRunning = true
+  fs.writeFileSync(file, JSON.stringify(saved))
+  expect(createProfileStore({ home: f.home }).get('fern')).not.toHaveProperty('keepRunning')
+  const a = f.open()
+  a.create('birch', 'panel')
+  const registry = path.join(f.shared, 'registry.json')
+  const raw = JSON.parse(fs.readFileSync(registry, 'utf8'))
+  const birch = raw.profiles.find((one: { name: string }) => one.name === 'birch')
+  birch.perWorkspace.alpha.keepRunning = true
+  fs.writeFileSync(registry, JSON.stringify(raw))
+  expect(a.get('birch')).toMatchObject({ enabled: true })
+  expect(a.get('birch')).not.toHaveProperty('keepRunning')
+  a.setFlags('birch', { enabled: false })
+  const next = JSON.parse(fs.readFileSync(registry, 'utf8'))
+  expect(
+    next.profiles.find((one: { name: string }) => one.name === 'birch').perWorkspace.alpha,
+  ).toMatchObject({ enabled: false, keepRunning: false })
 })

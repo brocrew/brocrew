@@ -152,6 +152,7 @@ export async function buildWhatsAppPackage(
     recursive: true,
     dereference: false,
   })
+  fs.cpSync(path.join(root, '../shared/ui'), path.join(payload, 'ui'), { recursive: true })
   const licenses = path.join(payload, 'licenses')
   fs.mkdirSync(licenses)
   fs.copyFileSync(

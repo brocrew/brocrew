@@ -6,6 +6,7 @@ import {
   mkdtemp,
   mkdir,
   copyFile,
+  cp,
   writeFile,
   readFile,
   rm,
@@ -699,6 +700,30 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
     await writeFile(path, 'fictional tampered package')
     await expect(host.start(spec)).rejects.toThrow('plugin-host-paths')
     expect(await readFile(path, 'utf8')).toBe('fictional tampered package')
+  }, 15000)
+  it('a guardian that dies at start names its own error as the cause of the refusal', async () => {
+    // A kept runtime whose guardian fails before it starts anything, as it would on a machine
+    // where its process setup is refused.
+    const failing = join(root, 'failing-guardian-resources')
+    await cp(resources, failing, { recursive: true })
+    await writeFile(
+      join(failing, 'plugin-host', 'guardian.mjs'),
+      "process.stderr.write('fictional guardian setup refused\\n'); process.exit(7)\n",
+    )
+    const dying = await preparePluginNodeRuntime({
+      resourcesRoot: failing,
+      durableRoot: join(root, 'failing-guardian-runtimes'),
+    })
+    const host = createPluginNodeHost({ root: join(root, 'failing-guardian'), runtime: dying })
+    hosts.push(host)
+    const child = await host.start(fixture(source))
+    const refusal = await child.ready().then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    expect(refusal).toMatchObject({ message: 'plugin-host-ready' })
+    expect(String((refusal as Error).cause)).toContain('code 7')
+    expect(String((refusal as Error).cause)).toContain('fictional guardian setup refused')
   }, 15000)
   it('refuses runtime tampering and never falls back to PATH', async () => {
     const bad = { id: 'fictional', version: process.versions.node }

@@ -11,6 +11,7 @@ import {
 import { StringDecoder } from 'node:string_decoder'
 import type { ChildProcess } from 'node:child_process'
 import { PluginSupervisorError, ownerDiagnosticLine } from './supervisor/protocol'
+import { managedPluginFailure, ManagedPluginFailure } from '@brobot2/runtime'
 
 /** Keep one error line, excluding launch capabilities and terminal control characters. */
 export function pluginStartupStderr(text: string, secrets: readonly string[] = []): string | null {
@@ -38,10 +39,13 @@ export function pluginStartupStderr(text: string, secrets: readonly string[] = [
   return PluginStartupDiagnosticSchema.shape.stderr.safeParse(bounded).success ? bounded : null
 }
 
-/** One bounded cause chain for local diagnostic logs; never stringify input or stacks. */
-export function pluginFailureCause(error: unknown, secrets: readonly string[] = []): string {
+/** One bounded cause chain for local diagnostic logs: each error's real message, plus its stage. */
+export function pluginFailureCause(
+  error: unknown,
+  secrets: readonly string[] = [],
+  seen = new Set<unknown>(),
+): string {
   const lines: string[] = []
-  const seen = new Set<unknown>()
   for (let depth = 0; depth < 6 && error != null && !seen.has(error); depth++) {
     seen.add(error)
     try {
@@ -55,13 +59,24 @@ export function pluginFailureCause(error: unknown, secrets: readonly string[] = 
               ? one.code
               : undefined
         const name = error instanceof Error ? error.name : ''
-        const label = `${name}${code ? ` code=${code}` : ''}`
+        const stage = error instanceof PluginStartupError ? error.detailStage : undefined
+        const origin =
+          error instanceof ManagedPluginFailure
+            ? ` origin=${error.pluginStage} cause=${error.pluginCause}`
+            : ''
+        const label = `${name}${code ? ` code=${code}` : ''}${stage ? ` detail=${stage}` : ''}${origin}`
         const line = pluginStartupStderr(
           `${label ? `${label}: ` : ''}${message.replace(/\r?\n/g, ' ')}`,
           secrets,
         )
         if (line) lines.push(line)
       }
+      // An aggregate names each of its failures; then the chain continues through its cause.
+      if (error instanceof AggregateError)
+        for (const one of error.errors.slice(0, 4)) {
+          const each = seen.has(one) ? '' : pluginFailureCause(one, secrets, seen)
+          if (each) lines.push(each)
+        }
       error = typeof error === 'object' ? (error as Error).cause : undefined
     } catch {
       break // A diagnostic property must not replace the failure being reported.
@@ -161,13 +176,21 @@ export function observePluginSupervisorLaunch(child: ChildProcess, secrets: read
 }
 
 /** A failed startup phase; no launch configuration or provider data is part of its message. */
+export type PluginOwnerCheckStage =
+  | 'owner-local-state'
+  | 'owner-features'
+  | 'owner-mutation-status'
+  | 'owner-response'
+  | 'owner-generation'
 export class PluginStartupError extends PluginSupervisorError {
   constructor(
     readonly reason: PluginUnavailableReason,
     cause: unknown,
     readonly catalogueStage?: 'owner-check' | 'rpc' | 'schema' | 'composition',
+    readonly detailStage?: PluginOwnerCheckStage,
   ) {
     super('unavailable', { cause })
+    if (detailStage) this.message = managedPluginFailure(cause, detailStage).message
   }
 }
 export function pluginStartupReason(
@@ -205,9 +228,11 @@ export async function recordPluginStartupFailure(
   const diagnostic = pluginStartupDiagnostic(error)
   const original = error
   let stage: PluginStartupError['catalogueStage']
+  let detail: PluginOwnerCheckStage | undefined
   let code: string | undefined
   for (let depth = 0; depth < 6 && error && typeof error === 'object'; depth++) {
     if (error instanceof PluginStartupError && error.catalogueStage) stage = error.catalogueStage
+    if (error instanceof PluginStartupError && error.detailStage) detail = error.detailStage
     const one = error as { code?: unknown; cause?: unknown }
     if (
       typeof one.code === 'string' &&
@@ -217,7 +242,7 @@ export async function recordPluginStartupFailure(
     error = one.cause
   }
   const cause = reason === 'catalogue-response' || stage ? pluginFailureCause(original) : undefined
-  const line = `[plugins] ${reason}: ${pluginUnavailableNotice(reason)}${code ? ` (${code})` : ''}${diagnostic ? ` ${pluginStartupDiagnosticNotice(diagnostic)}` : ''}${cause ? ` stage=${stage ?? 'rpc'} cause=${cause}` : ''}`
+  const line = `[plugins] ${reason}: ${pluginUnavailableNotice(reason)}${code ? ` (${code})` : ''}${diagnostic ? ` ${pluginStartupDiagnosticNotice(diagnostic)}` : ''}${cause ? ` stage=${stage ?? 'rpc'}${detail ? ` detail=${detail}` : ''} cause=${cause}` : ''}`
   console.warn(line)
   if (!root) return
   const temporary = join(root, `.plugin-startup-${randomUUID()}.log`)

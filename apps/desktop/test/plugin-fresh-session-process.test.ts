@@ -17,7 +17,11 @@ import {
   type RuntimeEvent,
 } from '@brobot2/runtime'
 import { PLUGIN_ATTACHMENT_WAIT_MS } from '../../../packages/runtime/src/managed-plugin-session'
-import { encodeState, type JournalRecord } from '../src/main/plugins/state/format'
+import {
+  encodeState,
+  installationProjection,
+  type JournalRecord,
+} from '../src/main/plugins/state/format'
 import { foldRecord } from '../src/main/plugins/state/machine'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
 import type { PluginStateDisk } from '../src/main/plugins/state/disk'
@@ -191,10 +195,15 @@ it.each([
     }
     await f.controller.install(f.handle, 'chrome')
     await f.controller.install(f.handle, 'whatsapp')
-    const historyWorkspace = randomUUID(),
-      receipt = f.state.emptyProjection(historyWorkspace, 'chrome')
+    const historyWorkspace = randomUUID()
     await f.controller.drain()
     const head = (f.state as unknown as { disk: PluginStateDisk }).disk.load()
+    const receipt = installationProjection(
+      head.rootId,
+      head.epoch,
+      historyWorkspace,
+      head.admitted.get('chrome')!,
+    )
     const beforeHistory = head.sequence
     f.state.close()
     // Seed the fictional closed journal once. Measuring route reads must not first

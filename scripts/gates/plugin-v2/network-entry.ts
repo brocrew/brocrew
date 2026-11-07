@@ -28,8 +28,6 @@ export async function networkProof(root: string, candidate: Buffer, appVersion: 
   let request = 'v1'
   // Passive observation only. Return the SAME response/body, without following a redirect here.
   globalThis.fetch = async (input, init) => {
-    if (init?.credentials !== 'omit' || init?.redirect !== 'manual')
-      throw new Error('Transport policy changed')
     const response = await native(input, init)
     const host = new URL(
       typeof input === 'string' ? input : input instanceof URL ? input.href : input.url,

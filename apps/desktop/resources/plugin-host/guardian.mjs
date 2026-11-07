@@ -8,6 +8,9 @@ import { fileURLToPath } from 'node:url'
 import { stopGroups, groupIdentity, pluginServerLaunch } from './process-groups.mjs'
 import { writeReceipt } from './receipts.mjs'
 import { startJobKeeper } from './windows-job.mjs'
+// stderr is a pipe to the plugin service, kept as the cause when this guardian dies at start.
+// If the service has gone first, a later write (a Node warning) must not end the guardian.
+process.stderr.on('error', () => {})
 const configPath = process.argv[2]
 const config = JSON.parse(readFileSync(configPath, 'utf8'))
 const receiptRoot = dirname(configPath)

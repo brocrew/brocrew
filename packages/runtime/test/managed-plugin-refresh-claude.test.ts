@@ -15,7 +15,7 @@ afterEach(async () => {
   vi.useRealTimers()
   for (const close of cleanup.splice(0)) await close()
 })
-it('a timed-out Claude setMcpServers never overlaps a sent turn even if it settles later', async () => {
+it('a Claude setMcpServers still pending after the wait lets the message go out once, and a late settle changes nothing', async () => {
   vi.useFakeTimers()
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'fictional-slow-refresh-')))
   const frames = new AsyncQueue<SDKMessage>()
@@ -65,13 +65,15 @@ it('a timed-out Claude setMcpServers never overlaps a sent turn even if it settl
   await vi.advanceTimersByTimeAsync(PLUGIN_ATTACHMENT_WAIT_MS + 1)
   try {
     expect(setMcpServers).toHaveBeenCalledOnce()
-    expect(sent).not.toHaveBeenCalled()
-    expect(refused).toBeInstanceOf(Error)
+    expect(refused).toBeUndefined()
+    expect(sent).toHaveBeenCalledExactlyOnceWith('fictional turn')
   } finally {
     finish()
     await sending.catch(() => {})
   }
-  expect(sent).not.toHaveBeenCalled()
+  await vi.advanceTimersByTimeAsync(0)
+  expect(sent).toHaveBeenCalledOnce()
+  expect(setMcpServers).toHaveBeenCalledOnce()
 })
 it('Claude uses its supported refresh and preserves the person server while replacing only the managed route', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'fictional-claude-refresh-'))),

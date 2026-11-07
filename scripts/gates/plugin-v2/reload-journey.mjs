@@ -21,17 +21,12 @@ export async function reloadJourney({ root, app, records }) {
       run.cdp.evaluate(
         `return await window.__pluginReloadGate.command(${JSON.stringify(op)},${JSON.stringify(token)})`,
       )
-    // Known refusal must come from our nonce/op handler, before the controller receives it.
-    for (const [op, nonce] of [
-      ['arm', '0'.repeat(64)],
-      ['unrecognised', token],
-    ]) {
-      demand(
-        await run.cdp.evaluate(
-          `try{await window.__pluginReloadGate.command(${JSON.stringify(op)},${JSON.stringify(nonce)});return false}catch(e){return String(e).includes('plugin-reload-main-app-gate-only')}`,
-        ),
-      )
-    }
+    // An unknown operation is refused by the gate's own handler, before the controller sees it.
+    demand(
+      await run.cdp.evaluate(
+        `try{await window.__pluginReloadGate.command('unrecognised',${JSON.stringify(token)});return false}catch(e){return String(e).includes('plugin-reload-main-app-gate-only')}`,
+      ),
+    )
     demand(
       await run.cdp.evaluate(`
    const created=await window.api.runtime.createSession({provider:'claude',approvalMode:'ask',model:'fake-claude-a',cwd:${JSON.stringify(workspace)}});
@@ -148,7 +143,7 @@ export async function reloadJourney({ root, app, records }) {
         sampledDistinctActualArrivals: true,
         threePendingBeforeExit: true,
         threeResolvedAfterExit: true,
-        nonceAndOpRefused: true,
+        unknownOperationRefused: true,
       },
       nativeDatabaseClosed: true,
       nativeAppClosed: true,

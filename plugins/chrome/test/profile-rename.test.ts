@@ -71,7 +71,7 @@ it('shared rename is globally visible without changing identity, switches, direc
   const a = f.open()
   const b = f.open('beta')
   a.create('fern', 'panel')
-  b.setFlags('fern', { enabled: true, keepRunning: true })
+  b.setFlags('fern', { enabled: true })
   const beforeA = a.get('fern')!
   const beforeB = b.get('fern')!
   const id = a.shared!.identity('fern')
