@@ -26,6 +26,7 @@ import {
   versionOrder,
 } from './lib/packaged-app-inventory.mjs'
 import { HIDDEN_LAUNCH_ARG } from './lib/hidden-launch.mjs'
+import { checkPackagedPluginService } from './packaged-plugin-service-check.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const FAKE_KEY = 'sk-ant-api03-windows-build-check-not-a-real-key'
@@ -517,6 +518,13 @@ async function theDataStaysWhereItWas() {
   else fail(`the app ran ${DATA_WAIT_MS / 1000} s and made no database in ${folder}`)
 }
 await theDataStaysWhereItWas()
+
+try {
+  await checkPackagedPluginService(resources)
+  say('✓ the shipped plugin service starts, answers and exits after release')
+} catch (error) {
+  fail(error.message)
+}
 
 say(failures.length === 0 ? 'every check held' : `${failures.length} check(s) failed`)
 process.exit(failures.length === 0 ? 0 : 1)

@@ -151,7 +151,7 @@ it('retains a split first stderr line and real child exit through wrappers into 
   const log = await readFile(join(root, 'plugin-startup.log'), 'utf8')
   expect(log).toContain(pluginStartupDiagnosticNotice(diagnostic))
   expect(log).not.toContain('fictional-capability')
-  expect(log).not.toContain('second private stack line')
+  expect(log).not.toContain('second private stack line') // It fell outside the retained stderr tail.
 })
 it('does not invent a child exit or stderr at an attachment timeout and bounds escaped text', () => {
   const snapshot = observePluginSupervisorLaunch(
