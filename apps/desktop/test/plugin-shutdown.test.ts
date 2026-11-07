@@ -287,9 +287,7 @@ describe.skipIf(process.platform === 'win32')(
       const revoke = vi.spyOn(f.local.sink, 'revoke').mockResolvedValue(false)
       exit.resolve()
       await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
-      await vi.waitFor(async () =>
-        expect((await f.controller.status()).cleanupPending).toEqual([]),
-      )
+      await vi.waitFor(async () => expect((await f.controller.status()).cleanupPending).toEqual([]))
       // Cleanup is complete, but this crashed run stays denied until the owner is replaced.
       expect((await f.controller.status()).cards[0]?.state).toBe('Unavailable')
       expect(f.controller.agentAttachments(f.local.sink.workspaceId)).toEqual([])

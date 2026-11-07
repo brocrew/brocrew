@@ -507,7 +507,11 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
         ...original.server,
         tool() {
           f.call()
-          return { result: new Promise<never>(() => {}), quiescent: new Promise<void>(() => {}), cancel() {} }
+          return {
+            result: new Promise<never>(() => {}),
+            quiescent: new Promise<void>(() => {}),
+            cancel() {},
+          }
         },
       },
     })
