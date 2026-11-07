@@ -28,7 +28,8 @@ export async function ordinarySkillTree(root: string, fs: RecoveryFs, to?: strin
         const source = await fs.open(path, 'r')
         let output
         try {
-          if (target !== undefined) output = await fs.open(target, 'wx', 0o600)
+          if (target !== undefined)
+            output = await fs.open(target, 'wx', (stats.mode ?? 0) & 0o100 ? 0o700 : 0o600)
           const hash = createHash('sha256'),
             buffer = new Uint8Array(64 * 1024)
           let count = 0
@@ -41,7 +42,6 @@ export async function ordinarySkillTree(root: string, fs: RecoveryFs, to?: strin
             await output?.writeFile(part)
           }
           if (target !== undefined) {
-            await fs.chmod(target, (stats.mode ?? 0) & 0o100 ? 0o700 : 0o600)
             await output?.sync()
           }
           bytes += count

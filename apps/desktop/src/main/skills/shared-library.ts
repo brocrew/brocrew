@@ -54,7 +54,6 @@ async function serialized<T>(root: string, run: () => Promise<T>): Promise<T> {
 async function privateDir(path: string, fs: RecoveryFs): Promise<void> {
   await fs.mkdir(path, { recursive: true, mode: 0o700 })
   if (!(await fs.stat(path)).isDirectory()) throw new Error(`${path}: not a directory`)
-  await fs.chmod(path, 0o700)
 }
 
 async function exists(path: string, fs: RecoveryFs): Promise<boolean> {
