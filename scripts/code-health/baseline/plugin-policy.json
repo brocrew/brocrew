@@ -1,0 +1,14 @@
+{
+  "direct-value-barrel": {
+    "host": 0,
+    "service": 0
+  },
+  "runtime-barrel-reach": {
+    "host": 0,
+    "service": 0
+  },
+  "provider-sdk-reach": {
+    "host": 0,
+    "service": 0
+  }
+}

@@ -1,4 +1,4 @@
-// Identity and comparison rules of the code-health gate: node --test scripts/code-health/gate.test.mjs
+import './plugin-policy.test.mjs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
