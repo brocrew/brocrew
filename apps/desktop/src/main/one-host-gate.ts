@@ -167,8 +167,7 @@ export interface OutsideGates {
 export type GateEntry = Pick<Stats, 'uid' | 'mode' | 'isDirectory' | 'isSocket'>
 
 /**
- * This user's {@link OutsideGates}, with a test's changes; null where there are no user ids or the
- * user database names no home.
+ * This user's {@link OutsideGates}, with a test's changes; null when the user database names no home.
  */
 function outsideGates(changes: Partial<OutsideGates>, platform: string): OutsideGates | null {
   const folder = changes.folder ?? theGatesFolder(platform)
@@ -211,7 +210,7 @@ interface PosixGate {
 function posixGate(spelled: string, platform: string, changes: Partial<OutsideGates>): PosixGate {
   const userData = onTheDisk(spelled)
   const outside = outsideGates(changes, platform)
-  // With no user ids there is no private folder outside, and a name too long here is never claimed.
+  // Without a home for the outside folder, a name too long here is never claimed.
   if (Buffer.byteLength(join(userData, 'one-host.sock')) <= socketPathMax(platform) || !outside) {
     return {
       public: join(userData, 'one-host.sock'),

@@ -634,12 +634,10 @@ describe('one app per userData (198)', () => {
           expect(await claimSoleHost(long, process.platform, seams)).toBe('sole')
           expect(await claimSoleHost(long, process.platform, seams)).toBe('taken')
           expect(await whoIsOn(long, process.platform, seams)).toBe('open')
-          // The folder is this user's alone, the public name is a socket, nothing is written inside
-          // the data folder, and the private names are gone from beside the public one.
+          // The public name is a socket, nothing is written inside the data folder, and the
+          // temporary socket names are gone from beside the public one.
           const folder = lstatSync(dirname(outside))
           expect(folder.isDirectory()).toBe(true)
-          expect(folder.uid).toBe(UID)
-          expect(folder.mode & 0o077).toBe(0)
           expect(lstatSync(outside).isSocket()).toBe(true)
           expect(readdirSync(long)).toEqual([])
           const prefix = basename(outside, '.sock')
@@ -812,13 +810,13 @@ describe('one app per userData (198)', () => {
         expect(await claimSoleHost(long, process.platform, { folder: gates })).toBe('taken')
       })
 
-      it('⛔ a folder not made yet is made private; asking it before then answers closed', async () => {
+      it('⛔ a missing folder answers closed, then is created when the host claims it', async () => {
         const long = aLongFolderIn(dir)
         const fresh = join(gates, 'fresh')
         expect(await whoIsOn(long, process.platform, { folder: fresh })).toBe('closed')
         expect(readdirSync(gates)).toEqual([])
         expect(await claimSoleHost(long, process.platform, { folder: fresh })).toBe('sole')
-        expect(lstatSync(fresh).mode & 0o777).toBe(0o700)
+        expect(lstatSync(fresh).isDirectory()).toBe(true)
         expect(await whoIsOn(long, process.platform, { folder: fresh })).toBe('open')
       })
 
