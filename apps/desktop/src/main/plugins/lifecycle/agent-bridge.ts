@@ -619,7 +619,16 @@ export function createLifecycleAgentBridge(options: {
       let capacityReported = false
       for (;;) {
         if (!valid(lease) || retired.has(caller)) return empty
-        if (performance.now() - asked >= answerWithin) return snapshot(lease, request, null)
+        if (performance.now() - asked >= answerWithin) {
+          const answer = snapshot(lease, request, null)
+          console.info('COLD_AGENT_EXPIRED', JSON.stringify({
+            phase: 'before-plan', caller, asked, elapsedMs: performance.now() - asked,
+            answerWithinMs: answerWithin, scope: null,
+            capacity: { reserved: reservations.size, limit: 1024 },
+            warmups: warmups.size, routes: routes.size, answer,
+          }))
+          return answer
+        }
         const woke = wake
         // Plan without effects under one operation-local, byte-verified decision.
         let plan: {

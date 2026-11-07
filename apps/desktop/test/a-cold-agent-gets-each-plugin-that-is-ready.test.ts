@@ -231,10 +231,32 @@ describe('a cold agent gets each plugin that is ready', () => {
     const l = lease(),
       first = request()
     const closing = deferred<void>()
+    let elapsed = 0
+    let listening = 0
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => elapsed)
+    const listen = w.controller.onHostChanged.getMockImplementation()!
+    w.controller.onHostChanged.mockImplementation((listener) => {
+      // The second read loses six milliseconds before its first scope decision.
+      if (listening++ === 1) elapsed += 6
+      return listen(listener)
+    })
+    const read = async (req: Request, index: number) => {
+      const before = w.controller.agentScope.mock.calls.length
+      const asked = performance.now()
+      const answer = await w.bridge.agentRoutes(l, req)
+      console.info('COLD_AGENT_READ', JSON.stringify({
+        index, asked, returned: performance.now(), answer,
+        scopeCalls: w.controller.agentScope.mock.calls.length - before,
+        scope: w.controller.agentScope.mock.results.slice(before).map((one) => one.value),
+        capacityReports: w.diagnostic.mock.calls.filter(([, reason]) => reason === 'attachment-capacity').length,
+        opened: w.opened.length, closed: w.closed.length,
+      }))
+      return answer
+    }
     try {
-      expect((await w.bridge.agentRoutes(l, first)).pending).toEqual(['aster'])
+      expect((await read(first, 0)).pending).toEqual(['aster'])
       for (let n = 1; n < 1100; n++)
-        expect((await w.bridge.agentRoutes(l, request())).pending).toEqual(['aster'])
+        expect((await read(request(), n)).pending).toEqual(['aster'])
       expect(
         w.diagnostic.mock.calls.filter(([, reason]) => reason === 'attachment-capacity'),
       ).toHaveLength(76)
@@ -254,6 +276,7 @@ describe('a cold agent gets each plugin that is ready', () => {
     } finally {
       binding.resolve(undefined as unknown as Binding)
       closing.resolve()
+      clock.mockRestore()
     }
   })
 
