@@ -491,7 +491,11 @@ it.each([
             detail,
           }
         : request(input)
-    const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })
+    const m = mount(
+      settingsWindow('plugins', 'classic', f.client),
+      {},
+      { width: 1180, height: 900 },
+    )
     await vi.waitFor(() => expect(m.all('plugin-update')).toHaveLength(1))
     m.q('plugin-update').click()
     await vi.waitFor(() => expect(m.q('plugins-error').textContent).toBe(expected))
