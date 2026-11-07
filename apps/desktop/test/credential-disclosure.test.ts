@@ -168,13 +168,6 @@ describe('what the Codex note claims, against `provisionCodexAuth` itself', () =
     expect(note()).toMatch(/copy/i)
   })
 
-  it('“readable only by you” — 0600 however the umask is set, and on Windows by its access list', async () => {
-    const home = temp('home')
-    await provisionCodexAuth(home, { sourceAuthPath: fakeMachineAuth('{"marker":"329-mode"}') })
-
-    expect(note()).toMatch(/readable only by you/i)
-  })
-
   it('🔴 “made once … never replaced on its own” — a second provisioning does not overwrite', async () => {
     const home = temp('home')
     await provisionCodexAuth(home, { sourceAuthPath: fakeMachineAuth('{"marker":"329-first"}') })

@@ -5,14 +5,13 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
-  renameSync,
   readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, relative } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { claudeAutoMemoryDir } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'

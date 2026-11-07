@@ -797,7 +797,6 @@ describe.skipIf(process.platform === 'win32')(
     })
     it('keeps structural root and launcher errors while accepting shared parents', async () => {
       const { parent, root, workspaces } = fixture()
-      const launch = vi.fn(async () => {})
       await expect(attach(root, workspaces[0]!)).rejects.toMatchObject({ code: 'unavailable' })
       expect(existsSync(root)).toBe(false)
       const alias = join(parent, 'alias')

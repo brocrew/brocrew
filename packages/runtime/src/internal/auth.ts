@@ -1104,8 +1104,6 @@ async function provisionCodexAuthLocked(
         rmSync(tmp, { force: true }) // dest keeps the inode alive
       }
 
-      // On Windows a mode is only a read-only flag: there the file is kept to its owner by the
-      // access list it inherits from the person's own profile folder.
     },
     { verify: ancestry?.verify },
   )
@@ -1317,8 +1315,6 @@ export async function reprovisionCodexAuth(
         closeSync(fd) // closed on the throwing path too — no descriptor outlives this block
       }
 
-      // On Windows a mode is only a read-only flag: there the file is kept to its owner by the
-      // access list it inherits from the person's own profile folder.
       renameSync(tmp, dest) // atomic REPLACE — the one difference from the copy-once path
     } catch (error) {
       rmSync(tmp, { force: true }) // a failed install leaves no half-written credential behind

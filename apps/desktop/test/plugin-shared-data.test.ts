@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, realpath, symlink, stat } from
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, expect, it } from 'vitest'
 import { manifestFor, packageFixture, verified } from './plugin-package-fixtures'
 import { createPluginVerifier } from '../src/main/plugins/package-verifier'
 import { fictionalPublicKey } from './plugin-package-fixtures'

@@ -8,7 +8,6 @@ import {
   fsyncSync,
   linkSync,
   lstatSync,
-  mkdirSync,
   openSync,
   readdirSync,
   renameSync,

@@ -3,7 +3,6 @@ import { lstatSync } from 'node:fs'
 import { createServer, type Server, type Socket } from 'node:net'
 import { PluginFence } from '../state/fence'
 import { SupervisorStorage } from './storage'
-import { isSocketFile } from '../local-endpoint'
 import type { DrainTrace } from './drain-trace'
 import { pluginFailureCause } from '../startup-failure'
 import {

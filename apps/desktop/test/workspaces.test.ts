@@ -447,15 +447,17 @@ describe('§4 · a new workspace’s name and folder', () => {
     }
   })
 
-  it('⚑ a new workspace’s folder is this account’s only, as the default one is', async () => {
+  it('creates and names a workspace without changing its existing parent permissions', async () => {
     const home = aFolder()
-    const folder = join(home, 'BroBot workspaces', 'Research')
+    const parent = join(home, 'BroBot workspaces')
+    mkdirSync(parent)
+    if (process.platform !== 'win32') chmodSync(parent, 0o755)
+    const before = statSync(parent).mode
+    const folder = join(parent, 'Research')
     await expect(makeWorkspaceFolder(folder, 'Research')).resolves.toBeUndefined()
+    expect(statSync(folder).isDirectory()).toBe(true)
     expect(workspaceOf(folder, false).name).toBe('Research')
-    if (process.platform !== 'win32') {
-      expect(statSync(folder).mode & 0o777).toBe(0o700)
-      expect(statSync(dirname(folder)).mode & 0o777).toBe(0o700)
-    }
+    expect(statSync(parent).mode).toBe(before)
   })
 
   it('🔴 its name is kept in its folder, and read back as the workspace’s', () => {

@@ -181,7 +181,7 @@ export const CODEX_CAPABILITIES: ProviderCapabilities = {
     // was never the machine's at all — which is the half `308` added to the Info panel's own
     // sentence and this one had dropped. ⚑ The minting gesture is NOT named here: `SignInPanel`
     // owns it and `credential-words.ts` owns its words (169 §1).
-    note: 'This profile keeps a sign-in of its own — or, while an OpenAI API key is saved under “API key” on the Codex card in Providers, that key instead. Where your machine’s Codex CLI has one, it starts as a copy of that; where it has none, as a copy of BroBot’s own. The copy is made once, is readable only by you, and is never replaced on its own.',
+    note: 'This profile keeps a sign-in of its own — or, while an OpenAI API key is saved under “API key” on the Codex card in Providers, that key instead. Where your machine’s Codex CLI has one, it starts as a copy of that; where it has none, as a copy of BroBot’s own. The copy is made once and is never replaced on its own.',
   },
   /**
    * ⚠️ **`absent`, and the reason is the most interesting fact 106 turned up: Codex made the
