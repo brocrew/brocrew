@@ -271,7 +271,9 @@ describe('509 · the word the poll cannot say', () => {
       expect(host_).toContain('runningStateOf: (sessionId) => this.runningStateOf(sessionId),')
       expect(workReads.split('this.sources.runningStateOf(').length - 1).toBe(1)
       expect(workReads).not.toContain('livenessStateOf(')
-      expect(workReads).not.toMatch(/^ {8}running: this\.sources\.runningStateOf\(row\.conversation\),$/m)
+      expect(workReads).not.toMatch(
+        /^ {8}running: this\.sources\.runningStateOf\(row\.conversation\),$/m,
+      )
       const calls = (name: string): number => host_.split(`this.${name}(`).length - 1
       // ⛔ **It was ONE call, and it was the project room's.** Three publishers with the fact on one
       // of them was `402`'s finding — *a rule made at one of two depths is a rule nobody can rely
@@ -285,7 +287,9 @@ describe('509 · the word the poll cannot say', () => {
       // LINE, because as a substring it sits inside `whoCalledWhom`'s ten-space line below, which is
       // the control that the same pattern does match a line that is there.
       expect(host_).not.toMatch(/^ {8}running: this\.runningStateOf\(row\.conversation\),$/m)
-      expect(workReads).toMatch(/^ {10}running: this\.sources\.runningStateOf\(row\.conversation\),$/m)
+      expect(workReads).toMatch(
+        /^ {10}running: this\.sources\.runningStateOf\(row\.conversation\),$/m,
+      )
       expect(host_).toContain('      running: this.runningStateOf(session.sessionId),')
       // ⚑ **699 · the unresumable half's mapper is a block now** — it carries a second fact
       // (`closedBecauseTheAppDidNotFinishQuitting`) — and its publisher is the same call, re-aimed at
