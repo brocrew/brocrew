@@ -184,8 +184,8 @@
     },
     {
       "path": "apps/desktop/src/main/plugins/catalogue/local.ts",
-      "sha256": "fa1d07cbc824fd389bb4b315ac3cac932e611353dad7560610036a30148097ea",
-      "bytes": 5003
+      "sha256": "4ca0f8ea046f6bfcd4c11640ae5d7f4745b0c02f13ea899418c9f1bda6345f3f",
+      "bytes": 4964
     },
     {
       "path": "apps/desktop/src/main/plugins/catalogue/repo-list.ts",
@@ -199,8 +199,8 @@
     },
     {
       "path": "apps/desktop/src/main/plugins/node-host-files.ts",
-      "sha256": "f6838ab19fd4549e9593b344f4b8f632bf803a0bea9f5e52f0c6f3015dec8bc3",
-      "bytes": 8278
+      "sha256": "aad76181db4cfb286b2238d8813ac1cc33334cc1d49f7aabee01041756b1ee37",
+      "bytes": 8266
     },
     {
       "path": "apps/desktop/src/main/plugins/package-archive.ts",
