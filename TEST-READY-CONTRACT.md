@@ -32,11 +32,11 @@ No real accounts, WhatsApp messages or real Chrome profiles are used. The synthe
 
 ## Current files
 
-Working folder: `/Users/majidlaissi/Library/Application Support/@brobot2/desktop/worker-output/work_bec75ab8-02f6-467d-89e9-eaf331f75fa7`.
+All carrier paths below are relative to the TEST checkout root.
 
 - `windows-upgrade-test.yml` is copied to `carrier-source/.github/workflows/upgrade-path.yml`.
 - `windows-plugin-upgrade.mjs` orchestrates installation, upgrade and evidence.
 - `windows-plugin-upgrade-driver.ts` observes the installed candidate's service and sends MCP HTTP calls.
 - `windows-plugin-upgrade-README.md` describes invocation and evidence.
 
-The reusable call reference is `/Users/majidlaissi/dev/brocrew/evidence/w4-1521-installed-dmg/attempt3/driver.ts`. That reference is Darwin-only copied-state proof; this new harness must establish the Windows installation and upgrade sequence independently.
+The prior Darwin copied-state call reference supplied the MCP call pattern only. This harness must establish the Windows installation and upgrade sequence independently.
