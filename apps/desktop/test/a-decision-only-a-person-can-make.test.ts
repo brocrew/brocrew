@@ -1132,7 +1132,6 @@ describe('403 · a decision only a person can make', () => {
       expect(host.decisionsForAPerson().rows).toEqual([])
     })
 
-
     it('⚠️ nothing routed is nothing listed, and that is not the same as nothing looked at', async () => {
       // ⛔ **The empty answer means *none arrived*, which is only true because nothing is dropped
       // at the boundary** — `394` §2's whole argument, one reader over.

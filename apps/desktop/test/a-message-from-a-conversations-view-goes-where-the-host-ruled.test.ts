@@ -663,7 +663,6 @@ describe('D-017b · a message from a conversation’s view goes where the host r
   })
 
   describe('the host · another window, asked again inside the arrivals entry', () => {
-
     it('…and when nobody opens it meanwhile, a message that waited behind an earlier arrival is sent', async () => {
       // The control, one fact over: the same arrivals entry and the same wait, and no other window.
       // The wait is not what refuses.

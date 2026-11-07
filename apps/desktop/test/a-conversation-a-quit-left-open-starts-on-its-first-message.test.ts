@@ -604,7 +604,9 @@ describe('§1 · 701 · `692` F-a, D-017b — through a real host, a real ledger
     const wordsBeforeClaim = ledger.events(child).filter(({ event }) => event.type === 'user_turn')
     expect(await store.claim(child)).toBe(true)
     expect(launched.length, 'claim starts no provider').toBe(afterItStarted)
-    expect(ledger.events(child).filter(({ event }) => event.type === 'user_turn')).toEqual(wordsBeforeClaim)
+    expect(ledger.events(child).filter(({ event }) => event.type === 'user_turn')).toEqual(
+      wordsBeforeClaim,
+    )
 
     const came = await continueIt(child, 'words for the child', [])
 

@@ -272,8 +272,6 @@ describe('336 · a session created through a door no renderer opened', () => {
       expect(two.messages).toEqual([])
     })
 
-
-
     it('⛔ attachOpen never hands one over, to either window', async () => {
       const unclaimed = await openUnclaimed()
       const owned = await openFor(one)
@@ -357,7 +355,6 @@ describe('336 · a session created through a door no renderer opened', () => {
         Array.from({ length: all.length }, (_unused, index) => Math.min(...replayed) + index),
       )
     })
-
   })
 
   describe('§2.3 · when a claim is legal', () => {

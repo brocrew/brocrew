@@ -77,16 +77,7 @@ jobs:
         # `notices:check`: the npm packages THIRD-PARTY-NOTICES.md lists are the ones this lockfile
         # installs. It reads `node_modules` and needs no build; Linux installs the same list, since
         # every package that differs by platform is in the notices' hand-written sections.
-        check:
-          [
-            engine:check,
-            leak:check,
-            notices:check,
-            typecheck,
-            lint,
-            format:check,
-            db:check,
-          ]
+        check: [engine:check, leak:check, notices:check, typecheck, lint, format:check, db:check]
     steps:
       - uses: actions/checkout@v7
         with:

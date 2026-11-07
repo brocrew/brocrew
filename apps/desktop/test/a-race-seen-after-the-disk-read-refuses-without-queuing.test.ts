@@ -85,7 +85,6 @@ describe('735 M4 · a race the second ask sees refuses without joining the arriv
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
   })
 
-
   const listed = (sessionId: string): { running: string } => {
     const row = host.resumableSessions().find((one) => one.sessionId === sessionId)
     if (row === undefined) throw new Error(`${sessionId} is not listed`)

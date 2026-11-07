@@ -316,7 +316,6 @@ describe('349 · a sink that says whether a person is behind it', () => {
       await host.close(sessionId, THE_APP_ITSELF)
     })
 
-
     it('a session nobody ever claimed: a window answers it from the queue, its commander is refused', async () => {
       const sessionId = await spawn()
       const requestId = await parkOnAQuestion(sessionId, PLANNER)
