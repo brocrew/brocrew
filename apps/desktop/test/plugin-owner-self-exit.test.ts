@@ -30,6 +30,8 @@ let folder = ''
 const children: ChildProcess[] = []
 const leases: PluginWorkspaceLease[] = []
 const successors: PluginSupervisor[] = []
+const readOwner = async (root: string) =>
+  JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8'))
 function message(child: ChildProcess, event: string): Promise<{ runId?: string }> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -156,7 +158,7 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
       await ended(target.child)
       expect(target.child.exitCode).toBe(0)
       expect(
-        JSON.parse(await readFile(join(target.root, 'supervisor/owner.json'), 'utf8')).phase,
+        (await readOwner(target.root)).phase,
       ).not.toBe('blocked')
       const trace = await readFile(join(target.root, 'plugin-drain.log'), 'utf8')
       const attempts = [...trace.matchAll(/stage=blocked-write state=\w+ attempt=\d+/g)]
@@ -188,15 +190,16 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
       const fault = process.platform === 'win32' ? 'terminal-record-held' : undefined
       const bystander = await fixture('bystander-' + mode, 'healthy', fault)
       const target = await fixture('target-' + mode, mode, fault)
-      const read = async (root: string) =>
-        JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8'))
-      const before = await read(bystander.root)
+      const before = await readOwner(bystander.root)
       const fence = await lstat(join(target.root, 'supervisor/owner-lock.sqlite'), { bigint: true })
       await target.lease.close()
       await ended(target.child)
       expect(target.child.exitCode).toBe(0)
-      expect((await read(target.root)).phase).toBe(fault ? 'draining' : 'blocked')
-      if (fault) expect(await readFile(join(target.root, 'plugin-drain.log'), 'utf8')).toContain('stage=blocked-write state=failed attempt=1 errno=EPERM')
+      expect((await readOwner(target.root)).phase).toBe(fault ? 'draining' : 'blocked')
+      if (fault)
+        expect(await readFile(join(target.root, 'plugin-drain.log'), 'utf8')).toContain(
+          'stage=blocked-write state=failed attempt=1 errno=EPERM',
+        )
       const proof = target.runId
         ? join(target.root, 'host/runs', target.runId, 'exit.json')
         : undefined
@@ -238,14 +241,17 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
       successors.push(successor)
       const after = await lstat(join(target.root, 'supervisor/owner-lock.sqlite'), { bigint: true })
       expect([after.dev, after.ino]).toEqual([fence.dev, fence.ino])
-      expect((await read(target.root)).epoch).not.toBe(target.lease.epoch)
-      expect(await read(bystander.root)).toEqual(before)
+      expect((await readOwner(target.root)).epoch).not.toBe(target.lease.epoch)
+      expect(await readOwner(bystander.root)).toEqual(before)
       await expect(bystander.lease.renew()).resolves.toBeUndefined()
       expect(bystander.child.exitCode).toBeNull()
       expect(await bystander.lease.close()).toBe(!fault)
       await ended(bystander.child)
       expect(bystander.child.exitCode).toBe(0)
-      if (fault) expect(await readFile(join(bystander.root, 'plugin-drain.log'), 'utf8')).toContain('stage=stopped-write state=failed attempt=1 errno=EPERM')
+      if (fault)
+        expect(await readFile(join(bystander.root, 'plugin-drain.log'), 'utf8')).toContain(
+          'stage=stopped-write state=failed attempt=1 errno=EPERM',
+        )
     },
   )
   it('holds the fence until actual process death, never merely until the retirement callback', async () => {
@@ -275,7 +281,7 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
         await expect
           .poll(
             async () =>
-              JSON.parse(await readFile(join(target.root, 'supervisor/owner.json'), 'utf8')).phase,
+              (await readOwner(target.root)).phase,
           )
           .toBe('draining')
         target.child.send('fail-start')

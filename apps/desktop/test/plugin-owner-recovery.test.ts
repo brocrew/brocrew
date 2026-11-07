@@ -23,9 +23,8 @@ import type { DrainTrace } from '../src/main/plugins/supervisor/drain-trace'
 import { previousRunsProvenStopped } from '../src/main/plugins/supervisor/recovery-proof'
 import { keepPluginRootPrivate } from '../src/main/plugins/private-files'
 import { pluginUnavailableNotice } from '../src/shared/plugin-settings'
-import { pluginStartupReason } from '../src/main/plugins/startup-failure'
+import { PluginStartupError, pluginStartupReason } from '../src/main/plugins/startup-failure'
 import { groupIdentity } from '../resources/plugin-host/process-groups.mjs'
-import { PluginStartupError } from '../src/main/plugins/startup-failure'
 import {
   APP_HELD_CONNECTION,
   OWNER_WIRE,
@@ -40,6 +39,9 @@ const windowsStopWithin = process.platform === 'win32' ? 10_000 : undefined
 describe('plugin owner recovery after the caller stops waiting', () => {
   let parent = ''
   const trace: DrainTrace[] = []
+  const readers: number[] = []
+  const readOwner = async () =>
+    JSON.parse(await readFile(join(parent, 'plugins/supervisor/owner.json'), 'utf8'))
   let owner: PluginSupervisor | undefined
   let lease: PluginWorkspaceLease | undefined
   let child: ChildProcess | undefined
@@ -47,6 +49,7 @@ describe('plugin owner recovery after the caller stops waiting', () => {
   afterEach(async () => {
     try {
       releaseWitness?.()
+      for (const fd of readers.splice(0)) closeSync(fd)
       if (child && child.exitCode === null && child.signalCode === null) {
         const exited = once(child, 'exit')
         child.kill()
@@ -55,21 +58,16 @@ describe('plugin owner recovery after the caller stops waiting', () => {
       await lease?.close()
       if (owner) {
         await owner.shutdown()
-        let timer: ReturnType<typeof setTimeout> | undefined
-        try {
-          await Promise.race([
-            owner.closed,
-            new Promise<never>((_, reject) => {
-              timer = setTimeout(
-                () =>
-                  reject(new Error(`Plugin owner did not close; fixture retained at ${parent}`)),
-                10_000,
-              )
-            }),
-          ])
-        } finally {
-          clearTimeout(timer)
-        }
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(
+            () => reject(new Error(`Plugin owner did not close; fixture retained at ${parent}`)),
+            10_000,
+          )
+          void owner!.closed.then(() => {
+            clearTimeout(timer)
+            resolve()
+          })
+        })
       }
       if (parent) await rm(parent, { recursive: true, force: true })
     } finally {
@@ -193,48 +191,75 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     }
   })
   it.each([
-    { name: 'finishes after a delayed real child exit witness, even after shutdown returned false', physical: true, within: 1500 },
-    { name: 'does not turn a still-pending witness into a clean stop or overlap a successor', physical: false, within: 1000 },
+    {
+      name: 'finishes after a delayed real child exit witness, even after shutdown returned false',
+      physical: true,
+      within: 1500,
+    },
+    {
+      name: 'does not turn a still-pending witness into a clean stop or overlap a successor',
+      physical: false,
+      within: 1000,
+    },
   ])('$name', async ({ physical, within }) => {
     const { root, options } = await fixture()
     const sentinel = join(root, 'profile-sentinel')
     let realExit: Promise<unknown> = Promise.resolve()
     if (physical) {
       await writeFile(sentinel, 'fictional-profile-and-installation', { mode: 0o600 })
-      child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore', windowsHide: true })
+      child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+        stdio: 'ignore',
+        windowsHide: true,
+      })
       await once(child, 'spawn')
       realExit = once(child, 'exit')
     }
-    const delivery = new Promise<void>((resolve) => { releaseWitness = resolve })
+    const delivery = new Promise<void>((resolve) => {
+      releaseWitness = resolve
+    })
     owner!.adopt({
-      stop() { child?.kill() },
+      stop() {
+        child?.kill()
+      },
       exited: realExit.then(() => delivery),
-      descendantsGone: async () => !physical || child!.exitCode !== null || child!.signalCode !== null,
+      descendantsGone: async () =>
+        !physical || child!.exitCode !== null || child!.signalCode !== null,
     })
     expect(await owner!.shutdown()).toBe(false)
     await realExit
-    const phase = async () => JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase
+    const phase = async () =>
+      (await readOwner()).phase
     expect(await phase()).not.toBe('stopped')
     if (!physical) {
-      await expect(PluginSupervisor.start({ root, workspaceRoots: [options.workspaceRoot] })).rejects.toMatchObject({ code: 'busy' })
+      await expect(
+        PluginSupervisor.start({ root, workspaceRoots: [options.workspaceRoot] }),
+      ).rejects.toMatchObject({ code: 'busy' })
       const launch = vi.fn()
-      await expect(PluginWorkspaceLease.attach({ ...options, generation: randomUUID(), launch })).rejects.toMatchObject({
-        code: 'busy', diagnostic: { phase: 'draining', stage: 'attach-record', probe: 'live' },
+      await expect(
+        PluginWorkspaceLease.attach({ ...options, generation: randomUUID(), launch }),
+      ).rejects.toMatchObject({
+        code: 'busy',
+        diagnostic: { phase: 'draining', stage: 'attach-record', probe: 'live' },
       })
       expect(launch).not.toHaveBeenCalled()
     }
     // Windows replacement refuses this real destination reader; it is not exit authority.
-    const reader = process.platform === 'win32' ? openSync(join(root, 'supervisor/owner.json'), 'r') : undefined
+    const reader =
+      process.platform === 'win32' ? openSync(join(root, 'supervisor/owner.json'), 'r') : undefined
     try {
       releaseWitness!()
-      await expect.poll(() => trace.at(-1)?.stage, { timeout: windowsStopWithin ?? within }).toBe('closed')
+      await expect
+        .poll(() => trace.at(-1)?.stage, { timeout: windowsStopWithin ?? within })
+        .toBe('closed')
       await owner!.closed
     } finally {
       if (reader !== undefined) closeSync(reader)
     }
     expect(await phase()).toBe(process.platform === 'win32' ? 'draining' : 'stopped')
-    if (process.platform === 'win32') expect(trace).toContainEqual(expect.objectContaining({ stage: 'stopped-write', state: 'failed', attempt: 1, errno: 'EPERM' }))
-    if (physical) expect(await readFile(sentinel, 'utf8')).toBe('fictional-profile-and-installation')
+    if (process.platform === 'win32')
+      expect(trace.filter((event) => event.stage === 'stopped-write' && event.state === 'failed')).toMatchObject([{ attempt: 1, errno: 'EPERM' }])
+    if (physical)
+      expect(await readFile(sentinel, 'utf8')).toBe('fictional-profile-and-installation')
   })
   it('refuses an ambiguous accepting legacy busy without launching or revoking its lease', async () => {
     const { root, options } = await fixture()
@@ -263,7 +288,7 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     })
     expect(launch).not.toHaveBeenCalled()
     await expect(lease.renew()).resolves.toBeUndefined()
-    expect(JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase).toBe(
+    expect((await readOwner()).phase).toBe(
       'accepting',
     )
   })
@@ -404,7 +429,7 @@ describe('plugin owner recovery after the caller stops waiting', () => {
       })
       expect(await readFile(join(run, 'exit.json'), 'utf8')).toBe(JSON.stringify(proof))
       expect(
-        JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).epoch,
+        (await readOwner()).epoch,
       ).not.toBe(record.epoch)
     },
   )
@@ -577,13 +602,15 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     const { root, options } = await fixture()
     const previous = owner!
     const original = SupervisorStorage.prototype.write
-    let held = true, reader: number | undefined
+    let held = true
     vi.spyOn(SupervisorStorage.prototype, 'write').mockImplementation(function (
       this: SupervisorStorage,
       value,
     ) {
       if (value.phase === 'stopped' && held) {
-        if (process.platform === 'win32') reader ??= openSync(this.record, 'r')
+        if (process.platform === 'win32') {
+          if (!readers.length) readers.push(openSync(this.record, 'r'))
+        }
         else throw Object.assign(new Error('fictional rename denial'), { code: 'EPERM' })
       }
       return original.call(this, value)
@@ -594,7 +621,7 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     // closed resolves only after the fence is released.
     await previous.closed
     owner = undefined
-    expect(JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase).not.toBe(
+    expect((await readOwner()).phase).not.toBe(
       'stopped',
     )
     const start = () =>
@@ -610,9 +637,9 @@ describe('plugin owner recovery after the caller stops waiting', () => {
       "couldn't record the previous plugin service as stopped (EPERM)",
     )
     held = false
-    if (reader !== undefined) closeSync(reader)
+    for (const fd of readers.splice(0)) closeSync(fd)
     owner = await start()
-    expect(JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase).toBe(
+    expect((await readOwner()).phase).toBe(
       'accepting',
     )
   })

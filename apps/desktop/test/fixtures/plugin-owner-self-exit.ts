@@ -17,8 +17,15 @@ SupervisorStorage.prototype.write = function (value) {
     throw Object.assign(new Error('Bearer fictional-secret /fictional/private-owner-path'), {
       code: 'EPERM',
     })
-  const reader = fault === 'terminal-record-held' && ['stopped', 'blocked'].includes(value.phase) ? openSync(this.record, 'r') : undefined
-  try { return write.call(this, value) } finally { if (reader !== undefined) closeSync(reader) }
+  const reader =
+    fault === 'terminal-record-held' && ['stopped', 'blocked'].includes(value.phase)
+      ? openSync(this.record, 'r')
+      : undefined
+  try {
+    return write.call(this, value)
+  } finally {
+    if (reader !== undefined) closeSync(reader)
+  }
 }
 let releaseRevocations!: () => void
 const revocations = new Promise<void>((resolve) => {
