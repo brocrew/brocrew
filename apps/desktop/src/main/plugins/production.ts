@@ -222,10 +222,13 @@ export function productionPluginController() {
           initialRetries = undefined
         } else if (!ended && initialRetries !== undefined && initialRetries < 3) {
           clearTimeout(recovery)
-          recovery = setTimeout(() => {
-            initialRetries!++
-            void enter()
-          }, 1000 * 2 ** initialRetries)
+          recovery = setTimeout(
+            () => {
+              initialRetries!++
+              void enter()
+            },
+            1000 * 2 ** initialRetries,
+          )
           recovery.unref()
         }
         return attached
