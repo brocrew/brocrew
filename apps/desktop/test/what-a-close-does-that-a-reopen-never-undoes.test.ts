@@ -24,7 +24,12 @@ import { TASK_IS_OPEN, undrivenSentence } from '../src/shared/tasks'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { ProviderDouble, type ResumeGate } from './lib/provider-double'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 // ⚑ **663 · the double this file built, lifted so the wake's tests run on both shapes too.**
 
 /**
@@ -91,13 +96,7 @@ describe('661 · what a close does that a reopen never undoes', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

@@ -24,7 +24,7 @@ import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * 🔴 **D-017 · R19 — a card routed to another CONVERSATION is that one's to answer, and the
@@ -119,13 +119,7 @@ describe('D-017 · R19 · a question a grandchild asked is not yours to cut into
       // ⚑ Bounded, same as `a-stop-reaches-down-the-whole-chain.test.ts`: `interruptAgent` races
       // the provider against it, and a short deadline keeps a wedged one from holding the suite.
       interruptWaitMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

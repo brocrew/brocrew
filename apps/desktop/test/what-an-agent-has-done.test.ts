@@ -23,7 +23,12 @@ import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { howTheRulesBegin } from '../src/shared/own-instructions'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 /**
  * 🔴 **F009 · what an agent has done, read when a caller chooses whom to give work to** —
  * `list_profiles` naming a profile, measured on a real host with the fake runtime.
@@ -129,13 +134,7 @@ describe('F009 · what an agent has done, read on demand', () => {
       now: tick,
       interruptWaitMs: 40,
       announce: () => {},
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

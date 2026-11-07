@@ -18,7 +18,12 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { PIECE_TITLE_CHARS } from '../src/shared/piece-called'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * # 🔴 D-016 · a root is titled, and a piece says where it stands
@@ -87,13 +92,7 @@ describe('D-016 · a root is titled, and a piece says where it stands', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

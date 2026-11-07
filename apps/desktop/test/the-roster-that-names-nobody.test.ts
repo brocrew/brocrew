@@ -31,7 +31,7 @@ import {
   type RuntimeEventMessage,
 } from '../src/shared/runtime-ipc'
 import { theOwnerOf } from '../src/shared/piece-called'
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -125,13 +125,7 @@ describe('610 · the roster that names nobody', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:1')
   })

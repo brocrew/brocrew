@@ -1,4 +1,4 @@
-import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
+import { RecordingSink, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -215,13 +215,7 @@ describe('575 · what each agent is doing', () => {
       newSessionId: () => `sess_${++counter}`,
       // ⚠️ A stream nobody ever ends must not charge this suite the default drain (`509`'s note).
       closeDrainTimeoutMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 

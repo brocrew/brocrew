@@ -40,7 +40,12 @@ import { mailboxOf, stillHeld } from '../src/shared/mailbox'
 import { REQUEST_IS_OPEN, permissionShaped } from '../src/shared/questions'
 import { APPROVALS_ARE_THE_PERSONS } from './lib/the-core'
 import { composeProfileBundle } from '../src/main/runtime/factory-text'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **394 · a question finds a person, and a permission never travels** — Slice 4 S4, HO-007
@@ -152,13 +157,7 @@ describe('394 · a question finds a person, and a permission never travels', () 
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

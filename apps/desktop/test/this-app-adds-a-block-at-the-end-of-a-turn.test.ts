@@ -51,7 +51,7 @@ import {
 } from '../src/main/runtime/what-this-app-adds-to-a-turn'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { syntheticProviderHome } from './lib/host-fixture'
+import { syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
@@ -192,13 +192,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       ...extra,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

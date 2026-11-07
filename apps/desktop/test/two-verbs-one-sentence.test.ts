@@ -20,7 +20,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * ⚑ **584 · a LOCAL constant** (`HO-078` §1). ⛔ `PROJECT_MANAGER_PROFILE_ID` named the one other
@@ -105,13 +105,7 @@ describe('456 · two verbs, one sentence', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       readInstructions: () => ({
         instructions: NOTHING_INJECTED,
         systemHint: undefined,

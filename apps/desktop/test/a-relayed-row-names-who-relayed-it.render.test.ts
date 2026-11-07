@@ -29,7 +29,7 @@ import { AN_UNNAMED_RELAYER, relayedSender } from '../src/renderer/src/lib/relay
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { agentName } from '../src/shared/runtime-ipc'
 import type { AgentIdentity, CreatedSession } from '../src/shared/runtime-ipc'
-import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * # 🔴 545 · a relayed row names the conversation that relayed it
@@ -317,13 +317,7 @@ describe('545 §2 · the door writes the identity beside the conversation', () =
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${String(++counter)}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new Sink(sinkOwnerId({ id: 1 }))
   })

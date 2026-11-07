@@ -28,7 +28,7 @@ import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
-import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * 🔴 **629 · a stop reaches down the whole chain** — ordered by `HO-095` §4, a RULING.
@@ -126,13 +126,7 @@ describe('629 · a stop reaches down the whole chain', () => {
       // ⚑ **Bounded, because `interruptAgent` races the provider against it** — the Fake's
       // interrupt resolves at once, and a short deadline keeps a wedged one from holding the suite.
       interruptWaitMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

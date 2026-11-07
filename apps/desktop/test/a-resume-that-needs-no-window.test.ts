@@ -20,7 +20,7 @@ import { RuntimeHost } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
-import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
+import { RecordingSink, syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * 🔴 **652 · a resume that needs no window.**
@@ -142,13 +142,7 @@ describe('652 · a resume that needs no window', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       // ⚑ **A hint that is different on every read**, so the one a reopen hands its provider can
       // only have come from a read made FOR that reopen — never replayed off the row.
       readInstructions: (provider, cwd) => {

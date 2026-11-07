@@ -23,7 +23,7 @@ import {
   type RuntimeEventMessage,
 } from '../src/shared/runtime-ipc'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { syntheticProviderHome } from './lib/host-fixture'
+import { syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * 🔴 **638 · work moved and nothing announced it** — `631` §6.2, in the frontend seat's own words:
@@ -105,13 +105,7 @@ describe('638 · a change to a conversation’s work announces itself', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       announce: (message) => {
         announced.push(message)
         // ⛔ **§3's measurement, taken INSIDE the announcement** — what a window would have read

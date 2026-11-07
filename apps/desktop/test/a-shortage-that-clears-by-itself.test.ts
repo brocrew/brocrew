@@ -26,7 +26,12 @@ import {
   aSpawnRefusedAfterItsPipes,
   aSpawnThatRanOutOf,
 } from '../../../packages/runtime/test/fixtures/a-spawn-that-failed'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * ⚑ **Codex's transport spawns through `node:child_process` with no seam**, so the ONE spawn a test
@@ -95,13 +100,7 @@ describe('705 · R39 — a shortage that clears by itself', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

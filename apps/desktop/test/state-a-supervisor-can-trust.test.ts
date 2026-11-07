@@ -34,7 +34,12 @@ import {
 import { AN_ASK_RIDES_ON, derivePieces } from '../src/shared/tasks'
 import { exchangePreviewLines } from '../src/shared/last-exchange'
 import { pieceLine, theConversationCalled } from '../src/shared/piece-called'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **484 · state a supervisor can trust** — HO-031 §2.1 and §2.2, and three of §3's defects.
@@ -212,13 +217,7 @@ describe('484 · state a supervisor can trust', () => {
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

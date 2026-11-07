@@ -51,7 +51,12 @@ import { ENDING_SENTENCE } from '../src/renderer/src/lib/ending'
 import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
 import { askedToStopSays } from '../src/renderer/src/lib/stop-unanswered'
 import { agentName, type AgentIdentity } from '../src/shared/runtime-ipc'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **395 · the interruption that looks like a provider fault** — Slice 4 S5, HO-007's last build
@@ -147,13 +152,7 @@ describe('395 · the interruption that looks like a provider fault', () => {
       // shipped bound is two seconds; a test that waited that long for a Codex-shaped stall would be
       // measuring the clock rather than the door.
       interruptWaitMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

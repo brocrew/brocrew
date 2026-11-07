@@ -1,5 +1,5 @@
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { neutralHostDeps, syntheticProviderHome } from './lib/host-fixture'
+import { neutralHostDeps, syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -88,13 +88,7 @@ describe('D-016a · a giver reads its pieces back in the order they were numbere
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new Window('webContents:1')
   })

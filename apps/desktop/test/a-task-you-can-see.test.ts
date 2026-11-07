@@ -25,7 +25,12 @@ import { agentCallerId, type AgentToolHost, type ToolName } from '../src/main/ru
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN, derivePieces } from '../src/shared/tasks'
 import { expectQueueFactsExcludeBriefs } from './helpers/queue-facts-source'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **379 · a task you can see** — Slice 4 S1, HO-006 §4.1, HO-007 S1 + criterion 2.
@@ -138,13 +143,7 @@ describe('379 · a task you can see', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

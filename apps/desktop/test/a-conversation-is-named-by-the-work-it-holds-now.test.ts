@@ -24,7 +24,12 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import type { RuntimeChangeMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 /**
  * 🔴 **F033 · a conversation is named by the work it holds NOW, and a sentence about one piece by
  * that piece** — measured on a real host with the fake runtime, one case per rule.
@@ -120,13 +125,7 @@ describe('F033 · a conversation is named by the work it holds now', () => {
         announced.push(change.what)
         atAnnouncement?.(change.what)
       },
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

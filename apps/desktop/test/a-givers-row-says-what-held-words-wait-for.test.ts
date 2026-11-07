@@ -20,7 +20,7 @@ import type {
   SessionLiveness,
   SessionLivenessMessage,
 } from '../src/shared/runtime-ipc'
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * # The giver's `list_tasks` row says what the words held for its helper wait for
@@ -174,13 +174,7 @@ describe('the giver’s list_tasks row says what held words wait for', () => {
       providerHomePath: (provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
       newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink()
   })

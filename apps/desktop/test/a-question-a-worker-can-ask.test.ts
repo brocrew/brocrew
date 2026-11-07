@@ -24,7 +24,7 @@ import { stillHeld } from '../src/shared/mailbox'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { bodyOf, sourceOf, expectNoDeadlineDeps } from './helpers/source-contracts'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { syntheticProviderHome } from './lib/host-fixture'
+import { syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * 🔴 **437 · the question a worker can ask its parent** — criterion 29, HO-019 §1.
@@ -124,13 +124,7 @@ describe('437 · a question a worker can ask its parent', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

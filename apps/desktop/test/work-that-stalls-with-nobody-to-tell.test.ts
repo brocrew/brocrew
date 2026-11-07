@@ -29,7 +29,12 @@ import { stalledWorkKey, stalledWorkSaid } from '../src/shared/stalled-work'
 import type { StalledWork } from '../src/shared/stalled-work'
 import { KIND_WORDS, stalledWorkLead, stalledWorkView } from '../src/renderer/src/lib/persons-queue'
 import { OPEN_THE_CONVERSATION } from '../src/renderer/src/lib/taking-over'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **557 · work that stalls with nobody left to tell** — HO-018 §2.1's criterion 4, whose
@@ -137,13 +142,7 @@ describe('557 · work that stalls with nobody left to tell', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

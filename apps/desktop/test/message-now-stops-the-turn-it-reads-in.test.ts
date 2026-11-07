@@ -22,7 +22,7 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * # 🔴 Message now · `message_agent` and `answer_question` with `interrupt: true`
@@ -99,13 +99,7 @@ describe('message now · a message or an answer can stop the running turn', () =
       // ⚑ **Bounded, because `interruptAgent` races the provider against it** — the Fake's
       // interrupt resolves at once, and a short deadline keeps a wedged one from holding the suite.
       interruptWaitMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

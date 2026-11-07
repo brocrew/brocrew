@@ -24,7 +24,12 @@ import { agentCallerId, type ToolName } from '../src/main/runtime/agent-tools'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { CAPABILITY_FIELDS, type ProfileCapabilities } from '../src/shared/capabilities'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **373 · a parent that survives a restart.**
@@ -159,13 +164,7 @@ describe('373 · a parent that survives a restart', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

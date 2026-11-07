@@ -32,7 +32,7 @@ import {
 import { WORK_STATE_WORD, workReading } from '../src/renderer/src/lib/work-report'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { syntheticProviderHome } from './lib/host-fixture'
+import { syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * 🔴 **603 · waiting on an answer is not stalled** — `HO-018` §2.1, `HO-085`, `HO-091` §1.
@@ -121,13 +121,7 @@ describe('603 · waiting on an answer is not stalled', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

@@ -17,7 +17,7 @@ import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ToolWatchingRuntime } from './lib/provider-double'
-import { syntheticProviderHome } from './lib/host-fixture'
+import { syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * # 🔴 F080 — a giver reads its child's wake, through the tools a model calls
@@ -79,13 +79,7 @@ describe('F080 · a giver reads its child’s wake', () => {
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:1')
   })

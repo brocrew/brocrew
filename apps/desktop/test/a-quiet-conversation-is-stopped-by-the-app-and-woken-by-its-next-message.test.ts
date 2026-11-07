@@ -1,3 +1,4 @@
+import { fixtureProviderConfig } from './lib/host-fixture'
 import type { AgentState } from '../src/shared/agent-state-contracts'
 import type { PieceRow } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -202,13 +203,7 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       // The dep that arms the countdown at all: what main hands every window on `runtime:states`.
       statesMoved: (message) => {
         pushed.push(message)

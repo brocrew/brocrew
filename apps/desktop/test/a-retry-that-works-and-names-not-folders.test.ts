@@ -19,7 +19,12 @@ import { incidentSays } from '../src/renderer/src/lib/work-waits'
 import { agentName } from '../src/shared/runtime-ipc'
 import { theConversationCalled } from '../src/shared/piece-called'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * # 🔴 732 · a retry that works, and names, not folders
@@ -162,13 +167,7 @@ describe('732 · a retry that works, and names, not folders', () => {
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:1')
   })

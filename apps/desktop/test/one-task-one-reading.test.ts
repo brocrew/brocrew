@@ -20,7 +20,7 @@ import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { aPersonOwesAnAnswerIn } from '../src/shared/questions'
 import { MAX_FOREST_CONVERSATIONS } from '../src/shared/the-whole-forest'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
+import { RecordingSink, syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * 🔴 **664 · one task, one reading, in every place it is drawn** (`D32`, found by `654`).
@@ -123,13 +123,7 @@ describe('664 · one task, one reading, in every place it is drawn', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:1')
   })

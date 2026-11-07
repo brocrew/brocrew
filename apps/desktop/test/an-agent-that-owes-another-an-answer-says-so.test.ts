@@ -27,7 +27,12 @@ import {
   type RuntimeStatesMessage,
   type UnresumableSessionInfo,
 } from '../src/shared/runtime-ipc'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * # F036 · an agent that owes another an answer says so — the host half (`80bff428`)
@@ -171,13 +176,7 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       // ⚑ The dep that makes the host derive and push at all — what main hands every window.
       statesMoved: (message) => {
         pushed.push(message)

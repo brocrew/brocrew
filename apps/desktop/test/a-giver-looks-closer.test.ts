@@ -26,7 +26,7 @@ import {
 } from '../src/shared/last-exchange'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ToolWatchingRuntime } from './lib/provider-double'
-import { syntheticProviderHome } from './lib/host-fixture'
+import { syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * # 🔴 D-012 · a giver can look closer, and a stall notice is short (proposal §6.2, §6.5)
@@ -85,13 +85,7 @@ describe('D-012 · a giver looks closer', () => {
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:1')
   })

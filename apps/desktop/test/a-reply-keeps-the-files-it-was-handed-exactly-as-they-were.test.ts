@@ -35,7 +35,7 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { CAPABILITY_FIELDS, MAX_CAPABILITY_COUNT } from '../src/shared/capabilities'
 import { MAX_RESOURCES_PER_REPLY, RESOURCE_ROLES } from '../src/shared/documents'
 import { PIECE_EVENT_TYPES } from '../src/shared/tasks'
-import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
+import { RecordingSink, syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * D-016b · a reply keeps the files it was handed exactly as they were, and the tables that hold
@@ -103,13 +103,7 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

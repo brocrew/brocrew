@@ -19,7 +19,7 @@ import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { syntheticProviderHome } from './lib/host-fixture'
+import { syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * 🔴 **608 · the turn that no longer waits** — `HO-084` §4 (B1), held behind `603` by `HO-085` §4.
@@ -137,13 +137,7 @@ describe('608 · the turn that no longer waits', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

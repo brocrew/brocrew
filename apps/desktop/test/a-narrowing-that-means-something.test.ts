@@ -29,7 +29,7 @@ import {
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 // ⚠️ **The sink INTERFACE is the host's, not the wire's** — the wire declares the message.
 
 /**
@@ -172,13 +172,7 @@ describe('371 · a narrowing that means something', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:1')
   })

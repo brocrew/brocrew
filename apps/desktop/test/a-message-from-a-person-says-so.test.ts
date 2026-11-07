@@ -27,7 +27,7 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { agentName } from '../src/shared/runtime-ipc'
 import { theOwnerOf } from '../src/shared/piece-called'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
-import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * 🔴 **607 · a message from a person says so** — `HO-088` §4, the half `414` left to silence.
@@ -126,13 +126,7 @@ describe('607 · a message from a person says so', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

@@ -67,7 +67,7 @@ import type {
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { agentPreamble } from '../src/main/runtime/agent-preamble'
 import { APPROVALS_ARE_THE_PERSONS, howYouWork } from './lib/the-core'
-import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * ⚑ **584 · a LOCAL constant** (`HO-078` §1). ⛔ `PROJECT_MANAGER_PROFILE_ID` named the one other
@@ -1170,13 +1170,7 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       // ⚑ **The whole point of the section**: what the host hands the reader, captured verbatim.
       readInstructions: (provider, cwd, providerHome, ctx) => {
         seen.push(ctx)

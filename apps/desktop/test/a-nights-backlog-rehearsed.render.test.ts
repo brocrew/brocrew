@@ -60,7 +60,12 @@ import { PERMANENCE_SAID, RAIL_PERMANENCES } from '../src/shared/refusals'
 import { pieceLine, theOwnerOf } from '../src/shared/piece-called'
 import { agentName, type CreatedSession } from '../src/shared/runtime-ipc'
 import { UNDRIVEN_SENTENCES } from '../src/shared/tasks'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **463 · a night's backlog, rehearsed from the readers** (HO-024's second exit half).
@@ -256,13 +261,7 @@ describe("463 · a night's backlog, rehearsed", () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_live_${String(++sessionCounter)}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:463')
   })

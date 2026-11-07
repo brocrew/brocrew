@@ -27,7 +27,7 @@ import {
   type IdentityCreator,
   type RuntimeEventMessage,
 } from '../src/shared/runtime-ipc'
-import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const srcRoot = join(here, '../src')
@@ -143,13 +143,7 @@ describe('598 · the grant covers what it created', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       readInstructions: () => ({
         instructions: NOTHING_INJECTED,
         systemHint: undefined,

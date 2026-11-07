@@ -22,7 +22,7 @@ import {
   type RuntimeEventMessage,
 } from '../src/shared/runtime-ipc'
 import { HUMAN_NAMES, aNameForANewAgent, aNameKey } from '../src/shared/human-names'
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * # 🔴 584 · seed one identity, and generate the names
@@ -113,13 +113,7 @@ describe('584 · seed one identity, and generate the names', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       readInstructions: () => {
         return { instructions: NOTHING_INJECTED, systemHint: undefined, memoryLoaded: null }
       },

@@ -12,7 +12,12 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { UNAVAILABLE_REASONS, describeUnavailable } from '../src/main/runtime/session-unavailable'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **504 · the row he cannot press** — `472` F1, both halves.
@@ -97,13 +102,7 @@ describe('504 · the row he cannot press', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_504_${String(tick())}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:504')
   })

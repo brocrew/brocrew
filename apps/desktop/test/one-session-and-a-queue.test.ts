@@ -19,7 +19,7 @@ import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { mailboxOf, stillHeld } from '../src/shared/mailbox'
 import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
+import { RecordingSink, syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * 🔴 **440 · an identity that owns something, and the callers who wait** — HO-024 §4 criteria 26
@@ -109,13 +109,7 @@ describe('440 · one session, and the callers who wait', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

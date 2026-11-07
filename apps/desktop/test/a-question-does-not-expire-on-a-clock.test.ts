@@ -21,7 +21,7 @@ import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { syntheticProviderHome } from './lib/host-fixture'
+import { syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * 🔴 **591 · a question does not expire on a clock** — HO-082 §1–§4.1.
@@ -116,13 +116,7 @@ describe('591 · a question does not expire on a clock', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

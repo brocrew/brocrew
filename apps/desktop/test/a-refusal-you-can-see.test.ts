@@ -35,7 +35,7 @@ import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { isVisibleIn } from '../src/renderer/src/lib/transcript-mode'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
-import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -122,13 +122,7 @@ describe('405 · a refusal you can see', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
 
   afterEach(async () => {

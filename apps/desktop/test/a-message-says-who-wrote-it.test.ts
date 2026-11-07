@@ -40,7 +40,7 @@ import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript
 import type { TranscriptState } from '../src/renderer/src/lib/transcript'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { syntheticProviderHome } from './lib/host-fixture'
+import { syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * 🔴 **624 · a message says who wrote it, and a report says what is true** — ordered by
@@ -125,13 +125,7 @@ describe('624 · a message says who wrote it', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

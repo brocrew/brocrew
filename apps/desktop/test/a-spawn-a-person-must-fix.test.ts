@@ -25,7 +25,7 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import { aSpawnRefusedAfterItsPipes } from '../../../packages/runtime/test/fixtures/a-spawn-that-failed'
-import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
+import { RecordingSink, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * ⚑ **Codex's transport spawns through `node:child_process` with no seam**, so the ONE spawn a test
@@ -125,13 +125,7 @@ describe('710 · R51 — a spawn a person must fix', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:1')
   })

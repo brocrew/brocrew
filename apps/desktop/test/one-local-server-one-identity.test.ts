@@ -1,4 +1,4 @@
-import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
@@ -203,13 +203,7 @@ describe('516 · one local server, one identity', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       readInstructions: (provider, cwd, providerHome, ctx) => {
         seen.push(ctx)
         const bundle = publishProfileBundle(provider, providerHome, composeProfileBundle(ctx))

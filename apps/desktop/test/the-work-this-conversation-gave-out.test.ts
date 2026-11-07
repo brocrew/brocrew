@@ -34,7 +34,7 @@ import type { RuntimeBridge } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
 import { visibleCopy } from './lib/visible-copy'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { syntheticProviderHome } from './lib/host-fixture'
+import { syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * ⚑ **A bridge that answers exactly one verb**, with the two subscriptions `createSessionStore`
@@ -130,13 +130,7 @@ describe('508 · the work this conversation gave out', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

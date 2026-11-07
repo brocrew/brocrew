@@ -1,4 +1,4 @@
-import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
+import { RecordingSink, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -142,13 +142,7 @@ describe('M55 · a Close counts as a stop before its own finalize', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: () => clock++,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       closeDrainTimeoutMs,
     })
 

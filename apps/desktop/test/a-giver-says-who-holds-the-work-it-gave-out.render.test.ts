@@ -61,7 +61,12 @@ import {
   type UnresumableSessionInfo,
 } from '../src/shared/runtime-ipc'
 import { proseSpans } from './lib/prose-spans'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * # D-036 · a giver says who holds the work it gave out
@@ -648,13 +653,7 @@ describe('D-036 · the host says who holds the work a conversation gave out', ()
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       // ⚑ **The dep that makes the host derive and push at all** — what main hands every window.
       statesMoved: (message) => {
         pushed.push(message)
@@ -1269,13 +1268,7 @@ describe('D-018 · D-036 · a giver waiting on its helpers is counted and stoppe
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       statesMoved: (message) => {
         pushed.push(message)
       },

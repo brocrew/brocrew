@@ -22,7 +22,7 @@ import {
   derivePieces,
   theStateAsRead,
 } from '../src/shared/tasks'
-import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * # A conversation holding a stalled or parked piece still takes more work
@@ -95,13 +95,7 @@ describe('F146 · a conversation holding a stalled or parked piece still takes m
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new Window('webContents:1')
   })
