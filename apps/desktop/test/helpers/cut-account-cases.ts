@@ -185,7 +185,7 @@ export function registerFrozenCutAccountCases({
     const a = { id: 'a'.repeat(32), email: EMAIL.ada }
     const b = { id: 'b'.repeat(32), email: EMAIL.bea }
     writeKeptAccounts(providerAccountsFile(folder()), { claude: b, claudeAccounts: [a, b] })
-    const id = await aTurnRunsIn({ account: 'never' })
+    const id = await aTurnRunsIn({ account: 'none' })
     const handle = handles().at(-1)!
     await life().host.createSession(
       { provider: 'claude', profileId: 'agent-b', approvalMode: 'auto', cwd: root() },

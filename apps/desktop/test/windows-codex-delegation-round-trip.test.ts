@@ -22,7 +22,7 @@ import { resourcesRoot } from '../src/main/resources/resources'
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
 class Window implements RuntimeEventSink {
-  readonly ownerId = 'window:birch'
+  readonly ownerId = 'webContents:29'
   readonly aPersonIsBehindIt = true
   readonly alive = true
   send(): void {}
