@@ -157,9 +157,7 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
     const before = store.get(name)
     if (
       before?.temporary &&
-      (body.allowExtensions === true ||
-        body.allowSettings === true ||
-        body.allowSync === true)
+      (body.allowExtensions === true || body.allowSettings === true || body.allowSync === true)
     )
       return fail(res, 400, ADMIN_ERRORS.temporary)
     store.setFlags(name, body as Partial<Record<(typeof FLAG_NAMES)[number], boolean>>)

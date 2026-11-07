@@ -444,12 +444,7 @@ export class PluginLifecycleController {
   admitted(handle: LifecycleWorkspace, id: string, installId: string): boolean {
     try {
       const workspace = this.workspace(handle)
-      return this.admittedIn(
-        workspace,
-        id,
-        installId,
-        this.options.state.readWorkspaceAdmission(),
-      )
+      return this.admittedIn(workspace, id, installId, this.options.state.readWorkspaceAdmission())
     } catch {
       return false
     }
@@ -619,7 +614,10 @@ export class PluginLifecycleController {
             const cause =
               typeof code === 'string' && /^[a-z][a-z0-9-]{0,63}$/.test(code) ? code : 'unknown'
             this.startFailures.set(installed.pluginId, `${stage}: ${cause}`)
-            console.error(`[plugins] attach could not start ${installed.pluginId} (${stage})`, error)
+            console.error(
+              `[plugins] attach could not start ${installed.pluginId} (${stage})`,
+              error,
+            )
           }
         }
       })
@@ -1477,7 +1475,10 @@ export class PluginLifecycleController {
           cause:
             failed.length === 1
               ? failed[0]!.reason
-              : new AggregateError(failed.map((one) => one.reason), 'plugin runs did not stop'),
+              : new AggregateError(
+                  failed.map((one) => one.reason),
+                  'plugin runs did not stop',
+                ),
         })
       // Once nothing holds the state, a removal or install left unfinished stays in the journal.
       await this.options.state.withExclusive(async () => {

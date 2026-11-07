@@ -11,12 +11,7 @@ export interface ProfileFlags {
   allowSettings: boolean
   allowSync: boolean
 }
-export const FLAG_NAMES = [
-  'enabled',
-  'allowExtensions',
-  'allowSettings',
-  'allowSync',
-] as const
+export const FLAG_NAMES = ['enabled', 'allowExtensions', 'allowSettings', 'allowSync'] as const
 export type CreatedBy = 'agent' | 'panel'
 export interface ProfileRecord {
   /** Local capability-mode epoch; persisted with flags so failed registry writes cannot admit ABA. */

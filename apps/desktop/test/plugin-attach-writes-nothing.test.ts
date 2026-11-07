@@ -2,7 +2,11 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { encodeState, installationProjection, type JournalRecord } from '../src/main/plugins/state/format'
+import {
+  encodeState,
+  installationProjection,
+  type JournalRecord,
+} from '../src/main/plugins/state/format'
 import { foldRecord } from '../src/main/plugins/state/machine'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
 import type { PluginStateDisk } from '../src/main/plugins/state/disk'
@@ -42,7 +46,12 @@ async function withHistory(history: number) {
       sequence: head.sequence + 1,
       previous: head.head,
       publicationId: randomUUID(),
-      event: { kind: 'projected', workspaceId, pluginId: 'chrome', receipt: i % 2 ? null : receipt },
+      event: {
+        kind: 'projected',
+        workspaceId,
+        pluginId: 'chrome',
+        receipt: i % 2 ? null : receipt,
+      },
     }
     const bytes = encodeState(record),
       checksum = pluginSha256(bytes)
@@ -78,9 +87,7 @@ it.each([336, 1000])(
       controller.agentAttachments(agent.sink.workspaceId).map((one) => one.installation.pluginId),
     ).toEqual(['chrome'])
     expect(
-      controller
-        .agentScope(agent.sink.workspaceId)
-        .entries.map((one) => [one.pluginId, one.is]),
+      controller.agentScope(agent.sink.workspaceId).entries.map((one) => [one.pluginId, one.is]),
     ).toEqual([['chrome', 'admitted']])
     expect(state.inspect().sequence).toBe(before)
     expect(replays).not.toHaveBeenCalled()

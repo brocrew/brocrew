@@ -617,9 +617,9 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     // closed resolves only after the fence is released.
     await previous.closed
     owner = undefined
-    expect(
-      JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase,
-    ).not.toBe('stopped')
+    expect(JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase).not.toBe(
+      'stopped',
+    )
     const start = () =>
       PluginSupervisor.start({
         root,
@@ -634,9 +634,9 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     )
     held = false
     owner = await start()
-    expect(
-      JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase,
-    ).toBe('accepting')
+    expect(JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase).toBe(
+      'accepting',
+    )
   })
   it('makes a transient record read retryable and emits closed phase diagnostics', async () => {
     const { options } = await fixture()

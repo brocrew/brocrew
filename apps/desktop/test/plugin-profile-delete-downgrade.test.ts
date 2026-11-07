@@ -12,11 +12,7 @@ import { ChromeProposal as OlderProposal } from './fixtures/plugin-delete-parent
 import source from './fixtures/plugin-delete-parent/source.json'
 import { PluginLifecycleController as OlderController } from './fixtures/plugin-delete-parent/controller'
 import { GlobalPluginState as OlderState } from './fixtures/plugin-delete-parent/store'
-import {
-  fixture,
-  projection,
-  cleanupLifecycleFixtures,
-} from './plugin-lifecycle-fixtures'
+import { fixture, projection, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
 // Load the real package at runtime: its source is typechecked by the package's own project,
 // rather than importing its browser libraries into the host's Node-only compiler project.
 import {

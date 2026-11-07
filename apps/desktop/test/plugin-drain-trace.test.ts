@@ -138,9 +138,8 @@ it.each(['released', 'lease-expired', 'shutdown', 'drain'] as const)(
     })
     const { PluginWorkspaceLease } = await import('../src/main/plugins/supervisor/client')
     const { randomUUID } = await import('node:crypto')
-    const { OWNER_LIMITS, OWNER_WIRE, APP_HELD_CONNECTION } = await import(
-      '../src/main/plugins/supervisor/protocol'
-    )
+    const { OWNER_LIMITS, OWNER_WIRE, APP_HELD_CONNECTION } =
+      await import('../src/main/plugins/supervisor/protocol')
     let lease: Awaited<ReturnType<typeof PluginWorkspaceLease.attach>> | undefined
     try {
       if (reason !== 'drain') {

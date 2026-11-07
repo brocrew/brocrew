@@ -5,9 +5,7 @@ import { registerPluginSettings } from '../src/main/plugins/settings'
 import type { PluginSettingsReply } from '../src/shared/plugin-settings'
 import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import {
-  PluginSupervisorAttachment,
-} from '../src/main/plugins/supervisor/client'
+import { PluginSupervisorAttachment } from '../src/main/plugins/supervisor/client'
 import { productionPluginController } from '../src/main/plugins/production'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
 import { preparePluginNodeRuntime, runtimeFiles } from '../src/main/plugins/node-runtime'

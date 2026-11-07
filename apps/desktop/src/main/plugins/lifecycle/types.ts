@@ -68,9 +68,7 @@ export interface LifecycleOptions {
   /** Fixed-vocabulary `stage: cause` behind unavailable tools, when known. */
   toolsCause?: (pluginId: string) => string | undefined
   /** Inert fault controls only; never a production launch option. */
-  fault?: (
-    point: 'prepared' | 'staged' | 'ready' | 'activated' | 'update-fenced',
-  ) => void
+  fault?: (point: 'prepared' | 'staged' | 'ready' | 'activated' | 'update-fenced') => void
 }
 declare const workspaceBrand: unique symbol
 export interface LifecycleWorkspace {

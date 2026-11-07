@@ -118,7 +118,10 @@ describe.skipIf(process.platform === 'win32')(
         exitable(f)
         // The historical owner is an older copy with its own store over the same root.
         f.state.close()
-        const older = ParentState.open({ root: join(f.root, 'state'), workspaceRoots: [f.workspace] })
+        const older = ParentState.open({
+          root: join(f.root, 'state'),
+          workspaceRoots: [f.workspace],
+        })
         const historical = await ParentController.open({
           ...f.opts,
           state: older,

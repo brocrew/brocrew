@@ -62,10 +62,7 @@ test('actual embedded reload authorizer runs only known gate operations', () => 
   const token = 'a'.repeat(64)
   assert.deepEqual(authorizeReloadRequest({ op: 'arm', token }), { op: 'arm' })
   for (const payload of [{ op: 'eval', token }, {}, null, 'arm'])
-    assert.throws(
-      () => authorizeReloadRequest(payload),
-      /plugin-reload-main-app-gate-only/,
-    )
+    assert.throws(() => authorizeReloadRequest(payload), /plugin-reload-main-app-gate-only/)
 })
 test('real reload projection uses actual host/factory/preload and restores ordinary source', () => {
   const root = fs.realpathSync.native(

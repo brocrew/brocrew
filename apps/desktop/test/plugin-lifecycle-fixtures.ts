@@ -4,10 +4,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
-import type {
-  LifecycleOptions,
-  PersonProjection,
-} from '../src/main/plugins/lifecycle/types'
+import type { LifecycleOptions, PersonProjection } from '../src/main/plugins/lifecycle/types'
 import { packageFixture, manifestFor, fictionalPublicKey } from './plugin-package-fixtures'
 import { keepPluginRootPrivate, realPath } from '../src/main/plugins/private-files'
 import { keepToThisUser } from '../src/main/recovery/windows-privacy'
