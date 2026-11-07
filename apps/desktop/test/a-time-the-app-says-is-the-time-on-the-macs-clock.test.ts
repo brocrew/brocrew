@@ -1357,6 +1357,7 @@ describe('§5 · the window, main and the host agree on the zone', () => {
         'host?.placeTheWakeUpsAgain()',
         '})',
         'readLocalTimeFrom(localZone)',
+        "finishStartupPhase = pluginStartupTrace.begin('themes-database-runtime-host')",
         'themes = new ThemeStore({',
         ANYTHING,
         'await themes.start()',

@@ -310,6 +310,7 @@ async function writePluginStartupLog(root: string, name: string, contents: strin
     await writeFile(temporary, contents, { flag: 'wx', mode: 0o600 })
     await rename(temporary, join(root, name))
   } catch {
+    // Diagnostic writes cannot prevent startup or recovery.
   } finally {
     await rm(temporary, { force: true }).catch(() => {})
   }
