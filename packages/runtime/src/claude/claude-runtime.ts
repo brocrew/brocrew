@@ -1765,8 +1765,8 @@ export class ClaudeSessionHandle implements SessionHandle {
         if (!this.query.reconnectMcpServer) throw new Error('Plugin unavailable. Try again.')
         await this.query.reconnectMcpServer(name)
       }
-    } catch {
-      throw new Error('Plugin unavailable. Try again.')
+    } catch (cause) {
+      throw new Error('Plugin unavailable. Try again.', { cause })
     }
   }
   private query: ClaudeQuery | null = null

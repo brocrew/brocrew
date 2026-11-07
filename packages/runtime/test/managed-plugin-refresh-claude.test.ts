@@ -123,6 +123,9 @@ it('Claude uses its supported refresh and preserves the person server while repl
   expect(setMcpServers).toHaveBeenLastCalledWith({
     'person-server': { type: 'http', url: 'http://127.0.0.1:9234/mcp' },
   })
+  const cause = new Error('fictional refresh transport failure')
+  setMcpServers.mockRejectedValueOnce(cause)
+  await expect(handle.refreshManagedPlugins!([])).rejects.toMatchObject({ cause })
 })
 
 it.each([false, true])(

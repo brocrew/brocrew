@@ -122,6 +122,7 @@ import {
 } from './memory-watch'
 import { logWhenThePageStopsAnswering } from './page-answers'
 import { aDiagnosticsSink, type DiagnosticsSink } from './diagnostics-sink'
+import { pluginFailureCause } from './plugins/startup-failure'
 import { aPageReceipt, pageHeardSays, type PageReceipt } from './runtime/page-performance'
 import {
   MainThreadWork,
@@ -850,6 +851,10 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
   )
   const providerAuth = providerAuthFromModules(providerModules)
   const runtimeHost = new RuntimeHost({
+    reportPluginRefreshError: (error) =>
+      intoTheStallLog(
+        `Plugin refresh failed; sending without updated tools: ${pluginFailureCause(error)}`,
+      ),
     plugins: pluginController,
     pluginAttachments: {
       agent: (occupied) =>

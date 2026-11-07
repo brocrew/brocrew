@@ -423,7 +423,7 @@ it('refreshes supported providers only between turns and preserves the live hand
   await a.close()
 })
 it.each(['resolve', 'reject'] as const)(
-  'refuses a timed-out refresh before it later settles by %s',
+  'sends after the refresh wait before it later settles by %s',
   async (outcome) => {
     vi.useFakeTimers()
     const f = fixture(true)
@@ -444,17 +444,15 @@ it.each(['resolve', 'reject'] as const)(
     })
     await vi.advanceTimersByTimeAsync(PLUGIN_ATTACHMENT_WAIT_MS + 1)
     try {
-      expect(refused).toBeInstanceOf(Error)
-      expect((refused as Error).message).toContain("Your message wasn't sent")
-      expect(f.opened[0]!.send).not.toHaveBeenCalled()
-      expect(f.opened[0]!.close).toHaveBeenCalledOnce()
-      await expect(a.send('another turn')).rejects.toThrow("wasn't sent")
+      expect(refused).toBeUndefined()
+      expect(f.opened[0]!.send).toHaveBeenCalledExactlyOnceWith('fictional words')
+      expect(f.opened[0]!.close).not.toHaveBeenCalled()
     } finally {
       finish()
       await sending.catch(() => {})
       await a.close()
     }
-    expect(f.opened[0]!.send).not.toHaveBeenCalled()
+    expect(f.opened[0]!.send).toHaveBeenCalledOnce()
   },
 )
 it.each(['interrupt', 'close'] as const)(
@@ -491,7 +489,7 @@ it.each(['interrupt', 'close'] as const)(
     }
   },
 )
-it('a refresh that never settles refuses within the bound and retires its handle', async () => {
+it('a refresh that never settles allows delivery within the wait on the same handle', async () => {
   vi.useFakeTimers()
   const f = fixture(true)
   const a = await f.runtime.start(initial)
@@ -504,10 +502,9 @@ it('a refresh that never settles refuses within the bound and retires its handle
     refused = error
   })
   await vi.advanceTimersByTimeAsync(PLUGIN_ATTACHMENT_WAIT_MS + 1)
-  expect(refused).toBeInstanceOf(Error)
-  expect((refused as Error).message).toContain("Your message wasn't sent")
-  expect(f.opened[0]!.send).not.toHaveBeenCalled()
-  expect(f.opened[0]!.close).toHaveBeenCalledOnce()
+  expect(refused).toBeUndefined()
+  expect(f.opened[0]!.send).toHaveBeenCalledExactlyOnceWith('fictional words')
+  expect(f.opened[0]!.close).not.toHaveBeenCalled()
   expect(a.status()).not.toBe('working')
   await a.close()
 })

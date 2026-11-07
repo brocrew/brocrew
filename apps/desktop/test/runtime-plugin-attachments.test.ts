@@ -17,7 +17,7 @@ afterEach(async () => {
 })
 
 it.each(['timeout', 'Stop', 'interrupt-and-send'] as const)(
-  'a never-settling refresh preserves delivery intent after %s and confirmed exit',
+  'a slow refresh preserves delivery intent after %s without retiring the conversation',
   async (cause) => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'fictional-refused-refresh-')))
     const db = openDatabase(join(root, 'fictional.sqlite'))
@@ -60,7 +60,9 @@ it.each(['timeout', 'Stop', 'interrupt-and-send'] as const)(
       return handle
     })
     let servers: { name: string; url: string; capability: string }[] = []
+    const reportPluginRefreshError = vi.fn()
     const host = new RuntimeHost({
+      reportPluginRefreshError,
       store: createSessionStore(db),
       discoverSessions: NO_DISCOVERY,
       nativeTranscriptPath: () => null,
@@ -126,13 +128,6 @@ it.each(['timeout', 'Stop', 'interrupt-and-send'] as const)(
             : host.sendInterrupting(sessionId, 'the person’s fictional replacement words', sink)
         void stopping.catch(() => {})
       }
-      await vi.waitFor(() => expect(oldHandle.close).toHaveBeenCalledOnce(), {
-        timeout: 2500,
-        interval: 5,
-      })
-      expect(resumed).not.toHaveBeenCalled()
-      expect(sent).not.toHaveBeenCalled()
-      releaseExit()
       await stopping
       const said = await Promise.race([
         result,
@@ -140,21 +135,25 @@ it.each(['timeout', 'Stop', 'interrupt-and-send'] as const)(
           timer = setTimeout(() => resolve('still pending'), 2500)
         }),
       ])
-      if (cause === 'timeout') expect(said).toBe('sent')
-      else expect(said).toBe("Your message wasn't sent. Press Send to try again.")
-      expect(sent).not.toHaveBeenCalled()
-      if (cause === 'Stop') {
-        expect(resumed).not.toHaveBeenCalled()
-        expect(resent).not.toHaveBeenCalled()
-      } else {
-        expect(resumed).toHaveBeenCalledOnce()
-        expect(resent).toHaveBeenCalledOnce()
-        expect(resent.mock.calls[0]?.[0]).toContain(
-          cause === 'timeout'
-            ? 'the person’s fictional original words'
-            : 'the person’s fictional replacement words',
+      if (cause === 'timeout') {
+        expect(said).toBe('sent')
+        expect(reportPluginRefreshError).toHaveBeenCalledExactlyOnceWith(
+          expect.objectContaining({ message: 'Plugin operation did not finish within 1500 ms.' }),
         )
+        expect(sent).toHaveBeenCalledOnce()
+        expect(sent.mock.calls[0]?.[0]).toContain('the person’s fictional original words')
+      } else {
+        expect(said).toBe("Your message wasn't sent. Press Send to try again.")
+        expect(reportPluginRefreshError).not.toHaveBeenCalled()
+        if (cause === 'Stop') expect(sent).not.toHaveBeenCalled()
+        else {
+          expect(sent).toHaveBeenCalledOnce()
+          expect(sent.mock.calls[0]?.[0]).toContain('the person’s fictional replacement words')
+        }
       }
+      expect(oldHandle.close).not.toHaveBeenCalled()
+      expect(resumed).not.toHaveBeenCalled()
+      expect(resent).not.toHaveBeenCalled()
       await new Promise((resolve) => setTimeout(resolve, 0))
       expect(
         events.filter(

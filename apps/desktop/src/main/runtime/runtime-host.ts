@@ -2896,6 +2896,7 @@ export interface RuntimeHostDeps {
   /** The same real controller that makes Settings → Plugins available. */
   plugins?: PluginInstructionSource
   pluginAttachments?: Pick<WorkspacePluginAttachments, 'agent'>
+  reportPluginRefreshError?: (error: unknown) => void
   /**
    * **The instruction files this launch will append, read now** (158) — the profile's own memory,
    * the cwd chain, and the app's own workspace file, each with the text that goes to the model.
@@ -25024,6 +25025,7 @@ export class RuntimeHost implements LiveHost {
             (one) => one.name,
           ) ?? []),
         ]),
+        this.deps.reportPluginRefreshError,
       )
     } catch {
       return runtime
