@@ -224,6 +224,7 @@ describe('provider-owned desktop inputs', () => {
       f.transport.mock.results[0]?.value,
       '/fictional/profile',
       { to: 'no-key' },
+      f.env.signal,
     )
     await key.current()
     expect(f.env.keys.current).toHaveBeenCalledExactlyOnceWith('codex')
@@ -231,6 +232,30 @@ describe('provider-owned desktop inputs', () => {
     expect(f.env.keys.status).toHaveBeenCalledExactlyOnceWith('codex')
     expect(f.env.keys.read).not.toHaveBeenCalled()
   })
+
+  it.each(['app', 'preparation'] as const)(
+    'forwards %s cancellation to the key change operation',
+    async (owner) => {
+      const f = fixture()
+      const app = new AbortController()
+      const preparation = new AbortController()
+      f.env.signal = app.signal
+      const key = f.inputs.codex.home.key
+      if (key === undefined) throw new Error('The key binding is absent')
+      await key.change('/fictional/profile', { to: 'no-key' }, preparation.signal)
+      const args = f.changeKey.mock.calls[0] as unknown as [
+        unknown,
+        string,
+        unknown,
+        AbortSignal,
+      ]
+      expect(args[3].aborted).toBe(false)
+      const [cancelled, other] = owner === 'app' ? [app, preparation] : [preparation, app]
+      cancelled.abort()
+      expect(args[3].aborted).toBe(true)
+      expect(other.signal.aborted).toBe(false)
+    },
+  )
 })
 
 it('reads the bound version services without constructing a second cache', async () => {
