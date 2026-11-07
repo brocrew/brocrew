@@ -3,15 +3,8 @@ import { assertSkillPathsAreReal } from './skill-paths'
 import { flushSkillTree } from './flush-skill-tree'
 import { createHash, randomUUID } from 'node:crypto'
 import { basename, join, resolve } from 'node:path'
-import {
-  errorCode,
-  nodeFs,
-  privateDir,
-  syncFolder,
-  writeAtomically,
-  type RecoveryFs,
-} from '../recovery/files'
-import { copySkillTree, readSkillTree } from '../recovery/trees'
+import { errorCode, nodeFs, syncFolder, writeAtomically, type RecoveryFs } from '../recovery/files'
+import { ordinarySkillTree } from './ordinary-tree'
 import { deriveProviderHome, HOME_FOLDER, providerHomesRoot } from '../runtime/provider-homes'
 import { OFF_SKILLS_DIRNAME, SHARED_SKILLS_DIRNAME, SKILLS_CONVERSION_FILE } from './shared-paths'
 import { RECENT_ACTIVITY_LINES, type SkillImportNotice } from '../../shared/recent-activity'
@@ -29,8 +22,6 @@ interface Receipt {
   name?: string
   keptBoth?: SkillImportNotice
   retained?: boolean
-  sha256?: string
-  startId?: string
   quarantine?: string
 }
 interface Conversion {
@@ -38,7 +29,8 @@ interface Conversion {
   catalogueDone: boolean
   receipts: Receipt[]
 }
-const failure = () => new Error('Skills could not be read.')
+const failure = (path = 'skills conversion record') =>
+  new Error(`${path}: invalid skill path or conversion data`)
 const segment = (name: string) =>
   name !== '' && name !== '.' && name !== '..' && !/[\\/\0]/.test(name)
 const folderName = (name: string) =>
@@ -47,7 +39,6 @@ const folderName = (name: string) =>
     .replace(/[^a-z0-9-]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 64) || 'skill'
-const appStartId = randomUUID()
 const lanes = new Map<string, Promise<unknown>>()
 async function serialized<T>(root: string, run: () => Promise<T>): Promise<T> {
   const prior = lanes.get(root) ?? Promise.resolve()
@@ -58,6 +49,12 @@ async function serialized<T>(root: string, run: () => Promise<T>): Promise<T> {
   } finally {
     if (lanes.get(root) === next) lanes.delete(root)
   }
+}
+
+async function privateDir(path: string, fs: RecoveryFs): Promise<void> {
+  await fs.mkdir(path, { recursive: true, mode: 0o700 })
+  if (!(await fs.stat(path)).isDirectory()) throw new Error(`${path}: not a directory`)
+  await fs.chmod(path, 0o700)
 }
 
 async function exists(path: string, fs: RecoveryFs): Promise<boolean> {
@@ -81,7 +78,6 @@ export class SharedSkillLibrary {
     private readonly fs: RecoveryFs = nodeFs,
     private readonly now = Date.now,
     private readonly platform: NodeJS.Platform = process.platform,
-    private readonly startId: string = appStartId,
   ) {
     this.active = join(userData, SHARED_SKILLS_DIRNAME)
     this.off = join(userData, OFF_SKILLS_DIRNAME)
@@ -97,7 +93,7 @@ export class SharedSkillLibrary {
     return serialized(resolve(this.userData), async () => {
       const parts = path.split('/')
       if (parts.length < 2 || parts.some((part) => !segment(part)) || parts[0]!.startsWith('.'))
-        throw failure()
+        throw new Error(`${path}: invalid relative skill path`)
       await this.folders()
       let parent = this.active
       for (const part of parts.slice(0, -1)) {
@@ -112,14 +108,15 @@ export class SharedSkillLibrary {
   }
   async setEnabled(name: string, enabled: boolean): Promise<void> {
     return serialized(resolve(this.userData), async () => {
-      if (!segment(name) || name.startsWith('.')) throw failure()
+      if (!segment(name) || name.startsWith('.'))
+        throw new Error(`${name}: invalid skill folder name`)
       await this.folders()
       const from = join(enabled ? this.off : this.active, name)
       const to = join(enabled ? this.active : this.off, name)
       await assertSkillPathsAreReal(this.userData, [from, to], this.fs)
-      if (await exists(to, this.fs)) throw failure()
-      const stat = await this.fs.lstat(from)
-      if (!stat.isDirectory() || stat.isSymbolicLink()) throw failure()
+      if (await exists(to, this.fs)) throw new Error(`${to}: already exists`)
+      const stat = await this.fs.stat(from)
+      if (!stat.isDirectory()) throw new Error(`${from}: not a directory`)
       await this.fs.rename(from, to)
       await syncFolder(this.active, this.fs, this.platform)
       await syncFolder(this.off, this.fs, this.platform)
@@ -144,7 +141,7 @@ export class SharedSkillLibrary {
         !segment(parts[2]!) ||
         parts[2]!.startsWith('.')
       )
-        throw failure()
+        throw failure(this.marker)
       // Derive the home from a managed profile id, never from a receipt-supplied path.
       const home = deriveProviderHome(this.userData, {
         profileId: parts[1]!,
@@ -156,29 +153,17 @@ export class SharedSkillLibrary {
       await assertSkillPathsAreReal(this.userData, [original, parent], this.fs)
       if (!receipt.quarantine) {
         receipt.quarantine = randomUUID()
-        receipt.startId = this.startId
         await commit()
       }
       const hidden = join(parent, receipt.quarantine)
       await assertSkillPathsAreReal(this.userData, [hidden], this.fs)
       if (!(await exists(hidden, this.fs)) && (await exists(original, this.fs))) {
-        if ((await readSkillTree(original, this.fs)).sha256 !== receipt.sha256) {
-          // This name now belongs to a different skill. It is imported independently.
-          receipt.retained = false
-          await commit()
-          continue
-        }
         await privateDir(parent, this.fs)
-        // Stamp a retried intent before renaming, even if a prior app recorded it.
-        if (receipt.startId !== this.startId) {
-          receipt.startId = this.startId
-          await commit()
-        }
         // Keep the original and retry next turn if this same-volume move fails.
         try {
           await this.fs.rename(original, hidden)
-        } catch {
-          console.warn('Could not hide a turned-off skill; trying again next turn.')
+        } catch (error) {
+          console.warn(`${original}: ${String(error)}; trying again next turn.`)
           continue
         }
         await syncFolder(join(home, 'skills'), this.fs, this.platform)
@@ -189,16 +174,11 @@ export class SharedSkillLibrary {
         await commit()
         continue
       }
-      if ((await readSkillTree(hidden, this.fs)).sha256 !== receipt.sha256) throw failure()
-      // A later process must observe the published destination before deleting this copy.
-      if (receipt.startId === undefined || receipt.startId === this.startId) continue
       const targets = [join(this.active, receipt.target!), join(this.off, receipt.target!)]
       for (const target of targets) {
         await assertSkillPathsAreReal(this.userData, [target], this.fs)
         if (!(await exists(target, this.fs))) continue
-        if ((await readSkillTree(target, this.fs)).sha256 !== receipt.sha256) continue
         await flushSkillTree(target, this.fs, this.platform, this.userData)
-        if ((await readSkillTree(target, this.fs)).sha256 !== receipt.sha256) throw failure()
         await this.fs.rm(hidden, { recursive: true })
         await syncFolder(parent, this.fs, this.platform)
         receipt.retained = false
@@ -213,9 +193,6 @@ export class SharedSkillLibrary {
       await assertSkillPathsAreReal(this.userData, [this.marker], this.fs)
       const state = await this.readConversion()
       await this.hideRetained(state)
-      const retainedAtStart = state.receipts.filter(
-        (one) => one.retained && one.startId !== undefined && one.startId !== this.startId,
-      )
       const commit = () => writeAtomically(this.marker, `${JSON.stringify(state)}\n`, this.fs)
       const imports = join(this.off, '.imports')
       await assertSkillPathsAreReal(this.userData, [imports], this.fs)
@@ -243,7 +220,7 @@ export class SharedSkillLibrary {
         const stage = join(imports, receipt.stage!)
         if (await exists(stage, this.fs)) {
           await assertSkillPathsAreReal(this.userData, [stage], this.fs)
-          const staged = await readSkillTree(stage, this.fs)
+          const staged = await ordinarySkillTree(stage, this.fs)
           if (
             (await exists(join(this.active, receipt.target!), this.fs)) ||
             (await exists(join(this.off, receipt.target!), this.fs))
@@ -251,11 +228,10 @@ export class SharedSkillLibrary {
             for (const root of [this.active, this.off]) {
               const target = join(root, receipt.target!)
               if (await exists(target, this.fs)) {
-                const stat = await this.fs.lstat(target)
+                const stat = await this.fs.stat(target)
                 if (
                   stat.isDirectory() &&
-                  !stat.isSymbolicLink() &&
-                  (await readSkillTree(target, this.fs)).sha256 === staged.sha256
+                  (await ordinarySkillTree(target, this.fs)).sha256 === staged.sha256
                 ) {
                   await this.fs.rm(stage, { recursive: true, force: true })
                   await syncFolder(imports, this.fs)
@@ -298,17 +274,16 @@ export class SharedSkillLibrary {
         try {
           await make(stage)
           await syncFolder(imports, this.fs)
-          const digest = (await readSkillTree(stage, this.fs)).sha256
+          const digest = (await ordinarySkillTree(stage, this.fs)).sha256
           let identical = false
           for (const root of [this.active, this.off]) {
             for (const name of (await this.fs.readdir(root)).sort()) {
               if (name.startsWith('.')) continue
               const candidate = join(root, name)
-              const stat = await this.fs.lstat(candidate)
+              const stat = await this.fs.stat(candidate)
               if (
                 stat.isDirectory() &&
-                !stat.isSymbolicLink() &&
-                (await readSkillTree(candidate, this.fs)).sha256 === digest
+                (await ordinarySkillTree(candidate, this.fs)).sha256 === digest
               )
                 identical = true
             }
@@ -347,8 +322,7 @@ export class SharedSkillLibrary {
       if (!(await exists(homes, this.fs))) return
       for (const profile of (await this.fs.readdir(homes)).sort()) {
         if (!segment(profile)) continue
-        const profileStats = await this.fs.lstat(join(homes, profile))
-        if (profileStats.isSymbolicLink()) throw failure()
+        const profileStats = await this.fs.stat(join(homes, profile))
         if (!profileStats.isDirectory()) continue
         const sourceRoot = join(homes, profile, legacySharedSkillProvider, 'skills')
         await assertSkillPathsAreReal(this.userData, [sourceRoot], this.fs)
@@ -356,20 +330,18 @@ export class SharedSkillLibrary {
         for (const name of (await this.fs.readdir(sourceRoot)).sort()) {
           if (name.startsWith('.') || !segment(name)) continue
           const source = join(sourceRoot, name)
-          const stat = await this.fs.lstat(source)
-          if (stat.isSymbolicLink()) throw failure()
+          const stat = await this.fs.stat(source)
           if (!stat.isDirectory() || !(await exists(join(source, 'SKILL.md'), this.fs))) continue
-          const before = await readSkillTree(source, this.fs)
+          const before = await ordinarySkillTree(source, this.fs)
           let target: string | undefined
           for (const root of [this.active, this.off]) {
             for (const existing of (await this.fs.readdir(root)).sort()) {
               if (existing.startsWith('.')) continue
               const candidate = join(root, existing)
-              const stat = await this.fs.lstat(candidate)
+              const stat = await this.fs.stat(candidate)
               if (
                 stat.isDirectory() &&
-                !stat.isSymbolicLink() &&
-                (await readSkillTree(candidate, this.fs)).sha256 === before.sha256
+                (await ordinarySkillTree(candidate, this.fs)).sha256 === before.sha256
               )
                 target = candidate
             }
@@ -382,8 +354,7 @@ export class SharedSkillLibrary {
             const copy = async () => {
               const stage = join(imports, randomUUID())
               try {
-                const copied = await copySkillTree(source, stage, this.fs)
-                if (copied.sha256 !== before.sha256) throw failure()
+                await ordinarySkillTree(source, this.fs, stage)
                 await this.fs.rename(stage, target!)
               } finally {
                 await this.fs.rm(stage, { recursive: true, force: true })
@@ -400,37 +371,10 @@ export class SharedSkillLibrary {
               }
             }
           }
-          const directoriesFlushed = await flushSkillTree(
-            target,
-            this.fs,
-            this.platform,
-            this.userData,
-          )
-          let retained = false
+          await flushSkillTree(target, this.fs, this.platform, this.userData)
           if (await exists(source, this.fs)) {
             await assertSkillPathsAreReal(this.userData, [source], this.fs)
-            if (
-              (await readSkillTree(source, this.fs)).sha256 !== before.sha256 ||
-              (await readSkillTree(target, this.fs)).sha256 !== before.sha256
-            )
-              throw failure()
-            const confirmed = retainedAtStart.find(
-              (one) =>
-                one.source.startsWith(`moved/${profile}/${name}/`) &&
-                one.target === chosen &&
-                one.sha256 === before.sha256,
-            )
-            const sameRunRetention = state.receipts.some(
-              (one) =>
-                one.retained &&
-                one.source.startsWith(`moved/${profile}/${name}/`) &&
-                one.sha256 === before.sha256 &&
-                (one.startId === undefined || one.startId === this.startId),
-            )
-            if ((!sameRunRetention && directoriesFlushed) || confirmed) {
-              await this.fs.rm(source, { recursive: true })
-              if (confirmed) confirmed.retained = false
-            } else retained = true
+            await this.fs.rm(source, { recursive: true })
           }
           await syncFolder(sourceRoot, this.fs)
           for (const previous of state.receipts) {
@@ -447,7 +391,6 @@ export class SharedSkillLibrary {
             target: chosen,
             stage: null,
             done: true,
-            ...(retained ? { retained: true, sha256: before.sha256, startId: this.startId } : {}),
             ...(chosen !== folderName(name) && !identical
               ? { keptBoth: collision(key, name, chosen) }
               : {}),
@@ -460,7 +403,7 @@ export class SharedSkillLibrary {
   async recentImports(from: number, to: number): Promise<readonly SkillImportNotice[]> {
     await assertSkillPathsAreReal(this.userData, [this.marker], this.fs)
     if (!(await exists(this.marker, this.fs))) return []
-    const stat = await this.fs.lstat(this.marker)
+    const stat = await this.fs.stat(this.marker)
     const stamp = `${stat.dev}:${stat.ino}:${stat.mtimeMs}:${stat.size}`
     if (this.activityCache?.stamp !== stamp) {
       const state = await this.readConversion()
@@ -491,17 +434,10 @@ export class SharedSkillLibrary {
           typeof r.source !== 'string' ||
           typeof r.done !== 'boolean' ||
           (r.retained !== undefined && typeof r.retained !== 'boolean') ||
-          (r.startId !== undefined &&
-            (typeof r.startId !== 'string' || r.startId.length === 0 || r.startId.length > 128)) ||
           (r.quarantine !== undefined &&
             (typeof r.quarantine !== 'string' || !/^[0-9a-f-]{36}$/.test(r.quarantine))) ||
-          (r.sha256 !== undefined &&
-            (typeof r.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(r.sha256))) ||
           (r.retained === true &&
-            (!r.done ||
-              !r.source.startsWith('moved/') ||
-              r.target === null ||
-              r.sha256 === undefined)) ||
+            (!r.done || !r.source.startsWith('moved/') || r.target === null)) ||
           (r.name !== undefined && typeof r.name !== 'string') ||
           (r.keptBoth !== undefined &&
             (!r.keptBoth ||
@@ -517,7 +453,7 @@ export class SharedSkillLibrary {
       ) ||
       new Set(state.receipts.map((r) => r.source)).size !== state.receipts.length
     )
-      throw failure()
+      throw failure(this.marker)
     return state
   }
 }

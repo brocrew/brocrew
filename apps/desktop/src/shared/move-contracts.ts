@@ -1,9 +1,9 @@
 export interface MoveOffer {
   readonly destination: string
   readonly destinationName: string
-  readonly sourceOrdinal: number
-  readonly sourceGeneration: number
-  readonly sourceDigest: string
+  readonly sourceTurnId?: string
+  /** Older recorded offers named the same message by its ledger position. */
+  readonly sourceOrdinal?: number
 }
 
 export interface MoveOrigin {

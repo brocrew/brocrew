@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { lstat, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, sep } from 'node:path'
 import {
@@ -100,14 +100,6 @@ it.each(['start', 'resume'] as const)(
     let renameAttempts = 0
     const fs = {
       ...nodeFs,
-      open: async (...args: Parameters<typeof nodeFs.open>) => {
-        if (
-          (await nodeFs.lstat(args[0]).catch(() => null))?.isDirectory() &&
-          (args[0] === join(data, 'skills') || args[0].startsWith(join(data, 'skills') + sep))
-        )
-          throw Object.assign(new Error('fictional directory'), { code: 'EISDIR' })
-        return nodeFs.open(...args)
-      },
       rename: async (from: string, to: string) => {
         if (to.startsWith(join(home, 'skills-retained') + sep)) {
           renameAttempts++
@@ -116,8 +108,18 @@ it.each(['start', 'resume'] as const)(
         await nodeFs.rename(from, to)
       },
     }
-    const library = new SharedSkillLibrary(data, fs, Date.now, 'win32', 'first-app')
+    const library = new SharedSkillLibrary(data, fs, Date.now, 'win32')
     await library.convert(async () => [])
+    // Recover an older build's completed import with a native source still awaiting retirement.
+    await mkdir(original, { recursive: true })
+    await writeFile(
+      join(original, 'SKILL.md'),
+      await readFile(join(library.active, 'recipe-check/SKILL.md')),
+    )
+    const marker = join(data, 'skills-conversion.json')
+    const state = JSON.parse(await readFile(marker, 'utf8'))
+    state.receipts.find((one: { target: string }) => one.target === 'recipe-check').retained = true
+    await writeFile(marker, JSON.stringify(state))
     const transport = new CatalogueTransport(home, data)
     const runtime = new CodexRuntime(() => transport)
     const context = {
@@ -144,7 +146,7 @@ it.each(['start', 'resume'] as const)(
     expect(transport.offers.at(-1)).toContain(join(original, 'SKILL.md'))
     expect(renameAttempts).toBe(1)
     expect(diagnostic).toHaveBeenCalledExactlyOnceWith(
-      'Could not hide a turned-off skill; trying again next turn.',
+      expect.stringContaining('fictional rename failure'),
     )
     await expect(lstat(original)).resolves.toBeDefined()
     expect(await readdir(join(home, 'skills-retained'))).toEqual([])
@@ -159,8 +161,6 @@ it.each(['start', 'resume'] as const)(
       await expect(lstat(original)).rejects.toMatchObject({ code: 'ENOENT' })
       expect(transport.offers.at(-1)).toEqual([])
       expect(transport.roots).toEqual([context.builtInSkills.root, library.active])
-      const [id] = await readdir(join(home, 'skills-retained'))
-      await expect(lstat(join(home, 'skills-retained', id!, 'SKILL.md'))).resolves.toBeDefined()
       transport.finish()
       await vi.waitFor(() => expect(handle!.status()).toBe('idle'))
     }

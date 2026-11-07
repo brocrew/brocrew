@@ -1,7 +1,6 @@
 import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
-import { closeSync, constants, fstatSync, lstatSync, readSync } from 'node:fs'
+import { closeSync, constants, fstatSync, statSync, openSync, readSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
-import { openNotThroughALink } from '@brobot2/runtime/provider-home'
 import { BUILT_IN_SKILL_NAMES, type BuiltInSkillName } from '../../shared/built-in-skills'
 import type { TextPackRefusal } from '../../shared/text-pack'
 import type { FactoryTextGiven } from '../runtime/factory-text'
@@ -37,7 +36,7 @@ export type TextPackRead =
 function packFile(path: string): string | 'missing' | 'too-large' {
   let fd: number
   try {
-    fd = openNotThroughALink(path, constants.O_RDONLY)
+    fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK)
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 'missing'
     throw error
@@ -47,9 +46,14 @@ function packFile(path: string): string | 'missing' | 'too-large' {
     if (!stat.isFile()) throw new Error('Not a file.')
     if (stat.size > MOST_BYTES) return 'too-large'
     const bytes = Buffer.alloc(MOST_BYTES + 1)
-    const read = readSync(fd, bytes, 0, bytes.length, 0)
-    if (read > MOST_BYTES) return 'too-large'
-    return bytes.subarray(0, read).toString('utf8')
+    let length = 0
+    while (length < bytes.length) {
+      const read = readSync(fd, bytes, length, bytes.length - length, length)
+      if (read === 0) break
+      length += read
+    }
+    if (length > MOST_BYTES) return 'too-large'
+    return bytes.subarray(0, length).toString('utf8')
   } finally {
     closeSync(fd)
   }
@@ -103,19 +107,9 @@ class Refused extends Error {
   }
 }
 
-/**
- * A folder of the pack, which must be a folder and not a link to one. The check it returns refuses
- * when the folder was replaced since, so a pack is read from the folders it was found to hold.
- * ⚠️ A swap made and undone between the two looks is not seen.
- */
-function heldFolder(path: string): () => void {
-  const seen = lstatSync(path)
-  if (!seen.isDirectory()) throw new Error('Not a folder of the pack.')
-  return () => {
-    const now = lstatSync(path)
-    if (!now.isDirectory() || now.dev !== seen.dev || now.ino !== seen.ino)
-      throw new Error('A folder of the pack changed while it was read.')
-  }
+/** Ordinary folder eligibility, following the person's links. */
+function packFolder(path: string): void {
+  if (!statSync(path).isDirectory()) throw new Error(`${path}: not a folder of the pack`)
 }
 
 function fileIn(folder: string, relative: string): string {
@@ -141,9 +135,8 @@ function packSkills(folder: string, version: string): VerifiedBuiltInSkills {
   }
   const bodies = new Map<string, string>()
   const skills = BUILT_IN_SKILL_NAMES.map((name) => {
-    let still: () => void
     try {
-      still = heldFolder(join(folder, name))
+      packFolder(join(folder, name))
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT')
         throw new Refused({ kind: 'skill-missing', skill: name })
@@ -151,7 +144,6 @@ function packSkills(folder: string, version: string): VerifiedBuiltInSkills {
     }
     const body = fileIn(folder, join(name, 'SKILL.md'))
     if (body === 'missing') throw new Refused({ kind: 'skill-missing', skill: name })
-    still()
     bodies.set(name, body)
     return {
       name,
@@ -195,7 +187,7 @@ export function readTextPack(
   const version = shippedVersion()
   if (version === null) return { kind: 'none' }
   try {
-    const rootStill = heldFolder(folder)
+    packFolder(folder)
     const core = fileIn(folder, 'core.md')
     if (core === 'missing') throw new Refused({ kind: 'core-missing' })
     const every = partUnder(core, 'Core for every agent')
@@ -205,10 +197,12 @@ export function readTextPack(
       throw new Refused({ kind: 'core-block-missing', block: 'coordinator' })
     const service = partUnder(core, 'Service-only addition')
     const skills = packSkills(folder, version)
-    rootStill()
     return { kind: 'read', pack: { folder, core: every, coordinator, service, skills } }
   } catch (error) {
-    const refusal = error instanceof Refused ? error.refusal : { kind: 'unreadable' as const }
+    const refusal =
+      error instanceof Refused
+        ? error.refusal
+        : { kind: 'unreadable' as const, cause: String(error) }
     return { kind: 'refused', folder, refusal }
   }
 }

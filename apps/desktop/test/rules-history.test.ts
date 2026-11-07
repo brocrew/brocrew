@@ -28,7 +28,6 @@ type HistoryWrite = Omit<OwnInstructionsWrite, 'whoWroteIt'> & {
   readonly whoWroteIt: HistoryOrigin
   readonly author?: Author
   readonly expectedVersion?: number
-  readonly currentText?: string
 }
 type HistoryVersion = Omit<OwnInstructionsVersion, 'whoWroteIt'> & {
   readonly whoWroteIt: HistoryOrigin
@@ -218,11 +217,14 @@ describe('standing rules retain their author and can be restored without losing 
     }
   })
 
-  it('refuses a stale version or mismatched current text inside the writer', () => {
-    expect(write('First', { expectedVersion: 0, currentText: '' })?.version).toBe(1)
-    expect(write('Outdated', { expectedVersion: 0, currentText: '' })).toBeNull()
-    expect(write('Mistaken', { expectedVersion: 1, currentText: 'Different' })).toBeNull()
-    expect(store.ownInstructionsOf('lark').versions.map((one) => one.text)).toEqual(['First'])
+  it('refuses a stale version inside the writer', () => {
+    expect(write('First', { expectedVersion: 0 })?.version).toBe(1)
+    expect(write('Outdated', { expectedVersion: 0 })).toBeNull()
+    expect(write('Second', { expectedVersion: 1 })?.version).toBe(2)
+    expect(store.ownInstructionsOf('lark').versions.map((one) => one.text)).toEqual([
+      'Second',
+      'First',
+    ])
   })
 
   it('keeps the content author separately from the person who approved it', () => {
@@ -280,7 +282,6 @@ describe('standing rules retain their author and can be restored without losing 
       said: 'Clarify rules',
       author: { profile: 'lark', name: 'Lark' },
       expectedVersion: 0,
-      currentText: '',
     } as const
     const real = { ...direct, author: { profile: 'wren', name: 'Wren' } }
     expect(write('x'.repeat(OWN_INSTRUCTIONS_CHARS + 1), real)).toBeNull()
@@ -313,7 +314,6 @@ describe('standing rules retain their author and can be restored without losing 
         author: { profile: 'wren', name: 'wren' },
         said: 'Clarify',
         expectedVersion: 0,
-        currentText: '',
       })?.author,
     ).toEqual({ profile: 'wren', name: 'wren' })
   })
@@ -326,7 +326,6 @@ describe('standing rules retain their author and can be restored without losing 
       said: 'Record the change',
       author: { profile: 'wren', name: 'Wren' },
       expectedVersion: 0,
-      currentText: '',
     })
     expect(store.instructionUnread('lark')).toEqual({
       seenThrough: 0,
@@ -346,7 +345,6 @@ describe('standing rules retain their author and can be restored without losing 
       said: 'Clarify the change',
       author: { profile: 'wren', name: 'Wren' },
       expectedVersion: 1,
-      currentText: 'Direct first',
     })
     write('Person edit')
     expect(store.markInstructionsSeen('lark', 1, person)).toBe(true)

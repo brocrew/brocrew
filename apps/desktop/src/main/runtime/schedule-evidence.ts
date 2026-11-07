@@ -1,5 +1,4 @@
 import { recordedScheduleReceiptProvider } from '../providers/definitions'
-import { createHash } from 'node:crypto'
 import type { ScheduleReceipt } from '@brobot2/runtime'
 import type { ScheduleEvidenceRow } from '../db/session-store'
 import { localFields, type LocalZone } from '../../shared/local-time'
@@ -73,7 +72,7 @@ export type ClockEraAt = (at: number) => string
 
 /**
  * **The Mac's own calendar, as the planner reads one** — the zone this app reads off the system
- * (`local-time.ts`). Its version is a digest of that zone's data, so a zone that moves, or whose
+ * (`local-time.ts`). Its version is the serialized zone data, so a zone that moves, or whose
  * rules change, is another version and the planner places a job's time again.
  */
 export function hostCalendar(zone: LocalZone | null): CalendarSource {
@@ -82,7 +81,22 @@ export function hostCalendar(zone: LocalZone | null): CalendarSource {
     version:
       zone === null
         ? 'this-app-zone-data'
-        : createHash('sha256').update(JSON.stringify(zone)).digest('hex').slice(0, 16),
+        : JSON.stringify([
+            zone.before,
+            zone.changes.map((change) => [change.at, change.offset]),
+            zone.rule === null
+              ? null
+              : [
+                  zone.rule.standard,
+                  zone.rule.daylight === null
+                    ? null
+                    : [
+                        zone.rule.daylight.offset,
+                        zone.rule.daylight.starts,
+                        zone.rule.daylight.ends,
+                      ],
+                ],
+          ]),
     monthBase: 0,
     read: (at) => {
       const fields = localFields(at)

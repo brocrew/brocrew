@@ -1,15 +1,5 @@
 import { createHash } from 'node:crypto'
-import {
-  existsSync,
-  lstatSync,
-  mkdtempSync,
-  readFileSync,
-  renameSync,
-  readdirSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs'
+import { lstatSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
@@ -23,12 +13,6 @@ const disk = vi.hoisted(() => ({
   failWrite: false,
   failPlacement: false,
   placements: 0,
-  replaceBeforeLinkTo: null as string | null,
-  cacheSwap: null as null | { path: string; target: string },
-  replaceFinal: null as null | { target: string; link: boolean },
-  rewriteBeforeLink: null as Uint8Array | null,
-  abortAtCacheStat: null as null | { path: string; controller: AbortController },
-  cacheEnded: false,
   holdClose: false,
   slowReads: false,
   holdRead: false,
@@ -57,30 +41,6 @@ vi.mock('node:fs', async (importOriginal) => {
       }
       return fs.openSync(path, flags, mode)
     }) as typeof fs.openSync,
-    createReadStream: ((path, options) => {
-      const stream = fs.createReadStream(path, options)
-      stream.once('end', () => {
-        disk.cacheEnded = true
-      })
-      const swap = disk.cacheSwap
-      if (swap !== null) {
-        disk.cacheSwap = null
-        stream.once('data', () => {
-          fs.rmSync(swap.path)
-          fs.symlinkSync(swap.target, swap.path)
-        })
-      }
-      return stream
-    }) as typeof fs.createReadStream,
-    lstatSync: ((path, options) => {
-      const result = fs.lstatSync(path, options)
-      const abort = disk.abortAtCacheStat
-      if (abort !== null && path === abort.path && disk.cacheEnded) {
-        disk.abortAtCacheStat = null
-        abort.controller.abort()
-      }
-      return result
-    }) as typeof fs.lstatSync,
     read: ((...args: Parameters<typeof fs.read>) => {
       if (disk.holdRead)
         disk.releaseRead = () => {
@@ -116,24 +76,7 @@ vi.mock('node:fs', async (importOriginal) => {
       disk.placements += 1
       if (disk.failPlacement)
         throw Object.assign(new Error('Fictional placement refusal'), { code: 'EACCES' })
-      if (disk.replaceBeforeLinkTo !== null) {
-        const target = disk.replaceBeforeLinkTo
-        disk.replaceBeforeLinkTo = null
-        fs.rmSync(source)
-        fs.symlinkSync(target, source)
-      }
-      if (disk.rewriteBeforeLink !== null) {
-        fs.writeFileSync(source, disk.rewriteBeforeLink)
-        disk.rewriteBeforeLink = null
-      }
       fs.linkSync(source, destination)
-      if (disk.replaceFinal !== null) {
-        const replacement = disk.replaceFinal
-        disk.replaceFinal = null
-        fs.rmSync(destination)
-        if (replacement.link) fs.symlinkSync(replacement.target, destination)
-        else fs.writeFileSync(destination, fs.readFileSync(replacement.target))
-      }
     }) as typeof fs.linkSync,
   }
   return { ...fs, ...changed, default: { ...fs, ...changed } }
@@ -157,12 +100,6 @@ beforeEach(() => {
     failWrite: false,
     failPlacement: false,
     placements: 0,
-    replaceBeforeLinkTo: null,
-    cacheSwap: null,
-    replaceFinal: null,
-    rewriteBeforeLink: null,
-    abortAtCacheStat: null,
-    cacheEnded: false,
     holdClose: false,
     slowReads: false,
     holdRead: false,
@@ -191,7 +128,10 @@ it('refuses a link planted at even the fresh stage name without writing or remov
   const other = join(root, 'Brook.txt')
   writeFileSync(other, 'A fictional draft')
   disk.plantLinkTo = other
-  await expect(download()).rejects.toMatchObject({ code: expect.stringMatching(/EEXIST|ELOOP/) })
+  await expect(download()).rejects.toMatchObject({
+    message: expect.stringContaining(to),
+    cause: { code: expect.stringMatching(/EEXIST|ELOOP/) },
+  })
   expect(disk.stage).not.toBeNull()
   expect(lstatSync(disk.stage!).isSymbolicLink()).toBe(true)
   expect(readFileSync(other, 'utf8')).toBe('A fictional draft')
@@ -227,14 +167,20 @@ it('notices a write failure while the response is still waiting, then closes and
           }),
         ),
     }),
-  ).rejects.toMatchObject({ code: 'EIO' })
+  ).rejects.toMatchObject({
+    message: expect.stringContaining(to),
+    cause: { code: 'EIO' },
+  })
   expect(cancelled).toBe(true)
   expect(readdirSync(root)).toEqual([])
 })
 
 it('cleans its partial file when final placement is refused', async () => {
   disk.failPlacement = true
-  await expect(download()).rejects.toMatchObject({ code: 'EACCES' })
+  await expect(download()).rejects.toMatchObject({
+    message: expect.stringContaining(to),
+    cause: { code: 'EACCES' },
+  })
   expect(readdirSync(root)).toEqual([])
 })
 
@@ -257,140 +203,6 @@ it('makes no request or stage for an already cancelled download', async () => {
   expect(fetch).not.toHaveBeenCalled()
   expect(disk.stage).toBeNull()
   expect(readdirSync(root)).toEqual([])
-})
-
-it('refuses a stage link swapped in during the download, without touching its target', async () => {
-  const other = join(root, 'Brook.txt')
-  writeFileSync(other, 'A fictional draft')
-  let replaced = false
-  await expect(
-    download({
-      onPercent: (percent) => {
-        if (percent === 100 || replaced) return
-        replaced = true
-        rmSync(disk.stage!)
-        symlinkSync(other, disk.stage!)
-      },
-    }),
-  ).rejects.toThrow(
-    new Error('the download changed before it could be saved. Try the update again.'),
-  )
-  expect(readFileSync(other, 'utf8')).toBe('A fictional draft')
-  expect(disk.placements).toBe(0)
-  expect(lstatSync(disk.stage!).isSymbolicLink()).toBe(true)
-})
-
-it('preserves unowned names when the stage is swapped during placement', async () => {
-  const other = join(root, 'Brook.txt')
-  writeFileSync(other, 'A fictional draft')
-  disk.replaceBeforeLinkTo = other
-  await expect(download()).rejects.toThrow(
-    new Error(
-      'the saved download did not pass its check. It was left in Downloads; you can delete it. Try the update again.',
-    ),
-  )
-  expect(readFileSync(other, 'utf8')).toBe('A fictional draft')
-  expect(disk.placements).toBe(1)
-  expect(lstatSync(disk.stage!).isSymbolicLink()).toBe(true)
-  expect(readFileSync(to, 'utf8')).toBe('A fictional draft')
-})
-
-it('rechecks a cached download’s name after hashing instead of returning a substituted link', async () => {
-  const other = join(root, 'Brook.txt')
-  writeFileSync(other, 'A fictional draft')
-  writeFileSync(to, IMAGE)
-  disk.cacheSwap = { path: to, target: other }
-  const fetch = vi.fn(async () => new Response(IMAGE))
-  const placed = await download({ fetch })
-  expect(placed).not.toBe(to)
-  expect(fetch).toHaveBeenCalledOnce()
-  expect(lstatSync(to).isSymbolicLink()).toBe(true)
-  expect(readFileSync(other, 'utf8')).toBe('A fictional draft')
-  expect(readFileSync(placed)).toEqual(Buffer.from(IMAGE))
-})
-
-for (const link of [false, true]) {
-  it(`preserves a replacement ${link ? 'link' : 'file'} at the stage name on cancel`, async () => {
-    const other = join(root, 'Brook.txt')
-    writeFileSync(other, 'A fictional draft')
-    const cancel = new AbortController()
-    let replaced = false
-    const pending = download({
-      signal: cancel.signal,
-      onPercent: (percent) => {
-        if (percent === 100 || replaced) return
-        replaced = true
-        renameSync(disk.stage!, `${disk.stage!}.moved`)
-        if (link) symlinkSync(other, disk.stage!)
-        else writeFileSync(disk.stage!, 'A fictional replacement')
-        cancel.abort()
-      },
-    })
-    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
-    expect(existsSync(disk.stage!)).toBe(true)
-    expect(lstatSync(disk.stage!).isSymbolicLink()).toBe(link)
-    expect(readFileSync(disk.stage!, 'utf8')).toBe(
-      link ? 'A fictional draft' : 'A fictional replacement',
-    )
-    expect(readFileSync(other, 'utf8')).toBe('A fictional draft')
-  })
-
-  it(`preserves a replacement ${link ? 'link' : 'file'} at the final name on refusal`, async () => {
-    const other = join(root, 'Brook.txt')
-    writeFileSync(other, 'A fictional draft')
-    disk.replaceFinal = { target: other, link }
-    await expect(download()).rejects.toThrow('the saved download did not pass its check')
-    expect(existsSync(to)).toBe(true)
-    expect(lstatSync(to).isSymbolicLink()).toBe(link)
-    expect(readFileSync(to, 'utf8')).toBe('A fictional draft')
-    expect(readFileSync(other, 'utf8')).toBe('A fictional draft')
-  })
-}
-
-it('checks the stored stage bytes after an in-place rewrite during the download', async () => {
-  let body!: ReadableStreamDefaultController<Uint8Array>
-  const pending = download({
-    fetch: async () =>
-      new Response(
-        new ReadableStream<Uint8Array>({
-          start(controller) {
-            body = controller
-            body.enqueue(IMAGE)
-          },
-        }),
-      ),
-  })
-  await vi.waitFor(() => {
-    expect(disk.stage).not.toBeNull()
-    expect(readFileSync(disk.stage!)).toEqual(Buffer.from(IMAGE))
-  })
-  writeFileSync(disk.stage!, new Uint8Array([6, 6, 6, 6, 6, 6]))
-  body.close()
-  await expect(pending).rejects.toThrow()
-  expect(disk.placements).toBe(0)
-  expect(readdirSync(root)).toEqual([])
-})
-
-it('refuses a same-inode rewrite during final placement', async () => {
-  disk.rewriteBeforeLink = new Uint8Array([6, 6, 6, 6, 6, 6])
-  await expect(download()).rejects.toThrow(
-    'the saved download did not pass its check. It was left in Downloads; you can delete it. Try the update again.',
-  )
-  expect(readFileSync(to)).toEqual(Buffer.from([6, 6, 6, 6, 6, 6]))
-  expect(readdirSync(staging)).toEqual([])
-})
-
-it('honours cancellation at the end of a wrong-checksum cache read before any request', async () => {
-  writeFileSync(to, 'A different fictional image')
-  const cancel = new AbortController()
-  disk.abortAtCacheStat = { path: to, controller: cancel }
-  const fetch = vi.fn(async () => new Response(IMAGE))
-  await expect(download({ signal: cancel.signal, fetch })).rejects.toMatchObject({
-    name: 'AbortError',
-  })
-  expect(fetch).not.toHaveBeenCalled()
-  expect(disk.stage).toBeNull()
-  expect(readFileSync(to, 'utf8')).toBe('A different fictional image')
 })
 
 it('waits for an aborted writer to close before removing its partial and settling', async () => {

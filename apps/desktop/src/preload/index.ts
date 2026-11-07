@@ -648,9 +648,6 @@ const runtime: RuntimeBridge = Object.freeze({
       selection: {
         confirmed: input.selection.confirmed,
         key: input.selection.key,
-        fingerprint: input.selection.fingerprint,
-        indexState: input.selection.indexState,
-        indexFingerprint: input.selection.indexFingerprint,
       },
     }),
   undoAgentMethod: (input: Parameters<RuntimeBridge['undoAgentMethod']>[0]) =>
@@ -706,7 +703,6 @@ const runtime: RuntimeBridge = Object.freeze({
       entry: input.entry,
       act: input.act,
       text: input.text,
-      fingerprint: input.fingerprint,
       confirmed: input.confirmed,
     }),
   undoAgentMemory: (input: MemoryUndoAsked) =>

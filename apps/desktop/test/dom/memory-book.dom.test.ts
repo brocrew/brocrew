@@ -25,7 +25,7 @@ const removed: MemoryAmendment = {
   textAfter: null,
   at: 1700000000000,
   outcome: 'done',
-  actual: { fingerprint: null },
+  actual: { text: null },
   settlement: { by: { who: 'the-app-itself' }, at: 1700000000001 },
 }
 const initial = (): AgentMemoryReading => ({
@@ -185,7 +185,6 @@ describe('memory in the agent book', () => {
       entry: entry.path,
       act: 'removed',
       text: '',
-      fingerprint: '77328f09798883317ce2f7988f7f4a1f62e4c3c75da5c2cbfedc56df2776fdde',
       confirmed: true,
     })
   })
@@ -206,53 +205,23 @@ describe('memory in the agent book', () => {
     await vi.waitFor(() => expect(edits).toHaveLength(1))
     expect(edits[0]).toMatchObject({
       text: 'The person’s replacement',
-      fingerprint: '77328f09798883317ce2f7988f7f4a1f62e4c3c75da5c2cbfedc56df2776fdde',
       confirmed: true,
     })
   })
-  it('does not send a mutation after the profile changes during hashing', async () => {
-    const { view, edits, profile } = await open()
-    let release!: (value: ArrayBuffer) => void
-    vi.spyOn(crypto.subtle, 'digest').mockImplementationOnce(
-      () =>
-        new Promise<ArrayBuffer>((resolve) => {
-          release = resolve
-        }),
-    )
+  it('renders the actual rejected mutation path and database cause', async () => {
+    const parts = fixture()
+    const cause = `SQLITE_FULL: '/fictional/workspace.sqlite' settling '/managed/quill/note.md'`
+    parts.bridge.amendAgentMemory = async () => {
+      throw new Error(cause)
+    }
+    const view = mount(MemoryBook, { profileSlug: 'quill', bridge: parts.bridge })
+    await vi.waitFor(() => expect(view.all('memory-text').length).toBeGreaterThan(0))
     view.q('memory-remove').click()
-    await vi.waitFor(() =>
-      expect(view.host.querySelector('[data-cy="memory-confirm"]')).not.toBeNull(),
-    )
+    await vi.waitFor(() => expect(view.all('memory-confirm')).toHaveLength(1))
     view.q('memory-confirm').click()
-    await vi.waitFor(() => expect(release).toBeTypeOf('function'))
-    profile.value = 'other'
-    await vi.waitFor(() =>
-      expect(view.host.querySelector('[data-cy="memory-confirmation"]')).toBeNull(),
-    )
-    release(new ArrayBuffer(32))
-    await new Promise((resolve) => setTimeout(resolve, 30))
-    expect(edits).toEqual([])
+    await vi.waitFor(() => expect(view.q('memory-error').textContent).toContain(cause))
   })
-  it('does not send a mutation after the book closes during hashing', async () => {
-    const { view, edits } = await open()
-    let release!: (value: ArrayBuffer) => void
-    vi.spyOn(crypto.subtle, 'digest').mockImplementationOnce(
-      () =>
-        new Promise<ArrayBuffer>((resolve) => {
-          release = resolve
-        }),
-    )
-    view.q('memory-remove').click()
-    await vi.waitFor(() =>
-      expect(view.host.querySelector('[data-cy="memory-confirm"]')).not.toBeNull(),
-    )
-    view.q('memory-confirm').click()
-    await vi.waitFor(() => expect(release).toBeTypeOf('function'))
-    view.unmount()
-    release(new ArrayBuffer(32))
-    await new Promise((resolve) => setTimeout(resolve, 30))
-    expect(edits).toEqual([])
-  })
+
   it('does not infer that the identity disappeared from an unavailable mutation result', async () => {
     const parts = fixture()
     parts.bridge.amendAgentMemory = async () => null

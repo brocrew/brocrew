@@ -158,7 +158,7 @@ async function save() {
       profileId,
       text: draft.value,
       why: why.value,
-      ...baseline.value,
+      expectedVersion: baseline.value.expectedVersion,
     })
     if (generation !== epoch) return
     if (result == null || result.profile !== profileId) throw new Error('Notes not saved')

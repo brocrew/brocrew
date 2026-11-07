@@ -2331,6 +2331,7 @@ export function derivePieces(
                   text: event.line,
                   by: event.by,
                   at: entry.at,
+                  revision: entry.ordinal,
                   ...theWaitItMarks(event),
                 },
               }

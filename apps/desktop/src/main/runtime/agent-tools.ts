@@ -4857,7 +4857,6 @@ const notesReadQuery = z
 const notesWriteQuery = z
   .object({
     current_version: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-    current_text: notesTextQuery,
     notes: notesTextQuery,
     why: notesTextQuery.refine((value) => value.trim() !== '', OWN_NOTES_REASON_PROBLEM),
   })
@@ -4867,7 +4866,6 @@ const rulesWriteQuery = z
   .object({
     agent: z.string().refine(isPathSegment, PATH_SEGMENT_RULE),
     current_version: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-    current_rules: z.string().max(OWN_INSTRUCTIONS_CHARS),
     rules: z.string().max(OWN_INSTRUCTIONS_CHARS),
     why: z
       .string()
@@ -10073,16 +10071,13 @@ export function agentToolsFor(
       {
         name: 'write_agent_rules' as const,
         description:
-          "Save another agent's complete standing rules. Only the person's own BroBot conversation may do this; helper conversations and self-targets are refused. First read_agent_rules, then supply its exact version and full text, the complete replacement, and why. The host refuses a stale baseline. The saved version names its author and reason, applies from that agent's next start, and the person can undo it.",
+          "Save another agent's complete standing rules. Only the person's own BroBot conversation may do this; helper conversations and self-targets are refused. First read_agent_rules, then supply its exact version, the complete replacement, and why. The host refuses a stale baseline. The saved version names its author and reason, applies from that agent's next start, and the person can undo it.",
         input: {
           agent: rulesWriteQuery.shape.agent.describe(
             'The profile name of the agent whose standing rules to replace.',
           ),
           current_version: rulesWriteQuery.shape.current_version.describe(
             'The current version returned by read_agent_rules. Zero means no rules have been saved.',
-          ),
-          current_rules: rulesWriteQuery.shape.current_rules.describe(
-            'The complete current text returned by read_agent_rules. Use empty text when no rules have been saved.',
           ),
           rules: rulesWriteQuery.shape.rules.describe(
             `The complete replacement rules, at most ${OWN_INSTRUCTIONS_CHARS} characters. Empty text saves an empty version.`,
@@ -10109,7 +10104,6 @@ export function agentToolsFor(
               {
                 about: value.agent,
                 expectedVersion: value.current_version,
-                currentText: value.current_rules,
                 text: value.rules,
                 why: value.why,
               },
@@ -10149,13 +10143,10 @@ export function agentToolsFor(
       {
         name: 'write_own_notes' as const,
         description:
-          "Replace your own complete notes. First read_own_notes, then supply its exact version and full text, the complete replacement, and why. You can write only your own profile's notes. The host refuses a stale baseline. Notes are limited to 4000 characters, load after the standing rules at each start, and the person can edit or undo them in Agent knowledge. All conversations of your profile share this page.",
+          "Replace your own complete notes. First read_own_notes, then supply its exact version, the complete replacement, and why. You can write only your own profile's notes. The host refuses a stale baseline. Notes are limited to 4000 characters, load after the standing rules at each start, and the person can edit or undo them in Agent knowledge. All conversations of your profile share this page.",
         input: {
           current_version: notesWriteQuery.shape.current_version.describe(
             'The current version returned by read_own_notes. Zero means no notes have been saved.',
-          ),
-          current_text: notesWriteQuery.shape.current_text.describe(
-            'The complete current text returned by read_own_notes. Use empty text when no notes have been saved.',
           ),
           notes: notesWriteQuery.shape.notes.describe(
             'The complete replacement, at most 4000 characters. Empty text saves an empty version.',
@@ -10182,7 +10173,6 @@ export function agentToolsFor(
               me,
               {
                 expectedVersion: value.current_version,
-                currentText: value.current_text,
                 text: value.notes,
                 why: value.why,
               },

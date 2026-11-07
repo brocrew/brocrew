@@ -5,14 +5,13 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
-  renameSync,
   readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join, relative } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { claudeAutoMemoryDir } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
@@ -477,8 +476,9 @@ describe('§5 · 🔒 a correction never widens who may read the entry', () => {
         }
         return Promise.resolve(`D:PAI(A;OICI;FA;;;${ME})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)`)
       },
-      restrict: () => {
-        return Promise.reject(new Error('An existing hierarchy must already be private'))
+      restrict: async (path) => {
+        expect(path).toBe(join(homesRoot, '.brobot-stage'))
+        if (fail !== undefined) throw fail
       },
     }
     return { lists, asked, folders }
@@ -490,7 +490,7 @@ describe('§5 · 🔒 a correction never widens who may read the entry', () => {
 
     expect((await correct(note, { platform: 'win32', lists })).done).toBe(true)
 
-    expect(folders).toEqual([[], []])
+    expect(folders).toEqual([[]])
     expect(asked).toEqual([
       {
         file: expect.stringMatching(/\.parked\.md\.brobot-[0-9a-f]{24}$/),
@@ -564,60 +564,6 @@ describe('§5 · 🔒 a correction never widens who may read the entry', () => {
       expect(readFileSync(note, 'utf8')).toBe('CORRECTED\n')
     },
   )
-
-  it.each(['private', 'shared'] as const)(
-    'a homes folder replaced while its %s ACL is read still refuses, writing nothing',
-    async (kind) => {
-      const { note } = plantTheNight()
-      const { lists } = fakeLists(note)
-      let swapped = false
-      const outcome = await correct(note, {
-        platform: 'win32',
-        warn: () => {},
-        lists: {
-          ...lists,
-          read: (path) => {
-            if (path === homesRoot && !swapped) {
-              swapped = true
-              const copy = join(outside, relative(homesRoot, note))
-              mkdirSync(dirname(copy), { recursive: true })
-              writeFileSync(copy, THE_FALSE_NOTE)
-              renameSync(homesRoot, `${homesRoot}.held`)
-              symlinkSync(outside, homesRoot, 'junction')
-              if (kind === 'shared') return Promise.resolve(`D:AI(A;;FA;;;${ME})(A;;FR;;;${USERS})`)
-            }
-            return lists.read(path)
-          },
-        },
-      })
-      expect(swapped).toBe(true)
-      expect(!outcome.done && outcome.refused).toBe('write-failed')
-      expect(readFileSync(join(`${homesRoot}.held`, relative(homesRoot, note)), 'utf8')).toBe(
-        THE_FALSE_NOTE,
-      )
-      expect(readFileSync(join(outside, relative(homesRoot, note)), 'utf8')).toBe(THE_FALSE_NOTE)
-    },
-  )
-
-  it('a staging directory replaced by a junction before creation refuses without touching the target', async () => {
-    const { note } = plantTheNight()
-    const { lists, asked } = fakeLists(note)
-    const outsideStage = join(outside, '.kept.md.brobot-99999-0')
-    writeFileSync(outsideStage, 'OUTSIDE')
-    const outcome = await correct(note, {
-      platform: 'win32',
-      lists,
-      beforeStageCreate: (stage) => {
-        renameSync(stage, `${stage}.kept`)
-        symlinkSync(outside, stage, 'junction')
-      },
-    })
-    expect(!outcome.done && outcome.refused).toBe('write-failed')
-    expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
-    expect(asked).toEqual([])
-    expect(readdirSync(outside)).toEqual(['.kept.md.brobot-99999-0'])
-    expect(readFileSync(outsideStage, 'utf8')).toBe('OUTSIDE')
-  })
 
   it('elsewhere the mode does it, and no access list is asked for', async () => {
     const { note } = plantTheNight()

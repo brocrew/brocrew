@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { providerSchema } from '@brobot2/shared'
 import type { AppDatabase } from './connection'
 import type { ActedBy } from '../../shared/who-did-it'
@@ -11,8 +10,6 @@ import type {
 } from '../../shared/agent-memory'
 
 const validTime = (value: number) => Number.isSafeInteger(value) && value >= 0
-const hash = (text: string | null) =>
-  text === null ? null : createHash('sha256').update(text).digest('hex')
 
 export function validMemoryIntent(said: MemoryAmendmentWrite, at: number): boolean {
   const text = (value: unknown) =>
@@ -44,32 +41,36 @@ export function validMemoryIntent(said: MemoryAmendmentWrite, at: number): boole
 /** A reversal cannot adopt external or unreadable bytes as this app's work. */
 export function knownMemorySource(source: MemoryAmendment, before: string | null): boolean {
   if (source.outcome === 'pending' || source.outcome === 'unchanged') return false
-  if (source.actual === undefined)
-    return source.outcome !== 'partial' && before === source.textAfter
-  const actual = memoryObservation(source.actual)
-  return (
-    actual !== null &&
-    !actual.unreadable &&
-    actual.fingerprint === hash(before) &&
-    (actual.fingerprint === hash(source.textBefore) ||
-      actual.fingerprint === hash(source.textAfter))
-  )
+  const actual = source.actual
+  if (actual?.unreadable) return false
+  // Completed legacy history has recorded before/after text, even without an ordinary observation.
+  if (actual?.text === undefined) return source.outcome !== 'partial' && before === source.textAfter
+  return actual.text === before && (before === source.textBefore || before === source.textAfter)
 }
 
 export function memoryObservation(value: unknown): MemoryObservation | null {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return null
-  const one = value as Record<string, unknown>
+  const one = { ...(value as Record<string, unknown>) }
+  if (one.text === undefined && 'fingerprint' in one)
+    return one.unreadable === true ? { unreadable: true } : {}
+  // The existing SQL envelope still requires this inert member; it is not an observation.
+  delete one.fingerprint
+  if (one.text === undefined && Object.keys(one).length === 0) return {}
   if (
-    Object.keys(one).some((key) => key !== 'fingerprint' && key !== 'unreadable') ||
-    (one.fingerprint !== null &&
-      (typeof one.fingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(one.fingerprint))) ||
+    Object.keys(one).some((key) => key !== 'text' && key !== 'unreadable' && key !== 'cause') ||
+    (one.text !== null &&
+      (typeof one.text !== 'string' ||
+        Buffer.byteLength(one.text) > 65536 ||
+        Buffer.from(one.text, 'utf8').toString('utf8') !== one.text)) ||
     (one.unreadable !== undefined && one.unreadable !== true) ||
-    (one.unreadable === true && one.fingerprint !== null)
+    (one.unreadable === true && one.text !== null) ||
+    (one.cause !== undefined && (typeof one.cause !== 'string' || one.cause.length > 8192))
   )
     return null
   return {
-    fingerprint: one.fingerprint as string | null,
+    text: one.text as string | null,
     ...(one.unreadable === true ? { unreadable: true } : {}),
+    ...(one.cause === undefined ? {} : { cause: one.cause as string }),
   }
 }
 
@@ -97,7 +98,7 @@ export function createMemoryRecoveryStore(db: AppDatabase, now: () => number = D
   ): boolean =>
     db.transaction(() => {
       const actual = memoryObservation(input)
-      if (actual === null) return false
+      if (actual === null || actual.text === undefined) return false
       const row = db
         .prepare(
           `SELECT text_before, text_after FROM identity_memory_amendment
@@ -107,13 +108,14 @@ export function createMemoryRecoveryStore(db: AppDatabase, now: () => number = D
       if (row === undefined) return false
       const at = now()
       if (!validTime(at)) return false
-      const outcome: MemoryOutcome = actual.unreadable
-        ? 'partial'
-        : actual.fingerprint === hash(row.text_before)
-          ? 'unchanged'
-          : actual.fingerprint === hash(row.text_after)
-            ? 'done'
-            : 'partial'
+      const outcome: MemoryOutcome =
+        actual.unreadable || actual.text === undefined
+          ? 'partial'
+          : actual.text === row.text_before
+            ? 'unchanged'
+            : actual.text === row.text_after
+              ? 'done'
+              : 'partial'
       return (
         db
           .prepare(
@@ -121,8 +123,14 @@ export function createMemoryRecoveryStore(db: AppDatabase, now: () => number = D
       SET outcome = ?, actual = ?, settled_by = ?, settled_at = ?
       WHERE identity_id = ? AND id = ? AND outcome = 'pending'`,
           )
-          .run(outcome, JSON.stringify(actual), JSON.stringify(observer), at, identity, id)
-          .changes === 1
+          .run(
+            outcome,
+            JSON.stringify({ ...actual, fingerprint: null }),
+            JSON.stringify(observer),
+            at,
+            identity,
+            id,
+          ).changes === 1
       )
     })()
   return {

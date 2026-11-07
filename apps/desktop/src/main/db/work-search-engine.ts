@@ -1,6 +1,5 @@
 import type { PieceRow } from '../../shared/task-contracts'
 import Database from 'better-sqlite3'
-import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import {
   clippedWorkText,
@@ -26,7 +25,7 @@ const point = z.object({ at: z.number().finite(), id: z.string().min(1).max(200)
 const cursorSchema = z
   .object({
     version: z.literal(1),
-    query: z.string().length(64),
+    query: z.string().min(1).max(1024),
     high: point,
     after: point.nullable(),
   })
@@ -64,9 +63,7 @@ export class WorkSearchEngine {
     if (!parsed.success) return { ok: false, reason: 'invalid' }
     const query = parsed.data
     const words = searchWords(query.words)
-    const fingerprint = createHash('sha256')
-      .update(JSON.stringify([caller, query.scope, query.state ?? null, words, query.limit]))
-      .digest('hex')
+    const queryKey = JSON.stringify([caller, query.scope, query.state ?? null, words, query.limit])
     let cursor: z.infer<typeof cursorSchema> | null = null
     if (query.cursor !== undefined) {
       try {
@@ -74,7 +71,7 @@ export class WorkSearchEngine {
           JSON.parse(Buffer.from(query.cursor, 'base64url').toString('utf8')),
         )
         if (
-          cursor.query !== fingerprint ||
+          cursor.query !== queryKey ||
           (cursor.after !== null &&
             (cursor.after.at > cursor.high.at ||
               (cursor.after.at === cursor.high.at && cursor.after.id > cursor.high.id)))
@@ -86,7 +83,7 @@ export class WorkSearchEngine {
     }
     this.db.exec('BEGIN')
     try {
-      const page = this.page(caller, query, words, fingerprint, cursor, checkpoint)
+      const page = this.page(caller, query, words, queryKey, cursor, checkpoint)
       this.db.exec('COMMIT')
       return { ok: true, page }
     } catch {
@@ -99,7 +96,7 @@ export class WorkSearchEngine {
     caller: string,
     query: z.output<typeof workSearchQuery>,
     words: readonly string[],
-    fingerprint: string,
+    queryKey: string,
     cursor: z.infer<typeof cursorSchema> | null,
     checkpoint?: (result: WorkSearchResult) => void,
   ): WorkSearchPage {
@@ -134,7 +131,7 @@ export class WorkSearchEngine {
     const after = cursor?.after ?? null
     const continuation = (through: Point | null) =>
       Buffer.from(
-        JSON.stringify({ version: 1, query: fingerprint, high: head, after: through }),
+        JSON.stringify({ version: 1, query: queryKey, high: head, after: through }),
       ).toString('base64url')
     checkpoint?.({
       ok: true,

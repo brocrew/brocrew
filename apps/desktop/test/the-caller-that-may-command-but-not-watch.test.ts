@@ -628,8 +628,9 @@ describe('340 · a session an agent may drive and may not decide for', () => {
         () => providerEchoed(sessionId, 'AFTER THE RELEASE'),
         'the turn after the release',
       )
-      // ⛔ …while the window that let go is a stranger again, which is the axis that DOES move.
-      expect(await refusalOf(() => host.send(sessionId, 'not yours', one))).toBe(HELD_BY_NOBODY)
+      // A person command never claims the released stream.
+      await host.send(sessionId, 'PERSON AFTER RELEASE', two)
+      expect(host.unclaimedSessions().map((entry) => entry.sessionId)).toEqual([sessionId])
     })
 
     it('⛔ a second window may take it over, and that still does not make anyone else a commander', async () => {

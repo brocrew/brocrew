@@ -472,7 +472,6 @@ export interface OwnInstructionsWrite {
   readonly author?: RulesAuthor
   /** When supplied, both comparisons are made in the version allocation transaction. */
   readonly expectedVersion?: number
-  readonly currentText?: string
   /** The identity the rules are about. Folded by the store, as every other slug argument is. */
   readonly profileSlug: string
   /** ⛔ **Verbatim, and `''` is *take them away*.** Bounded by {@link OWN_INSTRUCTIONS_CHARS}. */

@@ -713,6 +713,39 @@ describe('§2 · every time the app says is the Mac’s, in the person’s own l
     expect(hostCalendar(null).version).not.toBe(hostCalendar(Z_UTC).version)
   })
 
+  it('persists the complete calendar revision across restart and distinguishes transition and rule changes', () => {
+    const zone: LocalZone = {
+      ...Z_UTC,
+      changes: Array.from({ length: 400 }, (_, i) => ({
+        at: Date.UTC(1800 + i, 0, 1),
+        offset: (i % 2) * 3_600_000,
+      })),
+      rule: {
+        standard: 0,
+        daylight: {
+          offset: 3_600_000,
+          starts: { month: 3, week: 5, weekday: 0, time: 7_200_000 },
+          ends: { month: 10, week: 5, weekday: 0, time: 7_200_000 },
+        },
+      },
+    }
+    const version = hostCalendar(zone).version
+    expect(version.length).toBeLessThanOrEqual(16_384)
+    expect(hostCalendar(JSON.parse(JSON.stringify(zone))).version).toBe(version)
+    expect(
+      hostCalendar({
+        ...zone,
+        changes: [
+          ...zone.changes.slice(0, -1),
+          { at: zone.changes.at(-1)!.at + 1, offset: zone.changes.at(-1)!.offset },
+        ],
+      }).version,
+    ).not.toBe(version)
+    expect(hostCalendar({ ...zone, rule: null }).version).not.toBe(version)
+    expect(hostCalendar({ ...zone, before: 1 }).version).not.toBe(version)
+    expect(JSON.parse(version)[1]).toHaveLength(400)
+  })
+
   it('the time "Since you were last here" starts, the reading pane date and a Codex export name say the Mac time', async () => {
     const to = Date.UTC(2026, 9, 1, 17, 0)
     const sinceSaid = (): string =>

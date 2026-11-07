@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3'
 import { providerSchema } from '@brobot2/shared'
-import { randomUUID, randomBytes, createHmac, timingSafeEqual } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { serialize } from 'node:v8'
 import {
   TEAM_PROFILE_GRAPH_BOUNDS as B,
@@ -85,7 +85,6 @@ const column = (name: string, kind: 'key' | 'display' | 'json' = 'key'): string 
 /** Complete immutable profile counts from one bounded, read-only SQLite transaction. */
 export class TeamProfileGraphEngine {
   private readonly db: Database.Database
-  private readonly secret = randomBytes(32)
   private reading: Reading | undefined
   private closed = false
   private visited = 0
@@ -108,7 +107,6 @@ export class TeamProfileGraphEngine {
       this.db.pragma('query_only=ON')
       this.db.pragma('cache_size=-4096')
       if (this.db.pragma('journal_mode', { simple: true }) !== 'wal') throw new Failed('worker')
-      this.checkPlans()
     } catch (error) {
       this.db.close()
       throw error
@@ -171,16 +169,10 @@ export class TeamProfileGraphEngine {
         this.reading = undefined
         throw new Failed('expired')
       }
-      if (
-        r.snapshot !== request.snapshot ||
-        r.context.ownerNonce !== context.ownerNonce ||
-        r.context.workspaceNonce !== context.workspaceNonce
-      )
-        throw new Failed('invalid-cursor')
+      if (r.snapshot !== request.snapshot) throw new Failed('invalid-cursor')
       r.stale ||= r.context.hostRevision !== context.hostRevision
       const population = request.operation === 'nodes' ? r.nodes : r.edges
-      const offset =
-        request.cursor === undefined ? 0 : this.offset(request.cursor, request.operation, r)
+      const offset = request.cursor === undefined ? 0 : this.offset(request.cursor)
       if (offset > population.length) throw new Failed('invalid-cursor')
       const end = Math.min(
         population.length,
@@ -192,7 +184,7 @@ export class TeamProfileGraphEngine {
         expiresAt: r.expiresAt,
         stale: r.stale,
       }
-      const next = end < population.length ? this.cursor(request.operation, end, r) : null
+      const next = end < population.length ? String(end) : null
       return this.reply(
         request.operation === 'nodes'
           ? { type: 'nodes', ...stamp, nodes: r.nodes.slice(offset, end), next }
@@ -313,78 +305,10 @@ export class TeamProfileGraphEngine {
       if (rows.length < pageSize) return
     }
   }
-  private checkPlans(): void {
-    const probes = [
-      [
-        'SELECT rowid FROM agent_identity WHERE rowid>? ORDER BY rowid LIMIT ?',
-        [-1, 256],
-        'INTEGER PRIMARY KEY',
-      ],
-      [
-        'SELECT rowid FROM provider_session WHERE rowid>? ORDER BY rowid LIMIT ?',
-        [-1, 256],
-        'INTEGER PRIMARY KEY',
-      ],
-      [
-        'SELECT rowid FROM work WHERE rowid>? ORDER BY rowid LIMIT ?',
-        [-1, 256],
-        'INTEGER PRIMARY KEY',
-      ],
-      [
-        'SELECT ordinal FROM turn WHERE session_id=? AND generation=? AND ordinal>? ORDER BY ordinal LIMIT ?',
-        ['s', 0, -1, 256],
-        'turn_session_ordinal_uq',
-      ],
-      [
-        'SELECT ordinal FROM events WHERE type=? AND session_id=? AND generation=? AND ordinal>? ORDER BY ordinal LIMIT ?',
-        ['message_sent', 's', 0, -1, 256],
-        'events_kind_owner_idx',
-      ],
-      [
-        sessionQuery('turn', 'opened_at'),
-        [null, 0, -1, ...Array.from({ length: sessionBatch }, () => 's'), 0, '', 256],
-        'turn_session_ordinal_uq',
-      ],
-      [
-        sessionQuery('events', 'created_at'),
-        [
-          'message_sent',
-          null,
-          0,
-          -1,
-          'message_sent',
-          ...Array.from({ length: sessionBatch }, () => 's'),
-          0,
-          '',
-          256,
-        ],
-        'events_kind_owner_idx',
-      ],
-    ] as const
-    for (const [sql, args, index] of probes) {
-      const plan = this.db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...args) as { detail: string }[]
-      if (
-        !plan.some((p) => p.detail.includes('SEARCH') && p.detail.includes(index)) ||
-        plan.some((p) => /TEMP B-TREE|SCAN /.test(p.detail))
-      )
-        throw new Failed('metadata')
-    }
-  }
-  private cursor(operation: string, offset: number, r: Reading): string {
-    const value = `${operation}.${offset}`
-    return `${value}.${createHmac('sha256', this.secret).update(`${r.snapshot}|${r.context.workspaceNonce}|${r.context.ownerNonce}|${value}`).digest('base64url')}`
-  }
-  private offset(cursor: string, operation: string, r: Reading): number {
-    const match = /^(nodes|edges)\.(0|[1-9][0-9]*)\.([A-Za-z0-9_-]{43})$/.exec(cursor)
-    if (!match || match[1] !== operation) throw new Failed('invalid-cursor')
-    const offset = Number(match[2])
-    if (!Number.isSafeInteger(offset) || offset < 0) throw new Failed('invalid-cursor')
-    const expected = this.cursor(operation, offset, r)
-    if (
-      expected.length !== cursor.length ||
-      !timingSafeEqual(Buffer.from(expected), Buffer.from(cursor))
-    )
-      throw new Failed('invalid-cursor')
+  private offset(cursor: string): number {
+    if (!/^(0|[1-9][0-9]*)$/.test(cursor)) throw new Failed('invalid-cursor')
+    const offset = Number(cursor)
+    if (!Number.isSafeInteger(offset)) throw new Failed('invalid-cursor')
     return offset
   }
   private build(context: TeamProfileGraphReadContext): Reading {

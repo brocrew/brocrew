@@ -6,6 +6,7 @@ import {
   type ReconciliationPiece,
   type ReminderProgress,
 } from '../src/main/runtime/work-reconciliation'
+import { reconciliationReceipt } from '../src/shared/work-reconciliation'
 
 function fixture() {
   let clock = 100
@@ -110,6 +111,10 @@ describe('the incident ladder follows observed outcomes', () => {
     await flush(machine)
     await flush(f.machine())
     expect(f.deliveries).toHaveLength(2)
+    for (const receipt of f.receipts)
+      expect(reconciliationReceipt(JSON.parse(JSON.stringify(receipt)), receipt.at)).toEqual(
+        receipt,
+      )
     expect(f.receipts.filter((one) => one.step === 'person')).toHaveLength(1)
   })
 
@@ -207,6 +212,10 @@ describe('the incident ladder follows observed outcomes', () => {
     release()
     await flush(machine)
     expect(f.deliveries).toHaveLength(2)
+    for (const receipt of f.receipts)
+      expect(reconciliationReceipt(JSON.parse(JSON.stringify(receipt)), receipt.at)).toEqual(
+        receipt,
+      )
   })
 
   it('unresolved is evidence, never a duration', () => {
@@ -249,13 +258,17 @@ describe('the incident ladder follows observed outcomes', () => {
   it('a new recorded wait starts its own incident even if it expires between two scans', async () => {
     const f = fixture()
     const machine = f.machine()
-    f.piece({ issue: { kind: 'wait-target-ended', since: 1, waitKey: 'a'.repeat(64) } })
+    f.piece({ issue: { kind: 'wait-target-ended', since: 1, waitKey: 'holder:41' } })
     await flush(machine)
     const first = f.receipts[0]!.incident
-    f.piece({ issue: { kind: 'wait-target-ended', since: 2, waitKey: 'b'.repeat(64) } })
+    f.piece({ issue: { kind: 'wait-target-ended', since: 1, waitKey: 'holder:42' } })
     await flush(machine)
     expect(f.receipts.some((one) => one.incident === first && one.step === 'resolved')).toBe(true)
     expect(f.deliveries).toHaveLength(2)
+    for (const receipt of f.receipts)
+      expect(reconciliationReceipt(JSON.parse(JSON.stringify(receipt)), receipt.at)).toEqual(
+        receipt,
+      )
     expect(f.deliveries[1]!.incident).not.toBe(first)
   })
 

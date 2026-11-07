@@ -1,10 +1,6 @@
-import {
-  PACKAGED_WORKSPACE_REFUSAL,
-  requiresWorkspacePolicy,
-  workspaceRouting,
-} from './workspace-routing'
+import { requiresWorkspacePolicy, workspaceRouting } from './workspace-routing'
 import { claimPackagedWorkspace } from './workspace-routing-store'
-import { ExistingWorkspace } from './workspace-startup'
+import { ExistingWorkspace, WorkspaceUnavailable } from './workspace-startup'
 import { mkdirSync, readFileSync, statSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 
@@ -64,10 +60,10 @@ export function pinTheDataFolder(app: PinnableApp): void {
     if (existing) {
       try {
         const root = statSync(folder)
-        if (!root.isDirectory()) throw new Error(PACKAGED_WORKSPACE_REFUSAL)
-        if (routing.configured) existingWorkspaces.set(app, new ExistingWorkspace(folder, root))
-      } catch {
-        throw new Error(PACKAGED_WORKSPACE_REFUSAL)
+        if (!root.isDirectory()) throw new Error('not a directory')
+        if (routing.configured) existingWorkspaces.set(app, new ExistingWorkspace(folder))
+      } catch (error) {
+        throw new WorkspaceUnavailable(folder, error)
       }
     }
     if (app.isPackaged && !hidden) claimPackagedWorkspace(appData, folder)

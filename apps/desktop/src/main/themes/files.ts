@@ -14,6 +14,7 @@ export type ThemeFileRead =
       readonly failure: Exclude<ThemeFileFailure, 'too-large'>
       /** Set when the system refused the read, so the file may be readable later. */
       readonly refused?: unknown
+      readonly cause?: unknown
     }
   | {
       readonly ok: false
@@ -40,8 +41,8 @@ export function readRefused(error: unknown): boolean {
 /** An unreadable answer, keeping the error when the system refused the read. */
 export const unreadable = (error: unknown): ThemeFileRead =>
   readRefused(error)
-    ? { ok: false, failure: 'unreadable', refused: error }
-    : { ok: false, failure: 'unreadable' }
+    ? { ok: false, failure: 'unreadable', refused: error, cause: error }
+    : { ok: false, failure: 'unreadable', cause: error }
 
 export const THEME_READ_FILES: ThemeReadFiles = {
   lstat: (path) => lstat(path, { bigint: true }),

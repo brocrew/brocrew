@@ -1,25 +1,24 @@
-import { createHash } from 'node:crypto'
 import type { ActedBy } from '../../shared/who-did-it'
 import type { AppDatabase } from './connection'
 
 export interface MethodFileImage {
   readonly base64: string
-  readonly fingerprint: string
   readonly mode: number
 }
 
 export interface MethodFileChange {
   readonly name: string
   readonly before: MethodFileImage | null
-  readonly after: string | null
+  readonly afterBase64?: string | null
   /** Absent on legacy records whose planned permissions were not kept. */
   readonly afterMode?: number | null
 }
 
 export interface MethodFileState {
   readonly name: string
-  readonly fingerprint: string | null
+  readonly base64?: string | null
   readonly unreadable?: true
+  readonly cause?: string
   /** Null means absent or unreadable; omitted means permissions were not recorded. */
   readonly mode?: number | null
 }
@@ -75,7 +74,6 @@ export interface MethodChangeReconciler {
   ): boolean
 }
 
-const SHA256 = /^[0-9a-f]{64}$/
 const FILE_BYTES = 16 * 1024
 const INDEX_BYTES = 64 * 1024
 
@@ -97,8 +95,13 @@ export function methodChangeName(name: unknown): name is string {
   )
 }
 
-function fingerprint(value: unknown): value is string | null {
-  return value === null || (typeof value === 'string' && SHA256.test(value))
+function fileBytes(value: unknown): value is string | null {
+  return (
+    value === null ||
+    (typeof value === 'string' &&
+      value.length <= Math.ceil(INDEX_BYTES / 3) * 4 &&
+      Buffer.from(value, 'base64').toString('base64') === value)
+  )
 }
 
 function permissionMode(value: unknown): value is number | null {
@@ -119,13 +122,20 @@ function filesFrom(value: unknown): readonly MethodFileChange[] | null {
       row === null ||
       !methodChangeName(row['name']) ||
       names.has(row['name']) ||
-      !fingerprint(row['after']) ||
+      (row['afterBase64'] !== undefined && !fileBytes(row['afterBase64'])) ||
       (row['afterMode'] !== undefined &&
         (!permissionMode(row['afterMode']) ||
-          (row['after'] === null ? row['afterMode'] !== null : row['afterMode'] === null)))
+          (row['afterBase64'] !== undefined &&
+            (row['afterBase64'] === null ? row['afterMode'] !== null : row['afterMode'] === null))))
     )
       return null
     const name = row['name']
+    const limit = name.toLowerCase() === 'index.md' ? INDEX_BYTES : FILE_BYTES
+    if (
+      typeof row['afterBase64'] === 'string' &&
+      Buffer.from(row['afterBase64'], 'base64').length > limit
+    )
+      return null
     names.add(name)
     let before: MethodFileImage | null = null
     if (row['before'] !== null) {
@@ -133,31 +143,25 @@ function filesFrom(value: unknown): readonly MethodFileChange[] | null {
       if (
         image === null ||
         typeof image['base64'] !== 'string' ||
-        typeof image['fingerprint'] !== 'string' ||
-        !SHA256.test(image['fingerprint']) ||
         typeof image['mode'] !== 'number' ||
         !Number.isInteger(image['mode']) ||
         image['mode'] < 0 ||
         image['mode'] > 0o777
       )
         return null
-      const limit = name.toLowerCase() === 'index.md' ? INDEX_BYTES : FILE_BYTES
       if (image['base64'].length > Math.ceil(limit / 3) * 4) return null
       const bytes = Buffer.from(image['base64'], 'base64')
-      if (
-        bytes.length > limit ||
-        bytes.toString('base64') !== image['base64'] ||
-        createHash('sha256').update(bytes).digest('hex') !== image['fingerprint']
-      )
-        return null
+      if (bytes.length > limit || bytes.toString('base64') !== image['base64']) return null
       totalBytes += bytes.length
       if (totalBytes > INDEX_BYTES + FILE_BYTES) return null
-      before = { base64: image['base64'], fingerprint: image['fingerprint'], mode: image['mode'] }
+      before = { base64: image['base64'], mode: image['mode'] }
     }
     files.push({
       name,
       before,
-      after: row['after'],
+      ...(row['afterBase64'] === undefined
+        ? {}
+        : { afterBase64: row['afterBase64'] as string | null }),
       ...(row['afterMode'] === undefined ? {} : { afterMode: row['afterMode'] as number | null }),
     })
   }
@@ -172,25 +176,33 @@ function statesFrom(
   const states: MethodFileState[] = []
   const seen = new Set<string>()
   for (const entry of value) {
-    const row = object(entry)
+    const stored = object(entry)
+    const row =
+      stored && stored['base64'] === undefined && 'fingerprint' in stored
+        ? { ...stored, base64: undefined }
+        : stored
     if (
       row === null ||
       typeof row['name'] !== 'string' ||
       seen.has(row['name']) ||
       !files.some((file) => file.name === row['name']) ||
-      !fingerprint(row['fingerprint']) ||
+      (row['base64'] !== undefined && !fileBytes(row['base64'])) ||
       (row['unreadable'] !== undefined && row['unreadable'] !== true) ||
+      (row['cause'] !== undefined &&
+        (typeof row['cause'] !== 'string' || row['cause'].length > 8192)) ||
       (row['mode'] !== undefined &&
         (!permissionMode(row['mode']) ||
-          (row['fingerprint'] === null ? row['mode'] !== null : row['mode'] === null) ||
+          (row['base64'] !== undefined &&
+            (row['base64'] === null ? row['mode'] !== null : row['mode'] === null)) ||
           (row['unreadable'] === true && row['mode'] !== null)))
     )
       return null
     seen.add(row['name'])
     states.push({
       name: row['name'],
-      fingerprint: row['fingerprint'],
+      ...(row['base64'] === undefined ? {} : { base64: row['base64'] as string | null }),
       ...(row['unreadable'] === true ? { unreadable: true } : {}),
+      ...(row['cause'] === undefined ? {} : { cause: row['cause'] as string }),
       ...(row['mode'] === undefined ? {} : { mode: row['mode'] as number | null }),
     })
   }
@@ -260,44 +272,6 @@ function record(row: Stored): MethodChangeRecord {
   }
 }
 
-function canReverse(source: MethodChangeRecord, files: readonly MethodFileChange[]): boolean {
-  if (source.files.length !== files.length) return false
-  return source.files.every((original) => {
-    const current = files.find((file) => file.name === original.name)
-    if (current === undefined || current.after !== (original.before?.fingerprint ?? null))
-      return false
-    const before = original.before?.fingerprint ?? null
-    const currentFingerprint = current.before?.fingerprint ?? null
-    const actual = source.actual?.find((file) => file.name === original.name)
-    if (
-      (original.afterMode !== undefined || current.afterMode !== undefined) &&
-      current.afterMode !== (original.before?.mode ?? null)
-    )
-      return false
-    if (original.afterMode !== undefined || actual?.mode !== undefined) {
-      if (actual === undefined || actual.mode === undefined || actual.unreadable) return false
-      const knownBefore =
-        actual.fingerprint === before && actual.mode === (original.before?.mode ?? null)
-      const knownAfter =
-        original.afterMode !== undefined &&
-        actual.fingerprint === original.after &&
-        actual.mode === original.afterMode
-      if ((!knownBefore && !knownAfter) || (current.before?.mode ?? null) !== actual.mode)
-        return false
-    }
-    // An unexpected external edit is not made ours by recording it after a failed operation.
-    if (
-      actual !== undefined &&
-      (actual.unreadable ||
-        (actual.fingerprint !== before && actual.fingerprint !== original.after))
-    )
-      return false
-    return actual === undefined
-      ? currentFingerprint === before || currentFingerprint === original.after
-      : currentFingerprint === actual.fingerprint
-  })
-}
-
 /** Intent is durable before any filesystem write; only its one settlement may update the row. */
 export function createMethodChangeStore(
   db: AppDatabase,
@@ -342,7 +316,9 @@ export function createMethodChangeStore(
         return (
           planned !== undefined &&
           !state.unreadable &&
-          state.fingerprint === planned.after &&
+          state.base64 !== undefined &&
+          planned.afterBase64 !== undefined &&
+          state.base64 === planned.afterBase64 &&
           (planned.afterMode === undefined || state.mode === planned.afterMode)
         )
       })
@@ -390,7 +366,7 @@ export function createMethodChangeStore(
       if (files === null) return null
       if (
         said.operation === 'delete' &&
-        !files.some((file) => (file.before?.fingerprint ?? null) !== file.after)
+        !files.some((file) => (file.before?.base64 ?? null) !== file.afterBase64)
       )
         return null
       return db.transaction(() => {
@@ -404,7 +380,7 @@ export function createMethodChangeStore(
           const stored = queries.read.get(identityId, said.sourceId) as Stored | undefined
           if (stored === undefined) return null
           const source = record(stored)
-          if (source.target !== said.target || !canReverse(source, files)) return null
+          if (source.target !== said.target) return null
         }
         const seq = ((queries.newest.get(identityId) as { seq: number | null }).seq ?? 0) + 1
         const id = `method-change:${identityId}:${seq}`

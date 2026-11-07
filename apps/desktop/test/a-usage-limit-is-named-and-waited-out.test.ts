@@ -585,7 +585,7 @@ describe('F074 · a usage limit is named, and what the app would start waits for
       expect(host.limitsForAPerson().rows).toContainEqual(
         expect.objectContaining({
           provider: 'codex',
-          account: 'codex:fern-account',
+          account: 'codex:sign-in:fern-account',
           standing: 'stopped',
         }),
       )

@@ -15,6 +15,7 @@ import {
   SkillCatalogueError,
   skillAlias,
 } from '../src/main/skills/catalogue-store'
+import { launchSkillSelections } from '../src/main/skills/launch-selection'
 import { BUILT_IN_SKILL_NAMES } from '../src/shared/built-in-skills'
 import type { SkillDraft, PluginSkillBundle } from '../src/shared/skills-catalogue'
 
@@ -363,6 +364,48 @@ describe('the SQLite skills catalogue', () => {
       expect(catalogue.detail('person/recipe-check')).not.toBeNull()
     } finally {
       secondDb.close()
+    }
+  })
+  it('reads valid saved edits without old digest seals and skips only a malformed neighbor', () => {
+    catalogue.savePersonal(draft('edited'), revision())
+    catalogue.savePersonal(draft('broken'), revision())
+    catalogue.select('aid:recipe-worker', 'person/edited', 'on', revision())
+    catalogue.select('aid:recipe-worker', 'person/broken', 'on', revision())
+    db.exec('DROP TRIGGER skill_version_no_update')
+    const edited = draft('edited', 'Changed saved content with a different length.')
+    db.prepare('UPDATE skill_version SET body=?, bytes=? WHERE skill_id=?').run(
+      edited.body,
+      edited.bytes,
+      'person/edited',
+    )
+    db.prepare('UPDATE skill_version SET metadata=? WHERE skill_id=?').run('{}', 'person/broken')
+    const ready = catalogue.resolve('aid:recipe-worker', capable).choices.filter((one) => one.ready)
+    expect(ready.some((one) => one.skill.id === 'person/edited')).toBe(true)
+    expect(ready.some((one) => one.skill.id === 'person/broken')).toBe(false)
+    expect(catalogue.detail('person/edited')).toMatchObject({
+      body: edited.body,
+      bytes: edited.bytes,
+      sha256: edited.sha256,
+    })
+    expect(catalogue.detail('person/broken')).toBeNull()
+    expect(catalogue.list().items.some((one) => one.id === 'person/edited')).toBe(true)
+  })
+  it('opens a fresh catalogue and launch after a malformed built-in was saved', () => {
+    db.exec('DROP TRIGGER skill_version_no_update')
+    db.prepare('UPDATE skill_version SET metadata=? WHERE skill_id=?').run(
+      '{}',
+      'built-in/delegate',
+    )
+    db.close()
+    db = openDatabase(join(folder, 'catalogue.sqlite'))
+    catalogue = new SqliteSkillCatalogue(db, shipped())
+    expect(catalogue.detail('built-in/delegate')).toBeNull()
+    expect(catalogue.list().items).toHaveLength(7)
+    for (const profile of [null, 'recipe-worker']) {
+      const launch = launchSkillSelections(db, shipped)(profile, capable)
+      expect(launch.skills).toHaveLength(7)
+      expect(launch.skills.some((skill) => skill.id === 'built-in/delegate')).toBe(false)
+      expect(launch.skills.some((skill) => skill.id === 'built-in/hand-back')).toBe(true)
     }
   })
   it('refuses a bad plugin hash or duplicate declaration before publication', () => {

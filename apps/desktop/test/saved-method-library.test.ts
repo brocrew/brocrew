@@ -6,6 +6,7 @@ import {
   renameSync,
   rmSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -27,7 +28,6 @@ interface LibraryItem {
   readonly key: string
   readonly name: string
   readonly kind: string
-  readonly fingerprint: string | null
   readonly references: readonly unknown[]
   readonly canDelete: boolean
 }
@@ -36,7 +36,6 @@ interface LibraryReading {
   readonly items: readonly LibraryItem[]
   readonly total: number
   readonly nextOffset: number | null
-  readonly indexFingerprint: string | null
   readonly malformedLines: number
   readonly indexState: string
   readonly truncated: boolean
@@ -47,7 +46,6 @@ type BodyReading =
       readonly ok: true
       readonly text: string
       readonly bytes: number
-      readonly fingerprint: string
     }
 const METHOD_LIBRARY_SCAN_LIMIT = 5000
 function listSavedMethodLibrary(
@@ -131,7 +129,6 @@ describe('saved methods in the agent book', () => {
     expect(readSavedMethodBody(inputs, 'index')).toMatchObject({
       ok: true,
       text,
-      fingerprint: catalog.indexFingerprint,
     })
   })
 
@@ -149,7 +146,6 @@ describe('saved methods in the agent book', () => {
     expect(readSavedMethodBody(inputs, chosen.key)).toMatchObject({
       ok: true,
       text: 'Method 21',
-      fingerprint: chosen.fingerprint,
     })
     const index = readSavedMethodBody(inputs, 'index')
     expect(index.ok && index.bytes).toBeGreaterThan(4096)
@@ -224,7 +220,6 @@ describe('saved methods in the agent book', () => {
     writeFileSync(join(folder, 'Review.md'), 'Second')
     const after = readSavedMethodBody(inputs, actual.key)
     expect(after).toMatchObject({ ok: true, text: 'Second' })
-    expect(after.ok && after.fingerprint).not.toBe(actual.fingerprint)
     if (existsSync(join(folder, 'review.md'))) {
       expect(actual.references).toHaveLength(1)
       expect(before.items.filter((one) => one.name.toLowerCase() === 'review.md')).toHaveLength(1)
@@ -256,13 +251,17 @@ describe('saved methods in the agent book', () => {
     expect(catalog.items[0]?.references).toHaveLength(1)
   })
 
-  it('follows a linked managed root, and refuses a folder swapped after opening a method', () => {
+  it('follows a linked managed root and finishes an ordinary open-file read', () => {
     const alternative = join(root, 'alternative')
     mkdirSync(alternative)
     writeFileSync(join(alternative, 'review.md'), 'Outside')
     const linkedRoot = join(root, 'linked-root')
     symlinkSync(inputs.homesRoot, linkedRoot, 'dir')
     writeFileSync(join(folder, 'review.md'), 'Inside')
+    const original = join(root, 'original')
+    renameSync(folder, original)
+    const directoryLink = process.platform === 'win32' ? 'junction' : 'dir'
+    symlinkSync(original, folder, directoryLink)
     expect(
       listSavedMethodLibrary(
         { folder: join(linkedRoot, 'default', 'wren', 'runbooks'), homesRoot: linkedRoot },
@@ -270,15 +269,31 @@ describe('saved methods in the agent book', () => {
       ).items.map((one) => one.name),
     ).toEqual(['review.md'])
     const key = listSavedMethodLibrary(inputs, 100).items[0]!.key
-    expect(
-      readSavedMethodBody(inputs, key, {
-        afterOpen: (name) => {
-          if (name !== 'review.md') return
-          renameSync(folder, `${folder}-old`)
-          symlinkSync(alternative, folder, 'dir')
-        },
-      }).ok,
-    ).toBe(false)
+    let phase = 'before the method descriptor opens'
+    const completed: string[] = []
+    const answer = readSavedMethodBody(inputs, key, {
+      afterOpen: (name) => {
+        if (name !== 'review.md') return
+        try {
+          phase = 'remove the methods directory link'
+          unlinkSync(folder)
+          completed.push(phase)
+          phase = 'link the replacement directory'
+          symlinkSync(alternative, folder, directoryLink)
+          completed.push(phase)
+          phase = 'callback complete; library fstat/read/close follows'
+        } catch (cause) {
+          console.error(
+            'Linked managed-root afterOpen failed',
+            { phase, completed, folder, original, alternative },
+            cause,
+          )
+          throw cause
+        }
+      },
+    })
+    expect(answer, JSON.stringify({ phase, completed })).toMatchObject({ ok: true, text: 'Inside' })
+    expect(readSavedMethodBody(inputs, key)).toMatchObject({ ok: true, text: 'Outside' })
   })
 
   it('reports truncation instead of pretending a capped directory scan was complete', () => {

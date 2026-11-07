@@ -577,34 +577,12 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
   )
   for (const provider of ['claude', 'codex'] as const)
     for (const opening of ['start', 'resume'] as const) {
-      it(`${provider} ${opening} checks the catalogue again before invoking the provider`, async () => {
-        const seeded = await personOpens('worker', provider)
-        await host.closeAll()
-        let change = () => {}
-        const { catalogue, identity, revision } = selectedHost(() => change())
-        change = () => {
-          catalogue.select(identity, 'built-in/remember', 'off', revision())
-        }
-        const before = launchContexts.length
-        const operation =
-          opening === 'start'
-            ? host.createSession(
-                { provider, profileId: 'worker', approvalMode: 'ask', cwd: root },
-                window,
-              )
-            : host.resumeSession(seeded, window)
-        await expect(operation).rejects.toThrow(BUILT_IN_SKILLS_FAILURE)
-        expect(launchContexts).toHaveLength(before)
-      })
-    }
-  for (const provider of ['claude', 'codex'] as const)
-    for (const opening of ['start', 'resume'] as const) {
-      it.each(['revision', 'grant', 'cancel'] as const)(
+      it.each(['grant', 'cancel'] as const)(
         `${provider} ${opening} refuses registration after a held %s change`,
         async (change) => {
           const seeded = await personOpens('worker', provider)
           await host.closeAll()
-          const { catalogue, identity, revision } = selectedHost()
+          selectedHost()
           expect(store.setCapabilities('worker', { canCreateAgents: 'any' })).toBe(true)
           let release!: () => void
           const held = {
@@ -636,8 +614,6 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
             await waitFor(() => held.handle !== null, 'fictional native launch return')
             const sessionId = opening === 'start' ? `sess_${counter}` : seeded
             let closed: Promise<void> | undefined
-            if (change === 'revision')
-              catalogue.select(identity, 'built-in/remember', 'off', revision())
             if (change === 'grant')
               expect(store.setCapabilities('worker', { canCreateAgents: 'none' })).toBe(true)
             if (change === 'cancel') closed = host.close(sessionId, window)

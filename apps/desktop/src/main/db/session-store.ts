@@ -2596,6 +2596,10 @@ export interface SessionStore extends OwnNotesStore {
   whatACrashLeftRunning(running: ReadonlySet<string>): readonly LeftRunning[]
   /** ⚑ A conversation's open turn in its active generation, or `null` when none is open. */
   recordedTurnOpening(sessionId: string, turnId: string): UserTurnEvent | null
+  recordedTurnMessage(
+    sessionId: string,
+    turnId: string,
+  ): (PersistedEvent & { event: UserTurnEvent }) | null
   ensurePersonalRoot(sessionId: string, at: number): WorkRow
   theOpenTurn(sessionId: string): OpenTurn | null
   /** ⚑ The id of a conversation's newest turn, in any generation, or `null` when it has none. */
@@ -4131,6 +4135,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   settleOrphanRuns: () => 0,
   whatACrashLeftRunning: () => [],
   recordedTurnOpening: () => null,
+  recordedTurnMessage: () => null,
   ensurePersonalRoot: () => {
     throw new Error('work is not being recorded')
   },
@@ -12008,7 +12013,7 @@ export function createSessionStore(
           ORDER BY ordinal DESC LIMIT 1`,
       ),
       newestLine: db.prepare(
-        `SELECT payload, created_at FROM events INDEXED BY events_kind_owner_idx
+        `SELECT payload, created_at, ordinal FROM events INDEXED BY events_kind_owner_idx
           WHERE session_id = ? AND generation = ?
             AND type = ?
             AND CASE WHEN json_valid(payload) THEN CASE WHEN json_type(payload, '$.piece') = 'text' AND length(CAST(json_extract(payload, '$.piece') AS BLOB)) BETWEEN 1 AND 512 THEN json_extract(payload, '$.piece') END END = ?
@@ -12017,7 +12022,7 @@ export function createSessionStore(
       ),
       // A malformed newest row could name this root; never skip it to claim absence.
       turnRootLine: db.prepare(
-        `SELECT payload, created_at FROM events INDEXED BY events_kind_owner_idx
+        `SELECT payload, created_at, ordinal FROM events INDEXED BY events_kind_owner_idx
           WHERE session_id = ? AND generation = ?
             AND type = ?
             AND CASE WHEN json_valid(payload)
@@ -12286,10 +12291,10 @@ export function createSessionStore(
     type: 'work_retitled' | 'work_status_set',
   ): Record<string, unknown> | null => {
     const found = workSql().newestLine.get(piece.owner_session_id, generation, type, piece.id) as
-      { payload: string; created_at: number } | undefined
+      { payload: string; created_at: number; ordinal: number } | undefined
     if (found === undefined) return null
     const stored = aStoredObject(found.payload)
-    return stored === null ? null : { ...stored, at: found.created_at }
+    return stored === null ? null : { ...stored, at: found.created_at, revision: found.ordinal }
   }
 
   /**
@@ -12851,7 +12856,6 @@ export function createSessionStore(
         if (said.whoWroteIt === 'a-person' && said.by.who !== 'a-person') return null
         if (said.expectedVersion !== undefined && said.expectedVersion !== (newest?.version ?? 0))
           return null
-        if (said.currentText !== undefined && said.currentText !== (newest?.text ?? '')) return null
         let text = said.text
         if (said.broughtBack !== null) {
           if (said.by.who !== 'a-person' || said.whoWroteIt !== 'a-person') return null
@@ -12870,8 +12874,7 @@ export function createSessionStore(
             said.said.trim() === '' ||
             said.text.length > OWN_INSTRUCTIONS_CHARS ||
             said.said.length > OWN_INSTRUCTIONS_CHARS ||
-            said.expectedVersion === undefined ||
-            said.currentText === undefined)
+            said.expectedVersion === undefined)
         )
           return null
         if (said.whoWroteIt === 'an-agent-direct' && said.by.who === 'an-agent') {
@@ -12927,7 +12930,6 @@ export function createSessionStore(
             profileSlug,
             text: '',
             expectedVersion,
-            currentText: newest.text,
             whoWroteIt: 'a-person',
             by,
             conversation: null,
@@ -13902,6 +13904,20 @@ export function createSessionStore(
         })
     },
 
+    recordedTurnMessage(sessionId, turnId) {
+      const row = db
+        .prepare(
+          `SELECT e.ordinal, e.payload, e.created_at FROM events e
+        JOIN turn t ON t.id=e.turn_id AND t.session_id=e.session_id AND t.generation=e.generation
+        WHERE t.id=? AND t.session_id=? AND e.type='user_turn' ORDER BY e.ordinal LIMIT 1`,
+        )
+        .get(turnId, sessionId) as EventRow | undefined
+      const message = row === undefined ? undefined : toPersistedEvents([row])[0]
+      return message?.event.type === 'user_turn'
+        ? (message as PersistedEvent & { event: UserTurnEvent })
+        : null
+    },
+
     recordedTurnOpening(sessionId, turnId) {
       const owned = db
         .prepare('SELECT 1 FROM turn WHERE id = ? AND session_id = ? AND generation = ?')
@@ -14737,6 +14753,7 @@ export function createSessionStore(
                 text: statusSet.line,
                 by: statusSet.by,
                 at: statusSet.at,
+                revision: statusSet.revision as number,
                 ...theWaitItMarks(statusSet),
               }
             : null,
@@ -14749,11 +14766,11 @@ export function createSessionStore(
       const generation = activeGeneration(row.owner_session_id)
       const read = (type: 'work_retitled' | 'work_status_set') => {
         const found = workSql().turnRootLine.get(row.owner_session_id, generation, type, root) as
-          { payload: string; created_at: number } | undefined
+          { payload: string; created_at: number; ordinal: number } | undefined
         if (found === undefined) return { kind: 'absent' as const }
         const payload = aStoredObject(found.payload)
         if (payload?.piece !== root || payload.type !== type) return { kind: 'unread' as const }
-        return { kind: 'present' as const, payload, at: found.created_at }
+        return { kind: 'present' as const, payload, at: found.created_at, revision: found.ordinal }
       }
       const title = read('work_retitled')
       const status = read('work_status_set')
@@ -14775,6 +14792,7 @@ export function createSessionStore(
                 text: status.payload.line as string,
                 by: status.payload.by as string,
                 at: status.at,
+                revision: status.revision,
               }
             : null,
       }

@@ -24,8 +24,7 @@ export function reconciliationReceipt(said: unknown, at: number): Reconciliation
     r.since < 0 ||
     !['holder', 'giver', 'person', 'resolved'].includes(String(r.step)) ||
     !['planned', 'delivered', 'failed', 'listed', 'resolved'].includes(String(r.outcome)) ||
-    (r.waitKey !== undefined &&
-      (typeof r.waitKey !== 'string' || !/^[0-9a-f]{64}$/.test(r.waitKey))) ||
+    (r.waitKey !== undefined && !text('waitKey')) ||
     (r.due !== undefined && r.due !== true) ||
     (r.cause !== undefined && !TASK_STALL_CAUSES.includes(r.cause as TaskStallCause)) ||
     (r.target !== undefined && !text('target')) ||

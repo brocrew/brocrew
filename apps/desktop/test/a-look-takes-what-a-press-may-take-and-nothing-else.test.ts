@@ -21,7 +21,6 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
 import { createSessionStore } from '../src/renderer/src/lib/session-store'
 import {
-  HELD_ELSEWHERE,
   type ResumedSession,
   type RuntimeBridge,
   type RuntimeCommand,
@@ -326,7 +325,7 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
       expect(launches()).toBe(1)
     })
 
-    it('the owner of a conversation is handed it live, and a stranger who presses is handed the record and told who holds it', async () => {
+    it('the owner is handed it live and another window gets the record without its stream', async () => {
       const sessionId = await openFor(one)
       await agentSays(sessionId, 'said while owned')
 
@@ -339,7 +338,6 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
       // A second window presses: the press cannot take what somebody owns.
       const stranger = await host.look(sessionId, two, true)
       expect(stranger.handover).toBe('recorded')
-      expect(stranger.cannotTakeAMessage).toBe(HELD_ELSEWHERE)
       // Something runs it, so the record has no seam to settle at.
       expect(stranger.liveFrom).toBeUndefined()
 

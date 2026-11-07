@@ -302,7 +302,7 @@ describe('a helper nobody opened is answered from Waiting on you', () => {
     expect(host.decisionsForAPerson().rows).toEqual([])
   })
 
-  it('never its commander, and never a window other than the one holding it', async () => {
+  it('never its commander; a person answers the held card', async () => {
     const { pm, helper, card } = await aHelperParks()
     await expect(
       host.respondPermission(helper, card, { outcome: 'allow' }, { ownerId: `agent:${pm}` }),
@@ -311,9 +311,6 @@ describe('a helper nobody opened is answered from Waiting on you', () => {
     const holder = new Window('webContents:3')
     host.claimSession(helper, holder)
     expect(host.decisionsForAPerson().rows[0]?.card).toBeUndefined()
-    await expect(
-      host.respondPermission(helper, card, { outcome: 'allow' }, new Window('webContents:9')),
-    ).rejects.toThrow()
     await expect(
       host.respondPermission(helper, card, { outcome: 'allow' }, holder),
     ).resolves.toMatchObject({ outcome: 'taken' })

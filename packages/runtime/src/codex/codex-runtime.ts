@@ -90,7 +90,6 @@ import {
   assertCodexSqliteHomeContained,
   codexAccountIn,
   codexAccountInNow,
-  signInTagOf,
   type AuthHealth,
   CodexRefusedItsSignInError,
   codexCopyIdentityIn,
@@ -178,7 +177,7 @@ function savedKeyTagIn(home: string): string | null {
     if (!stat.isFile() || stat.size > 256) return null
     const revision = (JSON.parse(readFileSync(file, 'utf8')) as { setAt?: unknown }).setAt
     return typeof revision === 'number' && Number.isSafeInteger(revision) && revision >= 0
-      ? signInTagOf(`brobot-api-key:${revision}`)
+      ? `api-revision:${revision}`
       : null
   } catch {
     return null
@@ -3650,7 +3649,7 @@ export class CodexSessionHandle implements SessionHandle {
   signInTag(): string | null {
     const account = this.launchAccount
     if (account === 'api-key') return this.launchKeyTag
-    return account === null || account === undefined ? null : signInTagOf(account)
+    return account === null || account === undefined ? null : `account:${account}`
   }
 
   /**

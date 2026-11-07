@@ -159,7 +159,6 @@ describe('Own notes in the agent book', () => {
         text: '  Keep this exact new wish.\n',
         why: 'Correct the standing convention.',
         expectedVersion: 2,
-        currentText: 'Keep the agreed scope.',
       }),
     )
     expect(f.undoOwnNotes).not.toHaveBeenCalled()

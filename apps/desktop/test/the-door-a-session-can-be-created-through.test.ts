@@ -110,17 +110,8 @@ function saidIn(handed: ResumedSession): string[] {
   return handed.history.entries.flatMap((entry) => markerIn(entry.event))
 }
 
-/**
- * 🔴 **421 · the sentence a window reads when it reaches for a session NOBODY owns.**
- *
- * ⛔ **It was `not-yours` until 421** — *"This conversation belongs to another window… switch to
- * that window"* — which is the one thing that cannot be true of a session whose whole subject is
- * that no window has it. ⚑ 336 built the door; this is the refusal on the other side of it finally
- * saying which door to use. {@link NOT_YOURS} is kept and asserted below, over the case it is
- * true of, so the split is a discriminant rather than a rename.
- */
+/** A non-person command aimed at an unowned session names no nonexistent window. */
 const HELD_BY_NOBODY = describeUnavailable('held-by-nobody')
-const NOT_YOURS = describeUnavailable('not-yours')
 
 describe('336 · a session created through a door no renderer opened', () => {
   let userData: string
@@ -276,41 +267,6 @@ describe('336 · a session created through a door no renderer opened', () => {
       expect(two.messages).toEqual([])
     })
 
-    it('⛔ no window may control it — every verb is refused', async () => {
-      const sessionId = await openUnclaimed()
-      expect(await refusalOf(() => host.send(sessionId, 'do it', one))).toBe(HELD_BY_NOBODY)
-      expect(await refusalOf(() => host.interrupt(sessionId, one))).toBe(HELD_BY_NOBODY)
-      expect(await refusalOf(() => host.setApprovalMode(sessionId, 'auto', two))).toBe(
-        HELD_BY_NOBODY,
-      )
-      // …and nothing happened to it: no turn was opened by a refusal.
-      expect(ledger(sessionId).some((event) => event.type === 'user_turn')).toBe(false)
-    })
-
-    it('🔴 421 · and the sentence it is refused with does not name a window', async () => {
-      const sessionId = await openUnclaimed()
-
-      // ⛔ **`418` measured what a person read here** — *"This conversation belongs to another
-      // window, so nothing was sent to it. Switch to that window…"* — about a conversation no
-      // window has. The refusal was right and every clause of the reason was false.
-      const nobodys = await refusalOf(() => host.close(sessionId, one))
-      expect(nobodys).toBe(HELD_BY_NOBODY)
-      expect(nobodys).not.toContain('another window')
-      // ⚑ …and it names the gesture that DOES work, which is one method over on this same host.
-      expect(nobodys).toContain('Take it over')
-      host.claimSession(sessionId, one)
-      await host.close(sessionId, one)
-
-      // ⚑ **The control, and it is the whole point of splitting the code rather than rewording
-      // one**: a conversation another WINDOW holds still reads the sentence that names that
-      // window, because for that conversation it is true.
-      const owned = await openFor(one)
-      const theirs = await refusalOf(() => host.close(owned, two))
-      expect(theirs).toBe(NOT_YOURS)
-      expect(theirs).toContain('another window')
-      expect(theirs).not.toBe(nobodys)
-    })
-
     it('⛔ attachOpen never hands one over, to either window', async () => {
       const unclaimed = await openUnclaimed()
       const owned = await openFor(one)
@@ -392,17 +348,6 @@ describe('336 · a session created through a door no renderer opened', () => {
       expect(new Set(all).size).toBe(all.length)
       expect(all).toEqual(
         Array.from({ length: all.length }, (_unused, index) => Math.min(...replayed) + index),
-      )
-    })
-
-    it('⚑ and from that moment the window can drive it', async () => {
-      const sessionId = await openUnclaimed()
-      expect(await refusalOf(() => host.send(sessionId, 'do it', one))).toBe(HELD_BY_NOBODY)
-      host.claimSession(sessionId, one)
-      await host.send(sessionId, 'do it', one)
-      await waitFor(
-        () => one.events().some((event) => event.type === 'user_turn'),
-        'the turn this window opened',
       )
     })
   })

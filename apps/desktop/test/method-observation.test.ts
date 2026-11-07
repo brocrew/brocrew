@@ -1,5 +1,4 @@
 import { legacyIdentity } from './fixtures/legacy-migration-data'
-import { createHash } from 'node:crypto'
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -24,15 +23,15 @@ const agent = { who: 'an-agent', agent: 'ses-wren' } as const
 const lark = agentIdentityRowId('lark')
 const wren = agentIdentityRowId('wren')
 const bytes = Buffer.from('Read the change.\r\n')
-const fingerprint = createHash('sha256').update(bytes).digest('hex')
-const image = { base64: bytes.toString('base64'), fingerprint, mode: 0o600 }
+const base64 = bytes.toString('base64')
+const image = { base64, mode: 0o600 }
 const intent = {
   operation: 'delete' as const,
   sourceId: null,
   target: 'review.md',
-  files: [{ name: 'review.md', before: image, after: null }],
+  files: [{ name: 'review.md', before: image, afterBase64: null }],
 }
-const absent = [{ name: 'review.md', fingerprint: null }]
+const absent = [{ name: 'review.md', base64: null }]
 type Observer = Extract<ActedBy, { who: 'a-person' | 'the-app-itself' }>
 type Observed = MethodChangeRecord & {
   readonly settlement: { readonly by: Observer; readonly at: number } | null
@@ -97,6 +96,25 @@ describe('the app records interrupted method outcomes without impersonating the 
     expect(api.read(lark, started.id)).toEqual(saved)
   })
 
+  it('does not turn matching unknown legacy observations into a completed operation', () => {
+    const started = begin()
+    db.prepare('UPDATE identity_method_change SET files=? WHERE id=?').run(
+      JSON.stringify([
+        { name: 'review.md', before: { ...image, fingerprint: 'a'.repeat(64) }, after: null },
+      ]),
+      started.id,
+    )
+    const oldObservation = [
+      { name: 'review.md', fingerprint: null },
+    ] as unknown as MethodFileState[]
+    expect(api.settle(lark, started.id, 'done', oldObservation, person)).toBe(false)
+    expect(reconcile(lark, started.id, oldObservation, app)).toBe(true)
+    expect(api.read(lark, started.id)).toMatchObject({
+      outcome: 'partial',
+      actual: [{ name: 'review.md' }],
+    })
+  })
+
   it('allows only the app to reconcile, without granting it begin or ordinary settle', () => {
     const started = begin()
     expect(reconcile(lark, started.id, absent, person)).toBe(false)
@@ -113,14 +131,14 @@ describe('the app records interrupted method outcomes without impersonating the 
   })
 
   it.each([
-    { name: 'unchanged original bytes', actual: [{ name: 'review.md', fingerprint }] },
+    { name: 'unchanged original bytes', actual: [{ name: 'review.md', base64 }] },
     {
       name: 'unknown external bytes',
-      actual: [{ name: 'review.md', fingerprint: 'f'.repeat(64) }],
+      actual: [{ name: 'review.md', base64: 'f'.repeat(64) }],
     },
     {
       name: 'unreadable state',
-      actual: [{ name: 'review.md', fingerprint: null, unreadable: true as const }],
+      actual: [{ name: 'review.md', base64: null, unreadable: true as const }],
     },
   ])('records partial for $name instead of claiming the plan happened', ({ actual }) => {
     const started = begin()
@@ -137,7 +155,7 @@ describe('the app records interrupted method outcomes without impersonating the 
     const started = begin()
     expect(reconcile(wren, started.id, absent, app)).toBe(false)
     expect(reconcile(lark, 'missing', absent, app)).toBe(false)
-    for (const invalid of [[], [...absent, ...absent], [{ name: 'other.md', fingerprint: null }]]) {
+    for (const invalid of [[], [...absent, ...absent], [{ name: 'other.md', base64: null }]]) {
       expect(reconcile(lark, started.id, invalid, app)).toBe(false)
       expect(api.read(lark, started.id)?.outcome).toBe('pending')
     }
@@ -145,38 +163,6 @@ describe('the app records interrupted method outcomes without impersonating the 
     const settled = api.read(lark, started.id)
     expect(reconcile(lark, started.id, absent, app)).toBe(false)
     expect(api.read(lark, started.id)).toEqual(settled)
-  })
-
-  it('continues to refuse external post-state bytes when undo is requested after observation', () => {
-    const started = begin()
-    const other = Buffer.from('A later edit')
-    const otherHash = createHash('sha256').update(other).digest('hex')
-    expect(reconcile(lark, started.id, [{ name: 'review.md', fingerprint: otherHash }], app)).toBe(
-      true,
-    )
-    expect(
-      api.begin(
-        lark,
-        {
-          operation: 'undo',
-          sourceId: started.id,
-          target: intent.target,
-          files: [
-            {
-              name: 'review.md',
-              before: {
-                base64: other.toString('base64'),
-                fingerprint: otherHash,
-                mode: 0o600,
-              },
-              after: fingerprint,
-            },
-          ],
-        },
-        person,
-        1002,
-      ),
-    ).toBeNull()
   })
 
   it('does not write invalid observer clocks or erase a pending outcome', () => {
@@ -218,10 +204,10 @@ describe('the app records interrupted method outcomes without impersonating the 
         outcome,
         outcome === 'pending'
           ? null
-          : JSON.stringify(outcome === 'done' ? absent : [{ name: 'review.md', fingerprint }]),
+          : JSON.stringify(outcome === 'done' ? absent : [{ name: 'review.md', base64 }]),
       )
     }
-    const undoFiles = [{ name: 'review.md', before: null, after: fingerprint }]
+    const undoFiles = [{ name: 'review.md', before: null, afterBase64: base64 }]
     db.prepare(
       `INSERT INTO identity_method_change
       (id, identity_id, seq, operation, source_id, target, files, by, outcome, actual, created_at)
@@ -230,7 +216,7 @@ describe('the app records interrupted method outcomes without impersonating the 
       lark,
       JSON.stringify(undoFiles),
       JSON.stringify(person),
-      JSON.stringify([{ name: 'review.md', fingerprint }]),
+      JSON.stringify([{ name: 'review.md', base64 }]),
     )
     applyMigrations(db, migrations)
     applyMigrations(db, migrations)

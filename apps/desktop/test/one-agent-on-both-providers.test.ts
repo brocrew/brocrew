@@ -227,7 +227,6 @@ describe('one normal agent, one conversation per giver and provider', () => {
         'draft-reader',
         {
           expectedVersion: 0,
-          currentText: '',
           text: textOne,
           why: 'Keep the fictional catalogue revision.',
         },
@@ -311,7 +310,6 @@ describe('one normal agent, one conversation per giver and provider', () => {
       const writer = owners[writerProvider === 'person' ? 'claude' : writerProvider]
       const update = {
         expectedVersion: v1,
-        currentText: textOne,
         text: textTwo,
         why: 'Record the next fictional revision.',
       }
@@ -364,7 +362,6 @@ describe('one normal agent, one conversation per giver and provider', () => {
       }
       const clear = {
         expectedVersion: v2,
-        currentText: textTwo,
         text: '',
         why: 'Clear the fictional notes.',
       }

@@ -1,10 +1,9 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { join, resolve, sep } from 'node:path'
+import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { SharedSkillDiscovery } from '../src/main/skills/shared-discovery'
 import { SharedSkillLibrary } from '../src/main/skills/shared-library'
-import { nodeFs } from '../src/main/recovery/files'
 import { readBuiltInSkills } from '../src/main/skills/prepare-built-in-skills'
 
 let root: string
@@ -118,9 +117,7 @@ it('moves new native folders before discovery on every start or resume, for all 
   await writeFile(join(original, 'SKILL.md'), text('recipe-check'))
   await service.prepareLaunch()
   if (process.platform === 'win32')
-    await new SharedSkillLibrary(root, undefined, Date.now, 'win32', 'next-app').convert(
-      async () => [],
-    )
+    await new SharedSkillLibrary(root, undefined, Date.now, 'win32').convert(async () => [])
   await expect(lstat(original)).rejects.toMatchObject({ code: 'ENOENT' })
   expect((await service.list()).find((one) => one.folder === 'recipe-check')?.body).toBe(
     text('recipe-check'),
@@ -132,9 +129,7 @@ it('moves new native folders before discovery on every start or resume, for all 
   await writeFile(join(original, 'SKILL.md'), text('recipe-check', 'A replacement recipe.'))
   await service.prepareLaunch()
   if (process.platform === 'win32')
-    await new SharedSkillLibrary(root, undefined, Date.now, 'win32', 'next-app').convert(
-      async () => [],
-    )
+    await new SharedSkillLibrary(root, undefined, Date.now, 'win32').convert(async () => [])
   await expect(lstat(original)).rejects.toMatchObject({ code: 'ENOENT' })
   expect((await service.list()).find((one) => one.folder === 'recipe-check')?.enabled).toBe(false)
   expect((await service.list()).find((one) => one.folder === 'recipe-check-2')?.body).toContain(
@@ -142,37 +137,33 @@ it('moves new native folders before discovery on every start or resume, for all 
   )
 })
 
-it('keeps a retained native original through startup and repeated prepareLaunch calls in the same app', async () => {
-  const home = join(root, 'provider-homes/default/cora/codex/skills/recipe-check')
-  await mkdir(home, { recursive: true })
-  await writeFile(join(home, 'SKILL.md'), text('recipe-check'))
-  const fs = {
-    ...nodeFs,
-    open: async (...args: Parameters<typeof nodeFs.open>) => {
-      if (
-        (await nodeFs.lstat(args[0]).catch(() => null))?.isDirectory() &&
-        (args[0] === join(root, 'skills') || args[0].startsWith(join(root, 'skills') + sep))
-      )
-        throw Object.assign(new Error('fictional Windows directory'), { code: 'EISDIR' })
-      return nodeFs.open(...args)
-    },
-  }
-  const first = new SharedSkillLibrary(root, fs, Date.now, 'win32', 'one-app')
-  await first.convert(async () => [])
+it('lists good neighbors and names a broken linked folder in both shared and profile reads', async () => {
   service.close()
-  service = new SharedSkillDiscovery(
-    root,
-    Promise.resolve(),
-    shipped,
-    new SharedSkillLibrary(root, fs, Date.now, 'win32', 'one-app'),
-  )
-  await service.prepareLaunch()
-  await service.prepareLaunch()
-  await expect(lstat(home)).resolves.toBeDefined()
-  // Even if directory sync becomes available, this app cannot confirm its own publication.
-  await new SharedSkillLibrary(root, nodeFs, Date.now, 'win32', 'one-app').convert(async () => [])
-  await expect(lstat(home)).resolves.toBeDefined()
-  const next = new SharedSkillLibrary(root, fs, Date.now, 'win32', 'another-app')
-  await next.convert(async () => [])
-  await expect(lstat(home)).rejects.toMatchObject({ code: 'ENOENT' })
+  service = new SharedSkillDiscovery(root, Promise.resolve(), shipped, undefined, (profileId) => ({
+    profileId,
+    canCreateAgents: true,
+    isCoordinator: false,
+  }))
+  const good = join(root, 'skills', 'good')
+  await mkdir(good, { recursive: true })
+  await writeFile(join(good, 'SKILL.md'), text('good'))
+  const broken = join(root, 'skills', 'broken')
+  await symlink(join(root, 'missing-folder'), broken, 'dir')
+  const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  expect((await service.list()).some((skill) => skill.folder === 'good')).toBe(true)
+  expect(
+    warning.mock.calls.some(
+      (call) => String(call[0]).includes(broken) && String(call[0]).includes('ENOENT'),
+    ),
+  ).toBe(true)
+  warning.mockClear()
+  const reply = await service.window({ operation: 'profile-list', profileId: 'lark' })
+  expect(reply.operation).toBe('profile-list')
+  if (reply.operation === 'profile-list')
+    expect(reply.skills.some((skill) => skill.folder === 'good')).toBe(true)
+  expect(
+    warning.mock.calls.some(
+      (call) => String(call[0]).includes(broken) && String(call[0]).includes('ENOENT'),
+    ),
+  ).toBe(true)
 })

@@ -148,12 +148,12 @@ describe('the tag a session gives the sign-in it launched on', () => {
     const renewed = await runtime.start(START)
 
     const tag = one.signInTag?.()
-    expect(tag).toMatch(/^[0-9a-f]{32}$/)
+    expect(tag).toMatch(/^credential:[0-9a-f]{64}$/)
     expect(two.signInTag?.()).toBe(tag)
-    expect(renewed.signInTag?.()).toMatch(/^[0-9a-f]{32}$/)
+    expect(renewed.signInTag?.()).toMatch(/^credential:[0-9a-f]{64}$/)
     expect(renewed.signInTag?.()).not.toBe(tag)
-    // 🔒 What a file keeps is neither the token nor the digest a turn is refused on.
-    expect(credentialFingerprint('sk-ant-oat01-A')).not.toContain(tag)
+    expect(tag).toBe(`credential:${credentialFingerprint('sk-ant-oat01-A')}`)
+    expect(tag).not.toContain('sk-ant-oat01-A')
   })
 
   it('a session launched with no login has none to give', async () => {

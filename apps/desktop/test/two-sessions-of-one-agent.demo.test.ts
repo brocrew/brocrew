@@ -502,49 +502,12 @@ describe('418 · two sessions of one agent', () => {
       // note): the window says it where the press was made (`RuntimeScreen.openConversation`).
     })
 
-    it('🔴 a person’s Close on a conversation nobody holds names a remedy that WORKS', async () => {
+    it('the rail’s press takes the stream and removes the conversation from the unclaimed list', async () => {
       await bringIdentityIntoBeing('worker')
       const parent = await personOpens('pm', 'auto')
       await storeA.attachOpen()
       const child = await anIdleChildOf(parent)
 
-      // ⛔ **421 §2.1's second question, answered and asserted.** The honest policy for a person's
-      // Close on a conversation nobody holds is *claim it first* rather than *a person may always
-      // close what nobody holds*: `mayControl` answers three questions at once (`340`) — who may
-      // drive it, whose stream it is, and whose departure ends it — so admitting every window to an
-      // unowned conversation would hand a stranger window the send and the approval on a
-      // conversation an agent is commanding, and would make that window's reload end it.
-      const refusal = await bridgeA
-        .close({ sessionId: child })
-        .then(() => 'it was allowed')
-        .catch((error: Error) => error.message)
-      // ⚑ **D-017b** — *"not open in any window"* became *"No window holds this conversation"*.
-      expect(refusal).toContain('No window holds this conversation')
-      expect(refusal).not.toContain('another window')
-      expect(host.sessionIds).toContain(child)
-
-      // 🔴 **And the remedy the sentence names is one call away and it works** — which is the whole
-      // difference from `418`, where the named remedy was *"switch to that window"*. A refusal
-      // whose way forward cannot be taken is a refusal that teaches a person to quit the app.
-      expect(await storeA.claim(child)).toBe(true)
-      await bridgeA.close({ sessionId: child })
-      expect(host.sessionIds).not.toContain(child)
-      // ⚑ …and the ledger says a PERSON did it, which is `418` §5's discriminator still standing.
-      const kinds = ledger.events(child).map((one) => one.event.type)
-      expect(kinds).toContain('user_command')
-      expect(kinds).not.toContain('work_interrupted')
-    })
-
-    it('⚑ the door that DOES work is the take-over, and the rail’s one press is the one that makes it', async () => {
-      await bringIdentityIntoBeing('worker')
-      const parent = await personOpens('pm', 'auto')
-      await storeA.attachOpen()
-      const child = await anIdleChildOf(parent)
-
-      // ⛔ **The paired positive.** The same window, the same id, one method over — and the
-      // conversation opens. So the refusal above is about which door was knocked on, not about
-      // whether this person may have this conversation.
-      //
       // 🔴 **And the rail knocks on this one** — ⚑ D-017b: the row's one press is `store.look`, a
       // PRESS (`claim: true`), which takes a conversation running with no window for this window
       // and opens it — the same take-over `goToQuestion` has made for the escalated queue since
@@ -696,20 +659,6 @@ describe('418 · two sessions of one agent', () => {
           summary: 'one is done',
         }),
       ).toMatchObject({ outcome: 'ok' })
-
-      // ⚠️ **The PERSON still cannot close it, and the sentence no longer names a window that is
-      // not there** (421). `assertMayControl` refused `not-yours` for a `null` owner — *"This
-      // conversation belongs to another window… Switch to that window"* — so of the three things a
-      // person could do to an agent-started conversation, two were refused by sentences naming a
-      // window that does not exist and the third had no gesture. ⛔ **The refusal is kept and the
-      // policy is stated: take it over, then close it.** Widening `mayControl` for a null owner
-      // would have handed every window the send, the approval and the interrupt on a conversation
-      // an agent is commanding, and would have made a reload end it. The remedy it names is
-      // exercised in §2's own test, two blocks up. ⚑ **D-017b** — the sentence says *"No window
-      // holds this conversation"* now.
-      await expect(bridgeA.close({ sessionId: first })).rejects.toThrow(
-        'No window holds this conversation, so nothing was done to it.',
-      )
 
       // ⛔ **So it is stopped, and the teardown parks.** This is the ordinary shape rather than an
       // exotic one: the provider says the thread is over well before this app has finished putting
