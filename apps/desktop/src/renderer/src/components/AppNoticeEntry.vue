@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SystemTranscriptEntryFrame from './SystemTranscriptEntryFrame.vue'
 import ModelGotSwitch from './ModelGotSwitch.vue'
 import { clockTime } from '../../../shared/clock'
 import { fullTime } from '../lib/clock'
@@ -30,107 +31,28 @@ defineProps<{ item: AppNoticeItem & Pick<TranscriptItem, 'at' | 'ordinal'> }>()
 </script>
 
 <template>
-  <article class="msg app" data-cy="app-notice">
-    <div class="msg-avatar">
-      <svg class="icon"><use href="#i-bot" /></svg>
-    </div>
-    <div class="msg-column">
-      <div class="msg-meta">
-        <!-- Never "You". The whole entry exists because this was "You" and should not have been. -->
-        <strong data-cy="app-notice-sender">{{ THE_APP_IS_THE_AUTHOR }}</strong>
-        <span class="about" data-cy="app-notice-mark">{{ APP_NOTICE_MARK }}</span>
-        <!-- In the META row, never inside the body — 001's rule: `textContent` of the message has
+  <SystemTranscriptEntryFrame data-cy="app-notice">
+    <template #meta>
+      <!-- Never "You". The whole entry exists because this was "You" and should not have been. -->
+      <strong data-cy="app-notice-sender">{{ THE_APP_IS_THE_AUTHOR }}</strong>
+      <span class="about system-entry-mark" data-cy="app-notice-mark">{{ APP_NOTICE_MARK }}</span>
+      <!-- In the META row, never inside the body — 001's rule: `textContent` of the message has
              to be exactly what went to the provider. -->
-        <span class="time">{{ clockTime(item.at) }}</span>
-      </div>
-      <div
-        class="msg-body"
-        data-cy="app-notice-message"
-        :data-at="clockTime(item.at)"
-        :title="fullTime(item.at)"
-      >
-        {{ item.text }}
-      </div>
-      <ModelGotSwitch
-        :words="item.text"
-        :sent="item.sent"
-        :together="item.sentWithOthers === true"
-        :ordinal="item.ordinal"
-      />
+      <span class="time">{{ clockTime(item.at) }}</span>
+    </template>
+    <div
+      class="msg-body"
+      data-cy="app-notice-message"
+      :data-at="clockTime(item.at)"
+      :title="fullTime(item.at)"
+    >
+      {{ item.text }}
     </div>
-  </article>
+    <ModelGotSwitch
+      :words="item.text"
+      :sent="item.sent"
+      :together="item.sentWithOthers === true"
+      :ordinal="item.ordinal"
+    />
+  </SystemTranscriptEntryFrame>
 </template>
-
-<style scoped>
-.msg {
-  display: grid;
-  max-width: var(--measure-message);
-  margin: 0 auto var(--space-10);
-  gap: var(--space-5);
-  grid-template-columns: var(--avatar) minmax(0, 1fr);
-}
-
-.msg-column {
-  min-width: 0;
-}
-
-/* Dashed, where the user's avatar is solid — the same "this is not the person" signal the row's
-   heading gives, available at a glance to someone scrolling past without reading. */
-.msg-avatar {
-  display: grid;
-  width: var(--avatar);
-  height: var(--avatar);
-  border: var(--border-width) dashed var(--line-strong);
-  border-radius: var(--radius-md);
-  background: var(--wash-2);
-  color: var(--muted);
-  place-items: center;
-}
-
-.msg-avatar .icon {
-  width: 15px;
-  height: 15px;
-}
-
-.msg-meta {
-  display: flex;
-  height: 22px;
-  align-items: center;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  gap: var(--space-4);
-}
-
-.msg-meta strong {
-  color: var(--text-soft);
-  font-size: var(--type-small);
-  font-weight: var(--fw-bold);
-}
-
-/* Permanently visible, not a hover affordance — 074's rule for the attribution mark, and for the
-   same reason: who a message is attributed to is part of reading it. */
-.about {
-  color: var(--faint);
-  font-size: var(--type-caption);
-}
-
-.time {
-  margin-left: auto;
-  color: var(--faint);
-  font: var(--type-caption) / 1 var(--font-mono);
-  opacity: 0.55;
-  transition: opacity var(--dur-fast) ease;
-}
-
-.msg:hover .time {
-  opacity: 1;
-}
-
-.msg-body {
-  padding-top: var(--space-2);
-  color: var(--text-soft);
-  font-size: var(--type-reading);
-  line-height: var(--leading-reading);
-  white-space: pre-wrap;
-}
-</style>
