@@ -34,12 +34,11 @@ export const TRUST = {
 const providerCopy = (version: string): string => `Provider copy · ${version}`
 
 /** Where a heading, a paragraph or a memory file came from, as the host says. */
-const TRUST_OF_KEPT: Readonly<Record<'as-launched' | 'composed-now' | 'read-now', string>> =
-  {
-    'as-launched': 'Recorded at launch',
-    'composed-now': 'This build',
-    'read-now': 'Read now',
-  }
+const TRUST_OF_KEPT: Readonly<Record<'as-launched' | 'composed-now' | 'read-now', string>> = {
+  'as-launched': 'Recorded at launch',
+  'composed-now': 'This build',
+  'read-now': 'Read now',
+}
 
 const TRUST_OF_TEXT: Readonly<Record<GivenTextIs, string>> = {
   'as-launched': TRUST.atLaunch,

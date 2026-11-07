@@ -61,10 +61,7 @@ function cannotPay(status: number, body: unknown): boolean {
 }
 
 /** The native one-token billing check, after the same no-cost list request. */
-async function checkClaudeKey(
-  key: string,
-  fetchFor: typeof fetch = fetch,
-): Promise<ApiKeyCheck> {
+async function checkClaudeKey(key: string, fetchFor: typeof fetch = fetch): Promise<ApiKeyCheck> {
   const checked = await checkKeyModelList(providerDescriptor('claude').apiKey, key, fetchFor)
   if ('answer' in checked) return checked.answer
   const { listed, issuer, headers, unreachable } = checked

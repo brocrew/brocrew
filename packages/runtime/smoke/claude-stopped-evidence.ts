@@ -11,12 +11,7 @@
  */
 
 /** The probe's arms — one turn each. */
-const STOP_ARMS = [
-  'finishes',
-  'stopped-streaming',
-  'stopped-in-tool',
-  'cancelled-card',
-] as const
+const STOP_ARMS = ['finishes', 'stopped-streaming', 'stopped-in-tool', 'cancelled-card'] as const
 export type StopArm = (typeof STOP_ARMS)[number]
 
 /** One arm, as the probe saw it. */

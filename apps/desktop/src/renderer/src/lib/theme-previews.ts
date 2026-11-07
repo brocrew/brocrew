@@ -18,8 +18,7 @@ import { readingAssetUrl } from './window-theme'
 const previewScope = (id: string): string => `[data-theme-preview='${id}']`
 
 /** The selector of a preview's conversation, its content zone. */
-const previewContent = (id: string): string =>
-  `${previewScope(id)} [data-preview-zone='content']`
+const previewContent = (id: string): string => `${previewScope(id)} [data-preview-zone='content']`
 
 /** The declarations of the first rule whose selector starts a line with `selector`. */
 function declarationsOf(css: string, selector: RegExp): Map<string, string> {

@@ -41,10 +41,7 @@ export const HIDDEN_BASE_THEME_IDS: readonly string[] = ['brocrew']
  * system says has no database yet is new, and starts in Crew Night. A database that can't be looked
  * at is taken to be there. The store writes the answer down once as the workspace's choice.
  */
-function startingThemeFor(
-  userData: string,
-  look: (path: string) => unknown = lstatSync,
-): string {
+function startingThemeFor(userData: string, look: (path: string) => unknown = lstatSync): string {
   try {
     look(join(userData, DATABASE_FILE))
     return EXISTING_INSTALL_THEME_ID
