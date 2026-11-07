@@ -174,6 +174,3 @@ it('set_setting refuses a foreign owner and keeps the reservation through atomic
   expect(JSON.parse(fs.readFileSync(preferences, 'utf8')).translate.enabled).toBe(false)
   f.store.shared.acquire('fern').release()
 })
-
-
-
