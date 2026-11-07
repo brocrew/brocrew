@@ -292,7 +292,8 @@ function times(haystack: string, needle: string): number {
 // The provider's bound home strategy prepares the profile it is given. The binding gets its paths
 // from the same pure facade as the read seam; neither call invents another layout.
 const PREPARE_SEAM =
-  'prepareProviderHome: async (provider, profileId) => { transcriptRetention?.beforeLaunch() return providerModules[provider].home.prepare(profileId) },'
+  'prepareProviderHome: async (provider, profileId, signal) => { transcriptRetention?.beforeLaunch() return providerModules[provider].home.prepare(profileId, signal) },'
+const FORBIDDEN_SEGMENT = /\(provider, profileId, (?!signal\b)\w+\) =>|\(provider, profileId, signal, \w+\) =>/
 const MODULE_PATHS =
   'const providerModules = createProviderModules((provider) => homePathsForProvider(userData, provider),'
 const PATH_SEAM =
@@ -316,12 +317,12 @@ describe('main wires the home seams to the one folder (D-016a)', () => {
 
     // The folder has one author, provider-homes.ts: preparation receives its bound paths, while
     // reads use the pure derivation directly.
-    expect(times(main, 'providerModules[provider].home.prepare(profileId)')).toBe(1)
+    expect(times(main, 'providerModules[provider].home.prepare(profileId, signal)')).toBe(1)
     expect(times(main, 'deriveProviderHome(userData')).toBe(1)
     // …and main never spells the layout itself.
     expect(main).not.toMatch(/HOME_FOLDER|['"]provider-homes['"]/)
     // …and neither seam takes a third parameter, which is where a segment used to arrive.
-    expect(main).not.toMatch(/\(provider, profileId, \w+\) =>/)
+    expect(main).not.toMatch(FORBIDDEN_SEGMENT)
   })
 
   it('the census has teeth: a seam that ignores the profile it is given is not the seam', () => {
@@ -348,8 +349,22 @@ describe('main wires the home seams to the one folder (D-016a)', () => {
 
     // A third parameter is seen by the pattern, and a comment that names the folder is not code.
     expect(flat(codeOf('prepareProviderHome: (provider, profileId, segment) => x'))).toMatch(
-      /\(provider, profileId, \w+\) =>/,
+      FORBIDDEN_SEGMENT,
     )
+    const main = flat(codeOf(readFileSync(MAIN, 'utf8')))
+    expect(times(main, PREPARE_SEAM)).toBe(1)
+    for (const defective of [
+      main.replace(PREPARE_SEAM, PREPARE_SEAM.replace('(provider, profileId, signal) =>', '(provider, profileId, segment) =>')),
+      main.replace(PREPARE_SEAM, PREPARE_SEAM.replace('(provider, profileId, signal) =>', '(provider, profileId, signal, segment) =>')),
+    ]) {
+      expect(defective).not.toBe(main)
+      expect(defective).toMatch(FORBIDDEN_SEGMENT)
+      expect(times(defective, PREPARE_SEAM)).toBe(0)
+    }
+    const withoutSignal = main.replace(PREPARE_SEAM, PREPARE_SEAM.replace('home.prepare(profileId, signal)', 'home.prepare(profileId)'))
+    expect(withoutSignal).not.toBe(main)
+    expect(times(withoutSignal, PREPARE_SEAM)).toBe(0)
+    expect(main).not.toMatch(FORBIDDEN_SEGMENT)
     expect(codeOf('// every home is under `HOME_FOLDER`\nconst a = 1')).not.toMatch(/HOME_FOLDER/)
     expect(codeOf("const root = 'provider-homes'")).toMatch(/['"]provider-homes['"]/)
   })

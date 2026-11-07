@@ -332,7 +332,7 @@ describe('bringTheCodexKeyTo', () => {
     const { seam, changes } = aSeam(() => ({ key: KEY, setAt: 500 }))
     expect(await bringTheCodexKeyTo(home, seam)).toBe('the-key')
     expect(changes).toHaveBeenCalledTimes(1)
-    expect(changes).toHaveBeenCalledWith(home, { to: 'the-key', apiKey: KEY })
+    expect(changes).toHaveBeenCalledWith(home, { to: 'the-key', apiKey: KEY }, undefined)
     expect(stamp()).toEqual({ setAt: 500 })
     expect(readFileSync(join(home, STAMP), 'utf8')).not.toContain(KEY)
 
@@ -356,7 +356,7 @@ describe('bringTheCodexKeyTo', () => {
     setAt = 900
     key = 'sk-second'
     await bringTheCodexKeyTo(home, seam)
-    expect(changes).toHaveBeenLastCalledWith(home, { to: 'the-key', apiKey: 'sk-second' })
+    expect(changes).toHaveBeenLastCalledWith(home, { to: 'the-key', apiKey: 'sk-second' }, undefined)
     expect(stamp()).toEqual({ setAt: 900 })
   })
 
@@ -366,7 +366,7 @@ describe('bringTheCodexKeyTo', () => {
     await bringTheCodexKeyTo(home, seam)
     held = null
     expect(await bringTheCodexKeyTo(home, seam)).toBe('its-login')
-    expect(changes).toHaveBeenLastCalledWith(home, { to: 'no-key' })
+    expect(changes).toHaveBeenLastCalledWith(home, { to: 'no-key' }, undefined)
     expect(existsSync(join(home, STAMP))).toBe(false)
     // …and with the stamp gone, the next look has nothing to undo.
     await bringTheCodexKeyTo(home, seam)
