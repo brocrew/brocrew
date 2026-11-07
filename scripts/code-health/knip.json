@@ -98,6 +98,7 @@
         "resources/plugin-host/*.mjs",
         "test/**/*.worker.ts",
         "test/helpers/plugin-disclosure-reader-worker.ts",
+        "smoke/packaged-plugin-service.ts",
         "smoke/plugin-lifecycle.ts",
         "smoke/plugin-node-host.ts",
         "smoke/plugin-production.ts",
