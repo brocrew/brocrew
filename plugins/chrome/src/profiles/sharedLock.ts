@@ -28,7 +28,7 @@ export function birthOf(pid: number): string | undefined {
         : ['-p', String(pid), '-o', 'lstart=']
     const out = execFileSync(process.platform === 'win32' ? 'powershell' : 'ps', args, {
       encoding: 'utf8',
-      timeout: 2000,
+      timeout: process.platform === 'win32' ? 30000 : 2000,
       windowsHide: true,
       env: { ...process.env, LC_ALL: 'C', LANG: 'C', TZ: 'UTC' },
     }).trim()
