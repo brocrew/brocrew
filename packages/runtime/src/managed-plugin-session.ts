@@ -69,7 +69,9 @@ async function bounded<T>(work: Promise<T>, signal?: AbortSignal): Promise<T> {
       work,
       new Promise<never>((_, reject) => {
         stop = () =>
-          reject(new Error(`Plugin operation did not finish within ${PLUGIN_ATTACHMENT_WAIT_MS} ms.`))
+          reject(
+            new Error(`Plugin operation did not finish within ${PLUGIN_ATTACHMENT_WAIT_MS} ms.`),
+          )
         timer = setTimeout(stop, PLUGIN_ATTACHMENT_WAIT_MS)
         signal?.addEventListener('abort', stop, { once: true })
         if (signal?.aborted) stop()
