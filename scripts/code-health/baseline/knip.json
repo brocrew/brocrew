@@ -929,6 +929,7 @@
   "types|apps/desktop/test/dom/drawn.ts|ClipKind",
   "types|apps/desktop/test/dom/drawn.ts|Reach",
   "types|apps/desktop/test/fixtures/a-realistic-profile.ts|Expectation",
+  "types|apps/desktop/test/fixtures/plugin-delete-parent/types.ts|LifecycleRuntime",
   "types|apps/desktop/test/fixtures/plugin-delete-parent/types.ts|LifecycleStatus",
   "types|apps/desktop/test/fixtures/plugin-delete-parent/types.ts|PluginRelease",
   "types|apps/desktop/test/fixtures/plugin-disclosure-mixed/authors-features.ts|SpeechTranscribeInput",
