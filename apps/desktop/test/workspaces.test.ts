@@ -594,11 +594,11 @@ describe('§6 · the chooser’s rows', () => {
         return folder === running ? 'open' : 'closed'
       },
     })
-    expect(rows.map((row) => [row.name, row.state, row.isThisOne, row.readers])).toEqual([
-      ['this', 'open', true, null],
-      ['gone', 'missing', false, null],
-      ['running', 'open', false, null],
-      ['Research', 'closed', false, null],
+    expect(rows.map((row) => [row.name, row.state, row.isThisOne])).toEqual([
+      ['this', 'open', true],
+      ['gone', 'missing', false],
+      ['running', 'open', false],
+      ['Research', 'closed', false],
     ])
     // ⚑ This one, and a folder that is gone, are not asked.
     expect(asked.sort()).toEqual([closed, running].sort())
@@ -621,7 +621,7 @@ describe('§6 · the chooser’s rows', () => {
         isThisOne: true,
         state: 'open',
         lastOpenedAt: 1,
-        readers: null,
+
       },
     ])
   })

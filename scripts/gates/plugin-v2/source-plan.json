@@ -259,8 +259,8 @@
     },
     {
       "path": "apps/desktop/src/main/recovery/files.ts",
-      "sha256": "bd10bfcf635e61e4b4cc901551c110079dcd8dc2f81640845548bc35e24fd3b1",
-      "bytes": 16359
+      "sha256": "be9fca387894df5eefc6cf6f57cce285c048900e27119a2ce8d070bf91eb9169",
+      "bytes": 16263
     },
     {
       "path": "apps/desktop/src/main/recovery/layout.ts",

@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { manifestFor, packageFixture, fictionalPublicKey } from './plugin-package-fixtures'
@@ -15,8 +16,7 @@ afterEach(() => {
     rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 })
 })
 
-// Real Windows folders, state, catalogue verification, staging and lifecycle admission. Only the
-// runtime process is inert; it records the start that must still follow a permission failure.
+// Real folders, state, package verification and lifecycle; the runtime process is inert.
 describe.runIf(process.platform === 'win32')(
   'plugin startup uses ordinary folders without admission',
   () => {
@@ -26,6 +26,8 @@ describe.runIf(process.platform === 'win32')(
         const root = join(parent, 'plugins'), workspace = join(parent, 'workspace')
         mkdirSync(workspace)
         if (existing) mkdirSync(root)
+        const storage = new SupervisorStorage(root, [workspace], true)
+        storage.close()
         const state = GlobalPluginState.create({
           root: join(root, 'state'),
           workspaceRoots: [workspace],
