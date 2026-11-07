@@ -121,7 +121,6 @@ export function createPluginSupervisorLauncher(options: {
           )
           if (ready.format === 1 && ready.ready === true && ready.pid === child.pid) {
             readyPhase()
-            readyPhase = undefined
             return
           }
         } catch {
