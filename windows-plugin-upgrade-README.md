@@ -1,3 +1,7 @@
+## Clean-install control variant
+
+Dispatch `test_path=clean-install` to install the exact same supplied candidate installer on the fresh hosted runner without installing or launching beta. Beta input downloads may remain as unused provenance inputs; no beta executable is run. This path records its identity, requires both candidate cards initially uninstalled, then uses the unchanged strict Settings install, published identities, MCP calls, held native witness and normal candidate shutdown checks. It has three required phases. Default `failed-beta-recovery` preserves the five-phase recovery case. Clean success/failure is a separate control, never upgrade proof. No seeding, state deletion, product change, rebuild or automatic retry.
+
 # Windows failed-beta-install to candidate recovery TEST
 
 Owner Remy W15.51; Teo and Fabijan review; Sara alone pushes/dispatches. W4's 20:15 decision supersedes the earlier beta-installed starting state. Original failed runs remain RED.

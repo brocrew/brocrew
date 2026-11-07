@@ -10,7 +10,7 @@ import { createRequire } from 'node:module'
 import { parseArgs } from 'node:util'
 
 const { values: args } = parseArgs({ options: {
-  execute: { type: 'boolean', default: false }, 'source-root': { type: 'string' },
+  execute: { type: 'boolean', default: false }, 'test-path': { type: 'string', default: 'failed-beta-recovery' }, 'source-root': { type: 'string' },
   'candidate-dir': { type: 'string' }, 'candidate-sha': { type: 'string' },
   'candidate-version': { type: 'string' }, inputs: { type: 'string' }, evidence: { type: 'string' },
 } })
@@ -18,7 +18,9 @@ const expected = {
   chrome: { version: '0.1.8', bytes: 3608965, sha256: 'd05363044da6b65cacfccee0149772b97c1a7e5dca83c8262bf91e70de84c8a0', manifest: 'b8432edfc43657715a695dcca57164c7ba0e9229fd98570d4159afeb9be8f7d3', repo: 'brocrew-plugin-chrome' },
   whatsapp: { version: '0.1.4', bytes: 8228798, sha256: '49497b4c15adffefdbc63f8490da542ebae78016975a72c6b55e4476aa3dc769', manifest: 'fe6f04050ac0ec9cc0b577de9d57dc249987d7d3a43cc7e16a9350e68ca83c8d', repo: 'brocrew-plugin-whatsapp' },
 }
-const plan = ['verify public beta installer, exact candidate bytes and published win32/x64 plugin pins', 'install actual 0.1.36 NSIS', 'record beta Settings Chrome installation failure as the expected baseline', 'stop beta and retain its real residual plugin state without seeding or repair', 'install exact 0.2.11 candidate NSIS over beta', 'install or retry the two published plugins through candidate Settings', 'attach observer to candidate-owned service; Chrome list_browser_profiles and WhatsApp tools/list over HTTP', 'detach observer, quit app, verify owner/host exits and process cleanup']
+assert(['failed-beta-recovery','clean-install'].includes(args['test-path']))
+const cleanInstall=args['test-path']==='clean-install'
+const plan = cleanInstall ? ['verify exact candidate installer and published win32/x64 plugin pins', 'install candidate NSIS on a clean runner without installing or launching beta', 'install both published plugins through candidate Settings', 'call Chrome list_browser_profiles and WhatsApp tools/list through installed service', 'verify normal candidate shutdown and cleanup'] : ['verify public beta installer, exact candidate bytes and published win32/x64 plugin pins', 'install actual 0.1.36 NSIS', 'record beta Settings Chrome installation failure as the expected baseline', 'stop beta and retain its real residual plugin state without seeding or repair', 'install exact 0.2.11 candidate NSIS over beta', 'install or retry the two published plugins through candidate Settings', 'attach observer to candidate-owned service; Chrome list_browser_profiles and WhatsApp tools/list over HTTP', 'detach observer, quit app, verify owner/host exits and process cleanup']
 if (!args.execute) { console.log(JSON.stringify({ execute: false, plan, expected }, null, 2)); process.exit(0) }
 assert.equal(process.platform, 'win32', 'execution is Windows only')
 assert.equal(process.arch, 'x64')
@@ -34,7 +36,7 @@ mkdirSync(evidence, { recursive: true })
 const digest = bytes => createHash('sha256').update(bytes).digest('hex')
 const keep = (name, value) => writeFileSync(join(evidence, name), Buffer.isBuffer(value) || typeof value === 'string' ? value : JSON.stringify(value, null, 2) + '\n')
 const readJson = path => JSON.parse(readFileSync(path, 'utf8'))
-const summary = { format: 1, started: new Date().toISOString(), passed: false, plan, expected, phases: [], failures: [], outsideThisCheck: ['No account sign-in, real browser profiles, WhatsApp session, or provider calls', 'No in-app updater or SmartScreen UI proof', 'Observer uses source control clients, but never launches source runtime/service/plugin code', 'No full application or release qualification'] }
+const summary = { format: 1, started: new Date().toISOString(), passed: false, testPath: args['test-path'], plan, expected, phases: [], failures: [], outsideThisCheck: ['No account sign-in, real browser profiles, WhatsApp session, or provider calls', 'No in-app updater or SmartScreen UI proof', 'Observer uses source control clients, but never launches source runtime/service/plugin code', 'No full application or release qualification'] }
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms))
 async function until(fn, ms, label) { const end = performance.now() + ms; do { const value = await fn(); if (value) return value; await pause(250) } while (performance.now() < end); throw Error(`deadline: ${label}`) }
 function run(exe, argv, extra = {}) { const result = spawnSync(exe, argv, { encoding: 'utf8', timeout: 60000, windowsHide: true, ...extra }); assert.ifError(result.error); assert.equal(result.status, 0, `${exe} exit ${result.status}: ${result.stderr}`); return result.stdout ?? '' }
@@ -306,7 +308,9 @@ try {
     }
     ownsFixture=true
   })
-  const beta=await phase('actual beta NSIS install',()=>install(summary.inputs.beta,'0.1.36'))
+  let beta
+  if(!cleanInstall) {
+  beta=await phase('actual beta NSIS install',()=>install(summary.inputs.beta,'0.1.36'))
   await phase('beta Chrome installation failure baseline',async()=>{
     await launch(beta,'0.1.36',9345)
     assert.equal((await request({kind:'availability'},'beta-availability')).available,true)
@@ -327,15 +331,22 @@ try {
     summary.residualPreUpgrade=residualState('baseline-residual-state')
     keep('pre-upgrade-host-receipts.json',hostReceipts())
   })
-  const candidate=await phase('actual candidate NSIS upgrade',()=>install(summary.inputs.candidate,'0.2.11'))
+  } else {
+    keep('clean-install-control.json',{testPath:args['test-path'],betaInstalled:false,betaLaunched:false})
+    keep('pre-upgrade-host-receipts.json',[])
+  }
+  const candidate=await phase(cleanInstall?'actual candidate clean NSIS install':'actual candidate NSIS upgrade',()=>install(summary.inputs.candidate,'0.2.11'))
+  if(!cleanInstall) {
   assert(samePath(candidate.folder,beta.folder),'candidate replaced the registered beta install location')
   assert.deepEqual(residualState('after-installer-residual-state'),summary.residualPreUpgrade,'NSIS upgrade changed the retained beta plugin state before candidate launch')
+  }
   await phase('installed candidate plugin tools',async()=>{
     await launch(candidate,'0.2.11',9346)
     assert.equal((await request({kind:'availability'},'candidate-availability')).available,true)
     for(const [id,wanted]of Object.entries(expected)) {
       const listed=await request({kind:'list'},`candidate-${id}-before-install`);assert.equal(listed.ok,true)
       const card=listed.cards.find(c=>c.id===id);assert(card)
+      if(cleanInstall)assert.equal(card.installed,false,'clean candidate unexpectedly has an installed plugin')
       if(card.installed) {
         assert.equal(card.installedVersion,wanted.version)
         assert.equal((await request({kind:'retry',id},`candidate-${id}-retry-existing`)).ok,true)
@@ -365,6 +376,6 @@ finally {
   try{await cleanup()}catch(error){summary.failures.push(`cleanup: ${error.stack??error}`)}
   // Preserve only synthetic fixture metadata and native receipts; never upload capabilities or plugin data.
   for(const name of ['plugin-startup.log'])if(ownsFixture&&existsSync(join(pluginRoot,name)))copyFileSync(join(pluginRoot,name),join(evidence,name))
-  summary.finished=new Date().toISOString();summary.passed=summary.failures.length===0&&summary.phases.length===5&&summary.phases.every(p=>p.passed)
+  summary.finished=new Date().toISOString();summary.passed=summary.failures.length===0&&summary.phases.length===(cleanInstall?3:5)&&summary.phases.every(p=>p.passed)
   keep('summary.json',summary);console.log(JSON.stringify({passed:summary.passed,failures:summary.failures,evidence}));process.exitCode=summary.passed?0:1
 }

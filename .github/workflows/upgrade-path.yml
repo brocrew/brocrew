@@ -20,6 +20,11 @@ on:
         description: Exact installer SHA256 from Dara's receipt
         required: true
         type: string
+      test_path:
+        description: Failed beta recovery or independent clean-install control
+        type: choice
+        options: [failed-beta-recovery, clean-install]
+        default: failed-beta-recovery
       proof_stage:
         description: Early recipe check or final candidate proof
         type: choice
@@ -32,7 +37,7 @@ permissions:
 
 jobs:
   windows:
-    name: Public 0.1.36 with published plugins to 0.2.11
+    name: Windows published plugin test (${{ inputs.test_path }})
     runs-on: windows-2022
     timeout-minutes: 90
     env:
@@ -41,6 +46,7 @@ jobs:
       INSTALLER_RUN_ID: ${{ inputs.installer_run_id }}
       INSTALLER_ARTIFACT: ${{ inputs.installer_artifact }}
       EXPECTED_INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
+      TEST_PATH: ${{ inputs.test_path }}
       PROOF_STAGE: ${{ inputs.proof_stage }}
     steps:
       - name: Use the Windows profile temp folder by its long name
@@ -157,11 +163,11 @@ jobs:
           sha256sum --check evidence/candidate-installer-normalized-sha256.txt
           printf 'CANDIDATE_DIR=candidate-normalized\n' >> "$GITHUB_ENV"
 
-      - name: Install old app and plugins, upgrade, start and call both plugins
+      - name: Run the selected installed-plugin test path
         shell: bash
         run: |
           set -euo pipefail
-          node carrier/windows-plugin-upgrade.mjs --execute \
+          node carrier/windows-plugin-upgrade.mjs --execute --test-path "$TEST_PATH" \
             --source-root candidate --candidate-dir "$CANDIDATE_DIR" \
             --candidate-sha "$CANDIDATE_SHA" --candidate-version "$CANDIDATE_VERSION" \
             --inputs inputs --evidence evidence
