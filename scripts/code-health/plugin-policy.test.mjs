@@ -186,28 +186,50 @@ test('target ceilings need a readable ordinary Git target; bootstrap never activ
     ])
     assert.throws(() => targetPluginCounts(dir, 'HEAD'))
     assert.throws(() => targetPluginCounts(dir, 'HEAD', true), /reviewed a42/)
-    assert.throws(() => selectPluginComparison(dir, {
-      eventName: 'push', event: { before: 'HEAD' }, autoBootstrap: true,
-    }), /ancestry check failed/)
+    assert.throws(
+      () =>
+        selectPluginComparison(dir, {
+          eventName: 'push',
+          event: { before: 'HEAD' },
+          autoBootstrap: true,
+        }),
+      /ancestry check failed/,
+    )
     const ceilingFile = 'scripts/code-health/baseline/plugin-policy.json'
     fs.mkdirSync(path.dirname(path.join(dir, ceilingFile)), { recursive: true })
     fs.writeFileSync(path.join(dir, ceilingFile), '{malformed')
     const commit = () => {
       execFileSync('git', ['-C', dir, 'add', ceilingFile])
-      execFileSync('git', ['-C', dir, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'policy fixture'])
+      execFileSync('git', [
+        '-C',
+        dir,
+        '-c',
+        'user.name=Test',
+        '-c',
+        'user.email=test@example.invalid',
+        'commit',
+        '-qm',
+        'policy fixture',
+      ])
     }
     commit()
     const existing = selectPluginComparison(dir, {
-      eventName: 'push', event: { before: 'HEAD' }, autoBootstrap: true,
+      eventName: 'push',
+      event: { before: 'HEAD' },
+      autoBootstrap: true,
     })
     assert.equal(existing.bootstrap, false)
     assert.throws(() => targetPluginCounts(dir, existing.target, existing.bootstrap), SyntaxError)
     fs.writeFileSync(path.join(dir, ceilingFile), JSON.stringify(emptyCounts()))
     commit()
     assert.deepEqual(targetPluginCounts(dir, 'HEAD'), emptyCounts())
-    assert.throws(() => selectPluginComparison(dir, {
-      eventName: 'push', event: { before: 'not-a-ref' }, autoBootstrap: true,
-    }))
+    assert.throws(() =>
+      selectPluginComparison(dir, {
+        eventName: 'push',
+        event: { before: 'not-a-ref' },
+        autoBootstrap: true,
+      }),
+    )
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
   }
@@ -232,27 +254,61 @@ test('event comparison recognizes only the first introduction and preserves exis
       return to === head && [introduction, reviewed].includes(from)
     },
   })
-  const select = (options, historyOptions) => selectPluginComparison(root, {
-    autoBootstrap: true, ...options,
-  }, makeHistory(historyOptions))
+  const select = (options, historyOptions) =>
+    selectPluginComparison(
+      root,
+      {
+        autoBootstrap: true,
+        ...options,
+      },
+      makeHistory(historyOptions),
+    )
   const push = { eventName: 'push', event: { before: target } }
   assert.deepEqual(select(push), { target: reviewed, bootstrap: true })
-  const newBranch = { eventName: 'push', event: { before: '0'.repeat(40), repository: { default_branch: 'main' } } }
+  const newBranch = {
+    eventName: 'push',
+    event: { before: '0'.repeat(40), repository: { default_branch: 'main' } },
+  }
   assert.deepEqual(select(newBranch), { target: reviewed, bootstrap: true })
   assert.deepEqual(select(newBranch, { existing: true }), { target, bootstrap: false })
-  assert.deepEqual(select(push, { existing: true, introduced: false, broken: true }), { target, bootstrap: false })
+  assert.deepEqual(select(push, { existing: true, introduced: false, broken: true }), {
+    target,
+    bootstrap: false,
+  })
   assert.deepEqual(select(push, { introduced: true }), { target, bootstrap: false })
   const pr = { eventName: 'pull_request', event: { pull_request: { base: { sha: target } } } }
   assert.deepEqual(select(pr), { target: reviewed, bootstrap: true })
   assert.deepEqual(select(pr, { existing: true }), { target, bootstrap: false })
-  assert.deepEqual(select({ eventName: 'schedule' }, { existing: true }), { target: head, bootstrap: false })
+  assert.deepEqual(select({ eventName: 'schedule' }, { existing: true }), {
+    target: head,
+    bootstrap: false,
+  })
   assert.deepEqual(select({}), { target, bootstrap: false })
-  assert.deepEqual(select({ eventName: 'workflow_dispatch', target: reviewed, bootstrap: true }), { target: reviewed, bootstrap: true })
-  assert.deepEqual(select({ target, bootstrap: true }, { existing: true }), { target, bootstrap: false })
+  assert.deepEqual(select({ eventName: 'workflow_dispatch', target: reviewed, bootstrap: true }), {
+    target: reviewed,
+    bootstrap: true,
+  })
+  assert.deepEqual(select({ target, bootstrap: true }, { existing: true }), {
+    target,
+    bootstrap: false,
+  })
   assert.throws(() => select(push, { broken: true }), /ancestry execution error/)
-  assert.throws(() => select({ eventName: 'push', event: { before: 'unknown' } }), /unknown comparison ref/)
-  assert.throws(() => select({ eventName: 'push', event: { before: '0'.repeat(40) } }), /default branch is missing/)
-  assert.throws(() => select({ eventName: 'push', event: { before: '0'.repeat(40), repository: { default_branch: 'missing' } } }), /unknown comparison ref/)
+  assert.throws(
+    () => select({ eventName: 'push', event: { before: 'unknown' } }),
+    /unknown comparison ref/,
+  )
+  assert.throws(
+    () => select({ eventName: 'push', event: { before: '0'.repeat(40) } }),
+    /default branch is missing/,
+  )
+  assert.throws(
+    () =>
+      select({
+        eventName: 'push',
+        event: { before: '0'.repeat(40), repository: { default_branch: 'missing' } },
+      }),
+    /unknown comparison ref/,
+  )
 })
 
 test('pinned native collector: actual incident VALUE import, SDK-only helper, legal types and neutral leaves', () => {
@@ -358,7 +414,11 @@ test('pinned native collector: actual incident VALUE import, SDK-only helper, le
     native('incident restored GREEN', 0)
     const leafPath = 'packages/runtime/src/managed-plugin-failure.ts'
     const originalLeaf = fs.readFileSync(path.join(dir, leafPath), 'utf8')
-    put(leafPath, originalLeaf + `\nimport { query } from '@anthropic-ai/claude-agent-sdk'; export const forbidden = query\n`)
+    put(
+      leafPath,
+      originalLeaf +
+        `\nimport { query } from '@anthropic-ai/claude-agent-sdk'; export const forbidden = query\n`,
+    )
     const changedLeaf = native('neutral leaf gaining SDK RED', 1)
     assert.equal(changedLeaf.result.counts['runtime-barrel-reach'].host, 0)
     assert.equal(changedLeaf.result.counts['provider-sdk-reach'].host, 1)
@@ -380,7 +440,10 @@ test('pinned native collector: actual incident VALUE import, SDK-only helper, le
     )
     put('shared/helper.ts', 'export const run = 1')
     native('helper restored GREEN', 0)
-    put('shared/helper.ts', `import { ManagedPluginFailure } from '@brobot2/runtime'; export const run = ManagedPluginFailure`)
+    put(
+      'shared/helper.ts',
+      `import { ManagedPluginFailure } from '@brobot2/runtime'; export const run = ManagedPluginFailure`,
+    )
     const barrelHelper = native('helper to barrel RED', 1)
     assert.equal(barrelHelper.result.counts['direct-value-barrel'].host, 0)
     assert.equal(barrelHelper.result.counts['runtime-barrel-reach'].host, 1)

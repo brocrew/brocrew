@@ -18,19 +18,25 @@ export const emptyCounts = () =>
 
 const gitRead = (root, args) =>
   execFileSync('git', args, {
-      cwd: root,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    }).trim()
+    cwd: root,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim()
 
 function gitHistory(root) {
   return {
     resolve: (revision) => gitRead(root, ['rev-parse', '--verify', `${revision}^{commit}`]),
-    hasPolicy: (revision) => gitRead(root, ['ls-tree', '--name-only', revision, '--', POLICY_FILE]) === POLICY_FILE,
+    hasPolicy: (revision) =>
+      gitRead(root, ['ls-tree', '--name-only', revision, '--', POLICY_FILE]) === POLICY_FILE,
     isAncestor: (from, to) => {
-      const result = spawnSync('git', ['merge-base', '--is-ancestor', from, to], { cwd: root, encoding: 'utf8' })
+      const result = spawnSync('git', ['merge-base', '--is-ancestor', from, to], {
+        cwd: root,
+        encoding: 'utf8',
+      })
       if (result.error || (result.status !== 0 && result.status !== 1))
-        throw new Error(`plugin policy: ancestry check failed: ${result.error?.message ?? result.stderr}`)
+        throw new Error(
+          `plugin policy: ancestry check failed: ${result.error?.message ?? result.stderr}`,
+        )
       return result.status === 0
     },
   }
@@ -43,7 +49,8 @@ export function selectPluginComparison(root, options, history = gitHistory(root)
     if (eventName === 'push') {
       if (!event.before) throw new Error('plugin policy: push comparison target is missing')
       if (/^0{40}$/.test(event.before)) {
-        if (!event.repository?.default_branch) throw new Error('plugin policy: default branch is missing')
+        if (!event.repository?.default_branch)
+          throw new Error('plugin policy: default branch is missing')
         ordinary = `origin/${event.repository.default_branch}`
       } else ordinary = event.before
     } else if (eventName === 'pull_request') {
@@ -56,8 +63,11 @@ export function selectPluginComparison(root, options, history = gitHistory(root)
   if (bootstrap) return { target: ordinary, bootstrap: true }
   if (autoBootstrap && ['push', 'pull_request'].includes(eventName)) {
     const head = history.resolve('HEAD')
-    if (history.isAncestor(INTRODUCTION, head) && !history.isAncestor(INTRODUCTION, ordinary) &&
-      history.isAncestor(BOOTSTRAP_BASE, head))
+    if (
+      history.isAncestor(INTRODUCTION, head) &&
+      !history.isAncestor(INTRODUCTION, ordinary) &&
+      history.isAncestor(BOOTSTRAP_BASE, head)
+    )
       return { target: BOOTSTRAP_BASE, bootstrap: true }
   }
   return { target: ordinary, bootstrap: false }
@@ -72,9 +82,7 @@ export function targetPluginCounts(root, target, bootstrap = false) {
       throw new Error('plugin policy: reviewed bootstrap base is not an ancestor')
     return Object.fromEntries(RULES.map((rule) => [rule, { host: 2, service: 0 }]))
   }
-  return validateCounts(
-    JSON.parse(gitRead(root, ['show', `${revision}:${POLICY_FILE}`])),
-  )
+  return validateCounts(JSON.parse(gitRead(root, ['show', `${revision}:${POLICY_FILE}`])))
 }
 
 function validateCounts(counts) {
@@ -214,9 +222,11 @@ export function collectPluginPolicy(
     if (!modules.has(source)) continue
     const role = source.startsWith('apps/desktop/resources/plugin-host/') ? 'service' : 'host'
     const direct = facts(source).imports.filter(
-      (one) => one.module === '@brobot2/runtime' || modules.get(source).dependencies.some(
-        (edge) => edge.module === one.module && edge.resolved === BARREL,
-      ),
+      (one) =>
+        one.module === '@brobot2/runtime' ||
+        modules
+          .get(source)
+          .dependencies.some((edge) => edge.module === one.module && edge.resolved === BARREL),
     )
     if (direct.length) {
       counts['direct-value-barrel'][role]++

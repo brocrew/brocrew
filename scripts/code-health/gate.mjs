@@ -219,7 +219,10 @@ function main(argv) {
           : {},
       })
       const before = targetPluginCounts(root, comparison.target, comparison.bootstrap)
-      fs.writeFileSync(path.join(out, 'plugin-comparison.json'), JSON.stringify(comparison, null, 2) + '\n')
+      fs.writeFileSync(
+        path.join(out, 'plugin-comparison.json'),
+        JSON.stringify(comparison, null, 2) + '\n',
+      )
       pluginDiff = comparePluginCounts(policy.counts, candidate, before)
       const total = (counts) =>
         Object.values(counts).reduce((n, roles) => n + roles.host + roles.service, 0)
