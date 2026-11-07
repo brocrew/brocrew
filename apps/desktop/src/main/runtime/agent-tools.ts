@@ -321,60 +321,7 @@ export const TOOL_NAMES = [
 
 export type ToolName = (typeof TOOL_NAMES)[number]
 
-export const TOOL_REFUSALS = [
-  'theme-invalid',
-  'theme-is-built-in',
-  'theme-exists',
-  'theme-unknown',
-  'theme-too-large',
-  'no-such-agent',
-  'that-conversation-takes-no-messages',
-  'that-agent-has-several-conversations',
-  'malformed-request',
-  'agent-cannot-take-a-message',
-  'that-conversation-has-not-started',
-  'that-agent-is-you',
-  'that-agent-is-not-below-you',
-  'spawning-disabled',
-  'agent-did-not-start',
-  'the-start-it-waited-on-did-not-happen',
-  'agent-could-not-start-just-now',
-  'agent-could-not-be-started',
-  'may-not-create-agents',
-  'agent-name-taken',
-  'services-are-off-so-none-is-made',
-  'not-a-piece-you-gave',
-  'that-piece-was-already-answered',
-  'that-piece-was-already-taken-back',
-  'that-work-is-being-sent',
-  'a-conversation-with-its-questions-is-starting',
-  'its-questions-could-not-all-be-read',
-  'may-not-write-rules',
-  'may-not-relay-a-rule',
-  'that-is-work-you-hold',
-  'that-is-your-own-work',
-  'that-conversation-is-still-stopping',
-  'that-conversation-could-not-be-resumed',
-  'that-conversation-could-not-be-woken-just-now',
-  'not-a-conversation-below-you',
-  'no-piece-by-that-name',
-  'the-giver-names-a-piece',
-  'that-piece-has-ended',
-  'the-giver-briefs-and-closes-a-piece',
-  'that-piece-was-already-closed',
-  'no-work-of-your-own',
-  'work-record-unavailable',
-  'no-agent-by-that-name',
-  'that-conversation-is-not-archived',
-  'it-is-being-archived-or-deleted',
-  'it-could-not-be-restored',
-  'server-already-registered',
-  'server-already-asked-for',
-  'too-many-server-requests',
-  'that-piece-is-still-queued',
-] as const
-
-export type ToolRefusal = (typeof TOOL_REFUSALS)[number]
+export type ToolRefusal = keyof typeof TOOL_RECORDS
 
 export function whatItRunsOnSaid(runsOn: WhatItRunsOn): string {
   if (runsOn.model === null) return ''
@@ -685,114 +632,8 @@ interface TakeOnWorkArguments {
   readonly brief: string
 }
 
-export const TOOL_PERMANENCE: Readonly<Record<ToolRefusal, RailPermanence>> = {
-  'theme-invalid': 'while-this-holds',
-  'theme-is-built-in': 'permanent',
-  'theme-exists': 'while-this-holds',
-  'theme-unknown': 'while-this-holds',
-  'theme-too-large': 'while-this-holds',
-  'no-such-agent': 'permanent',
-  'that-conversation-takes-no-messages': 'permanent',
-  'that-agent-has-several-conversations': 'permanent',
-  'malformed-request': 'permanent',
-  'agent-cannot-take-a-message': 'until-a-person-changes-it',
-  'that-conversation-has-not-started': 'while-this-holds',
-  'that-agent-is-you': 'permanent',
-  'that-agent-is-not-below-you': 'permanent',
-  'spawning-disabled': 'until-a-person-changes-it',
-  'agent-did-not-start': 'until-a-person-changes-it',
-  'the-start-it-waited-on-did-not-happen': 'while-this-holds',
-  'agent-could-not-start-just-now': 'while-this-holds',
-  'agent-could-not-be-started': 'until-a-person-changes-it',
-  'may-not-create-agents': 'until-a-person-changes-it',
-  'agent-name-taken': 'permanent',
-  'services-are-off-so-none-is-made': 'until-a-person-changes-it',
-  'not-a-piece-you-gave': 'permanent',
-  'that-piece-was-already-answered': 'permanent',
-  'that-piece-was-already-taken-back': 'permanent',
-  'that-work-is-being-sent': 'while-this-holds',
-  'a-conversation-with-its-questions-is-starting': 'while-this-holds',
-  'its-questions-could-not-all-be-read': 'while-this-holds',
-  'may-not-write-rules': 'permanent',
-  'may-not-relay-a-rule': 'until-a-person-changes-it',
-  'that-is-work-you-hold': 'permanent',
-  'that-is-your-own-work': 'permanent',
-  'that-conversation-is-still-stopping': 'while-this-holds',
-  'that-conversation-could-not-be-resumed': 'until-a-person-changes-it',
-  'that-conversation-could-not-be-woken-just-now': 'while-this-holds',
-  'not-a-conversation-below-you': 'permanent',
-  'no-piece-by-that-name': 'permanent',
-  'the-giver-names-a-piece': 'permanent',
-  'that-piece-has-ended': 'permanent',
-  'the-giver-briefs-and-closes-a-piece': 'permanent',
-  'that-piece-was-already-closed': 'permanent',
-  'no-work-of-your-own': 'permanent',
-  'work-record-unavailable': 'while-this-holds',
-  'no-agent-by-that-name': 'permanent',
-  'that-conversation-is-not-archived': 'permanent',
-  'it-is-being-archived-or-deleted': 'while-this-holds',
-  'it-could-not-be-restored': 'until-a-person-changes-it',
-  'server-already-registered': 'permanent',
-  'server-already-asked-for': 'until-a-person-changes-it',
-  'too-many-server-requests': 'until-a-person-changes-it',
-  'that-piece-is-still-queued': 'while-this-holds',
-}
-
-const TOOL_REMEDY: Readonly<Record<ToolRefusal, RefusalRemedy | null>> = {
-  'theme-invalid': 'change-what-you-sent-and-call-again',
-  'theme-exists': 'change-what-you-sent-and-call-again',
-  'theme-unknown': 'change-what-you-sent-and-call-again',
-  'theme-too-large': 'change-what-you-sent-and-call-again',
-  'theme-is-built-in': null,
-  'no-such-agent': null,
-  'that-conversation-takes-no-messages': null,
-  'that-agent-has-several-conversations': null,
-  'malformed-request': null,
-  'agent-cannot-take-a-message': null,
-  'that-conversation-has-not-started': 'make-the-same-call-when-this-settles',
-  'that-agent-is-you': null,
-  'that-agent-is-not-below-you': null,
-  'spawning-disabled': null,
-  'agent-did-not-start': null,
-  'the-start-it-waited-on-did-not-happen': 'make-the-same-call-when-this-settles',
-  'agent-could-not-start-just-now': 'make-the-same-call-when-this-settles',
-  'agent-could-not-be-started': null,
-  'may-not-create-agents': null,
-  'agent-name-taken': null,
-  'services-are-off-so-none-is-made': null,
-  'not-a-piece-you-gave': null,
-  'that-piece-was-already-answered': null,
-  'that-piece-was-already-taken-back': null,
-  'that-work-is-being-sent': 'make-the-same-call-when-this-settles',
-  'a-conversation-with-its-questions-is-starting': 'make-the-same-call-when-this-settles',
-  'its-questions-could-not-all-be-read': 'make-the-same-call-when-this-settles',
-  'may-not-write-rules': null,
-  'may-not-relay-a-rule': null,
-  'that-conversation-is-still-stopping': 'make-the-same-call-when-this-settles',
-  'that-conversation-could-not-be-resumed': null,
-  'that-conversation-could-not-be-woken-just-now': 'make-the-same-call-when-this-settles',
-  'not-a-conversation-below-you': null,
-  'no-piece-by-that-name': null,
-  'the-giver-names-a-piece': null,
-  'that-piece-has-ended': null,
-  'the-giver-briefs-and-closes-a-piece': null,
-  'that-piece-was-already-closed': null,
-  'no-work-of-your-own': null,
-  'work-record-unavailable': 'make-the-same-call-when-this-settles',
-  'no-agent-by-that-name': null,
-  'that-conversation-is-not-archived': null,
-  'it-is-being-archived-or-deleted': 'make-the-same-call-when-this-settles',
-  'it-could-not-be-restored': null,
-  'server-already-registered': null,
-  'server-already-asked-for': null,
-  'too-many-server-requests': null,
-  'that-is-work-you-hold': null,
-  'that-is-your-own-work': null,
-  'that-piece-is-still-queued': 'make-the-same-call-when-this-settles',
-}
-
 export function toolRemedyOf(rail: ToolRefusal): RefusalRemedy | null {
-  return TOOL_REMEDY[rail]
+  return TOOL_RECORDS[rail].remedy
 }
 
 export type PublishedRefusal = {
@@ -823,98 +664,312 @@ export interface ToolRefusalPayload {
   readonly detail: Readonly<Record<string, unknown>>
 }
 
-const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
-  ...THEME_TOOL_REASONS,
-  'no-such-agent':
-    'no conversation you can reach goes by that id or piece label, so nothing was done. list_agents names the ones you can reach; list_profiles names every agent this app holds.',
-  'that-agent-has-several-conversations':
-    'make the same call with agent set to one of that agent\u2019s conversations, by a label the detail lists. It has more than one you can reach, so nothing was done.',
-  'that-conversation-takes-no-messages':
-    'that conversation cannot be started by a message, so nothing was sent to it; list_agents names the ones you can reach. It is a read-only copy, a provider\u2019s own sub-agent, or a conversation this app did not start.',
-  'malformed-request':
-    'the arguments did not match what this tool accepts, so nothing was done. The problems are listed in the detail: fix each one and call this tool again.',
-  'agent-cannot-take-a-message':
-    'ask a person to inspect why that conversation cannot take a message; do what you can here. Nothing was queued, and retrying will not help until its state changes.',
-  'that-conversation-has-not-started':
-    'that conversation has not started yet, so nothing was done to it. It comes up or fails to launch on its own: make the same call again in a moment.',
-  'that-agent-is-you':
-    'that is this conversation: a conversation cannot send itself a message, so nothing was queued. Whatever you meant to send, do it yourself — or send it to another agent.',
-  'that-agent-is-not-below-you':
-    'that agent is not one you started, or one started under them, so nothing was sent: only those can be interrupted. Call message_agent again without interrupt and the message goes out when that agent is free.',
-  'spawning-disabled':
-    'creating agents is off: a person has switched off agents starting new conversations. Nothing was created, and no retry will pass until they switch it back on.',
-  'agent-did-not-start':
-    'ask a person to read the detail and decide whether to start that conversation again. It did not start, no rule refused it, and nothing was sent: somebody stopped it first or a person must fix something.',
-  'the-start-it-waited-on-did-not-happen':
-    'your conversation with that agent was still starting and never came up, so nothing was given. Give it again: that starts a new one.',
-  'agent-could-not-start-just-now':
-    'that agent\u2019s conversation could not be started just now, so nothing was sent. Make the same call again in a moment: its provider could not be started because this machine ran short of open files, processes or memory, which usually clears by itself.',
-  'agent-could-not-be-started':
-    'that agent\u2019s conversation could not be started, so nothing was sent. Starting it again will not help until a person has looked: this machine could not run its provider\u2019s program \u2014 it may be missing or not runnable, or the folder it runs in may be gone. The detail names the error.',
-  'may-not-create-agents':
-    'ask a person to grant agent creation. You do not have that right, so nothing was created; repeating this call will not grant it.',
-  'agent-name-taken':
-    'there is already an agent with that name, so nothing was created. Names are compared without case. Choose a different name, or use the agent that exists.',
-  'services-are-off-so-none-is-made':
-    'Not created: services are off. A person turns them on in Team.',
-  'not-a-piece-you-gave':
-    'that is not a piece you gave (or, when the call names an agent, not one you gave that agent), so nothing was done. list_tasks lists the open pieces you gave out, and with state: "all" the ended ones too; the name may belong to another conversation, or to nothing at all.',
-  'that-piece-was-already-answered':
-    'that piece was already answered, so there was nothing to take back and nothing was done. Read the reply first; for genuinely new work, give it with give_work. Its label, the outcome the agent gave and the resources its reply handed in, if any, are in the detail.',
-  'that-piece-was-already-taken-back':
-    'you have already taken that piece back, so there was nothing left to take back and nothing was done. No further action on this piece is owed.',
-  'that-work-is-being-sent':
-    'the message carrying that work is being sent right now, so nothing was done: make this call again once it has gone. Work cannot be taken back or closed while that message is mid-flight.',
-  'a-conversation-with-its-questions-is-starting':
-    "that piece wasn't taken back or closed: a conversation with a question about it is still starting. Try again in a moment.",
-  'its-questions-could-not-all-be-read':
-    "that piece wasn't taken back or closed: its question records could not be read. Check that record, then retry this call.",
-  'may-not-write-rules':
-    'Only BroBot writes other agents’ standing rules directly. You can propose a change with propose_agent_rules, and the person decides. Nothing was written.',
-  'may-not-relay-a-rule':
-    'you may ask for these rules but not write them, so nothing was written and nobody asked. Ask again without claiming it was already agreed, and a person will decide: relaying a rule on somebody’s behalf is a separate grant you do not hold.',
-  'that-is-work-you-hold':
-    'that is a piece you are HOLDING, so nothing was sent. To ask about it, call ask_question naming that piece; to hand it back finished, call reply_to_parent. A follow-up is about a piece you gave to somebody else; with ask_question the work stays yours and stays open, and reply_to_parent ends it.',
-  'that-is-your-own-work':
-    'that is this conversation\u2019s own work, from a person, so nothing was done: ask a person with ask_question naming it, and answer the person here when it is done. Follow-ups, new briefs and closing are for pieces one conversation gives another.',
-  'that-conversation-is-still-stopping':
-    'that conversation has not been confirmed stopped since its last run, so it was not started and nothing was sent. Make the same call again in a moment: two runs of one conversation must never overlap.',
-  'that-conversation-could-not-be-resumed':
-    'that conversation could not be started again, so nothing was sent. Sending again will not help until a person has looked: its provider may need signing in again, or could not be started.',
-  'that-conversation-could-not-be-woken-just-now':
-    'that conversation could not be started just now, so nothing was sent. Make the same call again in a moment: its provider could not be started because this machine ran short of open files, processes or memory, which usually clears by itself.',
-  'not-a-conversation-below-you':
-    'there is no conversation below you by that id or piece label, so nothing was read. To ask any other agent something, use ask_question; only conversations you started, those started under them, and your profile’s other conversations are read here.',
-  'no-piece-by-that-name':
-    'no piece by that name is one you hold or gave, so nothing was done. list_tasks names the open pieces you hold and gave, by label, and with state: "all" the ended ones too.',
-  'the-giver-names-a-piece':
-    'the one that gave you that piece names it, so its title was not changed. To have it called something else, ask it; you may set its status line.',
-  'that-piece-has-ended':
-    'that piece has ended — answered, closed or taken back — so nothing was changed: its last word stands. Only its title may still be changed.',
-  'the-giver-briefs-and-closes-a-piece':
-    'only a conversation that gave a piece gives it a new brief or closes it, so nothing was changed. Ask with ask_question to change or stop the work; you may set its status line, keep files you made for it, or hand it back with reply_to_parent.',
-  'that-piece-was-already-closed':
-    'you have already closed that piece, so there was nothing left to take back and nothing was done. No further action on this piece is owed.',
-  'work-record-unavailable': 'Your current work could not be read. Try again in a moment.',
-  'no-work-of-your-own':
-    'This is not a recorded person request. Use give_work for an agent’s work.',
-  'no-agent-by-that-name':
-    'name an agent by the profile list_profiles gives it: no agent has that profile, so there is no record to read. list_profiles without profile names every agent.',
-  'that-conversation-is-not-archived':
-    'that conversation is not archived, nor is any below it, so nothing was restored. list_agents with archived: true names the archived ones you can reach.',
-  'it-is-being-archived-or-deleted':
-    'that conversation is being archived or deleted right now, so nothing was restored. Call this tool again once that is done; a deleted one is then gone.',
-  'it-could-not-be-restored':
-    'this app could not change its list of archived conversations, so nothing was restored. Tell the person: the detail says what they need to do.',
-  'server-already-registered':
-    'ask the person with ask_question (a-person) to grant it to your profile if you need that server: one by that name or at that address is already registered, and a request cannot change a registered server, so nothing was asked.',
-  'server-already-asked-for':
-    'wait for the person to decide the request already waiting for a server by that name, so nothing new was asked. The conversation that made it is told when they decide.',
-  'too-many-server-requests':
-    'wait until one is decided: as many server requests as may wait are already waiting on the person, so nothing was asked.',
-  'that-piece-is-still-queued':
-    'Not sent: that piece is still queued. Change its brief with update_work.',
-}
+const TOOL_RECORDS = {
+  'theme-invalid': {
+    permanence: 'while-this-holds',
+    remedy: 'change-what-you-sent-and-call-again',
+    sentence: THEME_TOOL_REASONS['theme-invalid'],
+  },
+  'theme-is-built-in': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence: THEME_TOOL_REASONS['theme-is-built-in'],
+  },
+  'theme-exists': {
+    permanence: 'while-this-holds',
+    remedy: 'change-what-you-sent-and-call-again',
+    sentence: THEME_TOOL_REASONS['theme-exists'],
+  },
+  'theme-unknown': {
+    permanence: 'while-this-holds',
+    remedy: 'change-what-you-sent-and-call-again',
+    sentence: THEME_TOOL_REASONS['theme-unknown'],
+  },
+  'theme-too-large': {
+    permanence: 'while-this-holds',
+    remedy: 'change-what-you-sent-and-call-again',
+    sentence: THEME_TOOL_REASONS['theme-too-large'],
+  },
+  'no-such-agent': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence:
+      'no conversation you can reach goes by that id or piece label, so nothing was done. list_agents names the ones you can reach; list_profiles names every agent this app holds.',
+  },
+  'that-conversation-takes-no-messages': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence:
+      'that conversation cannot be started by a message, so nothing was sent to it; list_agents names the ones you can reach. It is a read-only copy, a provider\u2019s own sub-agent, or a conversation this app did not start.',
+  },
+  'that-agent-has-several-conversations': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence:
+      'make the same call with agent set to one of that agent\u2019s conversations, by a label the detail lists. It has more than one you can reach, so nothing was done.',
+  },
+  'malformed-request': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence:
+      'the arguments did not match what this tool accepts, so nothing was done. The problems are listed in the detail: fix each one and call this tool again.',
+  },
+  'agent-cannot-take-a-message': {
+    permanence: 'until-a-person-changes-it',
+    remedy: null,
+    sentence:
+      'ask a person to inspect why that conversation cannot take a message; do what you can here. Nothing was queued, and retrying will not help until its state changes.',
+  },
+  'that-conversation-has-not-started': {
+    permanence: 'while-this-holds',
+    remedy: 'make-the-same-call-when-this-settles',
+    sentence:
+      'that conversation has not started yet, so nothing was done to it. It comes up or fails to launch on its own: make the same call again in a moment.',
+  },
+  'that-agent-is-you': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence:
+      'that is this conversation: a conversation cannot send itself a message, so nothing was queued. Whatever you meant to send, do it yourself — or send it to another agent.',
+  },
+  'that-agent-is-not-below-you': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence:
+      'that agent is not one you started, or one started under them, so nothing was sent: only those can be interrupted. Call message_agent again without interrupt and the message goes out when that agent is free.',
+  },
+  'spawning-disabled': {
+    permanence: 'until-a-person-changes-it',
+    remedy: null,
+    sentence:
+      'creating agents is off: a person has switched off agents starting new conversations. Nothing was created, and no retry will pass until they switch it back on.',
+  },
+  'agent-did-not-start': {
+    permanence: 'until-a-person-changes-it',
+    remedy: null,
+    sentence:
+      'ask a person to read the detail and decide whether to start that conversation again. It did not start, no rule refused it, and nothing was sent: somebody stopped it first or a person must fix something.',
+  },
+  'the-start-it-waited-on-did-not-happen': {
+    permanence: 'while-this-holds',
+    remedy: 'make-the-same-call-when-this-settles',
+    sentence:
+      'your conversation with that agent was still starting and never came up, so nothing was given. Give it again: that starts a new one.',
+  },
+  'agent-could-not-start-just-now': {
+    permanence: 'while-this-holds',
+    remedy: 'make-the-same-call-when-this-settles',
+    sentence:
+      'that agent\u2019s conversation could not be started just now, so nothing was sent. Make the same call again in a moment: its provider could not be started because this machine ran short of open files, processes or memory, which usually clears by itself.',
+  },
+  'agent-could-not-be-started': {
+    permanence: 'until-a-person-changes-it',
+    remedy: null,
+    sentence:
+      'that agent\u2019s conversation could not be started, so nothing was sent. Starting it again will not help until a person has looked: this machine could not run its provider\u2019s program \u2014 it may be missing or not runnable, or the folder it runs in may be gone. The detail names the error.',
+  },
+  'may-not-create-agents': {
+    permanence: 'until-a-person-changes-it',
+    remedy: null,
+    sentence:
+      'ask a person to grant agent creation. You do not have that right, so nothing was created; repeating this call will not grant it.',
+  },
+  'agent-name-taken': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence:
+      'there is already an agent with that name, so nothing was created. Names are compared without case. Choose a different name, or use the agent that exists.',
+  },
+  'services-are-off-so-none-is-made': {
+    permanence: 'until-a-person-changes-it',
+    remedy: null,
+    sentence: 'Not created: services are off. A person turns them on in Team.',
+  },
+  'not-a-piece-you-gave': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence:
+      'that is not a piece you gave (or, when the call names an agent, not one you gave that agent), so nothing was done. list_tasks lists the open pieces you gave out, and with state: "all" the ended ones too; the name may belong to another conversation, or to nothing at all.',
+  },
+  'that-piece-was-already-answered': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence:
+      'that piece was already answered, so there was nothing to take back and nothing was done. Read the reply first; for genuinely new work, give it with give_work. Its label, the outcome the agent gave and the resources its reply handed in, if any, are in the detail.',
+  },
+  'that-piece-was-already-taken-back': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence:
+      'you have already taken that piece back, so there was nothing left to take back and nothing was done. No further action on this piece is owed.',
+  },
+  'that-work-is-being-sent': {
+    permanence: 'while-this-holds',
+    remedy: 'make-the-same-call-when-this-settles',
+    sentence:
+      'the message carrying that work is being sent right now, so nothing was done: make this call again once it has gone. Work cannot be taken back or closed while that message is mid-flight.',
+  },
+  'a-conversation-with-its-questions-is-starting': {
+    permanence: 'while-this-holds',
+    remedy: 'make-the-same-call-when-this-settles',
+    sentence:
+      "that piece wasn't taken back or closed: a conversation with a question about it is still starting. Try again in a moment.",
+  },
+  'its-questions-could-not-all-be-read': {
+    permanence: 'while-this-holds',
+    remedy: 'make-the-same-call-when-this-settles',
+    sentence:
+      "that piece wasn't taken back or closed: its question records could not be read. Check that record, then retry this call.",
+  },
+  'may-not-write-rules': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence:
+      'Only BroBot writes other agents’ standing rules directly. You can propose a change with propose_agent_rules, and the person decides. Nothing was written.',
+  },
+  'may-not-relay-a-rule': {
+    permanence: 'until-a-person-changes-it',
+    remedy: null,
+    sentence:
+      'you may ask for these rules but not write them, so nothing was written and nobody asked. Ask again without claiming it was already agreed, and a person will decide: relaying a rule on somebody’s behalf is a separate grant you do not hold.',
+  },
+  'that-is-work-you-hold': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence:
+      'that is a piece you are HOLDING, so nothing was sent. To ask about it, call ask_question naming that piece; to hand it back finished, call reply_to_parent. A follow-up is about a piece you gave to somebody else; with ask_question the work stays yours and stays open, and reply_to_parent ends it.',
+  },
+  'that-is-your-own-work': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence:
+      'that is this conversation\u2019s own work, from a person, so nothing was done: ask a person with ask_question naming it, and answer the person here when it is done. Follow-ups, new briefs and closing are for pieces one conversation gives another.',
+  },
+  'that-conversation-is-still-stopping': {
+    permanence: 'while-this-holds',
+    remedy: 'make-the-same-call-when-this-settles',
+    sentence:
+      'that conversation has not been confirmed stopped since its last run, so it was not started and nothing was sent. Make the same call again in a moment: two runs of one conversation must never overlap.',
+  },
+  'that-conversation-could-not-be-resumed': {
+    permanence: 'until-a-person-changes-it',
+    remedy: null,
+    sentence:
+      'that conversation could not be started again, so nothing was sent. Sending again will not help until a person has looked: its provider may need signing in again, or could not be started.',
+  },
+  'that-conversation-could-not-be-woken-just-now': {
+    permanence: 'while-this-holds',
+    remedy: 'make-the-same-call-when-this-settles',
+    sentence:
+      'that conversation could not be started just now, so nothing was sent. Make the same call again in a moment: its provider could not be started because this machine ran short of open files, processes or memory, which usually clears by itself.',
+  },
+  'not-a-conversation-below-you': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence:
+      'there is no conversation below you by that id or piece label, so nothing was read. To ask any other agent something, use ask_question; only conversations you started, those started under them, and your profile’s other conversations are read here.',
+  },
+  'no-piece-by-that-name': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence:
+      'no piece by that name is one you hold or gave, so nothing was done. list_tasks names the open pieces you hold and gave, by label, and with state: "all" the ended ones too.',
+  },
+  'the-giver-names-a-piece': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence:
+      'the one that gave you that piece names it, so its title was not changed. To have it called something else, ask it; you may set its status line.',
+  },
+  'that-piece-has-ended': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence:
+      'that piece has ended — answered, closed or taken back — so nothing was changed: its last word stands. Only its title may still be changed.',
+  },
+  'the-giver-briefs-and-closes-a-piece': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence:
+      'only a conversation that gave a piece gives it a new brief or closes it, so nothing was changed. Ask with ask_question to change or stop the work; you may set its status line, keep files you made for it, or hand it back with reply_to_parent.',
+  },
+  'that-piece-was-already-closed': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence:
+      'you have already closed that piece, so there was nothing left to take back and nothing was done. No further action on this piece is owed.',
+  },
+  'no-work-of-your-own': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence: 'This is not a recorded person request. Use give_work for an agent’s work.',
+  },
+  'work-record-unavailable': {
+    permanence: 'while-this-holds',
+    remedy: 'make-the-same-call-when-this-settles',
+    sentence: 'Your current work could not be read. Try again in a moment.',
+  },
+  'no-agent-by-that-name': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence:
+      'name an agent by the profile list_profiles gives it: no agent has that profile, so there is no record to read. list_profiles without profile names every agent.',
+  },
+  'that-conversation-is-not-archived': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence:
+      'that conversation is not archived, nor is any below it, so nothing was restored. list_agents with archived: true names the archived ones you can reach.',
+  },
+  'it-is-being-archived-or-deleted': {
+    permanence: 'while-this-holds',
+    remedy: 'make-the-same-call-when-this-settles',
+    sentence:
+      'that conversation is being archived or deleted right now, so nothing was restored. Call this tool again once that is done; a deleted one is then gone.',
+  },
+  'it-could-not-be-restored': {
+    permanence: 'until-a-person-changes-it',
+    remedy: null,
+    sentence:
+      'this app could not change its list of archived conversations, so nothing was restored. Tell the person: the detail says what they need to do.',
+  },
+  'server-already-registered': {
+    permanence: 'permanent',
+    remedy: null,
+    sentence:
+      'ask the person with ask_question (a-person) to grant it to your profile if you need that server: one by that name or at that address is already registered, and a request cannot change a registered server, so nothing was asked.',
+  },
+  'server-already-asked-for': {
+    permanence: 'until-a-person-changes-it',
+    remedy: null,
+    sentence:
+      'wait for the person to decide the request already waiting for a server by that name, so nothing new was asked. The conversation that made it is told when they decide.',
+  },
+  'too-many-server-requests': {
+    permanence: 'until-a-person-changes-it',
+    remedy: null,
+    sentence:
+      'wait until one is decided: as many server requests as may wait are already waiting on the person, so nothing was asked.',
+  },
+  'that-piece-is-still-queued': {
+    permanence: 'while-this-holds',
+    remedy: 'make-the-same-call-when-this-settles',
+    sentence: 'Not sent: that piece is still queued. Change its brief with update_work.',
+  },
+} satisfies Record<
+  string,
+  {
+    permanence: RailPermanence
+    remedy: RefusalRemedy | null
+    sentence: string
+  }
+>
+
+export const TOOL_REFUSALS: readonly ToolRefusal[] = Object.keys(TOOL_RECORDS) as ToolRefusal[]
+
+export const TOOL_PERMANENCE = Object.fromEntries(
+  TOOL_REFUSALS.map((rail) => [rail, TOOL_RECORDS[rail].permanence]),
+) as Readonly<Record<ToolRefusal, RailPermanence>>
 
 export function aServerRequestRefusal(
   rail: ToolRefusal,
@@ -971,7 +1026,7 @@ export function anEndedPieceSaid(detail: EndedPieceDetail, readAt: number): stri
       ended = yours ? `You took ${label} back${when}` : `${label} was taken back${by}${when}`
       break
     default:
-      return TOOL_SENTENCES['that-piece-has-ended']
+      return TOOL_RECORDS['that-piece-has-ended'].sentence
   }
   const act = !detail.yoursToRetitle
     ? 'stop work on that piece; no further reply is owed.'
@@ -1069,7 +1124,7 @@ export function refuseTool(
     rail,
     permanence,
     retryable: permanence === 'while-this-holds',
-    reason: refusalReason(TOOL_SENTENCES[rail]),
+    reason: refusalReason(TOOL_RECORDS[rail].sentence),
     remedy: toolRemedyOf(rail),
     detail,
   }
