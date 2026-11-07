@@ -32,7 +32,6 @@ import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { prepareBuiltInSkills, readBuiltInSkills } from '../src/main/skills/prepare-built-in-skills'
 
-// The explicit provider argument is the new composition seam; keep the RED compilable.
 const leadFor = thisConversationSpans as (
   context: InstructionContext,
   tools: ToolsToldInText | undefined,
@@ -47,8 +46,6 @@ class Window implements RuntimeEventSink {
   sendLiveness(): void {}
 }
 
-// The real host, repository, publisher and instruction reader. Only the external providers are
-// faked; captures are the start/resume options handed to their runtime boundary.
 describe('own notes reach starts and cold resumes from one recorded launch snapshot', () => {
   let root: string
   let cwd: string
@@ -156,7 +153,6 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
     db.close()
     rmSync(root, { recursive: true, force: true })
   })
-  // Finish the fake turn without a permission card; these cases test loading and lead retention.
   const start = async (provider: Provider, profileId = 'lark') =>
     (await host.createSession({ provider, profileId, cwd, approvalMode: 'auto' }, window)).sessionId
   const save = (profile: string, text: string, expectedVersion = 0) => {
@@ -176,7 +172,6 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
   it.each(['claude', 'codex'] as const)(
     'the production Skills launch callback obeys the stored grant at %s start and resume',
     async (provider) => {
-      // Execute the exact main callback, without importing Electron's app entry point.
       const source = readFileSync(resolve(import.meta.dirname, '../src/main/index.ts'), 'utf8')
       const callback = /prepareBuiltInSkills:\s*([\s\S]*?),\n\s*\/\/ A text pack,/.exec(source)?.[1]
       expect(callback, 'the production preparation callback must remain explicit').toBeDefined()
