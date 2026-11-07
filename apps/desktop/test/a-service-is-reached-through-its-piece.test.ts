@@ -1,4 +1,7 @@
-import { noteFromGiver, registerUnreadableQuestionCases } from './helpers/service-unreadable-question-cases'
+import {
+  noteFromGiver,
+  registerUnreadableQuestionCases,
+} from './helpers/service-unreadable-question-cases'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import type { PieceRow } from '../src/shared/task-contracts'
 import { writeFileSync } from 'node:fs'
