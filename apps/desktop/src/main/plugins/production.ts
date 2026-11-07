@@ -29,7 +29,6 @@ import type {
 import { thisMachine, type PluginTarget } from './package-schema'
 import type { SharedDataOwner } from './shared-data'
 
-/** Stable Settings/discovery facade. Repo fetch and plugin startup never block normal agents. */
 export function productionPluginController() {
   let failure: PluginUnavailableReason = 'service-start'
   let startupDiagnostic: PluginStartupDiagnostic | undefined
@@ -90,9 +89,9 @@ export function productionPluginController() {
   }
   let peer: Peer | undefined
   let transition: Promise<boolean> | undefined
-  // Reconnect only after the owner stops or detaches the lost consumer.
   let cleanupUncertain = false
   let supervisor: PluginSupervisorAttachment | undefined
+  let initialRetries: number | undefined
   let recovery: ReturnType<typeof setTimeout> | undefined
   let timer: ReturnType<typeof setInterval> | undefined
   let refresh: Promise<void> | undefined
@@ -102,7 +101,6 @@ export function productionPluginController() {
   const unavailableCards = (
     listed: readonly { id: string; name?: string }[] = entries ?? [],
   ): PluginCard[] => {
-    // One fresh, non-mutating snapshot per fallback response; never retain presence across mutations.
     const evidence = observeInstallations()
     const conditionalWindowAdvice =
       acceptingBusy &&
@@ -132,7 +130,6 @@ export function productionPluginController() {
   let refreshFailed = false
   let listFailure: PluginListError | undefined
   let catalogueEntries: Awaited<ReturnType<typeof loadRepoPluginList>>
-  // Count first-list freshness from the verified load.
   const startupCatalogueFreshMs = 30_000
   let catalogueLoadedAt: number | undefined
   let startupCatalogueVerifiedAt: number | undefined
@@ -162,8 +159,8 @@ export function productionPluginController() {
     peer = undefined
     return true
   }
-  // After a loss, keep trying with a bounded backoff until a successor is attached.
   const watchForCleanStop = (delay = 1000) => {
+    initialRetries = undefined
     clearTimeout(recovery)
     const next = Math.min(delay * 2, 60_000)
     recovery = setTimeout(() => {
@@ -211,12 +208,25 @@ export function productionPluginController() {
   const enter = (reconnect = false): Promise<boolean> => {
     if (transition) return transition
     if (ended || cleanupUncertain || !initialize) return Promise.resolve(false)
-    // Set the fence before any await, including the old peer's detach acknowledgment.
     const next = Promise.resolve()
       .then(async () => {
         if (reconnect && peer && !(await detach(peer))) return false
         if (ended || cleanupUncertain) return false
         return initialize!()
+      })
+      .then((attached) => {
+        if (attached) {
+          clearTimeout(recovery)
+          initialRetries = undefined
+        } else if (!ended && initialRetries !== undefined && initialRetries < 3) {
+          clearTimeout(recovery)
+          recovery = setTimeout(() => {
+            initialRetries!++
+            void enter()
+          }, 1000 * 2 ** initialRetries)
+          recovery.unref()
+        }
+        return attached
       })
       .finally(() => {
         if (transition === next) transition = undefined
@@ -240,7 +250,6 @@ export function productionPluginController() {
         if (releases.some((release) => !admittedCards.some((card) => card.id === release.id)))
           throw new ManagedPluginFailure('catalogue-composition', 'invalid-reply')
       }
-      // Installed cards come from the authenticated owner, independently of today's offers.
       let hints: PluginCard[] | undefined
       const offered =
         !connection.refreshCatalogue || refreshFailed
@@ -289,7 +298,6 @@ export function productionPluginController() {
         name: names[card.id] ?? card.id,
         description: catalogueEntries!.entries.find((one) => one.id === card.id)?.description,
         state: card.state,
-        // An absent installation has no tools; other tool access stays unknown.
         tools: card.installed === false ? 'none' : 'unknown',
         toolHealth: card.state === 'Running' && !card.toolsUnavailable ? 'ready' : 'unavailable',
         ...(card.toolsCause ? { toolsCause: card.toolsCause } : {}),
@@ -305,7 +313,6 @@ export function productionPluginController() {
         error instanceof PluginStartupError ? (error.catalogueStage ?? stage) : stage,
       )
       failed('catalogue-response', diagnostic)
-      // Preserve a still-live channel for explicit retry/quit to detach with its acknowledgments.
       entries =
         entries?.map((one) => ({
           ...one,
@@ -323,9 +330,8 @@ export function productionPluginController() {
   let catalogueRefresh: Promise<PluginCard[]> | undefined
   const catalogue = async (refreshList: boolean): Promise<PluginCard[]> => {
     if (ended) return fail()
-    // Lists join a detach/reconnect already in flight; they never create a competing peer.
     if (transition) await transition
-    else if (!connected && initialize && (!cleanupUncertain || recover())) await enter()
+    else if (!connected && initialize && initialRetries === undefined && (!cleanupUncertain || recover())) await enter()
     if (listFailure) throw listFailure
     if (ended || !entries) return fail()
     if (!connected || cleanupUncertain) return unavailableCards()
@@ -371,7 +377,6 @@ export function productionPluginController() {
         (!startupStillFresh() ||
           (catalogueEntries.format === 2 && connected?.mutationStatus?.() !== null))
       ) {
-        // Consume the allowance once even when the authenticated read outlasts it.
         return await catalogue(true)
       }
       return cards
@@ -427,11 +432,11 @@ export function productionPluginController() {
     },
     async retry(id) {
       if (ended || !entries?.some((entry) => entry.id === id)) return fail()
-      // A person's Try again must never spend the first-list allowance.
       firstSettingsList = false
       startupCatalogueVerifiedAt = undefined
-      // Keep an older list's promise separate from the successor refresh.
       catalogueRefresh = undefined
+      clearTimeout(recovery)
+      initialRetries = undefined
       recover()
       await enter(true)
       if (ended || !entries) return fail()
@@ -481,11 +486,9 @@ export function productionPluginController() {
       root: string
       workspaceRoot: string
       resourcesRoot: string
-      /** Explicit inert-browser scratch proof only; the app never supplies it. */
       browserExecutable?: string
       build: string
       appVersion: string
-      /** Explicit scratch fixture only; never passed by index.ts. */
       fixtureSource?: string
       devSource?: DevPluginSource
       supervisor: PluginSupervisorAttachment
@@ -535,7 +538,6 @@ export function productionPluginController() {
               listFailure = undefined
             } catch (error) {
               failed('catalogue', error)
-              // List discovery does not imply a broken supervisor or plugin.
               listFailure =
                 error instanceof PluginListError ? error : new PluginListError('fetch-error')
               return false
@@ -576,7 +578,6 @@ export function productionPluginController() {
             resourcesRoot: options.resourcesRoot,
             sharedDataOwner:
               options.fixtureSource || devSource ? undefined : options.sharedDataOwner,
-            // Windows names no Chrome a plugin process could find by itself (see windows-chrome.ts).
             browserExecutable:
               options.browserExecutable ??
               (process.platform === 'win32'
@@ -624,7 +625,6 @@ export function productionPluginController() {
             root: options.root,
             workspaceRoot: options.workspaceRoot,
             build: options.build,
-            // The owner has already revoked what this lease held; wait for its clean stop.
             onLost() {
               if (ended) return
               failed('connection-lost')
@@ -652,6 +652,7 @@ export function productionPluginController() {
               )
             )
               watchForCleanStop()
+            else if (!ended) initialRetries ??= 0
             return false
           }
           phase = 'catalogue'
@@ -666,7 +667,6 @@ export function productionPluginController() {
               catalogueEntries.entries.map((entry) => [entry.id, entry.name]),
             )
           }
-          // The lifecycle's person control comes up after the supervisor; slower on Windows.
           phase = 'connection'
           let connectionError: unknown
           const until = performance.now() + (process.platform === 'win32' ? 60_000 : 5000)
@@ -696,7 +696,6 @@ export function productionPluginController() {
                 signal: personLifetime.signal,
                 lost() {
                   candidate.lost = true
-                  // The notification belongs to this exact peer, even after its successor attaches.
                   if (peer !== candidate || candidate.detaching) return
                   failed('connection-lost')
                   cleanupUncertain = true
@@ -748,6 +747,7 @@ export function productionPluginController() {
             ['cleanup-pending', 'restart-required'].includes(pluginStartupReason(error, phase))
           )
             watchForCleanStop()
+          else if (!ended && phase === 'service-start') initialRetries ??= 0
           if (!entries)
             listFailure =
               error instanceof PluginListError
@@ -772,7 +772,6 @@ export function productionPluginController() {
         clearTimeout(recovery)
         try {
           await transition
-          // The transition may have installed a successor; close only that tracked peer.
           if (peer) await detach(peer)
         } finally {
           await diagnosticWrite
