@@ -8,7 +8,7 @@ import { packageFixture } from './plugin-package-fixtures'
 import { repoListFor } from './plugin-repo-list-fixtures'
 import { PLUGIN_LIST_URL } from '../src/main/plugins/catalogue/download'
 vi.mock('../src/main/plugins/ui/host', () => ({ openPluginConfigurationView: vi.fn() }))
-export const seams = vi.hoisted(() => ({
+const seams = vi.hoisted(() => ({
   connect: vi.fn(),
   launch: vi.fn((options: unknown) => {
     void options
@@ -21,6 +21,7 @@ vi.mock('../src/main/plugins/lifecycle/settings-client', () => ({
 vi.mock('../src/main/plugins/supervisor/launcher', () => ({
   createPluginSupervisorLauncher: seams.launch,
 }))
+export { seams }
 import { productionPluginController } from '../src/main/plugins/production'
 const roots: string[] = []
 const controllers: ReturnType<typeof productionPluginController>[] = []
