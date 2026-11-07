@@ -39,12 +39,7 @@ export function expectTypeImports(
 }
 
 const RETIRED_DEADLINES = {
-  'worker-question': [
-    'askBoundMs',
-    'escalationWindowMs',
-    'proposalBoundMs',
-    'positiveWindow',
-  ],
+  'worker-question': ['askBoundMs', 'escalationWindowMs', 'proposalBoundMs', 'positiveWindow'],
   'quiet-work': [
     'watchForEscalation',
     'armEscalationLook',
@@ -57,10 +52,7 @@ const RETIRED_DEADLINES = {
 } as const
 
 /** The canonical dependency owner must exist and keep each retired deadline absent. */
-export function expectNoDeadlineDeps(
-  mainRoot: string,
-  rule: keyof typeof RETIRED_DEADLINES,
-): void {
+export function expectNoDeadlineDeps(mainRoot: string, rule: keyof typeof RETIRED_DEADLINES): void {
   const source = sourceOf(join(mainRoot, 'runtime'), 'host-dependencies.ts')
   const code =
     rule === 'worker-question' || rule === 'three-waits' ? spacedCode(source) : codeOnly(source)
