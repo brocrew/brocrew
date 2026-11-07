@@ -328,12 +328,10 @@ function scheduleReaderHooks(
             try {
               const level = input.effort?.level
               if (typeof level === 'string' && level !== '') noteEffort(level)
-            } catch {
-            }
+            } catch {}
             try {
               note(input.session_crons)
-            } catch {
-            }
+            } catch {}
           }
           return { continue: true }
         },
@@ -394,7 +392,6 @@ function promptGuardHooks(
               return askFor('questions')
             }
 
-            // yield below would have answered the same way, so this line changes `ask` alone.
             if (railsGateThis(input.tool_name, input.tool_input)) {
               return allowFor('BroCrew gates its own tools with rails, not with a card')
             }
@@ -887,7 +884,6 @@ export class ClaudeSessionHandle implements SessionHandle {
 
     seedWorkFolders: readonly string[] = [],
   ) {
-    // opening names the target on the reset frame's proof (`resetPending.from`), never on this one.
     this._targetRef = targetRef ?? null
     this._ref = null
     this.approvals = new ApprovalModeSwitch(approvalMode)
@@ -967,7 +963,6 @@ export class ClaudeSessionHandle implements SessionHandle {
     const servers = frame['mcp_servers']
     const namedTools = tools.filter((one): one is string => typeof one === 'string')
 
-    // none"* rather than suppressing an inventory the child did publish.
     const rawServers = Array.isArray(servers) ? servers : []
     const namedServers = rawServers
       .filter((one): one is { name: string; status: string } => {
@@ -1167,8 +1162,7 @@ export class ClaudeSessionHandle implements SessionHandle {
         'claude account',
       )
       said = sessionAccountFrom({ email: info.email, organization: info.organization })
-    } catch {
-    }
+    } catch {}
     if (this.query === query) this.accountSaid = said
   }
 
@@ -1192,8 +1186,7 @@ export class ClaudeSessionHandle implements SessionHandle {
         ...(dropped > 0 ? { dropped } : {}),
         source: 'initializationResult',
       })
-    } catch {
-    }
+    } catch {}
   }
 
   async providerCommands(): Promise<ProviderCommandAnswer> {
@@ -1264,16 +1257,14 @@ export class ClaudeSessionHandle implements SessionHandle {
   noteSchedulingCall(input: unknown): void {
     try {
       this.schedulingCalls.called(input)
-    } catch {
-    }
+    } catch {}
   }
 
   noteSchedulingAnswer(input: unknown): void {
     try {
       const event = this.schedulingCalls.answered(input)
       if (event !== undefined) this.emit(event)
-    } catch {
-    }
+    } catch {}
   }
 
   noteReportedEffort(level: string): void {
@@ -1425,7 +1416,6 @@ export class ClaudeSessionHandle implements SessionHandle {
                 }
         }
 
-        // success`. This arm's only condition is that the frame IS an init.
         if (message.type === 'system' && message.subtype === 'init') {
           this.skillCatalogueConfirmed = false
           if (this.builtInSkills) {
@@ -1541,8 +1531,7 @@ export class ClaudeSessionHandle implements SessionHandle {
     if (this.query) {
       try {
         this.query.close()
-      } catch {
-      }
+      } catch {}
     }
   }
 
@@ -1552,8 +1541,7 @@ export class ClaudeSessionHandle implements SessionHandle {
     if (!query?.return) return
     try {
       await withTimeout(Promise.resolve(query.return()), CLOSE_EXIT_RECEIPT_TIMEOUT_MS)
-    } catch {
-    }
+    } catch {}
   }
 
   private settleRequests(permissionAnswer?: PermissionDecision): void {
@@ -1589,8 +1577,7 @@ export class ClaudeSessionHandle implements SessionHandle {
     if (this.query) {
       try {
         this.query.close()
-      } catch {
-      }
+      } catch {}
     }
     this.input.close()
     this.finishUnexpected(reason, true)
@@ -1654,8 +1641,7 @@ export class ClaudeSessionHandle implements SessionHandle {
       const current = await this.authTokenProviderAsync()
       if (current !== null && credentialFingerprint(current) === this.launchCredential)
         return 'auth'
-    } catch {
-    }
+    } catch {}
     return 'auth_stale'
   }
 
@@ -1668,7 +1654,6 @@ export class ClaudeSessionHandle implements SessionHandle {
 
     if (turnId === null) throw this.machine.refusedTurn()
 
-    // and in the same shape; this is the half that had not needed one until now.
     const modeBefore = this.approvals.effective
     this.approvals.adopt()
     try {
@@ -1722,7 +1707,6 @@ export class ClaudeSessionHandle implements SessionHandle {
       if (this.efforts.pending) {
         const wanted = this.efforts.requested
 
-        // asserting keeps the failure "we stopped asking" instead of a crash mid-turn.
         await this.settled(
           this.query?.applyFlagSettings?.({
             effortLevel: wanted === undefined ? null : claudeEffort(wanted),
@@ -1736,14 +1720,12 @@ export class ClaudeSessionHandle implements SessionHandle {
         const next = this.folders.requested
 
         if (!sameFolders(next, this.folders.effective)) {
-          // never told about would report a grant that does not exist.
           if (!this.query?.applyFlagSettings) {
             throw new Error(
               'cannot change the work folders: the pinned SDK query exposes no applyFlagSettings()',
             )
           }
 
-          // would leave a key the launch never wrote.
           await this.settled(
             this.query.applyFlagSettings({
               permissions: flagPermissionsOf(this.keptRules, this.withSharedSkills(next)),
@@ -1846,8 +1828,7 @@ export class ClaudeSessionHandle implements SessionHandle {
     this.settleRequests(STOPPED_INSTEAD_OF_ANSWERING)
     try {
       await withTimeout(Promise.resolve(this.query.interrupt()), INTERRUPT_ACK_TIMEOUT_MS)
-    } catch {
-    }
+    } catch {}
 
     if (!this.machine.isTerminal) this.machine.forceEnd()
   }
@@ -1869,7 +1850,6 @@ export class ClaudeSessionHandle implements SessionHandle {
 
   private async doClose(): Promise<void> {
     if (!this.machine.beginClose()) {
-      // CLI to reap, and this is the only path a quit takes to reach one.
       await this.detachQueryAwaitingExit()
       this.input.close()
       this.terminated = true
@@ -1912,7 +1892,6 @@ export class ClaudeSessionHandle implements SessionHandle {
       return this.handleUserInput(id, toolName, input, options)
     }
 
-    // about. So while planning the card is raised, as the CLI would raise it.
     if (isAutoApprove({ approvalMode: this.approvals.effective }) && !this.planning) {
       return { behavior: 'allow' }
     }
@@ -1972,8 +1951,7 @@ export class ClaudeSessionHandle implements SessionHandle {
 
     switch (decision.outcome) {
       case 'allow':
-
-        // ONE-SHOT, and it stays one-shot: no rules, no grant recorded, so the next call prompts.
+        // This grant applies once; the next call still needs approval.
         return decision.updatedInput
           ? { behavior: 'allow', updatedInput: decision.updatedInput }
           : { behavior: 'allow' }
@@ -2014,7 +1992,6 @@ export class ClaudeSessionHandle implements SessionHandle {
         }
       }
       case 'cancel':
-
         this.machine.requestInterrupt()
         return { behavior: 'deny', message: 'cancelled by user', interrupt: true }
       default:
@@ -2044,7 +2021,6 @@ export class ClaudeSessionHandle implements SessionHandle {
       }
     }
 
-    // See {@link unanswerableOptionLabel}: the labels themselves are never trimmed or filtered.
     const unanswerable = unanswerableOptionLabel(questions)
     if (toolName === 'AskUserQuestion' && unanswerable !== null) {
       return {
@@ -2055,7 +2031,6 @@ export class ClaudeSessionHandle implements SessionHandle {
       }
     }
 
-    // is safe-declined with NO card, never a second card that cross-authorizes the first.
     const reservation = this.userInputs.reserve(id, options.signal)
     if (!reservation.accepted) return { behavior: 'deny', message: 'declined by user' }
 
@@ -2093,7 +2068,6 @@ export class ClaudeSessionHandle implements SessionHandle {
       return { behavior: 'deny', message: reason === '' ? 'declined by user' : reason }
     }
     if (toolName === 'AskUserQuestion') {
-      // values, and deleting it would mean inventing a payload for a case that never arrives.
       const forward = answerToForward(questions, response.answers)
       if (!forward.forwardable) {
         return { behavior: 'deny', message: `answer cannot be forwarded (${forward.why})` }
@@ -2196,7 +2170,7 @@ export class ClaudeSessionHandle implements SessionHandle {
           : { noPositiveBecause: 'could-not-represent-the-answers' as const }),
 
         underDisclosed: true,
-        // RESOLVED, never raw: a blank disclosure that means "ask" is not a disclosure.
+        // Resolve settings before disclosure so a blank value cannot hide an approval request.
         approvalMode: isAutoApprove({ approvalMode: this.approvals.effective }) ? 'auto' : 'ask',
       },
     })
@@ -2361,7 +2335,6 @@ function cliRowOf(
     .filter(
       (update) =>
         OFFERED_DESTINATIONS.has(update.destination) &&
-
         !(
           (update.type === 'addRules' ||
             update.type === 'replaceRules' ||
@@ -2501,7 +2474,6 @@ function claudeQuestions(toolName: string, input: Record<string, unknown>): User
 
     header: (isRecord(q) && typeof q['header'] === 'string' ? q['header'] : '') || undefined,
 
-    // real; it is also a panel rather than a line, and this dispatch was scoped to `description`.
     options:
       isRecord(q) && Array.isArray(q['options'])
         ? q['options'].map((o) =>
@@ -2606,7 +2578,6 @@ export class ClaudeRuntime implements AgentRuntime {
 
     const effort = claudeEffort(resolveReasoningEffort(opts) ?? '') ?? undefined
 
-    // saying what this session was actually started with rather than "nobody chose".
     const handle = new ClaudeSessionHandle(
       input,
       opts.cwd,
@@ -2676,8 +2647,7 @@ export class ClaudeRuntime implements AgentRuntime {
       if (query !== null) {
         try {
           query.close()
-        } catch {
-        }
+        } catch {}
       }
       input.close()
 
@@ -2734,7 +2704,7 @@ export class ClaudeRuntime implements AgentRuntime {
           ? { efforts: model.supportedEffortLevels.map((level) => ({ id: level, label: level })) }
           : {}),
 
-        // Publish `CLAUDE_DEFAULT_BY_NAME`'s medium effort only on rows that offer it. This is BroBot's fallback, not a default reported by the provider catalogue; see `default-by-name.ts`. A row with no efforts gets none.
+        // Only rows that advertise effort get BroCrew's fallback effort.
         ...(model.supportedEffortLevels?.includes(CLAUDE_DEFAULT_BY_NAME.effort)
           ? { defaultEffort: CLAUDE_DEFAULT_BY_NAME.effort }
           : {}),
@@ -2744,8 +2714,7 @@ export class ClaudeRuntime implements AgentRuntime {
 
       try {
         await closeProbe()
-      } catch {
-      }
+      } catch {}
     }
   }
 
@@ -2789,7 +2758,6 @@ export class ClaudeRuntime implements AgentRuntime {
 
       assertNotCancelled(options.signal, 'claude resume')
 
-      // for a row that planned, so the resumed CLI runs in its default mode, as its own resume does.
       const stillPlanning = options.planMode === true && options.planModeEnded !== true
       input = new AsyncQueue<SDKUserMessage>()
       const handle = new ClaudeSessionHandle(
@@ -2845,7 +2813,6 @@ export class ClaudeRuntime implements AgentRuntime {
         ...built,
         resume: ref.sessionId,
 
-        // before the spawn, and the same fact it must hold that ownership against afterwards.
         spawnClaudeCodeProcess: child.spawn,
       }
       query = this.queryOrWhyNot({ prompt: input, options: resumeOptions })
@@ -2861,8 +2828,7 @@ export class ClaudeRuntime implements AgentRuntime {
       if (query) {
         try {
           query.close()
-        } catch {
-        }
+        } catch {}
       }
       input?.close()
 
@@ -2906,7 +2872,6 @@ export class ClaudeRuntime implements AgentRuntime {
     if (injected) handle.noteLaunchCredential(credentialFingerprint(injected))
     if (onAKey) handle.noteLaunchedOnAKey()
 
-    // would have hidden completely, because both objects are perfectly valid.
     const mcpServers = claudeMcpServersFor(agentTools, externalMcp?.servers ?? [], managedPluginMcp)
     handle.configurePluginRefresh(
       (next) => claudeMcpServersFor(agentTools, externalMcp?.servers ?? [], next) ?? {},
@@ -2968,7 +2933,6 @@ export class ClaudeRuntime implements AgentRuntime {
 
     if (mcpServers) options.mcpServers = mcpServers
 
-    // prefix, which this app never had.
     options.systemPrompt = {
       type: 'preset',
       preset: 'claude_code',
@@ -3014,7 +2978,6 @@ export class ClaudeRuntime implements AgentRuntime {
         throw new AuthUnavailableError('claude', this.whyNoLogin())
       }
 
-      // here must be checked with the same probe before it ships.
       additions.CLAUDE_CODE_OAUTH_TOKEN = token
     }
     return { additions, piped: null, onAKey: false }

@@ -22,18 +22,7 @@ export interface HomeConversation {
 }
 
 export type HomeImportOutcome =
-
-  | 'imported'
-
-  | 'up-to-date'
-
-  | 'nothing-readable'
-
-  | 'still-writing'
-
-  | 'stopped'
-
-  | 'unreadable'
+  'imported' | 'up-to-date' | 'nothing-readable' | 'still-writing' | 'stopped' | 'unreadable'
 
 export function describeOutcome(outcome: HomeImportOutcome): string {
   return {

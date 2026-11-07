@@ -1,5 +1,3 @@
-
-
 export { SUPPORTED_PROVIDERS } from '@brobot2/shared'
 
 export { isTheSamePath } from './built-in-skills'
@@ -23,11 +21,9 @@ export {
   userInputOptionSchema,
   userInputPermissionSchema,
   PLAN_CONSENTS,
-
   ALWAYS_HONOURED,
   isAlwaysHonoured,
 
-  // offer is empty because the app withheld it.
   publishedOffer,
   answerToForward,
   duplicateAnswerKey,
@@ -51,7 +47,6 @@ export { AnswerRefused, answerRefusalOf, type AnswerRefusal } from './answer-ref
 export { TurnInProgress, TURN_REFUSED } from './turn-in-progress'
 export { RejectedSessionLaunch } from './rejected-session-launch'
 
-// Keep this here because the adapters derive these shapes directly from their provider wires.
 export {
   CHANNEL_REFUSALS,
   CHANNEL_REFUSAL_SENTENCES,
@@ -69,34 +64,25 @@ export {
   boundRaw,
   MAX_UNKNOWN_RAW_BYTES,
   RUNTIME_EVENT_TYPES,
-
   degradeEvent,
   DEGRADED_LABEL_PREFIX,
   DEGRADED_UNNAMED,
-
   parseRuntimeEvent,
   type RuntimeEvent,
   type UnknownCategory,
   type DiscardedPayload,
-
   type ContextReading,
   type ContextReadingEvent,
   type CompactionEvent,
   type ConversationResetEvent,
   type FileChangeEvent,
   type WorkflowRunEvent,
-
   type MemoryRecallEvent,
-
   type ToolInventoryEvent,
-
   type ProviderRefusal,
-
   type ProviderUsageEvent,
   MAX_USAGE_WINDOWS,
-
   type TurnLimit,
-
   type ScheduleReceipt,
 } from './events'
 
@@ -213,7 +199,6 @@ export { NextTurnSetting } from './next-turn'
 
 export {
   ResumeError,
-
   StartRefused,
   startRefusalOf,
   StartFailed,
@@ -299,19 +284,15 @@ export {
   provisionCodexAuth,
   replaceARefusedCodexCopy,
 
-  // `provisionCodexAuth` must never clobber an existing credential; read its contract before calling.
   reprovisionCodexAuth,
   codexAuthHealth,
   assertCodexSqliteHomeContained,
   personalCodexAuthPath,
   claudeKeychainTokenProvider,
-
   claudeKeychainTokenProviderAsync,
-
   claudeKeychainTokenProviderForALaunch,
   claudeAuthHealth,
   claudeAuthHealthAsync,
-
   claudeLoginState,
   claudeLoginStateWithAKey,
 
@@ -331,7 +312,6 @@ export {
   claudeCredentialsFileReader,
   claudeCredentialsFileReaderAsync,
   claudeSetup,
-
   claudeCommandIn,
   claudeLoginNotRenewed,
   CLAUDE_LOGIN_RENEWED,
@@ -401,7 +381,6 @@ export {
   ClaudeRuntime,
   ClaudeSessionHandle,
   claudeProjectDirName,
-
   claudeTranscriptPath,
   type ClaudeQuery,
   type QueryFactory,
@@ -453,7 +432,6 @@ export { CODEX_PROTOCOL_VERSION } from './codex/protocol-version'
 
 export { removeStaleCodexPermissionConfig } from './codex/stale-permission-config'
 
-// Both use `CODEX_MEMORY_SETTINGS` so the displayed explanation agrees with the written file.
 export {
   CODEX_MEMORY_PROVENANCE,
   CODEX_MEMORY_SETTINGS,

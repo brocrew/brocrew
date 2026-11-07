@@ -1,4 +1,9 @@
-import { elicitationWords, type McpElicitation as CodexElicitation } from '../mcp-elicitation'
+import {
+  elicitationWords,
+  isRecord,
+  readString,
+  type McpElicitation as CodexElicitation,
+} from '../mcp-elicitation'
 export {
   mcpElicitation as codexElicitation,
   elicitationContent,
@@ -22,7 +27,6 @@ export function codexExternalMcpConfig(
 
   kept: readonly KeptToolApproval[] = [],
 ): Record<string, JsonValue> | undefined {
-  // under: a launch that was granted nothing must send exactly what it sent before this existed.
   if (reach === undefined || reach.servers.length === 0) return undefined
   const servers: Record<string, JsonValue> = {}
   for (const one of reach.servers) {
@@ -40,15 +44,6 @@ export function codexExternalMcpConfig(
           }
   }
   return { mcp_servers: servers }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function readString(from: Record<string, unknown>, key: string): string {
-  const value = from[key]
-  return typeof value === 'string' ? value : ''
 }
 
 export function externalMcpElicitationPrompt(elicitation: CodexElicitation): string {

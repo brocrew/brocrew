@@ -20,11 +20,15 @@ function importsOf(file: string): string[] {
 
 describe('neutral provider helpers', () => {
   it('lets Claude read MCP forms without importing the Codex adapter', () => {
-    expect(importsOf('claude/claude-runtime.ts').filter((path) => path.includes('/codex/'))).toEqual([])
+    expect(
+      importsOf('claude/claude-runtime.ts').filter((path) => path.includes('/codex/')),
+    ).toEqual([])
   })
 
   it('keeps managed plugin contracts independent of generated Codex protocol types', () => {
-    expect(importsOf('managed-plugin-mcp.ts').filter((path) => path.includes('/codex/'))).toEqual([])
+    expect(importsOf('managed-plugin-mcp.ts').filter((path) => path.includes('/codex/'))).toEqual(
+      [],
+    )
   })
 })
 
@@ -65,8 +69,8 @@ it('keeps the shared helpers outside adapter, SDK and composition imports', () =
     'image-media-type.ts',
     'settings-limits.ts',
   ]) {
-    expect(importsOf(file).filter((path) =>
-      /(?:claude|codex|sdk|index)(?:\/|$)/i.test(path),
-    )).toEqual([])
+    expect(
+      importsOf(file).filter((path) => /(?:claude|codex|sdk|index)(?:\/|$)/i.test(path)),
+    ).toEqual([])
   }
 })

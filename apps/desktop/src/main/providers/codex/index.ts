@@ -184,7 +184,6 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
     }
   }
 
-  // observe as a throw rather than as a rejection.
   const homePathFor = (profileId: string): string => {
     paths.assertMayOpen(profileId)
     return paths.homeOf(profileId)
@@ -260,7 +259,6 @@ export function codexAuth(paths: ProviderHomePaths, seams: CodexAuthSeams): Home
       for (const home of homes) {
         try {
           if ((await bringTheCodexKeyTo(home, codexKey)) === 'its-login') {
-            // home simply has no login now, and its next launch says so in its own words.
             await provisionCodexAuth(home, { managedRoot: paths.managedRoot }).catch(
               (error: unknown) => {
                 if (!(error instanceof AuthUnavailableError)) throw error

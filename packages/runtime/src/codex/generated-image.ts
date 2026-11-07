@@ -36,7 +36,6 @@ export function resolveGeneratedImage(input: {
   ]
 
   for (const candidate of candidates) {
-    // was ever talking about. Refused rather than joined to something.
     if (!isAbsolute(candidate)) continue
     if (imageMediaType(candidate) === null) continue
     const real = realOrNull(candidate)

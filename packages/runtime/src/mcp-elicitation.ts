@@ -17,11 +17,11 @@ interface ElicitationField {
 
 export const SKIPPED = 'Leave this one out'
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function readString(from: Record<string, unknown>, key: string): string {
+export function readString(from: Record<string, unknown>, key: string): string {
   const value = from[key]
   return typeof value === 'string' ? value : ''
 }

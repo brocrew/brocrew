@@ -177,7 +177,6 @@ export function claudeAuth(paths: ProviderHomePaths, seams: ClaudeAuthSeams): Ho
     async check(_profileId, signal) {
       const apiKey = seams.key
       try {
-        // login is read without blocking the thread, then judged the same way.
         const status = seams.keyStatus?.()
         if (status?.set) {
           if (status.unreadableReason !== undefined)

@@ -1,5 +1,9 @@
 import { ApiKeyUnreadableError, type WhyUnreadable } from '../providers/api-key-error'
-export { ApiKeyUnreadableError, PROVIDER_CARD, type WhyUnreadable } from '../providers/api-key-error'
+export {
+  ApiKeyUnreadableError,
+  PROVIDER_CARD,
+  type WhyUnreadable,
+} from '../providers/api-key-error'
 import { providerAuthPolicies } from '../providers/auth-definitions'
 import { providerDescriptor, type Provider } from '@brobot2/shared'
 import type { ApiKeyCheck, ApiKeyStatus } from '../../shared/runtime-ipc'
