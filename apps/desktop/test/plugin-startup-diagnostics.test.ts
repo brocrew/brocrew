@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+import { pluginSha256 } from '../src/main/plugins/package-digests'
 import { z } from 'zod'
 import { afterEach, expect, it, vi } from 'vitest'
 import { PluginSupervisorLaunchFailure } from '../src/main/plugins/startup-failure'
