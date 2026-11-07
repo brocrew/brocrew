@@ -19,8 +19,6 @@
         "scripts/claude-code-newest.mjs",
         "scripts/clean-base.mjs",
         "scripts/coverage-gate.mjs",
-        "scripts/code-health/gate.mjs",
-        "scripts/code-health/gate.test.mjs",
         "scripts/db-generate.mjs",
         "scripts/download-counts.mjs",
         "scripts/draft-survives-a-restart-probe.mjs",
@@ -74,6 +72,12 @@
         "scripts/test/fixtures/*.mjs",
         ".github/windows-suite-failures.mjs"
       ]
+    },
+    "scripts/code-health": {
+      // loaded at runtime by dependency-cruiser to parse .vue files; knip cannot see it
+      "ignoreDependencies": ["@vue/compiler-sfc"],
+      "project": ["**/*.{mjs,cjs}"],
+      "entry": ["gate.mjs", "gate.test.mjs"]
     },
     "apps/desktop": {
       "project": ["**/*.{ts,tsx,js,mjs,cjs,vue,html}"],

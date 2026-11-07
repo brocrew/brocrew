@@ -5,7 +5,7 @@ import {
   recordPluginStartupFailure,
 } from './startup-failure'
 import { pluginAdapter } from './lifecycle/adapters'
-import { ManagedPluginFailure } from '@brobot2/runtime'
+import { ManagedPluginFailure } from '@brobot2/runtime/plugin-failure'
 import { join } from 'node:path'
 import { lstat } from 'node:fs/promises'
 import { PluginListError } from './catalogue/list-error'
@@ -90,9 +90,7 @@ export function productionPluginController() {
   }
   let peer: Peer | undefined
   let transition: Promise<boolean> | undefined
-  // A lost peer or a failed detach may leave a retained consumer in the owner. No entry point may
-  // reconnect until the owner proves its clean stop, which ends every consumer it held, or still
-  // accepts this app's lease, and so detaches the lost channel's consumer by itself.
+  // Reconnect only after the owner stops or detaches the lost consumer.
   let cleanupUncertain = false
   let supervisor: PluginSupervisorAttachment | undefined
   let recovery: ReturnType<typeof setTimeout> | undefined
@@ -134,8 +132,7 @@ export function productionPluginController() {
   let refreshFailed = false
   let listFailure: PluginListError | undefined
   let catalogueEntries: Awaited<ReturnType<typeof loadRepoPluginList>>
-  // A one-use first-Settings allowance, never a disk cache or a new mutation authority.
-  // Count freshness from the verified load, including time spent finishing startup.
+  // Count first-list freshness from the verified load.
   const startupCatalogueFreshMs = 30_000
   let catalogueLoadedAt: number | undefined
   let startupCatalogueVerifiedAt: number | undefined
@@ -285,8 +282,7 @@ export function productionPluginController() {
         name: names[card.id] ?? card.id,
         description: catalogueEntries!.entries.find((one) => one.id === card.id)?.description,
         state: card.state,
-        // The owner cards report lifecycle/broker health, not configured tool-access scope.
-        // A verified absent installation has no tools; otherwise access is unknown here.
+        // An absent installation has no tools; other tool access stays unknown.
         tools: card.installed === false ? 'none' : 'unknown',
         toolHealth: card.state === 'Running' && !card.toolsUnavailable ? 'ready' : 'unavailable',
         ...(card.toolsCause ? { toolsCause: card.toolsCause } : {}),
@@ -368,8 +364,7 @@ export function productionPluginController() {
         (!startupStillFresh() ||
           (catalogueEntries.format === 2 && connected?.mutationStatus?.() !== null))
       ) {
-        // The authenticated read can outlast freshness or invalidate source status. The allowance is
-        // already consumed, so this takes the normal refresh/failure path exactly once.
+        // Consume the allowance once even when the authenticated read outlasts it.
         return await catalogue(true)
       }
       return cards
@@ -428,8 +423,7 @@ export function productionPluginController() {
       // A person's Try again must never spend the first-list allowance.
       firstSettingsList = false
       startupCatalogueVerifiedAt = undefined
-      // An older list may still be awaiting the peer we are about to detach.
-      // Its promise must not become the successor's explicit refresh.
+      // Keep an older list's promise separate from the successor refresh.
       catalogueRefresh = undefined
       recover()
       await enter(true)

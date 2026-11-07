@@ -1,16 +1,15 @@
-// Code-health gate. Runs jscpd, dependency-cruiser and Knip with their own configs, plus a
-// file-size limit, and fails only on findings that are not in the committed baselines.
-//
-//   node scripts/code-health/gate.mjs [--out <dir>]   compare; exit 0 pass, 1 new findings, 2 error
-//   node scripts/code-health/gate.mjs --update        rewrite the baselines from the current tree
-//
-// A finding's identity is tool + rule + file + symbol, never a line number or a content hash, so
-// editing code that already carries listed debt passes. See docs/code-health.md.
 import { execFileSync, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import {
+  collectPluginPolicy,
+  comparePluginCounts,
+  policyCoverageErrors,
+  targetPluginCounts,
+  selectPluginComparison,
+} from './plugin-policy.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, '../..')
@@ -29,22 +28,26 @@ class GateError extends Error {}
 const rel = (file) => path.relative(root, path.resolve(root, file)).split(path.sep).join('/')
 const unique = (keys) => [...new Set(keys)].sort()
 
-// Each scanner returns the finding identities and the tool's own headline totals.
 export const jscpdKeys = (report) =>
   report.duplicates.map((d) => {
     const [a, b] = [rel(d.firstFile.name), rel(d.secondFile.name)].sort()
     return `${d.format}|${a}|${b}`
   })
 
-// One key per forbidden edge. dependency-cruiser reports each cycle once, along one path; the
-// cycle keys are instead every edge it marks circular, so they do not depend on that choice.
+const external = (file) => /(^|\/)node_modules\//.test(rel(file))
 export const depcruiseKeys = (report) => [
   ...report.summary.violations
-    .filter((v) => v.rule.name !== 'no-circular')
+    .filter(
+      (v) =>
+        v.rule.name !== 'no-circular' &&
+        !v.rule.name.startsWith('plugin-policy/') &&
+        !external(v.from) &&
+        !external(v.to),
+    )
     .map((v) => `${v.rule.name}|${rel(v.from)}|${rel(v.to)}`),
   ...report.modules.flatMap((m) =>
     m.dependencies
-      .filter((d) => d.circular)
+      .filter((d) => d.circular && !external(m.source) && !external(d.resolved))
       .map((d) => `no-circular|${rel(m.source)}|${rel(d.resolved)}`),
   ),
 ]
@@ -69,11 +72,17 @@ export const knipKeys = (report) =>
     }),
   )
 
-function run(name, args, out, accepted) {
+function run(
+  name,
+  args,
+  out,
+  accepted,
+  executable = path.join(here, 'node_modules', '.bin', name),
+) {
   const stdout = path.join(out, `${name}.stdout`)
   const stderr = path.join(out, `${name}.stderr`)
   const [o, e] = [fs.openSync(stdout, 'w'), fs.openSync(stderr, 'w')]
-  const result = spawnSync(path.join(here, 'node_modules', '.bin', name), args, {
+  const result = spawnSync(executable, args, {
     cwd: root,
     stdio: ['ignore', o, e],
     env: { ...process.env, NODE_OPTIONS: '--max-old-space-size=3072' },
@@ -107,9 +116,23 @@ const TOOLS = {
   jscpd(files, out) {
     run(
       'jscpd',
-      ['.', '--config', path.join(here, 'jscpd.json'), '--output', out],
+      [
+        '--prefix',
+        here,
+        'run',
+        '--silent',
+        'scan:clones',
+        '--',
+        root,
+        '--absolute',
+        '--config',
+        path.join(here, 'jscpd.json'),
+        '--output',
+        out,
+      ],
       out,
       (s) => s === 0,
+      'npm',
     )
     const r = readJson('jscpd', path.join(out, 'jscpd-report.json'), (r) =>
       Array.isArray(r?.duplicates),
@@ -130,7 +153,7 @@ const TOOLS = {
     )
     const s = r.summary
     const totals = `${s.totalCruised} modules, ${s.totalDependenciesCruised} dependencies, ${s.violations.length} violations`
-    return { keys: depcruiseKeys(r), totals }
+    return { keys: depcruiseKeys(r), totals, pluginPolicy: collectPluginPolicy(r, files, { root }) }
   },
   knip(files, out) {
     const args = ['--config', path.join(here, 'knip.json'), '--reporter', 'json', '--no-progress']
@@ -149,7 +172,6 @@ const TOOLS = {
   },
 }
 
-// A listed giant may shrink but never grow; any other file may not pass the limit.
 export function compareSizes(baseline, sizes) {
   const added = Object.entries(sizes)
     .filter(([f, n]) => n > (baseline[f] ?? LINE_LIMIT))
@@ -190,9 +212,48 @@ function main(argv) {
   fs.mkdirSync(out, { recursive: true })
   const files = sourceFiles()
   const rows = []
+  let pluginDiff
   for (const [name, scan] of Object.entries(TOOLS)) {
     console.log(`code-health: running ${name}`)
     const result = scan(files, out)
+    if (result.pluginPolicy) {
+      const policy = result.pluginPolicy
+      fs.writeFileSync(path.join(out, 'plugin-policy.json'), JSON.stringify(policy, null, 2) + '\n')
+      const coverage = policyCoverageErrors(policy)
+      if (coverage.length) throw new GateError(coverage.join('\n'))
+      const candidate = readJson(
+        'plugin policy ceilings',
+        path.join(here, 'baseline/plugin-policy.json'),
+        (b) => !!b,
+      )
+      const target = argv.includes('--target')
+        ? argv[argv.indexOf('--target') + 1]
+        : process.env.CODE_HEALTH_TARGET || undefined
+      const comparison = selectPluginComparison(root, {
+        target,
+        bootstrap: argv.includes('--bootstrap-plugin-policy'),
+        autoBootstrap: process.env.PLUGIN_AUTO_BOOTSTRAP === 'true',
+        eventName: process.env.GITHUB_EVENT_NAME,
+        event: process.env.GITHUB_EVENT_PATH
+          ? JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'))
+          : {},
+      })
+      const before = targetPluginCounts(root, comparison.target, comparison.bootstrap)
+      fs.writeFileSync(
+        path.join(out, 'plugin-comparison.json'),
+        JSON.stringify(comparison, null, 2) + '\n',
+      )
+      pluginDiff = comparePluginCounts(policy.counts, candidate, before)
+      const total = (counts) =>
+        Object.values(counts).reduce((n, roles) => n + roles.host + roles.service, 0)
+      rows.push({
+        name: 'plugin-policy',
+        before: total(before),
+        now: total(policy.counts),
+        ...pluginDiff,
+        totals: `${policy.coverage.host} host / ${policy.coverage.service} service roots; executable policy, full graph diagnostic`,
+      })
+    }
     const current = name === 'size' ? result.sizes : unique(result.keys)
     const file = path.join(here, 'baseline', `${name}.json`)
     if (update) {
@@ -214,8 +275,13 @@ function main(argv) {
       totals: result.totals,
     })
   }
-  if (update)
-    return console.log('code-health: baselines rewritten in scripts/code-health/baseline/')
+  if (update) {
+    console.log(
+      'code-health: four legacy baselines rewritten; plugin ceilings are never updated automatically',
+    )
+    for (const finding of pluginDiff?.added ?? []) console.error(finding)
+    return pluginDiff?.added.length ? 1 : 0
+  }
   const added = rows.reduce((n, r) => n + r.added.length, 0)
   const report = [
     `# Code health ${new Date().toISOString().slice(0, 10)}`,
