@@ -32,7 +32,7 @@ on:
       test_path:
         description: Failed beta recovery or independent clean-install control
         type: choice
-        options: [failed-beta-recovery, clean-install]
+        options: [failed-beta-recovery, clean-install, app-upgrade-compat]
         default: failed-beta-recovery
       proof_stage:
         description: Early recipe check or final candidate proof

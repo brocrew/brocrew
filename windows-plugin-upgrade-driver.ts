@@ -7,14 +7,16 @@ import { join } from 'node:path'
 import { PluginWorkspaceLease, pluginWorkspaceIdentity } from '@SOURCE@/apps/desktop/src/main/plugins/supervisor/client'
 import { connectPersonPluginControl } from '@SOURCE@/apps/desktop/src/main/plugins/lifecycle/person-control'
 
-const [root, workspace, evidence] = process.argv.slice(2)
+const [root, workspace, evidence, proofMode = 'both-plugins'] = process.argv.slice(2)
+assert(proofMode === 'both-plugins' || proofMode === 'whatsapp-only', 'invalid observer proof mode')
+const requiredPlugins = proofMode === 'whatsapp-only' ? ['whatsapp'] : ['chrome', 'whatsapp']
 assert.equal(process.platform, 'win32')
 assert.equal(process.env.GITHUB_ACTIONS, 'true')
 assert.equal(process.env.RUNNER_ENVIRONMENT, 'github-hosted')
 assert.equal(process.env.GITHUB_REPOSITORY, 'brocrew/brocrew')
 assert(root && workspace && evidence)
 const save = (name: string, value: unknown) => writeFileSync(join(evidence, name), JSON.stringify(value, null, 2) + '\n')
-const result: any = { passed: false, calls: [], failures: [], cleanup: {} }
+const result: any = { passed: false, proofMode, calls: [], failures: [], cleanup: {} }
 const owner = () => JSON.parse(readFileSync(join(root, 'supervisor', 'owner.json'), 'utf8'))
 const initialOwner = owner()
 assert.equal(initialOwner.phase, 'accepting')
@@ -88,12 +90,12 @@ async function main() {
       result.routes = { format: routes.format, servers: routes.servers.map((server: any) => ({ pluginId: server.pluginId, name: server.name, url: server.url })), pending: routes.pending, none: routes.none, unknown: routes.unknown }
       result.cards = await person.call({ kind: 'list-tool-cause' })
       save('observer-progress.json', result)
-      if (['chrome', 'whatsapp'].every(id => routes.servers.some((server: any) => server.pluginId === id))) break
+      if (requiredPlugins.every(id => routes.servers.some((server: any) => server.pluginId === id))) break
       if (routes.pending.length === 0) break
       await delay(250)
     } while (performance.now() < end)
-    assert.equal(routes.servers.length, 2, 'both installed plugins need live HTTP routes')
-    for (const id of ['chrome', 'whatsapp']) {
+    if (proofMode === 'both-plugins') assert.equal(routes.servers.length, 2, 'both installed plugins need live HTTP routes')
+    for (const id of requiredPlugins) {
       const server = routes.servers.find((one: any) => one.pluginId === id); assert(server)
       const url = new URL(server.url); assert.equal(url.protocol, 'http:'); assert.equal(url.hostname, '127.0.0.1'); assert.equal(url.username, ''); assert.equal(url.password, '')
       const route = { url, capability: server.capability, protocol: '2025-03-26', session: undefined as string | undefined }; sessions.push(route)
@@ -132,7 +134,7 @@ async function main() {
     try { if (lease) await lease.agentRoutes({ workspaceId, incarnation, occupied: [], release: true }); result.cleanup.routesReleased = !!lease } catch (error: any) { result.failures.push(`route release: ${error.message}`) }
     try { if (person) { await person.call({ kind: 'detach' }); result.cleanup.personDetached = true } } catch (error: any) { result.failures.push(`person detach: ${error.message}`) } finally { person?.close() }
     try { if (lease) { result.cleanup.leaseClosed = await lease.close(); assert.equal(result.cleanup.leaseClosed, true) } } catch (error: any) { result.failures.push(`lease close: ${error.message}`) }
-    result.passed = result.failures.length === 0 && result.calls.length === 2
+    result.passed = result.failures.length === 0 && result.calls.length === requiredPlugins.length
     save('observer-result.json', result)
   }
   assert.equal(result.passed, true, result.failures.join('\n'))

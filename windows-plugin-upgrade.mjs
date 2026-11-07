@@ -8,6 +8,7 @@ import { basename, dirname, join, resolve, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import { parseArgs } from 'node:util'
+import { chromeCompatibilityResult } from './chrome-compatibility-result.mjs'
 import { readCustomPluginInputs } from './custom-plugin-inputs.mjs'
 import { transportLabel, readTransportFixture, assertUnusedInspectorPort, coldMainArgument, attachColdMain, attachSupervisor } from './instrumented-plugin-transport.mjs'
 
@@ -22,9 +23,12 @@ const publishedExpected = {
 }
 let expected=structuredClone(publishedExpected)
 assert.equal(Boolean(args['plugin-inputs']),Boolean(args['plugin-receipt-sha256']),'custom plugin directory and receipt hash required together')
-assert(['failed-beta-recovery','clean-install'].includes(args['test-path']))
+assert(['failed-beta-recovery','clean-install','app-upgrade-compat'].includes(args['test-path']))
 const cleanInstall=args['test-path']==='clean-install'
+const appCompat=args['test-path']==='app-upgrade-compat'
+assert(!appCompat||!args['plugin-inputs'],'app compatibility mode uses exact published018/014, not custom archive instrumentation')
 const plan = cleanInstall ? ['verify exact candidate installer and published win32/x64 plugin pins', 'install candidate NSIS on a clean runner without installing or launching beta', 'install both published plugins through candidate Settings', 'call Chrome list_browser_profiles and WhatsApp tools/list through installed service', 'verify normal candidate shutdown and cleanup'] : ['verify public beta installer, exact candidate bytes and published win32/x64 plugin pins', 'install actual 0.1.36 NSIS', 'record beta Settings Chrome installation failure as the expected baseline', 'stop beta and retain its real residual plugin state without seeding or repair', 'install exact 0.2.11 candidate NSIS over beta', 'install or retry the two published plugins through candidate Settings', 'attach observer to candidate-owned service; Chrome list_browser_profiles and WhatsApp tools/list over HTTP', 'detach observer, quit app, verify owner/host exits and process cleanup']
+if(appCompat)plan.unshift('APP COMPATIBILITY ONLY: known Chrome018 identity failure may be non-blocking; WhatsApp/service/upgrade/normal cleanup remain mandatory')
 if(args['plugin-inputs'])plan.unshift(transportLabel)
 if (!args.execute) { console.log(JSON.stringify({ execute: false, plan, expected }, null, 2)); process.exit(0) }
 assert.equal(process.platform, 'win32', 'execution is Windows only')
@@ -190,6 +194,25 @@ async function request(input, label) {
 async function screenshot(name) { if(running?.cdp) { try {const r=await running.cdp.call('Page.captureScreenshot',{format:'png'},10000);keep(name,Buffer.from(r.data,'base64'))}catch(error){summary.failures.push(`screenshot: ${error.message}`)} } }
 function ownerRecord() { const path=join(pluginRoot,'supervisor','owner.json'); return existsSync(path)?readJson(path):null }
 function publicOwner(owner) { if(!owner)return null; const {key,...safe}=owner; return safe }
+function requiredPluginIds() {
+  return appCompat&&['KNOWN-ISSUE','PARTIAL'].includes(summary.chromeCompatibility?.status)?['whatsapp']:['chrome','whatsapp']
+}
+function chromeAttemptEvidence(reply, card) {
+  const previous=new Set(readJson(join(evidence,'pre-upgrade-host-receipts.json')).map(r=>r.path))
+  const receipts=hostReceipts().filter(r=>!previous.has(r.path)&&r.value.pluginId==='chrome'&&r.value.releaseDigest===publishedExpected.chrome.sha256)
+  const stderr=[],logs=[]
+  for(const diagnostic of [reply?.startupDiagnostic,reply?.diagnostic,card?.startupDiagnostic])if(typeof diagnostic?.stderr==='string')stderr.push(diagnostic.stderr)
+  for(const receipt of receipts.filter(r=>r.path.endsWith('exit.json'))) {
+    const path=join(dirname(receipt.path),'plugin-startup.log')
+    if(!existsSync(path))continue
+    const bytes=readFileSync(path);assert(bytes.length<=131072,'Chrome startup evidence exceeds bounded capture')
+    const text=bytes.toString('utf8'),marker=`plugin=chrome run=${receipt.value.runId}\n`,at=text.indexOf(marker)
+    logs.push({path,sha256:digest(bytes),bytes:bytes.length,text})
+    if(at>=0){const output=text.slice(at+marker.length).trim();if(output)stderr.push(output)}
+  }
+  const result={reply,card,receipts,stderr,logs,serverClosed:receipts.some(r=>r.path.endsWith('exit.json')&&r.value.cause==='server-closed')}
+  keep('candidate-chrome-compatibility-evidence.json',result);return result
+}
 function installedService(installed,label) {
   const resources=join(installed.folder,'resources'),owner=ownerRecord();assert.equal(owner?.phase,'accepting')
   const processes=ownProcesses(),launches=join(pluginRoot,'supervisor-launches'),matches=[]
@@ -221,7 +244,8 @@ function liveHosts(service) {
   const processes=ownProcesses(),receipts=hostReceipts(),bound=[]
   const nativeBirth=pid=>{assert(Number.isSafeInteger(pid)&&pid>0);const value=powershell(`(Get-Process -Id ${pid}).StartTime.ToFileTimeUtc().ToString()`).trim();assert.match(value,/^\d{1,20}$/);return value}
   const beforePaths=new Set(readJson(join(evidence,'pre-upgrade-host-receipts.json')).map(r=>r.path))
-  for(const [id,wanted]of Object.entries(expected)) {
+  for(const id of requiredPluginIds()) {
+    const wanted=expected[id]
     const starts=receipts.filter(r=>r.path.endsWith('process.json')&&!beforePaths.has(r.path)&&r.value.pluginId===id)
     assert(starts.length>0,`${id} candidate host start receipt missing`)
     for(const receipt of starts) {
@@ -262,10 +286,12 @@ function snapshot(label) {
   names.forEach((name,index)=>{assert.equal(name,`${String(index).padStart(8,'0')}.json`);const {bytes,value}=decode(join(guard,name));const hash=digest(bytes);assert.equal(value.previous,previous);assert.equal(value.sequence,index);assert.equal(readFileSync(join(guard,`${name.slice(0,8)}-${hash}.seal`)).length,0);previous=hash;journal.push({name,sha256:hash,event:value.event});if(value.event.kind==='prepared')pending=true;if(['completed','aborted'].includes(value.event.kind)){activationRef=value.event.activation;pending=false}})
   assert.equal(pending,false);assert(activationRef)
   const {bytes,value:activation}=decode(join(pluginRoot,'state','activations',activationRef.name));assert.equal(digest(bytes),activationRef.sha256)
-  assert.equal(activation.entries.length,2)
+  const required=requiredPluginIds()
+  assert(activation.entries.length>=required.length&&activation.entries.length<=2)
+  assert(activation.entries.every(entry=>Object.hasOwn(expected,entry.pluginId)))
   const vault=[]
   for(const [id,wanted] of Object.entries(expected)) {
-    const entry=activation.entries.find(e=>e.pluginId===id);assert(entry);assert.equal(entry.phase,'active');assert.equal(entry.release.version,wanted.version);assert.equal(entry.release.archiveSha256,wanted.sha256);assert.equal(entry.release.manifestSha256,wanted.manifest)
+    const entry=activation.entries.find(e=>e.pluginId===id);if(!entry){assert(!required.includes(id));continue};assert.equal(entry.phase,'active');assert.equal(entry.release.version,wanted.version);assert.equal(entry.release.archiveSha256,wanted.sha256);assert.equal(entry.release.manifestSha256,wanted.manifest)
     const folder=join(pluginRoot,'package-vault',wanted.sha256),archive=readFileSync(join(folder,'archive')),catalogue=readFileSync(join(folder,'catalogue.json'))
     assert.equal(archive.length,wanted.bytes);assert.equal(digest(archive),wanted.sha256);assert.equal(readFileSync(join(folder,'catalogue.sha256'),'utf8'),digest(catalogue))
     const entries=JSON.parse(catalogue).entries,release=entries.find(e=>e.id===id);assert(release);assert.equal(release.manifestSha256,wanted.manifest);assert.equal(release.archive.sha256,wanted.sha256)
@@ -281,7 +307,7 @@ function hostReceipts() {
   walk(join(pluginRoot,'host'));return rows
 }
 async function helper(service) {
-  const result=spawn(process.execPath,[join(evidence,'observer.cjs'),pluginRoot,join(evidence,'observer-workspace'),evidence],{cwd:source,env:process.env,stdio:['ignore','pipe','pipe']})
+  const result=spawn(process.execPath,[join(evidence,'observer.cjs'),pluginRoot,join(evidence,'observer-workspace'),evidence,requiredPluginIds().length===1?'whatsapp-only':'both-plugins'],{cwd:source,env:process.env,stdio:['ignore','pipe','pipe']})
   let error,witnessError,witnessStarted=false;const chunks=[],errors=[]
   result.stdout.on('data',b=>{
     chunks.push(b)
@@ -420,23 +446,33 @@ try {
       const hook=await attachSupervisor({execute:true,fixture:transportFixture,expected:expectedProcess,observeProcess:observeTransportProcess})
       transportHandles.set('supervisor',hook);keep('transport-supervisor-attach.json',hook.receipt)
     }
+    if(appCompat)summary.compatibilityServiceBefore=installedService(candidate,'before-compatibility-attempt')
     for(const [id,wanted]of Object.entries(expected)) {
       const listed=await request({kind:'list'},`candidate-${id}-before-install`);assert.equal(listed.ok,true)
       const card=listed.cards.find(c=>c.id===id);assert(card)
       if(cleanInstall)assert.equal(card.installed,false,'clean candidate unexpectedly has an installed plugin')
+      let installed
       if(card.installed) {
         assert.equal(card.installedVersion,wanted.version)
-        assert.equal((await request({kind:'retry',id},`candidate-${id}-retry-existing`)).ok,true)
+        installed=await request({kind:'retry',id},`candidate-${id}-retry-existing`)
       } else {
         let consent
         if(card.preparationRequired){const prepared=await request({kind:'prepare',id,action:'install'},`candidate-${id}-review`);assert.equal(prepared.ok,true);assert.equal(prepared.review.details.version,wanted.version);assert.equal(prepared.review.details.digest,wanted.sha256);assert.equal(prepared.review.details.manifestSha256,wanted.manifest);consent=prepared.review.consent}
-        assert.equal((await request({kind:'install',id,...(consent?{consent}:{})},`candidate-${id}-install`)).ok,true)
+        installed=await request({kind:'install',id,...(consent?{consent}:{})},`candidate-${id}-install`)
       }
+      if(appCompat&&id==='chrome') {
+        const current=await request({kind:'list'},'candidate-chrome-after-attempt');assert.equal(current.ok,true)
+        const evidence=chromeAttemptEvidence(installed,current.cards.find(c=>c.id==='chrome'))
+        summary.chromeCompatibility=chromeCompatibilityResult({version:wanted.version,sha256:wanted.sha256,reply:installed,serverClosed:evidence.serverClosed,stderr:evidence.stderr})
+        keep('candidate-chrome-compatibility-result.json',summary.chromeCompatibility)
+        assert.notEqual(summary.chromeCompatibility.status,'FAIL',summary.chromeCompatibility.reason)
+      } else assert.equal(installed.ok,true)
     }
     summary.candidateInstalled=snapshot('candidate-installed')
     const status=await request({kind:'list'},'candidate-list');assert.equal(status.ok,true)
-    for(const [id,wanted]of Object.entries(expected)){const card=status.cards.find(c=>c.id===id);assert.equal(card?.installed,true);assert.equal(card?.installedVersion,wanted.version);assert.notEqual(card?.state,'Unavailable')}
+    for(const id of requiredPluginIds()){const wanted=expected[id],card=status.cards.find(c=>c.id===id);assert.equal(card?.installed,true);assert.equal(card?.installedVersion,wanted.version);assert.notEqual(card?.state,'Unavailable')}
     summary.candidateService=installedService(candidate,'candidate')
+    if(appCompat){assert.equal(summary.candidateService.owner.epoch,summary.compatibilityServiceBefore.owner.epoch,'service owner changed during compatibility attempt');assert.equal(summary.candidateService.service.pid,summary.compatibilityServiceBefore.service.pid,'service restarted during compatibility attempt')}
     summary.observer=await helper(summary.candidateService)
     assert.equal(summary.observer.ownerEpoch,summary.candidateService.owner.epoch)
     await screenshot('candidate-tools.png')
@@ -447,7 +483,7 @@ try {
     const receipts=hostReceipts();keep('final-host-receipts.json',receipts)
     const prePaths=new Set(readJson(join(evidence,'pre-upgrade-host-receipts.json')).map(r=>r.path))
     const candidateProcesses=receipts.filter(r=>r.path.endsWith('process.json')&&!prePaths.has(r.path)),candidateExits=receipts.filter(r=>r.path.endsWith('exit.json')&&!prePaths.has(r.path))
-    for(const id of Object.keys(expected)){const starts=candidateProcesses.filter(r=>r.value.pluginId===id);assert(starts.length>0,`${id} candidate process receipt missing`);for(const start of starts){assert.equal(start.value.releaseDigest,expected[id].sha256);const exit=candidateExits.find(r=>dirname(r.path)===dirname(start.path));assert.equal(exit?.value.exited,true,`${id} candidate host did not exit`);assert.equal(exit.value.releaseDigest,expected[id].sha256);assert.equal(exit.value.guardianPid,start.value.guardianPid);assert.equal(exit.value.runId,start.value.runId);assert.deepEqual(exit.value.groups,start.value.groups)}}
+    for(const id of requiredPluginIds()){const starts=candidateProcesses.filter(r=>r.value.pluginId===id);assert(starts.length>0,`${id} candidate process receipt missing`);for(const start of starts){assert.equal(start.value.releaseDigest,expected[id].sha256);const exit=candidateExits.find(r=>dirname(r.path)===dirname(start.path));assert.equal(exit?.value.exited,true,`${id} candidate host did not exit`);assert.equal(exit.value.releaseDigest,expected[id].sha256);assert.equal(exit.value.guardianPid,start.value.guardianPid);assert.equal(exit.value.runId,start.value.runId);assert.deepEqual(exit.value.groups,start.value.groups)}}
   })
 } catch(error) {if(error.transportCleanup)keep('transport-partial-attach-cleanup.json',error.transportCleanup);summary.failures.push(error.stack??String(error));await screenshot('failure.png')}
 finally {
@@ -456,6 +492,8 @@ finally {
   if(transportFixture)try{for(const port of [9356,9229])await assertUnusedInspectorPort(port);keep('transport-ports-after-exit.json',{ports:[9356,9229],unused:true})}catch(error){summary.failures.push(`inspector port cleanup: ${error.stack??error}`)}
   // Preserve only synthetic fixture metadata and native receipts; never upload capabilities or plugin data.
   for(const name of ['plugin-startup.log'])if(ownsFixture&&existsSync(join(pluginRoot,name)))copyFileSync(join(pluginRoot,name),join(evidence,name))
-  summary.finished=new Date().toISOString();summary.passed=summary.failures.length===0&&summary.phases.length===(cleanInstall?3:5)&&summary.phases.every(p=>p.passed)
-  keep('summary.json',summary);console.log(JSON.stringify({passed:summary.passed,transport:summary.transport,failures:summary.failures,evidence}));process.exitCode=summary.passed?0:1
+  summary.finished=new Date().toISOString();const complete=summary.failures.length===0&&summary.phases.length===(cleanInstall?3:5)&&summary.phases.every(p=>p.passed)
+  summary.verdict=!complete?'FAIL':summary.chromeCompatibility?.status==='PARTIAL'?'PARTIAL':summary.chromeCompatibility?.status==='KNOWN-ISSUE'?'APP-COMPAT-PASS-WITH-KNOWN-CHROME-ISSUE':'PASS'
+  summary.passed=complete&&summary.verdict!=='PARTIAL'
+  keep('summary.json',summary);console.log(JSON.stringify({passed:summary.passed,transport:summary.transport,verdict:summary.verdict,chrome:summary.chromeCompatibility,failures:summary.failures,evidence}));process.exitCode=summary.passed?0:summary.verdict==='PARTIAL'?2:1
 }
