@@ -1,6 +1,6 @@
 import { waitFor } from './lib/f093-host'
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { fixtureProviderConfig, neutralHostDeps, prepareUnprofiledHome } from './lib/host-fixture'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -19,31 +19,6 @@ import type { ResumableSessionInfo, UnresumableSessionInfo } from '../src/shared
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-/**
- * # 🔴 716 · R62 — a conversation still closing says so, beside `running`
- *
- * ⚑ **PM ruling R62** (`712` F-2, amends R57): *"A conversation still closing keeps Resume. The
- * standing main ruling wins: the reopen is the gesture that works (the host waits up to 10 s for the
- * close, then reopens). The row says it is still closing and that Resume waits for it. ⚑ Main owes
- * the fact: `closing: boolean` beside `running` (not a fourth `RunningState`) on
- * `ResumableSessionInfo` and `UnresumableSessionInfo`, set as `slot !== undefined &&
- * onItsWayOut(slot)`."*
- *
- * ⚠️ **Why a field and not a reading of `running`**: a closing conversation is `not-running` —
- * `runningStateOf`'s ruling — exactly as a conversation nothing has run since a crash is. Those two
- * rows were indistinguishable on the wire until `716`, and the frontend could not say *still
- * closing* about one without saying it about the other.
- *
- * ⚑ **D-017b retired the field** (`05` rule 5): *still closing* is a sentence about a process, and
- * the window says none. ⚑ So the arms now pin that the wire carries no such word — a close in flight
- * and a row a dead process left read the same `running` and the same one `state` — and R62's
- * premise, which D-017b keeps: the gesture that carries the conversation on waits the close out.
- *
- * ⚑ The rig is `a-live-conversation-is-never-drawn-as-ended.test.ts`'s (`421`): a handle that
- * announces its ending and then holds its teardown, which is the only way to keep a slot `closing`
- * long enough to ask about it.
- */
 
 function deferred(): { promise: Promise<void>; release: () => void } {
   let release = (): void => {}
@@ -105,15 +80,10 @@ describe('716 · R62, D-017b — a conversation still closing says no process wo
         }
         return runtime
       },
-      prepareProviderHome: (provider: Provider) => {
-        const home = join(userData, 'provider-homes', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: (provider: Provider) => prepareUnprofiledHome(userData, provider),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
       newSessionId: () => `sess_${++counter}`,
-      // ⚠️ A bound on the MACHINE, not on the rule (`418`'s note): one arm parks a teardown.
       closeDrainTimeoutMs: 40,
       readProviderConfig: fixtureProviderConfig,
     })
@@ -139,10 +109,6 @@ describe('716 · R62, D-017b — a conversation still closing says no process wo
       (row) => row.sessionId === sessionId,
     )
 
-  /**
-   * Close it, and hold its teardown open once the provider has announced the ending. ⚠️ The close is
-   * handed back WRAPPED: an async function returning a promise adopts it, and would wait the close out.
-   */
   const closingNow = async (sessionId: string): Promise<{ ending: Promise<void> }> => {
     const ending = host.close(sessionId, THE_APP_ITSELF)
     await waitFor(
@@ -152,25 +118,17 @@ describe('716 · R62, D-017b — a conversation still closing says no process wo
     return { ending }
   }
 
-  // ⚑ **D-017b · the `closing` flag is gone** (`05` rule 5): whether BroBot2 is still stopping a
-  // provider is a process fact, and no surface says one any more — the row says what the one state
-  // (`state`, `list_agents`' derivation) says. ⚑ What the arms below keep is the wire's side of that:
-  // a conversation on its way out and a row a dead process left read the SAME, and R62's premise —
-  // the gesture that carries it on waits the close out — still holds (the last arm).
   it('🔴 D-017b · a conversation on its way out carries no process word — no `closing` beside `running`', async () => {
     closeGate = deferred()
     const sessionId = await open(null)
     const { ending } = await closingNow(sessionId)
 
-    // ⚑ The slot is there and the teardown is running: the state R62 named.
     expect(host.sessionIds).toContain(sessionId)
     const row = rowOf(sessionId)
-    // Non-vacuity: the row is listed, and carries the one state every row carries.
     expect(row).toBeDefined()
     expect(row?.state).toBeDefined()
     expect(row).not.toHaveProperty('closing')
 
-    // ⚑ The control: released, the same id is still listed, still without the word.
     closeGate.release()
     await ending
     expect(host.sessionIds).not.toContain(sessionId)
@@ -179,8 +137,6 @@ describe('716 · R62, D-017b — a conversation still closing says no process wo
   })
 
   it('⚑ control — `running` does not move: a closing conversation is still `not-running`', async () => {
-    // ⚠️ **The ruling's "not a fourth RunningState", measured**: forty readers of `not-running` must
-    // not have met a new member. True on `main` as well — this arm pins what did NOT change.
     closeGate = deferred()
     const sessionId = await open(null)
     const { ending } = await closingNow(sessionId)
@@ -194,7 +150,6 @@ describe('716 · R62, D-017b — a conversation still closing says no process wo
     closeGate = deferred()
     const sessionId = await open(null)
     const { ending } = await closingNow(sessionId)
-    // A row this host has never run — the shape a previous process leaves behind.
     ledger.create({
       id: 'sess_from_a_dead_process',
       provider: 'claude',
@@ -227,12 +182,8 @@ describe('716 · R62, D-017b — a conversation still closing says no process wo
     closeGate = deferred()
     const sessionId = await open(null)
     const { ending } = await closingNow(sessionId)
-    // ⚑ A real Claude session has no `external_ref` until its first turn's init lands; the double
-    // hands one over as it starts, so it is taken back here, once the double has written it — the
-    // shape `a-restart-keeps-what-was-open` builds the same way.
     db.prepare('UPDATE provider_session SET external_ref = NULL WHERE id = ?').run(sessionId)
     const half = host.unresumableSessions().find((row) => row.sessionId === sessionId)
-    // Non-vacuity: the row really is on the half with no ref.
     expect(half).toBeDefined()
     expect(host.resumableSessions().some((row) => row.sessionId === sessionId)).toBe(false)
     expect(half?.state).toBeDefined()
@@ -245,12 +196,9 @@ describe('716 · R62, D-017b — a conversation still closing says no process wo
   })
 
   it('⚑ control — Resume waits for it: a reopen pressed while it closes opens it', async () => {
-    // ⚑ **R62's premise, measured on this rig**: *"the reopen is the gesture that works"*. True on
-    // `main` too (`075`); the arm is here so the flag's sentence cannot outlive the behaviour.
     closeGate = deferred()
     const sessionId = await open(null)
     const { ending } = await closingNow(sessionId)
-    // ⚑ Still closing: the slot is held while its teardown is parked.
     expect(host.sessionIds).toContain(sessionId)
     const reopening = host.resumeSession(sessionId, new WindowSink('webContents:2'))
     closeGate.release()

@@ -28,7 +28,6 @@ import {
 const here = dirname(fileURLToPath(import.meta.url))
 const migrations = join(here, '../src/main/db/migrations')
 
-/** What a caught rejection actually says — never `String(error)`, which prints `[object Object]`. */
 const errorText = (error: unknown): string =>
   error instanceof Error ? error.message : `not an Error: ${JSON.stringify(error)}`
 
@@ -41,17 +40,13 @@ async function waitFor(predicate: () => boolean, what: string, timeoutMs = 2_000
   throw new Error(`timed out waiting for ${what}`)
 }
 
-/**
- * A provider that never answers, so its session stays RESERVED and never registers (062).
- *
- * Everything but `start` is the fake's, because nothing here is about resume or the model list —
- * the whole point is one window in one method.
- */
 class NeverArrives implements AgentRuntime {
   readonly provider = 'claude' as const
   private readonly inner = new FakeRuntime('claude')
+  asked = false
 
   start(): Promise<SessionHandle> {
+    this.asked = true
     return new Promise<SessionHandle>(() => {})
   }
 
@@ -166,28 +161,14 @@ describe('one app per data folder', () => {
         ...over,
       })
 
-    /**
-     * Another host, standing in the process-wide directory and holding `ids`.
-     *
-     * ⚠️ **A stand-in and not a second `RuntimeHost`, deliberately.** What the repair consumes is
-     * the directory's answer; what a real host CONTRIBUTES to that answer is asserted separately
-     * against a real one, two tests below. Splitting them is what stops either half passing on the
-     * other's behalf — a single test driving two real hosts would go green if `workInFlight` were
-     * honest and the repair ignored it, or the other way round.
-     */
     const anotherHostRunning = (...ids: string[]): void => {
-      // ⚠️ **Over THIS store**, which is the whole of what makes its ids mean anything here: a host
-      // over another database running `sess_1` is running a different conversation, and excluding
-      // ours because of it would be 074's defect reintroduced by its own guard.
       leaves.push(joinLiveHosts({ ledger: store, workInFlight: () => ids }))
     }
 
-    /** The same stand-in, over somebody else's database — the control for the line above. */
     const anotherLedgerRunning = (...ids: string[]): void => {
       leaves.push(joinLiveHosts({ ledger: { notThisStore: true }, workInFlight: () => ids }))
     }
 
-    /** A session a dead process left mid-turn — `orphan-runs.test.ts`'s fixture, in one place. */
     const crashedMidTurn = (id: string): void => {
       store.create({
         id,
@@ -231,15 +212,11 @@ describe('one app per data folder', () => {
 
       buildHost()
 
-      // 194 H1, failure 1: B closes A's open turn as `unknown` and writes `idle` over a session
-      // whose provider is mid-answer. A's real turn terminal can never replace that `unknown`,
-      // because `appendTx` closes only the turn that is currently open.
       expect(statusOf('sess_live')).toBe('working')
       expect(store.turns('sess_live')[0]?.endReason).toBeNull()
     })
 
     it('⛔ …and the paired positive: the SAME construction settles one nobody is running', () => {
-      // Without this beside it, the test above is satisfied by a repair that does nothing at all.
       crashedMidTurn('sess_stranded')
 
       buildHost()
@@ -249,9 +226,6 @@ describe('one app per data folder', () => {
     })
 
     it('⛔ …and a host over ANOTHER database holds nothing here, whatever it calls its sessions', () => {
-      // A session id is meaningless without the database it lives in. A guard that forgot this
-      // would leave a genuinely stranded row claiming to be busy forever because something
-      // unrelated happened to use the same string — 074's defect, reintroduced by its own fix.
       crashedMidTurn('sess_stranded')
       anotherLedgerRunning('sess_stranded')
 
@@ -265,17 +239,12 @@ describe('one app per data folder', () => {
       crashedMidTurn('sess_stranded')
       anotherHostRunning('sess_live')
 
-      // The number the launch log puts in front of the user. Counting the rows scanned would have
-      // it announce repairs to conversations it deliberately left alone.
       expect(store.settleOrphanRuns(1_700_000_100_000, new Set(['sess_live']))).toBe(1)
       expect(statusOf('sess_live')).toBe('working')
       expect(statusOf('sess_stranded')).toBe('idle')
     })
 
     it("⛔ leaves another host's rebuild marker alone, and clears the one nobody holds", () => {
-      // 194 H1, failure 2: B clears A's `building = G`, A goes on writing rows into a generation
-      // nothing will promote, `promoteGeneration` then updates zero rows — and the derive still
-      // returns success, so the caller is told the import worked.
       adopted('sess_building')
       adopted('sess_abandoned')
       expect(store.beginGeneration('sess_building')).toBeGreaterThan(0)
@@ -299,54 +268,29 @@ describe('one app per data folder', () => {
     })
 
     it('⛔ …and one that is only RESERVED, whose provider has not arrived', async () => {
-      // 062's rule: ownership begins when the id is taken, before the provider answers. That window
-      // is exactly where a second host's repair would land — the row is `working`, nothing is
-      // registered, and `sessionIds` (which filters to sessions with a handle to drive) would report
-      // silence. `workInFlight` reads the slot MAP for this reason.
+      const runtime = new NeverArrives()
       const host = buildHost({
-        createRuntime: () => new NeverArrives(),
+        createRuntime: () => runtime,
         newSessionId: () => 'sess_reserved',
-        // ⚠️ **Short deadlines, because the WAIT is not what is under test.** A launch that never
-        // arrives is given up on at `launchTimeoutMs` (102), and the default fifteen seconds is
-        // fifteen seconds of `pnpm run ci` spent asserting nothing. The reservation is taken
-        // synchronously inside `createSession`, so the assertion below is already true before this
-        // clock has ticked at all.
-        launchTimeoutMs: 500,
         closeDrainTimeoutMs: 25,
       })
       const opening = host.createSession({ provider: 'claude', cwd: dir }, SINK)
       void opening.catch(() => {})
 
       await waitFor(() => [...host.workInFlight()].includes('sess_reserved'), 'the reservation')
+      await waitFor(() => runtime.asked, 'the provider to be asked')
 
-      // Handed back, so the pending launch ends rather than running out this file's clock.
       await host.closeAll()
-      await opening.catch(() => {})
-      // 🔴 **This line used to assert silence, and the silence was the defect** (265 §3, from 259
-      // lens B finding 3). The reservation really is gone — `awaitLaunch` abandons it when the bound
-      // expires — but the LAUNCH is deliberately retained, because a handshake that never answered
-      // never confirmed its child died. `closeAll` says so out loud in the same breath: *"1 provider
-      // launch(es) had not confirmed termination … a provider process may still be running"*. So the
-      // honest answer to *"what is this host holding"* is this id, and the old `[]` is exactly what
-      // a second host could not see before it started a provider onto the same transcript.
-      //
-      // ⚑ **The pairing is a separate test** — *"a host that has closed everything stops holding its
-      // work"* — where the provider DOES confirm and this method goes empty. Without it, the
-      // assertion below would be satisfied by a host that never let anything go.
       expect([...host.workInFlight()]).toEqual(['sess_reserved'])
     })
 
     it('⛔ …and a REBUILD, which no slot ever names', async () => {
-      // `rebuildLedger` refuses a session that is in `slots` as `in-use`, so every in-flight rebuild
-      // is by construction a session no slot names. A slots-only answer would report silence here.
       adopted('sess_rebuilding')
       const path = join(dir, 'fictional-rebuild.jsonl')
       writeFileSync(path, '{"type":"user","message":{"role":"user","content":"fictional"}}\n')
       const host = buildHost({ nativeTranscriptPath: () => path })
 
       const pending = host.rebuildLedger('sess_rebuilding')
-      // Synchronous on purpose: the count is taken before the first suspension, which is the window
-      // a host constructed beside this one would land in.
       expect([...host.workInFlight()]).toContain('sess_rebuilding')
 
       await pending
@@ -354,9 +298,6 @@ describe('one app per data folder', () => {
     })
 
     it('is not asked about itself', async () => {
-      // A host that counted its own work would refuse to repair anything it happened to be running,
-      // which at construction is nothing — but the day it is not, the guard would be silently
-      // permanent rather than about other hosts.
       const host = buildHost()
       const created = await host.createSession({ provider: 'claude', cwd: dir }, SINK)
 
@@ -366,10 +307,6 @@ describe('one app per data folder', () => {
     })
 
     it('⛔ refuses to resume a conversation another live host is running', async () => {
-      // 191 H7 / 194 H2: reservation is synchronous, and that is what makes it a lock — over this
-      // host's own map only. Two hosts both find the id free, both read the same `nextOrdinal`, and
-      // the one that loses the unique-index race stops recording for the rest of that session's life
-      // while its provider goes on producing output nobody writes down.
       crashedMidTurn('sess_contested')
       anotherHostRunning('sess_contested')
       const host = buildHost()
@@ -378,21 +315,12 @@ describe('one app per data folder', () => {
         .resumeSession('sess_contested', SINK)
         .catch((error: unknown) => error)
 
-      // ⚠️ **The SENTENCE, because that is what crosses IPC.** `refusalTranslated` logs the
-      // diagnostic — which carries the id — and throws a hand-written, id-free line in its place
-      // (100). Asserting the discriminant here would pin a value the surface never receives.
       expect(errorText(refusal)).toBe(describeUnavailable('run-by-another-host'))
       expect(errorText(refusal)).not.toContain('sess_contested')
-      // ⛔ **And it did not settle the row on its way to refusing.** `resumeSession` closes the open
-      // turn as `unknown` before it launches; a refusal that ran that first would have done 194 H1's
-      // damage in the course of preventing 194 H2's.
       expect(statusOf('sess_contested')).toBe('working')
     })
 
     it('⛔ refuses to REBUILD a conversation another live host is running', async () => {
-      // 191 H8: `slots` is host-local, so a second host finds the id free and promotes a new active
-      // generation underneath the first. The first's already-written tail becomes unreachable and
-      // its next append reuses ordinals in a generation that is no longer the active one.
       adopted('sess_contested_build')
       anotherHostRunning('sess_contested_build')
 
@@ -402,7 +330,6 @@ describe('one app per data folder', () => {
     })
 
     it('⛔ …and the paired positive: it rebuilds one nobody is running', async () => {
-      // Without this, the test above is satisfied by a `rebuildLedger` that refuses everything.
       adopted('sess_free_build')
 
       const allowed = await buildHost().rebuildLedger('sess_free_build')
@@ -410,21 +337,6 @@ describe('one app per data folder', () => {
       expect(allowed.outcome).not.toBe('in-use')
     })
 
-    /**
-     * 🔴 **265 §3 · the retained launch tail, asked by the host that cannot see it**
-     * (259 lens B finding 3).
-     *
-     * ⛔ **The launch registry is private to one host; cross-host exclusion runs over the shared
-     * ledger.** `finish(launch, terminated)` deliberately keeps owning a subject after a bounded stop
-     * gives up — that is 068 finding 2 — but the only question that reaches it is
-     * `LaunchRegistry.refuse`, and host B asks its OWN registry, which has never heard of A's entry.
-     * Meanwhile finalization has already deleted A's slot, so `workInFlight` advertised nothing.
-     * B then started a second provider against the same provider reference and native transcript
-     * while A's first may still have been alive and writing it.
-     *
-     * ⚠️ **Two REAL hosts, because this is about what a host CONTRIBUTES**, not about what the
-     * directory does with it — the stand-in above answers the other half.
-     */
     it('🔴 265 §3 · a retained launch tail is refused to another host over the same ledger', async () => {
       const exit = new FakeProcessExit()
       const sessions = new FakeProviderSessions()
@@ -434,9 +346,6 @@ describe('one app per data folder', () => {
       await first.createSession({ provider: 'claude', cwd: dir }, SINK)
       await first.close('sess_tail', SINK)
 
-      // ⛔ **The exact state the finding describes**, and all three halves are asserted because any
-      // one of them alone would make the refusal below mean something different: the slot is gone,
-      // the process was never confirmed dead, and the launch is still owned.
       expect(first.sessionIds, 'the slot is gone').toEqual([])
       expect(exit.isConfirmed, 'and nothing confirmed the process died').toBe(false)
       expect([...first.workInFlight()], 'so the host still advertises it').toContain('sess_tail')
@@ -446,9 +355,6 @@ describe('one app per data folder', () => {
       expect(errorText(refusal)).toBe(describeUnavailable('run-by-another-host'))
       expect(errorText(refusal)).not.toContain('sess_tail')
 
-      // ⚑ **Paired: confirming the exit releases it.** Without this the test would pass against a
-      // host that refused every cross-host resume forever — which is 149's stranded conversation
-      // arriving through the fix for 068's double provider.
       exit.confirm()
       await waitFor(
         () => ![...first.workInFlight()].includes('sess_tail'),
@@ -461,13 +367,6 @@ describe('one app per data folder', () => {
     })
 
     it('a host that has closed everything stops holding its work — by closing it', async () => {
-      // ⛔ **The first version of this test passed for the wrong reason**, and 198's mutation table
-      // is what said so: M12 removed the `closeAll` that used to leave the directory and came back
-      // GREEN. The host it built held no sessions, so the guard it was meant to prove was never
-      // asked anything. The host holds a REAL session now, and what is asserted is the mechanism
-      // that actually releases it: `closeAll` closes every session, so the slots empty — the
-      // directory has nothing to do with it, and `live-hosts.ts` carries why the leave was removed
-      // rather than repaired.
       const first = buildHost()
       const created = await first.createSession({ provider: 'claude', cwd: dir }, SINK)
       expect([...first.workInFlight()]).toContain(created.sessionId)
@@ -476,8 +375,6 @@ describe('one app per data folder', () => {
       await first.closeAll()
       expect([...first.workInFlight()]).toEqual([])
 
-      // The guard must not be permanent: an app that quit and relaunched in one process — which is
-      // what a test file is — has to repair the row the previous host left.
       buildHost()
 
       expect(statusOf('sess_handover')).toBe('idle')

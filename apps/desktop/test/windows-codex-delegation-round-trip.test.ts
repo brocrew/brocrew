@@ -22,7 +22,7 @@ import { resourcesRoot } from '../src/main/resources/resources'
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
 class Window implements RuntimeEventSink {
-  readonly ownerId = 'window:birch'
+  readonly ownerId = 'webContents:29'
   readonly aPersonIsBehindIt = true
   readonly alive = true
   send(): void {}
@@ -37,7 +37,6 @@ async function until(predicate: () => boolean): Promise<void> {
   }
 }
 
-// Real host, tools, SQLite and delivery; only provider execution and exit proof are fictional.
 describe('Windows-suite Codex delegation round trip', () => {
   let root: string
   let db: AppDatabase
@@ -218,21 +217,72 @@ describe('Windows-suite Codex delegation round trip', () => {
     expect(store.messagesWaitingIn(parent)).toHaveLength(0)
     expect(host.sessionIds).not.toContain(parent)
     expect(parentStarts).toBe(1)
-    await expect(host.resumeSession(parent, window)).rejects.toThrow(
-      'has not finished putting away',
+    const manual = host.resumeSession(parent, window, 'manual-parent-reopen')
+    let settled = false
+    void manual.then(
+      () => {
+        settled = true
+      },
+      () => {
+        settled = true
+      },
     )
-    const first = await finish(alder, 'Alder result')
-    const second = await finish(cedar, 'Cedar result')
-    expect(first.delivered).toBe('kept')
-    expect(second.delivered).toBe('kept')
-    expect(store.messagesWaitingIn(parent)).toHaveLength(2)
-    expect(replies(parent)).toEqual([])
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(settled).toBe(false)
     expect(parentResumes).toBe(0)
+    expect(await host.cancelLaunch('manual-parent-reopen', window.ownerId)).toBe(true)
+    await expect(manual).rejects.toMatchObject({ cause: { unavailable: 'cancelled' } })
+    let firstSettled = false
+    const first = finish(alder, 'Alder result')
+    void first.then(
+      () => {
+        firstSettled = true
+      },
+      () => {
+        firstSettled = true
+      },
+    )
+    let secondSettled = false
+    const second = finish(cedar, 'Cedar result')
+    void second.then(
+      () => {
+        secondSettled = true
+      },
+      () => {
+        secondSettled = true
+      },
+    )
+    for (const work of [alder, cedar]) {
+      await until(() =>
+        store.events(work.helper).some(({ event }) => {
+          return event.type === 'work_replied' && event.piece === work.piece
+        }),
+      )
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(firstSettled).toBe(false)
+    expect(secondSettled).toBe(false)
+    expect(replies(parent)).toEqual([])
+    expect(host.sessionIds).not.toContain(parent)
+    expect(parentStarts).toBe(1)
+    expect(parentResumes).toBe(0)
+
     proveExit()
-    await until(() => replies(parent).length === 2)
+    const [firstReceipt, secondReceipt] = await Promise.all([first, second])
+    expect(firstReceipt.delivered).toBe('sent')
+    expect(secondReceipt.delivered).toBe('held')
     expect(parentStarts).toBe(1)
     expect(parentResumes).toBe(1)
-    expect(replies(parent)).toEqual(['Alder result', 'Cedar result'])
+    expect(replies(parent)).toEqual(['Alder result'])
+    const held = store
+      .events(parent)
+      .map(({ event }) => event)
+      .filter((event) => event.type === 'message_queued' && event.text.includes('Cedar result'))
+    expect(held).toHaveLength(1)
+    const queued = held[0]
+    if (queued?.type !== 'message_queued') throw new Error('the second reply was not recorded')
+    expect(store.messagesWaitingIn(parent).map((row) => row.messageId)).toEqual([queued.messageId])
+
     await until(() => store.events(parent).some(({ event }) => event.type === 'permission_request'))
     const request = store
       .events(parent)
@@ -241,9 +291,36 @@ describe('Windows-suite Codex delegation round trip', () => {
       .find((event) => event.type === 'permission_request')
     if (request?.type !== 'permission_request') throw new Error('the fictional parent has no card')
     await host.respondPermission(parent, request.id, { outcome: 'allow' }, window)
+    await until(() => replies(parent).length === 2)
+    expect(replies(parent)).toEqual(['Alder result', 'Cedar result'])
+    await until(() =>
+      store.events(parent).some(({ event }) => {
+        return event.type === 'permission_request' && event.id !== request.id
+      }),
+    )
+    const nextRequest = store
+      .events(parent)
+      .map(({ event }) => event)
+      .reverse()
+      .find((event) => event.type === 'permission_request' && event.id !== request.id)
+    if (nextRequest?.type !== 'permission_request')
+      throw new Error('the fictional parent has no second card')
+    expect(nextRequest.id).not.toBe(request.id)
+    await host.respondPermission(parent, nextRequest.id, { outcome: 'allow' }, window)
     await until(() => store.find(parent)?.status === 'idle')
+    expect(store.messagesWaitingIn(parent)).toHaveLength(0)
+    expect(
+      store
+        .events(parent)
+        .map(({ event }) => event)
+        .filter(
+          (event) => event.type === 'message_unqueued' && event.messageId === queued.messageId,
+        ),
+    ).toEqual([expect.objectContaining({ reason: 'sent' })])
     await host.send(parent, 'Continue after retirement', window)
     expect(store.messagesWaitingIn(parent)).toHaveLength(0)
     expect(replies(parent)).toEqual(['Alder result', 'Cedar result'])
+    expect(parentStarts).toBe(1)
+    expect(parentResumes).toBe(1)
   })
 })

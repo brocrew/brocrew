@@ -75,6 +75,7 @@ async function claudeHealth(
     )
   } catch (error) {
     if (error instanceof ApiKeyUnreadableError) return { ok: false, reason: error.message }
+    if (error instanceof AuthUnavailableError) return { ok: false, reason: error.message }
     throw error
   }
 }
@@ -82,8 +83,6 @@ async function claudeHealth(
 export async function prepareOnTheLogin(
   prepare: () => string | Promise<string>,
   renew: () => Promise<ClaudeLoginRenewal>,
-
-  /** Claude Code as the person runs it in their shell (`claudeCommandIn`), asked only to say it. */
   command: () => string = () => 'claude',
 ): Promise<{ readonly home: string; readonly loginRenewed: boolean }> {
   const renewal = await renew()
@@ -112,7 +111,6 @@ export function claudeRuntime(seams: ClaudeRuntimeSeams): AgentRuntime {
     undefined,
     seams.key === undefined ? undefined : () => seams.key?.() ?? null,
     undefined,
-
     () => whyNoClaudeLogin({ command: claudeCommandFor(seams) }),
     seams.program(),
     claudeKeychainTokenProviderForALaunch(),
@@ -186,7 +184,6 @@ export function claudeAuth(paths: ProviderHomePaths, seams: ClaudeAuthSeams): Ho
         const keyed = status === undefined ? await apiKey?.() : null
         if (keyed) return await stateOnTheKey(signal)
         const login = await defaultKeychainReaderForALaunch()
-
         return claudeLoginState(
           () => login,
           undefined,

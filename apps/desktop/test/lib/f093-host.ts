@@ -1,4 +1,5 @@
-import { neutralHostDeps } from './host-fixture'
+import { neutralHostDeps, RecordingSink } from './host-fixture'
+export { RecordingSink } from './host-fixture'
 import type { LaunchedEvent, TranscriptEvent } from '../../src/shared/conversation-events'
 import type { UserTurnEvent } from '../../src/shared/human-answer-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -17,11 +18,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../../src/main/db/connection'
 import { applyMigrations } from '../../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../../src/main/db/session-store'
-import {
-  RuntimeHost,
-  type RuntimeHostDeps,
-  type RuntimeEventSink,
-} from '../../src/main/runtime/runtime-host'
+import { RuntimeHost, type RuntimeHostDeps } from '../../src/main/runtime/runtime-host'
 import { toolsToldInTextFor } from '../../src/main/runtime/agent-tools'
 import { readSessionInstructions } from '../../src/main/runtime/instructions'
 import { profileBundleSpans, thisConversationSpans } from '../../src/main/runtime/factory-text'
@@ -34,38 +31,20 @@ import {
 } from '../../src/main/runtime/workspace'
 import { resolveSessionCwd } from '../../src/main/runtime/scratch-cwd'
 import { resourcesRoot } from '../../src/main/resources/resources'
-import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
-
-/**
- * # F093 · one world for the gap tests: a real host on the fake runtime, on throwaway folders
- *
- * ⚑ **`main/index.ts`'s own instruction wiring, copied** — compile, publish, read, and hand back the
- * profile file and the context it was composed from — as `what-this-agent-was-given.test.ts` does,
- * plus `context`, which `main/index.ts` passes since 7973c2fd.
- *
- * ⚑ **The provider end is captured**: every launch's options (its `systemHint` and its toolset) and
- * every text `send` handed over, per handle, in the order the handles were issued — so a test can
- * compare what a row KEPT with what the provider GOT.
- */
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../../src/main/db/migrations')
 
-/** One launch, as the provider end saw it. */
 export interface Handed {
   readonly provider: Provider
   readonly handle: FakeSessionHandle
   readonly options: StartOptions | ResumeOptions
-  /** Every text `send` was handed, in order — refused ones too. */
   readonly sends: string[]
 }
 
-/** ⚑ What a test chooses about the provider end. */
 export class TheProviderEnd {
   readonly handed: Handed[] = []
-  /** The files Codex reports reading at launch (`instructionSources`), or `null` for none. */
   reportedSources: readonly string[] | null = null
-  /** A Codex conversation compacts on request, as its adapter does (`R59`). */
   compactsOnCodex = false
 
   take(provider: Provider, handle: FakeSessionHandle, options: StartOptions | ResumeOptions): void {
@@ -95,7 +74,6 @@ export class TheProviderEnd {
   }
 }
 
-/** A `FakeRuntime` whose every handle reaches {@link TheProviderEnd}. */
 export class CapturingRuntime extends FakeRuntime {
   constructor(
     provider: Provider,
@@ -116,21 +94,6 @@ export class CapturingRuntime extends FakeRuntime {
   }
 }
 
-/** A window, or — with `aPersonIsBehindIt: false` — a channel no person is behind. */
-export class RecordingSink implements RuntimeEventSink {
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(
-    readonly ownerId: string,
-    readonly aPersonIsBehindIt = true,
-  ) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
-/** ⚑ Bounded: 400 × 10 ms at most, then a named failure. */
 export async function waitFor(predicate: () => boolean, what: string): Promise<void> {
   for (let attempt = 0; attempt < 400; attempt++) {
     if (predicate()) return
@@ -158,7 +121,6 @@ export class F093World {
     ensureWorkspace(this.userData)
   }
 
-  /** The managed root: every home this app makes is under it. */
   root(): string {
     return join(this.userData, 'provider-homes')
   }
@@ -252,7 +214,6 @@ export class F093World {
     return this.ledger(sessionId).filter((event) => event.type === type).length
   }
 
-  /** ⚑ In the throwaway project folder — or, `inTheWorkspace`, in BroBot's own workspace. */
   async open(
     host: RuntimeHost,
     provider: Provider,

@@ -123,10 +123,6 @@
         "auto": []
       }
     },
-    "launch": {
-      "freshTimeoutMs": 15000,
-      "resumeTimeoutMs": 15000
-    },
     "limitClearsOnSignInChange": true,
     "toolInstructionsInText": false,
     "identityPreamble": false,
@@ -297,10 +293,6 @@
         "ask": ["the-card-before-an-act", "the-sandbox-around-an-act"],
         "auto": []
       }
-    },
-    "launch": {
-      "freshTimeoutMs": 15000,
-      "resumeTimeoutMs": 60000
     },
     "limitClearsOnSignInChange": false,
     "toolInstructionsInText": true,

@@ -8,7 +8,6 @@ import type { ProviderConnectionCapabilities } from './provider-connections'
 import { CLAUDE_CAPABILITIES } from './providers/claude-capabilities'
 import { CODEX_CAPABILITIES } from './providers/codex-capabilities'
 
-/** Static facts every registered coding-agent backend supplies. */
 export interface ProviderDescriptor {
   readonly id: string
   readonly displayName: string
@@ -23,13 +22,10 @@ export interface ProviderDescriptor {
   readonly connectionKind: 'standard'
   readonly connections: ProviderConnectionCapabilities
   readonly capabilities: ProviderCapabilities
-  /** The provider's own program, as a conversation's words name it. */
   readonly programName: string
   readonly signIn: {
-    /** Fixed sign-in ports may be shared by the whole machine or reserved per profile. */
     readonly portScope: 'machine' | 'profile'
     readonly profileScoped: boolean
-    /** Whether the sign-in tag already names the account, rather than only its login. */
     readonly accountIsSignIn: boolean
     readonly changeWords: string
     readonly manualProbe: boolean
@@ -37,11 +33,8 @@ export interface ProviderDescriptor {
     readonly retryPattern: string | null
   }
   readonly apiKey: {
-    /** The issuer named in the key check's result. */
     readonly issuer: string
-    /** The free authenticated model-list request sent first. */
     readonly checkUrl: string
-    /** Anthropic answers the list without credit; its one-token request also checks funding. */
     readonly spendsToken: boolean
     readonly header: string
     readonly prefix: string
@@ -72,15 +65,12 @@ export interface ProviderDescriptor {
       Record<'ask' | 'auto', readonly ('the-card-before-an-act' | 'the-sandbox-around-an-act')[]>
     >
   }
-  /** Default bounds, before per-host injected timeout overrides. */
-  readonly launch: { readonly freshTimeoutMs: number; readonly resumeTimeoutMs: number }
   readonly limitClearsOnSignInChange: boolean
   readonly toolInstructionsInText: boolean
   readonly identityPreamble: boolean
   readonly contextPlacement: 'system-prompt' | 'first-message'
 }
 
-/** Declaration order is also the order used by provider pickers and aggregate values. */
 export const PROVIDER_DESCRIPTORS = [
   {
     id: 'claude',
@@ -151,7 +141,6 @@ export const PROVIDER_DESCRIPTORS = [
       grantReach: 'reads',
       protections: { ask: ['the-card-before-an-act'], auto: [] },
     },
-    launch: { freshTimeoutMs: 15_000, resumeTimeoutMs: 15_000 },
     limitClearsOnSignInChange: true,
     toolInstructionsInText: false,
     identityPreamble: false,
@@ -228,7 +217,6 @@ export const PROVIDER_DESCRIPTORS = [
         auto: [],
       },
     },
-    launch: { freshTimeoutMs: 15_000, resumeTimeoutMs: 60_000 },
     limitClearsOnSignInChange: false,
     toolInstructionsInText: true,
     identityPreamble: true,
@@ -238,7 +226,6 @@ export const PROVIDER_DESCRIPTORS = [
 
 export type Provider = (typeof PROVIDER_DESCRIPTORS)[number]['id']
 
-/** Keep declaration order within each group, with experimental providers last when visible. */
 export function visibleProviderDescriptors(
   debugMode: boolean,
   descriptors: readonly ProviderDescriptor[] = PROVIDER_DESCRIPTORS,
@@ -253,7 +240,6 @@ export const SUPPORTED_PROVIDERS: readonly Provider[] = PROVIDER_DESCRIPTORS.map
   (descriptor) => descriptor.id,
 )
 
-/** The declaration for a validated provider id. */
 export function providerDescriptor<P extends Provider>(
   provider: P,
 ): Extract<(typeof PROVIDER_DESCRIPTORS)[number], { readonly id: P }> {
@@ -271,14 +257,12 @@ function defaultProviderFor(kind: keyof ProviderDescriptor['defaults']): Provide
 export const DEFAULT_CONVERSATION_PROVIDER = defaultProviderFor('conversation')
 export const DEFAULT_IDENTITY_PROVIDER = defaultProviderFor('identity')
 
-/** Build one value per registered provider, invoking the factory separately for each. */
 export function providerRecord<T>(make: (provider: Provider) => T): Record<Provider, T> {
   return Object.fromEntries(
     PROVIDER_DESCRIPTORS.map((descriptor) => [descriptor.id, make(descriptor.id)]),
   ) as Record<Provider, T>
 }
 
-/** Select a value only after every provider has supplied an answer. */
 export function providerValue<const T>(
   provider: Provider,
   values: Readonly<Record<Provider, T>>,

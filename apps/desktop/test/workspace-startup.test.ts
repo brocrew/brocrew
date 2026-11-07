@@ -95,7 +95,46 @@ function declaration(name: string): string {
   return node.getText(parsed)
 }
 
-/** Execute the real main-process startup block with real recovery and themes, without Electron. */
+function startupTry(source: string): string {
+  const checked = ts.transpileModule(source, {
+    reportDiagnostics: true,
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+  })
+  expect(checked.diagnostics ?? []).toEqual([])
+  const file = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true)
+  const candidates = file.statements.filter((node): node is ts.TryStatement => {
+    if (!ts.isTryStatement(node)) return false
+    const first = node.tryBlock.statements[0]?.getText(file)
+    const second = node.tryBlock.statements[1]?.getText(file)
+    return first === 'pinTheDataFolder(app)' && second === 'workspaceStartup(app)?.assertDatabase()'
+  })
+  expect(candidates).toHaveLength(1)
+  const node = candidates[0]!
+  expect(node.tryBlock.statements).toHaveLength(2)
+  expect(node.catchClause).toBeDefined()
+  const handling = node.catchClause!.block.statements
+  expect(handling).toHaveLength(1)
+  expect(ts.isTryStatement(handling[0]!)).toBe(true)
+  const guarded = handling[0]!
+  if (!ts.isTryStatement(guarded)) throw new Error('missing startup error handler')
+  expect(guarded.finallyBlock?.statements.map((part) => part.getText(file))).toEqual([
+    'app.exit(1)',
+  ])
+  expect(node.end).toBeGreaterThan(node.getStart(file))
+  return node.getText(file)
+}
+
+it('the startup extractor selects only the complete pin and database prelude', () => {
+  const selected = startupTry(index)
+  expect(selected).not.toContain('nameTheAppToWindows')
+  expect(startupTry(`${index}\n// pinTheDataFolder(app)`)).toBe(selected)
+  expect(() => startupTry(index.replace(selected, ''))).toThrow()
+  expect(() => startupTry(`${index}\n${selected}`)).toThrow()
+  const changed = selected.replace('app.exit(1)', 'app.exit(0)')
+  expect(changed).not.toBe(selected)
+  expect(() => startupTry(index.replace(selected, changed))).toThrow()
+})
+
 async function startup(fake: PinnableApp, beforeThemes?: () => void) {
   const lines: string[] = [],
     exits: number[] = [],
@@ -121,7 +160,6 @@ async function startup(fake: PinnableApp, beforeThemes?: () => void) {
     ownershipFrom: () => ({ ask: async () => 'unknown' }),
     createRecoveryService,
     withRecoveryWork: <T>(work: () => Promise<T>) => work(),
-    // The app checks a recovery copy in a worker; here the same check runs in this thread.
     recoveryCopyVerifier: { verify: checkTheCopyHere, stop: async () => {} },
     mainThreadWork: { timed: <T>(_what: string, work: () => T): T => work() },
     buildLineage: async () => [],
@@ -184,11 +222,9 @@ async function startup(fake: PinnableApp, beforeThemes?: () => void) {
     },
     createRuntimeHost: () => ({}),
   }
-  const prefixBegin = index.indexOf('try {\n  pinTheDataFolder(app)')
-  const prefixEnd = index.indexOf('// Give Windows the app id', prefixBegin)
   Object.assign(context.app, { exit: (code: number) => exits.push(code) })
   runInNewContext(
-    ts.transpileModule(index.slice(prefixBegin, prefixEnd), {
+    ts.transpileModule(startupTry(index), {
       compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
     }).outputText,
     context,

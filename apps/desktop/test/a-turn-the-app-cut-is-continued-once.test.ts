@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/host-fixture'
 import {
   registerPersistedCutIdentityCases,
   registerLegacyCutIdentityCase,
@@ -31,7 +31,6 @@ import {
   writeProfileExecution,
 } from '../src/main/profile-execution-file'
 import { RuntimeHost, THE_APP_ITSELF, aTurnTheAppCutText } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import {
   readKeptAccounts,
   writeKeptAccounts,
@@ -48,17 +47,6 @@ import {
   type CutState,
   type NotContinuedBecause,
 } from '../src/main/turns-the-app-cut-file'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
-
-/**
- * **A turn this app's quit, or a crash, cut is continued once, on the account it ran on, at the
- * next launch** — and never twice, never on another account, never after newer work, never for a
- * turn a person stopped or that waited on a person.
- *
- * ⚑ Each life of the app is a host with its own connection over one data folder, as
- * `scheduled-jobs-across-a-crash.test.ts` makes them: a crashed life is never closed, and the next
- * one reads the same database and the same `turns-the-app-cut.json`. Accounts are fictional.
- */
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -89,17 +77,6 @@ async function settle(): Promise<void> {
     for (let turn = 0; turn < 5; turn++) await new Promise((resolve) => setImmediate(resolve))
     await new Promise((resolve) => setTimeout(resolve, GAP + 30))
   }
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 function held(why: string): Held {
@@ -262,13 +239,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
         newSessionId: () => `sess_${++counter}`,
         now: tick,
         interruptWaitMs: 40,
-        readProviderConfig: (_provider, home) => ({
-          home,
-          homeEnv: 'CLAUDE_CONFIG_DIR',
-          model: 'm',
-          authNote: null,
-          files: [],
-        }),
+        readProviderConfig: fixtureProviderConfig,
         ...(stops.nobodyListens === true ? {} : { statesMoved: () => {} }),
         ...(stops.services === true
           ? {
@@ -298,7 +269,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
             writeKeptAccounts(providerAccountsFile(folder), kept)
           },
         },
-        accountWaitMs: ACCOUNT_WAIT,
+        ...({ accountWaitMs: ACCOUNT_WAIT } as Record<string, number>),
         startGapMs: GAP,
         aProgramStartsAgainAfterMs: stops.programWaitMs ?? PROGRAM_WAIT,
         limitWakesApartMs: LIMIT_GAP,
@@ -363,7 +334,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
     (life.host as unknown as { slots: Map<string, { session: unknown }> }).slots.get(id)?.session !=
     null
 
-  /** Claude's usage limit is reached, as another conversation's provider said it, until an hour on. */
   const theLimitIsReached = (): void => {
     const resets = new Date(clock + 60 * 60_000).toISOString()
     now.store.create({
@@ -383,11 +353,9 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       } as TranscriptEvent,
       clock,
     )
-    // Past the while the host reads the limits once for.
     clock += 6_000
   }
 
-  /** The ordinal of the conversation's newest `launched` row. */
   const itsNewestLaunch = (id: string): number | undefined =>
     now.store
       .events(id)
@@ -395,7 +363,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       .map((entry) => (entry as unknown as { ordinal: number }).ordinal)
       .at(-1)
 
-  /** A conversation whose turn is running when the life ends. */
   const aTurnRunsIn = async (stops: Stops = {}): Promise<string> => {
     starts(CUT - 60_000, { turnsStayOpen: true, ...stops })
     const { sessionId } = await now.host.createSession(
@@ -447,7 +414,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       expect(continuations(a)).toEqual([aTurnTheAppCutText('quit', CUT, clock, 'claude')])
       expect(stateOf(a)).toBe('sent')
 
-      // ⛔ …and once: a further launch does nothing more.
       await now.host.closeAll()
       starts(SOON + 60_000)
       await settle()
@@ -494,10 +460,19 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
 
     registerLegacyCutIdentityCase(accountCases)
 
-    it('⛔ with an account that does not answer in time, it is not continued and not tried again', async () => {
+    it('🔴 with an account its provider names only after a long while, it is still continued', async () => {
       const a = await aTurnRunsIn()
       await now.host.closeAll()
-      starts(SOON, { account: 'never' })
+      starts(SOON, { accountAfterMs: ACCOUNT_WAIT * 3 })
+      await waitFor(() => continuations(a).length > 0, 'the continuation')
+      expect(continuations(a)).toHaveLength(1)
+      expect(stateOf(a)).not.toEqual({ ended: 'account-not-known' })
+    })
+
+    it('⛔ with an account its provider says it has none of, it is not continued and not tried again', async () => {
+      const a = await aTurnRunsIn()
+      await now.host.closeAll()
+      starts(SOON, { account: 'none' })
       await waitFor(() => typeof stateOf(a) === 'object', 'the cut to end')
       await settle()
       expect(continuations(a)).toEqual([])
@@ -511,7 +486,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
     it('⛔ a turn that went in before the next launch that continues anything: no stale continuation', async () => {
       const a = await aTurnRunsIn()
       await now.host.closeAll()
-      // A life that continues nothing, in which a person writes and the turn ends.
       starts(SOON, { nobodyListens: true })
       const sent = await now.host.startAndSend(a, 'where were we?', window)
       expect('notSent' in sent, JSON.stringify(sent)).toBe(false)
@@ -544,7 +518,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
     it('⛔ a person who writes first takes the conversation: no stale continuation follows', async () => {
       const a = await aTurnRunsIn()
       await now.host.closeAll()
-      starts(SOON, { account: 'never' })
+      starts(SOON, { accountAfterMs: ACCOUNT_WAIT })
       const sent = await now.host.startAndSend(a, 'where were we?', window)
       expect('notSent' in sent, JSON.stringify(sent)).toBe(false)
       await waitFor(() => typeof stateOf(a) === 'object', 'the cut to end')
@@ -561,7 +535,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
         whatTheQuitCloses(): unknown[]
         keepTheTurnsTheQuitCuts(closing: unknown[]): void
       }
-      // The quit keeps what it is about to cut, then dies before any close.
       host.keepTheTurnsTheQuitCuts(host.whatTheQuitCloses())
       expect(stateOf(a)).toBe('pending')
       starts(SOON)
@@ -588,7 +561,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
     })
 
     it('⛔ a crash in a life whose account was never known does not take an earlier life’s', async () => {
-      // The first life's account is known, and its turn ends.
       starts(CUT - 120_000)
       const { sessionId: a } = await now.host.createSession(
         { provider: 'claude', profileId: 'agent-a', approvalMode: 'auto', cwd: root },
@@ -597,7 +569,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       await now.host.send(a, 'quick one', window)
       await settle()
       await now.host.closeAll()
-      // The next life never learns its account, and crashes in a turn.
       starts(CUT - 60_000, { account: 'never', turnsStayOpen: true })
       const sent = await now.host.startAndSend(a, 'build the thing', window)
       expect('notSent' in sent, JSON.stringify(sent)).toBe(false)
@@ -609,7 +580,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       expect(stateOf(a)).toEqual({ ended: 'account-not-known' })
     })
 
-    /** A first life on Ada whose turn ends, then a quit: its account is kept for the conversation. */
     const aFirstLifeOnAda = async (): Promise<string> => {
       starts(CUT - 120_000)
       const { sessionId } = await now.host.createSession(
@@ -625,12 +595,10 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
     it('⛔ a crash after the earlier life’s account could not be let go does not take it', async () => {
       const a = await aFirstLifeOnAda()
       expect(readKeptCuts(turnsTheAppCutFile(userData)).lives[a]).toBeDefined()
-      // Nothing can be written in this life, and its account is never learned; it crashes in a turn.
       starts(CUT - 60_000, { account: 'never', turnsStayOpen: true, cutsCannotBeKept: true })
       const sent = await now.host.startAndSend(a, 'build the thing', window)
       expect('notSent' in sent, JSON.stringify(sent)).toBe(false)
       await settle()
-      // The next launch can write again, on the first life's account.
       starts(SOON)
       await waitFor(() => typeof stateOf(a) === 'object', 'the cut to end')
       await settle()
@@ -714,7 +682,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       await now.host.send(b, 'the other thing', window)
       await settle()
       await now.host.closeAll()
-      // The next life's account read names no email: only its launch credential's tag is known.
       starts(SOON, { account: 'none', tag: 'key-a' })
       await waitFor(
         () => typeof stateOf(a) === 'object' && typeof stateOf(b) === 'object',
@@ -862,7 +829,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
   })
 
   describe('the last check, after the last wait before the handover', () => {
-    /** A cut whose continuation is held, and whose handover waits on its sign-in check. */
     const aContinuationWaitsAtTheGate = async (): Promise<{ a: string; gate: Gate }> => {
       const a = await aTurnRunsIn()
       await now.host.closeAll()
@@ -896,7 +862,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       machine.completeTurn('completed')
       await settle()
       gate.open()
-      // Settled either way, sent or ended, so the state below is what is asserted.
       await waitFor(() => stateOf(a) !== 'queued', 'the held words to be settled')
       await settle()
       expect(continuations(a)).toEqual([])
@@ -907,7 +872,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       const { a, gate } = await aContinuationWaitsAtTheGate()
       theLimitIsReached()
       gate.open()
-      // Settled either way, sent or ended, so the state below is what is asserted.
       await waitFor(() => stateOf(a) !== 'queued', 'the held words to be settled')
       await settle()
       expect(continuations(a)).toEqual([])
@@ -944,7 +908,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       machine.completeTurn('completed')
       await settle()
       gate.open()
-      // Settled either way, sent or ended, so the state below is what is asserted.
       await waitFor(() => stateOf(a) !== 'queued', 'the held words to be settled')
       await waitFor(
         () =>
@@ -982,7 +945,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       if (tool === undefined) throw new Error(`no such tool: ${name}`)
       return (await tool.call(args)).structured as Record<string, unknown>
     }
-    /** A lead gives a worker a piece; the worker's turn on it is running when the app quits or crashes. */
     const aGivenPieceIsCut = async (
       how: 'quit' | 'crash',
     ): Promise<{ lead: string; worker: string }> => {
@@ -1043,11 +1005,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       expect(toldItStalled(lead)).toBe(false)
     })
 
-    /**
-     * A service whose turn on `lead`'s piece One is running when the app crashes, with `other`'s piece
-     * Two queued behind it. Every turn after the crash ends at once. With `ask`, that turn waits on a
-     * person's approval.
-     */
     const aServicesPieceIsCut = async (
       opts: { ask?: boolean } = {},
     ): Promise<{
@@ -1134,13 +1091,11 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       ])
       expect(toldItStalled(lead)).toBe(false)
       expect(toldItStalled(other)).toBe(false)
-      // ⚑ …a crash in the continued turn is continued once more, on the same piece…
       clock = SOON + 30_000
       starts(SOON + 60_000, { services: true, turnsStayOpen: true })
       await waitFor(() => continuations(service).length === 2, 'the second continuation')
       await waitFor(() => stateOf(service) === 'sent', 'the second continuation sent')
       await settle()
-      // ⛔ …and a third cut waits for a person, and stalls only One.
       clock = SOON + 90_000
       starts(SOON + 120_000, { services: true })
       await waitFor(() => typeof stateOf(service) === 'object', 'the third cut to end')
@@ -1199,7 +1154,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       const { other, service, one, two } = await aServicesPieceIsCut()
       starts(SOON, { services: true, accountAfterMs: 400 })
       await waitFor(() => running(now, service), 'the service to start for its cut')
-      // Nothing waits behind it, so no next brief can overtake the continuation first.
       expect((await callOn(other, 'withdraw_task', { piece: two }))['outcome']).toBe('ok')
       const answered = await callOn(service, 'reply_to_parent', {
         piece: one,
@@ -1211,7 +1165,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       await settle()
       expect(stateOf(service)).toEqual({ ended: 'overtaken' })
       expect(continuations(service)).toEqual([])
-      // Dropped before its words were held: nothing was held to be taken back.
       expect(heldCount(service)).toBe(0)
     })
 
@@ -1220,9 +1173,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       const gate = aGate()
       starts(SOON, { services: true, signInGate: gate })
       await waitFor(() => stateOf(service) === 'queued', 'the continuation to be held')
-      // Nothing waits behind it, so nothing else needs the life started for the cut.
       expect((await callOn(other, 'withdraw_task', { piece: two }))['outcome']).toBe('ok')
-      // The reply's delivery waits on the same gate, so the gate opens once its row is down.
       const answering = callOn(service, 'reply_to_parent', {
         piece: one,
         outcome: 'done',
@@ -1235,7 +1186,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       await settle()
       expect(stateOf(service)).toEqual({ ended: 'overtaken' })
       expect(continuations(service)).toEqual([])
-      // The life started only for the cut has nothing left to do, and is stopped again.
       await waitFor(() => !running(now, service), 'the life started for it to be stopped')
     })
 
@@ -1265,7 +1215,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
           (event.type === 'message_queued' &&
             ('report' in (event as object) || event.appNotice === 'a-work-wait-needs-attention')),
       ).length
-    /** The service's handle in this life, the last one started. */
     const itsMachine = (): {
       noteProviderWork(): void
       completeTurn(state: 'completed'): void
@@ -1278,18 +1227,12 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
         }
       ).machine
     }
-    /**
-     * A service's cut that ends as `why`, at this launch and at the next after a crash: nothing of it
-     * is continued or tried again, nothing past One is handed over, and Two waits with its caller
-     * untold. With `stalls`, One stalls, and its caller alone is told, once.
-     */
     const itGoesNowhere = async (
       cut: { readonly lead: string; readonly other: string; readonly service: string },
       why: NotContinuedBecause,
       stalls: boolean,
     ): Promise<void> => {
       const { lead, other, service } = cut
-      // ⚑ What its ledger had handed over by the cut: nothing more is, at either launch.
       const handedOverAtTheCut = handedOverAt(service)
       await waitFor(() => typeof stateOf(service) === 'object', 'the cut to end')
       await settle()
@@ -1297,7 +1240,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       const asItStands = async (): Promise<void> => {
         expect(continuations(service)).toEqual([])
         expect(handedOverAt(service)).toBe(handedOverAtTheCut)
-        // ⚑ Two's brief never handed over: its piece still waits.
         expect(piecesAt(service)[1]).toEqual(['Two', 'waiting'])
         if (stalls) expect(piecesAt(service)[0]).toEqual(['One', 'stalled'])
         for (const caller of [lead, other]) {
@@ -1358,7 +1300,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
         'its own turn',
       )
       machine.completeTurn('completed')
-      // ⚑ Its own turn ended with One unanswered, so One stalls as any piece does then.
       await itGoesNowhere(cut, 'overtaken', true)
     })
 
@@ -1373,7 +1314,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       const cut = await aServicesPieceIsCut()
       const one = now.store.piecesOwnedBy(cut.service)[0]
       if (one === undefined) throw new Error('no first piece')
-      // A row of its work that can't be read, as a crash may leave one.
       const ordinal = now.store.nextOrdinal(cut.service) + 1_000
       now.store.append(
         cut.service,
@@ -1395,7 +1335,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
 
     it('⛔ a service whose cut turn drove other work goes on with nothing, at this launch or the next', async () => {
       const cut = await aServicesPieceIsCut()
-      // One's turn ends; its caller's note about its own work goes in, and that turn is cut.
       itsMachine().completeTurn('completed')
       await waitFor(() => piecesAt(cut.service)[0]?.[1] === 'stalled', 'One to stall')
       const root = now.store.rootOf(cut.lead)
@@ -1418,10 +1357,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       await itGoesNowhere(cut, 'a-service', true)
     })
 
-    /**
-     * One's turn ends with its caller's words held behind it, which go in one turn of their own that
-     * the crash cuts: `about` names the piece each one names.
-     */
     const aCutOfTheCallersWords = async (
       about: readonly ('its-piece' | 'its-own-work' | 'nothing')[],
     ): Promise<{ lead: string; other: string; service: string; one: string }> => {
@@ -1462,7 +1397,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
 
     it('⛔ a service whose cut turn asked to stop one that named other work goes on with nothing, at this launch or the next', async () => {
       const cut = await aCutOfTheCallersWords(['its-own-work'])
-      // Its caller's words ask the turn on its own work to stop, and go in the turn after it.
       const sent = await callOn(cut.lead, 'message_agent', {
         agent: cut.service,
         kind: 'follow-up',
@@ -1510,7 +1444,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
     )
 
     it('⛔ a service whose cut found two pieces handed over goes on with neither, and hands nothing more over', async () => {
-      // ⚑ Its dispatcher never hands a second piece over while one is open: a row says so here.
       const { lead, other, service } = await aServicesPieceIsCut()
       const three = await callOn(other, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
@@ -1566,9 +1499,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       await settle()
       expect(continuations(service)).toEqual([])
       expect(piecesAt(service)[0]).toEqual(['One', 'withdrawn'])
-      // ⚑ The start it waited for is still made, once: what it drops is its words.
       expect(askedFor(now, service)).toBe(1)
-      // …and the next launch, after a crash, continues nothing.
       starts(SOON + 120_000, { services: true })
       await settle()
       expect(stateOf(service)).toEqual({ ended: 'overtaken' })
@@ -1606,13 +1537,11 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       await settle()
       expect(stateOf(worker)).toEqual({ ended: 'not-same-account' })
       expect(restarted(worker)).toBe(1)
-      // ⚑ The mark outlasts the restart: still waiting on purpose, over the stall the sweep wrote.
       expect(now.store.piecesOwnedBy(worker)[0]).toMatchObject({
         state: 'waiting-on-purpose',
         parkedOver: 'stalled',
         stalledBecause: null,
       })
-      // ⛔ The stop sweep once more writes nothing: the piece no longer stands over a drive.
       ;(now.host as unknown as { stallWhatACutLeft(conversation: string): void }).stallWhatACutLeft(
         worker,
       )
@@ -1665,18 +1594,15 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
     })
   })
 
-  /** The conversation's latest provider handle. */
   const itsHandle = (id: string): FakeSessionHandle => {
     const ref = providerIdOf(id)
     const found = handles.filter((one) => one.ref.sessionId === ref).at(-1)
     if (found === undefined) throw new Error(`${id} has no provider handle`)
     return found
   }
-  /** Its provider's program stops while its turn runs, as a process that exits ends a session. */
   const itsProgramStops = (id: string): void => {
     itsHandle(id).simulateError('the provider process exited', true)
   }
-  /** Its running turn ends on Claude's usage limit, which resets this long from now. */
   const itsTurnMeetsTheLimit = (
     id: string,
     resetsInMs: number | null,
@@ -1687,7 +1613,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       push(event: unknown): void
       machine: { completeTurn(outcome: string, message?: string, limit?: unknown): void }
     }
-    // ⚑ As Claude's adapter says it first: the limit's own line, which the hold reads.
     const resets = resetsInMs === null ? '' : `; resets ${new Date(resetsAt).toISOString()}`
     fake.push({
       type: 'error',
@@ -1702,7 +1627,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
     })
     return resetsAt
   }
-  /** The person's own Stop, as a window asks it. */
   const aPersonCloses = (id: string): Promise<void> => now.host.close(id, window)
 
   describe('a program that stopped while its turn ran', () => {
@@ -2006,7 +1930,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       expect(stateOf(a)).toBe('pending')
       const before = now.startedAt.length
       clock = resetsAt + 1_000
-      // Its start is made, and its account is read for a while: the day passes meanwhile.
       await waitFor(() => now.startedAt.length > before, 'its start')
       clock = cutAt + day + 60_000
       await waitFor(() => typeof stateOf(a) === 'object', 'the cut to end')
@@ -2121,7 +2044,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       const a = await aTurnRunsIn(limited)
       const resetsAt = itsTurnMeetsTheLimit(a, anHour)
       await settle()
-      // Another conversation's own limit line, which names no reset.
       now.store.create({
         id: 'sess_wall',
         provider: 'claude',

@@ -119,7 +119,6 @@ export type {
   ProviderCommandSet,
   ProviderSkill,
 } from './provider-commands'
-
 export { MAX_COMMAND_TEXT, PROVIDER_COMMAND_PREFIX } from './provider-commands'
 
 export {
@@ -157,7 +156,6 @@ export { FileEdits } from './claude/file-edits'
 export { ClaudeMemoryStore } from './claude/memory-store'
 
 export { assistantErrorWords, isCredentialFailure } from './claude/assistant-error'
-
 export { THE_CLIS_OWN_MODEL } from './claude/provider-refusal'
 
 export {
@@ -233,7 +231,6 @@ export type {
   AgentToolset,
   BeyondItsRails,
 } from './agent-tools'
-
 export {
   agentToolStringEnum,
   agentToolHandlerInput,
@@ -250,7 +247,6 @@ export {
   type ProviderCapabilities,
 } from './capabilities'
 export { CLAUDE_CAPABILITIES } from './claude/capabilities'
-
 export {
   AUTO_MEMORY_INDEX,
   claudeAutoMemoryDir,
@@ -293,8 +289,6 @@ export {
   claudeAuthHealthAsync,
   claudeLoginState,
   claudeLoginStateWithAKey,
-
-  // Export the one-way digest used to compare launch credentials without exposing the credential.
   credentialFingerprint,
   defaultKeychainReader,
   defaultKeychainReaderAsync,
@@ -322,9 +316,7 @@ export {
   type ReprovisionOutcome,
   type CodexCopySource,
 } from './internal/auth'
-
 export type { SessionAccount } from './session-account'
-
 export {
   CLAUDE_RENEWAL_ARGS,
   claudeLoginNeedsRenewal,
@@ -383,13 +375,11 @@ export {
   type ClaudeQuery,
   type QueryFactory,
 } from './claude/claude-runtime'
-
 export {
   ClaudeUnavailableError,
   claudeProgramWhereTheSdkLooks,
   claudeVersionTheSdkShips,
 } from './claude/claude-binary'
-
 export {
   spawnClaudeChild,
   watchClaudeChild,
@@ -412,7 +402,6 @@ export type {
   LaunchSettingKey,
   LaunchSettingValue,
 } from './launch-settings'
-
 export type { CodexTransport, CodexIncoming } from './codex/codex-transport'
 
 export { MAX_SETTINGS_BYTES } from './settings-limits'
@@ -425,11 +414,8 @@ export {
   keptToolApprovalsFile,
   type KeptToolApproval,
 } from './codex/kept-tool-approvals'
-
 export { CODEX_PROTOCOL_VERSION } from './codex/protocol-version'
-
 export { removeStaleCodexPermissionConfig } from './codex/stale-permission-config'
-
 export {
   CODEX_MEMORY_PROVENANCE,
   CODEX_MEMORY_SETTINGS,
@@ -440,7 +426,6 @@ export {
   type CodexMemoryMerge,
   type CodexMemorySetting,
 } from './codex/memory-config'
-
 export {
   CODEX_AD_HOC_NOTES,
   CODEX_MEMORY_INDEX,
@@ -465,8 +450,12 @@ export {
   type ExternalMcpReach,
 } from './external-mcp'
 
-// Export bounded waits so app-layer provider round trips have deadlines, as adapter waits do.
-export { DidNotAnswerInTime, didNotAnswerInTime, withDeadline } from './internal/bounded'
+export {
+  DidNotAnswerInTime,
+  didNotAnswerInTime,
+  untilCancelled,
+  withDeadline,
+} from './internal/bounded'
 export { isReasoning, stallNotice } from './internal/stall-watchdog'
 
 export { SessionMachine, type SessionState, type TurnOutcome } from './internal/session-machine'

@@ -26,11 +26,6 @@ import {
   type StartAttemptsFiles,
 } from '../src/main/start-attempts-log'
 
-/**
- * Each launch writes two lines, by name and number only: one as it begins, and one as it ends with
- * the phases it reached. A launch given up on at its deadline says which phase it was waiting after.
- */
-
 class Sink implements RuntimeEventSink {
   readonly aPersonIsBehindIt = true
   readonly alive = true
@@ -39,7 +34,6 @@ class Sink implements RuntimeEventSink {
   sendLiveness(): void {}
 }
 
-/** The phases a Codex launch reaches, in order. */
 const EVERY_PHASE: readonly StartPhase[] = [
   'boot-gate-entered',
   'boot-gate-passed',
@@ -52,10 +46,8 @@ const EVERY_PHASE: readonly StartPhase[] = [
   'validated',
 ]
 
-/** A fake provider that reports its phases, and can stop answering after one of them. */
 class PhasedRuntime extends FakeRuntime {
   stallAfter: StartPhase | null = null
-  /** When set, the launch has its session and hands it back only once this settles. */
   answerLate: Promise<void> | null = null
   aborted = false
   readonly handles: Awaited<ReturnType<FakeRuntime['start']>>[] = []
@@ -63,7 +55,6 @@ class PhasedRuntime extends FakeRuntime {
     for (const phase of EVERY_PHASE) {
       options.startPhases?.(phase, phase === 'thread-answered' ? { bytes: 512 } : undefined)
       if (phase === this.stallAfter) {
-        // Waits until the launch is given up on, then reaches one phase more, too late to count.
         return new Promise((_resolve, reject) => {
           options.signal?.addEventListener('abort', () => {
             options.startPhases?.('thread-answered', { bytes: 9_999 })
@@ -102,10 +93,7 @@ describe('a launch says where it waited', () => {
   let host: RuntimeHost
   let db: ReturnType<typeof openDatabase>
   let leadRead: (() => Promise<WindowReadResult>) | undefined
-  let buildHost: (bounds?: {
-    launchTimeoutMs?: number
-    resumeTimeouts?: Partial<Record<import('@brobot2/shared').Provider, number>>
-  }) => RuntimeHost
+  let buildHost: () => RuntimeHost
 
   beforeEach(() => {
     folder = mkdtempSync(join(tmpdir(), 'brocrew-start-attempts-'))
@@ -117,7 +105,7 @@ describe('a launch says where it waited', () => {
     leadRead = undefined
     runtime = new PhasedRuntime('codex', { sessions: new FakeProviderSessions() })
     let counter = 0
-    buildHost = (bounds = { launchTimeoutMs: 80 }) =>
+    buildHost = () =>
       new RuntimeHost({
         store,
         ...neutralHostDeps(() => folder),
@@ -153,7 +141,6 @@ describe('a launch says where it waited', () => {
           authNote: null,
           files: [],
         }),
-        ...bounds,
         reopenLeadsGraceMs: 200,
         closeDrainTimeoutMs: 40,
         recordStartAttempt: (line) => lines.push(line),
@@ -186,28 +173,6 @@ describe('a launch says where it waited', () => {
     expect(end.elapsedMs).toBeGreaterThanOrEqual(times.at(-1)!)
   })
 
-  it('a launch given up on at its deadline writes the phase it was waiting after, and nothing after', async () => {
-    runtime.stallAfter = 'thread-sent'
-    const failure = await host
-      .createSession({ provider: 'codex' }, new Sink())
-      .catch((error: Error) => error)
-    expect(failure).toBeInstanceOf(Error)
-    expect(lines.map((one) => one.stage)).toEqual(['began', 'ended'])
-    const end = ended()[0]!
-    if (end.stage !== 'ended') throw new Error('not an end')
-    expect(end).toMatchObject({
-      outcome: 'timed-out',
-      lastPhase: 'thread-sent',
-      responseBytes: null,
-    })
-    expect('thread-answered' in end.phases).toBe(false)
-    // Whole-millisecond timers and rounded monotonic samples can differ at the boundary.
-    expect(end.elapsedMs).toBeGreaterThanOrEqual(78)
-    // The phase reached after the deadline comes too late to be written, and no line follows.
-    await new Promise((resolve) => setTimeout(resolve, 30))
-    expect(lines).toHaveLength(2)
-  })
-
   it('a resume writes its own two lines, as a resume', async () => {
     const { sessionId } = await host.createSession({ provider: 'codex' }, new Sink())
     await host.close(sessionId, new Sink())
@@ -222,9 +187,7 @@ describe('a launch says where it waited', () => {
     expect(resumed[0]!.attempt).not.toBe(lines[0]!.attempt)
   })
 
-  it('a Codex resume can take twenty seconds, stays active, and records its sixty-second limit', async () => {
-    await host.closeAll()
-    host = buildHost({})
+  it('a Codex resume can take twenty seconds, stays active, and is ready when it answers', async () => {
     const sink = new Sink()
     const { sessionId } = await host.createSession({ provider: 'codex' }, sink)
     await host.close(sessionId, sink)
@@ -250,15 +213,13 @@ describe('a launch says where it waited', () => {
       while (runtime.handles.length < 2) await new Promise<void>((resolve) => setImmediate(resolve))
       await vi.advanceTimersByTimeAsync(20_000)
       expect(state).toBe('pending')
-      expect(lines.filter((one) => one.opening === 'resume')).toMatchObject([
-        { stage: 'began', timeoutMs: 60_000 },
-      ])
+      expect(lines.filter((one) => one.opening === 'resume')).toMatchObject([{ stage: 'began' }])
       expect(host.agentCard(sessionId, sink, null)?.state).toMatchObject({ is: 'active' })
       release()
       expect(await outcome).toBe('ready')
       expect(lines.filter((one) => one.opening === 'resume')).toMatchObject([
-        { stage: 'began', timeoutMs: 60_000 },
-        { stage: 'ended', timeoutMs: 60_000, outcome: 'ready' },
+        { stage: 'began' },
+        { stage: 'ended', outcome: 'ready' },
       ])
     } finally {
       release()
@@ -268,66 +229,6 @@ describe('a launch says where it waited', () => {
       clearInterval(keepAlive)
     }
   })
-
-  it('a fresh Codex start still expires at fifteen seconds', async () => {
-    await host.closeAll()
-    host = buildHost({})
-    runtime.stallAfter = 'thread-sent'
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    const started = host.createSession({ provider: 'codex' }, new Sink())
-    const failure = started.catch((error: unknown) => error)
-    try {
-      while (!lines.some((one) => one.stage === 'began'))
-        await new Promise<void>((resolve) => setImmediate(resolve))
-      await vi.advanceTimersByTimeAsync(14_999)
-      expect(ended()).toHaveLength(0)
-      await vi.advanceTimersByTimeAsync(1)
-      expect(await failure).toMatchObject({ message: expect.stringContaining('within 15s') })
-      expect(lines).toMatchObject([
-        { stage: 'began', opening: 'fresh', timeoutMs: 15_000 },
-        { stage: 'ended', opening: 'fresh', timeoutMs: 15_000, outcome: 'timed-out' },
-      ])
-    } finally {
-      vi.useRealTimers()
-      await failure
-    }
-  })
-
-  it.each([
-    ['codex', 60_000],
-    ['claude', 15_000],
-  ] as const)(
-    'an unanswered %s resume expires at its own %i ms limit',
-    async (provider, timeoutMs) => {
-      await host.closeAll()
-      runtime = new PhasedRuntime(provider, { sessions: new FakeProviderSessions() })
-      host = buildHost({})
-      const sink = new Sink()
-      const { sessionId } = await host.createSession({ provider }, sink)
-      await host.close(sessionId, sink)
-      runtime.stallAfter = 'thread-sent'
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      const resumed = host.resumeSession(sessionId, sink)
-      const failure = resumed.catch((error: unknown) => error)
-      try {
-        while (!lines.some((one) => one.opening === 'resume'))
-          await new Promise<void>((resolve) => setImmediate(resolve))
-        await vi.advanceTimersByTimeAsync(timeoutMs - 1)
-        expect(ended().filter((one) => one.opening === 'resume')).toHaveLength(0)
-        await vi.advanceTimersByTimeAsync(1)
-        expect(await failure).toMatchObject({
-          message: expect.stringContaining(`within ${timeoutMs / 1000}s`),
-        })
-        expect(lines.filter((one) => one.opening === 'resume')).toMatchObject([
-          { stage: 'began', timeoutMs },
-          { stage: 'ended', timeoutMs, outcome: 'timed-out' },
-        ])
-      } finally {
-        vi.useRealTimers()
-        await failure
-      }
-    },
-  )
 
   async function heldLead() {
     const { sessionId } = await host.createSession({ provider: 'codex' }, new Sink())
@@ -353,7 +254,6 @@ describe('a launch says where it waited', () => {
   it('a lead read that never answers does not hold the resume: the provider is asked at once and the reopen is ready', async () => {
     const held = await heldLead()
     try {
-      // The provider was asked while the read was still out, and reached every phase in time.
       expect(held.resume).toHaveBeenCalledOnce()
       const opened = await Promise.race([
         held.asked,
@@ -373,7 +273,6 @@ describe('a launch says where it waited', () => {
 
   it('cancelling while the lead read is still out, after the provider answered, stops the provider at once', async () => {
     const held = await heldLead()
-    // The provider has answered and the read is still out: the launch is in its grace.
     const deadline0 = Date.now() + 2_000
     while (Date.now() < deadline0 && runtime.handles.length === 0)
       await new Promise((resolve) => setTimeout(resolve, 5))
@@ -385,12 +284,10 @@ describe('a launch says where it waited', () => {
         held.asked,
         new Promise((resolve) => setTimeout(() => resolve('still waiting'), 1_000)),
       ])
-      // The words a close during a start has always had; and the grace did not run to its end.
       expect(failure).toMatchObject({ cause: { unavailable: 'lost-its-place' } })
       expect((failure as Error).message).toContain('was closed while it was opening')
       expect(Date.now() - asked).toBeLessThan(150)
       expect(await cancelled).toBe(true)
-      // Whatever the provider handed back is not left running.
       const deadline = Date.now() + 2_000
       while (Date.now() < deadline && runtime.handles.some((handle) => handle.status() !== 'ended'))
         await new Promise((resolve) => setTimeout(resolve, 5))
@@ -412,28 +309,6 @@ describe('a launch says where it waited', () => {
     expect(resumed[1]).toMatchObject({ outcome: 'ready', lastPhase: 'validated' })
   })
 
-  it('a resume handle arriving after the deadline is still owned until it is stopped', async () => {
-    const held = await heldLead()
-    let answer!: () => void
-    runtime.answerLate = new Promise<void>((resolve) => {
-      answer = resolve
-    })
-    held.finish()
-    try {
-      await expect(held.asked).resolves.toMatchObject({ cause: { unavailable: 'took-too-long' } })
-      expect(held.resume).toHaveBeenCalledOnce()
-      const late = runtime.handles.at(-1)!
-      expect(late.status()).not.toBe('ended')
-      answer()
-      const deadline = Date.now() + 2_000
-      while (Date.now() < deadline && late.status() !== 'ended')
-        await new Promise((resolve) => setTimeout(resolve, 5))
-      expect(late.status()).toBe('ended')
-    } finally {
-      answer()
-    }
-  })
-
   it('says names and numbers only: no folder, model, prompt or provider words', async () => {
     const { sessionId } = await host.createSession({ provider: 'codex' }, new Sink())
     await host.send(sessionId, 'A fictional private request.', new Sink())
@@ -453,7 +328,6 @@ describe('a launch says where it waited', () => {
       'phases',
       'lastPhase',
       'responseBytes',
-      'timeoutMs',
     ])
     for (const line of lines) for (const key of Object.keys(line)) expect(allowed).toContain(key)
   })
@@ -485,7 +359,6 @@ describe('a launch says where it waited', () => {
   })
 })
 
-/** Files that hold every append until released, and count what reached them. */
 type HeldFiles = StartAttemptsFiles & { appends: number; readonly release: () => void }
 function heldFiles(): HeldFiles {
   let release!: () => void
@@ -540,7 +413,6 @@ describe('a launch never waits for its timing to reach the disk', () => {
         authNote: null,
         files: [],
       }),
-      launchTimeoutMs: 80,
       closeDrainTimeoutMs: 40,
       recordStartAttempt: aStartAttemptsLog(folder, { files }).write,
     })
@@ -553,50 +425,8 @@ describe('a launch never waits for its timing to reach the disk', () => {
     await expect(host.createSession({ provider: 'codex' }, new Sink())).resolves.toMatchObject({
       sessionId: 'sess_1',
     })
-    // Nothing reached the disk: the first line is still held, and the second waits behind it.
     await aMoment()
     expect(files.appends).toBe(1)
-    files.release()
-    await host.closeAll()
-  })
-
-  it('a launch past its deadline is aborted on time while its timing is held', async () => {
-    const files = heldFiles()
-    const runtime = new PhasedRuntime('codex', { sessions: new FakeProviderSessions() })
-    runtime.stallAfter = 'thread-sent'
-    const host = aHost(runtime, files)
-    const asked = Date.now()
-    const failure = await host
-      .createSession({ provider: 'codex' }, new Sink())
-      .catch((error: Error) => error)
-    expect(failure).toBeInstanceOf(Error)
-    expect(runtime.aborted).toBe(true)
-    expect(Date.now() - asked).toBeLessThan(80 + 1_000)
-    await aMoment()
-    expect(files.appends).toBe(1)
-    files.release()
-    await host.closeAll()
-  })
-
-  it('a handle that arrives after the deadline is still stopped, while its timing is held', async () => {
-    const files = heldFiles()
-    const runtime = new PhasedRuntime('codex', { sessions: new FakeProviderSessions() })
-    let answer!: () => void
-    runtime.answerLate = new Promise<void>((resolve) => {
-      answer = resolve
-    })
-    const host = aHost(runtime, files)
-    const failure = await host
-      .createSession({ provider: 'codex' }, new Sink())
-      .catch((error: Error) => error)
-    expect(failure).toBeInstanceOf(Error)
-    expect(runtime.handles[0]?.status()).not.toBe('ended')
-    answer()
-    const deadline = Date.now() + 2_000
-    while (Date.now() < deadline && !(runtime.handles[0]?.status() === 'ended')) {
-      await new Promise((resolve) => setTimeout(resolve, 5))
-    }
-    expect(runtime.handles[0]?.status()).toBe('ended')
     files.release()
     await host.closeAll()
   })
@@ -615,7 +445,6 @@ describe('the start-attempts file', () => {
     session: 'sess_1',
     provider: 'codex',
     opening: 'resume',
-    timeoutMs: 60_000,
     at: '2026-10-13T23:00:00.000Z',
     stage: 'began',
   })
@@ -705,7 +534,6 @@ describe('the start-attempts file', () => {
       },
     }
     const log = aStartAttemptsLog(folder, { mostBytes: bytesOf('att_1') * 2, files })
-    // The third line needs the move that fails; the fourth is already waiting behind it.
     for (let at = 0; at < 4; at += 1) log.write(line(`att_${String(at)}`))
     await log.settled()
     log.write(line('att_5'))

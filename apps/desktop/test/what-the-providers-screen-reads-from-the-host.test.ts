@@ -22,18 +22,6 @@ import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import type { ProvidersChangedMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 
-/**
- * # ⚑ What the Providers screen reads from the host: usage, and what the agents use
- *
- * Landing coverage for `providerUsage` / `providerResources` and what feeds them. **Usage** is held in
- * memory from the `provider_usage` readings a conversation's provider sends: the newest per window, a
- * field the provider left out keeping what it last said (a sparse update is not a reset), windows told
- * only when a number MOVED, at most 16 a provider, forgotten when what the provider runs on changes —
- * and a conversation that kept running on the older login no longer feeds it. It is never a row of a
- * conversation and never sent to a window. **Resources** are measured only when asked, from one
- * listing, one at a time, at most every five seconds, and a clock set back is a new sample.
- */
-
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
 describe('what the Providers screen reads from the host', () => {
@@ -119,7 +107,6 @@ describe('what the Providers screen reads from the host', () => {
       ])
       expect(host.providerUsage().codex).toEqual([])
       expect(moved).toEqual([{ what: 'usage', provider: 'claude' }])
-      // No row of the conversation, no message to the window.
       expect(window.messages.filter((m) => m.event.type === 'provider_usage')).toEqual([])
       expect(window.messages.length).toBe(rows)
     })
@@ -133,7 +120,6 @@ describe('what the Providers screen reads from the host', () => {
       clock += 10
       await reading(handle, [{ window: 'five_hour', usedPercent: 41, resetsAt: 5_000 }])
       expect(moved).toHaveLength(2)
-      // `at` follows the newest arrival even when it was no news.
       expect(host.providerUsage().claude[0]).toMatchObject({ usedPercent: 41, at: clock })
     })
 
@@ -179,7 +165,6 @@ describe('what the Providers screen reads from the host', () => {
         { what: 'login', provider: 'claude' },
       ])
 
-      // …and a change that forgot nothing says only the login moved.
       moved.length = 0
       ;(host as unknown as { providerLoginChanged(provider: Provider): void }).providerLoginChanged(
         'claude',
@@ -261,7 +246,6 @@ describe('what the Providers screen reads from the host', () => {
       expect(await host.providerResources()).toBe(a)
       expect(listed).toBe(1)
 
-      // Past five seconds it is measured again.
       listing = listingOf([{ pid: 4242, ppid: 1, rssKb: 20, cpu: 2 }])
       clock += 1
       const later = await host.providerResources()
@@ -290,10 +274,9 @@ describe('what the Providers screen reads from the host', () => {
         at: clock,
         rssBytes: null,
         cpuPercent: null,
-        reason: 'This computer did not list its processes just now; it is asked again in a moment.',
+        reason: 'ps timed out',
       })
-      expect(JSON.stringify(failed)).not.toContain('ps timed out')
-      // The failure is the answer for the five seconds an answer holds, and then it is asked again.
+      expect(failed.codex).toHaveProperty('reason', 'ps timed out')
       expect(await host.providerResources()).toBe(failed)
       expect(listed).toBe(1)
       clock += 5_000

@@ -24,39 +24,24 @@ export interface Gate {
   readonly promise: Promise<void>
   readonly open: () => void
 }
-/** How a life's provider behaves. */
 export interface Stops {
   provider?: Provider
   savedKeyRevision?: number
-  /** Its sign-in check waits for this gate: the last wait before held words are handed over. */
   signInGate?: Gate
-  /** The account its provider names: a fictional one, none, or no answer at all. */
   account?: 'ada' | 'bea' | 'none' | 'never'
   organization?: string
-  /** The tag its runtime makes of the credential it launched on, as a saved key's would be. */
   tag?: string
-  /** Its provider names the account only this long after the life starts, ms; at once if unset. */
   accountAfterMs?: number
-  /** Its turns stay running: nothing ends them but a stop, a close or a crash. */
   turnsStayOpen?: boolean
-  /** The provider never comes up. */
   beforeTheProviderIsUp?: Held
-  /** The provider never takes words handed to it. */
   beforeTheWordsAreTaken?: Held
-  /** The cut-turns file cannot be written. */
   cutsCannotBeKept?: boolean
   accountsCannotBeKept?: boolean
-  /** No window listens to this life, so its launch continues nothing. */
   nobodyListens?: boolean
-  /** Services run in this life, as the services list in its data folder says which agents are. */
   services?: boolean
-  /** Every start of this agent's conversations fails. */
   startsFailFor?: string
-  /** A usage limit's reset is looked at again this often, ms, and nothing is added after it. */
   limitLookMs?: number
-  /** How long after its program stopped a conversation is started again, ms. */
   programWaitMs?: number
-  /** Its provider's close waits for this gate: a life's teardown held. */
   closeWaitsFor?: Gate
 }
 
@@ -185,7 +170,7 @@ export function registerFrozenCutAccountCases({
     const a = { id: 'a'.repeat(32), email: EMAIL.ada }
     const b = { id: 'b'.repeat(32), email: EMAIL.bea }
     writeKeptAccounts(providerAccountsFile(folder()), { claude: b, claudeAccounts: [a, b] })
-    const id = await aTurnRunsIn({ account: 'never' })
+    const id = await aTurnRunsIn({ account: 'none' })
     const handle = handles().at(-1)!
     await life().host.createSession(
       { provider: 'claude', profileId: 'agent-b', approvalMode: 'auto', cwd: root() },

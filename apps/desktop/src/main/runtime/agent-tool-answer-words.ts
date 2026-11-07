@@ -8,19 +8,8 @@ import {
   type RailPermanence,
 } from '../../shared/refusals'
 
-/**
- * The words agent tools answer with, and the formatter that puts a refusal's permanence and
- * actionable detail into the one text a model reads.
- *
- * Kept free of imports from `agent-tools.ts`, which imports this module. Detail fields are read
- * from `unknown`; anything unexpected adds nothing.
- */
-
-// Completion.
-
 export const DONE = 'Done.'
 
-/** When the app inferred or resolved which piece the call meant. */
 export function doneWithThePiece(label: string): string {
   return `Done. ${label}.`
 }
@@ -51,8 +40,6 @@ export function keptResources(resources: readonly string[]): string {
   return `Kept: ${resources.join(', ')}.`
 }
 
-// Stop and status.
-
 export const HOW_THE_LAST_TURN_ENDED: Readonly<Record<HowWorkStopped, string>> = {
   'it-finished': 'it finished',
   'it-was-stopped': 'it was stopped',
@@ -69,17 +56,11 @@ const WHEN_IT_WAS_ASKED_TO_STOP: Readonly<Record<WhenItWasAskedToStop, string>> 
   'the-turn-running-now': 'in the turn running now',
 }
 
-/**
- * `time` is already a clock time, optionally followed by who asked. With no `when`, the ask landed on
- * the turn the sentence before it already describes, so no relation is said.
- */
 export function lastAskedToStop(time: string, when?: WhenItWasAskedToStop): string {
   return when === undefined
     ? `It was last asked to stop at ${time}.`
     : `It was last asked to stop at ${time}, ${WHEN_IT_WAS_ASKED_TO_STOP[when]}.`
 }
-
-// Lists.
 
 export function heldBy(holder: string): string {
   return `held by ${holder}`
@@ -101,7 +82,6 @@ export function handedBackWithItsAnswer(files: readonly string[]): string {
   return `Handed back with its answer: ${files.join(', ')}.`
 }
 
-/** A usage window a provider reported, with the clock times it was first and last seen. */
 export interface AWindowReported {
   readonly window: string
   readonly first: string
@@ -112,8 +92,6 @@ export function windowsReported(provider: string, windows: readonly AWindowRepor
   const each = windows.map((one) => `${one.window} (first ${one.first}, last ${one.last})`)
   return `Windows ${provider} has reported: ${each.join('; ')}.`
 }
-
-// Routing and search.
 
 export const THE_CONVERSATION_THAT_GAVE_YOU_THIS_WORK = 'the conversation that gave you this work'
 
@@ -127,17 +105,10 @@ export function noFileHoldsThoseWords(scope: string): string {
   return `No file ${scope} holds those words.`
 }
 
-// A refusal's permanence.
-
-/** Said only after `malformed-request`, whose act is always to correct the same call. */
 export const FIX_IT_AND_CALL_AGAIN = 'Fix it and call again.'
 
 const THIS_REFUSAL_HOLDS = 'This refusal holds'
 
-/**
- * Built from `PERMANENCE_SAID`, so a model and a person reading the transcript see the same words.
- * It says neither who must act nor that the same call will pass; the rail's reason names the act.
- */
 export function permanenceInWords(rail: string, permanence: RailPermanence): string {
   if (permanence === 'permanent') {
     const never = `${capitalised(PERMANENCE_SAID.permanent)}.`
@@ -146,9 +117,6 @@ export function permanenceInWords(rail: string, permanence: RailPermanence): str
   return `${THIS_REFUSAL_HOLDS} ${PERMANENCE_SAID[permanence]}.`
 }
 
-// A refusal's detail.
-
-/** Who is asking, how to address another conversation (as `asked_by` takes it), and now. */
 export interface AnswerWordsContext {
   readonly me: string
   readonly addressOf: (conversation: string) => string
@@ -173,7 +141,6 @@ const texts = (value: unknown): string[] =>
 
 const ERROR_CODE = /^E[A-Z0-9]+$/
 
-/** Ends in a stop, question mark, exclamation mark or ellipsis, before any closing quote. */
 const ENDS_A_SENTENCE = /[.!?…]["'”’)]*$/u
 
 function aSentence(words: string): string {
@@ -190,10 +157,6 @@ const problemsSaid = (detail: Readonly<Record<string, unknown>>): string[] => {
   return problems.length === 0 ? [] : [aSentence(`Problems: ${problems.join('; ')}`)]
 }
 
-/**
- * Clauses from the existing person-read start sentences (`session-unavailable.ts`). Sign-in,
- * settings and provider refusals are absent because their reason already says why.
- */
 const A_START_DID_NOT_HAPPEN_BECAUSE: Readonly<Record<string, string>> = {
   cancelled: 'it was stopped before it opened',
   'shutting-down': 'BroCrew is shutting down',
@@ -202,7 +165,6 @@ const A_START_DID_NOT_HAPPEN_BECAUSE: Readonly<Record<string, string>> = {
   'its-provider-could-not-be-started': 'its provider could not be started',
 }
 
-/** For a provider whose program is missing, which carries no error code to name. */
 export const THE_PROVIDER_PROGRAM_IS_UNAVAILABLE = 'The provider program is unavailable.'
 
 const theErrorAndItsProvider: DetailSaid = (detail) => {
@@ -226,10 +188,6 @@ const thisAppSaid: DetailSaid = (detail) => {
   return said === undefined ? [] : [aSentence(`This app said: ${said}`)]
 }
 
-/**
- * Clauses from `A_PERSONS_ANSWER_TO_AN_ENDED_QUESTION`, true at both doors that refuse an ended
- * question (answering it and passing it up).
- */
 const A_QUESTION_ENDED: Readonly<Record<string, string>> = {
   answered: 'already answered',
   rejected: 'already declined',
@@ -244,7 +202,6 @@ const A_QUESTION_ENDED: Readonly<Record<string, string>> = {
   'recipient-ended': 'closed when the one it was asked of was ended',
 }
 
-/** A size in decimal units, to one place: 950 bytes, 14.2 MB. */
 function sizeSaid(bytes: number): string {
   if (bytes < 1_000) return `${String(bytes)} bytes`
   const kilobytes = Math.round(bytes / 100) / 10
@@ -253,7 +210,6 @@ function sizeSaid(bytes: number): string {
     : `${String(Math.round(bytes / 100_000) / 10)} MB`
 }
 
-/** Two sizes as {@link sizeSaid} says them — in bytes, exactly, where they would read the same. */
 function sizesSaid(bytes: number, limit: number): readonly [string, string] {
   const [size, most] = [sizeSaid(bytes), sizeSaid(limit)]
   if (size !== most) return [size, most]
@@ -274,11 +230,6 @@ function askersSaid(
   return askers.length === 0 ? [] : [`Those that asked it: ${askers.join(', ')}.`]
 }
 
-/**
- * Actionable detail for the model. Validation problems and file paths can include supplied text;
- * stored quotes omit that detail, except marked request problems in this app's words alone.
- * Other conversations are named by address.
- */
 const DETAIL_SAID: Readonly<Record<string, DetailSaid>> = {
   'result-document-not-returned': (detail) => {
     const path = detail['path']
@@ -328,7 +279,6 @@ const DETAIL_SAID: Readonly<Record<string, DetailSaid>> = {
     if (state !== undefined && Object.hasOwn(A_QUESTION_ENDED, state)) {
       return [`It was ${A_QUESTION_ENDED[state] ?? state}.`]
     }
-    // Ended in a race the answer machinery saw before the record did: no ending is known.
     const said = thisAppSaid(detail, context)
     return said.length === 0
       ? []
@@ -364,15 +314,17 @@ const DETAIL_SAID: Readonly<Record<string, DetailSaid>> = {
   },
 }
 
-/** For a give that used up a piece label and gave nothing. */
-export function theLabelWasUsedUp(label: string): string {
-  return `The label ${label} was used up by this failed give and names no piece.`
+function labelAndPermanence(structured: Readonly<Record<string, unknown>>, rail: string): string[] {
+  const clauses: string[] = []
+  const unused = aText(structured['label_not_used'])
+  if (unused !== undefined)
+    clauses.push(`The label ${unused} was used up by this failed give and names no piece.`)
+  const permanence = structured['permanence']
+  if (isRailPermanence(permanence) && rail !== 'result-document-not-returned')
+    clauses.push(permanenceInWords(rail, permanence))
+  return clauses
 }
 
-/**
- * The words added after a refusal's text: its detail, a used-up label, then its permanence.
- * Empty for an answer that is not a refusal.
- */
 function whatARefusalAdds(
   structured: Readonly<Record<string, unknown>> | undefined,
   context: AnswerWordsContext,
@@ -381,19 +333,10 @@ function whatARefusalAdds(
   const rail = aText(structured['rail']) ?? ''
   const detail = detailOf(structured)
   const said = Object.hasOwn(DETAIL_SAID, rail) ? (DETAIL_SAID[rail]?.(detail, context) ?? []) : []
-  const unused = aText(structured['label_not_used'])
-  if (unused !== undefined) said.push(theLabelWasUsedUp(unused))
-  const permanence = structured['permanence']
-  if (isRailPermanence(permanence) && rail !== 'result-document-not-returned')
-    said.push(permanenceInWords(rail, permanence))
+  said.push(...labelAndPermanence(structured, rail))
   return said.join(' ')
 }
 
-/**
- * The answer a model reads. A refusal's text is appended to, never rebuilt, so its
- * `refused (<rail>): <reason>` prefix stays as the window expects it. `structured` is returned as
- * the same object, and an answer that already ends with these words is returned unchanged.
- */
 export function answerInWords(
   answered: AgentToolAnswer,
   context: AnswerWordsContext,
@@ -410,7 +353,6 @@ export function answerInWords(
   return answered.structured === undefined ? { text } : { text, structured: answered.structured }
 }
 
-/** A refusal's detail, or none when it carries no record of facts. */
 function detailOf(
   structured: Readonly<Record<string, unknown>>,
 ): Readonly<Record<string, unknown>> {
@@ -420,11 +362,9 @@ function detailOf(
     : {}
 }
 
-/** Keep the existing reason, adding app-only clauses only when they are the whole answer. */
 export function appOnlyRefusalQuote(
   structured: Readonly<Record<string, unknown>> | undefined,
   finalText?: string,
-  /** A malformed request's problems are all this app's words, so they are kept too. */
   problemsAreOurs = false,
 ): string | undefined {
   if (structured?.['outcome'] !== 'refused') return undefined
@@ -437,11 +377,7 @@ export function appOnlyRefusalQuote(
     throw new Error('A fresh refusal quote must prefix its composed answer.')
   const clauses: string[] =
     problemsAreOurs && rail === 'malformed-request' ? problemsSaid(detailOf(structured)) : []
-  const unused = aText(structured?.['label_not_used'])
-  if (unused !== undefined) clauses.push(theLabelWasUsedUp(unused))
-  const permanence = structured?.['permanence']
-  if (isRailPermanence(permanence) && rail !== 'result-document-not-returned')
-    clauses.push(permanenceInWords(rail, permanence))
+  clauses.push(...labelAndPermanence(structured, rail))
   const prefix = `refused (${rail}): `
   const base = `${prefix}${reason}`
   const candidate = clauses.length === 0 ? base : `${aSentence(base)} ${clauses.join(' ')}`
