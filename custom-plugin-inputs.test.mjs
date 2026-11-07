@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { readCustomPluginInputs } from './custom-plugin-inputs.mjs'
-const root=mkdtempSync(join(tmpdir(),'plugin-input-control-')),sha=b=>createHash('sha256').update(b).digest('hex')
+const root=mkdtempSync(join(tmpdir(),process.platform==='win32'?'plugin-input-control-':'C:plugin-input-control-')),sha=b=>createHash('sha256').update(b).digest('hex')
 try {
  const manifest={format:2,id:'chrome',version:'0.1.9',sourceCommit:'a'.repeat(40),platforms:[{os:'win32',cpu:'x64'}]}
  const manifestBytes=Buffer.from(JSON.stringify(manifest));writeFileSync(join(root,'plugin.json'),manifestBytes)
@@ -23,5 +23,13 @@ try {
  const wrongSource=structuredClone(receipt);wrongSource.plugins[0].catalogueEntry.sourceCommit='d'.repeat(40);assert.throws(()=>invoke(wrongSource))
  const traversal=structuredClone(receipt);traversal.plugins[0].archiveFilename='../chrome.tar.gz';assert.throws(()=>invoke(traversal))
  const duplicate=structuredClone(receipt);duplicate.plugins.push(duplicate.plugins[0]);assert.throws(()=>invoke(duplicate))
- console.log(JSON.stringify({passed:6,scope:'synthetic tar and receipt identity controls; no real plugin or Windows proof'}))
+ const corrupt=structuredClone(receipt),corruptBytes=Buffer.from('invalid gzip archive')
+ writeFileSync(join(root,filename),corruptBytes)
+ corrupt.plugins[0].archiveBytes=corruptBytes.length;corrupt.plugins[0].archiveSha256=sha(corruptBytes)
+ corrupt.plugins[0].catalogueEntry.targets[0].bytes=corruptBytes.length;corrupt.plugins[0].catalogueEntry.targets[0].sha256=sha(corruptBytes)
+ assert.throws(()=>invoke(corrupt),/manifest extraction failed/)
+ writeFileSync(join(root,filename),bytes)
+ const wrongManifest=structuredClone(receipt);wrongManifest.plugins[0].manifestSha256='e'.repeat(64);wrongManifest.plugins[0].catalogueEntry.targets[0].manifestSha256='e'.repeat(64)
+ assert.throws(()=>invoke(wrongManifest))
+ console.log(JSON.stringify({passed:8,colonPath:root.includes('C:'),corruptArchiveRejected:true,manifestHashStillRequired:true,scope:'real GNU tar stdin extraction and synthetic identity controls; Windows/installed proof unrun'}))
 } finally {rmSync(root,{recursive:true,force:true})}
