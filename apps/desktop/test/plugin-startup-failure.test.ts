@@ -335,7 +335,7 @@ it('retains pre-controller time, nested phases and failures across retries and l
   expect(log).toContain('elapsed=83000 attempt=1 catalogue failure')
   expect(log).toContain('attempt=2 catalogue-new-owner end')
   expect(log).toContain('attempt=2 ready end')
-  expect(log).toContain('Exit code: 1')
+  expect(log).toContain('Exit code 1')
   expect(log).toContain('Error: missing module')
   expect(await readFile(join(root, 'plugin-startup.log'), 'utf8')).toContain('Error: missing module')
 })

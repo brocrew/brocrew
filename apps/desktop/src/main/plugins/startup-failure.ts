@@ -241,6 +241,58 @@ export function pluginStartupReason(
   }
   return fallback
 }
+export function createPluginStartupTrace(now = () => performance.now()) {
+  const launch = new Date().toISOString(), began = now()
+  let root: string | undefined, ordinal = 0, lines = '', pending = Promise.resolve()
+  const active = new Set<(error?: unknown) => void>()
+  const write = () => {
+    const destination = root, snapshot = lines
+    if (destination) pending = pending.then(() => writePluginStartupLog(destination, 'plugin-startup-trace.log', snapshot))
+  }
+  const mark = (phase: string, state: string, attempt = ordinal) => {
+    lines += `${new Date().toISOString()} launch=${launch} elapsed=${Math.round(now() - began)} attempt=${attempt} ${phase} ${state}\n`
+    write()
+  }
+  return {
+    destination(next: string | undefined) { root = next; write() },
+    attempt() { ordinal++ },
+    begin(phase: string) {
+      const attempt = ordinal
+      mark(phase, 'start', attempt)
+      let ended = false
+      const finish = (error?: unknown) => {
+        if (!ended) mark(phase, error === undefined ? 'end' : 'failure', attempt)
+        ended = true
+        active.delete(finish)
+      }
+      active.add(finish)
+      return finish
+    },
+    failure(phase: string, error?: unknown) {
+      for (const finish of active) finish(error ?? new Error(phase))
+      let stderr = ''
+      for (let cause = error, depth = 0; depth < 6 && cause && typeof cause === 'object'; depth++) {
+        if (cause instanceof PluginSupervisorLaunchFailure) { stderr = cause.stderrOutput ?? ''; break }
+        cause = (cause as Error).cause
+      }
+      const diagnostic = pluginStartupDiagnostic(error)
+      mark(phase, `failure ${diagnostic ? pluginStartupDiagnosticNotice(diagnostic) : ''} ${pluginFailureCause(error)}${stderr ? `\n${stderr}` : ''}`)
+    },
+    flush: () => pending,
+  }
+}
+export const pluginStartupTrace = createPluginStartupTrace()
+
+async function writePluginStartupLog(root: string, name: string, contents: string): Promise<void> {
+  const temporary = join(root, `.plugin-startup-${randomUUID()}.log`)
+  try {
+    await writeFile(temporary, contents, { flag: 'wx', mode: 0o600 })
+    await rename(temporary, join(root, name))
+  } catch {
+  } finally {
+    await rm(temporary, { force: true }).catch(() => {})
+  }
+}
 /** Retain one bounded, readable failure. Only the bounded child diagnostic and recognized errno cross this boundary. */
 export async function recordPluginStartupFailure(
   root: string | undefined,
@@ -275,18 +327,5 @@ export async function recordPluginStartupFailure(
   const line = `[plugins] ${reason}: ${pluginUnavailableNotice(reason)}${code ? ` (${code})` : ''}${diagnostic ? ` ${pluginStartupDiagnosticNotice(diagnostic)}` : ''}${cause ? ` stage=${stage ?? 'rpc'}${detail ? ` detail=${detail}` : ''} cause=${cause}` : ''}`
   console.warn(line)
   if (!root) return
-  const temporary = join(root, `.plugin-startup-${randomUUID()}.log`)
-  try {
-    await writeFile(
-      temporary,
-      `${new Date().toISOString()} ${line}\n${stderrOutput ? `${stderrOutput}\n` : ''}`,
-      { flag: 'wx', mode: 0o600 },
-    )
-    // Replacement never follows an existing diagnostic-file symlink.
-    await rename(temporary, join(root, 'plugin-startup.log'))
-  } catch {
-    // A diagnostic write cannot prevent startup or recovery.
-  } finally {
-    await rm(temporary, { force: true }).catch(() => {})
-  }
+  await writePluginStartupLog(root, 'plugin-startup.log', `${new Date().toISOString()} ${line}\n${stderrOutput ? `${stderrOutput}\n` : ''}`)
 }

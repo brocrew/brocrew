@@ -1,3 +1,4 @@
+import { pluginStartupTrace } from '../startup-failure'
 import { createHash, randomUUID } from 'node:crypto'
 import { lstatSync, realpathSync } from 'node:fs'
 import { createConnection, type Socket } from 'node:net'
@@ -295,6 +296,7 @@ export class PluginWorkspaceLease {
     })
   }
   static async attach(options: SupervisorClientOptions): Promise<PluginWorkspaceLease> {
+    const admission = pluginStartupTrace.begin('owner-admission')
     let storage: SupervisorStorage | undefined
     let phase: OwnerDiagnostic['phase'] = 'unreadable'
     let stage: OwnerDiagnostic['stage'] = 'attach-record'
@@ -478,8 +480,10 @@ export class PluginWorkspaceLease {
           })
         }
       }
+      admission()
       return lease
     } catch (error) {
+      admission(error)
       storage?.close()
       if (error instanceof PluginSupervisorError) {
         if (error.diagnostic) throw error

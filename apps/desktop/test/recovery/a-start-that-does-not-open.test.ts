@@ -152,7 +152,7 @@ function stopsBeforeTheData(code: string): boolean {
   const awaited = code.indexOf('const verdict = await theVerdictBeforeTheData(ownership)')
   const zone = code.indexOf('keepTheSystemZone(', awaited)
   if (awaited < 0 || zone < 0) return false
-  return /^const verdict = await theVerdictBeforeTheData\(ownership\)\s+if \(closedWhileCheckingSaid\) return\s+if \(verdict\.kind !== 'open'\) \{\s+endInRecovery\(verdict\)\s+return\s+\}\s+const startBegan = performance\.now\(\)\s+const localZone = $/.test(
+  return /^const verdict = await theVerdictBeforeTheData\(ownership\)\s+finishStartupPhase\(verdict\.kind === 'open' \? undefined : verdict\.kind\)\s+if \(closedWhileCheckingSaid\) return\s+if \(verdict\.kind !== 'open'\) \{\s+endInRecovery\(verdict\)\s+return\s+\}\s+const startBegan = performance\.now\(\)\s+const localZone = $/.test(
     code.slice(awaited, zone),
   )
 }

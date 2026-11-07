@@ -1,4 +1,5 @@
 import {
+  pluginStartupTrace,
   PluginStartupError,
   pluginStartupReason,
   pluginStartupDiagnostic,
@@ -60,6 +61,7 @@ export function productionPluginController() {
         acceptingBusy = { identity, since: now, observedAt: now, automaticFailures: 0 }
       else acceptingBusy.observedAt = now
     }
+    pluginStartupTrace.failure(reason, error)
     failure = pluginStartupReason(error, reason)
     startupDiagnostic = pluginStartupDiagnostic(error)
     const root = diagnosticRoot,
@@ -515,6 +517,8 @@ export function productionPluginController() {
         }
       }
       initialize = async () => {
+        pluginStartupTrace.attempt()
+        const admission = pluginStartupTrace.begin('controller-admission')
         startupCatalogueVerifiedAt = undefined
         let phase: PluginUnavailableReason = 'storage'
         let attempt: Peer | undefined
@@ -522,9 +526,12 @@ export function productionPluginController() {
         try {
           storage = new SupervisorStorage(options.root, [options.workspaceRoot], true)
           diagnosticRoot = options.root
+          pluginStartupTrace.destination(options.root)
           phase = 'catalogue'
           const devSource = await devPluginSource(options.devSource)
           loadCatalogue = async () => {
+            const fetched = pluginStartupTrace.begin('catalogue')
+            try {
             const next = await loadRepoPluginList({
               root: options.root,
               appVersion: options.appVersion,
@@ -535,7 +542,9 @@ export function productionPluginController() {
               sourceVersion,
             })
             catalogueLoadedAt = performance.now()
+            fetched()
             return next
+            } catch (error) { fetched(error); throw error }
           }
           if (!catalogueEntries || !options.supervisor.holdsLease()) {
             try {
@@ -593,13 +602,18 @@ export function productionPluginController() {
               options.fixtureSource || devSource
                 ? undefined
                 : async () => {
-                    const next = await loadRepoPluginList({
+                    const fetched = pluginStartupTrace.begin('catalogue-new-owner')
+                    let next
+                    try {
+                    next = await loadRepoPluginList({
                       root: options.root,
                       appVersion: options.appVersion,
                       target: options.target ?? thisMachine(),
                       signal: lifetime.signal,
                       sourceVersion: 2,
                     })
+                    fetched()
+                    } catch (error) { fetched(error); throw error }
                     if (!frozenCatalogue) return fail()
                     return {
                       source: 'repo-list',
@@ -763,6 +777,7 @@ export function productionPluginController() {
           if (attempt?.connection) await detach(attempt)
           return false
         } finally {
+          admission(connected ? undefined : new Error('startup incomplete'))
           storage?.close()
         }
       }

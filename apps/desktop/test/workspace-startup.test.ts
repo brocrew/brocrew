@@ -1,3 +1,4 @@
+import { createPluginStartupTrace } from '../src/main/plugins/startup-failure'
 import { fileURLToPath } from 'node:url'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -96,16 +97,17 @@ function declaration(name: string): string {
 }
 
 /** Execute the real main-process startup block with real recovery and themes, without Electron. */
-async function startup(fake: PinnableApp, beforeThemes?: () => void) {
+async function startup(fake: PinnableApp, beforeThemes?: () => void, trace = createPluginStartupTrace()) {
   const lines: string[] = [],
     exits: number[] = [],
     stores: ThemeStore[] = []
   let databaseStarts = 0
-  const begin = index.indexOf('      const verdict = await theVerdictBeforeTheData(ownership)')
-  const endLine = '      host = await createRuntimeHost(initDatabase())'
+  const begin = index.indexOf("      pluginStartupTrace.destination(app.getPath('logs'))")
+  const endLine = '      host = await createRuntimeHost(initDatabase())\n      finishStartupPhase()'
   const end = index.indexOf(endLine, begin) + endLine.length
   expect(begin).toBeGreaterThan(0)
   const context = {
+    pluginStartupTrace: trace,
     app: Object.assign(fake, {
       getVersion: () => '0.0.0',
       commandLine: { ...fake.commandLine, getSwitchValue: () => '' },
@@ -198,7 +200,7 @@ async function startup(fake: PinnableApp, beforeThemes?: () => void) {
     ['theRecoveryService', 'theVerdictBeforeTheData', 'endAFailedStart']
       .map(declaration)
       .join('\n') +
-    `\n(async () => { const ownership = 'unknown'; try { ${index.slice(begin, end)} } catch(error) { await endAFailedStart(error, ownership) } })()`
+    `\n(async () => { const ownership = 'unknown'; try { ${index.slice(begin, end)} } catch(error) { pluginStartupTrace.failure('app-startup', error); await endAFailedStart(error, ownership) } })()`
   try {
     await runInNewContext(
       ts.transpileModule(code, {
@@ -360,4 +362,24 @@ it('configured startup on existing data reaches the database', async () => {
   const fake = app()
   pinTheDataFolder(fake)
   expect(await startup(fake)).toEqual({ lines: [], exits: [], databaseStarts: 1, exists: true })
+})
+
+it('the actual app startup records recovery before database/themes and retains a refusal outside the workspace', async () => {
+  const trace = createPluginStartupTrace()
+  await startup(app(), undefined, trace)
+  await trace.flush()
+  const log = readFileSync(join(workspace, 'plugin-startup-trace.log'), 'utf8')
+  expect(log.indexOf('workspace-recovery start')).toBeLessThan(log.indexOf('workspace-recovery end'))
+  expect(log.indexOf('workspace-recovery end')).toBeLessThan(log.indexOf('themes-database-runtime-host start'))
+  expect(log).toContain('themes-database-runtime-host end')
+  rmSync(join(workspace, 'brobot2.sqlite'))
+  const outside = join(root, 'logs')
+  mkdirSync(outside)
+  const fake = app(), getPath = fake.getPath
+  fake.getPath = (name) => name === 'logs' ? outside : getPath(name)
+  const refused = createPluginStartupTrace()
+  await startup(fake, undefined, refused)
+  await refused.flush()
+  expect(readFileSync(join(outside, 'plugin-startup-trace.log'), 'utf8')).toContain('workspace-recovery failure')
+  expect(existsSync(join(workspace, 'plugins'))).toBe(false)
 })

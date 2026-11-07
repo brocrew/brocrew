@@ -1,3 +1,4 @@
+import { pluginStartupTrace } from '../src/main/plugins/startup-failure'
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { once } from 'node:events'
@@ -848,6 +849,7 @@ process.send({ channel: 'brocrew-plugin-node:v1', runId: process.env.BROCREW_PLU
     await expect(runtimeFiles(runtime)).rejects.toThrow('plugin-host-runtime')
   })
   it('retries the same runtime after an interrupted private copy without publishing partial bytes', async () => {
+    pluginStartupTrace.destination(root)
     const durableRoot = join(root, 'interrupted-runtime')
     copyFault.once = true
     await expect(
@@ -863,6 +865,12 @@ process.send({ channel: 'brocrew-plugin-node:v1', runId: process.env.BROCREW_PLU
     expect(retried.id).toBe(runtime.id)
     expect((await runtimeFiles(retried)).node).toBe(join(durableRoot, retried.id, 'node'))
     expect(await readFile(join(orphan, 'node'), 'utf8')).toBe('partial fictional executable')
+    await preparePluginNodeRuntime({ resourcesRoot: resources, durableRoot })
+    await pluginStartupTrace.flush()
+    pluginStartupTrace.destination(undefined)
+    const log = await readFile(join(root, 'plugin-startup-trace.log'), 'utf8')
+    for (const phase of ['runtime-hash end', 'runtime-copy failure', 'runtime-copy end', 'runtime-verify end'])
+      expect(log).toContain(phase)
   }, 15000)
   it('refuses a tampered published runtime on preparation instead of repairing it', async () => {
     const durableRoot = join(root, 'published-tamper')
