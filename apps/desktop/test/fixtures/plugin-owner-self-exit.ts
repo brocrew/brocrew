@@ -29,7 +29,10 @@ const owner = await PluginSupervisor.start({
   root,
   workspaceRoots: [workspace],
   drainWithin: 100,
-  traceDrain: (event) => recordDrainTrace(root, event),
+  traceDrain: (event) => {
+    recordDrainTrace(root, event)
+    console.error('WINDOWS-DIAG standalone drain', JSON.stringify(event))
+  },
   revoke: async () => {
     if (mode === 'start-failure' || mode === 'revoke-hung') await revocations
   },

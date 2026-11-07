@@ -93,6 +93,7 @@ describe('plugin owner recovery after the caller stops waiting', () => {
       workspaceRoots: [workspaceRoot],
       drainWithin: 30,
       now,
+      traceDrain: (event) => console.log('WINDOWS-DIAG recovery drain', JSON.stringify(event)),
     })
     lease = await PluginWorkspaceLease.attach(options)
     return { root, options }

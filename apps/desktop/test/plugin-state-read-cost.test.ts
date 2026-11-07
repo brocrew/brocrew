@@ -234,6 +234,24 @@ for (const kind of ['record', 'seal']) {
       const icacls = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'icacls.exe')
       execFileSync(icacls, [path, '/deny', '*S-1-1-0:(RD)', '/Q'], { windowsHide: true })
       try {
+        console.log('WINDOWS-DIAG ACL', execFileSync(icacls, [path], { encoding: 'utf8', windowsHide: true }))
+        console.log('WINDOWS-DIAG privileges', execFileSync('whoami.exe', ['/priv'], { encoding: 'utf8', windowsHide: true }))
+        const nativeFs = await vi.importActual<typeof import('node:fs')>('node:fs')
+        for (const [label, open] of [
+          ['native', nativeFs.openSync],
+          ['link-checked', openNotThroughALink],
+        ] as const) {
+          let fd: number | undefined
+          try {
+            fd = open(path, fs.constants.O_RDONLY)
+            console.log('WINDOWS-DIAG denied open', kind, label, 'opened')
+            console.log('WINDOWS-DIAG denied read bytes', nativeFs.readSync(fd, Buffer.alloc(1), 0, 1, 0))
+          } catch (error) {
+            console.error('WINDOWS-DIAG denied access error', kind, label, error)
+          } finally {
+            if (fd !== undefined) nativeFs.closeSync(fd)
+          }
+        }
         expect(fs.lstatSync(path).isFile()).toBe(true)
         expect(() => openNotThroughALink(path, fs.constants.O_RDONLY)).toThrow()
         expect(() => fullRead(f.disk)).toThrow()

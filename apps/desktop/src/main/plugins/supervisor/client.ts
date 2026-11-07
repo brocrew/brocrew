@@ -606,6 +606,7 @@ export class PluginWorkspaceLease {
     this.storage.close()
   }
   async close(): Promise<boolean> {
+    console.log('WINDOWS-DIAG lease close entry', { ended: this.ended })
     if (this.ended) return false
     this.ended = true
     clearInterval(this.timer)
@@ -620,18 +621,21 @@ export class PluginWorkspaceLease {
         }),
       )
       this.held?.destroy()
+      console.log('WINDOWS-DIAG lease release', result)
       if (result.remaining) return true
       // Acknowledged release is not proof of child exit. Wait for the fenced clean-stop record.
       const until = performance.now() + OWNER_LIMITS.drain + OWNER_LIMITS.request
       while (performance.now() < until) {
         const record = this.storage.read()
+        if (record?.phase !== 'draining') console.log('WINDOWS-DIAG close record', record?.phase)
         if (!record || record.epoch !== this.record.epoch || record.phase === 'blocked')
           return false
         if (record.phase === 'stopped') return true
         await new Promise((resolve) => setTimeout(resolve, 10))
       }
       return false
-    } catch {
+    } catch (error) {
+      console.error('WINDOWS-DIAG lease close error', error)
       return false
     } finally {
       this.held?.destroy()

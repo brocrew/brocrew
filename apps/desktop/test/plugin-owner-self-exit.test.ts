@@ -130,6 +130,7 @@ async function fixture(name: string, mode: string, fault?: string) {
   let errors = ''
   child.stderr?.on('data', (bytes: Buffer) => {
     errors = (errors + bytes.toString()).slice(0, 2048)
+    console.error('WINDOWS-DIAG owner child', name, bytes.toString())
   })
   try {
     await message(child, 'ready')
