@@ -185,8 +185,9 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
   it.each(['none', 'proven', 'hung', 'revoke-hung'])(
     'exits after synthetic failure with %s physical runs, rechecks receipts, and leaves another slot untouched',
     async (mode) => {
-      const bystander = await fixture('bystander-' + mode, 'healthy')
-      const target = await fixture('target-' + mode, mode)
+      const fault = process.platform === 'win32' ? 'terminal-record-held' : undefined
+      const bystander = await fixture('bystander-' + mode, 'healthy', fault)
+      const target = await fixture('target-' + mode, mode, fault)
       const read = async (root: string) =>
         JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8'))
       const before = await read(bystander.root)
@@ -194,7 +195,8 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
       await target.lease.close()
       await ended(target.child)
       expect(target.child.exitCode).toBe(0)
-      expect((await read(target.root)).phase).toBe('blocked')
+      expect((await read(target.root)).phase).toBe(fault ? 'draining' : 'blocked')
+      if (fault) expect(await readFile(join(target.root, 'plugin-drain.log'), 'utf8')).toContain('stage=blocked-write state=failed attempt=1 errno=EPERM')
       const proof = target.runId
         ? join(target.root, 'host/runs', target.runId, 'exit.json')
         : undefined
@@ -240,8 +242,10 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
       expect(await read(bystander.root)).toEqual(before)
       await expect(bystander.lease.renew()).resolves.toBeUndefined()
       expect(bystander.child.exitCode).toBeNull()
-      expect(await bystander.lease.close()).toBe(true)
+      expect(await bystander.lease.close()).toBe(!fault)
       await ended(bystander.child)
+      expect(bystander.child.exitCode).toBe(0)
+      if (fault) expect(await readFile(join(bystander.root, 'plugin-drain.log'), 'utf8')).toContain('stage=stopped-write state=failed attempt=1 errno=EPERM')
     },
   )
   it('holds the fence until actual process death, never merely until the retirement callback', async () => {
