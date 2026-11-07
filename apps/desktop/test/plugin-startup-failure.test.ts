@@ -151,7 +151,8 @@ it('retains a split first stderr line and real child exit through wrappers into 
   const log = await readFile(join(root, 'plugin-startup.log'), 'utf8')
   expect(log).toContain(pluginStartupDiagnosticNotice(diagnostic))
   expect(log).not.toContain('fictional-capability')
-  expect(log).not.toContain('second private stack line')
+  expect(diagnostic.stderr).not.toContain('second private stack line')
+  expect(log).toContain('second private stack line')
 })
 it('does not invent a child exit or stderr at an attachment timeout and bounds escaped text', () => {
   const snapshot = observePluginSupervisorLaunch(
@@ -170,6 +171,33 @@ it('does not invent a child exit or stderr at an attachment timeout and bounds e
     pluginStartupStderr('\u001b[31mError: denied token=fictional-token\u202e' + 'x'.repeat(2000)),
   ).toBe('Error: denied token=[redacted]')
   expect(pluginStartupStderr('x'.repeat(2000))).toHaveLength(512)
+})
+
+it('keeps the real multiline startup error after a loader preamble in Settings and the log', async () => {
+  const stderr = Object.assign(new EventEmitter(), { unref: vi.fn() })
+  const child = { stderr, exitCode: 1, signalCode: null }
+  const snapshot = observePluginSupervisorLaunch(child as unknown as ChildProcess, [
+    'fictional-key',
+  ])
+  stderr.emit('data', Buffer.from('node:internal/modules/cjs/loader:2142\n  throw error;\n'))
+  stderr.emit('data', Buffer.from(' '.repeat(5000)))
+  stderr.emit('data', Buffer.from("\nError: Cannot find module 'fictional-missing-module'\n"))
+  stderr.emit('data', Buffer.from('Require stack:\n- /fictional/service/entry.cjs\n'))
+  stderr.emit('data', Buffer.from('personKey=fictional-key\n    at startup (entry.cjs:12:3)\n'))
+  stderr.emit('end')
+  const failure = snapshot()
+  expect(pluginStartupDiagnostic(failure)?.stderr).toBe(
+    "Error: Cannot find module 'fictional-missing-module'",
+  )
+  const root = await mkdtemp(join(tmpdir(), 'fictional-full-stderr-'))
+  roots.push(root)
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  await recordPluginStartupFailure(root, 'service-start', failure)
+  const log = await readFile(join(root, 'plugin-startup.log'), 'utf8')
+  expect(log).toContain("Error: Cannot find module 'fictional-missing-module'")
+  expect(log).toContain('Require stack:\n- /fictional/service/entry.cjs')
+  expect(log).toContain('at startup (entry.cjs:12:3)')
+  expect(log).not.toContain('fictional-key')
 })
 
 it('redacts a capability split by terminal escapes before display normalization', () => {

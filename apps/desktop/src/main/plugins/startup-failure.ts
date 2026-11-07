@@ -11,20 +11,23 @@ import {
 import { StringDecoder } from 'node:string_decoder'
 import type { ChildProcess } from 'node:child_process'
 import { PluginSupervisorError, ownerDiagnosticLine } from './supervisor/protocol'
-import { managedPluginFailure, ManagedPluginFailure } from '@brobot2/runtime'
+import { managedPluginFailure, ManagedPluginFailure } from '@brobot2/runtime/plugin-failure'
 
-/** Keep one error line, excluding launch capabilities and terminal control characters. */
-export function pluginStartupStderr(text: string, secrets: readonly string[] = []): string | null {
+function redactPluginStartupText(text: string, secrets: readonly string[]): string {
   // Strip terminal escapes before matching secrets, so normalization cannot reveal one.
   text = text.replace(new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[a-zA-Z]`, 'g'), '')
   for (const secret of secrets) if (secret) text = text.split(secret).join('[redacted]')
-  text = text
+  return text
     .replace(/Bearer\s+[^\s]+/gi, 'Bearer [redacted]')
     .replace(
       /((?:token|secret|password|personKey|authorization)["']?\s*[:=]\s*["']?)[^\s"',;]+/gi,
       '$1[redacted]',
     )
     .replace(/[a-f0-9]{32,}/gi, '[redacted]')
+}
+/** Keep one error line, excluding launch capabilities and terminal control characters. */
+export function pluginStartupStderr(text: string, secrets: readonly string[] = []): string | null {
+  text = redactPluginStartupText(text, secrets)
   const line =
     text
       .split(/\r?\n/)
@@ -95,6 +98,7 @@ export class PluginSupervisorLaunchFailure extends Error {
   constructor(
     readonly diagnostic: PluginStartupDiagnostic,
     cause?: unknown,
+    readonly stderrOutput?: string,
   ) {
     super('Plugin service launch failed', { cause })
   }
@@ -126,16 +130,19 @@ export function pluginStartupDiagnostic(error: unknown): PluginStartupDiagnostic
   }
   return undefined
 }
-/** Drain stderr without retaining more than its first bounded line or keeping Electron alive. */
+/** Keep the stderr tail and its real error line without keeping Electron alive. */
 export function observePluginSupervisorLaunch(child: ChildProcess, secrets: readonly string[]) {
   let stderr = ''
+  let firstLine: string | undefined
+  let errorLine: string | undefined
   const decoder = new StringDecoder('utf8')
   child.stderr?.on('data', (chunk: Buffer | string) => {
-    if (!/\S[^\n]*\n/.test(stderr) && stderr.length < 4096)
-      stderr += (typeof chunk === 'string' ? chunk : decoder.write(chunk)).slice(
-        0,
-        4096 - stderr.length,
-      )
+    stderr += typeof chunk === 'string' ? chunk : decoder.write(chunk)
+    const first = stderr.match(/[^\r\n]*\S[^\r\n]*\r?\n/)?.[0]
+    const error = stderr.match(/^[\w.]*Error(?:\s*\[[^\]\n]+\])?:[^\n]*\n/m)?.[0]
+    if (first) firstLine ??= pluginStartupStderr(first, secrets) ?? undefined
+    if (error) errorLine ??= pluginStartupStderr(error, secrets) ?? undefined
+    stderr = stderr.slice(-16 * 1024)
   })
   let ended = !child.stderr || child.stderr.readableEnded || child.stderr.destroyed
   const drained = new Promise<void>((resolve) => {
@@ -152,11 +159,20 @@ export function observePluginSupervisorLaunch(child: ChildProcess, secrets: read
   })
   ;(child.stderr as (NodeJS.ReadableStream & { unref?(): void }) | null)?.unref?.()
   const snapshot = () =>
-    new PluginSupervisorLaunchFailure({
-      exitCode: child.exitCode,
-      signal: child.signalCode,
-      stderr: pluginStartupStderr(stderr, secrets),
-    })
+    new PluginSupervisorLaunchFailure(
+      {
+        exitCode: child.exitCode,
+        signal: child.signalCode,
+        stderr: pluginStartupStderr(errorLine ?? firstLine ?? stderr, secrets),
+      },
+      undefined,
+      redactPluginStartupText(stderr, secrets)
+        .replace(/[\p{Cc}\p{Cs}\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu, (one) =>
+          one === '\n' ? '\n' : ' ',
+        )
+        .slice(-16 * 1024)
+        .trim(),
+    )
   return Object.assign(snapshot, {
     async drainUntil(deadline: number): Promise<void> {
       if (ended) return
@@ -226,6 +242,14 @@ export async function recordPluginStartupFailure(
   error?: unknown,
 ): Promise<void> {
   const diagnostic = pluginStartupDiagnostic(error)
+  let stderrOutput: string | undefined
+  for (let cause = error, depth = 0; depth < 6 && cause && typeof cause === 'object'; depth++) {
+    if (cause instanceof PluginSupervisorLaunchFailure) {
+      stderrOutput = cause.stderrOutput
+      break
+    }
+    cause = (cause as Error).cause
+  }
   const original = error
   let stage: PluginStartupError['catalogueStage']
   let detail: PluginOwnerCheckStage | undefined
@@ -247,7 +271,11 @@ export async function recordPluginStartupFailure(
   if (!root) return
   const temporary = join(root, `.plugin-startup-${randomUUID()}.log`)
   try {
-    await writeFile(temporary, `${new Date().toISOString()} ${line}\n`, { flag: 'wx', mode: 0o600 })
+    await writeFile(
+      temporary,
+      `${new Date().toISOString()} ${line}\n${stderrOutput ? `${stderrOutput}\n` : ''}`,
+      { flag: 'wx', mode: 0o600 },
+    )
     // Replacement never follows an existing diagnostic-file symlink.
     await rename(temporary, join(root, 'plugin-startup.log'))
   } catch {
