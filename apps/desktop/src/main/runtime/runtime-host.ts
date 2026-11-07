@@ -235,8 +235,6 @@ import { aLoginRunsWithoutAKey, type ApiKeys } from './api-keys'
 import type { GivenFolder, ProtectedPlaceNotice, WorkFolderGrant } from '../../shared/work-folders'
 import type { SignInChanges } from '../sign-in-changes'
 import {
-  NOT_LISTED_AND_ASKED_AGAIN,
-  NOT_LISTED_JUST_NOW,
   resourcesFromTheListing,
   type ListedProcess,
 } from './process-listing'
@@ -22513,7 +22511,7 @@ export class RuntimeHost implements LiveHost {
       // ⛔ No figure could be read, and that is the answer: an empty list alone would say that
       // none of these conversations runs.
       console.warn(`runtime host could not read its conversations' memory: ${errorMessage(error)}`)
-      return { conversations: [], unmeasured: NOT_LISTED_JUST_NOW }
+      return { conversations: [], unmeasured: errorMessage(error) }
     }
     return {
       conversations: [...whose].flatMap(([pid, conversation]) => {
@@ -35754,7 +35752,7 @@ export class RuntimeHost implements LiveHost {
       return resourcesFromTheListing(rows, roots, this.now())
     } catch (error) {
       console.warn(`runtime host could not list this computer's processes: ${errorMessage(error)}`)
-      return unmeasured(NOT_LISTED_AND_ASKED_AGAIN)
+      return unmeasured(errorMessage(error))
     }
   }
 

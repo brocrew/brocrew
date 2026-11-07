@@ -85,7 +85,11 @@ describe('the listing on Windows', () => {
 
   it('a failed reading leaves the next Windows reading able to answer', async () => {
     const failed = new Error('fictional CIM failure')
-    await expect(listProcesses('win32', async () => { throw failed })).rejects.toBe(failed)
+    await expect(
+      listProcesses('win32', async () => {
+        throw failed
+      }),
+    ).rejects.toBe(failed)
     const rows = await listProcesses('win32', async () => TABLE)
     const self = rows.find((row) => row.pid === 4101)
     expect(self).toMatchObject({ pid: 4101, ppid: 900 })
