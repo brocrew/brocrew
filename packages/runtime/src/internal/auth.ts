@@ -629,7 +629,9 @@ export function fallbackSignIn(
       try {
         const parsed: unknown = JSON.parse(data.toString('utf8'))
         if (isRecord(parsed) && !Array.isArray(parsed)) return data
-      } catch {}
+      } catch {
+        // An incomplete JSON read falls through to the existing bounded read loop.
+      }
       if (attempt === 3) throw unusable('could not be read whole')
     }
   } finally {

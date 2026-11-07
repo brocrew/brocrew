@@ -135,7 +135,9 @@ export class CodexLogin {
           LOGIN_CANCEL_ACK_TIMEOUT_MS,
           'codex account/login/cancel',
         )
-    } catch {}
+    } catch {
+      // Teardown below ends sign-in even when cancellation is not acknowledged.
+    }
     this.finish({
       success: false,
       error: 'canceled',
@@ -156,7 +158,9 @@ export class CodexLogin {
         await this.dispose()
         return
       }
-    } catch {}
+    } catch {
+      // A failed notification stream falls through to the terminal failure below.
+    }
     this.finish({
       success: false,
       error: 'the Codex sign-in process ended before reporting a result',

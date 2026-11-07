@@ -5504,7 +5504,9 @@ export class RuntimeHost implements LiveHost {
     try {
       const named = this.nameByItsWork(to)
       if (named.length > 0 && named.length <= REPLY_SUMMARY_LIMIT) toLabel = named
-    } catch {}
+    } catch {
+      // Delivery does not depend on this optional display name.
+    }
     const { messageAct, addressedAs } = facts
     return {
       ...(messageAct === undefined ? {} : { messageAct }),
@@ -9034,7 +9036,9 @@ export class RuntimeHost implements LiveHost {
     let name = 'the conversation that asked'
     try {
       name = this.nameByItsWorkUnder(asker, piece)
-    } catch {}
+    } catch {
+      // An unread name leaves the generic conversation name in the answer.
+    }
     return anAnswerKeptForItsStart(name, whyItWasNotDelivered(error))
   }
 
@@ -11076,7 +11080,9 @@ export class RuntimeHost implements LiveHost {
     let accepted = false
     try {
       accepted = await wake
-    } catch {}
+    } catch {
+      // A failed wake leaves the existing delivery check to decide this attempt.
+    }
     if (!accepted) {
       const progress = this.deps.store.reconciliationDelivery(target, receipt.messageId)
       if (progress === 'running' || progress === 'turn-ended') return true
@@ -11238,7 +11244,9 @@ export class RuntimeHost implements LiveHost {
     for (const piece of pieces) {
       try {
         rows.set(piece.piece, this.deps.store.reconciliationReceipts(piece.holder, piece.piece))
-      } catch {}
+      } catch {
+        // An unread receipt supplies no authority to advance this piece.
+      }
     }
     return rows
   }
@@ -14154,7 +14162,9 @@ export class RuntimeHost implements LiveHost {
       if (nobodyWaiting) {
         try {
           replyQuestionTurn = this.deps.store.replyQuestionWithoutARequest(session.id)
-        } catch {}
+        } catch {
+          // An unread reply supplies no hint about the independently known queue.
+        }
       }
       return {
         helpers: helpers
@@ -24735,7 +24745,9 @@ export class RuntimeHost implements LiveHost {
         if (inFlight !== undefined) {
           try {
             await inFlight
-          } catch {}
+          } catch {
+            // The ordinary reopen below reports the launch failure.
+          }
         }
         const slot = this.slots.get(at)
         if (slot?.session != null && !onItsWayOut(slot) && !mayControl(slot, sink)) {

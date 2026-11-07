@@ -428,7 +428,9 @@ async function theLastDraftSaves(): Promise<void> {
   for (const window of windows) {
     try {
       window.webContents.send(LAST_DRAFT_SAVE_CHANNEL)
-    } catch {}
+    } catch {
+      // Quit-save accounting below still decides whether every draft arrived.
+    }
   }
   const outcome = await writer.quitSaves(QUIT_SAVE_WITHIN_MS)
   if (outcome === 'unanswered') {
@@ -477,7 +479,9 @@ function initDatabase(): AppDatabase {
   } catch (error) {
     try {
       database.close()
-    } catch {}
+    } catch {
+      // A close failure must not replace the migration failure.
+    }
     throw new MigrationFailed(
       `BroCrew could not update this workspace's data: ${error instanceof Error ? error.message : String(error)}`,
       { cause: error },
@@ -1071,7 +1075,9 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
       hidden: presentation.hidden,
       scratchRoot: app.commandLine.getSwitchValue('plugin-global-root'),
     })
-  } catch {}
+  } catch {
+    // An unavailable plugin root also remains unavailable to Storage.
+  }
   const storage = new StorageService(
     {
       data: storageData,
@@ -1930,7 +1936,9 @@ function start(ownership: HostGateVerdict): void {
           try {
             window.setBackgroundColor(themes?.background() ?? DEFAULT_THEME_BACKGROUND)
             window.webContents.send(THEMES_CHANNELS.changed, change)
-          } catch {}
+          } catch {
+            // A closed window must not prevent the other windows receiving this change.
+          }
         }
       })
       host = await createRuntimeHost(initDatabase())
@@ -2003,7 +2011,9 @@ function start(ownership: HostGateVerdict): void {
           const logs = app.getPath('logs')
           mkdirSync(logs, { recursive: true })
           appendFileSync(join(logs, 'memory.log'), `${new Date().toISOString()} ${message}\n`)
-        } catch {}
+        } catch {
+          // The console already has this diagnostic if the log cannot be written.
+        }
       }
       const unrefdInterval = (fn: () => void, ms: number): unknown => {
         const timer = setInterval(fn, ms)

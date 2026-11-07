@@ -1075,7 +1075,9 @@ function phasesOf(sink: StartPhaseSink | undefined): StartPhaseSink {
   return (phase, detail) => {
     try {
       sink?.(phase, detail)
-    } catch {}
+    } catch {
+      // Reporting a phase must not stop the launch it describes.
+    }
   }
 }
 
@@ -3192,7 +3194,9 @@ export class CodexSessionHandle implements SessionHandle {
         turn.localId,
         ended.map((one) => one.toolCallId),
       )
-    } catch {}
+    } catch {
+      // A failed command stop must not block the remaining interrupt handling.
+    }
   }
 
   endEverythingTheTurnStarted(): void {

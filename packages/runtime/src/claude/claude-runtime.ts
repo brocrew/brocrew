@@ -325,10 +325,14 @@ function scheduleReaderHooks(
             try {
               const level = input.effort?.level
               if (typeof level === 'string' && level !== '') noteEffort(level)
-            } catch {}
+            } catch {
+              // An unread effort is not reported and must not break the turn.
+            }
             try {
               note(input.session_crons)
-            } catch {}
+            } catch {
+              // An unread scheduling report must not break the turn.
+            }
           }
           return { continue: true }
         },
@@ -1140,7 +1144,9 @@ export class ClaudeSessionHandle implements SessionHandle {
     try {
       const info = await query.accountInfo()
       said = sessionAccountFrom({ email: info.email, organization: info.organization })
-    } catch {}
+    } catch {
+      // An unread account remains unknown without exposing account details.
+    }
     if (this.query === query) this.accountSaid = said
   }
 
@@ -1164,7 +1170,9 @@ export class ClaudeSessionHandle implements SessionHandle {
         ...(dropped > 0 ? { dropped } : {}),
         source: 'initializationResult',
       })
-    } catch {}
+    } catch {
+      // A failed catalogue read leaves the command list unreported.
+    }
   }
 
   async providerCommands(): Promise<ProviderCommandAnswer> {
@@ -1233,14 +1241,18 @@ export class ClaudeSessionHandle implements SessionHandle {
   noteSchedulingCall(input: unknown): void {
     try {
       this.schedulingCalls.called(input)
-    } catch {}
+    } catch {
+      // An unrecorded scheduling call must not break the tool call.
+    }
   }
 
   noteSchedulingAnswer(input: unknown): void {
     try {
       const event = this.schedulingCalls.answered(input)
       if (event !== undefined) this.emit(event)
-    } catch {}
+    } catch {
+      // Recording the scheduling answer must not break the tool call.
+    }
   }
 
   noteReportedEffort(level: string): void {
@@ -1483,7 +1495,9 @@ export class ClaudeSessionHandle implements SessionHandle {
     if (this.query) {
       try {
         this.query.close()
-      } catch {}
+      } catch {
+        // A close failure does not prevent detaching this query.
+      }
     }
   }
 
@@ -1493,7 +1507,9 @@ export class ClaudeSessionHandle implements SessionHandle {
     if (!query?.return) return
     try {
       await withTimeout(Promise.resolve(query.return()), CLOSE_EXIT_RECEIPT_TIMEOUT_MS)
-    } catch {}
+    } catch {
+      // A failed exit receipt leaves no further teardown action here.
+    }
   }
 
   private settleRequests(permissionAnswer?: PermissionDecision): void {
@@ -1528,7 +1544,9 @@ export class ClaudeSessionHandle implements SessionHandle {
     if (this.query) {
       try {
         this.query.close()
-      } catch {}
+      } catch {
+        // A close failure must not replace the resume failure.
+      }
     }
     this.input.close()
     this.finishUnexpected(reason, true)
@@ -1590,7 +1608,9 @@ export class ClaudeSessionHandle implements SessionHandle {
       const current = await this.authTokenProviderAsync()
       if (current !== null && credentialFingerprint(current) === this.launchCredential)
         return 'auth'
-    } catch {}
+    } catch {
+      // An unavailable read cannot establish that the rejected sign-in is still current.
+    }
     return 'auth_stale'
   }
 
@@ -1769,7 +1789,9 @@ export class ClaudeSessionHandle implements SessionHandle {
     this.settleRequests(STOPPED_INSTEAD_OF_ANSWERING)
     try {
       await withTimeout(Promise.resolve(this.query.interrupt()), INTERRUPT_ACK_TIMEOUT_MS)
-    } catch {}
+    } catch {
+      // A failed interrupt acknowledgment must not block recovery.
+    }
     if (!this.machine.isTerminal) this.machine.forceEnd()
   }
 
@@ -2515,7 +2537,9 @@ export class ClaudeRuntime implements AgentRuntime {
       if (query !== null) {
         try {
           query.close()
-        } catch {}
+        } catch {
+          // A close failure must not replace the start failure.
+        }
       }
       input.close()
       const spawnFailure = await child.spawnFailure()
@@ -2571,7 +2595,9 @@ export class ClaudeRuntime implements AgentRuntime {
       cancel.release()
       try {
         await closeProbe()
-      } catch {}
+      } catch {
+        // A failed probe close leaves no further cleanup action here.
+      }
     }
   }
 
@@ -2664,7 +2690,9 @@ export class ClaudeRuntime implements AgentRuntime {
       if (query) {
         try {
           query.close()
-        } catch {}
+        } catch {
+          // A close failure must not replace the resume failure.
+        }
       }
       input?.close()
       if (
