@@ -1,4 +1,4 @@
-import { registerUnreadableQuestionCases } from './helpers/service-unreadable-question-cases'
+import { noteFromGiver, registerUnreadableQuestionCases } from './helpers/service-unreadable-question-cases'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import type { PieceRow } from '../src/shared/task-contracts'
 import { writeFileSync } from 'node:fs'
@@ -2252,14 +2252,7 @@ describe('a service is reached through the piece it is on', () => {
              AND json_extract(payload, '$.requestId') = ?`,
         )
         .get(caller, copy) as { id: string; payload: string }
-      const aNote = async (): Promise<void> => {
-        const noted = await call(host, boss, 'message_agent', {
-          agent: caller,
-          kind: 'note',
-          text: 'A note.',
-        })
-        expect(noted.structured).toMatchObject({ outcome: 'ok' })
-      }
+      const aNote = () => noteFromGiver(call, host, boss, caller)
       world.db
         .prepare(`UPDATE events SET payload = json_remove(payload, '$.parent') WHERE id = ?`)
         .run(row.id)

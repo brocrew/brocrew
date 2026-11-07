@@ -30,6 +30,20 @@ interface QuestionContext {
   stateOf(service: string, piece: string): string | undefined
 }
 
+export async function noteFromGiver(
+  call: QuestionContext['call'],
+  host: RuntimeHost,
+  boss: string,
+  caller: string,
+): Promise<void> {
+  const noted = await call(host, boss, 'message_agent', {
+    agent: caller,
+    kind: 'note',
+    text: 'A note.',
+  })
+  expect(noted.structured).toMatchObject({ outcome: 'ok' })
+}
+
 export function registerUnreadableQuestionCases({
   world,
   aQuestionPassedUpTwice,
@@ -163,14 +177,7 @@ export function registerUnreadableQuestionCases({
              AND json_extract(payload, '$.requestId') = ?`,
       )
       .get(caller, copy) as { id: string; payload: string }
-    const aNote = async (): Promise<void> => {
-      const noted = await call(host, boss, 'message_agent', {
-        agent: caller,
-        kind: 'note',
-        text: 'A note.',
-      })
-      expect(noted.structured).toMatchObject({ outcome: 'ok' })
-    }
+    const aNote = () => noteFromGiver(call, host, boss, caller)
     world()
       .db.prepare(`UPDATE events SET payload = json_remove(payload, '$.prompt') WHERE id = ?`)
       .run(row.id)
