@@ -229,7 +229,18 @@ export class PluginSupervisor {
         if (!(await options.recoverPrevious?.(previous))) refuse('cleanup-pending')
         owner.fence.check(storage.lock)
         storage.check()
-        if (previous) storage.write({ ...previous, phase: 'stopped' })
+        if (previous)
+          try {
+            storage.write({ ...previous, phase: 'stopped' })
+          } catch (error) {
+            // A held or full disk: name it plainly; the next start tries again.
+            throw new PluginSupervisorError('cleanup-pending', {
+              cause: new Error(
+                `couldn't record the previous plugin service as stopped (${drainWriteErrno(error)})`,
+                { cause: error },
+              ),
+            })
+          }
       }
       storage.clearSocket()
       owner.server = createServer((socket) => owner.accept(socket))
@@ -255,12 +266,10 @@ export class PluginSupervisor {
       refuse()
     }
   }
-  private fail(): boolean {
+  private fail(): void {
     this.record.phase = 'blocked'
-    let published = false
     try {
       this.storage.write(this.record)
-      published = true
     } catch (error) {
       /* Retain the lock even if the record cannot be updated. */
       this.trace({
@@ -272,28 +281,6 @@ export class PluginSupervisor {
       })
     }
     clearInterval(this.timer)
-    return published
-  }
-  private async publishBlockedBeforeExit(): Promise<void> {
-    let attempt = 1
-    for (;;) {
-      attempt++
-      try {
-        this.trace({ stage: 'blocked-write', state: 'waiting', attempt })
-        this.storage.write(this.record)
-        this.trace({ stage: 'blocked-write', state: 'complete', attempt })
-        return
-      } catch (error) {
-        this.trace({
-          stage: 'blocked-write',
-          state: 'failed',
-          attempt,
-          errno: drainWriteErrno(error),
-          cause: pluginFailureCause(error, [this.record.key]),
-        })
-        await new Promise((resolve) => setTimeout(resolve, 1000))
-      }
-    }
   }
   private clock(): number {
     const current = this.now()
@@ -646,7 +633,7 @@ export class PluginSupervisor {
         !result.every((child) => child.proven)
       ) {
         this.trace({ stage: 'child-proofs', state: 'failed' })
-        const published = this.fail()
+        this.fail()
         // A failed consumer can leave this process's own async work unresolved. Do not unlock
         // and let a successor overlap it. Only process death ends that work and releases the OS
         // fence. Every physical child must still supply its exact exit and descendant proof.
@@ -656,9 +643,9 @@ export class PluginSupervisor {
           !this.startFailed &&
           result?.every((child) => child.inProcess || child.proven)
         ) {
-          // A sharing refusal must not turn a blocked owner into a durable draining record.
-          // Retain the same fence and all physical proofs until publication succeeds.
-          if (!published) await this.publishBlockedBeforeExit()
+          // No physical child is left, so nothing can overlap a successor. fail() tried the
+          // blocked record once and traced any failure; the record only advises the next start,
+          // which recovers any record that isn't stopped. The OS lock ends with this process.
           this.options.onBlockedWithoutProcesses()
         }
         return false
@@ -667,25 +654,20 @@ export class PluginSupervisor {
       this.trace({ stage: 'server.close', state: 'waiting' })
       await new Promise<void>((resolve) => this.server!.close(() => resolve()))
       this.trace({ stage: 'server.close', state: 'complete' })
-      // The proofs already arrived. Retain the same fence until their durable publication succeeds.
-      let attempt = 0
-      for (;;) {
-        attempt++
-        try {
-          this.trace({ stage: 'stopped-write', state: 'waiting', attempt })
-          this.storage.write({ ...this.record, phase: 'stopped' })
-          this.trace({ stage: 'stopped-write', state: 'complete', attempt })
-          break
-        } catch (error) {
-          this.trace({
-            stage: 'stopped-write',
-            state: 'failed',
-            attempt,
-            errno: drainWriteErrno(error),
-            cause: pluginFailureCause(error, [this.record.key]),
-          })
-          await new Promise((resolve) => setTimeout(resolve, 1000))
-        }
+      // The proofs already arrived. The stopped record only advises the next start, which
+      // recovers any record that isn't stopped, so one try is enough; a failure is traced.
+      try {
+        this.trace({ stage: 'stopped-write', state: 'waiting', attempt: 1 })
+        this.storage.write({ ...this.record, phase: 'stopped' })
+        this.trace({ stage: 'stopped-write', state: 'complete', attempt: 1 })
+      } catch (error) {
+        this.trace({
+          stage: 'stopped-write',
+          state: 'failed',
+          attempt: 1,
+          errno: drainWriteErrno(error),
+          cause: pluginFailureCause(error, [this.record.key]),
+        })
       }
       clearInterval(this.timer)
       this.record.phase = 'stopped'

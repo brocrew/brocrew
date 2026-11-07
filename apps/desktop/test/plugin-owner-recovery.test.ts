@@ -1,7 +1,17 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
 import { createHash, randomUUID } from 'node:crypto'
-import { lstat, mkdir, mkdtemp, readFile, realpath, rm, unlink, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  unlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -12,6 +22,7 @@ import { previousRunsProvenStopped } from '../src/main/plugins/supervisor/recove
 import { keepPluginRootPrivate } from '../src/main/plugins/private-files'
 import { pluginUnavailableNotice } from '../src/shared/plugin-settings'
 import { pluginStartupReason } from '../src/main/plugins/startup-failure'
+import { groupIdentity } from '../resources/plugin-host/process-groups.mjs'
 import { PluginStartupError } from '../src/main/plugins/startup-failure'
 import {
   APP_HELD_CONNECTION,
@@ -421,6 +432,116 @@ describe('plugin owner recovery after the caller stops waiting', () => {
       ).not.toBe(record.epoch)
     },
   )
+  // A guardian whose exit receipt could not be written (a held file, a full disk) left only its
+  // process record. The successor proves that run stopped the way the guardian does, by pid and
+  // birth, and continues with no reboot advice. Windows records only the server, so it is out.
+  async function recordedRun(root: string, groups: [number, string][]) {
+    const runId = randomUUID()
+    const run = join(root, 'host/runs', runId)
+    await mkdir(run, { recursive: true, mode: 0o700 })
+    await writeFile(
+      join(run, 'process.json'),
+      JSON.stringify({
+        format: 1,
+        runId,
+        pluginId: 'fictional',
+        releaseDigest: 'f'.repeat(64),
+        guardianPid: 404941,
+        groups,
+      }),
+      { mode: 0o600 },
+    )
+    return run
+  }
+  async function orphan() {
+    const spawned = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+      detached: true,
+      stdio: 'ignore',
+    })
+    await once(spawned, 'spawn')
+    child = spawned
+    const birth = groupIdentity(spawned.pid!)
+    expect(birth).toBeTruthy()
+    return { spawned, birth: birth! }
+  }
+  const gone = (one: ChildProcess) => one.exitCode !== null || one.signalCode !== null
+  async function deadOwner(root: string, workspaceRoot: string) {
+    await lease!.close()
+    lease = undefined
+    await owner!.shutdown()
+    await owner!.closed
+    owner = undefined
+    const storage = new SupervisorStorage(root, [workspaceRoot], false)
+    storage.write({ ...storage.read()!, phase: 'draining' })
+    storage.close()
+  }
+  describe.skipIf(process.platform === 'win32')('a run with no exit receipt', () => {
+    it.each(['exited', 'live', 'receipt-held'] as const)(
+      'is proven by its recorded group (%s), and the successor continues with no reboot advice',
+      async (kind) => {
+        const { root, options } = await fixture()
+        const { spawned, birth } = await orphan()
+        if (kind !== 'live') {
+          const exit = once(spawned, 'exit')
+          spawned.kill('SIGKILL')
+          await exit
+        }
+        const run = await recordedRun(root, [[spawned.pid!, birth]])
+        await deadOwner(root, options.workspaceRoot)
+        if (kind === 'receipt-held') await chmod(run, 0o500)
+        const advice = vi.fn()
+        try {
+          owner = await PluginSupervisor.start({
+            root,
+            workspaceRoots: [options.workspaceRoot],
+            recoverPrevious: (previous) =>
+              previousRunsProvenStopped(root, { previous, onRebootRequired: advice }),
+          })
+        } finally {
+          await chmod(run, 0o700)
+        }
+        expect(advice).not.toHaveBeenCalled()
+        await expect.poll(() => gone(spawned)).toBe(true)
+        if (kind === 'receipt-held') {
+          await expect(lstat(join(run, 'exit.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+        } else {
+          expect(JSON.parse(await readFile(join(run, 'exit.json'), 'utf8'))).toMatchObject({
+            runId: run.split('/').at(-1),
+            groups: [[spawned.pid, birth]],
+            exited: true,
+          })
+        }
+      },
+    )
+    it.each(['birth-mismatch', 'EPERM'] as const)(
+      'stays unresolved when its recorded group cannot be proven (%s)',
+      async (kind) => {
+        const { root, options } = await fixture()
+        const { spawned, birth } = await orphan()
+        const run = await recordedRun(root, [
+          [spawned.pid!, kind === 'birth-mismatch' ? '0:Thu Jan  1 00:00:00 1970' : birth],
+        ])
+        await deadOwner(root, options.workspaceRoot)
+        if (kind === 'EPERM') {
+          const kill = process.kill.bind(process)
+          vi.spyOn(process, 'kill').mockImplementation((pid, signal) => {
+            if (pid === -spawned.pid!)
+              throw Object.assign(new Error('fictional refusal'), { code: 'EPERM' })
+            return kill(pid, signal)
+          })
+        }
+        await expect(
+          PluginSupervisor.start({
+            root,
+            workspaceRoots: [options.workspaceRoot],
+            recoverPrevious: (previous) => previousRunsProvenStopped(root, { previous }),
+          }),
+        ).rejects.toMatchObject({ code: 'cleanup-pending' })
+        await expect(lstat(join(run, 'exit.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+        expect(gone(spawned)).toBe(false)
+      },
+    )
+  })
   it('recovers a missing owner record with no historical runs while retaining the original lock inode', async () => {
     const { root, options } = await fixture()
     await lease!.close()
@@ -443,31 +564,45 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     const after = await lstat(join(root, 'supervisor/owner-lock.sqlite'), { bigint: true })
     expect({ dev: after.dev, ino: after.ino }).toEqual({ dev: before.dev, ino: before.ino })
   })
-  it('retains the fence and retries a failed clean-stop publication', async () => {
+  it('a refused stopped record still releases the fence, and the next start recovers', async () => {
     const { root, options } = await fixture()
+    const previous = owner!
     const original = SupervisorStorage.prototype.write
-    let failed = false
+    let held = true
     vi.spyOn(SupervisorStorage.prototype, 'write').mockImplementation(function (
       this: SupervisorStorage,
       value,
     ) {
-      if (value.phase === 'stopped' && !failed) {
-        failed = true
-        throw new Error('fictional rename denial')
-      }
+      if (value.phase === 'stopped' && held)
+        throw Object.assign(new Error('fictional rename denial'), { code: 'EPERM' })
       return original.call(this, value)
     })
-    expect(await owner!.shutdown()).toBe(false)
-    expect(failed).toBe(true)
-    await expect(
-      PluginSupervisor.start({ root, workspaceRoots: [options.workspaceRoot] }),
-    ).rejects.toMatchObject({ code: 'busy' })
-    await expect
-      .poll(
-        async () => JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase,
-        { timeout: windowsStopWithin ?? 2000 },
-      )
-      .toBe('stopped')
+    await lease!.close()
+    lease = undefined
+    await previous.shutdown()
+    // closed resolves only after the fence is released.
+    await previous.closed
+    owner = undefined
+    expect(
+      JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase,
+    ).not.toBe('stopped')
+    const start = () =>
+      PluginSupervisor.start({
+        root,
+        workspaceRoots: [options.workspaceRoot],
+        recoverPrevious: (record) => previousRunsProvenStopped(root, { previous: record }),
+      })
+    // The successor's own stopped write meets the same held file: it says so and starts later.
+    const refused = await start().catch((error: unknown) => error)
+    expect(refused).toMatchObject({ code: 'cleanup-pending' })
+    expect(String((refused as Error).cause)).toContain(
+      "couldn't record the previous plugin service as stopped (EPERM)",
+    )
+    held = false
+    owner = await start()
+    expect(
+      JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase,
+    ).toBe('accepting')
   })
   it('makes a transient record read retryable and emits closed phase diagnostics', async () => {
     const { options } = await fixture()

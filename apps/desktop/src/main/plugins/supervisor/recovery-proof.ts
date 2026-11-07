@@ -12,6 +12,8 @@ import {
 } from '../../../../resources/plugin-host/boot-witness.mjs'
 import type { OwnerRecord } from './protocol'
 import { readVolumeIdentity } from '../../../../resources/plugin-host/volume-identity.mjs'
+import { stopGroups } from '../../../../resources/plugin-host/process-groups.mjs'
+import { writeReceipt } from '../../../../resources/plugin-host/receipts.mjs'
 
 const directoryIdentity = z.strictObject({ id: z.uuid(), identity: z.string().max(128) })
 const bindingSchema = z.strictObject({
@@ -275,10 +277,20 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-async function hasExitReceipt(root: string, runId: string): Promise<boolean> {
+/** The guardian's record of its server, by pid and birth, written before the server is admitted. */
+const processRecord = receipt.omit({ exited: true }).extend({
+  groups: receipt.shape.groups.min(1),
+})
+
+async function readRunFile<S extends z.ZodType<{ runId: string }>>(
+  root: string,
+  runId: string,
+  name: string,
+  schema: S,
+): Promise<z.infer<S> | undefined> {
   try {
     const file = await openFileNotThroughALink(
-      join(root, 'host/runs', runId, 'exit.json'),
+      join(root, 'host/runs', runId, name),
       constants.O_RDONLY | constants.O_NONBLOCK,
     )
     try {
@@ -290,15 +302,45 @@ async function hasExitReceipt(root: string, runId: string): Promise<boolean> {
         stat.size > 64 * 1024 ||
         stat.size === 0
       )
-        return false
-      const proof = receipt.parse(JSON.parse(await file.readFile('utf8')))
-      return proof.runId === runId
+        return undefined
+      const value = schema.parse(JSON.parse(await file.readFile('utf8')))
+      return value.runId === runId ? value : undefined
+    } catch {
+      return undefined
     } finally {
       await file.close()
     }
   } catch {
-    return false
+    return undefined
   }
+}
+
+async function hasExitReceipt(root: string, runId: string): Promise<boolean> {
+  return (await readRunFile(root, runId, 'exit.json', receipt)) !== undefined
+}
+
+/**
+ * A run whose exit receipt was never written (its writer died, or the file was held) is proven
+ * stopped here by the same stop its guardian makes: every recorded group, by pid and birth, is
+ * stopped and then found gone. A group this user can't signal, or whose number now belongs to
+ * another process, leaves the run unresolved. On Windows the record names only the server, not
+ * its job's tree, so a Windows run stays unresolved here.
+ */
+async function stopRecordedRun(root: string, runId: string): Promise<boolean> {
+  if (process.platform === 'win32') return false
+  const record = await readRunFile(root, runId, 'process.json', processRecord)
+  if (!record || !(await stopGroups(new Map(record.groups)))) return false
+  try {
+    writeReceipt(join(root, 'host/runs', runId), 'exit.json', {
+      ...record,
+      writerPid: process.pid,
+      exited: true,
+    })
+  } catch {
+    // The stop above is the proof. The receipt only spares the next start this check; a held
+    // file there means that start proves it again the same way.
+  }
+  return true
 }
 
 function validMarker(marker: z.infer<typeof markerSchema>): boolean {
@@ -321,7 +363,9 @@ export async function previousRunsProvenStopped(
   try {
     let covered = await census(root)
     const unresolved = new Set<string>()
-    for (const run of covered) if (!(await hasExitReceipt(root, run.id))) unresolved.add(run.id)
+    for (const run of covered)
+      if (!(await hasExitReceipt(root, run.id)) && !(await stopRecordedRun(root, run.id)))
+        unresolved.add(run.id)
     if (!unresolved.size) return true
     if (!observation) return false
     const readVolume = observation.readVolumeIdentity ?? readVolumeIdentity
