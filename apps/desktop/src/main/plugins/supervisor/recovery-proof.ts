@@ -12,6 +12,8 @@ import {
 } from '../../../../resources/plugin-host/boot-witness.mjs'
 import type { OwnerRecord } from './protocol'
 import { readVolumeIdentity } from '../../../../resources/plugin-host/volume-identity.mjs'
+import { stopGroups } from '../../../../resources/plugin-host/process-groups.mjs'
+import { writeReceipt } from '../../../../resources/plugin-host/receipts.mjs'
 
 const directoryIdentity = z.strictObject({ id: z.uuid(), identity: z.string().max(128) })
 const bindingSchema = z.strictObject({
@@ -275,10 +277,20 @@ async function exists(path: string): Promise<boolean> {
   }
 }
 
-async function hasExitReceipt(root: string, runId: string): Promise<boolean> {
+/** The guardian's record of its server, by pid and birth, written before the server is admitted. */
+const processRecord = receipt.omit({ exited: true }).extend({
+  groups: receipt.shape.groups.min(1),
+})
+
+async function readRunFile<S extends z.ZodType<{ runId: string }>>(
+  root: string,
+  runId: string,
+  name: string,
+  schema: S,
+): Promise<z.infer<S> | undefined> {
   try {
     const file = await openFileNotThroughALink(
-      join(root, 'host/runs', runId, 'exit.json'),
+      join(root, 'host/runs', runId, name),
       constants.O_RDONLY | constants.O_NONBLOCK,
     )
     try {
@@ -290,15 +302,51 @@ async function hasExitReceipt(root: string, runId: string): Promise<boolean> {
         stat.size > 64 * 1024 ||
         stat.size === 0
       )
-        return false
-      const proof = receipt.parse(JSON.parse(await file.readFile('utf8')))
-      return proof.runId === runId
+        return undefined
+      const value = schema.parse(JSON.parse(await file.readFile('utf8')))
+      return value.runId === runId ? value : undefined
+    } catch {
+      return undefined
     } finally {
       await file.close()
     }
   } catch {
-    return false
+    return undefined
   }
+}
+
+async function hasExitReceipt(root: string, runId: string): Promise<boolean> {
+  return (await readRunFile(root, runId, 'exit.json', receipt)) !== undefined
+}
+
+/**
+ * A run with no positive exit receipt (its writer died, its file was held, or its guardian could
+ * not prove its groups) is proven stopped here, under the original fence, or left unresolved.
+ * - No process record: its server was never admitted, and no plugin code ran. The guardian writes
+ *   process.json before it sends `group` (guardian.mjs:223–224), the host sends `admit` only after
+ *   `group` (node-host.ts:408–420), and the server waits for `admitted` before evaluating any
+ *   plugin code (server.mjs:70–80). That host lived in the previous owner, whose fence this start
+ *   holds, so no admission can come; an unadmitted server exits on disconnect (server.mjs:56, :72)
+ *   and its guardian on the host's (guardian.mjs:117). Nothing is written: no guardian pid is known,
+ *   and the files prove it again the same way.
+ * - A process record: every recorded group, by pid and birth, is stopped and found gone, as its
+ *   guardian does, and the receipt is written so a later reuse of the pid can't unprove it. A group
+ *   this user can't signal, or whose number now belongs to another process, leaves the run
+ *   unresolved. On Windows the record names only the server, not its job's tree, so a Windows run
+ *   with a record stays unresolved here.
+ */
+async function proveRunStopped(root: string, runId: string): Promise<boolean> {
+  const run = join(root, 'host/runs', runId)
+  if (!(await exists(join(run, 'process.json')))) return true
+  if (process.platform === 'win32') return false
+  const record = await readRunFile(root, runId, 'process.json', processRecord)
+  if (!record || !(await stopGroups(new Map(record.groups)))) return false
+  try {
+    writeReceipt(run, 'exit.json', { ...record, writerPid: process.pid, exited: true })
+  } catch {
+    // The stop above is the proof; a held file means the next start proves it again.
+  }
+  return true
 }
 
 function validMarker(marker: z.infer<typeof markerSchema>): boolean {
@@ -321,7 +369,9 @@ export async function previousRunsProvenStopped(
   try {
     let covered = await census(root)
     const unresolved = new Set<string>()
-    for (const run of covered) if (!(await hasExitReceipt(root, run.id))) unresolved.add(run.id)
+    for (const run of covered)
+      if (!(await hasExitReceipt(root, run.id)) && !(await proveRunStopped(root, run.id)))
+        unresolved.add(run.id)
     if (!unresolved.size) return true
     if (!observation) return false
     const readVolume = observation.readVolumeIdentity ?? readVolumeIdentity

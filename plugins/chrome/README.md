@@ -35,7 +35,7 @@ can change after a restart. Conflicting selectors and dead/foreign anchors are r
 `open_tab` and `navigate` accept HTTP(S), `file:` URLs, native absolute paths and `about:blank`.
 Native paths are encoded as file URLs, preserving spaces, Unicode, `#` and `?`; relative and tilde
 paths are rejected. Chrome and the OS determine local-file access; navigation has no upload-root
-allowlist. File tabs are eligible for normal mode/session URL restoration. The separate
+allowlist. The separate
 `download_url` transport stays HTTP(S)-only, including redirects; upload/download guards remain.
 
 Background opening grants no user activation and never shows or activates a Chrome window. Its
@@ -71,13 +71,13 @@ and do not prove native focus. Never use real or signed-in profiles for those ch
 
 With a host supporting `shared-data-v1`, permanent Chrome profiles live in the host-provided,
 verified `shared/chrome` namespace once the released platform signal enables it. Settings lists the same profiles in every eligible workspace.
-On/off and Keep running apply to the current Chrome owner/root. Pinned roots each have their own switch; workspaces using the default root share one switch in v1. The default owner also sees the machine-wide list. Sync, extensions, Chrome settings and the
+On/off applies to the current Chrome owner/root. Pinned roots each have their own switch; workspaces using the default root share one switch in v1. The default owner also sees the machine-wide list. Sync, extensions, Chrome settings and the
 BroCrew helper belong to the profile in every workspace. New profiles are on in the creating
-workspace and off elsewhere. Temporary profiles, saved files, downloads and restore state stay
+workspace and off elsewhere. Temporary profiles, saved files and downloads stay
 local; while the shared facade is enabled, unmigrated local profiles use stable `local-…` names to prevent collisions with shared names.
 
 A profile can run in one workspace at a time. The other workspace sees “in use in <workspace>”.
-Keep running retains that lease. Settings changes to launch configuration apply at the next
+Settings changes to launch configuration apply at the next
 launch; permission revocation fences queued and subsequent browser commands immediately.
 Only the person can delete a permanent profile. The confirmation lists its enabled workspaces
 and binds to its immutable identity and current registry revision. Any held lease prevents delete.

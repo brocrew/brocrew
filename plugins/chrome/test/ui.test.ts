@@ -44,19 +44,28 @@ function screen() {
       packets.push(packet)
     },
   }
-  vm.runInNewContext(fs.readFileSync('plugins/chrome/ui/app.js', 'utf8'), {
-    window,
-    location: { origin },
-    document: { querySelector: (id: string) => nodes.get(id), createElement: () => new Element() },
-    setTimeout: () => 1,
-    clearTimeout() {},
-    setInterval: (callback: () => void) => {
-      interval = callback
-      return 1
+  vm.runInNewContext(
+    fs.readFileSync('plugins/shared/ui/settings-load-state.js', 'utf8') +
+      '\n' +
+      fs.readFileSync('plugins/chrome/ui/app.js', 'utf8'),
+    {
+      window,
+      location: { origin },
+      document: {
+        querySelector: (id: string) => nodes.get(id),
+        querySelectorAll: () => [nodes.get('#profiles'), nodes.get('#create')],
+        createElement: () => new Element(),
+      },
+      setTimeout: () => 1,
+      clearTimeout() {},
+      setInterval: (callback: () => void) => {
+        interval = callback
+        return 1
+      },
+      clearInterval() {},
+      CSS: { escape: (value: string) => value },
     },
-    clearInterval() {},
-    CSS: { escape: (value: string) => value },
-  })
+  )
   return {
     nodes,
     events,

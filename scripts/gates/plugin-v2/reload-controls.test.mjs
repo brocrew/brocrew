@@ -58,26 +58,11 @@ test('reload observation follows the product deadline without accepting the old 
   assert.match(journey, /}, RELOAD_RETIRING_WAIT_MS\)/)
 })
 
-test('actual embedded reload authorizer rejects other sender/frame/nonce/op/payload', () => {
-  const frame = {},
-    contents = { mainFrame: frame },
-    window = { webContents: contents, isDestroyed: () => false }
-  const event = { sender: contents, senderFrame: frame },
-    token = 'a'.repeat(64)
-  assert.deepEqual(authorizeReloadRequest(event, window, { op: 'arm', token }, token), {
-    op: 'arm',
-  })
-  for (const [e, w, p, n] of [
-    [{ ...event, sender: {} }, window, { op: 'arm', token }, token],
-    [{ ...event, senderFrame: {} }, window, { op: 'arm', token }, token],
-    [event, null, { op: 'arm', token }, token],
-    [event, { ...window, isDestroyed: () => true }, { op: 'arm', token }, token],
-    [event, window, { op: 'arm', token: 'b'.repeat(64) }, token],
-    [event, window, { op: 'eval', token }, token],
-    [event, window, { op: 'status', token, code: 'forbidden' }, token],
-    [event, window, { op: 'arm', token }, null],
-  ])
-    assert.throws(() => authorizeReloadRequest(e, w, p, n), /plugin-reload-main-app-gate-only/)
+test('actual embedded reload authorizer runs only known gate operations', () => {
+  const token = 'a'.repeat(64)
+  assert.deepEqual(authorizeReloadRequest({ op: 'arm', token }), { op: 'arm' })
+  for (const payload of [{ op: 'eval', token }, {}, null, 'arm'])
+    assert.throws(() => authorizeReloadRequest(payload), /plugin-reload-main-app-gate-only/)
 })
 test('real reload projection uses actual host/factory/preload and restores ordinary source', () => {
   const root = fs.realpathSync.native(

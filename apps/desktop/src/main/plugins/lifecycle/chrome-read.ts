@@ -26,7 +26,6 @@ const Profile = z.object({
   allowSync: z.boolean().optional(),
   allowExtensions: z.boolean().optional(),
   allowSettings: z.boolean().optional(),
-  keepRunning: z.boolean().optional(),
 })
 const Tab = z.object({
   id: z.string().max(128),

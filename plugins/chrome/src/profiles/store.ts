@@ -10,15 +10,8 @@ export interface ProfileFlags {
   allowExtensions: boolean
   allowSettings: boolean
   allowSync: boolean
-  keepRunning: boolean
 }
-export const FLAG_NAMES = [
-  'enabled',
-  'allowExtensions',
-  'allowSettings',
-  'allowSync',
-  'keepRunning',
-] as const
+export const FLAG_NAMES = ['enabled', 'allowExtensions', 'allowSettings', 'allowSync'] as const
 export type CreatedBy = 'agent' | 'panel'
 export interface ProfileRecord {
   /** Local capability-mode epoch; persisted with flags so failed registry writes cannot admit ABA. */
@@ -31,7 +24,6 @@ export interface ProfileRecord {
   allowExtensions: boolean
   allowSettings: boolean
   allowSync: boolean
-  keepRunning: boolean
   createdAt: string
   createdBy: CreatedBy
   description: string
@@ -149,7 +141,6 @@ export function createProfileStore(opts: {
           allowExtensions: p.allowExtensions === true,
           allowSettings: p.allowSettings === true,
           allowSync: p.allowSync === true,
-          keepRunning: p.keepRunning === true,
           createdAt: typeof p.createdAt === 'string' ? p.createdAt : '',
           createdBy: p.createdBy === 'panel' ? 'panel' : 'agent',
           description:
@@ -221,7 +212,6 @@ export function createProfileStore(opts: {
         allowExtensions: !temporary,
         allowSettings: false,
         allowSync: !temporary,
-        keepRunning: false,
         createdAt: now().toISOString(),
         createdBy,
         description,

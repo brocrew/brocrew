@@ -8,7 +8,7 @@ import { privateChild } from '../../../src/main/plugins/node-host-files'
 import { PluginSupervisorError, Hex } from '../../../src/main/plugins/supervisor/protocol'
 import { PersonChannel } from '../../../src/main/plugins/lifecycle/transport'
 import type { PluginLifecycleController } from './lifecycle-controller'
-import type { LifecycleWorkspace } from '../../../src/main/plugins/lifecycle/types'
+import type { LifecycleWorkspace } from '../plugin-delete-parent/types'
 import { ProjectionReceipt } from './state-format'
 
 const id = z.string().regex(/^[a-z][a-z0-9-]{0,63}$/)

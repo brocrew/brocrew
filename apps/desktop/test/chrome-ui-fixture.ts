@@ -28,6 +28,10 @@ export function chromeUiFixture(root = resolve(__dirname, '../../../plugins/chro
   ])
   for (const file of ['ui/index.html', 'ui/style.css', 'ui/app.js'])
     files.set(file, readFileSync(resolve(root, file)))
+  files.set(
+    'ui/settings-load-state.js',
+    readFileSync(resolve(root, '../shared/ui/settings-load-state.js')),
+  )
   manifest.platforms = [{ os: 'linux', cpu: 'x64' }]
   manifest.files = inventory(files)
   const fixture = packageFixture({ files, manifest })

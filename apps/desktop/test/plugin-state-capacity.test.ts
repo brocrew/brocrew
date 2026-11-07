@@ -203,10 +203,11 @@ describe.skipIf(process.platform === 'win32')('durable operation capacity', () =
     expect(restored.inspect().pending).toBeNull()
   })
   it('a stale-head conflict refusal leaves no reservation or activation behind', () => {
-    const { root, store, options } = fixture()
+    const { root, store } = fixture()
     install(store)
-    const disk = new PluginStateDisk(options)
-    try {
+    // The store's own writer: a state it read before its own later change is stale.
+    const disk = (store as unknown as { disk: PluginStateDisk }).disk
+    {
       const before = disk.load(),
         input = request(store)
       const operation = planOperation(before, input, {
@@ -223,8 +224,6 @@ describe.skipIf(process.platform === 'win32')('durable operation capacity', () =
       )
       expect(readdirSync(root, { recursive: true }).sort()).toEqual(files)
       expect(readdirSync(join(root, 'resolution-reservations'))).toEqual([])
-    } finally {
-      disk.close()
     }
   })
   it('reopen preserves every live reservation file and both outcome snapshots', () => {
@@ -240,7 +239,7 @@ describe.skipIf(process.platform === 'win32')('durable operation capacity', () =
     expect(readdirSync(root, { recursive: true }).sort()).toEqual(files)
     second.abort(input.operationId)
     expect(readdirSync(join(root, 'resolution-reservations'))).toEqual([])
-    expect(store.inspect().pending).toBeNull()
+    expect(second.inspect().pending).toBeNull()
   })
   it.each([true, false])(
     '4093 records admit prepare and %s resolution; 4095 refuse the next prepare before record4096',
@@ -376,14 +375,16 @@ describe.skipIf(process.platform === 'win32')('durable operation capacity', () =
     const budget = store.inspect().reservation,
       guard = readdirSync(join(root, 'lifecycle-guard')),
       activation = readdirSync(join(root, 'activations'))
+    store.close()
     for (let index = 0; index < 3; index++) {
       armed = true
       expect(() => reopen().complete(input.operationId)).toThrow()
-      expect(store.inspect().reservation).toEqual(budget)
+      expect(reopen().inspect().reservation).toEqual(budget)
       expect(readdirSync(join(root, 'lifecycle-guard'))).toEqual(guard)
       expect(readdirSync(join(root, 'activations'))).toEqual(activation)
     }
-    reopen().abort(input.operationId)
-    expect(store.inspect().pending).toBeNull()
+    const last = reopen()
+    last.abort(input.operationId)
+    expect(last.inspect().pending).toBeNull()
   })
 })

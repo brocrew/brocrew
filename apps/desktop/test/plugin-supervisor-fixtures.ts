@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { PluginSupervisor, type OwnerOptions } from '../src/main/plugins/supervisor/owner'
 import { PluginWorkspaceLease } from '../src/main/plugins/supervisor/client'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
+import { keepPluginRootPrivate } from '../src/main/plugins/private-files'
 
 export function deferred<T>() {
   let resolve!: (value: T) => void
@@ -32,6 +33,7 @@ export function supervisorFixtures() {
     const root = join(folder, 'p'),
       workspaceRoot = join(folder, 'w')
     await mkdir(workspaceRoot)
+    await keepPluginRootPrivate(root)
     const options = { root, workspaceRoot, generation: randomUUID(), build: 'fictional' }
     const start = async (extra: Partial<OwnerOptions> = {}) => {
       const owner = await PluginSupervisor.start({
@@ -43,7 +45,9 @@ export function supervisorFixtures() {
       owners.push(owner)
       return owner
     }
-    const attach = async (extra: Partial<typeof options> = {}) => {
+    const attach = async (
+      extra: Partial<Parameters<typeof PluginWorkspaceLease.attach>[0]> = {},
+    ) => {
       const lease = await PluginWorkspaceLease.attach({ ...options, ...extra })
       leases.push(lease)
       return lease

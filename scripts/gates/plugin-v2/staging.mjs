@@ -7,7 +7,7 @@ import { demand, readFile, hash, appSourceFor } from './contract.mjs'
 
 export async function stageSource(
   version,
-  { temp, repository, readPlan, observe, command, privateRoot, checkNormalPluginBuild, cleanup },
+  { temp, repository, observe, command, privateRoot, checkNormalPluginBuild, cleanup },
 ) {
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(temp, 'plugin-v2-'))),
     records = []
@@ -45,16 +45,22 @@ export async function stageSource(
       records,
       { cwd: repo },
     )
-    // Overlay only the frozen gate and normal-build guard; preserve app source and catalogue trees.
-    for (const f of readPlan().files) {
-      if (
-        !f.path.startsWith('scripts/gates/plugin-v2/') &&
-        f.path !== 'scripts/check-no-plugin-gate-inputs.mjs'
+    // Overlay the gate from the tested checkout while keeping the selected app source.
+    const files = (
+      await command(
+        'git',
+        ['ls-files', '-z', 'scripts/gates/plugin-v2', 'scripts/check-no-plugin-gate-inputs.mjs'],
+        root,
+        records,
+        { cwd: repository },
       )
-        continue
-      const to = path.join(repo, f.path)
+    )
+      .split('\0')
+      .filter(Boolean)
+    for (const file of files) {
+      const to = path.join(repo, file)
       fs.mkdirSync(path.dirname(to), { recursive: true, mode: 0o700 })
-      fs.writeFileSync(to, readFile(path.join(repository, f.path)), { mode: 0o600 })
+      fs.writeFileSync(to, readFile(path.join(repository, file)), { mode: 0o600 })
     }
     const source = (
       await command('git', ['rev-parse', 'HEAD'], root, records, { cwd: repo })

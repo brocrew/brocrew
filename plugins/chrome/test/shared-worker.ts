@@ -53,7 +53,7 @@ try {
     })
     process.stdout.write('migrated\n')
   } else if (command === 'flags') {
-    for (let i = 0; i < 5; i++) store.setFlags('fern', { enabled: true, keepRunning: true })
+    for (let i = 0; i < 5; i++) store.setFlags('fern', { enabled: true })
     process.stdout.write('updated\n')
   }
 } catch (e) {

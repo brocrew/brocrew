@@ -95,6 +95,7 @@ async function live(
   const f = await fixture({
     deny: (id) => consumer.bridge?.deny(id),
     toolsUnavailable: (id) => consumer.bridge?.toolsUnavailable?.(id) ?? false,
+    toolsCause: (id) => consumer.bridge?.toolsCause?.(id),
     onChromeHostExit: (runId) => consumer.bridge?.hostExited?.(runId),
   })
   if (firstExit || firstStop) {
@@ -472,16 +473,65 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       expect((await f.controller.status()).cards[0]).not.toHaveProperty('toolsUnavailable')
     },
   )
-  it('records binding failure as a closed refusal without downstream names or error text', async () => {
+  it('records binding failure once with its stage, cause and real error message', async () => {
     const f = await live()
     const log = vi.spyOn(console, 'warn').mockImplementation(() => {})
     f.binding.mockRejectedValueOnce(new Error('fictional-private-downstream-name'))
     try {
       expect(await f.bridge.routes(lease(), request(f.local.sink.workspaceId))).toEqual([])
       expect(log.mock.calls).toEqual([['Some plugin tools were refused.']])
+      const failures = f.diagnostic.mock.calls.filter(([, reason]) =>
+        ['binding-failed', 'route-open-failed'].includes(reason),
+      )
+      expect(failures).toHaveLength(2)
+      expect(failures[0]![2]).toMatchObject({
+        stage: 'route-binding',
+        cause: 'unknown',
+        correlation: expect.stringMatching(/^[a-f0-9-]{36}$/),
+        reason: 'fictional-private-downstream-name',
+      })
+      expect(failures[1]![2]).toEqual(failures[0]![2])
+      // The same fixed stage and cause reach the card, and from there the agent's launch line.
+      expect(f.bridge.toolsCause(failures[0]![0])).toBe('route-binding: unknown')
     } finally {
       log.mockRestore()
     }
+  })
+  it('uninstall during a call that is still being cancelled completes, and the call ends with a plain refusal', async () => {
+    const f = await live()
+    const original = await f.binding()
+    // A call whose server never answers and never proves it has gone quiet.
+    f.binding.mockResolvedValueOnce({
+      ...original,
+      server: {
+        ...original.server,
+        tool() {
+          f.call()
+          return {
+            result: new Promise<never>(() => {}),
+            quiescent: new Promise<void>(() => {}),
+            cancel() {},
+          }
+        },
+      },
+    })
+    const owner = lease(),
+      req = request(f.local.sink.workspaceId)
+    const [route] = await f.bridge.routes(owner, req)
+    const client = await connected(route!)
+    const pending = client.callTool({ name: 'echo', arguments: {} }).then(
+      (value) => ({ value }),
+      (error: unknown) => ({ error }),
+    )
+    await vi.waitFor(() => expect(f.call).toHaveBeenCalledOnce())
+    // The bridge is still winding that call down; its revoke answer is a notice, not a gate.
+    await f.controller.uninstall(f.person, 'chrome')
+    expect(f.controller.agentAttachments(f.local.sink.workspaceId)).toEqual([])
+    const outcome = await pending
+    // Never a success, never a hang: either a refused call or an error result.
+    if ('value' in outcome) expect(outcome.value).toMatchObject({ isError: true })
+    else expect(outcome.error).toBeInstanceOf(Error)
+    expect(await f.bridge.routes(owner, request(f.local.sink.workspaceId))).toEqual([])
   })
   it('reports an unavailable broker on the Running card, withholds dead routes and never overlaps a failed proof', async () => {
     const f = await live()
@@ -514,19 +564,21 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       await vi.waitFor(() => expect(f.call).toHaveBeenCalledOnce())
       rejectProof(new Error('fictional-private-proof-error'))
       expect(await pending).toMatchObject({ isError: true })
+      // The agents' plugin line names why: tools unavailable: proof-rejected.
       expect((await f.controller.status()).cards[0]).toMatchObject({
         state: 'Running',
         toolsUnavailable: true,
+        toolsCause: 'proof-rejected',
       })
       expect(await f.bridge.routes(owner, req)).toEqual([])
       expect(await f.bridge.routes(owner, request(f.local.sink.workspaceId))).toEqual([])
-      // A new lease must also refuse when its reconciliation cannot prove the old work quiet.
-      await expect(f.bridge.routes(lease(), request(f.local.sink.workspaceId))).rejects.toThrow()
+      // A new lease gets no route either while the old work is not proven quiet.
+      expect(await f.bridge.routes(lease(), request(f.local.sink.workspaceId))).toEqual([])
       expect(f.binding).toHaveBeenCalledTimes(2) // One fixture lookup, one broker. No replacement.
       expect(f.call).toHaveBeenCalledOnce()
     } finally {
-      // An intentionally rejected remote proof must remain a negative shutdown receipt.
-      await expect(close()).rejects.toThrow()
+      // Detach closes this consumer; it makes no claim about the host's exit.
+      await expect(close()).resolves.toBeUndefined()
     }
   })
   it('replaces a failed broker only after positive completion and rotates both live callers', async () => {
@@ -598,7 +650,6 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
     const restart = (runId: string, stopped: () => void) =>
       f.controller.restartChromeTools(runId, stopped)
     const bridgeClose = closes.pop()!
-    let negative = false
     try {
       const original = await f.binding()
       let rejectProof!: (error: Error) => void
@@ -629,7 +680,6 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
         await vi.waitFor(() => expect(f.call).toHaveBeenCalledTimes(attempt))
         rejectProof(new Error('fictional private failure'))
         expect(await pending).toMatchObject({ isError: true })
-        if (attempt === 4) negative = true
         if (attempt <= 3) await vi.waitFor(() => expect(f.starts()).toBe(attempt + 1))
         else
           await vi.waitFor(() =>
@@ -649,8 +699,11 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       expect(f.starts()).toBe(4)
       expect(f.diagnostic).toHaveBeenCalledWith('chrome', 'recovery-host-unproven')
     } finally {
-      if (negative) await expect(bridgeClose()).rejects.toThrow()
-      else await bridgeClose()
+      await expect(bridgeClose()).resolves.toBeUndefined()
+      // A detached consumer cannot turn the failed physical stop into a clean exit.
+      expect(f.controller.cleanForShutdown()).toBe(false)
+      expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
+      expect(f.starts()).toBe(4)
     }
   })
   it('reports failed binding, then clears the health warning only after a usable route exists', async () => {
@@ -792,14 +845,17 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
         })
         expect(f.binding).toHaveBeenCalledTimes(2)
         expect(f.call).toHaveBeenCalledOnce()
-        expect(f.diagnostic).toHaveBeenCalledWith('chrome', 'route-stale')
+        expect(f.diagnostic).toHaveBeenCalledWith(
+          'chrome',
+          'route-stale',
+          expect.objectContaining({ correlation: expect.any(String) }),
+        )
         expect((await f.controller.status()).cards[0]).toMatchObject({ state: 'Running' })
         expect((await f.controller.status()).cards[0]).not.toHaveProperty('toolsUnavailable')
       } finally {
         log.mockRestore()
-        // The revoked consumer's intentionally failed binding remains a negative cleanup receipt.
-        // A truthful warning must not clear that separate safety barrier.
-        if (close) await expect(close()).rejects.toThrow()
+        // The stale binding never held a host exit witness; detach is only its notice.
+        if (close) await expect(close()).resolves.toBeUndefined()
       }
     },
   )
@@ -1033,46 +1089,17 @@ describe.skipIf(process.platform === 'win32')('supervisor socket agent admission
     await expect(peer.agentRoutes(input)).rejects.toThrow('Plugin unavailable')
   })
 })
-describe.skipIf(process.platform === 'win32')('shared lifecycle consumer reconciliation', () => {
-  it('a second consumer clears stale bindings and gets the current projection before attach returns', async () => {
-    const f = await live()
-    const events: string[] = []
-    const second = await f.controller.attach({
-      workspaceId: f.local.sink.workspaceId,
-      async revoke() {
-        events.push('clear')
-        return true
-      },
-      async reconcile(change) {
-        events.push(change.receipt ? 'bind' : 'empty')
-      },
-      async applied() {
-        events.push('applied')
-      },
-    })
-    expect(events).toEqual(['clear', 'bind', 'applied'])
-    await f.controller.detach(second)
-  })
-})
-
 describe.skipIf(process.platform === 'win32')('temporary attachment loss', () => {
   it('a recovered logical incarnation gets a fresh capability after its former route was revoked', async () => {
     const f = await live(),
       owner = lease(),
       req = request(f.local.sink.workspaceId)
     const [before] = await f.bridge.routes(owner, req)
-    const workspaces = (
-      f.controller as unknown as {
-        workspaces: Map<unknown, { sink: { workspaceId: string }; receipts: Map<string, unknown> }>
-      }
-    ).workspaces
-    const workspace = [...workspaces.values()].find(
-      (one) => one.sink.workspaceId === req.workspaceId,
-    )!
-    const receipt = workspace.receipts.get('chrome')
-    workspace.receipts.delete('chrome')
+    // A mutation's block takes the plugin away for a moment; lifting it brings it back.
+    const blocks = (f.controller as unknown as { blocks: Map<string, symbol> }).blocks
+    blocks.set('chrome', Symbol())
     expect(await f.bridge.routes(owner, req)).toEqual([])
-    workspace.receipts.set('chrome', receipt)
+    blocks.delete('chrome')
     const [after] = await f.bridge.routes(owner, req)
     expect(after!.capability).not.toBe(before!.capability)
     const client = await connected(after!)

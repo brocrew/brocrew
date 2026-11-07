@@ -14,7 +14,7 @@ import { liveGroupMembers } from '../resources/plugin-host/process-groups.mjs'
 import { verifyChromeUiArchive } from './chrome-ui-archive'
 import { fictionalPublicKey, signed } from '../test/plugin-package-fixtures'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
-import type { WorkspaceProjection } from '../src/main/plugins/lifecycle/types'
+import type { PersonProjection } from '../src/main/plugins/lifecycle/types'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
 
 async function wait<T>(read: () => Promise<T>): Promise<T> {
@@ -87,7 +87,7 @@ export async function proof(config: { root: string; resources: string; archive: 
   let cleanupSafe = false
   const workspaceId = randomUUID(),
     events: string[] = []
-  const projection: WorkspaceProjection = {
+  const projection: PersonProjection = {
     workspaceId,
     async revoke() {
       events.push('revoke')
@@ -206,7 +206,7 @@ export async function proof(config: { root: string; resources: string; archive: 
     const state = GlobalPluginState.open({ root: join(root, 'state'), workspaceRoots: [workspace] })
     try {
       assert.equal(state.inspect().guards[0]?.phase, 'removed')
-      assert.deepEqual(state.projections(workspaceId), [])
+      assert.deepEqual(state.exportActivation().entries, [])
     } finally {
       state.close()
     }

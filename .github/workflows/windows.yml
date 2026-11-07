@@ -308,7 +308,7 @@ jobs:
       - name: Plugin qualification source controls
         timeout-minutes: 2
         run: node --test --test-reporter=tap --test-concurrency=1 scripts/gates/plugin-v2/controls.test.mjs scripts/gates/plugin-v2/native-dependency.test.mjs scripts/gates/plugin-v2/reload-controls.test.mjs scripts/gates/plugin-v2/source-binding.test.mjs
-      - name: Stage the observed ref-selected source plan
+      - name: Stage the tested source SHA
         if: ${{ !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-') }}
         id: stage
         shell: bash
@@ -316,7 +316,7 @@ jobs:
           test "$RUNNER_ENVIRONMENT" = github-hosted
           control=$(node scripts/gates/plugin-v2/owner.mjs stage "${{ matrix.app_version }}")
           echo "control=$control" >> "$GITHUB_OUTPUT"
-      - name: Install the frozen app source dependencies in scratch
+      - name: Install the selected app dependencies in scratch
         if: ${{ !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-') }}
         shell: bash
         env:
@@ -357,7 +357,7 @@ jobs:
           path: ${{ steps.reload-stage.outputs.control }}/reload-summary.json
           if-no-files-found: error
           retention-days: 7
-      - name: Keep the closed required evidence
+      - name: Keep the product check summary
         if: ${{ (always() && steps.stage.outputs.control != '') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-') }}
         uses: actions/upload-artifact@v4
         with:

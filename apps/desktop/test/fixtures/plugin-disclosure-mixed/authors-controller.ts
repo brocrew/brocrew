@@ -21,7 +21,7 @@ import type {
   ProjectionReceipt,
   Installation,
   PluginReleasePin,
-} from '../../../src/main/plugins/lifecycle/types'
+} from '../plugin-delete-parent/types'
 import type { PluginCard, PluginRemovalOutcome } from '../../../src/shared/plugin-settings'
 
 const refuse = (): never => {

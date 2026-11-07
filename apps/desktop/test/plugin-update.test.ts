@@ -86,7 +86,7 @@ describe.skipIf(process.platform === 'win32')(
         enabled: true,
       })
       const other = projection(f.events)
-      await f.controller.attach(other.sink)
+      const otherHandle = await f.controller.attach(other.sink)
       await f.offer()
       expect((await f.controller.status()).cards[0]).toMatchObject({
         installedVersion: '0.1.0',
@@ -113,16 +113,14 @@ describe.skipIf(process.platform === 'win32')(
       expect(f.events).not.toContain('remove-code')
       expect(fetch).not.toHaveBeenCalled()
       expect(f.controller.admitted(f.handle, 'whatsapp', before.installId)).toBe(true)
-      expect(f.state.projections(other.sink.workspaceId)[0]).toMatchObject({
-        incarnation: after.incarnation,
-      })
+      expect(f.controller.admitted(otherHandle, 'whatsapp', before.installId)).toBe(true)
       expect((await f.controller.status()).cards[0]?.updateVersion).toBeUndefined()
       const starts = f.starts()
       await f.controller.update(f.handle, 'whatsapp', operationId)
       expect(f.starts()).toBe(starts)
       await expect(f.controller.update(f.handle, 'whatsapp')).rejects.toThrow()
     })
-    it.each(['staged', 'prepared', 'ready', 'receipted', 'activated'] as const)(
+    it.each(['staged', 'prepared', 'ready', 'activated'] as const)(
       'recovers after %s to one complete version without touching login or settings',
       async (point) => {
         const f = await setup()
@@ -156,9 +154,6 @@ describe.skipIf(process.platform === 'win32')(
           configRevision: before.configRevision,
           release: { version: point === 'staged' ? '0.1.0' : '0.1.3' },
         })
-        expect(state.matchesProjection(local.rows.get('whatsapp'), local.sink.workspaceId)).toBe(
-          true,
-        )
         expect(recovered.admitted(handle, 'whatsapp', before.installId)).toBe(true)
         expect(await readFile(join(f.data, 'login'), 'utf8')).toBe('fictional-paired-phone')
         expect(await readFile(join(f.data, 'settings'), 'utf8')).toBe('{"fictionalGroup":true}')

@@ -17,7 +17,7 @@ afterEach(async () => {
 })
 
 it.each(['timeout', 'Stop', 'interrupt-and-send'] as const)(
-  'a never-settling refresh preserves delivery intent after %s and confirmed exit',
+  'a never-settling refresh keeps the live handle and delivers after %s without a resend',
   async (cause) => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'fictional-refused-refresh-')))
     const db = openDatabase(join(root, 'fictional.sqlite'))
@@ -126,13 +126,6 @@ it.each(['timeout', 'Stop', 'interrupt-and-send'] as const)(
             : host.sendInterrupting(sessionId, 'the person’s fictional replacement words', sink)
         void stopping.catch(() => {})
       }
-      await vi.waitFor(() => expect(oldHandle.close).toHaveBeenCalledOnce(), {
-        timeout: 2500,
-        interval: 5,
-      })
-      expect(resumed).not.toHaveBeenCalled()
-      expect(sent).not.toHaveBeenCalled()
-      releaseExit()
       await stopping
       const said = await Promise.race([
         result,
@@ -140,20 +133,22 @@ it.each(['timeout', 'Stop', 'interrupt-and-send'] as const)(
           timer = setTimeout(() => resolve('still pending'), 2500)
         }),
       ])
-      if (cause === 'timeout') expect(said).toBe('sent')
-      else expect(said).toBe("Your message wasn't sent. Press Send to try again.")
-      expect(sent).not.toHaveBeenCalled()
-      if (cause === 'Stop') {
-        expect(resumed).not.toHaveBeenCalled()
-        expect(resent).not.toHaveBeenCalled()
+      // The plugin refresh never retires the usable handle or starts a second one.
+      expect(oldHandle.close).not.toHaveBeenCalled()
+      expect(resumed).not.toHaveBeenCalled()
+      expect(resent).not.toHaveBeenCalled()
+      if (cause === 'timeout') {
+        expect(said).toBe('sent')
+        expect(sent).toHaveBeenCalledOnce()
+        expect(sent.mock.calls[0]?.[0]).toContain('the person’s fictional original words')
       } else {
-        expect(resumed).toHaveBeenCalledOnce()
-        expect(resent).toHaveBeenCalledOnce()
-        expect(resent.mock.calls[0]?.[0]).toContain(
-          cause === 'timeout'
-            ? 'the person’s fictional original words'
-            : 'the person’s fictional replacement words',
-        )
+        // Stop keeps its meaning: the original words are not sent.
+        expect(said).toBe("Your message wasn't sent. Press Send to try again.")
+        if (cause === 'Stop') expect(sent).not.toHaveBeenCalled()
+        else {
+          await vi.waitFor(() => expect(sent).toHaveBeenCalledOnce())
+          expect(sent.mock.calls[0]?.[0]).toContain('the person’s fictional replacement words')
+        }
       }
       await new Promise((resolve) => setTimeout(resolve, 0))
       expect(

@@ -124,13 +124,6 @@
       "destinationSha256": "02d7deeeaafcf6106cdfc90c189af35c9fae53c106429254030214f91d98ffd5"
     },
     {
-      "source": "agent-chrome/src/restoreSession.ts",
-      "destination": "plugins/chrome/src/restoreSession.ts",
-      "sourceSha256": "e908d8ff7e22867a7bf74c89b8021492c4e85e947d88eee23654638fc3fa0458",
-      "changes": "relative shared imports; comments and client references removed; private configuration adjustments listed in README; current restore eligibility checked inside queue and after preparation",
-      "destinationSha256": "1dbc2a24e8709e23cbc13920f50213c73bec42412b5da68a940357aac2504dcc"
-    },
-    {
       "source": "agent-chrome/src/settled.ts",
       "destination": "plugins/chrome/src/settled.ts",
       "sourceSha256": "3da32d47b9eed00f0f2647698b2a64635426856679be964bbcc6a2ee07d802ee",
