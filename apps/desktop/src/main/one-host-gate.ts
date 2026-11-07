@@ -1,12 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import {
-  lstatSync,
-  mkdirSync,
-  realpathSync,
-  statSync,
-  unlinkSync,
-  type Stats,
-} from 'node:fs'
+import { lstatSync, mkdirSync, realpathSync, statSync, unlinkSync, type Stats } from 'node:fs'
 import { connect, createServer, type Server } from 'node:net'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'

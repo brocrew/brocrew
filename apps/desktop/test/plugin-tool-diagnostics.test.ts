@@ -1,12 +1,5 @@
 import { afterEach, expect, it } from 'vitest'
-import {
-  mkdtempSync,
-  chmodSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-  lstatSync,
-} from 'node:fs'
+import { mkdtempSync, chmodSync, readFileSync, rmSync, writeFileSync, lstatSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { recordPluginToolFailure } from '../src/main/plugins/tool-diagnostics'
