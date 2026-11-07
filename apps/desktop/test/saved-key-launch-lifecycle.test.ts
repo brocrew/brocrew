@@ -374,7 +374,9 @@ it('does not enter home preparation for an already-canceled owner', async () => 
   const fixture = codexPreparation(true)
   const abort = new AbortController()
   abort.abort()
-  const outcome = fixture.strategy.prepare(DEFAULT_PROFILE_ID, abort.signal).catch((error: unknown) => error)
+  const outcome = fixture.strategy
+    .prepare(DEFAULT_PROFILE_ID, abort.signal)
+    .catch((error: unknown) => error)
   try {
     await vi.advanceTimersByTimeAsync(0)
     expect(fixture.open).not.toHaveBeenCalled()
@@ -413,8 +415,12 @@ it('lets an uncanceled home owner receive the same native read after another own
   const fixture = codexPreparation(true)
   const abort = new AbortController()
   let firstResult: unknown = 'pending'
-  const first = fixture.strategy.prepare(DEFAULT_PROFILE_ID, abort.signal).catch((error: unknown) => error)
-  void first.then((value) => { firstResult = value })
+  const first = fixture.strategy
+    .prepare(DEFAULT_PROFILE_ID, abort.signal)
+    .catch((error: unknown) => error)
+  void first.then((value) => {
+    firstResult = value
+  })
   const second = fixture.strategy.prepare(DEFAULT_PROFILE_ID)
   try {
     await vi.advanceTimersByTimeAsync(0)
@@ -436,35 +442,46 @@ it('lets an uncanceled home owner receive the same native read after another own
   }
 })
 
-it.each(['current-stamp', 'no-key'] as const)('cancellation prevents the %s continuation', async (kind) => {
-  vi.useFakeTimers()
-  const home = mkdtempSync(join(tmpdir(), 'fictional-cancel-before-stamp-'))
-  const read = deferred<{ key: string; setAt: number } | null>()
-  const change = vi.fn(async () => ({ ok: true as const, authMethod: 'apikey' }))
-  writeFileSync(join(home, 'auth.json'), '{}', { mode: 0o600 })
-  writeFileSync(join(home, 'brobot-api-key-login.json'), '{"setAt":1}\n', { mode: 0o600 })
-  const abort = new AbortController()
-  let result: unknown = 'pending'
-  const outcome = bringTheCodexKeyTo(home, { current: () => read.promise, change }, abort.signal).then(
-    (value) => { result = value },
-    (error: unknown) => { result = error },
-  )
-  try {
-    await vi.advanceTimersByTimeAsync(0)
-    abort.abort()
-    await vi.advanceTimersByTimeAsync(0)
-    expect(result).toBeInstanceOf(Error)
-    read.resolve(kind === 'no-key' ? null : { key: 'fictional-key', setAt: 1 })
-    await vi.advanceTimersByTimeAsync(0)
-    await outcome
-    expect(change).not.toHaveBeenCalled()
-    expect(existsSync(join(home, 'brobot-api-key-login.json'))).toBe(true)
-  } finally {
-    read.resolve(null)
-    await outcome
-    rmSync(home, { recursive: true, force: true })
-  }
-})
+it.each(['current-stamp', 'no-key'] as const)(
+  'cancellation prevents the %s continuation',
+  async (kind) => {
+    vi.useFakeTimers()
+    const home = mkdtempSync(join(tmpdir(), 'fictional-cancel-before-stamp-'))
+    const read = deferred<{ key: string; setAt: number } | null>()
+    const change = vi.fn(async () => ({ ok: true as const, authMethod: 'apikey' }))
+    writeFileSync(join(home, 'auth.json'), '{}', { mode: 0o600 })
+    writeFileSync(join(home, 'brobot-api-key-login.json'), '{"setAt":1}\n', { mode: 0o600 })
+    const abort = new AbortController()
+    let result: unknown = 'pending'
+    const outcome = bringTheCodexKeyTo(
+      home,
+      { current: () => read.promise, change },
+      abort.signal,
+    ).then(
+      (value) => {
+        result = value
+      },
+      (error: unknown) => {
+        result = error
+      },
+    )
+    try {
+      await vi.advanceTimersByTimeAsync(0)
+      abort.abort()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(result).toBeInstanceOf(Error)
+      read.resolve(kind === 'no-key' ? null : { key: 'fictional-key', setAt: 1 })
+      await vi.advanceTimersByTimeAsync(0)
+      await outcome
+      expect(change).not.toHaveBeenCalled()
+      expect(existsSync(join(home, 'brobot-api-key-login.json'))).toBe(true)
+    } finally {
+      read.resolve(null)
+      await outcome
+      rmSync(home, { recursive: true, force: true })
+    }
+  },
+)
 
 it('does not stamp a key-change result that arrives after its owner canceled', async () => {
   vi.useFakeTimers()
@@ -472,9 +489,14 @@ it('does not stamp a key-change result that arrives after its owner canceled', a
   const changed = deferred<{ ok: true; authMethod: string }>()
   const change = vi.fn(() => changed.promise)
   const abort = new AbortController()
-  const outcome = bringTheCodexKeyTo(home, {
-    current: () => ({ key: 'fictional-key', setAt: 1 }), change,
-  }, abort.signal).catch((error: unknown) => error)
+  const outcome = bringTheCodexKeyTo(
+    home,
+    {
+      current: () => ({ key: 'fictional-key', setAt: 1 }),
+      change,
+    },
+    abort.signal,
+  ).catch((error: unknown) => error)
   try {
     await vi.advanceTimersByTimeAsync(0)
     expect(change).toHaveBeenCalledTimes(1)
