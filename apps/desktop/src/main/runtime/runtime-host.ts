@@ -24492,7 +24492,11 @@ export class RuntimeHost implements LiveHost {
       try {
         if (this.deps.beforeProviderLaunch) await this.deps.beforeProviderLaunch()
         preparation.signal.throwIfAborted()
-        providerHome = await this.deps.prepareProviderHome(provider, profileId)
+        providerHome = await untilCancelled(
+          Promise.resolve().then(() => this.deps.prepareProviderHome(provider, profileId)),
+          preparation.signal,
+          'preparing the model catalogue',
+        )
         this.assertConnectionUnchanged(provider, connectionRevision)
       } finally {
         this.launches.finish(preparation)
