@@ -411,6 +411,48 @@ describe('automatic initial service recovery', () => {
       await f.supervisor.quit()
     }
   })
+  it('counts backoff from a failed attempt completing, and close waits for an active attempt', async () => {
+    const f = await failingStart()
+    let fail!: (error: Error) => void
+    let admit: ((lease: never) => void) | undefined
+    f.attach.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          fail = reject
+        }),
+    )
+    try {
+      await vi.advanceTimersByTimeAsync(1000)
+      await vi.waitFor(() => expect(f.attach).toHaveBeenCalledTimes(2))
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(f.attach).toHaveBeenCalledTimes(2)
+      fail(new Error('held startup failed'))
+      await f.controller.ready!()
+      await f.advance(1999)
+      expect(f.attach).toHaveBeenCalledTimes(2)
+      await f.advance(1)
+      expect(f.attach).toHaveBeenCalledTimes(3)
+      f.attach.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            admit = resolve
+          }),
+      )
+      await vi.advanceTimersByTimeAsync(4000)
+      await vi.waitFor(() => expect(f.attach).toHaveBeenCalledTimes(4))
+      const closing = f.controller.close()
+      admit!(f.lease as never)
+      await closing
+      await f.advance(60_000)
+      expect(f.attach).toHaveBeenCalledTimes(4)
+      expect(seams.connect).not.toHaveBeenCalled()
+    } finally {
+      fail?.(new Error('release held failure'))
+      admit?.(f.lease as never)
+      await f.controller.close()
+      await f.supervisor.quit()
+    }
+  })
   it('Try again during blocked cleanup preserves autonomous recovery', async () => {
     const f = await setup()
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
