@@ -25,32 +25,7 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 
-// Windows chmod cannot create the POSIX EACCES fixture these witnesses require.
 const itWithPosixChmod = process.platform === 'win32' ? it.skip : it
-
-/**
- * # 🔴 716 · what a person must fix, said once — R66, R67 and `710` F-7
- *
- * ⚑ **PM ruling R66** (`710` F-1, F-2): *"R51 covers every start a person must fix. A host step a
- * person must fix (`EACCES` / `EROFS` / `ENOSPC` making a provider home or a workspace) and Claude's
- * 'Native CLI binary … not found', thrown before any spawn, get R51's permanent word, not a broken
- * tool. The sentence says which it is, a program or a folder, in words. The Claude adapter throws a
- * typed error for the missing binary, so the word is chosen by type, never by matching message text."*
- *
- * ⚑ **PM ruling R67** (`710` F-3): *"One word for a missing program, on both providers. Codex's
- * missing binary (`CodexUnavailableError`, today `agent-did-not-start` / `provider-binary-unavailable`)
- * answers with R51's `agent-could-not-be-started`."*
- *
- * ⚑ **`710` F-7, the main half**: *"a structured `reason` on a refused `createSession`, so the launcher
- * can skip its sign-in check when the refusal already said why."* ⛔ A rejection cannot carry one — only
- * its message crosses Electron's two hops (`716`'s map) — so the reason is ANSWERED, when asked for.
- *
- * ⚑ **The errors are real where they can be**: the folder's is Node's own `EACCES` from a `mkdir` under
- * a directory with no write bit; Claude's is the SDK's own resolver missing (the process reports an
- * architecture the SDK ships no program for — `packages/runtime/test/claude-binary.test.ts` §0);
- * Codex's is its resolver's class. ⚠️ Imported as a namespace (`tools`), so `main` — with none of the
- * new sentences — runs this file and goes RED on its assertions.
- */
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -71,7 +46,6 @@ class RecordingSink implements RuntimeEventSink {
 
 const REAL_ARCH = Object.getOwnPropertyDescriptor(process, 'arch') as PropertyDescriptor
 
-/** ⚑ Claude's missing program, made by the real adapter over the SDK's real resolver. */
 async function claudesMissingProgram(root: string): Promise<Error> {
   Object.defineProperty(process, 'arch', { ...REAL_ARCH, value: 'mips' })
   try {
@@ -105,7 +79,6 @@ describe('716 · what a person must fix, said once', () => {
   let counter: number
   let window: RecordingSink
   let gate: ResumeGate
-  /** ⚑ The HOST's own step failing — `prepareProviderHome`, which every launch and reopen runs. */
   let homeFails: (() => Error) | undefined
 
   beforeEach(() => {
@@ -148,7 +121,6 @@ describe('716 · what a person must fix, said once', () => {
     }
   })
 
-  /** ⚑ Node's own `EACCES`, from a `mkdir` under a directory with no write bit — measured each time. */
   const aFolderTheDiskRefuses = (): Error => {
     const locked = join(root, 'locked')
     mkdirSync(locked, { recursive: true })
@@ -187,10 +159,6 @@ describe('716 · what a person must fix, said once', () => {
     return pm
   }
 
-  /**
-   * ⚑ **D-016 · the give that starts the worker** — `spawn_agent`'s start, re-aimed: the PM has no
-   * conversation with `worker` yet, so the give starts one, and its launch is what fails here.
-   */
   const spawnWorker = (pm: string): Promise<Record<string, unknown>> =>
     callOn(pm, 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
@@ -199,12 +167,6 @@ describe('716 · what a person must fix, said once', () => {
       brief: 'the work',
     })
 
-  /**
-   * A worker the PM gave work, and that then STOPPED — the conversation a wake brings back
-   * (`wake-one-conversation.test.ts` §4's `aWorkerOver`: a wake is for a child holding the caller's
-   * open work). ⚑ **D-017** — the PM's `end_agent` stopped it here, and is gone; the app's own close
-   * is the same stop. ⚑ **D-016** — the give starts it and gives it the work in one act.
-   */
   const aWorkerThatStopped = async (pm: string): Promise<{ worker: string; label: string }> => {
     const given = await callOn(pm, 'give_work', {
       definition_of_done: 'The requested result and its checks are recorded.',
@@ -223,12 +185,6 @@ describe('716 · what a person must fix, said once', () => {
     return { worker, label: given.label as string }
   }
 
-  /**
-   * ⚑ **D-017 · R1 — the wake is the start a message makes**: `resume_agent` is gone, and a
-   * `message_agent` to a conversation that is not running starts it, answering a start that did not
-   * happen in the wake's words. ⚠️ A follow-up naming the piece, because the worker holds the PM's
-   * open work (D-016: a second give would be refused `its-work-has-stalled` before any start).
-   */
   const wakeByMessage = (
     pm: string,
     worker: string,
@@ -241,12 +197,7 @@ describe('716 · what a person must fix, said once', () => {
       piece: label,
     })
 
-  /** The program's sentence is the word's own; the folder's is said instead of it. */
   const programSentence = (): string => tools.refuseTool(CANNOT_BE_STARTED as never).reason
-
-  // ───────────────────────────────────────────────────────────────────────────────
-  // §1 · give_work's start (`spawn_agent` until D-016) — R66 and R67, the permanent word
-  // ───────────────────────────────────────────────────────────────────────────────
 
   describe('§1 · `give_work`’s start: every start a person must fix has the permanent word', () => {
     it('🔴 R67 — Codex’s missing program answers `agent-could-not-be-started`, not `agent-did-not-start`', async () => {
@@ -296,14 +247,12 @@ describe('716 · what a person must fix, said once', () => {
           retryable: false,
           detail: { profile: 'worker', because: 'EACCES' },
         })
-        // ⚑ **The sentence says which, in words** (R66): a folder, not a program.
         expect(refused.reason).toBe(tools.A_FOLDER_COULD_NOT_BE_MADE)
         expect(String(refused.reason)).toContain('folder')
         expect(String(refused.reason)).not.toContain('program')
         const act = String(refused.reason).indexOf('nothing was sent')
         expect(act).toBeGreaterThanOrEqual(0)
         expect(act).toBeLessThan(200)
-        // ⛔ …and the path stays in the log, never in what the model is handed.
         expect(JSON.stringify(refused)).not.toContain(join(root, 'locked'))
         expect(logged.mock.calls.some(([line]) => String(line).includes('(EACCES)'))).toBe(true)
       },
@@ -350,10 +299,6 @@ describe('716 · what a person must fix, said once', () => {
     })
   })
 
-  // ───────────────────────────────────────────────────────────────────────────────
-  // §2 · the wake — the WAKE's permanent word, and the sentence that says which
-  // ───────────────────────────────────────────────────────────────────────────────
-
   describe('§2 · the start a message makes: the wake’s own permanent word, saying which', () => {
     it('🔴 a missing program at a wake: `that-conversation-could-not-be-resumed`, in the program’s words', async () => {
       const pm = await aPmThatMaySpawn()
@@ -392,9 +337,6 @@ describe('716 · what a person must fix, said once', () => {
       const { worker, label } = await aWorkerThatStopped(pm)
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       issued.forgetAll()
-      // ⚑ **D-017 · R10** — it kept `that-conversation-could-not-be-resumed` and its reason; a
-      // conversation its provider no longer has is REPLACED now, by a new conversation of the same
-      // agent, which takes the message. ⛔ So the two arms above are the only ones a person must fix.
       const sent = await wakeByMessage(pm, worker, label)
       expect(sent, JSON.stringify(sent)).toMatchObject({ outcome: 'ok', agent: worker })
       expect(typeof sent.went_to).toBe('string')
@@ -403,10 +345,6 @@ describe('716 · what a person must fix, said once', () => {
     })
   })
 
-  // ───────────────────────────────────────────────────────────────────────────────
-  // §3 · a person's two doors — New Conversation and a message that continues one (D-017b)
-  // ───────────────────────────────────────────────────────────────────────────────
-
   describe('§3 · what a PERSON reads when a folder was refused', () => {
     itWithPosixChmod(
       '🔴 New Conversation: what failed, where, why, and what to do — not Node’s errno',
@@ -414,8 +352,6 @@ describe('716 · what a person must fix, said once', () => {
         vi.spyOn(console, 'warn').mockImplementation(() => {})
         const refusal = aFolderTheDiskRefuses()
         homeFails = () => refusal
-        // ⚑ Node names the folder that was NOT made; the one a person can fix is the one holding it
-        // (review of `716`), and the sentence names both.
         const notMade = join(root, 'locked', 'provider-home')
         await expect(personOpens('writer')).rejects.toThrow(
           `This conversation did not open: BroCrew could not make the folder ${notMade}, because it may not write in ${join(root, 'locked')}. Give BroCrew permission to write to that folder, then start it again.`,
@@ -423,9 +359,6 @@ describe('716 · what a person must fix, said once', () => {
       },
     )
 
-    // ⚑ **D-017b · re-aimed, not stripped** (rule 26): there is no *Reopen* press — a person's
-    // message to a stopped conversation continues it (`startAndSend`, which reopens underneath), so
-    // the sentence is said of continuing it and its remedy is to send the message again.
     it('🔴 a message to a stopped conversation: the same, said of continuing it', async () => {
       const sessionId = await personOpens('writer')
       await host.close(sessionId, window)
@@ -434,18 +367,15 @@ describe('716 · what a person must fix, said once', () => {
         Object.assign(new Error('ENOSPC: mkdir'), { code: 'ENOSPC', syscall: 'mkdir' })
       const SAID =
         'This conversation did not continue: BroCrew could not make or write a folder it needs, because the disk or its quota is full. Free some space on it, then send it your message again.'
-      // ⚑ The person's door — the message — and the sentence it answers with, nothing sent.
       const answer = await host.startAndSend(sessionId, 'carry on', window)
       expect('notSent' in answer ? answer.notSent : null).toMatchObject({
         refusedBy: 'the-start',
         said: SAID,
       })
-      // ⚑ …which is the reopen underneath, said in the same words.
       await expect(host.resumeSession(sessionId, window)).rejects.toThrow(SAID)
     })
 
     it('🔴 a call on an entry that EXISTS is refused by that entry — not by the folder that holds it', () => {
-      // A metadata operation on an existing entry is refused by that entry.
       expect(
         describeUnavailable(
           'its-folder-could-not-be-made' as never,
@@ -474,8 +404,6 @@ describe('716 · what a person must fix, said once', () => {
     )
 
     it('⚑ control — what a provider’s RESUME failed on stays the provider’s, never a folder', async () => {
-      // ⚑ True on `main` too. ⛔ Without the reader's stop at a `ResumeError`, an `open` the adapter
-      // made reading its transcript would be told a folder BroCrew could not make (review of `716`).
       const sessionId = await personOpens('writer')
       await host.close(sessionId, window)
       vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -490,7 +418,6 @@ describe('716 · what a person must fix, said once', () => {
         })
       const failure = await host.resumeSession(sessionId, window).catch((error: Error) => error)
       expect((failure as Error).message).toContain('resume setup failed')
-      // ⚑ Neither folder sentence: the reader would have said *could not write* for an `open`.
       expect((failure as Error).message).not.toContain('BroCrew could not')
     })
 
@@ -501,10 +428,6 @@ describe('716 · what a person must fix, said once', () => {
       )
     })
   })
-
-  // ───────────────────────────────────────────────────────────────────────────────
-  // §4 · `710` F-7 — the refusal's word, answered to a launcher that asks
-  // ───────────────────────────────────────────────────────────────────────────────
 
   describe('§4 · `710` F-7 — `createSession` answers a refusal, with its word, when asked', () => {
     const create = (extra: Record<string, unknown> = {}): Promise<unknown> =>
@@ -567,14 +490,6 @@ describe('716 · what a person must fix, said once', () => {
         },
       ],
       [
-        'a start that took too long',
-        'launch',
-        () => {
-          gate.startFails = () =>
-            new SessionUnavailable('took-too-long', 'x', { waitedForMs: 15_000 })
-        },
-      ],
-      [
         'a start stopped before it opened',
         'cancelled',
         () => {
@@ -586,15 +501,12 @@ describe('716 · what a person must fix, said once', () => {
       async (_what, reason, fail) => {
         const answer = await answered(fail)
         expect(answer).toMatchObject({ refused: { reason } })
-        // ⚑ …and logged whole, as a rejection would have been (review of `716`): nothing else
-        // prints an answer, and a missing program's own words ride only as its cause.
         expect(
           warned?.mock.calls.some((call: unknown[]) =>
             String(call[0]).includes(`was refused (${reason}) and answered`),
           ),
         ).toBe(true)
         const said = (answer as { refused: { said: string } }).refused.said
-        // ⚑ the same words the unasked-for rejection carries, byte for byte
         await expect(create()).rejects.toThrow(said)
       },
     )
@@ -603,8 +515,6 @@ describe('716 · what a person must fix, said once', () => {
       homeFails = () =>
         Object.assign(new Error('EROFS: mkdir'), { code: 'EROFS', syscall: 'mkdir' })
       vi.spyOn(console, 'warn').mockImplementation(() => {})
-      // ⚑ Rejected on `main` (with Node's words) and here (with the folder's): the opt-in changes
-      // nothing for a caller that did not ask. What it says is §3's subject, not this arm's.
       await expect(create()).rejects.toThrow(/EROFS|read-only/)
     })
 

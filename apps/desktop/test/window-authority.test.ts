@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { codexFixtureConfig, neutralHostDeps } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -22,7 +22,6 @@ import type {
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
 class RecordingSink implements RuntimeEventSink {
-  // 349 · this double stands in for a WINDOW — the tests below answer for a person through it.
   get aPersonIsBehindIt() {
     return this.ownerId.startsWith('webContents:')
   }
@@ -46,9 +45,7 @@ describe('person-window commands preserve stream ownership', () => {
   let db: AppDatabase
   let store: SessionStore
   let host: RuntimeHost
-  /** The surface that opened the conversation. */
   let owner: RecordingSink
-  /** A second window with the id and no claim to it — 062's loser. */
   let stranger: RecordingSink
   let sessionId: string
 
@@ -67,13 +64,7 @@ describe('person-window commands preserve stream ownership', () => {
       providerHomePath: (provider, profileId) => join(dir, 'provider-homes', profileId, provider),
       resolveCwd: (id, requested) => requested ?? join(dir, 'scratch', id),
       newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'fake',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: codexFixtureConfig,
     })
     owner = new RecordingSink('webContents:1')
     stranger = new RecordingSink('webContents:2')
@@ -193,6 +184,52 @@ describe('person-window commands preserve stream ownership', () => {
     await expect(
       ask(stranger, { kind: 'close', sessionId: 'sess_absent' }),
     ).resolves.toBeUndefined()
+  })
+
+  it('a person’s send waits while the session is still starting', async () => {
+    const stalling = new RuntimeHost({
+      store,
+      ...neutralHostDeps(() => dir),
+      createRuntime: (provider) => ({
+        provider,
+        listModels: () =>
+          Promise.resolve([
+            {
+              id: 'fake',
+              label: 'fake',
+              isDefault: true as const,
+              efforts: [{ id: 'medium', label: 'medium' }],
+              defaultEffort: 'medium',
+            },
+          ]),
+        start: () => new Promise(() => {}),
+        resume: () => Promise.reject(new Error('not used here')),
+      }),
+      prepareProviderHome: (provider, profileId) =>
+        join(dir, 'provider-homes', profileId, provider),
+      providerHomePath: (provider, profileId) => join(dir, 'provider-homes', profileId, provider),
+      resolveCwd: (id, requested) => requested ?? join(dir, 'scratch', id),
+      newSessionId: () => 'sess_starting',
+      readProviderConfig: codexFixtureConfig,
+      closeDrainTimeoutMs: 50,
+    })
+    const launching = stalling.createSession({ provider: 'codex', cwd: dir }, owner)
+    launching.catch(() => {})
+
+    const ownersSend = executeRuntimeCommand(stalling, owner, {
+      kind: 'send',
+      sessionId: 'sess_starting',
+      text: 'x',
+    }).then(
+      () => 'delivered',
+      (error: unknown) => (error as Error).message,
+    )
+    const stillPending = new Promise<string>((resolve) => {
+      setTimeout(() => resolve('still pending'), 100)
+    })
+    expect(await Promise.race([ownersSend, stillPending])).toBe('still pending')
+
+    await stalling.closeAll()
   })
 
   it('resume and claim still respect the current stream owner', async () => {

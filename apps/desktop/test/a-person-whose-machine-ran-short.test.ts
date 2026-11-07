@@ -5,22 +5,11 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-/**
- * ⛔ **The Keychain is NEVER read by this file** — standing rule 6: *"never read, copy or write a
- * credential: … a keychain entry."* ⚑ Every `security` call in the module graph lands HERE, and is
- * answered by the arm a test set: the launch's non-blocking `execFile` through its callback, as
- * Node answers, and the blocking `execFileSync` the library falls back to at once. ⚑ An unarmed
- * call throws AND is counted — the product swallows some throws as *"no login"*, so the count is
- * what makes a rig that forgot to arm it fail (`afterEach`) rather than pass on the wrong reading. ⚑ Codex's transport spawns through the same
- * module with no seam, so its ONE failing spawn is armed here too; every other spawn is real.
- */
 const armed = vi.hoisted(() => ({
   spawn: null as null | (() => unknown),
   keychain: null as null | (() => string),
   keychainAsked: 0,
-  /** ⚑ `security` calls nobody armed — must stay 0; `afterEach` says so. */
   unarmed: 0,
-  /** ⚑ A read of THIS path fails; every other read is the real one. Always a temp path. */
   readFails: null as null | { readonly path: string; readonly error: () => Error },
 }))
 vi.mock('node:child_process', async (importOriginal) => {
@@ -109,42 +98,9 @@ import {
   aSpawnThatRanOutOf,
 } from '../../../packages/runtime/test/fixtures/a-spawn-that-failed'
 
-/**
- * # 🔴 710 · R52 — a shortage at a person's own New Conversation is a person's sentence
- *
- * ⚑ **PM ruling R52** (`707` F-3), whole: *"When the machine runs short as a person starts a
- * conversation, they read a sentence that says what happened and what they can do (a
- * `SessionUnavailable` reason the launcher already draws). ⛔ Never the raw errno, never the SDK's
- * `TypeError`, never a conversation that looks started and never ran, and (standing rule 8.4) never
- * *"try again in a moment"*."*
- *
- * ⛔ **What a person read on `main` (`ed0b52b7`)**, in the launcher's *"The launch didn't start"*
- * box — `NewConversation.vue` draws the host's message verbatim, less Electron's wrapper
- * (`readableError`):
- *
- * | where the launch ran short | what they read |
- * |---|---|
- * | the provider's own spawn | *"spawn /…/claude EMFILE"* — or Codex's *"codex app-server failed to spawn: spawn … EMFILE"* |
- * | the provider home's lock | *"EMFILE: too many open files, open '…/claude.lock'"*, the home's path in it |
- * | the Keychain read, no process slot | *"Your machine Claude login is missing or its token has expired… then try again."* — a sign-in to fix, about a login that was fine |
- * | the Codex sign-in copy | *"personal Codex auth.json not found at …"* — a credential to fix, about a file that was there |
- *
- * ⚑ **The same shortage, four texts, depending on which call met it first** — and the last two are
- * FALSE. The fix is one sentence for all four: the reads that swallowed a shortage throw it
- * (`auth.ts`), and the launch turns whatever errno it meets into its own refusal, by the code.
- */
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-/**
- * ⚑ Spelled here, so `main` (which has no such sentence) can run this file. ⚑ **Two**, because what
- * a person can do depends on what ran short (review of `710`): `EMFILE` is BroBot's OWN table of
- * open files, which closing another app does not touch; the machine's files, process slots and
- * memory are shared. ⚑ **D-017b · nothing in the window closes one conversation any more**, so the
- * gesture that frees BroBot's own files is a quit and a reopen, and a conversation is carried on by
- * the message sent to it.
- */
 const THE_SENTENCE =
   'This conversation did not open: this machine ran short of open files, processes or memory as its agent was starting. Close an app you are not using, or quit and reopen BroCrew, then start it again.'
 const FOR_EMFILE =
@@ -152,7 +108,6 @@ const FOR_EMFILE =
 const FOR_A_REOPEN_EMFILE =
   'This conversation did not continue: BroCrew had too many files open to start its agent. Quit and reopen BroCrew, then send it your message again.'
 
-/** What `security` looks like to `execFileSync` when no process slot is left — `spawnSync`'s errno. */
 const aSecurityThatCouldNotStart = (): never => {
   throw Object.assign(new Error('spawnSync security EAGAIN'), {
     errno: -35,
@@ -163,12 +118,13 @@ const aSecurityThatCouldNotStart = (): never => {
   })
 }
 
-/** What `security` looks like when the login is simply not there — exit 44, and no errno at all. */
 const aKeychainWithNoLogin = (): never => {
-  throw Object.assign(new Error('Command failed: security find-generic-password'), { status: 44 })
+  throw Object.assign(new Error('Command failed: security find-generic-password'), {
+    status: 44,
+    code: 44,
+  })
 }
 
-/** ⚠️ `defaultKeychainReader` answers `null` off macOS before it asks, so a Keychain arm pins it. */
 const realPlatform = process.platform
 const theKeychainAnswers = (answer: () => string): void => {
   Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
@@ -187,11 +143,8 @@ describe('710 · R52 — a person whose machine ran short', () => {
   let clock: number
   let window: RecordingSink
   let gate: ResumeGate
-  /** ⚑ The HOST's own step failing — `prepareProviderHome`, which every launch runs first. */
   let homeFails: (() => Error) | undefined
-  /** ⚑ …or the REAL one, over this test's own userData, with a temp Codex source. */
   let theRealHome = false
-  /** ⚑ A model probe that fails the way this returns — the launcher's model field's door. */
   let probeFails: (() => Error) | undefined
   let codexSource: string
   const tick = (): number => clock++
@@ -199,7 +152,6 @@ describe('710 · R52 — a person whose machine ran short', () => {
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-710-r52-'))
     root = mkdtempSync(join(tmpdir(), 'brobot2-710-r52-root-'))
-    // ⛔ A temp file standing where a credential would — never `~/.codex/auth.json`.
     codexSource = join(root, 'not-a-credential-auth.json')
     writeFileSync(codexSource, '{"a":"test value, not a credential"}')
     db = openDatabase(join(userData, 'brobot2.sqlite'))
@@ -233,7 +185,6 @@ describe('710 · R52 — a person whose machine ran short', () => {
           return await prepareProviderHome(
             userData,
             { profileId: profileId ?? 'default', provider },
-            // ⛔ the one seam that keeps a credential out: the copy reads a TEMP file
             {
               provisionCodexAuth: (home) =>
                 provisionCodexAuth(home, { sourceAuthPath: codexSource }),
@@ -255,7 +206,6 @@ describe('710 · R52 — a person whose machine ran short', () => {
 
   afterEach(async () => {
     Object.defineProperty(process, 'platform', { value: realPlatform, configurable: true })
-    // ⛔ a `security` call nobody armed is a rig that read nothing it meant to
     expect(armed.unarmed, 'a `security` call nobody armed').toBe(0)
     armed.spawn = null
     armed.keychain = null
@@ -266,7 +216,6 @@ describe('710 · R52 — a person whose machine ran short', () => {
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
   })
 
-  /** ⚑ A person's New Conversation — the launcher's door, answered as the launcher reads it. */
   const aPersonStarts = async (provider: Provider = 'claude'): Promise<string> => {
     const refused = await executeRuntimeCommand(host, window, {
       kind: 'createSession',
@@ -279,8 +228,6 @@ describe('710 · R52 — a person whose machine ran short', () => {
       (error: unknown) => error,
     )
     if (refused === null) return 'it started'
-    // ⚑ What crosses the wire, and what the launcher then strips — `registerRuntimeIpc`'s own
-    // `withoutItsClassName`, Electron's `${name}: ${message}`, and `readableError`.
     const crossed = withoutItsClassName(refused) as Error
     return readableError(
       new Error(
@@ -299,7 +246,6 @@ describe('710 · R52 — a person whose machine ran short', () => {
     return (await tool.call(args)).structured as Record<string, unknown>
   }
 
-  /** ⚑ Claude: the SDK's real `query()`, on the adapter's own spawn seam. */
   const claudeStartOver = async (child: () => unknown): Promise<Error> => {
     const produced = await new ClaudeRuntime(
       undefined,
@@ -320,7 +266,6 @@ describe('710 · R52 — a person whose machine ran short', () => {
     return produced as Error
   }
 
-  /** ⚑ Codex: the real transport and start; a command that does not exist, in case it is unarmed. */
   const codexStartOver = async (child: () => unknown): Promise<Error> => {
     armed.spawn = child
     const produced = await new CodexRuntime(
@@ -349,10 +294,6 @@ describe('710 · R52 — a person whose machine ran short', () => {
       expect(said, `the person read "${leak}"`).not.toContain(leak)
     }
   }
-
-  // ───────────────────────────────────────────────────────────────────────────────
-  // §1 · the provider's own spawn ran short
-  // ───────────────────────────────────────────────────────────────────────────────
 
   const AT_THE_SPAWN = [
     {
@@ -388,10 +329,6 @@ describe('710 · R52 — a person whose machine ran short', () => {
     })
   })
 
-  // ───────────────────────────────────────────────────────────────────────────────
-  // §2 · the launch ran short BEFORE its provider — the home, and the two sign-in reads
-  // ───────────────────────────────────────────────────────────────────────────────
-
   describe('§2 · before the provider was asked', () => {
     it('🔴 the provider home’s lock — no descriptor left to open it', async () => {
       vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -414,7 +351,6 @@ describe('710 · R52 — a person whose machine ran short', () => {
       theRealHome = true
       theKeychainAnswers(aSecurityThatCouldNotStart)
       const said = await aPersonStarts('claude')
-      // ⛔ Measured on `main`: *"Your machine Claude login is missing or its token has expired…"*
       expect(said).toBe(THE_SENTENCE)
       expect(said).not.toMatch(/login|sign/i)
       expect(armed.keychainAsked).toBeGreaterThan(0)
@@ -442,7 +378,6 @@ describe('710 · R52 — a person whose machine ran short', () => {
           }),
       }
       const said = await aPersonStarts('codex')
-      // ⛔ Measured on `main`: *"personal Codex auth.json not found at <that path>"*
       expect(said).toBe(FOR_EMFILE)
       noRawText(said)
     })
@@ -456,16 +391,6 @@ describe('710 · R52 — a person whose machine ran short', () => {
     })
   })
 
-  // ───────────────────────────────────────────────────────────────────────────────
-  // §3 · the other caller of this door keeps its own word
-  // ───────────────────────────────────────────────────────────────────────────────
-
-  /**
-   * ⚑ **`give_work` launches through the same `createSession`** when the giver has no conversation
-   * with that agent yet (D-016: it took `spawn_agent`'s place), and a model is told a WORD, not a
-   * person's sentence: the errno rides along as the refusal's cause, so its classifier still reads
-   * the code. ⚠️ Where the rule-3 pair diverges from R52: a sentence for a person, a word for a model.
-   */
   describe('§3 · give_work, through the same door, still answers its retryable word', () => {
     const aPmThatMayGive = async (): Promise<string> => {
       await host.close(
@@ -514,7 +439,6 @@ describe('710 · R52 — a person whose machine ran short', () => {
         title: 'x',
         brief: 'x',
       })
-      // ⛔ Measured on `main`: `agent-did-not-start` · `provider-sign-in-or-config-unusable`
       expect(refused).toMatchObject({
         outcome: 'refused',
         rail: 'agent-could-not-start-just-now',
@@ -523,10 +447,6 @@ describe('710 · R52 — a person whose machine ran short', () => {
     })
   })
 
-  // ───────────────────────────────────────────────────────────────────────────────
-  // §4 · what a person sees at it, and the controls
-  // ───────────────────────────────────────────────────────────────────────────────
-
   describe('§4 · standing rule 8.4, and what is NOT a shortage', () => {
     it('🔴 the sentence is the reason’s, and it says what happened and what a person can do', () => {
       expect(describeUnavailable('machine-ran-short')).toBe(THE_SENTENCE)
@@ -534,14 +454,11 @@ describe('710 · R52 — a person whose machine ran short', () => {
       expect(describeUnavailable('machine-ran-short', { shortage: 'EMFILE' })).toBe(FOR_EMFILE)
       expect(THE_SENTENCE).toContain('ran short of open files, processes or memory')
       expect(THE_SENTENCE).toContain('Close an app you are not using, or quit and reopen BroCrew')
-      // ⚑ `EMFILE` is BroBot's own table: another app closing frees none of it (review of `710`)
       expect(FOR_EMFILE).not.toContain('Close an app')
       expect(FOR_EMFILE).toContain('Quit and reopen BroCrew')
-      // ⚑ **D-017b** — no sentence sends a person to close a conversation: there is no such press.
       for (const said of [THE_SENTENCE, FOR_EMFILE, FOR_A_REOPEN_EMFILE]) {
         expect(said).not.toMatch(/close a conversation|or a conversation you are not using/i)
       }
-      // ⛔ standing rule 8.4: a person told to wait would wait at a row they cannot clear
       for (const said of [THE_SENTENCE, FOR_EMFILE, FOR_A_REOPEN_EMFILE]) {
         expect(said).not.toMatch(/in a moment|try again/i)
       }
@@ -552,8 +469,6 @@ describe('710 · R52 — a person whose machine ran short', () => {
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.startFails = () => produced
       expect(await aPersonStarts()).toBe(FOR_EMFILE)
-      // ⚑ `recordedOne` reads a row whether or not it has a provider ref — `find` hides a ref-less
-      // row, which is exactly the one a start that looked started and never ran would leave.
       expect(store.recordedOne('sess_1')).toBeNull()
       gate.startFails = undefined
       expect(await aPersonStarts()).toBe('it started')
@@ -570,20 +485,6 @@ describe('710 · R52 — a person whose machine ran short', () => {
     })
   })
 
-  // ───────────────────────────────────────────────────────────────────────────────
-  // §5 · the same shortage at the other doors a person reads — review of `710`
-  // ───────────────────────────────────────────────────────────────────────────────
-
-  /**
-   * 🔴 **Found by `710`'s review, and one of them `710` made worse**: the Keychain read now THROWS a
-   * shortage (§2), and two person doors passed a throw through bare — a Reopen, and the launcher's
-   * model field — so a person read *"spawnSync security EAGAIN"* where `main` had shown a (false)
-   * login sentence. ⚑ And the Reopen already showed a spawn's errno bare on `main` (*"resume setup
-   * failed: spawn … EMFILE"*); the sign-in check the launcher ran after every failed start showed
-   * Codex's, with the binary's path. Each now says the shortage. ⚑ **725 · `716` F-1**: the launcher
-   * no longer runs that check after a start main refused as `machine` — the refusal already said it
-   * (`NewConversation.theCheckCanSayMore`); it still runs after an unworded failure, and on a press.
-   */
   describe('§5 · a Reopen, the model field and the sign-in check say it too', () => {
     const claudeResumeOver = async (child: () => unknown): Promise<Error> => {
       const produced = await new ClaudeRuntime(
@@ -631,7 +532,6 @@ describe('710 · R52 — a person whose machine ran short', () => {
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       gate.resumeFails = () => produced
       const said = await aPersonReopens(closed)
-      // ⛔ Measured on `main`: *"resume setup failed: spawn /x/claude EMFILE"*
       expect(said).toBe(FOR_A_REOPEN_EMFILE)
       noRawText(said)
     })
@@ -649,7 +549,6 @@ describe('710 · R52 — a person whose machine ran short', () => {
       theRealHome = true
       theKeychainAnswers(aSecurityThatCouldNotStart)
       const said = await host.providerModels('worker', 'claude')
-      // ⛔ On `main`: the login sentence, about a login that was fine; on `710`'s first cut: the errno
       expect(said).toEqual({
         ok: false,
         reason: 'refused',
@@ -665,8 +564,6 @@ describe('710 · R52 — a person whose machine ran short', () => {
           code: 'EMFILE',
           syscall: 'spawn /x/claude',
         })
-      // ⚑ `EMFILE` is BroBot's own table — the refusal's sentence says so, and so does this clause
-      // (second review): one shortage, one attribution, on one screen.
       expect(await host.providerModels('worker', 'claude')).toEqual({
         ok: false,
         reason: 'refused',
@@ -695,7 +592,6 @@ describe('710 · R52 — a person whose machine ran short', () => {
       )
       expect(state.state).toBe('unknown')
       const reason = state.state === 'unknown' ? state.reason : ''
-      // ⛔ On `main`: *"could not start Codex …: codex app-server failed to spawn: spawn /x/codex EAGAIN"*
       expect(reason).toBe(
         'This machine ran short of open files, processes or memory, so Codex could not be started to ask about this profile’s sign-in.',
       )
@@ -731,16 +627,6 @@ describe('710 · R52 — a person whose machine ran short', () => {
   })
 })
 
-/**
- * # 🔴 716 · `710` F-4 — *Copy my machine sign-in*, under a shortage
- *
- * ⛔ **What a person read until `716`**: the source read's catch-all — *"personal Codex auth.json not
- * found at … — sign in with the codex CLI first, then try again"*, a sign-in to redo, about a file
- * that was there — or, from the lock and the temp file, which never had a catch, Node's errno whole,
- * with a path (`716`'s map). ⚑ The read rethrows a shortage now, as the launch's copy has since
- * `710`, and `RuntimeHost.reprovisionProviderAuth` says it once, by the code, for every place the
- * copy can meet it. ⛔ The source is always a temp file — never `~/.codex/auth.json`.
- */
 describe('716 · `710` F-4 — a re-copy the machine ran short for', () => {
   let userData: string
   let db: AppDatabase
@@ -760,7 +646,6 @@ describe('716 · `710` F-4 — a re-copy the machine ran short for', () => {
     rmSync(userData, { recursive: true, force: true })
   })
 
-  /** A host whose re-copy fails the way `recopyFails` says — the door, over a fake credential op. */
   const aHostWhoseRecopy = (): RuntimeHost =>
     new RuntimeHost({
       store: createSessionStore(db),

@@ -59,19 +59,10 @@ export interface ClaudeAuthSeams {
   readonly renewLogin?: (reason?: 'rejected') => Promise<LoginRenewalOutcome>
 }
 
-/**
- * Claude Code as the person runs it in their shell: the program they have, by its full path
- * (`claudeCommandIn`). Asked only when a sentence says it.
- */
 function claudeCommandFor(seams: { readonly programFound?: () => string | null }): () => string {
   return () => claudeCommandIn(seams.programFound?.() ?? null, process.platform)
 }
 
-/**
- * Whether a Claude launch has something to run on: the person's API key, else the machine login.
- * ⚑ A key that is set but can no longer be opened is NOT a reason to fall back to the login — the
- * person chose the key — so it answers not-ok, in its own words.
- */
 async function claudeHealth(
   apiKey: (() => string | null | Promise<string | null>) | undefined,
   command: () => string,
@@ -84,19 +75,14 @@ async function claudeHealth(
     )
   } catch (error) {
     if (error instanceof ApiKeyUnreadableError) return { ok: false, reason: error.message }
+    if (error instanceof AuthUnavailableError) return { ok: false, reason: error.message }
     throw error
   }
 }
 
-/**
- * A Claude start on the person's own login: their Claude Code renews the login first when it needs
- * renewing (`renew`), then the home is prepared, which reads the login. `loginRenewed` when the
- * renewal renewed it. A start the login still cannot run says why, with how to renew it by hand.
- */
 export async function prepareOnTheLogin(
   prepare: () => string | Promise<string>,
   renew: () => Promise<ClaudeLoginRenewal>,
-  /** Claude Code as the person runs it in their shell (`claudeCommandIn`), asked only to say it. */
   command: () => string = () => 'claude',
 ): Promise<{ readonly home: string; readonly loginRenewed: boolean }> {
   const renewal = await renew()
@@ -125,7 +111,6 @@ export function claudeRuntime(seams: ClaudeRuntimeSeams): AgentRuntime {
     undefined,
     seams.key === undefined ? undefined : () => seams.key?.() ?? null,
     undefined,
-    // …and what a launch with nothing to run on says, naming the Claude Code the person has.
     () => whyNoClaudeLogin({ command: claudeCommandFor(seams) }),
     seams.program(),
     claudeKeychainTokenProviderForALaunch(),
@@ -188,14 +173,8 @@ export function claudeAuth(paths: ProviderHomePaths, seams: ClaudeAuthSeams): Ho
     },
     credentialHome: (profileId) => paths.homeOf(profileId),
     async check(_profileId, signal) {
-      // Claude's credential is the machine's, so "absent" is the only not-ok this can be: there is
-      // no copy here that could have gone stale. Saying `stale` would invite a re-copy button for
-      // a file that does not exist. ⚑ A saved key is what runs, else the login's own facts — its
-      // kind, plan and expiry, never its token (`claudeLoginState`).
       const apiKey = seams.key
       try {
-        // A saved key is what runs, and is judged without the login, as before. Without one the
-        // login is read without blocking the thread, then judged the same way.
         const status = seams.keyStatus?.()
         if (status?.set) {
           if (status.unreadableReason !== undefined)
@@ -205,7 +184,6 @@ export function claudeAuth(paths: ProviderHomePaths, seams: ClaudeAuthSeams): Ho
         const keyed = status === undefined ? await apiKey?.() : null
         if (keyed) return await stateOnTheKey(signal)
         const login = await defaultKeychainReaderForALaunch()
-        // ⚑ Its sentence names Claude Code as the person runs it, by the path BroBot found.
         return claudeLoginState(
           () => login,
           undefined,
@@ -244,7 +222,6 @@ export interface ClaudeModuleSeams {
   readonly auth: ClaudeAuthSeams
 }
 
-/** The same factories serve bound modules and the legacy facade adapters. */
 export const claudeModuleFactory = {
   runtime:
     (seams: ClaudeRuntimeSeams): (() => AgentRuntime) =>

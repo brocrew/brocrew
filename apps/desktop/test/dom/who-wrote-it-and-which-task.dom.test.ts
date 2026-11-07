@@ -21,25 +21,6 @@ import type { StalledWork } from '../../src/shared/stalled-work'
 import { assertDrawn, drawnReady } from './drawn'
 import { META, mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
 
-/**
- * # 688 — what a person SEES of who wrote it, and which task
- *
- * ⚑ `who-wrote-it-and-which-task.render.test.ts` drives the real host and pins what each card
- * SAYS; this file pins what a person perceives of it, in the dom runner: the press that names
- * its row, the sentence drawn whole, the word beside a heading rather than inside it, and the
- * INK of a stat beside an amber line. ⛔ Never a class name — a colour, a size, a press.
- *
- * | § | about | the control |
- * |---|---|---|
- * | 1 | R22 · the held go-ahead's row and its press | the person's own row and its *Cancel it* |
- * | 2 | R33 · the row after a take-back | the person's own cancelled row |
- * | 3 | R22 · the composer's foot (one foot since D-010: queue behind; with what waits, in one turn, since D-027) | the person's own held message, alone and beside BroBot's |
- * | 4 | H1 · *note* / *follow-up* beside the heading (*work* went with `message_agent`'s kind, D-016) | a turn nobody declared |
- * | 5 | H2 · *W1.N* on the sender's card — the piece a follow-up is about (*Task #N* until D-016) | a note's card, and a follow-up with no label |
- * | 6 | F3 · no green *All clear* beside an amber line | a quiet page with no line: green |
- * | 7 | O1 · *Its own instructions* in the sheet's own registers | the sheet's own *Runs on* and note |
- */
-
 const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
 
 afterEach(async () => {
@@ -58,7 +39,6 @@ const settle = async (): Promise<void> => {
 }
 const ink = (el: Element): string => getComputedStyle(el).color
 
-/** A held row as the fold makes it — `over` is what the ledger carried. */
 const heldRow = (over: Partial<QueuedItem>): QueuedItem & { at: number } => ({
   kind: 'queued',
   id: 'queued_1',
@@ -70,10 +50,6 @@ const heldRow = (over: Partial<QueuedItem>): QueuedItem & { at: number } => ({
 
 async function aRow(
   item: QueuedItem & { at: number },
-  /**
-   * ⚑ **696** · the transcript's decision (`688` L1) — `the-model-control-reads-r31.dom.test.ts` §5
-   * measures it through the pane.
-   */
   mayCarryOn = false,
 ): Promise<{ m: Mounted; pressed: unknown[] }> {
   await page.viewport(900, 500)
@@ -95,8 +71,6 @@ async function aRow(
   return { m, pressed }
 }
 
-/* ═════════════════ §1 · R22 — the held go-ahead's own row, and the row it names ═════════════════ */
-
 describe('688 §1 · R22 — a held go-ahead is BroBot’s row, and its press names that row', () => {
   it('🔴 BroBot, why it waits, and one control of its own — which takes back THIS row by name', async () => {
     const { m, pressed } = await aRow(heldRow({ goAhead: true, messageId: 'msg_go' }))
@@ -109,7 +83,6 @@ describe('688 §1 · R22 — a held go-ahead is BroBot’s row, and its press na
     const control = m.q('take-back-go-ahead')
     expect(visible(control)).toBe(true)
     expect(words(control)).toBe('Take back the go-ahead')
-    // ⛔ R22 — never the person's controls
     expect(m.all('cancel-queued')).toHaveLength(0)
     expect(m.all('restore-queued')).toHaveLength(0)
     control.click()
@@ -129,7 +102,6 @@ describe('688 §1 · R22 — a held go-ahead is BroBot’s row, and its press na
     const { m, pressed } = await aRow(heldRow({ text: 'an old one' }))
     expect(words(m.q('queued-state'))).toBe('not sent · waiting for the turn to end')
     expect(m.all('cancel-queued')).toHaveLength(0)
-    // ⚑ …and not the ending's control either: it has not ended
     expect(m.all('restore-queued')).toHaveLength(0)
     expect(pressed).toEqual([])
   })
@@ -141,7 +113,6 @@ describe('688 §1 · the press travels up the pane by the row’s NAME', () => {
     const r = record([
       ev({ type: 'user_turn', text: 'Plan the rebuild of the orders index.' }),
       ev({ type: 'status', state: 'running' }),
-      // ⚑ a routed question held FIRST — the head of the mailbox is not the go-ahead
       ev({
         type: 'message_queued',
         messageId: 'msg_q',
@@ -172,8 +143,6 @@ describe('688 §1 · the press travels up the pane by the row’s NAME', () => {
   })
 })
 
-/* ═════════════════ §2 · R33 — what follows the take-back ═════════════════ */
-
 describe('688 §2 · R33 — the taken-back go-ahead says what followed, in main’s words, drawn whole', () => {
   it('🔴 you took it back · the plan was released but the go-ahead was not sent — type your next message', async () => {
     const { m } = await aRow(
@@ -182,7 +151,6 @@ describe('688 §2 · R33 — the taken-back go-ahead says what followed, in main
     )
     expect(words(m.q('queued-state'))).toBe('not sent · you took it back')
     const line = m.q('queued-go-ahead-taken-back')
-    // ⛔ The BYTES are main's sentence; only the first letter is raised, by the style.
     expect(words(line)).toBe(
       'the plan was released but the go-ahead was not sent — type your next message to carry on',
     )
@@ -199,8 +167,6 @@ describe('688 §2 · R33 — the taken-back go-ahead says what followed, in main
     expect(visible(m.q('restore-queued'))).toBe(true)
   })
 })
-
-/* ═════════════════ §3 · R22 — the composer's foot ═════════════════ */
 
 describe('688 §3 · R22 — the composer does not point at a Cancel the row does not offer', () => {
   const BUSY = [
@@ -234,7 +200,6 @@ describe('688 §3 · R22 — the composer does not point at a Cancel the row doe
     return m
   }
 
-  /** ⚑ A child's question the app ROUTED, held beside the person's own work (`394`'s second slot). */
   const ROUTED = {
     id: 'msg_q',
     kind: 'question',
@@ -243,21 +208,12 @@ describe('688 §3 · R22 — the composer does not point at a Cancel the row doe
     attribution: 'app_authored',
   }
 
-  /**
-   * ⚑ **D-010 · R22 kept by construction.** The composer said *"Cancel it … before queueing
-   * another"* for the person's own and *"Wait for it to go …"* for a message they did not write,
-   * because a second was refused; ⛔ the second is held behind now, so no foot names a Cancel at all
-   * — whoever wrote what waits, alone, beside the person's own, or the person's own only.
-   * ⚑ **D-027 moved the words**: what is held goes out together, in one turn, oldest first, and
-   * only a command goes alone — so the foot and the Queue title say *"with what is already waiting
-   * — a command goes alone"*, where they said *"…and take(s) what is already waiting"*.
-   */
   it('🔴 whoever wrote what waits: the foot queues behind it, points at no Cancel, and the Queue button offers the same', async () => {
     for (const queued of [[GO], [MINE, ROUTED], [MINE]]) {
       const m = await composerOver(queued)
       const foot = m.q('composer-hint')
       expect(words(foot)).toMatch(
-        /^.+ to send when .+ finishes, with what is already waiting — a command goes alone · .+ is Stop and send: the turn is asked to stop; this is sent once it has ended, or comes back to you if it has not within seconds$/,
+        /^.+ to send when .+ finishes, with what is already waiting — a command goes alone · .+ is Stop and send: the turn is asked to stop; this is sent once it has ended$/,
       )
       expect(words(foot)).not.toContain('Cancel it')
       expect(words(foot)).not.toContain('Wait for it to go')
@@ -272,8 +228,6 @@ describe('688 §3 · R22 — the composer does not point at a Cancel the row doe
   })
 })
 
-/* ═════════════════ §4 · H1 — the sender's word, beside the heading ═════════════════ */
-
 describe('688 §4 · H1 — what the sender said, beside the heading and never inside it', () => {
   const turn = (over: Partial<RelayedItem>): RelayedItem & { at: number } => ({
     kind: 'relayed',
@@ -286,7 +240,6 @@ describe('688 §4 · H1 — what the sender said, beside the heading and never i
 
   it('🔴 *note* and *follow-up*, each a word of its own in the meta row', async () => {
     await page.viewport(900, 400)
-    // ⚑ D-016 · `message_agent`'s kinds are these two; *work* is a give now, and a brief says none.
     for (const says of ['note', 'follow-up'] as const) {
       const m = mount(
         RelayedEntry,
@@ -338,8 +291,6 @@ describe('688 §4 · H1 — what the sender said, beside the heading and never i
   })
 })
 
-/* ═════════════════ §5 · H2 — the sender's card names the piece its message is about ═════════════════ */
-
 describe('688 §5 · H2 — W1.N on the sender’s card, in the reply card’s place', () => {
   const INVENTORY = ev({
     type: 'tool_inventory',
@@ -372,7 +323,6 @@ describe('688 §5 · H2 — W1.N on the sender’s card, in the reply card’s p
 
   it('🔴 a follow-up: *W1.8*; a follow-up whose label is not in view: *Piece*; a note: nothing', async () => {
     await page.viewport(1100, 900)
-    // ⚑ D-016 · a follow-up names the piece it is about (`message_sent.piece` / `.label`).
     const r = record([
       INVENTORY,
       ev({ type: 'user_turn', text: 'Ask Ada.' }),
@@ -402,8 +352,6 @@ describe('688 §5 · H2 — W1.N on the sender’s card, in the reply card’s p
     expect(cards[0]!.querySelector('[data-cy="outgoing-heading"]')!.contains(task)).toBe(false)
   })
 })
-
-/* ═════════════════ §6 · F3 — no green All clear beside an amber line ═════════════════ */
 
 describe('688 §6 · F3 — while an amber line stands, the stat is neutral', () => {
   const T = Date.UTC(2026, 8, 18, 12, 0, 0)
@@ -469,7 +417,6 @@ describe('688 §6 · F3 — while an amber line stands, the stat is neutral', ()
     return m
   }
 
-  /** ⚑ The resolved ink of a token, read off a probe inside the page — never a hard-coded hex. */
   const tokenInk = (m: Mounted, token: string): string => {
     const probe = document.createElement('span')
     probe.style.color = `var(${token})`
@@ -479,7 +426,6 @@ describe('688 §6 · F3 — while an amber line stands, the stat is neutral', ()
     return said
   }
 
-  /** Every drawn element on the page whose own ink is one of `inks`. */
   const inked = (m: Mounted, inks: string[]): HTMLElement[] =>
     [...m.host.querySelectorAll<HTMLElement>('*')].filter(
       (el) => visible(el) && words(el) !== '' && inks.includes(ink(el)),
@@ -508,8 +454,6 @@ describe('688 §6 · F3 — while an amber line stands, the stat is neutral', ()
     expect(ink(m.q('waiting-stat'))).toBe(tokenInk(m, '--success'))
   })
 })
-
-/* ═════════════════ §7 · O1 — Its own instructions, in the sheet's own registers ═════════════════ */
 
 describe('688 §7 · O1 — the agent’s own instructions draw in the sheet’s registers', () => {
   const identity = {

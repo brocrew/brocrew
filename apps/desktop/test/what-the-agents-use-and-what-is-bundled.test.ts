@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   listProcesses,
+  WINDOWS_LISTING,
   resourcesFromTheListing,
   type ListedProcess,
 } from '../src/main/runtime/process-listing'
@@ -34,6 +35,7 @@ const versionPrograms = vi.hoisted(() => ({
         file: string,
         options: { env?: Record<string, string> },
         callback: (error: Error | null, output: string) => void,
+        args: readonly string[],
       ) => boolean),
 }))
 
@@ -42,28 +44,18 @@ vi.mock('node:child_process', async (importOriginal) => {
   return {
     ...actual,
     execFile: ((...args: unknown[]) => {
-      const [file, , options, callback] = args as [
+      const [file, command, options, callback] = args as [
         string,
         string[],
         { env?: Record<string, string> },
         (error: Error | null, output: string) => void,
       ]
-      if (versionPrograms.run?.(file, options, callback))
+      if (versionPrograms.run?.(file, options, callback, command))
         return {} as ReturnType<typeof actual.execFile>
       return Reflect.apply(actual.execFile, actual, args) as ReturnType<typeof actual.execFile>
     }) as typeof actual.execFile,
   }
 })
-
-/**
- * # ⚑ What the agents use, and which programs this install bundles
- *
- * Landing coverage for the Providers screen's two measured facts. **Resources**: one process listing,
- * summed by the pids this app's adapters hold — never by name — each process counted once, a root that
- * has left the listing not counted. **Versions**: read from what is bundled, once per run; only an ask
- * that failed for a passing reason is asked again; and Codex is run with a home of its own that is
- * removed after, never the person's `~/.codex`.
- */
 
 const row = (pid: number, ppid: number, rssKb: number, cpu: number): ListedProcess => ({
   pid,
@@ -78,11 +70,11 @@ describe('resourcesFromTheListing', () => {
   it('🔴 sums each provider’s roots and everything under them, children included, by KiB → bytes', () => {
     const rows = [
       row(1, 0, 100, 1),
-      row(10, 1, 1_000, 5), // a claude root
-      row(11, 10, 200, 2.25), // its tool command
-      row(12, 11, 50, 0.5), // …and that command's child
-      row(20, 1, 3_000, 10), // a codex root
-      row(30, 1, 9_999, 99), // an unrelated process: never counted
+      row(10, 1, 1_000, 5),
+      row(11, 10, 200, 2.25),
+      row(12, 11, 50, 0.5),
+      row(20, 1, 3_000, 10),
+      row(30, 1, 9_999, 99),
     ]
     const out = resourcesFromTheListing(rows, { claude: [10], codex: [20] }, AT)
     expect(out.claude).toEqual({ running: 1, rssBytes: 1_250 * 1024, cpuPercent: 7.8, at: AT })
@@ -97,10 +89,8 @@ describe('resourcesFromTheListing', () => {
 
   it('⛔ a process under two roots is counted once, and a root under another root is not counted twice', () => {
     const rows = [row(10, 1, 100, 1), row(11, 10, 100, 1), row(12, 11, 100, 1)]
-    // 11 is a root of its own AND under 10: the whole tree is 300, never 500.
     const out = resourcesFromTheListing(rows, { claude: [10, 11], codex: [] }, AT)
     expect(out.claude).toMatchObject({ running: 2, rssBytes: 300 * 1024, cpuPercent: 3 })
-    // …and the same child is not counted again for the other provider.
     const shared = resourcesFromTheListing(rows, { claude: [10], codex: [11] }, AT)
     expect(shared.claude.rssBytes).toBe(300 * 1024)
     expect(shared.codex).toMatchObject({ running: 1, rssBytes: 0 })
@@ -121,18 +111,84 @@ describe('resourcesFromTheListing', () => {
 })
 
 describe('listProcesses', () => {
-  it('🔴 reads one listing of the machine, and this very process is in it, with a size and a pid parent', async () => {
-    const rows = await listProcesses()
-    const mine = rows.find((one) => one.pid === process.pid)
-    expect(mine, 'the test process is not in the listing').toBeDefined()
-    expect(mine!.ppid).toBe(process.ppid)
-    expect(mine!.rssKb).toBeGreaterThan(0)
-    expect(Number.isFinite(mine!.cpu)).toBe(true)
-    // Every row is four finite numbers: nothing else (a command, an argument) was read.
-    for (const one of rows) {
-      expect(Object.keys(one).sort()).toEqual(['cpu', 'pid', 'ppid', 'rssKb'])
-    }
+  afterEach(() => {
+    versionPrograms.run = null
   })
+
+  const listing = (platform: 'linux' | 'win32'): string =>
+    platform === 'win32'
+      ? '4101 900 209715200 50000000 133799999000000000 133800000000000000'
+      : '4101 900 204800 5.0'
+
+  it.each(['linux', 'win32'] as const)(
+    'reads one %s listing with a size and a pid parent',
+    async (platform) => {
+      let calls = 0
+      versionPrograms.run = (file, options, callback, args) => {
+        calls += 1
+        expect(file).toBe(platform === 'win32' ? 'powershell.exe' : 'ps')
+        expect(args).toEqual(
+          platform === 'win32'
+            ? ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_LISTING]
+            : ['-axo', 'pid=,ppid=,rss=,%cpu='],
+        )
+        expect(options).toMatchObject({
+          encoding: 'utf8',
+          maxBuffer: 8 * 1024 * 1024,
+          timeout: platform === 'win32' ? 15_000 : 2_000,
+          ...(platform === 'win32'
+            ? { windowsHide: true }
+            : { killSignal: 'SIGKILL', env: expect.objectContaining({ LC_ALL: 'C' }) }),
+        })
+        callback(null, listing(platform))
+        return true
+      }
+      const rows = await listProcesses(platform)
+      expect(calls).toBe(1)
+      expect(rows).toEqual([{ pid: 4101, ppid: 900, rssKb: 204800, cpu: 5 }])
+      for (const one of rows) {
+        expect(Object.keys(one).sort()).toEqual(['cpu', 'pid', 'ppid', 'rssKb'])
+      }
+    },
+  )
+
+  it.each(['linux', 'win32'] as const)(
+    'preserves a %s command error and reads again on the next ask',
+    async (platform) => {
+      const failure = Object.assign(new Error('fictional process command failed'), {
+        code: 1,
+        signal: null,
+        killed: false,
+        stderr: 'fictional process table unavailable',
+      })
+      let calls = 0
+      versionPrograms.run = (_file, _options, callback) => {
+        calls += 1
+        if (calls === 1) callback(failure, listing(platform))
+        else callback(null, listing(platform))
+        return true
+      }
+      await expect(listProcesses(platform)).rejects.toBe(failure)
+      expect(calls).toBe(1)
+      expect(await listProcesses(platform)).toEqual([
+        { pid: 4101, ppid: 900, rssKb: 204800, cpu: 5 },
+      ])
+      expect(calls).toBe(2)
+    },
+  )
+
+  it.each(['linux', 'win32'] as const)(
+    'rejects a successful %s command with no readable rows',
+    async (platform) => {
+      versionPrograms.run = (_file, _options, callback) => {
+        callback(null, 'not a process table')
+        return true
+      }
+      await expect(listProcesses(platform)).rejects.toThrow(
+        'the process listing had no line it could read',
+      )
+    },
+  )
 })
 
 describe('providerVersionsReader', () => {
@@ -168,7 +224,6 @@ describe('providerVersionsReader', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
-  /** A program that prints what a codex binary prints for `--version`, and says what home it ran in. */
   function aProgram(body: string, fixture: VersionFixture): string {
     const path = join(dir, 'codex')
     if (process.platform === 'win32') {
@@ -181,7 +236,6 @@ describe('providerVersionsReader', () => {
     return path
   }
 
-  /** That program, as the copy BroCrew carries — what a launch runs. */
   const carried = (path: string): CodexProgram => ({ path, from: 'carried' })
 
   it('keeps the Codex failure answer when Claude answers later', async () => {
@@ -232,8 +286,6 @@ describe('providerVersionsReader', () => {
     )
     const read = providerVersionsReader(() => carried(binary), NO_CLAUDE)
     const versions = await read()
-    // ⚑ Which program runs, from where, and what it said — the copy BroCrew carries, with no tested
-    // range and nothing to install.
     expect(versions.codex).toEqual({
       version: '0.160.0',
       program: {
@@ -249,7 +301,6 @@ describe('providerVersionsReader', () => {
         updatedFrom: null,
       },
     })
-    // Its home was a fresh folder of this app's own, never the person's, and it is gone.
     const home = readFileSyncTrim(join(dir, 'home'))
     expect(home).toContain('brobot-codex-version-')
     expect(readFileSyncTrim(join(dir, 'codexhome'))).toBe(home)
@@ -352,7 +403,6 @@ describe('providerVersionsReader', () => {
       reason: said,
       program: { standing: 'unreadable', from: 'carried', path: binary, said },
     })
-    // The home it made is gone even though the ask failed.
     const home = readFileSyncTrim(join(dir, 'home'))
     expect(home).toContain('brobot-codex-version-')
     expect(existsSync(home)).toBe(false)
@@ -401,7 +451,6 @@ describe('providerVersionsReader', () => {
   })
 })
 
-/** A computer with no Claude Code: the lookup throws the sentence a person reads. */
 function NO_CLAUDE(): never {
   throw new Error('no Claude Code here')
 }

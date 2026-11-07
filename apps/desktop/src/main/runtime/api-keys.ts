@@ -3,65 +3,24 @@ import { providerDescriptor, providerRecord, type Provider } from '@brobot2/shar
 import type { ApiKeyCheck, ApiKeyStatus } from '../../shared/runtime-ipc'
 import type { SessionStore } from '../db/session-store'
 
-/**
- * 🔒 **The API keys a person enters in BroBot, one per provider, kept sealed.**
- *
- * A key is the supported way to run a provider's agents; with none set, the provider runs on its
- * machine login, as before. This module is the one place a key is opened:
- *
- * - **Kept sealed.** {@link set} seals the key with a {@link KeyCipher} — Electron's `safeStorage` in
- *   the app, which on macOS encrypts with a key the system Keychain holds for this app — and the
- *   database keeps only that ciphertext (`provider_api_key`).
- * - **Opened only for a launch.** {@link read} is what a launch's key provider calls, every launch,
- *   so a key replaced or removed applies to the next one. Nothing hands a key back to the window:
- *   {@link status} says only whether one is set.
- * - **Never in a message.** No refusal, error or log line here carries the key, or any part of it.
- */
-
-/** Seals and opens a key. `safeStorage` in the app; a stand-in in tests. */
 export interface KeyCipher {
-  /** Whether keys can be sealed on this machine right now. */
   available(): boolean | Promise<boolean>
-  /** The key, sealed, as base64. */
   seal(key: string): string | Promise<string>
-  /**
-   * A sealed key, opened. Throws when it cannot be: {@link KeyStorageNotAnswering} when the
-   * system's key storage gave no sealing key, {@link SealedWithAnotherKey} when it gave one and
-   * the key still did not open.
-   */
   open(sealed: string): string | Promise<string>
 }
 
-/**
- * The system's key storage is not handing over its sealing key now: on a Mac, the Keychain is
- * asking a person, or was refused. A later read may work.
- */
 export class KeyStorageNotAnswering extends Error {}
 
-/**
- * The key storage handed over its sealing key and the saved key still did not open: it was sealed
- * with another one. On a Mac that is another Keychain entry: the one that sealed it was deleted,
- * is another Mac's, or was made under another name of the app. Only saving the key again mends it.
- */
 export class SealedWithAnotherKey extends Error {}
 
-/** Why a saved key did not open, as far as this app can tell. */
 export type WhyUnreadable = 'storage-not-answering' | 'sealed-with-another-key' | 'not-known'
 
-/** The longest key accepted: well past any provider's, short of anything that is not a key. */
 export const API_KEY_MAX_LENGTH = 512
 
-/** What each provider's card on the Providers screen is headed — the words the window uses. */
 export const PROVIDER_CARD: Readonly<Record<Provider, string>> = providerRecord(
   (provider) => providerDescriptor(provider).displayName,
 )
 
-/**
- * A saved key that cannot be opened now — the Keychain is asking or was refused, or the entry that
- * sealed it is gone or another one. Its words say which, where this app can tell
- * ({@link WhyUnreadable}). ⛔ A launch refuses rather than falling back to the login, which the
- * person did not ask for when they set a key.
- */
 export class ApiKeyUnreadableError extends Error {
   readonly provider: Provider
 
@@ -82,7 +41,6 @@ export class ApiKeyUnreadableError extends Error {
   }
 }
 
-/** What a Mac adds to the refusal, by why the key did not open: only what is true of that case. */
 const SAID_ON_A_MAC: Readonly<Record<WhyUnreadable, string>> = {
   'storage-not-answering': 'macOS may be waiting for permission to read its saved key. ',
   'sealed-with-another-key':
@@ -90,31 +48,21 @@ const SAID_ON_A_MAC: Readonly<Record<WhyUnreadable, string>> = {
   'not-known': '',
 }
 
-/** Why a read failed, from what it threw. */
 function whyUnreadable(cause: unknown): WhyUnreadable {
   if (cause instanceof KeyStorageNotAnswering) return 'storage-not-answering'
   return cause instanceof SealedWithAnotherKey ? 'sealed-with-another-key' : 'not-known'
 }
 
-/**
- * Why a key was not kept, in words a person can act on, or `null` when it is fine. ⛔ It never
- * quotes the key.
- */
 export function whyNotAKey(key: string): string | null {
   if (key.trim() === '') return 'Enter the key, or remove the one that is saved.'
   if (/\s/.test(key.trim())) {
     return 'An API key has no spaces or line breaks. Paste it exactly as your provider shows it.'
   }
-  // ⚑ Printable ASCII: every provider's keys are, and a key with anything else would reach the
-  // provider altered and be refused there, with nothing to say why.
   if (key.trim().length > API_KEY_MAX_LENGTH || !/^[\x21-\x7e]+$/.test(key.trim())) {
     return 'That does not look like an API key. Paste it exactly as your provider shows it.'
   }
   return null
 }
-
-/** How long BroBot waits for encryption or decryption before offering recovery. */
-export const KEY_STORAGE_TIMEOUT_MS = 15_000
 
 type OpenKey = { readonly key: string; readonly setAt: number }
 type ReadState = { sealed: string; setAt: number; unreadableReason?: string }
@@ -124,6 +72,7 @@ export class ApiKeys {
   private readonly changes = new Map<Provider, number>()
   private readonly lastSavedAt = new Map<Provider, number>()
   private readonly operations = new Map<Provider, Promise<unknown>>()
+  private readonly removals = new Map<Provider, number>()
   private readonly reads = new Map<
     Provider,
     { sealed: string; setAt: number; work: Promise<OpenKey> }
@@ -136,7 +85,6 @@ export class ApiKeys {
     private readonly platform: NodeJS.Platform = process.platform,
   ) {}
 
-  /** Status never opens a key or initializes the system's encryption service. */
   status(provider: Provider): ApiKeyStatus {
     const kept = this.store.keptApiKey(provider)
     const spends = providerDescriptor(provider).apiKey.spendsToken
@@ -166,7 +114,6 @@ export class ApiKeys {
     return this.changes.get(provider) ?? 0
   }
 
-  /** Concurrent launches share one read; only readability, never the key, is cached. */
   current(provider: Provider): Promise<OpenKey | null> {
     const kept = this.store.keptApiKey(provider)
     if (kept === null) return Promise.resolve(null)
@@ -175,10 +122,8 @@ export class ApiKeys {
     const change = this.changes.get(provider)
     const work = (async (): Promise<OpenKey> => {
       try {
-        const key = await this.bounded(provider, () => this.cipher.open(kept.sealed))
+        const key = await this.oneAtATime(provider, () => this.cipher.open(kept.sealed))
         if (!key || !this.stillCurrent(provider, kept, change)) throw new Error('key changed')
-        // The seal carries no check of its own: a wrong sealing key can open to garbage. What
-        // opened is held to the rule every saved key passed.
         if (whyNotAKey(key) !== null) throw new SealedWithAnotherKey()
         this.readability.set(provider, kept)
         return { key, setAt: kept.setAt }
@@ -200,17 +145,22 @@ export class ApiKeys {
   async set(provider: Provider, key: string): Promise<string | null> {
     const why = whyNotAKey(key)
     if (why !== null) return why
-    if (this.operations.has(provider)) return this.saveRefusal()
+    const removedBefore = this.removals.get(provider) ?? 0
+    const removedSince = (): boolean => (this.removals.get(provider) ?? 0) !== removedBefore
+    await this.operations.get(provider)?.then(
+      () => undefined,
+      () => undefined,
+    )
+    if (removedSince()) return 'The saved key changed while this save was waiting. Try again.'
     const change = (this.changes.get(provider) ?? 0) + 1
     this.changes.set(provider, change)
     this.reads.delete(provider)
     try {
-      const sealed = await this.bounded(provider, async (signal) => {
-        if (!(await this.cipher.available()) || signal.aborted)
-          throw new Error('encryption unavailable')
+      const sealed = await this.oneAtATime(provider, async () => {
+        if (!(await this.cipher.available())) throw new Error('encryption unavailable')
         return await this.cipher.seal(key.trim())
       })
-      if (this.changes.get(provider) !== change)
+      if (this.changes.get(provider) !== change || removedSince())
         return 'The saved key changed while this save was waiting. Try again.'
       const previous = Math.max(
         this.lastSavedAt.get(provider) ?? -1,
@@ -240,6 +190,7 @@ export class ApiKeys {
     const setAt = this.store.keptApiKey(provider)?.setAt
     if (setAt !== undefined) this.lastSavedAt.set(provider, setAt)
     this.changes.set(provider, (this.changes.get(provider) ?? 0) + 1)
+    this.removals.set(provider, (this.removals.get(provider) ?? 0) + 1)
     this.readability.delete(provider)
     this.reads.delete(provider)
     return this.store.forgetApiKey(provider)
@@ -254,38 +205,21 @@ export class ApiKeys {
     )
   }
 
-  private async bounded<T>(
-    provider: Provider,
-    action: (signal: AbortSignal) => T | Promise<T>,
-  ): Promise<T> {
-    // A deadline releases BroBot, not the native operation. Keep its slot until it really settles.
-    if (this.operations.has(provider)) throw new KeyStorageNotAnswering('still waiting')
-    const cancelled = new AbortController()
-    const native = Promise.resolve().then(() => action(cancelled.signal))
+  private async oneAtATime<T>(provider: Provider, action: () => T | Promise<T>): Promise<T> {
+    const before = this.operations.get(provider) ?? Promise.resolve()
+    const native = before.then(
+      () => action(),
+      () => action(),
+    )
     this.operations.set(provider, native)
     const release = (): void => {
       if (this.operations.get(provider) === native) this.operations.delete(provider)
     }
     void native.then(release, release)
-    let timer: ReturnType<typeof setTimeout> | undefined
-    try {
-      return await Promise.race([
-        native,
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(
-            () => reject(new KeyStorageNotAnswering('timed out')),
-            KEY_STORAGE_TIMEOUT_MS,
-          )
-        }),
-      ])
-    } finally {
-      cancelled.abort()
-      clearTimeout(timer)
-    }
+    return await native
   }
 }
 
-/** Whether a key's removal leaves the provider's existing sign-in capability. */
 export function aLoginRunsWithoutAKey(
   provider: Provider,
   platform: NodeJS.Platform = process.platform,
@@ -297,17 +231,6 @@ export function aLoginRunsWithoutAKey(
 export { KEY_CHECK_TIMEOUT_MS } from '../providers/key-check'
 export { theCheapestModel } from '../providers/auth-definitions'
 
-/**
- * 🔒 Asks the provider whether it accepts a key. Only ever run when a person presses the check.
- *
- * Every provider is asked for its list of models, which spends nothing. Claude is then sent one
- * one-token request on its cheapest listed model, because the list is answered for a key whose
- * account has no credit and only a real request shows that; on a funded key it costs a tiny
- * fraction of a cent.
- *
- * The key goes in one request header and nowhere else. The answer never quotes it, nor anything
- * the provider sent back: a status code and an error's type are what is read.
- */
 export async function askTheProvider(
   provider: Provider,
   key: string,
@@ -316,10 +239,6 @@ export async function askTheProvider(
   return await providerAuthPolicies[provider].key.check(key, fetchFor)
 }
 
-/**
- * The app's cipher: Electron's `safeStorage`. On macOS it encrypts with a key kept in the system
- * Keychain under this app's name, so the database alone cannot give a key back.
- */
 export function safeStorageCipher(safeStorage: {
   isAsyncEncryptionAvailable(): Promise<boolean>
   encryptStringAsync(plainText: string): Promise<Buffer>
@@ -338,13 +257,6 @@ export function safeStorageCipher(safeStorage: {
   }
 }
 
-/**
- * The two ways Electron's `decryptStringAsync` fails, told apart by its own words (Electron 43.2.0,
- * `shell/browser/api/electron_api_safe_storage.cc`): no sealing key was handed over, or one was and
- * the decryption failed. Anything else is passed on as it came: should Electron reword either,
- * the refusal says neither of the two cases, which is still true, and the upgrade lane's Mac job
- * is where the difference is seen.
- */
 const ELECTRON_HAD_NO_SEALING_KEY = 'is temporarily unavailable'
 const ELECTRON_COULD_NOT_DECRYPT = 'Error while decrypting the ciphertext'
 

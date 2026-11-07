@@ -42,7 +42,6 @@ describe('sign-in reopens share a yielding queue', () => {
   let exits: Map<string, ReturnType<typeof deferred>>
   let launchGates: ReturnType<typeof deferred>[]
   let states: RuntimeStatesMessage[]
-  /** A read of the sign-in held until resolved, by provider session, once its handle was closed. */
   let readsHeld: Map<string, ReturnType<typeof deferred>>
   let timing: MainThreadWork
   let workClock: number
@@ -427,9 +426,21 @@ describe('sign-in reopens share a yielding queue', () => {
       moved = true
       await late.handle.runTurnRefusedOnItsLogin()
       await vi.advanceTimersByTimeAsync(200)
-      await expect(host.resumeSession(late.id, sink)).rejects.toMatchObject({
-        cause: { unavailable: 'not-confirmed-stopped' },
-      })
+      const manual = host.resumeSession(late.id, sink, 'manual-late-reopen')
+      let settled = false
+      void manual.then(
+        () => {
+          settled = true
+        },
+        () => {
+          settled = true
+        },
+      )
+      await vi.advanceTimersByTimeAsync(200)
+      expect(settled).toBe(false)
+      expect(resumes).toEqual([])
+      expect(await host.cancelLaunch('manual-late-reopen', sink.ownerId)).toBe(true)
+      await expect(manual).rejects.toMatchObject({ cause: { unavailable: 'cancelled' } })
       await note(sender.id, healthy.id, 'healthy')
       await vi.advanceTimersByTimeAsync(1100)
       expect(resumes).toEqual([healthy.handle.ref.sessionId])
@@ -461,9 +472,21 @@ describe('sign-in reopens share a yielding queue', () => {
     await note(sender.id, healthy.id, 'healthy')
     await vi.advanceTimersByTimeAsync(1600)
     expect(resumes).toEqual([healthy.handle.ref.sessionId])
-    await expect(host.resumeSession(late.id, sink)).rejects.toMatchObject({
-      cause: { unavailable: 'not-confirmed-stopped' },
-    })
+    const manual = host.resumeSession(late.id, sink, 'manual-held-reopen')
+    let settled = false
+    void manual.then(
+      () => {
+        settled = true
+      },
+      () => {
+        settled = true
+      },
+    )
+    await vi.advanceTimersByTimeAsync(200)
+    expect(settled).toBe(false)
+    expect(resumes).toEqual([healthy.handle.ref.sessionId])
+    expect(await host.cancelLaunch('manual-held-reopen', sink.ownerId)).toBe(true)
+    await expect(manual).rejects.toMatchObject({ cause: { unavailable: 'cancelled' } })
     receipt.resolve()
     await vi.advanceTimersByTimeAsync(1100)
     expect(resumes).toEqual([healthy.handle.ref.sessionId, late.handle.ref.sessionId])
@@ -613,7 +636,6 @@ describe('sign-in reopens share a yielding queue', () => {
     await first.handle.runTurnRefusedOnItsLogin()
     await second.handle.runTurnRefusedOnItsLogin()
     await vi.advanceTimersByTimeAsync(200)
-    // The first reopen is under way; the second waits its turn behind it.
     expect(resumes).toEqual([first.handle.ref.sessionId])
     const decided = (host as unknown as { aReopenIsBeingDecidedFor: Map<string, number> })
       .aReopenIsBeingDecidedFor
@@ -642,7 +664,6 @@ describe('sign-in reopens share a yielding queue', () => {
     moved = true
     await only.handle.runTurnRefusedOnItsLogin()
     await vi.advanceTimersByTimeAsync(200)
-    // Ended on the moved sign-in; its reopen has begun, and waits on its read of the sign-in.
     expect(closed).toEqual([only.handle.ref.sessionId])
     expect(resumes).toEqual([])
     const kept = host as unknown as {

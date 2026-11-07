@@ -47,12 +47,6 @@ import {
 import { clockTimeFrom } from '../src/shared/clock'
 import { MAX_REFUSAL_TOLD, PERMANENCE_SAID, refusalReason } from '../src/shared/refusals'
 
-/**
- * A refusal's permanence and actionable detail reach the model in its one text answer, while
- * `structured` is returned unchanged. Each payload is built by its rail's own builder and carried
- * as the tools carry it.
- */
-
 const READ_AT = Date.UTC(2026, 9, 10, 15, 0)
 const AN_HOUR_AGO = READ_AT - 3_600_000
 
@@ -67,7 +61,6 @@ const context: AnswerWordsContext = {
   readAt: READ_AT,
 }
 
-/** A refusal as the tools answer with it: the payload, and its rail and reason as the text. */
 function answered(
   refusal: { readonly rail: string; readonly reason: string },
   extra: Readonly<Record<string, unknown>> = {},
@@ -78,7 +71,6 @@ function answered(
   }
 }
 
-/** What {@link answerInWords} added, after the text it was handed. */
 function added(before: AgentToolAnswer): string {
   const after = answerInWords(before, context)
   expect(after.text.startsWith(before.text)).toBe(true)
@@ -202,12 +194,12 @@ describe('the ledger quote adds only the reviewed app clauses', () => {
   })
 
   it('keeps the app-generated unused label when the exact whole answer contains only it and permanence', () => {
-    const before = answered(refuseTool('agent-took-too-long-to-start'), {
+    const before = answered(refuseTool('agent-could-not-start-just-now'), {
       label_not_used: 'W1.23',
     })
     const after = answerInWords(before, context)
     const quote = `${String(before.structured!['reason'])} The label W1.23 was used up by this failed give and names no piece. ${WHILE}`
-    expect(after.text).toBe(`refused (agent-took-too-long-to-start): ${quote}`)
+    expect(after.text).toBe(`refused (agent-could-not-start-just-now): ${quote}`)
     expect(appOnlyRefusalQuote(after.structured, after.text)).toBe(quote)
     expect(appOnlyRefusalQuote(after.structured, `${after.text} Another clause.`)).toBe(
       before.structured!['reason'],
@@ -294,11 +286,9 @@ describe('permanence, true on every rail of its class', () => {
 
   it('never says a person must act, where an agent answering clears it', () => {
     const until = [
-      // Cleared when the conversation it waits on answers, which may be the caller.
       answered(
         refuseInterrupt('it-is-waiting-on-an-answer', { agent: 'sess_typed', askedOf: 'sess_me' }),
       ),
-      // Cancelled by its parent: nobody else acts, and the same call then starts.
       answered(refuseTool('agent-did-not-start', { profile: 'helper', because: 'cancelled' })),
       answered(refuseMessage('may-not-message')),
     ]

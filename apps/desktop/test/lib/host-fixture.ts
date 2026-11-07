@@ -6,14 +6,23 @@ import type { RuntimeEventSink, RuntimeHostDeps } from '../../src/main/runtime/r
 import type { ProviderConfigInfo, RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 
 export class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
   readonly messages: RuntimeEventMessage[] = []
   alive = true
-  constructor(readonly ownerId: string) {}
+  constructor(
+    readonly ownerId: string,
+    readonly aPersonIsBehindIt = true,
+  ) {}
   send(message: RuntimeEventMessage): void {
     this.messages.push(message)
   }
   sendLiveness(): void {}
+}
+
+export class NonPersonSink extends RecordingSink {
+  override readonly alive = true
+  constructor(ownerId = 'owner:1') {
+    super(ownerId, false)
+  }
 }
 
 export const syntheticProviderHome =
@@ -24,6 +33,12 @@ export const syntheticProviderHome =
     return home
   }
 
+export function prepareUnprofiledHome(root: string, provider: Provider): string {
+  const home = join(root, 'provider-homes', provider)
+  mkdirSync(home, { recursive: true })
+  return home
+}
+
 export function fixtureProviderConfig(_provider: Provider, home: string): ProviderConfigInfo {
   return {
     home,
@@ -31,6 +46,14 @@ export function fixtureProviderConfig(_provider: Provider, home: string): Provid
     model: 'm',
     authNote: null,
     files: [],
+  }
+}
+
+export function codexFixtureConfig(provider: Provider, home: string): ProviderConfigInfo {
+  return {
+    ...fixtureProviderConfig(provider, home),
+    homeEnv: 'CODEX_HOME',
+    model: 'fake',
   }
 }
 

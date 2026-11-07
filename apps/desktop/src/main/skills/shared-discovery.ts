@@ -19,7 +19,6 @@ export interface ProfileSkillAccess {
   readonly isCoordinator: boolean
 }
 
-/** Read existing grants without creating an identity or accepting grants from a window. */
 export function profileSkillAccess(
   store: Pick<SessionStore, 'capabilitiesOf'>,
   profileId: string,
@@ -64,7 +63,6 @@ function metadata(body: string, key: string): string {
   return value.replace(/\s+#.*$/, '')
 }
 
-/** One editable tree. Watching invalidates the page; native readers reload at each turn boundary. */
 export class SharedSkillDiscovery {
   readonly library: SharedSkillLibrary
   private watcher?: FSWatcher
@@ -86,6 +84,10 @@ export class SharedSkillDiscovery {
   private invalidate = () => {
     this.generation++
     this.cached = undefined
+  }
+  changeMark(): number {
+    if (!this.watcher || !this.offWatcher) this.invalidate()
+    return this.generation
   }
   async root(): Promise<string> {
     await this.ready
@@ -228,7 +230,6 @@ export class SharedSkillDiscovery {
       this.cached = { generation: stamp, skills }
     return skills
   }
-  /** A read-only page uses bounded headers, never the full-body or conversion paths. */
   private async profileMetadata(
     access: ProfileSkillAccess,
   ): Promise<readonly ProfileSkillMetadata[]> {
