@@ -664,12 +664,13 @@ it('a staged move that settles after the deadline restores its file before the p
     }
   }
   vi.spyOn(console, 'warn').mockImplementation(() => {})
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
   const host = new TranscriptRetentionHost(data, unused, () => NOW, false, 20)
   const pass = host.run()
   try {
     await arrived
     const launch = host.beforeLaunch()
-    await wait(60)
+    await vi.advanceTimersByTimeAsync(60)
     await launch
     release()
     await pass
@@ -681,6 +682,7 @@ it('a staged move that settles after the deadline restores its file before the p
     ).toBe(false)
     expect((await host.recent(0, NOW))[0]).toMatchObject({ conversations: 0, stoppedEarly: true })
   } finally {
+    vi.useRealTimers()
     release()
     await pass
     await host.stop()
