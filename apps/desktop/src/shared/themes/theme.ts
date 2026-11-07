@@ -1,9 +1,3 @@
-/**
- * A theme after validation: every value parsed and written back in one form. Colours are
- * `#rrggbb` or `#rrggbbaa`; numbers are numbers; pictures and fonts are `assets/…` paths that name
- * files the host has checked.
- */
-
 /** One thing wrong with a theme: where, and a sentence a person or an agent can act on. */
 export interface ThemeProblem {
   readonly at: string
@@ -218,12 +212,6 @@ export interface Theme {
 const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
 
-/**
- * A theme with its base underneath: every setting the theme leaves unset comes from `base`.
- * Groups merge key by key; a background, a font list, `kinds` and `effects` are replaced whole.
- * A file the base names stays the base's: `assets/x.png` comes through as `@<base id>/assets/x.png`
- * (see `assetOwner`).
- */
 export function resolveTheme(theme: Theme, base: Theme | null | undefined): Theme {
   if (!base) return theme
   const WHOLE = new Set([

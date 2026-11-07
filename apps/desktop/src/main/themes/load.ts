@@ -9,7 +9,6 @@ import {
   sniffAsset,
   type AssetFacts,
 } from '../../shared/themes/assets'
-import type { PictureSamples } from '../../shared/themes/contrast'
 import { resolveTheme, type Theme, type ThemeProblem } from '../../shared/themes/theme'
 import { themeBaseName, validateTheme } from '../../shared/themes/validate'
 import type { AdmittedThemeAsset } from './asset-protocol'
@@ -46,7 +45,7 @@ export type ThemeHostProblem = ThemeFileFailure | 'json-size' | 'json' | 'id' | 
 
 export interface ThemeLoader {
   readonly problem: (kind: ThemeHostProblem) => string
-  readonly sample: (bytes: Buffer, facts: AssetFacts) => PictureSamples | null
+  readonly sample: (bytes: Buffer, facts: AssetFacts) => boolean
   readonly readDirectory?: (path: string) => Promise<readonly Dirent[]>
   /** How a theme's files are read; the real file system unless given. */
   readonly readFiles?: ThemeReadFiles
@@ -62,9 +61,6 @@ export interface LoadedTheme {
   readonly root: string
   readonly version: string
   readonly assets: ReadonlyMap<string, AdmittedThemeAsset>
-  readonly pictures: ReadonlyMap<string, PictureSamples>
-  /** Readability problems of a theme loaded with them as notes. */
-  readonly notes?: readonly ThemeProblem[]
 }
 
 export type ThemeLoad =
@@ -72,18 +68,9 @@ export type ThemeLoad =
   | {
       readonly ok: false
       readonly problems: readonly ThemeProblem[]
-      /**
-       * Set when a read the theme needed was refused by the system, or the built-in it extends
-       * couldn't be read, so the folder may load later; absent when the folder itself is missing a
-       * file or holds something invalid.
-       */
       readonly refused?: unknown
     }
 
-/**
- * Built-in themes the app couldn't read right now. A theme that extends one is unresolved rather
- * than invalid: its base may read on a later load.
- */
 export interface UnreadBases {
   has(id: string): boolean
 }
@@ -138,16 +125,13 @@ export function validateThemeBytes(
   bases: ReadonlyMap<string, LoadedTheme>,
   loader: ThemeLoader,
   builtIn = false,
-  readability: 'refuse' | 'note' = 'refuse',
   unread: UnreadBases = NO_UNREAD_BASES,
 ):
   | {
       readonly ok: true
       readonly theme: Theme
       readonly resolved: Theme
-      readonly pictures: ReadonlyMap<string, PictureSamples>
       readonly version: string
-      readonly notes?: readonly ThemeProblem[]
     }
   | {
       readonly ok: false
@@ -163,17 +147,13 @@ export function validateThemeBytes(
       problems: [{ at: 'assets', says: themeFontsProblem(fonts, LIMITS.fonts) }],
       tooLarge: true,
     }
-  const pictures = new Map<string, PictureSamples>()
   const problems: ThemeProblem[] = []
   for (const asset of assets) {
     if (asset.facts.type === 'woff2') continue
-    const sampled = loader.sample(asset.bytes, asset.facts)
-    if (!sampled) problems.push({ at: asset.path, says: loader.problem('decode') })
-    else pictures.set(asset.path, sampled)
+    if (!loader.sample(asset.bytes, asset.facts))
+      problems.push({ at: asset.path, says: loader.problem('decode') })
   }
   if (problems.length) return { ok: false, problems, tooLarge: false }
-  // Without its base the theme can't be judged: its settings, pictures and readability all
-  // depend on it.
   const base = themeBaseName(raw)
   if (base !== undefined && !bases.has(base) && unread.has(base))
     return {
@@ -182,19 +162,13 @@ export function validateThemeBytes(
       tooLarge: false,
       refused: new Error(`the built-in theme ${base} could not be read`),
     }
-  const inheritedPictures = new Map(pictures)
-  for (const [id, base] of bases) {
-    for (const [path, samples] of base.pictures) inheritedPictures.set(`@${id}/${path}`, samples)
-  }
   const builtIns = new Map([...bases].map(([id, loaded]) => [id, loaded.resolved]))
   const result = validateTheme(raw, {
     assets: new Map(assets.map((asset) => [asset.path, asset.facts])),
-    pictures: inheritedPictures,
     builtIns,
     ...(loader.hiddenBases ? { hiddenBases: loader.hiddenBases } : {}),
     builtIn,
     readsHeld: loader.readsHeld === true,
-    readability,
   })
   if (!result.ok) return { ...result, tooLarge: false }
   const digest = createHash('sha256').update(JSON.stringify(result.theme))
@@ -205,9 +179,7 @@ export function validateThemeBytes(
     ok: true,
     theme: result.theme,
     resolved: resolveTheme(result.theme, builtIns.get(result.theme.extends ?? '')),
-    pictures,
     version: digest.digest('hex'),
-    ...(result.notes?.length ? { notes: result.notes } : {}),
   }
 }
 
@@ -217,7 +189,6 @@ export async function loadThemeFolder(
   bases: ReadonlyMap<string, LoadedTheme>,
   loader: ThemeLoader,
   builtIn = false,
-  readability: 'refuse' | 'note' = 'refuse',
   unread: UnreadBases = NO_UNREAD_BASES,
 ): Promise<ThemeLoad> {
   const failed = (at: string, kind: ThemeHostProblem, refused?: unknown): ThemeLoad => ({
@@ -325,7 +296,7 @@ export async function loadThemeFolder(
       const result = await walk(assetsRoot, 'assets', 0)
       if (result) return result
     }
-    const checked = validateThemeBytes(raw, files, bases, loader, builtIn, readability, unread)
+    const checked = validateThemeBytes(raw, files, bases, loader, builtIn, unread)
     if (!checked.ok) return checked
     const finalRootStat = await lstat(offeredRoot)
     if (

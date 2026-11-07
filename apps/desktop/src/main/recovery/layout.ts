@@ -1,13 +1,5 @@
 import { join } from 'node:path'
 
-/**
- * Where the database, the recovery copies and the restore records live in a data folder.
- *
- * Copies and set-aside databases are never named `brobot2.sqlite`: deleting a workspace and
- * resetting a data folder both refuse when a sub-folder holds a file with that name, since it would
- * look like another workspace.
- */
-
 /** The live database, beside its sidecars. */
 export const DATABASE_FILE = 'brobot2.sqlite'
 
@@ -44,12 +36,6 @@ export function isUuid(text: string): boolean {
 /** Names Windows gives to devices, with or without an extension: `NUL`, `con.json`, `COM1.txt`. */
 const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[0-9]|lpt[0-9])(?:\..*)?$/i
 
-/**
- * Whether `name` can stand as one path segment on every system the app runs on: letters, digits,
- * `.`, `_` and `-`, starting with a letter or digit, not ending in a dot, and not a name Windows
- * keeps for a device. File names read from a record pass this before they reach a path, so a
- * record cannot point outside its folder or at a device.
- */
 export function isSafeName(name: string): boolean {
   return (
     /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(name) &&
@@ -76,10 +62,6 @@ export function familyOf(main: string): string[] {
 /** The live family's names: `brobot2.sqlite` and its sidecars. */
 export const FAMILY: readonly string[] = familyOf(DATABASE_FILE)
 
-/**
- * A live file's name inside a recovery folder: the database family as `database.sqlite*`, so each
- * sidecar stays paired with its main file, and a state file under its own name.
- */
 export function copyNameOf(live: string): string {
   return FAMILY.includes(live) ? `${COPY_FILE}${live.slice(DATABASE_FILE.length)}` : segment(live)
 }
@@ -160,14 +142,6 @@ export function preservedAsRecorded(restoreId: string): string {
   return `${RECOVERY_DIRNAME}/${PRESERVED_DIRNAME}/${id(restoreId)}`
 }
 
-/**
- * Where a journal participant is set aside and where its replacement waits, as the journal records
- * them: relative to the data folder, `/`-separated.
- * - A restore sets the live file aside in `recovery/preserved/<id>/` and installs it from
- *   `recovery/staged/<id>/`.
- * - A return sets the restored file aside in `recovery/preserved/<id>-restored/` and installs the
- *   newer one from `recovery/preserved/<id>/`, where the restore left it.
- */
 export function participantPlaces(
   kind: 'restore' | 'return',
   restoreId: string,
@@ -183,10 +157,6 @@ export function participantPlaces(
     : { aside: `${preserved}${RESTORED_SUFFIX}/${name}`, incoming: `${preserved}/${name}` }
 }
 
-/**
- * A path a record holds, relative to the data folder and `/`-separated, as a path on this system.
- * Records name only places inside `recovery/`.
- */
 export function fromRecorded(userData: string, recorded: string): string {
   const [first, ...rest] = recorded.split('/')
   if (first !== RECOVERY_DIRNAME || rest.length === 0) {

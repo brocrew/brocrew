@@ -51,7 +51,7 @@ function fakeDocument() {
 
 function sample(name: string): Theme {
   const s = SAMPLES[name]!
-  const r = validateTheme(s.file, contextFor(s.assets, s.pictures))
+  const r = validateTheme(s.file, contextFor(s.assets))
   if (!r.ok) throw new Error(JSON.stringify(r.problems))
   return resolveTheme(r.theme, DEFINED)
 }

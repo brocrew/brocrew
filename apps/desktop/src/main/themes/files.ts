@@ -29,10 +29,6 @@ export interface ThemeReadFiles {
   open(path: string, flags: number): Promise<FileHandle>
 }
 
-/**
- * Whether `error` is the system refusing a read (a file held, a permission, an I/O fault) rather
- * than saying the file is not there. A refused read says nothing about what the file holds.
- */
 export function readRefused(error: unknown): boolean {
   const code = errorCode(error)
   return code !== 'ENOENT' && code !== 'ENOTDIR'

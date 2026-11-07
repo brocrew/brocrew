@@ -1,18 +1,22 @@
 import { nextTick } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ThemesSection from '../../src/renderer/src/components/ThemesSection.vue'
+import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
+import { validateTheme } from '../../src/shared/themes/validate'
 import type { ThemeReading, ThemeSnapshot, ThemesBridge } from '../../src/shared/theme-library'
 import { mount, unmountAll } from './harness'
 
-/**
- * A person's own theme that loads, with what the readability check now says about it: the picker
- * shows the note in the check's own words, and the theme can still be used.
- */
+afterEach(() => {
+  applyTheme(null)
+  unmountAll()
+})
 
-const NOTE =
-  'Links on the page would be too faint: 3.9 to 1 against the page, and it needs at least 4.5 to 1. Change `content.accent`.'
-
-afterEach(unmountAll)
+const FILE = {
+  format: 1,
+  id: 'my-brocrew',
+  name: 'My BroCrew',
+  content: { ink: '#ffffff', paper: '#ffffff', accent: '#ffffff' },
+}
 
 function bridge(): ThemesBridge {
   const snapshot = (): ThemeSnapshot => ({
@@ -25,8 +29,6 @@ function bridge(): ThemesBridge {
         name: 'My BroCrew',
         source: 'mine',
         status: 'ok',
-        problems: [{ at: 'content.accent', says: NOTE }],
-        reason: NOTE,
       },
     ],
   })
@@ -39,7 +41,12 @@ function bridge(): ThemesBridge {
   return {
     list: vi.fn(async () => snapshot()),
     read: vi.fn(async (id?: string) => reading(id ?? 'classic')),
-    set: vi.fn(async (id: string) => ({ outcome: 'ok' as const, active: id, previous: 'classic' })),
+    set: vi.fn(async (id: string) => {
+      const result = validateTheme(FILE, { assets: new Map(), builtIns: new Map() })
+      if (!result.ok) throw new Error(JSON.stringify(result.problems))
+      expect(applyTheme(result.theme)).toEqual({ ok: true, id })
+      return { outcome: 'ok' as const, active: id, previous: 'classic' }
+    }),
     duplicate: vi.fn(),
     delete: vi.fn(),
     openFolder: vi.fn(),
@@ -52,19 +59,23 @@ const settle = async (): Promise<void> => {
   await new Promise((done) => setTimeout(done, 0))
 }
 
-describe('a saved theme the readability check now has notes on', () => {
-  it('shows the note in the check’s own words, and can still be used', async () => {
+describe('a low-contrast saved theme', () => {
+  it('can be selected and painted without a contrast note', async () => {
     const themes = bridge()
     const m = mount(ThemesSection, { themes }, { width: 900 })
     await settle()
     const card = m.host.querySelector<HTMLElement>('[data-theme-id="my-brocrew"]')!
     expect(card.classList.contains('refused')).toBe(false)
     expect(card.querySelector('[data-cy="theme-refused"]')).toBeNull()
-    expect(card.querySelector('[data-cy="theme-notes"]')?.textContent?.trim()).toBe(NOTE)
+    expect(card.querySelector('[data-cy="theme-notes"]')).toBeNull()
     const use = card.querySelector<HTMLButtonElement>('[data-cy="theme-use"]')!
     expect(use.disabled).toBe(false)
     use.click()
     await settle()
     expect(themes.set).toHaveBeenCalledWith('my-brocrew')
+    expect(document.documentElement.getAttribute('data-theme')).toBe('my-brocrew')
+    expect(document.getElementById('brobot-theme')?.textContent).toContain(
+      '--content-ink: #ffffff;',
+    )
   })
 })

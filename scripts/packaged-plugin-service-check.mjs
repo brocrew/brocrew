@@ -33,7 +33,9 @@ export async function checkPackagedPluginService(resources, packages) {
       ],
     })
     // Keep timeout cleanup in the process that owns the real service child on Windows too.
-    await req(harness).smoke(resources, scratch, packages)
+    /** @type {{ smoke: typeof import('../apps/desktop/smoke/packaged-plugin-service').smoke }} */
+    const harnessModule = req(harness)
+    await harnessModule.smoke(resources, scratch, packages)
     passed = true
   } finally {
     if (passed) await rm(scratch, { recursive: true, force: true })

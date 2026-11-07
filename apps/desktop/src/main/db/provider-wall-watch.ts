@@ -3,10 +3,6 @@ import type Database from 'better-sqlite3'
 /** The event types the provider wall read reads: the walls, the launches that date them, the clears. */
 const PROVIDER_WALL_EVENT_TYPES = ['error', 'launched', 'provider_limit_clear'] as const
 
-/**
- * The most rows the queue holds since it was last emptied. A write past it empties the queue,
- * and every kept read, now behind where it was emptied, begins again: no read ever takes in more.
- */
 export const WALL_QUEUE_AT_MOST = 4096
 
 const terms = PROVIDER_WALL_EVENT_TYPES.map((type) => `'${type}'`).join(', ')
@@ -94,29 +90,6 @@ export function providerWallsWatched(db: Database.Database): boolean {
   return (holds.get() as { n: number }).n === WATCH_TABLES.length + WATCH_TRIGGERS.length
 }
 
-/**
- * Temp tables and triggers on one connection, saying what changed under a provider wall read since
- * it was kept:
- *  - `provider_wall_added`, each row of {@link PROVIDER_WALL_EVENT_TYPES} written, in order;
- *  - `provider_wall_watch.revision`, counting each such row removed or rewritten, each completed
- *    turn removed or reopened, and each conversation whose provider changed: what only a whole read
- *    can account for;
- *  - `provider_wall_turns`, the newest completed turn of each provider and conversation, and in
- *    `provider_wall_watch` how far it is filled, and for which count.
- * Each kept read on the connection (one per connection object a store was made on) reads the queue
- * from its own place. A read that has taken all of it in empties it once it is long, and says how
- * far in `emptied_through`: a read that had taken in less begins again. Emptying it moves
- * `total_changes()`, which tells the limits worker the database changed under its read, so it is
- * emptied seldom. A write that would leave more than {@link WALL_QUEUE_AT_MOST} rows in it since
- * then empties it itself, so a hold never takes in more. Temp writes roll back with the
- * transaction that made them, so a kept read never counts a row that was not kept. Another
- * connection's writes are not seen here; `data_version` says there were some.
- *
- * Left as it is when it is whole. Otherwise put in place whole or not at all: whatever part of it
- * is left from before is dropped first, so nothing it was keeping (its revision, its queue, its
- * filled turns) outlives a loss, whichever store finds it. Returns false where the connection
- * cannot hold it, as one set to query only cannot. Asked outside a transaction.
- */
 export function watchProviderWalls(db: Database.Database): boolean {
   try {
     // A REPLACE deletes a row as a DELETE does, and must say so as one does.
@@ -131,8 +104,6 @@ export function watchProviderWalls(db: Database.Database): boolean {
         ].join('\n'),
       )
       db.exec(watch)
-      // Its revision begins past every one this process has used, so no read kept before it
-      // was put back can take it for its own.
       db.prepare('INSERT OR IGNORE INTO provider_wall_watch (id, revision) VALUES (0, ?)').run(
         ++installs * 2 ** 32,
       )

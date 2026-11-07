@@ -6,21 +6,7 @@ import { THEME_READ_FILES, type ThemeReadFiles } from '../../src/main/themes/fil
 import { ACTIVE_THEME_FILE, writeActiveTheme } from '../../src/main/themes/state'
 import { themeProblem } from '../../src/main/themes/words'
 import { DEFINED } from './fixtures'
-import {
-  childTheme,
-  createHostFixture,
-  putTheme,
-  RED_PNG,
-  RED_SAMPLES,
-  type HostFixture,
-} from './host-fixtures'
-
-/**
- * On Windows, antivirus and indexers open a file for a moment right after it is written, and a
- * rename of it, or of the folder it sits in, fails with EPERM, EBUSY or EACCES until they let go.
- * Saving a theme and choosing one are renames, so each tries again, and a lock that never clears
- * still leaves the person's theme and choice as they were.
- */
+import { childTheme, createHostFixture, putTheme, RED_PNG, type HostFixture } from './host-fixtures'
 
 let fixture: HostFixture
 beforeEach(async () => {
@@ -35,7 +21,6 @@ const held = (code: string): Error =>
 
 type Matches = (from: string, to: string) => boolean
 
-/** A rename that fails with `code` the first `times` times it matches, then renames for real. */
 function heldFor(times: number, code: string, matches: Matches) {
   let left = times
   return {
@@ -61,7 +46,6 @@ const theRollback = (id: string) => (from: string, to: string) =>
   to === join(fixture.library, id) && basename(from).endsWith('.previous')
 const theChoice = (_from: string, to: string) => to === join(fixture.userData, ACTIVE_THEME_FILE)
 
-/** Saves "mine" with a picture and makes it the workspace's theme, then answers what is on disk. */
 async function anOriginal() {
   const store = fixture.store({ problem: themeProblem })
   await store.start()
@@ -395,7 +379,7 @@ describe('a set-aside copy the system won’t let the app read or look beside', 
       const { original, copy } = await onlyTheCopy()
       const store = fixture.store({
         problem: themeProblem,
-        loader: { sample: () => RED_SAMPLES, readFiles: refusedReads('EPERM', matches) },
+        loader: { sample: () => true, readFiles: refusedReads('EPERM', matches) },
       })
       await store.start()
       expect(store.snapshot().themes).toContainEqual(unavailable)
@@ -419,7 +403,7 @@ describe('a set-aside copy the system won’t let the app read or look beside', 
     const store = fixture.store({
       problem: themeProblem,
       loader: {
-        sample: () => RED_SAMPLES,
+        sample: () => true,
         readFiles: refusedReads(
           'EBUSY',
           (path) =>
@@ -490,7 +474,7 @@ describe('a set-aside copy the system won’t let the app read or look beside', 
     const store = fixture.store({
       problem: themeProblem,
       loader: {
-        sample: () => RED_SAMPLES,
+        sample: () => true,
         readFiles: refusedReads(
           'EPERM',
           (path) => path.startsWith(copy) || path.includes('000000000003'),
@@ -613,7 +597,7 @@ describe('every look and listing on the way to the list waits out a hold, and an
     return fixture.store({
       problem: themeProblem,
       loader: {
-        sample: () => RED_SAMPLES,
+        sample: () => true,
         ...(options.readFiles ? { readFiles: options.readFiles } : {}),
       },
       files: {
@@ -772,10 +756,6 @@ describe('a theme built on a built-in the app can’t read right now', () => {
   type Refusal = 'looked at' | 'listed' | 'read'
   const REFUSALS: readonly Refusal[] = ['looked at', 'listed', 'read']
 
-  /**
-   * A store whose look at the built-in folder, listing of it, or read of the built-in "defined"
-   * is refused while `refusing()` holds. Every move it makes is written to `moves`.
-   */
   function refusingBuiltIn(
     refusal: Refusal,
     refusing: () => boolean,
@@ -786,7 +766,7 @@ describe('a theme built on a built-in the app can’t read right now', () => {
       problem: themeProblem,
       builtInIds,
       loader: {
-        sample: () => RED_SAMPLES,
+        sample: () => true,
         readFiles: {
           ...THEME_READ_FILES,
           open: async (path, flags) => {
@@ -1037,7 +1017,7 @@ describe('a theme built on a built-in the app can’t read right now', () => {
   })
 })
 
-describe('a saved theme the readability check now notes, read while the system refuses it', () => {
+describe('a low-contrast saved theme read while the system refuses it', () => {
   /** A theme of a person's own whose only fault is text too faint for today's check. */
   const faint = (name: string) => ({
     ...DEFINED,
@@ -1061,7 +1041,7 @@ describe('a saved theme the readability check now notes, read while the system r
     fixture.store({
       problem: themeProblem,
       loader: {
-        sample: () => RED_SAMPLES,
+        sample: () => true,
         readFiles: {
           ...THEME_READ_FILES,
           open: async (path, flags) => {
@@ -1088,7 +1068,7 @@ describe('a saved theme the readability check now notes, read while the system r
   const noted = (snapshot: { themes: readonly { id: string; problems?: readonly unknown[] }[] }) =>
     snapshot.themes.find((theme) => theme.id === 'mine')
 
-  it('is unavailable while its read is refused, and loads with notes once it reads', async () => {
+  it('is unavailable while its read is refused, and loads once it reads', async () => {
     await putTheme(fixture.library, 'mine', faint('Faint'))
     await writeActiveTheme(fixture.userData, 'mine')
     const choice = await readFile(join(fixture.userData, ACTIVE_THEME_FILE))
@@ -1104,21 +1084,19 @@ describe('a saved theme the readability check now notes, read while the system r
     expect(back.active).toBe('mine')
     const mine = noted(back)
     expect(mine).toMatchObject({ status: 'ok', name: 'Faint' })
-    expect(mine?.problems?.length).toBeGreaterThan(0)
-    for (const note of mine!.problems as { says: string }[])
-      expect(note.says).toMatch(/ would be too faint: /)
+    expect(mine?.problems).toBeUndefined()
   })
 
-  it('a read refused once loads with notes, not as unavailable', async () => {
+  it('a read refused once loads, not as unavailable', async () => {
     await putTheme(fixture.library, 'mine', faint('Faint'))
     let refusals = 1
     const store = refusingMine(() => refusals-- > 0)
     const seen = await store.start()
     expect(noted(seen)).toMatchObject({ status: 'ok', name: 'Faint' })
-    expect(noted(seen)?.problems?.length).toBeGreaterThan(0)
+    expect(noted(seen)?.problems).toBeUndefined()
   })
 
-  it('a set-aside copy that fails only the readability check is put back, not passed over', async () => {
+  it('a low-contrast set-aside copy is put back, not passed over', async () => {
     const newer = join(fixture.library, COPY)
     await putTheme(fixture.library, COPY, faint('Faint'))
     const older = join(fixture.library, OLDER)
@@ -1135,12 +1113,11 @@ describe('a saved theme the readability check now notes, read while the system r
     refusing = false
     const back = await store.refresh()
     expect(noted(back)).toMatchObject({ status: 'ok', name: 'Faint' })
-    expect(noted(back)?.problems?.length).toBeGreaterThan(0)
+    expect(noted(back)?.problems).toBeUndefined()
     expect(await readFile(join(older, 'theme.json'), 'utf8')).toContain('"Older"')
   })
 })
 
-/** Reads of exactly `at` refused with EPERM every time. */
 function refusedReadsAt(at: string): ThemeReadFiles {
   return {
     ...THEME_READ_FILES,

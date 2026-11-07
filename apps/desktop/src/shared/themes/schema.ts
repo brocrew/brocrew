@@ -1,16 +1,3 @@
-/**
- * Every setting a theme file may hold, as one table. The validator walks it, `themeCss` writes the
- * custom properties it names, and the catalogue an agent reads is generated from it — so a setting
- * exists in all three or in none.
- *
- * A theme sets style only. There is no setting here for display, visibility, position, size,
- * margin, padding, z-index, transform, a control's opacity or generated content, and every length
- * is bounded.
- *
- * Held without zod, like the rest of `src/shared`: the renderer imports the CSS writer from this
- * folder and must not bundle a validator it never runs.
- */
-
 /** The `format` a theme file declares; the only one this build reads. */
 export const THEME_FORMAT = 1
 
@@ -361,10 +348,6 @@ export const THEME_SCHEMA: Readonly<Record<string, Spec>> = {
   },
 }
 
-/**
- * Settings the window doesn't paint yet. A theme is read without them, so a theme that sets one is
- * refused like any unknown setting, and the catalogue leaves them out.
- */
 export const HELD_SETTINGS: readonly string[] = [
   'rail.glass',
   'conversation.glass',
@@ -419,10 +402,6 @@ export const GENERIC_FONTS: ReadonlySet<string> = new Set([
   'ui-rounded',
 ])
 
-/**
- * The colour tokens a theme may set by hand in `tokens`, per zone. Each is declared in tokens.css,
- * and the readability check measures each one where the window draws it.
- */
 export const OVERRIDABLE_TOKENS: readonly string[] = [
   'panel',
   'panel-2',
@@ -466,11 +445,6 @@ export const CONTENT_ONLY_TOKENS: readonly string[] = ['accent-2-text', 'accent-
 export const overridableIn = (zone: 'frame' | 'content'): readonly string[] =>
   zone === 'content' ? [...OVERRIDABLE_TOKENS, ...CONTENT_ONLY_TOKENS] : OVERRIDABLE_TOKENS
 
-/**
- * Surface colours a theme can't set by hand yet: the window draws text on each, and the readability
- * check doesn't measure that text on a hand-set colour. A theme that sets one is refused like any
- * unknown token.
- */
 export const HELD_TOKENS: readonly string[] = [
   'bg',
   'app-bg',

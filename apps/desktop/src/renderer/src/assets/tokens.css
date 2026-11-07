@@ -1,8 +1,3 @@
-/* BroBot global design tokens — W4.212, approved v3 direction.
- * All legacy and shared-class names live here. Small text has a 12px floor.
- * The existing navy frame and light content/overlay scopes stay in place.
- * Window, rail, drawer and transcript geometry is retained; no responsive migration.
- */
 :root {
   --icon-stroke: 1.6;
   --disabled-opacity: 0.55;
@@ -471,11 +466,7 @@
 
 /* ------------------------------------------------------------------ themes */
 
-/* Theme settings. A theme sets only these, on :root[data-theme='<id>']. Without a data-theme,
- * or with data-theme='classic', the window paints the hand-picked values above and nothing below
- * applies. The defaults are the derived look's settings: the ones the theme check assumes for a
- * setting a theme leaves unset (DEFAULT_SEEDS in shared/themes/contrast.ts). Declared on :root
- * only: a redeclaration in the light scope would hide a theme's root block from the content area. */
+/* Root-only defaults let a theme's settings reach the content area through inheritance. */
 :root {
   --frame-ink: #e3e8f4;
   --frame-paper: #182135;
@@ -606,10 +597,7 @@
   --preview-page: initial;
 }
 
-/* A derived theme: every value below is worked out from the settings. Two zones read the same
- * formulas through the zone aliases --z-*: the frame (:root) from the frame's settings, the light
- * scope from the content's. The selectors are no more specific than the classic rules above, so
- * they win by order, and a theme's own root block and hand-tuned colours still win over them. */
+/* Zone aliases share formulas without overriding a theme's hand-tuned colours. */
 
 /* The frame, and what the whole window shares. */
 :root:where([data-theme]:not([data-theme='classic'])) {
@@ -809,9 +797,6 @@
     color-mix(in srgb, var(--z-shadow) calc(var(--shadow-strength) * 2.2), transparent);
 }
 
-/* A theme's shadow style, in both zones. Soft is the shadows above. Hard: offset, with no blur.
- * Glow: around the box, in the shadow colour. Shadows sit outside the boxes that hold text, so no
- * style changes what any text is read against. */
 :root:where([data-theme]:not([data-theme='classic'])[data-shadow-style='hard']),
 :where(:root[data-theme]:not([data-theme='classic'])[data-shadow-style='hard'])
   :is([data-chat-theme='light'], [data-on-white]) {
@@ -833,9 +818,6 @@
     color-mix(in srgb, var(--z-shadow) calc(var(--shadow-strength) * 4), transparent);
 }
 
-/* A card in the right-hand panel under a theme that gives cards an ink: its text is that ink, and
- * its soft, secondary and faint text are worked out from the ink and the card's fill, as a zone's
- * are from its ink and paper. */
 :root[data-card-ink] .card-section {
   --text: var(--drawer-card-ink);
   --text-soft: color-mix(in oklab, var(--drawer-card-ink) 85%, var(--drawer-card-bg, var(--panel)));

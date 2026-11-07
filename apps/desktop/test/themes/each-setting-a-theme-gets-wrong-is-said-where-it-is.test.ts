@@ -1,27 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import type { AssetFacts } from '../../src/shared/themes/assets'
-import type { PictureSamples } from '../../src/shared/themes/contrast'
 import { validateTheme } from '../../src/shared/themes/validate'
 import { contextFor, png, woff2 } from './fixtures'
 
 const base = { format: 1, id: 'mine', name: 'Mine', extends: 'defined' }
-const problems = (
-  file: Record<string, unknown>,
-  assets: Record<string, AssetFacts> = {},
-  pictures: Record<string, PictureSamples> = {},
-) => {
-  const r = validateTheme(file, contextFor(assets, pictures))
+const problems = (file: Record<string, unknown>, assets: Record<string, AssetFacts> = {}) => {
+  const r = validateTheme(file, contextFor(assets))
   return r.ok ? [] : r.problems
 }
 const COLOUR = 'should be a colour, such as #4f46e5 or rgb(79 70 229 / 80%), not'
 
-/** The rail's background, as one layer, so each case below names only its layer. */
 const railLayer = (layer: unknown) => ({ ...base, rail: { background: { layers: [layer] } } })
 const LAYER = 'rail.background.layers[0]'
 const PICTURE = { 'assets/a.png': png(100, 100) }
-const DARK = {
-  'assets/a.png': { darkest: { r: 0, g: 0, b: 0, a: 1 }, lightest: { r: 40, g: 40, b: 40, a: 1 } },
-}
 
 describe('text a theme may write', () => {
   it('refuses a name longer than it may be, saying how long it is', () => {
@@ -131,7 +122,7 @@ describe('a background', () => {
     for (const repeat of ['x', 'y'] as const) {
       const r = validateTheme(
         railLayer({ image: 'assets/a.png', size: '70%', repeat }),
-        contextFor(PICTURE, DARK),
+        contextFor(PICTURE),
       )
       expect(r.ok ? r.theme.rail?.background : r.problems).toEqual({
         layers: [{ image: 'assets/a.png', size: '70%', repeat }],
@@ -141,7 +132,7 @@ describe('a background', () => {
 
   it('refuses a picture size and a repeat it does not know', () => {
     expect(
-      problems(railLayer({ image: 'assets/a.png', size: 'huge', repeat: 'z' }), PICTURE, DARK),
+      problems(railLayer({ image: 'assets/a.png', size: 'huge', repeat: 'z' }), PICTURE),
     ).toEqual([
       {
         at: `${LAYER}.size`,

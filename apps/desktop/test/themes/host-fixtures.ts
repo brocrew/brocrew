@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { ThemeStore, type ThemeStoreOptions } from '../../src/main/themes/store'
 import { themeRoots } from '../../src/main/themes/state'
-import type { PictureSamples } from '../../src/shared/themes/contrast'
 import type { Theme } from '../../src/shared/themes/theme'
 import { DEFINED } from './fixtures'
 
@@ -11,13 +10,6 @@ export const RED_PNG = Buffer.from(
   '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c63f8cfc0f01f00050001ff89993d1d0000000049454e44ae426082',
   'hex',
 )
-
-// Store tests inject samples; they do not exercise a native decoder.
-export const RED_SAMPLES: PictureSamples = {
-  darkest: { r: 255, g: 0, b: 0, a: 1 },
-  lightest: { r: 255, g: 0, b: 0, a: 1 },
-  seeThrough: false,
-}
 
 export const childTheme = (id: string, name = id): Theme => ({
   format: 1,
@@ -93,7 +85,7 @@ export async function createHostFixture() {
         ...roots,
         defaultTheme: 'defined',
         builtInIds: ['defined'],
-        loader: { sample: () => RED_SAMPLES },
+        loader: { sample: () => true },
         problem: (kind) => `fictional:${kind}`,
         trash: (path) => rm(path, { recursive: true }),
         openFolder: async () => undefined,

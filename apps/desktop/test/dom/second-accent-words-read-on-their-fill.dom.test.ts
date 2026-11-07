@@ -10,31 +10,12 @@ import { contrastRatio, over, type Rgba } from '../../src/shared/themes/colour'
 import { resolveTheme } from '../../src/shared/themes/theme'
 import { validateTheme } from '../../src/shared/themes/validate'
 import type { LibraryEntry, LibraryPage } from '../../src/shared/runtime-ipc'
-import DEFINED_FILE from '../../resources/themes/defined/theme.json'
+import { shippedDefined } from '../themes/fixtures'
 import { openAChildsWork, stackingWindow } from './a-window-with-a-workflow-and-nested-agents'
 import { mount, unmountAll } from './harness'
 
-/**
- * Words in the second accent, as the window draws them: each in the second accent's text form, on
- * the fill the readability check measures it on — the weak tint behind an active filter, the page
- * under the library's count and its Clear all, a workflow's and a sub-agent's ink wash, the
- * workflow head's second wash under the pointer, and the child-work viewer's panel.
- */
+const BASE = shippedDefined()
 
-const BASE = (() => {
-  const read = validateTheme(DEFINED_FILE, {
-    assets: new Map(),
-    builtIns: new Map(),
-    builtIn: true,
-  })
-  if (!read.ok) throw new Error(JSON.stringify(read.problems))
-  return read.theme
-})()
-
-/**
- * A light second accent. Its text form reads 5.0:1 on a white page, and 4.4:1 on a workflow's head
- * under the pointer, its second wash over the first.
- */
 const THEME = {
   format: 1,
   id: 'light-second-accent',
@@ -49,7 +30,6 @@ canvas.width = 1
 canvas.height = 1
 const ctx = canvas.getContext('2d', { willReadFrequently: true })!
 
-/** A computed colour as sRGB with its alpha, read from its numbers where it is see-through. */
 function see(computed: string): Rgba {
   const srgb = /^color\(srgb ([\d.e-]+) ([\d.e-]+) ([\d.e-]+)(?: \/ ([\d.e-]+))?\)$/.exec(computed)
   if (srgb) {
@@ -69,7 +49,6 @@ function see(computed: string): Rgba {
   return { r: d[0]!, g: d[1]!, b: d[2]!, a: d[3]! / 255 }
 }
 
-/** What `css` computes to where `at` is, as a background. */
 function token(at: Element, css: string): Rgba {
   const probe = document.createElement('i')
   probe.style.backgroundColor = css
@@ -79,7 +58,6 @@ function token(at: Element, css: string): Rgba {
   return value
 }
 
-/** The colour an element's background shows: its own, over each ancestor's, down to an opaque one. */
 function shownUnder(el: Element): Rgba {
   const layers: Rgba[] = []
   for (let e: Element | null = el; e; e = e.parentElement) {
@@ -92,10 +70,6 @@ function shownUnder(el: Element): Rgba {
   return shown
 }
 
-/**
- * `words` are drawn in the second accent's text form, on `fill` painted with `css`: the fill the
- * readability check measures them on. Returns how they read there.
- */
 function expectOn(what: string, words: Element | null, fill: Element, css: string): number {
   expect(words, `${what} is drawn`).not.toBeNull()
   expect(see(getComputedStyle(words!).color), `${what} in the text form`).toEqual(
@@ -117,7 +91,6 @@ afterEach(() => {
   delete (window as { api?: unknown }).api
 })
 
-/** A light scope with the conversation's background, as the pane draws one. */
 const inPage = (child: Component, props: Record<string, unknown>): Component =>
   defineComponent({
     setup: () => () =>
@@ -133,22 +106,12 @@ const inPage = (child: Component, props: Record<string, unknown>): Component =>
   })
 
 describe('words in the second accent, on their fills', () => {
-  it('the check refuses the theme, at the second accent', () => {
+  it('accepts the theme with the same low-contrast second accent', () => {
     const read = validateTheme(THEME, {
       assets: new Map(),
       builtIns: new Map([['defined', BASE]]),
     })
-    expect(read.ok).toBe(false)
-    if (read.ok) return
-    // Exactly one refusal: the second accent's words on the page, where the library draws them.
-    expect(read.problems).toEqual([
-      expect.objectContaining({
-        at: 'content.accent2',
-        says: expect.stringMatching(
-          /^Links on the page would be too faint: 4\.3 to 1 against the page,/,
-        ),
-      }),
-    ])
+    expect(read.ok).toBe(true)
   })
 
   it('the library: an active filter on the weak tint, its count and Clear all on the page', async () => {

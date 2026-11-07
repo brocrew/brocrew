@@ -112,7 +112,6 @@ export function windowWriterSampler(
         'ordinal',
         'created_at',
       ])
-      // One event dispatch; ordinary content never enters either counter update.
       db.exec(`CREATE TEMP TRIGGER IF NOT EXISTS window_read_event_${operation}
         AFTER ${operation} ON main.events
         WHEN (${routesChanged} AND (${rows.map(relevant).join(' OR ')}))
@@ -139,8 +138,6 @@ export function windowWriterSampler(
     }
     installed = true
   }
-  // Install before the host can write. An installation that fails, or is asked inside a write
-  // fence, is tried again at the next sample outside a transaction and a fence; until then no stamp.
   if (shared.suspended > 0) failedReinstall()
   else {
     try {

@@ -1,8 +1,3 @@
-/**
- * The check a recovery copy passes before it is kept: turned into one rollback-mode file, then
- * SQLite's own integrity check over all of it. It runs in a worker, so a large copy never holds the
- * main thread; its answer keeps the three outcomes apart, since each is said and retried apart.
- */
 import Database from 'better-sqlite3'
 import type { Worker } from 'node:worker_threads'
 
@@ -28,11 +23,6 @@ export interface CopyCheckRequest {
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
-/**
- * Turns the copy, which the backup leaves marked for WAL like its source, into one rollback-mode
- * file that a read-only reader can open in place, and has SQLite check all of it. The copy is
- * closed before the answer is returned. It throws nothing: every outcome is an answer.
- */
 export function checkTheCopy(copy: string, holdMs = 0): CopyCheck {
   if (holdMs > 0) {
     // Holds this thread, as a long check would.
@@ -83,19 +73,9 @@ function anAnswer(value: unknown): value is CopyCheck {
 /** Checks copies in workers, and stops them all when the app quits. */
 export interface CopyVerifier {
   readonly verify: VerifyCopy
-  /**
-   * Refuses new checks, ends every check under way, and resolves once each of their workers has
-   * exited, so nothing holds a copy once the app goes on to close.
-   */
   stop(): Promise<void>
 }
 
-/**
- * Checks each copy in a worker `start` makes. The answer is taken only once the worker has exited,
- * so the copy is closed and released before anything touches it next. A worker that cannot start,
- * fails, exits with no answer, or is ended by a quit says the check could not run, which is
- * retried, and the copy is never kept unchecked.
- */
 export function verifyInAWorker(
   start: (request: CopyCheckRequest) => Worker,
   holdMs?: number,

@@ -1,12 +1,6 @@
 import { localFields } from '../../../shared/local-time'
 import type { StartFailure, StartupVerdict } from '../../../shared/recovery'
 
-/**
- * What the recovery window says for each verdict. Pure: facts in, words out, so every sentence a
- * person reads is testable without a window. Every refusal ends with what to do next, and no
- * sentence carries an id.
- */
-
 export type RecoveryAction =
   | { readonly kind: 'restore'; readonly label: string; readonly checkpointId: string }
   | { readonly kind: 'return'; readonly label: string }
@@ -37,10 +31,6 @@ const MONTHS = [
   'December',
 ]
 
-/**
- * A copy's date in local time: "10 October, 09:00", with the year added when it is not this
- * year's. An unreadable date says so rather than printing "Invalid Date".
- */
 export function copyDate(iso: string, now: number = Date.now()): string {
   return dateWords(Date.parse(iso), now)
 }

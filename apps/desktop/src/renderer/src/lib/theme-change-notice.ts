@@ -1,8 +1,3 @@
-/**
- * The notice an agent's theme change raises, so a change nobody on screen asked for is explained:
- * "{agent} changed the theme to {name}." Going back is the person's own choice, in the Themes
- * section or View › Default look. A newer change closes the notice of an older one, whoever made it.
- */
 import type { ThemeChanged } from '../../../shared/theme-library'
 import type { OverlayStore } from './overlay-store'
 import { THEME_WORDS } from './theme-words'

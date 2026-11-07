@@ -5,26 +5,11 @@ import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
 import { contrastRatio, type Rgba } from '../../src/shared/themes/colour'
 import { resolveTheme, type Theme } from '../../src/shared/themes/theme'
 import { validateTheme } from '../../src/shared/themes/validate'
-import DEFINED_FILE from '../../resources/themes/defined/theme.json'
+import { shippedDefined } from '../themes/fixtures'
 import { mount, unmountAll } from './harness'
 
-/**
- * A light title bar with a dark ink: every word the bar draws — its title, its usage line, a build
- * that isn't clean and an error — is drawn in colours worked out from that ink, so a theme the
- * check accepts reads in the window.
- */
+const BASE = shippedDefined()
 
-const BASE = (() => {
-  const read = validateTheme(DEFINED_FILE, {
-    assets: new Map(),
-    builtIns: new Map(),
-    builtIn: true,
-  })
-  if (!read.ok) throw new Error(JSON.stringify(read.problems))
-  return read.theme
-})()
-
-/** `own`, read as the app reads it. */
 function read(own: Record<string, unknown>): Theme {
   const theme = validateTheme(
     { format: 1, id: 'light-bar', name: 'Light bar', extends: 'defined', ...own },
@@ -39,7 +24,6 @@ canvas.width = 1
 canvas.height = 1
 const ctx = canvas.getContext('2d', { willReadFrequently: true })!
 
-/** The sRGB colour a computed colour paints. */
 function painted(computed: string): Rgba {
   ctx.clearRect(0, 0, 1, 1)
   ctx.fillStyle = '#000'

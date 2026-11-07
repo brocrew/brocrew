@@ -69,50 +69,11 @@ import { APP_STATE_FILES } from './state-files'
 import { copySkillTree, stateContentAt as contentAt } from './trees'
 import { SKILL_TREES, SKILLS_CONVERSION_FILE } from '../skills/shared-paths'
 
-/**
- * The restore engine: it installs a checkpoint's copy as the workspace's database, puts the newer
- * data back later, and settles either one that a crash or a failure left unfinished.
- *
- * Both are a plan over participants: the database, each of its three sidecars and each state file
- * restored with the database, present or not. For each the journal records the live file before
- * (`was`) and after (`becomes`) by full sha256, where it is set aside and where its replacement
- * waits. The journal is rewritten atomically after each step's work, naming it:
- * 1. `planned`: the participants, with `was` read from the live files;
- * 2. `staged`: a restore copies the checkpoint's files into `recovery/staged/<id>/`, each put on
- *    disk and checked against `becomes`; a return's newer files already wait in
- *    `recovery/preserved/<id>/`;
- * 3. `gate-installed`: a restore writes the history-only gate; a return's already stands;
- * 4. `moving`: every live file present is renamed aside, then every replacement into place;
- * 5. `installed`: every live file is checked against `becomes`;
- * 6. `done`: a restore removes its staged folder, a return its gate, and then the journal goes.
- *
- * Files only move by rename, and a move never replaces a file. Files leave the data folder
- * sidecars first and the database last, and arrive the database first, so the data folder never
- * holds a sidecar or a state file beside a database it did not come with.
- *
- * {@link recoverInterrupted} decides from the disk, not from the journal's step, since a step's
- * renames and the journal's rewrite may reach the disk in either order. It finds each participant
- * by full hashes: its `was` live, its `was` aside, or its `becomes` live. When every one is found it
- * finishes when the replacements still pass their check and otherwise puts every `was` back. One
- * that matches none of its identities stops it before it touches anything.
- *
- * The gate records what the restore set aside as well as what it installed, since the journal goes
- * once the restore is done: a return plans from both, and refuses when the set-aside files are not
- * exactly those, absent ones included.
- *
- * Every database handle on the live family must be closed before any of these run. The engine opens
- * none on it.
- */
-
 /** A restore or return that stopped. The message is a sentence a person can read. */
 export class RestoreStopped extends Error {
   constructor(
     message: string,
     readonly during: RestoreKind,
-    /**
-     * Whether a journal is left on disk. {@link recoverInterrupted} finishes or undoes the work
-     * from it, and must run before the data is opened.
-     */
     readonly journalLeft: boolean,
     /** False when the copy or the data itself is the reason, so that trying again cannot help. */
     readonly canRetry: boolean,
@@ -143,10 +104,6 @@ export interface ReturnOptions extends RestoreEngineOptions {
   readonly now?: () => Date
 }
 
-/**
- * A return refused because files the gate records were changed outside BroBot since the restore:
- * the restored ones in place, or the newer ones it set aside. Nothing was touched.
- */
 export class ChangedOutside extends Error {
   constructor(
     message: string,
@@ -158,11 +115,6 @@ export class ChangedOutside extends Error {
   }
 }
 
-/**
- * A file that could not be put back for a reason trying again cannot change, such as a folder that
- * is now on another disk. Every file stays where it is and the journal stays, so the next start that
- * owns the data folder tries again once the cause is put right.
- */
 export class CannotPutBack extends Error {
   constructor(message: string, options?: ErrorOptions) {
     super(message, options)
@@ -200,12 +152,6 @@ export type RecordOnDisk<T> =
   /** `canRetry` when reading failed; a record that does not parse is never retried. */
   | { readonly kind: 'unreadable'; readonly detail: string; readonly canRetry: boolean }
 
-/**
- * Installs checkpoint `checkpointId` as the workspace's database, behind the history-only gate.
- *
- * Throws {@link RestoreStopped}. With `journalLeft` false nothing in the data folder changed. With
- * it true the files stand where the failure left them, and {@link recoverInterrupted} settles them.
- */
 export async function restore(options: RestoreOptions): Promise<Restored> {
   const fs = options.fs ?? nodeFs
   const { userData, checkpointId } = options
@@ -269,12 +215,6 @@ export async function restore(options: RestoreOptions): Promise<Restored> {
   return { gate, database: databaseFile(userData) }
 }
 
-/**
- * Sets the restored copy aside and puts the newer data the restore preserved back in its place,
- * then removes the gate.
- *
- * Throws {@link RestoreStopped}, as {@link restore} does.
- */
 export async function returnToNewer(options: ReturnOptions): Promise<Returned> {
   const fs = options.fs ?? nodeFs
   const { userData } = options
@@ -324,8 +264,6 @@ export async function returnToNewer(options: ReturnOptions): Promise<Returned> {
   try {
     await publish(run, 'planned')
     tick()
-    // The newer files already wait where the restore set them aside, as the plan hashed them, and
-    // the gate already stands; the journal still names both steps, as a restore's does.
     await stepOf(run, 'staged', () => Promise.resolve())
     await stepOf(run, 'gate-installed', () => Promise.resolve())
     const outcome = await forward(run)
@@ -338,13 +276,6 @@ export async function returnToNewer(options: ReturnOptions): Promise<Returned> {
   return { database: databaseFile(userData) }
 }
 
-/**
- * Settles a restore or return that a crash or a failure left unfinished.
- *
- * With no journal it only removes what a restore stopped before its journal can leave, so it is
- * cheap to run at every start. Throws {@link RestoreStopped} when a file operation fails, leaving
- * the journal for the next try.
- */
 export async function recoverInterrupted(options: RestoreEngineOptions): Promise<Recovered> {
   const fs = options.fs ?? nodeFs
   const { userData } = options
@@ -408,11 +339,6 @@ export async function recoverInterrupted(options: RestoreEngineOptions): Promise
   }
 }
 
-/**
- * Whether the files are still as the gate says the restore left them: every listed file by full
- * sha256, and no sidecar beside the restored copy. Null when they are; otherwise a sentence that
- * says what changed.
- */
 export async function whatChangedSinceTheGate(
   userData: string,
   gate: HistoryOnlyGate,
@@ -450,13 +376,6 @@ export function readGateOnDisk(
   return recordOnDisk(gateFile(userData), parseGate, 'history-only record', fs)
 }
 
-/**
- * Removes what a restore that stopped before its journal can leave, and what an interrupted read
- * left in the scratch folder: id-named folders in `recovery/staged/` and `recovery/scratch/`, and
- * temporary record files. Does nothing while a journal is on disk, since its staged folder is still
- * in use, or when an owned folder is a link. Best effort: a leftover costs space and never changes
- * what is restored.
- */
 export async function sweepLeftovers(userData: string, fs: RecoveryFs = nodeFs): Promise<void> {
   try {
     await assertOwnedPathsAreReal(userData, [], fs)
@@ -601,9 +520,6 @@ async function recordOnDisk<T>(
       }
 }
 
-// ---------------------------------------------------------------------------------------------
-// Places
-
 /** A live name's path in the data folder. */
 function livePath(userData: string, live: string): string {
   return FAMILY.includes(live)
@@ -643,11 +559,6 @@ function stateOf(content: Content): FileState | null {
   return content.kind === 'file' ? { present: true, sha256: content.sha256 } : null
 }
 
-/**
- * Refuses, before anything is read or moved, when any place a restore or return with this id uses
- * is a link or passes through one: the journal, the gate, and each participant's places, which
- * include the run's own staged and preserved folders.
- */
 async function assertTheRunsPlacesAreReal(
   userData: string,
   kind: RestoreKind,
@@ -665,10 +576,6 @@ async function assertTheRunsPlacesAreReal(
   )
 }
 
-/**
- * Makes one of the app's own folders (0700) once nothing on the way to it is a link, and puts its
- * entry in its parent on disk, so what is then renamed into it survives a power cut.
- */
 async function ownedFolder(userData: string, folder: string, fs: RecoveryFs): Promise<void> {
   await assertOwnedPathsAreReal(userData, [folder], fs)
   await privateDir(folder, fs)
@@ -701,9 +608,6 @@ function isRecordLeftover(name: string): boolean {
   )
 }
 
-// ---------------------------------------------------------------------------------------------
-// Planning
-
 async function readTheCheckpoint(
   userData: string,
   checkpointId: string,
@@ -734,11 +638,6 @@ async function readTheCheckpoint(
   return manifest
 }
 
-/**
- * A restore's participants: each live file as it is now, and what the checkpoint puts in its place.
- * The sidecars become absent, since the copy is one file. State files come from this build's
- * registry; the manifest only says whether the copy holds each one, and with what bytes.
- */
 async function planARestore(
   userData: string,
   id: string,
@@ -763,12 +662,6 @@ async function planARestore(
   return participants
 }
 
-/**
- * A return's participants: each live file as the gate says the restore left it, and each newer
- * file as the gate says the restore set it aside. Every set-aside file is hashed again, and must
- * be exactly that, absence included: a file the gate does not list must not be there. The places
- * the restored files go must be free.
- */
 async function planAReturn(
   userData: string,
   gate: HistoryOnlyGate,
@@ -817,9 +710,6 @@ function namesTheParticipantsThisBuildMoves(journal: RestoreJournal): boolean {
     (names.length === legacy.length && legacy.every((name) => names.includes(name)))
   )
 }
-
-// ---------------------------------------------------------------------------------------------
-// Running the steps, shared by a run and by the recovery that finishes it
 
 /** Where one participant stands. */
 type Where =
@@ -879,10 +769,6 @@ function participantNamed(run: Run, live: string): Participant {
   return found
 }
 
-/**
- * Restore step 2: each file the checkpoint puts in place is copied into the staged folder, put on
- * disk, and checked there against the plan, so what is installed is what was checked.
- */
 async function stage(run: Run, manifest: CheckpointManifest): Promise<void> {
   const { userData, fs } = run
   await ownedFolder(userData, stagedRoot(userData), fs)
@@ -976,10 +862,6 @@ class MoveFailed extends Error {
   }
 }
 
-/**
- * Renames one participant's file from one of its places to another, never onto a file already
- * there, then tells the hook.
- */
 async function move(run: Run, participant: Participant, from: Place, to: Place): Promise<void> {
   const { userData, fs } = run
   const source = pathOf(userData, participant, from)
@@ -997,10 +879,6 @@ async function move(run: Run, participant: Participant, from: Place, to: Place):
   run.hooks.afterMove(moved)
 }
 
-/**
- * Whether a move failed for a reason that trying again cannot change: the destination is on another
- * disk, or its folder is gone while the file to move is still there.
- */
 async function isPermanent(error: unknown, fs: RecoveryFs): Promise<boolean> {
   if (!(error instanceof MoveFailed)) return false
   const code = errorCode(error.failure)
@@ -1008,10 +886,6 @@ async function isPermanent(error: unknown, fs: RecoveryFs): Promise<boolean> {
   return code === 'ENOENT' && (await pathExists(error.from, fs).catch(() => false))
 }
 
-/**
- * The stop of a run that could not put a file back, said once with its cause: what stopped the run
- * when it was being undone, and why the file cannot go back.
- */
 function cannotPutBack(run: Run, failed: MoveFailed, undoing: unknown): CannotPutBack {
   const why =
     errorCode(failed.failure) === 'EXDEV'
@@ -1048,10 +922,6 @@ function asideFolder(run: Run): string {
 type Outcome =
   { readonly kind: 'finished' } | { readonly kind: 'rolled-back'; readonly detail: string }
 
-/**
- * Steps 4 to 6 from wherever each participant stands. A move that cannot succeed by trying again
- * puts every `was` back instead, so a later start is not left trying it for good.
- */
 async function forward(run: Run): Promise<Outcome> {
   run.hooks.beforeStep('moving')
   try {
@@ -1108,12 +978,6 @@ async function forward(run: Run): Promise<Outcome> {
   return { kind: 'finished' }
 }
 
-/**
- * Puts every `was` back: each installed file returns to where it waited, then each file set aside
- * returns to its place. A restore then removes its staged folder and its gate; a return keeps the
- * gate, since the restored copy is live again. `undoing` is what stopped the run, when something
- * did. A move back that trying again cannot help throws {@link CannotPutBack}.
- */
 async function back(run: Run, undoing?: unknown): Promise<void> {
   const { userData, fs } = run
   run.hooks.beforeStep('moving')
@@ -1163,9 +1027,6 @@ async function removeTheJournal(run: Run): Promise<void> {
   await sweepLeftovers(run.userData, run.fs)
 }
 
-// ---------------------------------------------------------------------------------------------
-// Deciding from the disk
-
 type Decision =
   | {
       readonly kind: 'forward'
@@ -1183,11 +1044,6 @@ const SAID: Record<Content['kind'], string> = {
   other: 'not a file',
 }
 
-/**
- * Where one participant stands, from the files at its three places, or null when they fit no state
- * a restore or return can leave: a file at none of its identities, one in two places, or a file
- * waiting where nothing is to arrive.
- */
 function whereIs(
   participant: Participant,
   live: Content,
@@ -1243,8 +1099,6 @@ async function decide(
     }
   }
 
-  // A restore's journal names `staged` only once every staged file passed all its checks, which
-  // are more than its hash, and nothing moves before that journal is on disk.
   if (journal.kind === 'restore' && journal.step === 'planned') {
     ready = false
     notReady = 'The restore stopped before the copy it was to install had been checked.'
@@ -1302,13 +1156,6 @@ function describe(content: Content, participant: Participant): string {
   return 'a file BroCrew did not put there'
 }
 
-/**
- * Whether `gate` is the one this journal's restore wrote: the same ids, each file it lists as
- * installed as the journal says the restore left it, and each file it lists as set aside as the
- * journal says the restore found it. A restore's own gate lists every participant on both sides.
- * The gate a return starts from may list fewer installed (the database alone is a whole gate), and
- * the return took the others as it found them; a set-aside file it does not list was absent.
- */
 function isTheGateOf(gate: HistoryOnlyGate, journal: RestoreJournal): boolean {
   if (gate.restoreId !== journal.id || gate.checkpointId !== journal.checkpointId) return false
   const { participants } = journal

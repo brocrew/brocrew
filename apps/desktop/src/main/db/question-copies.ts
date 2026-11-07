@@ -1,16 +1,3 @@
-/**
- * The passed-up copies of a question, found by their key.
- *
- * `question_copy` holds one row per `question_asked` row whose payload names the question it was
- * passed up from: that key, and the conversation holding it. It is derived from `events` alone, so
- * it can be dropped and refilled without losing anything, which is why it is created here, at open,
- * and never by a journal migration: a build that predates it opens the same file, and its writes
- * keep the copies current through the triggers stored in the file.
- *
- * Its triggers keep it current for every row written from then on; rows written before are filled
- * by {@link fillQuestionCopies}, one bounded slice at a time. Until the fill is done, and whenever
- * its index is missing, readers use the exact query over `events` instead.
- */
 import type { AppDatabase } from './connection'
 import { FOLD_TERM } from './fold-index'
 
@@ -29,11 +16,6 @@ export const TRIGGER_WRITES: ReadonlyMap<string, readonly string[]> = new Map([
   ['events', ['question_copy']],
 ])
 
-/**
- * The persistent tables a delete from a table may also change, through the rows its foreign keys
- * delete with it and their triggers: a conversation's delete takes its ledger rows, and with them
- * their copies.
- */
 export const CASCADE_DELETE_WRITES: ReadonlyMap<string, readonly string[]> = new Map([
   ['provider_session', ['question_copy']],
 ])
@@ -78,11 +60,6 @@ BEGIN
 END`,
 }
 
-/**
- * Objects written by hand in the migrations, which a generated rebuild of their table would drop.
- * A missing one is said at open, by name; reads that name an index fall back to their unindexed
- * form (`optional-indexes.ts`), and only a migration restores it.
- */
 export const HAND_WRITTEN_OBJECTS: readonly {
   readonly type: 'index' | 'trigger'
   readonly name: string
@@ -115,12 +92,6 @@ const present = (db: AppDatabase, type: string, name: string): boolean =>
   db.prepare('SELECT 1 FROM sqlite_master WHERE type = ? AND name = ?').get(type, name) !==
   undefined
 
-/**
- * Creates what is missing of the copies, in one transaction, before any reader. Missing triggers
- * are created and the fill starts again, since a copy may have gone stale while they were gone. A
- * missing index is created only over an empty table; over a filled one it is never rebuilt here,
- * and readers use the exact query from then on.
- */
 export function ensureQuestionCopies(
   db: AppDatabase,
   warn: (line: string) => void = console.warn,
@@ -139,8 +110,6 @@ export function ensureQuestionCopies(
     )
     for (const name of missing) db.exec(QUESTION_COPY_TRIGGERS[name]!)
     if (missing.length > 0) restart.run()
-    // A copy table recreated beside a kept progress row starts its fill again: nothing it said is
-    // there now. Read from the schema alone, so it costs nothing at open.
     if (!hadCopies && hadProgress) restart.run()
     if (!present(db, 'index', INDEX)) {
       const empty = db
@@ -185,13 +154,6 @@ export type QuestionCopySlice =
 const BUSY = { state: 'busy', visited: 0, matched: 0 } as const
 const UNINDEXED = { state: 'unindexed', visited: 0, matched: 0 } as const
 
-/**
- * Fills the copies for at most `rows` ledger rows past the cursor, in the fold index's order,
- * stopping early once `bytes` of payload have been visited (the row that crosses it is the last).
- * One transaction, begun only if the write lock is free at once; the cursor moves to the last row
- * visited, matched or not, in the same transaction. Each copy is written from the row as it is now,
- * so a copy left stale is corrected.
- */
 export function fillQuestionCopies(
   db: AppDatabase,
   rows: number,
@@ -231,8 +193,6 @@ export function fillQuestionCopies(
   // A whole number of rows, at least one: SQLite's LIMIT takes nothing else.
   const limit = Math.max(1, Math.floor(rows))
   const slice = db.transaction((): QuestionCopySlice => {
-    // Stepped: each row is read as it is needed, and none past the byte bound. The writes follow
-    // once the read is closed, since a connection cannot write while one of its reads is open.
     const visited: {
       id: string
       type: string

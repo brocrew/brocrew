@@ -3,22 +3,13 @@ import './harness'
 import { parseColour, type Rgba } from '../../src/shared/themes/colour'
 import { themeCss } from '../../src/shared/themes/css'
 import type { Theme } from '../../src/shared/themes/theme'
-import { DEFAULT_SEEDS } from '../../src/shared/themes/contrast'
-import { deriveZone, frameStatus, type ZoneSeeds } from '../../src/shared/themes/derive'
+import {
+  DEFAULT_SEEDS,
+  deriveZone,
+  frameStatus,
+  type ZoneSeeds,
+} from '../../src/shared/themes/derive'
 
-/**
- * The theme check computes a derived theme's colours in TypeScript (`deriveZone`); the window
- * works them out in CSS. This mounts the real stylesheet in Chromium, sets `data-theme`, and reads
- * back what each zone actually resolves to, so the check measures what the window paints.
- *
- * The theme is `defined` as its theme file has it, applied the way the app applies any theme: its
- * settings written by `themeCss` onto `:root[data-theme='defined']`.
- *
- * ⚑ A resolved `color-mix()` is serialised as `oklab(…)`, so each colour is painted onto a 1×1
- * canvas and read back as sRGB bytes, the form the screen shows.
- */
-
-/** The `defined` theme file, as it ships in resources/themes/defined/theme.json. */
 const DEFINED = {
   format: 1,
   id: 'defined',
@@ -28,7 +19,6 @@ const DEFINED = {
   shared: { page: 7, line: 16, tint: 10, shadow: { strength: 9 }, borderWidth: 1, radius: 12 },
 } as unknown as Theme
 
-/** Applies `defined` as the app does: its stylesheet in the head and its id on the root. */
 function applyDefined(): void {
   const style = document.createElement('style')
   style.id = 'theme-under-test'
@@ -42,7 +32,7 @@ canvas.width = 1
 canvas.height = 1
 const ctx = canvas.getContext('2d', { willReadFrequently: true })!
 
-/** The sRGB bytes a token resolves to inside `scope`. */
+// Canvas converts computed colours to the bytes the screen paints.
 function painted(scope: Element, token: string): [number, number, number] {
   const el = document.createElement('i')
   el.style.color = `var(${token})`
@@ -78,7 +68,6 @@ function seeds(zone: 'frame' | 'content'): ZoneSeeds {
   }
 }
 
-/** The opaque colours the check measures; the translucent ones depend on what is under them. */
 const OPAQUE = [
   'panel',
   'panel-2',
@@ -159,7 +148,7 @@ describe('a derived theme paints what the theme check measures', () => {
     style.remove()
   })
 
-  it('⛔ without a data-theme, and with `classic`, the hand-picked colours stay', () => {
+  it('without a data-theme, and with `classic`, the hand-picked colours stay', () => {
     for (const theme of [null, 'classic']) {
       if (theme) document.documentElement.setAttribute('data-theme', theme)
       expect(painted(lightScope(), '--muted')).toEqual([0x54, 0x58, 0x77])
@@ -178,7 +167,7 @@ describe('a derived theme paints what the theme check measures', () => {
     return image
   }
 
-  it('⛔ a derived theme paints no inherited wash; Classic keeps its network', () => {
+  it('a derived theme paints no inherited wash; Classic keeps its network', () => {
     // The theme check measures a theme's page as its flat paper, so nothing of Classic's may be
     // drawn over it: a theme that wants a pattern sets a background of its own, which is measured.
     expect(wash(lightScope())).toContain('url(')
@@ -214,7 +203,7 @@ describe('a derived theme paints what the theme check measures', () => {
     })
   })
 
-  it('⛔ 12px × 1.35 would draw a 10px caption; the window holds it at the 12px floor', () => {
+  it('12px × 1.35 would draw a 10px caption; the window holds it at the 12px floor', () => {
     const style = document.createElement('style')
     style.id = 'theme-under-test'
     style.textContent = ":root[data-theme='tiny'] { --type-base: 12px; --type-ratio: 1.35; }"
