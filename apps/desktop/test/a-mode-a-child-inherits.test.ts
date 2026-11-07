@@ -30,13 +30,11 @@ import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { SPAWN_RAIL_MEANS } from '../src/shared/capabilities'
 import { YOLO_MEANS, YOLO_MEANS_FOR_AGENTS_IT_STARTS } from '../src/renderer/src/lib/approval-mode'
 
-
 const HERE = fileURLToPath(new URL('.', import.meta.url))
 const REPO = join(HERE, '../../..')
 const RUNTIME = join(REPO, 'packages/runtime/src')
 
 const MODES: readonly ApprovalMode[] = ['ask', 'auto']
-
 
 describe('§1 · what a posture keeps past its folder, and never wider as any against none', () => {
   it('⛔ the table is TOTAL — every provider, every mode, from the vocabularies', () => {
@@ -147,7 +145,6 @@ function whatTheRemovalReadingRefused(
   return removes(child).filter((one) => !kept.includes(one))
 }
 
-
 describe('§2 · the table says what the adapters DO, and each half is bound differently', () => {
   it('🔴 the CODEX row is bound to `APPROVAL_PROFILES` BY VALUE — in the runtime project', () => {
     const bound = readFileSync(
@@ -167,7 +164,16 @@ describe('§2 · the table says what the adapters DO, and each half is bound dif
 
     expect(code).toContain("return planMode ? 'plan' : 'default'")
     expect(code).toContain('permissionMode: permissionModeFor(planMode === true)')
-    expect(claude).toContain('bypassPermissions')
+    const contaminated = `${claude}\n// permissionMode: 'bypassPermissions'\n/* allowDangerouslySkipPermissions: true; sandbox: {} */`
+    expect(contaminated).toContain('bypassPermissions')
+    expect(withoutProse(contaminated).trim()).toBe(code.trim())
+    expect(withoutProse(`${claude}\noptions.permissionMode = 'bypassPermissions'`)).toContain(
+      'bypassPermissions',
+    )
+    expect(withoutProse(`${claude}\noptions.allowDangerouslySkipPermissions = true`)).toContain(
+      'allowDangerouslySkipPermissions',
+    )
+    expect(withoutProse(`${claude}\nconst sandbox = {}`)).toMatch(/sandbox\s*[:=]/i)
     expect(code).not.toContain('bypassPermissions')
     expect(code).not.toContain('allowDangerouslySkipPermissions')
 
@@ -187,7 +193,6 @@ describe('§2 · the table says what the adapters DO, and each half is bound dif
     expect(code).toContain('() => handle.approval.effective')
   })
 })
-
 
 describe('§3 · the table and the two sentences a person reads say the same thing', () => {
   it('🔴 each provider`s own approvals note names the sandbox iff the table does', () => {
@@ -212,7 +217,6 @@ describe('§3 · the table and the two sentences a person reads say the same thi
     expect(note).toContain('What this mode removes is the card')
   })
 })
-
 
 describe('§4 · the sentence the PO ruled owed, and it is derived rather than typed', () => {
   it('🔴 it names every provider whose `auto` removes the sandbox, and no other', () => {
@@ -248,7 +252,6 @@ describe('§4 · the sentence the PO ruled owed, and it is derived rather than t
     )
   })
 })
-
 
 const WORK = '/tmp/499-work'
 
@@ -391,7 +394,6 @@ describe('§5 · the door — where a started conversation`s mode is decided, an
   })
 })
 
-
 describe('§6 · `spawn-must-prompt` is retired, and the sentences that described it moved', () => {
   it('⛔ the word is gone from the CODE, and survives only where a docblock records the withdrawal', () => {
     for (const tree of ['apps/desktop/src', 'packages/runtime/src', 'packages/shared/src']) {
@@ -417,7 +419,6 @@ describe('§6 · `spawn-must-prompt` is retired, and the sentences that describe
     expect(SPAWN_RAIL_MEANS).not.toMatch(/never open without prompts/)
   })
 })
-
 
 function withoutProse(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')

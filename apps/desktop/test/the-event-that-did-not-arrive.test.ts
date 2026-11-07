@@ -26,12 +26,11 @@ import {
   reopenAtLatest,
 } from '../src/renderer/src/lib/session-record'
 import type { HistoryWindow, RuntimeEventMessage } from '../src/shared/runtime-ipc'
-
+import ts from 'typescript'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const hostSource = readFileSync(join(here, '../src/main/runtime/runtime-host.ts'), 'utf8')
-
 
 describe('§1 · a refused call and its retry take contiguous ordinals', () => {
   let userData: string
@@ -148,7 +147,6 @@ describe('§1 · a refused call and its retry take contiguous ordinals', () => {
   })
 })
 
-
 describe('§2 · every place an ordinal is allocated, and what each one owes', () => {
   const allocations = (): string[] => {
     const at: string[] = []
@@ -186,14 +184,73 @@ describe('§2 · every place an ordinal is allocated, and what each one owes', (
     const [orphan] = allocations().filter((source) => !writesTheLedger(source))
     expect(orphan).toBeDefined()
     expect(orphan).toContain('this.emit(session, {')
-    const declares = hostSource.slice(
-      hostSource.indexOf('private reportRecordingFailure'),
-      hostSource.indexOf('private reportRecordingFailure') + 900,
+    const recordingFailureBody = (source: string) => {
+      const file = ts.createSourceFile('runtime-host.ts', source, ts.ScriptTarget.Latest, true)
+      const classes = file.statements.filter(
+        (node): node is ts.ClassDeclaration =>
+          ts.isClassDeclaration(node) && node.name?.text === 'RuntimeHost',
+      )
+      expect(classes).toHaveLength(1)
+      const methods = classes[0]!.members.filter(
+        (node): node is ts.MethodDeclaration =>
+          ts.isMethodDeclaration(node) && node.name.getText(file) === 'reportRecordingFailure',
+      )
+      expect(methods).toHaveLength(1)
+      const body = methods[0]!.body
+      if (body === undefined) throw new Error('missing recording failure body')
+      expect(body.statements.length).toBeGreaterThan(0)
+      return { file, body }
+    }
+    const { file, body } = recordingFailureBody(hostSource)
+    const declares = body.getText(file)
+    expect(declares).toContain(
+      'if (session.recordingFailure === null || session.recordingFailureReported) return',
     )
-    expect(declares).toContain('it is not in the ledger')
+    expect(declares).toContain('session.recordingFailureReported = true')
+    expect(writesTheLedger(declares)).toBe(false)
+    const emits: ts.CallExpression[] = []
+    function visit(node: ts.Node): void {
+      if (ts.isCallExpression(node) && node.expression.getText(file) === 'this.emit')
+        emits.push(node)
+      ts.forEachChild(node, visit)
+    }
+    visit(body)
+    expect(emits).toHaveLength(1)
+    expect(emits[0]!.arguments[0]?.getText(file)).toBe('session')
+    const payload = emits[0]!.arguments[1]
+    if (payload === undefined || !ts.isObjectLiteralExpression(payload))
+      throw new Error('missing emitted payload')
+    const ordinals = payload.properties.filter(
+      (node): node is ts.PropertyAssignment =>
+        ts.isPropertyAssignment(node) && node.name.getText(file) === 'ordinal',
+    )
+    expect(ordinals).toHaveLength(1)
+    const ordinal = ordinals[0]!.initializer
+    expect(ordinal?.kind).toBe(ts.SyntaxKind.PostfixUnaryExpression)
+    expect(ordinal?.getText(file)).toBe('session.ordinal++')
+    const events = payload.properties.filter(
+      (node): node is ts.PropertyAssignment =>
+        ts.isPropertyAssignment(node) && node.name.getText(file) === 'event',
+    )
+    expect(events).toHaveLength(1)
+    const event = events[0]!.initializer
+    if (event === undefined || !ts.isObjectLiteralExpression(event))
+      throw new Error('missing emitted event')
+    const fatal = event.properties.filter(
+      (node): node is ts.PropertyAssignment =>
+        ts.isPropertyAssignment(node) && node.name.getText(file) === 'fatal',
+    )
+    expect(fatal).toHaveLength(1)
+    expect(fatal[0]!.initializer.kind).toBe(ts.SyntaxKind.FalseKeyword)
+    const changed = hostSource.replace(
+      declares,
+      declares.replace('{', '{\nthis.deps.store.append(decoy)'),
+    )
+    expect(changed).not.toBe(hostSource)
+    const planted = recordingFailureBody(changed)
+    expect(writesTheLedger(planted.body.getText(planted.file))).toBe(true)
   })
 })
-
 
 const SESSION = 'sess_623'
 
@@ -321,7 +378,6 @@ describe('§3 · the window keeps what it is short by', () => {
     expect(item?.at).toBe(1_800_000_000_000 + 2_000)
   })
 })
-
 
 describe('§4 · no source in the app writes the retired sentences', () => {
   const codeOf = (body: string): string =>

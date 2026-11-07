@@ -13,7 +13,6 @@ import {
   WIRE_REFUSALS,
 } from '../src/renderer/src/lib/send-refusals'
 
-
 const here = dirname(fileURLToPath(import.meta.url))
 const HOST = join(here, '../src/main/runtime/runtime-host.ts')
 const IPC = join(here, '../src/shared/runtime-ipc.ts')
@@ -110,7 +109,6 @@ const REPEATS_A_ROW: Partial<Record<Method, readonly { line: string; row: string
   ],
 }
 
-
 const PASSED_ON: Partial<Record<Method, readonly string[]>> = {
   send: [
     "if (how.ifItLosesTheRace === 'pass-it-on' || !(error instanceof TurnInProgress)) throw error",
@@ -157,7 +155,10 @@ describe('the census can see what it is censusing', () => {
   })
 
   it('⚑ the stripper removes prose that says "throw", and keeps statements that do', () => {
-    expect(readFileSync(HOST, 'utf8')).toContain('Publish before throwing')
+    const contaminated = `${bodies.assertSignInCurrent}\n// throw new Error('decoy')`
+    expect(contaminated).toContain("// throw new Error('decoy')")
+    expect(codeOf(contaminated).trim()).toBe(bodies.assertSignInCurrent.trim())
+    expect(throws(codeOf(contaminated))).toBe(1)
     expect(throws(bodies.assertSignInCurrent)).toBe(1)
     expect(throws(`${bodies.assertSignInCurrent}\n    throw new Error('extra')`)).toBe(2)
   })

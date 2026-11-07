@@ -31,6 +31,56 @@ import { toolsToldInTextFor } from '../src/main/runtime/agent-tools'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { prepareBuiltInSkills, readBuiltInSkills } from '../src/main/skills/prepare-built-in-skills'
+import ts from 'typescript'
+
+function skillsArrow(source: string): string {
+  const checked = ts.transpileModule(source, {
+    reportDiagnostics: true,
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+  })
+  expect(checked.diagnostics ?? []).toEqual([])
+  const file = ts.createSourceFile('index.ts', source, ts.ScriptTarget.Latest, true)
+  const hosts: ts.NewExpression[] = []
+  function visit(node: ts.Node): void {
+    if (
+      ts.isNewExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'RuntimeHost'
+    )
+      hosts.push(node)
+    ts.forEachChild(node, visit)
+  }
+  visit(file)
+  expect(hosts).toHaveLength(1)
+  const deps = hosts[0]!.arguments?.[0]
+  if (deps === undefined || !ts.isObjectLiteralExpression(deps))
+    throw new Error('missing RuntimeHost dependencies')
+  const properties = deps.properties.filter(
+    (node): node is ts.PropertyAssignment =>
+      ts.isPropertyAssignment(node) && node.name.getText(file) === 'prepareBuiltInSkills',
+  )
+  expect(properties).toHaveLength(1)
+  const arrow = properties[0]!.initializer
+  if (!ts.isArrowFunction(arrow)) throw new Error('missing production Skills arrow')
+  expect(ts.isCallExpression(arrow.body)).toBe(true)
+  if (!ts.isCallExpression(arrow.body)) throw new Error('missing Skills preparation call')
+  expect(arrow.body.expression.getText(file)).toBe('prepareBuiltInSkills')
+  return arrow.getText(file)
+}
+
+it('the Skills extractor binds the real RuntimeHost arrow and rejects substitute callbacks', () => {
+  const source = readFileSync(resolve(import.meta.dirname, '../src/main/index.ts'), 'utf8')
+  const selected = skillsArrow(source)
+  expect(skillsArrow(`${source}\nconst decoy = { prepareBuiltInSkills: () => wrong() }`)).toBe(
+    selected,
+  )
+  const removed = source.replace('    prepareBuiltInSkills:', '    missingSkills:')
+  expect(removed).not.toBe(source)
+  expect(() => skillsArrow(removed)).toThrow()
+  expect(() => skillsArrow(`${source}\nnew RuntimeHost({})`)).toThrow()
+  expect(() => skillsArrow(source.replace(selected, 'undefined'))).toThrow()
+  expect(() => skillsArrow(source.replace(selected, '() => wrong()'))).toThrow()
+})
 
 const leadFor = thisConversationSpans as (
   context: InstructionContext,
@@ -173,8 +223,7 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
     'the production Skills launch callback obeys the stored grant at %s start and resume',
     async (provider) => {
       const source = readFileSync(resolve(import.meta.dirname, '../src/main/index.ts'), 'utf8')
-      const callback = /prepareBuiltInSkills:\s*([\s\S]*?),\n\s*\/\/ A text pack,/.exec(source)?.[1]
-      expect(callback, 'the production preparation callback must remain explicit').toBeDefined()
+      const callback = skillsArrow(source)
       const production = new Function(
         'prepareBuiltInSkills',
         'providerHomesRoot',

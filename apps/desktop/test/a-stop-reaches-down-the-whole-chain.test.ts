@@ -220,7 +220,6 @@ describe('629 · a stop reaches down the whole chain', () => {
     }
   }
 
-
   describe('§0 · the chain and the actor were already recorded', () => {
     it('⚑ ALREADY BUILT · the chain is DURABLE, and the depth rail already walks it', async () => {
       const { brobot, ada, ali, aliPiece } = await aChainOfThree()
@@ -242,7 +241,6 @@ describe('629 · a stop reaches down the whole chain', () => {
       expect(asked).toMatchObject({ type: 'work_interrupted', by: 'an-agent', agent: ada })
     })
   })
-
 
   describe('§1 · a grandparent may interrupt a grandchild', () => {
     it('🔴 THE RULING · BroBot stops Ali directly, at depth 2, without going through Ada', async () => {
@@ -293,7 +291,6 @@ describe('629 · a stop reaches down the whole chain', () => {
       expect(down.outcome, JSON.stringify(down)).toBe('ok')
     })
   })
-
 
   describe('§2 · sideways, upward and spawning are all still refused', () => {
     it('⛔ REFUSED · a SIBLING cannot interrupt its sibling — and their parent can', async () => {
@@ -393,7 +390,6 @@ describe('629 · a stop reaches down the whole chain', () => {
     })
   })
 
-
   describe('§4 · a reach past a manager is visible to the manager', () => {
     it('🔴 Ada can read that her worker was stopped, and that BroBot did it', async () => {
       const { brobot, ada, ali, aliHandle, brobotTools } = await aChainOfThree()
@@ -415,28 +411,29 @@ describe('629 · a stop reaches down the whole chain', () => {
     })
   })
 
-
   describe('§5 · the widening is one predicate with one caller', () => {
-    const codeOf = (file: string): string =>
-      readFileSync(join(mainRoot, file), 'utf8')
-        .replace(/\/\*[\s\S]*?\*\//g, ' ')
-        .replace(/^[ \t]*\/\/.*$/gm, ' ')
+    const withoutProse = (source: string): string =>
+      source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^[ \t]*\/\/.*$/gm, ' ')
 
     it('⛔ exactly ONE call site asks the predicate — `mayInterrupt`, which the door and the resolver of its address ask', () => {
-      const code = codeOf('runtime/runtime-host.ts')
-      const lines = code.split('\n')
+      const raw = readFileSync(join(mainRoot, 'runtime/runtime-host.ts'), 'utf8')
+      const code = withoutProse(raw)
       const declaration = /^ {2}(?:private |protected |public )?(?:static )?(?:async )?(\w+)\s*\(/
-      let current: string | null = null
-      const asked: string[] = []
-      const bodies = new Map<string, string>()
-      for (const line of lines) {
-        if (/^(?:export )?(?:async )?function \w/.test(line)) current = null
-        const declared = declaration.exec(line)
-        if (declared !== null) current = declared[1] ?? null
-        if (current !== null) bodies.set(current, `${bodies.get(current) ?? ''}${line}\n`)
-        if (/\bmayInterruptDownTheChain\((?:\w|\s*$)/.test(line) && current !== null)
-          asked.push(current)
+      const inspect = (source: string) => {
+        let current: string | null = null
+        const asked: string[] = []
+        const bodies = new Map<string, string>()
+        for (const line of source.split('\n')) {
+          if (/^(?:export )?(?:async )?function \w/.test(line)) current = null
+          const declared = declaration.exec(line)
+          if (declared !== null) current = declared[1] ?? null
+          if (current !== null) bodies.set(current, `${bodies.get(current) ?? ''}${line}\n`)
+          if (/\bmayInterruptDownTheChain\((?:\w|\s*$)/.test(line) && current !== null)
+            asked.push(current)
+        }
+        return { asked, bodies }
       }
+      const { asked, bodies } = inspect(code)
       expect(asked).toEqual(['mayInterrupt'])
       const oneCondition =
         /mayCommand\(this\.commandedNow\(target\), by\)\)\s*(?:\|\||&&)\s*!?mayInterruptDownTheChain\(\s*by,\s*this\.ancestorsAsItWillRun\(sessionId\)/
@@ -451,10 +448,20 @@ describe('629 · a stop reaches down the whole chain', () => {
         'stopForAnAnswer',
         'theConversationAddressed',
       ])
-      const raw = readFileSync(join(mainRoot, 'runtime/runtime-host.ts'), 'utf8')
-      expect(raw.match(/mayInterruptDownTheChain/g)?.length ?? 0).toBeGreaterThan(
-        code.match(/mayInterruptDownTheChain/g)?.length ?? 0,
+      const contaminated = `${raw}\n// mayInterruptDownTheChain(decoy)\n/* mayInterruptDownTheChain(decoy) */`
+      expect(contaminated.match(/mayInterruptDownTheChain/g)?.length ?? 0).toBeGreaterThan(
+        raw.match(/mayInterruptDownTheChain/g)?.length ?? 0,
       )
+      expect(withoutProse(contaminated).trim()).toBe(code.trim())
+      expect(inspect(withoutProse(contaminated)).asked).toEqual(asked)
+      const header = 'export class RuntimeHost implements LiveHost {'
+      expect(raw).toContain(header)
+      const extra = raw.replace(
+        header,
+        `${header}\n  unexpectedCaller() {\n    mayInterruptDownTheChain(decoy)\n  }`,
+      )
+      expect(extra).not.toBe(raw)
+      expect(inspect(withoutProse(extra)).asked).toEqual(['unexpectedCaller', ...asked])
     })
 
     it('⛔ the model-facing sentence of the verb names the chain and not *you created*', () => {
@@ -475,7 +482,6 @@ describe('629 · a stop reaches down the whole chain', () => {
       expect(mayInterruptDownTheChain(asAgent('sess_a'), ['sess_b', 'sess_a'])).toBe(true)
     })
   })
-
 
   describe('§6 · a conversation that names itself', () => {
     const callWithText = async (

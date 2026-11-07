@@ -34,7 +34,6 @@ import { reachesWhatItDidNotStart, refuseOutOfReach } from '../src/main/runtime/
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { agentStateWords } from '../src/shared/agent-state'
 
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
@@ -149,7 +148,6 @@ describe('433 §B · the agents a reach can see', () => {
     expect((await host.interruptAgent(manager, speakingAs(explorer))).ok).toBe(false)
     return { brobot, brobotTools, explorer, explorerTools, manager }
   }
-
 
   describe('§1 · the ruling, as two callers over one target', () => {
     it('🔴 the granted caller sees the foreign conversation and the narrow one does not', async () => {
@@ -296,7 +294,6 @@ describe('433 §B · the agents a reach can see', () => {
     })
   })
 
-
   describe('§2 · the card, whole', () => {
     it('🔴 a card asked from across is the card its own side sees', async () => {
       const { brobotTools, manager } = await twoCallersAndOneTarget()
@@ -309,9 +306,7 @@ describe('433 §B · the agents a reach can see', () => {
       if (itsOwn === null) throw new Error('unreachable')
       expect({ ...itsOwn, state: agentStateWords(itsOwn.state) }).toEqual(fromAcross.agent)
     })
-
   })
-
 
   describe('§3 · the verbs, and the predicate they still ask', () => {
     it('⛔ `withdraw_task` names a piece, and a caller that can see the conversation still cannot take its work back', async () => {
@@ -337,15 +332,17 @@ describe('433 §B · the agents a reach can see', () => {
       const code = withoutProse(raw)
       const lines = code.split('\n')
       const declaration = /^ {2}(?:private |protected |public )?(?:static )?(?:async )?(\w+)\s*\(/
-      let current: string | null = null
-      const asked: string[] = []
-      for (const line of lines) {
-        const declared = declaration.exec(line)
-        if (declared !== null) current = declared[1] ?? null
-        if (/\bmayCommand\(\w/.test(line) && current !== null) {
-          asked.push(current)
+      const askedBy = (source: string): string[] => {
+        let current: string | null = null
+        const found: string[] = []
+        for (const line of source.split('\n')) {
+          const declared = declaration.exec(line)
+          if (declared !== null) current = declared[1] ?? null
+          if (/\bmayCommand\(\w/.test(line) && current !== null) found.push(current)
         }
+        return found
       }
+      const asked = askedBy(code)
       expect(asked.sort()).toEqual(
         [
           'withinMessagingReach',
@@ -419,12 +416,22 @@ describe('433 §B · the agents a reach can see', () => {
       expect(questions).toHaveLength(20)
       expect(code).toContain('.filter((slot) => this.withinMessagingReach(slot.id, by, me))')
       expect(code).toContain('if (!this.withinMessagingReach(sessionId, by, me)) return null')
-      expect(raw.match(/mayCommand/g)?.length ?? 0).toBeGreaterThan(
-        code.match(/mayCommand/g)?.length ?? 0,
+      const contaminated = `${raw}\n// mayCommand(decoy)\n/* mayCommand(decoy) */`
+      expect(contaminated.match(/mayCommand/g)?.length ?? 0).toBeGreaterThan(
+        raw.match(/mayCommand/g)?.length ?? 0,
       )
+      expect(withoutProse(contaminated).trim()).toBe(code.trim())
+      expect(askedBy(withoutProse(contaminated)).sort()).toEqual(asked)
+      const header = 'export class RuntimeHost implements LiveHost {'
+      expect(raw).toContain(header)
+      const extra = raw.replace(
+        header,
+        `${header}\n  unexpectedCaller() {\n    mayCommand(decoy)\n  }`,
+      )
+      expect(extra).not.toBe(raw)
+      expect(askedBy(withoutProse(extra)).sort()).toEqual([...asked, 'unexpectedCaller'].sort())
     })
   })
-
 
   describe('§4 · one word, two composites, and the three places that publish it', () => {
     it('⛔ each grant a model reads names what its OWN gate asks, and the sheet says it in the same bytes', () => {

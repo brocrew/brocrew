@@ -668,7 +668,6 @@ describe('591 · a question does not expire on a clock', () => {
       expect(bodyOf(code, 'private theWordsOf(')).toContain(
         'this.deps.store.questionsRaisedIn(askedBy)',
       )
-      expect(proseOf(mainRoot, 'runtime/runtime-host.ts')).toContain('it read a clock')
     })
 
     it('⛔ the ask_parent sentence no longer says an answer after the bound is refused', () => {

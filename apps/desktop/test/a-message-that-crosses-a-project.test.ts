@@ -23,7 +23,6 @@ import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
@@ -158,7 +157,6 @@ describe('431 · the message that crosses a project', () => {
       .map((one) => one.event)
       .filter((event) => event.type === 'work_given')
 
-
   describe('§1 · the four cases, and not one hand-written binding', () => {
     it('🔴 BroBot reaches a manager a person opened, and a `none` identity does not', async () => {
       const { brobot, brobotTools, manager } = await aManagerInAnotherProject()
@@ -190,8 +188,6 @@ describe('431 · the message that crosses a project', () => {
       expect(eventKinds(manager).filter((kind) => kind === 'user_turn')).toHaveLength(1)
       expect(brobot).not.toBe(other)
     })
-
-
 
     it('🔴 the reach follows the grant, not the identity — narrowed it refuses, granted it admits', async () => {
       const { brobotTools, manager } = await aManagerInAnotherProject()
@@ -238,7 +234,6 @@ describe('431 · the message that crosses a project', () => {
       })
     })
   })
-
 
   describe('§2 · what the reach did NOT widen', () => {
     it('⛔ `interrupt_agent` still refuses it, with the message reach at its widest', async () => {
@@ -388,9 +383,7 @@ describe('431 · the message that crosses a project', () => {
     })
   })
 
-
   describe('§3 · the opt-in, as source', () => {
-
     it('⛔ the two send verbs and the move press ask `requireToMessage`, and the readers ask it too since `433`', () => {
       const code = withoutProse(readFileSync(join(mainRoot, 'runtime/runtime-host.ts'), 'utf8'))
       expect(code.match(/requireToMessage\(/g)).toHaveLength(5)
@@ -400,9 +393,13 @@ describe('431 · the message that crosses a project', () => {
       expect(code).toContain('.filter((slot) => this.withinMessagingReach(slot.id, by, me))')
       expect(code).toContain('if (!this.withinMessagingReach(sessionId, by, me)) return null')
       const raw = readFileSync(join(mainRoot, 'runtime/runtime-host.ts'), 'utf8')
-      expect(raw.match(/requireToMessage/g)?.length ?? 0).toBeGreaterThan(
-        code.match(/requireToMessage/g)?.length ?? 0,
+      const contaminated = `${raw}\n// requireToMessage(decoy)\n/* requireToMessage(decoy) */`
+      expect(contaminated.match(/requireToMessage/g)?.length ?? 0).toBeGreaterThan(
+        raw.match(/requireToMessage/g)?.length ?? 0,
       )
+      expect(withoutProse(contaminated).trim()).toBe(code.trim())
+      const extra = withoutProse(`${raw}\nthis.requireToMessage(decoy, caller)`)
+      expect(extra.match(/requireToMessage\(/g)).toHaveLength(6)
     })
   })
 })

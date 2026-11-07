@@ -3,7 +3,6 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-
 const here = dirname(fileURLToPath(import.meta.url))
 const read = (rel: string): string => readFileSync(join(here, '..', rel), 'utf8')
 
@@ -142,7 +141,12 @@ describe('223 §5 · every consumer of the send rule asks it', () => {
     for (const rel of [COMPOSER, STORE, WIRE, SHARED, HOST]) {
       const code = codeOf(read(rel))
       expect(code.length, `${rel} came back empty`).toBeGreaterThan(2_000)
-      expect(code.length, `${rel} — nothing was stripped`).toBeLessThan(read(rel).length)
+      const contaminated = `${read(rel)}\n// hasSomethingToSend(decoy, 0)`
+      expect(contaminated).toContain('// hasSomethingToSend(decoy, 0)')
+      expect(codeOf(contaminated).trim(), rel).toBe(code.trim())
+      expect(codeOf(`${read(rel)}\nconst extra = hasSomethingToSend(decoy, 0)`)).toContain(
+        'const extra = hasSomethingToSend(decoy, 0)',
+      )
     }
     for (const mention of [
       '// hasSomethingToSend(text, 0)',
