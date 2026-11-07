@@ -56,6 +56,12 @@ export function registerCalendarRevisionCases(Z_UTC: LocalZone, Z_NP: LocalZone)
     ).not.toBe(version)
     expect(hostCalendar({ ...zone, rule: null }).version).not.toBe(version)
     expect(hostCalendar({ ...zone, before: 1 }).version).not.toBe(version)
-    expect(JSON.parse(version)[1]).toHaveLength(400)
+    expect(zone.changes).toHaveLength(400)
+    for (let index = 0; index < zone.changes.length; index++) {
+      const changes = zone.changes.map((change, at) =>
+        at === index ? { ...change, offset: change.offset + 1 } : change,
+      )
+      expect(hostCalendar({ ...zone, changes }).version, `transition ${index}`).not.toBe(version)
+    }
   })
 }
