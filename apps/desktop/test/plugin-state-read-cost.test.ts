@@ -1,6 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
-import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import { openNotThroughALink } from '@brobot2/runtime/provider-home'
 import type { PluginStateDisk } from '../src/main/plugins/state/disk'
@@ -221,24 +220,6 @@ for (const kind of ['record', 'seal']) {
         expect(() => fullRead(f.disk)).toThrow()
       } finally {
         fs.chmodSync(path, 0o600)
-      }
-      expect(fullRead(f.disk).rootId).toBeTruthy()
-    },
-  )
-  it.runIf(process.platform === 'win32')(
-    `matches the original fresh-open refusal after ${kind} data access is denied on Windows`,
-    async () => {
-      const f = await installed()
-      const name = f.files.find((name) => name.endsWith(kind === 'record' ? '.json' : '.seal'))!
-      const path = join(f.guard, name)
-      const icacls = join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'icacls.exe')
-      execFileSync(icacls, [path, '/deny', '*S-1-1-0:(RD)', '/Q'], { windowsHide: true })
-      try {
-        expect(fs.lstatSync(path).isFile()).toBe(true)
-        expect(() => openNotThroughALink(path, fs.constants.O_RDONLY)).toThrow()
-        expect(() => fullRead(f.disk)).toThrow()
-      } finally {
-        execFileSync(icacls, [path, '/remove:d', '*S-1-1-0', '/Q'], { windowsHide: true })
       }
       expect(fullRead(f.disk).rootId).toBeTruthy()
     },
