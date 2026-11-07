@@ -43,11 +43,13 @@ const row = (m: Mounted, provider: string) => {
 
 describe('the Providers list opens the existing controls in one drawer', () => {
   it('refreshes read facts alone through the shared owner while its drawer is open', async () => {
-    let notice: Parameters<typeof window.api.runtime.onProvidersChanged>[0] = () => {}
-    const stopped = vi.fn()
+    const listeners = new Set<Parameters<typeof window.api.runtime.onProvidersChanged>[0]>()
+    const stops: ReturnType<typeof vi.fn>[] = []
     const listen = vi.fn<typeof window.api.runtime.onProvidersChanged>((listener) => {
-      notice = listener
-      return stopped
+      listeners.add(listener)
+      const stop = vi.fn(() => { listeners.delete(listener) })
+      stops.push(stop)
+      return stop
     })
     window.api.runtime.onProvidersChanged = listen
     const auth = vi.spyOn(window.api.runtime, 'checkProviderAuth')
@@ -55,13 +57,14 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     const models = vi.spyOn(window.api.runtime, 'modelList')
     const m = screen()
     await settle()
+    const listenersBeforeDrawer = listen.mock.calls.length
     row(m, 'claude').click()
     await settle()
     const before = { auth: auth.mock.calls.length, key: key.mock.calls.length, models: models.mock.calls.length }
     key.mockResolvedValue({ provider: 'claude', set: true, setAt: NOW, inUse: false, readState: 'reading' } as never)
-    notice({ what: 'key-read', provider: 'claude' } as never)
+    for (const listener of listeners) listener({ what: 'key-read', provider: 'claude' } as never)
     await settle()
-    expect(listen).toHaveBeenCalledTimes(1)
+    expect(listen).toHaveBeenCalledTimes(listenersBeforeDrawer)
     expect(key).toHaveBeenCalledTimes(before.key + 1)
     expect(key).toHaveBeenLastCalledWith({ provider: 'claude' })
     expect(auth).toHaveBeenCalledTimes(before.auth)
@@ -69,7 +72,8 @@ describe('the Providers list opens the existing controls in one drawer', () => {
     expect(m.q('provider-key-in-use').textContent).toContain('Reading the saved key…')
     expect(m.q('provider-key-in-use').classList.contains('warn')).toBe(false)
     unmountAll()
-    expect(stopped).toHaveBeenCalledTimes(1)
+    expect(listeners.size).toBe(0)
+    for (const stop of stops) expect(stop).toHaveBeenCalledTimes(1)
   })
   it('one Escape closes only the top dialog when a setup route arrives over another modal', async () => {
     const fixture = defineComponent({

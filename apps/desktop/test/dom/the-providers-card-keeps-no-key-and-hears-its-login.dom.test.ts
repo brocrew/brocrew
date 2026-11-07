@@ -267,7 +267,7 @@ describe('saved-key read progress', () => {
     let notice: Parameters<RuntimeBridge['onProvidersChanged']>[0] = () => {}
     const late = held<ApiKeyStatus>()
     let initial = true
-    const { m } = theCard({
+    const { m, runtime } = theCard({
       apiKeyStatus: () => initial ? Promise.resolve(gesture === 'save' ? NO_KEY : A_KEY) : late.promise,
       onProvidersChanged: (listener) => { notice = listener; return () => {} },
     })
@@ -275,6 +275,7 @@ describe('saved-key read progress', () => {
     initial = false
     notice({ what: 'key-read', provider: 'claude' } as never)
     await settled()
+    expect(runtime.apiKeyStatus).toHaveBeenCalledTimes(2)
     if (gesture === 'save') {
       await typeKey(m, 'fictional-saved-key')
       saveButton(m).click()
