@@ -326,16 +326,7 @@ function draw(snapshot) {
             propose({ action: 'set-flags', profile: profile.name, [flag]: checked }),
           ),
         )
-      details.append(
-        settings,
-        checkbox(
-          'Keep running here. While on, workspaces with a separate Chrome setup cannot use this profile.',
-          profile.keepRunning === true,
-          `keepRunning:${profile.name}`,
-          (checked) =>
-            propose({ action: 'set-flags', profile: profile.name, keepRunning: checked }),
-        ),
-      )
+      details.append(settings)
       const notes = document.createElement('div')
       notes.className = 'profile-notes'
       notes.append(

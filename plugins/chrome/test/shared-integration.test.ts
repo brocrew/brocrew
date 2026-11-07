@@ -99,7 +99,8 @@ it('fresh admin warning binds the immutable identity/revision; agent bearer cann
   expect(original).toMatchObject({ shared: true, onIn: ['Alpha'], status: 'ready' })
   expect((await remove(original.deleteConfirmation, 'm'.repeat(64))).status).toBe(401)
   expect((await remove()).status).toBe(409)
-  f.store.setFlags('fern', { keepRunning: true })
+  // A workspace flag change makes the confirmation already shown stale.
+  f.store.setFlags('fern', { enabled: true })
   expect((await remove(original.deleteConfirmation)).status).toBe(409)
   const lease = f.store.shared.acquire('fern')
   expect((await remove((await read()).deleteConfirmation)).status).toBe(409)

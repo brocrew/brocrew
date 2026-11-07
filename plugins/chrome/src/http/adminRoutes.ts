@@ -32,11 +32,11 @@ export const ADMIN_ERRORS = {
   unknown: 'There is no such profile.',
   exists: 'A profile with that name already exists.',
   flags:
-    'Give at least one of enabled, allowExtensions, allowSettings, allowSync, keepRunning, each true or false.',
+    'Give at least one of enabled, allowExtensions, allowSettings, allowSync, each true or false.',
   confirm: 'Type the profile name to confirm.',
   description: `The description must be plain text of at most ${DESCRIPTION_MAX} characters.`,
   temporary:
-    'A temporary profile has no account: it cannot be opened for the user and cannot get extension, settings, sync or keep-running access.',
+    'A temporary profile has no account: it cannot be opened for the user and cannot get extension, settings or sync access.',
   inUse: 'The profile is open in another Chrome.',
   deleteInUse: 'Turn this profile off and wait for agent work to finish, then try again.',
   noBrowser: 'Install Google Chrome, then try again.',
@@ -159,8 +159,7 @@ export function registerAdminRoutes(app: Express, deps: AdminDeps): void {
       before?.temporary &&
       (body.allowExtensions === true ||
         body.allowSettings === true ||
-        body.allowSync === true ||
-        body.keepRunning === true)
+        body.allowSync === true)
     )
       return fail(res, 400, ADMIN_ERRORS.temporary)
     store.setFlags(name, body as Partial<Record<(typeof FLAG_NAMES)[number], boolean>>)

@@ -65,13 +65,14 @@ interface Migration {
   owner: Lease
   error?: string
 }
-interface SharedRecord extends Omit<ProfileRecord, 'enabled' | 'keepRunning'> {
+interface SharedRecord extends Omit<ProfileRecord, 'enabled'> {
   id: string
   directory: FileIdentity
   permissionRevision: number
   authorizationSchema: number
   state: 'ready' | 'moving' | 'deleting'
-  perWorkspace: Record<string, { enabled: boolean; keepRunning: boolean; [key: string]: unknown }>
+  // keepRunning: false is still written for older plugin copies, which require it; never read.
+  perWorkspace: Record<string, { enabled: boolean; [key: string]: unknown }>
   lease?: Lease
   migration?: Migration
   migratedFrom?: string
@@ -350,7 +351,6 @@ export function createSharedProfileStore(
     ['on', 'off', 'turning-on'].includes(p.helper) &&
     (p.perWorkspace[o.workspaceId] === undefined ||
       (typeof p.perWorkspace[o.workspaceId].enabled === 'boolean' &&
-        typeof p.perWorkspace[o.workspaceId].keepRunning === 'boolean' &&
         (p.perWorkspace[o.workspaceId].accessEpoch === undefined ||
           (Number.isSafeInteger(p.perWorkspace[o.workspaceId].accessEpoch) &&
             Number(p.perWorkspace[o.workspaceId].accessEpoch) >= 0))))
@@ -366,7 +366,6 @@ export function createSharedProfileStore(
     allowSettings: p.allowSettings === true,
     allowSync: p.allowSync === true,
     enabled: supported(p, r) && p.perWorkspace[o.workspaceId]?.enabled === true,
-    keepRunning: supported(p, r) && p.perWorkspace[o.workspaceId]?.keepRunning === true,
   })
   const sharedDir = (name: string) => {
     if (!isProfileName(name)) throw new ProfileStoreError('Invalid profile name.')
@@ -752,13 +751,12 @@ export function createSharedProfileStore(
       return mutate(name, (p) => {
         for (const f of FLAG_NAMES)
           if (typeof flags[f] === 'boolean') {
-            if (f === 'enabled' || f === 'keepRunning')
+            if (f === 'enabled')
               p.perWorkspace[o.workspaceId] = {
                 ...p.perWorkspace[o.workspaceId],
-                enabled: p.perWorkspace[o.workspaceId]?.enabled === true,
-                keepRunning: p.perWorkspace[o.workspaceId]?.keepRunning === true,
+                enabled: flags[f],
+                keepRunning: false,
                 accessEpoch: Number(p.perWorkspace[o.workspaceId]?.accessEpoch ?? 0) + 1,
-                [f]: flags[f],
               }
             else {
               p.permissionRevision++
@@ -936,7 +934,7 @@ export function createSharedProfileStore(
           const suffix = `-${createHash('sha256').update(o.workspaceId).digest('hex').slice(0, 6)}-${n++}`
           name = baseName.slice(0, 32 - suffix.length) + suffix
         }
-        const { enabled, keepRunning, authorizationEpoch: _localEpoch, ...global } = lp
+        const { enabled, authorizationEpoch: _localEpoch, ...global } = lp
         void _localEpoch
         r.profiles.push({
           ...global,
@@ -947,7 +945,7 @@ export function createSharedProfileStore(
           authorizationSchema: 1,
           state: 'moving',
           migratedFrom: lp.name,
-          perWorkspace: { [o.workspaceId]: { enabled, keepRunning } },
+          perWorkspace: { [o.workspaceId]: { enabled, keepRunning: false } },
           migration: {
             id: randomUUID(),
             workspaceId: o.workspaceId,

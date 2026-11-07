@@ -58,7 +58,6 @@ export interface ChromeBrowserOptions {
   afterIdleClose?: (profile: string) => void | Promise<void>
   extensionsFor?: (profile: string) => boolean
   syncFor?: (profile: string) => boolean
-  keepRunningFor?: (profile: string) => boolean
   homedir?: () => string
   downloadsRoot?: string
   nativeDownloadsInHeadless?: boolean
@@ -1005,8 +1004,7 @@ export class ChromeBrowser implements ProfileBrowser {
   private idleFired(e: Entry): void {
     e.idleTimer = null
     if (!e.ctx || e.mode === 'visible') return
-    const kept = this.opts.keepRunningFor?.(e.name) === true
-    if (kept || e.waiters > 0 || e.barrier.inFlight() > 0) {
+    if (e.waiters > 0 || e.barrier.inFlight() > 0) {
       e.idleTimer = this.later(() => this.idleFired(e), this.idleMs)
       e.idleTimer.unref?.()
       return
@@ -1014,7 +1012,7 @@ export class ChromeBrowser implements ProfileBrowser {
     const { generation, touched } = e
     void this.exclusive(e.name, async () => {
       if (e.generation !== generation || e.touched !== touched) return
-      if (e.mode === 'visible' || this.opts.keepRunningFor?.(e.name) === true) return
+      if (e.mode === 'visible') return
       this.logger.info('idle close', { generation })
       await this.close(e.name)
       await this.opts.afterIdleClose?.(e.name)

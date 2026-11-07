@@ -37,10 +37,6 @@ export function createChromeBrowser(
     rememberHelper: (name, helper) => {
       if (store.get(name) && store.get(name)?.helper !== helper) store.setHelper(name, helper)
     },
-    keepRunningFor: (name) => {
-      const r = store.get(name)
-      return r?.keepRunning === true && !r.temporary
-    },
     afterIdleClose: (name) => {
       if (store.get(name)?.temporary) {
         logger.info('admin action', {

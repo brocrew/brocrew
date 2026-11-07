@@ -135,9 +135,6 @@
           },
           "allowSettings": {
             "type": "boolean"
-          },
-          "keepRunning": {
-            "type": "boolean"
           }
         },
         "required": ["action", "profile"],

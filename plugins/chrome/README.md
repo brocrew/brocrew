@@ -71,13 +71,13 @@ and do not prove native focus. Never use real or signed-in profiles for those ch
 
 With a host supporting `shared-data-v1`, permanent Chrome profiles live in the host-provided,
 verified `shared/chrome` namespace once the released platform signal enables it. Settings lists the same profiles in every eligible workspace.
-On/off and Keep running apply to the current Chrome owner/root. Pinned roots each have their own switch; workspaces using the default root share one switch in v1. The default owner also sees the machine-wide list. Sync, extensions, Chrome settings and the
+On/off applies to the current Chrome owner/root. Pinned roots each have their own switch; workspaces using the default root share one switch in v1. The default owner also sees the machine-wide list. Sync, extensions, Chrome settings and the
 BroCrew helper belong to the profile in every workspace. New profiles are on in the creating
 workspace and off elsewhere. Temporary profiles, saved files, downloads and restore state stay
 local; while the shared facade is enabled, unmigrated local profiles use stable `local-…` names to prevent collisions with shared names.
 
 A profile can run in one workspace at a time. The other workspace sees “in use in <workspace>”.
-Keep running retains that lease. Settings changes to launch configuration apply at the next
+Settings changes to launch configuration apply at the next
 launch; permission revocation fences queued and subsequent browser commands immediately.
 Only the person can delete a permanent profile. The confirmation lists its enabled workspaces
 and binds to its immutable identity and current registry revision. Any held lease prevents delete.
