@@ -605,11 +605,7 @@ export async function stageKnowledgeFile(
  * Windows crash stages remain private and are not automatically deleted. Elsewhere, staged files
  * a crash left in the folder are removed first.
  */
-async function rewrite(
-  path: string,
-  text: string,
-  seams: MemoryWriteSeams,
-): Promise<void> {
+async function rewrite(path: string, text: string, seams: MemoryWriteSeams): Promise<void> {
   const platform = seams.platform ?? process.platform
   const folder = dirname(path)
   if (platform !== 'win32') sweepStaged(folder)

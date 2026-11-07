@@ -16,11 +16,7 @@ import { setPriority, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import {
-  immutableMode,
-  isLocalDrivePath,
-  isWithinOrSame,
-} from '../src/main/plugins/private-files'
+import { immutableMode, isLocalDrivePath, isWithinOrSame } from '../src/main/plugins/private-files'
 import { localEndpoint } from '../src/main/plugins/local-endpoint'
 import { windowsSystemEnvironment } from '../src/main/plugins/system-environment'
 import { installedChromeOnWindows } from '../src/main/plugins/windows-chrome'
@@ -139,7 +135,6 @@ describe('the plugin host on Windows, by its platform seams', () => {
       ),
     ).toBeNull()
   })
-
 })
 
 /** A fresh folder that lets in this user, SYSTEM and Administrators alone, by its long name. */

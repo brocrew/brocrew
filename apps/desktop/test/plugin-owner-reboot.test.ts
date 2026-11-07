@@ -226,15 +226,18 @@ describe('fenced reboot proof for historical plugin runs', () => {
     witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
     await refused()
   })
-  it.skipIf(process.platform === 'win32')('refuses a symlinked run across a genuine reboot', async () => {
-    await fixture()
-    await refused()
-    const saved = join(parent, 'saved-run')
-    await rename(run, saved)
-    await symlink(saved, run, 'dir')
-    witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
-    await refused()
-  })
+  it.skipIf(process.platform === 'win32')(
+    'refuses a symlinked run across a genuine reboot',
+    async () => {
+      await fixture()
+      await refused()
+      const saved = join(parent, 'saved-run')
+      await rename(run, saved)
+      await symlink(saved, run, 'dir')
+      witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
+      await refused()
+    },
+  )
   it('keeps dev:ino pinning when native volume observation races with a mount change', async () => {
     await fixture()
     await expect(

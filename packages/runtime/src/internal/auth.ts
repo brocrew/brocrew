@@ -1103,7 +1103,6 @@ async function provisionCodexAuthLocked(
         closeSync(fd)
         rmSync(tmp, { force: true }) // dest keeps the inode alive
       }
-
     },
     { verify: ancestry?.verify },
   )
@@ -1337,9 +1336,7 @@ function readOrNull(path: string): Buffer | null {
  * Codex auth-health: ok iff a managed `auth.json` exists and is a regular file, or a link the person
  * made to one. Ordinary filesystem permissions do not change this health result.
  */
-export function codexAuthHealth(
-  providerHome: string,
-): AuthHealth {
+export function codexAuthHealth(providerHome: string): AuthHealth {
   const dest = join(providerHome, CODEX_AUTH_FILE)
   const stat = statOrNull(dest)
   if (!stat) return { ok: false, reason: `no managed Codex auth.json in ${providerHome}` }

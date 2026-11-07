@@ -23,7 +23,6 @@ const HERE: WorkspaceRow = {
   isThisOne: true,
   state: 'open',
   lastOpenedAt: 3,
-
 }
 const RESEARCH: WorkspaceRow = {
   path: '/Users/x/BroBot workspaces/Research',
@@ -32,7 +31,6 @@ const RESEARCH: WorkspaceRow = {
   isThisOne: false,
   state: 'closed',
   lastOpenedAt: 2,
-
 }
 const GONE: WorkspaceRow = {
   path: '/Users/x/BroBot workspaces/Old',
@@ -41,7 +39,6 @@ const GONE: WorkspaceRow = {
   isThisOne: false,
   state: 'missing',
   lastOpenedAt: 1,
-
 }
 
 const api = (): { api?: Record<string, unknown> } =>

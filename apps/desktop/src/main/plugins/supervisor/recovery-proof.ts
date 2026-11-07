@@ -70,8 +70,10 @@ function matchesIdentity(
   runtime: string | undefined,
   allowDeviceChange: boolean,
 ) {
-  const previous = durableIdentity.exec(saved), observed = durableIdentity.exec(current)
-  if (previous && observed && previous[1] === observed[1] && previous[2] === observed[2]) return true
+  const previous = durableIdentity.exec(saved),
+    observed = durableIdentity.exec(current)
+  if (previous && observed && previous[1] === observed[1] && previous[2] === observed[2])
+    return true
   if (saved === current || saved === runtime) return true
   const old = legacyIdentity.exec(saved),
     next = durableIdentity.exec(current)
@@ -130,10 +132,7 @@ async function snapshot(root: string, readVolume: VolumeReader) {
   const pins: Record<string, string> = {}
   const identify = async (path: string) => {
     const stat = await lstat(path, { bigint: true })
-    if (
-      stat.isSymbolicLink() ||
-      (!stat.isDirectory() && !stat.isFile())
-    )
+    if (stat.isSymbolicLink() || (!stat.isDirectory() && !stat.isFile()))
       throw new Error('Untrusted recovery identity')
     const device = String(stat.dev),
       runtime = `${stat.dev}:${stat.ino}`
@@ -155,8 +154,7 @@ async function snapshot(root: string, readVolume: VolumeReader) {
   // Native volume observation may yield. Retain the original dev:ino race check.
   for (const [path, pin] of Object.entries(pins)) {
     const stat = await lstat(path, { bigint: true })
-    if (pin !== `${stat.dev}:${stat.ino}`)
-      throw new Error('Changed recovery identity')
+    if (pin !== `${stat.dev}:${stat.ino}`) throw new Error('Changed recovery identity')
   }
   return {
     bound,
@@ -170,10 +168,7 @@ async function snapshot(root: string, readVolume: VolumeReader) {
 async function readRebootProof(path: string): Promise<unknown> {
   const file = await openFileNotThroughALink(path, constants.O_RDONLY | constants.O_NONBLOCK)
   const accepted = (stat: Stats) =>
-    stat.isFile() &&
-    stat.nlink === 1 &&
-    stat.size > 0 &&
-    stat.size <= 1024 * 1024
+    stat.isFile() && stat.nlink === 1 && stat.size > 0 && stat.size <= 1024 * 1024
   try {
     const before = await file.stat()
     if (!accepted(before)) throw new Error('Untrusted recovery proof')
@@ -282,12 +277,7 @@ async function hasExitReceipt(root: string, runId: string): Promise<boolean> {
     )
     try {
       const stat = await file.stat()
-      if (
-        !stat.isFile() ||
-        stat.nlink !== 1 ||
-        stat.size > 64 * 1024 ||
-        stat.size === 0
-      )
+      if (!stat.isFile() || stat.nlink !== 1 || stat.size > 64 * 1024 || stat.size === 0)
         return false
       const proof = receipt.parse(JSON.parse(await file.readFile('utf8')))
       return proof.runId === runId

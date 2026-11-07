@@ -34,8 +34,7 @@ export async function privateRoot(path: string): Promise<string> {
 }
 async function directory(path: string): Promise<void> {
   const stat = await lstat(path)
-  if (!stat.isDirectory() || stat.isSymbolicLink())
-    throw new PluginHostError('paths')
+  if (!stat.isDirectory() || stat.isSymbolicLink()) throw new PluginHostError('paths')
 }
 export async function privateChild(root: string, path: string, create = true): Promise<string> {
   const parts = relative(root, resolve(root, path)).split(sep)
@@ -195,8 +194,7 @@ export async function removePrivateCode(
         held = await lstat(path)
       if (held.isSymbolicLink()) throw new PluginHostError('paths')
       if (held.isDirectory()) await audit(path)
-      else if (!held.isFile() || held.nlink !== 1)
-        throw new PluginHostError('paths')
+      else if (!held.isFile() || held.nlink !== 1) throw new PluginHostError('paths')
     }
   }
   try {

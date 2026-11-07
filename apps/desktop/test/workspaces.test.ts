@@ -623,7 +623,6 @@ describe('§6 · the chooser’s rows', () => {
         isThisOne: true,
         state: 'open',
         lastOpenedAt: 1,
-
       },
     ])
   })

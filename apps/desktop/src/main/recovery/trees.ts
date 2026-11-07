@@ -40,7 +40,8 @@ async function readPlainFile(path: string, fs: RecoveryFs, to?: string): Promise
   try {
     if (!source.stat || !sameFile(before, await source.stat()))
       throw new Error('Skills could not be read.')
-    if (to !== undefined) target = await fs.open(to, 'wx', (before.mode ?? 0) & 0o100 ? 0o777 : 0o666)
+    if (to !== undefined)
+      target = await fs.open(to, 'wx', (before.mode ?? 0) & 0o100 ? 0o777 : 0o666)
     const hash = createHash('sha256')
     const buffer = new Uint8Array(64 * 1024)
     let bytes = 0

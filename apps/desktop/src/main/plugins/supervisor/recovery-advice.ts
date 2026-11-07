@@ -118,13 +118,7 @@ export async function readRecoveryAdvice(
       const file = await openFileNotThroughALink(path, constants.O_RDONLY | constants.O_NONBLOCK)
       try {
         const before = await file.stat()
-        if (
-          !before.isFile() ||
-          before.nlink !== 1 ||
-          before.size < 1 ||
-          before.size > 4096
-        )
-          return
+        if (!before.isFile() || before.nlink !== 1 || before.size < 1 || before.size > 4096) return
         const bytes = Buffer.alloc(before.size + 1)
         let length = 0
         while (length < bytes.length) {

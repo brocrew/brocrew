@@ -89,7 +89,8 @@ function install(store: GlobalPluginState) {
 }
 
 it('creates standalone state without a prior root admission', () => {
-  const parent = folder(), root = join(parent, 'plugins')
+  const parent = folder(),
+    root = join(parent, 'plugins')
   if (process.platform !== 'win32') chmodSync(parent, 0o755)
   const state = GlobalPluginState.create({ root, workspaceRoots: [] })
   state.close()

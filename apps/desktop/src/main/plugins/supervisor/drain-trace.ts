@@ -38,8 +38,7 @@ export function recordDrainTrace(root: string, event: DrainTrace): void {
       fd = createFreshFile(path, 0o600)
     }
     const stat = fstatSync(fd)
-    if (!stat.isFile() || stat.nlink !== 1 || stat.size > 1024 * 1024)
-      return
+    if (!stat.isFile() || stat.nlink !== 1 || stat.size > 1024 * 1024) return
     writeSync(
       fd,
       `${new Date().toISOString()} [plugins] drain stage=${event.stage} state=${event.state}${event.attempt ? ` attempt=${event.attempt}` : ''}${event.errno ? ` errno=${event.errno}` : ''}${event.epoch ? ` epoch=${event.epoch}` : ''}${event.reason ? ` reason=${event.reason}` : ''}${event.cause ? ` cause=${pluginStartupStderr(event.cause) ?? 'Unknown failure'}` : ''}\n`,

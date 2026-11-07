@@ -520,7 +520,6 @@ export async function workspaceRows(options: {
         isThisOne,
         state,
         lastOpenedAt: row.lastOpenedAt,
-
       }
     }),
   )

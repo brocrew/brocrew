@@ -134,7 +134,6 @@ describe('WhatsApp package', () => {
       expect(fs.statSync(config.home).mode & 0o777).toBe(0o755)
       expect(fs.statSync(config.authPath).mode & 0o777).toBe(0o644)
     }
-
   })
 
   it('keeps the person’s routes apart from the tools, and refuses browser origins', async () => {

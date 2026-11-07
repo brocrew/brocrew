@@ -231,7 +231,6 @@ export function startWorkspaces(options: {
       thisOne: userData,
       defaultFolder,
       ask: (folder) => whoIsOn(folder),
-
     }),
   )
 
@@ -291,7 +290,6 @@ export function startWorkspaces(options: {
         ) {
           createFirstWorkspaceDatabase(verdict.path)
         }
-
       } catch (error) {
         return {
           opened: false,

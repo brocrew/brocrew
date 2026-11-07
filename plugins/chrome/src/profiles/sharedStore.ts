@@ -237,11 +237,7 @@ export function createSharedProfileStore(
     if (volume !== undefined && !/^(apfs:[a-f0-9-]{36}|winvol:[0-9]+)$/.test(volume))
       throw new ProfileStoreError('Profile folder identity changed.')
     const after = directoryStat(p)
-    if (
-      !after ||
-      s.dev !== after.dev ||
-      s.ino !== after.ino
-    )
+    if (!after || s.dev !== after.dev || s.ino !== after.ino)
       throw new ProfileStoreError('Profile folder identity changed.')
     return {
       dev,

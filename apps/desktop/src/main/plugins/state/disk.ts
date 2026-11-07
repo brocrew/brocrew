@@ -139,8 +139,7 @@ class PluginJournalReader {
   }
 
   protected privateDirectory(stat: BigIntStats): void {
-    if (!stat.isDirectory() || stat.isSymbolicLink())
-      refuseState('unsafe-path')
+    if (!stat.isDirectory() || stat.isSymbolicLink()) refuseState('unsafe-path')
   }
   protected pin(path: string): void {
     const stat = lstatSync(path, { bigint: true })
@@ -166,11 +165,7 @@ class PluginJournalReader {
     }
   }
   protected file(stat: BigIntStats): void {
-    if (
-      !stat.isFile() ||
-      stat.nlink !== 1n ||
-      stat.size > BigInt(STATE_LIMITS.recordBytes)
-    )
+    if (!stat.isFile() || stat.nlink !== 1n || stat.size > BigInt(STATE_LIMITS.recordBytes))
       refuseState('unsafe-path')
   }
   protected links(

@@ -488,5 +488,4 @@ describe('corrections use ordinary adjacent staging', () => {
       ].sort(),
     )
   })
-
 })

@@ -156,5 +156,4 @@ describe('knowledge changes prepare exact private bytes before publishing them',
     stage.install(false, nothing)
     expect(readFileSync(join(elsewhere, 'review.md'))).toEqual(payload)
   })
-
 })

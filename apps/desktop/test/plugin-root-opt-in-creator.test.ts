@@ -23,7 +23,6 @@ async function fixture() {
     other = join(base, 'reed')
   for (const path of [appData, workspace, other, join(appData, '@brobot2')]) {
     await mkdir(path, { mode: 0o700 })
-
   }
   const parent = join(appData, '@brobot2'),
     marker = join(workspace, 'plugin-root.json')

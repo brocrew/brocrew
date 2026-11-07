@@ -129,7 +129,6 @@ async function attach(global: string, workspace: string, generation = randomUUID
   return lease
 }
 async function owner(global: string, workspace: string) {
-
   const childStopped = vi.fn(),
     revoked = vi.fn()
   const supervisor = await PluginSupervisor.start({
@@ -441,7 +440,6 @@ it('person capabilities and sockets refuse the other root key in both directions
   const roots = [root(f, f.otherWorkspace), root(f)]
   for (const path of roots) {
     await mkdir(path, { recursive: true, mode: 0o700 })
-
   }
   const keys = await Promise.all(roots.map(pluginPersonCapability))
   expect(keys[0]).not.toBe(keys[1])

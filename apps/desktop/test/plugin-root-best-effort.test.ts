@@ -20,10 +20,13 @@ afterEach(() => {
 describe.runIf(process.platform === 'win32')(
   'plugin startup uses ordinary folders without admission',
   () => {
-    it.each([false, true])('lists and starts a verified plugin with an existing root=%s', async (existing) => {
+    it.each([false, true])(
+      'lists and starts a verified plugin with an existing root=%s',
+      async (existing) => {
         const parent = realpathSync.native(mkdtempSync(join(tmpdir(), 'fictional-plugin-folders-')))
         roots.push(parent)
-        const root = join(parent, 'plugins'), workspace = join(parent, 'workspace')
+        const root = join(parent, 'plugins'),
+          workspace = join(parent, 'workspace')
         mkdirSync(workspace)
         if (existing) mkdirSync(root)
         const storage = new SupervisorStorage(root, [workspace], true)

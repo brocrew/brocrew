@@ -20,11 +20,7 @@ export async function devPluginSource(options?: DevPluginSource): Promise<string
     throw error
   })
   if (!stat) return undefined
-  if (
-    !stat.isDirectory() ||
-    stat.isSymbolicLink() ||
-    (await realpath(root)) !== root
-  )
+  if (!stat.isDirectory() || stat.isSymbolicLink() || (await realpath(root)) !== root)
     throw new PluginSupervisorError('unavailable')
   return root
 }

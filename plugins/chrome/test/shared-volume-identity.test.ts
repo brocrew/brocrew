@@ -306,7 +306,10 @@ it('each admission snapshot observes the current volume even when device and ino
 
 it('ignores historical uid and mode fields while retaining profile identity', () => {
   const f = fixture()
-  f.edit((r) => { r.profiles[0].directory.uid = '999999999'; r.profiles[0].directory.mode = '16895' })
+  f.edit((r) => {
+    r.profiles[0].directory.uid = '999999999'
+    r.profiles[0].directory.mode = '16895'
+  })
   const store = f.open()
   expect(store.get('fern')?.enabled).toBe(true)
   store.shared.acquire('fern').release()

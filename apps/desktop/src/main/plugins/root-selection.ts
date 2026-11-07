@@ -9,10 +9,7 @@ import {
 } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { z } from 'zod'
-import {
-  isWithinOrSame,
-  realPath,
-} from './private-files'
+import { isWithinOrSame, realPath } from './private-files'
 import { isSocketFile } from './local-endpoint'
 import { refuse } from './supervisor/protocol'
 
@@ -119,8 +116,7 @@ export function plannedPluginRoot(
   selections: Array<{ workspace: string; slot: string }>,
   slot: string,
 ): string {
-  if (identity(realPath(parent)) !== identity(parent))
-    refuse()
+  if (identity(realPath(parent)) !== identity(parent)) refuse()
   const root = join(parent, `plugins-${slot}`)
   if (
     isWithinOrSame(workspace, root) ||

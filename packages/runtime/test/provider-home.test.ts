@@ -45,7 +45,6 @@ describe('provisionProviderHome (021)', () => {
     const home = join(root, 'proj', 'profile')
     await provisionProviderHome(root, home)
     expect(existsSync(home)).toBe(true)
-
   })
 
   it('is idempotent when the home already exists', async () => {
@@ -306,6 +305,5 @@ describe('202 · the provisioning lock survives its owner dying (191 M5)', () =>
 
     await provisionProviderHome(managed, target)
     expect(lstatSync(target).isDirectory()).toBe(true)
-
   })
 })

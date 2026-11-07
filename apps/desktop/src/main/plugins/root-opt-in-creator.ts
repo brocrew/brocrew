@@ -82,10 +82,7 @@ function selectionPaths(options: Options, readOnly = false) {
   if (!lstatSync(appData).isDirectory() || !lstatSync(workspace).isDirectory())
     fail('not a directory')
   const parent = join(appData, '@brobot2')
-  if (
-    !same(realpathSync.native(parent), parent) ||
-    !lstatSync(parent).isDirectory()
-  )
+  if (!same(realpathSync.native(parent), parent) || !lstatSync(parent).isDirectory())
     fail('unsafe configuration parent')
   // The daily default folder and all internal app data are deliberately ineligible.
   if (!readOnly && isWithinOrSame(parent, workspace))
@@ -304,11 +301,7 @@ function removalPlan(options: Options) {
 function checkedRemovalMarker(workspace: string, slot: string) {
   const path = join(workspace, 'plugin-root.json'),
     stat = lstatSync(path, { bigint: true })
-  if (
-    !stat.isFile() ||
-    stat.isSymbolicLink() ||
-    (stat.nlink !== 1n && stat.nlink !== 2n)
-  )
+  if (!stat.isFile() || stat.isSymbolicLink() || (stat.nlink !== 1n && stat.nlink !== 2n))
     return fail('marker is not a regular file with expected links')
   let temporary: string | undefined
   if (stat.nlink === 2n) {

@@ -660,10 +660,7 @@ export async function deleteWorkspace(
   const trashed = [checked.path]
   const warnings = checked.warning === null ? [] : [checked.warning]
   // ⚑ Asked again just before it goes, as the folder was.
-  const pasted =
-    checked.pastedImages === null
-      ? null
-      : (await itsPastedImages(checked.path)).folder
+  const pasted = checked.pastedImages === null ? null : (await itsPastedImages(checked.path)).folder
   if (checked.pastedImages !== null && pasted === null) {
     warnings.push(`Its pasted pictures’ folder changed, so it stays: ${checked.pastedImages}`)
   }

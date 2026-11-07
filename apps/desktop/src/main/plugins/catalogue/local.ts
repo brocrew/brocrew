@@ -4,11 +4,7 @@ import { isAbsolute, join } from 'node:path'
 import { PluginSupervisorError } from '../supervisor/protocol'
 import { verifyPluginDigest, PLUGIN_LIMITS } from '../package-digests'
 import type { PluginRelease } from '../package-schema'
-import {
-  openFileNotThroughALink,
-  pinDirectory,
-  type DirectoryPin,
-} from '../private-files'
+import { openFileNotThroughALink, pinDirectory, type DirectoryPin } from '../private-files'
 /** Same-user build input. Check no-follow snapshots and parent identities; callers must verify
  * every returned byte by pinned signature/digest. This is not an openat ancestry guarantee.
  */
@@ -60,11 +56,7 @@ export async function readLocalRelease(
     for (const part of ['', ...parts.slice(0, -1)]) {
       if (part) parent = join(parent, part)
       const before = await lstat(parent, { bigint: true })
-      if (
-        !before.isDirectory() ||
-        before.isSymbolicLink()
-      )
-        return refuse()
+      if (!before.isDirectory() || before.isSymbolicLink()) return refuse()
       const handle = pinDirectory(parent)
       const held = handle.held()
       if (held.dev !== before.dev || held.ino !== before.ino) {

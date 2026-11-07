@@ -39,11 +39,7 @@ export function loadConfig(env: Record<string, string | undefined>): AgentChrome
   let auth: unknown
   try {
     const stat = lstatSync(authPath)
-    if (
-      !stat.isFile() ||
-      stat.size > 16384
-    )
-      throw new Error()
+    if (!stat.isFile() || stat.size > 16384) throw new Error()
     auth = JSON.parse(readFileSync(authPath, 'utf8'))
   } catch {
     throw new ConfigError('Plugin unavailable. Try again.')

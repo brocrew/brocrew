@@ -159,7 +159,6 @@ describe('provider homes', () => {
 
     expect(home).toBe(deriveProviderHome(userData, identity))
     expect(statSync(home).isDirectory()).toBe(true)
-
   })
 
   it('fails closed when the Claude machine login is unavailable', async () => {

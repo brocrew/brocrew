@@ -60,9 +60,7 @@ describe('plugin server application scheduling policy', () => {
     expect(stat).toHaveBeenCalledWith('/usr/sbin/taskpolicy')
     expect(access).toHaveBeenCalledWith('/usr/sbin/taskpolicy', 1)
   })
-  it.each([
-    { isFile: () => false, uid: 0 },
-  ])('uses plain Node for a nonregular utility', (info) => {
+  it.each([{ isFile: () => false, uid: 0 }])('uses plain Node for a nonregular utility', (info) => {
     const access = vi.fn()
     expect(
       pluginServerLaunch(node, preload, {

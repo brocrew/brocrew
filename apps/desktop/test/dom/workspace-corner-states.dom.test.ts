@@ -38,7 +38,6 @@ function setup(state: UpdateState) {
         isThisOne: true,
         state: 'open',
         lastOpenedAt: 1,
-
       },
       {
         name: 'Meadow',
@@ -47,7 +46,6 @@ function setup(state: UpdateState) {
         isThisOne: false,
         state: 'closed',
         lastOpenedAt: 0,
-
       },
     ]),
     open: vi.fn(async () => ({ opened: true, path: '/sample/meadow', warning: null })),
