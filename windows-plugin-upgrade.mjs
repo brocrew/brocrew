@@ -9,12 +9,12 @@ import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import { parseArgs } from 'node:util'
 import { readCustomPluginInputs } from './custom-plugin-inputs.mjs'
-import { transportLabel, readTransportFixture, coldMainArgument, attachColdMain, attachSupervisor } from './instrumented-plugin-transport.mjs'
+import { transportLabel, readTransportFixture, assertUnusedInspectorPort, coldMainArgument, attachColdMain, attachSupervisor } from './instrumented-plugin-transport.mjs'
 
 const { values: args } = parseArgs({ options: {
   execute: { type: 'boolean', default: false }, 'test-path': { type: 'string', default: 'failed-beta-recovery' }, 'source-root': { type: 'string' },
   'candidate-dir': { type: 'string' }, 'candidate-sha': { type: 'string' },
-  'candidate-version': { type: 'string' }, 'plugin-inputs': {type:'string'}, 'plugin-receipt-sha256': {type:'string'}, inputs: { type: 'string' }, evidence: { type: 'string' },
+  'candidate-version': { type: 'string' }, 'plugin-inputs': {type:'string'}, 'plugin-receipt-sha256': {type:'string'}, 'plugin-run-id': {type:'string'}, 'plugin-artifact': {type:'string'}, inputs: { type: 'string' }, evidence: { type: 'string' },
 } })
 const publishedExpected = {
   chrome: { version: '0.1.8', bytes: 3608965, sha256: 'd05363044da6b65cacfccee0149772b97c1a7e5dca83c8262bf91e70de84c8a0', manifest: 'b8432edfc43657715a695dcca57164c7ba0e9229fd98570d4159afeb9be8f7d3', repo: 'brocrew-plugin-chrome' },
@@ -148,9 +148,9 @@ async function finishTransport(requireHits=false) {
   if(requireHits) {
     const main=receipts.targets.main,service=receipts.targets.supervisor
     assert(main&&service,'both installed transport hooks required')
-    for(const value of Object.values(receipts.targets)){assert.equal(value.label,transportLabel);assert.equal(value.denied.length,0)}
+    for(const value of Object.values(receipts.targets)){assert.equal(value.label,transportLabel);assert.equal(value.active,true);assert.equal(value.denied.length,0)}
     assert(main.calls.some(c=>c.url.endsWith('/catalogue-v2.json')),'main did not read the custom catalogue')
-    for(const wanted of Object.values(expected))assert(service.calls.some(c=>c.sha256===wanted.sha256),'supervisor did not read each pinned archive through instrumented transport')
+    for(const wanted of Object.values(expected))assert(service.calls.some(c=>c.sha256===wanted.sha256&&c.size===wanted.bytes),'supervisor did not read each pinned archive through instrumented transport')
   }
   return receipts
 }
@@ -158,6 +158,7 @@ async function launch(installed, version, port) {
   const started=Date.now()
   const fd = openSync(join(evidence, `app-${version}.log`), 'wx')
   const instrumented=version==='0.2.11'&&Boolean(transportFixture)
+  if(instrumented){await assertUnusedInspectorPort(9356);keep('transport-main-port-preflight.json',{port:9356,unused:true})}
   const inspectorArgs=instrumented?[coldMainArgument(9356)]:[]
   const child = spawn(installed.exe, [...inspectorArgs,'--remote-debugging-address=127.0.0.1', `--remote-debugging-port=${port}`], { stdio:['ignore',fd,fd], env:appEnvironment }); closeSync(fd)
   let spawnFailure; child.on('error', error => {spawnFailure = error})
@@ -355,7 +356,7 @@ try {
       const inputArchive=readFileSync(join(inputs,asset.name));assert.equal(inputArchive.length,wanted.bytes);assert.equal(digest(inputArchive),wanted.sha256)
     }
     if(args['plugin-inputs']) {
-      const custom=readCustomPluginInputs(resolve(args['plugin-inputs']),args['plugin-receipt-sha256'],catalogue)
+      const custom=readCustomPluginInputs(resolve(args['plugin-inputs']),args['plugin-receipt-sha256'],catalogue,{runId:args['plugin-run-id'],artifact:args['plugin-artifact']})
       expected=custom.expected;summary.expected=expected;summary.customPlugins=custom.witness
       summary.transport='instrumented transport, not public delivery'
       keep('custom-plugin-input-witness.json',custom.witness)
@@ -448,10 +449,11 @@ try {
     const candidateProcesses=receipts.filter(r=>r.path.endsWith('process.json')&&!prePaths.has(r.path)),candidateExits=receipts.filter(r=>r.path.endsWith('exit.json')&&!prePaths.has(r.path))
     for(const id of Object.keys(expected)){const starts=candidateProcesses.filter(r=>r.value.pluginId===id);assert(starts.length>0,`${id} candidate process receipt missing`);for(const start of starts){assert.equal(start.value.releaseDigest,expected[id].sha256);const exit=candidateExits.find(r=>dirname(r.path)===dirname(start.path));assert.equal(exit?.value.exited,true,`${id} candidate host did not exit`);assert.equal(exit.value.releaseDigest,expected[id].sha256);assert.equal(exit.value.guardianPid,start.value.guardianPid);assert.equal(exit.value.runId,start.value.runId);assert.deepEqual(exit.value.groups,start.value.groups)}}
   })
-} catch(error) {summary.failures.push(error.stack??String(error));await screenshot('failure.png')}
+} catch(error) {if(error.transportCleanup)keep('transport-partial-attach-cleanup.json',error.transportCleanup);summary.failures.push(error.stack??String(error));await screenshot('failure.png')}
 finally {
   if(transportHandles.size)try{await finishTransport()}catch(error){summary.failures.push(`transport cleanup: ${error.stack??error}`)}
   try{await cleanup()}catch(error){summary.failures.push(`cleanup: ${error.stack??error}`)}
+  if(transportFixture)try{for(const port of [9356,9229])await assertUnusedInspectorPort(port);keep('transport-ports-after-exit.json',{ports:[9356,9229],unused:true})}catch(error){summary.failures.push(`inspector port cleanup: ${error.stack??error}`)}
   // Preserve only synthetic fixture metadata and native receipts; never upload capabilities or plugin data.
   for(const name of ['plugin-startup.log'])if(ownsFixture&&existsSync(join(pluginRoot,name)))copyFileSync(join(pluginRoot,name),join(evidence,name))
   summary.finished=new Date().toISOString();summary.passed=summary.failures.length===0&&summary.phases.length===(cleanInstall?3:5)&&summary.phases.every(p=>p.passed)

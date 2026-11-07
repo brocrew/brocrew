@@ -6,28 +6,30 @@ import { basename, join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex')
-export function readCustomPluginInputs(directory, receiptSha256, publicCatalogue) {
+export function readCustomPluginInputs(directory, receiptSha256, publicCatalogue, origin) {
   assert.match(receiptSha256, /^[a-f0-9]{64}$/)
+  assert.match(String(origin.runId), /^[0-9]+$/)
+  assert.equal(typeof origin.artifact, 'string'); assert(origin.artifact.length > 0)
   const receiptBytes = readFileSync(join(directory, 'plugin-inputs.json'))
   assert.equal(sha256(receiptBytes), receiptSha256, 'custom plugin receipt hash mismatch')
   const receipt = JSON.parse(receiptBytes)
   assert.equal(receipt.format, 1)
   assert([1, 2].includes(receipt.plugins.length))
-  const ids = receipt.plugins.map(p => p.entry.id).sort()
+  const ids = receipt.plugins.map(p => p.catalogueEntry.id).sort()
   assert.deepEqual(ids, ids.length === 1 ? ['chrome'] : ['chrome', 'whatsapp'])
   assert.equal(publicCatalogue.format, 2)
   const catalogue = structuredClone(publicCatalogue), expected = {}, archives = [], witnesses = []
   for (const input of receipt.plugins) {
-    assert.match(String(input.buildRunId), /^[0-9]+$/)
-    assert.equal(typeof input.buildArtifact, 'string'); assert(input.buildArtifact.length > 0)
     assert.equal(input.archiveFilename, basename(input.archiveFilename))
     assert.match(input.archiveFilename, /^[a-z][a-z0-9.-]*\.tar\.gz$/)
-    const entry = input.entry
+    const entry = input.catalogueEntry
+    assert.equal(input.id, entry.id); assert.equal(input.version, entry.version); assert.equal(input.sourceCommit, entry.sourceCommit)
     assert.match(entry.sourceCommit, /^[a-f0-9]{40}$/)
     assert.match(entry.version, /^\d+\.\d+\.\d+$/)
     const targets = entry.targets.filter(t => t.os === 'win32' && t.cpu === 'x64')
     assert.equal(targets.length, 1)
     const target = targets[0]
+    assert.equal(input.archiveBytes, target.bytes); assert.equal(input.archiveSha256, target.sha256); assert.equal(input.manifestSha256, target.manifestSha256)
     assert.match(target.sha256, /^[a-f0-9]{64}$/)
     assert.match(target.manifestSha256, /^[a-f0-9]{64}$/)
     assert.equal(target.compression, 'tar.gz')
@@ -51,7 +53,7 @@ export function readCustomPluginInputs(directory, receiptSha256, publicCatalogue
     assert(index >= 0); catalogue.entries[index] = entry
     expected[entry.id] = {version: entry.version, bytes: target.bytes, sha256: target.sha256, manifest: target.manifestSha256, repo: `brocrew-plugin-${entry.id}`}
     archives.push({url: target.url, path, size: bytes.length, sha256: target.sha256})
-    witnesses.push({id: entry.id, version: entry.version, sourceCommit: entry.sourceCommit, archiveSha256: target.sha256, manifestSha256: target.manifestSha256, archiveBytes: bytes.length, buildRunId: String(input.buildRunId), buildArtifact: input.buildArtifact})
+    witnesses.push({id: entry.id, version: entry.version, sourceCommit: entry.sourceCommit, archiveSha256: target.sha256, manifestSha256: target.manifestSha256, archiveBytes: bytes.length, buildRunId: String(origin.runId), buildArtifact: origin.artifact})
   }
   for (const id of ['chrome', 'whatsapp']) {
     const entry = catalogue.entries.find(e => e.id === id)

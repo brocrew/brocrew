@@ -195,7 +195,7 @@ jobs:
           set -euo pipefail
           plugin_args=()
           if [[ -n "$PLUGIN_RUN_ID" ]]; then
-            plugin_args=(--plugin-inputs plugin-inputs --plugin-receipt-sha256 "$PLUGIN_RECEIPT_SHA256")
+            plugin_args=(--plugin-inputs plugin-inputs --plugin-receipt-sha256 "$PLUGIN_RECEIPT_SHA256" --plugin-run-id "$PLUGIN_RUN_ID" --plugin-artifact "$PLUGIN_ARTIFACT")
           fi
           node carrier/windows-plugin-upgrade.mjs --execute "${plugin_args[@]}" --test-path "$TEST_PATH" \
             --source-root candidate --candidate-dir "$CANDIDATE_DIR" \

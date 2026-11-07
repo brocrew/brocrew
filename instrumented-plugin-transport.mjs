@@ -175,13 +175,11 @@ async function attach({ execute, fixture, expected, observeProcess, port, cold, 
   assert.equal(fixture.label, transportLabel)
   const before = await observe(expected, observeProcess)
   const client = await connectInspector(port)
+  let installed
   try {
-    // Bind the socket before any debugger command can resume/pause a process.
     await client.call('Runtime.enable')
-    const identity = await evaluate(client, '({pid:process.pid,executablePath:process.execPath,node:process.versions.node})')
-    assert.equal(identity.pid, expected.pid)
-    assert(samePath(identity.executablePath, expected.executablePath))
-    await observe(expected, observeProcess)
+    const identityExpression = '({pid:process.pid,executablePath:process.execPath,node:process.versions.node})'
+    const initialIdentity = await evaluate(client, identityExpression)
     let pause
     if (cold) {
       const scripts = new Map()
@@ -197,9 +195,15 @@ async function attach({ execute, fixture, expected, observeProcess, port, cold, 
       assert(url.replaceAll('\\', '/').toLowerCase().endsWith(mainEntrySuffix.toLowerCase()), 'Pause is not the packaged main entry; cold proof unavailable')
       pause = { url, lineNumber: frame.location.lineNumber, reason: pause.reason }
     }
-    const installed = await evaluate(client, `(${installInTarget.toString()})(${JSON.stringify(fixture)},${JSON.stringify(expected)},${JSON.stringify(key)})`)
+    // At the initial frontend wait, Node has not yet patched process.pid/execPath.
+    // Cold attachment first reaches the owned entry pause; no user entry is resumed here.
+    const identity = cold ? await evaluate(client, identityExpression) : initialIdentity
+    assert.equal(identity.pid, expected.pid)
+    assert(samePath(identity.executablePath, expected.executablePath))
+    await observe(expected, observeProcess)
+    installed = await evaluate(client, `(${installInTarget.toString()})(${JSON.stringify(fixture)},${JSON.stringify(expected)},${JSON.stringify(key)})`)
     const after = await observe(expected, observeProcess)
-    const receipt = { label: transportLabel, before, after, identity, pause, installed }
+    const receipt = { label: transportLabel, before, after, initialIdentity, identity, pause, installed }
     if (cold) { await client.call('Debugger.resume'); await client.call('Debugger.disable') }
     return {
       receipt,
@@ -217,7 +221,18 @@ async function attach({ execute, fixture, expected, observeProcess, port, cold, 
       },
       close: () => client.close(),
     }
-  } catch (error) { client.close(); throw error }
+  } catch (error) {
+    const cleanup = { attempted: Boolean(installed), restored: false }
+    if (installed) {
+      try {
+        cleanup.receipt = await evaluate(client, `globalThis[${JSON.stringify(key)}].restore()`)
+        cleanup.restored = cleanup.receipt?.restored === true
+      } catch (restoreError) { cleanup.failure = { name: restoreError.name, message: restoreError.message } }
+    }
+    error.transportCleanup = cleanup
+    client.close()
+    throw error
+  }
 }
 
 // Add this to the harness launch argv, NOT NODE_OPTIONS. Do not change any fuse.
