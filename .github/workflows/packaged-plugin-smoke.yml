@@ -1,10 +1,9 @@
-name: Packaged plugin smoke
+name: Sealed native Chrome 019 packaged archive smoke
 on:
-  push:
-    branches: ['gate/**']
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
   packaged-plugin-smoke:
     strategy:
@@ -28,6 +27,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          ref: cfe64af3add0e9104cd5f4f940c23c9a758ca4b0
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -38,21 +38,77 @@ jobs:
           go-version: '1.27.2'
           cache-dependency-path: plugins/whatsapp/bridge/go.sum
       - run: pnpm install --frozen-lockfile
-      - name: Build the real plugin packages
-        shell: bash
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: 42418179289
+          name: chrome-019-native-unpublished-inputs
+          path: ${{ runner.temp }}/native-019-inputs
+      - name: Prepare exact sealed archives without rebuilding plugins
         env:
-          GOCACHE: ${{ runner.temp }}/brocrew-go-cache
+          NATIVE_INPUTS: ${{ runner.temp }}/native-019-inputs
+          SMOKE_PACKAGES: ${{ runner.temp }}/smoke-plugins
+          SMOKE_EVIDENCE: ${{ runner.temp }}/archive-smoke-evidence
         run: |
           set -euo pipefail
-          npm ci --prefix plugins/chrome --ignore-scripts --no-audit --no-fund
-          npm ci --prefix plugins/whatsapp --ignore-scripts --no-audit --no-fund
-          export BROCREW_PLUGIN_SOURCE_COMMIT="$GITHUB_SHA"
-          export BROCREW_GO="$(node -p "require('node:path').join(process.argv[1], 'bin', process.platform === 'win32' ? 'go.exe' : 'go')" "$(go env GOROOT)")"
-          node plugins/chrome/build.mjs "$RUNNER_TEMP/smoke-plugins/chrome" "${{ matrix.target }}"
-          wa_started=$SECONDS
-          node plugins/whatsapp/build.mjs "$RUNNER_TEMP/smoke-plugins/whatsapp" "${{ matrix.target }}"
-          echo "WhatsApp archive build: $((SECONDS-wa_started)) seconds"
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import path from 'node:path';
+          import assert from 'node:assert/strict';
+          import {createHash} from 'node:crypto';
+          const sha = bytes => createHash('sha256').update(bytes).digest('hex');
+          const receiptBytes = fs.readFileSync(path.join(process.env.NATIVE_INPUTS, 'plugin-inputs.json'));
+          assert.equal(sha(receiptBytes), '9d37976eb8b33eba7bf31e9e90ec592d07a36599c0a37bd7ab9f0d49c8f27fce');
+          const input = JSON.parse(receiptBytes);
+          const chrome = input.plugins.find(plugin => plugin.id === 'chrome');
+          assert.equal(chrome.sourceCommit, 'a3acd9f105e666f71d49d1eb967dfe0b790fa762');
+          assert.equal(chrome.version, '0.1.9');
+          async function download(url) {
+            const response = await fetch(url, {signal: AbortSignal.timeout(120000)});
+            assert.ok(response.ok, `Download failed: ${response.status}`);
+            const bytes = Buffer.from(await response.arrayBuffer());
+            assert.ok(bytes.length <= 32 * 1024 * 1024);
+            return bytes;
+          }
+          const waBytes = await download('https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v0.1.4/plugin-list-entry.json');
+          assert.equal(sha(waBytes), 'acba38aea06fa5cae78c585adb709dfef68a6fd3c0d4c4168a4f382013aec86f');
+          const wa = JSON.parse(waBytes);
+          assert.equal(wa.id, 'whatsapp'); assert.equal(wa.version, '0.1.4');
+          const records = [];
+          fs.mkdirSync(process.env.SMOKE_PACKAGES);
+          fs.mkdirSync(process.env.SMOKE_EVIDENCE);
+          for (const entry of [chrome.catalogueEntry, wa]) {
+            const target = entry.targets.find(target => target.os === process.platform && target.cpu === process.arch);
+            assert.ok(target); assert.equal(target.compression, 'tar.gz');
+            const archive = entry.id === 'chrome'
+              ? fs.readFileSync(path.join(process.env.NATIVE_INPUTS, `chrome-${target.os}-${target.cpu}.tar.gz`))
+              : await download(target.url);
+            assert.equal(archive.length, target.bytes); assert.equal(sha(archive), target.sha256);
+            const fixture = {id: entry.id, authors: entry.authors, version: entry.version,
+              sourceCommit: entry.sourceCommit, platforms: [{os: target.os, cpu: target.cpu}],
+              archive: {url: target.url, size: target.bytes, sha256: target.sha256, compression: 'tar.gz'},
+              manifestSha256: target.manifestSha256};
+            const destination = path.join(process.env.SMOKE_PACKAGES, entry.id);
+            fs.mkdirSync(destination);
+            fs.writeFileSync(path.join(destination, entry.id + '.tar.gz'), archive);
+            assert.equal(sha(fs.readFileSync(path.join(destination, entry.id + '.tar.gz'))), target.sha256);
+            fs.writeFileSync(path.join(destination, 'fixture-release.json'), JSON.stringify(fixture, null, 2) + '\n');
+            records.push(fixture);
+          }
+          fs.writeFileSync(path.join(process.env.SMOKE_EVIDENCE, 'archive-inputs.json'), JSON.stringify(records, null, 2) + '\n');
+          console.log(JSON.stringify(records));
+          JS
+          git rev-parse HEAD
       - name: Build the app directory
         run: pnpm --filter @brobot2/desktop ${{ matrix.script }} --dir -c.extraMetadata.version=0.2.9 --publish never
       - name: Call Chrome and describe WhatsApp through the built service
-        run: node scripts/packaged-plugin-service-check.mjs "${{ matrix.resources }}" "$RUNNER_TEMP/smoke-plugins"
+        run: |
+          set -euo pipefail
+          node scripts/packaged-plugin-service-check.mjs "${{ matrix.resources }}" "$RUNNER_TEMP/smoke-plugins" 2>&1 | tee "$RUNNER_TEMP/archive-smoke-evidence/service-check.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sealed-native-019-smoke-${{ matrix.target }}
+          path: ${{ runner.temp }}/archive-smoke-evidence
+          if-no-files-found: error
+          retention-days: 7
