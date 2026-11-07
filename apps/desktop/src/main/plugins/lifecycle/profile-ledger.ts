@@ -14,8 +14,6 @@ import {
   verifyImmutableFile,
 } from '../node-host-files'
 import {
-  isImmutableFile,
-  isPrivateEntry,
   openFileNotThroughALink,
   pinDirectory,
 } from '../private-files'
@@ -138,8 +136,6 @@ export class PluginProfileLedger {
         if (
           !stat.isFile() ||
           stat.nlink !== 1 ||
-          !isPrivateEntry(stat, 0) ||
-          !isImmutableFile(stat) ||
           stat.size > 2048
         )
           return refuse()

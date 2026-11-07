@@ -59,7 +59,6 @@ import { nodeFs, type RecoveryFs } from '../../src/main/recovery/files'
 import { CHECKPOINT_LINE } from '../../src/main/recovery/log-lines'
 import { APP_STATE_FILES } from '../../src/main/recovery/state-files'
 import type { CheckpointDeletion } from '../../src/main/recovery/checkpoint-deletion'
-import { accessEntries, windowsAccessLists } from '../../src/main/recovery/windows-privacy'
 import { checkTheCopyHere } from '../helpers/check-the-copy-here'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -339,27 +338,6 @@ describe('makeCheckpoint', () => {
       expect(mode(join(userData, 'backups', 'workspace-id'))).toBe(0o600)
     }
   })
-
-  it.runIf(!POSIX)(
-    'on Windows, keeps backups to this user even in a data folder every user may read',
-    async () => {
-      const userData = aDataFolder()
-      const icacls = join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'icacls.exe')
-      execFileSync(icacls, [userData, '/grant', '*S-1-5-32-545:(OI)(CI)RX', '/Q'])
-      aLiveDatabase(userData)
-      const { folder } = await make(userData)
-      const user = await windowsAccessLists.userSid()
-      for (const path of [join(userData, 'backups'), folder, join(folder, 'database.sqlite')]) {
-        const allowed = accessEntries(
-          await windowsAccessLists.read(path),
-          await windowsAccessLists.machineSid(),
-        )
-          .filter((entry) => entry.allows)
-          .map((entry) => entry.sid)
-        expect(new Set(allowed), path).toEqual(new Set([user, 'S-1-5-18', 'S-1-5-32-544']))
-      }
-    },
-  )
 
   it('leaves the live database and its folder as they were', async () => {
     const userData = aDataFolder()

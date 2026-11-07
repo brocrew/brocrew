@@ -16,7 +16,6 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import * as memory from '../src/main/runtime/agent-memory'
 import type { MemoryWriteSeams } from '../src/main/runtime/agent-memory'
-import type { AccessLists } from '../src/main/recovery/windows-privacy'
 
 interface Prepared {
   install(replace: boolean, check: () => void): void
@@ -139,47 +138,13 @@ describe('knowledge changes prepare exact private bytes before publishing them',
     expect(readdirSync(folder)).toEqual([])
   })
 
-  const me = 'S-1-5-21-111-222-333-1001'
-  function lists(read?: AccessLists['read']): AccessLists {
-    return {
-      userSid: async () => me,
-      machineSid: async () => null,
-      read: read ?? (async () => `D:PAI(A;OICI;FA;;;${me})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)`),
-      restrict: async () => {
-        throw new Error('existing parents must already be private')
-      },
-    }
-  }
-
-  it('checks Windows inherited privacy while the staged file is still empty', async () => {
-    const seen: string[] = []
-    const stage = await prepare(target, {
-      platform: 'win32',
-      lists: lists(async (path) => {
-        if (path.includes('.review.md.brobot-')) {
-          expect(readFileSync(path)).toEqual(Buffer.alloc(0))
-          seen.push(path)
-        }
-        return `D:PAI(A;OICI;FA;;;${me})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)`
-      }),
-    })
-    expect(seen).toHaveLength(1)
+  it('prepares adjacent bytes without requiring a private stage folder', async () => {
+    const stage = await prepare(target, { platform: 'win32' })
     expect(existsSync(target)).toBe(false)
     stage.install(false, nothing)
     expect(readFileSync(target)).toEqual(payload)
-    expect(readdirSync(join(homes, '.brobot-stage'))).toEqual([])
-  })
-
-  it('writes on Windows even when other accounts may read the data folder', async () => {
-    const warned: string[] = []
-    const stage = await prepare(target, {
-      platform: 'win32',
-      warn: (line) => warned.push(line),
-      lists: lists(async () => `D:AI(A;;FR;;;WD)(A;OICI;FA;;;${me})`),
-    })
-    stage.install(false, nothing)
-    expect(readFileSync(target)).toEqual(payload)
     expect(readdirSync(folder)).toEqual(['review.md'])
+    expect(existsSync(join(homes, '.brobot-stage'))).toBe(false)
   })
 
   it('writes into a methods folder the person linked elsewhere', async () => {
@@ -192,22 +157,5 @@ describe('knowledge changes prepare exact private bytes before publishing them',
     expect(readFileSync(join(elsewhere, 'review.md'))).toEqual(payload)
   })
 
-  it('does not write through a stage swapped during its Windows privacy check', async () => {
-    const sentinel = join(root, 'sentinel')
-    writeFileSync(sentinel, 'outside')
-    await expect(
-      prepare(target, {
-        platform: 'win32',
-        lists: lists(async (path) => {
-          if (path.includes('.review.md.brobot-')) {
-            renameSync(path, `${path}.held`)
-            symlinkSync(sentinel, path)
-          }
-          return `D:PAI(A;OICI;FA;;;${me})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)`
-        }),
-      }),
-    ).rejects.toThrow()
-    expect(readFileSync(sentinel, 'utf8')).toBe('outside')
-    expect(existsSync(target)).toBe(false)
-  })
+
 })

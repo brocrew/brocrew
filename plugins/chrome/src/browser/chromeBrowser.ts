@@ -534,7 +534,6 @@ export class ChromeBrowser implements ProfileBrowser {
   private downloadRoot(profileDir: string): string {
     const root = this.opts.downloadsRoot ?? path.join(profileDir, 'downloads')
     privateFolder(path.dirname(root), root, true)
-    if (process.platform !== 'win32') fs.chmodSync(root, 0o700)
     return root
   }
   private privateDownloadStage(profileDir: string): string {

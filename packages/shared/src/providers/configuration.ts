@@ -214,12 +214,9 @@ export const CODEX_CONFIG_LAYOUT: ProviderConfigLayout = {
     // machine's at all, which is the entire point of that button. A user reading "the machine
     // credential" had the relationship backwards for exactly the profile where it matters most.
     //
-    // ⚑ `0600` survives the correction and is the app's own rule rather than a description of one
-    // writer: both writers `chmod` it, and `codexAuthHealth` reports any other mode as unhealthy
-    // no matter who wrote it.
     {
       name: 'auth.json',
-      note: 'the credential this profile runs on, at 0600 — copied from ~/.codex, or minted here by "Sign in for this agent"',
+      note: 'the credential this profile runs on — copied from ~/.codex, or minted here by "Sign in for this agent"',
     },
     // ⚠️ **Not "absent means built-in defaults", which is what this said until 314.** The app now
     // creates this file when a Codex home has none, so for any profile that has been opened the

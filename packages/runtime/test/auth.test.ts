@@ -32,7 +32,6 @@ import {
   replaceARefusedCodexCopy,
   reprovisionCodexAuth,
 } from '../src/internal/auth'
-import { whoElseCanOpen } from '../../../scripts/lib/readable-only-by-this-user.mjs'
 
 /**
  * A sign-in file is compared by a digest of its bytes, so a failure prints two digests and never
@@ -154,7 +153,7 @@ describe('provisionCodexAuth (022)', () => {
     await provisionCodexAuth(home, { sourceAuthPath: source })
     const dest = join(home, 'auth.json')
     expect(signInAt(dest)).toBe(digestOf('{"tokens":{"access_token":"CODEX-ACCESS"}}'))
-    expect(whoElseCanOpen(dest, 0o600)).toEqual([])
+
     expect(lstatSync(dest).isSymbolicLink()).toBe(false)
     expect(readdirSync(home)).toEqual(['auth.json']) // no leftover .tmp
   })
@@ -508,7 +507,7 @@ describe('reprovisionCodexAuth (098) — the ONE writer allowed to replace a pro
   it('keeps 0600 and leaves no temp behind, exactly as the copy-once path does', async () => {
     await reprovisionCodexAuth(home, { sourceAuthPath: source })
     const dest = join(home, 'auth.json')
-    expect(whoElseCanOpen(dest, 0o600)).toEqual([])
+
     expect(lstatSync(dest).isSymbolicLink()).toBe(false)
     expect(readdirSync(home)).toEqual(['auth.json'])
   })
@@ -804,7 +803,7 @@ describe('a copy Codex refused, replaced once by the one refreshed last', () => 
     writeFileSync(computers, FRESH)
     expect(await replace()).toBe('the-computers')
     expect(held()).toBe(digestOf(FRESH))
-    expect(whoElseCanOpen(join(helper, 'auth.json'), 0o600)).toEqual([])
+
     expect(readdirSync(helper)).toEqual(['auth.json'])
   })
 

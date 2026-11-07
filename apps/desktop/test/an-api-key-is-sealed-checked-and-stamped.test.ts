@@ -14,7 +14,6 @@ import {
 } from '../src/main/runtime/api-keys'
 import { bringTheCodexKeyTo, prepareProviderHome } from '../src/main/runtime/provider-homes'
 import type { CodexKeySeam } from '../src/main/runtime/provider-homes'
-import { whoElseCanOpen } from '../../../scripts/lib/readable-only-by-this-user.mjs'
 
 /**
  * # 🔒 API keys · the sealed store, the check, and the Codex home's stamp
@@ -336,7 +335,7 @@ describe('bringTheCodexKeyTo', () => {
     expect(changes).toHaveBeenCalledWith(home, { to: 'the-key', apiKey: KEY })
     expect(stamp()).toEqual({ setAt: 500 })
     expect(readFileSync(join(home, STAMP), 'utf8')).not.toContain(KEY)
-    expect(whoElseCanOpen(join(home, STAMP), 0o600)).toEqual([])
+
 
     expect(await bringTheCodexKeyTo(home, seam)).toBe('the-key')
     expect(changes).toHaveBeenCalledTimes(1)

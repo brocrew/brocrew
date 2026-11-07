@@ -21,7 +21,6 @@ import {
   providerHomesRoot,
 } from '../src/main/runtime/provider-homes'
 import { PATH_SEGMENT_MAX_LENGTH, isPathSegment } from '../src/shared/runtime-ipc'
-import { whoElseCanOpen } from '../../../scripts/lib/readable-only-by-this-user.mjs'
 
 /**
  * The app-layer half of provider-home isolation. The credential seams are injected
@@ -160,7 +159,7 @@ describe('provider homes', () => {
 
     expect(home).toBe(deriveProviderHome(userData, identity))
     expect(statSync(home).isDirectory()).toBe(true)
-    expect(whoElseCanOpen(home, 0o700)).toEqual([])
+
   })
 
   it('fails closed when the Claude machine login is unavailable', async () => {

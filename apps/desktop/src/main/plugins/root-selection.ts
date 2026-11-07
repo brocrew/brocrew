@@ -10,9 +10,6 @@ import {
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { z } from 'zod'
 import {
-  isLocalDrivePath,
-  isOwnerOnlyDirectory,
-  isPrivateEntry,
   isWithinOrSame,
   realPath,
 } from './private-files'
@@ -48,7 +45,6 @@ export function readRootSelectionBytes(
     !before.isFile() ||
     before.isSymbolicLink() ||
     before.nlink !== BigInt(expectedLinks) ||
-    !isPrivateEntry(before) ||
     before.size > BigInt(limit)
   )
     refuse()
@@ -123,7 +119,7 @@ export function plannedPluginRoot(
   selections: Array<{ workspace: string; slot: string }>,
   slot: string,
 ): string {
-  if (identity(realPath(parent)) !== identity(parent) || !isPrivateEntry(lstatSync(parent), 0o022))
+  if (identity(realPath(parent)) !== identity(parent))
     refuse()
   const root = join(parent, `plugins-${slot}`)
   if (
@@ -140,7 +136,7 @@ export function plannedPluginRoot(
     refuse()
   try {
     const stat = lstatSync(root)
-    if (stat.isSymbolicLink() || !stat.isDirectory() || !isOwnerOnlyDirectory(stat)) refuse()
+    if (stat.isSymbolicLink() || !stat.isDirectory()) refuse()
   } catch (error) {
     if (!missing(error)) throw error
   }
@@ -155,7 +151,6 @@ export function validatedRootPins(value: unknown) {
   for (const entry of pins.selections) {
     if (
       !isAbsolute(entry.workspace) ||
-      !isLocalDrivePath(entry.workspace) ||
       resolve(entry.workspace) !== entry.workspace ||
       folders.has(identity(entry.workspace)) ||
       slots.has(entry.slot)

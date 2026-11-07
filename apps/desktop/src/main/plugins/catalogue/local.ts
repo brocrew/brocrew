@@ -5,8 +5,6 @@ import { PluginSupervisorError } from '../supervisor/protocol'
 import { verifyPluginDigest, PLUGIN_LIMITS } from '../package-digests'
 import type { PluginRelease } from '../package-schema'
 import {
-  isOwnerOnlyDirectory,
-  isPrivateEntry,
   openFileNotThroughALink,
   pinDirectory,
   type DirectoryPin,
@@ -18,7 +16,6 @@ export async function readLocalRelease(
   root: string,
   parts: readonly string[],
   maximum: number,
-  privateRoot = false,
 ): Promise<Buffer> {
   const refuse = (): never => {
     throw new PluginSupervisorError('unavailable')
@@ -54,13 +51,7 @@ export async function readLocalRelease(
         held.dev !== pin.dev ||
         held.ino !== pin.ino ||
         now.dev !== pin.dev ||
-        now.ino !== pin.ino ||
-        !isPrivateEntry(held, 0o022) ||
-        now.uid !== held.uid ||
-        !isPrivateEntry(now, 0o022) ||
-        (privateRoot &&
-          pin.path === root &&
-          (!isOwnerOnlyDirectory(held) || !isOwnerOnlyDirectory(now)))
+        now.ino !== pin.ino
       )
         return refuse()
     }
@@ -71,9 +62,7 @@ export async function readLocalRelease(
       const before = await lstat(parent, { bigint: true })
       if (
         !before.isDirectory() ||
-        before.isSymbolicLink() ||
-        !isPrivateEntry(before, 0o022) ||
-        (privateRoot && parent === root && !isOwnerOnlyDirectory(before))
+        before.isSymbolicLink()
       )
         return refuse()
       const handle = pinDirectory(parent)
@@ -97,7 +86,6 @@ export async function readLocalRelease(
         before.dev !== named.dev ||
         before.ino !== named.ino ||
         before.nlink !== 1n ||
-        !isPrivateEntry(before, 0o022) ||
         before.size < 1n ||
         before.size > BigInt(maximum)
       )

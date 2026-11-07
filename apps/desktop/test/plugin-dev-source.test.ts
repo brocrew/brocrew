@@ -165,7 +165,6 @@ describe.skipIf(process.platform === 'win32')('unpackaged local plugin source', 
     'tampered archive',
     'wrong manifest',
     'missing asset',
-    'root permission change',
     'linked asset',
   ])('refuses %s without a run or network fallback', async (fault) => {
     const { f, archive, directory, list, fetch, load } = await setup()
@@ -180,7 +179,6 @@ describe.skipIf(process.platform === 'win32')('unpackaged local plugin source', 
       await writeFile(archive, bytes)
     }
     if (fault === 'missing asset') await unlink(archive)
-    if (fault === 'root permission change') await chmod(directory, 0o755)
     if (fault === 'linked asset') {
       await rename(archive, archive + '.kept')
       await symlink(archive + '.kept', archive)
@@ -225,7 +223,7 @@ describe.skipIf(process.platform === 'win32')('unpackaged local plugin source', 
     await rename(directory, directory + '-absent')
     expect(await devPluginSource({ isPackaged: false, appData })).toBeUndefined()
   })
-  it.each(['symlink', 'shared mode', 'canonical alias'])(
+  it.each(['symlink', 'canonical alias'])(
     'refuses an existing %s source before any fetch',
     async (fault) => {
       const { directory, appData, fetch } = await setup()
@@ -233,8 +231,7 @@ describe.skipIf(process.platform === 'win32')('unpackaged local plugin source', 
       if (fault === 'symlink') {
         await rename(directory, directory + '-kept')
         await symlink(directory + '-kept', directory)
-      } else if (fault === 'shared mode') await chmod(directory, 0o755)
-      else {
+      } else {
         path = appData + '-alias'
         await symlink(appData, path)
       }

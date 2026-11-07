@@ -6,7 +6,6 @@ import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
 import { recordDrainTrace, type DrainTrace } from '../src/main/plugins/supervisor/drain-trace'
 import { ownerDiagnosticLine } from '../src/main/plugins/supervisor/protocol'
-import { keepPluginRootPrivate } from '../src/main/plugins/private-files'
 
 let parent = ''
 let owner: PluginSupervisor | undefined
@@ -24,7 +23,7 @@ it('logs actual drain stages and a sanitized failed-write errno while retaining 
     await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-drain-trace-')),
   )
   const root = join(parent, 'plugins')
-  await keepPluginRootPrivate(root)
+
   await mkdir(join(parent, 'workspace'))
   const events: DrainTrace[] = []
   owner = await PluginSupervisor.start({
@@ -126,7 +125,7 @@ it.each(['released', 'lease-expired', 'shutdown', 'drain'] as const)(
     )
     const root = join(parent, 'plugins'),
       workspaceRoot = join(parent, 'workspace')
-    await keepPluginRootPrivate(root)
+
     await mkdir(workspaceRoot)
     const events: DrainTrace[] = []
     let now = 0

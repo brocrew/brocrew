@@ -4,9 +4,6 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import {
   createFileNotThroughALink,
-  isInsideCheckedRoot,
-  isPrivateEntry,
-  isImmutableFile,
   immutableMode,
   openDirectoryNotThroughALink,
   openFileNotThroughALink,
@@ -32,12 +29,12 @@ export async function privateRoot(path: string): Promise<string> {
     if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw new PluginHostError('paths')
   }
   await directory(path)
-  if (!isInsideCheckedRoot(path)) throw new PluginHostError('paths')
+
   return path
 }
 async function directory(path: string): Promise<void> {
   const stat = await lstat(path)
-  if (!stat.isDirectory() || stat.isSymbolicLink() || !isPrivateEntry(stat))
+  if (!stat.isDirectory() || stat.isSymbolicLink())
     throw new PluginHostError('paths')
 }
 export async function privateChild(root: string, path: string, create = true): Promise<string> {
@@ -140,9 +137,7 @@ export async function verifyImmutableFile(path: string, bytes: Uint8Array): Prom
     if (
       !stat.isFile() ||
       stat.nlink !== 1 ||
-      !isPrivateEntry(stat, 0) ||
       stat.size !== bytes.byteLength ||
-      !isImmutableFile(stat) ||
       !Buffer.from(await existing.readFile()).equals(Buffer.from(bytes))
     )
       throw new PluginHostError('paths')
@@ -198,9 +193,9 @@ export async function removePrivateCode(
     for (const entry of await readdir(folder, { withFileTypes: true })) {
       const path = join(folder, entry.name),
         held = await lstat(path)
-      if (held.isSymbolicLink() || !isPrivateEntry(held, 0)) throw new PluginHostError('paths')
+      if (held.isSymbolicLink()) throw new PluginHostError('paths')
       if (held.isDirectory()) await audit(path)
-      else if (!held.isFile() || held.nlink !== 1 || !isImmutableFile(held))
+      else if (!held.isFile() || held.nlink !== 1)
         throw new PluginHostError('paths')
     }
   }

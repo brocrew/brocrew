@@ -2,7 +2,6 @@ import { providerKnowledge } from '../providers/knowledge-definitions'
 import {
   constants,
   closeSync,
-  fchmodSync,
   fstatSync,
   lstatSync,
   mkdirSync,
@@ -174,7 +173,6 @@ function ownedViewStorage(managedRoot: string, home: string, current: () => bool
     },
     async complete() {
       verify()
-      for (const item of files.values()) fchmodSync(item.fd, 0o400)
       verify()
     },
   }

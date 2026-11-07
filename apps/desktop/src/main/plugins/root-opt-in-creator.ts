@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import {
   closeSync,
-  fchmodSync,
   fsyncSync,
   lstatSync,
   openSync,
@@ -23,13 +22,7 @@ import {
   workspacePluginRoot,
   validatedRootPins,
 } from './root-selection'
-import { isPrivateEntry, isWithinOrSame, pinDirectory, type DirectoryPin } from './private-files'
-import {
-  keepFileToThisUser,
-  verifyFileToThisUser,
-  windowsAccessLists,
-  type FileAccessLists,
-} from '../recovery/windows-privacy'
+import { isWithinOrSame, pinDirectory, type DirectoryPin } from './private-files'
 
 type Options = {
   appData: string
@@ -79,15 +72,6 @@ function agrees(path: string, limit: number, before: ReturnType<typeof snapshot>
   fail('configuration changed; nothing was overwritten')
 }
 
-/** Check inherited privacy without changing any existing directory or its ACL. */
-export async function checkCreationPrivacy(
-  path: string,
-  lists: Pick<FileAccessLists, 'userSid' | 'machineSid' | 'read'> = windowsAccessLists,
-  platform: NodeJS.Platform = process.platform,
-) {
-  await verifyFileToThisUser(path, lists, platform)
-}
-
 function selectionPaths(options: Options, readOnly = false) {
   if (!options || !isAbsolute(options.appData ?? '') || !isAbsolute(options.workspace ?? ''))
     fail('supply absolute --app-data and --workspace paths')
@@ -100,8 +84,7 @@ function selectionPaths(options: Options, readOnly = false) {
   const parent = join(appData, '@brobot2')
   if (
     !same(realpathSync.native(parent), parent) ||
-    !lstatSync(parent).isDirectory() ||
-    !isPrivateEntry(lstatSync(parent), 0o022)
+    !lstatSync(parent).isDirectory()
   )
     fail('unsafe configuration parent')
   // The daily default folder and all internal app data are deliberately ineligible.
@@ -181,8 +164,8 @@ export async function createPluginRootSelection(options: Options, hooks: Hooks =
   if (options.mode === 'shared') return removePluginRootSelection(options, hooks)
   if (options.mode !== undefined && options.mode !== 'own') fail('mode must be own or shared')
   const initial = plan(options)
-  await checkCreationPrivacy(initial.parent)
-  await checkCreationPrivacy(initial.workspace)
+
+
   if (!options.apply || initial.status === 'already selected') return publicPlan(initial)
   const lockPath = join(initial.parent, 'plugin-root-pins.lock')
   let lock: number
@@ -194,7 +177,7 @@ export async function createPluginRootSelection(options: Options, hooks: Hooks =
   const lockIdentity = lstatSync(lockPath, { bigint: true })
   const held: Array<{ path: string; pin: DirectoryPin; identity: BigIntStats }> = []
   try {
-    await keepFileToThisUser(lockPath)
+
     writeFileSync(lock, 'Offline plugin setup creation in progress.\n')
     fsyncSync(lock)
     const current = plan(options)
@@ -226,8 +209,8 @@ export async function createPluginRootSelection(options: Options, hooks: Hooks =
       const path = join(directory, `.plugin-root-${label}-${randomUUID()}.tmp`)
       const fd = openSync(path, 'wx', 0o600)
       try {
-        if (process.platform !== 'win32') fchmodSync(fd, 0o600)
-        await keepFileToThisUser(path)
+
+
         writeFileSync(fd, content)
         fsyncSync(fd)
       } finally {
@@ -291,8 +274,8 @@ function removalPlan(options: Options) {
     beforePin.bytes ? JSON.parse(beforePin.bytes.toString('utf8')) : undefined,
   )
   const marker = statOrAbsent(paths.markerPath)
-  if (marker && (!marker.isFile() || marker.isSymbolicLink() || !isPrivateEntry(marker)))
-    fail('marker is not a private regular file; review it before removal')
+  if (marker && (!marker.isFile() || marker.isSymbolicLink()))
+    fail('marker is not a regular file; review it before removal')
   const entry = pins.selections.find((entry) => same(entry.workspace, paths.workspace))
   let markerRecord: ReturnType<typeof checkedRemovalMarker> | undefined
   if (marker || entry) {
@@ -328,10 +311,9 @@ function checkedRemovalMarker(workspace: string, slot: string) {
   if (
     !stat.isFile() ||
     stat.isSymbolicLink() ||
-    !isPrivateEntry(stat) ||
     (stat.nlink !== 1n && stat.nlink !== 2n)
   )
-    return fail('marker is not a private regular file with expected links')
+    return fail('marker is not a regular file with expected links')
   let temporary: string | undefined
   if (stat.nlink === 2n) {
     const candidates = readdirSync(workspace)
@@ -346,7 +328,6 @@ function checkedRemovalMarker(workspace: string, slot: string) {
         return (
           other?.isFile() &&
           !other.isSymbolicLink() &&
-          isPrivateEntry(other) &&
           other.dev === stat.dev &&
           other.ino === stat.ino &&
           other.nlink === 2n
@@ -393,8 +374,8 @@ function removalPreview(value: ReturnType<typeof removalPlan>) {
 /** Explicit operator rollback. Removes selection metadata only, never either setup's data. */
 async function removePluginRootSelection(options: Options, hooks: Hooks) {
   const initial = removalPlan(options)
-  await checkCreationPrivacy(initial.parent)
-  await checkCreationPrivacy(initial.workspace)
+
+
   if (!options.apply || initial.status === 'already shared') return removalPreview(initial)
   const lockPath = join(initial.parent, 'plugin-root-pins.lock')
   let lock: number
@@ -406,7 +387,7 @@ async function removePluginRootSelection(options: Options, hooks: Hooks) {
   const lockIdentity = lstatSync(lockPath, { bigint: true })
   const held: Array<{ path: string; pin: DirectoryPin; identity: BigIntStats }> = []
   try {
-    await keepFileToThisUser(lockPath)
+
     writeFileSync(lock, 'Offline shared plugin setup selection in progress.\n')
     fsyncSync(lock)
     const current = removalPlan(options)
@@ -439,8 +420,8 @@ async function removePluginRootSelection(options: Options, hooks: Hooks) {
       pinTemp = join(current.parent, `.plugin-root-pins-${randomUUID()}.tmp`)
       const fd = openSync(pinTemp, 'wx', 0o600)
       try {
-        if (process.platform !== 'win32') fchmodSync(fd, 0o600)
-        await keepFileToThisUser(pinTemp)
+
+
         writeFileSync(fd, JSON.stringify(current.remaining, null, 2) + '\n')
         fsyncSync(fd)
       } finally {
@@ -572,8 +553,8 @@ export async function rootOptInCommand(args: string[]) {
 async function pluginRootState(options: Options): Promise<'own' | 'shared'> {
   if (options.apply) return fail('state is read-only; omit --apply')
   const paths = selectionPaths(options, true)
-  await checkCreationPrivacy(paths.parent)
-  await checkCreationPrivacy(paths.workspace)
+
+
   const root = workspacePluginRoot({
     appData: paths.appData,
     workspaceRoot: paths.workspace,

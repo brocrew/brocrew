@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
 import {
-  chmodSync,
   linkSync,
   lstatSync,
   mkdirSync,
@@ -160,13 +159,9 @@ export function hostGatePath(
 export interface OutsideGates {
   /** `~/Library/Caches/brobot2-gates` on macOS, `~/.cache/brobot2-gates` elsewhere. */
   readonly folder: string
-  /** The id of the user this process runs as, who must own the folder and every name in it. */
-  readonly uid: number
   readonly lstat: (path: string) => GateEntry
   /** Where a link the person made at the folder leads. */
   readonly stat: (path: string) => GateEntry
-  readonly chmod: (path: string, mode: number) => void
-  readonly warn: (line: string) => void
 }
 
 /** What a gate reads of a folder or a name it is about to trust. */
@@ -177,18 +172,13 @@ export type GateEntry = Pick<Stats, 'uid' | 'mode' | 'isDirectory' | 'isSocket'>
  * user database names no home.
  */
 function outsideGates(changes: Partial<OutsideGates>, platform: string): OutsideGates | null {
-  const uid = changes.uid ?? process.getuid?.()
-  if (uid === undefined) return null
   const folder = changes.folder ?? theGatesFolder(platform)
   if (folder === null) return null
   return {
     lstat: lstatSync,
     stat: statSync,
-    chmod: chmodSync,
-    warn: (line) => console.warn(line),
     ...changes,
     folder,
-    uid,
   }
 }
 
@@ -295,16 +285,6 @@ function thePrivateFolder(
     }
     if (!seen.isDirectory()) return 'not-private'
   }
-  if (seen.uid !== outside.uid) return 'not-private'
-  if ((seen.mode & 0o077) !== 0) {
-    try {
-      outside.chmod(outside.folder, 0o700)
-    } catch (error) {
-      outside.warn(
-        `BroCrew uses ${outside.folder} though others may enter it: ${error instanceof Error ? error.message : String(error)}`,
-      )
-    }
-  }
   return 'private'
 }
 
@@ -312,7 +292,7 @@ function thePrivateFolder(
 function atThePublicName(path: string, outside: OutsideGates): 'nothing' | 'ours' | 'not-ours' {
   try {
     const seen = outside.lstat(path)
-    return seen.isSocket() && seen.uid === outside.uid ? 'ours' : 'not-ours'
+    return seen.isSocket() ? 'ours' : 'not-ours'
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === 'ENOENT' ? 'nothing' : 'not-ours'
   }

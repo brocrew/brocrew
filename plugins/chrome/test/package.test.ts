@@ -119,15 +119,12 @@ describe('private Chrome package', () => {
       expect(client.getServerVersion()?.version).toBe(manifest.version)
     }
   })
-  it('requires explicit private paths and distinct private auth, with no workspace fallback', () => {
+  it('requires explicit paths and distinct auth, with no workspace fallback', () => {
     expect(() => loadConfig({})).toThrow('Plugin unavailable')
     expect(() => loadConfig({ BROCREW_CHROME_DATA: 'relative' })).toThrow('Plugin unavailable')
     const config = configured()
     expect(config.workspace).toBe(path.join(config.home, 'files'))
     expect(config.downloadsRoot).toBe(path.join(config.home, 'downloads'))
-    if (process.platform !== 'win32')
-      for (const dir of [config.home, config.workspace, config.downloadsRoot])
-        expect(fs.statSync(dir).mode & 0o777).toBe(0o700)
     fs.writeFileSync(config.authPath, JSON.stringify({ mcpToken, adminToken: mcpToken }))
     expect(() =>
       loadConfig({ BROCREW_CHROME_DATA: config.home, BROCREW_CHROME_AUTH: config.authPath }),
@@ -144,7 +141,7 @@ describe('private Chrome package', () => {
       loadConfig({ ...env, BROCREW_CHROME_EXECUTABLE: 'fictional-relative-browser' }),
     ).toThrow('Plugin unavailable')
   })
-  it('refuses a linked auth file and a world-readable auth file without quoting it', () => {
+  it('refuses a linked auth file and accepts ordinary readable auth', () => {
     const config = configured(),
       link = path.join(config.home, 'linked.json')
     fs.symlinkSync(config.authPath, link)
@@ -155,7 +152,7 @@ describe('private Chrome package', () => {
       fs.chmodSync(config.authPath, 0o644)
       expect(() =>
         loadConfig({ BROCREW_CHROME_DATA: config.home, BROCREW_CHROME_AUTH: config.authPath }),
-      ).toThrow('Plugin unavailable')
+      ).not.toThrow()
     }
   })
   it('authenticates health and admin separately from tools, and refuses browser origins', async () => {

@@ -354,7 +354,7 @@ async function throughScratch(
     await privateDir(recoveryDir(userData), fs)
     await privateDir(scratchDir(userData), fs)
     await fs.mkdir(folder, { mode: 0o700 })
-    await fs.chmod(folder, 0o700)
+
     const copy = join(folder, COPY_FILE)
     // A link shares the file's bytes, so the connection on it stays read-only. A database that is
     // itself a link is copied, since a hard link would not follow it on every system.

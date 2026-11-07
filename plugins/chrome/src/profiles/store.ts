@@ -117,7 +117,6 @@ export function createProfileStore(opts: {
   const file = path.join(opts.home, 'profiles.json')
   const profilesDir = path.join(opts.home, 'profiles')
   privateFolder(opts.home, profilesDir, true)
-  if (PRIVATE.dir !== undefined) fs.chmodSync(opts.home, PRIVATE.dir)
   const readFile = (): { defaults: number; profiles: ProfileRecord[] } => {
     let text: string
     try {

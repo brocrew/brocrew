@@ -515,9 +515,8 @@ describe.skipIf(process.platform === 'win32')(
     })
     it('does not label a structural root failure as a folder-permission problem', async () => {
       const f = await setup()
-      vi.spyOn(privateFiles, 'keepPluginRootPrivate').mockRejectedValue(
-        new Error('fictional private path and ACL detail'),
-      )
+      await mkdir(f.options.root, { recursive: true })
+      await writeFile(join(f.options.root, 'supervisor'), 'not a directory')
       f.controller.start(f.options)
       await f.controller.ready!()
       const owner = Object.assign(new EventEmitter(), {
@@ -1818,7 +1817,7 @@ it('refuses restart projection from an authenticated inconsistent Hello diagnost
   const { createServer } = await import('node:net')
   const { pack, unpack, secret } = await import('../src/main/plugins/supervisor/protocol')
   const f = await setup()
-  await privateFiles.keepPluginRootPrivate(f.options.root)
+
   const storage = new SupervisorStorage(f.options.root, [f.options.workspaceRoot], true)
   const record: OwnerRecord = {
     version: 1,
@@ -1882,7 +1881,7 @@ it('resets authenticated busy continuity when the root inode changes but its sup
   const { rename } = await import('node:fs/promises')
   const { pack, unpack, secret } = await import('../src/main/plugins/supervisor/protocol')
   const f = await setup()
-  await privateFiles.keepPluginRootPrivate(f.options.root)
+
   const storage = new SupervisorStorage(f.options.root, [f.options.workspaceRoot], true)
   const record: OwnerRecord = {
     version: 1,
@@ -1917,7 +1916,7 @@ it('resets authenticated busy continuity when the root inode changes but its sup
     await rename(f.options.root, oldRoot)
     await mkdir(f.options.root, { mode: 0o700 })
     await rename(join(oldRoot, 'supervisor'), join(f.options.root, 'supervisor'))
-    await privateFiles.keepPluginRootPrivate(f.options.root)
+
     const second = await PluginWorkspaceLease.attach(options).catch((e) => e)
     expect(second.diagnostic).toMatchObject({ phase: 'accepting', probe: 'live' })
     expect(second.ownerIdentity).toBeTruthy()

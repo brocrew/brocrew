@@ -21,7 +21,6 @@ import {
 } from '../shared/workspaces'
 import { builtEnvironment } from './built-launch'
 import { defaultDataFolder } from './data-folder'
-import { whatSettingsSays, whoMayReadTheDataFolder } from './data-folder-privacy'
 import { deleteVerdict, deleteWorkspace, type DeleteContext } from './delete-workspace'
 import { whoIsOn } from './one-host-gate'
 import {
@@ -232,7 +231,7 @@ export function startWorkspaces(options: {
       thisOne: userData,
       defaultFolder,
       ask: (folder) => whoIsOn(folder),
-      readersOfThisOne: () => whatSettingsSays(userData, whoMayReadTheDataFolder(userData)),
+
     }),
   )
 
@@ -276,7 +275,7 @@ export function startWorkspaces(options: {
         return { opened: false, refusal: 'This folder is a workspace already: open it instead.' }
       }
       try {
-        const unlimited = await makeWorkspaceFolder(verdict.path, name)
+        await makeWorkspaceFolder(verdict.path, name)
         // A new workspace starts in the new look. Kept before any first database is made, which
         // would otherwise read as data from an earlier version.
         await writeActiveTheme(verdict.path, DEFAULT_THEME_ID).catch((error: unknown) => {
@@ -292,11 +291,7 @@ export function startWorkspaces(options: {
         ) {
           createFirstWorkspaceDatabase(verdict.path)
         }
-        if (unlimited !== null) {
-          console.warn(
-            `BroCrew made ${verdict.path}, but could not make it readable by you alone: ${unlimited}`,
-          )
-        }
+
       } catch (error) {
         return {
           opened: false,

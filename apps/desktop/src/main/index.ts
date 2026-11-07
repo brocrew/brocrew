@@ -293,7 +293,6 @@ import {
   workspaceStartup,
   workspaceOf,
 } from './data-folder'
-import { whoMayReadTheDataFolder } from './data-folder-privacy'
 import { WorkspaceUnavailable } from './workspace-startup'
 import { nodeFs as recoveryFiles } from './recovery/files'
 
@@ -2592,7 +2591,7 @@ function start(ownership: HostGateVerdict): void {
       startTitlingTheOlderFiles(host)
       startRecordingWhatTheOlderOnesRan(host)
       // Said once in the log when anyone else may read the data folder; Settings shows it too.
-      void whoMayReadTheDataFolder(app.getPath('userData'))
+
 
       // Log only when app memory grows or agents exceed runaway floors (`memory-watch.ts`).
       // Write to a file as well as the console: packaged stderr may have no recipient, and a

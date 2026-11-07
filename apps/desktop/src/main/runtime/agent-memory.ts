@@ -41,7 +41,6 @@ import type {
   MemoryAmendmentWrite,
   MemoryStoreState,
 } from '../../shared/agent-memory'
-import { keepToThisUser, verifyFileToThisUser, type AccessLists } from '../recovery/windows-privacy'
 import {
   AGENT_MEMORY_NOTES_SHOWN,
   MEMORY_STORE_LAYOUT,
@@ -407,25 +406,22 @@ export async function amendAgentMemory(
   if (found.truncated) return { done: false, refused: 'unreadable', entry: found.path }
   try {
     if (inputs.act === 'removed') unlinkSync(found.path)
-    else await rewrite(found.path, inputs.text, inputs.homesRoot, seams)
+    else await rewrite(found.path, inputs.text, seams)
   } catch {
     return { done: false, refused: 'write-failed', entry: found.path }
   }
   return { done: true, entry: found.path, textBefore: found.text }
 }
 
-/** What a correction's write asks of the system; Windows' own by default. */
+/** Filesystem interleavings used by correction tests. */
 export interface MemoryWriteSeams {
   /** Test-only interleaving immediately before a confirmed memory unlink. */
   readonly beforeMemoryUnlink?: () => void
   readonly platform?: NodeJS.Platform
-  readonly lists?: AccessLists
   /** A filesystem interleaving immediately before the final creation checks. */
   readonly beforeStageCreate?: (folder: string) => void
   /** An interleaving after a prepared knowledge stage was checked, before its publish-time open. */
   readonly beforeStagePublishOpen?: (stage: string) => void
-  /** Where the one line about a shared data folder goes; the console by default. */
-  readonly warn?: (line: string) => void
 }
 
 /**
@@ -446,7 +442,7 @@ export interface KnowledgeFileStage {
 }
 
 /**
- * Prepare bounded exact bytes using the memory writer's private staging hierarchy. This internal
+ * Prepare bounded exact bytes beside the destination. This internal
  * helper grants no path authority: main derives the destination and supplies its intent guard.
  * An absent destination is installed exclusively; replacing a file replaces only its named entry.
  */
@@ -478,12 +474,8 @@ export async function stageKnowledgeFile(
   }
   validate()
   const platform = seams.platform ?? process.platform
-  let privateStage = platform === 'win32' ? await stageIfPrivate(root, seams) : null
-  if (privateStage !== null && hierarchy[hierarchy.length - 1]?.dev !== privateStage.dev)
-    privateStage = null
-  validate()
-  const stageFolder = privateStage?.path ?? dirname(destination)
-  const stageDirectories = privateStage?.hierarchy ?? hierarchy
+  const stageFolder = dirname(destination)
+  const stageDirectories = hierarchy
   const validateStageFolder = () => {
     for (const directory of stageDirectories) checkDirectory(directory)
   }
@@ -532,11 +524,8 @@ export async function stageKnowledgeFile(
   }
   try {
     try {
-      await sharedOnlyLogged(staged, seams, platform)
       validate()
       namedStage(born)
-      if (platform === 'win32' && !isStillTheFileOpened(staged, fd))
-        throw new Error('The knowledge staging file changed while its privacy was checked')
       writeFileSync(fd, contents)
       fsyncSync(fd)
       prepared = fstatSync(fd, { bigint: true })
@@ -620,7 +609,6 @@ export async function stageKnowledgeFile(
 async function rewrite(
   path: string,
   text: string,
-  homesRoot: string | null,
   seams: MemoryWriteSeams,
 ): Promise<void> {
   const platform = seams.platform ?? process.platform
@@ -628,23 +616,12 @@ async function rewrite(
   if (platform !== 'win32') sweepStaged(folder)
   const before = lstatSync(path)
   if (!before.isFile()) throw new Error(`${path} is not a regular file, so it was not rewritten`)
-  let privateStage = platform === 'win32' ? await stageIfPrivate(homesRoot, seams) : null
-  if (privateStage !== null && lstatSync(path, { bigint: true }).dev !== privateStage.dev)
-    privateStage = null
-  const stageFolder = privateStage?.path ?? folder
-  const staged = aStagingName(join(stageFolder, `.${basename(path)}`))
-  if (privateStage !== null) {
-    seams.beforeStageCreate?.(stageFolder)
-    for (const directory of privateStage.hierarchy) checkDirectory(directory)
-  }
+  const staged = aStagingName(join(folder, `.${basename(path)}`))
+  seams.beforeStageCreate?.(folder)
   const fd = createFreshFile(staged)
   writing.add(staged)
   try {
     try {
-      await sharedOnlyLogged(staged, seams, platform)
-      if (platform === 'win32' && !isStillTheFileOpened(staged, fd)) {
-        throw new Error(`${staged} was replaced as it was made private`)
-      }
       writeFileSync(fd, text, 'utf8')
       fchmodSync(fd, before.mode & 0o7777)
     } finally {
@@ -672,15 +649,6 @@ interface StageDirectory {
   readonly ino: bigint
 }
 
-interface PrivateStage {
-  readonly path: string
-  readonly dev: bigint
-  readonly hierarchy: readonly StageDirectory[]
-}
-
-/** A shared preparation prevents another correction from creating a file before the ACL is ready. */
-const preparingStages = new Map<string, Promise<PrivateStage>>()
-
 function directoryIdentity(path: string): StageDirectory {
   let stat = lstatSync(path, { bigint: true })
   // A link the person made to keep a folder elsewhere is followed; its folder's identity is checked.
@@ -699,80 +667,6 @@ function checkDirectory(expected: StageDirectory): void {
   if (actual.dev !== expected.dev || actual.ino !== expected.ino) {
     throw new StagingReplaced('The correction staging hierarchy was replaced')
   }
-}
-
-/** Said once: a data folder others may read never stops a memory or a saved method being written. */
-let sharedSaid = false
-function sayShared(why: unknown, seams: MemoryWriteSeams): void {
-  if (sharedSaid) return
-  sharedSaid = true
-  ;(seams.warn ?? ((line: string) => console.warn(line)))(
-    `BroCrew writes memories and saved methods beside them, since other accounts may read its data folder: ${why instanceof Error ? why.message : String(why)}`,
-  )
-}
-
-/** The private stage on Windows, or null to stage beside the file as elsewhere when there is none. */
-async function stageIfPrivate(
-  homesRoot: string | null,
-  seams: MemoryWriteSeams,
-): Promise<PrivateStage | null> {
-  try {
-    return await privateStageFolder(homesRoot, seams)
-  } catch (error) {
-    if (error instanceof StagingReplaced) throw error
-    sayShared(error, seams)
-    return null
-  }
-}
-
-async function sharedOnlyLogged(
-  staged: string,
-  seams: MemoryWriteSeams,
-  platform: NodeJS.Platform,
-): Promise<void> {
-  try {
-    await verifyFileToThisUser(staged, seams.lists, platform)
-  } catch (error) {
-    sayShared(error, seams)
-  }
-}
-
-function privateStageFolder(
-  homesRoot: string | null,
-  seams: MemoryWriteSeams,
-): Promise<PrivateStage> {
-  if (homesRoot === null) return Promise.reject(new Error('The managed homes root is unavailable'))
-  const staged = join(homesRoot, '.brobot-stage')
-  const waiting = preparingStages.get(staged)
-  if (waiting !== undefined) return waiting
-  // Whatever the privacy reads say, a folder replaced while they ran is refused; only a privacy
-  // failure lets the caller stage beside the file instead.
-  const keptPrivate = async (directory: StageDirectory): Promise<void> => {
-    try {
-      await verifyFileToThisUser(directory.path, seams.lists, 'win32')
-      await keepToThisUser(directory.path, seams.lists, 'win32')
-    } finally {
-      checkDirectory(directory)
-    }
-  }
-  const prepare = async (): Promise<PrivateStage> => {
-    const hierarchy: StageDirectory[] = []
-    for (const path of [dirname(homesRoot), homesRoot]) {
-      const directory = directoryIdentity(path)
-      hierarchy.push(directory)
-      await keptPrivate(directory)
-    }
-    mkdirSync(staged, { recursive: true, mode: 0o700 })
-    const directory = directoryIdentity(staged)
-    hierarchy.push(directory)
-    await keptPrivate(directory)
-    return { path: staged, dev: directory.dev, hierarchy }
-  }
-  const pending = prepare().finally(() => {
-    if (preparingStages.get(staged) === pending) preparingStages.delete(staged)
-  })
-  preparingStages.set(staged, pending)
-  return pending
 }
 
 /** Removes the staged corrections in `folder` that no write here is using: a crash left them. */

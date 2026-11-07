@@ -323,7 +323,7 @@ export async function copyDurably(
   fs: RecoveryFs = nodeFs,
 ): Promise<void> {
   await fs.copyFile(from, to, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE)
-  await fs.chmod(to, 0o600)
+
   await flushFile(to, fs)
   await syncFolder(dirname(to), fs)
 }
@@ -339,7 +339,7 @@ export async function privateDir(path: string, fs: RecoveryFs = nodeFs): Promise
   const stats = await fs.lstat(path)
   if (stats.isSymbolicLink()) throw new OwnedPathIsALink(path)
   if (!stats.isDirectory()) throw new Error(`${path} is not a folder`)
-  await fs.chmod(path, 0o700)
+
 }
 
 /** A link or junction where one of the app's own recovery folders or files should be. */

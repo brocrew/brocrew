@@ -450,7 +450,7 @@ describe('§4 · a new workspace’s name and folder', () => {
   it('⚑ a new workspace’s folder is this account’s only, as the default one is', async () => {
     const home = aFolder()
     const folder = join(home, 'BroBot workspaces', 'Research')
-    expect(await makeWorkspaceFolder(folder, 'Research')).toBeNull()
+    await expect(makeWorkspaceFolder(folder, 'Research')).resolves.toBeUndefined()
     expect(workspaceOf(folder, false).name).toBe('Research')
     if (process.platform !== 'win32') {
       expect(statSync(folder).mode & 0o777).toBe(0o700)
@@ -593,10 +593,9 @@ describe('§6 · the chooser’s rows', () => {
         asked.push(folder)
         return folder === running ? 'open' : 'closed'
       },
-      readersOfThisOne: () => Promise.resolve('Other users of this computer can read it.'),
     })
     expect(rows.map((row) => [row.name, row.state, row.isThisOne, row.readers])).toEqual([
-      ['this', 'open', true, 'Other users of this computer can read it.'],
+      ['this', 'open', true, null],
       ['gone', 'missing', false, null],
       ['running', 'open', false, null],
       ['Research', 'closed', false, null],

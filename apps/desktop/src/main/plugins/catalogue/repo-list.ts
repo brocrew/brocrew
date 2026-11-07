@@ -147,7 +147,7 @@ export async function loadRepoPluginList(options: {
   if (options.devSource && options.fixtureSource) return fail()
   const name = options.sourceVersion === 2 ? 'catalogue-v2.json' : 'catalogue.json'
   const input = options.devSource
-    ? await readLocalRelease(options.devSource, [name], PLUGIN_LIMITS.catalogueBytes, true)
+    ? await readLocalRelease(options.devSource, [name], PLUGIN_LIMITS.catalogueBytes)
     : options.fixtureSource
       ? await readLocalRelease(options.fixtureSource, [name], PLUGIN_LIMITS.catalogueBytes)
       : await downloadPluginBytes({

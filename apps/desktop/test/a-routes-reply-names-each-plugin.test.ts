@@ -7,7 +7,6 @@ import {
 } from '../src/main/plugins/supervisor/client'
 import { AGENT_ROUTES_FORMAT_2, OWNER_WIRE } from '../src/main/plugins/supervisor/protocol'
 import { supervisorFixtures } from './plugin-supervisor-fixtures'
-import { keepPluginRootPrivate } from '../src/main/plugins/private-files'
 
 const f = supervisorFixtures()
 const closing: (() => Promise<unknown>)[] = []
@@ -33,7 +32,7 @@ const named = {
 describe('a routes reply names each plugin when both sides agreed to', () => {
   it('a lease that negotiated it is answered with each plugin, read with that lease', async () => {
     const target = await f.fixture()
-    await keepPluginRootPrivate(target.root)
+
     const owner = await target.start()
     const lease = await target.attach()
     const routes = vi.fn(async () => [])
@@ -52,7 +51,7 @@ describe('a routes reply names each plugin when both sides agreed to', () => {
 
   it('a lease from a peer without it gets the plain array, read as the complete set', async () => {
     const target = await f.fixture()
-    await keepPluginRootPrivate(target.root)
+
     const owner = await target.start()
     const lease = await PluginWorkspaceLease.attach({
       ...target.options,
@@ -83,7 +82,7 @@ describe('a routes reply names each plugin when both sides agreed to', () => {
 
   it('a named reply asked of an owner that cannot give one is refused, never guessed', async () => {
     const target = await f.fixture()
-    await keepPluginRootPrivate(target.root)
+
     const owner = await target.start()
     const lease = await target.attach()
     owner.bindAgentBridge({ routes: async () => [], revoke() {} })

@@ -1,7 +1,6 @@
 import { closeSync, constants, fstatSync, ftruncateSync, writeSync } from 'node:fs'
 import { join } from 'node:path'
 import { createFreshFile, openNotThroughALink } from '@brobot2/runtime/provider-home'
-import { isPrivateEntry } from './private-files'
 
 const reasons = [
   'invalid',
@@ -89,7 +88,7 @@ export function recordPluginToolFailure(
       fd = createFreshFile(path, 0o600)
     }
     const stat = fstatSync(fd)
-    if (!stat.isFile() || stat.nlink !== 1 || !isPrivateEntry(stat)) return
+    if (!stat.isFile() || stat.nlink !== 1) return
     const line = `${new Date().toISOString()} [plugins] tool-failure plugin=${pluginId} reason=${reason}\n`
     // Keep accepting new reasons after the bounded history fills, without following another name.
     const full = stat.size + Buffer.byteLength(line) > 1024 * 1024

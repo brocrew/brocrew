@@ -53,11 +53,11 @@ afterEach(async () => {
 })
 
 const program = `
-const {PluginSupervisor,PluginLifecycleController,GlobalPluginState,sharedLifecycleWorkspaces,createLifecycleAgentBridge,servePersonPluginControl,requirePluginAdapter,fictionalPublicKey,keepPluginRootPrivate}=require(process.argv[1]);
+const {PluginSupervisor,PluginLifecycleController,GlobalPluginState,sharedLifecycleWorkspaces,createLifecycleAgentBridge,servePersonPluginControl,requirePluginAdapter,fictionalPublicKey}=require(process.argv[1]);
 const {randomUUID}=require('node:crypto');
 const c=JSON.parse(process.argv[2]);
 (async()=>{
- await keepPluginRootPrivate(c.root);
+
  const state=GlobalPluginState.open({root:c.root+'/state',workspaceRoots:[c.workspace]});
  let loads=0,loadMs=0;const originalLoad=state.disk.load.bind(state.disk);state.disk.load=(...args)=>{const began=performance.now();try{return originalLoad(...args)}finally{loads++;loadMs+=performance.now()-began}};
  const controller=sharedLifecycleWorkspaces(await PluginLifecycleController.open({root:c.root,state,pinnedPublicKey:fictionalPublicKey,target:c.target,catalogue:{bytes:Buffer.from(c.bytes,'hex'),signature:Buffer.from(c.signature,'hex')},names:{chrome:'Chrome',whatsapp:'WhatsApp'},deny(){},runtime:{previousOwnerClean:async()=>true,removeCode:async()=>{},removeData:async()=>{},start:async spec=>{let end;const exited=new Promise(resolve=>end=resolve);return {runId:randomUUID(),exited,ready:async()=>({serverPid:404941,origin:c.origin,mcp:()=>({url:c.origin+'/'+spec.package.manifest.id+'/mcp',headers:{Authorization:'Bearer '+c.token}}),admin:()=>({url:c.origin+'/'+spec.package.manifest.id+'/admin',headers:{Authorization:'Bearer '+c.token}})}),stop:async()=>end()}}}}));

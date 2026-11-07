@@ -69,7 +69,6 @@ vi.mock('node:fs/promises', async () => {
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
 import { previousRunsProvenStopped } from '../src/main/plugins/supervisor/recovery-proof'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
-import { keepPluginRootPrivate } from '../src/main/plugins/private-files'
 
 describe('fenced reboot proof for historical plugin runs', () => {
   let parent = '',
@@ -99,7 +98,7 @@ describe('fenced reboot proof for historical plugin runs', () => {
       await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-reboot-')),
     )
     root = join(parent, 'plugins')
-    await keepPluginRootPrivate(root)
+
     const initial = await PluginSupervisor.start({ root, workspaceRoots: [] })
     await initial.shutdown()
     await initial.closed

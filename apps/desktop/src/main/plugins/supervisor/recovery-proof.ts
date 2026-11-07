@@ -4,7 +4,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { privateChild } from '../node-host-files'
-import { isPrivateEntry, openFileNotThroughALink, syncDirectoryAt } from '../private-files'
+import { openFileNotThroughALink, syncDirectoryAt } from '../private-files'
 import {
   bootWitness,
   laterBoot,
@@ -63,13 +63,15 @@ const identity = async (path: string) => {
   return `${stat.dev}:${stat.ino}`
 }
 const legacyIdentity = /^([0-9]+):([0-9]+)$/
-const durableIdentity = /^(apfs:[a-f0-9-]{36}|winvol:[0-9]+):([0-9]+):([0-9]+):([0-9]+)$/
+const durableIdentity = /^(apfs:[a-f0-9-]{36}|winvol:[0-9]+):([0-9]+)(?::[0-9]+:[0-9]+)?$/
 function matchesIdentity(
   saved: string,
   current: string,
   runtime: string | undefined,
   allowDeviceChange: boolean,
 ) {
+  const previous = durableIdentity.exec(saved), observed = durableIdentity.exec(current)
+  if (previous && observed && previous[1] === observed[1] && previous[2] === observed[2]) return true
   if (saved === current || saved === runtime) return true
   const old = legacyIdentity.exec(saved),
     next = durableIdentity.exec(current)
@@ -130,9 +132,7 @@ async function snapshot(root: string, readVolume: VolumeReader) {
     const stat = await lstat(path, { bigint: true })
     if (
       stat.isSymbolicLink() ||
-      (!stat.isDirectory() && !stat.isFile()) ||
-      (process.platform !== 'win32' &&
-        (stat.uid !== BigInt(process.getuid!()) || (stat.mode & 0o077n) !== 0n))
+      (!stat.isDirectory() && !stat.isFile())
     )
       throw new Error('Untrusted recovery identity')
     const device = String(stat.dev),
@@ -145,8 +145,8 @@ async function snapshot(root: string, readVolume: VolumeReader) {
     const value = await volume
     if (value !== undefined && !/^(apfs:[a-f0-9-]{36}|winvol:[0-9]+)$/.test(value))
       throw new Error('Invalid volume identity')
-    pins[path] = `${runtime}:${stat.uid}:${stat.mode}`
-    return value ? `${value}:${stat.ino}:${stat.uid}:${stat.mode}` : runtime
+    pins[path] = runtime
+    return value ? `${value}:${stat.ino}` : runtime
   }
   const bound = await binding(root, identify)
   const covered = await census(root, identify)
@@ -155,7 +155,7 @@ async function snapshot(root: string, readVolume: VolumeReader) {
   // Native volume observation may yield. Retain the original dev:ino race check.
   for (const [path, pin] of Object.entries(pins)) {
     const stat = await lstat(path, { bigint: true })
-    if (pin !== `${stat.dev}:${stat.ino}:${stat.uid}:${stat.mode}`)
+    if (pin !== `${stat.dev}:${stat.ino}`)
       throw new Error('Changed recovery identity')
   }
   return {
@@ -172,7 +172,6 @@ async function readRebootProof(path: string): Promise<unknown> {
   const accepted = (stat: Stats) =>
     stat.isFile() &&
     stat.nlink === 1 &&
-    isPrivateEntry(stat) &&
     stat.size > 0 &&
     stat.size <= 1024 * 1024
   try {
@@ -286,7 +285,6 @@ async function hasExitReceipt(root: string, runId: string): Promise<boolean> {
       if (
         !stat.isFile() ||
         stat.nlink !== 1 ||
-        !isPrivateEntry(stat) ||
         stat.size > 64 * 1024 ||
         stat.size === 0
       )

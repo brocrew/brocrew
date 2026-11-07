@@ -132,7 +132,7 @@ async function installProgram(program: string, expected: string, bin: string): P
   const target = path.join(bin, `whatsapp-bridge-${expected.slice(0, 16)}${path.extname(program)}`)
   const present = fs.lstatSync(target, { throwIfNoEntry: false })
   if (present?.isFile() && sha256(await fs.promises.readFile(target)) === expected) {
-    fs.chmodSync(target, 0o700)
+    fs.chmodSync(target, 0o755)
     return target
   }
   fs.rmSync(target, { force: true, recursive: true })

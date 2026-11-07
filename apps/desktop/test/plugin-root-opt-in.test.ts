@@ -27,8 +27,7 @@ import {
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
-import { keepPluginRootPrivate, realPath, isWithinOrSame } from '../src/main/plugins/private-files'
-import { keepToThisUser } from '../src/main/recovery/windows-privacy'
+import { realPath, isWithinOrSame } from '../src/main/plugins/private-files'
 import { pluginPersonCapability } from '../src/main/plugins/catalogue/capability'
 import {
   connectPersonPluginControl,
@@ -62,7 +61,7 @@ async function fixture() {
     await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-root-')),
   )
   folders.push(parent)
-  await keepToThisUser(parent)
+
   const appData = join(parent, 'a'),
     workspace = join(parent, 'fern'),
     otherWorkspace = join(parent, 'cedar')
@@ -130,7 +129,7 @@ async function attach(global: string, workspace: string, generation = randomUUID
   return lease
 }
 async function owner(global: string, workspace: string) {
-  await keepPluginRootPrivate(global)
+
   const childStopped = vi.fn(),
     revoked = vi.fn()
   const supervisor = await PluginSupervisor.start({
@@ -442,7 +441,7 @@ it('person capabilities and sockets refuse the other root key in both directions
   const roots = [root(f, f.otherWorkspace), root(f)]
   for (const path of roots) {
     await mkdir(path, { recursive: true, mode: 0o700 })
-    await keepPluginRootPrivate(path)
+
   }
   const keys = await Promise.all(roots.map(pluginPersonCapability))
   expect(keys[0]).not.toBe(keys[1])
@@ -492,7 +491,7 @@ describe('simultaneous unselected and opted-in owners', () => {
     for (const folder of [devWorkspace, third]) await mkdir(folder, { mode: 0o700 })
     const dev = root(f, devWorkspace)
     await mkdir(dev, { mode: 0o700 })
-    await keepPluginRootPrivate(dev)
+
     const state = GlobalPluginState.create({
       root: join(dev, 'state'),
       workspaceRoots: [devWorkspace],
@@ -715,7 +714,7 @@ describe('simultaneous unselected and opted-in owners', () => {
         installed = root(f, workspace)
       expect(installed).not.toBe(dev)
       await mkdir(dev, { mode: 0o700 })
-      await keepPluginRootPrivate(dev)
+
       const devState = GlobalPluginState.create({
         root: join(dev, 'state'),
         workspaceRoots: [workspace],

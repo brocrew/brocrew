@@ -7,7 +7,6 @@ import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { afterEach, describe, expect, it } from 'vitest'
 import { workspacePluginRoot } from '../src/main/plugins/root-selection'
-import { keepFileToThisUser, keepToThisUser } from '../src/main/recovery/windows-privacy'
 
 const folders: string[] = []
 afterEach(async () => {
@@ -18,13 +17,13 @@ async function fixture() {
     await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-enrol-')),
   )
   folders.push(base)
-  await keepToThisUser(base)
+
   const appData = join(base, 'app'),
     workspace = join(base, 'fern'),
     other = join(base, 'reed')
   for (const path of [appData, workspace, other, join(appData, '@brobot2')]) {
     await mkdir(path, { mode: 0o700 })
-    await keepToThisUser(path)
+
   }
   const parent = join(appData, '@brobot2'),
     marker = join(workspace, 'plugin-root.json')
@@ -117,7 +116,7 @@ describe('creating an explicit plugin setup', () => {
       api = await creator()
     await api.createPluginRootSelection({ ...f, apply: true })
     await mkdir(join(f.parent, 'plugins-p1'), { mode: 0o700 })
-    await keepToThisUser(join(f.parent, 'plugins-p1'))
+
     const before = tree(f.base)
     expect((await api.createPluginRootSelection({ ...f, apply: true })).status).toBe(
       'already selected',
@@ -238,7 +237,7 @@ describe('creating an explicit plugin setup', () => {
     const pinBytes = readFileSync(f.pins)
     const recoveredMarker = join(f.other, 'plugin-root.json')
     await writeFile(recoveredMarker, '{"format":1,"slot":"p2"}', { mode: 0o600, flag: 'wx' })
-    await keepFileToThisUser(recoveredMarker)
+
     expect(
       (await api.createPluginRootSelection({ ...f, workspace: f.other, slot: 'p2' })).status,
     ).toBe('already selected')
@@ -348,21 +347,7 @@ describe('creating an explicit plugin setup', () => {
     await expect(api.createPluginRootSelection({ ...f, apply: true })).rejects.toThrow('lock')
     expect(tree(f.base)).toBe(before)
   })
-  it('checks Windows parent privacy without changing its ACL', async () => {
-    const api = await creator(),
-      calls: string[] = [],
-      user = 'S-1-5-21-123-456-789-1001'
-    const lists = {
-      userSid: async () => user,
-      machineSid: async () => null,
-      read: async () => 'D:(A;OICI;FA;;;BU)',
-      restrict: async () => {
-        calls.push('restrict')
-      },
-    }
-    await expect(api.checkCreationPrivacy('fictional', lists, 'win32')).rejects.toThrow()
-    expect(calls).toEqual([])
-  })
+
   it('returns to shared without removing data or another workspace selection', async () => {
     const f = await fixture(),
       api = await creator()

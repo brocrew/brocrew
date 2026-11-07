@@ -1,7 +1,6 @@
 import {
   type BigIntStats,
   type Stats,
-  chmodSync,
   closeSync,
   constants,
   fstatSync,
@@ -260,7 +259,7 @@ function ownerIsGone(judged: LockSnapshot): boolean {
  *     gone**: a home can still be locked by a file nobody holds. It now costs two seconds instead of
  *     the rest of the run, which is the same trade 202 made for a crashed holder.
  *
- * ⚑ **The cost of window 1 is one unserialized `mkdir`/`chmod` of a directory that already exists;
+ * ⚑ **The cost of window 1 is one unserialized `mkdir` of a directory that already exists;
  * the cost of not breaking stale locks at all was the whole of 202's finding.** It is written down
  * because a comment that stopped at "atomic" would be claiming more than the code does.
  */
@@ -956,7 +955,7 @@ export async function withProviderHomeLock<T>(
 }
 
 /**
- * Ensure the app-owned provider home exists as a **real directory at mode `0700`**
+ * Ensure the app-owned provider home exists as a **real directory**
  * under a validated `managedRoot` (015 lifecycle; hardened in 027, fixing 023 P1-H).
  * Fail-closed:
  *  - **rejects a path escape or a symlink component** that would redirect out of the root;
@@ -989,7 +988,7 @@ export async function provisionProviderHome(
   // that its result outlives the `await` below instead of being a fact about a moment.
   const ancestry = trustProviderHomeAncestry(managedRoot, providerHome, { create: true })
   try {
-    // The home leaf: create if missing, else REQUIRE a real directory and repair 0700.
+    // The home leaf: create if missing, else require a real directory.
     await withProviderHomeLock(
       home,
       () => {
@@ -1008,11 +1007,6 @@ export async function provisionProviderHome(
         }
         if (!stat.isDirectory()) {
           throw new Error(`providerHome exists but is not a directory: ${home}`)
-        }
-        if ((stat.mode & 0o777) !== 0o700) {
-          chmodSync(home, 0o700) // repair a loose mode (e.g. 0755) — fail-closed to owner-only
-          // On Windows a mode is only a read-only flag: there the folder is kept to its owner by the
-          // access list it inherits from the person's own profile folder.
         }
       },
       { verify: ancestry.verify },
