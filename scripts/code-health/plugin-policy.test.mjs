@@ -13,6 +13,7 @@ import {
   valueImports,
   policyCoverageErrors,
   targetPluginCounts,
+  selectPluginComparison,
 } from './plugin-policy.mjs'
 import { depcruiseKeys } from './gate.mjs'
 
@@ -39,6 +40,10 @@ test('count-only policy accepts equal and replacement counts, and lowered ceilin
   assert.deepEqual(comparePluginCounts(before, before, before).added, [])
   const replacement = measure({ [host]: [edge(barrel)], [barrel]: [] })
   assert.deepEqual(comparePluginCounts(replacement.counts, before, before).added, [])
+  const movedRoot = 'apps/desktop/src/main/plugins/replacement.ts'
+  const swapped = measure({ [movedRoot]: [edge(barrel)], [barrel]: [] })
+  assert.notEqual(swapped.witnesses[0].root, replacement.witnesses[0].root)
+  assert.deepEqual(comparePluginCounts(swapped.counts, replacement.counts, before).added, [])
   const zero = emptyCounts()
   assert.deepEqual(comparePluginCounts(zero, zero, before).added, [])
   assert.equal(comparePluginCounts(zero, before, before).added.length, 1)
@@ -88,6 +93,11 @@ test('a syntactic value barrel import fails even when the compiler erases its us
     },
   )
   assert.equal(measured.counts['direct-value-barrel'].host, 1)
+  const relative = measure(
+    { [host]: [edge(barrel, { module: '../../runtime', preCompilationOnly: true })], [barrel]: [] },
+    { [host]: `import { A } from '../../runtime'; export type B = A` },
+  )
+  assert.equal(relative.counts['direct-value-barrel'].host, 1)
 })
 
 test('executable helper closure follows cycles once and counts one root-target pair', () => {
@@ -176,9 +186,73 @@ test('target ceilings need a readable ordinary Git target; bootstrap never activ
     ])
     assert.throws(() => targetPluginCounts(dir, 'HEAD'))
     assert.throws(() => targetPluginCounts(dir, 'HEAD', true), /reviewed a42/)
+    assert.throws(() => selectPluginComparison(dir, {
+      eventName: 'push', event: { before: 'HEAD' }, autoBootstrap: true,
+    }), /ancestry check failed/)
+    const ceilingFile = 'scripts/code-health/baseline/plugin-policy.json'
+    fs.mkdirSync(path.dirname(path.join(dir, ceilingFile)), { recursive: true })
+    fs.writeFileSync(path.join(dir, ceilingFile), '{malformed')
+    const commit = () => {
+      execFileSync('git', ['-C', dir, 'add', ceilingFile])
+      execFileSync('git', ['-C', dir, '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'policy fixture'])
+    }
+    commit()
+    const existing = selectPluginComparison(dir, {
+      eventName: 'push', event: { before: 'HEAD' }, autoBootstrap: true,
+    })
+    assert.equal(existing.bootstrap, false)
+    assert.throws(() => targetPluginCounts(dir, existing.target, existing.bootstrap), SyntaxError)
+    fs.writeFileSync(path.join(dir, ceilingFile), JSON.stringify(emptyCounts()))
+    commit()
+    assert.deepEqual(targetPluginCounts(dir, 'HEAD'), emptyCounts())
+    assert.throws(() => selectPluginComparison(dir, {
+      eventName: 'push', event: { before: 'not-a-ref' }, autoBootstrap: true,
+    }))
   } finally {
     fs.rmSync(dir, { recursive: true, force: true })
   }
+})
+
+test('event comparison recognizes only the first introduction and preserves existing target policy', () => {
+  const target = 'a'.repeat(40)
+  const head = 'b'.repeat(40)
+  const reviewed = 'a42dd460f37a702905ee71fdd8ca61ed78c5e5e0'
+  const introduction = 'fd4def60421930acfa4095203f16f8f3ce8e752b'
+  const makeHistory = ({ existing = false, introduced = false, broken = false } = {}) => ({
+    resolve: (ref) => {
+      if (ref === 'HEAD') return head
+      if (['HEAD^', target, 'origin/main'].includes(ref)) return target
+      if (ref === reviewed) return reviewed
+      throw new Error('unknown comparison ref')
+    },
+    hasPolicy: () => existing,
+    isAncestor: (from, to) => {
+      if (broken) throw new Error('ancestry execution error')
+      if (from === introduction && to === target) return introduced
+      return to === head && [introduction, reviewed].includes(from)
+    },
+  })
+  const select = (options, historyOptions) => selectPluginComparison(root, {
+    autoBootstrap: true, ...options,
+  }, makeHistory(historyOptions))
+  const push = { eventName: 'push', event: { before: target } }
+  assert.deepEqual(select(push), { target: reviewed, bootstrap: true })
+  const newBranch = { eventName: 'push', event: { before: '0'.repeat(40), repository: { default_branch: 'main' } } }
+  assert.deepEqual(select(newBranch), { target: reviewed, bootstrap: true })
+  assert.deepEqual(select(newBranch, { existing: true }), { target, bootstrap: false })
+  assert.deepEqual(select(push, { existing: true, introduced: false, broken: true }), { target, bootstrap: false })
+  assert.deepEqual(select(push, { introduced: true }), { target, bootstrap: false })
+  const pr = { eventName: 'pull_request', event: { pull_request: { base: { sha: target } } } }
+  assert.deepEqual(select(pr), { target: reviewed, bootstrap: true })
+  assert.deepEqual(select(pr, { existing: true }), { target, bootstrap: false })
+  assert.deepEqual(select({ eventName: 'schedule' }, { existing: true }), { target: head, bootstrap: false })
+  assert.deepEqual(select({}), { target, bootstrap: false })
+  assert.deepEqual(select({ eventName: 'workflow_dispatch', target: reviewed, bootstrap: true }), { target: reviewed, bootstrap: true })
+  assert.deepEqual(select({ target, bootstrap: true }, { existing: true }), { target, bootstrap: false })
+  assert.throws(() => select(push, { broken: true }), /ancestry execution error/)
+  assert.throws(() => select({ eventName: 'push', event: { before: 'unknown' } }), /unknown comparison ref/)
+  assert.throws(() => select({ eventName: 'push', event: { before: '0'.repeat(40) } }), /default branch is missing/)
+  assert.throws(() => select({ eventName: 'push', event: { before: '0'.repeat(40), repository: { default_branch: 'missing' } } }), /unknown comparison ref/)
 })
 
 test('pinned native collector: actual incident VALUE import, SDK-only helper, legal types and neutral leaves', () => {
@@ -282,6 +356,14 @@ test('pinned native collector: actual incident VALUE import, SDK-only helper, le
     assert.ok(planted.result.witnesses.some((w) => w.path.includes(barrel)))
     put(entry, neutral)
     native('incident restored GREEN', 0)
+    const leafPath = 'packages/runtime/src/managed-plugin-failure.ts'
+    const originalLeaf = fs.readFileSync(path.join(dir, leafPath), 'utf8')
+    put(leafPath, originalLeaf + `\nimport { query } from '@anthropic-ai/claude-agent-sdk'; export const forbidden = query\n`)
+    const changedLeaf = native('neutral leaf gaining SDK RED', 1)
+    assert.equal(changedLeaf.result.counts['runtime-barrel-reach'].host, 0)
+    assert.equal(changedLeaf.result.counts['provider-sdk-reach'].host, 1)
+    put(leafPath, originalLeaf)
+    native('neutral leaf restored GREEN', 0)
     put(entry, `export { run } from '../../../../../shared/helper'`)
     put(
       'shared/helper.ts',
@@ -298,6 +380,12 @@ test('pinned native collector: actual incident VALUE import, SDK-only helper, le
     )
     put('shared/helper.ts', 'export const run = 1')
     native('helper restored GREEN', 0)
+    put('shared/helper.ts', `import { ManagedPluginFailure } from '@brobot2/runtime'; export const run = ManagedPluginFailure`)
+    const barrelHelper = native('helper to barrel RED', 1)
+    assert.equal(barrelHelper.result.counts['direct-value-barrel'].host, 0)
+    assert.equal(barrelHelper.result.counts['runtime-barrel-reach'].host, 1)
+    put('shared/helper.ts', 'export const run = 1')
+    native('barrel helper restored GREEN', 0)
     put(
       entry,
       `import type { ManagedPluginFailure } from '@brobot2/runtime'; export type Failure = ManagedPluginFailure`,

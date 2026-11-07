@@ -66,10 +66,15 @@ writes plugin ceilings. The four original baselines keep their existing comparis
 Use `--target <revision>` or `CODE_HEALTH_TARGET` to select the comparison target; local default
 is `HEAD^`. Hosted pushes use their before revision, pull requests their base, and scheduled runs
 the current revision. History is checked out so the target file can be read. A missing or unreadable
-target policy is an error. For the first introduction only, the operator explicitly dispatches Code
-health with target `a42dd460f37a702905ee71fdd8ca61ed78c5e5e0` and `plugin_bootstrap=true`
-(or passes `--target` and `--bootstrap-plugin-policy` locally on the remote lane). This uses the
-reviewed base's two host / zero service counts per row; it is never an automatic missing-file fallback.
+target policy is an error. A new-branch push resolves the repository default-branch ref instead of
+its all-zero before SHA. The existing workflow explicitly enables the first-policy rollout on push/PR:
+when the known introduction commit `fd4def60421930acfa4095203f16f8f3ce8e752b` is in the candidate
+but not the ordinary target, that target has no policy, and reviewed a42 is an ancestor, it selects
+`a42dd460f37a702905ee71fdd8ca61ed78c5e5e0` and its explicit bootstrap. Any existing target policy
+always wins, including squash/cherry-pick histories; malformed or unreadable content cannot reset it.
+Manual dispatch also supports that exact target with `plugin_bootstrap=true` (CLI: `--target` plus
+`--bootstrap-plugin-policy`). The reviewed base has two host / zero service counts per row.
+Unknown refs and Git ancestry errors fail; a missing file alone never activates bootstrap.
 The two failure-helper value imports are retargeted to the same neutral `runtime/plugin-failure`
 leaf, bringing candidate ceilings to zero. A bootstrap result qualifies only that actual run.
 

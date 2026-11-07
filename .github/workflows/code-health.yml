@@ -61,8 +61,9 @@ jobs:
 
       - name: Scan and compare with the baselines
         env:
-          CODE_HEALTH_TARGET: ${{ inputs.target || github.event.pull_request.base.sha || github.event.before || github.sha }}
+          CODE_HEALTH_TARGET: ${{ inputs.target }}
           PLUGIN_BOOTSTRAP: ${{ inputs.plugin_bootstrap || 'false' }}
+          PLUGIN_AUTO_BOOTSTRAP: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
         run: |
           args=()
           if [ "$PLUGIN_BOOTSTRAP" = true ]; then args+=(--bootstrap-plugin-policy); fi

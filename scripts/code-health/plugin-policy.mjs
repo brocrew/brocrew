@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import ts from './node_modules/typescript/lib/typescript.js'
 
 const ROOT = /^apps\/desktop\/(?:src\/main\/plugins\/|resources\/plugin-host\/)/
@@ -9,26 +9,71 @@ const BARREL = 'packages/runtime/src/index.ts'
 const SDKS = ['@anthropic-ai/claude-agent-sdk', '@openai/codex-sdk']
 const RULES = ['direct-value-barrel', 'runtime-barrel-reach', 'provider-sdk-reach']
 const ROLES = ['host', 'service']
+const POLICY_FILE = 'scripts/code-health/baseline/plugin-policy.json'
+const BOOTSTRAP_BASE = 'a42dd460f37a702905ee71fdd8ca61ed78c5e5e0'
+const INTRODUCTION = 'fd4def60421930acfa4095203f16f8f3ce8e752b'
 
 export const emptyCounts = () =>
   Object.fromEntries(RULES.map((rule) => [rule, { host: 0, service: 0 }]))
 
-export function targetPluginCounts(root, target, bootstrap = false) {
-  const git = (args) =>
-    execFileSync('git', args, {
+const gitRead = (root, args) =>
+  execFileSync('git', args, {
       cwd: root,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     }).trim()
-  const revision = git(['rev-parse', '--verify', `${target}^{commit}`])
+
+function gitHistory(root) {
+  return {
+    resolve: (revision) => gitRead(root, ['rev-parse', '--verify', `${revision}^{commit}`]),
+    hasPolicy: (revision) => gitRead(root, ['ls-tree', '--name-only', revision, '--', POLICY_FILE]) === POLICY_FILE,
+    isAncestor: (from, to) => {
+      const result = spawnSync('git', ['merge-base', '--is-ancestor', from, to], { cwd: root, encoding: 'utf8' })
+      if (result.error || (result.status !== 0 && result.status !== 1))
+        throw new Error(`plugin policy: ancestry check failed: ${result.error?.message ?? result.stderr}`)
+      return result.status === 0
+    },
+  }
+}
+
+export function selectPluginComparison(root, options, history = gitHistory(root)) {
+  const { target, bootstrap = false, autoBootstrap = false, eventName, event = {} } = options
+  let ordinary = target
+  if (!ordinary) {
+    if (eventName === 'push') {
+      if (!event.before) throw new Error('plugin policy: push comparison target is missing')
+      if (/^0{40}$/.test(event.before)) {
+        if (!event.repository?.default_branch) throw new Error('plugin policy: default branch is missing')
+        ordinary = `origin/${event.repository.default_branch}`
+      } else ordinary = event.before
+    } else if (eventName === 'pull_request') {
+      ordinary = event.pull_request?.base?.sha
+      if (!ordinary) throw new Error('plugin policy: pull request comparison target is missing')
+    } else ordinary = eventName ? 'HEAD' : 'HEAD^'
+  }
+  ordinary = history.resolve(ordinary)
+  if (history.hasPolicy(ordinary)) return { target: ordinary, bootstrap: false }
+  if (bootstrap) return { target: ordinary, bootstrap: true }
+  if (autoBootstrap && ['push', 'pull_request'].includes(eventName)) {
+    const head = history.resolve('HEAD')
+    if (history.isAncestor(INTRODUCTION, head) && !history.isAncestor(INTRODUCTION, ordinary) &&
+      history.isAncestor(BOOTSTRAP_BASE, head))
+      return { target: BOOTSTRAP_BASE, bootstrap: true }
+  }
+  return { target: ordinary, bootstrap: false }
+}
+
+export function targetPluginCounts(root, target, bootstrap = false) {
+  const revision = gitHistory(root).resolve(target)
   if (bootstrap) {
-    if (revision !== 'a42dd460f37a702905ee71fdd8ca61ed78c5e5e0')
+    if (revision !== BOOTSTRAP_BASE)
       throw new Error('plugin policy: explicit bootstrap requires the reviewed a42 base')
-    git(['merge-base', '--is-ancestor', revision, 'HEAD'])
+    if (!gitHistory(root).isAncestor(revision, 'HEAD'))
+      throw new Error('plugin policy: reviewed bootstrap base is not an ancestor')
     return Object.fromEntries(RULES.map((rule) => [rule, { host: 2, service: 0 }]))
   }
   return validateCounts(
-    JSON.parse(git(['show', `${revision}:scripts/code-health/baseline/plugin-policy.json`])),
+    JSON.parse(gitRead(root, ['show', `${revision}:${POLICY_FILE}`])),
   )
 }
 
@@ -168,7 +213,11 @@ export function collectPluginPolicy(
   for (const source of roots) {
     if (!modules.has(source)) continue
     const role = source.startsWith('apps/desktop/resources/plugin-host/') ? 'service' : 'host'
-    const direct = facts(source).imports.filter((one) => one.module === '@brobot2/runtime')
+    const direct = facts(source).imports.filter(
+      (one) => one.module === '@brobot2/runtime' || modules.get(source).dependencies.some(
+        (edge) => edge.module === one.module && edge.resolved === BARREL,
+      ),
+    )
     if (direct.length) {
       counts['direct-value-barrel'][role]++
       witnesses.push({

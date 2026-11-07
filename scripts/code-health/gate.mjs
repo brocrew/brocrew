@@ -8,6 +8,7 @@ import {
   comparePluginCounts,
   policyCoverageErrors,
   targetPluginCounts,
+  selectPluginComparison,
 } from './plugin-policy.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -207,8 +208,18 @@ function main(argv) {
       )
       const target = argv.includes('--target')
         ? argv[argv.indexOf('--target') + 1]
-        : (process.env.CODE_HEALTH_TARGET ?? 'HEAD^')
-      const before = targetPluginCounts(root, target, argv.includes('--bootstrap-plugin-policy'))
+        : process.env.CODE_HEALTH_TARGET || undefined
+      const comparison = selectPluginComparison(root, {
+        target,
+        bootstrap: argv.includes('--bootstrap-plugin-policy'),
+        autoBootstrap: process.env.PLUGIN_AUTO_BOOTSTRAP === 'true',
+        eventName: process.env.GITHUB_EVENT_NAME,
+        event: process.env.GITHUB_EVENT_PATH
+          ? JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'))
+          : {},
+      })
+      const before = targetPluginCounts(root, comparison.target, comparison.bootstrap)
+      fs.writeFileSync(path.join(out, 'plugin-comparison.json'), JSON.stringify(comparison, null, 2) + '\n')
       pluginDiff = comparePluginCounts(policy.counts, candidate, before)
       const total = (counts) =>
         Object.values(counts).reduce((n, roles) => n + roles.host + roles.service, 0)
