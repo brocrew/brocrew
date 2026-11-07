@@ -340,11 +340,12 @@ describe('fenced reboot proof for historical plugin runs', () => {
     },
   )
   it.skipIf(process.platform === 'win32').each(['pending', 'certificate'] as const)(
-    'refuses a publicly writable %s proof as takeover authority',
+    'uses an OS-readable %s proof without tightening its permissions',
     async (kind) => {
       const path = await retainedProof(kind)
       await chmod(path, 0o666)
-      await refused()
+      await expect(attempt()).resolves.toBeDefined()
+      expect((await lstat(path)).mode & 0o777).toBe(0o666)
     },
   )
   it.each(['blocked', 'draining'] as const)(
