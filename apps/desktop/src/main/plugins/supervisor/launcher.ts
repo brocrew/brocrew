@@ -1,4 +1,8 @@
-import { pluginStartupTrace, PluginStartupError, observePluginSupervisorLaunch } from '../startup-failure'
+import {
+  pluginStartupTrace,
+  PluginStartupError,
+  observePluginSupervisorLaunch,
+} from '../startup-failure'
 import type { PluginUnavailableReason } from '../../../shared/plugin-settings'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
@@ -102,7 +106,10 @@ export function createPluginSupervisorLauncher(options: {
         failed = true
         spawnError = error
       })
-      child.once('spawn', () => { finish?.(); finish = undefined })
+      child.once('spawn', () => {
+        finish?.()
+        finish = undefined
+      })
       readyPhase = pluginStartupTrace.begin('ready')
       child.unref()
       const until = performance.now() + OWNER_LAUNCH_MS - 200
@@ -112,7 +119,11 @@ export function createPluginSupervisorLauncher(options: {
           const ready = JSON.parse(
             (await sourceBytes(join(directory, 'service.json'), 4096)).toString('utf8'),
           )
-          if (ready.format === 1 && ready.ready === true && ready.pid === child.pid) { readyPhase(); readyPhase = undefined; return }
+          if (ready.format === 1 && ready.ready === true && ready.pid === child.pid) {
+            readyPhase()
+            readyPhase = undefined
+            return
+          }
         } catch {
           /* Missing private readiness is never authority to attach. */
         }

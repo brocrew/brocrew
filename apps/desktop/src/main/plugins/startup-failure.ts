@@ -242,20 +242,35 @@ export function pluginStartupReason(
   return fallback
 }
 export function createPluginStartupTrace(now = () => performance.now()) {
-  const launch = new Date().toISOString(), began = now()
-  let root: string | undefined, ordinal = 0, lines = '', pending = Promise.resolve()
+  const launch = new Date().toISOString(),
+    began = now()
+  let root: string | undefined,
+    ordinal = 0,
+    lines = '',
+    pending = Promise.resolve()
   const active = new Set<(error?: unknown) => void>()
   const write = () => {
-    const destination = root, snapshot = lines
-    if (destination) pending = pending.then(() => writePluginStartupLog(destination, 'plugin-startup-trace.log', snapshot))
+    const destination = root,
+      snapshot = lines
+    if (destination)
+      pending = pending.then(() =>
+        writePluginStartupLog(destination, 'plugin-startup-trace.log', snapshot),
+      )
   }
   const mark = (phase: string, state: string, attempt = ordinal) => {
-    lines += `${new Date().toISOString()} launch=${launch} elapsed=${Math.round(now() - began)} attempt=${attempt} ${phase} ${state}\n`
+    const line = `${new Date().toISOString()} launch=${launch} elapsed=${Math.round(now() - began)} attempt=${attempt} ${phase} ${state}`
+    lines += `${line}\n`
+    console.warn(line)
     write()
   }
   return {
-    destination(next: string | undefined) { root = next; write() },
-    attempt() { ordinal++ },
+    destination(next: string | undefined) {
+      root = next
+      write()
+    },
+    attempt() {
+      ordinal++
+    },
     begin(phase: string) {
       const attempt = ordinal
       mark(phase, 'start', attempt)
@@ -272,11 +287,17 @@ export function createPluginStartupTrace(now = () => performance.now()) {
       for (const finish of active) finish(error ?? new Error(phase))
       let stderr = ''
       for (let cause = error, depth = 0; depth < 6 && cause && typeof cause === 'object'; depth++) {
-        if (cause instanceof PluginSupervisorLaunchFailure) { stderr = cause.stderrOutput ?? ''; break }
+        if (cause instanceof PluginSupervisorLaunchFailure) {
+          stderr = cause.stderrOutput ?? ''
+          break
+        }
         cause = (cause as Error).cause
       }
       const diagnostic = pluginStartupDiagnostic(error)
-      mark(phase, `failure ${diagnostic ? pluginStartupDiagnosticNotice(diagnostic) : ''} ${pluginFailureCause(error)}${stderr ? `\n${stderr}` : ''}`)
+      mark(
+        phase,
+        `failure ${diagnostic ? pluginStartupDiagnosticNotice(diagnostic) : ''} ${pluginFailureCause(error)}${stderr ? `\n${stderr}` : ''}`,
+      )
     },
     flush: () => pending,
   }
@@ -327,5 +348,9 @@ export async function recordPluginStartupFailure(
   const line = `[plugins] ${reason}: ${pluginUnavailableNotice(reason)}${code ? ` (${code})` : ''}${diagnostic ? ` ${pluginStartupDiagnosticNotice(diagnostic)}` : ''}${cause ? ` stage=${stage ?? 'rpc'}${detail ? ` detail=${detail}` : ''} cause=${cause}` : ''}`
   console.warn(line)
   if (!root) return
-  await writePluginStartupLog(root, 'plugin-startup.log', `${new Date().toISOString()} ${line}\n${stderrOutput ? `${stderrOutput}\n` : ''}`)
+  await writePluginStartupLog(
+    root,
+    'plugin-startup.log',
+    `${new Date().toISOString()} ${line}\n${stderrOutput ? `${stderrOutput}\n` : ''}`,
+  )
 }

@@ -347,6 +347,13 @@ async function main() {
     throw new Error(`the window opened, but ${unreaped(outcome)}`)
   }
 
+  for (const phase of ['workspace-recovery', 'themes-database-runtime-host']) {
+    for (const state of ['start', 'end']) {
+      if (!new RegExp(`launch=\\S+ elapsed=\\d+ attempt=0 ${phase} ${state}`).test(output))
+        throw new Error(`built app did not log ${phase} ${state}\n${output.trim()}`)
+    }
+  }
+
   console.log(
     `window:check ✔ ${String(pages.length)} page target(s) — ${pages[0].title || '(untitled)'} ` +
       `at ${pages[0].url} · gate socket present (${String(socketPath.length)}/${String(SUN_PATH_MAX)} bytes)`,

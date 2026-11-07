@@ -1,5 +1,8 @@
 import { setup, seams } from './plugin-production-fixtures'
-import { pluginStartupTrace, PluginSupervisorLaunchFailure } from '../src/main/plugins/startup-failure'
+import {
+  pluginStartupTrace,
+  PluginSupervisorLaunchFailure,
+} from '../src/main/plugins/startup-failure'
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import { fixture } from './plugin-lifecycle-fixtures'
@@ -63,7 +66,13 @@ describe.skipIf(process.platform === 'win32')('first Settings startup catalogue 
     expect(f.peer.refreshCatalogue).not.toHaveBeenCalled()
     await pluginStartupTrace.flush()
     const log = await readFile(join(f.options.root, 'plugin-startup-trace.log'), 'utf8')
-    for (const phase of ['catalogue start', 'catalogue end', 'catalogue-new-owner start', 'catalogue-new-owner end', 'controller-admission end'])
+    for (const phase of [
+      'catalogue start',
+      'catalogue end',
+      'catalogue-new-owner start',
+      'catalogue-new-owner end',
+      'controller-admission end',
+    ])
       expect(log).toContain(phase)
   })
   it.each([30_000, 30_001, -1])(

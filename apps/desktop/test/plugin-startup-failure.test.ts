@@ -321,7 +321,11 @@ it('retains pre-controller time, nested phases and failures across retries and l
   trace.attempt()
   const catalogue = trace.begin('catalogue')
   now += 5000
-  const failed = new PluginSupervisorLaunchFailure({ exitCode: 1, signal: null, stderr: 'Error: missing module' })
+  const failed = new PluginSupervisorLaunchFailure({
+    exitCode: 1,
+    signal: null,
+    stderr: 'Error: missing module',
+  })
   catalogue(failed)
   await recordPluginStartupFailure(root, 'service-start', failed)
   trace.failure('service-start', failed)
@@ -337,7 +341,9 @@ it('retains pre-controller time, nested phases and failures across retries and l
   expect(log).toContain('attempt=2 ready end')
   expect(log).toContain('Exit code 1')
   expect(log).toContain('Error: missing module')
-  expect(await readFile(join(root, 'plugin-startup.log'), 'utf8')).toContain('Error: missing module')
+  expect(await readFile(join(root, 'plugin-startup.log'), 'utf8')).toContain(
+    'Error: missing module',
+  )
 })
 it('trace write failure never rejects or prevents later startup work', async () => {
   const trace = createPluginStartupTrace()

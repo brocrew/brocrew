@@ -869,7 +869,12 @@ process.send({ channel: 'brocrew-plugin-node:v1', runId: process.env.BROCREW_PLU
     await pluginStartupTrace.flush()
     pluginStartupTrace.destination(undefined)
     const log = await readFile(join(root, 'plugin-startup-trace.log'), 'utf8')
-    for (const phase of ['runtime-hash end', 'runtime-copy failure', 'runtime-copy end', 'runtime-verify end'])
+    for (const phase of [
+      'runtime-hash end',
+      'runtime-copy failure',
+      'runtime-copy end',
+      'runtime-verify end',
+    ])
       expect(log).toContain(phase)
   }, 15000)
   it('refuses a tampered published runtime on preparation instead of repairing it', async () => {

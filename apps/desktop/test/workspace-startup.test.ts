@@ -97,12 +97,17 @@ function declaration(name: string): string {
 }
 
 /** Execute the real main-process startup block with real recovery and themes, without Electron. */
-async function startup(fake: PinnableApp, beforeThemes?: () => void, trace = createPluginStartupTrace(), beforeCheck?: () => void) {
+async function startup(
+  fake: PinnableApp,
+  beforeThemes?: () => void,
+  trace = createPluginStartupTrace(),
+  beforeCheck?: () => void,
+) {
   const lines: string[] = [],
     exits: number[] = [],
     stores: ThemeStore[] = []
   let databaseStarts = 0
-  const begin = index.indexOf("      pluginStartupTrace.destination(app.getPath('logs'))")
+  const begin = index.indexOf('      pluginStartupTrace.destination(')
   const endLine = '      host = await createRuntimeHost(initDatabase())\n      finishStartupPhase()'
   const end = index.indexOf(endLine, begin) + endLine.length
   expect(begin).toBeGreaterThan(0)
@@ -365,21 +370,17 @@ it('configured startup on existing data reaches the database', async () => {
   expect(await startup(fake)).toEqual({ lines: [], exits: [], databaseStarts: 1, exists: true })
 })
 
-it('the actual app startup records recovery before database/themes and retains a refusal outside the workspace', async () => {
-  const trace = createPluginStartupTrace()
-  await startup(app(), undefined, trace)
-  await trace.flush()
-  const log = readFileSync(join(workspace, 'plugin-startup-trace.log'), 'utf8')
-  expect(log.indexOf('workspace-recovery start')).toBeLessThan(log.indexOf('workspace-recovery end'))
-  expect(log.indexOf('workspace-recovery end')).toBeLessThan(log.indexOf('themes-database-runtime-host start'))
-  expect(log).toContain('themes-database-runtime-host end')
-  const outside = join(root, 'logs')
-  mkdirSync(outside)
-  const fake = app(), getPath = fake.getPath
-  fake.getPath = (name) => name === 'logs' ? outside : getPath(name)
-  const refused = createPluginStartupTrace()
-  await startup(fake, undefined, refused, () => rmSync(join(workspace, 'brobot2.sqlite')))
-  await refused.flush()
-  expect(readFileSync(join(outside, 'plugin-startup-trace.log'), 'utf8')).toContain('workspace-recovery failure')
-  expect(existsSync(join(workspace, 'plugins'))).toBe(false)
+it('the actual app startup records recovery before database/themes and retains a refusal without creating a plugin root', async () => {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  try {
+    await startup(app())
+    const log = warn.mock.calls.map(([line]) => String(line)).join('\n')
+    expect(log.indexOf('workspace-recovery start')).toBeLessThan(log.indexOf('workspace-recovery end'))
+    expect(log.indexOf('workspace-recovery end')).toBeLessThan(log.indexOf('themes-database-runtime-host start'))
+    expect(log).toContain('themes-database-runtime-host end')
+    warn.mockClear()
+    await startup(app(), undefined, createPluginStartupTrace(), () => rmSync(join(workspace, 'brobot2.sqlite')))
+    expect(warn.mock.calls.some(([line]) => String(line).includes('workspace-recovery failure'))).toBe(true)
+    expect(existsSync(join(workspace, 'plugins'))).toBe(false)
+  } finally { warn.mockRestore() }
 })

@@ -530,8 +530,6 @@ export function productionPluginController() {
           phase = 'catalogue'
           const devSource = await devPluginSource(options.devSource)
           loadCatalogue = async () => {
-            const fetched = pluginStartupTrace.begin('catalogue')
-            try {
             const next = await loadRepoPluginList({
               root: options.root,
               appVersion: options.appVersion,
@@ -542,13 +540,13 @@ export function productionPluginController() {
               sourceVersion,
             })
             catalogueLoadedAt = performance.now()
-            fetched()
             return next
-            } catch (error) { fetched(error); throw error }
           }
           if (!catalogueEntries || !options.supervisor.holdsLease()) {
             try {
+              const fetched = pluginStartupTrace.begin('catalogue')
               catalogueEntries = await loadCatalogue()
+              fetched()
               if (sourceVersion === 1) frozenCatalogue = catalogueEntries
               listFailure = undefined
             } catch (error) {
@@ -605,15 +603,18 @@ export function productionPluginController() {
                     const fetched = pluginStartupTrace.begin('catalogue-new-owner')
                     let next
                     try {
-                    next = await loadRepoPluginList({
-                      root: options.root,
-                      appVersion: options.appVersion,
-                      target: options.target ?? thisMachine(),
-                      signal: lifetime.signal,
-                      sourceVersion: 2,
-                    })
-                    fetched()
-                    } catch (error) { fetched(error); throw error }
+                      next = await loadRepoPluginList({
+                        root: options.root,
+                        appVersion: options.appVersion,
+                        target: options.target ?? thisMachine(),
+                        signal: lifetime.signal,
+                        sourceVersion: 2,
+                      })
+                      fetched()
+                    } catch (error) {
+                      fetched(error)
+                      throw error
+                    }
                     if (!frozenCatalogue) return fail()
                     return {
                       source: 'repo-list',
@@ -682,7 +683,9 @@ export function productionPluginController() {
             options.supervisor.supports?.('contributions-v1')
           ) {
             sourceVersion = 2
+            const fetched = pluginStartupTrace.begin('catalogue-modern')
             catalogueEntries = await loadCatalogue()
+            fetched()
             names = Object.fromEntries(
               catalogueEntries.entries.map((entry) => [entry.id, entry.name]),
             )

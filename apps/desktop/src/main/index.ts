@@ -2441,7 +2441,7 @@ function start(ownership: HostGateVerdict): void {
       } catch (error) {
         console.warn('the stall watch could not start:', error)
       }
-      pluginStartupTrace.destination(app.getPath('logs'))
+      pluginStartupTrace.destination(presentation.hidden ? undefined : app.getPath('logs'))
       let finishStartupPhase = pluginStartupTrace.begin('workspace-recovery')
       const verdict = await theVerdictBeforeTheData(ownership)
       finishStartupPhase(verdict.kind === 'open' ? undefined : verdict.kind)
@@ -2577,8 +2577,7 @@ function start(ownership: HostGateVerdict): void {
           const logs = app.getPath('logs')
           mkdirSync(logs, { recursive: true })
           appendFileSync(join(logs, 'memory.log'), `${new Date().toISOString()} ${message}\n`)
-        } catch {
-        }
+        } catch {}
       }
       const unrefdInterval = (fn: () => void, ms: number): unknown => {
         const timer = setInterval(fn, ms)
