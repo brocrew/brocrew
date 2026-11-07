@@ -45,6 +45,7 @@ const SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), '..')
 const PROBE = join(SCRIPTS, 'session-info-probe.mjs')
 const SOURCE = readFileSync(PROBE, 'utf8')
 const CDP_SOURCE = readFileSync(join(SCRIPTS, 'lib/renderer-cdp.mjs'), 'utf8')
+const PORT_SOURCE = readFileSync(join(SCRIPTS, 'lib/free-port.mjs'), 'utf8')
 
 /** The app module the probe reads its marker out of — the other half of one coupling. */
 const WORKSPACE = readFileSync(
@@ -60,6 +61,9 @@ const CODEX_LAYOUT = readFileSync(
 /** Every line that is not a comment line — see the docblock's last paragraph. */
 const CODE_LINES = SOURCE.split('\n').filter((line) => !/^\s*(\/\/|\/\*|\*)/.test(line))
 const CODE = CODE_LINES.join('\n')
+const PORT_CODE = PORT_SOURCE.split('\n')
+  .filter((line) => !/^\s*(\/\/|\/\*|\*)/.test(line))
+  .join('\n')
 
 /**
  * The text between two anchors.
@@ -95,7 +99,14 @@ describe('the file this census reads, and the stripper it reads it through', () 
 
 describe('🔒 the port is one the probe opened itself', () => {
   it('takes a free port and hands that port to Electron', () => {
-    expect(CODE).toContain('function freePort()')
+    expect(CODE).toContain("import { freePort } from './lib/free-port.mjs'")
+    expect(PORT_CODE).toContain("import { createServer } from 'node:net'")
+    expect(PORT_CODE).toContain('export function freePort()')
+    expect(PORT_CODE).toContain('const server = createServer()')
+    expect(PORT_CODE).toContain("server.on('error', reject)")
+    expect(PORT_CODE).toContain("server.listen(0, '127.0.0.1', () => {")
+    expect(PORT_CODE).toContain('const { port } = server.address()')
+    expect(PORT_CODE).toContain('server.close(() => resolve(port))')
     expect(CODE).toContain('const port = await freePort()')
     expect(CODE).toContain('--remote-debugging-port=${String(port)}')
   })
