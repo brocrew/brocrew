@@ -42,7 +42,7 @@ vi.mock('node:child_process', async (importOriginal) => {
   return {
     ...actual,
     execFile: ((...args: unknown[]) => {
-      const [file, commandArgs, options, callback] = args as [
+      const [file, , options, callback] = args as [
         string,
         string[],
         { env?: Record<string, string> },
@@ -50,23 +50,6 @@ vi.mock('node:child_process', async (importOriginal) => {
       ]
       if (versionPrograms.run?.(file, options, callback))
         return {} as ReturnType<typeof actual.execFile>
-      if (
-        file === 'ps' &&
-        commandArgs.length === 2 &&
-        commandArgs[0] === '-axo' &&
-        commandArgs[1] === 'pid=,ppid=,rss=,%cpu='
-      ) {
-        args[3] = function (this: unknown, ...result: unknown[]) {
-          if (result[0]) {
-            try {
-              console.error('ps listing callback error', result[0], ...result.slice(2, 3))
-            } catch {
-              // A logging failure must still forward the original callback.
-            }
-          }
-          return Reflect.apply(callback, this, result)
-        }
-      }
       return Reflect.apply(actual.execFile, actual, args) as ReturnType<typeof actual.execFile>
     }) as typeof actual.execFile,
   }
