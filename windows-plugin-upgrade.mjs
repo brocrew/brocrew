@@ -90,7 +90,8 @@ function install(input, version) {
   products.add(programs[0]); installDirs.add(folder)
   const exe = join(folder, programs[0]); assert(lstatSync(exe).isFile())
   const identity = JSON.parse(powershell(`(Get-Item -LiteralPath ${psQuote(exe)}).VersionInfo | Select-Object ProductVersion,FileVersion,OriginalFilename | ConvertTo-Json -Compress`))
-  assert.equal(identity.ProductVersion, version)
+  keep(`version-resource-${version}.json`, identity)
+  assert(identity.ProductVersion === version || identity.ProductVersion === `${version}.0`, 'unexpected installed Windows ProductVersion')
   const result = { exe, folder, identity, executableSha256: digest(readFileSync(exe)), asarSha256: digest(readFileSync(join(folder, 'resources', 'app.asar'))), entries }
   keep(`installed-${version}.json`, result)
   const unexpected = ownProcesses(); assert.equal(unexpected.length, 0, 'installer unexpectedly launched app; preserved as failure')
