@@ -37,7 +37,7 @@ import {
  * What a failed Settings request shows: the caught error's own message, its stack with every
  * nested cause, and each typed code on that chain. Nothing is replaced by a generic stand-in.
  */
-export function settingsFailureDetail(error: unknown): {
+function settingsFailureDetail(error: unknown): {
   detail: string
   stack: string
   codes: string[]

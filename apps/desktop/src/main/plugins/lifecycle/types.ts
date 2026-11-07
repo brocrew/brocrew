@@ -78,4 +78,4 @@ export interface LifecycleStatus {
   readonly cards: readonly PluginCard[]
   readonly cleanupPending: readonly string[]
 }
-export type { ProjectionReceipt, Installation, PluginReleasePin, PluginRelease }
+export type { Installation, PluginReleasePin, PluginRelease }

@@ -1,4 +1,4 @@
-export const PLUGIN_FAILURE_STAGES = [
+const PLUGIN_FAILURE_STAGES = [
   'attachment-read',
   'attachment-schema',
   'wrapper-wait',

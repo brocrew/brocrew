@@ -117,7 +117,7 @@ function releasedDrainStalled(
  * Open the app's held connection: one hold request whose reply arrives, after which the
  * connection simply stays open until this app ends or the owner goes away.
  */
-export function holdSupervisorConnection(
+function holdSupervisorConnection(
   storage: SupervisorStorage,
   record: OwnerRecord,
   command: Extract<Command, { kind: 'hold' }>,

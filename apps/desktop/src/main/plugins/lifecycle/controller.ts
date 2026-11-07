@@ -49,7 +49,7 @@ export async function bounded<T>(work: () => Promise<T>, ms = 20000): Promise<T>
 }
 const idSchema = z.string().regex(/^[a-z][a-z0-9-]{0,63}$/)
 /** A cause the launch line may name: fixed-vocabulary words, never an error body. */
-export const TOOLS_CAUSE = /^[a-z][a-z0-9-]{0,63}(?:: [a-z][a-z0-9-]{0,63})?$/
+const TOOLS_CAUSE = /^[a-z][a-z0-9-]{0,63}(?:: [a-z][a-z0-9-]{0,63})?$/
 const toolsCause = (value: unknown): value is string =>
   typeof value === 'string' && TOOLS_CAUSE.test(value)
 interface Workspace {
