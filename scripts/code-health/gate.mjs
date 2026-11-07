@@ -4,7 +4,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
-  collectPluginPolicy, comparePluginCounts, policyCoverageErrors, targetPluginCounts,
+  collectPluginPolicy,
+  comparePluginCounts,
+  policyCoverageErrors,
+  targetPluginCounts,
 } from './plugin-policy.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -33,8 +36,13 @@ export const jscpdKeys = (report) =>
 const external = (file) => /(^|\/)node_modules\//.test(rel(file))
 export const depcruiseKeys = (report) => [
   ...report.summary.violations
-    .filter((v) => v.rule.name !== 'no-circular' && !v.rule.name.startsWith('plugin-policy/') &&
-      !external(v.from) && !external(v.to))
+    .filter(
+      (v) =>
+        v.rule.name !== 'no-circular' &&
+        !v.rule.name.startsWith('plugin-policy/') &&
+        !external(v.from) &&
+        !external(v.to),
+    )
     .map((v) => `${v.rule.name}|${rel(v.from)}|${rel(v.to)}`),
   ...report.modules.flatMap((m) =>
     m.dependencies
@@ -192,13 +200,25 @@ function main(argv) {
       fs.writeFileSync(path.join(out, 'plugin-policy.json'), JSON.stringify(policy, null, 2) + '\n')
       const coverage = policyCoverageErrors(policy)
       if (coverage.length) throw new GateError(coverage.join('\n'))
-      const candidate = readJson('plugin policy ceilings', path.join(here, 'baseline/plugin-policy.json'), (b) => !!b)
-      const target = argv.includes('--target') ? argv[argv.indexOf('--target') + 1] : process.env.CODE_HEALTH_TARGET ?? 'HEAD^'
+      const candidate = readJson(
+        'plugin policy ceilings',
+        path.join(here, 'baseline/plugin-policy.json'),
+        (b) => !!b,
+      )
+      const target = argv.includes('--target')
+        ? argv[argv.indexOf('--target') + 1]
+        : (process.env.CODE_HEALTH_TARGET ?? 'HEAD^')
       const before = targetPluginCounts(root, target, argv.includes('--bootstrap-plugin-policy'))
       pluginDiff = comparePluginCounts(policy.counts, candidate, before)
-      const total = (counts) => Object.values(counts).reduce((n, roles) => n + roles.host + roles.service, 0)
-      rows.push({ name: 'plugin-policy', before: total(before), now: total(policy.counts), ...pluginDiff,
-        totals: `${policy.coverage.host} host / ${policy.coverage.service} service roots; executable policy, full graph diagnostic` })
+      const total = (counts) =>
+        Object.values(counts).reduce((n, roles) => n + roles.host + roles.service, 0)
+      rows.push({
+        name: 'plugin-policy',
+        before: total(before),
+        now: total(policy.counts),
+        ...pluginDiff,
+        totals: `${policy.coverage.host} host / ${policy.coverage.service} service roots; executable policy, full graph diagnostic`,
+      })
     }
     const current = name === 'size' ? result.sizes : unique(result.keys)
     const file = path.join(here, 'baseline', `${name}.json`)
@@ -222,7 +242,9 @@ function main(argv) {
     })
   }
   if (update) {
-    console.log('code-health: four legacy baselines rewritten; plugin ceilings are never updated automatically')
+    console.log(
+      'code-health: four legacy baselines rewritten; plugin ceilings are never updated automatically',
+    )
     for (const finding of pluginDiff?.added ?? []) console.error(finding)
     return pluginDiff?.added.length ? 1 : 0
   }
