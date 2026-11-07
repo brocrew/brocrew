@@ -159,12 +159,14 @@ function draw(snapshot) {
   drawSwitch('prefix', snapshot.prefix)
   groups = snapshot.groups.slice(0, 1024)
   drawGroups()
+  window.settingsLoadState.ready()
 }
 async function refresh() {
   try {
-    draw(await rpc('read', { surface: 'whatsapp' }))
+    const snapshot = await rpc('read', { surface: 'whatsapp' })
+    if (!closed) draw(snapshot)
   } catch {
-    status.textContent = UNAVAILABLE
+    window.settingsLoadState.fail()
   }
 }
 $('group-filter').addEventListener('input', drawGroups)

@@ -114,6 +114,7 @@ export async function buildChromePackage(
     recursive: true,
     dereference: false,
   })
+  fs.cpSync(path.join(root, '../shared/ui'), path.join(payload, 'ui'), { recursive: true })
   // The BroCrew helper extension, loaded into visible profiles. Exactly these files, never links.
   fs.mkdirSync(path.join(payload, 'helper'))
   for (const name of ['manifest.json', 'worker.js']) {
