@@ -1588,15 +1588,7 @@ async function main() {
  * ⚑ **One function, called from both endings.** The two tails were a copy of each other and had
  * already drifted — only one of them read `failed` — which is how a cell added to `summarize`
  * reaches the happy path and not the one a failing run takes.
- *
- * ⛔ **No `notReached` number, and that is a decision rather than an omission.** `summarize` takes
- * one and `ui-live-smoke.mjs` supplies it from `lib/step-census.mjs` — the list of steps that file
- * OFFERS, kept equal to what it registers by `pnpm run ci`. ⚠️ **This file has no census**, and a
- * run that aborts never calls `step()` again, so the steps it never reached leave no trace in
- * `results` at all. Counting `await step(` in the source would be a number computed from the PLAN
- * rather than from the outcome, which is the standing rule this whole cell lives under. The
- * absence is not silent either: `step()` re-throws, so an abort ENDS the run, the error prints
- * above this line, and the missing tokens are the ones with no row at all.
+
  */
 function report() {
   const summary = summarize(results, { evidence: EVIDENCE })

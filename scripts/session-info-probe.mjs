@@ -17,12 +17,13 @@
  * The app provisions the provider home and performs its copy-once personal-auth inheritance;
  * this probe itself does not read, write or copy a credential.
  */
-import { execFileSync, spawn } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { RendererCdp, listenersOn } from './lib/renderer-cdp.mjs'
 import { createOwnedProcessLifecycle } from './lib/owned-process.mjs'
 import { descendantsOf, tearDownAndRemove } from './lib/owned-teardown.mjs'
 import { HIDDEN_LAUNCH_ARG } from './lib/hidden-launch.mjs'
@@ -48,11 +49,6 @@ const LAYOUT_MS = 400
 
 /**
  * **A string constant read out of the app's own source rather than copied into this file.**
- *
- * ⚑ The idiom is the repository's: `scripts/test/step-census.test.mjs` reads
- * `DEGRADED_LABEL_PREFIX` out of `packages/runtime/src/events.ts` with exactly this shape, for
- * exactly this reason — *"a rename there and nothing here would leave the control silently matching
- * nothing, which is a control that reports an all-clear it never checked."*
  *
  * ⛔ **A miss THROWS rather than answering `undefined`.** The one thing this probe asserts about a
  * live provider is that a particular string comes back; a canary that quietly became `undefined`
@@ -164,127 +160,29 @@ async function waitFor(what, read, budgetMs) {
 }
 
 /**
- * ⛔ **Three states, not two** — who is listening on this port, or *we could not ask*.
+ * ⚠️ **The viewport is EMULATED rather than the window resized.** A window resize is the window
+ * manager's answer and can be refused or rounded; `setDeviceMetricsOverride` makes the renderer
+ * lay out at exactly the number in the filename, which is what a screenshot has to be able to
+ * claim. The override is cleared afterwards so nothing later measures a size nobody asked for.
  *
- * `lsof -t` exits **1** when nothing matches, so a bare `catch { return [] }` would make *"nothing
- * is there"* and *"the question could not be put"* the same answer, and the assertion below would
- * pass in the second case having established nothing.
+ * ⛔ **`verify` runs AFTER the settle and BEFORE the capture, and that placement is the point.**
+ * The override relays out the page: the drawer this probe is photographing can collapse, scroll
+ * out of the viewport or be hidden entirely at the smaller size, and a PNG of an empty pane is
+ * indistinguishable from a PNG of the panel to everything except a reader. Checking before the
+ * launch (or after the run) would be measuring a layout nobody photographed.
  */
-function listenersOn(port) {
-  try {
-    const out = execFileSync('lsof', ['-t', `-iTCP:${String(port)}`, '-sTCP:LISTEN'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-    return { asked: true, pids: out.trim().split('\n').filter(Boolean).map(Number) }
-  } catch (error) {
-    // ⚠️ `status === 1` is lsof's own "no match", which IS an answer. Anything else — lsof missing,
-    // a signal, a permission problem — is the third state and must not be read as an empty set.
-    if (error?.status === 1) return { asked: true, pids: [] }
-    return { asked: false, pids: [], why: error?.message ?? String(error) }
-  }
-}
-
-/** One CDP connection to the renderer. */
-class Cdp {
-  #socket
-  #id = 0
-  #pending = new Map()
-
-  static async attach(port) {
-    const target = await waitFor(
-      'a renderer target holding a document',
-      async () => {
-        const response = await fetch(`http://127.0.0.1:${port}/json/list`, {
-          signal: AbortSignal.timeout(2_000),
-        })
-        if (!response.ok) return null
-        const list = await response.json()
-        return Array.isArray(list)
-          ? (list.find(
-              (t) =>
-                t.type === 'page' &&
-                typeof t.webSocketDebuggerUrl === 'string' &&
-                t.url !== '' &&
-                t.url !== 'about:blank',
-            ) ?? null)
-          : null
-      },
-      LAUNCH_MS,
-    )
-    const cdp = new Cdp()
-    await cdp.#connect(target.webSocketDebuggerUrl)
-    await cdp.send('Runtime.enable')
-    await cdp.send('Page.enable')
-    return cdp
-  }
-
-  #connect(url) {
-    this.#socket = new WebSocket(url)
-    this.#socket.addEventListener('message', ({ data }) => {
-      const message = JSON.parse(data)
-      const pending = this.#pending.get(message.id)
-      if (!pending) return
-      this.#pending.delete(message.id)
-      if (message.error) pending.reject(new Error(message.error.message))
-      else pending.resolve(message.result)
-    })
-    return new Promise((resolve, reject) => {
-      this.#socket.addEventListener('open', resolve, { once: true })
-      this.#socket.addEventListener('error', reject, { once: true })
-    })
-  }
-
-  send(method, params = {}) {
-    const id = ++this.#id
-    return new Promise((resolve, reject) => {
-      this.#pending.set(id, { resolve, reject })
-      this.#socket.send(JSON.stringify({ id, method, params }))
-    })
-  }
-
-  async evaluate(expression) {
-    const result = await this.send('Runtime.evaluate', {
-      expression: `(() => { ${expression} })()`,
-      awaitPromise: true,
-      returnByValue: true,
-    })
-    if (result.exceptionDetails) {
-      throw new Error(result.exceptionDetails.exception?.description ?? 'the page threw')
-    }
-    return result.result.value
-  }
-
-  /**
-   * ⚠️ **The viewport is EMULATED rather than the window resized.** A window resize is the window
-   * manager's answer and can be refused or rounded; `setDeviceMetricsOverride` makes the renderer
-   * lay out at exactly the number in the filename, which is what a screenshot has to be able to
-   * claim. The override is cleared afterwards so nothing later measures a size nobody asked for.
-   *
-   * ⛔ **`verify` runs AFTER the settle and BEFORE the capture, and that placement is the point.**
-   * The override relays out the page: the drawer this probe is photographing can collapse, scroll
-   * out of the viewport or be hidden entirely at the smaller size, and a PNG of an empty pane is
-   * indistinguishable from a PNG of the panel to everything except a reader. Checking before the
-   * launch (or after the run) would be measuring a layout nobody photographed.
-   */
-  async shotAt(file, width, height, verify) {
-    await this.send('Emulation.setDeviceMetricsOverride', {
-      width,
-      height,
-      deviceScaleFactor: 2,
-      mobile: false,
-    })
-    await new Promise((resolve) => setTimeout(resolve, LAYOUT_MS))
-    if (verify) await verify(width, height)
-    const { data } = await this.send('Page.captureScreenshot', { format: 'png' })
-    writeFileSync(file, Buffer.from(data, 'base64'))
-    await this.send('Emulation.clearDeviceMetricsOverride')
-    return file
-  }
-
-  close() {
-    this.#socket?.close()
-  }
+async function shotAt(cdp, file, width, height, verify) {
+  await cdp.send('Emulation.setDeviceMetricsOverride', {
+    width,
+    height,
+    deviceScaleFactor: 2,
+    mobile: false,
+  })
+  await new Promise((resolve) => setTimeout(resolve, LAYOUT_MS))
+  if (verify) await verify(width, height)
+  await cdp.shot(file)
+  await cdp.send('Emulation.clearDeviceMetricsOverride')
+  return file
 }
 
 // --- page-side helpers, injected as expressions ---
@@ -571,7 +469,7 @@ async function main() {
   let cdp = null
   const written = []
   try {
-    cdp = await Cdp.attach(port)
+    cdp = await RendererCdp.attach(port, { launchMs: LAUNCH_MS, pollMs: POLL_MS })
     lifecycle.refreshDescendants()
 
     // ── 🔒 the listener really is ours ────────────────────────────────────────────────────────
@@ -686,7 +584,8 @@ async function main() {
         throw new Error(`the shot table disagrees with itself: ${name} vs ${width}x${height}`)
       }
       written.push(
-        await cdp.shotAt(
+        await shotAt(
+          cdp,
           join(SHOT_DIR, `session-info-${LABEL}-${name}.png`),
           width,
           height,
@@ -741,7 +640,8 @@ async function main() {
       // ⚑ No `if (SHOT_DIR)` here: `main()` refuses above without one, so a guard would be a branch
       // nothing can take — and this file already says what it thinks of those.
       written.push(
-        await cdp.shotAt(
+        await shotAt(
+          cdp,
           join(SHOT_DIR, `session-info-${LABEL}-preview-1440x1000.png`),
           1440,
           1000,

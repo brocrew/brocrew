@@ -10,7 +10,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { executeRuntimeCommand, webContentsSink } from '../src/main/runtime/ipc'
+import { webContentsSink } from '../src/main/runtime/ipc'
 import { RuntimeHost, THE_APP_ITSELF, type RuntimeEventSink } from './helpers/giver-notice-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -18,15 +18,11 @@ import { conversationList } from '../src/renderer/src/lib/conversation-list'
 import { createSessionStore as createRendererStore } from '../src/renderer/src/lib/session-store'
 import type { SessionStore as RendererStore } from '../src/renderer/src/lib/session-store'
 import {
-  RUNTIME_EVENT_CHANNEL,
-  RUNTIME_LIVENESS_CHANNEL,
   type ResumableSessionInfo,
   type RuntimeBridge,
-  type RuntimeEventMessage,
-  type SessionLivenessMessage,
   type UnresumableSessionInfo,
 } from '../src/shared/runtime-ipc'
-import { asTheWireWouldCarry } from './lib/the-wire'
+import { DemoWindow } from './lib/demo-runtime-window'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -136,75 +132,6 @@ function holdingItsClose(handle: SessionHandle, gate: Promise<void>): SessionHan
   })
 }
 
-/**
- * One window, as far as the main process can tell — `the-conversation-nobody-asked-for.demo.test.ts`'s
- * double, reused verbatim because the production sink is what must be under test rather than a
- * test's idea of one.
- */
-class FakeWindow {
-  private destroyed = false
-  readonly received: RuntimeEventMessage[] = []
-  private onEvent: ((message: RuntimeEventMessage) => void)[] = []
-  private onLiveness: ((message: SessionLivenessMessage) => void)[] = []
-
-  constructor(readonly id: number) {}
-
-  isDestroyed(): boolean {
-    return this.destroyed
-  }
-
-  send(channel: string, message: unknown): void {
-    if (channel === RUNTIME_EVENT_CHANNEL) {
-      const event = message as RuntimeEventMessage
-      this.received.push(event)
-      for (const listener of this.onEvent) listener(event)
-    }
-    if (channel === RUNTIME_LIVENESS_CHANNEL) {
-      for (const listener of this.onLiveness) listener(message as SessionLivenessMessage)
-    }
-  }
-
-  destroy(): void {
-    this.destroyed = true
-  }
-
-  bridge(host: RuntimeHost): RuntimeBridge {
-    const sink = webContentsSink(this as unknown as WebContents)
-    const subscriptions = {
-      onEvent: (fn: (message: RuntimeEventMessage) => void) => {
-        this.onEvent.push(fn)
-        return () => {
-          this.onEvent = this.onEvent.filter((listener) => listener !== fn)
-        }
-      },
-      onLiveness: (fn: (message: SessionLivenessMessage) => void) => {
-        this.onLiveness.push(fn)
-        return () => {
-          this.onLiveness = this.onLiveness.filter((listener) => listener !== fn)
-        }
-      },
-    }
-    return new Proxy(subscriptions, {
-      get: (base, name: string) =>
-        name in base
-          ? base[name as keyof typeof base]
-          : (input?: Record<string, unknown>) => {
-              let carried: unknown
-              try {
-                carried = asTheWireWouldCarry(name, { kind: name, ...(input ?? {}) })
-              } catch (refusal) {
-                return Promise.reject(refusal as Error)
-              }
-              return executeRuntimeCommand(
-                host,
-                sink,
-                carried as Parameters<typeof executeRuntimeCommand>[2],
-              )
-            },
-    }) as unknown as RuntimeBridge
-  }
-}
-
 async function waitFor(predicate: () => boolean, what: string): Promise<void> {
   for (let attempt = 0; attempt < 400; attempt++) {
     if (predicate()) return
@@ -224,7 +151,7 @@ describe('418 · two sessions of one agent', () => {
   let clock: number
   /** ⚠️ `null` unless a test asks for one — a gate installed for the suite would park every close. */
   let closeGate: { promise: Promise<void>; release: () => void } | null
-  let windowA: FakeWindow
+  let windowA: DemoWindow
   let storeA: RendererStore
   let bridgeA: RuntimeBridge
   let sinkA: RuntimeEventSink
@@ -279,7 +206,7 @@ describe('418 · two sessions of one agent', () => {
         files: [],
       }),
     })
-    windowA = new FakeWindow(1)
+    windowA = new DemoWindow(1)
     bridgeA = windowA.bridge(host)
     storeA = createRendererStore(bridgeA)
     // ⚠️ **ONE sink for the window, not one per call.** `sinkOwnerId` is derived from the
@@ -558,7 +485,7 @@ describe('418 · two sessions of one agent', () => {
       // ⚑ **The control: a conversation another window really does hold still reads that
       // sentence.** Same window, same call, one fact different — which is what makes the assertion
       // above about the owner rather than about the words having been softened everywhere.
-      const windowB = new FakeWindow(2)
+      const windowB = new DemoWindow(2)
       const sinkB = webContentsSink(windowB as unknown as WebContents)
       const theirs = await host.createSession(
         { provider: 'codex', profileId: 'other-one', cwd: work, approvalMode: 'ask' },

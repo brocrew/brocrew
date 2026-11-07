@@ -1446,7 +1446,7 @@ describe('§5 · a bridge double refuses what the wire refuses (361 §2)', () =>
 const BUILDS_A_RENDERER_STORE =
   /import \{[^}]*\bcreate(?:Session|Project)Store\b[^}]*\} from '(?:\.\.?\/)+src\/renderer\/src\/lib\/(?:session|project)-store'/
 
-const IMPORTS_THE_WIRE = /from '(?:\.\.?\/)*lib\/the-wire'/
+const IMPORTS_THE_WIRE = /from '(?:\.\.?\/)*(?:lib\/)?the-wire'/
 
 /**
  * ⛔ **And CALLS it, which is the half the import alone cannot say.** Measured while verifying this
@@ -1551,9 +1551,13 @@ describe('§6 · every double the renderer store runs on is a wire (361 §2)', (
   it('🔴 and each of them clones its payload the way `ipcRenderer.invoke` does', () => {
     for (const name of storeBuilders) {
       const code = readFileSync(join(HERE, name), 'utf8')
+      // Demo stores get their bridge from the shared window double.
+      const bridgeCode = /from '\.\/lib\/demo-runtime-window'/.test(code)
+        ? readFileSync(join(HERE, 'lib/demo-runtime-window.ts'), 'utf8')
+        : code
       const why = `${name} builds a renderer store over a double that clones nothing`
-      expect(IMPORTS_THE_WIRE.test(code), why).toBe(true)
-      expect(RUNS_THE_WIRE.test(code), why).toBe(true)
+      expect(IMPORTS_THE_WIRE.test(bridgeCode), why).toBe(true)
+      expect(RUNS_THE_WIRE.test(bridgeCode), why).toBe(true)
     }
   })
 

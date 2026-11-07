@@ -94,14 +94,7 @@ function open(entries: RuntimeEventMessage[], over: Partial<WindowState> = {}): 
   return m.q('event-log')
 }
 
-/**
- * ⛔ **`ledgerRows`, verbatim** — the live smoke's own read, run here against a real folded list.
- *
- * ⚠️ **A copy, and the copy is the point.** `scripts/ui-live-smoke.mjs` cannot import from the app
- * and this file cannot import from it, so `scripts/test/step-census.test.mjs` pins the three lines
- * below against the smoke's source. ⛔ If they ever go out of step that census reddens — which is
- * what stops this test certifying a query the instrument no longer makes.
- */
+/** Read rendered ledger rows the same way as the live smoke. */
 function ledgerRows(log: Element, type: string): string[] {
   return [...log.querySelectorAll('li')]
     .filter((li) => li.dataset.type === type)

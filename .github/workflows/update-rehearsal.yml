@@ -17,8 +17,6 @@
 #                              given), and the repository variable UPDATE_REHEARSAL_RUNS_HERE is
 #                              `true`, they run here instead.
 #
-# ⛔ No release goes to a public repository from here: the public rehearsal is held outside the
-# active workflows (`scripts/update-rehearsal/held/`) until the owner says yes, present.
 #
 # ⚑ A and B are the same code packaged twice, each with its own marker: this proves the transport,
 # the version choice, the replacement, the relaunch and B's first-start recovery copy, not a change
