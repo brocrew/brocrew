@@ -9,11 +9,7 @@ import type { AskToStop, WhoStoppedIt } from './how-work-stopped'
 import type { ModelAndEffort } from './model-choice-contracts'
 import type { GivenFolder } from './work-folders'
 
-/**
- * ⚑ **D-016 · commit 6 — a piece a CONVERSATION gave**: every reader that tells, delivers to,
- * starts or retracts from a piece's giver holds one of these. ⛔ A piece a person gave is not one:
- * there is nobody to tell (R3).
- */
+/** Work a conversation gave has a giver; work a person gave has nobody to tell. */
 export type PieceAConversationGave = PieceRow & { readonly giver: string }
 
 /**

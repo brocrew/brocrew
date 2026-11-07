@@ -286,9 +286,6 @@ const LEDGER: readonly Row[] = [
   },
 
   /* ---- drawn by the sweep, nothing cut ---- */
-  // ⚑ **D-016** — the rows of the components it deleted came out with them: `AllDocumentsSheet`,
-  // `DocumentDrawer`, `DispatchModal` and `ProjectSheet` (ranked), `ProjectWorkspace` (measured),
-  // and `AgentRow`, `AttentionRow`, `DocumentRow`, `ProjectCard` and `RecruitSheet` (clean).
   { component: 'AgentState.vue', standing: 'clean-at-531', note: '' },
   { component: 'AttentionQueue.vue', standing: 'clean-at-531', note: '' },
   { component: 'ChildWorkViewer.vue', standing: 'clean-at-531', note: '' },

@@ -45,8 +45,6 @@ import { replyText } from '../src/main/runtime/reply-rails'
 /**
  * App-delivered words must not be attributed to the person.
  *
- * ⚑ The PO's sentence, quoted in the brief that asked for this:
- *
  * A receiver acting on words falsely attributed to the person is acting on false authority. A
  * measured corpus contained 12,646 such messages, so the regression can affect many
  * hand-offs.

@@ -17,9 +17,6 @@ import {
 import { A_PERSON_MUST_ACT_SENTENCE, TASK_IS_OPEN, undrivenSentence } from '../../shared/tasks'
 import type { ResourceRefusal } from '../resources/resources'
 import type { RailPermanence } from '../../shared/refusals'
-// ⚑ **425 · from `shared/refusals.ts` and not through `spawn-rails.ts`'s re-export.** That
-// re-export exists so `405` could move `RailPermanence` without touching seven readers; a word
-// added today has no such history and names its own home.
 import { HELD_FORMS_SAID } from '../../shared/documents'
 import type { RefusalRemedy } from '../../shared/refusals'
 // ⚑ **484 · one composition for the actor's clause**, shared with `list_tasks`' own line.
@@ -30,9 +27,7 @@ import {
   YOU_ASKED_IT_TO_STOP,
   type WhoStoppedIt,
 } from '../../shared/how-work-stopped'
-// ⚑ **D-012 · the preview of the last exchange**, in place of the 4 KB quote.
 import { exchangePreviewLines, type AConversation, type Exchange } from '../../shared/last-exchange'
-// ⚑ **D-016 · the one spelling of a piece beside its title** (`shared/piece-called`).
 import { pieceLine } from '../../shared/piece-called'
 // ⚑ **D-025 · the one clock time every surface says *when* in** (`shared/clock`).
 import { clockTime, clockTimeFrom } from '../../shared/clock'

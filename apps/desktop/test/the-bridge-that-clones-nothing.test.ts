@@ -14,22 +14,8 @@ import { STORAGE_CHANNELS } from '../src/shared/storage'
 /**
  * # 🔴 The bridge that clones nothing (361)
  *
- * `355`'s review found a capability grant crossing the wire as a Vue reactive `Proxy`. Two of its
- * four fields would have thrown at the bridge in the shipped app and two would have saved fine.
- * ⛔ **The sentence this file is about is the one after the dash:** *"and no test in this repo could
- * see it, because every one of them injects an in-process bridge that clones nothing."*
- *
- * ## ⚠️ It is the fourth, not the first
- *
- * | dispatch | the call | what a person saw |
- * |---|---|---|
- * | `121` | `listLibrary({ filters: filters.value })` | every filter press showed a read error |
- * | `218` | `send({ attachments })` off a `reactive(new Map())` | *"An object could not be cloned."*, no turn |
- * | `355` | `setCapabilities({ grant })` | two fields save, two throw |
- * | `361` | `cancelProviderSignIn(authFor.value)` | Cancel does nothing, silently |
- *
- * ⛔ **Four sites, three fixes, no guard.** Each was repaired where it was found, and the repair
- * taught the next site nothing — which is what `§2` means by *a convention nothing enforces decays*.
+ * Reactive payloads crossed the bridge in library filters, attachments, capability grants
+ * and provider sign-in cancellation. Every renderer-to-main verb is checked below.
  *
  * ## ⚑ What is asserted here, and what is asserted where it can be
  *

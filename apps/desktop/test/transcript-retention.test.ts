@@ -106,6 +106,13 @@ const codex = (id: string, days: number) =>
   )
 const unused = () => false
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+const activityWindowAnswer = () => ({
+  kind: 'activity',
+  window: { from: NOW - DAY, to: NOW },
+  read: { walk: 'one-window-over-every-agents-conversation', ledgers: 0, rowsUnread: 0 },
+  lines: [],
+  capped: false,
+})
 
 it('one rule clears both providers at 91 days, retains 89 days and everything outside their transcripts', async () => {
   const a = claude(OLD, 91),
@@ -1144,13 +1151,7 @@ it('a concurrent first read cannot overwrite a newly saved Forever choice', asyn
 it('Recent activity carries cleanup metadata and marks an unreadable cleanup history incomplete', async () => {
   const live = Object.create(RuntimeHost.prototype) as RuntimeHost
   const row = { at: NOW, days: 90, conversations: 2, bytes: 1024 }
-  const windowAnswer = {
-    kind: 'activity',
-    window: { from: NOW - DAY, to: NOW },
-    read: { walk: 'one-window-over-every-agents-conversation', ledgers: 0, rowsUnread: 0 },
-    lines: [],
-    capped: false,
-  }
+  const windowAnswer = activityWindowAnswer()
   const deps = {
     windowReader: { read: async () => windowAnswer },
     transcriptsCleared: async () => [row],
@@ -1179,13 +1180,7 @@ it('a closed host cannot publish a cleanup reading that arrived after it closed'
     finish = resolve
   })
   const life = { closed: false }
-  const windowAnswer = {
-    kind: 'activity',
-    window: { from: NOW - DAY, to: NOW },
-    read: { walk: 'one-window-over-every-agents-conversation', ledgers: 0, rowsUnread: 0 },
-    lines: [],
-    capped: false,
-  }
+  const windowAnswer = activityWindowAnswer()
   Object.assign(live, {
     launches: life,
     deps: {

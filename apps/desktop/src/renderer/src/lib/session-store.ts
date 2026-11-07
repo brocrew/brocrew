@@ -74,21 +74,10 @@ import {
 } from './session-record'
 
 /**
- * Every session this window has open, and nothing about which one you are looking at.
- *
- * The host has been multi-session since 046; the renderer was not, and that mismatch was the
- * whole bug — resuming a session that was already open threw `session is already open`, and a
- * session left running behind a switched view was invisible. One store holding N records fixes
- * that by construction: switching is a change of which record is rendered, and never a call to
- * the host at all.
- *
- * **The active session is a view concern and is deliberately absent from here.** A store that
- * knew about "the current one" would be a single-session assumption wearing a different hat, and
- * the next slice's cross-session views would have to work around it.
- *
- * The bridge is injected rather than reached for, so the whole store — routing, buffering,
- * ordinal continuity, the lot — is driven directly in tests with no window, no DOM and no
- * provider.
+ * Open sessions for this window; the active selection belongs to the view.
+ * Switching views changes the rendered record without calling the host.
+ * The injected bridge lets tests cover routing, buffering and ordinal continuity
+ * without a window, DOM or provider.
  */
 
 /**
