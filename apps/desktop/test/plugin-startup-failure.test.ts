@@ -10,6 +10,7 @@ import { EventEmitter } from 'node:events'
 import type { ChildProcess } from 'node:child_process'
 import { afterEach, expect, it, vi } from 'vitest'
 import {
+  createPluginStartupTrace,
   PluginStartupError,
   PluginSupervisorLaunchFailure,
   observePluginSupervisorLaunch,
@@ -306,4 +307,44 @@ it('catalogue logs retain the typed refusal code when its public Error message i
   const log = await readFile(join(root, 'plugin-startup.log'), 'utf8')
   expect(log).toContain('PluginSupervisorError')
   expect(log).toContain('code=policy-refused')
+})
+
+it('retains pre-controller time, nested phases and failures across retries and later writes', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fictional-startup-trace-'))
+  roots.push(root)
+  let now = 100
+  const trace = createPluginStartupTrace(() => now)
+  const recovery = trace.begin('workspace-recovery')
+  now += 78_000
+  recovery()
+  trace.destination(root)
+  trace.attempt()
+  const catalogue = trace.begin('catalogue')
+  now += 5000
+  const failed = new PluginSupervisorLaunchFailure({ exitCode: 1, signal: null, stderr: 'Error: missing module' })
+  catalogue(failed)
+  await recordPluginStartupFailure(root, 'service-start', failed)
+  trace.failure('service-start', failed)
+  trace.attempt()
+  trace.begin('catalogue-new-owner')()
+  trace.begin('ready')()
+  await trace.flush()
+  const log = await readFile(join(root, 'plugin-startup-trace.log'), 'utf8')
+  expect(log).toMatch(/launch=.* elapsed=0 attempt=0 workspace-recovery start/)
+  expect(log).toContain('elapsed=78000 attempt=0 workspace-recovery end')
+  expect(log).toContain('elapsed=83000 attempt=1 catalogue failure')
+  expect(log).toContain('attempt=2 catalogue-new-owner end')
+  expect(log).toContain('attempt=2 ready end')
+  expect(log).toContain('Exit code: 1')
+  expect(log).toContain('Error: missing module')
+  expect(await readFile(join(root, 'plugin-startup.log'), 'utf8')).toContain('Error: missing module')
+})
+it('trace write failure never rejects or prevents later startup work', async () => {
+  const trace = createPluginStartupTrace()
+  trace.destination(join(tmpdir(), 'fictional-absent', 'trace'))
+  trace.begin('workspace-recovery')()
+  await expect(trace.flush()).resolves.toBeUndefined()
+  trace.attempt()
+  trace.begin('ready')()
+  await expect(trace.flush()).resolves.toBeUndefined()
 })

@@ -759,9 +759,8 @@ it.each([
       await vi.advanceTimersByTimeAsync(9_999)
       expect(m.all('plugins-list-slow')).toHaveLength(0)
       await vi.advanceTimersByTimeAsync(1)
-      expect(m.q('plugins-list-slow').textContent?.trim()).toBe(
-        'This can take a little while after BroCrew starts.',
-      )
+      expect(m.all('plugins-list-slow')).toHaveLength(0)
+      expect(loading.textContent?.trim()).toBe('Loading plugins…')
       expect(seen).toEqual([])
       answer(cards ? await cards.request({ kind: 'list' }) : { ok: true, cards: [] })
       await vi.advanceTimersByTimeAsync(0)
