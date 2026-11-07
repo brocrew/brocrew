@@ -1,5 +1,4 @@
 import type { PluginToolDiagnostic } from '../tool-diagnostics'
-import { chromeAccessSnapshot, withChromeResourcePolicy } from './chrome-policy'
 import { admittedPluginTools } from './broker-inventory'
 import type { BrokerInput, BrokerOptions } from '../tool-broker'
 import { createPrivatePluginPort } from '../managed-transport'
@@ -86,7 +85,7 @@ export async function chromeBrokerBinding(
   const resources = view.package.manifest.permissions.resources
   const profiles = resources.find((one) => one.id === chromeBrokerResourceId)
   if (!profiles) throw new Error('unavailable')
-  const { connection, endpoint, credential, adminCredential, admitted } = await admittedPluginTools(
+  const { endpoint, credential, adminCredential, admitted } = await admittedPluginTools(
     view,
     names,
     refused,
@@ -139,16 +138,12 @@ export async function chromeBrokerBinding(
     })),
     adminOperations: [],
     isAllowed: (_who, use) => use.resource === chromeBrokerResourceId && profiles[use.mode],
-    server: withChromeResourcePolicy(
-      createPrivatePluginPort({
-        url: endpoint.url,
-        credential,
-        privateCredentials: [adminCredential],
-        diagnostic,
-      }),
-      (signal) => chromeAccessSnapshot(connection, signal),
+    server: createPrivatePluginPort({
+      url: endpoint.url,
+      credential,
+      privateCredentials: [adminCredential],
       diagnostic,
-    ),
+    }),
   } satisfies Omit<
     BrokerOptions,
     | 'binding'
