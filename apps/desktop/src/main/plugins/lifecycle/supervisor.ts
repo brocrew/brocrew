@@ -90,8 +90,21 @@ export async function createSupervisorLifecycle(options: {
         }
       })()
       const results = await Promise.allSettled([agents.close(), personClosed, drained])
-      if (results.some((one) => one.status !== 'fulfilled') || !controller.cleanForShutdown())
-        throw new PluginSupervisorError('cleanup-pending')
+      // Each part that failed is named, with its own error, so a refused shutdown says why.
+      const parts = ['agent routes', 'Settings channels', 'plugin runs']
+      const causes = results.flatMap((one, index) =>
+        one.status === 'rejected'
+          ? [new Error(`${parts[index]} did not close`, { cause: one.reason })]
+          : [],
+      )
+      const blockers = controller.shutdownBlockers()
+      if (blockers.length)
+        causes.push(new Error(`plugins can't shut down cleanly: ${blockers.join('; ')}`))
+      if (causes.length)
+        throw new PluginSupervisorError('cleanup-pending', {
+          cause:
+            causes.length === 1 ? causes[0] : new AggregateError(causes, 'plugin shutdown failed'),
+        })
       closed = true
       exited()
     })().catch((error: unknown) => {

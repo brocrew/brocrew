@@ -242,6 +242,11 @@ it('cause formatting bounds cycles and survives hostile diagnostic properties', 
   const cyclic = new Error('owner-invalidated')
   cyclic.cause = cyclic
   expect(pluginFailureCause(cyclic)).toContain('owner-invalidated')
+  // An aggregate that contains itself is named once, not walked without end.
+  const members: unknown[] = []
+  const loop = new AggregateError(members, 'fictional loop')
+  Object.defineProperty(loop, 'errors', { value: [loop] })
+  expect(pluginFailureCause(loop)).toContain('fictional loop')
   expect(
     pluginFailureCause(new Error('x'.repeat(10000), { cause: new Error('actual leaf') })).length,
   ).toBeLessThanOrEqual(512)

@@ -1461,16 +1461,32 @@ export class PluginLifecycleController {
             Promise.resolve().then(() => running.run.stop()),
             running.run.exited,
           ])
-          if (exit.status !== 'fulfilled') return pending()
+          if (exit.status !== 'fulfilled')
+            throw new PluginSupervisorError('cleanup-pending', {
+              cause: new Error(`${running.package.manifest.id}: its exit was not proven`, {
+                cause: exit.reason,
+              }),
+            })
           await running.revocation
         }),
       )
-      if (results.some((one) => one.status !== 'fulfilled')) return pending()
+      const failed = results.filter((one) => one.status === 'rejected')
+      if (failed.length)
+        throw new PluginSupervisorError('cleanup-pending', {
+          cause:
+            failed.length === 1
+              ? failed[0]!.reason
+              : new AggregateError(failed.map((one) => one.reason), 'plugin runs did not stop'),
+        })
       // Once nothing holds the state, a removal or install left unfinished stays in the journal.
       await this.options.state.withExclusive(async () => {
         this.drained = true
       })
-      if (!this.cleanForShutdown()) return pending()
+      const blockers = this.shutdownBlockers()
+      if (blockers.length)
+        throw new PluginSupervisorError('cleanup-pending', {
+          cause: new Error(`plugins can't shut down cleanly: ${blockers.join('; ')}`),
+        })
     })()
     return this.drainWork
   }
@@ -1483,13 +1499,22 @@ export class PluginLifecycleController {
    * cleanup still refuses.
    */
   cleanForShutdown(): boolean {
+    return this.shutdownBlockers().length === 0
+  }
+  /** What stops a clean shutdown, in plain words, so a refused drain names its cause. */
+  shutdownBlockers(): string[] {
     const pending = this.options.state.inspect().pending
     const leftover = this.drained ? pending?.next?.pluginId : undefined
-    return (
-      (pending === null || leftover !== undefined) &&
-      [...this.cleanup].every((id) => id === leftover) &&
-      (!this.draining || [...this.runs.values()].every((run) => run.ended))
-    )
+    const blockers: string[] = []
+    if (pending !== null && leftover === undefined) {
+      const { action, pluginId } = pending.request.consent
+      blockers.push(`an unfinished ${action} of ${pluginId ?? 'plugins'}`)
+    }
+    for (const id of this.cleanup)
+      if (id !== leftover) blockers.push(`${id} has not proven its cleanup`)
+    if (this.draining)
+      for (const [id, run] of this.runs) if (!run.ended) blockers.push(`${id} is still running`)
+    return blockers
   }
   /** The installs a consumer of this workspace may hold, for its detach notice. */
   consumerInstalls(handle: LifecycleWorkspace) {

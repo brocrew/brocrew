@@ -40,9 +40,12 @@ export function pluginStartupStderr(text: string, secrets: readonly string[] = [
 }
 
 /** One bounded cause chain for local diagnostic logs: each error's real message, plus its stage. */
-export function pluginFailureCause(error: unknown, secrets: readonly string[] = []): string {
+export function pluginFailureCause(
+  error: unknown,
+  secrets: readonly string[] = [],
+  seen = new Set<unknown>(),
+): string {
   const lines: string[] = []
-  const seen = new Set<unknown>()
   for (let depth = 0; depth < 6 && error != null && !seen.has(error); depth++) {
     seen.add(error)
     try {
@@ -68,6 +71,12 @@ export function pluginFailureCause(error: unknown, secrets: readonly string[] = 
         )
         if (line) lines.push(line)
       }
+      // An aggregate names each of its failures; then the chain continues through its cause.
+      if (error instanceof AggregateError)
+        for (const one of error.errors.slice(0, 4)) {
+          const each = seen.has(one) ? '' : pluginFailureCause(one, secrets, seen)
+          if (each) lines.push(each)
+        }
       error = typeof error === 'object' ? (error as Error).cause : undefined
     } catch {
       break // A diagnostic property must not replace the failure being reported.

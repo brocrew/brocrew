@@ -9,6 +9,7 @@ import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-cl
 import type { createPluginNodeHost, PluginNodeProcess } from '../src/main/plugins/node-host'
 import { fictionalPublicKey, manifestFor, packageFixture, signed } from './plugin-package-fixtures'
 import type { LifecycleRuntime } from '../src/main/plugins/lifecycle/types'
+import { pluginFailureCause } from '../src/main/plugins/startup-failure'
 import {
   cleanupLifecycleFixtures,
   deferred,
@@ -302,6 +303,23 @@ describe.skipIf(process.platform === 'win32')(
       expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
       expect((await f.controller.status()).cards[0]?.state).toBe('Unavailable')
       expect(f.controller.cleanForShutdown()).toBe(false)
+    })
+    it('a refused shutdown names what blocks it, down to the plugin and its missing proof', async () => {
+      const exit = deferred<void>()
+      const f = await fixture({ runtime: exitingRuntime(exit.promise) })
+      await f.controller.install(f.handle, 'chrome')
+      exit.reject(new Error('fictional exit witness lost'))
+      await vi.waitFor(async () =>
+        expect((await f.controller.status()).cleanupPending).toEqual(['chrome']),
+      )
+      expect(f.controller.shutdownBlockers()).toEqual(['chrome has not proven its cleanup'])
+      const refusal = await f.controller.drain().then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      expect(refusal).toMatchObject({ code: 'cleanup-pending' })
+      // The drain log's cause line carries it, not a bare "cleanup-pending".
+      expect(pluginFailureCause(refusal)).toContain('chrome has not proven its cleanup')
     })
     it('uninstall completes when a consumer refuses or never answers its revoke', async () => {
       const f = await fixture()
