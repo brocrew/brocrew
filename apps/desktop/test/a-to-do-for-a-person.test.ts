@@ -23,7 +23,12 @@ import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * A to-do for a person.
@@ -109,13 +114,7 @@ describe('a to-do for a person', () => {
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       endingWaitMs: 1_000,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       statesMoved: () => undefined,
     })
     window = new RecordingSink('webContents:1')

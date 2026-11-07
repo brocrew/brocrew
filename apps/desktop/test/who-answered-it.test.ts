@@ -39,7 +39,12 @@ import {
   whoAnsweredIt,
   type ActedBy,
 } from '../src/shared/who-did-it'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **503 · who answered it** — HO-037 §2, landed.
@@ -211,13 +216,7 @@ describe('503 · who answered it', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_503_${String(++counter)}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:503')
     // ⚑ **D-016** — the two projects this file placed its conversations in (`who`, `old`) went with

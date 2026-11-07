@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -104,13 +104,7 @@ describe('D-020 · a field nobody declared is refused by name', () => {
     resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
     newSessionId: () => `sess_${++counter}`,
     now: tick,
-    readProviderConfig: (provider, home) => ({
-      home,
-      homeEnv: 'CLAUDE_CONFIG_DIR',
-      model: 'm',
-      authNote: null,
-      files: [],
-    }),
+    readProviderConfig: fixtureProviderConfig,
   })
 
   beforeEach(() => {

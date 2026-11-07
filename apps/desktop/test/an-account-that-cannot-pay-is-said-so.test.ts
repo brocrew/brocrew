@@ -32,7 +32,12 @@ import {
 import { type ApiKeyCheck, type ProvidersChangedMessage } from '../src/shared/runtime-ipc'
 import { UNDRIVEN_SENTENCES, derivePieces } from '../src/shared/tasks'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * # An account its provider would not bill is said so, with the key and the ways out
@@ -337,13 +342,7 @@ describe('§4 · Providers stops calling the key ready, until a turn or a check 
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:1')
     expect(await keys.set('claude', 'sk-ant-fake-not-a-key')).toBeNull()

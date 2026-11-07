@@ -25,7 +25,12 @@ import {
   type UnresumableSessionInfo,
 } from '../src/shared/runtime-ipc'
 import { proseSpans } from './lib/prose-spans'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * # D-019 · the window is told what an agent is doing the moment it moves
@@ -220,13 +225,7 @@ describe('D-019 · main tells the window the moment an agent’s state moves', (
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       // ⚑ **The dep under test** — what main hands every window on `runtime:states`.
       statesMoved: (message) => {
         pushed.push(message)

@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 import type { SessionInstructions } from '../src/shared/instruction-contracts'
 import { performance } from 'node:perf_hooks'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
@@ -184,13 +184,7 @@ describe('538 · a name the app mints for itself', () => {
           resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
           newSessionId: () => `sess_${++counter}`,
           now: tick,
-          readProviderConfig: (provider, home) => ({
-            home,
-            homeEnv: 'CLAUDE_CONFIG_DIR',
-            model: 'm',
-            authNote: null,
-            files: [],
-          }),
+          readProviderConfig: fixtureProviderConfig,
           readInstructions: () => ({
             instructions: NOTHING_INJECTED,
             systemHint: undefined,
