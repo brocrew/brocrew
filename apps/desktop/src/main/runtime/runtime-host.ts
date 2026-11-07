@@ -1034,6 +1034,7 @@ import {
   permissionShaped,
   // ⚑ **D-019 · a row the two wait reads select** — what drops a kept read (`waitAsLastRead`).
   aWaitReads,
+  type UnreadQuestion,
 } from '../../shared/questions'
 import type {
   LedgerWalk,
@@ -1042,7 +1043,6 @@ import type {
   // 🔴 **611 · the two ends a question may be addressed to** (HO-088 §2.1).
   QuestionRecipient,
   RaisedQuestion,
-  UnreadQuestion,
   RequestOnlyAPersonCanSettle,
   RequestState,
   RoutedRequest,

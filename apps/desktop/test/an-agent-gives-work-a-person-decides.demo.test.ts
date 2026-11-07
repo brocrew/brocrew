@@ -14,11 +14,7 @@ import { describeUnavailable } from '../src/main/runtime/session-unavailable'
 import { createSessionStore as createRendererStore } from '../src/renderer/src/lib/session-store'
 import type { SessionStore as RendererStore } from '../src/renderer/src/lib/session-store'
 import { NOT_REACHED_THIS_WINDOW, type SessionRecord } from '../src/renderer/src/lib/session-record'
-import {
-  type RuntimeBridge,
-  type RuntimeEventMessage,
-  type SessionLivenessMessage,
-} from '../src/shared/runtime-ipc'
+import { type RuntimeBridge, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { DemoWindow, IssuedSessionRuntime } from './lib/demo-runtime-window'
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
