@@ -1,3 +1,5 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
+import type { WorkReport } from '../../src/shared/task-contracts'
 import { expandAgentCards } from './harness'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
@@ -7,13 +9,8 @@ import FileRows from '../../src/renderer/src/components/FileRows.vue'
 import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { fullTime } from '../../src/renderer/src/lib/clock'
 import { clockTime } from '../../src/shared/clock'
-import type {
-  AgentIdentity,
-  KeptFile,
-  ResourceReading,
-  TranscriptEvent,
-} from '../../src/shared/runtime-ipc'
-import type { WorkReport } from '../../src/shared/tasks'
+import type { AgentIdentity, KeptFile, ResourceReading } from '../../src/shared/runtime-ipc'
+
 import type { WorkEdge } from '../../src/shared/who-called-whom'
 import { assertClippedButTold, assertDrawn, drawnReady } from './drawn'
 import { META, mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'

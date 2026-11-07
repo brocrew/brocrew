@@ -1,3 +1,5 @@
+import { TASK_STATES } from '../src/shared/task-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -21,10 +23,10 @@ import {
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { stillHeld } from '../src/shared/mailbox'
 import { pieceLine } from '../src/shared/piece-called'
-import { TASK_IS_OPEN, TASK_STATES, derivePieces } from '../src/shared/tasks'
+import { TASK_IS_OPEN, derivePieces } from '../src/shared/tasks'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')

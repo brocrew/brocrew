@@ -1,3 +1,12 @@
+import type {
+  HowItWasRaised,
+  LedgerWalk,
+  PersonsDecision,
+  PersonsQuestion,
+  RequestOnlyAPersonCanSettle,
+  RoutedRequest,
+} from '../src/shared/question-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -28,15 +37,8 @@ import {
   decisionReading,
   escalationChain,
   readingSentence,
-  type HowItWasRaised,
-  type LedgerWalk,
-  type PersonsDecision,
-  type PersonsQuestion,
-  type RequestOnlyAPersonCanSettle,
-  type RoutedRequest,
   aPersonsSince,
 } from '../src/shared/questions'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **602 · the pane may only claim what it looked at, and nothing may send a person to a card

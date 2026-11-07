@@ -202,7 +202,7 @@ import type {
   WorkRecoveryEvent,
   ReconciliationReceipt,
   WorkReconciliationEvent,
-} from '../../shared/work-reconciliation'
+} from '../../shared/reconciliation-contracts'
 import { indexWorkerReadings } from '../worker-readings'
 import type { WorkerBindingReading } from '../../shared/worker-reading'
 import { WORKER_OUTPUT_FAILURE } from '../worker-piece-folder'
@@ -233,11 +233,13 @@ import {
   MOVE_IT,
   MOVE_WORDS,
   movedHereLine,
-  type MoveOffer,
-  type MoveOrigin,
-  type MoveRequestAck,
-  type DecideMoveRequestInput,
 } from '../../shared/move-request'
+import type {
+  MoveOffer,
+  MoveOrigin,
+  MoveRequestAck,
+  DecideMoveRequestInput,
+} from '../../shared/move-contracts'
 import {
   BUILT_IN_SKILLS_FAILURE,
   permittedInstalledSkillReminders,
@@ -245,7 +247,8 @@ import {
 import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto'
 import { returnedDocumentIndex } from '../resources/returned-document-index'
 import type { ThemeStore } from '../themes/store'
-import type { AnsweredQuestion, ConversationProviderBlock } from '../../shared/runtime-ipc'
+import type { ConversationProviderBlock } from '../../shared/runtime-ipc'
+import type { AnsweredQuestion } from '../../shared/human-answer-contracts'
 import { CurrentProviderLimitFacts, type CurrentFact } from './current-provider-limit-facts'
 import type { MainThreadWork } from '../stall-watch'
 import type { SkillLaunchSelection } from '../skills/launch-selection'
@@ -397,14 +400,6 @@ import {
   PROVIDER_NAME,
 } from '../../shared/runtime-ipc'
 import type {
-  ModelList,
-  ReportedModel,
-  InstructionProposedEvent,
-  InstructionChangedEvent,
-  InstructionSettledEvent,
-  McpServerRequestedEvent,
-  McpServerRequestForAPerson,
-  McpServerRequestSettledEvent,
   AgentIdentities,
   AgentIdentity,
   AgentIdentityName,
@@ -416,8 +411,17 @@ import type {
   AgentStateMoved,
   RuntimeStatesMessage,
   ProcessMemory,
-  TranscriptEvent,
 } from '../../shared/runtime-ipc'
+import type { ModelList, ReportedModel } from '../../shared/model-choice-contracts'
+import type {
+  InstructionProposedEvent,
+  InstructionChangedEvent,
+  InstructionSettledEvent,
+  McpServerRequestedEvent,
+  McpServerRequestForAPerson,
+  McpServerRequestSettledEvent,
+  TranscriptEvent,
+} from '../../shared/conversation-events'
 import type { CapabilityGrant } from '../../shared/capabilities'
 // ⚑ **A VALUE from that module**: a launch's instructions read the one default set for an identity
 // whose first row is not written yet.
@@ -756,7 +760,6 @@ import {
   type ProvidersChangedMessage,
   type ProviderUsageReading,
   type UsageWindowSeen,
-  type LeadInFront,
   type ProviderVersion,
   type KeptRuleRemoved,
   type KeptRules,
@@ -765,8 +768,6 @@ import {
   type AnswerAck,
   type ProviderAnswerAck,
   type ApprovalModeDisclosure,
-  type SessionSettingChanged,
-  type WhatAPickBecame,
   type CreateSessionInput,
   type CreatedSession,
   type ProviderConfigInfo,
@@ -775,14 +776,10 @@ import {
   type ExportAsked,
   type ExportedSession,
   type HistoryWindow,
-  type HandedPath,
   type ImportedBundle,
   type ImportedFromHome,
   type ImportedRecording,
   type LedgerStatus,
-  type MemoryLoadedEvent,
-  type MemoryNoteEvent,
-  type ModelCatalogue,
   type RebuiltLedger,
   type ProviderCapabilityMap,
   type AgentProviderSet,
@@ -792,43 +789,8 @@ import {
   type FirstMessageRefusal,
   type LaunchRefusal,
   type RuntimeEventMessage,
-  type SessionInstructions,
   type SessionLiveness,
   type SkippedSessionInfo,
-  type RequestEscalatedEvent,
-  type WorkRestartedEvent,
-  type MessageSentEvent,
-  type WorkStallTold,
-  type ToolRefusedEvent,
-  type ReplyUndeliveredEvent,
-  type ReopenedEvent,
-  type LaunchedEvent,
-  type UserDecisionEvent,
-  type TurnAuthorship,
-  type UserTurnEvent,
-  type QueuedMessageEvent,
-  type UnqueuedMessageEvent,
-  type UserCommandEvent,
-  type WorkGivenEvent,
-  type WorkRepliedEvent,
-  type WorkTakenBackEvent,
-  type WorkRetitledEvent,
-  type WorkStatusSetEvent,
-  type WorkRebriefedEvent,
-  type WorkClosedEvent,
-  type WorkSentEvent,
-  type QuestionAskedEvent,
-  type RequestRoutedEvent,
-  type StopUnansweredEvent,
-  type WorkInterruptedEvent,
-  type RequestInterruptedEvent,
-  type QuestionWithdrawnEvent,
-  type QuestionRecipientEndedEvent,
-  type QuestionEndedWithItsPieceEvent,
-  type RestoredFromTheArchiveEvent,
-  type ReplacedByEvent,
-  type ReplacesEvent,
-  type MailboxKind,
   type QueuedMessageDisclosure,
   type QueueOutcome,
   type SessionHandover,
@@ -861,6 +823,58 @@ import {
   MAX_TURN_PARTS,
   theMessagesOf,
 } from '../../shared/runtime-ipc'
+import type {
+  LeadInFront,
+  TurnAuthorship,
+  UserTurnEvent,
+} from '../../shared/human-answer-contracts'
+import type {
+  SessionSettingChanged,
+  WhatAPickBecame,
+  ModelCatalogue,
+} from '../../shared/model-choice-contracts'
+import type { HandedPath } from '../../shared/attachment-contracts'
+import type {
+  MemoryLoadedEvent,
+  MemoryNoteEvent,
+  MessageSentEvent,
+  ToolRefusedEvent,
+  ReplyUndeliveredEvent,
+  ReopenedEvent,
+  LaunchedEvent,
+  UserDecisionEvent,
+  QueuedMessageEvent,
+  UnqueuedMessageEvent,
+  UserCommandEvent,
+  StopUnansweredEvent,
+  RestoredFromTheArchiveEvent,
+  ReplacedByEvent,
+  ReplacesEvent,
+  MailboxKind,
+} from '../../shared/conversation-events'
+import type { SessionInstructions } from '../../shared/instruction-contracts'
+import type {
+  RequestEscalatedEvent,
+  QuestionAskedEvent,
+  RequestRoutedEvent,
+  RequestInterruptedEvent,
+  QuestionWithdrawnEvent,
+  QuestionRecipientEndedEvent,
+  QuestionEndedWithItsPieceEvent,
+} from '../../shared/question-contracts'
+import type {
+  WorkRestartedEvent,
+  WorkStallTold,
+  WorkGivenEvent,
+  WorkRepliedEvent,
+  WorkTakenBackEvent,
+  WorkRetitledEvent,
+  WorkStatusSetEvent,
+  WorkRebriefedEvent,
+  WorkClosedEvent,
+  WorkSentEvent,
+  WorkInterruptedEvent,
+} from '../../shared/task-contracts'
 // ⚑ **F097** — whose words a turn's messages are, read the same way by the fold.
 import { aPersonsOwnWords } from '../../shared/a-persons-own-words'
 import {
@@ -868,9 +882,9 @@ import {
   aRowADeliveryCanStart,
   ledgersSkippedOf,
   readOrSkip,
-  rowsUnreadOnce,
   skipTheLedger,
 } from '../db/session-store'
+import { rowsUnreadOnce } from '../db/rows-unread'
 import {
   committedRowOf,
   type Committed,
@@ -886,12 +900,12 @@ import type {
   RecordedSession,
   ResumableSession,
   ResourceRow,
-  RowsUnread,
   SessionStore,
   ThreadLeadRow,
   WaitingMessage,
   WorkRow,
 } from '../db/session-store'
+import type { RowsUnread } from '../db/rows-unread'
 import { toWireEvent } from './event-wire'
 import { AGENT_TOOL_SERVER, TOOL_NAMES, aWakeThatDidNotHappen, agentToolsFor } from './agent-tools'
 // ⚑ **516 · the registry's rules and its row shape** — a `src/shared` module, so the renderer names
@@ -1014,9 +1028,8 @@ import {
   thePiecesTheTurnNames,
   // ⚑ **D-019 · the rows that move a piece**, and so the name a question's asker waits on.
   PIECE_EVENT_TYPES,
-  type AgentMessageKind,
-  type WaitOn,
 } from '../../shared/tasks'
+import type { AgentMessageKind, WaitOn } from '../../shared/task-contracts'
 import type {
   ConversationWaiting,
   PieceAConversationGave,
@@ -1026,7 +1039,7 @@ import type {
   WhatAConversationIsWaitingOn,
   WhatEachConversationIsWaitingOn,
   WorkGivenOut,
-} from '../../shared/tasks'
+} from '../../shared/task-contracts'
 import {
   REQUEST_IS_OPEN,
   // ⚑ **679 · the kind of a person's request** — the one fact that lets a shared id be settled.
@@ -1055,7 +1068,7 @@ import type {
   ActionFile,
   VisibleQuestion,
   WorkInHand,
-} from '../../shared/questions'
+} from '../../shared/question-contracts'
 import { countedTogether } from '../../shared/workspace-reading'
 import type { WhatNeedsAPerson, WorkspaceReading } from '../../shared/workspace-reading'
 import { THE_APP_DID_IT } from '../../shared/who-did-it'
@@ -1219,12 +1232,14 @@ import {
   sameModel,
   theListedRow,
   theListsSpelling,
-  type AgentModelChoice,
-  type ModelAndEffort,
-  type ModelChoiceSaved,
-  type SelectedModel,
-  type WhereItCameFrom,
 } from '../../shared/model-choice'
+import type {
+  AgentModelChoice,
+  ModelAndEffort,
+  ModelChoiceSaved,
+  SelectedModel,
+  WhereItCameFrom,
+} from '../../shared/model-choice-contracts'
 import {
   admitAnswer,
   A_PERSONS_ANSWER_TO_AN_ENDED_QUESTION,
@@ -1282,12 +1297,14 @@ import {
   NOTHING_SCHEDULED,
   scheduleHeld,
   somethingRunning,
-  type AgentState,
-  type BackgroundCommand,
-  type BackgroundLevel,
-  type ScheduledRow,
-  type ScheduleLevel,
 } from '../../shared/agent-state'
+import type {
+  AgentState,
+  BackgroundCommand,
+  BackgroundLevel,
+  ScheduledRow,
+  ScheduleLevel,
+} from '../../shared/agent-state-contracts'
 // ⚑ **D-029 · a job's time, with its day where that is not today** — {@link scheduleNoticesText}.
 import { clockTimeFrom } from '../../shared/clock'
 import { theZoneReadNow, type LocalZone } from '../../shared/local-time'

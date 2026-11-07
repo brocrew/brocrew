@@ -1,8 +1,9 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import SessionPanel from '../../src/renderer/src/components/SessionPanel.vue'
 import type { PanelAsset } from '../../src/renderer/src/lib/session-panel'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { mount, unmountAll, visible } from './harness'
 
 /**

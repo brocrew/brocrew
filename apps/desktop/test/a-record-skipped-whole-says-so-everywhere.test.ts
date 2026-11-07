@@ -1,3 +1,4 @@
+import type { LedgerWalk } from '../src/shared/question-contracts'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -12,7 +13,7 @@ import { activitySays } from '../src/renderer/src/lib/recent-activity'
 import type { RecentActivityReading } from '../src/shared/recent-activity'
 import { distil, distilSkipping } from '../src/main/runtime/digest'
 import type { DigestRow } from '../src/main/db/session-store'
-import type { LedgerWalk } from '../src/shared/questions'
+
 import {
   NOTHING_GIVEN_OUT,
   workGivenOutView,

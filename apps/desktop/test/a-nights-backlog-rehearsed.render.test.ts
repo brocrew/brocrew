@@ -1,3 +1,5 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { TASK_OUTCOMES, TASK_STALL_CAUSES } from '../src/shared/task-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -57,13 +59,8 @@ import {
 } from '../src/shared/digest'
 import { PERMANENCE_SAID, RAIL_PERMANENCES } from '../src/shared/refusals'
 import { pieceLine, theOwnerOf } from '../src/shared/piece-called'
-import {
-  agentName,
-  type CreatedSession,
-  type RuntimeEventMessage,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
-import { TASK_OUTCOMES, TASK_STALL_CAUSES, UNDRIVEN_SENTENCES } from '../src/shared/tasks'
+import { agentName, type CreatedSession, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { UNDRIVEN_SENTENCES } from '../src/shared/tasks'
 
 /**
  * 🔴 **463 · a night's backlog, rehearsed from the readers** (HO-024's second exit half).

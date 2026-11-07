@@ -1,6 +1,8 @@
-import type { HumanAnswers, HumanFinalContext } from '../../../shared/human-turn-answer'
+import type { HumanAnswers, HumanFinalContext } from '../../../shared/human-answer-contracts'
+import type { TranscriptEvent } from '../../../shared/conversation-events'
+
 import { humanPromptOf } from '../../../shared/human-turn-answer'
-import type { TranscriptEvent } from '../../../shared/runtime-ipc'
+
 import type { AssistantItem, TranscriptItem } from './transcript'
 
 export function startHumanAnswer(

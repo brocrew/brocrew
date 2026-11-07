@@ -1,6 +1,8 @@
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
+import type { PieceRow } from '../src/shared/task-contracts'
 import { describe, expect, it } from 'vitest'
-import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/runtime-ipc'
-import { derivePieces, type PieceRow } from '../src/shared/tasks'
+
+import { derivePieces } from '../src/shared/tasks'
 
 /**
  * # 🔴 F080 review (484) — a stop's asker belongs to the wake it cut, in a ledger written before F080

@@ -1,7 +1,17 @@
-import { MOVE_WORDS, type MoveRequestAck } from '../../../shared/move-request'
+import type { MoveRequestAck } from '../../../shared/move-contracts'
+import type {
+  LedgerWalk,
+  PersonsDecision,
+  PersonsQuestion,
+} from '../../../shared/question-contracts'
+import type { McpServerRequestForAPerson } from '../../../shared/conversation-events'
+import type { WhatEachConversationIsWaitingOn, WorkGivenOut } from '../../../shared/task-contracts'
+import type { WhatAPickBecame } from '../../../shared/model-choice-contracts'
+import type { HandedPath } from '../../../shared/attachment-contracts'
+import { MOVE_WORDS } from '../../../shared/move-request'
 import { computed, reactive, ref, type ComputedRef, type Ref } from 'vue'
 import { hasSomethingToSend } from '../../../shared/runtime-ipc'
-import type { LedgerWalk, PersonsDecision, PersonsQuestion } from '../../../shared/questions'
+
 import type { WhoCalledWhom } from '../../../shared/who-called-whom'
 import type { ProviderLimitSeen } from '../../../shared/provider-limit'
 import type { LimitsDisplayAnswer } from '../../../shared/limits-display'
@@ -10,11 +20,11 @@ import type { StoppedWorkForAPerson } from '../../../shared/stopped-work'
 import type { WorkIncident } from '../../../shared/work-incidents'
 import type { WaitingOnWhoWrote } from '../../../shared/waiting-on-who-wrote'
 import type { InstructionAskWaiting } from '../../../shared/own-instructions'
-import type { McpServerRequestForAPerson } from '../../../shared/runtime-ipc'
+
 import type { RecentActivityReading } from '../../../shared/recent-activity'
 import type { WorkspaceReading } from '../../../shared/workspace-reading'
 import { activityOf, type WhatIsBeingDone } from '../../../shared/what-is-being-done'
-import type { WhatEachConversationIsWaitingOn, WorkGivenOut } from '../../../shared/tasks'
+
 import type { TheWholeForest } from '../../../shared/the-whole-forest'
 import type {
   AnswerAck,
@@ -35,13 +45,11 @@ import type {
   ResourceDrawing,
   ResourceReading,
   ResourceReveal,
-  WhatAPickBecame,
   WorkflowOutputResult,
   InstructionSourceResult,
   RevealResult,
   ConfigFileResult,
   SessionPathTarget,
-  HandedPath,
   LaunchRefusal,
   FirstMessageNotSent,
   ProcessMemory,

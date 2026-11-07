@@ -1,7 +1,8 @@
+import type { AgentState } from '../../src/shared/agent-state-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
-import type { AgentState } from '../../src/shared/agent-state'
+
 import type { ResumableSessionInfo, UnresumableSessionInfo } from '../../src/shared/runtime-ipc'
 import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, visible, type Mounted } from './harness'

@@ -1,12 +1,9 @@
+import type { HandedPath } from '../../shared/attachment-contracts'
+import type { MailboxKind, TheQuestionItAsks } from '../../shared/conversation-events'
+import type { TurnAuthorship } from '../../shared/human-answer-contracts'
 import { randomUUID } from 'node:crypto'
 import type { AStopAskedFor, TurnOrigin } from './turn-origin'
-import type {
-  HandedPath,
-  MailboxKind,
-  QueuedMessageDisclosure,
-  TheQuestionItAsks,
-  TurnAuthorship,
-} from '../../shared/runtime-ipc'
+import type { QueuedMessageDisclosure } from '../../shared/runtime-ipc'
 
 /**
  * 🔴 **The messages one session is holding, and what you can only say about one once it has a

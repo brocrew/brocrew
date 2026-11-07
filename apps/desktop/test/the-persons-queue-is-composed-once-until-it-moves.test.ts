@@ -1,9 +1,9 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { aServiceWorld, RecordingSink, type AServiceWorld } from './helpers/a-service-world'
 import { openDatabase } from '../src/main/db/connection'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
 
 /**
  * Each answer of the person's queue is composed once and shared by every window that asks, until

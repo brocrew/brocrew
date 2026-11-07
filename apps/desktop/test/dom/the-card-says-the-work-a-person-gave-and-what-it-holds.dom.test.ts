@@ -1,3 +1,4 @@
+import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
@@ -7,7 +8,7 @@ import type { AgentFacets } from '../../src/renderer/src/lib/agent-state'
 import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type { WorkThatNamesIt } from '../../src/shared/piece-called'
-import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/questions'
+
 import type { AgentIdentity } from '../../src/shared/runtime-ipc'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import { assertDrawn, cutsOf, drawnReady, titleRecovers } from './drawn'

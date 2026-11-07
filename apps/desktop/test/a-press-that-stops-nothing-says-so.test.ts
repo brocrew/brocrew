@@ -1,3 +1,4 @@
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -9,7 +10,7 @@ import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { howWorkStopped } from '../src/shared/how-work-stopped'
 import type { ActedBy } from '../src/shared/who-did-it'
 import { derivePieces } from '../src/shared/tasks'
-import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import {
   aHostOverScriptedCodex,
   waitFor,

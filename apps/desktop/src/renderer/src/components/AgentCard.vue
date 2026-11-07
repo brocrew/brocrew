@@ -1,11 +1,14 @@
 <script setup lang="ts">
+import type { AgentState as OneState } from '../../../shared/agent-state-contracts'
+import type { HumanTurnAnswer } from '../../../shared/human-answer-contracts'
+
 import type { ProviderLimitDisplay } from '../lib/provider-limit-status'
 import type { OwnWait } from '../lib/conversation-list'
 import { fileManagerHere } from '../lib/this-computer'
 import { showName } from '../lib/message-paths'
 import { computed, ref, watch } from 'vue'
 import { assetUrl } from '../../../shared/asset-url'
-import type { AgentState as OneState } from '../../../shared/agent-state'
+
 import type { WorkThatNamesIt } from '../../../shared/piece-called'
 import type { AgentFacets } from '../lib/agent-state'
 import { agoWords } from '../lib/clock'
@@ -22,7 +25,7 @@ import type { PanelAsset, PanelEntry, SessionPanel as SessionPanelView } from '.
 import type { TranscriptState } from '../lib/transcript'
 import { isVisibleIn, type TranscriptMode } from '../lib/transcript-mode'
 import { panelWords } from '../lib/latest-words'
-import type { HumanTurnAnswer } from '../../../shared/human-turn-answer'
+
 import HumanAnswerDialog from './HumanAnswerDialog.vue'
 import type { CastTask } from '../lib/working-together'
 import { useMinuteClock } from '../composables/useMinuteClock'

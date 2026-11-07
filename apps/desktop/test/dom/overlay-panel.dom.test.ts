@@ -1,12 +1,9 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import AgentState from '../../src/renderer/src/components/AgentState.vue'
 import ChildWorkViewer from '../../src/renderer/src/components/ChildWorkViewer.vue'
 import WorkflowOutputViewer from '../../src/renderer/src/components/WorkflowOutputViewer.vue'
-import type {
-  ChildWorkResult,
-  TranscriptEvent,
-  WorkflowOutputResult,
-} from '../../src/shared/runtime-ipc'
+import type { ChildWorkResult, WorkflowOutputResult } from '../../src/shared/runtime-ipc'
 import {
   channelGap,
   contrast,

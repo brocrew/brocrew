@@ -1,3 +1,8 @@
+import type {
+  LedgerWalk,
+  PersonsDecision,
+  RequestOnlyAPersonCanSettle,
+} from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
@@ -8,13 +13,7 @@ import {
   readProviderLimit,
   type ProviderLimitSeen,
 } from '../../src/shared/provider-limit'
-import {
-  decisionReading,
-  readingSentence,
-  type LedgerWalk,
-  type PersonsDecision,
-  type RequestOnlyAPersonCanSettle,
-} from '../../src/shared/questions'
+import { decisionReading, readingSentence } from '../../src/shared/questions'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 
 /**

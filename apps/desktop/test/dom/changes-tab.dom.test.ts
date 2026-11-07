@@ -1,9 +1,10 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 // The live smokes' tab-ownership walk — a plain `.mjs` module, imported here for the one hook this
 // file mounts and the shared drawer fixture does not. See the assertion at the end of §2's test.
 import { tabOfHook } from '../../../../scripts/lib/tab-flow.mjs'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { markPermissionAnswered } from '../../src/renderer/src/lib/transcript'
 import {

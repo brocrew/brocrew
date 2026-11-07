@@ -1,3 +1,5 @@
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
+import type { PieceRow } from '../src/shared/task-contracts'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -14,8 +16,8 @@ import {
   replacedSignInNotice,
   type NoticeItem,
 } from '../src/renderer/src/lib/transcript'
-import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/runtime-ipc'
-import { UNDRIVEN_SENTENCES, derivePieces, type PieceRow } from '../src/shared/tasks'
+
+import { UNDRIVEN_SENTENCES, derivePieces } from '../src/shared/tasks'
 
 /**
  * # A Codex key that stops working is said as the key, not *"sign in again"*

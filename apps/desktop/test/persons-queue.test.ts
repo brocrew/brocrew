@@ -1,3 +1,16 @@
+import type {
+  AboutWork,
+  EscalationChain,
+  HowItWasRaised,
+  LedgerWalk,
+  LedgerWalkKind,
+  OfferedAnswer,
+  PersonsDecision,
+  PersonsQuestion,
+  RequestOnlyAPersonCanSettle,
+  RoutedRequest,
+  WorkInHand,
+} from '../src/shared/question-contracts'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,17 +23,6 @@ import {
   decisionReading,
   escalationChain,
   readingSentence,
-  type EscalationChain,
-  type PersonsDecision,
-  type AboutWork,
-  type HowItWasRaised,
-  type PersonsQuestion,
-  type LedgerWalk,
-  type LedgerWalkKind,
-  type OfferedAnswer,
-  type RequestOnlyAPersonCanSettle,
-  type RoutedRequest,
-  type WorkInHand,
   aPersonsSince,
 } from '../src/shared/questions'
 import { ACTIVITY_READ_EVERY_MS } from '../src/renderer/src/lib/recent-activity'

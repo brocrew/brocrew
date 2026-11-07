@@ -1,10 +1,12 @@
+import type { WorkReport } from '../../src/shared/task-contracts'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, shallowRef } from 'vue'
 import { createSessionRecord } from '../../src/renderer/src/lib/session-record'
 import { page } from 'vitest/browser'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import type { WorkReport } from '../../src/shared/tasks'
-import type { ResourceReading, TranscriptEvent } from '../../src/shared/runtime-ipc'
+
+import type { ResourceReading } from '../../src/shared/runtime-ipc'
 import {
   channelGap,
   contrast,

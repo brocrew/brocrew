@@ -1,9 +1,10 @@
+import type { LedgerWalk } from './question-contracts'
 import type { Provider } from '@brobot2/shared'
 // ⚑ **TYPES and nothing else, in both directions** (543) — `who-called-whom.ts`' own rule, kept
 // for the same reason: an edge that is erased at build time cannot hand this module a database, a
 // host or a clock. ⛔ There is no value import here at all, so nothing this file does can cost a
 // renderer a bundle (`a-value-import-from-shared-costs-the-renderer-135kb`).
-import type { LedgerWalk } from './questions'
+
 import type { RunningState, SessionStatus } from './runtime-ipc'
 import type { WorkEdge } from './who-called-whom'
 

@@ -1,3 +1,5 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import type { PieceRow } from '../src/shared/task-contracts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { profileExecutionFile, writeProfileExecution } from '../src/main/profile-execution-file'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -7,9 +9,9 @@ import {
   type GiveOutcome,
   type RuntimeHost,
 } from '../src/main/runtime/runtime-host'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import { clockTime } from '../src/shared/clock'
-import type { PieceRow } from '../src/shared/tasks'
+
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 /**

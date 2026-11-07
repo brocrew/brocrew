@@ -1,3 +1,4 @@
+import type { ModelList } from '../src/shared/model-choice-contracts'
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -11,7 +12,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import type { ModelList, RuntimeBridge } from '../src/shared/runtime-ipc'
+import type { RuntimeBridge } from '../src/shared/runtime-ipc'
 import { MODEL_CHOICE_SAID, whatAModelChoiceReaches } from '../src/shared/model-choice'
 import { createAgentStore, type AgentStore } from '../src/renderer/src/lib/agent-store'
 import {

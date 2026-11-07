@@ -1,8 +1,10 @@
+import type { SessionInstructions } from '../../src/shared/instruction-contracts'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import AgentInstructionsSheet from '../../src/renderer/src/components/AgentInstructionsSheet.vue'
-import type { SessionInstructions, TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { mount, paneProps, record, toldProps, unmountAll, type Mounted } from './harness'
 
 /**

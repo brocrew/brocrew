@@ -1,5 +1,6 @@
 import { CHANNEL_REFUSAL_SENTENCES } from '@brobot2/runtime'
-import { eachOrSkipped, ledgersSkippedOf, rowsUnreadOnce } from '../db/session-store'
+import { eachOrSkipped, ledgersSkippedOf } from '../db/session-store'
+import { rowsUnreadOnce } from '../db/rows-unread'
 import type { SessionStore } from '../db/session-store'
 import {
   REQUEST_IS_OPEN,
@@ -20,8 +21,9 @@ import type {
   RaisedQuestion,
   RoutedRequest,
   WorkInHand,
-} from '../../shared/questions'
-import { workNamed, type PieceRow } from '../../shared/tasks'
+} from '../../shared/question-contracts'
+import { workNamed } from '../../shared/tasks'
+import type { PieceRow } from '../../shared/task-contracts'
 
 type PersonsQuestionReads = {
   readonly store: Pick<

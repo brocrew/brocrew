@@ -1,5 +1,5 @@
 import type { HowAPieceEnded } from '../../shared/piece-called'
-import type { PieceRow, StatusLine } from '../../shared/tasks'
+import type { PieceRow, StatusLine } from '../../shared/task-contracts'
 import type { Exchange } from '../../shared/last-exchange'
 import type { ResourceRow } from '../db/session-store'
 

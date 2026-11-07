@@ -1,3 +1,7 @@
+import type {
+  PersonsDecision,
+  RequestOnlyAPersonCanSettle,
+} from '../../src/shared/question-contracts'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
@@ -6,12 +10,7 @@ import {
   type AttentionRequest,
 } from '../../src/renderer/src/lib/attention'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
-import {
-  decisionReading,
-  readingSentence,
-  type PersonsDecision,
-  type RequestOnlyAPersonCanSettle,
-} from '../../src/shared/questions'
+import { decisionReading, readingSentence } from '../../src/shared/questions'
 import type { LookStage } from '../capture'
 
 /**

@@ -1,13 +1,13 @@
 import type { Provider } from '@brobot2/shared'
-import type { AgentState } from '../../shared/agent-state'
+import type { AgentState } from '../../shared/agent-state-contracts'
 import type { AppNotice } from '../../shared/app-notice'
 import type {
-  AnsweredQuestion,
-  HandedPath,
   QueueOutcome,
-  TheQuestionItAsks,
 } from '../../shared/runtime-ipc'
-import type { WorkReport } from '../../shared/tasks'
+import type { AnsweredQuestion } from '../../shared/human-answer-contracts'
+import type { HandedPath } from '../../shared/attachment-contracts'
+import type { TheQuestionItAsks } from '../../shared/conversation-events'
+import type { WorkReport } from '../../shared/task-contracts'
 import type { GivenFolder } from '../../shared/work-folders'
 import type { GivenInput } from '../db/session-store'
 import type { InterruptRefusal } from './interrupt-rails'

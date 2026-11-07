@@ -1,3 +1,4 @@
+import type { HandedPath } from '../../src/shared/attachment-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
 import PromptComposer, {
@@ -5,7 +6,7 @@ import PromptComposer, {
 } from '../../src/renderer/src/components/PromptComposer.vue'
 import { createDraftBook, draftKey, type DraftBook } from '../../src/renderer/src/lib/drafts'
 import { keepDraftsOnDisk, restoreDrafts } from '../../src/renderer/src/lib/kept-drafts'
-import type { HandedPath } from '../../src/shared/runtime-ipc'
+
 import type { SavedDrafts } from '../../src/shared/saved-drafts'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 

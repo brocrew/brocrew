@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
-import { rowsUnreadOnce } from '../src/main/db/session-store'
+import { rowsUnreadOnce } from '../src/main/db/rows-unread'
 
 // Only fictional SQLite rows are used. No host or provider is opened in this suite.
 describe('complete bounded worker store reads', () => {

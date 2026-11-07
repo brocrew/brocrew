@@ -1,10 +1,10 @@
 import type { Provider } from '@brobot2/shared'
 import type { WorkerBindingReading } from '../../shared/worker-reading'
-import type { AgentState } from '../../shared/agent-state'
+import type { AgentState } from '../../shared/agent-state-contracts'
 import type { WorkThatNamesIt } from '../../shared/piece-called'
 import type { AskToStop, LastEndedTurn } from '../../shared/how-work-stopped'
-import type { TaskState } from '../../shared/tasks'
-import type { ModelAndEffort } from '../../shared/model-choice'
+import type { TaskState } from '../../shared/task-contracts'
+import type { ModelAndEffort } from '../../shared/model-choice-contracts'
 import type { ArchivedConversations } from '../archived-file'
 
 /**

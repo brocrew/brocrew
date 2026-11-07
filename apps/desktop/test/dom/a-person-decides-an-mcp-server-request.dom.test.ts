@@ -1,3 +1,4 @@
+import type { McpServerRequestForAPerson } from '../../src/shared/conversation-events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { userEvent } from 'vitest/browser'
 import { nextTick } from 'vue'
@@ -7,12 +8,7 @@ import PersonsQueue from '../../src/renderer/src/components/PersonsQueue.vue'
 import ToolsRegister from '../../src/renderer/src/components/ToolsRegister.vue'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
-import type {
-  AgentIdentities,
-  McpServerRequestForAPerson,
-  RuntimeBridge,
-  AnswerAck,
-} from '../../src/shared/runtime-ipc'
+import type { AgentIdentities, RuntimeBridge, AnswerAck } from '../../src/shared/runtime-ipc'
 import { EXTERNAL_MCP_EVERYONE_MEANS } from '../../src/shared/external-mcp'
 import { mount, unmountAll } from './harness'
 

@@ -1,3 +1,6 @@
+import { TASK_STATES } from '../src/shared/task-contracts'
+import type { TaskState } from '../src/shared/task-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -20,8 +23,8 @@ import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import type { CallerIdentity, RuntimeEventSink } from './helpers/giver-notice-host'
 import { agentCallerId, type AgentToolHost, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { TASK_IS_OPEN, TASK_STATES, derivePieces, type TaskState } from '../src/shared/tasks'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import { TASK_IS_OPEN, derivePieces } from '../src/shared/tasks'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **379 · a task you can see** — Slice 4 S1, HO-006 §4.1, HO-007 S1 + criterion 2.
@@ -1295,13 +1298,13 @@ describe('379 · a task you can see', () => {
       // ⚑ **A SEVENTH edge, types only** — `model-choice.ts`'s `ModelAndEffort`, the pair a give
       // asked for, copied onto its row. ⛔ `import type`.
       expect(imports).toEqual([
+        './conversation-events',
+        './question-contracts',
+        './task-contracts',
+        './task-contracts',
         './how-work-stopped',
-        './runtime-ipc',
         './a-persons-own-words',
-        './questions',
         './piece-called',
-        './work-folders',
-        './model-choice',
       ])
       // 🔴 **494 · the first edge that takes a VALUE** — `whoCancelledIt`, the derivation that reads
       // a cancel's actor once for the three readers that fold one. ⚠️ Which is why the property
@@ -1311,11 +1314,16 @@ describe('379 · a task you can see', () => {
       )
       expect(lines).toHaveLength(7)
       const values = lines.filter((line) => !line.startsWith('import type '))
-      expect(values).toHaveLength(2)
-      expect(values[0]).toContain('./how-work-stopped')
-      expect(values[0]).toContain('whoCancelledIt')
-      expect(values[1]).toContain('./a-persons-own-words')
-      expect(values[1]).toContain('aPersonsOwnWords')
+      expect(values).toHaveLength(3)
+      expect(values[0]).toBe("import { AGENT_MESSAGE_KINDS, TASK_STATES } from './task-contracts'")
+      expect(values[1]).toContain('./how-work-stopped')
+      expect(values[1]).toContain('whoCancelledIt')
+      expect(values[2]).toContain('./a-persons-own-words')
+      expect(values[2]).toContain('aPersonsOwnWords')
+      const contracts = sourceOf(sharedRoot, 'task-contracts.ts')
+      for (const line of [...contracts.matchAll(/^import .*$/gm)]) {
+        expect(line[0].startsWith('import type '), line[0]).toBe(true)
+      }
       // ⛔ **F097 · and the second reaches a ledger type and nothing else**.
       expect(
         [
@@ -1323,12 +1331,12 @@ describe('379 · a task you can see', () => {
             /^import\s[\s\S]*?from\s+'[^']+'/gm,
           ),
         ].map((m) => m[0]),
-      ).toEqual(["import type { UserTurnEvent } from './runtime-ipc'"])
+      ).toEqual(["import type { UserTurnEvent } from './human-answer-contracts'"])
       // ⛔ **And the one module it can hold a value from reaches a ledger type and a vocabulary and
       // nothing else.**
       const reached = sourceOf(sharedRoot, 'how-work-stopped.ts')
       expect([...reached.matchAll(/^import\s[\s\S]*?from\s+'([^']+)'/gm)].map((m) => m[1])).toEqual(
-        ['./runtime-ipc', './who-did-it'],
+        ['./conversation-events', './who-did-it'],
       )
       expect([...sourceOf(sharedRoot, 'who-did-it.ts').matchAll(/^import\s/gm)]).toHaveLength(0)
       // ⚑ **The control that plants one of each** (standing rule 12): the same matcher over a value
@@ -1344,9 +1352,9 @@ describe('379 · a task you can see', () => {
       // is checked against. (`661`'s `LastToldAboutWork` went with `aNoticeIsOwed`, D-016c.)
       // ⛔ Still `import type`, so the property above is untouched: it can hand the fold nothing.
       expect(source).toMatch(
-        /^import type \{ PersistedEventInfo, TranscriptEvent \} from '\.\/runtime-ipc'$/m,
+        /^import type \{ PersistedEventInfo, TranscriptEvent \} from '\.\/conversation-events'$/m,
       )
-      expect(source).toMatch(/^import type \{ WorkInHand \} from '\.\/questions'$/m)
+      expect(source).toMatch(/^import type \{ WorkInHand \} from '\.\/question-contracts'$/m)
       expect(source).toMatch(
         /^import type \{ HowAPieceEnded, WorkThatNamesIt \} from '\.\/piece-called'$/m,
       )

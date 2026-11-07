@@ -1,4 +1,4 @@
-import type { TaskState } from './tasks'
+import type { TaskState } from './task-contracts'
 
 /** Work state words for views and tools. */
 export const WORK_STATE_WORD: Readonly<Record<TaskState, string>> = {

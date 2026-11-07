@@ -1,3 +1,4 @@
+import type { PieceRow } from '../../shared/task-contracts'
 import Database from 'better-sqlite3'
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
@@ -13,8 +14,8 @@ import {
 } from '../../shared/work-search'
 import { formOfName } from '../../shared/documents'
 import { workFileGroup } from '../../shared/work-file-groups'
-import type { PieceRow } from '../../shared/tasks'
-import { createSessionStore, rowsUnreadOnce, type SessionStore } from './session-store'
+import { createSessionStore, type SessionStore } from './session-store'
+import { rowsUnreadOnce } from './rows-unread'
 import {
   WorkSearchPageBudget,
   workSearchMaterialization,

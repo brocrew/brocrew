@@ -122,6 +122,15 @@ export function profilesToProbe(input: {
 </script>
 
 <script setup lang="ts">
+import type { WhatAPickBecame } from '../../../shared/model-choice-contracts'
+import type { HandedPath } from '../../../shared/attachment-contracts'
+import type { WhatEachConversationIsWaitingOn } from '../../../shared/task-contracts'
+import type {
+  LedgerWalk,
+  PersonsDecision,
+  PersonsQuestion,
+} from '../../../shared/question-contracts'
+import type { McpServerRequestForAPerson } from '../../../shared/conversation-events'
 import { closeWorkSays } from '../lib/close-work'
 import { moveRequestFromWindow } from '../lib/move-request'
 import {
@@ -154,14 +163,12 @@ import type {
   ProviderVersion,
   UserInputResponse,
   ResourceReading,
-  WhatAPickBecame,
   KeptFile,
   WorkflowOutputResult,
   InstructionSourceResult,
   RevealResult,
   ConfigFileResult,
   SessionPathTarget,
-  HandedPath,
 } from '../../../shared/runtime-ipc'
 import {
   agentName,
@@ -248,7 +255,7 @@ import {
   whoseWorkIn,
   stoppedWorkIn,
 } from '../lib/conversation-waits'
-import type { WhatEachConversationIsWaitingOn } from '../../../shared/tasks'
+
 import type { WhatIsBeingDone } from '../../../shared/what-is-being-done'
 import type { TheWholeForest } from '../../../shared/the-whole-forest'
 import { forestView } from '../lib/the-forest'
@@ -275,13 +282,13 @@ import type { WorkspaceReading } from '../../../shared/workspace-reading'
 import { useOverlays, type Overlay } from '../lib/overlay-store'
 import { useSessionStore } from '../composables/useSessionStore'
 import { LAUNCHER, useSurface } from '../composables/useSurface'
-import type { LedgerWalk, PersonsDecision, PersonsQuestion } from '../../../shared/questions'
+
 import type { StalledWork } from '../../../shared/stalled-work'
 import type { StoppedWorkForAPerson } from '../../../shared/stopped-work'
 import type { WorkIncident } from '../../../shared/work-incidents'
 import type { WaitingOnWhoWrote } from '../../../shared/waiting-on-who-wrote'
 import type { InstructionAskWaiting } from '../../../shared/own-instructions'
-import type { AnswerAck, McpServerRequestForAPerson } from '../../../shared/runtime-ipc'
+import type { AnswerAck } from '../../../shared/runtime-ipc'
 import type { FirstMessageCameTo, LaunchDoor, SendIntent } from '../lib/session-store'
 import type { TranscriptMode } from '../lib/transcript-mode'
 import { createWindow, openAt, prependPage, type WindowState } from '../lib/transcript-window'

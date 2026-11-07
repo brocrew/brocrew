@@ -1,3 +1,4 @@
+import type { SessionInstructions } from '../src/shared/instruction-contracts'
 import { performance } from 'node:perf_hooks'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -20,7 +21,6 @@ import {
   agentName,
   type AgentIdentity,
   type RuntimeEventMessage,
-  type SessionInstructions,
 } from '../src/shared/runtime-ipc'
 import { HUMAN_NAMES, aNameForANewAgent } from '../src/shared/human-names'
 

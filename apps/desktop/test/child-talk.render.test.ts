@@ -1,13 +1,9 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import ChildWorkViewer from '../src/renderer/src/components/ChildWorkViewer.vue'
-import type {
-  ChildSendResult,
-  ChildStateResult,
-  ChildWorkResult,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { ChildSendResult, ChildStateResult, ChildWorkResult } from '../src/shared/runtime-ipc'
 
 /**
  * # The composer in the sub-agent viewer (296) — what SSR can and cannot see

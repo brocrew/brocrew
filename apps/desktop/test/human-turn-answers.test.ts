@@ -1,5 +1,6 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { panelWords } from '../src/renderer/src/lib/latest-words'
 import { carryForward, foldWindow } from '../src/renderer/src/lib/transcript-window'

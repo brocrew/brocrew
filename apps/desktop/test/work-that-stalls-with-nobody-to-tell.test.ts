@@ -1,3 +1,6 @@
+import { LEDGER_WALK_KINDS } from '../src/shared/question-contracts'
+import type { PieceRow, WorkStallTold } from '../src/shared/task-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -22,14 +25,14 @@ import { runtimeCommandSchema } from '../src/main/runtime/ipc'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { LEDGER_WALK_KINDS, WALK_COVERS } from '../src/shared/questions'
+import { WALK_COVERS } from '../src/shared/questions'
 import { UNDRIVEN_SENTENCES, stalledWithACause } from '../src/shared/tasks'
-import type { PieceRow } from '../src/shared/tasks'
+
 import { stalledWorkKey, stalledWorkSaid } from '../src/shared/stalled-work'
 import type { StalledWork } from '../src/shared/stalled-work'
 import { KIND_WORDS, stalledWorkLead, stalledWorkView } from '../src/renderer/src/lib/persons-queue'
 import { OPEN_THE_CONVERSATION } from '../src/renderer/src/lib/taking-over'
-import type { RuntimeEventMessage, TranscriptEvent, WorkStallTold } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **557 · work that stalls with nobody left to tell** — HO-018 §2.1's criterion 4, whose

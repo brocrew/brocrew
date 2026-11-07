@@ -1,7 +1,8 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { defineComponent, h } from 'vue'
 import AgentInputPopup from '../../src/renderer/src/components/AgentInputPopup.vue'
 import OverlayHost from '../../src/renderer/src/components/OverlayHost.vue'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { record } from '../../test/dom/harness'
 import { givenAnswer } from '../../test/dom/what-this-agent-was-given.fixture'
 

@@ -1,3 +1,13 @@
+import type {
+  AskedQuestion,
+  LedgerWalk,
+  PersonsDecision,
+  PersonsQuestion,
+  RequestOnlyAPersonCanSettle,
+  RoutedRequest,
+  WorkInHand,
+} from '../../src/shared/question-contracts'
+import type { McpServerRequestForAPerson } from '../../src/shared/conversation-events'
 import { nextTick } from 'vue'
 import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
 import {
@@ -19,15 +29,8 @@ import {
   decisionReading,
   escalationChain,
   readingSentence,
-  type AskedQuestion,
-  type LedgerWalk,
-  type PersonsDecision,
-  type PersonsQuestion,
-  type RequestOnlyAPersonCanSettle,
-  type RoutedRequest,
-  type WorkInHand,
 } from '../../src/shared/questions'
-import type { McpServerRequestForAPerson } from '../../src/shared/runtime-ipc'
+
 import type { StalledWork } from '../../src/shared/stalled-work'
 import type { StoppedWorkForAPerson } from '../../src/shared/stopped-work'
 import type { WaitingOnWhoWrote } from '../../src/shared/waiting-on-who-wrote'

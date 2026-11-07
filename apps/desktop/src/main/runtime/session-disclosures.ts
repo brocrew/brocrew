@@ -5,13 +5,12 @@ import {
   PROVIDER_NAME,
   type ApprovalModeDisclosure,
   type PlanGoAheadDisclosure,
-  type SessionSettingsDisclosure,
   type QueuedMessageDisclosure,
   type ConversationProviderBlock,
   type SessionLiveness,
-  type SessionInstructions,
-  type ReportedModel,
 } from '../../shared/runtime-ipc'
+import type { SessionSettingsDisclosure, ReportedModel } from '../../shared/model-choice-contracts'
+import type { SessionInstructions } from '../../shared/instruction-contracts'
 import type { WorkFolderGrant } from '../../shared/work-folders'
 import { goAheadNotSent } from '../../shared/the-go-ahead'
 import { clockTimeFrom } from '../../shared/clock'

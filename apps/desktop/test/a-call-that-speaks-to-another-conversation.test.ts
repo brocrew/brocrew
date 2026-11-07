@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import {
   applyEvent,
@@ -18,7 +19,7 @@ import {
 } from '../src/renderer/src/lib/outgoing-card'
 import { argumentExcerpt } from '../src/renderer/src/lib/argument-excerpt'
 import { OPEN_THE_CONVERSATION } from '../src/renderer/src/lib/taking-over'
-import { agentName, type AgentIdentity, type TranscriptEvent } from '../src/shared/runtime-ipc'
+import { agentName, type AgentIdentity } from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 658 · A call that put this conversation's words into ANOTHER one

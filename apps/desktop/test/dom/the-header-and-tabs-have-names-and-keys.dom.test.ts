@@ -1,3 +1,4 @@
+import type { WorkGivenOut } from '../../src/shared/task-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { defineComponent, h, nextTick, ref } from 'vue'
@@ -6,7 +7,7 @@ import SessionHeader from '../../src/renderer/src/components/SessionHeader.vue'
 import { DRAWER_TABS, type DrawerTab } from '../../src/renderer/src/lib/drawer'
 import type { WorkGivenOutReading } from '../../src/renderer/src/lib/work-given-out'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
-import type { WorkGivenOut } from '../../src/shared/tasks'
+
 import { META, drawerProps, mount, unmountAll } from './harness'
 
 /**

@@ -3,8 +3,9 @@ import type {
   ConversationWaiting,
   HeldWork,
   WhatEachConversationIsWaitingOn,
-} from '../../../shared/tasks'
-import type { AgentState, StoppedPiece } from '../../../shared/agent-state'
+} from '../../../shared/task-contracts'
+import type { AgentState, StoppedPiece } from '../../../shared/agent-state-contracts'
+
 import { waitsNotReadSays } from './rows-unread'
 
 /**

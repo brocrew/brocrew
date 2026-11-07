@@ -1,13 +1,9 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { allProviderCapabilities, isNetUnchanged as runtimeNetUnchanged } from '@brobot2/runtime'
-import type {
-  FileChange,
-  RuntimeEvent,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { FileChange, RuntimeEvent, RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import {
   changeSet,
   diffBody,

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { HumanTurnAnswer } from '../../../shared/human-turn-answer'
+import type { HumanTurnAnswer } from '../../../shared/human-answer-contracts'
+
 import MarkdownWords from './MarkdownWords.vue'
 import OverlayHost from './OverlayHost.vue'
 

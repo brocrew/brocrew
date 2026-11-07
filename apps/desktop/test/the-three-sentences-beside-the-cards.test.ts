@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -23,12 +24,7 @@ import {
   type OutgoingCardWords,
 } from '../src/renderer/src/lib/outgoing-card'
 import { THIS_CONVERSATION, THIS_CONVERSATION_FIRST } from '../src/renderer/src/lib/from-outside'
-import {
-  agentName,
-  profileLabel,
-  type AgentIdentity,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { agentName, profileLabel, type AgentIdentity } from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 667 · The three sentences beside the new cards

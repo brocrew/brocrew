@@ -1,4 +1,5 @@
-import type { AuthState, ModelList, Provider, ProviderProgram } from '../../../shared/runtime-ipc'
+import type { ModelList } from '../../../shared/model-choice-contracts'
+import type { AuthState, Provider, ProviderProgram } from '../../../shared/runtime-ipc'
 import { theFormStartsOn, type HeldList } from './model-lists'
 
 export function needsProviderSetup(detail: string): boolean {

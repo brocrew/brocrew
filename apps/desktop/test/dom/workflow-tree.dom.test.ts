@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { nextTick, reactive } from 'vue'
 import { afterEach, describe, expect, it } from 'vitest'
 import WorkflowEntry from '../../src/renderer/src/components/WorkflowEntry.vue'
@@ -8,7 +9,6 @@ import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcr
 import type {
   ChildWorkInput,
   ChildWorkResult,
-  TranscriptEvent,
   WorkflowOutputResult,
 } from '../../src/shared/runtime-ipc'
 import {

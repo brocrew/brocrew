@@ -1,4 +1,5 @@
-import type { WorkReport } from '../../../shared/tasks'
+import type { WorkReport } from '../../../shared/task-contracts'
+
 import type { TranscriptItem } from './transcript'
 
 /**

@@ -1,5 +1,5 @@
 import type { NotStartedBecause } from '@brobot2/runtime'
-import type { ScheduleLevel } from '../../shared/agent-state'
+import type { ScheduleLevel } from '../../shared/agent-state-contracts'
 import { clockTimeFrom } from '../../shared/clock'
 import type { ReceiptSchedulePlan, ScheduleNotice } from '../../shared/schedule-receipts'
 import type { ToldNotice } from '../schedule-attempts-file'

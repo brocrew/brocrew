@@ -1,3 +1,5 @@
+import type { AgentState } from '../../src/shared/agent-state-contracts'
+import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
@@ -5,7 +7,7 @@ import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import TeamForest from '../../src/renderer/src/components/TeamForest.vue'
 import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { facetsOfState, type RailSays } from '../../src/renderer/src/lib/agent-state'
-import { agentStateWords, type AgentState } from '../../src/shared/agent-state'
+import { agentStateWords } from '../../src/shared/agent-state'
 import { DRAWER_W_MAX, DRAWER_W_MIN, TRANSCRIPT_MIN } from '../../src/renderer/src/lib/drawer'
 import { NOBODY_IN_THIS_APP_SPAWNED_IT } from '../../src/renderer/src/lib/working-together'
 import {
@@ -13,7 +15,7 @@ import {
   OPEN_THE_CONVERSATION,
 } from '../../src/renderer/src/lib/taking-over'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
-import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/questions'
+
 import type { AgentIdentity } from '../../src/shared/runtime-ipc'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import type { ForestNode } from '../../src/shared/the-whole-forest'

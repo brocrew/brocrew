@@ -1,5 +1,5 @@
 // Independent of the normal window.api bridge: recovery/setup pages must remain inspectable.
-import { requireCI } from './contract.mjs'
+import { requireCI } from './fixture-guards.mjs'
 import { closedFrames } from './diagnostics.mjs'
 import { bounded } from './processes.mjs'
 

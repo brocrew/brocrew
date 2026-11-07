@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -21,7 +22,6 @@ import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { A_PERSONS_ANSWER_TO_AN_ENDED_QUESTION } from '../src/main/runtime/question-rails'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **D-017 · R6 — an answer a quit cannot lose** (D-017 §3, decision 4's queue case, and the

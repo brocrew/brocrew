@@ -1,3 +1,5 @@
+import type { AgentState } from '../src/shared/agent-state-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -18,13 +20,12 @@ import { conversationList } from '../src/renderer/src/lib/conversation-list'
 import { aWaitIsReadFrom } from '../src/shared/questions'
 import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import type { AgentState } from '../src/shared/agent-state'
+
 import type {
   AgentIdentity,
   ResumableSessionInfo,
   RuntimeEventMessage,
   RuntimeStatesMessage,
-  TranscriptEvent,
   UnresumableSessionInfo,
 } from '../src/shared/runtime-ipc'
 import { proseSpans } from './lib/prose-spans'

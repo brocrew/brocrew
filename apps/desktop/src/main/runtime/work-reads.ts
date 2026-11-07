@@ -1,9 +1,15 @@
-import { ledgersSkippedOf, rowsUnreadOnce } from '../db/session-store'
-import type { RowsUnread, SessionStore, WorkRow } from '../db/session-store'
+import { ledgersSkippedOf } from '../db/session-store'
+import { rowsUnreadOnce } from '../db/rows-unread'
+import type { SessionStore, WorkRow } from '../db/session-store'
+import type { RowsUnread } from '../db/rows-unread'
 import { composeWhatEachPieceIsWaitingOn } from '../../shared/tasks'
-import type { PieceRow, WhatAConversationIsWaitingOn, WorkGivenOut } from '../../shared/tasks'
+import type {
+  PieceRow,
+  WhatAConversationIsWaitingOn,
+  WorkGivenOut,
+} from '../../shared/task-contracts'
 import { openQuestionsByWork } from '../../shared/questions'
-import type { LedgerWalk } from '../../shared/questions'
+import type { LedgerWalk } from '../../shared/question-contracts'
 import type { Exchange } from '../../shared/last-exchange'
 import type { RunningState } from '../../shared/runtime-ipc'
 import type { LastReported, SpawnEdge, WhoCalledWhom, WorkEdge } from '../../shared/who-called-whom'

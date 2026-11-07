@@ -11,7 +11,7 @@ import {
   withIndependentDrain as correctedDrain,
 } from '../gates/plugin-packaged/processes.mjs'
 import { removeFixture as correctedRemove } from '../gates/plugin-packaged/prepare.mjs'
-import { ownedRoot } from '../gates/plugin-packaged/contract.mjs'
+import { ownedRoot } from '../gates/plugin-packaged/fixture-guards.mjs'
 // Kernel process observations are POSIX-only; Windows has no such gate.
 const describe = platformDescribe.skipIf(process.platform === 'win32')
 const roots = []

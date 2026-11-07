@@ -1,4 +1,5 @@
-import type { SessionInstructions } from '../../../shared/runtime-ipc'
+import type { SessionInstructions } from '../../../shared/instruction-contracts'
+
 import {
   claimedLayer,
   observedLayer,

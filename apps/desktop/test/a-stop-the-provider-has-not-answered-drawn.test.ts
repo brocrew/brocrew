@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -24,7 +25,7 @@ import {
   foldWindow,
 } from '../src/renderer/src/lib/transcript-window'
 import { ASKED_TO_STOP, WHO_STOPPED_IT, stoppedBy } from '../src/shared/how-work-stopped'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import {
   aHostOverScriptedCodex,
   waitFor,

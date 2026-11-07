@@ -1,5 +1,6 @@
+import type { AgentState as OneState } from '../../../shared/agent-state-contracts'
 import { computed, ref, type ComputedRef, type Ref } from 'vue'
-import type { AgentState as OneState } from '../../../shared/agent-state'
+
 import type { WorkThatNamesIt } from '../../../shared/piece-called'
 import type {
   AgentIdentity,

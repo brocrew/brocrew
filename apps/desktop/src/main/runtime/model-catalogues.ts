@@ -8,9 +8,8 @@ import {
   DEFAULT_PROFILE_ID,
   PROVIDER_NAME,
   type AgentProviderSet,
-  type ModelCatalogue,
-  type ModelList,
 } from '../../shared/runtime-ipc'
+import type { ModelCatalogue, ModelList } from '../../shared/model-choice-contracts'
 import { foldProfileName } from '../db/identity'
 import type { SessionStore } from '../db/session-store'
 import { theProviderOfAnAgent, type ItsProvider } from '../../shared/agent-roster'
@@ -25,11 +24,13 @@ import {
   theList,
   theListedRow,
   theListsSpelling,
-  type AgentModelChoice,
-  type ModelAndEffort,
-  type ModelChoiceSaved,
-  type SelectedModel,
 } from '../../shared/model-choice'
+import type {
+  AgentModelChoice,
+  ModelAndEffort,
+  ModelChoiceSaved,
+  SelectedModel,
+} from '../../shared/model-choice-contracts'
 import {
   judgeAnAgentsChoice,
   type ListsAsLastRead,

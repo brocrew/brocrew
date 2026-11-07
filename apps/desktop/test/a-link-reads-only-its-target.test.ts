@@ -1,10 +1,11 @@
+import type { AgentState } from '../src/shared/agent-state-contracts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { rowsUnreadOnce, type RowsUnread } from '../src/main/db/session-store'
+import { rowsUnreadOnce, type RowsUnread } from '../src/main/db/rows-unread'
 import { windowWriterSampler } from '../src/main/db/window-writer-stamp'
 import { limitsWriterSampler } from '../src/main/db/fresh-limits-snapshot'
-import { agentStateWords, type AgentState } from '../src/shared/agent-state'
+import { agentStateWords } from '../src/shared/agent-state'
 import {
   parseLinkTarget,
   unavailableLink,

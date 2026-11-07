@@ -1,4 +1,4 @@
-import type { DecideMoveRequestInput, MoveRequestAck } from '../../../shared/move-request'
+import type { DecideMoveRequestInput, MoveRequestAck } from '../../../shared/move-contracts'
 
 /** Navigate only after the host accepts the person's press. */
 export async function moveRequestFromWindow(

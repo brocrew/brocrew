@@ -1,5 +1,5 @@
 // Only inherited, non-secret macOS launch metadata may cross the fixture environment fence.
-import { requireCI } from './contract.mjs'
+import { requireCI } from './fixture-guards.mjs'
 
 export const systemKeyRules = {
   __CF_USER_TEXT_ENCODING: /^0x[0-9a-f]+:\d+:\d+$/i,

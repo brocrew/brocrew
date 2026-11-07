@@ -1,3 +1,5 @@
+import type { MessageSentEvent, TranscriptEvent } from '../src/shared/conversation-events'
+import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -21,10 +23,7 @@ import {
   agentName,
   type AgentIdentity,
   type LibraryEntry,
-  type MessageSentEvent,
   type RuntimeEventMessage,
-  type TranscriptEvent,
-  type UserTurnEvent,
 } from '../src/shared/runtime-ipc'
 
 /**

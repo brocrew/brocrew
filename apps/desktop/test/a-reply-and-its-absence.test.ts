@@ -1,3 +1,6 @@
+import { REQUEST_STATES } from '../src/shared/question-contracts'
+import { TASK_OUTCOMES, TASK_STATES } from '../src/shared/task-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -29,9 +32,9 @@ import {
 } from '../src/main/runtime/reply-rails'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { REQUEST_STATES } from '../src/shared/questions'
-import { TASK_IS_OPEN, TASK_OUTCOMES, TASK_STATES, derivePieces } from '../src/shared/tasks'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+
+import { TASK_IS_OPEN, derivePieces } from '../src/shared/tasks'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **393 · a reply, and its absence** — Slice 4 S2 + S3, HO-007 criteria 3 and 4, HO-015 §1.3.

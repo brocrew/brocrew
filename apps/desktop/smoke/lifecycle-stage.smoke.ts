@@ -1,3 +1,6 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import type { PieceRow } from '../src/shared/task-contracts'
+import type { RoutedRequest } from '../src/shared/question-contracts'
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
@@ -30,11 +33,11 @@ import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { toolsToldInTextFor } from '../src/main/runtime/agent-tools'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { TASK_IS_OPEN, givenByAConversation } from '../src/shared/tasks'
-import type { PieceRow } from '../src/shared/tasks'
+
 import { REQUEST_IS_OPEN, permissionShaped, theChannelRefusalIn } from '../src/shared/questions'
-import type { RoutedRequest } from '../src/shared/questions'
+
 import { bundledCodexTransportFactory } from '../../../packages/runtime/smoke/bundled-codex'
 
 /**

@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -9,9 +10,9 @@ import {
 import {
   DEFAULT_CAPABILITIES,
   skipTheLedger,
-  type RowsUnread,
   type SessionStore,
 } from '../src/main/db/session-store'
+import { type RowsUnread } from '../src/main/db/rows-unread'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { admitGive, type GiveFacts, type ServiceAtAGive } from '../src/main/runtime/spawn-rails'
 import {
@@ -20,7 +21,7 @@ import {
   type GiveOutcome,
   type RuntimeHost,
 } from '../src/main/runtime/runtime-host'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 /**

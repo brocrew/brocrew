@@ -1,3 +1,5 @@
+import type { PieceRow } from '../src/shared/task-contracts'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -21,8 +23,7 @@ import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { derivePieces, type PieceRow } from '../src/shared/tasks'
-import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/runtime-ipc'
+import { derivePieces } from '../src/shared/tasks'
 
 /**
  * # 🔴 D-013 · work running in the background isn't stalled (plan §3.7, §7)

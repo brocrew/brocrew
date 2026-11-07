@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, type Component } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
@@ -6,7 +7,7 @@ import {
   forgetProfileSignIns,
   useProfileSignIn,
 } from '../../src/renderer/src/composables/useProfileSignIn'
-import type { CreatedSession, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { CreatedSession } from '../../src/shared/runtime-ipc'
 import { CAPABILITY_FIXTURE } from '../provider-capability-fixture'
 import { drawerProps, META, mount, paneProps, record, unmountAll } from './harness'
 

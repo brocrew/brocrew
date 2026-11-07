@@ -1,3 +1,4 @@
+import type { ModelCatalogue } from '../src/shared/model-choice-contracts'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -14,7 +15,7 @@ import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 import { judgeAnAgentsChoice, refuseModel } from '../src/main/runtime/model-rails'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { DEFAULT_PROFILE_ID, type ModelCatalogue } from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
 /**
  * # A provider that was only too slow is asked again

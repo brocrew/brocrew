@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { reactive } from 'vue'
 import { applyEvent, createTranscript, type ToolItem } from '../src/renderer/src/lib/transcript'
@@ -7,7 +8,7 @@ import {
   createSessionRecord,
   openWindow,
 } from '../src/renderer/src/lib/session-record'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import {
   EXCHANGE_INVENTORY,
   EXCHANGE_OTHER,

@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
@@ -8,7 +9,7 @@ import ConversationPane from '../../src/renderer/src/components/ConversationPane
 // draws.
 import * as transcriptLib from '../../src/renderer/src/lib/transcript'
 import { ASKED_TO_STOP, stoppedBy } from '../../src/shared/how-work-stopped'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { assertDrawn, drawnReady } from './drawn'
 import { mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
 

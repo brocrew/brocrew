@@ -1,5 +1,6 @@
+import type { HandedPath } from '../../../shared/attachment-contracts'
 import { watch, type InjectionKey } from 'vue'
-import type { HandedPath } from '../../../shared/runtime-ipc'
+
 import { conversationOfSlot, type SavedDrafts } from '../../../shared/saved-drafts'
 import type { DraftBook, DraftSweep } from './drafts'
 

@@ -1,3 +1,5 @@
+import { LEDGER_WALK_KINDS } from '../src/shared/question-contracts'
+import type { LedgerWalk, LedgerWalkKind } from '../src/shared/question-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -11,12 +13,7 @@ import {
   createSessionStore,
   type SessionStore,
 } from '../src/main/db/session-store'
-import {
-  LEDGER_WALK_KINDS,
-  WALK_COVERS,
-  type LedgerWalk,
-  type LedgerWalkKind,
-} from '../src/shared/questions'
+import { WALK_COVERS } from '../src/shared/questions'
 import { personsQueueView, type PersonsQueueWorld } from '../src/renderer/src/lib/persons-queue'
 import { homeAttention } from '../src/renderer/src/lib/home-attention'
 import type { AttentionRequest } from '../src/renderer/src/lib/attention'

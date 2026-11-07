@@ -3,6 +3,25 @@ export { CONVERSATIONS_LISTED } from './agent-directory'
 import { agentCallerId, type Caller } from './conversation-caller'
 export { agentCallerId, sessionSpeakingAs } from './conversation-caller'
 import {
+  AGENT_MESSAGE_KINDS,
+  TASK_OUTCOMES,
+  TASK_STATES as WORK_SEARCH_TASK_STATES,
+} from '../../shared/task-contracts'
+import type {
+  AgentMessageKind,
+  PieceRow,
+  StatusLine,
+  TaskOutcome,
+} from '../../shared/task-contracts'
+import { PASS_UP_RECIPIENTS } from '../../shared/question-contracts'
+import type {
+  PassUpRecipient,
+  QuestionRecipient,
+  RequestState,
+  VisibleQuestion,
+} from '../../shared/question-contracts'
+import type { AgentModelChoice } from '../../shared/model-choice-contracts'
+import {
   providerAuthPolicies,
   legacyStartRefusalWords as A_START_ITS_SIGN_IN_REFUSED,
 } from '../providers/auth-definitions'
@@ -164,34 +183,14 @@ import {
   interruptRetryableOf,
   type InterruptRefusal,
 } from './interrupt-rails'
-import {
-  AGENT_MESSAGE_KINDS,
-  TASK_IS_OPEN,
-  TASK_OUTCOMES,
-  TASK_STATES as WORK_SEARCH_TASK_STATES,
-  // ⚑ **603/609 · the fact each WAIT stands for**, for `pieceText`'s rule that a state name is not
-  // one. ⛔ A table rather than a constant since `609`, so a wait added to the family cannot reach a
-  // model as a bare word.
-  WAITING_STANDS_FOR,
-  theWaitIn,
-  isAgentMessageKind,
-  type AgentMessageKind,
-  type PieceRow,
-  type StatusLine,
-  type TaskOutcome,
-} from '../../shared/tasks'
+import { TASK_IS_OPEN, WAITING_STANDS_FOR, theWaitIn, isAgentMessageKind } from '../../shared/tasks'
 import {
   QUESTION_RECIPIENTS,
   RECIPIENT_MEANS,
-  PASS_UP_RECIPIENTS,
   isPassUpRecipient,
-  type PassUpRecipient,
   REQUEST_IS_OPEN,
   isQuestionRecipient,
   theChannelRefusalIn,
-  type QuestionRecipient,
-  type RequestState,
-  type VisibleQuestion,
   aPieceNotEndedItsQuestionsUnread,
   aPieceNotEndedWhileAQuestionStarts,
 } from '../../shared/questions'
@@ -275,7 +274,7 @@ import {
   type ProviderUsageReading,
 } from '../../shared/runtime-ipc'
 import { usageWindowWord } from '../../shared/usage-window'
-import { aPairInWords, sameModel, type AgentModelChoice } from '../../shared/model-choice'
+import { aPairInWords, sameModel } from '../../shared/model-choice'
 import { agentStateWords } from '../../shared/agent-state'
 
 /** Where a question goes, in words rather than the recipient's internal name. */

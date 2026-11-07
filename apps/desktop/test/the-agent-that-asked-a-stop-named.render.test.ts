@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -26,7 +27,6 @@ import {
   type AgentIdentity,
   type CreatedSession,
   type LibraryEntry,
-  type TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 
 /**

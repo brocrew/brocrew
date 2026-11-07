@@ -1,12 +1,8 @@
 import Database from 'better-sqlite3'
 import { recentActivity } from '../runtime/recent-activity'
 import { serialize } from 'node:v8'
-import {
-  createSessionStore,
-  rowsUnreadOnce,
-  type RowsUnread,
-  type ThreadLeadRow,
-} from './session-store'
+import { createSessionStore, type ThreadLeadRow } from './session-store'
+import { rowsUnreadOnce, type RowsUnread } from './rows-unread'
 import {
   WINDOW_READ_BOUNDS,
   windowReadQuery,

@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { EventEmitter } from 'node:events'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -7,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeRuntime } from '@brobot2/runtime'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, rowsUnreadOnce, type SessionStore } from '../src/main/db/session-store'
+import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import { rowsUnreadOnce } from '../src/main/db/rows-unread'
 import { WindowReadEngine } from '../src/main/db/window-read-engine'
 import { WindowRoutingReads } from '../src/main/db/window-routing-reads'
 import {
@@ -15,7 +17,7 @@ import {
   WindowWorkerReader,
   type WindowReadWorker,
 } from '../src/main/db/window-worker-reader'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import {
   WINDOW_READ_BOUNDS,
   WindowReadUnavailable,

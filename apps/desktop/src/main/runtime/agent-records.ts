@@ -1,5 +1,5 @@
 import type { Provider } from '@brobot2/shared'
-import type { AgentModelChoice } from '../../shared/model-choice'
+import type { AgentModelChoice } from '../../shared/model-choice-contracts'
 import type { ProviderUsageReading, UsageWindowSeen } from '../../shared/runtime-ipc'
 import type { WorkThatNamesIt } from '../../shared/piece-called'
 import type { PieceHeld } from '../db/session-store'

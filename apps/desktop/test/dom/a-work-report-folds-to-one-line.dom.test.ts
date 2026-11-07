@@ -1,10 +1,11 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
+import type { WorkReport } from '../../src/shared/task-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { userEvent } from 'vitest/browser'
 import { nextTick, reactive } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { applyEvent } from '../../src/renderer/src/lib/transcript'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
-import type { WorkReport } from '../../src/shared/tasks'
+
 import { mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
 
 /**

@@ -1,3 +1,10 @@
+import type {
+  AboutWork,
+  LedgerWalk,
+  PersonsQuestion,
+  RoutedRequest,
+  WorkInHand,
+} from '../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -8,11 +15,6 @@ import {
   chainReading,
   chainSentence,
   escalationChain,
-  type AboutWork,
-  type LedgerWalk,
-  type PersonsQuestion,
-  type RoutedRequest,
-  type WorkInHand,
   aPersonsSince,
 } from '../src/shared/questions'
 
