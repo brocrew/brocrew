@@ -144,9 +144,11 @@ it.each(['timeout', 'Stop', 'interrupt-and-send'] as const)(
         expect(sent.mock.calls[0]?.[0]).toContain('the person’s fictional original words')
       } else {
         expect(said).toBe("Your message wasn't sent. Press Send to try again.")
-        expect(reportPluginRefreshError).not.toHaveBeenCalled()
-        if (cause === 'Stop') expect(sent).not.toHaveBeenCalled()
-        else {
+        if (cause === 'Stop') {
+          expect(reportPluginRefreshError).not.toHaveBeenCalled()
+          expect(sent).not.toHaveBeenCalled()
+        } else {
+          expect(reportPluginRefreshError).toHaveBeenCalledOnce()
           expect(sent).toHaveBeenCalledOnce()
           expect(sent.mock.calls[0]?.[0]).toContain('the person’s fictional replacement words')
         }
