@@ -385,6 +385,29 @@ describe('automatic initial service recovery', () => {
       await f.supervisor.quit()
     }
   })
+  it('manual retry and status join an automatic admission already in flight', async () => {
+    const f = await failingStart()
+    let admit!: (lease: never) => void
+    f.attach.mockImplementationOnce(
+      () => new Promise((resolve) => { admit = resolve }),
+    )
+    try {
+      await vi.advanceTimersByTimeAsync(1000)
+      await vi.waitFor(() => expect(f.attach).toHaveBeenCalledTimes(2))
+      const retry = f.controller.retry!(f.pkg.release.id)
+      const status = f.controller.catalogue()
+      expect(f.attach).toHaveBeenCalledTimes(2)
+      admit(f.lease as never)
+      await Promise.all([retry, status])
+      await f.advance(30_000)
+      expect(f.attach).toHaveBeenCalledTimes(2)
+      expect(seams.connect).toHaveBeenCalledOnce()
+    } finally {
+      admit?.(f.lease as never)
+      await f.controller.close()
+      await f.supervisor.quit()
+    }
+  })
   it.each(['close', 'manual'] as const)('%s cancels the pending backoff', async (action) => {
     const f = await failingStart()
     try {
