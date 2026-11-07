@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { ChromeBrowser } from '../src/browser/chromeBrowser.js'
 import { launchPersistentChromium } from '../src/shared/browser/browser-launch.js'
 import { createProfileStore } from '../src/profiles/store.js'
@@ -9,7 +9,6 @@ import { TabRegistry } from '../src/tabs.js'
 import { createWindowTasks } from '../src/windows.js'
 import { createKeyedSerializer } from '../src/shared/browser/browser-lease.js'
 import { createAgentChromeTools } from '../src/tools/index.js'
-import { saveVisibleSession, restoreVisibleSession } from '../src/restoreSession.js'
 import { silentLogger } from '../src/logger.js'
 import { startAgentChrome } from '../src/app.js'
 import { loadConfig } from '../src/config.js'
@@ -202,7 +201,7 @@ describe.skipIf(!enabled)('window and file contract in disposable installed Chro
     expect(headA.windowId).toBe(headB.windowId)
     expect((await open()).windowId).toBe(a.windowId)
   }, 120_000)
-  it('case 6: genuine save/take/restore loads local file URLs and encoded paths in the same persistent profile', async () => {
+  it('case 6: local file URLs and encoded paths load in a persistent profile', async () => {
     const a = make()
     a.store.create('fern', 'panel')
     a.store.setFlags('fern', { enabled: true })
@@ -250,39 +249,5 @@ describe.skipIf(!enabled)('window and file contract in disposable installed Chro
       visible: true,
       windowOf: first.tabId,
     })
-    const save = path.join(a.home, 'restore.json'),
-      profileDir = a.store.dirOf('fern')
-    saveVisibleSession(save, a.browser, (name) => {
-      const r = a.store.get(name)
-      return !!r?.enabled && !r.temporary
-    })
-    expect(JSON.parse(fs.readFileSync(save, 'utf8')).profiles).toEqual([
-      { name: 'fern', urls: [url, url] },
-    ])
-    expect(fs.statSync(save).mode & 0o777).toBe(0o600)
-    await a.browser.closeAll()
-    const b = make(a.home)
-    expect(b.store.dirOf('fern')).toBe(profileDir)
-    expect(
-      await restoreVisibleSession({
-        file: save,
-        store: b.store,
-        browser: b.browser,
-        tabs: b.tabs,
-        logger: silentLogger,
-      }),
-    ).toEqual(['fern'])
-    expect(fs.existsSync(save)).toBe(false)
-    await vi.waitFor(
-      async () => {
-        const rows = await b.call('list_tabs')
-        expect(rows.map((t) => t.url)).toEqual([url, url])
-        expect(rows.map((t) => t.title)).toEqual([
-          'Fictional local fixture',
-          'Fictional local fixture',
-        ])
-      },
-      { timeout: 15_000 },
-    )
   }, 120_000)
 })

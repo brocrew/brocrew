@@ -263,6 +263,30 @@ describe('a cold agent gets each plugin that is ready', () => {
     }
   })
 
+  it('a read whose time runs out after a wake answers with what it read, never unknown', async () => {
+    const w = await aWorkspace(['aster'], 400, Promise.resolve(), true)
+    const binding = deferred<Binding>()
+    w.state.get('aster')!.binding = binding.promise
+    w.commit('aster', { is: 'admitted' })
+    const real = performance.now.bind(performance)
+    let skew = 0
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => real() + skew)
+    try {
+      const reading = w.bridge.agentRoutes(lease(), request())
+      // The read has planned once and is waiting on the opening route.
+      await vi.waitFor(() => expect(w.controller.onHostChanged).toHaveBeenCalled())
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      // Its time runs out, then a committed change wakes it.
+      skew = 10_000
+      w.commit('aster', {})
+      const answer = await reading
+      expect(answer, JSON.stringify(answer)).toMatchObject({ pending: ['aster'], unknown: false })
+    } finally {
+      clock.mockRestore()
+      binding.resolve(undefined as unknown as Binding)
+    }
+  })
+
   it('a requested release retires an opening capability before its earlier read can finish', async () => {
     const w = await aWorkspace(['aster'])
     const held = deferred<void>()

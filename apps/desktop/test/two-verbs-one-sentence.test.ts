@@ -22,7 +22,6 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
-
 /**
  * ⚑ **584 · a LOCAL constant** (`HO-078` §1). ⛔ `PROJECT_MANAGER_PROFILE_ID` named the one other
  * identity this app used to ship, and a fresh install now ships `brobot` and nothing else — so the

@@ -630,3 +630,10 @@ export {
   type ManagedPluginAttachment,
   type ManagedPluginAttachmentSource,
 } from './managed-plugin-session'
+export {
+  managedPluginFailure,
+  ManagedPluginFailure,
+  pluginFailureReason,
+  type PluginFailureStage,
+  type PluginFailureCause,
+} from './managed-plugin-failure'

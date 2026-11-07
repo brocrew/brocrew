@@ -25,6 +25,7 @@ export async function createSupervisorLifecycle(options: {
     await PluginLifecycleController.open({
       ...options.lifecycle,
       toolsUnavailable: (id) => consumer.agents?.toolsUnavailable(id) ?? false,
+      toolsCause: (id) => consumer.agents?.toolsCause(id),
       deny(id) {
         consumer.agents?.deny(id)
         options.lifecycle.deny(id)
@@ -45,7 +46,8 @@ export async function createSupervisorLifecycle(options: {
     controller,
     binding: (view, diagnostic) =>
       requirePluginAdapter(view.installation.pluginId).broker(view, refused, diagnostic),
-    diagnostic: (id, reason) => recordPluginToolFailure(options.lifecycle.root, id, reason),
+    diagnostic: (id, reason, detail) =>
+      recordPluginToolFailure(options.lifecycle.root, id, reason, detail),
     refused,
     recoverChromeHost: (view, stopped) => controller.restartChromeTools(view.runId, stopped),
     restartChromeHost: () => controller.restartChromeTools(undefined, () => {}),
@@ -88,8 +90,21 @@ export async function createSupervisorLifecycle(options: {
         }
       })()
       const results = await Promise.allSettled([agents.close(), personClosed, drained])
-      if (results.some((one) => one.status !== 'fulfilled') || !controller.cleanForShutdown())
-        throw new PluginSupervisorError('cleanup-pending')
+      // Each part that failed is named, with its own error, so a refused shutdown says why.
+      const parts = ['agent routes', 'Settings channels', 'plugin runs']
+      const causes = results.flatMap((one, index) =>
+        one.status === 'rejected'
+          ? [new Error(`${parts[index]} did not close`, { cause: one.reason })]
+          : [],
+      )
+      const blockers = controller.shutdownBlockers()
+      if (blockers.length)
+        causes.push(new Error(`plugins can't shut down cleanly: ${blockers.join('; ')}`))
+      if (causes.length)
+        throw new PluginSupervisorError('cleanup-pending', {
+          cause:
+            causes.length === 1 ? causes[0] : new AggregateError(causes, 'plugin shutdown failed'),
+        })
       closed = true
       exited()
     })().catch((error: unknown) => {

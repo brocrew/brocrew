@@ -51,10 +51,16 @@ import {
   NOTHING_IN_THE_BACKGROUND,
   NOTHING_SCHEDULED,
 } from '../src/shared/agent-state'
-import { DEFAULT_PROFILE_ID, type CreatedSession, type ResumableSessionInfo, type RuntimeStatesMessage, type SessionLiveness, type UnresumableSessionInfo } from '../src/shared/runtime-ipc'
+import {
+  DEFAULT_PROFILE_ID,
+  type CreatedSession,
+  type ResumableSessionInfo,
+  type RuntimeStatesMessage,
+  type SessionLiveness,
+  type UnresumableSessionInfo,
+} from '../src/shared/runtime-ipc'
 import { proseSpans } from './lib/prose-spans'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
-
 
 /**
  * # D-036 · a giver says who holds the work it gave out

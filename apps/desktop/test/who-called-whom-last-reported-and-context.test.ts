@@ -17,7 +17,6 @@ import type { LastReported } from '../src/shared/who-called-whom'
 import { linesOf } from './helpers/provider-lines'
 import { syntheticProviderHome } from './lib/host-fixture'
 
-
 /**
  * # 20f1a2a0 · feat(panel): who-called-whom says what each conversation last reported
  *

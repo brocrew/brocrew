@@ -116,24 +116,33 @@ describe.skipIf(process.platform === 'win32')(
       async (action) => {
         const f = await fixture()
         exitable(f)
+        // The historical owner is an older copy with its own store over the same root.
+        f.state.close()
+        const older = ParentState.open({
+          root: join(f.root, 'state'),
+          workspaceRoots: [f.workspace],
+        })
         const historical = await ParentController.open({
           ...f.opts,
-          state: f.state as never,
+          state: older,
           catalogue: signed({ format: 2, entries: [{ ...f.pkg.release, legacy: true }] }),
-        })
+        } as never)
         await historical.install(await historical.attach(projection().sink), 'chrome')
         await historical.drain()
+        older.close()
+        const state = reopenLifecycleFixture(f)
         const next = packageFixture({ manifest: { ...f.pkg.manifest, version: '1.0.3' } })
         const download = vi.fn(async () => next.archive)
         const controller = await PluginLifecycleController.open({
           ...f.opts,
+          state,
           catalogue: signed({ format: 2, entries: [{ ...next.release, legacy: true }] }),
           download,
         })
         try {
           const handle = await controller.attach(projection().sink)
           const before = {
-            state: structuredClone(f.state.inspect()),
+            state: structuredClone(state.inspect()),
             tree: await diskBytes(f.root),
             events: [...f.events],
             starts: f.starts(),
@@ -143,7 +152,7 @@ describe.skipIf(process.platform === 'win32')(
             code: 'policy-refused',
           })
           expect({
-            state: f.state.inspect(),
+            state: state.inspect(),
             tree: await diskBytes(f.root),
             events: [...f.events],
             starts: f.starts(),
@@ -191,7 +200,7 @@ describe.skipIf(process.platform === 'win32')(
       exitable(f)
       f.state.close()
       const state = ParentState.open({ root: join(f.root, 'state'), workspaceRoots: [f.workspace] })
-      const controller = await ParentController.open({ ...f.opts, state: state as never })
+      const controller = await ParentController.open({ ...f.opts, state } as never)
       const handle = await controller.attach(projection().sink)
       await controller.install(handle, 'whatsapp')
       const bridge = await parentServer({
@@ -229,7 +238,6 @@ describe.skipIf(process.platform === 'win32')(
       'prepared',
       'prepared-missing',
       'ready',
-      'receipted',
       'activated',
       'complete',
     ] as const)(
@@ -279,10 +287,10 @@ describe.skipIf(process.platform === 'win32')(
           try {
             const parent = await ParentController.open({
               ...f.opts,
-              state: state as never,
+              state,
               catalogue: { bytes: f.pkg.bytes, signature: f.pkg.signature },
               runtime: { ...f.opts.runtime, start, removeData, removeCode },
-            })
+            } as never)
             await parent.attach(projection().sink)
             await parent.drain()
           } finally {

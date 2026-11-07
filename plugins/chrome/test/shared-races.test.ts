@@ -115,8 +115,8 @@ it('separate workspace flag writers preserve both scoped intents', async () => {
   expect(b.text()).toBe('updated\n')
   expect(c.text()).toBe('updated\n')
   const r = JSON.parse(fs.readFileSync(path.join(f.shared, 'registry.json'), 'utf8'))
-  expect(r.profiles[0].perWorkspace.beta).toMatchObject({ enabled: true, keepRunning: true })
-  expect(r.profiles[0].perWorkspace.test).toMatchObject({ enabled: true, keepRunning: true })
+  expect(r.profiles[0].perWorkspace.beta).toMatchObject({ enabled: true })
+  expect(r.profiles[0].perWorkspace.test).toMatchObject({ enabled: true })
 })
 it('two deleters remove the data exactly once without admitting a replacement', async () => {
   const f = fixture()

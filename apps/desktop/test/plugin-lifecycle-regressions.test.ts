@@ -78,20 +78,6 @@ describe.skipIf(process.platform === 'win32')('plugin lifecycle regressions', ()
     expect(await readdir(join(f.root, 'package-vault'))).toEqual([f.pkg.release.archive.sha256])
     expect(f.state.inspect().pending).not.toBeNull()
   })
-  it('receipt failure with unproved stop stays denied and reopens using its reserved abort', async () => {
-    const f = await fixture()
-    Object.assign(STATE_LIMITS, { records: 4 })
-    f.local.failWrite()
-    f.failStop()
-    await expect(f.controller.install(f.handle, 'chrome')).rejects.toThrow()
-    expect(f.state.inspect().pending).not.toBeNull()
-    const state = reopenLifecycleFixture(f)
-    f.failStop(false)
-    const recovered = await PluginLifecycleController.open({ ...f.opts, state })
-    expect(state.inspect().pending).toBeNull()
-    expect(state.exportActivation().entries).toEqual([])
-    expect((await recovered.status()).cards[0]?.state).toBe('Available')
-  })
   it('a durable completion effect cannot skip a still-pending reserved journal abort on reopen', async () => {
     const f = await fixture({
       fault(point) {
@@ -113,40 +99,30 @@ describe.skipIf(process.platform === 'win32')('plugin lifecycle regressions', ()
     expect(state.exportActivation().entries).toEqual([])
     expect((await recovered.status()).cards[0]?.state).toBe('Available')
   })
-  it('P2-record: a last-budget install includes every live workspace receipt atomically', async () => {
+  it('P2-record: a last-budget install completes for every live workspace', async () => {
     const f = await fixture()
     const second = projection()
-    await f.controller.attach(second.sink)
-    // Four coherent-record slots: the original pair fits but two separate receipts do not.
+    const other = await f.controller.attach(second.sink)
+    // Four record slots: the prepare and its reserved completion fit, with nothing written per workspace.
     Object.assign(STATE_LIMITS, { records: 4 })
     await expect(f.controller.install(f.handle, 'chrome')).resolves.toBeUndefined()
-    expect(f.state.projections(f.local.sink.workspaceId)).toHaveLength(1)
-    expect(f.state.projections(second.sink.workspaceId)).toHaveLength(1)
+    const installId = f.state.exportActivation().entries[0]!.installId
+    expect(f.controller.admitted(f.handle, 'chrome', installId)).toBe(true)
+    expect(f.controller.admitted(other, 'chrome', installId)).toBe(true)
     expect(f.state.inspect().pending).toBeNull()
   })
-  it('P2-abort: receipt failure uses reserved denial and remains recoverable at the last budget', async () => {
-    const f = await fixture()
-    Object.assign(STATE_LIMITS, { records: 4 })
-    f.local.failWrite()
-    await expect(f.controller.install(f.handle, 'chrome')).rejects.toThrow()
-    expect(f.state.inspect().guards[0]?.phase).toBe('removed')
-    expect(f.state.exportActivation().entries).toEqual([])
-    const state = reopenLifecycleFixture(f)
-    const recovered = await PluginLifecycleController.open({ ...f.opts, state })
-    expect(state.inspect().pending).toBeNull()
-    expect((await recovered.status()).cards[0]?.state).toBe('Available')
-  })
-  it('P2-names: interrupted stage names cannot consume receipt budget after activation', async () => {
+  it('P2-names: interrupted stage names cannot consume the completion budget after activation', async () => {
     const f = await fixture()
     const second = projection()
-    await f.controller.attach(second.sink)
+    const other = await f.controller.attach(second.sink)
     Object.assign(STATE_LIMITS, { records: 8 })
     for (let i = 0; i < 8; i++)
       await writeFile(join(f.root, 'state/lifecycle-guard', `.stage-${randomUUID()}`), '', {
         mode: 0o600,
       })
     await expect(f.controller.install(f.handle, 'chrome')).resolves.toBeUndefined()
-    expect(f.state.projections(second.sink.workspaceId)).toHaveLength(1)
+    const installId = f.state.exportActivation().entries[0]!.installId
+    expect(f.controller.admitted(other, 'chrome', installId)).toBe(true)
   })
   it('P2-bytes: insufficient whole-lifecycle byte budget refuses before any process starts', async () => {
     const probe = await fixture({ now: () => 1000 })
@@ -167,7 +143,9 @@ describe.skipIf(process.platform === 'win32')('plugin lifecycle regressions', ()
         },
       },
     })
-    const budget = (await journalBytes(probe.root)) + probe.state.inspect().reservation!.recordBytes
+    // One byte short of the probe's prepare and reserved completion, the same records an install writes.
+    const budget =
+      (await journalBytes(probe.root)) + probe.state.inspect().reservation!.recordBytes - 1
     const f = await fixture({ now: () => 1000 })
     Object.assign(STATE_LIMITS, { journalBytes: budget })
     await expect(f.controller.install(f.handle, 'chrome')).rejects.toThrow()

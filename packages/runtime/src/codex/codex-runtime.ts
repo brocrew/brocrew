@@ -103,7 +103,7 @@ import { endsOpenSubAgents, OpenSubAgents } from '../internal/open-sub-agents'
 import { RequestBroker } from '../internal/request-broker'
 import { isProviderWork } from '../internal/provider-work'
 import { SessionMachine } from '../internal/session-machine'
-import { isReasoning, StallWatchdog, stallNotice } from '../internal/stall-watchdog'
+import { StallWatchdog, stallNotice } from '../internal/stall-watchdog'
 import {
   RateLimitWatch,
   codexToolAnswerParts,
@@ -3915,31 +3915,8 @@ export class CodexSessionHandle implements SessionHandle {
     })
   }
 
-  /** Keep the watchdog in step with the turn: any event is progress; a terminal ends the watch. */
-  private trackProgress(event: RuntimeEvent): void {
-    if (event.type === 'turn' || (event.type === 'session' && event.state === 'ended')) {
-      this.stallWatchdog.stop()
-      return
-    }
-    if (event.type === 'status') {
-      if (event.state === 'working') this.stallWatchdog.notice()
-      else this.stallWatchdog.stop()
-      return
-    }
-    // The stall notice itself is not provider progress: counting it would re-arm the watchdog and
-    // forget that the silence followed reasoning.
-    if (event.type === 'error' && event.stall) return
-    // ⚠️ **`hasProviderWork`, and without it 123 would ship a false stall notice** (found while
-    // wiring it). The watchdog is armed off `status: working`, which now covers a burst with no turn
-    // behind it — but progress was still counted only for a turn, so a burst that worked steadily
-    // for two minutes would have gone quiet-by-definition and raised *"no activity for 120s"* over
-    // an agent that had not stopped for a moment. The watchdog measures silence, and this is the
-    // line that decides what counts as not-silence.
-    if (this.machine.hasProviderWork) this.stallWatchdog.notice(isReasoning(event))
-  }
-
   private deliver(event: RuntimeEvent): void {
-    this.trackProgress(event)
+    this.stallWatchdog.progress(event, this.machine.hasProviderWork)
     // ⚑ **Where the app learns the provider is working with no turn open** (123). Codex correlates
     // almost everything to a thread turn, so this fires far less often here than on Claude — the
     // live corpus holds 18 out-of-turn bursts and every one of them is Claude's. It is wired anyway,

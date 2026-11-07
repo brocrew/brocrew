@@ -18,10 +18,14 @@ import { conversationList } from '../src/renderer/src/lib/conversation-list'
 import { aWaitIsReadFrom } from '../src/shared/questions'
 import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import { type AgentIdentity, type ResumableSessionInfo, type RuntimeStatesMessage, type UnresumableSessionInfo } from '../src/shared/runtime-ipc'
+import {
+  type AgentIdentity,
+  type ResumableSessionInfo,
+  type RuntimeStatesMessage,
+  type UnresumableSessionInfo,
+} from '../src/shared/runtime-ipc'
 import { proseSpans } from './lib/prose-spans'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
-
 
 /**
  * # D-019 · the window is told what an agent is doing the moment it moves

@@ -2,6 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import html from '../../../../plugins/whatsapp/ui/index.html?raw'
 import script from '../../../../plugins/whatsapp/ui/app.js?raw'
 import css from '../../../../plugins/whatsapp/ui/style.css?raw'
+import loadScript from '../../../../plugins/shared/ui/settings-load-state.js?raw'
 
 const cleanup: Array<() => void> = []
 afterEach(() => {
@@ -44,6 +45,7 @@ async function settingsPage() {
   `
   const source = html
     .replace('<link rel="stylesheet" href="style.css" />', `<style>${css}</style>`)
+    .replace('<script src="settings-load-state.js"></script>', `<script>${loadScript}</script>`)
     .replace(
       '<script type="module" src="app.js"></script>',
       `<script>${fixture}</script><script>${script}</script>`,

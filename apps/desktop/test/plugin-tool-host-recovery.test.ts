@@ -44,7 +44,6 @@ it('retains the exact Chrome host and consumers until its positive stop receipt,
   expect(fresh.installation).toEqual(old.installation)
   expect(fresh.current()).toBe(true)
   expect(old.current()).toBe(false)
-  expect(f.local.rows.get('chrome')?.installId).toBe(old.installation.installId)
   expect(runIds[1]).not.toBe(runIds[0])
   expect(f.downloads()).toBe(1)
 })

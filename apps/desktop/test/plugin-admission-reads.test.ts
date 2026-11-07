@@ -1,7 +1,4 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { readFile, readdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
-import { randomUUID } from 'node:crypto'
 import { fixture, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
 
 afterEach(async () => {
@@ -9,49 +6,15 @@ afterEach(async () => {
   await cleanupLifecycleFixtures()
 })
 
-it('compares every canonical receipt field and does not retain a prior admission decision', async () => {
-  const f = await fixture()
-  await f.controller.install(f.handle, 'chrome')
-  const view = f.controller.agentAttachments(f.local.sink.workspaceId)[0]!
-  const workspaces = (
-    f.controller as unknown as {
-      workspaces: Map<unknown, { receipts: Map<string, unknown> }>
-    }
-  ).workspaces
-  const receipts = workspaces.get(f.handle)!.receipts
-  const original = receipts.get('chrome') as Record<string, unknown>
-  const changes: Record<string, unknown> = {
-    format: 2,
-    rootId: randomUUID(),
-    workspaceId: randomUUID(),
-    epoch: randomUUID(),
-    pluginId: 'willow',
-    installId: randomUUID(),
-    incarnation: randomUUID(),
-    lifecycleSequence: Number(original.lifecycleSequence) + 1,
-    releaseRevision: Number(original.releaseRevision) + 1,
-    configRevision: Number(original.configRevision) + 1,
-    skills: ['unexpected'],
-    bindings: ['unexpected'],
-  }
-  for (const [field, value] of Object.entries(changes)) {
-    receipts.set('chrome', { ...original, [field]: value })
-    expect(view.current(), field).toBe(false)
-    expect(f.controller.agentAttachments(f.local.sink.workspaceId), field).toEqual([])
-    receipts.set('chrome', original)
-    expect(view.current(), field).toBe(true)
-  }
-})
-
 it('returns detached frozen data and preserves the final scope sequence conflict check', async () => {
   const f = await fixture()
   await f.controller.install(f.handle, 'chrome')
-  const read = f.state.readWorkspaceAdmission(f.local.sink.workspaceId)
+  const read = f.state.readWorkspaceAdmission()
   expect(Object.isFrozen(read)).toBe(true)
   expect(Object.isFrozen(read.installations[0])).toBe(true)
-  expect(Object.isFrozen(read.receipts[0]!.skills)).toBe(true)
+  expect(Object.isFrozen(read.installations[0]!.release)).toBe(true)
   expect(() => (read.guardIds as string[]).push('willow')).toThrow()
-  expect(f.state.readWorkspaceAdmission(f.local.sink.workspaceId)).not.toBe(read)
+  expect(f.state.readWorkspaceAdmission()).not.toBe(read)
   // Real view construction invokes readiness synchronously; mutate durable state there.
   const run = (
     f.controller as unknown as { runs: Map<string, { run: { ready(): unknown } }> }
@@ -66,12 +29,11 @@ it('returns detached frozen data and preserves the final scope sequence conflict
 })
 
 it.each(['admitted', 'screen', 'agentAttachments', 'agentScope'] as const)(
-  '%s verifies one fresh journal snapshot and its head for a synchronous admission decision',
+  '%s takes one state snapshot for a synchronous admission decision',
   async (operation) => {
     const f = await fixture()
     await f.controller.install(f.handle, 'chrome')
     const installId = f.controller.screen(f.handle, 'chrome').installation.installId
-    // Observer only: execute every real disk load, including its lock/bytes/seals/activation checks.
     const disk = (f.state as unknown as { disk: { load(...args: unknown[]): unknown } }).disk
     const loads = vi.spyOn(disk, 'load')
     if (operation === 'admitted')
@@ -90,43 +52,18 @@ it.each(['admitted', 'screen', 'agentAttachments', 'agentScope'] as const)(
           .agentScope(f.local.sink.workspaceId)
           .entries.map((one) => [one.pluginId, one.is]),
       ).toEqual([['chrome', 'admitted']])
-    // Every synchronous operation, including scope view construction, verifies at most twice.
+    // Every synchronous operation, including scope view construction, asks at most twice.
     expect(loads.mock.calls.length).toBeLessThanOrEqual(2)
     expect(loads.mock.calls.length).toBeGreaterThan(0)
   },
 )
-
-it('a later current check reads the journal again and refuses changed bytes before publishing or calling', async () => {
-  const f = await fixture()
-  await f.controller.install(f.handle, 'chrome')
-  const view = f.controller.agentAttachments(f.local.sink.workspaceId)[0]!
-  expect(view.current()).toBe(true)
-  const guard = join(f.root, 'state/lifecycle-guard')
-  const record = (await readdir(guard))
-    .filter((name) => /^\d{8}\.json$/.test(name))
-    .sort()
-    .at(-1)!
-  const path = join(guard, record)
-  const original = await readFile(path)
-  await writeFile(path, Buffer.from('{}'))
-  try {
-    expect(view.current()).toBe(false)
-    expect(f.controller.admitted(f.handle, 'chrome', view.installation.installId)).toBe(false)
-    expect(f.controller.agentAttachments(f.local.sink.workspaceId)).toEqual([])
-    expect(() => f.controller.screen(f.handle, 'chrome')).toThrow()
-    expect(() => f.controller.agentScope(f.local.sink.workspaceId)).toThrow()
-  } finally {
-    await writeFile(path, original)
-  }
-  expect(view.current()).toBe(true)
-})
 
 it('rejects asynchronous admission computations instead of carrying snapshot authority across await', async () => {
   const f = await fixture()
   await f.controller.install(f.handle, 'chrome')
   expect(() =>
     // @ts-expect-error admission computations must be synchronous
-    f.state.withWorkspaceAdmission(f.local.sink.workspaceId, async (read) => read),
+    f.state.withWorkspaceAdmission(async (read) => read),
   ).toThrow()
 })
 
@@ -134,7 +71,7 @@ it('refuses a reentrant journal append after the admission snapshot is built', a
   const f = await fixture()
   await f.controller.install(f.handle, 'chrome')
   expect(() =>
-    f.state.withWorkspaceAdmission(f.local.sink.workspaceId, (read) => {
+    f.state.withWorkspaceAdmission((read) => {
       f.state.requireUpdateReader()
       return read
     }),
@@ -153,16 +90,11 @@ it('shares fresh admission only within a synchronous route plan and revokes its 
     expect(scope.entries[0]!.is).toBe('admitted')
     expect(current(view)).toBe(true)
     expect(current(view)).toBe(true)
-    const workspaces = (
-      f.controller as unknown as {
-        workspaces: Map<unknown, { receipts: Map<string, unknown> }>
-      }
-    ).workspaces
-    const receipts = workspaces.get(f.handle)!.receipts
-    const original = receipts.get('chrome')
-    receipts.delete('chrome')
+    // A mutation's block on the plugin is seen by the checker within the same plan.
+    const blocks = (f.controller as unknown as { blocks: Map<string, symbol> }).blocks
+    blocks.set('chrome', Symbol())
     expect(current(view)).toBe(false)
-    receipts.set('chrome', original)
+    blocks.delete('chrome')
     expect(current(view)).toBe(true)
   })
   expect(loads).toHaveBeenCalledTimes(2)

@@ -21,7 +21,7 @@ import type { PluginUiBinding } from '../ui/rpc'
 import type { PluginTarget } from '../package-schema'
 import { PluginPackageVault } from './vault'
 import { ConsumerCommand, connectPersonPluginControl } from './person-control'
-import type { WorkspaceProjection } from './types'
+import type { PersonProjection } from './types'
 import { Installation } from '../state/format'
 import { PLUGIN_STATES, pluginRemovalOutcome } from '../../../shared/plugin-settings'
 import { createRepoAwarePluginVerifier } from '../package-verifier'
@@ -29,7 +29,11 @@ import { pluginSha256, verifyPluginDigest, PLUGIN_LIMITS } from '../package-dige
 import { strictPluginJson } from '../strict-json'
 import type { PluginMutationBlocked, PluginMutationConsent } from '../../../shared/plugin-settings'
 import { PluginSupervisorError } from '../supervisor/protocol'
-import { PluginStartupError, pluginStartupReason } from '../startup-failure'
+import {
+  PluginStartupError,
+  pluginStartupReason,
+  type PluginOwnerCheckStage,
+} from '../startup-failure'
 
 const Cards = z
   .array(
@@ -40,6 +44,10 @@ const Cards = z
       installed: z.boolean(),
       priorityClamped: z.boolean().nullable().optional(),
       toolsUnavailable: z.literal(true).optional(),
+      toolsCause: z
+        .string()
+        .regex(/^[a-z][a-z0-9-]{0,63}(?:: [a-z][a-z0-9-]{0,63})?$/)
+        .optional(),
       installedVersion: z.string().min(1).max(80).optional(),
       updateVersion: z.string().min(1).max(80).optional(),
       uninstallDeletesData: z.boolean().optional(),
@@ -55,7 +63,7 @@ export async function connectPluginSettings(options: {
   repoCatalogueSha256?: string
   target: PluginTarget
   catalogue: { bytes: Uint8Array; signature: Uint8Array }
-  projection: WorkspaceProjection
+  projection: PersonProjection
   propose(publicProposal: unknown, revision: number): void
   lost?(): void
   signal?: AbortSignal
@@ -223,10 +231,15 @@ export async function connectPluginSettings(options: {
         ? 'owner-incompatible'
         : null
   }
-  async function readFeatures(ticket: number) {
+  async function readFeatures(ticket: number, noteStage?: (stage: PluginOwnerCheckStage) => void) {
     if (!modern || !featureReadable) return
+    noteStage?.('owner-features')
     const reply = await channel.call({ kind: 'features' })
-    if (!alive || generation !== ticket) return failPolicy()
+    if (!alive || generation !== ticket) {
+      noteStage?.('owner-generation')
+      return failPolicy()
+    }
+    noteStage?.('owner-response')
     const next = z
       .strictObject({ features: z.array(z.string().regex(/^[a-z][a-z0-9-]{0,63}$/)).max(32) })
       .parse(reply).features
@@ -264,11 +277,12 @@ export async function connectPluginSettings(options: {
           : 'owner-incompatible'
     }
   }
-  async function checkOwner() {
+  async function checkOwner(noteStage?: (stage: PluginOwnerCheckStage) => void) {
+    noteStage?.('owner-local-state')
     if (!alive) throw new PluginSupervisorError('unavailable')
     if (switching) return failPolicy()
     const ticket = generation
-    await readFeatures(ticket)
+    await readFeatures(ticket, noteStage)
     if (badSource) {
       blocked = 'source-mismatch'
       return
@@ -289,12 +303,20 @@ export async function connectPluginSettings(options: {
     }
     try {
       const digest = pluginSha256(catalogueProof.bytes)
+      noteStage?.('owner-mutation-status')
       const reply = await channel.call({ kind: 'mutation-status', catalogueDigest: digest })
-      if (!alive || generation !== ticket) return failPolicy()
+      if (!alive || generation !== ticket) {
+        noteStage?.('owner-generation')
+        return failPolicy()
+      }
+      noteStage?.('owner-response')
       z.strictObject({ format: z.literal(1), catalogueDigest: z.literal(digest) }).parse(reply)
       blocked = null
     } catch (error) {
-      if (generation !== ticket) return failPolicy()
+      if (generation !== ticket) {
+        noteStage?.('owner-generation')
+        return failPolicy()
+      }
       invalidateConsent()
       if (error instanceof PluginSupervisorError && error.code === 'source-mismatch')
         blocked = 'source-mismatch'
@@ -486,8 +508,11 @@ export async function connectPluginSettings(options: {
       for (;;) {
         while (switching) await catalogueRefresh
         const ticket = generation
+        let detail: PluginOwnerCheckStage = 'owner-local-state'
         try {
-          await checkOwner()
+          await checkOwner((stage) => {
+            detail = stage
+          })
           break
         } catch (error) {
           if (!switching && generation === ticket)
@@ -495,6 +520,7 @@ export async function connectPluginSettings(options: {
               pluginStartupReason(error, 'catalogue-response'),
               error,
               'owner-check',
+              detail,
             )
         }
       }
@@ -502,9 +528,11 @@ export async function connectPluginSettings(options: {
       try {
         reply = await channel.call({
           kind: modern
-            ? features.includes('tool-health-v1')
-              ? 'list-tool-health'
-              : 'list-v2'
+            ? features.includes('tool-cause-v1')
+              ? 'list-tool-cause'
+              : features.includes('tool-health-v1')
+                ? 'list-tool-health'
+                : 'list-v2'
             : 'list',
         })
       } catch (error) {

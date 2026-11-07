@@ -15,9 +15,12 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DEFAULT_PROFILE_ID, type ResumableSessionInfo, type UnresumableSessionInfo } from '../src/shared/runtime-ipc'
+import {
+  DEFAULT_PROFILE_ID,
+  type ResumableSessionInfo,
+  type UnresumableSessionInfo,
+} from '../src/shared/runtime-ipc'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
-
 
 /**
  * The window's list of conversations says which piece a helper waits on on purpose.

@@ -100,11 +100,15 @@ export function launch(program, args, options, records) {
   let stdout = '',
     overflow = false
   child.stdout.on('data', (b) => {
+    process.stderr.write(b)
     retain('stdout', b)
     if (stdout.length + b.length > 8 * 1024 * 1024) overflow = true
     else stdout += b
   })
-  child.stderr.on('data', (b) => retain('stderr', b))
+  child.stderr.on('data', (b) => {
+    process.stderr.write(b)
+    retain('stderr', b)
+  })
   const record = { child, closed: false, code: null, signal: null, overflow: false }
   record.close = new Promise((resolve) =>
     child.once('close', (code, signal) => {
@@ -146,7 +150,7 @@ export async function command(program, args, root, records, { cwd = root, ms = 4
   try {
     await r.start
     const result = await bounded(r.close, ms)
-    demand(result.code === 0)
+    demand(result.code === 0, `${program} exited with code ${result.code}, signal ${result.signal}`)
     return r.output()
   } catch (error) {
     await stop(r)

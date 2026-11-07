@@ -1,4 +1,4 @@
-import { fork, type ChildProcess } from 'node:child_process'
+import { fork, spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import {
@@ -30,6 +30,8 @@ let folder = ''
 const children: ChildProcess[] = []
 const leases: PluginWorkspaceLease[] = []
 const successors: PluginSupervisor[] = []
+const readOwner = async (root: string) =>
+  JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8'))
 function message(child: ChildProcess, event: string): Promise<{ runId?: string }> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -52,6 +54,7 @@ async function ended(child: ChildProcess, within = 1500) {
   await expect
     .poll(() => child.exitCode !== null || child.signalCode !== null, { timeout: within })
     .toBe(true)
+  return child.exitCode
 }
 beforeAll(async () => {
   folder = await realpath(
@@ -145,82 +148,80 @@ async function fixture(name: string, mode: string, fault?: string) {
   return { root, workspaceRoot, child, options, lease, runId }
 }
 describe('blocked standalone owner self-exit under its unchanged fence', () => {
-  it.each([
-    ['proven', 'blocked-write-once'],
-    ['revoke-hung', 'blocked-write-once'],
-    ['proven', 'blocked-write-twice'],
-  ])(
-    'keeps the blocked publication after a transient sharing refusal with %s runs (%s)',
-    async (mode, fault) => {
-      const target = await fixture(fault + '-' + mode, mode, fault)
+  // A held owner.json must not retain a childless blocked owner: try advice once, then exit.
+  it.each(['proven', 'revoke-hung'])(
+    'exits when its blocked record stays refused with %s runs, and a successor starts',
+    async (mode) => {
+      const target = await fixture('blocked-write-held-' + mode, mode, 'blocked-write-held')
+      const fence = await lstat(join(target.root, 'supervisor/owner-lock.sqlite'), { bigint: true })
       await target.lease.close()
-      await ended(target.child)
-      expect(target.child.exitCode).toBe(0)
-      expect(
-        JSON.parse(await readFile(join(target.root, 'supervisor/owner.json'), 'utf8')).phase,
-      ).toBe('blocked')
+      expect(await ended(target.child)).toBe(0)
+      expect((await readOwner(target.root)).phase).not.toBe('blocked')
       const trace = await readFile(join(target.root, 'plugin-drain.log'), 'utf8')
+      const attempts = [...trace.matchAll(/stage=blocked-write state=\w+ attempt=\d+/g)]
+      expect(attempts.map((match) => match[0])).toEqual([
+        'stage=blocked-write state=failed attempt=1',
+      ])
       expect(trace).toContain('stage=blocked-write state=failed attempt=1 errno=EPERM')
-      const events = [...trace.matchAll(/stage=blocked-write state=(\w+) attempt=(\d+)/g)].map(
-        (match) => ({ state: match[1], attempt: Number(match[2]) }),
-      )
-      const final = events.at(-1)!
-      expect(final.state).toBe('complete')
-      expect(final.attempt).toBeGreaterThanOrEqual(fault === 'blocked-write-twice' ? 3 : 2)
-      const expected = [{ state: 'failed', attempt: 1 }]
-      for (let attempt = 2; attempt <= final.attempt; attempt++) {
-        expected.push({ state: 'waiting', attempt })
-        expected.push({ state: attempt === final.attempt ? 'complete' : 'failed', attempt })
-      }
-      // Real Windows sharing refusals may add attempts after the injected one.
-      // Every retry must remain ordered, ending in publication before actual exit.
-      expect(events).toEqual(expected)
       // Cause logging follows the existing credential formatter and keeps the actual path.
       expect(trace).not.toContain('fictional-secret')
       expect(trace).toContain(
         'cause=Error code=EPERM: Bearer [redacted] /fictional/private-owner-path',
       )
-    },
-  )
-  it('holds the same fence before blocked publication succeeds, even with positive physical proofs', async () => {
-    const target = await fixture('blocked-write-held', 'proven', 'blocked-write-held')
-    const fence = await lstat(join(target.root, 'supervisor/owner-lock.sqlite'), { bigint: true })
-    expect(await target.lease.close()).toBe(false)
-    expect(target.child.exitCode).toBeNull()
-    await expect(
-      PluginSupervisor.start({
+      const advice = vi.fn()
+      const successor = await PluginSupervisor.start({
         root: target.root,
         workspaceRoots: [target.workspaceRoot],
-        recoverPrevious: () => previousRunsProvenStopped(target.root),
-      }),
-    ).rejects.toMatchObject({ code: 'busy' })
-    target.child.send('allow-blocked-write')
-    await ended(target.child)
-    expect(target.child.exitCode).toBe(0)
-    expect(
-      JSON.parse(await readFile(join(target.root, 'supervisor/owner.json'), 'utf8')).phase,
-    ).toBe('blocked')
-    const after = await lstat(join(target.root, 'supervisor/owner-lock.sqlite'), { bigint: true })
-    expect([after.dev, after.ino]).toEqual([fence.dev, fence.ino])
-  })
+        recoverPrevious: (previous) =>
+          previousRunsProvenStopped(target.root, { previous, onRebootRequired: advice }),
+      })
+      successors.push(successor)
+      expect(advice).not.toHaveBeenCalled()
+      const after = await lstat(join(target.root, 'supervisor/owner-lock.sqlite'), { bigint: true })
+      expect([after.dev, after.ino]).toEqual([fence.dev, fence.ino])
+    },
+  )
   it.each(['none', 'proven', 'hung', 'revoke-hung'])(
     'exits after synthetic failure with %s physical runs, rechecks receipts, and leaves another slot untouched',
     async (mode) => {
-      const bystander = await fixture('bystander-' + mode, 'healthy')
-      const target = await fixture('target-' + mode, mode)
-      const read = async (root: string) =>
-        JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8'))
-      const before = await read(bystander.root)
+      const fault = process.platform === 'win32' ? 'terminal-record-held' : undefined
+      const bystander = await fixture('bystander-' + mode, 'healthy', fault)
+      const target = await fixture('target-' + mode, mode, fault)
+      const before = await readOwner(bystander.root)
       const fence = await lstat(join(target.root, 'supervisor/owner-lock.sqlite'), { bigint: true })
       await target.lease.close()
-      await ended(target.child)
-      expect(target.child.exitCode).toBe(0)
-      expect((await read(target.root)).phase).toBe('blocked')
+      expect(await ended(target.child)).toBe(0)
+      expect((await readOwner(target.root)).phase).toBe(fault ? 'draining' : 'blocked')
+      if (fault)
+        expect(await readFile(join(target.root, 'plugin-drain.log'), 'utf8')).toContain(
+          'stage=blocked-write state=failed attempt=1 errno=EPERM',
+        )
       const proof = target.runId
         ? join(target.root, 'host/runs', target.runId, 'exit.json')
         : undefined
       const bytes = proof ? await readFile(proof) : undefined
-      if (proof) await unlink(proof)
+      if (proof) {
+        await unlink(proof)
+        // The process record names a stranger's reused group; only the receipt proves exit.
+        const stranger = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+          detached: true,
+          stdio: 'ignore',
+        })
+        children.push(stranger)
+        await once(stranger, 'spawn')
+        await writeFile(
+          join(target.root, 'host/runs', target.runId!, 'process.json'),
+          JSON.stringify({
+            format: 1,
+            runId: target.runId,
+            pluginId: 'fictional',
+            releaseDigest: 'f'.repeat(64),
+            guardianPid: 404941,
+            groups: [[stranger.pid, '0:a birth this number no longer has']],
+          }),
+          { mode: 0o600 },
+        )
+      }
       const start = () =>
         PluginSupervisor.start({
           root: target.root,
@@ -235,12 +236,16 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
       successors.push(successor)
       const after = await lstat(join(target.root, 'supervisor/owner-lock.sqlite'), { bigint: true })
       expect([after.dev, after.ino]).toEqual([fence.dev, fence.ino])
-      expect((await read(target.root)).epoch).not.toBe(target.lease.epoch)
-      expect(await read(bystander.root)).toEqual(before)
+      expect((await readOwner(target.root)).epoch).not.toBe(target.lease.epoch)
+      expect(await readOwner(bystander.root)).toEqual(before)
       await expect(bystander.lease.renew()).resolves.toBeUndefined()
       expect(bystander.child.exitCode).toBeNull()
-      expect(await bystander.lease.close()).toBe(true)
-      await ended(bystander.child)
+      expect(await bystander.lease.close()).toBe(!fault)
+      expect(await ended(bystander.child)).toBe(0)
+      if (fault)
+        expect(await readFile(join(bystander.root, 'plugin-drain.log'), 'utf8')).toContain(
+          'stage=stopped-write state=failed attempt=1 errno=EPERM',
+        )
     },
   )
   it('holds the fence until actual process death, never merely until the retirement callback', async () => {
@@ -267,12 +272,7 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
       const target = await fixture('target-' + mode, mode)
       const closing = target.lease.close()
       if (mode === 'start-failure') {
-        await expect
-          .poll(
-            async () =>
-              JSON.parse(await readFile(join(target.root, 'supervisor/owner.json'), 'utf8')).phase,
-          )
-          .toBe('draining')
+        await expect.poll(async () => (await readOwner(target.root)).phase).toBe('draining')
         target.child.send('fail-start')
       }
       expect(await closing).toBe(false)

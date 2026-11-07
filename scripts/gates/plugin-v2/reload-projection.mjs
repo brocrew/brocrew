@@ -66,12 +66,12 @@ export function projectReload(repo, { root, token, appData, browser, modules }) 
   entry = once(
     entry,
     'let host: RuntimeHost | null = null',
-    `// ${RELOAD_MARKER}\nlet reloadGateWindow: BrowserWindow | null = null;\nconst reloadGateNonce=${JSON.stringify(token)};\nlet host: RuntimeHost | null = null`,
+    `// ${RELOAD_MARKER}\nlet reloadGateWindow: BrowserWindow | null = null;\nconst reloadGateToken=${JSON.stringify(token)};\nlet host: RuntimeHost | null = null`,
   )
   entry = once(
     entry,
     'function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null): void {',
-    `function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null): void {\n  // ${RELOAD_MARKER}\n  bindReloadGateHost(runtimeHost);\n  const authorizeReloadRequest=${authorizeReloadRequest.toString()};\n  pluginIpcMain.handle(${JSON.stringify(RELOAD_CHANNEL)}, (event,payload:unknown)=>reloadGateCommand(authorizeReloadRequest(event,reloadGateWindow,payload,reloadGateNonce)));`,
+    `function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null): void {\n  // ${RELOAD_MARKER}\n  bindReloadGateHost(runtimeHost);\n  const authorizeReloadRequest=${authorizeReloadRequest.toString()};\n  pluginIpcMain.handle(${JSON.stringify(RELOAD_CHANNEL)}, (_event,payload:unknown)=>reloadGateCommand(authorizeReloadRequest(payload)));`,
   )
   entry = once(
     entry,
@@ -81,7 +81,7 @@ export function projectReload(repo, { root, token, appData, browser, modules }) 
   entry = once(
     entry,
     '    db?.close()\n    db = null',
-    `    const reloadHeldDb=db;\n    db?.close()\n    if(!reloadHeldDb)throw new Error('${RELOAD_MARKER}');\n    reloadGateFs.writeFileSync(${JSON.stringify(path.join(root, 'reload-native-db-closed.json'))},JSON.stringify({schema:1,closed:true,token:reloadGateNonce}),{flag:'wx',mode:0o600});\n    db = null`,
+    `    const reloadHeldDb=db;\n    db?.close()\n    if(!reloadHeldDb)throw new Error('${RELOAD_MARKER}');\n    reloadGateFs.writeFileSync(${JSON.stringify(path.join(root, 'reload-native-db-closed.json'))},JSON.stringify({schema:1,closed:true,token:reloadGateToken}),{flag:'wx',mode:0o600});\n    db = null`,
   )
   demand(!entry.includes('fixtureSource:'))
   const preload =

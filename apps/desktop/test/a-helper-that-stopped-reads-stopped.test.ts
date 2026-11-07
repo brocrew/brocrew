@@ -25,7 +25,6 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
-
 /**
  * A helper that stopped with a piece open reads as stopped, not as something its giver waits on.
  *

@@ -17,8 +17,9 @@ import {
 export class PluginHostError extends Error {
   constructor(
     readonly code: 'runtime' | 'paths' | 'package' | 'start' | 'ready' | 'cleanup' | 'unsupported',
+    options?: ErrorOptions,
   ) {
-    super(`plugin-host-${code}`)
+    super(`plugin-host-${code}`, options)
   }
 }
 export const digest = (value: Uint8Array): string =>

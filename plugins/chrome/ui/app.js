@@ -326,16 +326,7 @@ function draw(snapshot) {
             propose({ action: 'set-flags', profile: profile.name, [flag]: checked }),
           ),
         )
-      details.append(
-        settings,
-        checkbox(
-          'Keep running here. While on, workspaces with a separate Chrome setup cannot use this profile.',
-          profile.keepRunning === true,
-          `keepRunning:${profile.name}`,
-          (checked) =>
-            propose({ action: 'set-flags', profile: profile.name, keepRunning: checked }),
-        ),
-      )
+      details.append(settings)
       const notes = document.createElement('div')
       notes.className = 'profile-notes'
       notes.append(
@@ -511,6 +502,7 @@ function draw(snapshot) {
   if (focused) refocus(focused)
   if (caret && document.activeElement === renaming?.input)
     renaming.input.setSelectionRange(...caret)
+  window.settingsLoadState.ready()
 }
 // Redraws go through here, so none lands in the middle of a composition.
 function redraw() {
@@ -522,14 +514,15 @@ function show(snapshot) {
   try {
     draw(snapshot)
   } catch {
-    say(UNAVAILABLE, 'warn')
+    window.settingsLoadState.fail()
   }
 }
 async function refresh() {
   try {
-    show(await rpc('read', { surface: 'chrome' }))
+    const snapshot = await rpc('read', { surface: 'chrome' })
+    if (!closed) show(snapshot)
   } catch {
-    say(UNAVAILABLE, 'warn')
+    window.settingsLoadState.fail()
   }
 }
 document.querySelector('#create').addEventListener('submit', (event) => {

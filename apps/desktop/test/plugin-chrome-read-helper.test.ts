@@ -56,7 +56,6 @@ it('retains bounded shared panel fields and strips foreign workspace paths', asy
     allowSync: false,
     allowExtensions: false,
     allowSettings: true,
-    keepRunning: false,
   }
   const snapshot = await readChromeConfiguration(
     'chrome',

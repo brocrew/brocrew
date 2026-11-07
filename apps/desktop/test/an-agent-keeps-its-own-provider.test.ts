@@ -25,7 +25,6 @@ import { NONE_STARTED, theProviderOfAnAgent } from '../src/shared/agent-roster'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { fixtureProviderConfig } from './lib/host-fixture'
 
-
 /**
  * An agent keeps its default: a give can select another conversation's provider. One
  * nobody saved a provider for takes it from its own conversations that started; one whose

@@ -31,7 +31,6 @@ import { KIND_WORDS, stalledWorkLead, stalledWorkView } from '../src/renderer/sr
 import { OPEN_THE_CONVERSATION } from '../src/renderer/src/lib/taking-over'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
-
 /**
  * 🔴 **557 · work that stalls with nobody left to tell** — HO-018 §2.1's criterion 4, whose
  * property had lost its subject.

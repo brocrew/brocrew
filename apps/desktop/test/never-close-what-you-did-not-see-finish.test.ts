@@ -35,8 +35,6 @@ import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import { codeOnly, sourceOf, expectTypeImports } from './helpers/source-contracts'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
-
-
 /**
  * 🔴 **400 · never close what you did not see finish** — HO-018's three amendments, under one
  * principle.

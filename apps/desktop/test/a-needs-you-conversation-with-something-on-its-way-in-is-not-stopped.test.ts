@@ -23,9 +23,12 @@ import { RuntimeHost } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { type ResumableSessionInfo, type RuntimeStatesMessage, type UnresumableSessionInfo } from '../src/shared/runtime-ipc'
+import {
+  type ResumableSessionInfo,
+  type RuntimeStatesMessage,
+  type UnresumableSessionInfo,
+} from '../src/shared/runtime-ipc'
 import { fixtureProviderConfig, RecordingSink, syntheticProviderHome } from './lib/host-fixture'
-
 
 /**
  * # The idle stop · a start or a delivery on its way in keeps a *needs you* conversation running

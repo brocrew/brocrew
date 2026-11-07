@@ -28,7 +28,6 @@ import { derivePieces } from '../src/shared/tasks'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
 
-
 /**
  * # 🔴 W4.189 · A — a give's folder becomes a visible, work-linked grant on the helper's existing
  * # conversation

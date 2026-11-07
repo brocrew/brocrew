@@ -212,6 +212,8 @@ export interface PluginCard {
   priorityClamped?: boolean | null
   /** A living process does not imply that its agent tools are reachable. */
   toolsUnavailable?: true
+  /** Fixed-vocabulary `stage: cause` behind unavailable tools, when known. */
+  toolsCause?: string
   /** Negotiated person-only Chrome recovery; absent for older supervisors. */
   canRestart?: true
   installedVersion?: string
@@ -300,7 +302,19 @@ export type PluginSettingsReply =
       removal?: PluginRemovalOutcome
     }
   | { ok: false; listState: 'not-published' | 'fetch-error'; reason?: PluginListFailureReason }
-  | { ok: false; error: 'Plugin unavailable. Try again.'; mutationFailure?: PluginMutationFailure }
+  | {
+      ok: false
+      error: 'Plugin unavailable. Try again.'
+      mutationFailure?: PluginMutationFailure
+      /** The caught error's own message. */
+      detail?: string
+      /** Its stack, with every nested cause. */
+      stack?: string
+      /** Each typed code on its cause chain, outermost first. */
+      codes?: string[]
+      stage?: string
+      cause?: string
+    }
 export interface PluginsClient {
   request(input: PluginSettingsRequest): Promise<PluginSettingsReply>
   onReviewInvalidated?(listener: () => void): () => void

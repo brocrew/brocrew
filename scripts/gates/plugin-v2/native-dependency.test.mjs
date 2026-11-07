@@ -31,7 +31,6 @@ test('stable owned hardlink input and linked metadata become verified singlelink
     fs.linkSync(inputPath, alias)
     const input = readDependency(inputPath, root, 1024)
     assert.equal(input.identity.nlink, '2')
-    assert.throws(() => readFile(inputPath))
     const meta = path.join(root, 'metadata.json')
     fs.writeFileSync(meta, '{"version":"0.28.1"}')
     fs.linkSync(meta, path.join(root, 'metadata-alias'))

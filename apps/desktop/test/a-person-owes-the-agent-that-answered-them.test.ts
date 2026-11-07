@@ -27,7 +27,6 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID, type RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
-
 /**
  * F097 · a person owes the agent that answered them — the host half.
  *

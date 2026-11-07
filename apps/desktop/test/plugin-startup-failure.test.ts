@@ -242,6 +242,11 @@ it('cause formatting bounds cycles and survives hostile diagnostic properties', 
   const cyclic = new Error('owner-invalidated')
   cyclic.cause = cyclic
   expect(pluginFailureCause(cyclic)).toContain('owner-invalidated')
+  // An aggregate that contains itself is named once, not walked without end.
+  const members: unknown[] = []
+  const loop = new AggregateError(members, 'fictional loop')
+  Object.defineProperty(loop, 'errors', { value: [loop] })
+  expect(pluginFailureCause(loop)).toContain('fictional loop')
   expect(
     pluginFailureCause(new Error('x'.repeat(10000), { cause: new Error('actual leaf') })).length,
   ).toBeLessThanOrEqual(512)
@@ -254,6 +259,12 @@ it('cause formatting bounds cycles and survives hostile diagnostic properties', 
     },
   })
   expect(() => pluginFailureCause(hostile)).not.toThrow()
+})
+it('cause diagnostics keep the real error text, including addresses and paths', () => {
+  const value = pluginFailureCause(
+    new Error('http://127.0.0.1:8123/mcp /fictional/private sdk-body-contents'),
+  )
+  expect(value).toBe('Error: http://127.0.0.1:8123/mcp /fictional/private sdk-body-contents')
 })
 it('catalogue logs retain the typed refusal code when its public Error message is generic', async () => {
   const root = await mkdtemp(join(tmpdir(), 'fictional-typed-catalogue-error-'))

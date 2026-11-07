@@ -26,7 +26,6 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID, type RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
-
 /**
  * # a032e58f · feat(work): a piece waits on the person who wrote to its holder
  *

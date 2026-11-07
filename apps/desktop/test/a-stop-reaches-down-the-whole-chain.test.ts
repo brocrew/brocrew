@@ -30,7 +30,6 @@ import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runt
 import { permanenceInWords } from '../src/main/runtime/agent-tool-answer-words'
 import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
-
 /**
  * 🔴 **629 · a stop reaches down the whole chain** — ordered by `HO-095` §4, a RULING.
  *

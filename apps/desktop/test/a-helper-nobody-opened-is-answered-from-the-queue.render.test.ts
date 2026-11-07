@@ -34,7 +34,6 @@ import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { syntheticProviderHome } from './lib/host-fixture'
 
-
 /**
  * A helper an agent started in Ask mode, parked on a permission, that no window has opened: its row
  * on Waiting on you says what is asked and offers the answers its own card offers, from the host's

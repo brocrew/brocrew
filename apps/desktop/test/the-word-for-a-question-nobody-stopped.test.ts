@@ -26,7 +26,6 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { REQUEST_IS_OPEN, deriveRoutedRequests } from '../src/shared/questions'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
-
 /**
  * 🔴 **397 · the word for a question nobody stopped** — Slice 4 S6, the last build dispatch of the
  * slice, and the residue `396` §7 reported and refused to fix in passing.

@@ -20,7 +20,6 @@ import { clockTime } from '../src/shared/clock'
 import { type RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
-
 /**
  * # A scheduled job is listed, and leaves the listing, as it happens
  *

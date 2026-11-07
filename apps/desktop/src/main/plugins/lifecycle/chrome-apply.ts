@@ -31,10 +31,9 @@ export const ChromeProposal = z.union([
       allowSync: z.boolean().optional(),
       allowExtensions: z.boolean().optional(),
       allowSettings: z.boolean().optional(),
-      keepRunning: z.boolean().optional(),
     })
     .refine((value) =>
-      [value.allowSync, value.allowExtensions, value.allowSettings, value.keepRunning].some(
+      [value.allowSync, value.allowExtensions, value.allowSettings].some(
         (flag) => flag !== undefined,
       ),
     ),
@@ -97,7 +96,6 @@ export async function applyChromeProfile(
           ? { allowExtensions: proposal.allowExtensions }
           : {}),
         ...(proposal.allowSettings !== undefined ? { allowSettings: proposal.allowSettings } : {}),
-        ...(proposal.keepRunning !== undefined ? { keepRunning: proposal.keepRunning } : {}),
       }
       break
     }

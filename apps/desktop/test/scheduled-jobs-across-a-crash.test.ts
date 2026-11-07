@@ -26,7 +26,6 @@ import {
 } from '../src/main/schedule-attempts-file'
 import { RecordingSink } from './lib/host-fixture'
 
-
 /**
  * # Scheduled jobs across a crash
  *

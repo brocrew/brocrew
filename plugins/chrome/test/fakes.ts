@@ -472,7 +472,6 @@ export interface Harness {
       allowExtensions?: boolean
       allowSettings?: boolean
       allowSync?: boolean
-      keepRunning?: boolean
     },
   ): string
   call(

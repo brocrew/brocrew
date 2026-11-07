@@ -11,12 +11,8 @@ import { PluginProfileLedger as OlderLedger } from './fixtures/plugin-delete-par
 import { ChromeProposal as OlderProposal } from './fixtures/plugin-delete-parent/chrome-apply'
 import source from './fixtures/plugin-delete-parent/source.json'
 import { PluginLifecycleController as OlderController } from './fixtures/plugin-delete-parent/controller'
-import {
-  fixture,
-  projection,
-  cleanupLifecycleFixtures,
-  reopenLifecycleFixture,
-} from './plugin-lifecycle-fixtures'
+import { GlobalPluginState as OlderState } from './fixtures/plugin-delete-parent/store'
+import { fixture, projection, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
 // Load the real package at runtime: its source is typechecked by the package's own project,
 // rather than importing its browser libraries into the host's Node-only compiler project.
 import {
@@ -200,9 +196,11 @@ it.each(['success', 'lost-reply', 'partial-removal'] as const)(
     expect(entries[0].proposal).toEqual({ action: 'set-enabled', profile: 'fern', enabled: false })
     expect(JSON.stringify(entries)).not.toContain('delete-profile')
     expect(JSON.stringify(entries)).not.toContain('confirm')
-    const state = reopenLifecycleFixture(f)
+    // The older copy runs its own store over the same root, as a rolled-back app would.
+    f.state.close()
+    const state = OlderState.open({ root: join(f.root, 'state'), workspaceRoots: [f.workspace] })
     closers.push(() => state.close())
-    const older = await OlderController.open({ ...f.opts, state: state as never })
+    const older = await OlderController.open({ ...f.opts, state } as never)
     closers.push(() => older.drain())
     try {
       const handle = await older.attach(projection().sink)

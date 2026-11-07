@@ -37,7 +37,6 @@ import {
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
-
 /**
  * 🔴 **406 · finished, and finished with a question** — HO-019 §2's property, and the two defects
  * that stood between it and a person.

@@ -111,12 +111,16 @@ it.skipIf(process.platform === 'win32').each(['created', 'prepared'] as const)(
     // Assert the tree first: base repairs the seal even though this was only a display read.
     expect(await treeBytes(options.root)).toEqual(before)
     expect(refused).toBe(true)
-    const owner = f.state.inspect() // Existing owner load keeps its recovery behavior.
+    // The owner's own load repairs the seal: the owner holds its state, so that is its next start.
+    f.state.close()
+    const reopened = GlobalPluginState.open(options)
+    const owner = reopened.inspect()
     expect(await readdir(guard)).toContain(seal)
     expect(owner.pending !== null).toBe(phase === 'prepared')
     expect(GlobalPluginState.observeInstallations(options)).toEqual({
       installed: [],
       pending: phase === 'prepared' ? 'chrome' : null,
     })
+    reopened.close()
   },
 )

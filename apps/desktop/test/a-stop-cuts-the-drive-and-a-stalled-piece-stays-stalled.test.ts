@@ -24,7 +24,6 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { derivePieces } from '../src/shared/tasks'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
-
 /**
  * 🔴 **D-016c · a stop changes nothing about a piece — the four places it is decided**
  * (the PM's ruling (c), and (b) for the caller).

@@ -1,5 +1,4 @@
 import type { KeyObject } from 'node:crypto'
-import type { PluginCard } from '../../../shared/plugin-settings'
 import type { PluginReleasePin } from '../package-verifier'
 import type { PluginRelease, PluginTarget } from '../package-schema'
 import type { GlobalPluginState } from '../state/store'
@@ -23,11 +22,12 @@ export interface LifecycleRuntime {
 }
 export interface WorkspaceProjection {
   readonly workspaceId: string
-  /** Acknowledges applying the projection; persistence belongs exclusively to GlobalPluginState. */
-  applied(pluginId: string, receipt: ProjectionReceipt | null): Promise<void>
   /** Revoke running consumers/UI; false or rejection is not proof of quiescence. */
   revoke(pluginId: string, installId: string): Promise<boolean>
-  /** Clear stale tool/UI bindings before acknowledging fresh live-owner metadata. No skills. */
+}
+/** The app's side of a workspace: it still answers an older owner's applied/reconcile notices. */
+export interface PersonProjection extends WorkspaceProjection {
+  applied(pluginId: string, receipt: ProjectionReceipt | null): Promise<void>
   reconcile(change: {
     pluginId: string
     before: ProjectionReceipt | null
@@ -64,17 +64,13 @@ export interface LifecycleOptions {
   now?: () => number
   /** Live host-broker reachability, separate from the plugin process lifecycle. */
   toolsUnavailable?: (pluginId: string) => boolean
+  /** Fixed-vocabulary `stage: cause` behind unavailable tools, when known. */
+  toolsCause?: (pluginId: string) => string | undefined
   /** Inert fault controls only; never a production launch option. */
-  fault?: (
-    point: 'prepared' | 'staged' | 'ready' | 'activated' | 'receipted' | 'update-fenced',
-  ) => void
+  fault?: (point: 'prepared' | 'staged' | 'ready' | 'activated' | 'update-fenced') => void
 }
 declare const workspaceBrand: unique symbol
 export interface LifecycleWorkspace {
   readonly [workspaceBrand]: true
 }
-export interface LifecycleStatus {
-  readonly cards: readonly PluginCard[]
-  readonly cleanupPending: readonly string[]
-}
-export type { ProjectionReceipt, Installation, PluginReleasePin, PluginRelease }
+export type { Installation, PluginReleasePin }

@@ -23,7 +23,6 @@ import {
   projection,
   deferred,
   cleanupLifecycleFixtures,
-  reopenLifecycleFixture,
 } from './plugin-lifecycle-fixtures'
 afterEach(async () => {
   vi.unstubAllGlobals()
@@ -39,7 +38,7 @@ describe.skipIf(process.platform === 'win32')(
         fixture({ catalogue: { bytes: Buffer.from('{}'), signature: Buffer.alloc(64) } }),
       ).rejects.toMatchObject({ code: 'unavailable' })
     })
-    it('downloads, verifies, journals, stages and checks readiness before activation and local receipt', async () => {
+    it('downloads, verifies, journals, stages and checks readiness before activation', async () => {
       const f = await fixture()
       const id = randomUUID()
       expect((await f.controller.status()).cards).toEqual([
@@ -53,24 +52,20 @@ describe.skipIf(process.platform === 'win32')(
       ])
       await f.controller.install(f.handle, 'chrome', id)
       const active = f.state.exportActivation().entries[0]!
-      expect(f.events).toEqual(['deny', 'download', 'start', 'ready', 'bind', 'receipt'])
+      expect(f.events).toEqual(['deny', 'download', 'start', 'ready'])
       expect(f.state.inspect().operations[0]!.status).toBe('completed')
-      expect(f.local.rows.get('chrome')?.installId).toBe(active.installId)
-      expect(f.state.projections(f.local.sink.workspaceId)[0]?.installId).toBe(active.installId)
       expect(f.controller.admitted(f.handle, 'chrome', active.installId)).toBe(true)
       await f.controller.install(f.handle, 'chrome', id)
       expect(f.starts()).toBe(1)
       expect(f.downloads()).toBe(1)
       expect(f.state.inspect().guards[0]!.installId).toBe(active.installId)
     })
-    it('projects a new global installation into every live workspace without a reopen', async () => {
+    it('admits a new global installation in every live workspace without a reopen', async () => {
       const f = await fixture()
       const second = projection()
       const other = await f.controller.attach(second.sink)
       await f.controller.install(f.handle, 'chrome')
       const installId = f.state.exportActivation().entries[0]!.installId
-      expect(f.state.projections(second.sink.workspaceId)[0]?.installId).toBe(installId)
-      expect(second.rows.get('chrome')?.installId).toBe(installId)
       expect(f.controller.admitted(other, 'chrome', installId)).toBe(true)
     })
     it('refuses declared plugin skills before prepare, staging or process start', async () => {
@@ -82,42 +77,28 @@ describe.skipIf(process.platform === 'win32')(
       expect(f.state.inspect().operations).toEqual([])
       expect(f.state.inspect().guards).toEqual([])
       expect(f.starts()).toBe(0)
-      expect(f.events).not.toContain('bind')
     })
-    it('clears restored tool/UI bindings even when the global receipt still matches B', async () => {
+    it('a workspace that attaches again is admitted for the current install and writes nothing', async () => {
       const f = await fixture()
       await f.controller.install(f.handle, 'chrome')
-      const receipt = f.state.projections(f.local.sink.workspaceId)[0]!
+      const installId = f.state.exportActivation().entries[0]!.installId
       await f.controller.detach(f.handle)
+      const sequence = f.state.inspect().sequence
       f.events.length = 0
       const fresh = await f.controller.attach(f.local.sink)
-      expect(f.events).toEqual(['revoke', 'clear', 'receipt', 'bind', 'receipt'])
-      expect(f.controller.admitted(fresh, 'chrome', receipt.installId)).toBe(true)
+      expect(f.events).toEqual([])
+      expect(f.state.inspect().sequence).toBe(sequence)
+      expect(f.controller.admitted(fresh, 'chrome', installId)).toBe(true)
     })
-    it('an unproved restored binding cleanup cannot inherit an otherwise matching receipt', async () => {
+    it('a workspace that attaches after an uninstall gets nothing for the removed plugin', async () => {
       const f = await fixture()
       await f.controller.install(f.handle, 'chrome')
-      const receipt = f.state.projections(f.local.sink.workspaceId)[0]!
-      await f.controller.detach(f.handle)
-      f.local.failRevoke()
-      f.events.length = 0
-      await expect(f.controller.attach(f.local.sink)).rejects.toMatchObject({
-        code: 'cleanup-pending',
-      })
-      expect(f.events).not.toContain('bind')
-      expect(f.controller.admitted(f.handle, 'chrome', receipt.installId)).toBe(false)
-      expect(f.controller.cleanForShutdown()).toBe(false)
-    })
-    it('a restored workspace with no canonical receipt still clears tombstoned tool/UI origins', async () => {
-      const f = await fixture()
-      await f.controller.install(f.handle, 'chrome')
+      const installId = f.state.exportActivation().entries[0]!.installId
       await f.controller.uninstall(f.handle, 'chrome')
       await f.controller.detach(f.handle)
-      expect(f.state.projections(f.local.sink.workspaceId)).toEqual([])
-      f.events.length = 0
-      await f.controller.attach(f.local.sink)
-      expect(f.events).toEqual(['revoke', 'clear', 'receipt'])
-      expect(f.state.projections(f.local.sink.workspaceId)).toEqual([])
+      const fresh = await f.controller.attach(f.local.sink)
+      expect(f.controller.admitted(fresh, 'chrome', installId)).toBe(false)
+      expect(f.controller.agentAttachments(f.local.sink.workspaceId)).toEqual([])
     })
     it('logs a WhatsApp plugin out while it runs, then removes its code and its data; Chrome keeps its data', async () => {
       const shown = (events: string[]) =>
@@ -155,8 +136,8 @@ describe.skipIf(process.platform === 'win32')(
       expect(f.starts()).toBe(0)
       expect(f.state.inspect().guards).toEqual([])
     })
-    it.each(['prepared', 'staged', 'ready', 'receipted'] as const)(
-      'unwinds a failed first install at %s without leaving an active receipt',
+    it.each(['prepared', 'staged', 'ready'] as const)(
+      'unwinds a failed first install at %s without leaving an activation',
       async (point) => {
         const f = await fixture({
           fault: (at) => {
@@ -169,11 +150,10 @@ describe.skipIf(process.platform === 'win32')(
         expect(f.state.inspect().pending).toBeNull()
         expect(f.state.exportActivation().entries).toEqual([])
         expect(f.state.inspect().guards[0]!.phase).toBe('removed')
-        expect(f.local.rows.size).toBe(0)
         expect(f.events).toContain('remove-code')
       },
     )
-    it('a lost response after atomic activation retains all committed receipts and retries without allocation', async () => {
+    it('a lost response after atomic activation stays installed and retries without allocation', async () => {
       const f = await fixture({
         fault(point) {
           if (point === 'activated') throw new Error('fictional response loss after commit')
@@ -182,7 +162,6 @@ describe.skipIf(process.platform === 'win32')(
       const operationId = randomUUID()
       await expect(f.controller.install(f.handle, 'chrome', operationId)).resolves.toBeUndefined()
       const active = f.state.exportActivation().entries[0]!
-      expect(f.state.projections(f.local.sink.workspaceId)[0]?.installId).toBe(active.installId)
       expect(f.controller.admitted(f.handle, 'chrome', active.installId)).toBe(true)
       const sequence = f.state.inspect().sequence
       await f.controller.install(f.handle, 'chrome', operationId)
@@ -197,19 +176,6 @@ describe.skipIf(process.platform === 'win32')(
       })
       expect(f.events.indexOf('stop')).toBeGreaterThan(f.events.indexOf('ready'))
       expect(f.state.exportActivation().entries).toEqual([])
-    })
-    it('a receipt failure aborts with the pre-reserved outcome before any activation', async () => {
-      const f = await fixture()
-      f.local.failWrite()
-      await expect(f.controller.install(f.handle, 'chrome')).rejects.toMatchObject({
-        code: 'unavailable',
-      })
-      expect(f.state.exportActivation().entries).toEqual([])
-      expect(
-        f.state.inspect().operations.map((one) => one.operation.request.consent.action),
-      ).toEqual(['install'])
-      expect(f.state.inspect().operations[0]!.status).toBe('aborted')
-      expect(f.local.rows.size).toBe(0)
     })
     it('denies before awaiting uninstall, tombstones before cleanup, and keeps mutable data', async () => {
       const f = await fixture()
@@ -455,26 +421,20 @@ describe.skipIf(process.platform === 'win32')(
       await expect(drainResult).resolves.toBeUndefined()
       expect(f.controller.cleanForShutdown()).toBe(true)
     })
-    it('offline A tool/UI bindings are cleaned on reopen before rebinding B', async () => {
+    it('a workspace offline while A was replaced by B is admitted only for B when it attaches again', async () => {
       const f = await fixture()
       await f.controller.install(f.handle, 'chrome')
       const old = projection(),
         oldHandle = await f.controller.attach(old.sink),
-        receiptA = old.rows.get('chrome')!
+        installA = f.state.exportActivation().entries[0]!.installId
       await f.controller.detach(oldHandle)
       await f.controller.uninstall(f.handle, 'chrome')
       await f.controller.install(f.handle, 'chrome')
-      const receiptB = f.local.rows.get('chrome')!
-      expect(receiptB.installId).not.toBe(receiptA.installId)
-      const changes: string[] = []
-      old.sink.reconcile = async (change) => {
-        changes.push(change.receipt ? 'bind' : 'clear')
-      }
+      const installB = f.state.exportActivation().entries[0]!.installId
+      expect(installB).not.toBe(installA)
       const fresh = await f.controller.attach(old.sink)
-      expect(changes).toEqual(['clear', 'bind'])
-      expect(old.rows.get('chrome')!.installId).toBe(receiptB.installId)
-      expect(f.state.matchesProjection(receiptA, old.sink.workspaceId)).toBe(false)
-      expect(f.controller.admitted(fresh, 'chrome', receiptA.installId)).toBe(false)
+      expect(f.controller.admitted(fresh, 'chrome', installA)).toBe(false)
+      expect(f.controller.admitted(fresh, 'chrome', installB)).toBe(true)
     })
     it('reopens a pending first install only with clean predecessor proof, then unwinds it', async () => {
       const f = await fixture({
@@ -496,15 +456,6 @@ describe.skipIf(process.platform === 'win32')(
       expect(f.state.inspect().pending).toBeNull()
       expect(f.state.exportActivation().entries).toEqual([])
       expect((await recovered.status()).cards[0]!.installed).toBe(false)
-    })
-    it('canonical workspace receipts survive store reopen without any workspace database table', async () => {
-      const f = await fixture()
-      await f.controller.install(f.handle, 'chrome')
-      const receipt = f.state.projections(f.local.sink.workspaceId)[0]!
-      await f.controller.detach(f.handle)
-      const reopened = reopenLifecycleFixture(f)
-      expect(reopened.projections(f.local.sink.workspaceId)).toEqual([receipt])
-      expect(reopened.matchesProjection(receipt, f.local.sink.workspaceId)).toBe(true)
     })
     it('the Settings seam installs/configures/uninstalls over separate person authority and awaits UI teardown', async () => {
       const f = await fixture()
@@ -549,7 +500,6 @@ describe.skipIf(process.platform === 'win32')(
         await uninstall
         expect(f.events).toContain('remove-code')
         expect((await client.catalogue())[0]?.state).toBe('Available')
-        expect(f.state.projections(local.sink.workspaceId)).toEqual([])
       } finally {
         await client?.close()
         await bridge.close()
@@ -667,7 +617,7 @@ describe.skipIf(process.platform === 'win32')(
       await expect(bridge.close()).resolves.toBeUndefined()
       expect(f.controller.cleanForShutdown()).toBe(true)
     })
-    it('a detach refused while its channel is open holds once that channel closes', async () => {
+    it('detach ends admission even when its open consumer refuses the revoke notice', async () => {
       const f = await fixture()
       await f.controller.detach(f.handle)
       const key = 'a'.repeat(64)
@@ -683,12 +633,13 @@ describe.skipIf(process.platform === 'win32')(
         key,
         handle: async (input) => !(refuses && (input as { kind: string }).kind === 'revoke'),
       })
-      await consumer.call({ kind: 'attach', workspaceId: randomUUID() })
+      const workspaceId = randomUUID()
+      await consumer.call({ kind: 'attach', workspaceId })
       await consumer.call({ kind: 'install', pluginId: 'chrome', operationId: randomUUID() })
+      expect(f.controller.agentAttachments(workspaceId)).toHaveLength(1)
       refuses = true // Its window could not close the plugin's screen.
-      await expect(consumer.call({ kind: 'detach' })).rejects.toMatchObject({
-        code: 'unavailable',
-      })
+      await expect(consumer.call({ kind: 'detach' })).resolves.toBe(true)
+      expect(f.controller.agentAttachments(workspaceId)).toEqual([])
       const consumerClosed = new Promise<void>((resolve) => consumer.onClose(resolve))
       await expect(bridge.close()).resolves.toBeUndefined()
       // The consumer learns of the close from its own socket, after the server has finished.
@@ -739,30 +690,16 @@ describe.skipIf(process.platform === 'win32')(
         }),
       ).rejects.toMatchObject({ code: 'unavailable' })
     })
-    it('refuses a mismatched receipt key before publication, preserving readable history', async () => {
-      const f = await fixture()
-      await f.controller.install(f.handle, 'chrome')
-      const receipt = f.state.projections(f.local.sink.workspaceId)[0]!,
-        sequence = f.state.inspect().sequence
-      expect(() =>
-        f.state.recordProjection(f.local.sink.workspaceId, 'fictional-other', receipt),
-      ).toThrow()
-      expect(f.state.inspect().sequence).toBe(sequence)
-      expect(f.state.matchesProjection(receipt, f.local.sink.workspaceId)).toBe(true)
-    })
-    it('projection writes cannot consume a pending resolution, and same-operation uninstall retries resolve it', async () => {
+    it('a later uninstall finishes a pending removal whose stop failed', async () => {
       const f = await fixture()
       await f.controller.install(f.handle, 'chrome')
       const operationId = randomUUID()
       f.failStop()
       await expect(f.controller.uninstall(f.handle, 'chrome', operationId)).rejects.toThrow()
-      const sequence = f.state.inspect().sequence
-      expect(() => f.state.recordProjection(f.local.sink.workspaceId, 'chrome', null)).toThrow()
-      expect(f.state.inspect().sequence).toBe(sequence)
       f.failStop(false)
       await f.controller.uninstall(f.handle, 'chrome', randomUUID())
       expect(f.state.inspect().pending).toBeNull()
-      expect(f.state.projections(f.local.sink.workspaceId)).toEqual([])
+      expect(f.state.exportActivation().entries).toEqual([])
     })
     it('replayed authenticated frames cannot create a second session or operation', async () => {
       const f = await fixture()
@@ -826,7 +763,7 @@ describe.skipIf(process.platform === 'win32')(
       await installing
       await removing
       expect(f.state.exportActivation().entries).toEqual([])
-      expect(f.local.rows.size).toBe(0)
+      expect(f.controller.agentAttachments(f.local.sink.workspaceId)).toEqual([])
     })
   },
 )
