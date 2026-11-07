@@ -395,9 +395,10 @@ describe('plugin owner recovery after the caller stops waiting', () => {
       const record = storage.read()!
       storage.write({ ...record, phase, wire: { ...record.wire, features: [] } })
       storage.close()
-      const runId = randomUUID()
-      const run = join(root, 'host/runs', runId)
-      await mkdir(run, { recursive: true, mode: 0o700 })
+      // Its recorded group's number now belongs to another process, so only a receipt proves it.
+      const { spawned } = await orphan()
+      const run = await recordedRun(root, [[spawned.pid!, '0:a birth this number no longer has']])
+      const runId = run.split(/[\\/]/).at(-1)!
       const proof = {
         format: 1,
         runId,
@@ -460,9 +461,12 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     })
     await once(spawned, 'spawn')
     child = spawned
-    const birth = groupIdentity(spawned.pid!)
+    return { spawned }
+  }
+  const birthOf = (one: ChildProcess) => {
+    const birth = groupIdentity(one.pid!)
     expect(birth).toBeTruthy()
-    return { spawned, birth: birth! }
+    return birth!
   }
   const gone = (one: ChildProcess) => one.exitCode !== null || one.signalCode !== null
   async function deadOwner(root: string, workspaceRoot: string) {
@@ -480,7 +484,8 @@ describe('plugin owner recovery after the caller stops waiting', () => {
       'is proven by its recorded group (%s), and the successor continues with no reboot advice',
       async (kind) => {
         const { root, options } = await fixture()
-        const { spawned, birth } = await orphan()
+        const { spawned } = await orphan()
+        const birth = birthOf(spawned)
         if (kind !== 'live') {
           const exit = once(spawned, 'exit')
           spawned.kill('SIGKILL')
@@ -517,7 +522,8 @@ describe('plugin owner recovery after the caller stops waiting', () => {
       'stays unresolved when its recorded group cannot be proven (%s)',
       async (kind) => {
         const { root, options } = await fixture()
-        const { spawned, birth } = await orphan()
+        const { spawned } = await orphan()
+        const birth = birthOf(spawned)
         const run = await recordedRun(root, [
           [spawned.pid!, kind === 'birth-mismatch' ? '0:Thu Jan  1 00:00:00 1970' : birth],
         ])
@@ -541,6 +547,34 @@ describe('plugin owner recovery after the caller stops waiting', () => {
         expect(gone(spawned)).toBe(false)
       },
     )
+  })
+  it('proves a run that never wrote a process record, even with its guardian receipt saying not exited', async () => {
+    // Its server was never admitted, so no plugin code ran; see recovery-proof's proveRunStopped.
+    const { root, options } = await fixture()
+    const runId = randomUUID()
+    const run = join(root, 'host/runs', runId)
+    await mkdir(run, { recursive: true, mode: 0o700 })
+    const receipt = JSON.stringify({
+      format: 1,
+      runId,
+      pluginId: 'fictional',
+      releaseDigest: 'f'.repeat(64),
+      guardianPid: 404941,
+      groups: [],
+      exited: false,
+    })
+    await writeFile(join(run, 'exit.json'), receipt, { mode: 0o600 })
+    await deadOwner(root, options.workspaceRoot)
+    const advice = vi.fn()
+    owner = await PluginSupervisor.start({
+      root,
+      workspaceRoots: [options.workspaceRoot],
+      recoverPrevious: (previous) =>
+        previousRunsProvenStopped(root, { previous, onRebootRequired: advice }),
+    })
+    expect(advice).not.toHaveBeenCalled()
+    // The guardian's own receipt is left as it wrote it.
+    expect(await readFile(join(run, 'exit.json'), 'utf8')).toBe(receipt)
   })
   it('recovers a missing owner record with no historical runs while retaining the original lock inode', async () => {
     const { root, options } = await fixture()

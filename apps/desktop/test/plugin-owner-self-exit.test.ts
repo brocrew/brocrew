@@ -1,4 +1,4 @@
-import { fork, type ChildProcess } from 'node:child_process'
+import { fork, spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
 import { randomUUID } from 'node:crypto'
 import {
@@ -159,7 +159,8 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
         JSON.parse(await readFile(join(target.root, 'supervisor/owner.json'), 'utf8')).phase,
       ).not.toBe('blocked')
       const trace = await readFile(join(target.root, 'plugin-drain.log'), 'utf8')
-      expect([...trace.matchAll(/stage=blocked-write state=(\w+) attempt=(\d+)/g)].map((m) => m[0])).toEqual([
+      const attempts = [...trace.matchAll(/stage=blocked-write state=\w+ attempt=\d+/g)]
+      expect(attempts.map((match) => match[0])).toEqual([
         'stage=blocked-write state=failed attempt=1',
       ])
       expect(trace).toContain('stage=blocked-write state=failed attempt=1 errno=EPERM')
@@ -198,7 +199,29 @@ describe('blocked standalone owner self-exit under its unchanged fence', () => {
         ? join(target.root, 'host/runs', target.runId, 'exit.json')
         : undefined
       const bytes = proof ? await readFile(proof) : undefined
-      if (proof) await unlink(proof)
+      if (proof) {
+        await unlink(proof)
+        // Without its receipt a run is proven only through its process record. This one names a
+        // group whose number now belongs to another process, so only the receipt can prove it.
+        const stranger = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+          detached: true,
+          stdio: 'ignore',
+        })
+        children.push(stranger)
+        await once(stranger, 'spawn')
+        await writeFile(
+          join(target.root, 'host/runs', target.runId!, 'process.json'),
+          JSON.stringify({
+            format: 1,
+            runId: target.runId,
+            pluginId: 'fictional',
+            releaseDigest: 'f'.repeat(64),
+            guardianPid: 404941,
+            groups: [[stranger.pid, '0:a birth this number no longer has']],
+          }),
+          { mode: 0o600 },
+        )
+      }
       const start = () =>
         PluginSupervisor.start({
           root: target.root,

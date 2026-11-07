@@ -320,25 +320,31 @@ async function hasExitReceipt(root: string, runId: string): Promise<boolean> {
 }
 
 /**
- * A run whose exit receipt was never written (its writer died, or the file was held) is proven
- * stopped here by the same stop its guardian makes: every recorded group, by pid and birth, is
- * stopped and then found gone. A group this user can't signal, or whose number now belongs to
- * another process, leaves the run unresolved. On Windows the record names only the server, not
- * its job's tree, so a Windows run stays unresolved here.
+ * A run with no positive exit receipt (its writer died, its file was held, or its guardian could
+ * not prove its groups) is proven stopped here, under the original fence, or left unresolved.
+ * - No process record: its server was never admitted, and no plugin code ran. The guardian writes
+ *   process.json before it sends `group` (guardian.mjs:223–224), the host sends `admit` only after
+ *   `group` (node-host.ts:408–420), and the server waits for `admitted` before evaluating any
+ *   plugin code (server.mjs:70–80). That host lived in the previous owner, whose fence this start
+ *   holds, so no admission can come; an unadmitted server exits on disconnect (server.mjs:56, :72)
+ *   and its guardian on the host's (guardian.mjs:117). Nothing is written: no guardian pid is known,
+ *   and the files prove it again the same way.
+ * - A process record: every recorded group, by pid and birth, is stopped and found gone, as its
+ *   guardian does, and the receipt is written so a later reuse of the pid can't unprove it. A group
+ *   this user can't signal, or whose number now belongs to another process, leaves the run
+ *   unresolved. On Windows the record names only the server, not its job's tree, so a Windows run
+ *   with a record stays unresolved here.
  */
-async function stopRecordedRun(root: string, runId: string): Promise<boolean> {
+async function proveRunStopped(root: string, runId: string): Promise<boolean> {
+  const run = join(root, 'host/runs', runId)
+  if (!(await exists(join(run, 'process.json')))) return true
   if (process.platform === 'win32') return false
   const record = await readRunFile(root, runId, 'process.json', processRecord)
   if (!record || !(await stopGroups(new Map(record.groups)))) return false
   try {
-    writeReceipt(join(root, 'host/runs', runId), 'exit.json', {
-      ...record,
-      writerPid: process.pid,
-      exited: true,
-    })
+    writeReceipt(run, 'exit.json', { ...record, writerPid: process.pid, exited: true })
   } catch {
-    // The stop above is the proof. The receipt only spares the next start this check; a held
-    // file there means that start proves it again the same way.
+    // The stop above is the proof; a held file means the next start proves it again.
   }
   return true
 }
@@ -364,7 +370,7 @@ export async function previousRunsProvenStopped(
     let covered = await census(root)
     const unresolved = new Set<string>()
     for (const run of covered)
-      if (!(await hasExitReceipt(root, run.id)) && !(await stopRecordedRun(root, run.id)))
+      if (!(await hasExitReceipt(root, run.id)) && !(await proveRunStopped(root, run.id)))
         unresolved.add(run.id)
     if (!unresolved.size) return true
     if (!observation) return false
