@@ -13032,17 +13032,16 @@ export class RuntimeHost implements LiveHost {
     const renewedForIt = sessionId !== undefined && this.renewedForItsReopen.delete(sessionId)
     const prepare = (): Promise<string> => {
       const preparation = this.launches.open(`${provider} conversation home preparation`)
-      const signal = launch === undefined ? preparation.signal : AbortSignal.any([preparation.signal, launch.signal])
+      const signal =
+        launch === undefined
+          ? preparation.signal
+          : AbortSignal.any([preparation.signal, launch.signal])
       const work = Promise.resolve().then(() => {
         signal.throwIfAborted()
         return this.deps.prepareProviderHome(provider, profileId, signal)
       })
       this.launches.finish(preparation, work)
-      return untilCancelled(
-        work,
-        signal,
-        'preparing the conversation',
-      )
+      return untilCancelled(work, signal, 'preparing the conversation')
     }
     const renewal = this.deps.loginRenewal?.(provider)
     if (renewal === undefined || this.aKeyIsSaved(provider)) {

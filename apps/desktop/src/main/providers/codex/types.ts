@@ -7,7 +7,11 @@ export interface CodexKeySeam {
     | Promise<{ readonly key: string; readonly setAt: number } | null>
   /** Presence alone never needs to decrypt a key. */
   isSaved?(): boolean
-  change(providerHome: string, change: CodexKeyChange, signal?: AbortSignal): Promise<CodexKeyOutcome>
+  change(
+    providerHome: string,
+    change: CodexKeyChange,
+    signal?: AbortSignal,
+  ): Promise<CodexKeyOutcome>
 }
 
 export type { ProviderSignIn as CodexSignIn } from '../auth-types'

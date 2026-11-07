@@ -76,10 +76,17 @@ async function claudeHealth(
         signal?.throwIfAborted()
         return readLogin()
       },
-      apiKey === undefined ? undefined : () => untilCancelled(Promise.resolve().then(() => {
-        signal?.throwIfAborted()
-        return apiKey()
-      }), signal, 'reading the saved Claude key'),
+      apiKey === undefined
+        ? undefined
+        : () =>
+            untilCancelled(
+              Promise.resolve().then(() => {
+                signal?.throwIfAborted()
+                return apiKey()
+              }),
+              signal,
+              'reading the saved Claude key',
+            ),
       command,
     )
   } catch (error) {
@@ -137,9 +144,13 @@ export async function prepareClaudeHome(
   const home = await prepareStateHome(paths, profileId, seams.provisionHome)
   signal?.throwIfAborted()
 
-  const health = await untilCancelled(Promise.resolve().then(() =>
-    (seams.health ?? (() => claudeHealth(seams.key, claudeCommandFor(seams), signal)))(),
-  ), signal, 'preparing the Claude login')
+  const health = await untilCancelled(
+    Promise.resolve().then(() =>
+      (seams.health ?? (() => claudeHealth(seams.key, claudeCommandFor(seams), signal)))(),
+    ),
+    signal,
+    'preparing the Claude login',
+  )
   signal?.throwIfAborted()
   if (!health.ok) {
     throw new AuthUnavailableError('claude', health.reason ?? 'Claude machine login unavailable')

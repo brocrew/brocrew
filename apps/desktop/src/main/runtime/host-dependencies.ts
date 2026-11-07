@@ -75,7 +75,11 @@ export interface RuntimeHostDeps {
   connectionFor?(provider: Provider, recordedConnection?: string | null): string
   connectionRevision?(provider: Provider): number
   listConnections?(): readonly ProviderConnection[]
-  prepareProviderHome(provider: Provider, profileId: string, signal?: AbortSignal): string | Promise<string>
+  prepareProviderHome(
+    provider: Provider,
+    profileId: string,
+    signal?: AbortSignal,
+  ): string | Promise<string>
   beforeProviderLaunch?: () => Promise<void>
   readSelectedSkills?: (profileId: string | null, grants: SkillGrants) => SkillLaunchSelection
   prepareBuiltInSkills?: (input: {

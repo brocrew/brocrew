@@ -2,7 +2,12 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { FakeRuntime, untilCancelled, type CodexIncoming, type CodexTransport } from '@brobot2/runtime'
+import {
+  FakeRuntime,
+  untilCancelled,
+  type CodexIncoming,
+  type CodexTransport,
+} from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 import { ApiKeys } from '../src/main/runtime/api-keys'
@@ -80,7 +85,7 @@ function codexPreparation(holdKey: boolean) {
   const key = deferred<string>()
   const login = deferred<unknown>()
   const cleanup = deferred<void>()
-  const open = vi.fn(() => holdKey ? key.promise : Promise.resolve('fictional-key'))
+  const open = vi.fn(() => (holdKey ? key.promise : Promise.resolve('fictional-key')))
   const keys = new ApiKeys(
     {
       keptApiKey: () => ({ sealed: 'fictional-seal', setAt: 1 }),
@@ -101,7 +106,9 @@ function codexPreparation(holdKey: boolean) {
     notify: () => {},
     respond: () => {},
     respondError: () => {},
-    incoming: async function* (): AsyncIterable<CodexIncoming> { yield* [] },
+    incoming: async function* (): AsyncIterable<CodexIncoming> {
+      yield* []
+    },
     close: vi.fn(() => {
       login.reject(new Error('fictional child stopped'))
       return cleanup.promise
@@ -119,11 +126,25 @@ function codexPreparation(holdKey: boolean) {
       commandLine: { hasSwitch: () => false, getSwitchValue: () => '' },
       keys,
     },
-    { resolveProgram: () => ({ path: '/fictional/codex', from: 'carried' }), transportFactory: () => transport },
+    {
+      resolveProgram: () => ({ path: '/fictional/codex', from: 'carried' }),
+      transportFactory: () => transport,
+    },
   )
   const strategy = codexModuleFactory.home(
-    { managedRoot: root, defaultProfile: DEFAULT_PROFILE_ID, homeOf: () => home, profiles: () => [], assertMayOpen: () => {} },
-    { ...inputs.home, provisionHome: (_root, target) => { mkdirSync(target, { recursive: true }) } },
+    {
+      managedRoot: root,
+      defaultProfile: DEFAULT_PROFILE_ID,
+      homeOf: () => home,
+      profiles: () => [],
+      assertMayOpen: () => {},
+    },
+    {
+      ...inputs.home,
+      provisionHome: (_root, target) => {
+        mkdirSync(target, { recursive: true })
+      },
+    },
   )
   const runtime = new FakeRuntime('codex')
   const started = vi.spyOn(runtime, 'start')
@@ -141,7 +162,18 @@ function codexPreparation(holdKey: boolean) {
     closeDrainTimeoutMs: 40,
   })
   return {
-    host, strategy, home, keys, open, transport, wire, started, listed, login, cleanup, key,
+    host,
+    strategy,
+    home,
+    keys,
+    open,
+    transport,
+    wire,
+    started,
+    listed,
+    login,
+    cleanup,
+    key,
     dispose: async () => {
       key.resolve('fictional-key')
       login.resolve({})
@@ -156,14 +188,17 @@ function codexPreparation(holdKey: boolean) {
 describe.each(['Quit', 'Stop'] as const)('actual Codex home preparation on %s', (action) => {
   function start(fixture: ReturnType<typeof codexPreparation>) {
     if (action === 'Quit') return fixture.host.providerModels(DEFAULT_PROFILE_ID, 'codex')
-    return fixture.host.createSession(
-      { provider: 'codex', cwd: fixture.home, launchKey: 'launch:actual-home' },
-      new RecordingSink('window:actual-home'),
-    ).catch((error: unknown) => error)
+    return fixture.host
+      .createSession(
+        { provider: 'codex', cwd: fixture.home, launchKey: 'launch:actual-home' },
+        new RecordingSink('window:actual-home'),
+      )
+      .catch((error: unknown) => error)
   }
   async function stop(fixture: ReturnType<typeof codexPreparation>) {
     if (action === 'Quit') fixture.host.recordOpenForQuit()
-    else expect(await fixture.host.cancelLaunch('launch:actual-home', 'window:actual-home')).toBe(true)
+    else
+      expect(await fixture.host.cancelLaunch('launch:actual-home', 'window:actual-home')).toBe(true)
   }
 
   it('does not start credential work when the shared native read answers after cancellation', async () => {
@@ -198,10 +233,15 @@ describe.each(['Quit', 'Stop'] as const)('actual Codex home preparation on %s', 
     const outcome = start(fixture)
     try {
       await vi.advanceTimersByTimeAsync(0)
-      expect(fixture.wire.request).toHaveBeenCalledWith('account/login/start', { type: 'apiKey', apiKey: 'fictional-key' })
+      expect(fixture.wire.request).toHaveBeenCalledWith('account/login/start', {
+        type: 'apiKey',
+        apiKey: 'fictional-key',
+      })
       await stop(fixture)
       let closed = false
-      const closing = fixture.host.closeAll().then(() => { closed = true })
+      const closing = fixture.host.closeAll().then(() => {
+        closed = true
+      })
       await vi.advanceTimersByTimeAsync(0)
       expect(fixture.wire.close).toHaveBeenCalled()
       expect(closed).toBe(false)
@@ -224,11 +264,17 @@ it('cancels a queued home subscriber without releasing the preceding credential 
   const fixture = codexPreparation(false)
   const firstAbort = new AbortController()
   const queuedAbort = new AbortController()
-  const first = fixture.strategy.prepare(DEFAULT_PROFILE_ID, firstAbort.signal).catch((error: unknown) => error)
+  const first = fixture.strategy
+    .prepare(DEFAULT_PROFILE_ID, firstAbort.signal)
+    .catch((error: unknown) => error)
   let queued: unknown = 'pending'
   const second = fixture.strategy.prepare(DEFAULT_PROFILE_ID, queuedAbort.signal).then(
-    (value) => { queued = value },
-    (error: unknown) => { queued = error },
+    (value) => {
+      queued = value
+    },
+    (error: unknown) => {
+      queued = error
+    },
   )
   try {
     await vi.advanceTimersByTimeAsync(0)
@@ -237,7 +283,9 @@ it('cancels a queued home subscriber without releasing the preceding credential 
     await vi.advanceTimersByTimeAsync(0)
     expect(queued).toBeInstanceOf(Error)
     const thirdAbort = new AbortController()
-    const third = fixture.strategy.prepare(DEFAULT_PROFILE_ID, thirdAbort.signal).catch((error: unknown) => error)
+    const third = fixture.strategy
+      .prepare(DEFAULT_PROFILE_ID, thirdAbort.signal)
+      .catch((error: unknown) => error)
     await vi.advanceTimersByTimeAsync(0)
     expect(fixture.transport).toHaveBeenCalledTimes(1)
     thirdAbort.abort()
@@ -299,7 +347,10 @@ describe.each(['claude', 'codex'] as const)('pending %s saved-key launches', (pr
     const sink = new RecordingSink('window:fictional')
     const outcome = fixture.host
       .createSession({ provider, cwd: '/fictional-work', launchKey: 'launch:fictional' }, sink)
-      .then(() => 'opened', (error: unknown) => error)
+      .then(
+        () => 'opened',
+        (error: unknown) => error,
+      )
     try {
       await vi.advanceTimersByTimeAsync(0)
       expect(fixture.open).toHaveBeenCalledTimes(1)

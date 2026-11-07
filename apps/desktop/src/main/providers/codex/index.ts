@@ -73,7 +73,11 @@ export function bringTheCodexKeyTo(
   signal?: AbortSignal,
 ): Promise<'the-key' | 'its-login'> {
   const before = keyChangesInFlight.get(home) ?? Promise.resolve()
-  const mine = untilCancelled(before.catch(() => undefined), signal, 'waiting to prepare Codex').then(() => {
+  const mine = untilCancelled(
+    before.catch(() => undefined),
+    signal,
+    'waiting to prepare Codex',
+  ).then(() => {
     signal?.throwIfAborted()
     return bringTheCodexKeyToNow(home, codexKey, signal)
   })
@@ -94,10 +98,14 @@ async function bringTheCodexKeyToNow(
 ): Promise<'the-key' | 'its-login'> {
   let current: Awaited<ReturnType<CodexKeySeam['current']>>
   try {
-    current = await untilCancelled(Promise.resolve().then(() => {
-      signal?.throwIfAborted()
-      return codexKey.current()
-    }), signal, 'reading the saved Codex key')
+    current = await untilCancelled(
+      Promise.resolve().then(() => {
+        signal?.throwIfAborted()
+        return codexKey.current()
+      }),
+      signal,
+      'reading the saved Codex key',
+    )
   } catch (error) {
     if (error instanceof ApiKeyUnreadableError)
       throw new AuthUnavailableError('codex', error.message)
@@ -161,7 +169,10 @@ export async function prepareCodexHome(
 
   ensureCodexMemoryConfig(home)
 
-  if (seams.key !== undefined && (await bringTheCodexKeyTo(home, seams.key, signal)) === 'the-key') {
+  if (
+    seams.key !== undefined &&
+    (await bringTheCodexKeyTo(home, seams.key, signal)) === 'the-key'
+  ) {
     return home
   }
 
