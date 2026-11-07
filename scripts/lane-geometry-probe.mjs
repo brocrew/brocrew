@@ -60,7 +60,6 @@ const SHOT_DIR = (() => {
   return at === -1 ? null : (process.argv[at + 1] ?? null)
 })()
 
-
 // --- page-side expressions ---
 //
 // ⛔ **No backticks below this line inside an evaluate template, comments included** — a backtick

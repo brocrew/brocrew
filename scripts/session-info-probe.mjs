@@ -133,7 +133,6 @@ const arg = (flag) => {
 const SHOT_DIR = arg('--shot')
 const LABEL = arg('--label') ?? 'now'
 
-
 async function waitFor(what, read, budgetMs) {
   const deadline = Date.now() + budgetMs
   let last

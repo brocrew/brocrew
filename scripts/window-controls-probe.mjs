@@ -41,7 +41,6 @@ const SHOT_DIR = (() => {
   return at === -1 ? null : (process.argv[at + 1] ?? null)
 })()
 
-
 async function waitFor(what, read, budgetMs) {
   const deadline = Date.now() + budgetMs
   let last
