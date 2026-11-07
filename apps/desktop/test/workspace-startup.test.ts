@@ -375,12 +375,22 @@ it('the actual app startup records recovery before database/themes and retains a
   try {
     await startup(app())
     const log = warn.mock.calls.map(([line]) => String(line)).join('\n')
-    expect(log.indexOf('workspace-recovery start')).toBeLessThan(log.indexOf('workspace-recovery end'))
-    expect(log.indexOf('workspace-recovery end')).toBeLessThan(log.indexOf('themes-database-runtime-host start'))
+    expect(log.indexOf('workspace-recovery start')).toBeLessThan(
+      log.indexOf('workspace-recovery end'),
+    )
+    expect(log.indexOf('workspace-recovery end')).toBeLessThan(
+      log.indexOf('themes-database-runtime-host start'),
+    )
     expect(log).toContain('themes-database-runtime-host end')
     warn.mockClear()
-    await startup(app(), undefined, createPluginStartupTrace(), () => rmSync(join(workspace, 'brobot2.sqlite')))
-    expect(warn.mock.calls.some(([line]) => String(line).includes('workspace-recovery failure'))).toBe(true)
+    await startup(app(), undefined, createPluginStartupTrace(), () =>
+      rmSync(join(workspace, 'brobot2.sqlite')),
+    )
+    expect(
+      warn.mock.calls.some(([line]) => String(line).includes('workspace-recovery failure')),
+    ).toBe(true)
     expect(existsSync(join(workspace, 'plugins'))).toBe(false)
-  } finally { warn.mockRestore() }
+  } finally {
+    warn.mockRestore()
+  }
 })

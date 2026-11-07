@@ -158,6 +158,8 @@ export async function resumePluginNodeRuntime(options: {
 export async function runtimeFiles(
   runtime: PluginNodeRuntime,
 ): Promise<Readonly<{ node: string; guardian: string }>> {
+  const finish = pluginStartupTrace.begin('runtime-files-verify')
+  try {
   const paths = prepared.get(runtime)
   if (!paths) throw new PluginHostError('runtime')
   if (digest(await sourceBytes(paths.node, 256 * 1024 * 1024)) !== paths.digest)
@@ -172,5 +174,10 @@ export async function runtimeFiles(
       ).equals(bytes)
     )
       throw new PluginHostError('runtime')
+  finish()
   return Object.freeze({ node: paths.node, guardian: paths.guardian })
+  } catch (error) {
+    finish(error)
+    throw error
+  }
 }

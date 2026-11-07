@@ -839,6 +839,7 @@ process.send({ channel: 'brocrew-plugin-node:v1', runId: process.env.BROCREW_PLU
     ).rejects.toThrow('plugin-host-runtime')
   })
   it('refuses modified executable or bootstrap bytes in a kept runtime', async () => {
+    pluginStartupTrace.destination(root)
     const runtime = await preparePluginNodeRuntime({
       resourcesRoot: resources,
       durableRoot: join(root, 'other-runtimes'),
@@ -847,6 +848,9 @@ process.send({ channel: 'brocrew-plugin-node:v1', runId: process.env.BROCREW_PLU
     await chmod(paths.node, 0o700)
     await writeFile(paths.node, 'fictional replaced node')
     await expect(runtimeFiles(runtime)).rejects.toThrow('plugin-host-runtime')
+    await pluginStartupTrace.flush()
+    pluginStartupTrace.destination(undefined)
+    expect(await readFile(join(root, 'plugin-startup-trace.log'), 'utf8')).toContain('runtime-files-verify failure')
   })
   it('retries the same runtime after an interrupted private copy without publishing partial bytes', async () => {
     pluginStartupTrace.destination(root)
