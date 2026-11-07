@@ -6,6 +6,7 @@ import {
   renameSync,
   rmSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -257,6 +258,10 @@ describe('saved methods in the agent book', () => {
     const linkedRoot = join(root, 'linked-root')
     symlinkSync(inputs.homesRoot, linkedRoot, 'dir')
     writeFileSync(join(folder, 'review.md'), 'Inside')
+    const original = join(root, 'original')
+    renameSync(folder, original)
+    const directoryLink = process.platform === 'win32' ? 'junction' : 'dir'
+    symlinkSync(original, folder, directoryLink)
     expect(
       listSavedMethodLibrary(
         { folder: join(linkedRoot, 'default', 'wren', 'runbooks'), homesRoot: linkedRoot },
@@ -270,17 +275,17 @@ describe('saved methods in the agent book', () => {
       afterOpen: (name) => {
         if (name !== 'review.md') return
         try {
-          phase = 'rename the containing directory'
-          renameSync(folder, `${folder}-old`)
+          phase = 'remove the methods directory link'
+          unlinkSync(folder)
           completed.push(phase)
           phase = 'link the replacement directory'
-          symlinkSync(alternative, folder, 'dir')
+          symlinkSync(alternative, folder, directoryLink)
           completed.push(phase)
           phase = 'callback complete; library fstat/read/close follows'
         } catch (cause) {
           console.error(
             'Linked managed-root afterOpen failed',
-            { phase, completed, folder, renamed: `${folder}-old`, alternative },
+            { phase, completed, folder, original, alternative },
             cause,
           )
           throw cause
@@ -288,6 +293,7 @@ describe('saved methods in the agent book', () => {
       },
     })
     expect(answer, JSON.stringify({ phase, completed })).toMatchObject({ ok: true, text: 'Inside' })
+    expect(readSavedMethodBody(inputs, key)).toMatchObject({ ok: true, text: 'Outside' })
   })
 
   it('reports truncation instead of pretending a capped directory scan was complete', () => {
