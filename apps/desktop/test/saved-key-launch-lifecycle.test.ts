@@ -510,3 +510,45 @@ it('does not stamp a key-change result that arrives after its owner canceled', a
     rmSync(home, { recursive: true, force: true })
   }
 })
+
+it.each([true, false])('fallback provisioning preserves cancellation=%s through completion', async (cancel) => {
+  vi.useFakeTimers()
+  const root = mkdtempSync(join(tmpdir(), 'fictional-fallback-cancellation-'))
+  const home = join(root, 'codex')
+  const provisioned = deferred<void>()
+  const steps: string[] = []
+  const abort = new AbortController()
+  const strategy = codexModuleFactory.home(
+    {
+      managedRoot: root,
+      defaultProfile: DEFAULT_PROFILE_ID,
+      homeOf: () => home,
+      profiles: () => [],
+      assertMayOpen: () => {},
+    },
+    {
+      key: { current: () => null, change: async () => ({ ok: true, authMethod: null }) },
+      provisionHome: (_root, target) => { mkdirSync(target, { recursive: true }) },
+      provisionCodexAuth: async () => {
+        steps.push('started')
+        await provisioned.promise
+        steps.push('finished')
+      },
+    },
+  )
+  const outcome = strategy.prepare(DEFAULT_PROFILE_ID, abort.signal).catch((error: unknown) => error)
+  try {
+    await vi.advanceTimersByTimeAsync(0)
+    expect(steps).toEqual(['started'])
+    if (cancel) abort.abort()
+    provisioned.resolve()
+    const result = await outcome
+    expect(steps).toEqual(['started', 'finished'])
+    if (cancel) expect(result).toBeInstanceOf(Error)
+    else expect(result).toBe(home)
+  } finally {
+    provisioned.resolve()
+    await outcome
+    rmSync(root, { recursive: true, force: true })
+  }
+})
