@@ -173,12 +173,14 @@ export async function prepareCodexHome(
     seams.key !== undefined &&
     (await bringTheCodexKeyTo(home, seams.key, signal)) === 'the-key'
   ) {
+    signal?.throwIfAborted()
     return home
   }
 
   signal?.throwIfAborted()
   if (seams.provisionCodexAuth) await seams.provisionCodexAuth(home)
   else await provisionCodexAuth(home, theCodexCopy(paths, home, seams))
+  signal?.throwIfAborted()
   return home
 }
 
