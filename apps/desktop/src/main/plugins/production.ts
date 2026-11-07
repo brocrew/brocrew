@@ -796,6 +796,7 @@ export function productionPluginController() {
           if (peer) await detach(peer)
         } finally {
           await diagnosticWrite
+          await pluginStartupTrace.flush()
           personLifetime.abort()
           connected = undefined
           entries = null

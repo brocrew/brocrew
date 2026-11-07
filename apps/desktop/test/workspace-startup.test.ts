@@ -97,7 +97,7 @@ function declaration(name: string): string {
 }
 
 /** Execute the real main-process startup block with real recovery and themes, without Electron. */
-async function startup(fake: PinnableApp, beforeThemes?: () => void, trace = createPluginStartupTrace()) {
+async function startup(fake: PinnableApp, beforeThemes?: () => void, trace = createPluginStartupTrace(), beforeCheck?: () => void) {
   const lines: string[] = [],
     exits: number[] = [],
     stores: ThemeStore[] = []
@@ -196,6 +196,7 @@ async function startup(fake: PinnableApp, beforeThemes?: () => void, trace = cre
     context,
   )
   if (exits.length) return { lines, exits, databaseStarts, exists: existsSync(workspace) }
+  beforeCheck?.()
   const code =
     ['theRecoveryService', 'theVerdictBeforeTheData', 'endAFailedStart']
       .map(declaration)
@@ -372,13 +373,12 @@ it('the actual app startup records recovery before database/themes and retains a
   expect(log.indexOf('workspace-recovery start')).toBeLessThan(log.indexOf('workspace-recovery end'))
   expect(log.indexOf('workspace-recovery end')).toBeLessThan(log.indexOf('themes-database-runtime-host start'))
   expect(log).toContain('themes-database-runtime-host end')
-  rmSync(join(workspace, 'brobot2.sqlite'))
   const outside = join(root, 'logs')
   mkdirSync(outside)
   const fake = app(), getPath = fake.getPath
   fake.getPath = (name) => name === 'logs' ? outside : getPath(name)
   const refused = createPluginStartupTrace()
-  await startup(fake, undefined, refused)
+  await startup(fake, undefined, refused, () => rmSync(join(workspace, 'brobot2.sqlite')))
   await refused.flush()
   expect(readFileSync(join(outside, 'plugin-startup-trace.log'), 'utf8')).toContain('workspace-recovery failure')
   expect(existsSync(join(workspace, 'plugins'))).toBe(false)
