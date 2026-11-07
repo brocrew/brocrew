@@ -117,7 +117,9 @@
     "apps/desktop/test/plugin-settings.test.ts",
     "apps/desktop/src/main/plugins/startup-failure.ts",
     "apps/desktop/test/plugin-startup-failure.test.ts",
-    "apps/desktop/src/main/plugins/supervisor/entry.ts"
+    "apps/desktop/src/main/plugins/supervisor/entry.ts",
+    "scripts/gates/plugin-windows/gate.mjs",
+    "scripts/gates/plugin-windows/whatsapp.mjs"
   ],
   "files": [
     {
@@ -167,8 +169,8 @@
     },
     {
       "path": "apps/desktop/src/main/index.ts",
-      "sha256": "21a3899b56b3bd9410bf6a91a8a3bbc393857d3bbbbdb703da68cdf3d6c4a4fd",
-      "bytes": 115873
+      "sha256": "fdfaaf625206cce28437d18e86c4138650d97c7027f571a3e24e1ab01cd6bf47",
+      "bytes": 127855
     },
     {
       "path": "apps/desktop/src/main/plugins/catalogue/download.ts",
@@ -182,13 +184,13 @@
     },
     {
       "path": "apps/desktop/src/main/plugins/catalogue/local.ts",
-      "sha256": "d3ac97da0fa9ded0582a72ec6a1300bf28fb5854676f8dbbcd7271f0f09b54ff",
-      "bytes": 5469
+      "sha256": "fa1d07cbc824fd389bb4b315ac3cac932e611353dad7560610036a30148097ea",
+      "bytes": 5003
     },
     {
       "path": "apps/desktop/src/main/plugins/catalogue/repo-list.ts",
-      "sha256": "75a54ba2bd38094e543967911a81ad6ac77b7c9a89cfd8cce5b82c30d3cd997b",
-      "bytes": 6947
+      "sha256": "27495a269fce94f495e36ce56951fc53f17212676b003bb8467a23f9ab719ed6",
+      "bytes": 6941
     },
     {
       "path": "apps/desktop/src/main/plugins/hooks/definitions.ts",
@@ -197,8 +199,8 @@
     },
     {
       "path": "apps/desktop/src/main/plugins/node-host-files.ts",
-      "sha256": "3d514a77249a102426a4594fc4baecf37f32045f88f961a55680b6489a228c30",
-      "bytes": 8551
+      "sha256": "f6838ab19fd4549e9593b344f4b8f632bf803a0bea9f5e52f0c6f3015dec8bc3",
+      "bytes": 8278
     },
     {
       "path": "apps/desktop/src/main/plugins/package-archive.ts",
@@ -227,8 +229,8 @@
     },
     {
       "path": "apps/desktop/src/main/plugins/private-files.ts",
-      "sha256": "9679ba642e35462a96486692e4b56a5735db61afcacbdd9ebe99e6cc777263b9",
-      "bytes": 11460
+      "sha256": "2b2bc52a56127a939d05cde002fd20ad060cfefe308afdf6fabbfc44aafcb412",
+      "bytes": 5754
     },
     {
       "path": "apps/desktop/src/main/plugins/strict-json.ts",
@@ -257,18 +259,13 @@
     },
     {
       "path": "apps/desktop/src/main/recovery/files.ts",
-      "sha256": "9fbb2cc947057c2d6cd3c0856d26b255bc593283198f5862f7c60a0da5cff76c",
-      "bytes": 15601
+      "sha256": "bd10bfcf635e61e4b4cc901551c110079dcd8dc2f81640845548bc35e24fd3b1",
+      "bytes": 16359
     },
     {
       "path": "apps/desktop/src/main/recovery/layout.ts",
       "sha256": "9c335191f407cc207aa35a38f2862dbe9c4351b631ddeb62bc982c48e972c5ed",
       "bytes": 7482
-    },
-    {
-      "path": "apps/desktop/src/main/recovery/windows-privacy.ts",
-      "sha256": "7a9c6e6bed4929d728543940e90e64d1680e060233da1c29ace2445e049c2dfa",
-      "bytes": 17618
     },
     {
       "path": "apps/desktop/src/main/runtime/ipc.ts",
@@ -802,8 +799,8 @@
     },
     {
       "path": "scripts/gates/plugin-v2/network-entry.ts",
-      "sha256": "eeef39834da0035f09b8113289ae62c553bc9b8a35dbe571683f8f2a7519f87a",
-      "bytes": 4695
+      "sha256": "9c8b42dd9d4101509aa8467c060e36a44851a4961de7f94bce1157d7106cac60",
+      "bytes": 4560
     },
     {
       "path": "scripts/gates/plugin-v2/operator-operation.template.json",
@@ -927,8 +924,8 @@
     },
     {
       "path": "scripts/gates/plugin-windows/gate.mjs",
-      "sha256": "5d8d14c9ab9e89cd33ef9db9af2c4a1f1d6bc4c15e047cd438f43c403df212ab",
-      "bytes": 48595
+      "sha256": "d07dd887eab3452283e4598847800b91c572d7cd4569474172bdfbdbd3bf6f27",
+      "bytes": 48328
     },
     {
       "path": "scripts/lib/hidden-launch.mjs",

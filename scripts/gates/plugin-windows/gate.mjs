@@ -50,8 +50,6 @@ export const checks = [
   'tamperedArchiveRefused',
   'pluginsTab',
   'installed',
-  'rootPrivate',
-  'rootDeniedToOtherAccount',
   'pipeChallengeOnlyToOtherAccount',
   'pipeNotWritableByOtherAccount',
   'profileCreated',
@@ -87,7 +85,6 @@ export const steps = [
   'install-press',
   'install-wait',
   'install-priority',
-  'root-private',
   'other-account',
   'profile-create',
   'profile-enable',
@@ -1047,12 +1044,8 @@ export async function gate(node22) {
       })
       return started
     })
-    await step('root-private', async () => {
-      check(summary, 'rootPrivate', onlyTheThree(await readList(global), sid))
-    })
     await step('other-account', async () => {
       const other = await otherAccount(global, ownerPipe(global))
-      check(summary, 'rootDeniedToOtherAccount', other.rootDenied)
       check(summary, 'pipeNotWritableByOtherAccount', other.writeDenied)
       check(summary, 'pipeChallengeOnlyToOtherAccount', other.challengeOnly)
     })

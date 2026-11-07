@@ -13,6 +13,7 @@ function canonicalFolder(folder: string): string {
 
 function settingsFolder(cwd: string): string {
   const startingFolder = resolve(cwd)
+  if (process.platform === 'win32') return startingFolder
 
   let checkout: string
   try {

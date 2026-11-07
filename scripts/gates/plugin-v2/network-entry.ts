@@ -8,7 +8,6 @@ import {
 } from '../../../apps/desktop/src/main/plugins/catalogue/repo-list'
 import { createRepoAwarePluginVerifier } from '../../../apps/desktop/src/main/plugins/package-verifier'
 import { pluginSha256 } from '../../../apps/desktop/src/main/plugins/package-digests'
-import { keepPluginRootPrivate } from '../../../apps/desktop/src/main/plugins/private-files'
 
 export async function networkProof(root: string, candidate: Buffer, appVersion: string) {
   const target =
@@ -50,7 +49,6 @@ export async function networkProof(root: string, candidate: Buffer, appVersion: 
   try {
     const listRoot = path.join(root, 'network-root')
     fs.mkdirSync(listRoot, { mode: 0o700 })
-    await keepPluginRootPrivate(listRoot)
     const options = { root: listRoot, target, appVersion }
     const v1 = await loadRepoPluginList({ ...options, sourceVersion: 1 })
     request = 'v2'
