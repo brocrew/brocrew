@@ -1,6 +1,17 @@
 import type { AssetFacts } from '../../src/shared/themes/assets'
 import type { Theme } from '../../src/shared/themes/theme'
-import type { ThemeContext } from '../../src/shared/themes/validate'
+import { validateTheme, type ThemeContext } from '../../src/shared/themes/validate'
+import DEFINED_FILE from '../../resources/themes/defined/theme.json'
+
+export function shippedDefined(): Theme {
+  const read = validateTheme(DEFINED_FILE, {
+    assets: new Map(),
+    builtIns: new Map(),
+    builtIn: true,
+  })
+  if (!read.ok) throw new Error(JSON.stringify(read.problems))
+  return read.theme
+}
 
 export const png = (width: number, height: number, bytes = 40_000): AssetFacts => ({
   type: 'png',

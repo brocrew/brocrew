@@ -9,18 +9,10 @@ import { contrastRatio, over, type Rgba } from '../../src/shared/themes/colour'
 import { theList } from '../../src/shared/model-choice'
 import { resolveTheme } from '../../src/shared/themes/theme'
 import { validateTheme } from '../../src/shared/themes/validate'
-import DEFINED_FILE from '../../resources/themes/defined/theme.json'
+import { shippedDefined } from '../themes/fixtures'
 import { META, mount, paneProps, record, unmountAll, type Mounted } from './harness'
 
-const BASE = (() => {
-  const read = validateTheme(DEFINED_FILE, {
-    assets: new Map(),
-    builtIns: new Map(),
-    builtIn: true,
-  })
-  if (!read.ok) throw new Error(JSON.stringify(read.problems))
-  return read.theme
-})()
+const BASE = shippedDefined()
 
 const canvas = document.createElement('canvas')
 canvas.width = 1

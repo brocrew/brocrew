@@ -10,19 +10,11 @@ import { contrastRatio, over, type Rgba } from '../../src/shared/themes/colour'
 import { resolveTheme } from '../../src/shared/themes/theme'
 import { validateTheme } from '../../src/shared/themes/validate'
 import type { LibraryEntry, LibraryPage } from '../../src/shared/runtime-ipc'
-import DEFINED_FILE from '../../resources/themes/defined/theme.json'
+import { shippedDefined } from '../themes/fixtures'
 import { openAChildsWork, stackingWindow } from './a-window-with-a-workflow-and-nested-agents'
 import { mount, unmountAll } from './harness'
 
-const BASE = (() => {
-  const read = validateTheme(DEFINED_FILE, {
-    assets: new Map(),
-    builtIns: new Map(),
-    builtIn: true,
-  })
-  if (!read.ok) throw new Error(JSON.stringify(read.problems))
-  return read.theme
-})()
+const BASE = shippedDefined()
 
 const THEME = {
   format: 1,
