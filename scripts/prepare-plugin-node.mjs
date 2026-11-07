@@ -6,6 +6,7 @@ import { join, resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import { setTimeout as pause } from 'node:timers/promises'
 const run = promisify(execFile)
 export const NODE_VERSION = '24.22.0'
 /**
@@ -47,6 +48,41 @@ const systemTar = () =>
   process.platform === 'win32'
     ? join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe')
     : '/usr/bin/tar'
+
+async function downloadArchive(url, fetcher) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let response
+    try {
+      response = await fetcher(url, { redirect: 'error' })
+      if (!response.ok || !response.body) throw new Error(response.statusText || 'No download body')
+      const reader = response.body.getReader()
+      const parts = []
+      let size = 0
+      try {
+        for (;;) {
+          const value = await reader.read()
+          if (value.done) break
+          size += value.value.length
+          if (size > 96 * 1024 * 1024) throw new Error('plugin-node-download-limit')
+          parts.push(value.value)
+        }
+      } finally {
+        await reader.cancel()
+      }
+      return Buffer.concat(parts)
+    } catch (error) {
+      if (
+        attempt === 2 ||
+        (response && !response.ok && response.status < 500 && ![408, 429].includes(response.status))
+      ) {
+        const status = response ? `HTTP ${response.status}: ` : ''
+        throw new Error(`${status}${url}: ${error.message}`, { cause: error })
+      }
+      await pause(1000 * (attempt + 1))
+    }
+  }
+}
+
 export async function preparePluginNode(
   out,
   fetcher = fetch,
@@ -81,29 +117,10 @@ export async function preparePluginNode(
   const scratch = await mkdtemp(join(tmpdir(), 'fictional-plugin-node-build-'))
   try {
     const name = `node-v${NODE_VERSION}-${target.platform === 'win32' ? 'win' : target.platform}-${target.arch}`
-    const response = await fetcher(
+    const archive = await downloadArchive(
       `https://nodejs.org/download/release/v${NODE_VERSION}/${name}.${target.archive}`,
-      {
-        redirect: 'error',
-        signal: AbortSignal.timeout(120000),
-      },
+      fetcher,
     )
-    if (!response.ok || !response.body) throw new Error('plugin-node-download')
-    const reader = response.body.getReader(),
-      parts = []
-    let size = 0
-    try {
-      for (;;) {
-        const value = await reader.read()
-        if (value.done) break
-        size += value.value.length
-        if (size > 96 * 1024 * 1024) throw new Error('plugin-node-download-limit')
-        parts.push(value.value)
-      }
-    } finally {
-      await reader.cancel()
-    }
-    const archive = Buffer.concat(parts)
     verifyNodeArchive(archive, targetName)
     const file = join(scratch, `node.${target.archive}`)
     await writeFile(file, archive)

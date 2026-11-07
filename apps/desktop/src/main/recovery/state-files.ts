@@ -174,11 +174,7 @@ export const NOT_STATE: readonly NotState[] = [
       'data; never copied or restored, and a reset may drop it.',
   },
   { name: 'updates', why: 'Downloaded updates and their private staging files, not state.' },
-  { name: 'one-host.sock', why: 'The live socket that keeps one app on this folder.' },
-  {
-    name: '.oh-*',
-    why: 'The private socket name used while claiming one-host.sock, removed at once.',
-  },
+  { name: 'one-host.sock', why: 'The live socket that reports whether this workspace is open.' },
   { name: BACKUPS_DIRNAME, why: "The workspace's own recovery copies." },
   {
     name: RECOVERY_DIRNAME,

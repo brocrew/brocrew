@@ -1144,12 +1144,25 @@ export function aPieceNotEndedWhileAQuestionStarts(
   return `${label} wasn't ${HOW_ITS_PIECE_ENDED[ending]}: a conversation with a question about it is still starting. Try again in a moment.`
 }
 
+/** The question or ledger row that prevented a piece from ending. */
+export interface UnreadQuestion {
+  readonly ledger: string
+  readonly question?: string
+  readonly row?: number
+  readonly cause: string
+}
+
 /** Why `label` did not end as `ending` says: the questions about it could not all be read. */
 export function aPieceNotEndedItsQuestionsUnread(
   label: string,
   ending: QuestionEndedWithItsPieceEvent['ending'],
+  unread?: UnreadQuestion,
 ): string {
-  return `${label} wasn't ${HOW_ITS_PIECE_ENDED[ending]}: its questions couldn't all be read. Try again; if it fails again, ask a person.`
+  const where =
+    unread === undefined
+      ? 'its question records could not be read'
+      : `${unread.question === undefined ? 'question records for conversation' : `question ${unread.question} in conversation`} ${unread.ledger}${unread.row === undefined ? '' : `, row ${String(unread.row)}`}: ${unread.cause}`
+  return `${label} wasn't ${HOW_ITS_PIECE_ENDED[ending]}: ${where}. Check that record, then retry this call.`
 }
 
 /**

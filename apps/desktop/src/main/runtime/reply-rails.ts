@@ -3,6 +3,7 @@ import { refusalReason } from '../../shared/refusals'
 import {
   aPieceNotEndedItsQuestionsUnread,
   aPieceNotEndedWhileAQuestionStarts,
+  type UnreadQuestion,
 } from '../../shared/questions'
 import {
   A_PERSON_MUST_ACT_SENTENCE,
@@ -253,6 +254,7 @@ export const REPLY_SUMMARY_LIMIT = 1_280
  * one gate that says *"there is no such piece"* must not be the reader that says whose it is.
  */
 export interface ReplyRefusalDetail {
+  readonly unreadQuestion?: UnreadQuestion
   /** The rejected main-document spelling, for the caller's answer only. */
   path?: string
   /** Whether the main document was absent from the list or had another resolved form. */
@@ -359,7 +361,7 @@ const REPLY_SENTENCES: Readonly<Record<ReplyRail, string>> = {
     "that piece wasn't handed back: a conversation with a question about it is still starting. Try again in a moment.",
   // Said with the piece's label when the detail holds it ({@link aPieceNotEndedItsQuestionsUnread}).
   'its-questions-could-not-all-be-read':
-    "that piece wasn't handed back: its questions couldn't all be read. Try again; if it fails again, ask a person.",
+    "that piece wasn't handed back: its question records could not be read. Check that record, then retry this call.",
 }
 
 function longSummarySentence(detail: ReplyRefusalDetail): string {
@@ -415,7 +417,11 @@ export function refuseReply(rail: ReplyRail, detail: ReplyRefusalDetail = {}): R
           : rail === 'a-conversation-with-its-questions-is-starting' && detail.label !== undefined
             ? aPieceNotEndedWhileAQuestionStarts(detail.label, 'work-replied')
             : rail === 'its-questions-could-not-all-be-read' && detail.label !== undefined
-              ? aPieceNotEndedItsQuestionsUnread(detail.label, 'work-replied')
+              ? aPieceNotEndedItsQuestionsUnread(
+                  detail.label,
+                  'work-replied',
+                  detail.unreadQuestion,
+                )
               : REPLY_SENTENCES[rail],
     ),
     remedy: replyRemedyOf(rail),

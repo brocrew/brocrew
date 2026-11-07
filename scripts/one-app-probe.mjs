@@ -13,7 +13,7 @@
  * Outside `ci`: about a minute, no database, window or debug port. Each trial gets a fresh
  * `--user-data-dir` under `os.tmpdir()`.
  */
-import { execFileSync, spawn } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -21,8 +21,6 @@ import { fileURLToPath } from 'node:url'
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const ELECTRON = join(REPO_ROOT, 'apps/desktop/node_modules/.bin/electron')
-const ESBUILD = join(REPO_ROOT, 'node_modules/.pnpm/node_modules/.bin/esbuild')
-const GATE = join(REPO_ROOT, 'apps/desktop/src/main/one-host-gate.ts')
 
 /**
  * The whole app under test.
@@ -100,110 +98,7 @@ function trial(app, gapMs) {
   })
 }
 
-/**
- * ⛔ **The second half: does the BACKSTOP hold where Chromium's lock does not?** (236 §3)
- *
- * ⚑ **The SHIPPED module, compiled out of the repo by esbuild** — `nav-order-probe.mjs`'s rule, and
- * the only thing that makes this evidence about this app rather than about a probe. The unit tests
- * drive `claimSoleHost` twice inside ONE process, which is the one arrangement the mechanism is not
- * about; this drives real processes at each other.
- *
- * ⚠️ **The stale row is the one that matters.** A POSIX socket leaves its path behind, so every
- * launch after the first meets an artefact — and the first version of the gate lost the race there,
- * every time. So the trials are run twice over the same directory: once fresh, and once with the
- * path a finished run left behind.
- */
-const GATE_MAIN = String.raw`
-import { appendFileSync } from 'node:fs'
-import { claimSoleHost } from './gate.mjs'
-const verdict = await claimSoleHost(process.env.PROBE_USER_DATA)
-appendFileSync(process.env.PROBE_OUT, process.pid + ' ' + verdict + '\n')
-setTimeout(() => process.exit(0), Number(process.env.PROBE_HOLD_MS))
-`
-
-function gateDir() {
-  const dir = mkdtempSync(join(tmpdir(), 'one-app-gate-'))
-  execFileSync(
-    ESBUILD,
-    [GATE, '--bundle', '--format=esm', '--platform=node', `--outfile=${join(dir, 'gate.mjs')}`],
-    {
-      stdio: 'pipe',
-    },
-  )
-  writeFileSync(join(dir, 'run.mjs'), GATE_MAIN)
-  return dir
-}
-
-/** One trial: two claims onto one `userData`, both started by one shell. */
-function gateTrial(runner, userData) {
-  const out = join(userData, `..`, `gate-${process.pid}-${Math.trunc(performance.now())}.txt`)
-  writeFileSync(out, '')
-  const one = `"${process.execPath}" "${join(runner, 'run.mjs')}"`
-  return new Promise((resolve) => {
-    const child = spawn('sh', ['-c', `${one} & ${one} & wait`], {
-      stdio: 'ignore',
-      env: {
-        ...process.env,
-        PROBE_OUT: out,
-        PROBE_USER_DATA: userData,
-        PROBE_HOLD_MS: String(HOLD_MS),
-        ELECTRON_RUN_AS_NODE: undefined,
-      },
-    })
-    child.on('exit', () => {
-      const lines = readFileSync(out, 'utf8').trim().split('\n').filter(Boolean)
-      rmSync(out, { force: true })
-      // ⛔ **`taken` is the ONLY verdict that stands a launch down.** `unknown` runs, by design, so
-      // a trial where both said `unknown` is two hosts just as surely as two `sole`s.
-      resolve({ claims: lines.length, ran: lines.filter((line) => !line.endsWith('taken')).length })
-    })
-  })
-}
-
-async function gate() {
-  const runner = gateDir()
-  const rows = []
-  try {
-    for (const { label, reuse } of [
-      { label: 'fresh directory', reuse: false },
-      { label: 'after a finished run left its path behind', reuse: true },
-    ]) {
-      let both = 0
-      let none = 0
-      let incomplete = 0
-      for (let n = 0; n < 12; n += 1) {
-        const userData = mkdtempSync(join(tmpdir(), 'one-app-gate-ud-'))
-        // ⚑ The stale row makes its own artefact the honest way: by running the real thing once.
-        if (reuse) await gateTrial(runner, userData)
-        const { claims, ran } = await gateTrial(runner, userData)
-        rmSync(userData, { recursive: true, force: true })
-        if (claims !== 2) incomplete += 1
-        else if (ran === 2) both += 1
-        else if (ran === 0) none += 1
-        process.stdout.write(ran === 2 ? '!' : claims === 2 ? '.' : '?')
-      }
-      process.stdout.write('\n')
-      rows.push({ label, both, none, incomplete })
-    }
-  } finally {
-    rmSync(runner, { recursive: true, force: true })
-  }
-  console.log(
-    '\n| the gate, two claims at the same instant | trials | BOTH ran | NEITHER ran | incomplete |',
-  )
-  console.log('|---|---|---|---|---|')
-  for (const row of rows) {
-    console.log(`| ${row.label} | 12 | ${row.both} / 12 | ${row.none} | ${row.incomplete} |`)
-  }
-}
-
 async function main() {
-  // ⚑ `PROBE_ONLY=gate` runs the backstop half alone. The Electron half takes two minutes and does
-  // not change while the gate is being iterated on; re-running it to see one number is waste.
-  if (process.env.PROBE_ONLY === 'gate') {
-    await gate()
-    return
-  }
   if (!existsSync(ELECTRON)) {
     console.error(`no electron at ${ELECTRON} — run pnpm install first`)
     process.exit(1)
@@ -237,8 +132,6 @@ async function main() {
       `| ${row.label} | ${row.trials} | ${row.both} / ${row.trials} | ${row.neither} | ${row.incomplete} |`,
     )
   }
-  if (existsSync(ESBUILD)) await gate()
-  else console.log('\n(no esbuild — the gate half of this probe was skipped)')
 }
 
 mkdirSync(tmpdir(), { recursive: true })
