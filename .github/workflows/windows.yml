@@ -35,6 +35,10 @@ on:
     tags: ['windows-beta-*', 'beta-*']
   workflow_dispatch:
     inputs:
+      package_version:
+        description: Version stamped into the artifact-only Windows build
+        type: string
+        default: '0.1.8'
       signing_witness:
         description: Record signing callback paths without secrets or signing (test only)
         type: boolean
@@ -151,9 +155,10 @@ jobs:
 
       - name: Build and package (NSIS, x64, unsigned)
         env:
+          PACKAGE_VERSION: ${{ inputs.package_version || '0.1.8' }}
           BROCREW_WINDOWS_SIGNING_RECORD_DIR: ${{ github.event_name == 'workflow_dispatch' && inputs.signing_witness && format('{0}/signing-witness', runner.temp) || '' }}
         shell: bash
-        run: pnpm --filter @brobot2/desktop package:win -c.extraMetadata.version=0.1.8
+        run: pnpm --filter @brobot2/desktop package:win "-c.extraMetadata.version=$PACKAGE_VERSION"
 
       - name: Check signing callbacks against packaged files
         if: github.event_name == 'workflow_dispatch' && inputs.signing_witness
