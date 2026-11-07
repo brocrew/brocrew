@@ -31,6 +31,16 @@ it('queries the supplied Windows PID using the packaged native reader and exact 
   expect(options.timeout).toBeUndefined()
 })
 
+it('queries a distinct foreign PID rather than substituting our own identity', () => {
+  platform('win32')
+  const other = process.pid + 321
+  const otherTicks = '638980000000000099'
+  run.mockImplementation((_program, args) => args[0] === String(other) ? otherTicks + '\n' : ticks + '\n')
+  expect(birthOf(other)).toBe(otherTicks)
+  expect(run).toHaveBeenCalledWith(expect.stringMatching(/chrome-process-birth\.exe$/), [String(other)], expect.any(Object))
+  expect(identity().birth).toBe(ticks)
+})
+
 it('retains the concrete native failure for self without granting foreign ownership', () => {
   platform('win32')
   run.mockImplementation(() => {
