@@ -3,7 +3,6 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
-import { build } from 'esbuild'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
 /** The Go release the bridge is built and tested with; the archive is reproducible only with it. */
@@ -133,6 +132,7 @@ export async function buildWhatsAppPackage(
   const program = path.join(payload, 'bin', chosen.program)
   const goModules = buildBridge(go, program, chosen)
   const bridgeSha256 = digest(fs.readFileSync(program))
+  const { build } = await import('esbuild')
   const result = await build({
     entryPoints: [path.join(root, 'src/index.ts')],
     outfile: path.join(payload, 'server.mjs'),
