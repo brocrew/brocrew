@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import type { SessionInstructions } from '../src/shared/instruction-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -322,14 +323,6 @@ class KeptHandles extends FakeRuntime {
     this.handles.push(handle)
     return handle
   }
-}
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
 }
 
 type HostOptions = ConstructorParameters<typeof RuntimeHost>[0]

@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -53,14 +54,6 @@ class Window implements RuntimeEventSink {
     this.messages.push(message)
   }
   sendLiveness(): void {}
-}
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
 }
 
 /** `394`'s double, with the handles kept — a test has to BE the provider to ask like one. */

@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import {
   RecordingSink,
   syntheticProviderHome,
@@ -81,14 +82,6 @@ describe('690 · the wake says only what is true', () => {
     db.close()
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
   })
-
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
 
   const callOn = async (
     caller: string,

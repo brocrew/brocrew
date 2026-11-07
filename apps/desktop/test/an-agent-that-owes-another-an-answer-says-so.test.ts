@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import type { AgentState } from '../src/shared/agent-state-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -82,14 +83,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 const ADA = 'Ada (the owner of W1.1 · Build the pages)'
 const OWES_ADA = `owes an answer to ${ADA}`
 const WAITING_ON_ADA = `waiting on ${ADA}`
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 /**
  * A stretch of the event loop long enough for everything a provider row starts to have run: five

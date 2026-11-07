@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import { TASK_STATES } from '../src/shared/task-contracts'
 import type { PieceRow, WhatAConversationIsWaitingOn } from '../src/shared/task-contracts'
 import type { RoutedRequest } from '../src/shared/question-contracts'
@@ -205,14 +206,6 @@ describe('609 · three waits, one family', () => {
 
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
-
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
 
   /**
    * ⛔ **Answer the card the Fake parks every turn on**, which is how a conversation is made idle

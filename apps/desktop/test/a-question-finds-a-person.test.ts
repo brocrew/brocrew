@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import { MAILBOX_KINDS } from '../src/shared/conversation-events'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { REQUEST_STATES } from '../src/shared/question-contracts'
@@ -79,14 +80,6 @@ import {
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 /**
  * `373`'s double, with the handles kept too.

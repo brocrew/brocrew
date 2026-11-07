@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -117,14 +118,6 @@ describe('703 · what a waker reads after its own act', () => {
   const ledger = (sessionId: string) => store.events(sessionId)
   const events = (sessionId: string): TranscriptEvent[] =>
     ledger(sessionId).map((entry) => entry.event)
-
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
 
   /** ⚑ A real macrotask pause, so a negative is measured after whatever was queued has run. */
   const letItSettle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 50))

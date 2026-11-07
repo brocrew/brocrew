@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import type { RequestState } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -149,14 +150,6 @@ describe('a stop ends only the questions its turn asked, and tells the asker', (
 
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
-
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
 
   /**
    * ⚑ **The chain `HO-088` §1 watched**: a PM in a window, a worker it gave one piece of work.

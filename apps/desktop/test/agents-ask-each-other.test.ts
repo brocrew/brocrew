@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -157,14 +158,6 @@ describe('D-009 · agents ask each other, and the answer comes back', () => {
     ledger(sessionId).flatMap((event) =>
       event.type === 'user_turn' || event.type === 'message_queued' ? [event.text] : [],
     )
-
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
 
   const questionOf = (asker: string, requestId: string) =>
     store

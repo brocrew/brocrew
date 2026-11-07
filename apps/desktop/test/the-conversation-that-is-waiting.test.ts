@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import type { PieceRow, WhatAConversationIsWaitingOn } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -218,14 +219,6 @@ describe('621 · the conversation that is waiting', () => {
 
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
-
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
 
   /**
    * ⛔ **Answer the card the Fake parks every turn on.** ⚠️ Without it every conversation below

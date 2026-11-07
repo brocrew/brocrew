@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import type { PieceRow, TaskState, WorkGivenEvent } from '../src/shared/task-contracts'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import type { QuestionAskedEvent, RequestRoutedEvent } from '../src/shared/question-contracts'
@@ -316,14 +317,6 @@ describe('D-016 · commit 6 · the fold — a piece a person gave waits on them'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 /** The provider double, with the handles kept: a test has to BE the provider to park a turn. */
 class ProviderDouble extends FakeRuntime {

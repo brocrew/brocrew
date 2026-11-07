@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -163,13 +164,6 @@ describe('a restart wakes what it stopped in the background', () => {
   const handlesOf = (id: string): FakeSessionHandle[] =>
     handles.filter((handle) => handle.ref.sessionId === providerIdOf(id))
 
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
   const settle = async (): Promise<void> => {
     for (let i = 0; i < 10; i += 1) await new Promise((resolve) => setTimeout(resolve, 5))
   }

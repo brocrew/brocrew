@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import {
   fixtureProviderConfig,
   RecordingSink,
@@ -187,14 +188,6 @@ describe('724 · `717` F-2 — the folder it ran in is gone', () => {
     const tool = tools.agentToolsFor(host, caller).tools.find((one) => one.name === name)
     if (tool === undefined) throw new Error(`no such tool: ${name}`)
     return (await tool.call(args)).structured as Record<string, unknown>
-  }
-
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
   }
 
   // ───────────────────────────────────────────────────────────────────────────────

@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import { PASS_UP_RECIPIENTS } from '../src/shared/question-contracts'
 import type {
   RequestRoutedEvent,
@@ -200,14 +201,6 @@ describe('611 · a question names who it is for', () => {
 
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
-
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
 
   /** ⛔ Every way words can reach a conversation, read as ONE population (591's reader). */
   const wordsIn = (sessionId: string): readonly string[] =>

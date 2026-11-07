@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -134,14 +135,6 @@ describe('F026 · an answer an agent passes down says when a person decided it',
     ledger(sessionId).flatMap((event) =>
       event.type === 'user_turn' || event.type === 'message_queued' ? [event.text] : [],
     )
-
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
 
   /** ⚑ The words the asker was handed for this question, once they reached it. */
   const theAnswerTo = async (asker: string, id: string): Promise<string> => {

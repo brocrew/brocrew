@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -73,14 +74,6 @@ class WindowSink implements RuntimeEventSink {
   constructor(readonly ownerId: string) {}
   send(): void {}
   sendLiveness(): void {}
-}
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
 }
 
 describe('716 · R62, D-017b — a conversation still closing says no process word, and still carries on', () => {

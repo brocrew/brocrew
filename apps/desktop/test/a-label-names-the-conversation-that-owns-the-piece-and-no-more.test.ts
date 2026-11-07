@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { expectIdsOnlyInLinkTargets } from './helpers/navigation-reply'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -210,13 +211,6 @@ describe('a label names the conversation that owns the piece, and no more', () =
     ledger(sessionId).filter((event) => event.type === 'work_retitled')
   const worksAnnounced = (): number => announced.filter((what) => what === 'work').length
 
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
   const latestHandle = (): FakeSessionHandle => {
     const handle = handles.at(-1)
     if (handle === undefined) throw new Error('no provider handle has been issued')

@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import { fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/host-fixture'
 import { registerCalendarRevisionCases } from './helpers/calendar-revision-cases'
 import type { PersistedEventInfo } from '../src/shared/conversation-events'
@@ -1490,14 +1491,6 @@ class ProviderDouble extends FakeRuntime {
     this.handles.push(handle)
     return handle
   }
-}
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
 }
 
 /** A stretch of the event loop long enough for everything a provider row starts to have run. */

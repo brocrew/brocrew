@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import { TASK_STATES } from '../src/shared/task-contracts'
 import { REQUEST_STATES } from '../src/shared/question-contracts'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
@@ -166,14 +167,6 @@ describe('591 · a question does not expire on a clock', () => {
 
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
-
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
 
   /**
    * ⛔ **Every way words can reach a conversation, read as ONE population** (591).

@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -154,14 +155,6 @@ describe('607 · a message from a person says so', () => {
     db.close()
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
   })
-
-  async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
 
   const entries = (sessionId: string): readonly PersistedEventInfo[] => store.events(sessionId)
   const ledger = (sessionId: string): TranscriptEvent[] =>

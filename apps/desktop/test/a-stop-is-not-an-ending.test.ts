@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -239,14 +240,6 @@ describe('D-017 · a stop is not an ending', () => {
       const tool = agentToolsFor(host, sessionId).tools.find((one) => one.name === name)
       if (tool === undefined) throw new Error(`no such tool: ${name}`)
       return (await tool.call(args)).structured as Record<string, unknown>
-    }
-
-    const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-      for (let attempt = 0; attempt < 400; attempt++) {
-        if (predicate()) return
-        await new Promise((resolve) => setTimeout(resolve, 10))
-      }
-      throw new Error(`timed out waiting for ${what}`)
     }
 
     const eventsOf = (sessionId: string): TranscriptEvent[] =>

@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import { TASK_STALL_CAUSES } from '../src/shared/task-contracts'
 import type { TaskStallCause } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -79,14 +80,6 @@ import {
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 class ProviderDouble extends FakeRuntime {
   constructor(

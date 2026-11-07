@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import {
   fixtureProviderConfig,
   RecordingSink,
@@ -113,14 +114,6 @@ describe('D-016a · a commander narrowed off messaging spends no launch on its s
   }
 
   /** Bounded, and it waits on the THING. */
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
-
   /** ⚑ A real macrotask pause, so a negative is measured after whatever was queued has run. */
   const letItSettle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 60))
 

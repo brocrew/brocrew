@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import { LEDGER_WALK_KINDS } from '../src/shared/question-contracts'
 import type { PieceRow, WorkStallTold } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -85,14 +86,6 @@ const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const hostSource = readFileSync(join(here, '../src/main/runtime/runtime-host.ts'), 'utf8')
 const storeSource = readFileSync(join(here, '../src/main/db/session-store.ts'), 'utf8')
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 /** `394`'s double, with the handles kept — a test has to BE the provider to ask like one. */
 class ProviderDouble extends FakeRuntime {
