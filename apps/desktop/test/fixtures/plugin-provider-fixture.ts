@@ -26,7 +26,9 @@ export async function pluginProviderFixture(
   const seen: { method: string; authenticated: boolean }[] = []
   const audit: unknown[] = []
   let allowed = true,
-    reply: 'normal' | 'secret' | 'metadata-secret' | 'key-secret' | 'error' | 'tool-error' | 'hold' = 'normal'
+    reply:
+      'normal' | 'secret' | 'metadata-secret' | 'key-secret' | 'error' | 'tool-error' | 'hold' =
+      'normal'
   const transports = new Set<StreamableHTTPServerTransport>()
   const http = createServer((req, res) => {
     const authenticated = req.headers.authorization === `Bearer ${credential}`
@@ -70,7 +72,11 @@ export async function pluginProviderFixture(
             {
               type: 'text',
               text:
-                reply === 'secret' ? (options.extraPrivateCredential ?? credential) : reply === 'tool-error' ? 'Error: window operation timed out' : PLUGIN_MARKER,
+                reply === 'secret'
+                  ? (options.extraPrivateCredential ?? credential)
+                  : reply === 'tool-error'
+                    ? 'Error: window operation timed out'
+                    : PLUGIN_MARKER,
             },
           ],
           ...(reply === 'tool-error' ? { isError: true } : {}),

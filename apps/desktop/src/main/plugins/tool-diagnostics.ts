@@ -51,8 +51,6 @@ const reasons = [
   'name-collision',
   'attachment-failed',
   'attachment-capacity',
-  'resource-policy-refused',
-  'resource-policy-failed',
   'transport-connection-reset',
   'transport-connection-refused',
   'transport-timeout',

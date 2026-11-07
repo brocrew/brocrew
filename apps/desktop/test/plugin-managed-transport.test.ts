@@ -311,7 +311,6 @@ it('still diagnoses an actual failed call even though its MCP client also closes
   expect(reasons).toContain('transport-call-failed')
 })
 
-
 it('delivers the real plugin tool error through the agent MCP route', async () => {
   const reasons: string[] = []
   const f = await pluginProviderFixture({ diagnostic: (reason) => reasons.push(reason) })

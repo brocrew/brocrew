@@ -25,7 +25,12 @@ it.each(['healthy', 'tool-error'] as const)(
     })
     vi.stubGlobal('fetch', snapshot)
     const value = {
-      content: [{ type: 'text', text: mode === 'healthy' ? 'fern result' : 'Error: window operation timed out' }],
+      content: [
+        {
+          type: 'text',
+          text: mode === 'healthy' ? 'fern result' : 'Error: window operation timed out',
+        },
+      ],
       ...(mode === 'tool-error' ? { isError: true } : {}),
     }
     const execution = {
@@ -38,7 +43,9 @@ it.each(['healthy', 'tool-error'] as const)(
       installation: { pluginId: 'chrome' },
       package: {
         compatibility: { tools: true },
-        manifest: { permissions: { resources: [{ id: 'browser-profiles', read: true, write: true }] } },
+        manifest: {
+          permissions: { resources: [{ id: 'browser-profiles', read: true, write: true }] },
+        },
       },
     } as unknown as Parameters<typeof chromeBrokerBinding>[0])
     const request: BrokerRequest = {
@@ -46,7 +53,12 @@ it.each(['healthy', 'tool-error'] as const)(
       input: { tabId: 'fern-tab' },
       resources: [],
       identity: {
-        pluginId: 'chrome', installId: 'fixture', epoch: 'fixture', workspaceId: 'fixture', kind: 'agent', incarnation: 'fixture',
+        pluginId: 'chrome',
+        installId: 'fixture',
+        epoch: 'fixture',
+        workspaceId: 'fixture',
+        kind: 'agent',
+        incarnation: 'fixture',
       },
     }
     const signal = new AbortController().signal
