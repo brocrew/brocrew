@@ -441,15 +441,17 @@ describe('§4 · a new workspace’s name and folder', () => {
     }
   })
 
-  it('⚑ a new workspace’s folder is this account’s only, as the default one is', async () => {
+  it('creates and names a workspace without changing its existing parent permissions', async () => {
     const home = aFolder()
-    const folder = join(home, 'BroBot workspaces', 'Research')
-    expect(await makeWorkspaceFolder(folder, 'Research')).toBeNull()
+    const parent = join(home, 'BroBot workspaces')
+    mkdirSync(parent)
+    if (process.platform !== 'win32') chmodSync(parent, 0o755)
+    const before = statSync(parent).mode
+    const folder = join(parent, 'Research')
+    await expect(makeWorkspaceFolder(folder, 'Research')).resolves.toBeUndefined()
+    expect(statSync(folder).isDirectory()).toBe(true)
     expect(workspaceOf(folder, false).name).toBe('Research')
-    if (process.platform !== 'win32') {
-      expect(statSync(folder).mode & 0o777).toBe(0o700)
-      expect(statSync(dirname(folder)).mode & 0o777).toBe(0o700)
-    }
+    expect(statSync(parent).mode).toBe(before)
   })
 
   it('🔴 its name is kept in its folder, and read back as the workspace’s', () => {
@@ -587,13 +589,12 @@ describe('§6 · the chooser’s rows', () => {
         asked.push(folder)
         return folder === running ? 'open' : 'closed'
       },
-      readersOfThisOne: () => Promise.resolve('Other users of this computer can read it.'),
     })
-    expect(rows.map((row) => [row.name, row.state, row.isThisOne, row.readers])).toEqual([
-      ['this', 'open', true, 'Other users of this computer can read it.'],
-      ['gone', 'missing', false, null],
-      ['running', 'open', false, null],
-      ['Research', 'closed', false, null],
+    expect(rows.map((row) => [row.name, row.state, row.isThisOne])).toEqual([
+      ['this', 'open', true],
+      ['gone', 'missing', false],
+      ['running', 'open', false],
+      ['Research', 'closed', false],
     ])
     // ⚑ This one, and a folder that is gone, are not asked.
     expect(asked.sort()).toEqual([closed, running].sort())
@@ -616,7 +617,6 @@ describe('§6 · the chooser’s rows', () => {
         isThisOne: true,
         state: 'open',
         lastOpenedAt: 1,
-        readers: null,
       },
     ])
   })

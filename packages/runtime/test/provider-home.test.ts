@@ -20,7 +20,6 @@ import { hostname, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { provisionProviderHome, withProviderHomeLock } from '../src/internal/provider-home'
-import { whoElseCanOpen } from '../../../scripts/lib/readable-only-by-this-user.mjs'
 
 /**
  * Unit tests for the safe provisioning helper (021, hardened in 027 / 023 P1-H). It
@@ -46,8 +45,6 @@ describe('provisionProviderHome (021)', () => {
     const home = join(root, 'proj', 'profile')
     await provisionProviderHome(root, home)
     expect(existsSync(home)).toBe(true)
-    expect(whoElseCanOpen(home, 0o700)).toEqual([])
-    expect(whoElseCanOpen(join(root, 'proj'), 0o700)).toEqual([])
   })
 
   it('is idempotent when the home already exists', async () => {
@@ -74,14 +71,14 @@ describe('provisionProviderHome (021)', () => {
 
   // --- 027 P1-H hardening ---
 
-  it('enforces 0700 on an existing home, repairing a loose 0755', async (ctx) => {
+  it('uses an existing 0755 home without changing its permissions', async (ctx) => {
     ctx.skip(process.platform === 'win32', 'Windows keeps no mode to loosen or repair')
     const home = join(root, 'proj', 'profile')
     mkdirSync(home, { recursive: true })
     chmodSync(home, 0o755)
     expect(lstatSync(home).mode & 0o777).toBe(0o755)
     await provisionProviderHome(root, home)
-    expect(lstatSync(home).mode & 0o777).toBe(0o700) // repaired to owner-only
+    expect(lstatSync(home).mode & 0o777).toBe(0o755)
   })
 
   it('rejects an existing regular file at the home path (must be a real directory)', async () => {
@@ -308,6 +305,5 @@ describe('202 · the provisioning lock survives its owner dying (191 M5)', () =>
 
     await provisionProviderHome(managed, target)
     expect(lstatSync(target).isDirectory()).toBe(true)
-    expect(whoElseCanOpen(target, 0o700)).toEqual([])
   })
 })

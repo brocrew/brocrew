@@ -5,7 +5,6 @@ import {
   fsyncSync,
   linkSync,
   lstatSync,
-  mkdirSync,
   readdirSync,
   renameSync,
   statSync,
@@ -36,7 +35,6 @@ import type {
   MemoryAmendmentWrite,
   MemoryStoreState,
 } from '../../shared/agent-memory'
-import { keepToThisUser, verifyFileToThisUser, type AccessLists } from '../recovery/windows-privacy'
 import {
   AGENT_MEMORY_NOTES_SHOWN,
   MEMORY_STORE_LAYOUT,
@@ -409,18 +407,15 @@ export async function amendAgentMemory(
   return { done: true, entry: found.path, textBefore: found.text }
 }
 
-/** What a correction's write asks of the system; Windows' own by default. */
+/** Filesystem interleavings used by correction tests. */
 export interface MemoryWriteSeams {
   /** Test-only interleaving immediately before a confirmed memory unlink. */
   readonly beforeMemoryUnlink?: () => void
   readonly platform?: NodeJS.Platform
-  readonly lists?: AccessLists
   /** A filesystem interleaving immediately before the final creation checks. */
   readonly beforeStageCreate?: (folder: string) => void
   /** An interleaving after a prepared knowledge stage was checked, before its publish-time open. */
   readonly beforeStagePublishOpen?: (stage: string) => void
-  /** Where the one line about a shared data folder goes; the console by default. */
-  readonly warn?: (line: string) => void
 }
 
 /**
@@ -441,7 +436,7 @@ export interface KnowledgeFileStage {
 }
 
 /**
- * Prepare bounded exact bytes using the memory writer's private staging hierarchy. This internal
+ * Prepare bounded exact bytes beside the destination. This internal
  * helper grants no path authority: main derives the destination and supplies its intent guard.
  * An absent destination is installed exclusively; replacing a file replaces only its named entry.
  */
@@ -462,24 +457,13 @@ export async function stageKnowledgeFile(
   if (part === '..' || part.startsWith(`..${sep}`) || isAbsolute(part))
     throw new Error('The knowledge destination is outside the managed root')
   check()
-  let folder = dirname(destination)
-  if ((seams.platform ?? process.platform) === 'win32') {
-    const privateFolder = join(root, '.brobot-stage')
-    try {
-      mkdirSync(privateFolder, { recursive: true, mode: 0o700 })
-      await keepToThisUser(privateFolder, seams.lists, 'win32')
-      folder = privateFolder
-    } catch (error) {
-      sayShared(error, seams)
-    }
-  }
+  const folder = dirname(destination)
   const staged = aStagingName(join(folder, `.${basename(destination)}`))
   seams.beforeStageCreate?.(folder)
   const fd = createFreshFile(staged)
   writing.add(staged)
   try {
     try {
-      await sharedOnlyLogged(staged, seams, seams.platform ?? process.platform)
       writeFileSync(fd, contents)
       fchmodSync(fd, mode)
       fsyncSync(fd)
@@ -527,8 +511,7 @@ export async function stageKnowledgeFile(
 
 /**
  * Replace a file's bytes without opening it: write a fresh file exclusively and rename it over
- * the entry, keeping its mode. Windows stages live under the verified private managed homes root;
- * elsewhere they are beside the entry.
+ * the entry, keeping its mode. Stages are beside the entry.
  *
  * ⛔ **The containment check above asks where the path leads, before the write; this asks nothing
  * of whatever is at the path by then.** A rename replaces the entry itself, so a link put there
@@ -536,11 +519,7 @@ export async function stageKnowledgeFile(
  * it — and a file with a second name elsewhere keeps its bytes there. A link already there is
  * refused. A reader sees the old file or the new one, never part of either.
  *
- * On Windows, stages are born inside a verified private folder on the same volume, so another
- * account cannot acquire a read handle before the correction is written. Their inherited ACL is
- * checked without changing it. Elsewhere the mode does that.
- *
- * Windows crash stages remain private and are not automatically deleted. Elsewhere, staged files
+ * Windows crash stages are not automatically deleted. Elsewhere, staged files
  * a crash left in the folder are removed first.
  */
 async function rewrite(
@@ -563,28 +542,6 @@ async function rewrite(
     stage.install(true, () => {})
   } finally {
     stage.discard()
-  }
-}
-
-/** Said once: a data folder others may read never stops a memory or a saved method being written. */
-let sharedSaid = false
-function sayShared(why: unknown, seams: MemoryWriteSeams): void {
-  if (sharedSaid) return
-  sharedSaid = true
-  ;(seams.warn ?? ((line: string) => console.warn(line)))(
-    `BroCrew writes memories and saved methods beside them, since other accounts may read its data folder: ${why instanceof Error ? why.message : String(why)}`,
-  )
-}
-
-async function sharedOnlyLogged(
-  staged: string,
-  seams: MemoryWriteSeams,
-  platform: NodeJS.Platform,
-): Promise<void> {
-  try {
-    await verifyFileToThisUser(staged, seams.lists, platform)
-  } catch (error) {
-    sayShared(error, seams)
   }
 }
 

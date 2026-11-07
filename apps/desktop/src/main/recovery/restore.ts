@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import type { HistoryOnlyGate, InstalledFile, ProgressListener } from '../../shared/recovery'
-import { keepNoMoreOpenThanTheData } from '../data-folder-privacy'
 import {
   GATE_FORMAT,
   JOURNAL_FORMAT,
@@ -243,7 +242,7 @@ export async function restore(options: RestoreOptions): Promise<Restored> {
 
   try {
     await ownedFolder(userData, recoveryDir(userData), fs)
-    await keepNoMoreOpenThanTheData(recoveryDir(userData), userData)
+
     await publish(run, 'planned')
     tick()
   } catch (error) {

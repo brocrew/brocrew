@@ -3,7 +3,6 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 import { isMainThread } from 'node:worker_threads'
 import { closeSync, constants, fstatSync, lstatSync, openSync, type BigIntStats } from 'node:fs'
 import { PluginStateError, refuseState, STATE_LIMITS } from './format'
-import { isPrivateEntry } from '../private-files'
 
 interface Lease {
   owner: object
@@ -25,7 +24,6 @@ function file(stat: BigIntStats): void {
     !stat.isFile() ||
     stat.isSymbolicLink() ||
     stat.nlink !== 1n ||
-    !isPrivateEntry(stat) ||
     stat.size > BigInt(STATE_LIMITS.recordBytes)
   )
     refuseState('unsafe-path')

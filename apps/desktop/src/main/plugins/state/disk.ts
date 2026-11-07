@@ -20,8 +20,6 @@ import {
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
 import { createFreshFile, openNotThroughALink } from '@brobot2/runtime/provider-home'
 import {
-  isInsideCheckedRoot,
-  isPrivateEntry,
   isWithinOrSame,
   openDirectoryNotThroughALink,
   realPath,
@@ -95,7 +93,7 @@ class PluginJournalReader {
       const parent = dirname(this.root)
       const canonicalParent = realPath(parent)
       if (canonicalParent !== parent) refuseState('unsafe-path')
-      if (!isInsideCheckedRoot(canonicalParent)) refuseState('unsupported')
+
       const canonicalRoot = create
         ? join(canonicalParent, basename(this.root))
         : realPath(this.root)
@@ -129,8 +127,7 @@ class PluginJournalReader {
   }
 
   protected privateDirectory(stat: BigIntStats): void {
-    if (!stat.isDirectory() || stat.isSymbolicLink() || !isPrivateEntry(stat))
-      refuseState('unsafe-path')
+    if (!stat.isDirectory() || stat.isSymbolicLink()) refuseState('unsafe-path')
   }
   protected pin(path: string): void {
     const stat = lstatSync(path, { bigint: true })
@@ -185,12 +182,7 @@ class PluginJournalReader {
     closeSync(this.#pins.pop()!.fd)
   }
   protected file(stat: BigIntStats): void {
-    if (
-      !stat.isFile() ||
-      !isPrivateEntry(stat) ||
-      stat.nlink !== 1n ||
-      stat.size > BigInt(STATE_LIMITS.recordBytes)
-    )
+    if (!stat.isFile() || stat.nlink !== 1n || stat.size > BigInt(STATE_LIMITS.recordBytes))
       refuseState('unsafe-path')
   }
   protected links(
@@ -472,7 +464,6 @@ export class PluginStateDisk extends PluginJournalReader {
   protected override file(stat: BigIntStats): void {
     if (
       !stat.isFile() ||
-      !isPrivateEntry(stat) ||
       (stat.nlink !== 1n && stat.nlink !== 2n) ||
       stat.size > BigInt(STATE_LIMITS.recordBytes)
     )

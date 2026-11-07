@@ -25,11 +25,6 @@ export interface WorkspaceRow {
   readonly state: WorkspaceState
   /** When it was last opened by a person's launch; `null` for this one when it never was. */
   readonly lastOpenedAt: number | null
-  /**
-   * For this one, a sentence saying who else may read its data, when anyone besides this user may;
-   * `null` otherwise.
-   */
-  readonly readers: string | null
 }
 
 /** What a folder offered as a workspace is, and whether it may be one. */

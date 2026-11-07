@@ -460,7 +460,7 @@ describe('716 · what a person must fix, said once', () => {
     })
 
     it('🔴 a call on an entry that EXISTS is refused by that entry — not by the folder that holds it', () => {
-      // ⚑ Round two of `716`'s review: the provider home's `chmod` runs on a home that exists.
+      // A metadata operation on an existing entry is refused by that entry.
       expect(
         describeUnavailable(
           'its-folder-could-not-be-made' as never,

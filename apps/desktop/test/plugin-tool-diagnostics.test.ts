@@ -1,5 +1,12 @@
 import { afterEach, expect, it } from 'vitest'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, lstatSync } from 'node:fs'
+import {
+  mkdtempSync,
+  chmodSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  lstatSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { recordPluginToolFailure } from '../src/main/plugins/tool-diagnostics'
@@ -13,7 +20,7 @@ function fixture() {
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
 })
-it('persists every fixed failure reason with UTC time and a private file, with no arbitrary fields', () => {
+it('persists every fixed failure reason with UTC time and no arbitrary fields', () => {
   const f = fixture()
   recordPluginToolFailure(f.root, 'chrome', 'proof-rejected')
   recordPluginToolFailure(f.root, 'chrome', 'cancelled')
@@ -26,7 +33,7 @@ it('persists every fixed failure reason with UTC time and a private file, with n
   recordPluginToolFailure(f.root, 'fictional-private-page', 'proof-rejected')
   recordPluginToolFailure(f.root, 'chrome', 'fictional-private-error' as never)
   expect(readFileSync(f.path, 'utf8')).toBe(log)
-  if (process.platform !== 'win32') expect(lstatSync(f.path).mode & 0o777).toBe(0o600)
+  expect(lstatSync(f.path).isFile()).toBe(true)
 })
 it('keeps the diagnostic bounded and records the newest failure after reaching capacity', () => {
   const f = fixture()
@@ -66,4 +73,16 @@ it('writes the real error messages on the same single line', () => {
   expect(lines[0]).toContain(
     'stage=binding-connect cause=io-denied correlation=11111111-2222-4333-8444-555555555555 error="fictional connect refused\\n    at line two <- inner fictional cause"',
   )
+})
+
+it('appends a diagnostic to an OS-writable file without changing its earlier bytes or mode', () => {
+  const f = fixture()
+  writeFileSync(f.path, 'fictional-original')
+  chmodSync(f.path, 0o666)
+  const before = lstatSync(f.path).mode
+  recordPluginToolFailure(f.root, 'chrome', 'proof-rejected')
+  expect(readFileSync(f.path, 'utf8')).toMatch(
+    /^fictional-original\d{4}-\d{2}-\d{2}T[\d:.]+Z \[plugins\] tool-failure plugin=chrome reason=proof-rejected\n$/,
+  )
+  expect(lstatSync(f.path).mode).toBe(before)
 })

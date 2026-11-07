@@ -5,7 +5,6 @@ import { z } from 'zod'
 import { privateChild } from '../node-host-files'
 import {
   createFileNotThroughALink,
-  isPrivateEntry,
   openDirectoryNotThroughALink,
   openFileNotThroughALink,
   syncDirectoryAt,
@@ -39,7 +38,6 @@ async function inLaunch<T>(root: string, directory: string, work: () => Promise<
       if (
         !now.isDirectory() ||
         now.isSymbolicLink() ||
-        !isPrivateEntry(now) ||
         now.dev !== pin.stat.dev ||
         now.ino !== pin.stat.ino ||
         held.dev !== pin.stat.dev ||
@@ -120,14 +118,7 @@ export async function readRecoveryAdvice(
       const file = await openFileNotThroughALink(path, constants.O_RDONLY | constants.O_NONBLOCK)
       try {
         const before = await file.stat()
-        if (
-          !before.isFile() ||
-          before.nlink !== 1 ||
-          !isPrivateEntry(before) ||
-          before.size < 1 ||
-          before.size > 4096
-        )
-          return
+        if (!before.isFile() || before.nlink !== 1 || before.size < 1 || before.size > 4096) return
         const bytes = Buffer.alloc(before.size + 1)
         let length = 0
         while (length < bytes.length) {
@@ -141,14 +132,12 @@ export async function readRecoveryAdvice(
           length !== before.size ||
           after.size !== before.size ||
           after.nlink !== 1 ||
-          !isPrivateEntry(after) ||
           before.dev !== after.dev ||
           before.ino !== after.ino ||
           before.mtimeMs !== after.mtimeMs ||
           before.ctimeMs !== after.ctimeMs ||
           named.isSymbolicLink() ||
           named.nlink !== 1 ||
-          !isPrivateEntry(named) ||
           named.dev !== after.dev ||
           named.ino !== after.ino
         )

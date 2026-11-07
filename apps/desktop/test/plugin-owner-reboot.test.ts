@@ -71,7 +71,6 @@ vi.mock('node:fs/promises', async () => {
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
 import { previousRunsProvenStopped } from '../src/main/plugins/supervisor/recovery-proof'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
-import { keepPluginRootPrivate } from '../src/main/plugins/private-files'
 
 // A run reaches reboot proof only when its next start can't prove it stopped: its process record
 // names a group whose number now belongs to another process (a run with no record, or whose group
@@ -130,7 +129,7 @@ describe('fenced reboot proof for historical plugin runs', () => {
       await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-reboot-')),
     )
     root = join(parent, 'plugins')
-    await keepPluginRootPrivate(root)
+
     const initial = await PluginSupervisor.start({ root, workspaceRoots: [] })
     await initial.shutdown()
     await initial.closed
@@ -259,17 +258,14 @@ describe('fenced reboot proof for historical plugin runs', () => {
     witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
     await refused()
   })
-  it.skipIf(process.platform === 'win32').each(['mode', 'symlink'] as const)(
-    'refuses changed run %s across a genuine reboot',
-    async (change) => {
+  it.skipIf(process.platform === 'win32')(
+    'refuses a symlinked run across a genuine reboot',
+    async () => {
       await fixture()
       await refused()
-      if (change === 'mode') await chmod(run, 0o755)
-      else {
-        const saved = join(parent, 'saved-run')
-        await rename(run, saved)
-        await symlink(saved, run, 'dir')
-      }
+      const saved = join(parent, 'saved-run')
+      await rename(run, saved)
+      await symlink(saved, run, 'dir')
       witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
       await refused()
     },
@@ -379,11 +375,12 @@ describe('fenced reboot proof for historical plugin runs', () => {
     },
   )
   it.skipIf(process.platform === 'win32').each(['pending', 'certificate'] as const)(
-    'refuses a publicly writable %s proof as takeover authority',
+    'uses an OS-readable %s proof without tightening its permissions',
     async (kind) => {
       const path = await retainedProof(kind)
       await chmod(path, 0o666)
-      await refused()
+      await expect(attempt()).resolves.toBeDefined()
+      expect((await lstat(path)).mode & 0o777).toBe(0o666)
     },
   )
   it.each(['blocked', 'draining'] as const)(

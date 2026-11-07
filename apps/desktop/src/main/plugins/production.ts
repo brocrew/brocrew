@@ -18,7 +18,6 @@ import { pluginPersonCapability } from './catalogue/capability'
 import { connectPluginSettings } from './lifecycle/settings-client'
 import { createPluginSupervisorLauncher } from './supervisor/launcher'
 import { SupervisorStorage } from './supervisor/storage'
-import { keepPluginRootPrivate } from './private-files'
 import { installedChromeOnWindows } from './windows-chrome'
 import { pluginWorkspaceIdentity, type PluginSupervisorAttachment } from './supervisor/client'
 import { PluginSupervisorError } from './supervisor/protocol'
@@ -512,7 +511,6 @@ export function productionPluginController() {
         let attempt: Peer | undefined
         let storage: SupervisorStorage | undefined
         try {
-          await keepPluginRootPrivate(options.root)
           storage = new SupervisorStorage(options.root, [options.workspaceRoot], true)
           diagnosticRoot = options.root
           phase = 'catalogue'

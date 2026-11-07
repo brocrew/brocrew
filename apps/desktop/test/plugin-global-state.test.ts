@@ -91,20 +91,14 @@ function install(store: GlobalPluginState) {
   return input
 }
 
-it('Windows disk storage refuses a root whose access list was not checked, before creating anything', () => {
+it('creates standalone state without a prior root admission', () => {
   const parent = folder(),
     root = join(parent, 'plugins')
-  const original = Object.getOwnPropertyDescriptor(process, 'platform')!
-  try {
-    Object.defineProperty(process, 'platform', { ...original, value: 'win32' })
-    expect(() => GlobalPluginState.create({ root, workspaceRoots: [] })).toThrow(
-      expect.objectContaining({ code: 'unsupported', message: 'Plugin unavailable. Try again.' }),
-    )
-    expect(existsSync(root)).toBe(false)
-    expect(readdirSync(parent)).toEqual([])
-  } finally {
-    Object.defineProperty(process, 'platform', original)
-  }
+  if (process.platform !== 'win32') chmodSync(parent, 0o755)
+  const state = GlobalPluginState.create({ root, workspaceRoots: [] })
+  state.close()
+  expect(existsSync(root)).toBe(true)
+  expect(readdirSync(parent)).toEqual(['plugins'])
 })
 
 describe.skipIf(process.platform === 'win32')(
@@ -430,10 +424,9 @@ describe.skipIf(process.platform === 'win32')(
         GlobalPluginState.create({ root: join(workspace, 'plugins'), workspaceRoots: [workspace] }),
       ).toThrow(PluginStateError)
       chmodSync(parent, 0o755)
-      expect(() =>
-        GlobalPluginState.create({ root: join(parent, 'plugins'), workspaceRoots: [] }),
-      ).toThrow(PluginStateError)
-      expect(readdirSync(parent)).toEqual(['workspace'])
+      const shared = GlobalPluginState.create({ root: join(parent, 'plugins'), workspaceRoots: [] })
+      shared.close()
+      expect(readdirSync(parent).sort()).toEqual(['plugins', 'workspace'])
     })
     it('never follows a substituted guard folder or a journal-file symlink', () => {
       const { store, root, parent } = fixture(),

@@ -319,7 +319,7 @@ describe('on Windows, which cannot flush a folder', () => {
 })
 
 describe('copyDurably', () => {
-  it('copies the bytes privately, flushes the copy through a handle that may write, then its folder', async () => {
+  it('copies the bytes, flushes the copy through a handle that may write, then its folder', async () => {
     const folder = aFolder()
     const from = join(folder, 'database.sqlite')
     const to = join(folder, 'staged.sqlite')
@@ -333,7 +333,7 @@ describe('copyDurably', () => {
         ? [`open r+ ${to}`, `sync ${to}`, `open r ${folder}`, `sync ${folder}`]
         : [`open r+ ${to}`, `sync ${to}`],
     )
-    if (POSIX) expect(statSync(to).mode & 0o777).toBe(0o600)
+    if (POSIX) expect(statSync(to).mode & 0o777).toBe(statSync(from).mode & 0o777)
   })
 
   it('never replaces a file already there', async () => {

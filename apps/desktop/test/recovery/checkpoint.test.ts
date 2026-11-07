@@ -1,5 +1,4 @@
 import Database from 'better-sqlite3'
-import { execFileSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import {
   appendFileSync,
@@ -59,7 +58,6 @@ import { nodeFs, type RecoveryFs } from '../../src/main/recovery/files'
 import { CHECKPOINT_LINE } from '../../src/main/recovery/log-lines'
 import { APP_STATE_FILES } from '../../src/main/recovery/state-files'
 import type { CheckpointDeletion } from '../../src/main/recovery/checkpoint-deletion'
-import { accessEntries, windowsAccessLists } from '../../src/main/recovery/windows-privacy'
 import { checkTheCopyHere } from '../helpers/check-the-copy-here'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -314,7 +312,7 @@ describe('makeCheckpoint', () => {
     expect(lines).toEqual([CHECKPOINT_LINE])
   })
 
-  it('leaves the copy as one rollback-mode file with no sidecars, private to this user', async () => {
+  it('leaves the copy as one readable rollback-mode file with no sidecars', async () => {
     const userData = aDataFolder()
     aLiveDatabase(userData)
     writeFileSync(join(userData, 'drafts.json'), '{}\n', { mode: 0o644 })
@@ -329,37 +327,8 @@ describe('makeCheckpoint', () => {
     expect(rows(copy)).toBe(FILLER_ROWS)
     expect(readdirSync(folder).sort()).toEqual(['database.sqlite', 'drafts.json', 'manifest.json'])
 
-    if (POSIX) {
-      const mode = (path: string): number => statSync(path).mode & 0o777
-      expect(mode(join(userData, 'backups'))).toBe(0o700)
-      expect(mode(folder)).toBe(0o700)
-      expect(mode(copy)).toBe(0o600)
-      expect(mode(join(folder, 'drafts.json'))).toBe(0o600)
-      expect(mode(join(folder, 'manifest.json'))).toBe(0o600)
-      expect(mode(join(userData, 'backups', 'workspace-id'))).toBe(0o600)
-    }
+    expect(readFileSync(join(folder, 'drafts.json'), 'utf8')).toBe('{}\n')
   })
-
-  it.runIf(!POSIX)(
-    'on Windows, keeps backups to this user even in a data folder every user may read',
-    async () => {
-      const userData = aDataFolder()
-      const icacls = join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'icacls.exe')
-      execFileSync(icacls, [userData, '/grant', '*S-1-5-32-545:(OI)(CI)RX', '/Q'])
-      aLiveDatabase(userData)
-      const { folder } = await make(userData)
-      const user = await windowsAccessLists.userSid()
-      for (const path of [join(userData, 'backups'), folder, join(folder, 'database.sqlite')]) {
-        const allowed = accessEntries(
-          await windowsAccessLists.read(path),
-          await windowsAccessLists.machineSid(),
-        )
-          .filter((entry) => entry.allows)
-          .map((entry) => entry.sid)
-        expect(new Set(allowed), path).toEqual(new Set([user, 'S-1-5-18', 'S-1-5-32-544']))
-      }
-    },
-  )
 
   it('leaves the live database and its folder as they were', async () => {
     const userData = aDataFolder()

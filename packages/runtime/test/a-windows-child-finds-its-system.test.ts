@@ -79,14 +79,14 @@ describe('F072 · a Windows child finds its system', () => {
       home = mkdtempSync(join(tmpdir(), 'brobot-f072-codex-'))
       writeFileSync(join(home, 'auth.json'), '{}')
       chmodSync(join(home, 'auth.json'), 0o644)
-      expect(codexAuthHealth(home, 'win32')).toEqual({ ok: true })
+      expect(codexAuthHealth(home)).toEqual({ ok: true })
       // Elsewhere the same file is made 0600 again and used.
-      expect(codexAuthHealth(home, 'darwin')).toEqual({ ok: true })
+      expect(codexAuthHealth(home)).toEqual({ ok: true })
     })
 
     it('⛔ on Windows a missing file is still refused', () => {
       home = mkdtempSync(join(tmpdir(), 'brobot-f072-codex-'))
-      expect(codexAuthHealth(home, 'win32')).toMatchObject({ ok: false })
+      expect(codexAuthHealth(home)).toMatchObject({ ok: false })
     })
   })
 })

@@ -21,7 +21,6 @@ import { PluginWorkspaceLease, supervisorRequest } from '../src/main/plugins/sup
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
 import type { DrainTrace } from '../src/main/plugins/supervisor/drain-trace'
 import { previousRunsProvenStopped } from '../src/main/plugins/supervisor/recovery-proof'
-import { keepPluginRootPrivate } from '../src/main/plugins/private-files'
 import { pluginUnavailableNotice } from '../src/shared/plugin-settings'
 import { PluginStartupError, pluginStartupReason } from '../src/main/plugins/startup-failure'
 import { groupIdentity } from '../resources/plugin-host/process-groups.mjs'
@@ -85,7 +84,7 @@ describe('plugin owner recovery after the caller stops waiting', () => {
       ),
     )
     const root = join(parent, 'plugins')
-    await keepPluginRootPrivate(root)
+
     const workspaceRoot = join(parent, 'workspace')
     await mkdir(workspaceRoot, { mode: 0o700 })
     const options = { root, workspaceRoot, build: 'fictional', generation: randomUUID(), wire }

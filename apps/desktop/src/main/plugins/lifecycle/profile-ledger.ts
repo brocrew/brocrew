@@ -13,12 +13,7 @@ import {
   sourceBytes,
   verifyImmutableFile,
 } from '../node-host-files'
-import {
-  isImmutableFile,
-  isPrivateEntry,
-  openFileNotThroughALink,
-  pinDirectory,
-} from '../private-files'
+import { openFileNotThroughALink, pinDirectory } from '../private-files'
 import { PluginSupervisorError } from '../supervisor/protocol'
 const Previous = z
   .string()
@@ -135,14 +130,7 @@ export class PluginProfileLedger {
       const handle = await openFileNotThroughALink(path, constants.O_RDONLY | constants.O_NONBLOCK)
       try {
         const stat = await handle.stat()
-        if (
-          !stat.isFile() ||
-          stat.nlink !== 1 ||
-          !isPrivateEntry(stat, 0) ||
-          !isImmutableFile(stat) ||
-          stat.size > 2048
-        )
-          return refuse()
+        if (!stat.isFile() || stat.nlink !== 1 || stat.size > 2048) return refuse()
       } finally {
         await handle.close()
       }

@@ -414,13 +414,12 @@ async function whatItHolds(
 }
 
 /**
- * Its pasted pictures' folder, when it goes with it: there, a real folder of this account's, and
+ * Its pasted pictures' folder, when it goes with it: there, a real folder, and
  * holding nothing but BroBot's pasted pictures. Else `null`, and a warning when one is there but
  * holds something else.
  */
 async function itsPastedImages(
   real: string,
-  uid: number | null,
 ): Promise<{ folder: string | null; bytes: number; files: number; warning: string | null }> {
   const folder = pastedImagesRoot(real)
   let seen
@@ -435,7 +434,7 @@ async function itsPastedImages(
     files: 0,
     warning: `Its pasted pictures’ folder holds something else, so it stays: ${folder}`,
   }
-  if (!seen.isDirectory() || (uid !== null && seen.uid !== uid)) return stays
+  if (!seen.isDirectory()) return stays
   try {
     let bytes = 0
     const names = await readdir(folder)
@@ -450,10 +449,6 @@ async function itsPastedImages(
     return stays
   }
 }
-
-/** The account this app runs as, where the system has one. */
-const thisAccount = (): number | null =>
-  typeof process.getuid === 'function' ? process.getuid() : null
 
 /**
  * 🔴 **Whether `asked` may be deleted, and what would go** — every refusal in words, and for a
@@ -591,7 +586,7 @@ async function check(asked: string, context: DeleteContext): Promise<Checked> {
   }
   const held = await whatItHolds(real, device)
   if ('refusal' in held) return refused(held.refusal)
-  const pasted = await itsPastedImages(real, thisAccount())
+  const pasted = await itsPastedImages(real)
   return {
     ok: true,
     path: real,
@@ -664,10 +659,7 @@ export async function deleteWorkspace(
   const trashed = [checked.path]
   const warnings = checked.warning === null ? [] : [checked.warning]
   // ⚑ Asked again just before it goes, as the folder was.
-  const pasted =
-    checked.pastedImages === null
-      ? null
-      : (await itsPastedImages(checked.path, thisAccount())).folder
+  const pasted = checked.pastedImages === null ? null : (await itsPastedImages(checked.path)).folder
   if (checked.pastedImages !== null && pasted === null) {
     warnings.push(`Its pasted pictures’ folder changed, so it stays: ${checked.pastedImages}`)
   }

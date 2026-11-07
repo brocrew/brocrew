@@ -22,7 +22,6 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
 import { PluginWorkspaceLease } from '../src/main/plugins/supervisor/client'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
-import { keepPluginRootPrivate } from '../src/main/plugins/private-files'
 import { previousRunsProvenStopped } from '../src/main/plugins/supervisor/recovery-proof'
 import { pluginStartupReason } from '../src/main/plugins/startup-failure'
 
@@ -121,7 +120,7 @@ async function fixture(name: string, mode: string, fault?: string) {
     root = join(parent, 'p'),
     workspaceRoot = join(parent, 'w')
   await mkdir(workspaceRoot, { recursive: true, mode: 0o700 })
-  await keepPluginRootPrivate(root)
+
   const child = fork(
     join(folder, 'owner.mjs'),
     [root, workspaceRoot, mode, ...(fault ? [fault] : [])],

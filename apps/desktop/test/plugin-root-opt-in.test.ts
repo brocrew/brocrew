@@ -18,8 +18,7 @@ import { createConnection } from 'node:net'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { pluginSupervisorRoot } from '../src/main/plugins/supervisor/client'
-import { keepPluginRootPrivate, realPath, isWithinOrSame } from '../src/main/plugins/private-files'
-import { keepToThisUser } from '../src/main/recovery/windows-privacy'
+import { realPath, isWithinOrSame } from '../src/main/plugins/private-files'
 import { pluginPersonCapability } from '../src/main/plugins/catalogue/capability'
 import {
   connectPersonPluginControl,
@@ -43,7 +42,7 @@ async function fixture() {
     await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-root-')),
   )
   folders.push(parent)
-  await keepToThisUser(parent)
+
   const appData = join(parent, 'a'),
     workspace = join(parent, 'fern'),
     otherWorkspace = join(parent, 'cedar')
@@ -199,13 +198,11 @@ describe('workspace opt-in keeps every other plugin setup unchanged', () => {
     ).toThrow(PluginSupervisorError)
     expect(existsSync(join(f.appData, '@brobot2', 'plugins'))).toBe(false)
   })
-  it('refuses a writable pin on POSIX while preserving the Windows ACL policy', async () => {
+  it('uses the selected root with an OS-readable writable pin', async () => {
     const f = await fixture()
     await optIn(f, f.workspace, 'p1')
     await chmod(pins(f), 0o666)
-    if (process.platform === 'win32')
-      expect(root(f)).toBe(join(f.appData, '@brobot2', 'plugins-p1'))
-    else expect(() => root(f)).toThrow(PluginSupervisorError)
+    expect(root(f)).toBe(join(f.appData, '@brobot2', 'plugins-p1'))
   })
   it('writes neither record on success or refusal', async () => {
     const f = await fixture()
@@ -384,7 +381,6 @@ it('person capabilities and sockets refuse the other root key in both directions
   const roots = [root(f, f.otherWorkspace), root(f)]
   for (const path of roots) {
     await mkdir(path, { recursive: true, mode: 0o700 })
-    await keepPluginRootPrivate(path)
   }
   const keys = await Promise.all(roots.map(pluginPersonCapability))
   expect(keys[0]).not.toBe(keys[1])

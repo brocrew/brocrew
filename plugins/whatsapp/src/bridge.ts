@@ -122,7 +122,7 @@ async function readBounded(response: Response): Promise<unknown> {
 }
 
 /**
- * Copies the packaged program into the private bin folder as an owner-only executable, but only when
+ * Copies the packaged program into its bin folder as an executable, but only when
  * its bytes are the ones this server was built with. The package's own files are read-only. The copy
  * keeps the program's extension: Windows starts no program file without one, such as `.exe`.
  */
@@ -132,7 +132,7 @@ async function installProgram(program: string, expected: string, bin: string): P
   const target = path.join(bin, `whatsapp-bridge-${expected.slice(0, 16)}${path.extname(program)}`)
   const present = fs.lstatSync(target, { throwIfNoEntry: false })
   if (present?.isFile() && sha256(await fs.promises.readFile(target)) === expected) {
-    fs.chmodSync(target, 0o700)
+    fs.chmodSync(target, 0o755)
     return target
   }
   fs.rmSync(target, { force: true, recursive: true })

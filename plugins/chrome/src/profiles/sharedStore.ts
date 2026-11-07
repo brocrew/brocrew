@@ -132,8 +132,6 @@ const same = (a: FileIdentity | undefined, b: FileIdentity | undefined) =>
   a.dev === b.dev &&
   a.ino === b.ino &&
   a.volume === b.volume &&
-  a.uid === b.uid &&
-  a.mode === b.mode &&
   a.birthtime === b.birthtime &&
   a.type === b.type
 /** A successful complete process listing AND absent native lock is required for an ended proof.
@@ -240,26 +238,16 @@ export function createSharedProfileStore(
     if (volume !== undefined && !/^(apfs:[a-f0-9-]{36}|winvol:[0-9]+)$/.test(volume))
       throw new ProfileStoreError('Profile folder identity changed.')
     const after = directoryStat(p)
-    if (
-      !after ||
-      s.dev !== after.dev ||
-      s.ino !== after.ino ||
-      s.uid !== after.uid ||
-      s.mode !== after.mode
-    )
+    if (!after || s.dev !== after.dev || s.ino !== after.ino)
       throw new ProfileStoreError('Profile folder identity changed.')
     return {
       dev,
       ino: String(s.ino),
       ...(volume ? { volume } : {}),
-      uid: String(s.uid),
-      mode: String(s.mode),
       birthtime: String(s.birthtimeNs),
       type: 'directory',
     }
   }
-  // createProfileStore enforces the home mode. Observe it first so that enforcement cannot
-  // accidentally hide a changed mode on a previously bound migration home.
   const initialHome = fileIdentity(o.home)
   const owner = o.processIdentity ?? identity()
   const alive = o.ownerState ?? ownerState
@@ -307,16 +295,7 @@ export function createSharedProfileStore(
     }
     return r
   }
-  const initialRegistry = read()
-  if (
-    process.platform !== 'win32' &&
-    initialRegistry.format === 1 &&
-    initialRegistry.profiles.some((p) => p.migration?.workspaceId === o.workspaceId) &&
-    (!initialHome ||
-      initialHome.uid !== String(process.getuid!()) ||
-      initialHome.mode !== String(0o40700))
-  )
-    throw new ProfileStoreError('Profile folder identity changed.')
+  read()
   const local = createProfileStore({ home: o.home, now: o.now, scopedAuthorization: true })
   const write = (r: Registry) => {
     r.revision++
@@ -821,12 +800,6 @@ export function createSharedProfileStore(
       /^[0-9]+$/.test(saved.ino) &&
       saved.ino === current.ino &&
       (saved.type === undefined || saved.type === current.type) &&
-      (saved.uid === undefined
-        ? current.uid === String(process.getuid?.() ?? 0)
-        : saved.uid === current.uid) &&
-      (saved.mode === undefined
-        ? process.platform === 'win32' || current.mode === String(0o40700)
-        : saved.mode === current.mode) &&
       (saved.birthtime === undefined || saved.birthtime === current.birthtime) &&
       (saved.volume === undefined || saved.volume === current.volume) &&
       (saved.dev === current.dev || current.volume?.startsWith('apfs:') === true)
@@ -861,7 +834,7 @@ export function createSharedProfileStore(
         volumes.clear()
         if (candidates.some((c) => !same(c.current, fileIdentity(c.path)))) continue
         // The explicit proportionate-security decision accepts a legacy same-path clone
-        // or restore with matching inode/private ownership. Its current UUID is enrolled
+        // or restore with matching inode. Its current UUID is enrolled
         // once; an already anchored volume mismatch is never accepted.
         for (const { saved, current } of candidates) {
           if (same(saved, current)) continue

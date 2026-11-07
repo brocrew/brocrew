@@ -18,8 +18,6 @@ import { createFreshFile, openNotThroughALink } from '@brobot2/runtime/provider-
 import { OwnerRecord, PluginSupervisorError, refuse, StopRecord } from './protocol'
 import { isSocketFile, localEndpoint } from '../local-endpoint'
 import {
-  isInsideCheckedRoot,
-  isPrivateEntry,
   isWithinOrSame,
   openDirectoryNotThroughALink,
   realPath,
@@ -29,17 +27,16 @@ import {
 const same = (a: BigIntStats, b: BigIntStats) => a.dev === b.dev && a.ino === b.ino
 const missing = (error: unknown) =>
   error instanceof Error && 'code' in error && error.code === 'ENOENT'
-function privateEntry(stat: BigIntStats, directory: boolean, mask = 0o077): void {
+function privateEntry(stat: BigIntStats, directory: boolean): void {
   if (
     stat.isSymbolicLink() ||
-    (directory ? !stat.isDirectory() : !stat.isFile() || stat.nlink !== 1n) ||
-    !isPrivateEntry(stat, mask)
+    (directory ? !stat.isDirectory() : !stat.isFile() || stat.nlink !== 1n)
   )
     refuse()
 }
 /** Explicit root only. Never searches a live root or follows a link to one. */
 export class SupervisorStorage {
-  private pins: { path: string; stat: BigIntStats; fd: number; mask: number }[] = []
+  private pins: { path: string; stat: BigIntStats; fd: number }[] = []
   readonly folder: string
   readonly socket: string
   readonly lock: string
@@ -87,8 +84,7 @@ export class SupervisorStorage {
           path = parent
         }
       }
-      // The ordinary appData parent may be 0755: only its owner can replace the private root.
-      this.pin(dirname(root), 0o022)
+      this.pin(dirname(root))
       for (const path of [root, this.folder]) {
         try {
           lstatSync(path)
@@ -104,7 +100,7 @@ export class SupervisorStorage {
         }
         this.pin(path)
       }
-      if (!isInsideCheckedRoot(root)) refuse('unsupported')
+
       const stat = this.pins.at(-1)!.stat
       this.identity = `${stat.dev}:${stat.ino}`
       const rootStat = this.pins.find((pin) => pin.path === root)!.stat
@@ -115,20 +111,20 @@ export class SupervisorStorage {
       refuse()
     }
   }
-  private pin(path: string, mask = 0o077): void {
+  private pin(path: string): void {
     const stat = lstatSync(path, { bigint: true })
-    privateEntry(stat, true, mask)
+    privateEntry(stat, true)
     const fd = openDirectoryNotThroughALink(path)
     if (!same(stat, fstatSync(fd, { bigint: true }))) {
       closeSync(fd)
       refuse()
     }
-    this.pins.push({ path, stat, fd, mask })
+    this.pins.push({ path, stat, fd })
   }
   check(): void {
     for (const pin of this.pins) {
       const now = lstatSync(pin.path, { bigint: true })
-      privateEntry(now, true, pin.mask)
+      privateEntry(now, true)
       if (!same(now, pin.stat) || !same(fstatSync(pin.fd, { bigint: true }), pin.stat)) refuse()
     }
   }
@@ -213,7 +209,7 @@ export class SupervisorStorage {
     if (!isSocketFile()) return
     try {
       const stat = lstatSync(this.socket, { bigint: true })
-      if (!stat.isSocket() || !isPrivateEntry(stat)) refuse()
+      if (!stat.isSocket()) refuse()
       unlinkSync(this.socket)
     } catch (error) {
       if (!missing(error)) throw error

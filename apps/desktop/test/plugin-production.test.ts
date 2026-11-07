@@ -14,7 +14,6 @@ import { packageFixture } from './plugin-package-fixtures'
 import { repoListFor } from './plugin-repo-list-fixtures'
 import { PLUGIN_LIST_URL, PLUGIN_LIST_V2_URL } from '../src/main/plugins/catalogue/download'
 import { readPluginInstructions } from '../src/main/plugins/instructions'
-import * as privateFiles from '../src/main/plugins/private-files'
 vi.mock('../src/main/plugins/ui/host', () => ({ openPluginConfigurationView: vi.fn() }))
 const seams = vi.hoisted(() => ({
   connect: vi.fn(),
@@ -515,9 +514,8 @@ describe.skipIf(process.platform === 'win32')(
     })
     it('does not label a structural root failure as a folder-permission problem', async () => {
       const f = await setup()
-      vi.spyOn(privateFiles, 'keepPluginRootPrivate').mockRejectedValue(
-        new Error('fictional private path and ACL detail'),
-      )
+      await mkdir(f.options.root, { recursive: true })
+      await writeFile(join(f.options.root, 'supervisor'), 'not a directory')
       f.controller.start(f.options)
       await f.controller.ready!()
       const owner = Object.assign(new EventEmitter(), {
@@ -1832,7 +1830,6 @@ async function busyOwner(
 ) {
   const { createServer } = await import('node:net')
   const { pack, unpack, secret } = await import('../src/main/plugins/supervisor/protocol')
-  await privateFiles.keepPluginRootPrivate(options.root)
   const storage = new SupervisorStorage(options.root, [options.workspaceRoot], true)
   const record: OwnerRecord = {
     version: 1,
@@ -1912,7 +1909,7 @@ it('resets authenticated busy continuity when the root inode changes but its sup
     await rename(f.options.root, oldRoot)
     await mkdir(f.options.root, { mode: 0o700 })
     await rename(join(oldRoot, 'supervisor'), join(f.options.root, 'supervisor'))
-    await privateFiles.keepPluginRootPrivate(f.options.root)
+
     const second = await PluginWorkspaceLease.attach(options).catch((e) => e)
     expect(second.diagnostic).toMatchObject({ phase: 'accepting', probe: 'live' })
     expect(second.ownerIdentity).toBeTruthy()

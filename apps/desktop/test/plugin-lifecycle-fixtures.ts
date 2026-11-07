@@ -7,8 +7,7 @@ import { GlobalPluginState } from '../src/main/plugins/state/store'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import type { LifecycleOptions, PersonProjection } from '../src/main/plugins/lifecycle/types'
 import { packageFixture, manifestFor, fictionalPublicKey } from './plugin-package-fixtures'
-import { keepPluginRootPrivate, realPath } from '../src/main/plugins/private-files'
-import { keepToThisUser } from '../src/main/recovery/windows-privacy'
+import { realPath } from '../src/main/plugins/private-files'
 import {
   encodeState,
   installationProjection,
@@ -50,12 +49,12 @@ export async function fixture(
   const temp = process.platform === 'win32' ? tmpdir() : '/tmp'
   const parent = realPath(await mkdtemp(join(temp, 'fictional-lifecycle-')))
   homes.push(parent)
-  await keepToThisUser(parent)
+
   const root = join(parent, 'global'),
     workspace = join(parent, 'workspace')
   await mkdir(root, { mode: 0o700 })
   await mkdir(workspace, { mode: 0o700 })
-  await keepPluginRootPrivate(root)
+
   const state = GlobalPluginState.create({ root: join(root, 'state'), workspaceRoots: [workspace] })
   stores.push(state)
   const manifest = manifestFor()

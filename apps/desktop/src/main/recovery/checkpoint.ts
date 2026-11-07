@@ -5,7 +5,6 @@ import { basename, dirname, join } from 'node:path'
 import type { OfferedCheckpoint, ProgressListener } from '../../shared/recovery'
 import type { RetainedRecoveryCopy } from '../../shared/recovery-retention'
 import { freeBytesOn } from '../archive/native-file'
-import { keepNoMoreOpenThanTheData } from '../data-folder-privacy'
 import type { HostGateVerdict } from '../one-host-gate'
 import {
   MANIFEST_FORMAT,
@@ -365,13 +364,13 @@ export async function makeCheckpoint(options: MakeCheckpointOptions): Promise<Ch
       checkFreeSpace(userData, pages * pageSize, options.freeBytes ?? freeBytesOn)
       await assertOwnedPathsAreReal(userData, [folder, workspaceIdFile(userData)], fs)
       await privateDir(backups, fs)
-      await keepNoMoreOpenThanTheData(backups, userData)
+
       await syncFolder(userData, fs)
       workspaceId = await workspaceIdFor(userData, fs)
       await fs.mkdir(folder, { mode: 0o700 })
       made = true
       await assertOwnedPathsAreReal(userData, [folder, marker], fs)
-      await fs.chmod(folder, 0o700)
+
       await syncFolder(backups, fs)
       await fs.writeFile(marker, '', { mode: 0o600, flag: 'wx' })
       await syncFolder(folder, fs)
@@ -412,7 +411,7 @@ export async function makeCheckpoint(options: MakeCheckpointOptions): Promise<Ch
     }
     report(2 * pages)
     await assertOwnedPathsAreReal(userData, [copy], fs)
-    await fs.chmod(copy, 0o600)
+
     await putOnDisk(copy, fs)
     const bytes = (await fs.lstat(copy)).size
     const sha256 = await sha256Of(copy, fs)

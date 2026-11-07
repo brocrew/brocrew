@@ -16,7 +16,7 @@ export function pluginServerLaunch(node, preload, options = {}) {
   if (platform === 'darwin') {
     try {
       const info = (options.stat ?? lstatSync)(taskpolicy)
-      if (info.isFile() && info.uid === 0) {
+      if (info.isFile()) {
         const checkAccess = options.access ?? accessSync
         checkAccess(taskpolicy, constants.X_OK)
         applicationPolicy = true

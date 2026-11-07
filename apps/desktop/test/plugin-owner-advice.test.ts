@@ -31,7 +31,6 @@ vi.mock('../src/main/plugins/private-files', async () => {
     },
   }
 })
-import { keepPluginRootPrivate } from '../src/main/plugins/private-files'
 import { privateChild } from '../src/main/plugins/node-host-files'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
 import { OWNER_WIRE, secret, type OwnerRecord } from '../src/main/plugins/supervisor/protocol'
@@ -52,7 +51,7 @@ async function fixture() {
   )
   roots.push(parent)
   const root = join(parent, 'plugins')
-  await keepPluginRootPrivate(root)
+
   const storage = new SupervisorStorage(root, [], true)
   const record: OwnerRecord = {
     version: 1,

@@ -24,7 +24,6 @@ import {
   WORKSPACE_FILE,
   WORKSPACE_NAME_MAX,
 } from './data-folder'
-import { keepToThisUser, NotKeptToThisUser, type AccessLists } from './recovery/windows-privacy'
 import { PROVIDER_HOMES_DIRNAME } from './runtime/provider-homes'
 import { insideBySpelling, samePath } from './same-folder'
 
@@ -386,29 +385,10 @@ export function folderForANewWorkspace(home: string, name: string): string {
   }
 }
 
-/**
- * Make a new workspace's folder, readable by this account only (as `~/Library` keeps the default
- * one), with its name in it: by its mode, and on Windows, where a mode means nothing, by its access
- * list, limited before anything is written in it. A folder that was there already, which a person
- * chose, keeps its permissions on every system; Settings says who else may read it. A folder made
- * here whose list could not be limited is still made, and why is returned for the log.
- */
-export async function makeWorkspaceFolder(
-  folder: string,
-  name: string,
-  options: { readonly lists?: AccessLists; readonly platform?: NodeJS.Platform } = {},
-): Promise<string | null> {
-  const made = mkdirSync(folder, { recursive: true, mode: 0o700 })
-  let unlimited: string | null = null
-  if (made !== undefined) {
-    try {
-      await keepToThisUser(folder, options.lists, options.platform)
-    } catch (error) {
-      unlimited = error instanceof NotKeptToThisUser ? error.reason : String(error)
-    }
-  }
+/** Creates and names the workspace selected by the person. */
+export async function makeWorkspaceFolder(folder: string, name: string): Promise<void> {
+  mkdirSync(folder, { recursive: true })
   nameWorkspace(folder, name)
-  return unlimited
 }
 
 /** Only the explicit create action may give a configured workspace its first database. */
@@ -511,7 +491,6 @@ export async function workspaceRows(options: {
   readonly defaultFolder: string
   readonly ask: (folder: string) => Promise<'open' | 'closed' | 'unknown'>
   /** What to tell the person about who else may read this workspace's data, or null. */
-  readonly readersOfThisOne?: () => Promise<string | null>
 }): Promise<WorkspaceRow[]> {
   const listed = [...options.listed].sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)
   const rows: { path: string; lastOpenedAt: number | null }[] = listed.some((one) =>
@@ -530,7 +509,6 @@ export async function workspaceRows(options: {
           ? 'missing'
           : await options.ask(row.path)
       const name = await workspaceNameOf(row.path, isDefault, there)
-      const readers = isThisOne ? ((await options.readersOfThisOne?.()) ?? null) : null
       return {
         path: row.path,
         name,
@@ -538,7 +516,6 @@ export async function workspaceRows(options: {
         isThisOne,
         state,
         lastOpenedAt: row.lastOpenedAt,
-        readers,
       }
     }),
   )

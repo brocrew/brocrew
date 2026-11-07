@@ -14,7 +14,6 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { capabilitiesFor, provisionCodexAuth, SUPPORTED_PROVIDERS } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { prepareProviderHome } from '../src/main/runtime/provider-homes'
-import { whoElseCanOpen } from '../../../scripts/lib/readable-only-by-this-user.mjs'
 
 /**
  * 329 · **The credential disclosure answers to the code that does the copying.**
@@ -167,13 +166,6 @@ describe('what the Codex note claims, against `provisionCodexAuth` itself', () =
     await provisionCodexAuth(home, { sourceAuthPath: source })
     expect(signInAt(join(home, 'auth.json'))).toBe(digestOf('{"marker":"329-original"}'))
     expect(note()).toMatch(/copy/i)
-  })
-
-  it('“readable only by you” — 0600 however the umask is set, and on Windows by its access list', async () => {
-    const home = temp('home')
-    await provisionCodexAuth(home, { sourceAuthPath: fakeMachineAuth('{"marker":"329-mode"}') })
-    expect(whoElseCanOpen(join(home, 'auth.json'), 0o600)).toEqual([])
-    expect(note()).toMatch(/readable only by you/i)
   })
 
   it('🔴 “made once … never replaced on its own” — a second provisioning does not overwrite', async () => {

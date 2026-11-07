@@ -172,7 +172,7 @@ describe.skipIf(process.platform === 'win32' || process.getuid === undefined)(
     })
 
     it.each(['root', '.git', '.claude'])(
-      'falls back to cwd for foreign-owned %s metadata',
+      'keeps checkout routing for foreign-owned %s metadata',
       (part) => {
         const root = repository()
         const cwd = folder('checkout with spaces', 'nested')
@@ -183,11 +183,11 @@ describe.skipIf(process.platform === 'win32' || process.getuid === undefined)(
           if (String(path) === target) return { ...stat, uid: stat.uid + 1 }
           return stat
         }) as typeof fs.statSync)
-        expectFiles(cwd, [cwd])
+        expectFiles(cwd, [root, cwd])
       },
     )
 
-    it('falls back to cwd when ownership cannot be read', () => {
+    it('keeps checkout routing without reading ownership', () => {
       const root = repository()
       const cwd = folder('checkout with spaces', 'nested')
       vi.mocked(fs.statSync).mockImplementation(((path: fs.PathLike) => {
@@ -196,7 +196,7 @@ describe.skipIf(process.platform === 'win32' || process.getuid === undefined)(
         }
         return actualFs.statSync(path)
       }) as typeof fs.statSync)
-      expectFiles(cwd, [cwd])
+      expectFiles(cwd, [root, cwd])
     })
 
     it('falls back to cwd when Git metadata cannot be resolved', () => {

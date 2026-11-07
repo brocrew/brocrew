@@ -8,9 +8,6 @@ import (
 	"syscall"
 )
 
-// privateFiles does nothing: Windows has no umask, and new files take the access list of the private folder they are in.
-func privateFiles() {}
-
 var errLinked = errors.New("the name is a link")
 
 // openNoFollow opens name, refusing a link in its last part. Windows has no O_NOFOLLOW, so the name is checked before

@@ -4,7 +4,6 @@ import { dirname, join } from 'node:path'
 import { createPluginNodeHost } from '../node-host'
 import { resumePluginNodeRuntime } from '../node-runtime'
 import { sourceBytes, digest } from '../node-host-files'
-import { keepPluginRootPrivate } from '../private-files'
 import { createPluginVerifier } from '../package-verifier'
 import { PLUGIN_LIMITS } from '../package-digests'
 import { thisMachine } from '../package-schema'
@@ -27,7 +26,7 @@ export async function runPluginSupervisor(configPath: string, expectedDigest: st
   const config = LaunchConfig.parse(JSON.parse(bytes.toString('utf8')))
   if (config.sharedDataOwner)
     checkedSharedDataOwner(config.sharedDataOwner, join(config.root, 'host'))
-  await keepPluginRootPrivate(config.root)
+
   const runtime = await resumePluginNodeRuntime(config.runtime)
   const receipts = dirname(configPath)
   const owner = await PluginSupervisor.start({

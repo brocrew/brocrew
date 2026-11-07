@@ -770,7 +770,7 @@ describe.skipIf(process.platform === 'win32')(
       const storage = new SupervisorStorage(root, [], false),
         record = storage.read()!
       try {
-        expect(lstatSync(storage.socket).mode & 0o077).toBe(0)
+        expect(lstatSync(storage.socket).isSocket()).toBe(true)
         const value = {
           epoch: record.epoch,
           nonce: secret(),
@@ -801,9 +801,8 @@ describe.skipIf(process.platform === 'win32')(
         storage.close()
       }
     })
-    it('fails closed on shared roots, workspace aliases, symlinks, unknown ownership and absent launchers', async () => {
+    it('keeps structural root and launcher errors while accepting shared parents', async () => {
       const { parent, root, workspaces } = fixture()
-      const launch = vi.fn(async () => {})
       await expect(attach(root, workspaces[0]!)).rejects.toMatchObject({ code: 'unavailable' })
       expect(existsSync(root)).toBe(false)
       const alias = join(parent, 'alias')
@@ -811,11 +810,9 @@ describe.skipIf(process.platform === 'win32')(
       expect(() => new SupervisorStorage(join(workspaces[0]!, 'plugins'), [alias], true)).toThrow()
       expect(existsSync(join(workspaces[0]!, 'plugins'))).toBe(false)
       chmodSync(parent, 0o777)
-      await expect(attach(root, workspaces[0]!, { launch })).rejects.toMatchObject({
-        code: 'unavailable',
-      })
-      expect(launch).not.toHaveBeenCalled()
-      chmodSync(parent, 0o700)
+      const ordinary = new SupervisorStorage(join(parent, 'ordinary-root'), [], true)
+      ordinary.close()
+      expect(lstatSync(parent).mode & 0o777).toBe(0o777)
       symlinkSync(workspaces[1]!, root)
       await expect(PluginSupervisor.start({ root, workspaceRoots: [] })).rejects.toMatchObject({
         code: 'unavailable',

@@ -102,7 +102,6 @@ export interface RecoveryFs {
     options?: { readonly mode?: number; readonly flag?: string },
   ): Promise<void>
   readdir(path: string): Promise<string[]>
-  chmod(path: string, mode: number): Promise<void>
 }
 
 /** Keep Windows' 64-bit file IDs exact while retaining the existing safe-number representation. */
@@ -152,7 +151,6 @@ export const nodeFs: RecoveryFs = {
   readFile: (path) => nodeFsPromises.readFile(path, 'utf8'),
   writeFile: (path, data, options) => nodeFsPromises.writeFile(path, data, options),
   readdir: (path) => nodeFsPromises.readdir(path),
-  chmod: (path, mode) => nodeFsPromises.chmod(path, mode),
 }
 
 /** A Node error's `code` (`ENOENT`, `EBUSY`…), or undefined for anything else. */
@@ -313,7 +311,7 @@ async function flushFile(path: string, fs: RecoveryFs): Promise<void> {
 }
 
 /**
- * Copies `from` to a new file `to` (mode 0600) and puts its bytes and its name on disk before it
+ * Copies `from` to a new file `to` and puts its bytes and its name on disk before it
  * returns: the copy is flushed through a handle that may write, and then its folder is flushed.
  * On Windows the copy's flush puts its name on disk too. Never replaces a file already at `to`.
  */
@@ -323,14 +321,13 @@ export async function copyDurably(
   fs: RecoveryFs = nodeFs,
 ): Promise<void> {
   await fs.copyFile(from, to, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE)
-  await fs.chmod(to, 0o600)
   await flushFile(to, fs)
   await syncFolder(dirname(to), fs)
 }
 
 /**
- * Makes `path` and any missing parents, readable by this user only (0700). A link standing where
- * the folder should be is refused, so the mode is never set on what it points at. Its parents are
+ * Makes `path` and any missing parents. A link standing where the folder should be is refused.
+ * Its parents are
  * not checked here: inside `backups/` and `recovery/`, {@link assertOwnedPathsAreReal} checks them
  * first.
  */
@@ -339,7 +336,6 @@ export async function privateDir(path: string, fs: RecoveryFs = nodeFs): Promise
   const stats = await fs.lstat(path)
   if (stats.isSymbolicLink()) throw new OwnedPathIsALink(path)
   if (!stats.isDirectory()) throw new Error(`${path} is not a folder`)
-  await fs.chmod(path, 0o700)
 }
 
 /** A link or junction where one of the app's own recovery folders or files should be. */

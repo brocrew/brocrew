@@ -1,7 +1,7 @@
 import { PLUGIN_FRAMEWORK_FEATURES } from '../hooks/definitions'
 import { PluginProposal } from './proposals'
 import { createServer, createConnection, type Socket } from 'node:net'
-import { chmod, lstat, unlink } from 'node:fs/promises'
+import { lstat, unlink } from 'node:fs/promises'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { isSocketFile, localEndpoint } from '../local-endpoint'
@@ -431,7 +431,6 @@ export async function servePersonPluginControl(options: {
       resolve()
     })
   })
-  if (isSocketFile()) await chmod(path, 0o600)
   const held = isSocketFile() ? await lstat(path, { bigint: true }) : null
   server.on('error', () => {
     for (const channel of channels) channel.close()
