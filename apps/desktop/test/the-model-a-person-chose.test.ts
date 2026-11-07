@@ -1,3 +1,5 @@
+import { MODEL_CHOICE_RAILS } from '../src/shared/model-choice-contracts'
+import type { AgentModelChoice } from '../src/shared/model-choice-contracts'
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, sep } from 'node:path'
@@ -37,12 +39,10 @@ import {
 } from '../src/main/runtime/spawn-rails'
 import { judgeAnAgentsChoice } from '../src/main/runtime/model-rails'
 import {
-  MODEL_CHOICE_RAILS,
   MODEL_CHOICE_SAID,
   judgeAgainstTheList,
   theList,
   whatAModelChoiceReaches,
-  type AgentModelChoice,
 } from '../src/shared/model-choice'
 import { agentCallerId, whatItRunsOnSaid } from '../src/main/runtime/agent-tools'
 

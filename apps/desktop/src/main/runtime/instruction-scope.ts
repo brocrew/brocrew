@@ -1,5 +1,5 @@
+import type { InstructionScope } from '../../shared/instruction-contracts'
 import { dirname, resolve, sep } from 'node:path'
-import type { InstructionScope } from '../../shared/runtime-ipc'
 
 /**
  * 🔴 **Which layer a provider-reported instruction file belongs to** (356 §3, from 357's verdict).

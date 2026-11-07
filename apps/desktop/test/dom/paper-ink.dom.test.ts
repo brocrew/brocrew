@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick, type Component } from 'vue'
 import ChildWorkViewer from '../../src/renderer/src/components/ChildWorkViewer.vue'
@@ -7,11 +8,7 @@ import WorkflowEntry from '../../src/renderer/src/components/WorkflowEntry.vue'
 import CanonicalDocumentViewer from '../../src/renderer/src/components/CanonicalDocumentViewer.vue'
 import WorkflowOutputViewer from '../../src/renderer/src/components/WorkflowOutputViewer.vue'
 import type { PlanItem, WorkflowRunCard } from '../../src/renderer/src/lib/transcript'
-import type {
-  ChildWorkResult,
-  TranscriptEvent,
-  WorkflowOutputResult,
-} from '../../src/shared/runtime-ipc'
+import type { ChildWorkResult, WorkflowOutputResult } from '../../src/shared/runtime-ipc'
 import {
   channelGap,
   contrast,

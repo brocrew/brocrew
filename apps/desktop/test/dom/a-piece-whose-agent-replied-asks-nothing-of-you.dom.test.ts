@@ -1,10 +1,11 @@
+import type { TaskState } from '../../src/shared/task-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import TaskList from '../../src/renderer/src/components/TaskList.vue'
 import IconSprite from '../../src/renderer/src/components/IconSprite.vue'
 import { workReading } from '../../src/renderer/src/lib/work-report'
 import type { CastTask } from '../../src/renderer/src/lib/working-together'
 import { standingOf, STANDING_LABEL } from '../../src/renderer/src/lib/agent-state'
-import { CONVERSATION_WAITS, WAITING_STANDS_FOR, type TaskState } from '../../src/shared/tasks'
+import { CONVERSATION_WAITS, WAITING_STANDS_FOR } from '../../src/shared/tasks'
 import { mount, unmountAll } from './harness'
 
 /**

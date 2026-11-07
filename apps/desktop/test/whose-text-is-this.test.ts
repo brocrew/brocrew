@@ -1,3 +1,8 @@
+import type {
+  InjectedInstruction,
+  InjectedInstructionKind,
+  SessionInstructions,
+} from '../src/shared/instruction-contracts'
 import { describe, expect, it } from 'vitest'
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -23,11 +28,6 @@ import type { InstructionContext } from '../src/main/runtime/factory-text'
 import { theConversationCalled } from '../src/shared/piece-called'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
-import type {
-  InjectedInstruction,
-  InjectedInstructionKind,
-  SessionInstructions,
-} from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **The question a heading answers, and whether what is under it agrees** (583 §5.3,

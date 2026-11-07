@@ -1,8 +1,9 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import {
   TURN_FAILED,
   providerErrorSentence,

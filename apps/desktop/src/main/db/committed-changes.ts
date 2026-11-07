@@ -1,5 +1,6 @@
+import type { TranscriptEvent } from '../../shared/conversation-events'
 import type { AppDatabase } from './connection'
-import type { TranscriptEvent } from '../../shared/runtime-ipc'
+
 import { CASCADE_DELETE_WRITES, DERIVED_TABLES, TRIGGER_WRITES } from './question-copies'
 
 /**

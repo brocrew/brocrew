@@ -1,5 +1,7 @@
+import { TASK_STATES } from './task-contracts'
+import type { TaskOutcome, TaskState } from './task-contracts'
 import { z } from 'zod'
-import { TASK_STATES, type TaskOutcome, type TaskState } from './tasks'
+
 import type { WorkFileGroup } from './work-file-groups'
 
 export const WORK_SEARCH_SCOPES = ['mine', 'this-conversation', 'all'] as const

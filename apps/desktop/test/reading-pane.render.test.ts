@@ -1,3 +1,4 @@
+import type { PersistedEventInfo } from '../src/shared/conversation-events'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -7,7 +8,7 @@ import { renderToString } from 'vue/server-renderer'
 import ReadingPane from '../src/renderer/src/components/ReadingPane.vue'
 import PromptComposer from '../src/renderer/src/components/PromptComposer.vue'
 import TranscriptView from '../src/renderer/src/components/TranscriptView.vue'
-import type { LibraryEntry, PersistedEventInfo } from '../src/shared/runtime-ipc'
+import type { LibraryEntry } from '../src/shared/runtime-ipc'
 import { applyEvent, createTranscript, markReadOnly } from '../src/renderer/src/lib/transcript'
 import { createWindow, openAt, type WindowState } from '../src/renderer/src/lib/transcript-window'
 

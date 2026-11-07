@@ -1,3 +1,4 @@
+import type { AgentState } from '../../../shared/agent-state-contracts'
 import type { WorkEdge } from '../../../shared/who-called-whom'
 import { TASK_IS_OPEN } from '../../../shared/tasks'
 import { HOW_A_PIECE_ENDED_SAID } from '../../../shared/piece-called'
@@ -10,7 +11,7 @@ import type {
 } from '../../../shared/runtime-ipc'
 import { WORK_STATE_WORD } from '../../../shared/work-state-words'
 import { agentName, DEFAULT_PROFILE_ID, foldProfileName } from '../../../shared/runtime-ipc'
-import type { AgentState } from '../../../shared/agent-state'
+
 import { theWorkThatNamesItSaid, type WorkThatNamesIt } from '../../../shared/piece-called'
 import { mergeProviderBlock, type ProviderBlockFacts } from './provider-limit-status'
 import { basenameOf } from './paths'

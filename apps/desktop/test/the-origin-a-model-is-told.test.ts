@@ -1,3 +1,4 @@
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -24,8 +25,9 @@ import {
 import { messageNamingThePiece } from '../src/main/runtime/reply-rails'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { expectQueueFactsExcludeBriefs } from './helpers/queue-facts-source'
 import { agentName } from '../src/shared/runtime-ipc'
 import type { WhereTheSenderStands } from '../src/main/runtime/turn-origin'
 import { theOwnerOf } from '../src/shared/piece-called'
@@ -1237,17 +1239,8 @@ describe('414 · the origin a model is told', () => {
       // **and `rebriefing`**, a new brief of one (`update_work`'s alone). ⚑ The rail is spelled
       // ONCE, as `FactsAQueueCarries`, each key beside its `never`, and `queueMessage` takes that
       // type rather than an inline copy of it.
-      expect(source).toContain(
-        [
-          "type FactsAQueueCarries = Omit<TurnFacts, 'giving' | 'rebriefing'> & {",
-          '  readonly giving?: never',
-          '  readonly rebriefing?: never',
-          '}',
-        ].join('\n'),
-      )
-      const queueMessageTakes =
-        /\n {2}queueMessage\(([\s\S]*?)\n {2}\): Promise<QueueOutcome>/.exec(source)?.[1] ?? ''
-      expect(queueMessageTakes).toContain('facts: FactsAQueueCarries = {},')
+      const records = codeOnly(readFileSync(join(mainRoot, 'runtime/message-records.ts'), 'utf8'))
+      expectQueueFactsExcludeBriefs(records, source)
       // ⛔ **A task id says nothing about whose words a turn is**, and a signature that took one
       // could be read as though it might.
       //

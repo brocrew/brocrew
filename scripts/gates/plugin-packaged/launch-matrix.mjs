@@ -6,8 +6,8 @@ import { pathToFileURL } from 'node:url'
 import { createServer } from 'node:net'
 import { attach } from '../../lib/update-rehearsal-app.mjs'
 import { HIDDEN_LAUNCH_ARG } from '../../lib/hidden-launch.mjs'
-import { requireCI, ownedRoot } from './contract.mjs'
-import { fixtureAppEnvironment, privateFolder } from './prepare.mjs'
+import { requireCI, ownedRoot } from './fixture-guards.mjs'
+import { fixtureAppEnvironment, privateFolder } from './fixture-command.mjs'
 import {
   launchVariant,
   probeVariants,

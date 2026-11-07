@@ -1,3 +1,11 @@
+import type {
+  HowItWasRaised,
+  LedgerWalk,
+  PersonsDecision,
+  PersonsQuestion,
+  RoutedRequest,
+} from '../../src/shared/question-contracts'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
@@ -10,14 +18,9 @@ import {
   chainReading,
   chainSentence,
   escalationChain,
-  type HowItWasRaised,
-  type LedgerWalk,
-  type PersonsDecision,
-  type PersonsQuestion,
-  type RoutedRequest,
   aPersonsSince,
 } from '../../src/shared/questions'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { mount, record, unmountAll, visible } from './harness'
 
 /**

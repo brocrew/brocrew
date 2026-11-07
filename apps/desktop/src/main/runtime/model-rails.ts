@@ -1,3 +1,4 @@
+import type { ListedModel, ModelAndEffort, ModelList } from '../../shared/model-choice-contracts'
 import { refusalReason } from '../../shared/refusals'
 import type { Provider } from '@brobot2/shared'
 import {
@@ -6,10 +7,8 @@ import {
   theEffortsOf,
   theListedRow,
   theListsSpelling,
-  type ListedModel,
-  type ModelAndEffort,
 } from '../../shared/model-choice'
-import { PROVIDER_NAME, type ModelList } from '../../shared/runtime-ipc'
+import { PROVIDER_NAME } from '../../shared/runtime-ipc'
 import type { RailPermanence, RefusalRemedy } from '../../shared/refusals'
 
 /**

@@ -1,6 +1,7 @@
+import type { LedgerWalk } from '../../shared/question-contracts'
 import type { RuntimeEvent } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import type { LedgerWalk } from '../../shared/questions'
+
 import {
   PROVIDER_WALL_LOOKBACK_MS,
   readProviderLimit,

@@ -1,3 +1,4 @@
+import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import ModelPicker from '../../src/renderer/src/components/ModelPicker.vue'
@@ -10,7 +11,7 @@ import {
   providerReady,
   readyProvider,
 } from '../../src/renderer/src/lib/provider-models'
-import type { ModelList, Provider, RuntimeBridge } from '../../src/shared/runtime-ipc'
+import type { Provider, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { NO_LAUNCH_CHOICES } from '../../src/renderer/src/lib/launch-choices'
 import { assertDrawn, drawnReady } from './drawn'
 import { mount, unmountAll, type Mounted } from './harness'

@@ -1,3 +1,10 @@
+import type {
+  AskedQuestion,
+  LedgerWalk,
+  PersonsQuestion,
+  RequestOnlyAPersonCanSettle,
+  RoutedRequest,
+} from '../../src/shared/question-contracts'
 import { nextTick } from 'vue'
 import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
 import { attentionToACardNobodyHolds } from '../../src/renderer/src/lib/attention'
@@ -10,11 +17,6 @@ import {
   decisionReading,
   escalationChain,
   readingSentence,
-  type AskedQuestion,
-  type LedgerWalk,
-  type PersonsQuestion,
-  type RequestOnlyAPersonCanSettle,
-  type RoutedRequest,
 } from '../../src/shared/questions'
 import { mount } from './harness'
 

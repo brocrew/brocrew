@@ -5,16 +5,14 @@ import { spawn } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 import { attach, press } from '../../lib/update-rehearsal-app.mjs'
 import { HIDDEN_LAUNCH_ARG } from '../../lib/hidden-launch.mjs'
-import { privateFolder, fixtureEnvironment, fixtureAppEnvironment, command } from './prepare.mjs'
 import {
-  ownedRoot,
-  requireCI,
-  digest,
-  report,
-  safeReport,
-  finish,
-  requireCheck,
-} from './contract.mjs'
+  privateFolder,
+  fixtureEnvironment,
+  fixtureAppEnvironment,
+  command,
+} from './fixture-command.mjs'
+import { digest, report, safeReport, finish, requireCheck } from './contract.mjs'
+import { ownedRoot, requireCI } from './fixture-guards.mjs'
 import { bounded, stopApp } from './processes.mjs'
 import { registerChild } from './runner-processes.mjs'
 import { observeApp, probeStep, waitDevtools } from './probe.mjs'

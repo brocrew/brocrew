@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -17,7 +18,6 @@ import {
   READ_THE_DOCUMENT_NAMED,
 } from '../src/renderer/src/lib/the-documents-a-reply-names'
 import { OPEN_THE_DOCUMENT } from '../src/renderer/src/lib/the-document-a-report-names'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 562 · a press that opens the document it names

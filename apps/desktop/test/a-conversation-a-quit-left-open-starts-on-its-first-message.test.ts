@@ -1,3 +1,5 @@
+import type { LedgerWalk } from '../src/shared/question-contracts'
+import type { HandedPath } from '../src/shared/attachment-contracts'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -21,9 +23,8 @@ import { createDraftBook, draftKey, sweepDrafts } from '../src/renderer/src/lib/
 import { stalledWorkView } from '../src/renderer/src/lib/persons-queue'
 import { OPEN_THE_CONVERSATION } from '../src/renderer/src/lib/taking-over'
 import type { StalledWork } from '../src/shared/stalled-work'
-import type { LedgerWalk } from '../src/shared/questions'
+
 import type {
-  HandedPath,
   ResumableSessionInfo,
   RuntimeBridge,
   RuntimeChangeMessage,

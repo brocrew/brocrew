@@ -1,3 +1,4 @@
+import type { InjectedInstruction, RefusedInstruction } from '../../shared/instruction-contracts'
 import {
   closeSync,
   constants,
@@ -12,7 +13,7 @@ import {
   type Stats,
 } from 'node:fs'
 import { basename, dirname, join, resolve, sep } from 'node:path'
-import type { InjectedInstruction, RefusedInstruction } from '../../shared/runtime-ipc'
+
 import type { InstructionRead, AgentMemoryRead, MemoryCandidate } from './instruction-types'
 import { INSTRUCTION_FILE_CAP, AGENT_MEMORY_TOTAL_CAP } from './instruction-limits'
 

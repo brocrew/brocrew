@@ -1,3 +1,8 @@
+import { TASK_STALL_CAUSES, TASK_STATES } from '../src/shared/task-contracts'
+import type { PieceRow, TaskState } from '../src/shared/task-contracts'
+import { REQUEST_STATES } from '../src/shared/question-contracts'
+import { MAILBOX_KINDS } from '../src/shared/conversation-events'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -24,20 +29,15 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   TASK_IS_OPEN,
   AN_ASK_RIDES_ON,
-  TASK_STALL_CAUSES,
-  TASK_STATES,
   UNDRIVEN_SENTENCES,
   derivePieces,
 } from '../src/shared/tasks'
 import { pieceLine } from '../src/shared/piece-called'
-import type { PieceRow, TaskState } from '../src/shared/tasks'
-import { REQUEST_IS_OPEN, REQUEST_STATES } from '../src/shared/questions'
-import { MAILBOX_KINDS } from '../src/shared/runtime-ipc'
-import type {
-  PersistedEventInfo,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+
+import { REQUEST_IS_OPEN } from '../src/shared/questions'
+
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { codeOnly, sourceOf, expectTypeImports } from './helpers/source-contracts'
 
 /**
  * 🔴 **400 · never close what you did not see finish** — HO-018's three amendments, under one
@@ -423,10 +423,6 @@ describe('400 · never close what you did not see finish', () => {
    * elsewhere and leave it exactly as it is — which is the paired negative, not the case.
    */
   const relaunchAfterACrash = (): RuntimeHost => buildHost(createSessionStore(db, tick))
-
-  const sourceOf = (dir: string, file: string): string => readFileSync(join(dir, file), 'utf8')
-  const codeOnly = (source: string): string =>
-    source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
   const filesUnder = (dir: string): { path: string; text: string }[] => {
     const out: { path: string; text: string }[] = []
@@ -1323,7 +1319,7 @@ describe('400 · never close what you did not see finish', () => {
         'renderer/src/lib/describe-event.ts',
         'renderer/src/lib/transcript.ts',
         'shared/digest.ts',
-        'shared/runtime-ipc.ts',
+        'shared/task-contracts.ts',
         'shared/tasks.ts',
       ])
     })
@@ -1347,20 +1343,23 @@ describe('400 · never close what you did not see finish', () => {
       // ⚑ **F097 · a second value import** — whose words a turn carries, read once for the host and
       // the fold; its module reaches a ledger TYPE and nothing else (below).
       expect(values).toEqual([
+        "import { AGENT_MESSAGE_KINDS, TASK_STATES } from './task-contracts'",
         "import { whoCancelledIt, type AskToStop } from './how-work-stopped'",
         "import { aPersonsOwnWords } from './a-persons-own-words'",
       ])
-      for (const line of [
-        ...sourceOf(sharedRoot, 'a-persons-own-words.ts').matchAll(/^import .*$/gm),
-      ]) {
-        expect(line[0].startsWith('import type '), line[0]).toBe(true)
-      }
+      expectTypeImports(sourceOf(sharedRoot, 'a-persons-own-words.ts'))
+      expectTypeImports(sourceOf(sharedRoot, 'task-contracts.ts'))
       const reached = sourceOf(sharedRoot, 'how-work-stopped.ts')
       for (const line of [...reached.matchAll(/^import .*$/gm)].map((match) => match[0])) {
         expect(line.startsWith('import type ') || line.includes('./who-did-it'), line).toBe(true)
       }
       expect([...sourceOf(sharedRoot, 'who-did-it.ts').matchAll(/^import .*$/gm)]).toHaveLength(0)
-      for (const near of ['how-work-stopped.ts', 'who-did-it.ts', 'a-persons-own-words.ts']) {
+      for (const near of [
+        'task-contracts.ts',
+        'how-work-stopped.ts',
+        'who-did-it.ts',
+        'a-persons-own-words.ts',
+      ]) {
         expect(codeOnly(sourceOf(sharedRoot, near)), near).not.toContain('Date.now')
         expect(codeOnly(sourceOf(sharedRoot, near)), near).not.toContain('setTimeout')
       }
@@ -1427,7 +1426,7 @@ describe('400 · never close what you did not see finish', () => {
           .filter(({ text }) => text.includes('escalationsDue'))
           .map(({ path }) => path)
           .sort(),
-      ).toEqual(['db/session-store.ts', 'runtime/runtime-host.ts'])
+      ).toEqual(['db/session-store.ts', 'runtime/persons-questions.ts'])
     })
 
     it('⛔ the runtime package never learns either of this dispatch’s words', () => {

@@ -2,7 +2,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
-import { command, repository, privateFolder } from './prepare.mjs'
+import { command, repository, privateFolder } from './fixture-command.mjs'
 import { digest } from './contract.mjs'
 import { phaseStep } from './diagnostics.mjs'
 export function listFor(entry) {

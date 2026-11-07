@@ -1,9 +1,10 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import type { SessionRecord } from '../../src/renderer/src/lib/session-record'
-import type { SessionStatus, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { SessionStatus } from '../../src/shared/runtime-ipc'
 import { mount, paneProps, permission, record, unmountAll, type Mounted } from './harness'
 
 /**

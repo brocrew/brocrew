@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { expandAgentCards } from './harness'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
@@ -23,12 +24,7 @@ import {
   type ToolItem,
   type TranscriptState,
 } from '../../src/renderer/src/lib/transcript'
-import type {
-  AgentIdentity,
-  KeptFile,
-  ResourceReading,
-  TranscriptEvent,
-} from '../../src/shared/runtime-ipc'
+import type { AgentIdentity, KeptFile, ResourceReading } from '../../src/shared/runtime-ipc'
 import type { WorkEdge } from '../../src/shared/who-called-whom'
 import { drawnReady } from './drawn'
 import { META, mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'

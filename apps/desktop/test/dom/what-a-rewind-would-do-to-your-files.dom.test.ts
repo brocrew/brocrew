@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
@@ -11,7 +12,7 @@ import {
   markPermissionAnswered,
   type TranscriptState,
 } from '../../src/renderer/src/lib/transcript'
-import type { ProviderCapabilityMap, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { ProviderCapabilityMap } from '../../src/shared/runtime-ipc'
 import { CAPABILITY_FIXTURE, CLAUDE_REWIND_REASON } from '../provider-capability-fixture'
 import { drawerProps, mount, unmountAll, visible, type Mounted } from './harness'
 import { drawnReady, describeClip, lineCount, notDrawn, titleRecovers } from './drawn'

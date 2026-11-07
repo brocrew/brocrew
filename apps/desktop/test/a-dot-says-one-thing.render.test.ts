@@ -1,3 +1,9 @@
+import type { LedgerWalk, LedgerWalkKind } from '../src/shared/question-contracts'
+import type {
+  TaskState,
+  TaskWait,
+  WhatEachConversationIsWaitingOn,
+} from '../src/shared/task-contracts'
 import ts from 'typescript'
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import { camelize, capitalize, createSSRApp, h } from 'vue'
@@ -21,13 +27,8 @@ import {
   type CastReading,
   type WorkingTogetherInput,
 } from '../src/renderer/src/lib/working-together'
-import type { LedgerWalk, LedgerWalkKind } from '../src/shared/questions'
-import {
-  TASK_WAITS,
-  type TaskState,
-  type TaskWait,
-  type WhatEachConversationIsWaitingOn,
-} from '../src/shared/tasks'
+
+import { TASK_WAITS } from '../src/shared/tasks'
 import type { ForestNode, TheWholeForest } from '../src/shared/the-whole-forest'
 import type { WhatIsBeingDone } from '../src/shared/what-is-being-done'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../src/shared/who-called-whom'

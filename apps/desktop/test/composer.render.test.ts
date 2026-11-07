@@ -1,3 +1,4 @@
+import type { HandedPath } from '../src/shared/attachment-contracts'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -13,7 +14,6 @@ import {
   joiningTheBox,
   shouldRestoreDraft,
 } from '../src/renderer/src/lib/drafts'
-import type { HandedPath } from '../src/shared/runtime-ipc'
 import { firstMessageBelongsTo } from '../src/renderer/src/components/RuntimeScreen.vue'
 
 /**

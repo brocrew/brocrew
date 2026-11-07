@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../../src/shared/conversation-events'
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import {
@@ -19,7 +20,7 @@ import { fileURLToPath } from 'node:url'
 import { openDatabase, type AppDatabase } from '../../../src/main/db/connection'
 import { applyMigrations } from '../../../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../../../src/main/db/session-store'
-import type { TranscriptEvent } from '../../../src/shared/runtime-ipc'
+
 import {
   makeCheckpoint as writeACheckpoint,
   type Checkpoint,

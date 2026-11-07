@@ -1,3 +1,5 @@
+import type { LedgerWalk, LedgerWalkKind } from '../src/shared/question-contracts'
+import type { WorkReport } from '../src/shared/task-contracts'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -19,8 +21,7 @@ import {
   workingTogetherView,
   type WorkingTogetherInput,
 } from '../src/renderer/src/lib/working-together'
-import type { LedgerWalk, LedgerWalkKind } from '../src/shared/questions'
-import type { WorkReport } from '../src/shared/tasks'
+
 import type { ForestConversation, TheWholeForest } from '../src/shared/the-whole-forest'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../src/shared/who-called-whom'
 

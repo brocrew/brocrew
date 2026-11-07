@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -16,7 +17,7 @@ import { NOT_REACHED_THIS_WINDOW, type SessionRecord } from '../src/renderer/src
 import {
   type RuntimeBridge,
   type RuntimeEventMessage,
-  type TranscriptEvent,
+  type SessionLivenessMessage,
 } from '../src/shared/runtime-ipc'
 import { DemoWindow, IssuedSessionRuntime } from './lib/demo-runtime-window'
 

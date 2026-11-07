@@ -1,3 +1,4 @@
+import type { InjectedInstruction, SessionInstructions } from '../src/shared/instruction-contracts'
 import {
   mkdirSync,
   mkdtempSync,
@@ -12,7 +13,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { claudeAutoMemoryIndex } from '@brobot2/runtime'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { InjectedInstruction, SessionInstructions } from '../src/shared/runtime-ipc'
+
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 
 /**

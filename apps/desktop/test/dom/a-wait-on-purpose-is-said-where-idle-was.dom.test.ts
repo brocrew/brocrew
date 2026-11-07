@@ -1,3 +1,4 @@
+import type { TaskState } from '../../src/shared/task-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, shallowReactive } from 'vue'
@@ -9,7 +10,7 @@ import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalle
 import type { RailSays } from '../../src/renderer/src/lib/agent-state'
 import { conversationList } from '../../src/renderer/src/lib/conversation-list'
 import type { ResumableSessionInfo } from '../../src/shared/runtime-ipc'
-import type { TaskState } from '../../src/shared/tasks'
+
 import type { WorkEdge } from '../../src/shared/who-called-whom'
 import { assertClippedButTold, assertDrawn, drawnReady } from './drawn'
 import { META, mount, paneProps, record, unmountAll } from './harness'

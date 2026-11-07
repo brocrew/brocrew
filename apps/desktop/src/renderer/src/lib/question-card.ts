@@ -1,6 +1,8 @@
-import type { MoveOffer, MoveReceipt } from '../../../shared/move-request'
+import type { MoveOffer, MoveReceipt } from '../../../shared/move-contracts'
+import type { AskedQuestion, OfferedAnswer } from '../../../shared/question-contracts'
+
 import { agentName, type AgentIdentity, type UserInputResponse } from '../../../shared/runtime-ipc'
-import type { AskedQuestion, OfferedAnswer } from '../../../shared/questions'
+
 import { clockTime } from '../../../shared/clock'
 import { whoAnsweredIt } from '../../../shared/who-did-it'
 import { fullTime } from './clock'
@@ -23,7 +25,8 @@ import {
   withoutHandles,
 } from './outgoing-card'
 import { THIS_CONVERSATION_FIRST } from './from-outside'
-import { sinceWords, type PersonsQueueRow } from './persons-queue'
+import type { PersonsQueueRow } from './persons-queue'
+import { sinceWords } from './queue-time'
 
 /**
  * # 🔴 UI-009 · A question is answered where it is asked, and in *Waiting on you*

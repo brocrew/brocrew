@@ -1,3 +1,4 @@
+import { TASK_STATES } from '../src/shared/task-contracts'
 import { describe, expect, it } from 'vitest'
 import {
   composeProfileBundle,
@@ -14,7 +15,7 @@ import {
 } from '../src/main/runtime/agent-tools'
 import { PERMANENCE_SAID, RAIL_PERMANENCES } from '../src/shared/refusals'
 import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
-import { TASK_STATES } from '../src/shared/tasks'
+
 import { theConversationCalled } from '../src/shared/piece-called'
 
 /**

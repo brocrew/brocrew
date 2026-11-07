@@ -1,7 +1,8 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, reactive } from 'vue'
 import { page } from 'vitest/browser'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import ToolEntry from '../../src/renderer/src/components/ToolEntry.vue'
 import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue'

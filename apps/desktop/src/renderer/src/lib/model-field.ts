@@ -1,4 +1,5 @@
-import type { CapabilityStatus, ModelCatalogue, ModelChoice } from '../../../shared/runtime-ipc'
+import type { ModelCatalogue } from '../../../shared/model-choice-contracts'
+import type { CapabilityStatus, ModelChoice } from '../../../shared/runtime-ipc'
 import { needsProviderSetup } from './provider-models'
 
 /**

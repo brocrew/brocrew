@@ -1,3 +1,4 @@
+import type { ToolRefusedEvent, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -23,7 +24,6 @@ import {
   type TranscriptState,
 } from '../src/renderer/src/lib/transcript'
 import { composeReadable } from '../src/renderer/src/lib/readable-export'
-import type { ToolRefusedEvent, TranscriptEvent } from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 685 · §2.1 — the act a refusal carries, on the notice a person reads (`675` F-d)

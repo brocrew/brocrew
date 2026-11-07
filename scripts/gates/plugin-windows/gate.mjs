@@ -15,7 +15,8 @@ import { pathToFileURL, fileURLToPath } from 'node:url'
 import { HIDDEN_LAUNCH_ARG } from '../../lib/hidden-launch.mjs'
 import { attach, press } from '../../lib/update-rehearsal-app.mjs'
 import { checkNormalPluginBuild } from '../../check-no-plugin-gate-inputs.mjs'
-import { GATE_REPOSITORIES, projectBuild } from '../plugin-packaged/contract.mjs'
+import { projectBuild } from '../plugin-packaged/contract.mjs'
+import { GATE_REPOSITORIES } from '../plugin-packaged/fixture-guards.mjs'
 import {
   openPlugins,
   enabledProfile,

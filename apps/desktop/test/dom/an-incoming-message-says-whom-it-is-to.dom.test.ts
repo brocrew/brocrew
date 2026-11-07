@@ -1,10 +1,12 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
+import type { WorkReport } from '../../src/shared/task-contracts'
 import { agentCardSides } from './harness'
 import { expandAgentCards } from './harness'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import type { AgentIdentity, TranscriptEvent } from '../../src/shared/runtime-ipc'
-import type { WorkReport } from '../../src/shared/tasks'
+import type { AgentIdentity } from '../../src/shared/runtime-ipc'
+
 import {
   channelGap,
   META,

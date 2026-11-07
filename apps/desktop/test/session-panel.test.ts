@@ -1,6 +1,7 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import { sessionPanel } from '../src/renderer/src/lib/session-panel'
 import {
   applyEvent,

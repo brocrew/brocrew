@@ -1,3 +1,5 @@
+import { TASK_STALL_CAUSES } from '../src/shared/task-contracts'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -16,8 +18,7 @@ import {
   type WhoStoppedIt,
 } from '../src/shared/how-work-stopped'
 import { WHO_DID_IT, WHO_DID_IT_SAYS, type ActedBy } from '../src/shared/who-did-it'
-import { TASK_STALL_CAUSES, UNDRIVEN_SENTENCES, derivePieces } from '../src/shared/tasks'
-import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/runtime-ipc'
+import { UNDRIVEN_SENTENCES, derivePieces } from '../src/shared/tasks'
 
 /**
  * 🔴 **494 · the act this app knows the author of** — `492` F2, repaired at the READER.
@@ -501,17 +502,19 @@ describe('494 · the act this app knows the author of', () => {
       }
       expect(Object.keys(producers).sort()).toEqual([...WHO_STOPPED_IT].sort())
       const host = codeOnly(sourceOf(join(mainRoot, 'runtime'), 'runtime-host.ts'))
-      expect(host).toContain("return { who: 'a-caller-this-app-cannot-name' }")
+      const caller = codeOnly(sourceOf(join(mainRoot, 'runtime'), 'conversation-caller.ts'))
+      expect(caller).toContain("return { who: 'a-caller-this-app-cannot-name' }")
       // 🔴 **501 · the writer asks the one derivation, and the negative is what keeps it asked.**
       // ⛔ `recordTheAsk` wrote `speaking === null ? 'a-person' : 'an-agent'` — a NEGATIVE test
       // that put every caller which is neither a window nor a conversation on the person's side —
       // and this file asserted that spelling until `501`. ⚑ `codeOnly` strips comments, so the
       // withdrawn line quoted in that method's docblock does not satisfy either assertion.
       expect(host).toContain('const actor = whoDidIt(by)')
-      expect(host).not.toContain("speaking === null ? 'a-person' : 'an-agent'")
+      expect([host, caller].join('\n')).not.toContain("speaking === null ? 'a-person' : 'an-agent'")
       // ⚠️ **The control for the negative** (standing rule 4): the same `toContain` shape over the
       // same text finds the spelling one function over, so the absence above is a measurement.
       expect(host).toContain('const speaking = sessionSpeakingAs(by)')
+      expect(caller).toContain('const speaking = sessionSpeakingAs(by)')
     })
   })
 

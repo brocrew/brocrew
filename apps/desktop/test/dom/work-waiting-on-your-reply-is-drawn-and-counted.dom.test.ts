@@ -1,3 +1,9 @@
+import type {
+  LedgerWalk,
+  LedgerWalkKind,
+  PersonsDecision,
+  PersonsQuestion,
+} from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick } from 'vue'
 import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
@@ -17,12 +23,7 @@ import {
 import { createSessionStore } from '../../src/renderer/src/lib/session-store'
 import { OPEN_THE_CONVERSATION } from '../../src/renderer/src/lib/taking-over'
 import type { RuntimeBridge } from '../../src/shared/runtime-ipc'
-import type {
-  LedgerWalk,
-  LedgerWalkKind,
-  PersonsDecision,
-  PersonsQuestion,
-} from '../../src/shared/questions'
+
 import type { WaitingOnWhoWrote } from '../../src/shared/waiting-on-who-wrote'
 import { everythingOverTheWire } from '../lib/the-wire'
 import { mount, unmountAll, visible, type Mounted } from './harness'

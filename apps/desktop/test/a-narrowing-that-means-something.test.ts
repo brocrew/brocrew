@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import {
   lstatSync,
   mkdirSync,
@@ -27,7 +28,7 @@ import {
   permanenceOf,
 } from '../src/main/runtime/spawn-rails'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 // ⚠️ **The sink INTERFACE is the host's, not the wire's** — the wire declares the message.
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 

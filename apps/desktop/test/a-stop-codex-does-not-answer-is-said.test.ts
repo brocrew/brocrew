@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -6,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { AppDatabase } from '../src/main/db/connection'
 import type { SessionStore } from '../src/main/db/session-store'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import {
   aHostOverScriptedCodex,
   waitFor,

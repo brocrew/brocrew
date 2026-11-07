@@ -1,3 +1,6 @@
+import { LEDGER_WALK_KINDS } from '../src/shared/question-contracts'
+import { TASK_STATES } from '../src/shared/task-contracts'
+import type { PieceRow, TaskState, WorkGivenOut } from '../src/shared/task-contracts'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -14,16 +17,8 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { LEDGER_WALK_KINDS, WALK_COVERS } from '../src/shared/questions'
-import {
-  TASK_IS_OPEN,
-  TASK_STATES,
-  UNDRIVEN_SENTENCES,
-  workGivenOut,
-  type PieceRow,
-  type TaskState,
-  type WorkGivenOut,
-} from '../src/shared/tasks'
+import { WALK_COVERS } from '../src/shared/questions'
+import { TASK_IS_OPEN, UNDRIVEN_SENTENCES, workGivenOut } from '../src/shared/tasks'
 import { DEFAULT_PROFILE_LABEL } from '../src/shared/runtime-ipc'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { PANEL_EMPTY_WORDS, panelEmptyWords } from '../src/renderer/src/lib/session-panel'

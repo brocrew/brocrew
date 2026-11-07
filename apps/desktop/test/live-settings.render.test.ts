@@ -1,3 +1,4 @@
+import type { SessionSettingsDisclosure } from '../src/shared/model-choice-contracts'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -7,11 +8,7 @@ import type { DrawerFit, DrawerTab } from '../src/renderer/src/lib/drawer'
 import { LEAVE_PLAN_UNAVAILABLE } from '../src/renderer/src/lib/plan-mode'
 import { createTranscript } from '../src/renderer/src/lib/transcript'
 import { createWindow } from '../src/renderer/src/lib/transcript-window'
-import type {
-  CreatedSession,
-  SessionLiveness,
-  SessionSettingsDisclosure,
-} from '../src/shared/runtime-ipc'
+import type { CreatedSession, SessionLiveness } from '../src/shared/runtime-ipc'
 
 /**
  * The agent card changes model, effort and plan mode without starting a new thread.

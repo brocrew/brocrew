@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { defineComponent, h, nextTick, type Component } from 'vue'
@@ -10,11 +11,7 @@ import { usePersistentChoice } from '../../src/renderer/src/composables/usePersi
 import { FIXED_SAYS } from '../../src/renderer/src/composables/useConversationControls'
 import { DEFAULT_TAB, DRAWER_TABS, isDrawerTab } from '../../src/renderer/src/lib/drawer'
 import { LEAVE_PLAN_UNAVAILABLE } from '../../src/renderer/src/lib/plan-mode'
-import type {
-  CreatedSession,
-  SetSessionSettingInput,
-  TranscriptEvent,
-} from '../../src/shared/runtime-ipc'
+import type { CreatedSession, SetSessionSettingInput } from '../../src/shared/runtime-ipc'
 import { META, drawerProps, mount, paneProps, record, unmountAll, visible } from './harness'
 import type { Mounted } from './harness'
 

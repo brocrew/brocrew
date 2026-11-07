@@ -1,3 +1,161 @@
+import type { RuntimeHostDeps } from './host-dependencies'
+export type { RuntimeHostDeps } from './host-dependencies'
+import { ConversationIdle } from './conversation-idle'
+import { ModelCatalogues } from './model-catalogues'
+import { filesLibraryForWindow, teamProfileGraphForWindow } from './window-reads'
+import type {
+  FactsAQueueCarries,
+  Giving,
+  ThePieceWrittenDown,
+  ThePieceATurnCarries,
+  OneMessageOfATurn,
+  TurnFacts,
+  InterruptOutcome,
+  TheStopItsWordsAsked,
+  AnswerWithItsStop,
+  MessageNowOutcome,
+  OutOfReach,
+  TheDoorsReach,
+  AProfileNames,
+  NewBriefDelivery,
+  Told,
+} from './message-records'
+export type {
+  TurnFacts,
+  InterruptOutcome,
+  TheStopAMessageGot,
+  TheStopItsWordsAsked,
+  AnswerWithItsStop,
+  MessageNowOutcome,
+  OutOfReach,
+  TheDoorsReach,
+  AProfileNames,
+  TellDelivery,
+  NewBriefDelivery,
+  Told,
+} from './message-records'
+import type { FindFilesAsked, FoundFiles } from './kept-file-search'
+import { KeptFiles } from './kept-files'
+import { WorkReads } from './work-reads'
+import type {
+  APieceItHolds,
+  PieceBoard,
+  PieceRecord,
+  MadeByItsProfile,
+  EndedPieceDetail,
+  WhatAPieceIsToIt,
+} from './work-records'
+export type {
+  APieceItHolds,
+  RootOnTheBoard,
+  PieceBoard,
+  PieceRecord,
+  MadeByItsProfile,
+  EndedPieceDetail,
+  WhatAPieceIsToIt,
+} from './work-records'
+import type {
+  ProfileReport,
+  ProfileReading,
+  RulesOnARecord,
+  WhoStartedIt,
+  ConversationOnARecord,
+  PieceOnARecord,
+} from './agent-records'
+export type {
+  ProfileReport,
+  ProfileReading,
+  RulesOnARecord,
+  WhoStartedIt,
+  ConversationOnARecord,
+  WhoGaveIt,
+  PieceOnARecord,
+} from './agent-records'
+import {
+  terminalFor,
+  errorMessage,
+  aSentence,
+  theGoAheadWasNotSent,
+  effectiveApprovalOf,
+  approvalDisclosure,
+  sessionDisclosures,
+  settingsDisclosure,
+  instructionsFor,
+  describeApprovalMode,
+  aRefusedLoginStoppedText,
+  type BackgroundWorkEnded,
+  type WhatAFailedTurnWasFor,
+  type HeldGrant,
+  type ProviderLimitDisclosure,
+  type SessionEnding,
+} from './session-disclosures'
+export { aRefusedLoginStoppedText } from './session-disclosures'
+export type { WhatAFailedTurnWasFor } from './session-disclosures'
+import {
+  aWordOfThePlanners,
+  dealtWith,
+  scheduleNoticesText,
+  theSameIsSaid,
+  whatItSaysIsNotStarted,
+  type NoticeAboutAJob,
+  type WordOwed,
+  type AWordOfThisApps,
+} from './schedule-notices'
+export { scheduleNoticesText, type NoticeAboutAJob } from './schedule-notices'
+
+import {
+  agentsVisibleTo,
+  archivedVisibleTo,
+  type WhoseConversation,
+  type AgentsListed,
+  type VisibleConversation,
+  type ArchivedListed,
+  type PieceOnTheCard,
+  type StoppedOnAPerson,
+  type AgentCard,
+} from './agent-directory'
+export type {
+  WhoseConversation,
+  AgentsListed,
+  ArchivedAgent,
+  ArchivedListed,
+  PieceOnTheCard,
+  StoppedOnAPerson,
+  AgentCard,
+} from './agent-directory'
+export { wordsOutsideTheText, wordsInTheText } from './kept-file-search'
+export type { FindFilesAsked, FoundIn, FoundFile, FoundFiles, TextHolds } from './kept-file-search'
+import {
+  THE_APP_ITSELF,
+  mayControl,
+  mayClaim,
+  mayHandBack,
+  mayCommand,
+  mayInterruptDownTheChain,
+  mayAnswerAsAHuman,
+  callerName,
+  aPersonTypedIt,
+  aPersonIsAsking,
+  theSurfaceAsking,
+  whoDidIt,
+  agentCallerId,
+  sessionSpeakingAs,
+  type RuntimeEventSink,
+  type CallerIdentity,
+  type Caller,
+} from './conversation-caller'
+export {
+  THE_APP_ITSELF,
+  mayControl,
+  mayClaim,
+  mayHandBack,
+  mayCommand,
+  mayInterruptDownTheChain,
+  mayAnswerAsAHuman,
+  aPersonTypedIt,
+  whoDidIt,
+} from './conversation-caller'
+export type { RuntimeEventSink, CallerIdentity, Caller } from './conversation-caller'
 import type { ProviderHomesReprovision } from '../../shared/runtime-ipc'
 import { providerKnowledge } from '../providers/knowledge-definitions'
 import { legacyAccountRecordFormat, providerAuthPolicies } from '../providers/auth-definitions'
@@ -8,30 +166,19 @@ import {
   StoppedBeforeSend,
   withManagedPluginAttachments,
 } from '@brobot2/runtime'
-import type { WorkspacePluginAttachments } from '../plugins/attachments'
-import {
-  libraryUnavailable,
-  type FilesLibraryRequest,
-  type FilesLibraryResult,
-} from '../../shared/files-library'
-import type { FilesLibraryWindows } from '../db/files-library-windows'
-import type { TeamProfileGraphWindows } from '../db/team-profile-graph-windows'
-import {
-  graphUnavailable,
-  type TeamProfileGraphRequest,
-  type TeamProfileGraphResult,
+import type { FilesLibraryRequest, FilesLibraryResult } from '../../shared/files-library'
+import type {
+  TeamProfileGraphRequest,
+  TeamProfileGraphResult,
 } from '../../shared/team-profile-graph'
 import {
   readPluginInstructions,
   pluginInstructionSection,
   PLUGINS_HEADING,
-  type PluginInstructionSource,
 } from '../plugins/instructions'
-import type { SkillsRequest, SkillsReply, SkillsWindow } from '../../shared/skills-window'
+import type { SkillsRequest, SkillsReply } from '../../shared/skills-window'
 import type { PastWorkSearchResult } from '../../shared/past-work-search'
-import type { PastWorkSearchReader } from '../db/past-work-search-reader'
-import type { TranscriptsCleared } from '../../shared/transcript-retention'
-import type { RecentActivityReading, SkillImportNotice } from '../../shared/recent-activity'
+import type { RecentActivityReading } from '../../shared/recent-activity'
 import { pathTail } from '../../shared/path-tail'
 import {
   linkKindOf,
@@ -51,7 +198,7 @@ import type {
   WorkRecoveryEvent,
   ReconciliationReceipt,
   WorkReconciliationEvent,
-} from '../../shared/work-reconciliation'
+} from '../../shared/reconciliation-contracts'
 import { indexWorkerReadings } from '../worker-readings'
 import type { WorkerBindingReading } from '../../shared/worker-reading'
 import { WORKER_OUTPUT_FAILURE } from '../worker-piece-folder'
@@ -77,30 +224,24 @@ import type {
 } from '../profile-execution-file'
 import { RUNTIME_CHANGE_SUBJECTS, TURN_ATTRIBUTION_KEYS } from '../../shared/runtime-ipc'
 import { moveRequestDigest, originalMoveRequest, recordMovedRequest } from './move-request'
-import {
-  DO_IT_HERE,
-  MOVE_IT,
-  MOVE_WORDS,
-  movedHereLine,
-  type MoveOffer,
-  type MoveOrigin,
-  type MoveRequestAck,
-  type DecideMoveRequestInput,
-} from '../../shared/move-request'
+import { DO_IT_HERE, MOVE_IT, MOVE_WORDS, movedHereLine } from '../../shared/move-request'
+import type {
+  MoveOffer,
+  MoveOrigin,
+  MoveRequestAck,
+  DecideMoveRequestInput,
+} from '../../shared/move-contracts'
 import {
   BUILT_IN_SKILLS_FAILURE,
   permittedInstalledSkillReminders,
 } from '../../shared/built-in-skills'
 import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto'
 import { returnedDocumentIndex } from '../resources/returned-document-index'
-import type { ThemeStore } from '../themes/store'
-import type { AnsweredQuestion, ConversationProviderBlock } from '../../shared/runtime-ipc'
+import type { ConversationProviderBlock } from '../../shared/runtime-ipc'
+import type { AnsweredQuestion } from '../../shared/human-answer-contracts'
 import { CurrentProviderLimitFacts, type CurrentFact } from './current-provider-limit-facts'
-import type { MainThreadWork } from '../stall-watch'
 import type { SkillLaunchSelection } from '../skills/launch-selection'
-import type { SkillGrants } from '../../shared/skills-catalogue'
 import type { PreparedBuiltInSkills } from '../skills/prepare-built-in-skills'
-import type { SavedMethodsUse } from '../../shared/saved-methods'
 import {
   holdsTheLines,
   withTheLinesKept,
@@ -108,7 +249,6 @@ import {
   withTheLinesSent,
   type SavedMethodsLines,
 } from '../saved-methods'
-import type { TextPackUse } from '../../shared/text-pack'
 import type { TextPackRead } from '../skills/text-pack'
 import type {
   AgentRuntime,
@@ -135,7 +275,6 @@ import {
   askedOfTheChannel,
   // ⚑ **676 · F4 — the adapter's own test for an OFFERED label**, so a chosen option is never cut.
   isOfferedLabel,
-  CHANNEL_REFUSAL_SENTENCES,
   type UserInputQuestion,
   capabilitiesFor,
   childInputRefusal,
@@ -167,12 +306,9 @@ import {
   // at a person's two doors.
   startRefusalOf,
   startFailureOf,
-  // ⚑ **D-042 · R1 — a provider's own default, by name**, where no list need be read to know it.
-  theDefaultByName,
   withDeadline,
   MAX_TOOL_TEXT,
   MAX_USAGE_WINDOWS,
-  type AgentInfo,
   type AgentToolset,
   type LaunchSetting,
   type ProviderCommand,
@@ -186,7 +322,6 @@ import {
   type SessionStatus,
 } from '@brobot2/shared'
 import { assetUrl } from '../../shared/asset-url'
-import { goAheadNotSent } from '../../shared/the-go-ahead'
 import { archivedInMemory, type ArchivedConversations } from '../archived-file'
 import {
   type FileLeft,
@@ -210,7 +345,6 @@ import { readBundleFile } from '../archive/read-bundle'
 import { messageWithHandedPaths, recheckHandedPaths } from './handed-path'
 import { whyALaunchWasRefused } from './launch-refusal'
 import { ReopenQueue } from './reopen-queue'
-import { instructionScope } from './instruction-scope'
 import {
   OTHER_CONVERSATIONS_SHOWN,
   type InstructionContext,
@@ -227,18 +361,15 @@ import {
   openMessagePath,
   resolveMessagePaths,
   revealMessagePath,
-  type MessagePathPlace,
 } from '../message-paths'
-import type { LoginRenewalOperations, ProviderSignIn } from '../providers/auth-types'
+import type { ProviderSignIn } from '../providers/auth-types'
 import type { ProviderAuthOps } from '../providers/auth-operations'
-import { aLoginRunsWithoutAKey, type ApiKeys } from './api-keys'
-import type { GivenFolder, ProtectedPlaceNotice, WorkFolderGrant } from '../../shared/work-folders'
-import type { SignInChanges } from '../sign-in-changes'
+import { aLoginRunsWithoutAKey } from './api-keys'
+import type { GivenFolder, ProtectedPlaceNotice } from '../../shared/work-folders'
 import {
   NOT_LISTED_AND_ASKED_AGAIN,
   NOT_LISTED_JUST_NOW,
   resourcesFromTheListing,
-  type ListedProcess,
 } from './process-listing'
 import {
   // 🔴 **610 · the derivation the rail already draws, CALLED rather than copied** (HO-092 §2.1).
@@ -252,14 +383,6 @@ import {
   PROVIDER_NAME,
 } from '../../shared/runtime-ipc'
 import type {
-  ModelList,
-  ReportedModel,
-  InstructionProposedEvent,
-  InstructionChangedEvent,
-  InstructionSettledEvent,
-  McpServerRequestedEvent,
-  McpServerRequestForAPerson,
-  McpServerRequestSettledEvent,
   AgentIdentities,
   AgentIdentity,
   AgentIdentityName,
@@ -269,11 +392,18 @@ import type {
   ProviderSignInResult,
   RuntimeChangeMessage,
   AgentStateMoved,
-  RuntimeStatesMessage,
   ProcessMemory,
-  TheQuestionItAsks,
-  TranscriptEvent,
 } from '../../shared/runtime-ipc'
+import type { ModelList, ReportedModel } from '../../shared/model-choice-contracts'
+import type {
+  InstructionProposedEvent,
+  InstructionChangedEvent,
+  InstructionSettledEvent,
+  McpServerRequestedEvent,
+  McpServerRequestForAPerson,
+  McpServerRequestSettledEvent,
+  TranscriptEvent,
+} from '../../shared/conversation-events'
 import type { CapabilityGrant } from '../../shared/capabilities'
 // ⚑ **A VALUE from that module**: a launch's instructions read the one default set for an identity
 // whose first row is not written yet.
@@ -339,7 +469,6 @@ import {
   RETITLE_SAID,
   theConversationCalled,
   theWorkAlone,
-  type HowAPieceEnded,
   type RetitleRail,
   type WorkClosedByAPerson,
   type WorkRetitled,
@@ -347,32 +476,21 @@ import {
   type WorkThatNamesIt,
 } from '../../shared/piece-called'
 import {
-  FILES_FOUND_LISTED,
   MADE_FILES_LISTED,
-  MOST_FILES_SEARCHED,
-  MOST_TEXT_SEARCHED,
-  OLDER_FILES_COUNTED,
   formOfName,
   type DocumentContent,
   type DocumentForm,
   type ResourceRole,
 } from '../../shared/documents'
 import {
-  MOST_BYTES_A_WINDOW_DRAWS,
-  MOST_PIXELS_A_WINDOW_DRAWS,
   keepResource,
-  keptFileToShow,
-  keptPictureOrPdf,
   readOfferedResource,
   refuseResource,
   resolveResource,
-  resourceBytes,
   resourceTitle,
-  resourceTitleBeforeFrontMatter,
   type OfferedFile,
   type ResourceRefusal,
 } from '../resources/resources'
-import { PROVIDER_HAS_NOT_REPORTED } from '../../shared/runtime-ipc'
 
 /**
  * How long a sign-in may stay open before the host gives up on it (098).
@@ -559,22 +677,6 @@ function profileSignInKey(provider: Provider, profileId: string): string {
   return `${provider}:${profileId}`
 }
 
-/** One provider's catalogue in one profile's home — the cache key {@link RuntimeHost.providerModels} keeps. */
-function modelProbeKey(provider: Provider, profileId: string): string {
-  return `${provider}:${profileId}`
-}
-
-/**
- * **How many `provider:profileId` catalogues are remembered at once** (257 §2).
- *
- * ⛔ A bound rather than a policy: the entries are settled promises holding a short array, so the
- * memory is nothing — what this refuses is the shape, *"one promise that is never invalidated"*
- * quietly becoming *"N promises that are never invalidated"*. Sixteen is eight profiles across both
- * providers, which is more than a person has open in one app run; past it the oldest is dropped and
- * the next visit pays for one more short-lived child. Nothing here starts a probe on its own.
- */
-const MAX_MODEL_PROBES = 16
-
 /**
  * ⚑ **W4.203 · how far back a conversation's ledger is looked through for its newest context
  * reading, the first time a read names it** (`RuntimeHost.lastContextOf`). A conversation this app
@@ -599,7 +701,6 @@ function signInHeldBy(provider: Provider, holder: string, asked: string): Error 
       `Finish or cancel that one, then try again.`,
   )
 }
-import type { Discovery, ProviderDescription } from '../adopt/discover-sessions'
 import type { UserHomeDiscovery } from '../adopt/user-homes'
 import {
   libraryChild,
@@ -640,7 +741,6 @@ import {
   type ProvidersChangedMessage,
   type ProviderUsageReading,
   type UsageWindowSeen,
-  type LeadInFront,
   type ProviderVersion,
   type KeptRuleRemoved,
   type KeptRules,
@@ -649,10 +749,6 @@ import {
   type AnswerAck,
   type ProviderAnswerAck,
   type ApprovalModeDisclosure,
-  type PlanGoAheadDisclosure,
-  type SessionSettingsDisclosure,
-  type SessionSettingChanged,
-  type WhatAPickBecame,
   type CreateSessionInput,
   type CreatedSession,
   type ProviderConfigInfo,
@@ -661,14 +757,10 @@ import {
   type ExportAsked,
   type ExportedSession,
   type HistoryWindow,
-  type HandedPath,
   type ImportedBundle,
   type ImportedFromHome,
   type ImportedRecording,
   type LedgerStatus,
-  type MemoryLoadedEvent,
-  type MemoryNoteEvent,
-  type ModelCatalogue,
   type RebuiltLedger,
   type ProviderCapabilityMap,
   type AgentProviderSet,
@@ -678,44 +770,8 @@ import {
   type FirstMessageRefusal,
   type LaunchRefusal,
   type RuntimeEventMessage,
-  type SessionInstructions,
   type SessionLiveness,
-  type SessionLivenessMessage,
   type SkippedSessionInfo,
-  type RequestEscalatedEvent,
-  type WorkRestartedEvent,
-  type MessageSentEvent,
-  type WorkStallTold,
-  type ToolRefusedEvent,
-  type ReplyUndeliveredEvent,
-  type ReopenedEvent,
-  type LaunchedEvent,
-  type UserDecisionEvent,
-  type TurnAuthorship,
-  type UserTurnEvent,
-  type QueuedMessageEvent,
-  type UnqueuedMessageEvent,
-  type UserCommandEvent,
-  type WorkGivenEvent,
-  type WorkRepliedEvent,
-  type WorkTakenBackEvent,
-  type WorkRetitledEvent,
-  type WorkStatusSetEvent,
-  type WorkRebriefedEvent,
-  type WorkClosedEvent,
-  type WorkSentEvent,
-  type QuestionAskedEvent,
-  type RequestRoutedEvent,
-  type StopUnansweredEvent,
-  type WorkInterruptedEvent,
-  type RequestInterruptedEvent,
-  type QuestionWithdrawnEvent,
-  type QuestionRecipientEndedEvent,
-  type QuestionEndedWithItsPieceEvent,
-  type RestoredFromTheArchiveEvent,
-  type ReplacedByEvent,
-  type ReplacesEvent,
-  type MailboxKind,
   type QueuedMessageDisclosure,
   type QueueOutcome,
   type SessionHandover,
@@ -748,17 +804,68 @@ import {
   MAX_TURN_PARTS,
   theMessagesOf,
 } from '../../shared/runtime-ipc'
+import type {
+  LeadInFront,
+  TurnAuthorship,
+  UserTurnEvent,
+} from '../../shared/human-answer-contracts'
+import type {
+  SessionSettingChanged,
+  WhatAPickBecame,
+  ModelCatalogue,
+} from '../../shared/model-choice-contracts'
+import type { HandedPath } from '../../shared/attachment-contracts'
+import type {
+  MemoryLoadedEvent,
+  MemoryNoteEvent,
+  MessageSentEvent,
+  ToolRefusedEvent,
+  ReplyUndeliveredEvent,
+  ReopenedEvent,
+  LaunchedEvent,
+  UserDecisionEvent,
+  QueuedMessageEvent,
+  UnqueuedMessageEvent,
+  UserCommandEvent,
+  StopUnansweredEvent,
+  RestoredFromTheArchiveEvent,
+  ReplacedByEvent,
+  ReplacesEvent,
+  MailboxKind,
+} from '../../shared/conversation-events'
+import type { SessionInstructions } from '../../shared/instruction-contracts'
+import type {
+  RequestEscalatedEvent,
+  QuestionAskedEvent,
+  RequestRoutedEvent,
+  RequestInterruptedEvent,
+  QuestionWithdrawnEvent,
+  QuestionRecipientEndedEvent,
+  QuestionEndedWithItsPieceEvent,
+} from '../../shared/question-contracts'
+import type {
+  WorkRestartedEvent,
+  WorkStallTold,
+  WorkGivenEvent,
+  WorkRepliedEvent,
+  WorkTakenBackEvent,
+  WorkRetitledEvent,
+  WorkStatusSetEvent,
+  WorkRebriefedEvent,
+  WorkClosedEvent,
+  WorkSentEvent,
+  WorkInterruptedEvent,
+} from '../../shared/task-contracts'
 // ⚑ **F097** — whose words a turn's messages are, read the same way by the fold.
 import { aPersonsOwnWords } from '../../shared/a-persons-own-words'
 import {
   ROUTED_REQUEST_EVENT_TYPES,
   aRowADeliveryCanStart,
-  eachOrSkipped,
   ledgersSkippedOf,
   readOrSkip,
-  rowsUnreadOnce,
   skipTheLedger,
 } from '../db/session-store'
+import { rowsUnreadOnce } from '../db/rows-unread'
 import {
   committedRowOf,
   type Committed,
@@ -766,34 +873,22 @@ import {
   type WholeChange,
 } from '../db/committed-changes'
 import type {
-  GivenInput,
   KeptFileRow,
   LeftRunning,
-  KeptFilesAsked,
-  KeptFilesPaged,
   LiveSessionRow,
   OpenTurn,
   TurnAsItEnded,
-  PieceHeld,
   RecordedSession,
   ResumableSession,
   ResourceRow,
-  RowsUnread,
   SessionStore,
   ThreadLeadRow,
   WaitingMessage,
   WorkRow,
 } from '../db/session-store'
+import type { RowsUnread } from '../db/rows-unread'
 import { toWireEvent } from './event-wire'
-import {
-  AGENT_TOOL_SERVER,
-  CONVERSATIONS_LISTED,
-  TOOL_NAMES,
-  aWakeThatDidNotHappen,
-  agentCallerId,
-  agentToolsFor,
-  sessionSpeakingAs,
-} from './agent-tools'
+import { AGENT_TOOL_SERVER, TOOL_NAMES, aWakeThatDidNotHappen, agentToolsFor } from './agent-tools'
 // ⚑ **516 · the registry's rules and its row shape** — a `src/shared` module, so the renderer names
 // the same row this host writes.
 import {
@@ -804,7 +899,6 @@ import {
   type ExternalMcpServerReach,
   type ExternalMcpServerRow,
 } from '../../shared/external-mcp'
-import { aWindowIsAsking } from './window-caller'
 import type { RefusalFacts, ToolName, ToolRefusal } from './agent-tools'
 import {
   MessagingRefused,
@@ -883,8 +977,6 @@ import {
   TASK_IS_OPEN,
   // ⚑ **467 · the one derivation of *what work is this conversation holding*** — see `openWorkOf`.
   openWorkOf,
-  // ⚑ **474 · the one derivation of *which work does this id name*** — see `workNamed`.
-  workNamed,
   // ⚑ **557 · the one predicate both recipients of a stall notice are admitted by** — see its own
   // docblock for why it is shared rather than written at each reader. ⚑ **D-016 · commit 6** — and
   // it admits only a piece a CONVERSATION gave: a person's piece has nobody to tell.
@@ -917,33 +1009,22 @@ import {
   thePiecesTheTurnNames,
   // ⚑ **D-019 · the rows that move a piece**, and so the name a question's asker waits on.
   PIECE_EVENT_TYPES,
-  type AgentMessageKind,
-  type WaitOn,
 } from '../../shared/tasks'
+import type { AgentMessageKind, WaitOn } from '../../shared/task-contracts'
 import type {
   ConversationWaiting,
   PieceAConversationGave,
   PieceRow,
-  StatusLine,
   TaskOutcome,
-  TaskState,
   TaskStallCause,
   WhatAConversationIsWaitingOn,
   WhatEachConversationIsWaitingOn,
   WorkGivenOut,
-  WorkReport,
-} from '../../shared/tasks'
+} from '../../shared/task-contracts'
 import {
   REQUEST_IS_OPEN,
   // ⚑ **679 · the kind of a person's request** — the one fact that lets a shared id be settled.
   theChannelRefusalIn,
-  // ⚑ **474 · the ONE fold from *a named task id* to *which work, and why that answer*.**
-  aboutTheWork,
-  // ⚑ **661 · the row that abandons every open request — the fold's own test, one spelling.**
-  chainReading,
-  chainSentence,
-  decisionReading,
-  escalationChain,
   // ⚑ **609 · the permission half of *a person owes something here*.**
   aPersonOwesAnAnswerIn,
   // ⚑ **611 · the moment a request became a person's — the escalation's stamp, or its own.**
@@ -951,14 +1032,10 @@ import {
   // ⚑ **603 · the derivation a take-back counts and the composition reads.**
   openQuestionsByWork,
   permissionShaped,
-  readingSentence,
-  // ⚑ **619 · the fold from a raised question's own parts to *what a person may press here*.**
-  whatTheAskerOffered,
   // ⚑ **D-019 · a row the two wait reads select** — what drops a kept read (`waitAsLastRead`).
   aWaitReads,
 } from '../../shared/questions'
 import type {
-  CardNobodyHolds,
   LedgerWalk,
   PersonsDecision,
   PersonsQuestion,
@@ -973,14 +1050,13 @@ import type {
   ActionFile,
   VisibleQuestion,
   WorkInHand,
-} from '../../shared/questions'
+} from '../../shared/question-contracts'
 import { countedTogether } from '../../shared/workspace-reading'
 import type { WhatNeedsAPerson, WorkspaceReading } from '../../shared/workspace-reading'
 import { THE_APP_DID_IT } from '../../shared/who-did-it'
 import type { LimitsDisplayAnswer } from '../../shared/limits-display'
-import type { LimitsReaderLifetime } from '../db/limits-reader-lifetime'
-import type { WorkSearchReader } from '../db/work-search-reader'
 import type { WorkSearchQuery, WorkSearchResult } from '../../shared/work-search'
+import { WorkSearch } from './work-search'
 import {
   completeCanonicalLimits,
   freshLimitsSnapshot,
@@ -991,6 +1067,7 @@ import {
   type LimitsReadInput,
   type LimitsReadResult,
 } from '../db/limits-read-protocol'
+import { PersonsQuestions } from './persons-questions'
 import { sameWindowWriter, WindowRoutingReads } from '../db/window-routing-reads'
 import { WindowIncidentReads } from '../db/window-incident-reads'
 import type { WindowWriterStamp } from '../db/window-writer-stamp'
@@ -1000,7 +1077,6 @@ import {
   WindowReadUnavailable,
   type WindowReadQuery,
   type WindowReadResult,
-  type WindowStoreReader,
 } from '../db/window-read-protocol'
 // ⚑ **624 · the app's own report, as a subject a turn carries** — see `app-notice.ts`.
 import { NOTICE_MEANS, type AppNotice } from '../../shared/app-notice'
@@ -1029,7 +1105,6 @@ import {
 } from '../../shared/own-notes'
 // ⚑ **625 · the memory door's shapes**, type-only for `own-instructions`' reason exactly: the
 // vocabularies live in `shared/` so the wire, the store and the popup read one copy.
-import type { SavedMethodService } from '../saved-method-service'
 import type {
   MethodBody,
   MethodLibrary,
@@ -1049,19 +1124,13 @@ import { memoryChangeRefusal } from '../../shared/agent-memory'
 // ⛔ **625 · the ONE module in this feature that touches the filesystem**, which is why the host
 // imports its two functions rather than learning to walk a store — `no-byte-authority.test.ts`
 // pins this file at zero `node:fs` imports.
-import {
-  readAgentMemory,
-  readAgentMemoryPaged,
-  type AgentMemoryInputs,
-  type MemoryService,
-} from './agent-memory'
+import { readAgentMemory, readAgentMemoryPaged, type AgentMemoryInputs } from './agent-memory'
 import {
   aLaunchRecordIn,
   oneMessageAsTheModelGotIt,
   whatItWasGiven,
   whatThisLaunchGave,
   type AnEarlierMessage,
-  type LaunchProfileFile,
 } from './what-this-agent-was-given'
 import { AGENT_MEMORY_NOTES_SHOWN } from './instructions'
 import type {
@@ -1115,7 +1184,7 @@ import {
   type PersonsQueueRefused,
 } from '../../shared/persons-published'
 import type { KeptReading, KeptUsage } from '../provider-usage-file'
-import type { KeptAccounts, KnownAccount } from '../provider-accounts-file'
+import type { KnownAccount } from '../provider-accounts-file'
 import {
   whatChangedBlock,
   HISTORICAL_LEADS_OPEN_WITH,
@@ -1124,26 +1193,25 @@ import {
   theLeadOwed,
   whatTheThreadHolds,
 } from './codex-lead'
-import { identityUse, theProviderOfAnAgent, whatHoldsIt } from '../../shared/agent-roster'
+import { identityUse, whatHoldsIt } from '../../shared/agent-roster'
 import type { AgentRemoved, IdentityUse, ItsProvider } from '../../shared/agent-roster'
 import {
   STAND_IN_PROFILE,
   aChoiceIsInForce,
   judgeAgainstTheList,
-  refuseModelChoice,
-  theEffortLadder,
   theEffortWhenNoneIsNamed,
   theEffortsOf,
-  theList,
   sameModel,
   theListedRow,
   theListsSpelling,
-  type AgentModelChoice,
-  type ModelAndEffort,
-  type ModelChoiceSaved,
-  type SelectedModel,
-  type WhereItCameFrom,
 } from '../../shared/model-choice'
+import type {
+  AgentModelChoice,
+  ModelAndEffort,
+  ModelChoiceSaved,
+  SelectedModel,
+  WhereItCameFrom,
+} from '../../shared/model-choice-contracts'
 import {
   admitAnswer,
   A_PERSONS_ANSWER_TO_AN_ENDED_QUESTION,
@@ -1161,16 +1229,14 @@ import {
   refuseQuestion,
   type AnAnswerOnItsWay,
   type AnAnswersOrigin,
-  type AnswerOutcome,
   type WithdrawQuestionOutcome,
   type AskOutcome,
   type PassUpOutcome,
   type QuestionRefusal,
 } from './question-rails'
-import { admitInterrupt, refuseInterrupt, type InterruptRefusal } from './interrupt-rails'
+import { admitInterrupt, refuseInterrupt } from './interrupt-rails'
 import { distilSkipping } from './digest'
 import { MAX_DIGEST_SPAN_MS, WINDOW_WAS_CHOSEN, type DigestReading } from '../../shared/digest'
-import type { AskToStop, LastEndedTurn } from '../../shared/how-work-stopped'
 import { newQueuedMessageId, queuedDisclosure } from './queued-message'
 import {
   newAskedQuestionId,
@@ -1190,7 +1256,7 @@ import {
 } from '../../shared/mcp-server-requests'
 import type { QueuedMessage } from './queued-message'
 import { DEFAULT_PROFILE_ID, ProfileUnopenable, assertProfileMayBeCreated } from './provider-homes'
-import { LivenessTracker, type LivenessOptions } from './liveness'
+import { LivenessTracker } from './liveness'
 // ⚑ **575 · the sibling of the line above** — see {@link BeingDoneTracker}, which is fed from the
 // same line of {@link RuntimeHost.deliver} and for the same reason.
 import { BeingDoneTracker } from './being-done'
@@ -1203,12 +1269,14 @@ import {
   NOTHING_SCHEDULED,
   scheduleHeld,
   somethingRunning,
-  type AgentState,
-  type BackgroundCommand,
-  type BackgroundLevel,
-  type ScheduledRow,
-  type ScheduleLevel,
 } from '../../shared/agent-state'
+import type {
+  AgentState,
+  BackgroundCommand,
+  BackgroundLevel,
+  ScheduledRow,
+  ScheduleLevel,
+} from '../../shared/agent-state-contracts'
 // ⚑ **D-029 · a job's time, with its day where that is not today** — {@link scheduleNoticesText}.
 import { clockTimeFrom } from '../../shared/clock'
 import { theZoneReadNow, type LocalZone } from '../../shared/local-time'
@@ -1217,11 +1285,7 @@ import {
   nextCronOccurrence,
   type CalendarSource,
 } from '../../shared/schedule-wake'
-import {
-  planReceiptSchedule,
-  type ReceiptSchedulePlan,
-  type ScheduleNotice,
-} from '../../shared/schedule-receipts'
+import { planReceiptSchedule, type ReceiptSchedulePlan } from '../../shared/schedule-receipts'
 import {
   planScheduleAdmission,
   recordScheduleAdmission,
@@ -1240,7 +1304,6 @@ import {
   NO_PROFILE_EXECUTION,
   readAgainstTheDatabase,
   reconcileProfileExecution,
-  type KeptProfileExecution,
   type ProfileExecution,
   type ProfileExecutionRead,
   type ProfileKind,
@@ -1320,46 +1383,6 @@ interface WhatTheGateIsAsked {
  * job is lifecycle: create, pump, address, tear down.
  */
 
-/** Where one session's events go. Implemented over `WebContents` in the app, faked in tests. */
-export interface RuntimeEventSink {
-  /** Stable id of the surface that owns this sink, so a window's sessions can be torn down together. */
-  readonly ownerId: string
-  /**
-   * 🔴 **Is a PERSON behind this surface?** (349, HO-006 §3.1, for HO-005 Q2.)
-   *
-   * ⛔ **The fact {@link mayAnswerAsAHuman} used to infer from ownership, said out loud.** That
-   * predicate asked whether the caller OWNS the session, and ownership is taken by
-   * {@link RuntimeHost.claimSession}, which takes one of these — a type any caller can implement.
-   * So an agent that presented a sink could claim its own child and then legally answer the
-   * permission prompt that child stopped on. ⚡ **What stopped that was a fact, not a check**:
-   * nothing but the IPC boundary calls the claim door, and the only sink reaching it is a window's.
-   * `340` wrote that fact down as a source census; this field is what makes it a rail.
-   *
-   * ⚠️ **It is a statement about where the QUESTION IS DISPLAYED, which is why it is here and
-   * not on {@link Caller}.** A caller exists for the length of one call and anything can construct
-   * one; a sink is the channel a permission card actually travels down, and the only person who may
-   * answer a card is the person it was shown to. {@link RuntimeHost.claimSession} copies this onto
-   * the slot at the instant ownership is taken — see {@link SessionSlot.ownerIsAPerson} — so the
-   * answer door reads what the OWNER declared when it took the conversation, never what the caller
-   * says about itself at the moment of asking.
-   *
-   * ⛔ **Required, and never defaulted — in either direction.** A field that defaulted to `true`
-   * would make every future sink a person by forgetting, which is the shape this rail exists to
-   * refuse. A field that defaulted to `false` would be safe and silent: the next non-window
-   * transport would compile without its author ever deciding. Required is the only spelling under
-   * which *"is there a person here"* has to be answered by somebody rather than inherited.
-   *
-   * ⚡ **Exactly one thing in this app says `true`** — `webContentsSink`, which is minted from an
-   * Electron `WebContents` at the one `sinkFor:` in `index.ts`. {@link NO_SURFACE} says `false`.
-   */
-  readonly aPersonIsBehindIt: boolean
-  /** False once the surface is gone; the host stops delivering rather than throwing into a dead window. */
-  readonly alive: boolean
-  send(message: RuntimeEventMessage): void
-  /** Provider liveness — its own path, because the transition worth reporting is silence. */
-  sendLiveness(message: SessionLivenessMessage): void
-}
-
 /**
  * 🔴 **D-010 · what a message the app or a person sends counts as** — `note`, which opens nothing.
  * ⚑ `says` is RECORDED only for an agent's message (`whoseWordsTheseAre`), and `message_agent`
@@ -1367,63 +1390,6 @@ export interface RuntimeEventSink {
  * to say. ⛔ No message opens a piece of work: only `give_work` gives one (D-016).
  */
 const WHAT_A_MESSAGE_NOBODY_DECLARED_SAYS: AgentMessageKind = 'note'
-
-/**
- * **The app acting on its own behalf, with no surface behind the gesture** (203, from 195 H1).
- *
- * ⛔ **It is a superuser and this line is the saying-so.** It skips the owner check in
- * {@link RuntimeHost.mayControl} entirely, so every use of it is a place where this app decided that
- * *nobody* is asking. There are exactly four legitimate reasons for that, and all four are the app's
- * own lifecycle rather than anyone's request:
- *
- *  - **the quit** — `closeAll()` ends every session, including sessions of windows already gone;
- *  - **a window that went away** — `closeSessionsForOwner` is triggered by `did-navigate`,
- *    `render-process-gone` and `destroyed`, at which point the owner cannot ask for anything;
- *  - **the host's own launch machinery** — `cancelLaunch` has already matched the owner itself, and
- *    the `close` it then performs is this host finishing its own gesture;
- *  - **the finalizer** — an ending that arrived from the provider, which has no owner at all.
- *
- * ⚠️ **What it is NOT is "the main process", and the difference matters for what comes next.** A
- * caller that reaches this host over a channel — today the one renderer IPC channel, tomorrow the
- * MCP tool a PM would spawn agents through — is a caller with an identity, and it passes that
- * identity. It does not become the app by virtue of running inside it. So the answer to *"what does
- * owner mean for a caller that is not a window"* is: **the same thing it means for a window — a
- * stable `ownerId` string it does not choose for itself.** `sinkOwnerId` mints `webContents:<id>`
- * for a renderer; a future MCP client gets its own prefix from whatever registers it, and its
- * sessions are the ones reserved under that id. Nothing about {@link RuntimeHost} needs to change
- * for that, which is the point of putting the check here rather than at the one door that exists
- * today.
- *
- * ⛔ **And it is NOT what a session created with no surface is owned by, which is 336 §2.1's
- * question asked and answered.** They are different kinds of thing: this symbol answers *"who is
- * asking"* for one gesture — it is a {@link Caller}, it exists only for the length of a call, and it
- * is a superuser — while an owner is an identity a SLOT is reserved under and holds for as long as
- * the session runs. Reserving a slot under this symbol would make every window's gesture legal on
- * it, since {@link mayControl}'s first clause is unconditional; it would make `closeSessionsForOwner`
- * unable to name it; and it would say *"the app asked for this"* about a session the app did not ask
- * for. ⚑ **A session nobody asked for has no owner, and that is spelled `null`** — see
- * {@link SessionSlot.ownerId} and {@link mayClaim}.
- *
- * A symbol, so it cannot be spelled by anything crossing a wire: {@link runtimeCommandSchema} can
- * only produce strings, and `ownerId` is compared, never parsed.
- */
-export const THE_APP_ITSELF = Symbol('the app itself')
-
-/**
- * **Who is asking** (203). Either a surface — anything carrying a stable `ownerId`, which every
- * {@link RuntimeEventSink} does — or {@link THE_APP_ITSELF}.
- *
- * ⛔ **Every control verb on this host takes one, and that is the whole fix for 195 H1.** Before
- * this, `send`, `interrupt`, `close`, the permission and user-input answers, the approval mode and
- * every live setting took a `sessionId` and nothing else — so a window that `attachOpen` returned
- * nothing for and `resume` refused could still drive somebody else's conversation with an id it can
- * read out of the session library. Making the caller a REQUIRED parameter is what stops the next
- * door being opened without one: there is no way to name a session here without also naming who is
- * naming it.
- */
-export type CallerIdentity = Pick<RuntimeEventSink, 'ownerId'>
-
-export type Caller = CallerIdentity | typeof THE_APP_ITSELF
 
 /** What is true of one session this host is running that nobody owns (336 §2.4). */
 interface UnclaimedBase {
@@ -1478,398 +1444,6 @@ export type UnclaimedSession =
       readonly waitingForAHuman: boolean
     })
 
-/**
- * **One predicate, both ends** (203; the shape 187 §1 used for the profile name).
- *
- * `attachHeldSession`, `attachOpenSessions` and every control verb ask this same question of the
- * same field, so 062's *"the loser is TOLD rather than silently attached"* and 203's *"and it cannot
- * act on it either"* cannot come to disagree about what a loser is.
- *
- * ⚠️ **340 did not widen this, and the two questions it added are beside it rather than inside it.**
- * {@link mayCommand} is wider — it also admits the caller a session was SPAWNED for —
- * and {@link mayAnswerAsAHuman} is narrower, refusing even {@link THE_APP_ITSELF}. ⛔ This one is
- * still the whole of *"is this yours"*, and it is still what the two attach paths ask, because
- * *"who may drive this"* and *"who is this conversation's stream going to"* stopped being the same
- * question the moment a caller with no surface could drive one.
- */
-export function mayControl(slot: { readonly ownerId: string | null }, by: Caller): boolean {
-  return by === THE_APP_ITSELF || slot.ownerId === by.ownerId
-}
-
-/**
- * 🔴 **May this surface become the owner of a session that has none?** (336 §2.3.)
- *
- * ⛔ **A different question from {@link mayControl}, asked of the same field, copying none of its
- * answer** — which is the whole of 169 §1's rule as it applies here. `mayControl` asks *"is this
- * already yours"*; this asks *"is this nobody's"*. ⚑ **They are disjoint by construction**: this one
- * is true only when `ownerId` is `null`, and `mayControl`'s second clause can never be true of a
- * `null` owner because no {@link RuntimeEventSink} has a null `ownerId`. So no slot is reachable
- * through both doors, and neither door can be widened into the other by a later edit without that
- * showing up as a `null` on one side of a `===`.
- *
- * ⚠️ **It takes no {@link Caller}, and that absence is load-bearing.** A claim is not a gesture some
- * identity may perform on a session — it is *becoming* the identity, so the only thing that decides
- * it is whether the session already has one. {@link THE_APP_ITSELF} is therefore not accepted here at
- * all: the app cannot own a conversation, it can only act on one. The caller is a sink because a
- * claimer must be somewhere the stream can go.
- */
-export function mayClaim(slot: { readonly ownerId: string | null }): boolean {
-  return slot.ownerId === null
-}
-
-/**
- * 🔴 **May this surface give a session BACK to nobody?** (523, from `519` item 3 and HO-045 §1.)
- *
- * ⛔ **The inverse of {@link mayClaim} and not its negation.** `mayClaim` asks one question of one
- * field; this asks two of two, and the second one is not about ownership at all. ⚑ **`ownerId` is
- * the reversible half and {@link SessionSlot.bornWithoutASurface} is the frozen half**, so this
- * predicate is a conjunction of something that moves and something that cannot — which is what makes
- * it impossible for a later edit to widen it by accident: there is no assignment anywhere in this
- * file that could make the second clause true of a session it was false for.
- *
- * ⚠️ **Both clauses NARROW, so nothing this admits was refused before.** `mayControl`'s owner arm is
- * the first clause exactly, and the second only removes slots from it. ⛔ **No existing predicate
- * moves and no existing predicate reads this one** — the four that decide who may control, command,
- * claim and answer are untouched by `523`, which is the whole of that dispatch's Q5.
- *
- * ⛔ **{@link THE_APP_ITSELF} is not accepted, for {@link mayClaim}'s reason read backwards.** The app
- * cannot own a conversation, so it can have nothing to hand back; what it does at a window's
- * departure is {@link RuntimeHost.release} directly, which is the app noticing rather than a gesture
- * it performs. ⚑ A {@link CallerIdentity} parameter is how that is spelled: the symbol is a type
- * error here rather than a clause.
- *
- * 🔴 **And the order it is asked in is load-bearing** — see {@link RuntimeHost.releaseSession}.
- * Entitlement is refused BEFORE the birth fact, so a caller that does not own the conversation is
- * never told how it came to exist.
- */
-export function mayHandBack(
-  slot: { readonly ownerId: string | null; readonly bornWithoutASurface: boolean },
-  by: CallerIdentity,
-): boolean {
-  return slot.ownerId === by.ownerId && slot.bornWithoutASurface
-}
-
-/**
- * 🔴 **May this caller GIVE this session work?** (340, from 336's finding.)
- *
- * ⛔ **The whole ticket in one line.** 336 built a door a session can exist behind with no renderer,
- * and then measured that nothing could drive one: every control verb asks {@link mayControl}, and
- * for an owner of `null` that admits only {@link THE_APP_ITSELF}. So a spawned agent sat idle until
- * a person took it over, which is the opposite of what spawning one is for.
- *
- * ⚑ **`ownerId` answers three questions at once — who may command, who is receiving, whose
- * departure ends it — and a caller with no surface answers YES to the first and NO to the other
- * two.** This predicate is the first question, split out; {@link SessionSlot.commandedBy} is the
- * field it reads and the only thing about it that is new.
- *
- * ⚠️ **Wider than {@link mayControl} and it does not replace it.** Widening `mayControl` itself
- * would have been one line and would have moved the other two questions with it:
- * `attachOpenSessions` and `attachHeldSession` ask `mayControl` to decide who a running
- * conversation's STREAM is handed to, and `close`/`closeSessionsForOwner` ask it to decide whose
- * departure ends one. A commander is entitled to neither, so the widening has to be a second
- * question rather than a bigger answer to the first.
- *
- * ⛔ **`null` matches nothing, by construction and not by care.** `commandedBy` is `string | null`
- * and a {@link CallerIdentity}'s `ownerId` is `string`, so a session nobody was given command of is
- * unreachable through this clause for the same reason a `null` owner is unreachable through
- * `mayControl`'s — which is what lets both stay `===` rather than growing a guard.
- */
-export function mayCommand(
-  slot: { readonly ownerId: string | null; readonly commandedBy: string | null },
-  by: Caller,
-): boolean {
-  if (by === THE_APP_ITSELF) return true
-  return slot.ownerId === by.ownerId || slot.commandedBy === by.ownerId
-}
-
-/**
- * 🔴 **May this caller STOP a conversation it does not command?** (629, `HO-095` §4, D-014.)
- *
- * > ⛔ **The ruling, whole:** *end and interrupt reach the chain below you, not the project.*
- *
- * ## ⛔ What it cost not to have this, measured on the clean-install run
- *
- * Allow an ancestor to interrupt a descendant directly. Routing a stop through each intermediate agent could queue it behind a busy manager while the descendant keeps acting on the person's machine.
- *
- * ## ⚑ A SECOND question and never a wider {@link mayCommand}
- *
- * ⛔ **`mayCommand` answers fourteen questions from five call sites** — its own docblock, and
- * `a-reach-you-can-see.test.ts` §3 computes both numbers rather than restating them. ⚠️ Widening
- * it would have widened spawning, assigning, answering and the two readers with it, which is `340`
- * §5's rule in the direction it is usually read: *an entitlement widening must be opt-in at the
- * call site*. ⚑ **So this is a separate predicate with ONE caller** — `RuntimeHost.mayInterrupt`,
- * the interrupt entitlement, which spells `mayCommand` in the same condition so that census still
- * counts it; `interruptAgent` and the reading of a piece label both ask it (`end_agent`, the
- * second caller, went with D-017).
- *
- * ## 🔴 Not an argument a model passes — standing rule 32
- *
- * ⛔ **`HO-084` §1.3: *a grant a PERSON sets is a rail; an argument a model supplies is a
- * habit*.*** ⚠️ There is no `deep: true` on `interrupt_agent` and there must not be:
- * this widens by a FACT THIS APP RECORDED — who spawned whom — which no caller can state, misstate
- * or forget to state. ⚑ The chain is `provider_session.parent_session_id`, written by the spawn rails in
- * the same transaction as the child.
- *
- * ## ⚠️ What it does NOT widen, because an escalation guarantee is only as wide as what is denied
- *
- *  - ⛔ **Sideways.** A sibling is not in its sibling's ancestry, so nothing here reaches one.
- *  - ⛔ **Upward.** A child is not above its parent; the walk only ever goes up from the TARGET, so a
- *    conversation a person started, with nothing above it, is reached by no agent through this.
- *  - ⛔ **Spawning and starting.** The spawn door's `not-your-parent` rail is untouched.
- *
- * @param by the caller. ⚑ A window and {@link THE_APP_ITSELF} decode to `null` here and are
- *   admitted — or refused — by {@link mayCommand} alone, so this clause cannot widen a person's
- *   reach or the app's by accident.
- * @param above the conversations ABOVE the target, from `SessionStore.ancestorsOf` — **the
- *   DURABLE chain and never the live slot**, so the reach does not blink out at a restart.
- */
-export function mayInterruptDownTheChain(by: Caller, above: readonly string[]): boolean {
-  const speaking = sessionSpeakingAs(by)
-  // ⛔ **A positive test on the CONVERSATION, and `null` is refused by having nothing to match** —
-  // `mayCommand`'s own `null matches nothing, by construction and not by care`, one predicate
-  // over. ⚑ A window's `webContents:…` and the app's symbol both decode to `null`, so neither can
-  // be admitted by a list of session ids however that list was built.
-  return speaking !== null && above.includes(speaking)
-}
-
-/**
- * 🔴 **May this caller answer a question this session stopped to ask a PERSON?** (340 §2.)
- *
- * ⛔ **HO-005 Q2, ruled 2026-09-05, and this is the chokepoint it names**: *"Permissions: always the
- * human. Never a parent agent. An agent answering another agent's permission prompt is the kill
- * switch with extra steps. Build it so no path exists."* ⚑ The sentence to encode is *knowledge
- * escalates, authority does not* — so {@link mayCommand} is deliberately wider than `mayControl`
- * and this one is deliberately NARROWER.
- *
- * ⛔ **Narrower in two directions, and both are the rule rather than an accident.**
- *
- *  - **A commander is refused.** It may hand this session work; it may not decide what that work is
- *    allowed to do. Nothing about giving an agent a task makes the giver the person the agent
- *    stopped to ask.
- *  - ⚠️ **{@link THE_APP_ITSELF} is refused**, which is the one place in this file where the
- *    superuser is not one. The symbol means *"nobody is asking"* — it is the quit, a window that has
- *    gone, the finalizer — and *"nobody"* is precisely who may not answer for a person. Nothing
- *    passes it here today (`ipc.ts` is the only caller of either answer verb and it always holds a
- *    window's sink), so this costs nothing and closes the shortest path to the defect: a later
- *    lifecycle gesture reaching for the superuser because every other verb accepts it.
- *
- * 🔴 **349 REFUTED the paragraph that used to stand here.** It said *"it reads `ownerId` and
- * nothing else, so it cannot be widened by a field — a slot's owner is a surface a stream is going
- * to, which is the whole of what 'there is a person here' can mean in this process."* ⛔ **The
- * second half was already false when it was written, and 340 said so in the same dispatch**: a
- * slot's owner is whatever last got through {@link RuntimeHost.claimSession}, which takes a
- * {@link RuntimeEventSink} — a four-member structural type any caller can satisfy. So *"a surface a
- * stream is going to"* included any caller willing to receive a stream, and an agent that presented
- * one could claim its own child and then answer that child's permission prompt legally. ⚡ **What
- * actually stopped it was a fact about the callers that exist, not this predicate**, and 340 wrote
- * that fact down as a source census rather than as a check.
- *
- * ⛔ **So it now reads a SECOND field, and that field is a declaration rather than an inference.**
- * {@link SessionSlot.ownerIsAPerson} is {@link RuntimeEventSink.aPersonIsBehindIt}, copied from the
- * sink at the instant it took ownership. Ownership is untouched: the same caller still owns the
- * same sessions, still receives the stream, still takes down the ones it STARTED when it goes —
- * `523` corrected that clause, which had been a universal since `349` and stopped being one at
- * `336`, one dispatch earlier. What changed is
- * that owning is no longer, by itself, a claim to be a person.
- *
- * ⚠️ **A conjunction, and every conjunct answers a different question.** `by !== THE_APP_ITSELF` —
- * is anybody asking at all. `slot.ownerIsAPerson` — is the surface this card was DISPLAYED on one a
- * person is behind. `slot.ownerId === by.ownerId` — and is this caller that surface. ⛔ **Dropping
- * the third would let one window answer another's card** (062), and dropping the second is the
- * defect this dispatch closes; they are not two spellings of one test.
- *
- * ⛔ **The bound worth stating, because it is the door left open.** A caller that can spell an
- * owner's `ownerId` is that owner as far as the third conjunct is concerned — which is 195 H1's
- * territory and unchanged here: the ids are minted at the boundary (`webContents:<id>`,
- * `agent:<sessionId>`) and never parsed off a wire. What 349 removes is the need to FORGE anything:
- * before it, an agent could become an owner honestly, through the front door, and inherit the
- * answer with it.
- *
- * See {@link RuntimeHost.assertMayAnswer} for why the refusal is its own reason rather than
- * `not-yours`.
- */
-export function mayAnswerAsAHuman(
-  slot: { readonly ownerId: string | null; readonly ownerIsAPerson: boolean },
-  by: Caller,
-): boolean {
-  return by !== THE_APP_ITSELF && slot.ownerIsAPerson && slot.ownerId === by.ownerId
-}
-
-/** For a diagnostic line: who asked, in the same vocabulary `SessionSlot.ownerId` is written in. */
-function callerName(by: Caller): string {
-  return by === THE_APP_ITSELF ? 'the app itself' : by.ownerId
-}
-
-/**
- * ⛔ **Did a PERSON type this?** (413.) — a positive test, and the only way a turn reaches the
- * LEDGER unmarked.
- *
- * ⚠️ **607 · *unmarked* needed a noun**, because this function gained a second reader and the two
- * answers point opposite ways. ⛔ **On the ledger** it is still *the only way a turn carries no
- * `attribution`* — {@link whoseWordsTheseAre} is unchanged. ⚑ **On the PROVIDER's string it is now
- * the opposite**: {@link RuntimeHost.originOf} asks this and answers {@link THE_PERSON_AT_A_WINDOW},
- * so a person's turn is the one that gains a sentence rather than the one that goes without.
- * 🔴 A word whose meaning depends on which surface you are standing on is the shape `HO-070` §3
- * warns about, so it is named here rather than left to a reader to notice.
- *
- * ⚠️ **The tempting spelling is `by !== THE_APP_ITSELF && sessionSpeakingAs(by) === null`, and it
- * is the defect.** That reads *"not the app and not an agent"*, which puts every caller that does
- * not exist yet on the person's side — and {@link THE_APP_ITSELF}'s own docblock names the next
- * one: *"tomorrow the MCP tool a PM would spawn agents through … gets its own prefix from whatever
- * registers it."* ⛔ `413` §3: *"the dangerous default is the one that credits a person with words
- * they never wrote."*
- *
- * ⚑ **It reads the id rather than a flag the caller supplies.** {@link CallerIdentity} is
- * `Pick<RuntimeEventSink, 'ownerId'>` on purpose, and widening it to carry
- * `aPersonIsBehindIt` would make authorship something a caller says about itself at the moment of
- * asking — which is the shape {@link RuntimeEventSink.aPersonIsBehindIt}'s own docblock refuses
- * for the answer door. The ids are minted at the boundary and never parsed off a wire.
- */
-export function aPersonTypedIt(by: Caller): boolean {
-  return by !== THE_APP_ITSELF && aWindowIsAsking(by.ownerId)
-}
-
-/**
- * ⚑ **D-017 · R6 — a person is asking**: a window's caller, or a surface that says a person is
- * behind it. ⛔ Never an agent and never this app.
- */
-function aPersonIsAsking(by: Caller): boolean {
-  if (by === THE_APP_ITSELF) return false
-  return aPersonTypedIt(by) || (by as Partial<RuntimeEventSink>).aPersonIsBehindIt === true
-}
-
-/**
- * ⚑ **D-017 · R5 — the surface a call came through** — a person's window, when a person asked — or
- * null for an agent, this app, or a caller that is only an id: the sink a start it causes belongs to.
- */
-function theSurfaceAsking(by: Caller): RuntimeEventSink | null {
-  if (by === THE_APP_ITSELF) return null
-  const sink = by as Partial<RuntimeEventSink>
-  return typeof sink.send === 'function' && typeof sink.sendLiveness === 'function'
-    ? (by as RuntimeEventSink)
-    : null
-}
-
-/**
- * 🔴 **Who is performing this act — the ONE derivation, and nothing a caller can say** (477,
- * HO-029 §2.1).
- *
- * ## ⛔ Derived, at the moment it happens, and unclaimable by construction
- *
- * ⚑ **It reads the {@link Caller} and nothing else**, which is
- * {@link MessageSentEvent.onBehalfOfAPerson}'s standard stated as a function: *"there is no
- * argument, on any tool, by which a model can say it."* ⛔ {@link CallerIdentity} is
- * `Pick<RuntimeEventSink, 'ownerId'>` — one opaque id, minted at a boundary and never parsed off a
- * wire — so there is no field for a caller to put an actor in, and no tool advertises one.
- *
- * ⚠️ **One fold rather than a spelling at each writer**, for {@link whoseWordsTheseAre}'s measured
- * reason: `410` counted what per-producer marking missed, and the answer was that a producer which
- * has to remember is a producer that will forget.
- *
- * ## 🔴 THREE positive tests, and the fourth word is what lets them stay positive
- *
- * ⛔ **Every arm asks what the caller IS, never what it is not.** {@link aPersonTypedIt} is
- * already the positive test for a window and is reused rather than re-spelled. ⚠️ The tempting
- * shape is `sessionSpeakingAs(by) === null ? 'a-person' : 'an-agent'`, and it puts every caller
- * that does not exist yet on the person's side. ⚑ `a-caller-this-app-cannot-name` is where such a
- * caller lands instead; see {@link WhoDidIt}.
- *
- * ⚑ **{@link RuntimeHost.recordTheAsk} wrote that tempting shape one row over until `501`**, and
- * this docblock said so for four dispatches. ⛔ It calls this function now, so the sentence is
- * history rather than a warning about live code — and `the-act-this-app-knows-the-author-of.test.ts`
- * asserts the old spelling is absent from this file, with a control that fires.
- *
- * ## ⚠️ What `a-person` claims here, and what the answer doors additionally prove
- *
- * ⛔ **This says a WINDOW asked.** At {@link RuntimeHost.requireToAnswer}'s two doors
- * {@link mayAnswerAsAHuman} has already held, so the surface has also declared a person is behind
- * it and the caller is that surface — `465`'s requirement — but the word is not allowed to depend
- * on a gate the other writers do not pass.
- */
-export function whoDidIt(by: Caller): ActedBy {
-  if (by === THE_APP_ITSELF) return THE_APP_DID_IT
-  const speaking = sessionSpeakingAs(by)
-  if (speaking !== null) return { who: 'an-agent', agent: speaking }
-  if (aPersonTypedIt(by)) return { who: 'a-person' }
-  return { who: 'a-caller-this-app-cannot-name' }
-}
-
-/**
- * ⚑ **657 · what `queueMessage` carries, spelled once for the doors that take it** — {@link TurnFacts}
- * minus the piece a brief gives or gives a new brief, which only {@link RuntimeHost.giveWork} and
- * {@link RuntimeHost.updateWork} may state.
- *
- * 🔴 **An `Omit` alone is NOT that rail**: excess-property checking fires on a fresh object literal
- * and not on a VARIABLE, so the `& { …?: never }` is what makes each key unspellable by any route
- * rather than merely unlisted.
- */
-type FactsAQueueCarries = Omit<TurnFacts, 'giving' | 'rebriefing'> & {
-  readonly giving?: never
-  readonly rebriefing?: never
-}
-
-/**
- * 🔴 **D-016 · a piece being GIVEN — everything its `work` row and its `work_given` row are written
- * from, and what the brief's turn names** (R4).
- *
- * ⚑ **Settled before the brief is sent**: the number is taken in the give's synchronous stretch, so
- * the owner is told the label in the brief's own sender line. ⛔ **The owner is not here** — it is the
- * conversation the brief actually reaches, which only the delivery knows (R2).
- */
-interface Giving {
-  /** `work_<uuid>`, minted before the send. */
-  readonly piece: string
-  /** The piece it is given under — the giver's own. */
-  readonly parent: string
-  readonly number: number
-  readonly label: string
-  /** The conversation giving it. */
-  readonly giver: string
-  readonly title: string
-  readonly brief: string
-  readonly definitionOfDone: string
-  /** The folder the give asked for, as asked, or `null`. */
-  readonly folder: string | null
-  /**
-   * 🔴 **W4.189 · that folder, as this app used it** — the new conversation's working folder, or a
-   * grant on the one it has — with D's notice; `null`: the give named none, or this is work taken on.
-   */
-  readonly givenFolder: GivenFolder | null
-  /**
-   * 🔴 **R2 · the files it hands over, kept before the send** — each id minted here, so the brief's
-   * turn names them and the store writes their rows with the give's own ({@link recordTheGive}).
-   */
-  readonly inputs: readonly GivenInput[]
-}
-
-/**
- * ⚑ **D-016 · what {@link RuntimeHost.recordTheGive} writes down** — a give's {@link Giving}, or a
- * piece this conversation takes on for a person ({@link RuntimeHost.takeOnWork}, commit 6), whose
- * giver is `null`: a person.
- */
-type ThePieceWrittenDown = Omit<Giving, 'giver'> & { readonly giver: string | null }
-
-/**
- * 🔴 **D-016 · the piece a turn delivers, as the provider is told it** — its label and title go into
- * the sender line and `messageNamingThePiece`'s last line, with its inputs.
- */
-interface ThePieceATurnCarries {
-  readonly piece: string
-  readonly label: string
-  readonly title: string | null
-  readonly definitionOfDone?: string
-  /** Whether these words give the piece, or give it a new brief (`update_work`). */
-  readonly as: 'given' | 'rebriefed'
-  /** Its inputs, by id and name, as they stand when the words go out. */
-  readonly inputs: readonly { readonly resource: string; readonly name: string }[]
-  /**
-   * 🔴 **W4.189 · the folder this piece grants its holder**, which the piece line names; absent:
-   * none — its give named no folder, started the conversation in it, or came before this build.
-   */
-  readonly grant?: string
-  readonly outputFolder?: string
-}
-
 /** ⚑ **W4.189** — a launch's work folders, absent when there are none. */
 const workFoldersIn = (folders: readonly string[]): { readonly workFolders?: readonly string[] } =>
   folders.length === 0 ? {} : { workFolders: folders }
@@ -1881,145 +1455,6 @@ const grantOf = (
   ...(given?.use === 'grant' ? { grant: given.folder } : {}),
   ...(given?.output === true ? { outputFolder: given.folder } : {}),
 })
-
-/**
- * 🔴 **D-027 · one held message of the turn a flush hands over** — {@link RuntimeHost.runFlush}'s
- * reading of it at the handover.
- */
-interface OneMessageOfATurn {
-  readonly queued: QueuedMessage
-  /** ⚑ The words that go: its own, or a held give's newest brief (D-022 · R1). */
-  readonly words: string
-  /** ⚑ Its paths as re-checked at the flush — what goes on the wire (216). */
-  readonly handed: { readonly paths: HandedPath[] }
-  readonly handing: ThePieceATurnCarries | null
-}
-
-/**
- * 🔴 **Everything about a turn that is not its words** (414) — the one object every send door takes.
- *
- * ## ⛔ Why it is an object, measured rather than preferred
- *
- * ⚠️ **Three dispatches each added a trailing optional to {@link RuntimeHost.send}**: `406` a
- * {@link WorkReport}, `412` the id of the task the turn hands over, `413` the conversation BroBot
- * is carrying for. ⛔ **The last two are both `string | undefined` and landed in the same
- * position**, on two branches, and the merge of those branches is this type's whole reason: a call
- * site that passed the task where it meant the conversation would have COMPILED, and the symptom
- * would have been a worker told to quote a session id and a transcript naming a task as its author.
- * ⚑ **Named fields cannot be swapped by accident**, and a fourth fact is a field rather than a
- * seventh positional.
- *
- * ## ⚠️ What is deliberately NOT in here
- *
- * ⛔ **Who these words came from.** {@link RuntimeHost.originOf} derives it from `by`, at the door,
- * and a caller may not state it — `413`'s ruling, which moved the marking off the producers
- * precisely because a producer that has to remember is a producer that will forget. ⚑ The one
- * thing a caller CAN say about authorship is {@link carriedFor}, and only because no property of
- * the caller can name it.
- */
-export interface TurnFacts {
-  /**
-   * 🔴 **What this turn reports about work, when the APP is the one sending it** (406) — see
-   * {@link WorkReport}.
-   *
-   * ⛔ **Opt-in at the call site**, exactly as `queueMessage`'s `kind` is and for its reason:
-   * every caller that existed before `406` passes nothing and publishes the turn it always
-   * published. ⚑ Only the two paths that put BroBot's own sentences into a parent's transcript
-   * — {@link RuntimeHost.deliverReply} and {@link RuntimeHost.tellOneParent} — pass one.
-   *
-   * ⚠️ **It no longer decides the AUTHORSHIP** (413) — {@link whoseWordsTheseAre} does, from
-   * `by`. It still forces it, which is the belt that paragraph describes.
-   */
-  readonly report?: WorkReport
-  /**
-   * 🔴 **D-016 · the piece these words GIVE, when they are a brief** (412 as a task's id) — see
-   * {@link Giving}, and `messageNamingThePiece` for the line that says how to finish it.
-   *
-   * ⛔ **{@link RuntimeHost.giveWork} is the only caller that passes one**, because a give is the only
-   * act that hands over a piece: the turn names it (`user_turn.piece`), the held message keeps it, and
-   * the `work` row is written from it once the brief is sent or held. ⚠️ A person's turn, a note, a
-   * follow-up, a reply, a question and a notice all reach here with nothing.
-   *
-   * ⛔ **It is a compile error to hand one to `queueMessage`**, which takes this type minus this
-   * key — *a caller allowed to name a piece there could make any message claim to hand over work
-   * that nothing recorded*.
-   */
-  readonly giving?: Giving
-  /**
-   * 🔴 **D-016 · the piece these words give a NEW brief, when they are one** (R1) — its label and
-   * title, as {@link giving} names a piece the words give.
-   *
-   * ⛔ **{@link RuntimeHost.updateWork} is the only caller that passes one**, for {@link giving}'s
-   * reason: the turn names the piece (`user_turn.piece`), so its owner reads it as its giver's, and
-   * the held message keeps it with `rebrief` — and it is a compile error to hand one to
-   * `queueMessage`. ⚠️ **Nothing is written from it once the words go**: `work_rebriefed` was
-   * written first.
-   */
-  readonly rebriefing?: {
-    readonly definitionOfDone?: string
-    readonly piece: string
-    readonly label: string
-    readonly title: string
-    /** ⚑ **W4.189** — {@link ThePieceATurnCarries.grant}. */
-    readonly grant?: string
-  }
-  /**
-   * ⚑ **D-016 · the piece these words are ABOUT, when they name one** — a note's or a follow-up's
-   * (and then the sender's own receipt names it, `message_sent.piece`, so the sender's card says
-   * which piece it was about), a notice's about a piece, a question's and an answer's. ⛔ **Never on
-   * the receiver's turn as itself**: it hands nothing over, and the receiver's turn carries the piece
-   * of ITS OWN these words drive ({@link UserTurnEvent.drives}, D-016 · commit 6 · R4 —
-   * {@link RuntimeHost.thePieceTheseWordsDrive}). 🔴 **F088 · an agent's note or follow-up says it in
-   * the receiver's sender line** — *"This message is about W1.2 · … (answered)."* — so a held one keeps it
-   * ({@link QueuedMessage.about}, on its `message_queued` row), which nothing folds.
-   */
-  readonly aboutPiece?: { readonly piece: string; readonly label: string }
-  /**
-   * 🔴 **The conversation these words actually came from, when BroBot is carrying for somebody
-   * else** (413) — see {@link UserTurnEvent.relayedFrom}.
-   *
-   * ⛔ **Only {@link RuntimeHost.routeRequest} passes it**, through `queueMessage`. Every other
-   * relayed turn is derived from `by`, because there the caller IS the conversation that wrote the
-   * words.
-   *
-   * ⚠️ **It produces no origin line for the provider today, and the reason is the CALLER rather
-   * than this field** (414). {@link RuntimeHost.routeRequest} is the only site that sets it and it
-   * passes {@link THE_APP_ITSELF}, which {@link RuntimeHost.originOf} answers `null` — so the
-   * turn is BroBot's own sentence about a child, and {@link questionText} already names that
-   * child inside it. ⛔ **A future producer that set this from an AGENT caller would get both**,
-   * a frame naming the relayer and a sentence naming the subject, and that is not obviously
-   * wrong — they are different facts. ⚑ Nothing in the code couples them, deliberately; see
-   * {@link messageNamingItsSender}.
-   */
-  readonly carriedFor?: string
-  /**
-   * ⚑ **The question these words ask** — its asker and request id ({@link TheQuestionItAsks}),
-   * passed only by {@link RuntimeHost.deliverQuestion}. ⚑ A notice of a question that has stopped
-   * waiting is taken back rather than sent ({@link RuntimeHost.whyItNoLongerGoes}).
-   */
-  readonly asks?: TheQuestionItAsks
-  /**
-   * 🔴 **This app's OWN report of something it observed** (624, `HO-095` §6.1) — see
-   * {@link AppNotice}.
-   *
-   * Give app notices their own subject. Without it, {@link whoseWordsTheseAre} supplies only `app_authored`, which `transcript.ts` classifies as the plan go-ahead instead of an app notice. A stall report separately identifies its work through {@link report}.
-   *
-   * ⚠️ **Opt-in at the call site**, exactly as {@link report} is. ⛔ The callers that pass one are
-   * the ones with no other subject — {@link RuntimeHost.deliverAnswer}'s person arm among them —
-   * and every other door passes nothing and publishes the turn it always published.
-   *
-   * ⛔ **It is not derivable from `kind: 'notice'`**, and that is why it is here rather than read
-   * off the mailbox. ⚠️ That word answers a different question — *which lane a held message
-   * takes, and (since `624`) whether a person may take it back* — over a WIDER population: the
-   * third notice producer carries a {@link WorkReport}, so its row is a work report and not one
-   * of these. ⚑ The two are deliberately not folded into one field, which is `395`'s ruling
-   * about one word answering two questions.
-   */
-  readonly appNotice?: AppNotice
-  readonly answeredQuestion?: AnsweredQuestion
-  readonly addressedAs?: string
-  readonly messageAct?: string
-}
 
 /**
  * 🔴 **Whose words a turn is, and what it is about — computed once, for every door** (413).
@@ -2584,603 +2019,6 @@ const theSignInChanged = (provider: Provider): string =>
  * asks.
  */
 const RESOURCE_SAMPLE_MS = 5_000
-
-/** The seams the host is built on — all injected, so the whole host runs against `FakeRuntime`. */
-export interface RuntimeHostDeps {
-  prepareSharedSkills?: () => Promise<void>
-  beforeSkillDiscovery?: () => Promise<void>
-  sharedSkillsRoot?: () => Promise<string>
-  closeSharedSkills?: () => void
-  skillsForAPerson?: SkillsWindow
-  savedMethods?: SavedMethodService
-  transcriptsCleared?: (from: number, to: number) => Promise<readonly TranscriptsCleared[]>
-  skillImports?: (from: number, to: number) => Promise<readonly SkillImportNotice[]>
-
-  readonly themes?: Pick<ThemeStore, 'refresh' | 'snapshot' | 'raw' | 'save' | 'set'>
-  /** Records synchronous work without timing provider waits. */
-  mainThreadWork?: Pick<MainThreadWork, 'start' | 'timed'>
-  /** The adapter for a provider, already wired with its auth seam. */
-  createRuntime(provider: Provider, connectionId?: string): AgentRuntime
-  /** Resolve metadata before home/provider work; absence preserves legacy test/runtime wiring. */
-  connectionFor?(provider: Provider, recordedConnection?: string | null): string
-  connectionRevision?(provider: Provider): number
-  listConnections?(): readonly ProviderConnection[]
-  /**
-   * Provision the app-owned home for a provider IN A GIVEN PROFILE and return its path.
-   * The profile is passed rather than pinned because it decides what the provider remembers:
-   * two sessions in one profile share a home, two in different profiles share nothing.
-   *
-   * ⛔ **The profile is the caller's own exact spelling, verbatim** — a launch's, or the one a
-   * resumed conversation recorded — for `schema.ts`'s stated reason: a locator that could override
-   * it is 149's failure shape. ⚑ Every home lives under the one folder `provider-homes.ts` names
-   * (`HOME_FOLDER`, D-016), so the profile and the provider are the whole address.
-   *
-   * ⚠️ **A UNION since 243, and widened rather than narrowed on purpose.** The real implementation
-   * became promise-returning when the provisioning lock's wait stopped blocking the thread. Every
-   * caller here `await`s, which is correct for both arms — and a double that hands back a path
-   * outright is still telling the truth about where the home is, so declaring `Promise<string>`
-   * would have turned dozens of honest stubs into compile errors for nothing.
-   */
-  prepareProviderHome(provider: Provider, profileId: string): string | Promise<string>
-  /** Wait for transcript clearing before a provider process can start. */
-  beforeProviderLaunch?: () => Promise<void>
-  readSelectedSkills?: (profileId: string | null, grants: SkillGrants) => SkillLaunchSelection
-  prepareBuiltInSkills?: (input: {
-    provider: Provider
-    providerHome: string
-    canCreateAgents: boolean
-    isCoordinator: boolean
-    isCurrent: () => boolean
-    inUseUntil?: Promise<void>
-    selection?: Pick<SkillLaunchSelection, 'revision' | 'skills'>
-    /** The launch's one reading of a text pack ({@link RuntimeHostDeps.readTextPack}). */
-    pack?: TextPackRead
-  }) => Promise<PreparedBuiltInSkills>
-  /**
-   * A build run from its source reads a text pack once per launch, and hands that one reading to the
-   * skills and the instructions alike, so a pack that changes during the launch cannot give it the
-   * skills of one reading and the core of another. Absent: no pack.
-   */
-  readTextPack?: () => TextPackRead
-  /**
-   * Has the person's own Claude Code renew their login when it needs renewing, so a conversation that
-   * stopped on an expired login can reopen on the renewed one. Absent: nothing is renewed here.
-   */
-  loginRenewal?: (provider: Provider) => LoginRenewalOperations | undefined
-  /**
-   * The person's own Claude Code by its full path, or `null` when none is installed: what the setup
-   * steps and a refused start tell them to run. Asked when it is said. Absent: `null`.
-   */
-  programFound?: Readonly<Partial<Record<Provider, () => string | null>>>
-  /**
-   * Where a profile's provider home WOULD be — the path, and nothing else (112, review HIGH).
-   *
-   * ⛔ **{@link prepareProviderHome} is the LAUNCH call and must not be used to answer a question.**
-   * It provisions the directory, it copies Codex's credential, and for Claude it probes the machine
-   * Keychain and **throws `AuthUnavailableError` when the login is unhealthy**. Reading a finished
-   * sub-agent's transcript through it therefore wrote to disk on every open, and on a machine whose
-   * token had been revoked it threw out of a read — the exact shape 098's review found twice in
-   * `provider-homes.ts` (*"merely ASKING a question wrote a credential to disk"*). This is
-   * `deriveProviderHome` on its own: containment-checked, pure, and it touches nothing.
-   */
-  providerHomePath(provider: Provider, profileId: string): string
-  /**
-   * **Which profiles exist** (167) — the ids, {@link DEFAULT_PROFILE_ID} first.
-   *
-   * A seam for the same reason {@link prepareProviderHome} is one: the layout under `userData` is
-   * the app layer's business, not the host's, and this host must not learn to spell
-   * `provider-homes/default/<profile>/<provider>` in order to answer a question about it. `provider-homes.ts`
-   * owns the rule (`listProfileIds`) and this is where its answer crosses.
-   *
-   * Optional, and its absence is an honest answer rather than a broken host: a host wired without
-   * it reports the default profile alone, which is exactly what an app with no homes on disk has.
-   * A provider filter counts only homes on that provider, so reading a model menu cannot create
-   * the identity's first home on another provider.
-   */
-  listProfiles?(provider?: Provider): string[]
-  /**
-   * The app-managed root every provider home lives under — `<userData>/provider-homes` (065).
-   *
-   * Optional, and its absence is a real answer rather than a broken host: without it no memory
-   * entry is amendable ({@link RuntimeHost.agentMemory}), and that is preferable to guessing a
-   * root — the root is the anchor the memory containment check hangs off, and a wrong one would
-   * make every claim pass. (`726` · R92: an imported image no longer asks it; the asset door has
-   * no root.)
-   */
-  providerHomesRoot?(): string
-  /** Awaited before the host is constructed; owns memory operations and their shutdown. */
-  memoryKnowledge?: MemoryService
-  /**
-   * The credential gestures a person can make about a profile home (098) — check, re-copy, sign in.
-   *
-   * Optional, and its absence is the honest answer for a host wired without one: the commands
-   * refuse by saying so, rather than silently reporting a healthy credential. Every test host in
-   * this repo is such a host, which is also why nothing here reaches a real `~/.codex`.
-   */
-  providerAuth?: ProviderAuthOps
-  /**
-   * 🔒 **The API keys a person enters** (`api-keys.ts`). Optional: a host without them runs every
-   * provider on its machine login, and refuses to keep a key, saying so.
-   */
-  apiKeys?: Pick<ApiKeys, 'status' | 'remove'> & {
-    revision?(provider: Provider): number
-    set(provider: Provider, key: string): string | null | Promise<string | null>
-    read(provider: Provider): string | null | Promise<string | null>
-  }
-  /**
-   * 🔒 Asks a provider whether it accepts a key (`api-keys.ts`' `askTheProvider`). Optional: a host
-   * without it checks nothing, and says so.
-   */
-  askTheProvider?(provider: Provider, key: string): Promise<ApiKeyCheck>
-  /**
-   * Each provider's program as this computer runs it (`provider-versions.ts`): the bundled Codex
-   * read once per run, the person's Claude Code whenever it changed. Optional: without it each
-   * says it cannot be told.
-   */
-  providerVersions?(): Promise<Readonly<Record<Provider, ProviderVersion>>>
-  /**
-   * The rules an *Always allow* kept beyond its conversation, and the one way to remove one
-   * (`kept-rules.ts`). Optional: without them the list is empty and nothing can be removed.
-   * ⚑ The list is read off the main thread's way: finding where a folder's rules are kept runs git.
-   */
-  keptRules?(): Promise<KeptRules>
-  removeKeptRule?(input: { provider: Provider; file: string; kept: string }): KeptRuleRemoved
-  /**
-   * ⚑ **One listing of this Mac's processes** (`process-listing.ts`): each one's pid, parent, memory
-   * and recent CPU. ⚑ What {@link RuntimeHost.providerResources} measures the processes this app
-   * started from — at most once per {@link RESOURCE_SAMPLE_MS}, and only when asked. Optional:
-   * without it nothing is measured, and the answer says so.
-   */
-  listProcesses?(): Promise<readonly ListedProcess[]>
-  /**
-   * 🔴 **F096 — where each provider's newest usage readings are kept across a restart**
-   * (`provider-usage-file.ts`): read once as the host starts, written when a number moves or the
-   * readings are forgotten. Optional: without it the readings live for this run only, as before.
-   */
-  usageKept?: {
-    read(): KeptUsage
-    write(usage: KeptUsage): void
-  }
-  /**
-   * Where what this app has done about each stopped conversation's scheduled jobs is kept across a
-   * restart (`schedule-attempts-file.ts`): read once as the host starts, written when a start for
-   * a job is made or a notice is handed over. Optional: without it that is remembered for this run
-   * only, and each job this app cannot time costs one start a run.
-   */
-  scheduleAttempts?: {
-    read(): KeptAttempts
-    write(kept: KeptAttempts): void
-  }
-  /**
-   * How each profile runs its work: normal, or a service with one conversation
-   * (`profile-execution-file.ts`). Read and settled against the database as the host starts.
-   * Optional: without it every profile is normal.
-   */
-  profileExecution?: {
-    read(): ProfileExecutionRead
-    write(kept: KeptProfileExecution): void
-    /**
-     * ⛔ Whether this app is the only one running on this data: the one-host gate's `sole`. Only
-     * then is the file written; otherwise what it holds is read and nothing about it changes.
-     */
-    readonly owned: boolean
-  }
-  /**
-   * Where the turns cut while they ran — by this app's quit, a crash, the provider's program
-   * stopping or a usage limit — are kept, with what was done about each
-   * (`turns-the-app-cut-file.ts`): read once as the host starts, written before each step taken
-   * about a cut. Optional: without it no cut turn is continued.
-   */
-  turnsTheAppCut?: {
-    read(): KeptCuts
-    write(kept: KeptCuts): void
-  }
-  /** How long a woken life's account is waited for before its continuation is not sent. */
-  accountWaitMs?: number
-  /**
-   * Where the Claude account its usage readings were read on is kept (`provider-accounts-file.ts`),
-   * with the only copy of its email. Optional: without it the account is known for this run only.
-   */
-  accountsKept?: {
-    read(): KeptAccounts
-    write(accounts: KeptAccounts): void
-  }
-  /**
-   * ⚑ **Tell every window a provider fact moved** ({@link ProvidersChangedMessage}) — its login or
-   * a new usage reading. Optional: a host nobody listens to tells nobody.
-   */
-  providersMoved?(message: ProvidersChangedMessage): void
-  /**
-   * Open a URL in the user's browser (098). Injected for the same reason 095's navigation guard
-   * routes external links through one function: nothing in the renderer decides what gets opened,
-   * and a test host opens nothing at all.
-   */
-  openExternal?(url: string): Promise<void>
-  /**
-   * Show a path in the file manager.
-   *
-   * ⚑ **Finder: `showItemInFolder` raises a window with the file selected and starts nothing.**
-   * The panel's *Open* is a different act — {@link RuntimeHost.readConfigFile} reads a file onto
-   * the app's own paper. 🔴 **`733` · this said *"Reveal, never open, and the difference is a
-   * credential"*** — the panel names an `auth.json` — and the PM ruled the difference away (`731`
-   * F-2, R92): the file opens on the app's paper like any other. ⚑ Injected for `openExternal`'s
-   * reason — nothing in the renderer decides what is handed to the OS — and optional for the same
-   * one: every test host reveals nothing at all, which is what lets the commands below be driven
-   * without a desktop.
-   */
-  revealPath?(path: string): void
-  /**
-   * Opens a file in its default app, answering `''` or the computer's error. Only a document a
-   * message named, on the allowlist, is ever handed to it (`message-paths.ts`).
-   */
-  openPath?(path: string): Promise<string>
-  /** Where a message's paths are read from; this computer when absent. */
-  messagePathPlace?: MessagePathPlace
-  /**
-   * 🔴 **Where this app keeps a piece's resources** (D-016) — `resourcesRoot(userData)`.
-   *
-   * ⛔ **Optional and defaulting to nothing**: a host wired without it keeps no resource and reads
-   * none, which is what a test host or an embedder with no data directory of ours should get.
-   * ⚠️ A host that cannot say where resources go REFUSES to keep one
-   * (`resource-store-unavailable`); it does not pick a directory.
-   *
-   * ⚑ **It is inside `userData`**, and read by doors that all take an id and never a path —
-   * {@link RuntimeHost.readResource}, an AGENT's, under `RESOURCE_RAILS`, and a PERSON's window's,
-   * which ask no capability at all (HO-005, *"the human is unrestricted"*):
-   * {@link RuntimeHost.readResourceForAPerson}, and since D-032 {@link RuntimeHost.drawResourceForAPerson}
-   * and {@link RuntimeHost.revealResource}. ⛔ All read through `resourceBytes`, which holds the
-   * row's file inside this root and re-checks its hash; the writer, `keepResource`, renames into it
-   * only through a folder it has checked is its own.
-   */
-  resourcesRoot?(): string
-  /** Makes an exclusive piece directory under the app-owned output root, after admission. */
-  makeWorkerPieceFolder?(piece: string): string
-  /**
-   * ⚑ **F006 — which build of this app is running** ({@link TheBuildRunning}), told to each
-   * conversation as it launches. ⛔ Optional: a host wired without it tells nobody, and a read that
-   * throws costs the line, never the launch.
-   */
-  whichBuild?(): TheBuildRunning
-  /** The directory the session runs in; the BroBot workspace when the caller asked for none. */
-  resolveCwd(sessionId: string, requested: string | undefined): string
-  /**
-   * Where exported files are written (089). App-owned, like every other path here: a renderer
-   * cannot be trusted with a destination, and a file dialog is a UI slice of its own.
-   */
-  exportDirectory(): string
-  /** Host-owned session id (not the provider ref — Claude has none until its first turn). */
-  newSessionId(): string
-  /**
-   * Look through the app-owned provider homes for conversations this app has never recorded
-   * (087). Injected like every other filesystem seam: the host does the DB half of adoption and
-   * knows nothing about where a provider keeps its files.
-   */
-  discoverSessions(): Discovery
-  /**
-   * WHERE the provider keeps its own file for a session — what imports, rebuilds, exports and
-   * "what the model got" read. Injected like every other filesystem seam. Returns null when there is
-   * nothing to read, which is a normal answer: a session can be recorded before its provider has
-   * written anything, and a provider's file can be deleted.
-   *
-   * ⚠️ **A path, not the lines.** Every reader pulls the file in windows ({@link readLines}), so no
-   * caller holds a whole transcript.
-   */
-  nativeTranscriptPath(provider: Provider, providerHome: string, ref: SessionRef): string | null
-  /**
-   * What is in the user's own provider homes right now, with everything the library shows (047) —
-   * sizes, and whatever the provider calls each conversation. The Library's import reads its file
-   * from here too, so the list and the import never look at two readings of the same directory.
-   */
-  userHomeSessions?: () => UserHomeDiscovery
-  /**
-   * What Claude's own index says about the sessions in its home (047), keyed by session id.
-   * Optional and failure-tolerant: without it the Claude rows are listed with no caption, which is
-   * the same thing the SDK returning nothing would produce.
-   */
-  indexedDescriptions?: () => Promise<Map<string, ProviderDescription>>
-  /** Read what is really in a provider home — the sandboxed renderer cannot look for itself. */
-  readProviderConfig(provider: Provider, providerHome: string): ProviderConfigInfo
-  /**
-   * Where sessions and their events are recorded, so a session can outlive the
-   * process that ran it. Required rather than optional: a host that quietly stopped
-   * recording would look exactly like one that never could, and the first sign would
-   * be a session that will not come back. Tests that are not about persistence pass
-   * {@link NULL_SESSION_STORE}.
-   */
-  store: SessionStore
-  /** The window's display reads use their own read-only connection. */
-  limitsReader?: LimitsReaderLifetime
-  afterFirstWindowLoad?: Promise<void>
-  windowReader?: WindowStoreReader
-  filesLibraries?: FilesLibraryWindows
-  filesLibraryRevision?: () => string | null
-  teamProfileGraphs?: TeamProfileGraphWindows
-  teamProfileGraphRevision?: () => string | null
-  windowWriterStamp?: (query: WindowReadQuery) => WindowWriterStamp | null
-  workSearchReader?: WorkSearchReader
-  pastWorkSearchReader?: Pick<PastWorkSearchReader, 'read' | 'close'>
-  limitsWriterStamp?: () => LimitsWriterStamp | null
-  /** The same real controller that makes Settings → Plugins available. */
-  plugins?: PluginInstructionSource
-  pluginAttachments?: Pick<WorkspacePluginAttachments, 'agent'>
-  /**
-   * **The instruction files this launch will append, read now** (158) — the profile's own memory,
-   * the cwd chain, and the app's own workspace file, each with the text that goes to the model.
-   *
-   * ⚑ **Called on start AND on resume**, and by design it re-READS rather than replaying: 158 §2
-   * ruled the live-profile semantic, because a profile is an identity the user edits. The host
-   * passes the composed text to the adapter and hands the ITEMS to the renderer, so what the user
-   * is shown and what the model was told come from one read.
-   *
-   * Optional like its predecessor (`workspaceSystemHint`, 006, which this replaces): a host without
-   * it appends nothing, which is what every test that is not about instructions wants.
-   */
-  readInstructions?: (
-    provider: Provider,
-    cwd: string,
-    providerHome: string,
-    /**
-     * 🔴 **What this launch is, as data** (377) — the dynamic layer's whole input.
-     *
-     * ⛔ **The argument `370` measured missing.** *"Fresh start and cold resume call the same reader
-     * seam, `readInstructions(provider, cwd, providerHome)`, with none of these values… Its
-     * declaration has no dynamic context argument."* ⚑ Adding it here rather than letting the
-     * composition root reach into the database is what keeps that root the security boundary it is
-     * documented as: it reads files and publishes them, and the host is what knows who is launching.
-     *
-     * ⚠️ **Built by {@link RuntimeHost.instructionContext} on BOTH paths**, so a fresh child and a
-     * cold-resumed one are told the same things about themselves — which is the property `362` §1.3
-     * measured on a live child and the one `373` made true of the parent relationship.
-     */
-    context: InstructionContext,
-    /** The launch's one reading of a text pack; absent for a composition made only to be read. */
-    pack?: TextPackRead,
-  ) => {
-    instructions: SessionInstructions
-    systemHint: string | undefined
-    /**
-     * 🔴 **The one row a launch is worth, or `null`** (332) — see {@link MemoryLoadedEvent}.
-     *
-     * ⚠️ **Optional on this type, not on the reader.** Every host test that stubs `readInstructions`
-     * predates 332 and is about something else; a required field would have made forty of them
-     * declare a launch fact they have no opinion about, which is how a default becomes an assertion.
-     * ⛔ Absent is *"this host has nothing to say"*, exactly as a missing `readInstructions` is.
-     */
-    memoryLoaded?: MemoryLoadedEvent | null
-    /**
-     * 🔴 **D-024 · R1 — what this life's first turn carries in front of its words**, or absent:
-     * nothing is owed — see `SessionLaunchRead.firstTurnLead` and
-     * {@link HostedSession.firstTurnLead}. ⚠️ Optional on this type for {@link memoryLoaded}'s
-     * reason.
-     */
-    firstTurnLead?: string
-    /**
-     * 🔴 **F093 · R2 — BroBot's profile file for this launch**: its text, its sections, where it was
-     * published and whether it was refused — kept on the `launched` row, on Codex too, where the
-     * provider reads the file itself. ⚠️ Optional for {@link memoryLoaded}'s reason.
-     */
-    profileFile?: LaunchProfileFile | null
-    /** The text pack a build run from its source read for this launch, or could not use. */
-    textPack?: TextPackUse
-    /** What this launch was given from its profile's saved methods, by count and size. */
-    savedMethods?: SavedMethodsUse
-    /** The saved-methods index's lines as sent, and what this life's records keep in their place. */
-    savedMethodsLines?: SavedMethodsLines
-    /**
-     * ⚑ **F093 · R2 — the context the instructions were composed from**, handed back so the
-     * launch's record names the grants and the own-instructions version its text was rendered from.
-     * ⚠️ Optional for {@link memoryLoaded}'s reason: without it the host builds the context again.
-     */
-    context?: InstructionContext
-  }
-  /**
-   * 🔴 **F093 · R3 — what the bundled provider puts in front of a model on its own**, as this build
-   * captured it (`provider-snapshots.ts`): by the model a conversation names, or `null` for the
-   * provider's default. ⚠️ Optional: a host without it leaves the popup's slot empty and says why.
-   */
-  providerSnapshot?(provider: Provider, model: string | null): SnapshotAnswer
-  /**
-   * The host's clock, injected so a test can pin the exact moment an event is recorded — which is
-   * the only way to assert that what the renderer was told and what the ledger holds are the same
-   * value rather than two readings taken a millisecond apart.
-   */
-  now?: () => number
-  /** How long `close()` waits for the event stream to drain before giving up on it. */
-  closeDrainTimeoutMs?: number
-  /**
-   * How long an agent's interrupt, interrupt-and-send (709), a person's Stop (720) and, since `742`,
-   * a person's answer to a provider's card wait on the provider — see
-   * {@link DEFAULT_INTERRUPT_WAIT_MS}.
-   */
-  interruptWaitMs?: number
-  /** How long a launch may go unanswered; also overrides the resume limit unless given separately. */
-  launchTimeoutMs?: number
-  /** Per-provider resume limits, before the shared launch limit or provider default. */
-  resumeTimeouts?: Partial<Record<Provider, number>>
-  /**
-   * How long a reopened Codex thread's leads read may still take once its provider has answered;
-   * past it the whole text is owed. {@link DEFAULT_REOPEN_LEADS_GRACE_MS} when not given.
-   */
-  reopenLeadsGraceMs?: number
-  /**
-   * Takes each launch's timing line, by name and number only, without waiting for the disk
-   * (`aStartAttemptsLog`); nothing is recorded when not given.
-   */
-  recordStartAttempt?: (line: StartAttemptLine) => void
-  /** A clock that only moves forward, for a launch's phases; `performance.now` when not given. */
-  monotonicNow?: () => number
-  /**
-   * How long a message waits for work already on its way to the same conversation before it
-   * decides anyway — see {@link DEFAULT_DELIVERY_WAIT_MS} (657).
-   */
-  deliveryWaitMs?: number
-  /**
-   * How long a piece's ending waits, at most, for each start under way of a conversation holding a
-   * copy passed up of a question about it — {@link A_DECISION_WAITS_FOR_A_START_MS} when not given.
-   */
-  endingWaitMs?: number
-  /**
-   * 🔴 **708 · how long a person's command waits for the provider to say which commands it has** —
-   * see {@link DEFAULT_COMMAND_LIST_WAIT_MS}.
-   */
-  commandListWaitMs?: number
-  /**
-   * ⚑ **F074 · how long after a provider's stated reset what waited for it goes** — see
-   * {@link AFTER_THE_RESET_MS}.
-   */
-  afterALimitResetsMs?: number
-  /**
-   * ⚑ **F074 · how often what waits for a usage limit is looked at again**, at most — see
-   * {@link LOOK_AT_THE_LIMIT_AGAIN_MS}. A seam for tests.
-   */
-  lookAtTheLimitAgainMs?: number
-  /**
-   * 🔴 **W4.172 · F095 — where the moments each provider's sign-in changed are kept across a
-   * restart** (`main/sign-in-changes.ts`) — see {@link RuntimeHost.aSignInChanged}. ⚠️ Absent: this
-   * run's memory only.
-   */
-  signInChanges?: SignInChanges
-  /**
-   * The conversations a person archived (`archived-file.ts`): left out of the rail, Team and the
-   * person's queue, and kept stopped. A host given none keeps an empty set nowhere.
-   */
-  archived?: ArchivedConversations
-  /**
-   * 🔴 **W4.189 · D — the place this app names that a folder meets, or `null`** — asked when a give
-   * names a folder ({@link RuntimeHost.aProtectedPlaceFor}); `main/protected-places.ts` against the
-   * places as this run knows them. ⚑ Handed in rather than imported, so the identity check and the
-   * reset guard's library stay out of the host's own graph. Optional: a host given none names none —
-   * and a test hands in synthetic places, never this computer's.
-   */
-  protectedPlaceOf?: (folder: string) => ProtectedPlaceNotice | null
-  /**
-   * ⚑ **D-018 · how long a running conversation stays idle before its process is stopped** — see
-   * {@link DEFAULT_IDLE_STOP_AFTER_MS}.
-   */
-  idleStopAfterMs?: number
-  /**
-   * How long this app waits between two starts it makes by itself — after a restart, and for
-   * scheduled jobs — see {@link RESTART_WAKE_GAP_MS}.
-   */
-  startGapMs?: number
-  /**
-   * How long after a conversation's program stopped mid-turn it is started again — see
-   * {@link A_PROGRAM_IS_STARTED_AGAIN_AFTER_MS}.
-   */
-  aProgramStartsAgainAfterMs?: number
-  /** How far apart a provider's limit continuations go — see {@link LIMIT_WAKES_APART_MS}. */
-  limitWakesApartMs?: number
-  /**
-   * Silence window / clock / timers for liveness — injected so tests drive it without sleeping.
-   *
-   * ⚠️ **A DISPLAY window and nothing more, again** (400). `398` made it the deadline for a second
-   * clock as well; HO-018 §2.2 withdrew that criterion — *"an idle timeout on a working child is the
-   * guess"* — so nothing durable is written against this number any more. ⛔ It is back to what `353`
-   * measured it for: how long the header waits before it says a conversation has gone quiet.
-   */
-  liveness?: LivenessOptions
-  /**
-   * ⛔ **616 + 612 · BOTH injectable windows stood here and NEITHER is left** — `HO-093` §2 and
-   * `HO-088` §3.1, landing in the same integration.
-   *
-   * | ⚑ what it was | ⛔ what took it |
-   * |---|---|
-   * | `askBoundMs` — how long `ask_parent` held a worker's turn | `608`, once `deliverAnswer` put every answer on a message (HO-084 §4) |
-   * | `escalationWindowMs` — how long a routed question could go unanswered before a person was told | `612` — *no clock decides a parent failed* (HO-088 §3.1) |
-   * | `proposalBoundMs` — how long `create_project` parked on a person's decision | `616` — *a proposal ends when it is decided or withdrawn, never on a clock* (HO-093 §2) |
-   *
-   * 🔴 **One sentence is true of all three and it is the one to keep**: ⛔ **nothing on this class
-   * parks a tool call on a person, and no clock on this class decides that anybody failed.**
-   *
-   * ⚠️ **Each of the three was described as *the last of its kind* by the dispatch before the one
-   * that removed it**, which is why this note names them together rather than one at a time: the
-   * shape that kept being wrong was counting what was left rather than saying what a wait was FOR.
-   *
-   * ⛔ **None of the three numbers is restated here as *measured***, and `612` is why that matters
-   * beyond tidiness: `ASK_BOUND_MS` was ten escalation windows, and there are no escalation
-   * windows left to have been ten of — so a derivation nobody can re-make must not be written
-   * down as though somebody could (`a-number-can-survive-the-death-of-its-derivation`).
-   */
-  /**
-   * 🔴 **Say that a population a window LISTS has moved** (534) — see {@link RUNTIME_CHANGED_CHANNEL}.
-   *
-   * ## ⛔ Why it is a dep and not something this class does for itself
-   *
-   * ⚠️ **This host imports no Electron and holds no registry of windows.** It knows about SINKS,
-   * and a sink is one conversation's — which is exactly the scope that cannot carry this, because
-   * the conversations this is about have no sink at all. ⛔ `448` §A.1 priced the shape and named
-   * this line: *"a callback in `RuntimeHostDeps`, because `RuntimeHost` imports no Electron and
-   * holds no registry of sinks or windows"*. The composition root in `main/index.ts` is the only
-   * place that can loop over `BrowserWindow.getAllWindows()`.
-   *
-   * ## ⚑ Optional, and absent is a real answer
-   *
-   * ⛔ Absent is *"nobody is listening for this"*, exactly as a missing `listProfiles` is — every
-   * test host in this repo is such a host, and none of them has a window. ⚠️ **The host calls it
-   * through {@link RuntimeHost.theWorldMoved}, which swallows a throw**: this is announced from
-   * inside a teardown and from inside a claim, and a renderer that has gone must not be able to
-   * strand a session.
-   *
-   * ## 🔴 It is called AFTER the write it is about, always
-   *
-   * ⛔ **An announcement that arrives before the row is written is worse than none**: the window
-   * re-reads, gets the old world, and has nothing left to provoke it. ⚠️ Every call site below sits
-   * after the write in the same synchronous block, and `a-conversation-born-while-he-watches.test.ts`
-   * §2 asserts the ORDER rather than the fact, by reading the host's own answer at the instant the
-   * announcement lands.
-   */
-  announce?: (change: RuntimeChangeMessage) => void
-  /**
-   * 🔴 **D-019 · tell every window what the conversations whose state moved are doing now** — and,
-   * D-026, the files kept, the moment their rows are down — see `RUNTIME_STATES_CHANNEL`. A dep for
-   * {@link announce}'s reason: this host holds no windows. ⚠️ Named for its first half: it is called
-   * with files alone too, `moved` empty.
-   *
-   * ⚑ **Optional, and absent is a real answer** — nobody is listening, so no mark is kept and
-   * nothing is derived. ⚠️ Called from {@link RuntimeHost.sayWhatMoved} only, which swallows a throw.
-   * ⚑ **D-018 · and a host nobody is listening to counts no idle minutes**
-   * ({@link RuntimeHost.stateMayHaveMoved}): it stops no process on its own.
-   */
-  statesMoved?: (message: RuntimeStatesMessage) => void
-  /**
-   * 🔴 **D-018 · the resident size of each of these processes, in bytes** — the provider
-   * processes this app started for its conversations ({@link SessionHandle.providerPid}), read by
-   * pid and never by a pattern; a pid that has gone is absent from the answer. A dep for
-   * {@link announce}'s reason: the composition root owns the `ps` it runs.
-   *
-   * ⚑ **Optional, and absent is a real answer** — this host reads no process (every test host), and
-   * {@link RuntimeHost.processMemory} answers none.
-   */
-  readProcessMemory?: (pids: readonly number[]) => Promise<ReadonlyMap<number, number>>
-}
-
-/**
- * 🔴 **W4.189 · a folder an open piece grants the conversation holding it** — read from the piece's
- * give (`PieceRow.givenFolder`, `use: 'grant'`), so a piece that ends takes its grant with it.
- */
-interface HeldGrant {
-  /** The folder, as the give spelled it — what a person and the giver read. */
-  readonly folder: string
-  /**
-   * ⚑ **Where it really is** (`filesystemSpelling`, through every link) — what the provider is
-   * handed: Codex's sandbox checks a write at its real path, so a grant spelled through a link was
-   * granted in name and asked at every write (`probe:codex-work-folders`, W4.189).
-   */
-  readonly reaches: string
-  readonly piece: string
-  readonly label: string
-  /** The conversation that gave the piece. */
-  readonly givenBy: string
-  /** ⚑ Whether its brief has been handed over: until then the grant waits for the turn carrying it. */
-  readonly delivered: boolean
-}
-
-type ProviderLimitDisclosure = Pick<
-  SessionLiveness,
-  'providerBlock' | 'providerBlockStatus' | 'providerBlockLastKnown'
-> & {
-  readonly queued: readonly QueuedMessageDisclosure[]
-}
 
 /** A caller's words held for a service's next start while services are off: whose they are. */
 interface WordsLeftForAService {
@@ -3922,192 +2760,6 @@ interface HostedSession {
  * not an outcome — at the width of a tool result.
  */
 /**
- * 🔴 **What `interruptAgent` answers** (395) — an outcome or a refusal, never a throw.
- *
- * ⛔ **`'no-such-agent'` is `TOOL_REFUSALS`' word and is named rather than payload-shaped**, so the
- * host says WHICH vocabulary answered and `agent-tools.ts` stays the one place that builds a
- * refusal payload. ⚑ Folding it into {@link InterruptRefusal} would have given another vocabulary
- * the same spelling of *"no such agent"* and required another explicitly named share in the census.
- */
-export type InterruptOutcome =
-  | {
-      readonly ok: true
-      readonly agent: string
-      /**
-       * ⚑ **Whether its turn was asked to stop.** ⚑ **D-017 — `false` when no turn ran in it**, so
-       * nothing was asked: a conversation this app is not running, one whose provider has stopped or
-       * is being stopped, or one with no turn open. ⛔ Not a refusal.
-       */
-      readonly asked: boolean
-      /**
-       * ⚠️ **What the agent is doing NOW, and never a claim that the work stopped** — the one
-       * derivation's state ({@link AgentCard.state}), read after the bounded wait when it was asked
-       * — see {@link RuntimeHost.interruptAgent}. ⚑ On both arms, so this door never words a state
-       * of its own.
-       */
-      readonly state: AgentState
-      /**
-       * ⚑ **F084 · the commands the stop ended**, as the stopped turn's ending named them — read once
-       * that ending came, inside the stop's own bound. Empty when none ended; ⚠️ absent when nothing
-       * was asked, or the turn did not end in time: unknown, never *"ended nothing"*.
-       */
-      readonly ended?: readonly string[]
-      /**
-       * ⚑ **F084 · what it still has running in the background, read with {@link state}** — what
-       * the stop left running ({@link RuntimeHost.whatStillRunsIn}).
-       */
-      readonly stillRunning: readonly string[]
-    }
-  | { readonly ok: false; readonly refusal: InterruptRefusal | 'no-such-agent' }
-
-/** What {@link RuntimeHost.messageAgentNow} did about the turn its message waits behind. */
-export type TheStopAMessageGot =
-  /** The turn was asked to stop; the message goes out as it ends. */
-  | 'asked'
-  /** No turn was running that could be stopped: the message was sent, or is about to be. */
-  | 'not-needed'
-  /** A person is replacing that turn with their own words; the message goes with or after them. */
-  | 'a-person-is-replacing-its-turn'
-  /** The turn waits for a person's answer, and stopping it would answer for them. */
-  | 'a-person-is-being-asked'
-  /** The turn waits for another conversation's answer, and stopping it would answer for that one. */
-  | 'it-is-waiting-on-an-answer'
-  /** The message is held, and the turn could not be asked to stop. */
-  | 'could-not-be-asked'
-  /** An answer's asker is not one its answerer may interrupt; the answer waits for its turn to end. */
-  | 'not-below-you'
-  /** A person's own words opened the turn an answer waits behind: it is theirs, and runs on. */
-  | 'a-person-started-its-turn'
-  /** The turn was already asked to stop and has not ended: the words go in as it ends, unasked again. */
-  | 'already-asked'
-
-/** A stop asked for a held message, and whose answer a turn that was not stopped waits on. */
-export interface TheStopItsWordsAsked {
-  readonly stop: TheStopAMessageGot
-  /** The conversation whose answer the turn waits for, on `it-is-waiting-on-an-answer`. */
-  readonly askedOf: string | null
-  /** ⚑ **F084** — on `asked`, the conversation whose turn was asked to stop. */
-  readonly stopped?: string
-  /** ⚑ **F084** — on `asked`, its provider, whose rule a receipt says when the ending is not in yet. */
-  readonly provider?: Provider
-  /** ⚑ **F084** — on `asked`, the wait for what that stop ends; taken off before a receipt reads it. */
-  readonly ending?: Promise<readonly string[] | undefined>
-  /**
-   * ⚑ **F084** — on `asked`, once that turn ended within the bound `interrupt_agent` waits: the
-   * commands its stop ended ({@link RuntimeHost.withWhatItsStopLeft}). Absent when it did not end
-   * in time.
-   */
-  readonly ended?: readonly string[]
-  /** ⚑ **F084** — …and what that conversation still has running in the background then. */
-  readonly stillRunning?: readonly string[]
-}
-
-/** What {@link RuntimeHost.answerQuestion} answers; with `interrupt`, what became of the stop too. */
-export type AnswerWithItsStop =
-  | (Extract<AnswerOutcome, { readonly ok: true }> & {
-      readonly stop?: TheStopItsWordsAsked
-      /** The answer is held behind the asker's running turn, and goes as that turn ends. */
-      readonly held?: true
-    })
-  | Extract<AnswerOutcome, { readonly ok: false }>
-
-/** What {@link RuntimeHost.messageAgentNow} answers: a refusal before anything is held, or both halves. */
-export type MessageNowOutcome =
-  | { readonly ok: false; readonly refusal: 'not-below-you' }
-  | {
-      readonly ok: true
-      readonly delivery: QueueOutcome
-      readonly stop: TheStopAMessageGot
-      /** The conversation whose answer the turn waits for, on `it-is-waiting-on-an-answer`. */
-      readonly askedOf: string | null
-      /** ⚑ **F084** — see {@link TheStopItsWordsAsked.ended}. */
-      readonly ended?: readonly string[]
-      /** ⚑ **F084** — see {@link TheStopItsWordsAsked.stillRunning}. */
-      readonly stillRunning?: readonly string[]
-      /** ⚑ **F084** — see {@link TheStopItsWordsAsked.provider}. */
-      readonly provider?: Provider
-    }
-
-/**
- * ⚑ **D-017 · R12 — why a caller may not reach a conversation by that id** (`05` rule 6) — see
- * {@link RuntimeHost.whyItIsOutOfReach}.
- *
- *  - `no-such-agent` — no conversation has that id. ⛔ The ONLY case that word is said about.
- *    ⚑ D-016 · commit 7 · R1 — a label is resolved before it is asked
- *    ({@link RuntimeHost.theConversationAddressed}), and one that names nothing this caller may
- *    reach arrives here as spelled.
- *  - `takes-no-messages` — this app records it and a message cannot start it (a read-only copy, a
- *    provider's own sub-agent, or one this app did not start), while nothing runs in it.
- *  - `outside-its-reach` — it exists and the caller's reach does not admit it: the reach rail
- *    `message_agent` answers with, carried as it was built.
- */
-export type OutOfReach =
-  | { readonly is: 'no-such-agent' }
-  | { readonly is: 'takes-no-messages' }
-  | { readonly is: 'outside-its-reach'; readonly refusal: MessageRefusal }
-
-/**
- * 🔴 **D-016 · commit 7 · R1 — the reach a door resolves a label by** — see
- * {@link RuntimeHost.theConversationAddressed}. ⚑ **Each door's OWN**, so a label is taken wherever
- * that door serves the id of the conversation it names, and is handed back as spelled wherever that
- * id would not be served.
- *
- *  - `messaging` — `get_agent_status`, `message_agent`, `ask_question`: the reach `list_agents` names
- *    by ({@link RuntimeHost.whyItIsOutOfReach}), which is the reach every rail of theirs reads.
- *  - `interrupting` — `interrupt_agent`: that, or the chain below the caller the door stops
- *    ({@link RuntimeHost.interruptAgent}'s entitlement), which reads no grant.
- *  - `reading` — `read_transcript`: that, or the chain below the caller the door reads, or its own
- *    profile's other conversations (D-024 · R2; {@link RuntimeHost.mayReadTheTranscriptOf}), which
- *    reads no grant either.
- *  - `answering` — `asked_by` (`answer_question`, `pass_question_up`): every owner. ⚑ The door's own
- *    lookup is the entitlement: it matches only askers of questions routed to the caller, and any
- *    other name meets one answer that names those askers alone — so a label resolved for anyone
- *    else tells the caller nothing.
- */
-export type TheDoorsReach = 'messaging' | 'interrupting' | 'reading' | 'answering'
-
-/** What an agent's profile name names: see {@link RuntimeHost.theConversationAProfileNames}. */
-export type AProfileNames =
-  | { readonly is: 'one'; readonly conversation: string }
-  | { readonly is: 'several'; readonly profile: string; readonly labels: readonly string[] }
-  | null
-
-/**
- * 🔴 **D-022 · R3 — what became of words about a piece, told to the conversation holding it** —
- * `reply_to_parent`'s three words, for a take-back, a close, a new brief and new inputs.
- */
-export type TellDelivery =
-  /** It was free, or stopped and woken: the words went out as its turn now. */
-  | 'sent'
-  /** It is mid-turn: the words wait for that turn to end, and go with whatever else is held (D-027). */
-  | 'held'
-  /** Nothing reached it: {@link Told.whyNotTold} says why, in words a model reads. */
-  | 'not-delivered'
-
-/** 🔴 **D-022 · what became of a new brief** — a tell's word, or one of its own two. */
-export type NewBriefDelivery =
-  | TellDelivery
-  /**
-   * R1 · its piece's give is still held — for the holder's turn to end, or (D-027) behind a
-   * person's command held before it, which goes on its own: the new brief goes out as that give's
-   * brief when it is sent; nothing of its own was queued.
-   * ⚑ A give that went out as the holder's turn now carrying it — a woken holder's first — is
-   * `sent`.
-   */
-  | 'with-its-give'
-  /** R2 · the piece had ended when the words reached its holder: nothing was sent. */
-  | 'after-it-ended'
-
-/**
- * ⚑ **What became of words about a piece told to its holder — and, when nothing reached it, why**:
- * {@link whyNotTold} is present only beside `not-delivered`, in words a model reads (never the
- * diagnostic, which goes to the log).
- */
-export type Told<D extends NewBriefDelivery = TellDelivery> =
-  | { readonly delivery: Exclude<D, 'not-delivered'> }
-  | { readonly delivery: 'not-delivered'; readonly whyNotTold: string }
-
-/**
  * ⚑ **Why words about a piece went to nobody when its holder could never be reopened** — the
  * conversation in its place never held the piece, so they are not sent to it.
  */
@@ -4195,30 +2847,6 @@ export type TakeBackOutcome =
     } & Told)
   | { readonly ok: false; readonly refused: TakeBackRefused }
 
-/**
- * 🔴 **F089 · a piece `withdraw_task` named that the caller HOLDS** — the facts its refusal says it by:
- * the caller's root, the work a person gave it, which never ends; a piece it holds that is open; or
- * one that has ended, with how, when and by whom, off the row that ended it, as `reply_to_parent`'s
- * refusal reads an ended piece.
- */
-export type APieceItHolds =
-  | { readonly is: 'its-root'; readonly label: string }
-  | { readonly is: 'open'; readonly label: string }
-  | {
-      readonly is: 'ended'
-      readonly label: string
-      readonly state: HowAPieceEnded
-      /** When it ended, epoch ms — absent when its row holds no moment. */
-      readonly at?: number
-      /**
-       * Who ended it, by NAME ({@link RuntimeHost.whatToCallTheConversation}) — absent when its row
-       * names nobody, and for the caller's own reply: a reader is not told its own name.
-       */
-      readonly called?: string
-      /** The moment it was refused, which its sentence says the ending's time as of. */
-      readonly readAt: number
-    }
-
 /** ⛔ **Which rail stopped a take-back, and the facts that rail may state** (429). */
 export type TakeBackRefused =
   | {
@@ -4268,163 +2896,6 @@ export type TakeBackRefused =
   | {
       readonly rail: Extract<ToolRefusal, 'that-conversation-has-not-started'>
       readonly label: string
-    }
-
-/**
- * ⚑ **D-016 · a root, as a board or a record names it** — its row and its own two lines, and no
- * state: a root's state is its conversation's (R1).
- */
-export interface RootOnTheBoard {
-  readonly definitionOfDone?: string | null
-  readonly piece: string
-  readonly label: string
-  readonly owner: string
-  /** Its newest `work_retitled`, or `null` while nobody has titled it. */
-  readonly title: string | null
-  /** Its newest `work_status_set`, or `null`. */
-  readonly statusLine: StatusLine | null
-}
-
-/**
- * 🔴 **D-016 · what {@link RuntimeHost.pieceBoard} answers** — `list_tasks` with no argument: the
- * root this conversation owns, the pieces it holds, and the pieces it gave, each COMPOSED with what
- * it waits on.
- */
-export interface PieceBoard {
-  readonly root: RootOnTheBoard | null
-  readonly hold: readonly PieceRow[]
-  readonly gave: readonly PieceRow[]
-  /**
-   * 🔴 **671 · R18 — how many ledger rows this answer could not read**, counted ONCE however many of
-   * its reads met the same row — a count, never a cause, and never to be added to the lists above.
-   */
-  readonly rowsUnread: number
-  /** ⚑ **D-017 · R8** — how many conversations' records it skipped whole, when any. */
-  readonly ledgersSkipped?: number
-}
-
-/**
- * 🔴 **D-016 · what {@link RuntimeHost.pieceRecord} answers** — one piece's record, or the one word
- * for a name the caller may not read: a piece it neither owns nor gave, or none at all.
- */
-export type PieceRecord =
-  | { readonly is: 'no-piece-by-that-name' }
-  | {
-      readonly is: 'a-root'
-      readonly root: RootOnTheBoard
-      /** The pieces given under it, each as its owner's ledger folds it. */
-      readonly children: readonly PieceRow[]
-      /** ⚑ **D-023 · R1** — what its conversation kept for it, listed as a piece's are. */
-      readonly resources: readonly ResourceRow[]
-      readonly rowsUnread: number
-      readonly ledgersSkipped?: number
-    }
-  | {
-      readonly is: 'a-piece'
-      /** The piece, composed with what it waits on. */
-      readonly piece: PieceRow
-      /** The last exchange with the conversation holding it, whole (D-012). */
-      readonly lastExchange: Exchange
-      /** The questions its owner asked about it that are still open, by request id. */
-      readonly openQuestions: readonly string[]
-      readonly children: readonly PieceRow[]
-      readonly resources: readonly ResourceRow[]
-      readonly rowsUnread: number
-      readonly ledgersSkipped?: number
-    }
-
-/**
- * 🔴 **D-024 · R3 — what `list_tasks` with `made` reads**: the files the caller's profile's
- * conversations made, newest first, each with the piece it was kept on, and how many older ones
- * are not listed — or `no-profile`, for a conversation this app cannot name an identity for.
- */
-export type MadeByItsProfile =
-  | { readonly is: 'no-profile' }
-  | {
-      readonly is: 'listed'
-      readonly made: readonly {
-        readonly resource: ResourceRow
-        /** The label of the piece it was kept on. */
-        readonly label: string
-        /** The title that piece stands under now, or `null`: a root nobody has titled. */
-        readonly title: string | null
-      }[]
-      readonly more: number
-    }
-
-/**
- * 🔴 **WHO is in a conversation, when this app can say who** (610 · HO-092 §1, §2).
- *
- * ## Identify a conversation by its recorded agent
- *
- * ⚠️ **He asked Ali to relay a message to Ada, and Ali answered:** *"I don't see anyone named 'Ada'
- * among the agents/conversations visible to me in this app… Could you clarify who Ada is?"* — then,
- * asked what it could see: *"Neither is named 'Ada' — that first one's ID just happens to contain
- * 'ada' as a substring, but it's not a person or an agent called Ada."*
- *
- * ⛔ **The app knew, and the same screen said so twice** — *SPAWNED THIS CONVERSATION · Ada* and
- * *Task #2 from Ada*. ⚑ **Ali reasoned WELL on the data it had**: a session id carrying `ada` as a
- * substring really is a coincidence worth naming. 🔴 **It did careful work and reached a false
- * conclusion because this payload answered badly**, which is why the repair is here and not in
- * anybody's instructions (standing rule 15).
- *
- * ## ⚠️ Why every assertion passed
- *
- * ⛔ **`list_agents` said so in its own description:** *"Reports **id**, project, profile, state and
- * where each came from."* ⚑ **No name — so nothing ever claimed one was there**, and a test that
- * checks a field exists is not a test that the row is usable. `HO-092` §2.2 is right that this is
- * `530`'s clipped grant line again: a surface answering correctly and saying nothing anybody can
- * use.
- *
- * ## 🔴 A union rather than a `name` beside the `profile` field it replaces, and §3 is the reason
- *
- * ⛔ **{@link agentName} has an input it must never be given**, and `runtime-ipc.ts` states it
- * twice: *"a conversation the sweep found in the user's own provider home has no profile at all,
- * and calling it BroBot would invent one."* ⚠️ **A nullable `name` beside a nullable `profile` can
- * represent exactly that invention** — `(profile: null, name: 'BroBot')` — so the pair would leave
- * the defect writable by the next edit. ⚑ **On this shape the name exists on ONE arm only**, which
- * is `a-value-beside-a-word-or-a-union-of-arms`' test for a union, and the invented name is
- * unconstructable rather than merely unwritten.
- *
- * ⚑ **`profile` MOVED onto the arm where it is honest** rather than staying beside the
- * discriminant, so the two cannot disagree about one fact — `607`'s rule for the split it made of
- * {@link TurnOrigin}, one payload over.
- */
-export type WhoseConversation =
-  | {
-      /**
-       * ⚑ **This conversation NAMES an identity**, which is the positive fact — see
-       * {@link whoseConversationIs} for why the question is asked that way round.
-       */
-      readonly is: 'an-identity-this-app-holds'
-      /**
-       * ⛔ **The slug, which is the spendable half** — what `give_work` and `create_agent` take,
-       * and what `list_profiles` reports. It is the spelling the conversation RAN under; see
-       * {@link SessionStore.identityOf} for why that is not always the folded one.
-       */
-      readonly profile: string
-      /**
-       * 🔴 **What a person called this identity** — {@link agentName}, the derivation the rail
-       * already draws, so a name cannot mean one thing on a screen and another in a tool answer.
-       *
-       * ⚠️ **Never absent, and never the empty string.** With no roster row, or a row nobody has
-       * named, it is {@link profileLabel} — the slug, or *BroBot* for the default one — which is
-       * that function's own contract and is a REPORT rather than a guess.
-       */
-      readonly name: string
-    }
-  | {
-      /**
-       * ⛔ **This app cannot say whose conversation this is, and must not guess.**
-       *
-       * ⚠️ **{@link SessionSlot.profileId}'s own words:** *"`null` means 'this slot cannot name its
-       * identity', never 'it has none.' A resumed row that was adopted out of a provider home
-       * carries no `profile_id`, and the honest answer for such a slot is to stay out of the
-       * question rather than to guess a default and refuse a stranger."*
-       *
-       * This includes the person's own conversations discovered in a provider home. `agentName(null, …)` would incorrectly name them BroBot.
-       */
-      readonly is: 'an-identity-this-app-cannot-name'
     }
 
 /** ⚑ **The arm that carries nothing, as a constant** — see {@link whoseConversationIs}. */
@@ -4540,30 +3011,6 @@ function keptFileOf(kept: KeptFileRow, roster: readonly AgentIdentity[] | null):
   }
 }
 
-/** ⚑ **F076** — one ending a `background_work` row states, as the provider stated it. */
-type BackgroundWorkEnded = NonNullable<Extract<RuntimeEvent, { type: 'background_work' }>['ended']>
-
-/**
- * 🔴 **F076 — what a turn ended by a refused login was for** ({@link HostedSession.whatItsFailedTurnWasFor}):
- * whether words this app sent opened it, the background work its provider said had finished since
- * the turn before (one row each, its two endings merged), what it still listed running then — which
- * stopped with it — and when it failed.
- */
-export interface WhatAFailedTurnWasFor {
-  readonly words: boolean
-  readonly finished: readonly BackgroundWorkEnded[]
-  readonly stillRunning: readonly string[]
-  readonly at: number
-}
-
-/**
- * 🔴 **F076 — what a conversation is told when Claude refused the login it was started with while a
- * turn of its own was running** — held for its reopen on the login this computer holds now
- * ({@link RuntimeHost.reopenOnARenewedSignIn}), which a different login is what allows. ⚑ The
- * background work that had finished, as its provider described it and where its output is, when
- * that is what the turn was for; ⚑ else that a turn of its own was running; ⚑ and what was still
- * running, which stopped with it. ⚑ It asks nothing of it but to look.
- */
 /**
  * The rows a turn refused on its sign-in may hold and still have done nothing: how it went, what
  * its provider said of itself, and the record of work its words handed over. Any other row, a word
@@ -4644,216 +3091,12 @@ interface RefusedInputReference {
   readonly piece: string | null
 }
 
-export function aRefusedLoginStoppedText(
-  wasFor: WhatAFailedTurnWasFor,
-  now: number,
-  provider: Provider,
-): string {
-  const when = clockTimeFrom(wasFor.at, now)
-  const name = PROVIDER_NAME[provider]
-  const refused = `${name}’s login had changed, and ${name} refused the one this conversation was started with`
-  const stopped =
-    wasFor.stillRunning.length === 0
-      ? ''
-      : ` Still running then, and stopped with it: ${wasFor.stillRunning.join('; ')}.`
-  const reopened =
-    'This app reopened this conversation on the current login; nothing from that turn was sent again.'
-  if (wasFor.finished.length === 0) {
-    return (
-      `At ${when} a turn of your own — one nothing was sent to you for, such as a scheduled ` +
-      `wake-up — could not run: ${refused}.${stopped} ${reopened} Check where your work stands.`
-    )
-  }
-  const what = wasFor.finished
-    .map((ended) => {
-      const said =
-        ended.summary ??
-        `the background task with the id ${ended.id} ${ended.outcome === 'unknown' ? 'ended' : ended.outcome}`
-      return ended.outputFile === undefined
-        ? said
-        : `${said} — its output is in ${ended.outputFile}`
-    })
-    .join('; ')
-  return (
-    `At ${when} background work of yours finished, and the turn that would have told you could not ` +
-    `run: ${refused}. What finished: ${what}.${stopped} ${reopened} Check where your work stands.`
-  )
-}
-
-/**
- * 🔴 **D-037 · what `find_files` asks** — where to look, the words a file must hold (lower-cased,
- * each once; none lists), and the file the last answer ended at, to go on from.
- */
-export interface FindFilesAsked {
-  readonly where: 'tree' | 'everywhere'
-  readonly words: readonly string[]
-  readonly olderThan: string | null
-}
-
-/** ⚑ **D-037 · where a word was found**: the file's own words, its maker, its piece, or its text. */
-export type FoundIn = 'title' | 'name' | 'maker' | 'piece' | 'text'
-
-/** ⚑ **D-037 · one file `find_files` answers with.** */
-export interface FoundFile {
-  readonly file: KeptFile
-  /** Where the words were found, in {@link FoundIn}'s order — empty in a list. */
-  readonly foundIn: readonly FoundIn[]
-  /** ⚑ The text around the first word found only in it, or `null`. */
-  readonly excerpt: string | null
-}
-
-/**
- * 🔴 **D-037 · what `find_files` answers** — or the one thing it cannot do: go on from a file this
- * app keeps no record of.
- */
-export type FoundFiles =
-  | { readonly ok: false; readonly reason: 'older-than-names-no-file' }
-  | {
-      readonly ok: true
-      readonly files: readonly FoundFile[]
-      /** How many files this answer looked through — for a list, the ones it names. */
-      readonly looked: number
-      /**
-       * How many files in the scope are older than the last one looked through — counted up to
-       * {@link OLDER_FILES_COUNTED}, and no further.
-       */
-      readonly older: number
-      /** The file to go on from (`older_than`), or `null` when nothing older is left. */
-      readonly goOnFrom: string | null
-      /** ⚠️ Files whose text could not be read, so only their names and pieces were searched. */
-      readonly textUnread: number
-      /** ⚑ When this was read — what a kept time is said as of. */
-      readonly readAt: number
-    }
-
-/** ⚑ **D-037 · how many files a search names and looks through at once**, between hand-backs. */
-const FILES_SEARCHED_AT_ONCE = 100
-
-/** ⚑ **D-037 · how many text bytes a search reads before it hands the main process back.** */
-const TEXT_READ_AT_ONCE = 2_097_152
-
-/** ⚑ **D-037 · the characters an excerpt keeps on each side of the word it shows.** */
-const EXCERPT_SIDE = 80
-
-/** ⚑ **D-037 · the order {@link FoundFile.foundIn} says places in**: the file's, then its text. */
-const FOUND_IN_ORDER: readonly FoundIn[] = ['title', 'name', 'maker', 'piece', 'text']
-
-function inFoundOrder(found: ReadonlySet<FoundIn>): FoundIn[] {
-  return FOUND_IN_ORDER.filter((where) => found.has(where))
-}
-
-/** ⚑ **F046** — how many files kept before titles were taken are read for one page of titling. */
-const FILES_TITLED_AT_ONCE = 50
-
-/**
- * ⚑ **F046 — files kept from this moment on were titled by a reader that reads front matter**, so
- * only a file kept before it can hold a title the older, heading-only reader gave
- * ({@link RuntimeHost.titleTheOlderFiles}). ⚑ The reader shipped on 2026-10-03; this is the week of
- * the first public release, so every beta still in a tester's hands is covered, and the set the
- * pass reads stays the files kept before it rather than growing with every file kept.
- */
-const FRONT_MATTER_READ_EVERYWHERE_SINCE = Date.UTC(2026, 9, 11)
-
 /**
  * ⚑ **D-037 · hand the main process back** between pages of a search — `setImmediate` and not
  * `await null`, `sweep.ts`'s reason: a resolved promise runs before anything else waiting does.
  */
 function handBackTheMainProcess(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve))
-}
-
-/**
- * ⚑ **D-037 · who made a file, as a search reads it** — the agent's name and the profile a give
- * names it by, or `person` for a person. ⛔ **Nothing for an agent this app cannot name**: its words
- * (*an agent this app cannot name*) would be found by every search for *agent* or *name*.
- */
-function makerSearched(file: KeptFile): string {
-  if (file.addedBy === null) return 'person'
-  if (file.addedBy.identity === null) return ''
-  return `${file.addedBy.name} ${file.addedBy.identity}`
-}
-
-/**
- * ⚑ **D-037 · which of `words` one kept file holds outside its text**, and where — its title, its
- * name, its maker ({@link makerSearched}), and its piece's label and title. ⚑ Case is ignored:
- * `words` are lower-cased, and so is each place.
- */
-export function wordsOutsideTheText(
-  file: KeptFile,
-  words: readonly string[],
-): { readonly foundIn: ReadonlySet<FoundIn>; readonly missing: readonly string[] } {
-  const places: readonly (readonly [FoundIn, string])[] = [
-    ['title', file.title],
-    ['name', file.name],
-    ['maker', makerSearched(file)],
-    ['piece', `${file.label} ${file.pieceTitle ?? ''}`],
-  ]
-  const lower = places.map(([where, text]) => [where, text.toLowerCase()] as const)
-  const foundIn = new Set<FoundIn>()
-  const missing: string[] = []
-  for (const word of words) {
-    const at = lower.filter(([, text]) => text.includes(word))
-    if (at.length === 0) missing.push(word)
-    for (const [where] of at) foundIn.add(where)
-  }
-  return { foundIn, missing }
-}
-
-/**
- * ⚑ **D-037 · what one file's text says about the words of a search** — which of them it holds,
- * and the words around each one's first place: all a search keeps of a text once it has read it.
- */
-export interface TextHolds {
-  readonly holds: ReadonlySet<string>
-  readonly around: ReadonlyMap<string, string | null>
-}
-
-/**
- * ⚑ **D-037 · read `words` in one text, ignoring case** — and for each one found, the text around
- * its first place on one line, {@link EXCERPT_SIDE} characters each side, with `…` where it was cut.
- * ⚠️ **Placed only where lower-casing kept the text's length**, so a place found in the lower-cased
- * copy is the same place in the text: a character that grows when lower-cased (`İ`) leaves the word
- * found and its excerpt `null`. ⛔ Never cut inside a surrogate pair.
- */
-export function wordsInTheText(text: string, words: readonly string[]): TextHolds {
-  const lower = text.toLowerCase()
-  const placeable = lower.length === text.length
-  const holds = new Set<string>()
-  const around = new Map<string, string | null>()
-  for (const word of words) {
-    const at = lower.indexOf(word)
-    if (at < 0) continue
-    holds.add(word)
-    if (!placeable) {
-      around.set(word, null)
-      continue
-    }
-    let start = Math.max(0, at - EXCERPT_SIDE)
-    let end = Math.min(text.length, at + word.length + EXCERPT_SIDE)
-    if (start > 0 && /[\udc00-\udfff]/.test(text.charAt(start))) start += 1
-    if (end < text.length && /[\ud800-\udbff]/.test(text.charAt(end - 1))) end -= 1
-    const said = text.slice(start, end).replace(/\s+/g, ' ').trim()
-    around.set(word, `${start > 0 ? '…' : ''}${said}${end < text.length ? '…' : ''}`)
-  }
-  return { holds, around }
-}
-
-/**
- * ⚑ **D-017 · R12 — what `list_agents` is handed**: the conversations a caller may reach, newest
- * activity first and cut at {@link CONVERSATIONS_LISTED}, and how many more there are.
- */
-export interface AgentsListed {
-  readonly agents: readonly AgentCard[]
-  readonly notListed: number
-}
-
-/** ⚑ **D-017 · R12** — one conversation a caller may reach, before it is cut into a list. */
-interface VisibleConversation {
-  readonly id: string
-  /** Its newest activity — what every list of agents is ordered by. */
-  readonly at: number
-  /** Its card, read only if it makes the cut. */
-  readonly card: () => AgentCard
 }
 
 /**
@@ -4880,28 +3123,6 @@ export type RestoredByAnAgent =
   | { readonly is: 'being-set-aside'; readonly said: string }
   /** The list of archived conversations could not be saved: a person has to act. */
   | { readonly is: 'could-not'; readonly said: string }
-
-/** One archived conversation a caller may reach: its card, and when it was archived (epoch ms). */
-export interface ArchivedAgent {
-  readonly card: AgentCard
-  readonly archivedAt: number
-}
-
-/** The archived conversations a caller may reach, cut as every list of agents is. */
-export interface ArchivedListed {
-  readonly archived: readonly ArchivedAgent[]
-  readonly notListed: number
-  /** When this was read, to place each `archivedAt` on a day. */
-  readonly readAt: number
-}
-
-/** ⚑ **D-017 · R12** — the cut every list of agents takes, and how many it left out. */
-function listedFrom(reachable: readonly VisibleConversation[]): AgentsListed {
-  return {
-    agents: reachable.slice(0, CONVERSATIONS_LISTED).map((one) => one.card()),
-    notListed: Math.max(0, reachable.length - CONVERSATIONS_LISTED),
-  }
-}
 
 /**
  * ⚑ **D-017 · R11 — what every card in one answer is read against** — see
@@ -5130,252 +3351,6 @@ function asItIsDrawn(piece: PieceRow): string {
   return piece.stalledBecause === null ? piece.state : `${piece.state} · ${piece.stalledBecause}`
 }
 
-/** ⚑ **D-016 · one piece on an agent's card** — see {@link AgentCard.pieces}. */
-export interface PieceOnTheCard {
-  readonly piece: string
-  readonly label: string
-  /** Its title — a root's newest, `null` while nobody has titled it. */
-  readonly title: string | null
-  /** `null` for the root: its state is the conversation's, which is the card's. */
-  readonly state: TaskState | null
-}
-
-/** A request a conversation's turn is stopped on until a person answers it: what, and since when. */
-export interface StoppedOnAPerson {
-  /** What it asks, as a noun phrase: *its request to use Bash (npm test)*. */
-  readonly asks: string
-  /** When it was asked, epoch ms. */
-  readonly since: number
-  /** When this was read, epoch ms — what {@link since} is said against. */
-  readonly readAt: number
-}
-
-export interface AgentCard {
-  /** Stable worker identity, separate from the state and process reading. */
-  readonly worker?: WorkerBindingReading
-  /**
-   * The session id — what every tool that takes an agent takes, beside the label of a piece it owns
-   * (D-016 · commit 7 · R1).
-   */
-  readonly agent: string
-  /**
-   * 🔴 **Who is in it, by NAME and by slug** (610, HO-092 §1) — see {@link WhoseConversation}.
-   *
-   * ⛔ **It was `profile: string | null` and it is what Ali could not read.** ⚑ The slug did not
-   * go anywhere: it is `whose.profile`, on the arm where this app can say there is one.
-   */
-  readonly whose: WhoseConversation
-  readonly provider: Provider | null
-  /**
-   * ⚑ **D-017 · R11 — what the agent is doing, in the ONE derivation every reader asks**
-   * ({@link agentStateOf}): needs you, active, waiting on another conversation's answer, running in
-   * the background, scheduled, waiting on the conversations holding work it gave out (D-036), or
-   * idle (`05` rule 5).
-   *
-   * ⛔ **Whether a process runs is never part of it** — a conversation this app is not running reads
-   * `idle` unless somebody owes it something, and a message starts it; ⚑ or *scheduled*, when it
-   * holds a job its wake-up starts it for (D-029). ⚠️ It replaced the handle's status plus three
-   * states of the SLOT (`starting`, `ending`, `open-nothing-running`), each of which told a reader
-   * a process fact.
-   */
-  readonly state: AgentState
-  /**
-   * What its turn is stopped on until a person answers it — a request its provider raised that only
-   * a person can settle — or `null`. ⚑ While it is set, nothing sent to it goes in: an interrupt is
-   * refused too (`a-person-is-being-asked`), so only the person's answer moves it.
-   */
-  readonly stoppedOnAPerson: StoppedOnAPerson | null
-  /**
-   * Who is driving it in THIS process — dies with the process, by design (340 §0). ⚑ **D-017 · for a
-   * conversation this app is not running it is the recorded PARENT**, which is what the start its
-   * next message makes writes into the slot it reserves — so the card does not change across that
-   * start.
-   */
-  readonly spawnedBy: string | null
-  /** Who started it, from the ledger — the half that survives a restart (criterion 8). */
-  readonly parent: string | null
-  /**
-   * 🔴 **D-016 · commit 7 · R2 — the work that names this conversation**
-   * (`SessionStore.workThatNames`): what `list_agents`' line leads with.
-   */
-  readonly named: WorkThatNamesIt | null
-  /**
-   * ⚑ **W4.209 · what to call {@link parent}**, by the piece it started this one from — its agent's
-   * name and that piece, as an agent's record and the launch line say it (`theStarterCalled`), ⛔ never
-   * by its work now; its name alone when it started this one by a message. `null` with no parent.
-   */
-  readonly parentCalled: string | null
-  /**
-   * 🔴 **D-016 · the pieces it holds** — its root first, with `state: null` because a root's state is
-   * the card's own (R1), then its OPEN pieces with theirs. ⛔ Open only (spec D17): the record of
-   * every piece is `list_tasks`'.
-   */
-  readonly pieces: readonly PieceOnTheCard[]
-  /**
-   * 🔴 **How the last turn that ENDED stopped, who asked, and when** (395 §1, 484) — or `null`
-   * because there is no closed turn to report on.
-   *
-   * ## ⛔ Why the card grew a field rather than the tool growing a sentence
-   *
-   * ⚠️ **{@link state} answers *"what is it doing now"* and answered nothing else.** After a fault
-   * and after an interruption it is `idle` in both cases, so a parent that had just watched a child
-   * stop could not tell *somebody stopped this* from *this broke* — `395` §1's requirement, at the
-   * one surface a parent has. ⛔ Composing the answer inside `agent-tools.ts` would put the
-   * derivation in the layer that renders it, where `list_agents` and `get_agent_status` would be
-   * free to read it two ways.
-   *
-   * ⚑ **`null` is *no closed turn*, and it is not `nothing-has-said`.** A conversation that has
-   * never finished a turn has no ending to report; one whose turn ended with no terminal row has an
-   * ending this app did not see. Those are different facts and `222` §3 is the dispatch that
-   * separated them.
-   *
-   * ## 🔴 484 · it was called `lastTurn` and a reader could not tell WHICH turn
-   *
-   * ⛔ **HO-031 §2.2:** *"stale or describing an older turn — unclear which, which is itself the
-   * defect."* ⚠️ The narrowing has been `closed_at IS NOT NULL` since `395` and the value never said
-   * so, so a parent holding it beside this card's live {@link state} had a question the payload
-   * could not answer. ⚑ The name says the subject and {@link LastEndedTurn} makes the other reading
-   * unrepresentable; the ambiguity was the defect, not the staleness.
-   */
-  readonly lastEndedTurn: LastEndedTurn | null
-  /**
-   * 🔴 **The last time anybody asked this conversation's work to stop** (484, HO-031 §2.1) — `null`
-   * when no row says.
-   *
-   * ## ⛔ The measurement this field exists for
-   *
-   * ⚠️ **A person stopped an agent through the UI, the app wrote `work_interrupted {"by":
-   * "a-person"}`, and `get_agent_status` answered `lastTurn.who: null`.** ⛔ **The supervisor
-   * watching would have recorded that its child recovered on its own** — HO-031 §2.1's *"a
-   * supervisor that cannot see human intervention in its own subtree will confidently narrate a
-   * false history"*, which is worse than the digest case because an agent's false belief becomes a
-   * written report.
-   *
-   * 🔴 **The hole is `turn_id`, and it is structural rather than a bug in the fold.**
-   * {@link RuntimeHost.recordTheAsk} writes the row for every caller at every moment, and
-   * `SessionStore`'s `turnFor` gives it `turn_id = null` when nothing is running — so a Stop on an
-   * idle or stalled conversation is invisible to {@link lastEndedTurn}, which joins on the turn.
-   * ⚑ This asks the CONVERSATION instead, which is the subject an interruption actually has.
-   *
-   * ## ⚠️ Two fields and not one, and the reason is what each is about
-   *
-   * ⛔ **Folding this into {@link lastEndedTurn}'s `who` would report a person's Stop of an idle
-   * conversation as the ending of a turn it never touched** — a second false sentence in place of
-   * the first. ⚑ {@link AskToStop.turn} is what lets a reader see when the two are about one turn
-   * — and since `709` (R43) they are still two facts: the ask, and the ending in the provider's word.
-   *
-   * ## ⚑ 494 · a permission answered `cancel` is one of these asks
-   *
-   * ⛔ **It is here because of THIS payload rather than because of that door.** This field and
-   * {@link lastEndedTurn} are read together off one card, and `494` teaches the second to name the
-   * person who cancelled; a field beside it answering *no row says* about the same press is the
-   * defect above, arriving between two fields instead of between a ledger and a tool.
-   */
-  readonly lastAskToStop: AskToStop | null
-  /**
-   * 🔴 **D-042 · R6 — what it runs on, so a giver can check what its helper runs**: the pair it is
-   * selected to run (`null` for a conversation nothing has named one for yet — an adopted one, or a
-   * row from before D-042 that has not started since: every helper until its next start), and what
-   * its provider last REPORTED running (`null` until it has said). ⚠️ `reported.effort` is
-   * `null` until the provider reports one — Claude's, as a turn ends (F099): until then its effort is
-   * what was requested.
-   */
-  readonly runsOn: {
-    readonly selected: ModelAndEffort | null
-    readonly reported: { readonly model: string; readonly effort: string | null } | null
-  }
-  /**
-   * 🔴 **676 · F3 — how many ledger rows THIS card's reads could not read** — the two fields above
-   * that come from the ledger, {@link lastEndedTurn} and {@link lastAskToStop}, counted once each
-   * (`RowsUnread`'s rule): a count, never a cause.
-   *
-   * ⛔ **Until `676` both skipped a torn row with a warning and nothing else** (`671` F3), so a card
-   * could say *nobody asked it to stop* about a conversation whose newest ask was the torn row.
-   * ⚠️ **Above `0`, either field may be OLDER than the truth** — the rows counted are the ones each
-   * read passed over on its way to its answer.
-   *
-   * ⚠️ **The card's own**, and never folded into a list's count: a card is read on its own by
-   * `get_agent_status`, and it must say so there. ⚑ **D-016 · its {@link pieces} are read under the
-   * same count**, so a torn row one of them met is counted here too. ⛔ **D-036 · never a row of
-   * another conversation's ledger**: the work it gave out, which its {@link state} and its pieces'
-   * waits read, is folded from the ledgers of the conversations holding it, and what those cannot
-   * read — a torn row, or a whole ledger whose fold throws — is skipped and warned under that read's
-   * own note: never counted here nor in {@link ledgersSkipped}, whose words say *its record*, and
-   * never thrown out of the card.
-   */
-  readonly rowsUnread: number
-  /** ⚑ **D-017 · R8** — `1` when this conversation's record could not be read at all, else `0`. */
-  readonly ledgersSkipped: number
-}
-
-/**
- * 🔴 **One IDENTITY, as an agent that may start a conversation as it reads it** (488,
- * HO-020's `list_profiles`, HO-031 §2.3).
- *
- * ## ⛔ Four fields, and the three that are missing are the ruling
- *
- * ⚠️ **No grant of its own.** What another identity may do is that identity's own business and a
- * person's sheet; `485` renders each agent its OWN grants, and publishing a second agent's here
- * would make one identity's configuration another's reading. ⛔ **The bound is not squeamishness:
- * `maxDepth` already crosses to a caller inside `too-deep`, about ITSELF** — which is what makes the
- * same number about somebody ELSE a widening rather than a restatement.
- *
- * ⚠️ **No conversation facts — not whether it is running, not how many times it has run.** Those
- * are folded through a different grant entirely ({@link RuntimeHost.agentsVisibleTo}), so carrying
- * them here would let a caller read past the fold that door applies. ⚑ *A widening of one
- * predicate widens every question its field answers*, and this row answers *who exists*.
- *
- * ⚠️ **No row id and no `created_at`.** The id is `aid:` plus the slug, no door takes it, and a
- * listing that published a derived id would invite a model to spend it where a slug belongs;
- * nothing a caller does with this list turns on when the name was minted. ⛔ **A field nobody needs
- * is a disclosure nobody can justify.**
- */
-export interface ProfileReport {
-  /**
-   * ⚑ **The FOLDED slug, and it is spelled the way `give_work` takes it** — `profile`.
-   * ⚠️ A caller copies this value into that argument; a second spelling here would be a value a
-   * model has to transform before it can be spent.
-   */
-  readonly profile: string
-  /** A human name somebody gave it, or null — nobody has. */
-  readonly displayName: string | null
-  /**
-   * The provider it runs on, which a give never changes — or null: nothing names one yet, and its
-   * first conversation decides it, or its conversations ran on both and a person has to choose.
-   */
-  readonly provider: Provider | null
-  /**
-   * 🔴 **D-042 · R6 — its DEFAULT model and effort, or null — it has none**: what its new
-   * conversations start on when a give names none (`677`'s inbox 8: *"a spawner knows before it
-   * calls"*). ⚑ Only a default IN FORCE (`aChoiceIsInForce`); a contradiction no launch reads is not
-   * reported as though one did.
-   */
-  readonly defaultModel: AgentModelChoice | null
-  /** It is a service: one conversation its callers share, which runs their work one at a time. */
-  readonly isAService?: true
-}
-
-/**
- * 🔴 **Which identities a caller may be told about** (488, D-014).
- *
- * ⛔ **Every one, and there is no `refused` arm.** Any agent may start a conversation as any agent
- * this app holds, so there is no grant to fold this list by and no wall to refuse it with.
- */
-export interface ProfileReading {
-  /** Every identity this app holds — each is one the caller may start a conversation as. */
-  readonly profiles: readonly ProfileReport[]
-  /**
-   * 🔴 **F096 — each provider's newest usage reading, per window** ({@link RuntimeHost.providerUsage}),
-   * so a caller choosing whom to give work to can keep to a cap a person set — *Claude weekly: 34%,
-   * resets on 9 October*. ⚑ The account's, not an agent's: every agent of a provider spends it.
-   */
-  readonly usage: Readonly<Record<Provider, readonly ProviderUsageReading[]>>
-  /** ⚑ F096 — which windows each provider has reported, first and last ({@link RuntimeHost.usageWindowsSeen}). */
-  readonly windowsSeen: Readonly<Record<Provider, readonly UsageWindowSeen[]>>
-  /** When it was read, epoch ms — what each time in its words is placed on a day by. */
-  readonly readAt: number
-}
-
 /** ⚑ **F009 · the most of an agent's conversations its record lists**, newest activity first. */
 export const CONVERSATIONS_ON_A_RECORD = 10
 
@@ -5404,16 +3379,6 @@ export type AgentRecordReading =
   | { readonly is: 'no-agent-by-that-name' }
   | { readonly is: 'a-record'; readonly record: AgentRecord }
 
-/**
- * ⚑ **F009 · how an agent's standing rules begin, as its record says it** — their first line that
- * holds a word, cut at {@link RULES_BEGIN_CHARS}; that it has none; or nothing at all for a caller
- * that does not reach the agent, which learns neither whether it has rules nor what they say.
- */
-export type RulesOnARecord =
-  | { readonly is: 'they-begin'; readonly line: string }
-  | { readonly is: 'none' }
-  | { readonly is: 'not-told' }
-
 /** ⚑ **F009 · one agent's record** — see {@link AgentRecordReading}. */
 export interface AgentRecord {
   readonly agent: ProfileReport
@@ -5438,63 +3403,6 @@ export interface AgentRecord {
   readonly ledgersSkipped?: number
   /** ⚑ When it was read — what its times are placed on a day by. */
   readonly readAt: number
-}
-
-/**
- * ⚑ **F009 · who started a conversation of an agent's record**: a person — no conversation started
- * it, so it owns a root, the work a person gave it (D-016: a conversation nobody here started is a
- * person's) — the caller itself (`you`, 729 · R90: a reader is never told its own name as somebody
- * else's), or another conversation, by its name and the piece it started this one from — see
- * `RuntimeHost.whoStartedIt`.
- */
-export type WhoStartedIt =
-  | { readonly is: 'a-person' }
-  | { readonly is: 'you' }
-  | { readonly is: 'an-agent'; readonly conversation: string; readonly called: string }
-
-/**
- * ⚑ **F009 · one conversation of an agent's record.** ⛔ **Never whether this app runs it** (`05`
- * rule 5): what it is doing now is the one state `get_agent_status` says. ⚑ Whether it ENDED is
- * here: one that could never be reopened, with the conversation that took its place (D-017 · R10).
- */
-export interface ConversationOnARecord {
-  readonly conversation: string
-  /** The work that names it now ({@link SessionStore.workThatNames}), or `null`: it holds none. */
-  readonly named: WorkThatNamesIt | null
-  readonly startedBy: WhoStartedIt
-  /** When it was created. */
-  readonly startedAt: number
-  /** When its record last changed — any row it was written, a stop's included. */
-  readonly lastChangedAt: number
-  /**
-   * ⚑ **The conversation standing in its place** — the end of its chain of replacements, of the same
-   * agent, so named as the record names its own — or `null`: it was never replaced.
-   */
-  readonly inItsPlace: {
-    readonly conversation: string
-    readonly named: WorkThatNamesIt | null
-  } | null
-  /** When a person archived it, epoch ms: present only for an archived one, which a record marks. */
-  readonly archivedAt?: number
-}
-
-/**
- * ⚑ **F009 · who gave a piece of an agent's record**: a person — work its holder took on for them —
- * the caller itself, or another conversation, named by its own piece above this one (F033).
- */
-export type WhoGaveIt =
-  | { readonly is: 'a-person' }
-  | { readonly is: 'you' }
-  | { readonly is: 'an-agent'; readonly conversation: string; readonly called: string }
-
-/**
- * ⚑ **F009 · one piece of an agent's record** — {@link PieceHeld}: its label, its title now, the
- * conversation holding it, and how it stands (open, or how and when it ended, with its outcome once
- * answered) — with who gave it, named.
- */
-export interface PieceOnARecord {
-  readonly held: PieceHeld
-  readonly givenBy: WhoGaveIt
 }
 
 interface SessionSlot {
@@ -6236,15 +4144,6 @@ const DEFAULT_DELIVERY_WAIT_MS = 15_000
 const DEFAULT_COMMAND_LIST_WAIT_MS = 5_000
 
 /**
- * How long a running conversation stays idle before this app stops its provider process. A running
- * process holds about 300 MB, so one minute frees it soon after an exchange ends; the next message to
- * a stopped conversation then waits a few seconds more while its history resumes. What counts as
- * idle is {@link RuntimeHost.idleEnoughToStop}'s rule, not this clock. A stop changes nothing about a
- * piece of work.
- */
-const DEFAULT_IDLE_STOP_AFTER_MS = 60_000
-
-/**
  * 🔴 **D-029 · how long before a one-shot fires its stopped conversation is started** (R1). ⚑ From
  * `05` §2: a stopped conversation's first output came 8.4–10.8 s after its message (10.0 s on a
  * 24 MB transcript), and its provider restores its jobs while it resumes that history, before any
@@ -6290,12 +4189,6 @@ const WAKE_CHECK_MS = 60_000
 const WAKE_RETRY_MAX_MS = 30 * 60_000
 
 /**
- * ⚑ **D-029 · how much of a job's own words its conversation is told back**, in code points — the
- * first line of what it would have asked ({@link scheduleNoticesText}).
- */
-const MISSED_JOB_WORDS = 80
-
-/**
  * ⚑ **D-029 · why the words about a conversation's own jobs are ended rather than sent** — it can
  * never be reopened ({@link RuntimeHost.letGoOfItsMissedJobs}), and no conversation in its place
  * scheduled them. ⛔ A durable row names no conversation.
@@ -6321,85 +4214,6 @@ const NEWER_WORDS_AFTER_THE_ARCHIVE =
 /** Why words about its jobs ended when a delete stopped a conversation and kept its records. */
 const NEWER_WORDS_AFTER_A_DELETE =
   'newer words about this conversation’s jobs took their place when a delete stopped it'
-
-/**
- * What this app itself has to tell a conversation about a job, beside the planner's notices: that
- * it cannot tell the job's time (`time-not-known`), that it has stopped starting the conversation
- * for the job (`not-started`), that the job has not been listed since its provider's
- * conversation was reset (`not-listed-since-a-reset`), or that it could not read enough of the
- * conversation's history to plan the job (`history-not-read-in-full`).
- */
-type AWordOfThisApps =
-  'time-not-known' | 'not-started' | 'not-listed-since-a-reset' | 'history-not-read-in-full'
-
-/** One notice about a job, with what the job was last listed as asking. */
-export interface NoticeAboutAJob {
-  readonly reason: ScheduleNotice['reason'] | AWordOfThisApps
-  /** The minute the notice is about, or `null` where there is none to name. */
-  readonly dueAt: number | null
-  readonly prompt?: string
-}
-
-/** What each kind of notice says after the jobs it names: one job's words, then several jobs'. */
-const NOTICE_SAYS: Readonly<Record<NoticeAboutAJob['reason'], readonly [string, string]>> = {
-  'offline-time-passed': [
-    'was due while this conversation was stopped. This app cannot tell whether it ran: check whether its work is still needed.',
-    'were due while this conversation was stopped. This app cannot tell whether they ran: check whether their work is still needed.',
-  ],
-  'recurring-offline-interval': [
-    'may have missed one or more runs while this conversation was stopped: check whether that work is still needed.',
-    'may have missed one or more runs while this conversation was stopped: check whether that work is still needed.',
-  ],
-  'not-present': [
-    'is no longer on your schedule. This app cannot tell whether it ran or was cancelled.',
-    'are no longer on your schedule. This app cannot tell whether they ran or were cancelled.',
-  ],
-  'expired-on-resume': [
-    'is older than the seven days a repeating job lasts, so it may no longer run: schedule it again if it is still needed.',
-    'are older than the seven days a repeating job lasts, so they may no longer run: schedule them again if they are still needed.',
-  ],
-  'compaction-confirmed': [
-    'was not brought back when this conversation started again: schedule it again if it is still needed.',
-    'were not brought back when this conversation started again: schedule them again if they are still needed.',
-  ],
-  'time-not-known': [
-    'runs at a time this app cannot tell, so once this conversation stops this app will not start it for that job. If you still need it then, cancel it and schedule it again.',
-    'run at times this app cannot tell, so once this conversation stops this app will not start it for those jobs. If you still need them then, cancel them and schedule them again.',
-  ],
-  'not-started': [
-    'has not shown on your schedule since this app last started, or tried to start, this conversation for it, so this app has stopped starting the conversation for that job. If you still need it, list your scheduled jobs, cancel it if it is still there, and schedule it again.',
-    'have not shown on your schedule since this app last started, or tried to start, this conversation for them, so this app has stopped starting the conversation for those jobs. If you still need them, list your scheduled jobs, cancel those still there, and schedule them again.',
-  ],
-  'not-listed-since-a-reset': [
-    'has not shown on your schedule since this conversation was cleared or reset, so this app is not starting the conversation for that job. It will again once the job shows on your schedule. If the job is gone and you still need it, schedule it again.',
-    'have not shown on your schedule since this conversation was cleared or reset, so this app is not starting the conversation for those jobs. It will again once they show on your schedule. If they are gone and you still need them, schedule them again.',
-  ],
-  'history-not-read-in-full': [
-    'is one this app is not starting this conversation for: it could not read enough of this conversation’s history to plan it. It will again once the job shows on your schedule.',
-    'are ones this app is not starting this conversation for: it could not read enough of this conversation’s history to plan them. It will again once they show on your schedule.',
-  ],
-}
-
-/**
- * 🔴 **What a conversation is told of its scheduled jobs when this app starts it** — a plain
- * sentence for each kind of notice, each job by the minute the notice is about and the first line
- * of what it would have asked; ⛔ no id. The time carries its day when that day is not today
- * ({@link clockTimeFrom}).
- *
- * ⛔ **It says only what is known**: that a job's time passed while nothing could run it, that it
- * is no longer listed, or that this app does not start the conversation for it. ⚠️ Never that a
- * job did not run: nothing public says which turn a job began.
- */
-export function scheduleNoticesText(notices: readonly NoticeAboutAJob[], now: number): string {
-  const said: string[] = []
-  for (const reason of Object.keys(NOTICE_SAYS) as NoticeAboutAJob['reason'][]) {
-    const about = notices.filter((one) => one.reason === reason)
-    if (about.length === 0) continue
-    const [one, several] = NOTICE_SAYS[reason]
-    said.push(`${yourJobs(about, now)} ${about.length === 1 ? one : several}`)
-  }
-  return said.join(' ')
-}
 
 /**
  * 🔴 **How long a launch waits before each conversation it starts because the restart stopped its
@@ -6547,26 +4361,6 @@ function theTurnWasCut(kind: CutKind, turn: TurnAsItEnded, generation: number): 
   }
 }
 
-/** ⚑ {@link scheduleNoticesText}'s subject: *Your scheduled job for 12:51 (“check the deploy”)*. */
-function yourJobs(missed: readonly NoticeAboutAJob[], now: number): string {
-  const named = missed.flatMap(({ prompt, dueAt }) => {
-    const when = dueAt === null ? '' : clockTimeFrom(dueAt, now)
-    const line = (prompt ?? '').split(/\r\n|\r|\n/)[0]?.trim() ?? ''
-    const points = [...line]
-    const asked =
-      points.length > MISSED_JOB_WORDS ? `${points.slice(0, MISSED_JOB_WORDS).join('')}…` : line
-    const name = [when === '' ? '' : `for ${when}`, asked === '' ? '' : `(“${asked}”)`]
-      .filter((part) => part !== '')
-      .join(' ')
-    return name === '' ? [] : [name]
-  })
-  const last = named.pop()
-  const all =
-    last === undefined ? '' : named.length === 0 ? last : `${named.join(', ')} and ${last}`
-  const subject = missed.length === 1 ? 'Your scheduled job' : 'Your scheduled jobs'
-  return all === '' ? subject : `${subject} ${all}`
-}
-
 /**
  * How many starts this app makes for a repeating job's runs, one after another, with its provider
  * listing the job after none of them, before it makes no more for that job.
@@ -6591,19 +4385,6 @@ interface RunOwed {
   readonly startAt: number
   /** How many starts in a row its provider will have left unanswered, this one counted. */
   readonly unanswered: number
-}
-
-/** A word owed to a conversation about one of its jobs: a notice of the planner's, or this app's own. */
-interface WordOwed {
-  readonly id: string
-  /** The job's making ({@link aJobsMaking}); the planner's own name where the plan names no job. */
-  readonly of: string
-  /** The job's id, where the plan names it: what it asked is looked up by it. */
-  readonly job: string | undefined
-  readonly reason: NoticeAboutAJob['reason']
-  readonly dueAt: number | null
-  /** What the job asked, where it is known other than from its evidence. */
-  readonly prompt?: string
 }
 
 /** What a plan owes each of a conversation's jobs ({@link RuntimeHost.whatItsJobsAreOwed}). */
@@ -6678,41 +4459,6 @@ const NOTHING_DONE_FOR_ITS_JOBS: ConversationAttempts = {
 const theJobsItWasToldOf = (kept: ConversationAttempts): ReadonlySet<string> =>
   new Set(kept.told.filter((one) => one.said).map((one) => one.of))
 
-/** One of the planner's notices, as a word owed to the conversation. */
-function aWordOfThePlanners(plan: ReceiptSchedulePlan, notice: ScheduleNotice): WordOwed {
-  const made = plan.states.find(
-    (one) => one.generation.generation === notice.generation,
-  )?.generation
-  return {
-    id: notice.id,
-    of: made === undefined ? notice.generation : aJobsMaking(made),
-    job: made?.jobId,
-    reason: notice.reason,
-    dueAt: notice.dueAt,
-  }
-}
-
-/** A word as kept once dealt with: told at a start (`said`), or settled with no word. */
-const dealtWith = (word: WordOwed, said: boolean): ToldNotice => ({
-  id: word.id,
-  of: word.of,
-  said,
-})
-
-/** What a level says this app does not start its conversation for, by job id. */
-function whatItSaysIsNotStarted(level: ScheduleLevel): Record<string, NotStartedBecause> {
-  const said: Record<string, NotStartedBecause> = {}
-  for (const job of level.jobs) if (job.notStarted !== undefined) said[job.id] = job.notStarted
-  return said
-}
-
-const theSameIsSaid = (
-  one: Readonly<Record<string, NotStartedBecause>>,
-  other: Readonly<Record<string, NotStartedBecause>>,
-): boolean =>
-  Object.keys(one).length === Object.keys(other).length &&
-  Object.entries(one).every(([job, why]) => other[job] === why)
-
 /**
  * ⚑ **D-029 · one stopped conversation's wake-up** — see {@link RuntimeHost.wakeUps}.
  */
@@ -6760,243 +4506,6 @@ interface OneLook {
 }
 
 /**
- * The four ways a session can stop, as one type — because there is now one finalizer and these are
- * its callers (051, from 048 §1 finding 3).
- *
- * They used to be three separate endings with three different amounts of cleanup, and the two that
- * nobody had written down were the dangerous ones:
- *  - `closed` — the user, the window, or the quit asked. The only path that closed the handle.
- *  - `close-timeout` — we asked, and the stream did not drain in time. Deleted the map entry with no
- *    durable record at all.
- *  - `stream-ended` — the provider's stream simply finished. Deleted the map entry **without ever
- *    closing the handle**.
- *  - `stream-failed` — the iterator threw: an `AsyncQueue` overflow, a transport error, a dead
- *    child. Same as above, and this is the one that hurts: the queue failing is a CONSUMER
- *    failure, so the Claude query or the Codex child may still be running — including an unattended
- *    one — and the only handle able to stop it had just been dropped.
- */
-type SessionEnding = 'closed' | 'close-timeout' | 'stream-ended' | 'stream-failed'
-
-/**
- * What a session's durable record should say once it is over.
- *
- * `errored` only for the `stream-failed` ending. The other three are ordinary — a user closing a
- * chat, a quit, a provider finishing — and recording those as errors would put a red session in the
- * list for every normal close.
- *
- * ⚠️ That is a statement about the ENDING, not about the session: because the finalizer is
- * single-flight on the first ending to arrive, a stream that fails *after* its close already timed
- * out is recorded as `ended`. The window is narrow (the drain has to expire first) and the answer is
- * still true — that session was closed and would not drain — but it is not the case that every
- * failed stream leaves an `errored` row.
- *
- * The turn reason is `ended` throughout, which is the enum member for exactly this: *the session
- * ended while a turn was open*. Not `completed` (we did not see it complete), not `failed` (the
- * provider never said so), and not `unknown` — that one belongs to resume, where the app was gone
- * for the ending; here we watched it happen, we just were not told how the turn came out.
- */
-function terminalFor(ending: SessionEnding): 'ended' | 'errored' {
-  return ending === 'stream-failed' ? 'errored' : 'ended'
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
-/**
- * 🔴 **735 · a refusal's message, ended as a sentence**, so {@link RuntimeHost.startAndSend} can say
- * after it what became of the start. ⚑ The send's own refusals (`cannot send: …`, an attachment's,
- * `R42`'s) often end with no full stop.
- */
-function aSentence(message: string): string {
-  const trimmed = message.trimEnd()
-  return /[.!?…]$/.test(trimmed) ? trimmed : `${trimmed}.`
-}
-
-/**
- * ⚑ **What a person is told when the plan was released and the go-ahead did not go** (060, 670).
- * ⛔ **One sentence for both ways it can fail**: the send itself, and a hold that a rail refused.
- * ⚑ **700 · the words are `shared/the-go-ahead.ts`'s**, which the renderer reads too for a taken-back
- * go-ahead (`688` H2) — the bytes are the ones this app has always said.
- */
-function theGoAheadWasNotSent(error: unknown): Error {
-  return new Error(goAheadNotSent(errorMessage(error)), { cause: error })
-}
-
-/**
- * 🔴 **What approval mode a conversation counts as, for the one rail that compares two of
- * them** (341, HO-005 Q2 — deleted by `366`, restored by `499` under HO-036).
- *
- * ⛔ **`auto` only when it is running `auto` AND is not on its way back to `ask`.**
- * `handle.approval` carries two values — what this turn runs under and what the next one will — and
- * a session that has asked to start prompting again is one whose laxness is being GIVEN UP.
- * Spending it on a child in that window would hand a permanent `auto` conversation to a parent that
- * will be prompting by the time the child says anything. ⚠️ The other direction needs no clause: a
- * session going `ask` → `auto` is `ask` here until the change is adopted, which is the strict answer
- * and the right one.
- *
- * ## ⚠️ It is NOT {@link approvalDisclosure}, and the difference is one state wide
- *
- * ⛔ **`approvalDisclosure` reports `effective` alone** and surfaces the divergence separately as
- * `pendingApprovalMode`, which is right for a DISCLOSURE — a person is told what is running and what
- * is queued. 🔴 **For a GRANT the two must fold, and they must fold the strict way.** For a
- * parent running `auto` that has already asked to go back to `ask`, this answers `ask` and
- * `approvalDisclosure` says `auto`. ⚑ **Reaching for the disclosure's value here would silently
- * pick the laxer of the two** — which is why `366` deleting this function and `499` re-deriving it
- * from `approvalDisclosure` would not have been the same repair.
- */
-function effectiveApprovalOf(session: { handle: SessionHandle }): 'ask' | 'auto' {
-  const { effective, requested } = session.handle.approval
-  return effective === 'auto' && requested === 'auto' ? 'auto' : 'ask'
-}
-
-/**
- * The whole approval disclosure for a live session (034), from the ONE place that knows it: the
- * handle. The host used to keep its own copy of the mode, which was correct for exactly as long as
- * the mode could not change.
- *
- * Three fields rather than one, because a change that has not been adopted yet is a real state and
- * flattening it would produce the worst line available — a header saying AUTO over a turn that is
- * still prompting, or the reverse. `approvalMode` is what is running; `pendingApprovalMode` is what
- * the next turn will run under; `approvalNote` says both, in words, composed host-side like every
- * other provider-specific phrasing.
- */
-function approvalDisclosure(session: {
-  provider: Provider
-  handle: SessionHandle
-}): ApprovalModeDisclosure {
-  const { effective, requested } = session.handle.approval
-  const note = describeApprovalMode(session.provider, effective)
-  return {
-    approvalMode: effective,
-    pendingApprovalMode: requested === effective ? null : requested,
-    approvalNote:
-      requested === effective
-        ? note
-        : `${note} · ${requested === 'auto' ? 'Auto' : 'Ask'} from your next message`,
-    // Copied out of the handle, which is the one place that knows (058) — the same rule the mode
-    // above follows, and for the same reason: a second copy kept host-side would be right until it
-    // was not. A plain array, so the dedupe in `publishStateIfChanged` sees it change.
-    blanketGrants: [...session.handle.blanketGrants],
-  }
-}
-
-/**
- * Everything the liveness channel carries ABOUT the session rather than about the provider's
- * silence (060) — the PID line, the agent rows, what it prompts for, and whether a plan is waiting
- * on you.
- *
- * Extracted because there were three publishers building this object by hand and a fourth field to
- * add to each: the `LivenessTracker` callback, the agent-info republish and the approval republish.
- * Three copies of a growing literal is how one of them ends up a field behind — and the field that
- * goes missing is invisible, because a liveness message with one key absent still renders.
- *
- * Every value is READ FROM THE HANDLE at publish time, never captured: a Codex child that has died
- * reports no pid, and a plan released a moment ago must not be re-announced as pending.
- *
- * ⚠️ That first clause used to read *"a Codex child that has died clears its own `pid`"*, and it was
- * measurably false — Node keeps `pid` after exit on every version this app runs on (074, from 069
- * §2.2; the measurement is in `codex-transport.ts`). Reading at publish time was still the right
- * rule; it was resting on a fact that was not one, and the transport is what makes it true now.
- */
-function sessionDisclosures(session: {
-  provider: Provider
-  handle: SessionHandle
-  mailbox?: readonly QueuedMessage[]
-  currentProviderLimits?: () => ProviderLimitDisclosure
-  reportedBefore?: ReportedModel | null
-  grants?: readonly HeldGrant[]
-}): {
-  agent: { label: string; value: string }[]
-  approval: ApprovalModeDisclosure
-  plan: PlanGoAheadDisclosure
-  settings: SessionSettingsDisclosure
-  queued: readonly QueuedMessageDisclosure[]
-  providerBlock?: ConversationProviderBlock | null
-  providerBlockStatus?: 'current' | 'unavailable'
-  providerBlockLastKnown?: SessionLiveness['providerBlockLastKnown']
-  /** ⚠️ **Optional, and 150 made it so** — absent is what a provider with nothing to say says. */
-  signInSuperseded?: boolean
-  /** ⚑ **W4.189** — {@link SessionLiveness.workFolders}; absent when it holds none. */
-  workFolders?: readonly WorkFolderGrant[]
-} {
-  // ⚠️ **Read ONCE and used twice**, the same rule `publishStateIfChanged` states for its key: the
-  // rows and the `settings` field below are two views of one moment, and reading the handle twice
-  // is how a header could come to name a model the disclosure beside it says is not running (179).
-  const settings = settingsDisclosure(session)
-  return {
-    agent: describeAgent(session.provider, session.handle.agentInfo, settings),
-    approval: approvalDisclosure(session),
-    plan: { planNeedsGoAhead: session.handle.planNeedsGoAhead },
-    settings,
-    queued: queuedDisclosure(session.mailbox),
-    ...session.currentProviderLimits?.(),
-    // ⚠️ **The LATCHED flag, never a fresh look** (147). `checkSignIn()` shells out to `security` and
-    // this object is built on every liveness publish; asking it here would put a subprocess spawn on
-    // the main thread behind every agent-info change. The turn boundary sets the latch; this reads
-    // it. That is also why it obeys the rule at the top of this function — read from the handle at
-    // publish time — without paying for it.
-    //
-    // ⛔ **ABSENT where the provider has nothing to say, rather than an explicit `false`** (150,
-    // 148 L3). `=== true` turned every adapter's silence into a positive claim that this session's
-    // sign-in is current — and for Codex that is not a fact it holds: its profile `auth.json` is a
-    // copy that follows nothing, so there is no machine credential for it to have fallen behind and
-    // no observation behind the `false`. `SessionHandle.signInSuperseded`'s own contract says *"an
-    // adapter with nothing true to say leaves this absent"*, and this line was the one place that
-    // filled the silence in. No visible defect today — the renderer reads it as falsy either way —
-    // and that is exactly when a contract is cheap to keep.
-    ...(session.handle.signInSuperseded === undefined
-      ? {}
-      : { signInSuperseded: session.handle.signInSuperseded }),
-    // ⛔ **Whether this session's adapter can stop one piece of background work** (248), disclosed
-    // by the same absent-not-false rule as the line above and for the same reason: `stopBackgroundWork`
-    // is OPTIONAL and its absence means *"this adapter cannot say"*, which is Codex today.
-    //
-    // ⚠️ **The presence of the METHOD, not a call to it.** Asking would be a subprocess round-trip on
-    // every liveness publish, and there is nothing to ask: the fact is whether the seam implements
-    // the verb. `106`'s rule is what the renderer does with it — a control that cannot act is not
-    // offered — and `118` is why it is absent rather than greyed.
-    ...(session.handle.stopBackgroundWork === undefined ? {} : { canStopBackgroundWork: true }),
-    // ⛔ **Whether this session's adapter holds a running command's output** (300), on the same
-    // absent-not-false rule and for the same reason — `commandOutput` is OPTIONAL and Claude omits
-    // it, measured rather than deferred (see `claude/capabilities.ts`).
-    //
-    // ⚠️ **Not redundant with the `commandOutput` CAPABILITY, and the pair is deliberate.** That
-    // table is per-PROVIDER and carries the SENTENCE a person reads when there is no tail; this is
-    // per-SESSION and is what stops the card asking for one. A recording has no handle at all, so it
-    // must read absent here while the provider's capability still says `available` — which is the
-    // same split `canStopBackgroundWork` has from `106`'s rule, one control over.
-    ...(session.handle.commandOutput === undefined ? {} : { canReadCommandOutput: true }),
-    // ⚑ **462, and the same absent-not-false shape a third time.** ⛔ It is what lets a row say
-    // *this conversation is not running, so nothing is held* without pressing a door onto nothing:
-    // a replay has no handle, so this is absent and the row draws the gap from what it already
-    // knows. See `SessionLiveness.canReadToolAnswer`.
-    ...(session.handle.toolAnswer === undefined ? {} : { canReadToolAnswer: true }),
-    // 🔴 **W4.189 · the folders it may also work in, and whether each is in force** — `applied` once
-    // a turn was started with it (the handle's own `effective`, read here at publish time), else
-    // `queued`. ⚑ Absent-not-empty, the rule above: a conversation granted nothing says nothing.
-    ...grantsDisclosed(session.grants, session.handle.workFolders.effective),
-  }
-}
-
-/** ⚑ **W4.189** — {@link sessionDisclosures}' `workFolders`, absent when none are held. */
-function grantsDisclosed(
-  grants: readonly HeldGrant[] | undefined,
-  effective: readonly string[],
-): { workFolders?: readonly WorkFolderGrant[] } {
-  if (grants === undefined || grants.length === 0) return {}
-  return {
-    workFolders: grants.map((grant) => ({
-      folder: grant.folder,
-      piece: grant.piece,
-      label: grant.label,
-      givenBy: grant.givenBy,
-      state: effective.includes(grant.reaches) ? ('applied' as const) : ('queued' as const),
-    })),
-  }
-}
-
-/**
  * **What a session's liveness IS on the wire** (149) — the tracker's state plus everything
  * {@link sessionDisclosures} adds to it. One projection, for every way a surface can be told.
  *
@@ -7025,61 +4534,6 @@ function livenessFor(
   disclosures = sessionDisclosures(session),
 ): SessionLiveness {
   return { ...session.liveness.current, ...disclosures }
-}
-
-/**
- * The three live settings, flattened for the wire (076) — what is running, and what is queued.
- *
- * ⚠️ **A queued value is `null` when nothing is queued, and that is not the same as `undefined`.**
- * `undefined` is a real requested value here — since D-042 (R1: every change is named, the
- * provider's default by its name) only an EFFORT, for a model whose list row offers none — so a
- * scheme where absence meant "nothing pending" could not express asking for it.
- *
- * ⚠️ **The three states live at TWO levels of the type, and saying so precisely matters** (this
- * comment described them at one level and was wrong for it): the field is
- * `{ value: string | undefined } | null`. `null` is "nothing queued"; a non-null WRAPPER is "a change
- * is queued", and the wrapper's `value` is what was asked for — a string, or `undefined` for "no
- * preference". A reader who tested `pendingModel === undefined` would never match anything.
- *
- * The wrapper survives Electron's structured clone even though its `value` may not: `{value:
- * undefined}` arrives as `{}`, which is still non-null and whose `.value` is still `undefined`, so
- * both readings hold. What would NOT survive is a check of the form `'value' in pending` — noted
- * here because the type suggests it would work.
- */
-function settingsDisclosure(session: {
-  handle: SessionHandle
-  reportedBefore?: ReportedModel | null
-}): SessionSettingsDisclosure {
-  const { model, reasoningEffort, planMode } = session.handle.settings
-  const info = session.handle.agentInfo
-  // ⚑ **…else what it last reported in an earlier life, kept on its row** — Claude says nothing
-  // until a reopened conversation's first turn, and the rail and `get_agent_status` already read
-  // the kept report (`ResumableSessionInfo.reported`, `AgentCard.runsOn`): one fact, three readers.
-  const kept = session.reportedBefore ?? null
-  return {
-    model: model.effective ?? null,
-    pendingModel: Object.is(model.effective, model.requested) ? null : { value: model.requested },
-    reasoningEffort: reasoningEffort.effective ?? null,
-    pendingReasoningEffort: Object.is(reasoningEffort.effective, reasoningEffort.requested)
-      ? null
-      : { value: reasoningEffort.requested },
-    planMode: planMode.effective,
-    pendingPlanMode: planMode.effective === planMode.requested ? null : planMode.requested,
-    // ⚑ **D-042 · R5 — what the provider REPORTS**, absent until it has said; its effort only where
-    // the provider reports one.
-    ...(info?.model === undefined
-      ? kept === null
-        ? {}
-        : { reported: kept }
-      : {
-          reported: {
-            model: info.model,
-            ...(info.reasoningEffortReported === true && info.reasoningEffort !== undefined
-              ? { effort: info.reasoningEffort }
-              : {}),
-          },
-        }),
-  }
 }
 
 /**
@@ -7127,141 +4581,6 @@ const NO_INSTRUCTIONS: SessionInstructions = {
   // nothing"* rather than *"we did not say"* — there is no third value here and none is wanted:
   // the empty `injected` beside it is the same fact from the other side.
   composed: null,
-}
-
-/**
- * **What this session was told, from the two places that know** (158).
- *
- * The injected half was read at LAUNCH and is stored on the session, because it describes what the
- * model was given rather than what is on disk now. The provider half is read off the HANDLE every
- * time, because it is the provider's current answer and the provider is the only one who has it.
- * Composed here so both hand-over paths — a reopen and a re-attach — say the same thing (100's
- * rule: one definition, two callers).
- */
-function instructionsFor(session: {
-  handle: SessionHandle
-  instructions: SessionInstructions
-  /** ⚑ **The two facts the layer label is decided from** (356 §3) — see {@link instructionScope}. */
-  cwd: string
-  providerHome: string
-}): SessionInstructions {
-  const reported = session.handle.instructionSources
-  return reported && reported.length > 0
-    ? {
-        ...session.instructions,
-        // ⛔ **Labelled HERE, where the home and the cwd are known** (357 §4: *"The renderer must
-        // not derive scope from path strings"*). The provider hands over bare strings in its own
-        // order; the order is its claim and is preserved, the layer is ours and is added.
-        provider: reported.map((path) => ({
-          path,
-          scope: instructionScope(path, {
-            providerHome: session.providerHome,
-            cwd: session.cwd,
-          }),
-        })),
-      }
-    : session.instructions
-}
-
-/**
- * How the session's approval mode reads to a human (078). Composed HERE, not in the view: dropping
- * approvals also drops the SANDBOX on Codex and nothing equivalent exists on Claude, and that is
- * provider knowledge. `ask` gets no note — the normal, safe mode needs no banner.
- *
- * The app names the modes Ask and Auto. Provider flags and persisted mode values stay unchanged.
- */
-function describeApprovalMode(provider: Provider, mode: 'ask' | 'auto'): string {
-  // EVERY session states its mode (082, and reviewer 079-B4): showing nothing for `ask` meant a
-  // checked yolo box next to a running ask-session looked like yolo was simply broken — the mode
-  // was invisible, so there was nothing to contradict the box. A blank that means "ask" is not a
-  // disclosure.
-  if (mode !== 'auto') return 'approvals: Ask'
-  return providerDescriptor(provider).approval.autoNote
-}
-
-/**
- * The agent rows the info panel shows (081). Composed HERE so the renderer never learns which
- * provider reports what — that asymmetry is provider knowledge.
- *
- * `…` means "not reported": showing a plausible value we were not told would be worse than showing
- * nothing. It is never a guessed default.
- *
- * The per-provider BRANCH is gone (024). It used to hard-code `n/a` for Claude on the strength of a
- * comment claiming the SDK had no reasoning knob — it does, we now set it, and the difference
- * between the providers is no longer "has one / doesn't" but "confirms it / can't". That difference
- * lives on the data now, so this reads the same field for both.
- */
-function describeAgent(
-  provider: Provider,
-  info: AgentInfo | undefined,
-  /**
-   * ⛔ **What this launch ASKED for, and 179 is the whole reason it is here.**
-   *
-   * `info` is what the provider has SAID, and on Claude it says nothing until a turn's
-   * `system/init` — which the CLI emits when the first prompt is sent, not when the session opens.
-   * So a conversation reopened onto a recorded model read `model: …` for as long as nobody typed
-   * into it, while the app held that id on the row it resumed from AND had just handed it to the
-   * provider. Measured in the running app and in `scripts/resume-live-smoke.mjs`:
-   * `provider: claude · model: … · reasoning: …` on a session reopened onto
-   * `claude-haiku-4-5-20251001`.
-   *
-   * ⚠️ **Second, never first.** A provider report replaces the request the moment it arrives — that
-   * is what makes 177's reroute notice legible (*"codex answered this turn with `gpt-5.4` instead of
-   * `gpt-5.6-sol`"*): the request and the answer stay two facts, and this row shows the strongest
-   * TRUE one available rather than the most recent one.
-   */
-  settings: SessionSettingsDisclosure,
-): { label: string; value: string }[] {
-  void provider
-  return [
-    { label: 'model', value: describeModel(info, settings) },
-    { label: 'reasoning', value: describeReasoning(info, settings) },
-  ]
-}
-
-/**
- * How the model row reads — the same three facts the reasoning row has always kept apart (179).
- *
- *  - **a provider report** → the id alone. It is running that model; nothing beats being told.
- *  - **our request** → the id, marked `(requested)`. We asked for it on this very launch and the
- *    provider has not spoken yet. ⚠️ **Marked, because a launch can be rerouted** (177) and an
- *    unmarked id here would be a claim we cannot back (086).
- *  - **nothing** → `…`. Nothing asked for a model and the provider has not named one — since D-042
- *    (R1: every launch names one) only a conversation that has named none yet, and the one case
- *    where an ellipsis is the honest answer.
- */
-function describeModel(info: AgentInfo | undefined, settings: SessionSettingsDisclosure): string {
-  if (info?.model) return info.model
-  return settings.model === null ? PROVIDER_HAS_NOT_REPORTED : `${settings.model} (requested)`
-}
-
-/**
- * How the reasoning row reads. Three genuinely different facts, kept apart:
- *
- *  - **nothing** → `…`. Not reported, and nothing was asked for.
- *  - **a provider report** → the value alone. Codex's handshake and `thread/settings/updated`
- *    describe the thread that is actually running, so it is a fact about this session.
- *  - **our request** → the value, marked `(requested)`. Claude states the effort a turn ran at
- *    only as that turn ends (F099), so until then this is what we ASKED for. The SDK documents a
- *    silent downgrade on models that do not support the level, which is exactly why an unmarked
- *    value here could be quietly false.
- *
- * ⚠️ **The third case now has TWO sources, and they say the same sentence** (179). `info` carries
- * our request on Claude only once a turn has run; before that — a reopened conversation nobody has
- * typed into yet — the launch's own effort is the only thing there is to say, and it was already
- * being disclosed one field away under `settings`.
- */
-function describeReasoning(
-  info: AgentInfo | undefined,
-  settings: SessionSettingsDisclosure,
-): string {
-  const effort = info?.reasoningEffort
-  if (effort === undefined) {
-    return settings.reasoningEffort === null
-      ? PROVIDER_HAS_NOT_REPORTED
-      : `${settings.reasoningEffort} (requested)`
-  }
-  return info?.reasoningEffortReported === true ? effort : `${effort} (requested)`
 }
 
 /**
@@ -7329,32 +4648,6 @@ export type UpdateWorkOutcome =
   | { readonly ok: false; readonly resourceRefusal: ResourceRefusal }
 
 /**
- * ⚑ **F059 · how a piece `update_work` was refused on had ended** — its state, and, as
- * `reply_to_parent`'s refusal has said since D-025, when and by whom: off the row that ended it, the
- * fold's own ({@link PieceRow.endedAt}, {@link PieceRow.endedBy}).
- */
-export interface EndedPieceDetail {
-  readonly piece: string
-  readonly label: string
-  readonly state: PieceRow['state']
-  /** When it ended, epoch ms — absent when its row holds no moment. */
-  readonly at?: number
-  /**
-   * Who ended it, by NAME ({@link RuntimeHost.whatToCallTheConversation}) — absent when its row names
-   * nobody, and when the caller ended it itself ({@link endedByYou}). ⛔ Never an id, as
-   * `ReplyRefusalDetail.called` is not.
-   */
-  readonly called?: string
-  /** Present when the caller itself ended it: a reader is not told its own name. */
-  readonly endedByYou?: true
-  /**
-   * Whether the caller may still change its title — the one change an ended piece takes: its giver,
-   * or the owner of a piece a person gave. ⚑ Its sentence's act turns on it.
-   */
-  readonly yoursToRetitle: boolean
-}
-
-/**
  * 🔴 **D-016 · commit 6 · what `take_on_work` answers with** — the piece taken on, under the
  * caller's own root, or the rail that stopped it.
  */
@@ -7378,33 +4671,6 @@ export type TakeOnWorkOutcome =
       >
       readonly detail: Readonly<Record<string, unknown>>
     }
-
-/**
- * ⚑ **D-016 · what a piece a message names is, to the conversation sending it and the agent it goes
- * to** — `message_agent` decides from this which of its words applies.
- *
- *  - **`given-to-it`** — the sender (or one it stands for) gave it, and that agent holds it, open
- *    or ended;
- *  - **`queued-there`** — that agent is a service, and the piece the sender gave it waits there,
- *    queued: its brief has reached nobody;
- *  - **`given-to-another`** — the sender gave it to a different conversation, open or ended;
- *  - **`held`** — the sender holds it: an open piece given to it;
- *  - 🔴 **F086 · `held-and-ended`** — the sender holds it and it has ended: answered, taken back or
- *    closed. ⚑ A note names it as it names one it gave that has ended, and as `list_tasks` lists it
- *    among the work the sender holds; ⛔ a follow-up does not — that is a piece one gave. ⚠️ So is a
- *    piece of the sender's whose opening row its record cannot read: its row names the sender, and
- *    its open pieces do not list it;
- *  - **`its-root`** — the sender's own root, the work a person gave it;
- *  - **`none`** — no piece by that name, or none of the sender's: one answer, so a name is no oracle.
- */
-export type WhatAPieceIsToIt =
-  | {
-      readonly is:
-        'given-to-it' | 'queued-there' | 'given-to-another' | 'held' | 'held-and-ended' | 'its-root'
-      readonly piece: string
-      readonly label: string
-    }
-  | { readonly is: 'none' }
 
 /**
  * 🔴 **What an AGENT's creation answers with** (419) — an identity, or the rail that stopped it.
@@ -7700,12 +4966,12 @@ export class RuntimeHost implements LiveHost {
   private readonly commandListWaitMs: number
   private readonly afterALimitResetsMs: number
   private readonly lookAtTheLimitAgainMs: number
-  /** ⚑ D-018 · see {@link DEFAULT_IDLE_STOP_AFTER_MS}. */
-  private readonly idleStopAfterMs: number
+  private readonly conversationIdle: ConversationIdle
   /** {@link RuntimeHostDeps.startGapMs}, or {@link RESTART_WAKE_GAP_MS}. */
   private readonly startGapMs: number
   /** The conversations a person archived ({@link RuntimeHostDeps.archived}). */
   private readonly archived: ArchivedConversations
+  private readonly workSearch: WorkSearch
   /**
    * The conversations an archive or a delete is stopping now, with which: nothing starts them until
    * it is over ({@link resumeSession}), and no notice, held message or schedule asks to.
@@ -7728,34 +4994,9 @@ export class RuntimeHost implements LiveHost {
    * — another dispatch's ground — does not move for a fact only this host reads.
    */
   private readonly deliveriesInFlight = new WeakMap<HostedSession, Set<Promise<void>>>()
+  private readonly keptFiles: KeptFiles
   private readonly now: () => number
-  /**
-   * The model probes this app run has made, keyed `provider:profileId` (058, re-keyed by 257 §2) —
-   * the PROMISE, so concurrent askers share one child.
-   *
-   * 🔴 **It used to be a single app-wide promise, probed in `DEFAULT_PROFILE_ID`'s home and shown to
-   * every profile** (`256` H2/§2 H1). Account identity is per profile and a model list is *what this
-   * login may run*, so a second profile's launcher was presenting the default profile's catalogue.
-   * ⚠️ `256` confirmed the code path and did NOT provoke a wrong menu — that needs two accounts with
-   * different model access, which it did not have — so this is a correctness fix, not the repair of
-   * an observed wrong catalogue.
-   *
-   * ⚑ **Still no timer and still no background refresh.** An entry is created only when somebody asks
-   * about that profile, and an ANSWER is dropped only on the one event that can change it — see
-   * {@link forgetModels}. ⚑ **689 · a FAILURE is dropped by the next ask too** — see
-   * {@link modelsAskedAgainIfTheyFailed}. What is new is a BOUND: {@link MAX_MODEL_PROBES}, because "one promise that
-   * is never invalidated" becoming "N promises that are never invalidated" is a leak with a nicer
-   * name. Scrolling a profile picker spawns nothing; only asking does.
-   */
-  private readonly modelProbes = new Map<string, Promise<ModelCatalogue>>()
-  /**
-   * ⚑ **689 · the probes in {@link modelProbes} that have SETTLED** — so *a failure already cached*
-   * can be told from one another ask is still waiting on (see {@link modelsAskedAgainIfTheyFailed}).
-   * ⚠️ Weak, so an evicted or forgotten promise is not kept alive by being remembered here.
-   */
-  private readonly settledModelProbes = new WeakSet<Promise<ModelCatalogue>>()
-  /** What each settled probe answered, for {@link theListsAsLastRead}, which cannot wait for one. */
-  private readonly modelsAnswered = new WeakMap<Promise<ModelCatalogue>, ModelCatalogue>()
+  private readonly modelCatalogues: ModelCatalogues
 
   /**
    * **The sessions this host is REBUILDING right now** (198, from 194 H1's second failure).
@@ -7993,14 +5234,6 @@ export class RuntimeHost implements LiveHost {
    * every conversation waiting on an answer, ⚑ or on work it gave out (D-036).
    */
   private rosterAsLastAnnounced: readonly AgentIdentity[] | null = null
-
-  /**
-   * 🔴 **D-018 · each running conversation's idle countdown, while it is idle** — armed by the flush
-   * that derives it idle ({@link sayWhatMoved}, {@link idleEnoughToStop}), dropped by every mark
-   * ({@link stateMayHaveMoved}) — the slot going is one — and run into {@link stopItIfStillIdle}.
-   * ⛔ One per conversation and never a sweep; it belongs to this host and dies with it.
-   */
-  private readonly idleCountdowns = new Map<string, ReturnType<typeof setTimeout>>()
 
   /**
    * 🔴 **D-029 · each stopped conversation's wake-up, while it holds jobs** — what its plan lists
@@ -8406,6 +5639,7 @@ export class RuntimeHost implements LiveHost {
     return this.deps.themes
   }
 
+  private readonly personsQuestions: PersonsQuestions
   private readonly windowRoutingReads = new WindowRoutingReads()
   private readonly windowIncidentReads = new WindowIncidentReads(
     () => this.sampleWindowWriter({ kind: 'routes' }),
@@ -8439,12 +5673,29 @@ export class RuntimeHost implements LiveHost {
     { readonly count: number; readonly saidAt: number }
   >()
 
+  private readonly workReads: WorkReads
+
   constructor(private readonly deps: RuntimeHostDeps) {
     this.ledgerIdentity = deps.store
     this.deps = {
       ...deps,
       store: this.windowRoutingReads.store(this.windowIncidentReads.store(deps.store)),
     }
+    this.workReads = new WorkReads({
+      store: this.deps.store,
+      oneWaitReadPerAnswer: (unread) => this.oneWaitReadPerAnswer(unread),
+      theIdsItStandsFor: (sessionId) => this.theIdsItStandsFor(sessionId),
+      withItsPlaceInTheQueue: (row) => this.withItsPlaceInTheQueue(row),
+      pieceNamed: (spelled) => this.pieceNamed(spelled),
+      ofOneIdentity: (one, other) => this.ofOneIdentity(one, other),
+      childrenOnTheRecord: (piece, waiting, unread) =>
+        this.childrenOnTheRecord(piece, waiting, unread),
+      theExchangeShownWith: (piece) => this.theExchangeShownWith(piece),
+      spawnEdge: (conversation) => this.spawnEdge(conversation),
+      runningStateOf: (sessionId) => this.runningStateOf(sessionId),
+      markedForAPerson: (edges) => this.markedForAPerson(edges),
+      lastReportedOf: (conversations) => this.lastReportedOf(conversations),
+    })
     this.signInReopens = new ReopenQueue(deps.mainThreadWork)
     if (deps.mainThreadWork !== undefined) {
       this.deliver = this.timedMethod('runtime provider event delivery', this.deliver)
@@ -8477,6 +5728,20 @@ export class RuntimeHost implements LiveHost {
     }
 
     this.archived = deps.archived ?? archivedInMemory()
+    this.workSearch = new WorkSearch(this.deps, this.launches, this.archived)
+    this.personsQuestions = new PersonsQuestions({
+      store: this.deps.store,
+      shown: (walk, conversationOf) => this.shown(walk, conversationOf),
+      oneNamingPerAnswer: () => this.oneNamingPerAnswer(),
+      onePieceReadPerAnswer: () => this.onePieceReadPerAnswer(),
+      oneWorkReadPerAnswer: (pieces) => this.oneWorkReadPerAnswer(pieces),
+      oneQuestionReadPerAnswer: () => this.oneQuestionReadPerAnswer(),
+      cardIdentity: (askedBy) => {
+        const slot = this.slots.get(askedBy)
+        if (slot === undefined || slot.ownerId !== null || slot.session === null) return null
+        return { provider: slot.session.provider, profileId: slot.session.profileId }
+      },
+    })
     this.closeDrainTimeoutMs = deps.closeDrainTimeoutMs ?? DEFAULT_CLOSE_DRAIN_TIMEOUT_MS
     this.interruptWaitMs = deps.interruptWaitMs ?? DEFAULT_INTERRUPT_WAIT_MS
     this.launchTimeouts = providerRecord((provider) => {
@@ -8494,13 +5759,58 @@ export class RuntimeHost implements LiveHost {
     this.commandListWaitMs = deps.commandListWaitMs ?? DEFAULT_COMMAND_LIST_WAIT_MS
     this.afterALimitResetsMs = deps.afterALimitResetsMs ?? AFTER_THE_RESET_MS
     this.lookAtTheLimitAgainMs = deps.lookAtTheLimitAgainMs ?? LOOK_AT_THE_LIMIT_AGAIN_MS
-    this.idleStopAfterMs = deps.idleStopAfterMs ?? DEFAULT_IDLE_STOP_AFTER_MS
+    this.conversationIdle = new ConversationIdle(
+      {
+        closed: () => this.launches.closed,
+        isStillIdle: (conversation) => {
+          const state = this.stateOf(
+            conversation,
+            this.cardReads(),
+            rowsUnreadOnce(),
+            this.waitAsLastRead.get(conversation),
+            // ⚑ **D-036 · a helper's ledger that cannot be read is skipped and warned** (a note of its
+            // own, as {@link cardFor}'s), never the reason a stop is declined: waiting on the work it
+            // gave out is idle enough to stop ({@link idleEnoughToStop}).
+            this.workOutAsKept(this.oneWorkOutReadPerAnswer(rowsUnreadOnce())),
+            // ⚑ **F036 · read as kept** — owing an answer is idle enough to stop ({@link idleEnoughToStop}).
+            this.owedAsKept(
+              this.oneOwedReadPerAnswer(
+                this.ledgerAsKept(this.oneLedgerReadPerAnswer(rowsUnreadOnce())),
+              ),
+            ),
+          )
+          return this.idleEnoughToStop(conversation, state)
+        },
+        close: (conversation) => this.close(conversation, THE_APP_ITSELF),
+        errorMessage,
+      },
+      deps.idleStopAfterMs,
+    )
     this.startGapMs = deps.startGapMs ?? RESTART_WAKE_GAP_MS
     this.aProgramStartsAgainAfterMs =
       deps.aProgramStartsAgainAfterMs ?? A_PROGRAM_IS_STARTED_AGAIN_AFTER_MS
     this.limitWakesApartMs = deps.limitWakesApartMs ?? LIMIT_WAKES_APART_MS
     this.accountWaitMs = deps.accountWaitMs ?? ACCOUNT_WAIT_MS
     this.now = deps.now ?? Date.now
+    this.keptFiles = new KeptFiles(this.deps, {
+      theIdsItStandsFor: (id) => this.theIdsItStandsFor(id),
+      pieceNamed: (spelled) => this.pieceNamed(spelled),
+      keptFileOf,
+      now: () => this.now(),
+      isClosed: () => this.launches.closed,
+      theWorldMoved: (kind) => this.theWorldMoved(kind),
+      handBackTheMainProcess,
+    })
+    this.modelCatalogues = new ModelCatalogues(
+      this.deps.store,
+      (provider) => this.profiles(provider),
+      (provider, profileId) => this.askProviderForModels(provider, profileId),
+      () => this.launches.closed,
+      (conversation) => this.theProviderOfConversation(conversation),
+      () => this.now(),
+      () => this.theWorldMoved('agents'),
+      errorMessage,
+    )
     deps.limitsReader?.observeReads({
       before: () => ({
         epoch: this.providerLimitEpoch,
@@ -10655,11 +7965,7 @@ export class RuntimeHost implements LiveHost {
     this.moveThePersons()
     this.aServiceMayTakeItsNext(conversation)
     if (this.deps.statesMoved === undefined) return
-    const countdown = this.idleCountdowns.get(conversation)
-    if (countdown !== undefined) {
-      clearTimeout(countdown)
-      this.idleCountdowns.delete(conversation)
-    }
+    this.conversationIdle.cancel(conversation)
     this.statesToAsk.add(conversation)
     this.askTheFlush()
   }
@@ -11061,7 +8367,8 @@ export class RuntimeHost implements LiveHost {
         if (runs) this.waitAsLastRead.set(conversation, ledger)
         const state = this.stateOf(conversation, reads, unread, ledger, workOut, owed)
         // ⚑ **D-018 · counted from here while it is idle**, whatever the windows were last told.
-        if (this.idleEnoughToStop(conversation, state)) this.countTheIdleMinutes(conversation)
+        if (this.idleEnoughToStop(conversation, state))
+          this.conversationIdle.countTheIdleMinutes(conversation)
         const limits = this.providerBlockDisclosure(conversation)
         const said = JSON.stringify({ state, ...limits })
         if (this.stateSaid.get(conversation) === said) continue
@@ -11139,76 +8446,6 @@ export class RuntimeHost implements LiveHost {
         return []
       }
     })
-  }
-
-  /**
-   * ⚑ **D-018 · arm its idle countdown** ({@link idleCountdowns}) — the mark that asked for this
-   * flush already dropped any earlier one.
-   */
-  private countTheIdleMinutes(conversation: string): void {
-    const countdown = setTimeout(
-      () => void this.stopItIfStillIdle(conversation, countdown),
-      this.idleStopAfterMs,
-    )
-    // ⛔ Never the reason this process stays alive — {@link awaitLaunch}'s bound's idiom.
-    if (typeof countdown.unref === 'function') countdown.unref()
-    this.idleCountdowns.set(conversation, countdown)
-  }
-
-  /**
-   * 🔴 **D-018 · a countdown ran out: stop the process if nothing moved and it is still idle** —
-   * through the conversation's own close ({@link close}, {@link THE_APP_ITSELF}), the one a quit
-   * uses.
-   *
-   * ⛔ **A countdown a mark dropped says nothing**: it is no longer this conversation's, so
-   * something moved since it was armed. ⛔ **Nor once a quit has begun**
-   * ({@link LaunchRegistry.closed}): the quit stops every process itself, and the database is
-   * closing. ⚑ The one state is derived again at this instant, and {@link idleEnoughToStop}
-   * re-reads what it does not carry.
-   *
-   * ⚑ The provider writes `session: ended` and `status: ended`, the row's status is recorded, the
-   * slot goes and every window is told — D-019's marks and `conversations`. ⛔ No row of this app's,
-   * and no piece moves (D-016c). ⚑ Its next message starts it again (D-017 · R1).
-   */
-  private async stopItIfStillIdle(
-    conversation: string,
-    countdown: ReturnType<typeof setTimeout>,
-  ): Promise<void> {
-    if (this.launches.closed || this.idleCountdowns.get(conversation) !== countdown) return
-    this.idleCountdowns.delete(conversation)
-    try {
-      const state = this.stateOf(
-        conversation,
-        this.cardReads(),
-        rowsUnreadOnce(),
-        this.waitAsLastRead.get(conversation),
-        // ⚑ **D-036 · a helper's ledger that cannot be read is skipped and warned** (a note of its
-        // own, as {@link cardFor}'s), never the reason a stop is declined: waiting on the work it
-        // gave out is idle enough to stop ({@link idleEnoughToStop}).
-        this.workOutAsKept(this.oneWorkOutReadPerAnswer(rowsUnreadOnce())),
-        // ⚑ **F036 · read as kept** — owing an answer is idle enough to stop ({@link idleEnoughToStop}).
-        this.owedAsKept(
-          this.oneOwedReadPerAnswer(
-            this.ledgerAsKept(this.oneLedgerReadPerAnswer(rowsUnreadOnce())),
-          ),
-        ),
-      )
-      if (!this.idleEnoughToStop(conversation, state)) return
-    } catch (error) {
-      console.warn(
-        `runtime host could not tell whether ${conversation} is still idle: ${errorMessage(error)}`,
-      )
-      return
-    }
-    console.info(
-      `runtime host: ${conversation} was idle for ${this.idleStopAfterMs}ms — stopping its ` +
-        'process; its next message starts it again',
-    )
-    try {
-      await this.close(conversation, THE_APP_ITSELF)
-    } catch (error) {
-      console.warn(`runtime host could not stop ${conversation}, idle: ${errorMessage(error)}`)
-    }
   }
 
   /**
@@ -11497,7 +8734,7 @@ export class RuntimeHost implements LiveHost {
     const id = this.deps.newSessionId()
     const itsName = foldProfileName(profile)
     // Read before the reservation, so nothing between it and the row can leave it standing.
-    const pair = this.theSelectedPairIfNamed(provider, itsName)
+    const pair = this.modelCatalogues.theSelectedPairIfNamed(provider, itsName)
     const cwd = this.deps.resolveCwd(id, undefined)
     this.keepTheProfileEntry(agent.identity, { ...entry, reserved: id }, true)
     try {
@@ -11788,7 +9025,7 @@ export class RuntimeHost implements LiveHost {
     const agent = this.deps.store.identityOf(conversation)
     const provider = this.theProviderOfConversation(conversation)
     if (agent === null || provider === null) return null
-    return this.theSelectedPairIfNamed(provider, agent.profileSlug)
+    return this.modelCatalogues.theSelectedPairIfNamed(provider, agent.profileSlug)
   }
 
   /**
@@ -14461,14 +11698,7 @@ export class RuntimeHost implements LiveHost {
    * cardReads}), so two cards in one list are named against the same roster.
    */
   agentsVisibleTo(by: Caller, me: string | null): AgentsListed {
-    // An archived conversation is out of sight here, as in a person's lists; it is still reached
-    // by its label or id, and {@link archivedVisibleTo} lists it.
-    return listedFrom(
-      this.conversationsVisibleTo(by, me).filter(
-        // The caller's own is always listed.
-        (one) => one.id === me || !this.archived.has(one.id),
-      ),
-    )
+    return agentsVisibleTo(this.conversationsVisibleTo(by, me), me, this.archived)
   }
 
   /**
@@ -14476,19 +11706,7 @@ export class RuntimeHost implements LiveHost {
    * {@link agentsVisibleTo} leaves out, under the same reach and the same cut.
    */
   archivedVisibleTo(by: Caller, me: string | null): ArchivedListed {
-    const archived = this.conversationsVisibleTo(by, me)
-      .flatMap((one) => {
-        const archivedAt = this.archived.archivedAt(one.id)
-        return archivedAt === null ? [] : [{ card: one.card, archivedAt }]
-      })
-      .sort((one, other) => other.archivedAt - one.archivedAt)
-    return {
-      archived: archived
-        .slice(0, CONVERSATIONS_LISTED)
-        .map(({ card, archivedAt }) => ({ card: card(), archivedAt })),
-      notListed: Math.max(0, archived.length - CONVERSATIONS_LISTED),
-      readAt: this.now(),
-    }
+    return archivedVisibleTo(this.conversationsVisibleTo(by, me), this.archived, () => this.now())
   }
 
   /** When a person archived `id`, epoch ms, or `null` when it is not archived. */
@@ -15137,123 +12355,12 @@ export class RuntimeHost implements LiveHost {
 
   // ── the pieces a conversation holds and gave, taking one back, and replies (393, S2 + S3) ───────
 
-  /**
-   * 🔴 **D-016 · one conversation's board — the pieces it HOLDS and the pieces it GAVE** (393 as
-   * tasks; `list_tasks` with no argument).
-   *
-   * ⛔ **Both halves are the same derivation asked in two directions, and neither is a permission.**
-   * A conversation is told about its own work; there is no argument for whose work to look at, so
-   * there is nothing to refuse. ⚑ That is why this method takes a session id and no {@link Caller}:
-   * the id is minted by the toolset from the session it was built for and cannot be handed another
-   * (`agentsVisibleTo`'s `me`, one door over).
-   *
-   *  - **`root`** is the work a person gave this conversation, when it owns one. ⛔ **Never a folded
-   *    piece** (R1): its title and status line are its own two lines, and its state is the
-   *    conversation's.
-   *  - **`hold`** is every piece it was given — how an owner that has come back to open work reads
-   *    what it holds, since a resumed conversation composes no brief that would name it.
-   *  - **`gave`** is `393` §5's *"a derived state a parent can see"*, and the only reader that
-   *    survives its subject: a giver asking after an owner nothing is running reads it here.
-   *    ⚑ **D-017 · R10 — with what the conversations it took the place of gave**
-   *    ({@link theOnesItTookThePlaceOf}): their work is this conversation's to read, as to take back.
-   */
   pieceBoard(sessionId: string): PieceBoard {
-    // ⚑ **603/609 · both halves through ONE memo**, so a giver whose owner also gave work out reads
-    // that owner's ledgers once — {@link oneWaitReadPerAnswer}.
-    // 🔴 **671 · and ONE set of unread rows under the memo and both halves** — see `RowsUnread`.
-    const unread = rowsUnreadOnce()
-    const waiting = this.oneWaitReadPerAnswer(unread)
-    const root = this.deps.store.rootOf(sessionId)
-    const hold = composeWhatEachPieceIsWaitingOn(
-      this.deps.store.piecesOwnedBy(sessionId, unread),
-      waiting,
-    )
-    const gave = this.theIdsItStandsFor(sessionId)
-      .flatMap((giver) =>
-        composeWhatEachPieceIsWaitingOn(this.deps.store.piecesGivenBy(giver, unread), waiting),
-      )
-      .map((row) => this.withItsPlaceInTheQueue(row))
-    // ⛔ **Read AFTER both halves have composed**, because the wait reads are where most of it is met.
-    return {
-      root: root === null ? null : this.rootOnTheBoard(root),
-      hold,
-      gave,
-      rowsUnread: unread.count,
-      ...ledgersSkippedOf(unread.ledgersSkipped),
-    }
+    return this.workReads.pieceBoard(sessionId)
   }
 
-  /** ⚑ **D-016 · a root as a board or a record names it** — its row, and its own two lines. */
-  private rootOnTheBoard(root: WorkRow): RootOnTheBoard {
-    const lines = this.deps.store.rootLines(root.piece)
-    return {
-      piece: root.piece,
-      label: root.label,
-      owner: root.owner,
-      title: lines.title,
-      definitionOfDone: this.deps.store.rootDoneCondition(root.piece),
-      statusLine: lines.statusLine,
-    }
-  }
-
-  /**
-   * 🔴 **D-016 · one piece's RECORD** — `list_tasks` naming a piece (design notes §2, plan §3.9).
-   *
-   * ⛔ **The caller must own it — its root included — or have given it** (the giver through
-   * {@link theIdsItStandsFor}), ⚑ **or a conversation of its own profile must** (D-024 · R2);
-   * anything else is `no-piece-by-that-name`, one answer for a name that names nothing and one that
-   * is somebody else's, so a label is no oracle.
-   *
-   * ⚑ **A root is its title, its status line, its children and its resources** (R1; D-023 · R1): no
-   * state, no questions and no exchange of its own. ⚑ **Any other piece is its board entry, plus
-   * its brief, the last exchange with the conversation holding it in full (D-012), the open
-   * questions that conversation asked about it, its children and its resources.**
-   */
   pieceRecord(sessionId: string, spelled: string): PieceRecord {
-    const row = this.pieceNamed(spelled)
-    if (row === null) return { is: 'no-piece-by-that-name' }
-    const itsOwner = row.owner === sessionId
-    const itsGiver = row.givenBy !== null && this.theIdsItStandsFor(sessionId).includes(row.givenBy)
-    // ⚑ **D-024 · R2 — or a conversation of its own profile holds or gave it**
-    // ({@link ofOneIdentity}).
-    const itsProfiles =
-      this.ofOneIdentity(row.owner, sessionId) ||
-      (row.givenBy !== null && this.ofOneIdentity(row.givenBy, sessionId))
-    if (!itsOwner && !itsGiver && !itsProfiles) return { is: 'no-piece-by-that-name' }
-    const unread = rowsUnreadOnce()
-    const waiting = this.oneWaitReadPerAnswer(unread)
-    const children = this.childrenOnTheRecord(row.piece, waiting, unread)
-    if (row.parent === null) {
-      return {
-        is: 'a-root',
-        root: this.rootOnTheBoard(row),
-        children,
-        resources: this.deps.store.resourcesOf(row.piece),
-        rowsUnread: unread.count,
-        ...ledgersSkippedOf(unread.ledgersSkipped),
-      }
-    }
-    const folded = composeWhatEachPieceIsWaitingOn(
-      this.deps.store.piecesOwnedBy(row.owner, unread),
-      waiting,
-    ).find((one) => one.piece === row.piece)
-    // ⚠️ **A row the owner's ledger does not fold** — a torn `work_given`, counted in `unread` —
-    // is a piece this read cannot speak for, and it says so as the name that names nothing.
-    if (folded === undefined) return { is: 'no-piece-by-that-name' }
-    const byWork = openQuestionsByWork(
-      this.deps.store.routedRequestsOf(row.owner, unread),
-      this.deps.store.questionsRaisedIn(row.owner, unread),
-    )
-    return {
-      is: 'a-piece',
-      piece: folded,
-      lastExchange: this.theExchangeShownWith(folded),
-      openQuestions: (byWork.get(row.piece) ?? []).map((one) => one.requestId),
-      children,
-      resources: this.deps.store.resourcesOf(row.piece),
-      rowsUnread: unread.count,
-      ...ledgersSkippedOf(unread.ledgersSkipped),
-    }
+    return this.workReads.pieceRecord(sessionId, spelled)
   }
 
   /**
@@ -15289,144 +12396,8 @@ export class RuntimeHost implements LiveHost {
     return { is: 'listed', made, more: found.total - made.length }
   }
 
-  /**
-   * 🔴 **D-037 · find the files this app keeps** — `find_files`: on the caller's tree (the pieces it
-   * holds or gave and everything under them — what a person sees on its Files tab, {@link filesKept}'s
-   * `tree`) or everywhere, newest first; with words, only the files that hold every one of them
-   * ({@link wordsOutsideTheText}, then a report's or a page's text).
-   *
-   * ⛔ **It asks nothing about who is calling**, as {@link readResource} does not: a kept file is the
-   * work's documentation, shared, and no line runs between agents.
-   *
-   * ⚑ **Bounded, and only when called.** A list names {@link FILES_FOUND_LISTED}. A search looks
-   * through at most {@link MOST_FILES_SEARCHED} files and {@link MOST_TEXT_SEARCHED} bytes of text,
-   * newest first, {@link FILES_SEARCHED_AT_ONCE} at a time, handing the main process back between
-   * pages and every {@link TEXT_READ_AT_ONCE} bytes read: naming a page walks its pieces' owners'
-   * work rows (`SessionStore.keptFilesNewestFirst`). ⚑ What it did not look through is counted, and
-   * `goOnFrom` names the file to carry on from.
-   *
-   * ⚠️ **Text is read through {@link resourceBytes}**, `read_document`'s own reader — inside the tree
-   * and re-hashed — each kept copy once a call. A file it cannot read is searched by its names and
-   * its piece alone, and counted.
-   */
-  async findKeptFiles(asAgent: string, asked: FindFilesAsked): Promise<FoundFiles> {
-    if (asked.olderThan !== null && this.deps.store.resource(asked.olderThan) === null) {
-      return { ok: false, reason: 'older-than-names-no-file' }
-    }
-    const scope: KeptFilesPaged =
-      asked.where === 'everywhere'
-        ? { scope: 'everywhere' }
-        : { scope: 'tree', holder: asAgent, givers: this.theIdsItStandsFor(asAgent) }
-    const roster = this.deps.store.agentIdentities()
-    /** ⚑ What is left once `last` was looked through — counted once a call, and capped. */
-    const leftAfter = (
-      last: KeptFileRow | undefined,
-    ): Pick<FoundFiles & { ok: true }, 'older' | 'goOnFrom'> => {
-      const older =
-        last === undefined
-          ? 0
-          : this.deps.store.keptFilesBefore(scope, last.resource.resource, OLDER_FILES_COUNTED)
-      return { older, goOnFrom: older > 0 && last !== undefined ? last.resource.resource : null }
-    }
-
-    if (asked.words.length === 0) {
-      const page = this.deps.store.keptFilesNewestFirst(scope, {
-        olderThan: asked.olderThan,
-        limit: FILES_FOUND_LISTED,
-      })
-      return {
-        ok: true,
-        files: page.rows.map((row) => ({
-          file: keptFileOf(row, roster),
-          foundIn: [],
-          excerpt: null,
-        })),
-        looked: page.rows.length,
-        ...leftAfter(page.rows.at(-1)),
-        textUnread: 0,
-        readAt: this.now(),
-      }
-    }
-
-    const root = this.deps.resourcesRoot?.()
-    /**
-     * ⚑ What each kept copy's text holds of the words, once a call — by its folder and name, where
-     * its bytes are — or `null`: it could not be read. ⛔ The text itself is not kept.
-     */
-    const texts = new Map<string, TextHolds | null>()
-    const files: FoundFile[] = []
-    let looked = 0
-    let textRead = 0
-    let sinceHandedBack = 0
-    let textUnread = 0
-    let last: KeptFileRow | undefined
-    let cursor = asked.olderThan
-    const enough = (): boolean =>
-      looked >= MOST_FILES_SEARCHED || files.length >= FILES_FOUND_LISTED
-    search: while (!enough()) {
-      const page = this.deps.store.keptFilesNewestFirst(scope, {
-        olderThan: cursor,
-        limit: FILES_SEARCHED_AT_ONCE,
-      })
-      if (page.through === null) break
-      for (const row of page.rows) {
-        if (enough()) break search
-        const file = keptFileOf(row, roster)
-        const isText = file.form === 'markdown' || file.form === 'page'
-        const copy = `${row.resource.sha256}/${row.resource.name}`
-        const unread = isText && !texts.has(copy)
-        // ⛔ **A file is looked through whole or not at all**: one whose text would pass the bound
-        // is left for the next call, so every file counted as looked through was.
-        if (unread && looked > 0 && textRead + row.resource.bytes > MOST_TEXT_SEARCHED) {
-          break search
-        }
-        looked += 1
-        last = row
-        const outside = wordsOutsideTheText(file, asked.words)
-        if (outside.missing.length === 0) {
-          files.push({ file, foundIn: inFoundOrder(outside.foundIn), excerpt: null })
-          continue
-        }
-        if (!isText) continue
-        if (unread) {
-          const read = root === undefined ? null : resourceBytes(root, row.resource)
-          texts.set(
-            copy,
-            read?.ok === true && read.content.as !== 'not-for-a-model'
-              ? wordsInTheText(read.content.text, asked.words)
-              : null,
-          )
-          textRead += row.resource.bytes
-          sinceHandedBack += row.resource.bytes
-        }
-        const inText = texts.get(copy) ?? null
-        if (inText === null) {
-          textUnread += 1
-        } else if (outside.missing.every((word) => inText.holds.has(word))) {
-          files.push({
-            file,
-            foundIn: inFoundOrder(new Set([...outside.foundIn, 'text'])),
-            excerpt: inText.around.get(outside.missing[0] ?? '') ?? null,
-          })
-        }
-        if (sinceHandedBack >= TEXT_READ_AT_ONCE) {
-          sinceHandedBack = 0
-          await handBackTheMainProcess()
-        }
-      }
-      // ⚑ **From the last row the page READ**, named or not, so a page whose every row could not be
-      // named still moves the search on.
-      cursor = page.through
-      await handBackTheMainProcess()
-    }
-    return {
-      ok: true,
-      files,
-      looked,
-      ...leftAfter(last),
-      textUnread,
-      readAt: this.now(),
-    }
+  findKeptFiles(asAgent: string, asked: FindFilesAsked): Promise<FoundFiles> {
+    return this.keptFiles.findKeptFiles(asAgent, asked)
   }
 
   /**
@@ -16941,89 +13912,8 @@ export class RuntimeHost implements LiveHost {
     return { ok: true, files: files.map((file) => ({ ...file, title: resourceTitle(file) })) }
   }
 
-  /**
-   * ⚑ **F046 — the files kept before titles were taken, titled once from their kept bytes** — by
-   * {@link resourceTitle}, the rule a file kept now is titled by, so an older one reads as a new one
-   * would. Started once after a launch, behind the window (`index.ts`), and never on a door.
-   *
-   * ⚑ **Once, by the data**: every file it visits leaves with a title — its name, when its bytes are
-   * gone, unreadable or changed, or it is a form with no text (read only for those that have one) —
-   * so a later launch finds none; ⚠️ it still asks for them, a scan of `work_resource` (no index
-   * holds a missing title), after handing the main process back first. ⚑ **Bounded**:
-   * {@link FILES_TITLED_AT_ONCE} rows a page, one file read at a time, handing the main process back
-   * between them; it stops when a quit begins, and when a page titles nothing. Open windows are told
-   * once, at the end.
-   *
-   * ⚑ **And the files the old reader titled, read again**: a Markdown file kept while a front matter
-   * `title:` was not read took its first `# ` heading, or its name, and is titled by what its bytes
-   * say now. ⛔ **Only a title the reader gave is replaced**: the stored title must be the file's name
-   * or exactly what the reader before front matter gives from the same bytes
-   * ({@link resourceTitleBeforeFrontMatter}), and it must still be that when the write lands
-   * (`retitleResource` compares). So a title anyone chose, or one taken from the front matter, is
-   * never replaced; a title cut at 200 characters equals a fresh read and changes nothing.
-   * ⚠️ **Read on each launch:** a file titled by its name, as before, and a Markdown file titled
-   * otherwise only if it was kept before {@link FRONT_MATTER_READ_EVERYWHERE_SINCE} (a page has no
-   * older reader) — a page at a time by its place, one file at a time, handing the main process back
-   * between them. Answers how many it titled and how many it titled again.
-   */
-  async titleTheOlderFiles(): Promise<{ titled: number; retitled: number }> {
-    const root = this.deps.resourcesRoot?.()
-    if (root === undefined) return { titled: 0, retitled: 0 }
-    let titled = 0
-    await handBackTheMainProcess()
-    for (;;) {
-      if (this.launches.closed) break
-      const page = this.deps.store.untitledResources(FILES_TITLED_AT_ONCE)
-      let titledNow = 0
-      for (const row of page) {
-        if (this.launches.closed) break
-        const form = formOfName(row.name)
-        const read = form === 'markdown' || form === 'page' ? resourceBytes(root, row) : null
-        const title =
-          read !== null && read.ok
-            ? resourceTitle({ name: row.name, form: read.form, bytes: read.bytes })
-            : row.name
-        if (this.deps.store.titleResource(row.resource, title)) titledNow += 1
-        await handBackTheMainProcess()
-      }
-      titled += titledNow
-      if (page.length === 0 || titledNow === 0) break
-    }
-    let retitled = 0
-    let after = 0
-    for (;;) {
-      if (this.launches.closed) break
-      const page = this.deps.store.titledResources(
-        after,
-        FILES_TITLED_AT_ONCE,
-        FRONT_MATTER_READ_EVERYWHERE_SINCE,
-      )
-      for (const { at, row } of page) {
-        if (this.launches.closed) break
-        after = at
-        const was = row.title
-        const form = formOfName(row.name)
-        if (was === null || (form !== 'markdown' && form !== 'page')) continue
-        // ⚑ A page is titled as it always was, so only one titled by its name can read otherwise.
-        if (form === 'page' && was !== row.name) continue
-        const read = resourceBytes(root, row)
-        if (read.ok) {
-          const file = { name: row.name, form: read.form, bytes: read.bytes }
-          const title = resourceTitle(file)
-          if (
-            title !== was &&
-            (was === row.name || was === resourceTitleBeforeFrontMatter(file)) &&
-            this.deps.store.retitleResource(row.resource, was, title)
-          ) {
-            retitled += 1
-          }
-        }
-        await handBackTheMainProcess()
-      }
-      if (page.length < FILES_TITLED_AT_ONCE) break
-    }
-    if (titled + retitled > 0 && !this.launches.closed) this.theWorldMoved('work')
-    return { titled, retitled }
+  titleTheOlderFiles(): Promise<{ titled: number; retitled: number }> {
+    return this.keptFiles.titleTheOlderFiles()
   }
 
   /**
@@ -19943,279 +16833,14 @@ export class RuntimeHost implements LiveHost {
     )
   }
 
-  /**
-   * 🔴 **What is waiting on a PERSON, and the chain that explains why** (398, criterion 11).
-   *
-   * ⛔ **Every open routed question that is a PERSON's to answer**, across every conversation this
-   * database holds — not one family, because a person is not inside one. ⚑ That is the difference
-   * between this and {@link questionsWaitingOn}, which answers a parent about its own children and
-   * is scoped to them by construction.
-   *
-   * ⚠️ **612 · it said *"a deadline has already escalated"*** (HO-088 §3.1, standing rule 8.1).
-   * ⛔ **No deadline escalates anything.** A row reaches this reader because its asker addressed it
-   * to a person or because a parent passed it up — both acts — and, for a ledger written before
-   * `612`, because a deadline once did.
-   *
-   * ## ⚠️ It reports and rules nothing
-   *
-   * ⛔ **What to do about a question a person now owes an answer to — answer it, deny it, end the
-   * child, wake somebody — is policy**, and policy is a surface. `unclaimedSessions`' own note says
-   * the same thing about the same kind of fact, and this is that note honoured rather than repeated:
-   * the door a person answers through is unchanged (`respondUserInput`, on the child, where the card
-   * still is).
-   *
-   * ## 🔴 A permission cannot be here, and it is structural
-   *
-   * ⛔ Nothing ever stamped a routing that was already a PERSON's — `escalationsDue` refused to,
-   * and since `612` nothing stamps anything at all — so a permission-shaped request has
-   * `escalatedAt === null` for ever, and
-   * {@link SessionStore.questionsAPersonMustAnswer} excludes
-   * {@link WhereARequestWent}'s refused arm BY NAME on top of that. ⚠️ **The rows are not narrowed
-   * anywhere** — {@link permissionShaped} still sees them all, so *"has anything permission-shaped
-   * arrived?"* stays an instrument rather than becoming a promise.
-   *
-   * ⚠️ **611 · this said *"never returns a routing with a `RoutedRequest.because`"*** (standing
-   * rule 8.1). ⛔ That field is gone, and the claim it made was one deadline's skip carrying the
-   * whole exclusion; since `HO-088` §2 the reader states its own, because a question can be a
-   * person's with nothing refused and the two must not be folded.
-   */
+  /** The person's questions, shared at the current version of the person's queue. */
   questionsForAPerson(): LedgerWalk<PersonsQuestion> {
-    return this.forAPerson('questionsForAPerson', () => this.questionsForAPersonComposed())
+    return this.forAPerson('questionsForAPerson', () => this.personsQuestions.questionsForAPerson())
   }
 
-  private questionsForAPersonComposed(): LedgerWalk<PersonsQuestion> {
-    // 🔴 **D-017 · R8 — ONE set for the walk and every read this answer adds**, so a record met by
-    // both is skipped once and named once.
-    const unread = rowsUnreadOnce()
-    const escalated = this.shown(
-      this.deps.store.questionsAPersonMustAnswer(unread),
-      (row) => row.askedBy,
-    )
-    // ⚑ **One store read per conversation asked about, memoised across the whole answer** — a chain
-    // of four questions through three conversations reads three ledgers, not twelve.
-    const waiting = new Map<string, RoutedRequest | null>()
-    const openQuestionOf = (sessionId: string): RoutedRequest | null => {
-      const held = waiting.get(sessionId)
-      if (held !== undefined) return held
-      // ⛔ **The question this conversation raised, not the ones raised AT it.** A parent is blocked
-      // when IT is waiting on an answer from its own parent; the questions its children asked are
-      // what it is blocking, and reading those would walk the chain the wrong way.
-      //
-      // 🔴 **611 · `went.to === 'the-parent'` and it used to be `because === null`** (HO-088 §2).
-      // ⛔ A chain hop asks *is this conversation itself blocked on the one above it*, and a
-      // question its asker addressed to a PERSON is not: the hop above owes nothing, and walking
-      // through it would draw a chain claiming a conversation was waiting on its parent when the
-      // person it named is the one who has it. ⚑ The old spelling admitted exactly that arm.
-      const mine =
-        this.deps.store
-          .routedRequestsOf(sessionId, unread)
-          .find((one) => REQUEST_IS_OPEN[one.state] && one.went.to === 'the-parent') ?? null
-      waiting.set(sessionId, mine)
-      return mine
-    }
-    const name = this.oneNamingPerAnswer()
-    // ⚑ **474 · ONE ledger read per asker, shared by both questions asked of it** — *what work is
-    // this conversation holding* and *which of it does this question name* are two folds over one
-    // read, and giving them a memo each would walk every blocked conversation's ledger twice on a
-    // poll that runs every five seconds for the life of a window.
-    const pieces = this.onePieceReadPerAnswer()
-    const work = this.oneWorkReadPerAnswer(pieces)
-    // 🔴 **474 · the words of the question this row IS, read from the asker's own ledger** — see
-    // {@link oneQuestionReadPerAnswer}. ⛔ Asked of the asker and never of the parent: the row that
-    // named the work is the one the asker wrote.
-    const raisedIn = this.oneQuestionReadPerAnswer()
-    // 🔴 **453 · the WALK is carried through and never recomputed here** — see {@link LedgerWalk}.
-    // ⛔ This method maps rows and knows nothing about which ledgers were opened; re-deriving the
-    // count from `escalated.rows.length` would answer *what was found* to a question that asked
-    // *what was read*, which is `447`'s defect one surface over.
-    return {
-      walk: escalated.walk,
-      ledgers: escalated.ledgers,
-      rowsUnread: escalated.rowsUnread,
-      // 🔴 **D-017 · R8 — the outer net**: a row the asker's record cannot build is skipped.
-      rows: eachOrSkipped(escalated.rows, 'askedBy', unread, (request) => {
-        const chain = escalationChain(request, openQuestionOf)
-        // ⚑ **474 · one fold, one arm** — see {@link AboutWork} and the field below.
-        // ⚑ **602 · ONE lookup, two questions** — *which work is this about* and *what raised
-        // it*. ⛔ The map is the memoised read above, so the second question costs no statement.
-        const raised = raisedIn(request.askedBy).get(request.requestId)
-        // ⚑ **D-016 · the asker's root is its work too** — a question about it names the root.
-        const about = aboutTheWork(raised?.piece ?? null, (id) => {
-          const root = this.deps.store.rootOf(request.askedBy)
-          return root?.piece === id ? { label: root.label } : workNamed(pieces(request.askedBy), id)
-        })
-        // ⚑ **One naming, read twice** (401). The hops a surface DRAWS and the line HO-007 asked for
-        // come out of the same walk with the same names — and a renderer never has to turn a
-        // `sess_<uuid>` into a word it cannot know.
-        return {
-          request,
-          // ⚑ **611 · the same derivation the store sorted by, COPIED** — see
-          // {@link aPersonsSince}. ⛔ No fallback: a null is the honest answer for a row the reader
-          // should not have admitted, and filling it in here would put *just now* on a row that
-          // has no instant at all (`PersonsQueueRow.blockedSinceIs`' own argument).
-          aPersonsSince: aPersonsSince(request),
-          chain,
-          reading: chainReading(chain, name),
-          sentence: chainSentence(chain, name),
-          // ⛔ **The ASKER's work, and never the parent's** (434) — see {@link WorkInHand}. A chain
-          // walks upward; criterion 20 asks what the conversation that stopped is doing, which is
-          // the bottom of it.
-          work: work(request.askedBy),
-          // 🔴 **474 · the EDGE, carried** (`463` F4) — see {@link AboutWorkIs}. ⛔ `437` wrote
-          // `question_asked.taskId` into the asker's ledger and this reader never asked for it, so
-          // a person was shown every open task in the conversation under the sentence *"which of
-          // it this is about is not recorded"* — an absence stated about a fact the app had.
-          //
-          // ⚑ **The arm comes from {@link aboutTheWork}**, so a word standing over the wrong work
-          // is unconstructable, and the resolution is against the asker's OWN work — its root and
-          // the pieces it holds — which is what makes a piece from another conversation unresolvable
-          // rather than wrongly resolved.
-          //
-          // ⛔ **One field and not a pair, which is what makes the disagreeing state
-          // unconstructable** — see {@link AboutWork}.
-          about,
-          // 🔴 **602 · what RAISED it, which is what decides whether a card exists** — see
-          // {@link HowItWasRaised}. ⛔ **`'nothing-says'` when this read found no row**, and it is
-          // the honest third answer rather than a default: the queue keeps the sentence it would
-          // have said anyway, instead of claiming an absence out of a read that missed.
-          raisedBy: raised?.raisedBy ?? 'nothing-says',
-          // A to-do the agent asked the person to do, with its files.
-          ...(raised?.action === undefined
-            ? {}
-            : { action: { text: raised.prompt, files: raised.action.files } }),
-          // 🔴 **619 · what a person may press where there is no card** — see
-          // {@link whatTheAskerOffered}. ⛔ **The SAME `raised` row the two lines above read**, so
-          // *what raised it*, *which work it is about* and *what it offered* are one lookup and
-          // cannot come from three moments. ⚠️ A read that missed hands `undefined` and the fold
-          // answers `null`, which is the honest absence rather than an empty offer.
-          offered: whatTheAskerOffered(raised),
-          // 🔴 **D-046 · the question as it was asked** — see {@link PersonsQuestion.asked}. ⚑ The
-          // SAME `raised` row again, whole, so a window draws it without looking in a conversation.
-          asked:
-            raised === undefined
-              ? null
-              : {
-                  prompt: raised.prompt,
-                  context: raised.context,
-                  passedUp: raised.passedUpFrom !== null,
-                  ...(raised.move === undefined ? {} : { move: raised.move }),
-                  parts: raised.questions,
-                },
-        }
-      }),
-      ...ledgersSkippedOf(unread.ledgersSkipped),
-    }
-  }
-
-  /**
-   * 🔴 **What a person may NOT delegate: every open request that never travelled** (403, from
-   * `402` F1, criterion 11's other half).
-   *
-   * ## ⛔ The population `401` shipped a queue for could not contain this one
-   *
-   * ⚠️ **Three facts that only bite together, and `402` put them together on a live run.**
-   * (1) 🔴 **A child is `ask` whenever the conversation that started it is** — a conversation
-   * `give_work` starts runs in its giver's mode, and `admitGive` refuses one that would act past its
-   * folder with nobody asked where its giver could not, by the named rail `wider-than-its-parent`
-   * (499, HO-036; D-038) — so the first consequential tool call an agent-started conversation
-   * makes parks on a permission card, **unless the agent that started
-   * it was itself running without them.** ⛔ **This clause read *"Every spawned child is `ask` BY
-   * RAIL"* until `499`**, which was `366`'s absolute and is withdrawn: the population below is
-   * therefore smaller than it was, and never larger. ⚑ The rows it reads are unchanged —
-   * `permissionShaped` finds a card wherever one exists — so what moved is how many there are to
-   * find, not whether this reader finds them. (2) Only a person may answer it, and a spawned child
-   * is reserved under no owner. (3) {@link questionsForAPerson} cannot admit one:
-   * nothing ever stamped a routing that was already a person's — and since `612` nothing stamps
-   * anything — so a permission's `escalatedAt` is null for ever, and since `611` the reader beside
-   * it excludes the refused arm by name as well. ⛔ **Measured: three permissions needed a person on one worker, and that queue listed
-   * none of them.**
-   *
-   * ⚑ **So a child frozen on an answer only a person can give was in none of Home's populations.**
-   * The rows always existed — `permissionShaped` finds every one — which is why `402` filed it as a
-   * wiring gap rather than a design one, and why this is a READER rather than a new event.
-   *
-   * ## ⚠️ It rules nothing, exactly as {@link questionsForAPerson} rules nothing
-   *
-   * Who may decide is the answer doors' rule: the window holding the conversation, or — where no
-   * window holds it — any person, from the queue, with the card each row carries
-   * ({@link aPersonAnswersWhereNobodyHolds}). Never an agent.
-   *
-   * ## 🔴 No chain is walked, because there is nothing above the asker
-   *
-   * ⛔ **Knowledge escalates; authority does not.** A question may travel — worker to PM to a
-   * person — and its chain is that walk. A request refused entry to the channel was always a
-   * person's, so it is *"worker waiting on you"*, at any depth. {@link decisionReading} is the one
-   * hop and {@link readingSentence} is the same join the escalated line uses.
-   */
+  /** The person's decisions, shared at the current version of the person's queue. */
   decisionsForAPerson(): LedgerWalk<PersonsDecision> {
-    return this.forAPerson('decisionsForAPerson', () => this.decisionsForAPersonComposed())
-  }
-
-  private decisionsForAPersonComposed(): LedgerWalk<PersonsDecision> {
-    const name = this.oneNamingPerAnswer()
-    const work = this.oneWorkReadPerAnswer()
-    // 🔴 **D-017 · R8** — one set for the walk and this answer's own reads.
-    const unread = rowsUnreadOnce()
-    const walked = this.shown(
-      this.deps.store.decisionsAwaitingAPerson(unread),
-      (row) => row.askedBy,
-    )
-    // ⚑ **453 · the walk carried through**, exactly as {@link questionsForAPerson} carries it.
-    return {
-      walk: walked.walk,
-      ledgers: walked.ledgers,
-      rowsUnread: walked.rowsUnread,
-      // 🔴 **D-017 · R8 — the outer net**: a row the asker's record cannot build is skipped.
-      rows: eachOrSkipped(walked.rows, 'askedBy', unread, (request) => {
-        const reading = decisionReading(request.askedBy, name)
-        return {
-          request,
-          reading,
-          sentence: readingSentence(reading),
-          // ⛔ **Criterion 20's *which work*, on this population too** (434) — the same read, keyed
-          // by the same conversation, because `402`'s measured shape is three cards on one worker
-          // and reading its ledger once per card is the cost `oneNamingPerAnswer` already refuses.
-          work: work(request.askedBy),
-          // ⚑ **The vocabulary's own sentence, rendered here rather than in the window.** See
-          // `PersonsDecision.says`: the map is a value in `@brobot2/runtime`, and a renderer that
-          // imported it would pull the package into the window bundle for five strings.
-          // ⚠️ **A fallback, and it is a real case rather than defensive noise.** `because` is read
-          // back out of persisted JSON by a CAST — `toPersistedEvents` does `JSON.parse(row.payload)
-          // as TranscriptEvent` and nothing checks it against `CHANNEL_REFUSALS` — so an imported
-          // conversation, or this build reading a ledger a later one wrote, can carry a sixth
-          // member. ⛔ The map answers `undefined` there, which is typed `string`, survives a
-          // structured clone, and draws an EMPTY amber paragraph.
-          //
-          // ⛔ **And the fallback is a SENTENCE, never the word.** {@link PersonsDecision.says}
-          // promises a person the vocabulary's own prose, and `CHANNEL_REFUSAL_SENTENCES`' docblock
-          // says the words are *"never for a model"* and the enum is. ⚑ What it says is the only
-          // thing this app knows in that state, and it is the same thing
-          // `a-shape-this-app-has-not-been-taught` says one layer up.
-          says:
-            CHANNEL_REFUSAL_SENTENCES[request.went.because] ??
-            'something only a person can settle, of a kind this app has not been taught',
-          ...this.theCardNobodyHolds(request.askedBy, request.requestId),
-        }
-      }),
-      ...ledgersSkippedOf(unread.ledgersSkipped),
-    }
-  }
-
-  /**
-   * The request's card, for a conversation running with no window holding it: what a person needs
-   * to answer it from the queue ({@link aPersonAnswersWhereNobodyHolds}). Nothing for any other.
-   */
-  private theCardNobodyHolds(
-    askedBy: string,
-    requestId: string,
-  ): { readonly card?: CardNobodyHolds } {
-    const slot = this.slots.get(askedBy)
-    if (slot === undefined || slot.ownerId !== null || slot.session === null) return {}
-    const asked = this.deps.store.theRequestRouted(askedBy, requestId)
-    if (asked === null) return {}
-    return {
-      card: { asked, provider: slot.session.provider, profileId: slot.session.profileId },
-    }
+    return this.forAPerson('decisionsForAPerson', () => this.personsQuestions.decisionsForAPerson())
   }
 
   private prepareInitialProviderLimitFacts(): void {
@@ -21744,121 +18369,12 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /**
-   * 🔴 **The work one conversation gave out, for the window that is showing it** (508).
-   *
-   * ⛔ **A named door rather than `pieceBoard(id).gave`, and the two answer different
-   * questions.** That one pairs both directions for `list_tasks` and hands back {@link PieceRow}s;
-   * this one is the window's half, narrowed to {@link WorkGivenOut} and carrying the walk — see
-   * {@link SessionStore.workGivenOutBy} for the count that narrowing exists to state.
-   *
-   * ⚑ **No {@link Caller} and nothing to refuse**, which is `pieceBoard`'s own ruling: *"A
-   * conversation is told about its own work; there is no argument for whose work to look at, so
-   * there is nothing to refuse."* ⚠️ And no `requireAPerson` — this verb lives on the window wire
-   * and on no toolset.
-   *
-   * ⛔ **The walk is carried through and never recomputed**: the party that WALKED is the only one
-   * that can say what it walked.
-   */
   workGivenBy(sessionId: string): LedgerWalk<WorkGivenOut> {
-    return this.deps.store.workGivenOutBy(sessionId)
+    return this.workReads.workGivenBy(sessionId)
   }
 
-  /**
-   * 🔴 **Who called whom — one conversation's own edges, for the WINDOW** (543, `540` §7 slice 1).
-   *
-   * ## ⛔ Why this is one method and not four reads a renderer composes
-   *
-   * ⚠️ **`540` MI-19 ruled the CONDITION rather than the answer:** *"One timestamp is honest only
-   * if the host performs one atomic/defined aggregate read and records the common completion point.
-   * With today's separate `conversationsInProject` and `tasksAssignedBy` walks, one timestamp would
-   * overclaim."* ⛔ Four IPC round trips are four clocks, and one number over them is `HO-050` §3's
-   * animal — a figure that is not measuring what it claims.
-   *
-   * ⚑ **This is that aggregate.** `better-sqlite3` executes on the calling thread, every statement
-   * below is synchronous, and there is no `await` anywhere between the first of them and the stamp
-   * — so nothing can be written between two of these lists and land in one of them.
-   * ⛔ **{@link WhoCalledWhom.readAt} is taken LAST**, after every walk has returned, which is what
-   * makes it a completion point rather than a start time.
-   *
-   * ## ⚠️ What this adds to the store's answer — TWO facts per node, both the host's (`711` added the second)
-   *
-   * ⛔ **{@link RunningState}, from the slot map** — {@link runningStateOf}, the private method
-   * every such read asks, rather than a second derivation. ⚑ **Left UNFOLDED**: `hereIsOf(running, held)`
-   * needs the window's own `held` to reach `open-in-another-window`, and *whether a surface is THIS
-   * one is a question the host cannot answer about a list command* (`RUNNING_STATES`' own
-   * docblock). ⛔ Folding here would collapse the fourth navigation state `540` MI-20 requires this
-   * read to leave reachable, and `504` is the precedent: a row that carried neither field offered
-   * no press rather than guessing.
-   *
-   * ⚑ **W4.203 · and what each named conversation last reported** ({@link lastReportedOf}): its
-   * model and effort, and its newest context reading — for one that is not running as much as for
-   * one that is.
-   *
-   * 🔴 **And no `LivenessState`, which is a refusal rather than an omission.** `509`'s rule is
-   * that the word may only go on a reader whose re-read cadence is shorter than the silence window,
-   * and `540` says the same thing about this panel in particular: *"`live|silent` is especially
-   * unsafe on a 30-second-only relationship card"*. ⛔ Nothing bounds this read's cadence, so the
-   * field is absent.
-   *
-   * ## ⚑ The entitlement, written down rather than implied
-   *
-   * ⛔ **`reads`, the word `workGivenBy` argued for and not the `…ForAPerson` readers' `no
-   * session`.** This NAMES a conversation, so `203`'s owner check has something to be about and the
-   * classification is a real choice — and it is `reads` for the session library's stated reason:
-   * *"the library shows conversations this window does not own and lets you read them — that is the
-   * feature"*, over a population that is the same person's either way. ⚠️ **It offers no act**, so
-   * there is nothing here for `203` to take away.
-   *
-   * ⛔ **And it is on the window wire and on no toolset**, which is what keeps an AGENT off it. ⚑ A
-   * supervisor reading further DOWN than its own children is a product question with the PO and
-   * this read neither widens nor narrows it: it makes EDGES visible and says nothing about what may
-   * be read across them.
-   */
   whoCalledWhom(sessionId: string): WhoCalledWhom {
-    // ⛔ **The parent is the DURABLE fact and never the slot's** — {@link SessionStore.parentOf}.
-    // ⚑ {@link routeRequest} reads the same answer for the same conversation, which is why there is
-    // one reader of it and not two.
-    const parentOf = this.deps.store.parentOf(sessionId)
-    const parent = parentOf === null ? null : this.spawnEdge(parentOf)
-    const children = this.deps.store.spawnedBy(sessionId)
-    const workGivenOut = this.deps.store.workThisOneGaveOut(sessionId)
-    const workTakenIn = this.deps.store.workThisOneWasGiven(sessionId)
-    // ⚑ **W4.203 · every conversation this read names**, once each.
-    const named = new Set<string>([sessionId])
-    if (parentOf !== null) named.add(parentOf)
-    for (const row of children.rows) named.add(row.conversation)
-    for (const edge of [...workGivenOut.rows, ...workTakenIn.rows]) {
-      if (edge.from !== null) named.add(edge.from)
-      named.add(edge.to)
-    }
-    return {
-      conversation: sessionId,
-      parent,
-      // ⛔ **Every field spelled out** — `a-spread-writes-past-a-declared-type`: a spread into an
-      // object literal is checked for what it brings and not for what the literal owes, and the
-      // three counts are the half of this answer a caller cannot recompute.
-      children: {
-        walk: children.walk,
-        ledgers: children.ledgers,
-        rowsUnread: children.rowsUnread,
-        ...ledgersSkippedOf(children.ledgersSkipped),
-        // ⚑ **The two facts the database cannot hold**, which is the reason this read is on the host
-        // rather than being handed straight out of the store.
-        rows: children.rows.map((row) => ({
-          ...row,
-          running: this.runningStateOf(row.conversation),
-        })),
-      },
-      // 🔴 **Carried, never recomputed**: the party that WALKED is the only one that can say what it
-      // walked, and deriving `ledgers` from `rows.length` here would answer *what was found* to a
-      // question that asked *what was read*.
-      workGivenOut: this.markedForAPerson(workGivenOut),
-      workTakenIn: this.markedForAPerson(workTakenIn),
-      lastReported: this.lastReportedOf(named),
-      // ⛔ **LAST.** See {@link WhoCalledWhom.readAt}.
-      readAt: Date.now(),
-    }
+    return this.workReads.whoCalledWhom(sessionId)
   }
 
   /**
@@ -23873,254 +20389,63 @@ export class RuntimeHost implements LiveHost {
 
   // ── resources (D-016) ────────────────────────────────────────────────────────────────────────────
 
-  /**
-   * 🔴 **The AGENT's door onto a kept resource** — `read_document` (380 §7's reader, for resources
-   * since D-016) — **and it asks NOTHING about who is calling** (HO-057, carried from the documents
-   * resources replaced).
-   *
-   * ⛔ **Any agent may read any resource**: a resource is the trail of a piece, and a piece's record
-   * names its resources to whoever may read that record. ⚑ **What still bounds it is WHAT is
-   * returned**: {@link resourceBytes} holds the row's file inside the resources tree and re-checks
-   * it against the hash it was kept with before a byte is returned.
-   *
-   * ⚠️ **Three answers before the bytes, each its own word**: this app has nowhere it keeps
-   * resources (`resource-store-unavailable`), no resource has that id (`no-such-resource` — an id
-   * from before D-016 among them), and then the byte rails.
-   */
   readResource(
     resourceId: string,
   ):
     | { ok: true; resource: ResourceRow; form: DocumentForm; content: DocumentContent }
     | { ok: false; refusal: ResourceRefusal } {
-    const root = this.deps.resourcesRoot?.()
-    if (root === undefined) {
-      return { ok: false, refusal: refuseResource('resource-store-unavailable') }
-    }
-    const row = this.deps.store.resource(resourceId)
-    if (row === null) {
-      return { ok: false, refusal: refuseResource('no-such-resource', { resource: resourceId }) }
-    }
-    const read = resourceBytes(root, row)
-    if (!read.ok) return { ok: false, refusal: read.refusal }
-    // ⚑ **635 · the CONTENT and never the bytes** (`HO-097` §1.2). ⛔ A model gets a form it can
-    // use or a word saying there is none; the Buffer stays on this side of the wire.
-    return { ok: true, resource: row, form: read.form, content: read.content }
+    return this.keptFiles.readResource(resourceId)
   }
 
-  /**
-   * 🔴 **The PERSON's door onto the same bytes** (510) — a person reading a reply that names a
-   * resource opens it here.
-   *
-   * ## ⛔ A SIBLING of {@link readResource}, and the difference is the VOCABULARY
-   *
-   * ⚑ An agent meets `RESOURCE_RAILS` — a permanence and a remedy, because a model decides whether
-   * to stop — and a window meets the four words of {@link ResourceReading}, because a person
-   * decides whether to go and look. ⛔ A nullable-caller parameter would have been the wrong shape: a
-   * door is where a vocabulary is chosen.
-   *
-   * ⚑ **It asks no capability** — HO-005: *"the human is unrestricted"*. ⚠️ **What bounds it is
-   * {@link resourceBytes}**, the one reader both doors go through, so an agent may never read what a
-   * person may not (517's rule, one boundary in one place).
-   *
-   * ⚠️ **`unreadable` folds *gone* and *something is standing there that cannot be read***: both
-   * end at a person going to look, and the one sentence the panel draws says so.
-   */
   readResourceForAPerson(resourceId: string): ResourceReading {
-    const root = this.deps.resourcesRoot?.()
-    if (root === undefined) return { ok: false, reason: 'no-store' }
-    const row = this.deps.store.resource(resourceId)
-    if (row === null) return { ok: false, reason: 'no-such-resource' }
-    const read = resourceBytes(root, row)
-    if (!read.ok) {
-      return {
-        ok: false,
-        reason: read.refusal.rail === 'resource-bytes-changed' ? 'changed' : 'unreadable',
-      }
-    }
-    return {
-      ok: true,
-      resourceId: row.resource,
-      // ⚑ **The name a person reads is the FILE's** — the name it was handed in with, never a path.
-      name: row.name,
-      // 🔴 **635 · the FORM, so the window knows which viewer to be** (`HO-097` §1.3).
-      form: read.form,
-      // ⛔ **The TEXT for a text form and `null` otherwise** — a `''` here would draw an empty page
-      // over a picture (`an-unenumerated-state-counts-as-success`).
-      text: read.content.as === 'not-for-a-model' ? null : read.content.text,
-      bytes: row.bytes,
-    }
+    return this.keptFiles.readResourceForAPerson(resourceId)
   }
 
-  /**
-   * 🔴 **D-032 · a kept picture or PDF, for the PERSON who opened it** — {@link readResourceForAPerson}'s
-   * door, handing over the bytes rather than the text. ⚑ {@link keptPictureOrPdf} reads them through
-   * {@link resourceBytes}, so they are inside the resources tree and hash to what was kept; reads their
-   * type off the bytes, within the kind their name says; holds a picture to a number of pixels; and
-   * sets the type a window draws them as. ⚑ Read when a person opens one and at no other time.
-   * ⛔ What a window may do with them is {@link ResourceDrawing}'s to say.
-   */
   drawResourceForAPerson(resourceId: string): ResourceDrawing {
-    const found = this.keptForAPerson(resourceId)
-    if (!('row' in found)) return found
-    const kept = keptPictureOrPdf(found.root, found.row)
-    if (!kept.ok) {
-      if (kept.reason === 'too-large') {
-        return {
-          ok: false,
-          reason: 'too-large',
-          bytes: found.row.bytes,
-          mostBytes: MOST_BYTES_A_WINDOW_DRAWS,
-        }
-      }
-      if (kept.reason === 'too-many-pixels') {
-        return { ...kept, mostPixels: MOST_PIXELS_A_WINDOW_DRAWS }
-      }
-      return { ok: false, reason: kept.reason }
-    }
-    const { resource, name } = found.row
-    return { ok: true, resourceId: resource, name, drawnAs: kept.drawnAs, bytes: kept.bytes }
+    return this.keptFiles.drawResourceForAPerson(resourceId)
   }
 
-  /**
-   * 🔴 **D-032 · a kept file, shown in Finder by its id** — {@link revealPath}'s act, on a resource.
-   * ⛔ **The path is found from the row by {@link keptFileToShow}**, which holds it inside the
-   * resources tree and says when nothing is to be shown. ⚑ Nothing is opened either way, and the
-   * path never reaches the window.
-   */
   revealResource(resourceId: string): ResourceReveal {
-    const found = this.keptForAPerson(resourceId)
-    if (!('row' in found)) return found
-    const kept = keptFileToShow(found.root, found.row)
-    if (!kept.ok) return { ok: false, reason: kept.reason }
-    this.deps.revealPath?.(kept.path)
-    return { ok: true, changed: kept.changed }
+    return this.keptFiles.revealResource(resourceId)
   }
 
-  /**
-   * ⚑ **D-032 · the kept row a person's window names, and the folder it is kept in** — or
-   * {@link ResourceReading}'s word for why there is none: this app keeps no resources folder in this
-   * run, or holds no resource by that id. ⚠️ `row` is `undefined` only when there is no folder.
-   */
-  private keptForAPerson(
-    resourceId: string,
-  ):
-    | { readonly root: string; readonly row: ResourceRow }
-    | { readonly ok: false; readonly reason: 'no-store' | 'no-such-resource' } {
-    const root = this.deps.resourcesRoot?.()
-    const row = root === undefined ? undefined : this.deps.store.resource(resourceId)
-    if (root === undefined || row === undefined) return { ok: false, reason: 'no-store' }
-    return row === null ? { ok: false, reason: 'no-such-resource' } : { root, row }
-  }
-
-  /**
-   * 🔴 **D-026 · R1 — the files kept in one scope, for a person** ({@link FilesKept}): a
-   * conversation's tree, what one conversation added, or one piece.
-   *
-   * ⚑ **Existence first, then the read** (`SessionStore.spawnedBy`'s rule): a conversation or a
-   * piece this app does not hold answers its own word, never an empty list that would say it holds
-   * no files. ⚑ **A tree counts the gives of the conversations it took the place of as its own**
-   * ({@link theIdsItStandsFor}, D-017 · R10), as its board does; ⚠️ the conversation scope is
-   * exact: a file a conversation added is its own act, and each row names who added it.
-   *
-   * ⚑ **One store read** (`SessionStore.filesKept`), each row through {@link keptFileOf}, the mapper
-   * the push uses too. ⛔ It asks no capability — HO-005, as {@link readResourceForAPerson}.
-   */
   filesKept(asked: FilesKeptScope): FilesKept {
-    let scope: KeptFilesAsked
-    if (asked.scope === 'piece') {
-      const row = this.pieceNamed(asked.piece)
-      if (row === null) return { ok: false, reason: 'no-piece-by-that-name' }
-      scope = { scope: 'piece', piece: row.piece }
-    } else if (this.deps.store.conversationBinding(asked.conversation) === null) {
-      return { ok: false, reason: 'no-such-conversation' }
-    } else if (asked.scope === 'tree') {
-      scope = {
-        scope: 'tree',
-        holder: asked.conversation,
-        givers: this.theIdsItStandsFor(asked.conversation),
-      }
-    } else {
-      scope = { scope: 'conversation', conversation: asked.conversation }
-    }
-    const roster = this.deps.store.agentIdentities()
-    return {
-      ok: true,
-      files: this.deps.store.filesKept(scope).map((row) => keptFileOf(row, roster)),
-    }
+    return this.keptFiles.filesKept(asked)
   }
 
-  /** The two opening lists share a worker snapshot; no ledger read falls back to main. */
-  async filesKeptForWindow(conversation: string): Promise<FilesKept> {
-    if (this.deps.store.conversationBinding(conversation) === null)
-      return { ok: false, reason: 'no-such-conversation' }
-    const reader = this.deps.windowReader
-    if (reader === undefined || this.launches.closed) throw new WindowReadUnavailable()
-    const result = await reader.read({
-      kind: 'files',
-      sessionId: conversation,
-      givers: [...this.theIdsItStandsFor(conversation)],
-    })
-    if (result.kind !== 'files' || this.launches.closed) throw new WindowReadUnavailable()
-    return {
-      ok: true,
-      files: result.tree.map((row) => keptFileOf(row, result.roster)),
-      added: result.added.map((row) => keptFileOf(row, result.roster)),
-    }
+  filesKeptForWindow(conversation: string): Promise<FilesKept> {
+    return this.keptFiles.filesKeptForWindow(conversation)
   }
 
-  async filesLibraryForWindow(
+  filesLibraryForWindow(
     request: FilesLibraryRequest,
     sink: RuntimeEventSink,
   ): Promise<FilesLibraryResult> {
-    const libraries = this.deps.filesLibraries
-    if (libraries === undefined || this.launches.closed || !sink.alive)
-      return libraryUnavailable('closed')
-    const admission = libraries.admit(sink.ownerId)
-    const givers =
-      request.operation === 'query' && request.query.scope.type === 'conversationWork'
-        ? this.theIdsItStandsFor(request.query.scope.id)
-        : undefined
-    for (let attempt = 0; attempt < 2; attempt++) {
-      if (!libraries.isCurrent(sink.ownerId, admission)) return libraryUnavailable('cancelled')
-      const before = this.deps.filesLibraryRevision?.()
-      if (before === null || before === undefined) return libraryUnavailable('changed')
-      const result = await libraries.read(sink.ownerId, request, before, givers)
-      if (this.launches.closed || !sink.alive) return libraryUnavailable('closed')
-      if (!libraries.isCurrent(sink.ownerId, admission)) return libraryUnavailable('cancelled')
-      if (result.type === 'unavailable' && result.cause === 'cancelled') return result
-      const after = this.deps.filesLibraryRevision?.()
-      if (before === after) return result
-      if (request.operation !== 'query' && request.operation !== 'tasks') {
-        return result.type === 'files' || result.type === 'provenance'
-          ? { ...result, stale: true }
-          : result
-      }
+    try {
+      return filesLibraryForWindow(request, sink, {
+        libraries: this.deps.filesLibraries,
+        revision: () => this.deps.filesLibraryRevision?.(),
+        closed: () => this.launches.closed,
+        givers: (conversation) => this.theIdsItStandsFor(conversation),
+      })
+    } catch (error) {
+      return Promise.reject(error)
     }
-    return libraryUnavailable('changed')
   }
 
-  async teamProfileGraphForWindow(
+  teamProfileGraphForWindow(
     request: TeamProfileGraphRequest,
     sink: RuntimeEventSink,
   ): Promise<TeamProfileGraphResult> {
-    const graphs = this.deps.teamProfileGraphs
-    if (!graphs || this.launches.closed || !sink.aPersonIsBehindIt)
-      return graphUnavailable('closed')
-    if (request.operation === 'release') {
-      await graphs.closeWindow(sink.ownerId)
-      return { type: 'released' }
+    try {
+      return teamProfileGraphForWindow(request, sink, {
+        graphs: this.deps.teamProfileGraphs,
+        revision: () => this.deps.teamProfileGraphRevision?.(),
+        closed: () => this.launches.closed,
+      })
+    } catch (error) {
+      return Promise.reject(error)
     }
-    const admission = graphs.admit(sink.ownerId)
-    const before = this.deps.teamProfileGraphRevision?.()
-    if (before === null || before === undefined) return graphUnavailable('changed')
-    const result = await graphs.read(sink.ownerId, request, before)
-    if (this.launches.closed) return graphUnavailable('closed')
-    if (!graphs.isCurrent(sink.ownerId, admission)) return graphUnavailable('cancelled')
-    const after = this.deps.teamProfileGraphRevision?.()
-    return before !== after &&
-      (result.type === 'snapshot' || result.type === 'nodes' || result.type === 'edges')
-      ? { ...result, stale: true }
-      : result
   }
 
   async closeTeamProfileGraphWindow(owner: string): Promise<void> {
@@ -24131,36 +20456,12 @@ export class RuntimeHost implements LiveHost {
     await this.deps.filesLibraries?.closeWindow(owner)
   }
 
-  async searchWork(asAgent: string, input: WorkSearchQuery): Promise<WorkSearchResult> {
-    if (
-      this.deps.store.conversationBinding(asAgent) === null ||
-      this.deps.workSearchReader === undefined
-    )
-      return { ok: false, reason: 'unavailable' }
-    try {
-      return await this.deps.workSearchReader.read(asAgent, input)
-    } catch {
-      return { ok: false, reason: 'unavailable' }
-    }
+  searchWork(asAgent: string, input: WorkSearchQuery): Promise<WorkSearchResult> {
+    return this.workSearch.searchWork(asAgent, input)
   }
 
-  async searchPastWork(asAgent: string, words: string): Promise<PastWorkSearchResult> {
-    const source = this.deps.store.pastWorkSearchSource(asAgent)
-    if (source === null || this.deps.pastWorkSearchReader === undefined || this.launches.closed)
-      return { ok: false, reason: 'unavailable' }
-    const found = await this.deps.pastWorkSearchReader.read(source, asAgent, words)
-    if (this.launches.closed) return { ok: false, reason: 'unavailable' }
-    if (!found.ok) return found
-    const current = this.deps.store.pastWorkSearchSource(asAgent)
-    if (current === null || current.profile !== source.profile)
-      return { ok: false, reason: 'unavailable' }
-    const allowed = new Set(current.versions.map(([conversation]) => conversation))
-    if (found.hits.some((hit) => !allowed.has(hit.conversation)))
-      return { ok: false, reason: 'unavailable' }
-    return {
-      ok: true,
-      hits: found.hits.map((hit) => ({ ...hit, archived: this.archived.has(hit.conversation) })),
-    }
+  searchPastWork(asAgent: string, words: string): Promise<PastWorkSearchResult> {
+    return this.workSearch.searchPastWork(asAgent, words)
   }
 
   /**
@@ -25677,7 +21978,7 @@ export class RuntimeHost implements LiveHost {
     const row = live === null ? this.deps.store.recordedOne(sessionId) : null
     const provider = live?.provider ?? row?.provider
     if (provider === undefined) throw new Error('there is no record of this conversation here')
-    const list = await this.theListFor(
+    const list = await this.modelCatalogues.theListFor(
       provider,
       live?.profileId ?? row?.profileId ?? DEFAULT_PROFILE_ID,
     )
@@ -25693,7 +21994,7 @@ export class RuntimeHost implements LiveHost {
       )
     }
     const effortOf = (model: string): string | null =>
-      said(model, this.theEffortOfAModelNamedAlone(list, provider, model))
+      said(model, this.modelCatalogues.theEffortOfAModelNamedAlone(list, provider, model))
     const runs = this.thePairItRunsOn(sessionId)
     if (change.kind === 'reasoningEffort') {
       return {
@@ -25702,7 +22003,8 @@ export class RuntimeHost implements LiveHost {
       }
     }
     const model =
-      change.model ?? this.theProvidersDefaultIn(list, provider, runs?.effort ?? undefined)?.model
+      change.model ??
+      this.modelCatalogues.theProvidersDefaultIn(list, provider, runs?.effort ?? undefined)?.model
     if (model === undefined) {
       throw new Error(
         list.notAsked === null
@@ -29095,7 +25397,7 @@ export class RuntimeHost implements LiveHost {
       // the launch and the answer read one resolution. ⚠️ Left to the launch only where R1 has no
       // whole pair here: the provider's default off its list (Codex's), or a model that offers no
       // effort, which the launch resolves the same way.
-      const resolved = this.theSelectedPairIfNamed(start.provider, start.profileId)
+      const resolved = this.modelCatalogues.theSelectedPairIfNamed(start.provider, start.profileId)
       const startsOn: ModelAndEffort | null = choice ?? (resolved?.effort == null ? null : resolved)
       const from: WhereItCameFrom = named.model
         ? 'named'
@@ -29198,7 +25500,7 @@ export class RuntimeHost implements LiveHost {
             ? asked.profile
             : STAND_IN_PROFILE
           : (this.profileOf(found) ?? STAND_IN_PROFILE)
-      return this.theListFor(provider, home)
+      return this.modelCatalogues.theListFor(provider, home)
     }
     return (async () => {
       const first = preferred === null ? null : await listFor(preferred)
@@ -29212,7 +25514,7 @@ export class RuntimeHost implements LiveHost {
           ? null
           : { provider: preferred, list: first, theNamedModels: null }
       }
-      const theNamedModels = await this.theProviderWhoseListAloneHolds(asked.model)
+      const theNamedModels = await this.modelCatalogues.theProviderWhoseListAloneHolds(asked.model)
       const provider =
         fixed ??
         theProviderAStartRunsOn(
@@ -29232,33 +25534,8 @@ export class RuntimeHost implements LiveHost {
     })()
   }
 
-  /**
-   * The provider whose list alone holds this model — its own rows, an alias's target, or one a person
-   * added — else `null`: neither list holds it, or both do. ⚑ Asked only where nothing names an
-   * agent's provider yet or a give names a model without a provider. ⛔ In
-   * {@link STAND_IN_PROFILE}'s home, as a new agent's default is judged: an agent's own home is
-   * prepared only for the provider it runs on.
-   */
-  private async theProviderWhoseListAloneHolds(model: string): Promise<Provider | null> {
-    const providers = Object.keys(PROVIDER_NAME) as Provider[]
-    const lists = await Promise.all(
-      providers.map((provider) => this.theListFor(provider, STAND_IN_PROFILE)),
-    )
-    const holders = providers.filter(
-      (_, at) => theListedRow(lists[at]?.rows ?? [], model) !== undefined,
-    )
-    return holders.length === 1 ? (holders[0] ?? null) : null
-  }
-
-  /**
-   * The provider an agent runs on, and what says so — {@link theProviderOfAnAgent}, the one rule the
-   * window reads too, over the provider saved for it and its started conversations.
-   */
   private itsProvider(profileSlug: string): ItsProvider {
-    return theProviderOfAnAgent(
-      this.deps.store.providerOf(profileSlug),
-      this.deps.store.startedOnOf(profileSlug),
-    )
+    return this.modelCatalogues.itsProvider(profileSlug)
   }
 
   /**
@@ -29373,11 +25650,11 @@ export class RuntimeHost implements LiveHost {
     }
     const otherwise =
       'made' in at
-        ? (this.theSelectedPairIfNamed(provider, at.made.profile) ??
-          this.theProvidersDefaultIn(choosing.list, provider, asked.effort))
+        ? (this.modelCatalogues.theSelectedPairIfNamed(provider, at.made.profile) ??
+          this.modelCatalogues.theProvidersDefaultIn(choosing.list, provider, asked.effort))
         : (this.thePairItRunsOn(at.existing) ??
-          this.theSelectedPairIfNamed(provider, this.profileOf(at.existing)) ??
-          this.theProvidersDefaultIn(choosing.list, provider, asked.effort))
+          this.modelCatalogues.theSelectedPairIfNamed(provider, this.profileOf(at.existing)) ??
+          this.modelCatalogues.theProvidersDefaultIn(choosing.list, provider, asked.effort))
     return judgeAnAgentsChoice(
       {
         ...(asked.model === undefined ? {} : { model: asked.model }),
@@ -36103,9 +32380,7 @@ export class RuntimeHost implements LiveHost {
   /** A successful native setup changes what future launches can use; windows must ask again. */
   providerSetupCompleted(provider: Provider, kind: 'install' | 'signIn' = 'signIn'): void {
     if (kind === 'signIn') this.rejectedMachineLogins.delete(provider)
-    for (const key of this.modelProbes.keys()) {
-      if (key.startsWith(`${provider}:`)) this.modelProbes.delete(key)
-    }
+    this.modelCatalogues.forgetProviderModels(provider)
     this.providerLoginChanged(provider)
   }
 
@@ -38131,7 +34406,6 @@ export class RuntimeHost implements LiveHost {
   private forgetTheConversations(ids: readonly string[]): void {
     const gone = new Set(ids)
     const keptByConversation: readonly { delete(id: string): boolean }[] = [
-      this.idleCountdowns,
       this.statesToAsk,
       this.stateSaid,
       this.waitAsLastRead,
@@ -38182,8 +34456,7 @@ export class RuntimeHost implements LiveHost {
       this.moveTheListing()
       this.providerBlockSaid.delete(id)
       this.forgetItsWakeUp(id)
-      const countdown = this.idleCountdowns.get(id)
-      if (countdown !== undefined) clearTimeout(countdown)
+      this.conversationIdle.cancel(id)
       for (const kept of keptByConversation) kept.delete(id)
       this.routedTo?.delete(id)
     }
@@ -41685,259 +37958,38 @@ export class RuntimeHost implements LiveHost {
     return this.deps.store.removeExternalMcpServer(serverId)
   }
 
-  /**
-   * 🔴 **Say which provider this identity's NEXT conversation starts on** (433, HO-024 §2.1/§2.2),
-   * or hand it back to the app's fallback with `null`.
-   *
-   * ## ⛔ The name, which two rulings and one census all have a claim on
-   *
-   * ⚑ **`setAgentProvider` is HO-024 §2.2's own word for this verb**, and `433` relay 1 uses it
-   * again, so the code and the rulings name one thing. ⛔ **Not `setProvider`**: `417` shipped the
-   * sentence a person reads — *"the provider you cannot change once a conversation has started"* —
-   * and `a-front-door-that-asks-nothing.test.ts` §1 greps all of `src/main` for
-   * `setProvider|changeProvider|switchProvider|swapProvider` to keep it true. A verb by one of
-   * those names would take that census red **for a reason it does not mean** (`423` F5.1 found the
-   * trap), and — the sharper half — it would be NAMED for the thing it must not do.
-   *
-   * ⚠️ **`Agent` here means the IDENTITY, as it does in {@link createAgent} and `agentIdentities`
-   * beside it — and NOT what `list_agents` means by the word.** On a toolset an *agent* is a live
-   * conversation; on this wire it is the durable thing a conversation runs as. ⛔ The collision is
-   * named rather than left for a reader: this verb takes a profile slug, it has no session
-   * parameter, and there is no toolset it appears on.
-   *
-   * ## ⚠️ Nothing running moves, and nothing recorded moves either
-   *
-   * A conversation takes its provider at launch (`417`) and the column is read there (`427`); no
-   * `UPDATE provider_session` anywhere in this app sets it. ⛔ **That is the restored ruling rather
-   * than a limitation** — HO-024 §2.1 reverts HO-023 §3 to HO-022 §3 precisely so *the same
-   * identity on Codex in one project and Claude in another* is expressible, and a write here that
-   * reached a live session would delete that case.
-   *
-   * 🔴 **And the app SAYS so rather than leaving it to be discovered** (HO-025, through `433` relay
-   * 1): *"changing it means a new conversation, and the app should SAY that rather than offer a
-   * control that silently relaunches."* ⚑ The sentence is `providerTakesEffectNextTime` in
-   * `renderer/src/lib/front-door-words.ts`, it is rendered beside the control, and
-   * `a-provider-a-person-can-change.test.ts` §4 is what stops it drifting away from this method.
-   *
-   * ⚠️ **It was written here as `{@link PROVIDER_TAKES_EFFECT_NEXT_TIME}` until `470`, and no such
-   * symbol has ever existed** — it is a function, not a constant, and a dispatch grepping for the
-   * name this docblock used would have found nothing and concluded the sentence was unwritten.
-   * ⛔ A `@link` across the main/renderer boundary cannot be resolved by the compiler either way,
-   * which is why it is now a path a reader can open.
-   *
-   * ⚑ **Read back rather than echoed**, which is {@link setCapabilities}' shape and 339's rule: the
-   * store's own fold decides what the column now says, so a word this app cannot read comes back as
-   * *nobody has said* instead of as the thing that was asked for.
-   *
-   * ⛔ **`null` when there was no row** — the store's refusal to create one, turned into the wire's
-   * *there is nothing here to configure*. Criterion 12, through the second configuration door.
-   */
   setAgentProvider(profileSlug: string, provider: Provider | null): AgentProviderSet | null {
-    // 🔴 **682 · `R31b` — a person's two doors never leave a contradiction.** ⚑ The store clears a
-    // model choice for another provider IN THE SAME TRANSACTION as the write (`setAgentProviderTx`);
-    // this reads the choice either side of it so the answer can SAY what was taken back. ⚠️ Both
-    // reads and the write are synchronous, so nothing can land between them.
-    const before = this.deps.store.modelChoiceOf(profileSlug)
-    if (!this.deps.store.setAgentProvider(profileSlug, provider)) return null
-    const cleared = before !== null && this.deps.store.modelChoiceOf(profileSlug) === null
-    // ⚑ **682 · announced on `agents`** (`677`'s inbox 10), as the model door is: a second window
-    // would otherwise draw the old provider — and, now, a choice that no longer exists.
-    this.theWorldMoved('agents')
-    const folded = foldProfileName(profileSlug)
-    const identity = this.deps.store.agentIdentities().find(({ slug }) => slug === folded)
-    if (identity === undefined) return null
-    return {
-      ...identity,
-      modelChoiceCleared: cleared
-        ? { provider: before.provider, model: before.model, effort: before.effort }
-        : null,
-    }
+    return this.modelCatalogues.setAgentProvider(profileSlug, provider)
   }
 
-  /**
-   * 🔴 **Set this identity's DEFAULT model and effort — what its new conversations start on — or
-   * clear it with `null`** (677; D-042 · R2).
-   *
-   * ## ⛔ The order, and why each question is where it is
-   *
-   *  1. **Existence first** — `capabilitiesOf`, criterion 12's reader. ⛔ Asked before the provider
-   *     is, because a probe is a LAUNCH (`070`): a typo must not cost a provider child.
-   *  2. **A clear is not validated** — there is nothing to check a default of nothing against, and a
-   *     person must be able to take one back while the provider cannot be reached.
-   *  2b. 🔴 **682 · the identity's OWN provider** — `not-its-provider` (`R31b`): a default is always
-   *     for the provider the identity runs on, and one with no provider of its own takes either.
-   *  3. **The list** ({@link theListFor}) — the provider's own rows and the person's own — asked in
-   *     the identity's home, or {@link STAND_IN_PROFILE}'s for an identity with no folder. ⚑ An
-   *     effort left `null` is the model's own default effort, named here
-   *     ({@link theEffortWhenNoneIsNamed} — `effort-not-offered` where nothing names one it offers).
-   *  4. **The write**, read back rather than echoed — and ⚑ **R2 · it is the person's last pick on
-   *     that provider too**.
-   *
-   * ⚠️ **Announced on `agents`**, as `setAgentProvider` and `setCapabilities` are: a second window
-   * showing this sheet would otherwise go on drawing a default its new conversations no longer start
-   * on. ⛔ **A conversation already open keeps its own** (`whatAModelChoiceReaches` says so).
-   */
-  async setAgentModelAndEffort(
+  setAgentModelAndEffort(
     profileSlug: string,
     choice: AgentModelChoice | null,
   ): Promise<ModelChoiceSaved> {
-    const said = { profileId: profileSlug }
-    if (this.deps.store.capabilitiesOf(profileSlug) === null) {
-      return refuseModelChoice('no-such-agent', said)
-    }
-    if (choice === null) {
-      if (!this.deps.store.setModelChoice(profileSlug, null)) {
-        return refuseModelChoice('no-such-agent', said)
-      }
-      this.theWorldMoved('agents')
-      return { ok: true, choice: null }
-    }
-    const about = {
-      ...said,
-      provider: choice.provider,
-      model: choice.model,
-      ...(choice.effort === null ? {} : { effort: choice.effort }),
-    }
-    // 🔴 **682 · `R31b` — a default is always for the identity's own provider.**
-    const itsProvider = this.itsProvider(profileSlug).provider
-    if (!aChoiceIsInForce(choice, itsProvider)) {
-      return refuseModelChoice('not-its-provider', {
-        ...about,
-        ...(itsProvider === null ? {} : { itsProvider }),
-        // 🔴 **707 · R41** — the identity by the roster's name, never its slug in quotes.
-        named: agentName(profileSlug, this.deps.store.agentIdentities()),
-      })
-    }
-    const list = await this.theListFor(choice.provider, profileSlug)
-    const row = theListedRow(list.rows, choice.model)
-    // ⚠️ **A model a person added, while the provider's list could not be read, offers efforts
-    // nobody knows** — not *"none"* — so it is the list's absence that is said, as the agents' seam
-    // says it (`model-rails.ts`), and no effortless default is saved.
-    if (row === undefined || (list.notAsked !== null && row.addedBy === 'a-person')) {
-      return list.notAsked === null
-        ? refuseModelChoice('model-not-offered', about)
-        : refuseModelChoice('models-unavailable', {
-            ...about,
-            ...(list.notAsked.reason === 'refused' ? { why: list.notAsked.detail } : {}),
-          })
-    }
-    // ⚑ A blank effort is the model's own default — ⛔ refused where nothing names one it offers.
-    const effort = choice.effort ?? theEffortWhenNoneIsNamed(row, list.rows)
-    // ⚑ Saved as the list spells the model, however it was named.
-    const pair =
-      effort === undefined ? null : { model: theListsSpelling(row, choice.model), effort }
-    if (pair === null || judgeAgainstTheList(list.rows, pair) !== null) {
-      return refuseModelChoice('effort-not-offered', { ...about, offered: theEffortsOf(row) })
-    }
-    // 🔴 **`R31b` asked AGAIN, in the write's own synchronous stretch** (review, round one). ⛔ The
-    // list above is an `await`, and a person moving this identity's provider during it would
-    // otherwise leave exactly the contradiction the two doors must never leave.
-    const itsProviderNow = this.itsProvider(profileSlug).provider
-    if (!aChoiceIsInForce(choice, itsProviderNow)) {
-      return refuseModelChoice('not-its-provider', {
-        ...about,
-        ...(itsProviderNow === null ? {} : { itsProvider: itsProviderNow }),
-        named: agentName(profileSlug, this.deps.store.agentIdentities()),
-      })
-    }
-    if (!this.deps.store.setModelChoice(profileSlug, { provider: choice.provider, ...pair })) {
-      return refuseModelChoice('no-such-agent', said)
-    }
-    this.deps.store.aPersonPicked(choice.provider, pair, this.now())
-    this.theWorldMoved('agents')
-    return { ok: true, choice: this.deps.store.modelChoiceOf(profileSlug) }
+    return this.modelCatalogues.setAgentModelAndEffort(profileSlug, choice)
   }
 
-  /** ⚑ **The default {@link setAgentModelAndEffort} wrote, or `null`** (677) — the sheet's read. */
   agentModelAndEffort(profileSlug: string): AgentModelChoice | null {
-    return this.deps.store.modelChoiceOf(profileSlug)
+    return this.modelCatalogues.agentModelAndEffort(profileSlug)
   }
 
-  /**
-   * 🔴 **D-042 · R3 — the ONE list a person picks from**, for one provider and one agent
-   * ({@link ModelList}): the provider's rows (with what an alias points at, each model's efforts and
-   * the provider's default) and the person's own, the last pick, and what a new conversation of this
-   * agent starts on when nothing is named — R1's order.
-   *
-   * ⚑ Asked as {@link providerModels} asks: an agent with no folder in {@link STAND_IN_PROFILE}'s
-   * home, a failure already cached asked once more, and nothing creates a folder.
-   */
-  async modelList(provider: Provider, profileId: string = DEFAULT_PROFILE_ID): Promise<ModelList> {
-    const list = await this.theListFor(provider, profileId)
-    return {
-      provider,
-      notAsked: list.notAsked,
-      standIn: list.standIn,
-      models: list.rows,
-      lastPicked: this.deps.store.lastPicked(provider),
-      startsOn:
-        this.theSelectedPairIfNamed(provider, profileId) ??
-        this.theProvidersDefaultIn(list, provider),
-    }
+  modelList(provider: Provider, profileId: string = DEFAULT_PROFILE_ID): Promise<ModelList> {
+    return this.modelCatalogues.modelList(provider, profileId)
   }
 
-  /**
-   * 🔴 **D-042 · R3 — a person adds a model to a provider's list by hand**, answering the hand-added
-   * models after it. ⛔ **Never checked** (R3: no test call, nothing spent): a provider that refuses
-   * it says so in its own words at the call that names it (D-039). ⚑ Announced on `agents`.
-   */
   addHandAddedModel(provider: Provider, model: string): readonly string[] {
-    const added = this.deps.store.addHandAddedModel(provider, model.trim(), this.now())
-    this.theWorldMoved('agents')
-    return added
+    return this.modelCatalogues.addHandAddedModel(provider, model)
   }
 
-  /**
-   * ⚑ **D-042 · R2 — a person picked this pair on this provider**, at a door only the window reaches
-   * (a new conversation they started naming a model). ⚑ Announced on `agents`.
-   *
-   * ⛔ **Only a pair the list holds** — {@link aPersonPickedItFor}'s rule, for its reason: the box
-   * takes anything, and a model it took that the list does not hold is that conversation's alone —
-   * never what every later start naming nothing runs. ⚑ Asked of the list the launch's own home
-   * reads, memoized; ⚠️ never rejects — a pick not recorded is a later start resolving otherwise,
-   * and the conversation it was made for has started either way.
-   */
-  async aPersonPicked(provider: Provider, profileId: string, pair: ModelAndEffort): Promise<void> {
-    try {
-      const list = await this.theListFor(provider, profileId)
-      const row = theListedRow(list.rows, pair.model)
-      if (
-        list.notAsked !== null ||
-        row === undefined ||
-        judgeAgainstTheList(list.rows, pair) !== null
-      ) {
-        return
-      }
-      // ⚑ Kept as the list spells the model, however it was typed.
-      this.deps.store.aPersonPicked(
-        provider,
-        { ...pair, model: theListsSpelling(row, pair.model) },
-        this.now(),
-      )
-      this.theWorldMoved('agents')
-    } catch (error) {
-      console.warn(`the last pick on ${provider} was not recorded: ${errorMessage(error)}`)
-    }
+  aPersonPicked(provider: Provider, profileId: string, pair: ModelAndEffort): Promise<void> {
+    return this.modelCatalogues.aPersonPicked(provider, profileId, pair)
   }
 
-  /**
-   * ⚑ **D-042 · R3 — a person takes a model they added off the list.** ⚠️ A provider's own model is
-   * never stored, so it cannot be deleted: it comes back at the provider's next answer.
-   */
   deleteHandAddedModel(provider: Provider, model: string): readonly string[] {
-    const left = this.deps.store.deleteHandAddedModel(provider, model, this.now())
-    this.theWorldMoved('agents')
-    return left
+    return this.modelCatalogues.deleteHandAddedModel(provider, model)
   }
 
-  /**
-   * 🔴 **D-042 · R4 — the default `create_agent` names for the agent it makes, judged by the one seam**
-   * (`model-rails.ts`: the list, then the model's efforts), against the list in
-   * {@link STAND_IN_PROFILE}'s home — the new agent has no folder to ask in. ⚑ For the provider it
-   * names, else the provider whose list alone holds the model, else the caller's own: a default
-   * holds its provider (`R31a`).
-   */
-  async judgeTheDefaultItNames(
+  judgeTheDefaultItNames(
     me: string,
     named: Provider | null,
     asked: { readonly model?: string; readonly effort?: string },
@@ -41945,240 +37997,14 @@ export class RuntimeHost implements LiveHost {
     | { readonly ok: true; readonly chosen: AgentModelChoice }
     | { readonly ok: false; readonly refusal: ModelRefusal }
   > {
-    const provider =
-      named ??
-      (asked.model === undefined ? null : await this.theProviderWhoseListAloneHolds(asked.model)) ??
-      this.theProviderOfConversation(me)
-    // ⛔ **Unreachable while a tool call is made**: the caller is mid-call, so it runs.
-    if (provider === null) throw new Error(`create_agent: ${me} runs on no provider`)
-    const list = await this.theListFor(provider, STAND_IN_PROFILE)
-    const verdict = judgeAnAgentsChoice(asked, provider, list, null, 'create')
-    return verdict.ok ? { ok: true, chosen: { provider, ...verdict.chosen } } : verdict
+    return this.modelCatalogues.judgeTheDefaultItNames(me, named, asked)
   }
 
-  /**
-   * 🔴 **682 · an AGENT that has never run — an identity row, and no folder under any spelling** —
-   * whose list is asked in {@link STAND_IN_PROFILE}'s home. ⚑ Folded both ways, the model door's own
-   * comparison, so an identity whose folder was made in another case has run. With a provider,
-   * only that provider's homes count.
-   */
-  private hasNeverRun(profileSlug: string, provider?: Provider): boolean {
-    if (this.deps.store.capabilitiesOf(profileSlug) === null) return false
-    const folded = foldProfileName(profileSlug)
-    return !this.profiles(provider).some((named) => foldProfileName(named) === folded)
-  }
-
-  /**
-   * ⚑ **One provider's list in one home, with a FAILURE already cached asked once more** — the model
-   * door's rule (`677`'s review), which `682` gave a launch and `689` gives
-   * {@link providerModels} (`685` H1). ⚑ **One rule for every door that asks.**
-   *
-   * ⛔ **Why at all**: {@link probeModelsFor} memoizes the promise for the life of the app, failures
-   * included, and only a sign-in forgets it — so one network blip left an agent's menus reading
-   * *"could not be asked"*, and refused every later Save, until a restart. ⚑ Every caller is a
-   * person's gesture or a launch that is paying for children anyway: a Save, a press on *Choose…*,
-   * a window asking what a profile can run. ⚠️ **Not the memo**: `probeModelsFor` stays the one
-   * cache, and a success stays a value — asking again costs a child only while it keeps failing.
-   *
-   * ⚠️ **Only a failure that was ALREADY cached** (`677`'s review, round two): one this ask just
-   * produced is fresh, and asking again at once would spend a second child — up to twice the probe's
-   * bound — on an answer a moment old. ⚑ **689 · *already* means SETTLED when this ask looked**
-   * (`689`'s review): a probe another ask started and is still waiting on is fresh too, so two asks
-   * in one tick share its answer rather than spending a child each.
-   *
-   * ⛔ **And ONE re-ask for every caller that met the same failure** (`689`'s review): each forgets
-   * only the promise it awaited, so a second caller finding a newer probe in its place joins that
-   * one — instead of deleting a probe still running and starting another child.
-   *
-   * 🔴 **Never during a quit** (`689`'s review): asking again runs `prepareProviderHome` before the
-   * launch registry can refuse the child, and a quit hands back what it has (070, from 068 finding 7).
-   */
-  private async modelsAskedAgainIfTheyFailed(
-    provider: Provider,
-    folder: string,
-  ): Promise<ModelCatalogue> {
-    const key = modelProbeKey(provider, folder)
-    const cached = this.modelProbes.get(key)
-    const stale = cached !== undefined && this.settledModelProbes.has(cached)
-    const catalogue = await this.probeModelsFor(provider, folder)
-    if (catalogue.ok || !stale || this.launches.closed) return catalogue
-    if (this.modelProbes.get(key) === cached) this.forgetModels(provider, folder)
-    return this.probeModelsFor(provider, folder)
-  }
-
-  /**
-   * 🔴 **D-042 · R3 — one provider's list in the home of a profile a launch prepared**: the provider's rows, then
-   * the models a person added by hand ({@link theList}). ⚑ Asked through
-   * {@link modelsAskedAgainIfTheyFailed}, the one memo every door shares, so a launch after a window
-   * read costs no second child.
-   */
-  private async theListIn(provider: Provider, profileId: string): Promise<TheListAsked> {
-    const catalogue = await this.modelsAskedAgainIfTheyFailed(provider, profileId)
-    return this.theListOf(provider, catalogue)
-  }
-
-  /**
-   * ⚑ **D-042 · R3 — one provider's list for an agent, asked as the window asks it**
-   * ({@link providerModels}: an agent with no folder is answered in {@link STAND_IN_PROFILE}'s home,
-   * and nothing creates a folder). ⚠️ During a quit with nothing cached, the provider's rows are
-   * missing for `closing`, and a person's own models still list.
-   *
-   * ⚠️ **Asked under the folder's OWN spelling**, the key its list was memoized under (`187`: a
-   * directory keeps the case it was made with; an identity's slug is folded, and a give names an
-   * agent as it likes). ⛔ Asked under any other, {@link providerModels}' exact test answers
-   * `no-profile` for an agent that has a folder — every door here would call that an outage.
-   */
-  private async theListFor(
-    provider: Provider,
-    profileId: string,
-  ): Promise<TheListAsked & { readonly standIn: string | null }> {
-    const folded = foldProfileName(profileId)
-    const own = this.profiles().find((named) => foldProfileName(named) === folded) ?? profileId
-    const catalogue = await this.providerModels(own, provider).catch((): ModelCatalogue => ({
-      ok: false,
-      reason: 'closing',
-    }))
-    return {
-      ...this.theListOf(provider, catalogue),
-      standIn: catalogue.ok ? (catalogue.standIn ?? null) : null,
-    }
-  }
-
-  /**
-   * Each provider's list as this app last read it — in {@link STAND_IN_PROFILE}'s home, where an agent
-   * nothing has run is judged, else in the home asked most recently that answered — with the models a
-   * person added ({@link theListOf}, the list a give's refusal names). A provider whose list this
-   * app has not read is left out. It asks no provider: a launch names what is known.
-   */
   private theListsAsLastRead(): ListsAsLastRead {
-    const answered = (probe: Promise<ModelCatalogue> | undefined): ModelCatalogue | undefined => {
-      const catalogue = probe === undefined ? undefined : this.modelsAnswered.get(probe)
-      return catalogue?.ok === true ? catalogue : undefined
-    }
-    const lists: ListsAsLastRead = {}
-    for (const provider of Object.keys(PROVIDER_NAME) as Provider[]) {
-      const itsHomes = modelProbeKey(provider, '')
-      const read =
-        answered(this.modelProbes.get(modelProbeKey(provider, STAND_IN_PROFILE))) ??
-        [...this.modelProbes]
-          .filter(([key]) => key.startsWith(itsHomes))
-          .map(([, probe]) => answered(probe))
-          .filter((one) => one !== undefined)
-          .at(-1)
-      if (read !== undefined) lists[provider] = this.theListOf(provider, read).rows
-    }
-    return lists
+    return this.modelCatalogues.theListsAsLastRead()
   }
 
-  /** ⚑ **D-042 · a catalogue and a person's own models, as one list.** */
-  private theListOf(provider: Provider, catalogue: ModelCatalogue): TheListAsked {
-    return {
-      rows: theList(
-        catalogue.ok ? catalogue.models : [],
-        this.deps.store.handAddedModels(provider),
-      ),
-      notAsked: catalogue.ok ? null : catalogue,
-    }
-  }
-
-  /**
-   * 🔴 **D-042 · R1 — the pair a conversation starts on when nothing named one for it, where no
-   * list need be asked**: its agent's default (in force, and for this provider), else the last pair
-   * a person picked on this provider, else the provider's own default where it has one by name
-   * (Claude's). ⚑ `null` is *read the provider's list* — Codex's default is a row of it.
-   *
-   * ⚑ **Synchronous**, so a give can ask it inside its stretch (D-016 · R2).
-   */
-  private theSelectedPairIfNamed(
-    provider: Provider,
-    profileSlug: string | null,
-  ): SelectedModel | null {
-    const itsDefault = profileSlug === null ? null : this.deps.store.modelChoiceOf(profileSlug)
-    if (
-      profileSlug !== null &&
-      itsDefault !== null &&
-      itsDefault.provider === provider &&
-      aChoiceIsInForce(itsDefault, this.itsProvider(profileSlug).provider)
-    ) {
-      return { model: itsDefault.model, effort: itsDefault.effort, from: 'its-default' }
-    }
-    const lastPicked = this.deps.store.lastPicked(provider)
-    if (lastPicked !== null) return { ...lastPicked, from: 'the-last-pick' }
-    const byName = theDefaultByName(provider)
-    return byName === null ? null : { ...byName, from: 'the-providers-default' }
-  }
-
-  /**
-   * ⚑ **D-042 · R1 — the provider's own default, BY NAME** — Claude's without asking, else the row
-   * its list marks `isDefault`, at that row's own default effort ({@link theEffortWhenNoneIsNamed}).
-   * ⚑ **A row that names none of its efforts its default is completed by `carried`** — the effort
-   * its caller already holds (one named alone, or the one a conversation runs at) — where the row
-   * offers it. ⛔ `null` when the list was not given, marks none, or marks a row that offers efforts
-   * and nothing names one of them: never an unnamed default.
-   */
-  private theProvidersDefaultIn(
-    list: TheListAsked,
-    provider: Provider,
-    carried?: string,
-  ): SelectedModel | null {
-    const byName = theDefaultByName(provider)
-    if (byName !== null) return { ...byName, from: 'the-providers-default' }
-    const row = list.rows.find((one) => one.isDefault === true && one.addedBy === 'the-provider')
-    const itsOwn = theEffortWhenNoneIsNamed(row, list.rows)
-    const effort =
-      itsOwn === undefined && carried !== undefined && theEffortsOf(row).includes(carried)
-        ? carried
-        : itsOwn
-    return row === undefined || effort === undefined
-      ? null
-      : { model: row.id, effort, from: 'the-providers-default' }
-  }
-
-  /**
-   * ⚑ **D-042 · R1 — the effort a model named without one runs at**: a row of the PROVIDER's runs
-   * at its own default, else at the provider's default row's where it offers that one
-   * ({@link theEffortWhenNoneIsNamed}) — `null` only for a row that offers none. A model a person
-   * added, or one the list does not hold, runs at its row's default where the list gave it one,
-   * else at the provider's default effort. ⛔ **`undefined` when nothing can name it** — a
-   * provider's row that offers efforts, none of them named its default, or a list that could not be
-   * read or names no default effort — which is never *"it offers none"*: a caller says so rather
-   * than send an absence.
-   */
-  private theEffortOfAModelNamedAlone(
-    list: TheListAsked,
-    provider: Provider,
-    model: string,
-  ): string | null | undefined {
-    const row = theListedRow(list.rows, model)
-    const itsDefault = theEffortWhenNoneIsNamed(row, list.rows)
-    if (row?.addedBy === 'the-provider') return itsDefault
-    return itsDefault ?? this.theProvidersDefaultIn(list, provider)?.effort ?? undefined
-  }
-
-  /**
-   * 🔴 **D-042 · R1 — every call names its model and effort: the one resolution every launch asks**
-   * (a person's start, a give's start, a wake, a replacement), in the ruling's order — what was
-   * NAMED for this conversation; else its agent's default; else the last pair a person picked on
-   * this provider; else the provider's own default, BY NAME.
-   *
-   * ⚑ **Asked after the launch's home is prepared**, so a list it needs is read in that home — the
-   * one the conversation runs under. ⚠️ A list is read only when a model is named without an
-   * effort, an effort is named without a model, or the provider's default is a row of its list
-   * (Codex).
-   *
-   * ⛔ **Throws `nothing-names-a-model`** when nothing can name one — only when the provider's list
-   * could not be read, or names no default model and effort, and nothing else names a model (D-042
-   * F2) — ⚑ or, for a model named alone, nothing names its effort
-   * ({@link theEffortOfAModelNamedAlone}): never an unnamed default.
-   *
-   * ⚠️ **An effort named ALONE** — a row from before D-042 holding one beside no model — **is kept
-   * only where the model it lands on offers it**, else that pair's own effort stands: the pair
-   * stays one the list holds, as {@link theSettingNamed} keeps it. ⚑ It also completes the
-   * provider's default row that names no effort of its own, where that row offers it
-   * ({@link theProvidersDefaultIn}). ⚑ A list that could not be read judges nothing, and the named
-   * effort stays.
-   */
-  private async theSelectedModel(
+  private theSelectedModel(
     provider: Provider,
     /** The identity whose default is asked — `null` for a conversation no identity holds. */
     profileSlug: string | null,
@@ -42186,44 +38012,7 @@ export class RuntimeHost implements LiveHost {
     askIn: string,
     named: { readonly model?: string; readonly effort?: string },
   ): Promise<SelectedModel> {
-    const unnamed = (list: TheListAsked, model: string | null): SessionUnavailable => {
-      const why =
-        list.notAsked === null
-          ? null
-          : list.notAsked.reason === 'refused'
-            ? list.notAsked.detail
-            : list.notAsked.reason
-      return new SessionUnavailable(
-        'nothing-names-a-model',
-        model === null
-          ? `${provider}: no model is named, and its list names no default model and effort (${why ?? 'answered'})`
-          : `${provider}: ${model} is named without an effort, and its list names none (${why ?? 'answered'})`,
-        { listUnread: { provider, why, model } },
-      )
-    }
-    if (named.model !== undefined) {
-      if (named.effort !== undefined) {
-        return { model: named.model, effort: named.effort, from: 'named' }
-      }
-      const list = await this.theListIn(provider, askIn)
-      const effort = this.theEffortOfAModelNamedAlone(list, provider, named.model)
-      if (effort === undefined) throw unnamed(list, named.model)
-      return { model: named.model, effort, from: 'named' }
-    }
-    let selected = this.theSelectedPairIfNamed(provider, profileSlug)
-    if (selected === null) {
-      const list = await this.theListIn(provider, askIn)
-      selected = this.theProvidersDefaultIn(list, provider, named.effort)
-      if (selected === null) throw unnamed(list, null)
-    }
-    if (named.effort === undefined) return selected
-    const list = await this.theListIn(provider, askIn)
-    const row = theListedRow(list.rows, selected.model)
-    const offered = row === undefined ? theEffortLadder(list.rows) : theEffortsOf(row)
-    const judged = list.notAsked === null || offered.length > 0
-    return !judged || offered.includes(named.effort)
-      ? { ...selected, effort: named.effort }
-      : selected
+    return this.modelCatalogues.theSelectedModel(provider, profileSlug, askIn, named)
   }
 
   /**
@@ -43304,129 +39093,12 @@ export class RuntimeHost implements LiveHost {
     return { defaultApprovalMode: this.deps.store.defaultApprovalMode() }
   }
 
-  /**
-   * 🔴 **What ONE provider will run today for ONE profile** (058, re-scoped by 257 §2, one provider
-   * since `689`/`685` H2) — asked of the provider, cached per `provider:profileId`; an answer for
-   * the app's life, a failure until the next ask ({@link modelsAskedAgainIfTheyFailed}).
-   *
-   * ⛔ **Why it asks one provider and never both.** The one list a person picks from
-   * ({@link modelList}, through {@link theListFor}), and every read of it a choice is judged by,
-   * must not probe the other: a probe is `prepareProviderHome` first, so a Claude agent would get a
-   * Codex home in its folder — on Codex, a copy of the machine credential — for a list nothing
-   * draws. ⚑ **D-049 · no window asks it directly**: the window asks the list door.
-   *
-   * ⚠️ **Unlike {@link capabilities} this is not free.** Each ask costs a short-lived provider child
-   * process (Claude ~1.4 s, Codex ~0.6 s, measured) — no turn, no tokens, but a real spawn. The
-   * PROMISE is cached rather than its value: two surfaces asking in the same moment share one probe
-   * instead of racing two.
-   *
-   * ⚠️ **A provider that cannot answer yields a REASON, never a throw and never `[]`** — no login, no
-   * binary, a rejected call all mean "we do not know", and the person keeps the free-text field.
-   * ⛔ **The reason CROSSES** (310): see {@link ModelCatalogue}; *"this profile does not exist yet"*,
-   * *"Codex refused"* and *"the app is closing"* are known here and nowhere else.
-   *
-   * ⛔ **The probe runs in the SAME per-profile home a session would launch in, because a model list
-   * is what THIS login may run** (`256` H1: every non-default profile was once shown the default
-   * profile's catalogue). ⚠️ The free-text model field stays: it is why a stale or missing menu is
-   * survivable at all, and the reason this cache can be allowed no timer.
-   */
   providerModels(profileId: string, provider: Provider): Promise<ModelCatalogue> {
-    // ⚠️ **Refused once a quit has started, and only when nothing is cached** (070, from 068
-    // finding 7). A probe answered earlier is a value, not a process, and handing it back during a
-    // shutdown costs nothing. Starting a NEW one does: a give, a Save or an agent's tool asking for
-    // a list as the person hits ⌘Q is exactly the shape 068 described.
-    //
-    // A rejection rather than a catalogue, deliberately — and ⚠️ **its ORIGINAL argument expired
-    // with 310**: {@link ModelCatalogue} can say *"we did not ask, because the app is closing"* in
-    // as many words. It stays for 070/068 finding 7: the guard exists to stop a provider child being
-    // spawned during a quit, and a value here would still have to be produced without spawning one.
-    // ⚑ No window reaches it during a quit: its list door is refused at `DURING_A_QUIT`.
-    //
-    // 🔴 **689 · FIRST, and it hands back what is cached AS IT IS** (`689`'s review). ⛔ It used to
-    // sit after the stand-in question below, which READS THE DATABASE — so a read still asking
-    // after the connection closed was told the connection was closed. ⚑ Asked of the profile's OWN home only: a never-run agent's
-    // stand-in list is refused during a quit rather than decided from a store that may be gone, and
-    // a failure is handed back rather than asked again ({@link modelsAskedAgainIfTheyFailed}).
-    if (this.launches.closed) {
-      const answered = this.modelProbes.get(modelProbeKey(provider, profileId))
-      return (
-        answered ??
-        Promise.reject(
-          new Error('BroCrew is shutting down, so the providers were not asked for their models'),
-        )
-      )
-    }
-    // 🔴 **682 · an AGENT that has never run is answered from {@link STAND_IN_PROFILE}'s home** (`R31d`),
-    // and its list says so (`standIn`). ⚑ Its own folder would be created by asking in it, which the
-    // guard below exists to prevent; the stand-in's is the product's own, which this read already
-    // asks in for BroBot's launcher. ⛔ **A name with no identity row still answers `no-profile`** —
-    // somebody typing a new profile's name is not an agent that exists.
-    const standIn = this.hasNeverRun(profileId, provider) ? STAND_IN_PROFILE : null
-    const askIn = standIn ?? profileId
-    // 🔴 **A profile that does not exist yet is not probed, and this guard is what makes taking a
-    // `profileId` safe at all** (257 §2, holding 190 H2 / 197 §2's rule). `prepareProviderHome` —
-    // the first thing a probe does — CREATES the home, and for Codex copies the machine credential
-    // into it. So without this line, merely rendering a launcher for a name somebody was still
-    // typing would bring a profile into existence and provision a credential for it: exactly the
-    // *"asking a question wrote a credential to disk"* defect `098`'s review found on the auth path,
-    // reintroduced through the menu. `createProviderAuthOps` puts the same rule on its own door.
-    //
-    // Return `no-profile` explicitly while keeping the launcher's free-text field. A profile created by launch cannot yet supply a catalogue; that differs from a provider refusing to list models.
-    if (!this.profiles().includes(askIn)) {
-      return Promise.resolve({ ok: false, reason: 'no-profile' })
-    }
-    // ⚑ **689 · a failure already cached is asked once more** (`685` H1) — the Save door's rule;
-    // see {@link modelsAskedAgainIfTheyFailed}.
-    return this.modelsAskedAgainIfTheyFailed(provider, askIn).then((one) =>
-      standIn !== null && one.ok ? { ...one, standIn } : one,
-    )
+    return this.modelCatalogues.providerModels(profileId, provider)
   }
 
-  /**
-   * **Forget what a provider said about one profile's models** (257 §2) — a no-op when nothing was
-   * asked, which is the ordinary case.
-   *
-   * ⛔ This is the whole invalidation story for an ANSWER, and it is deliberately not a schedule. A
-   * sign-in, a cancelled sign-in or a re-copied credential is the one moment the catalogue for that
-   * home can change under a running app; every other moment it cannot, and re-asking would be a
-   * spawn nobody requested. The next ask pays for one short-lived child; nothing pays in the meantime.
-   *
-   * ⚑ **689 · a FAILURE is forgotten by the next ask too** — see
-   * {@link modelsAskedAgainIfTheyFailed}. ⛔ Still not a schedule: it costs a child only when
-   * somebody asks and the last answer was a failure.
-   */
   private forgetModels(provider: Provider, profileId: string): void {
-    this.modelProbes.delete(modelProbeKey(provider, profileId))
-  }
-
-  /**
-   * One provider's catalogue in one profile's home, memoized — the PROMISE, so two surfaces asking
-   * in the same tick share one child rather than racing two.
-   */
-  private probeModelsFor(provider: Provider, profileId: string): Promise<ModelCatalogue> {
-    const key = modelProbeKey(provider, profileId)
-    const known = this.modelProbes.get(key)
-    if (known) return known
-    const probe = this.askProviderForModels(provider, profileId)
-    // ⚑ **689** — see {@link settledModelProbes}. Both arms, so a rejection is not left unhandled.
-    const settled = (): void => {
-      this.settledModelProbes.add(probe)
-    }
-    void probe.then(settled, settled)
-    void probe.then(
-      (catalogue) => this.modelsAnswered.set(probe, catalogue),
-      () => undefined,
-    )
-    // ⛔ **The bound, and what it costs when it bites** (257 §2). Oldest-first, by insertion order —
-    // an evicted entry is a settled promise, so dropping it cancels nothing and loses no process;
-    // the only cost is that a profile revisited after {@link MAX_MODEL_PROBES} others is asked again.
-    // A person who has opened seventeen profiles in one app run has paid one extra 1.4 s spawn.
-    if (this.modelProbes.size >= MAX_MODEL_PROBES) {
-      const oldest = this.modelProbes.keys().next().value
-      if (oldest !== undefined) this.modelProbes.delete(oldest)
-    }
-    this.modelProbes.set(key, probe)
-    return probe
+    return this.modelCatalogues.forgetModels(provider, profileId)
   }
 
   private async askProviderForModels(

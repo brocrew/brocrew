@@ -1,3 +1,4 @@
+import type { InjectedInstructionKind, RefusedInstruction } from './instruction-contracts'
 import type { InstalledSkillVersion } from './skills-installation'
 import type { LaunchSetting, LaunchSettingKey, LaunchSettingValue } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
@@ -5,7 +6,7 @@ import type { MemoryStoreState } from './agent-memory'
 import type { WhoWroteIt } from './own-instructions'
 import type { ProviderSnapshot } from './provider-snapshots'
 import type { TurnAsSent } from './turn-as-sent'
-import type { InjectedInstructionKind, RefusedInstruction } from './runtime-ipc'
+
 import type { ActedBy } from './who-did-it'
 import type { SavedMethodsNow, SavedMethodsUse } from './saved-methods'
 import type { TextPackUse } from './text-pack'

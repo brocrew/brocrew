@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { WindowWriterStamp } from './window-writer-stamp'
-import type { SessionStore, RowsUnread } from './session-store'
+import type { SessionStore } from './session-store'
+import type { RowsUnread } from './rows-unread'
 import type { RoutingReading, WindowRoutes } from './window-read-protocol'
 
 type Reading = {

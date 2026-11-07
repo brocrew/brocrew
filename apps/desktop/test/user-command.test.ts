@@ -1,3 +1,4 @@
+import type { UserCommandEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -13,11 +14,7 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { isVisibleIn } from '../src/renderer/src/lib/transcript-mode'
-import type {
-  CreatedSession,
-  RuntimeEventMessage,
-  UserCommandEvent,
-} from '../src/shared/runtime-ipc'
+import type { CreatedSession, RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * **Which control the user pressed** (097 §2, from 085's *"the thing that would have saved me an

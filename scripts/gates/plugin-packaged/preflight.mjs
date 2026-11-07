@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { ownedRoot, requireCI } from './contract.mjs'
+import { ownedRoot, requireCI } from './fixture-guards.mjs'
 import { phaseStep } from './diagnostics.mjs'
 
 /** Check only the declared public tools and the owned scratch paths; never change their modes. */

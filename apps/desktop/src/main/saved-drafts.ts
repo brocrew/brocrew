@@ -1,11 +1,6 @@
+import type { HandedPath, PastedImage } from '../shared/attachment-contracts'
 import { isAbsolute } from 'node:path'
-import {
-  MAX_HANDED_PATHS,
-  MAX_PATH_CHARS,
-  hasControlCharacter,
-  type HandedPath,
-  type PastedImage,
-} from '../shared/runtime-ipc'
+import { MAX_HANDED_PATHS, MAX_PATH_CHARS, hasControlCharacter } from '../shared/runtime-ipc'
 import { conversationOfSlot, type SavedDraft, type SavedDrafts } from '../shared/saved-drafts'
 import { classifyHandedPath } from './runtime/handed-path'
 

@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
@@ -28,11 +29,7 @@ import {
 } from '../../src/renderer/src/lib/transcript'
 import { whatThisAnswerDoes } from '../../src/renderer/src/lib/user-input-offer'
 import * as said730 from '../../src/renderer/src/lib/user-input-offer'
-import type {
-  CreatedSession,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../../src/shared/runtime-ipc'
+import type { CreatedSession, RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 import { assertDrawn, clipsOf, describeClip, drawnReady, lineCount } from './drawn'
 import { META, mount, paneProps, unmountAll, visible, type Mounted } from './harness'
 

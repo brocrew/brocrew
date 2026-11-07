@@ -1,3 +1,5 @@
+import { TASK_STATES } from '../src/shared/task-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -21,10 +23,11 @@ import {
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { stillHeld } from '../src/shared/mailbox'
 import { pieceLine } from '../src/shared/piece-called'
-import { TASK_IS_OPEN, TASK_STATES, derivePieces } from '../src/shared/tasks'
+import { TASK_IS_OPEN, derivePieces } from '../src/shared/tasks'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { expectQueueFactsExcludeBriefs } from './helpers/queue-facts-source'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -512,19 +515,8 @@ describe('429 · taking work back', () => {
       // (`rebriefing`) out beside the give.
       const tools = sourceOf(join(mainRoot, 'runtime'), 'agent-tools.ts')
       const host_ = sourceOf(join(mainRoot, 'runtime'), 'runtime-host.ts')
-      expect(host_).toContain(
-        [
-          "type FactsAQueueCarries = Omit<TurnFacts, 'giving' | 'rebriefing'> & {",
-          '  readonly giving?: never',
-          '  readonly rebriefing?: never',
-          '}',
-        ].join('\n'),
-      )
-      // ⛔ **`queueMessage`'s own parameter, scoped BY NAME** — `send` takes the same type, and a
-      // file-wide match would be satisfied by that neighbour.
-      expect(
-        /\n {2}queueMessage\(([\s\S]*?)\n {2}\): Promise<QueueOutcome>/.exec(host_)?.[1] ?? '',
-      ).toContain('facts: FactsAQueueCarries = {},')
+      const records = sourceOf(join(mainRoot, 'runtime'), 'message-records.ts')
+      expectQueueFactsExcludeBriefs(records, host_)
       // ⛔ **The tool never spells it in CODE**, so the value a caller supplied cannot travel on the
       // turn. ⚠️ **Comments stripped first** — this file's own docblock names the field to say it is
       // unreachable, and a raw `toContain` would be the census reading its own prose

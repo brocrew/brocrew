@@ -1,9 +1,10 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { expandAgentCards } from './harness'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import type { AgentIdentity, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { AgentIdentity } from '../../src/shared/runtime-ipc'
 import { META, mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
 
 /**

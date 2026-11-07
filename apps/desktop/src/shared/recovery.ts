@@ -1,12 +1,7 @@
+import type { TranscriptEvent } from './conversation-events'
 import type { Provider } from '@brobot2/shared'
 import type { LocalZone } from './local-time'
-import type {
-  MessagePath,
-  MessagePathAsk,
-  MessagePathTarget,
-  RevealResult,
-  TranscriptEvent,
-} from './runtime-ipc'
+import type { MessagePath, MessagePathAsk, MessagePathTarget, RevealResult } from './runtime-ipc'
 
 /**
  * What main and the recovery window share: the start-up verdict, the history reader's rows, the

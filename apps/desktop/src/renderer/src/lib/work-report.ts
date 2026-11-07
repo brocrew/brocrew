@@ -1,12 +1,11 @@
+import { TASK_OUTCOMES } from '../../../shared/task-contracts'
+import type { TaskOutcome, WorkReport } from '../../../shared/task-contracts'
 import { WORK_STATE_WORD } from '../../../shared/work-state-words'
 import {
   A_PERSON_MUST_ACT,
-  TASK_OUTCOMES,
   UNDRIVEN_SENTENCES,
   undrivenSentence,
   WAITING_STANDS_FOR,
-  type TaskOutcome,
-  type WorkReport,
 } from '../../../shared/tasks'
 
 /**

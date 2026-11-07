@@ -1,3 +1,11 @@
+import type {
+  LedgerWalk,
+  PersonsDecision,
+  PersonsQuestion,
+  RoutedRequest,
+  WorkInHand,
+} from '../../src/shared/question-contracts'
+import type { WaitOn } from '../../src/shared/task-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, ref } from 'vue'
@@ -15,16 +23,11 @@ import {
   chainReading,
   chainSentence,
   escalationChain,
-  type LedgerWalk,
-  type PersonsDecision,
-  type PersonsQuestion,
-  type RoutedRequest,
-  type WorkInHand,
 } from '../../src/shared/questions'
 import type { ResumableSessionInfo } from '../../src/shared/runtime-ipc'
 import type { StalledWork } from '../../src/shared/stalled-work'
 import type { StoppedWorkForAPerson } from '../../src/shared/stopped-work'
-import type { WaitOn } from '../../src/shared/tasks'
+
 import type { WorkIncident } from '../../src/shared/work-incidents'
 import type { PersonTodo } from '../../src/shared/work-waits'
 import { assertDrawn, drawnReady } from './drawn'

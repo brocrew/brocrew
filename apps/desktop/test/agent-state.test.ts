@@ -1,3 +1,5 @@
+import type { ConversationWait } from '../src/shared/task-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -39,13 +41,13 @@ import {
   type Needing,
   type SessionFacetInput,
 } from '../src/renderer/src/lib/agent-state'
-import { CONVERSATION_WAITS, type ConversationWait } from '../src/shared/tasks'
+import { CONVERSATION_WAITS } from '../src/shared/tasks'
 // ⚑ **645 · the WORD each wait is drawn with, from the table that owns it** — the same move
 // `lib/agent-state.ts` makes at its own import, and `222` §4's rule: a census that spelled these
 // phrases a second time would go green over a table that had moved.
 import { WORK_STATE_WORD } from '../src/renderer/src/lib/work-report'
 import { pendingKind, sessionPanel } from '../src/renderer/src/lib/session-panel'
-import type { SessionStatus, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { SessionStatus } from '../src/shared/runtime-ipc'
 import {
   applyEvent,
   createTranscript,

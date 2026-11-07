@@ -264,6 +264,16 @@ describe('509 · the word the poll cannot say', () => {
 
     it('🔴 `livenessStateOf` is gone, and `runningStateOf` is called by six publishers and four asks', () => {
       const host_ = withoutProse(readFileSync(HOST_SRC, 'utf8'))
+      const workReads = withoutProse(
+        readFileSync(join(here, '../src/main/runtime/work-reads.ts'), 'utf8'),
+      )
+      expect(host_).toContain('return this.workReads.whoCalledWhom(sessionId)')
+      expect(host_).toContain('runningStateOf: (sessionId) => this.runningStateOf(sessionId),')
+      expect(workReads.split('this.sources.runningStateOf(').length - 1).toBe(1)
+      expect(workReads).not.toContain('livenessStateOf(')
+      expect(workReads).not.toMatch(
+        /^ {8}running: this\.sources\.runningStateOf\(row\.conversation\),$/m,
+      )
       const calls = (name: string): number => host_.split(`this.${name}(`).length - 1
       // ⛔ **It was ONE call, and it was the project room's.** Three publishers with the fact on one
       // of them was `402`'s finding — *a rule made at one of two depths is a rule nobody can rely
@@ -277,7 +287,9 @@ describe('509 · the word the poll cannot say', () => {
       // LINE, because as a substring it sits inside `whoCalledWhom`'s ten-space line below, which is
       // the control that the same pattern does match a line that is there.
       expect(host_).not.toMatch(/^ {8}running: this\.runningStateOf\(row\.conversation\),$/m)
-      expect(host_).toMatch(/^ {10}running: this\.runningStateOf\(row\.conversation\),$/m)
+      expect(workReads).toMatch(
+        /^ {10}running: this\.sources\.runningStateOf\(row\.conversation\),$/m,
+      )
       expect(host_).toContain('      running: this.runningStateOf(session.sessionId),')
       // ⚑ **699 · the unresumable half's mapper is a block now** — it carries a second fact
       // (`closedBecauseTheAppDidNotFinishQuitting`) — and its publisher is the same call, re-aimed at
@@ -312,10 +324,10 @@ describe('509 · the word the poll cannot say', () => {
       // `keptOpen` became `startable` for every other reader; the publisher line is unchanged.
       // ⚑ **D-017b — and the kept-open fact left the row** (there is no kept-open row or pane: every
       // conversation opens in the one full view), so the map is back to the one publisher line.
-      expect(host_).toContain(
+      expect(workReads).toContain(
         'rows: children.rows.map((row) => ({\n' +
           '          ...row,\n' +
-          '          running: this.runningStateOf(row.conversation),\n' +
+          '          running: this.sources.runningStateOf(row.conversation),\n' +
           '        })),',
       )
       expect(host_).not.toContain('keptOpenAcrossAQuit')
@@ -476,6 +488,7 @@ describe('509 · the word the poll cannot say', () => {
       // still land on the complement's side of it in silence — naming the type does not change that.
       expect(named).toEqual([
         'main/runtime/runtime-host.ts',
+        'main/runtime/work-reads.ts',
         'renderer/src/lib/taking-over.ts',
         'shared/runtime-ipc.ts',
         'shared/the-whole-forest.ts',

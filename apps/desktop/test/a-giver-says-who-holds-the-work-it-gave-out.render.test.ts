@@ -1,3 +1,10 @@
+import type { AgentState, AgentStateFacts } from '../src/shared/agent-state-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import type {
+  ConversationWaiting,
+  PieceRow,
+  WhatEachConversationIsWaitingOn,
+} from '../src/shared/task-contracts'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -45,8 +52,6 @@ import {
   agentStateWords,
   NOTHING_IN_THE_BACKGROUND,
   NOTHING_SCHEDULED,
-  type AgentState,
-  type AgentStateFacts,
 } from '../src/shared/agent-state'
 import {
   DEFAULT_PROFILE_ID,
@@ -55,14 +60,9 @@ import {
   type RuntimeEventMessage,
   type RuntimeStatesMessage,
   type SessionLiveness,
-  type TranscriptEvent,
   type UnresumableSessionInfo,
 } from '../src/shared/runtime-ipc'
-import type {
-  ConversationWaiting,
-  PieceRow,
-  WhatEachConversationIsWaitingOn,
-} from '../src/shared/tasks'
+
 import { proseSpans } from './lib/prose-spans'
 
 /**

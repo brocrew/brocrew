@@ -1,8 +1,6 @@
-import type {
-  TranscriptEvent,
-  MessageSentEvent,
-  AnsweredQuestion,
-} from '../../src/shared/runtime-ipc'
+import type { MessageSentEvent, TranscriptEvent } from '../../src/shared/conversation-events'
+import type { AnsweredQuestion } from '../../src/shared/human-answer-contracts'
+
 import { EXCHANGE_INVENTORY, EXCHANGE_AT, EXCHANGE_OTHER } from './agent-exchanges.fixture'
 export { EXCHANGE_AT, EXCHANGE_OTHER, EXCHANGE_INVENTORY }
 export const MESSAGE_ACT = 'message_act_12345678-1234-4123-8123-123456789abc'

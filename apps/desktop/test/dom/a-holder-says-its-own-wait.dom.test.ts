@@ -1,3 +1,4 @@
+import type { WaitOn } from '../../src/shared/task-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
@@ -6,7 +7,7 @@ import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalle
 import { conversationList } from '../../src/renderer/src/lib/conversation-list'
 import { clockTime } from '../../src/shared/clock'
 import type { ResumableSessionInfo } from '../../src/shared/runtime-ipc'
-import type { WaitOn } from '../../src/shared/tasks'
+
 import type { WorkEdge } from '../../src/shared/who-called-whom'
 import { drawnReady } from './drawn'
 import { META, mount, paneProps, record, unmountAll } from './harness'

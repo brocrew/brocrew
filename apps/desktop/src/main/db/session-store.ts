@@ -1,3 +1,53 @@
+import { rowsUnreadOnce, THE_WHOLE_LEDGER, type RowsUnread, type SkipNote } from './rows-unread'
+import type {
+  ReconciliationReceipt,
+  WorkRecoveryEvent,
+} from '../../shared/reconciliation-contracts'
+import type {
+  LedgerWalk,
+  LedgerWalkKind,
+  ProviderRequestEvent,
+  QuestionAskedEvent,
+  RaisedQuestion,
+  RequestOnlyAPersonCanSettle,
+  RoutedRequest,
+} from '../../shared/question-contracts'
+import { MAILBOX_KINDS } from '../../shared/conversation-events'
+import type {
+  InstructionProposedEvent,
+  InstructionSettledEvent,
+  MailboxKind,
+  McpServerRequestSettledEvent,
+  McpServerRequestedEvent,
+  MemoryNoteSeen,
+  QueuedMessageEvent,
+  TheQuestionItAsks,
+  TranscriptEvent,
+  UnqueuedMessageEvent,
+  WorkerRegisteredEvent,
+} from '../../shared/conversation-events'
+import type { MoveReceipt } from '../../shared/move-contracts'
+import type { AgentModelChoice, ModelAndEffort } from '../../shared/model-choice-contracts'
+import type {
+  AnsweredQuestion,
+  HumanAnswers,
+  HumanFinalContext,
+  HumanTurnAnswer,
+  TurnAuthorship,
+  UserTurnEvent,
+  UserTurnPart,
+} from '../../shared/human-answer-contracts'
+import type {
+  PieceRow,
+  PieceWaitingOnWhoWrote,
+  StatusLine,
+  WhatAConversationIsWaitingOn,
+  WorkGivenEvent,
+  WorkGivenOut,
+  WorkReport,
+} from '../../shared/task-contracts'
+import type { HandedPath } from '../../shared/attachment-contracts'
+import type { ScheduleLevel, ScheduledRow } from '../../shared/agent-state-contracts'
 import { createOwnNotesStore, type OwnNotesStore } from './own-notes'
 import { resolveProviderConnection } from './provider-connections'
 import {
@@ -18,21 +68,11 @@ import { committedChangesOf, committedRowOf, type Committed } from './committed-
 import { currentWorkTitle } from './current-work-title'
 import { searchPastWork, closePastWorkSearch, pastWorkSource } from './past-work-search'
 import type { PastWorkSearchResult, PastWorkSource } from '../../shared/past-work-search'
-import {
-  workRecoveryEvent,
-  reconciliationReceipt,
-  type WorkRecoveryEvent,
-  type ReconciliationReceipt,
-} from '../../shared/work-reconciliation'
-import type { QuestionAskedEvent, WorkerRegisteredEvent } from '../../shared/runtime-ipc'
+import { workRecoveryEvent, reconciliationReceipt } from '../../shared/work-reconciliation'
+
 import type { WorkerBorn } from '../profile-execution-file'
 import { workerRegistrationOf } from '../worker-registration'
-import {
-  moveOfferOf,
-  moveOriginOf,
-  moveReceiptOf,
-  type MoveReceipt,
-} from '../../shared/move-request'
+import { moveOfferOf, moveOriginOf, moveReceiptOf } from '../../shared/move-request'
 import {
   boundRaw,
   boundRecall,
@@ -97,25 +137,15 @@ import {
 } from '../../shared/provider-limit'
 import { NONE_STARTED } from '../../shared/agent-roster'
 import type { IdentityHistory, StartedOn } from '../../shared/agent-roster'
-import { sameModel, type AgentModelChoice, type ModelAndEffort } from '../../shared/model-choice'
+import { sameModel } from '../../shared/model-choice'
 import type { ChildDescent } from '../adopt/discover-sessions'
 import type {
-  InstructionProposedEvent,
-  InstructionSettledEvent,
-  McpServerRequestedEvent,
-  McpServerRequestSettledEvent,
   AgentIdentity,
   AgentIdentityName,
   IdentityCreator,
   NewAgent,
   DerivedState,
   LedgerStatus,
-  TheQuestionItAsks,
-  TranscriptEvent,
-  UserTurnEvent,
-  WorkGivenEvent,
-  UnqueuedMessageEvent,
-  QueuedMessageEvent,
 } from '../../shared/runtime-ipc'
 import {
   DEFAULT_PROFILE_ID,
@@ -127,12 +157,7 @@ import {
 import { aNameForANewAgent } from '../../shared/human-names'
 import { NORMALIZER_VERSION, PRE_CONTRACT_NORMALIZER_VERSION } from '../archive/normalizer'
 import { HUMAN_CONTEXT_TERM, HUMAN_FINAL_TERM } from './human-answer-index'
-import {
-  humanPromptOf,
-  type HumanAnswers,
-  type HumanFinalContext,
-  type HumanTurnAnswer,
-} from '../../shared/human-turn-answer'
+import { humanPromptOf } from '../../shared/human-turn-answer'
 // ⚑ **F071 · what the ledger folds read, and the term that reads it through its index.**
 import {
   conversationTree,
@@ -181,29 +206,21 @@ export const THREAD_LEAD_EVENT_TYPES = [
 ] as const
 import { aPersonsOwnWords } from '../../shared/a-persons-own-words'
 import { DIGEST_EVENT_TYPES } from '../../shared/digest'
-import { MAX_HANDED_PATHS, type HandedPath } from '../../shared/runtime-ipc'
-import { MAILBOX_KINDS, type MailboxKind } from '../../shared/runtime-ipc'
+import { MAX_HANDED_PATHS } from '../../shared/runtime-ipc'
+
 // ⚑ **545 · the slug rule itself and not a number chosen beside it** — see
 // {@link boundRelayedIdentity}.
 import { isPathSegment } from '../../shared/runtime-ipc'
 // ⚑ **D-029 · a stored level, read back as the host holds one** — see {@link scheduleLevelOf}.
-import type { ScheduledRow, ScheduleLevel } from '../../shared/agent-state'
+
 // ⚑ **687 · what the launch sweep carries from a held row onto the ending it writes** — see
 // {@link authorshipStoredOn}.
-import {
-  TURN_AUTHORSHIP_KEYS,
-  type TurnAuthorship,
-  type AnsweredQuestion,
-} from '../../shared/runtime-ipc'
+import { TURN_AUTHORSHIP_KEYS } from '../../shared/runtime-ipc'
 import { REPLY_SUMMARY_LIMIT } from '../runtime/reply-rails'
 // ⚑ **D-027 · a turn's parts, each bounded as the row it would have been** — see
 // {@link boundTheParts}.
-import { MAX_TURN_PARTS, USER_TURN_PART_KEYS, type UserTurnPart } from '../../shared/runtime-ipc'
-import {
-  MEMORY_NOTES_PER_EVENT,
-  MEMORY_NOTE_TEXT_CAP,
-  type MemoryNoteSeen,
-} from '../../shared/runtime-ipc'
+import { MAX_TURN_PARTS, USER_TURN_PART_KEYS } from '../../shared/runtime-ipc'
+import { MEMORY_NOTES_PER_EVENT, MEMORY_NOTE_TEXT_CAP } from '../../shared/runtime-ipc'
 
 export type { DerivedState, LedgerStatus }
 import type { AppDatabase, AppStatement } from './connection'
@@ -218,8 +235,6 @@ import {
 } from './identity'
 import { newEventId, newResourceId, newTurnId, newWorkId } from './ids'
 import {
-  // ⚑ **603/609 · the ONE composition every surface that reports a piece's state reads**
-  // (HO-091 §1), and it takes ONE source of everything a conversation is waiting on.
   aStallItsGiverCanBeToldOf,
   composeWhatEachPieceIsWaitingOn,
   derivePieces,
@@ -231,31 +246,17 @@ import {
   TASK_IS_OPEN,
   aWaitNeedsClassifying,
   theWaitItMarks,
-  type PieceRow,
-  type PieceWaitingOnWhoWrote,
-  type StatusLine,
-  type WhatAConversationIsWaitingOn,
-  type WorkGivenOut,
-  type WorkReport,
 } from '../../shared/tasks'
 // ⚑ **D-016 · a piece's label** — `W1.4.2`, built and read by one module — and, since commit 7, the
 // work that names a conversation.
 import { pieceCalled, pieceNumbersOf, type WorkThatNamesIt } from '../../shared/piece-called'
 import {
   REQUEST_IS_OPEN,
-  // ⚑ **609 · the permission half of *a person owes something here*.**
   aPersonOwesAnAnswerIn,
   deriveRoutedRequests,
-  // ⚑ **603 · the derivation the composition and the withdrawal door both resolve.**
   openQuestionsByWork,
   permissionShaped,
   anActionAsked,
-  type LedgerWalk,
-  type LedgerWalkKind,
-  type ProviderRequestEvent,
-  type RaisedQuestion,
-  type RequestOnlyAPersonCanSettle,
-  type RoutedRequest,
   aPersonsSince,
   aWaitIsReadFrom,
 } from '../../shared/questions'
@@ -1263,45 +1264,6 @@ export function underWhat(parent: string | null, drawn: ReadonlySet<string>): Fo
 }
 
 /**
- * 🔴 **The ledger rows ONE walk could not read — each counted ONCE, wherever it was met** (671 ·
- * R18, and `664` F4).
- *
- * ## ⛔ Why a SET, when {@link walkLedgers} counted with `+= 1` for eleven dispatches
- *
- * ⚠️ **A walk that folds each candidate once and reads nothing else meets each unreadable row
- * once.** ⛔ **A COMPOSED walk reads beyond its candidates** (since `603`/`664`, uncounted until
- * `671`): a wait
- * read opens the holder's routings and questions and the ledger of every conversation
- * the holder gave work to — so one torn row in a child's ledger is met by the forest's own fold of
- * that child AND by its parent's wait read. ⚑ Counted by `+= 1` that is one row reported as many;
- * keyed by the ledger and the row's place in it, it is one.
- *
- * ⚑ **The key is `(ledger, ordinal)` in the ledger's ACTIVE generation**, which is the generation
- * every fold in this file reads (`events.generation`'s rule: *a superseded projection's rows are
- * garbage, not history*). ⚠️ The scan that crosses generations — the routing scan (`676`) — notes
- * only the active one's torn rows for that reason; see `selectSessionsRoutingTo`.
- *
- * ⚠️ **A count, still, and never a cause** — {@link LedgerWalk.rowsUnread}'s own rule.
- */
-export interface RowsUnread {
-  /** ⚑ The skip note for ONE ledger — see {@link SkipNote}. */
-  in(sessionId: string): SkipNote
-  /** How many distinct rows have been noted. */
-  readonly count: number
-  /** ⚑ **D-017 · R8** — how many distinct ledgers were skipped whole. */
-  readonly ledgersSkipped: number
-}
-
-/** ⚑ **D-017 · R8** — what a skip note is handed for a ledger whose fold threw. */
-const THE_WHOLE_LEDGER = 'the-whole-ledger'
-
-/**
- * ⚑ **The skip note for ONE ledger** — the `(ordinal) => void` every fold here takes, and since
- * D-017 {@link THE_WHOLE_LEDGER} when a fold over that ledger threw.
- */
-export type SkipNote = (ordinal: number | typeof THE_WHOLE_LEDGER, cause?: string) => void
-
-/**
  * ⚑ **F033 · one piece a conversation holds, as much as naming it reads** — a fold's row less its
  * brief, which a name never reads and a memo must not keep. ⚑ **F009 · and as much as an agent's
  * record reads** ({@link SessionStore.newestPiecesHeldIn}): who gave it and when, and its outcome.
@@ -1318,28 +1280,6 @@ type PieceForAName = Pick<
  * fold's own word for an open piece is not the word `list_tasks` composes, so a reader says *open*.
  */
 export type PieceHeld = PieceForAName
-
-/** ⚑ **A fresh {@link RowsUnread}, for one walk or one answer** — never shared across two. */
-export function rowsUnreadOnce(): RowsUnread {
-  const seen = new Set<string>()
-  const skipped = new Set<string>()
-  return {
-    // ⚠️ **A NUL between the two halves**, so no conversation id and ordinal can spell another's.
-    in: (sessionId) => (ordinal) => {
-      if (ordinal === THE_WHOLE_LEDGER) {
-        skipped.add(sessionId)
-        return
-      }
-      seen.add(`${sessionId}\u0000${String(ordinal)}`)
-    },
-    get count() {
-      return seen.size
-    },
-    get ledgersSkipped() {
-      return skipped.size
-    },
-  }
-}
 
 /**
  * 🔴 **D-017 · R8 — one bad row never stops the app.** A ledger that throws is skipped, warned
@@ -3658,7 +3598,9 @@ export interface SessionStore extends OwnNotesStore {
    * on a row that names none). `null` while nothing decided it.
    */
   generationOf?(sessionId: string): number
-  latestMoveOffer?(sessionId: string): import('../../shared/runtime-ipc').QuestionAskedEvent | null
+  latestMoveOffer?(
+    sessionId: string,
+  ): import('../../shared/question-contracts').QuestionAskedEvent | null
   theDecisionOn(
     sessionId: string,
     requestId: string,

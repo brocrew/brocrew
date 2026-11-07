@@ -1,3 +1,4 @@
+import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import RuntimeScreen from '../../src/renderer/src/components/RuntimeScreen.vue'
@@ -13,7 +14,6 @@ import type {
   AuthState,
   CreatedSession,
   CreateSessionInput,
-  ModelList,
   Provider,
   RefusedLaunch,
   RuntimeBridge,

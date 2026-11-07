@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 /**
  * 🔴 **F033 · a conversation is named by the work it holds NOW, and a sentence about one piece by
  * that piece** — measured on a real host with the fake runtime, one case per rule.
@@ -42,7 +43,7 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import type { RuntimeChangeMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeChangeMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 
 const here = dirname(fileURLToPath(import.meta.url))

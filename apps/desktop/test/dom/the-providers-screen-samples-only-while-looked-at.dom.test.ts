@@ -1,3 +1,4 @@
+import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, type Component } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
@@ -13,7 +14,6 @@ import { readingSays } from '../../src/renderer/src/lib/usage-limit'
 import type {
   ApiKeyStatus,
   AuthState,
-  ModelList,
   Provider,
   ProviderCapabilityMap,
   ProviderResources,

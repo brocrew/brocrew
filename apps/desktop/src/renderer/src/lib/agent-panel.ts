@@ -1,4 +1,5 @@
-import type { AgentState as OneState } from '../../../shared/agent-state'
+import type { AgentState as OneState } from '../../../shared/agent-state-contracts'
+
 import { agentStateWords } from '../../../shared/agent-state'
 import type { WorkThatNamesIt } from '../../../shared/piece-called'
 import type {

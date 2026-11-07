@@ -1,3 +1,9 @@
+import type {
+  AgentModelChoice as Choice,
+  ModelCatalogue,
+  ModelList,
+} from '../../src/shared/model-choice-contracts'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { expandAgentCards } from './harness'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
@@ -14,18 +20,14 @@ import {
   theDefaultEffortOf,
   theList,
   theListedRow,
-  type AgentModelChoice as Choice,
 } from '../../src/shared/model-choice'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type {
   AgentIdentities,
   AgentIdentity,
-  ModelCatalogue,
   ModelChoice,
-  ModelList,
   Provider,
   RuntimeBridge,
-  TranscriptEvent,
 } from '../../src/shared/runtime-ipc'
 import { mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
 

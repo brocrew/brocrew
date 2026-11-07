@@ -1,3 +1,9 @@
+import type {
+  AgentModelChoice as Choice,
+  ModelCatalogue,
+  ModelChoiceSaved,
+  ModelList,
+} from '../../src/shared/model-choice-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, ref } from 'vue'
@@ -13,16 +19,12 @@ import {
   theEffortsOf,
   theList,
   theListedRow,
-  type AgentModelChoice as Choice,
-  type ModelChoiceSaved,
 } from '../../src/shared/model-choice'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import type {
   AgentIdentities,
   AgentIdentity,
-  ModelCatalogue,
   ModelChoice,
-  ModelList,
   Provider,
   RuntimeBridge,
 } from '../../src/shared/runtime-ipc'

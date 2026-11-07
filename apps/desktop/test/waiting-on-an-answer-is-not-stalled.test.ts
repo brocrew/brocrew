@@ -1,3 +1,8 @@
+import { REQUEST_STATES } from '../src/shared/question-contracts'
+import type { RaisedQuestion, RoutedRequest } from '../src/shared/question-contracts'
+import { TASK_STALL_CAUSES, TASK_STATES } from '../src/shared/task-contracts'
+import type { PieceRow, WhatAConversationIsWaitingOn } from '../src/shared/task-contracts'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -14,32 +19,18 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  REQUEST_IS_OPEN,
-  REQUEST_STATES,
-  openQuestionsByWork,
-  type RaisedQuestion,
-  type RoutedRequest,
-} from '../src/shared/questions'
+import { REQUEST_IS_OPEN, openQuestionsByWork } from '../src/shared/questions'
 import {
   TASK_IS_OPEN,
-  TASK_STALL_CAUSES,
-  TASK_STATES,
   TASK_WAITS,
   UNDRIVEN_SENTENCES,
   WAITING_STANDS_FOR,
   composeWhatEachPieceIsWaitingOn,
   derivePieces,
   stalledWithACause,
-  type PieceRow,
-  type WhatAConversationIsWaitingOn,
 } from '../src/shared/tasks'
 import { WORK_STATE_WORD, workReading } from '../src/renderer/src/lib/work-report'
-import type {
-  PersistedEventInfo,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **603 · waiting on an answer is not stalled** — `HO-018` §2.1, `HO-085`, `HO-091` §1.
@@ -467,12 +458,14 @@ describe('603 · waiting on an answer is not stalled', () => {
       const fold = readFileSync(join(here, '../src/shared/tasks.ts'), 'utf8')
       const imported = [...code(fold).matchAll(/import[\s\S]*?from '([^']+)'/g)]
       expect(imported.length, 'the import census found no imports').toBeGreaterThan(2)
-      const fromQuestions = imported.filter((one) => one[1] === './questions')
+      const fromQuestions = imported.filter(
+        (one) => one[1] === './questions' || one[1] === './question-contracts',
+      )
       // ⚠️ **One import and it is a TYPE**, which carries no derivation into this module: a value
       // import of `REQUEST_IS_OPEN` or `deriveRoutedRequests` is exactly the second opinion `400`
       // forbids, and it would appear here.
       expect(fromQuestions).toHaveLength(1)
-      expect(fromQuestions[0]?.[0]).toBe("import type { WorkInHand } from './questions'")
+      expect(fromQuestions[0]?.[0]).toBe("import type { WorkInHand } from './question-contracts'")
     })
   })
 
@@ -1065,6 +1058,8 @@ describe('603 · waiting on an answer is not stalled', () => {
       // fold for a surface, and both of them compose.
       const host = code(readFileSync(hostSource, 'utf8'))
       const store = code(readFileSync(storeSource, 'utf8'))
+      const workReads = code(readFileSync(join(here, '../src/main/runtime/work-reads.ts'), 'utf8'))
+      expect(workReads).toContain('openQuestionsByWork')
       expect(host).toContain('composeWhatEachPieceIsWaitingOn')
       expect(store).toContain('composeWhatEachPieceIsWaitingOn')
       // ⚠️ **Each raw read that feeds a surface is wrapped, asserted by the EXPRESSION** — a call
@@ -1076,10 +1071,10 @@ describe('603 · waiting on an answer is not stalled', () => {
       // as one line, and still as the WRAPPED expression: a bare read would not match.
       // ⚑ **D-016 · `pieceBoard`'s halves** — what it holds, and what the ids it stands for gave.
       for (const raw of [
-        /composeWhatEachPieceIsWaitingOn\(\s*this\.deps\.store\.piecesOwnedBy\(sessionId, unread\),\s*waiting,?\s*\)/,
-        /composeWhatEachPieceIsWaitingOn\(\s*this\.deps\.store\.piecesGivenBy\(giver, unread\),\s*waiting,?\s*\)/,
+        /composeWhatEachPieceIsWaitingOn\(\s*this\.sources\.store\.piecesOwnedBy\(sessionId, unread\),\s*waiting,?\s*\)/,
+        /composeWhatEachPieceIsWaitingOn\(\s*this\.sources\.store\.piecesGivenBy\(giver, unread\),\s*waiting,?\s*\)/,
       ]) {
-        expect(host, `a surface stopped reading the composition: ${String(raw)}`).toMatch(raw)
+        expect(workReads, `a surface stopped reading the composition: ${String(raw)}`).toMatch(raw)
       }
       // ⛔ **And the ONE derivation is shared rather than spelled at each reader.**
       expect(host).toContain('openQuestionsByWork')
@@ -1115,7 +1110,9 @@ describe('603 · waiting on an answer is not stalled', () => {
       }
       // ⚠️ **And the person's queue reports no state either**, so its raw read is not a surface
       // this rule ranges over: `WorkInHand` carries a label and nothing else (since D-016).
-      const questions = code(readFileSync(join(here, '../src/shared/questions.ts'), 'utf8'))
+      const questions = code(
+        readFileSync(join(here, '../src/shared/question-contracts.ts'), 'utf8'),
+      )
       const shape = questions.slice(
         questions.indexOf('export interface WorkInHand {'),
         questions.indexOf('}', questions.indexOf('export interface WorkInHand {')),

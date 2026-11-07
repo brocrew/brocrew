@@ -1,3 +1,4 @@
+import type { ModelList } from '../src/shared/model-choice-contracts'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -8,7 +9,6 @@ import {
   DEFAULT_PROFILE_ID,
   type AgentIdentities,
   type ModelChoice,
-  type ModelList,
 } from '../src/shared/runtime-ipc'
 
 /**

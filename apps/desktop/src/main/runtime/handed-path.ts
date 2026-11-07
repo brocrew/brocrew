@@ -1,3 +1,4 @@
+import type { HandedPath } from '../../shared/attachment-contracts'
 import { lstat, realpath, stat } from 'node:fs/promises'
 import { isTheSameFile, type FileIdentity } from '@brobot2/runtime'
 import { expandHome } from './scratch-cwd'
@@ -9,7 +10,6 @@ import {
   hasControlCharacter,
   quotedLiteral,
   type DroppedPathVerdict,
-  type HandedPath,
 } from '../../shared/runtime-ipc'
 
 /**

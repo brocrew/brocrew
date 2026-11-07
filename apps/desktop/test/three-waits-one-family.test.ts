@@ -1,3 +1,7 @@
+import { TASK_STATES } from '../src/shared/task-contracts'
+import type { PieceRow, WhatAConversationIsWaitingOn } from '../src/shared/task-contracts'
+import type { RoutedRequest } from '../src/shared/question-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -22,18 +26,16 @@ import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   TASK_IS_OPEN,
-  TASK_STATES,
   TASK_WAITS,
   WAITING_STANDS_FOR,
   composeWhatEachPieceIsWaitingOn,
   stalledWithACause,
   theWaitIn,
-  type PieceRow,
-  type WhatAConversationIsWaitingOn,
 } from '../src/shared/tasks'
 import { WORK_STATE_WORD } from '../src/renderer/src/lib/work-report'
-import { aPersonOwesAnAnswerIn, type RoutedRequest } from '../src/shared/questions'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import { aPersonOwesAnAnswerIn } from '../src/shared/questions'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { spacedCode, expectNoDeadlineDeps } from './helpers/source-contracts'
 
 /**
  * 🔴 **609 · three waits, one family** — `HO-088` §5, straight after B1 (`608`).
@@ -77,10 +79,7 @@ const srcRoot = join(here, '../src')
  * ⛔ **CODE only** — `a-source-census-must-strip-prose-before-it-asserts`. ⚠️ Every negative in §7
  * is about what the app DOES, and this file's own history sections quote the words they replaced.
  */
-const codeOf = (file: string): string =>
-  readFileSync(join(srcRoot, file), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/^[ \t]*\/\/.*$/gm, ' ')
+const codeOf = (file: string): string => spacedCode(readFileSync(join(srcRoot, file), 'utf8'))
 
 describe('609 · three waits, one family', () => {
   class RecordingSink implements RuntimeEventSink {
@@ -966,6 +965,7 @@ describe('609 · three waits, one family', () => {
       // control cannot be another member of it.
       expect(codeOf('shared/questions.ts')).not.toContain('ESCALATION_WINDOW_MS')
       expect(codeOf('main/runtime/runtime-host.ts')).not.toContain('escalationWindowMs')
+      expectNoDeadlineDeps(join(srcRoot, 'main'), 'three-waits')
       // ⚑ **THE POSITIVE CONTROL for four negatives, and it carries the DISTINCTION** (standing
       // rule 34.2): the vocabulary these numbers belonged to is still here and still readable,
       // and this class still resolves numbers — they bound this app's own teardown rather than

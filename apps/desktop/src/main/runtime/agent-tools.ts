@@ -1,3 +1,26 @@
+import { CONVERSATIONS_LISTED } from './agent-directory'
+export { CONVERSATIONS_LISTED } from './agent-directory'
+import { agentCallerId, type Caller } from './conversation-caller'
+export { agentCallerId, sessionSpeakingAs } from './conversation-caller'
+import {
+  AGENT_MESSAGE_KINDS,
+  TASK_OUTCOMES,
+  TASK_STATES as WORK_SEARCH_TASK_STATES,
+} from '../../shared/task-contracts'
+import type {
+  AgentMessageKind,
+  PieceRow,
+  StatusLine,
+  TaskOutcome,
+} from '../../shared/task-contracts'
+import { PASS_UP_RECIPIENTS } from '../../shared/question-contracts'
+import type {
+  PassUpRecipient,
+  QuestionRecipient,
+  RequestState,
+  VisibleQuestion,
+} from '../../shared/question-contracts'
+import type { AgentModelChoice } from '../../shared/model-choice-contracts'
 import {
   providerAuthPolicies,
   legacyStartRefusalWords as A_START_ITS_SIGN_IN_REFUSED,
@@ -91,7 +114,6 @@ import type {
   AgentCard,
   AgentRecord,
   APieceItHolds,
-  Caller,
   EndedPieceDetail,
   FoundFile,
   NewBriefDelivery,
@@ -161,34 +183,14 @@ import {
   interruptRetryableOf,
   type InterruptRefusal,
 } from './interrupt-rails'
-import {
-  AGENT_MESSAGE_KINDS,
-  TASK_IS_OPEN,
-  TASK_OUTCOMES,
-  TASK_STATES as WORK_SEARCH_TASK_STATES,
-  // ⚑ **603/609 · the fact each WAIT stands for**, for `pieceText`'s rule that a state name is not
-  // one. ⛔ A table rather than a constant since `609`, so a wait added to the family cannot reach a
-  // model as a bare word.
-  WAITING_STANDS_FOR,
-  theWaitIn,
-  isAgentMessageKind,
-  type AgentMessageKind,
-  type PieceRow,
-  type StatusLine,
-  type TaskOutcome,
-} from '../../shared/tasks'
+import { TASK_IS_OPEN, WAITING_STANDS_FOR, theWaitIn, isAgentMessageKind } from '../../shared/tasks'
 import {
   QUESTION_RECIPIENTS,
   RECIPIENT_MEANS,
-  PASS_UP_RECIPIENTS,
   isPassUpRecipient,
-  type PassUpRecipient,
   REQUEST_IS_OPEN,
   isQuestionRecipient,
   theChannelRefusalIn,
-  type QuestionRecipient,
-  type RequestState,
-  type VisibleQuestion,
   aPieceNotEndedItsQuestionsUnread,
   aPieceNotEndedWhileAQuestionStarts,
 } from '../../shared/questions'
@@ -272,7 +274,7 @@ import {
   type ProviderUsageReading,
 } from '../../shared/runtime-ipc'
 import { usageWindowWord } from '../../shared/usage-window'
-import { aPairInWords, sameModel, type AgentModelChoice } from '../../shared/model-choice'
+import { aPairInWords, sameModel } from '../../shared/model-choice'
 import { agentStateWords } from '../../shared/agent-state'
 
 /** Where a question goes, in words rather than the recipient's internal name. */
@@ -4610,24 +4612,6 @@ function whatADeliveryMet(
   return refusalAnswer(refuseTool('agent-cannot-take-a-message', { agent, said }))
 }
 
-export const agentCallerId = (sessionId: string): string => `agent:${sessionId}`
-
-/**
- * ⛔ **Which session is speaking, when the caller is an agent rather than a window** — the exact
- * inverse of {@link agentCallerId}, and `null` for every other kind of caller (347).
- *
- * ⚠️ **This is a decoder, not a permission.** It answers *"who is this"*, and every use of it has to
- * decide for itself what that entitles. It lives beside the encoder so the two spellings cannot
- * drift apart, which is the only reason a prefix scheme is safe to depend on.
- */
-export function sessionSpeakingAs(by: Caller): string | null {
-  if (typeof by !== 'object' || by === null) return null
-  const ownerId: unknown = (by as { ownerId?: unknown }).ownerId
-  if (typeof ownerId !== 'string' || !ownerId.startsWith('agent:')) return null
-  const said = ownerId.slice('agent:'.length)
-  return said.length === 0 ? null : said
-}
-
 /** What the tools are built against — the host, narrowed to what they may reach. */
 export interface AgentToolHost {
   readonly themes?: RuntimeHost['themes']
@@ -4922,13 +4906,6 @@ const whoseText = (whose: WhoseConversation): string => {
   if (whose.is !== 'an-identity-this-app-holds') return THIS_APP_CANNOT_NAME_IT
   return whose.name === whose.profile ? whose.profile : `${whose.name} (${whose.profile})`
 }
-
-/**
- * ⚑ **D-017 · R12 — how many conversations `list_agents` names**, the most recently active first,
- * and the answer says how many more there are. Any other can still be messaged and looked at by its
- * id.
- */
-export const CONVERSATIONS_LISTED = 50
 
 /**
  * ⚑ What a conversation's turn is stopped on until a person answers it, and that nothing sent to it

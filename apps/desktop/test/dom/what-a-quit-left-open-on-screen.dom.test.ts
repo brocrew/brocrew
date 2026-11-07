@@ -1,3 +1,12 @@
+import type {
+  LedgerWalk,
+  LedgerWalkKind,
+  PersonsQuestion,
+  RoutedRequest,
+} from '../../src/shared/question-contracts'
+import type { HandedPath } from '../../src/shared/attachment-contracts'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
+import type { WorkReport } from '../../src/shared/task-contracts'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
@@ -29,25 +38,19 @@ import {
   escalationChain,
   aPersonsSince,
   NOTHING_NAMED_THE_WORK,
-  type LedgerWalk,
-  type LedgerWalkKind,
-  type PersonsQuestion,
-  type RoutedRequest,
 } from '../../src/shared/questions'
 import {
   DEFAULT_PROFILE_ID,
   type AgentIdentities,
   type AgentIdentity,
-  type HandedPath,
   type LibraryEntry,
   type ResumableSessionInfo,
   type ResumedSession,
   type RuntimeBridge,
   type RuntimeEventMessage,
-  type TranscriptEvent,
   type UnresumableSessionInfo,
 } from '../../src/shared/runtime-ipc'
-import { UNDRIVEN_SENTENCES, type WorkReport } from '../../src/shared/tasks'
+import { UNDRIVEN_SENTENCES } from '../../src/shared/tasks'
 import { assertDrawn, drawnReady } from './drawn'
 import {
   META,

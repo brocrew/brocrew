@@ -1,9 +1,6 @@
+import type { WhatAPickBecame } from '../../../shared/model-choice-contracts'
 import { computed, ref, watch, type ComputedRef, type Ref } from 'vue'
-import type {
-  CreatedSession,
-  ProviderCapabilityMap,
-  WhatAPickBecame,
-} from '../../../shared/runtime-ipc'
+import type { CreatedSession, ProviderCapabilityMap } from '../../../shared/runtime-ipc'
 import { whatAPickBecameSays, type PickedModel } from '../lib/model-lists'
 
 /**

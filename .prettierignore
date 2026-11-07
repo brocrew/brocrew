@@ -50,3 +50,6 @@ scripts/gates/plugin-v2/candidate.json
 
 # Keep the reviewed publication catalogue byte-exact.
 plugins/catalogue-v2.json
+
+# Code-health baselines are written by `node scripts/code-health/gate.mjs --update`.
+scripts/code-health/baseline

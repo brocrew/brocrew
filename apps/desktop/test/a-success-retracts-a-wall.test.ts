@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -23,7 +24,6 @@ import { providerLimitsView } from '../src/renderer/src/lib/persons-queue'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { isVisibleIn } from '../src/renderer/src/lib/transcript-mode'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **586 · a success retracts a wall** (`HO-080` §1, §1.2, §1.3, §2).

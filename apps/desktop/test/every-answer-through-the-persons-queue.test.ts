@@ -1,3 +1,11 @@
+import type {
+  LedgerWalk,
+  LedgerWalkKind,
+  PersonsDecision,
+  PersonsQuestion,
+  RoutedRequest,
+} from '../src/shared/question-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -41,11 +49,6 @@ import {
   NOTHING_NAMED_THE_WORK,
   decisionReading,
   readingSentence,
-  type LedgerWalk,
-  type LedgerWalkKind,
-  type PersonsDecision,
-  type PersonsQuestion,
-  type RoutedRequest,
   aPersonsSince,
 } from '../src/shared/questions'
 import type { ChannelRefusal } from '@brobot2/runtime'
@@ -54,7 +57,6 @@ import {
   type CreatedSession,
   type RuntimeCommand,
   type RuntimeEventMessage,
-  type TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 
 /**

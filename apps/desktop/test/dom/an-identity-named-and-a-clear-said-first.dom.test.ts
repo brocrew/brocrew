@@ -1,3 +1,9 @@
+import type {
+  AgentModelChoice,
+  ModelCatalogue,
+  ModelList,
+} from '../../src/shared/model-choice-contracts'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
@@ -29,7 +35,6 @@ import {
   theDefaultEffortOf,
   theList,
   theListedRow,
-  type AgentModelChoice,
 } from '../../src/shared/model-choice'
 import type { AgentInstructionsReading } from '../../src/shared/own-instructions'
 import {
@@ -38,12 +43,9 @@ import {
   agentName,
   type AgentIdentities,
   type AgentIdentity,
-  type ModelCatalogue,
   type ModelChoice,
-  type ModelList,
   type Provider,
   type RuntimeBridge,
-  type TranscriptEvent,
 } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 

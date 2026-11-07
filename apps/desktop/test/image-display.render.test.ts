@@ -1,7 +1,8 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import { ASSET_SCHEME } from '../src/shared/asset-url'
 import ImageEntry from '../src/renderer/src/components/ImageEntry.vue'
 import ImageViewer from '../src/renderer/src/components/ImageViewer.vue'

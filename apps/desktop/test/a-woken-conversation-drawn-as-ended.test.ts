@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -18,12 +19,7 @@ import { createSessionStore as createRendererStore } from '../src/renderer/src/l
 import type { SessionStore as RendererStore } from '../src/renderer/src/lib/session-store'
 import { refold, type SessionRecord } from '../src/renderer/src/lib/session-record'
 import { isAwaitingAnswer, type TranscriptState } from '../src/renderer/src/lib/transcript'
-import type {
-  ResumedSession,
-  RuntimeBridge,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { ResumedSession, RuntimeBridge, RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
 // ⚑ **673 · Claude's resume shape lives in the shared double now** — moved from here, with the two
 // changes named in its header (`send` passes every argument; a question's ids are renamed too).

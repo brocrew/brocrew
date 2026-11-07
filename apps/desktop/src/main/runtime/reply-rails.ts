@@ -1,3 +1,12 @@
+import type {
+  PieceRow,
+  StoppedOnALogin,
+  TaskOutcome,
+  TaskStallCause,
+  TaskState,
+  WorkReport,
+} from '../../shared/task-contracts'
+import type { RequestState } from '../../shared/question-contracts'
 import { DEFAULT_IDENTITY_PROVIDER, providerDescriptor } from '@brobot2/shared'
 import { refusalReason } from '../../shared/refusals'
 import {
@@ -5,19 +14,9 @@ import {
   aPieceNotEndedWhileAQuestionStarts,
   type UnreadQuestion,
 } from '../../shared/questions'
-import {
-  A_PERSON_MUST_ACT_SENTENCE,
-  TASK_IS_OPEN,
-  undrivenSentence,
-  type PieceRow,
-  type StoppedOnALogin,
-  type TaskOutcome,
-  type TaskStallCause,
-  type TaskState,
-  type WorkReport,
-} from '../../shared/tasks'
+import { A_PERSON_MUST_ACT_SENTENCE, TASK_IS_OPEN, undrivenSentence } from '../../shared/tasks'
 import type { ResourceRefusal } from '../resources/resources'
-import type { RailPermanence } from './spawn-rails'
+import type { RailPermanence } from '../../shared/refusals'
 // ⚑ **425 · from `shared/refusals.ts` and not through `spawn-rails.ts`'s re-export.** That
 // re-export exists so `405` could move `RailPermanence` without touching seven readers; a word
 // added today has no such history and names its own home.
@@ -37,7 +36,7 @@ import { exchangePreviewLines, type AConversation, type Exchange } from '../../s
 import { pieceLine } from '../../shared/piece-called'
 // ⚑ **D-025 · the one clock time every surface says *when* in** (`shared/clock`).
 import { clockTime, clockTimeFrom } from '../../shared/clock'
-import type { RequestState } from '../../shared/questions'
+
 import { PROVIDER_NAME } from '../../shared/runtime-ipc'
 
 /**

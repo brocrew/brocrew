@@ -1,3 +1,6 @@
+import type { AgentState } from '../src/shared/agent-state-contracts'
+import type { PieceRow } from '../src/shared/task-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -21,13 +24,11 @@ import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { AgentState } from '../src/shared/agent-state'
-import type { PieceRow } from '../src/shared/tasks'
+
 import type {
   ResumableSessionInfo,
   RuntimeEventMessage,
   RuntimeStatesMessage,
-  TranscriptEvent,
   UnresumableSessionInfo,
 } from '../src/shared/runtime-ipc'
 
@@ -115,7 +116,7 @@ interface Countdown {
 
 /** The host's private parts this file reaches. */
 interface HostInsides {
-  idleCountdowns: Map<string, unknown>
+  conversationIdle: { idleCountdowns: Map<string, unknown> }
   arrivals: Map<string, Promise<void>>
   startsInFlight: Map<string, Promise<string>>
   stateMayHaveMoved: (conversation: string) => void
@@ -229,7 +230,7 @@ describe('the idle stop and what is on its way into a conversation that needs yo
 
   /** The countdown the host holds for this one conversation. */
   const countdownOf = (id: string): Countdown => {
-    const timer = insides().idleCountdowns.get(id)
+    const timer = insides().conversationIdle.idleCountdowns.get(id)
     const found = live().find((one) => one.timer === timer)
     if (found === undefined) throw new Error(`${id} holds no live countdown`)
     return found

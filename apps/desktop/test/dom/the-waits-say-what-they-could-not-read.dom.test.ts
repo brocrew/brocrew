@@ -1,3 +1,4 @@
+import type { WhatEachConversationIsWaitingOn } from '../../src/shared/task-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
@@ -7,7 +8,7 @@ import { createSessionRecord } from '../../src/renderer/src/lib/session-record'
 import { applyEvent } from '../../src/renderer/src/lib/transcript'
 import { forestView } from '../../src/renderer/src/lib/the-forest'
 import type { CreatedSession } from '../../src/shared/runtime-ipc'
-import type { WhatEachConversationIsWaitingOn } from '../../src/shared/tasks'
+
 import type { ForestNode, TheWholeForest } from '../../src/shared/the-whole-forest'
 import { assertDrawn, drawnReady } from './drawn'
 import { mount, unmountAll, type Mounted } from './harness'

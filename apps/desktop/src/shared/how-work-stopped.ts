@@ -1,4 +1,5 @@
-import type { PersistedEventInfo } from './runtime-ipc'
+import type { PersistedEventInfo } from './conversation-events'
+
 import { WHO_DID_IT, WHO_DID_IT_SAYS, type ActedBy, type WhoDidIt } from './who-did-it'
 
 /**

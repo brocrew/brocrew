@@ -1,3 +1,4 @@
+import { TASK_STALL_CAUSES } from '../src/shared/task-contracts'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -8,7 +9,6 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { distil } from '../src/main/runtime/digest'
 import { DIGEST_EVENT_TYPES } from '../src/shared/digest'
-import { TASK_STALL_CAUSES } from '../src/shared/tasks'
 
 /**
  * 🔴 **475 · the two projects the digest still read *partly*** — `466`'s remainder, and the
@@ -376,7 +376,9 @@ describe('§4 · one type joined the read and one stayed out', () => {
       'login_refused',
       'billing_refused',
     ])
-    const ipc = readFileSync(join(here, '../src/shared/runtime-ipc.ts'), 'utf8')
+    const ipc = ['task-contracts', 'conversation-events']
+      .map((owner) => readFileSync(join(here, `../src/shared/${owner}.ts`), 'utf8'))
+      .join('\n')
     // ⚑ `work_restarted` has ONE field, the pieces it stalls (D-016) — read off its own
     // declaration, and a positive control on this being a real census of the shape.
     const restarted = ipc.slice(ipc.indexOf('export interface WorkRestartedEvent {'))

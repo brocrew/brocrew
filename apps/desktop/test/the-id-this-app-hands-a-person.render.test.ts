@@ -1,3 +1,4 @@
+import type { WorkReport } from '../src/shared/task-contracts'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -6,7 +7,6 @@ import TranscriptView from '../src/renderer/src/components/TranscriptView.vue'
 import WorkReportEntry from '../src/renderer/src/components/WorkReportEntry.vue'
 import { OPEN_THE_DOCUMENT } from '../src/renderer/src/lib/the-document-a-report-names'
 import type { ResourceReading } from '../src/shared/runtime-ipc'
-import type { WorkReport } from '../src/shared/tasks'
 
 /**
  * 🔴 **510 · the press that opens the document, and the panel behind it** — rendered.

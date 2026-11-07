@@ -1,7 +1,8 @@
 import { z } from 'zod'
 import { MAX_DIGEST_SPAN_MS } from '../../shared/digest'
 import { RECENT_ACTIVITY_LINES, type RecentActivityReading } from '../../shared/recent-activity'
-import type { SessionStore, SkipNote, ThreadLeadRow } from './session-store'
+import type { SessionStore, ThreadLeadRow } from './session-store'
+import type { SkipNote } from './rows-unread'
 
 export const WINDOW_READ_BOUNDS = {
   sessions: 2_000,

@@ -72,6 +72,7 @@ describe('provider authentication has one owner', () => {
 
   it.each([
     'runtime/runtime-host.ts',
+    'runtime/host-dependencies.ts',
     'runtime/api-keys.ts',
     'runtime/provider-versions.ts',
     'provider-accounts-file.ts',
@@ -85,6 +86,7 @@ describe('provider authentication has one owner', () => {
 
   it.each([
     'runtime/runtime-host.ts',
+    'runtime/host-dependencies.ts',
     'runtime/api-keys.ts',
     'runtime/launch-refusal.ts',
     'runtime/agent-tools.ts',

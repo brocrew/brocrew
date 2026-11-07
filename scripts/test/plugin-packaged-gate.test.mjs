@@ -9,17 +9,17 @@ import {
   digest,
   finish,
   loopbackSandbox,
-  ownedRoot,
   projectBuild,
   report,
   requireCheck,
-  requireCI,
   safeReport,
 } from '../gates/plugin-packaged/contract.mjs'
+import { ownedRoot, requireCI } from '../gates/plugin-packaged/fixture-guards.mjs'
 import { assertNormalPluginBuild, GATE_BUILD_MARKER } from '../check-no-plugin-gate-inputs.mjs'
 import { initialize, requireHosted } from '../gates/plugin-packaged/owner.mjs'
 import { stageRelease } from '../gates/plugin-packaged/journey.mjs'
-import { fixtureEnvironment, removeFixture } from '../gates/plugin-packaged/prepare.mjs'
+import { removeFixture } from '../gates/plugin-packaged/prepare.mjs'
+import { fixtureEnvironment } from '../gates/plugin-packaged/fixture-command.mjs'
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const desktopRequire = createRequire(path.join(repository, 'apps/desktop/package.json'))
 const { build } = createRequire(desktopRequire.resolve('electron-vite/package.json'))('esbuild')

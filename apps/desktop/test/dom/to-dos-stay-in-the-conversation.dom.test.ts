@@ -1,10 +1,11 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick, reactive } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import WorkWaits from '../../src/renderer/src/components/WorkWaits.vue'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { applyEvent, markRequestFailed } from '../../src/renderer/src/lib/transcript'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { mount, paneProps, record, unmountAll } from './harness'
 
 const queue = usePersonsQueue()

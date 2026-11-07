@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { expect, it } from 'vitest'
 import { defineComponent, h, nextTick, reactive, ref, toRaw } from 'vue'
 import EventStream from '../../src/renderer/src/components/EventStream.vue'
@@ -8,7 +9,7 @@ import {
   createWindow,
   WINDOW_MAX_EVENTS,
 } from '../../src/renderer/src/lib/transcript-window'
-import type { RuntimeEventMessage, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll } from './harness'
 
 /**

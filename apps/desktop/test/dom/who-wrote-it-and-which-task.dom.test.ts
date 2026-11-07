@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { agentCardSides } from './harness'
 import { expandAgentCards } from './harness'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -15,12 +16,7 @@ import { GO_AHEAD_MESSAGE } from '../../src/renderer/src/lib/plan-mode'
 import type { QueuedItem, RelayedItem } from '../../src/renderer/src/lib/transcript'
 import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import { foldProviderLimits, readProviderLimit } from '../../src/shared/provider-limit'
-import type {
-  AgentIdentities,
-  AgentIdentity,
-  RuntimeBridge,
-  TranscriptEvent,
-} from '../../src/shared/runtime-ipc'
+import type { AgentIdentities, AgentIdentity, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import type { StalledWork } from '../../src/shared/stalled-work'
 import { assertDrawn, drawnReady } from './drawn'
 import { META, mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'

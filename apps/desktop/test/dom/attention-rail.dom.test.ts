@@ -1,10 +1,11 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import AgentState from '../../src/renderer/src/components/AgentState.vue'
 import { acceptEvent, createSessionRecord } from '../../src/renderer/src/lib/session-record'
 import { NEEDINGS, SIZES } from '../../src/renderer/src/lib/agent-state'
-import type { RuntimeEventMessage, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 
 /**

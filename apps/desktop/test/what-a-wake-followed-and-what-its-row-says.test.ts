@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -7,7 +8,6 @@ import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { exchangePreviewLines } from '../src/shared/last-exchange'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 F080 — a turn its provider started, in the store: what it followed, where it stands, and

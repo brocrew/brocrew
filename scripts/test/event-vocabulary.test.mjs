@@ -41,7 +41,7 @@ import { describe, expect, it } from 'vitest'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SMOKE = join(HERE, '../ui-live-smoke.mjs')
 const EVENTS = join(HERE, '../../packages/runtime/src/events.ts')
-const IPC = join(HERE, '../../apps/desktop/src/shared/runtime-ipc.ts')
+const IPC = join(HERE, '../../apps/desktop/src/shared/conversation-events.ts')
 
 /**
  * Read one match out of a source file, or say which file stopped being readable.

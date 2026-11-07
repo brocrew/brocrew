@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -25,7 +26,6 @@ import {
   type LibraryEntry,
   type CreatedSession,
   type Provider,
-  type TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 
 /** ⚑ A notice as the fold hands it out — the item, placed and timed. */

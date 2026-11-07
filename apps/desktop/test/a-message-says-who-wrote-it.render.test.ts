@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,7 +11,7 @@ import { applyEvent } from '../src/renderer/src/lib/transcript'
 import { createAttachmentBook, draftKey } from '../src/renderer/src/lib/drafts'
 import { APP_NOTICE_MARK, THE_APP_IS_THE_AUTHOR } from '../src/shared/app-notice'
 import { GO_AHEAD_AUTHORSHIP, GO_AHEAD_SENDER } from '../src/renderer/src/lib/plan-mode'
-import type { CreatedSession, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { CreatedSession } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **624 · what a person actually reads on the app's own carrier** — `HO-095` §6.1, §6.2, §6.3.
