@@ -44,6 +44,7 @@ import { describe, expect, it } from 'vitest'
 const SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), '..')
 const PROBE = join(SCRIPTS, 'session-info-probe.mjs')
 const SOURCE = readFileSync(PROBE, 'utf8')
+const CDP_SOURCE = readFileSync(join(SCRIPTS, 'lib/renderer-cdp.mjs'), 'utf8')
 
 /** The app module the probe reads its marker out of — the other half of one coupling. */
 const WORKSPACE = readFileSync(
@@ -66,12 +67,12 @@ const CODE = CODE_LINES.join('\n')
  * ⛔ **Sliced to the NEXT anchor rather than by a fixed width**, because a fixed-width slice after
  * a match borrows whatever the neighbouring case happens to say and then asserts about it.
  */
-function between(from, to) {
-  const start = SOURCE.indexOf(from)
+function between(from, to, source = SOURCE) {
+  const start = source.indexOf(from)
   expect(start, `the probe no longer contains the anchor ${from}`).toBeGreaterThan(-1)
-  const end = SOURCE.indexOf(to, start + from.length)
+  const end = source.indexOf(to, start + from.length)
   expect(end, `the probe no longer contains the anchor ${to}`).toBeGreaterThan(-1)
-  return SOURCE.slice(start, end)
+  return source.slice(start, end)
 }
 
 describe('the file this census reads, and the stripper it reads it through', () => {
@@ -191,7 +192,8 @@ describe('🔒 the app it drives is the app it started', () => {
   })
 
   it('keeps lsof’s three answers apart, so "could not ask" is never read as "nobody"', () => {
-    const lsof = between('function listenersOn(port) {', '/** One CDP connection')
+    expect(CODE).toContain("import { RendererCdp, listenersOn } from './lib/renderer-cdp.mjs'")
+    const lsof = between('function listenersOn(port) {', '/** One CDP connection', CDP_SOURCE)
     expect(lsof).toContain('if (error?.status === 1) return { asked: true, pids: [] }')
     expect(lsof).toContain('return { asked: false, pids: [], why:')
   })
@@ -308,7 +310,8 @@ describe('📸 the two sizes, and the filenames that must not be able to lie abo
   it('settles the layout and re-checks the panel BETWEEN the override and the capture', () => {
     // ⚠️ Ordering, not presence. A check that ran before the override — or after the PNG was
     // written — would be measuring a layout nobody photographed.
-    const window = between('setDeviceMetricsOverride', 'Page.captureScreenshot')
+    const window = between('setDeviceMetricsOverride', 'await cdp.shot(file)')
+    expect(between('async shot(file)', 'close()', CDP_SOURCE)).toContain('Page.captureScreenshot')
     expect(window).toContain('setTimeout(resolve, LAYOUT_MS)')
     expect(window).toContain('if (verify) await verify(width, height)')
     expect(CODE).toContain('const LAYOUT_MS = 400')

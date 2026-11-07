@@ -47,8 +47,7 @@ export const A_READY = 'a-ready.json'
  *  - `update-rehearsal-local-N`: the feed is a server on each runner, and nothing is published;
  *  - `update-rehearsal-N`: the private sandbox, through electron-updater's private-GitHub path.
  *
- * ⛔ There is no public rehearsal: nothing here may publish to a public repository until the owner
- * says yes, present (`scripts/update-rehearsal/held/`).
+ * Public-feed rehearsal tags are refused.
  */
 export function planOf(tag) {
   if (/^update-rehearsal-local-\d+$/.test(tag)) {

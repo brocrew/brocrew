@@ -2006,9 +2006,7 @@ describe('§9.4 · a read that has STOPPED answering, which `partial` could not 
  * | the card, the rail, the live overview | the answer is awaited and the record's fold closes the item — no poll | one round trip |
  * | **this queue** | the next look | **up to {@link LOOK_EVERY_MS} plus one read** |
  *
- * ⚑ **The read's own cost is measured** rather than assumed — `scripts/waiting-set-probe.mjs`:
- * 3.9 ms at a 20k-event ledger, 214 ms at 2M events. ⛔ So the worst case a person sees is
- * `LOOK_EVERY_MS + one read`, and on the biggest ledger measured that is about 5.2 s.
+ * The visible lag includes the next look and the time that read takes.
  */
 describe('§9.5 · the lag is bounded by the look, and the bound is stated', () => {
   it('🔴 nothing in this module shortens the poll, and the bound is LOOK_EVERY_MS', () => {
