@@ -2568,8 +2568,6 @@ function start(ownership: HostGateVerdict): void {
       startRederive(host)
       startTitlingTheOlderFiles(host)
       startRecordingWhatTheOlderOnesRan(host)
-      // Said once in the log when anyone else may read the data folder; Settings shows it too.
-
       let itself = whatTheAppItselfHolds([])
       const intoTheMemoryLog = (message: string): void => {
         console.warn(message)
@@ -2577,7 +2575,9 @@ function start(ownership: HostGateVerdict): void {
           const logs = app.getPath('logs')
           mkdirSync(logs, { recursive: true })
           appendFileSync(join(logs, 'memory.log'), `${new Date().toISOString()} ${message}\n`)
-        } catch {}
+        } catch {
+          // Diagnostic writes cannot interrupt the app.
+        }
       }
       const unrefdInterval = (fn: () => void, ms: number): unknown => {
         const timer = setInterval(fn, ms)
