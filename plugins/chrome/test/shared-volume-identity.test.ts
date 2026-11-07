@@ -245,7 +245,7 @@ it.each(['anchored-volume', 'different-disk-home'])(
         p.migration.home.volume = 'apfs:22222222-2222-4222-8222-222222222222'
       if (change === 'different-disk-home') {
         p.migration.error = 'different-disk'
-        p.migration.home.uid = '999999999'
+        p.migration.home.ino = '999999998'
       }
     })
     const store = f.open()

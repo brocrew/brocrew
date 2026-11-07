@@ -870,7 +870,7 @@ export function createSharedProfileStore(
         volumes.clear()
         if (candidates.some((c) => !same(c.current, fileIdentity(c.path)))) continue
         // The explicit proportionate-security decision accepts a legacy same-path clone
-        // or restore with matching inode/private ownership. Its current UUID is enrolled
+        // or restore with matching inode. Its current UUID is enrolled
         // once; an already anchored volume mismatch is never accepted.
         for (const { saved, current } of candidates) {
           if (same(saved, current)) continue
