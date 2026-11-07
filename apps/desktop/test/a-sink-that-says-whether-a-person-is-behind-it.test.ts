@@ -15,7 +15,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   RuntimeHost,
   THE_APP_ITSELF,
@@ -25,6 +24,7 @@ import {
 } from '../src/main/runtime/runtime-host'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { neutralHostDeps } from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -139,9 +139,7 @@ describe('349 · a sink that says whether a person is behind it', () => {
   const buildHost = (): RuntimeHost =>
     new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => {
         const held = runtimes.get(provider) ?? new CapturingRuntime(provider)
         runtimes.set(provider, held)

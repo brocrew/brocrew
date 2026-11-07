@@ -30,13 +30,12 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeChangeMessage, RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { type RuntimeChangeMessage } from '../src/shared/runtime-ipc'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # 689 — four small things main owes the window
@@ -62,17 +61,6 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
   throw new Error(`timed out waiting for ${what}`)
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 describe('689 · four small things main owes the window', () => {
@@ -139,9 +127,7 @@ describe('689 · four small things main owes the window', () => {
   function buildHost(over: SessionStore): RuntimeHost {
     const built = new RuntimeHost({
       store: over,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new Watching(provider),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
         const home = join(homes(), profileId ?? 'brobot', provider)

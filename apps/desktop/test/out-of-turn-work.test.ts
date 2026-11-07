@@ -30,6 +30,7 @@ import type {
   SessionLiveness,
   SessionLivenessMessage,
 } from '../src/shared/runtime-ipc'
+import { neutralHostDeps } from './lib/host-fixture'
 
 /**
  * **123 · Working outside a turn — four minutes of real work the app called `idle`.**
@@ -222,9 +223,7 @@ describe('the provider working outside a turn (123)', () => {
       )
     return new RuntimeHost({
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime,
       prepareProviderHome: (provider) => join(userData, 'provider-homes', provider),
       providerHomePath: (provider) => join(userData, 'provider-homes', provider),

@@ -5,7 +5,6 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeRuntime } from '@brobot2/runtime'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
@@ -14,6 +13,7 @@ import { readProviderConfig } from '../src/main/runtime/provider-config'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
 import { isRefusalRemedy } from '../src/shared/refusals'
+import { neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 🔴 **733 · the last credential guards** — `731` F-2 and F-4, under R92 and R93.
@@ -66,9 +66,7 @@ describe('§1 · a config file the Info panel lists opens like any other file (`
     let counter = 0
     host = new RuntimeHost({
       store: createSessionStore(db),
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider) => new FakeRuntime(provider),
       prepareProviderHome: () => home,
       providerHomePath: () => home,

@@ -1,5 +1,5 @@
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,7 +10,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -24,11 +23,12 @@ import {
 import { messageNamingThePiece } from '../src/main/runtime/reply-rails'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { agentName } from '../src/shared/runtime-ipc'
 import { theOwnerOf } from '../src/shared/piece-called'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
+import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+
 
 /**
  * 🔴 **607 · a message from a person says so** — `HO-088` §4, the half `414` left to silence.
@@ -119,16 +119,10 @@ describe('607 · a message from a person says so', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { AgentToolset, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime'
+import { type AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -39,6 +39,7 @@ import {
 import { DEFAULT_CAPABILITIES, type ProfileCapabilities } from '../src/shared/capabilities'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
+import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
 
 /**
  * 🔴 **412 · what an agent is told about its work** — HO-020 §5 items 1 and 2, plus `405` F8.
@@ -111,29 +112,6 @@ class RecordingSink implements RuntimeEventSink {
 }
 
 /** `373`'s double; its registry is shared so every launch's toolset can be reached. */
-class ToolWatchingRuntime extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handed: AgentToolset[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-    const handle = await super.start(options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
-  }
-  override async resume(
-    ref: SessionRef,
-    options: ResumeOptions,
-  ): ReturnType<FakeRuntime['resume']> {
-    const handle = await super.resume(ref, options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
-  }
-}
-
 describe('412 · what an agent is told about its work', () => {
   let userData: string
   let root: string

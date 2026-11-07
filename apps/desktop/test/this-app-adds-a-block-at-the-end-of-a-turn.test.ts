@@ -11,7 +11,7 @@ import {
   builtInSkillReminders,
 } from '../src/main/skills/built-in-catalogue'
 import { BUILT_IN_SKILLS_FAILURE, BUILT_IN_SKILL_NAMES } from '../src/shared/built-in-skills'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -51,6 +51,7 @@ import {
 } from '../src/main/runtime/what-this-app-adds-to-a-turn'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { syntheticProviderHome } from './lib/host-fixture'
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
@@ -153,11 +154,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       ...(withSkills
         ? {
             prepareBuiltInSkills: async (input: {

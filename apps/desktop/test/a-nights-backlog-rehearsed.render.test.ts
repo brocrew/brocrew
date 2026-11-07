@@ -1,6 +1,6 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { TASK_OUTCOMES, TASK_STALL_CAUSES } from '../src/shared/task-contracts'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,13 +18,12 @@ import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { distil } from '../src/main/runtime/digest'
-import { RuntimeHost, type RuntimeEventSink } from './helpers/giver-notice-host'
+import { RuntimeHost } from './helpers/giver-notice-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import PersonsQueue from '../src/renderer/src/components/PersonsQueue.vue'
 import TranscriptView from '../src/renderer/src/components/TranscriptView.vue'
@@ -59,8 +58,9 @@ import {
 } from '../src/shared/digest'
 import { PERMANENCE_SAID, RAIL_PERMANENCES } from '../src/shared/refusals'
 import { pieceLine, theOwnerOf } from '../src/shared/piece-called'
-import { agentName, type CreatedSession, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { agentName, type CreatedSession } from '../src/shared/runtime-ipc'
 import { UNDRIVEN_SENTENCES } from '../src/shared/tasks'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 🔴 **463 · a night's backlog, rehearsed from the readers** (HO-024's second exit half).
@@ -195,17 +195,6 @@ const REFUSAL_CASE = {
   Record<(typeof RAIL_PERMANENCES)[number], { readonly tool: string; readonly rail: string }>
 >
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** Keep the provider handles so the criterion-18 case can be raised through the real host door. */
 class ProviderDouble extends FakeRuntime {
   constructor(
@@ -259,16 +248,10 @@ describe("463 · a night's backlog, rehearsed", () => {
     // ⛔ Construct before planting open work: the host's launch repair is itself an ending writer.
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new ProviderDouble(provider, handles, providerSessions),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_live_${String(++sessionCounter)}`,

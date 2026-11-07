@@ -1,5 +1,5 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -21,9 +21,10 @@ import { refold, type SessionRecord } from '../src/renderer/src/lib/session-reco
 import { isAwaitingAnswer, type TranscriptState } from '../src/renderer/src/lib/transcript'
 import type { ResumedSession, RuntimeBridge, RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
+import { claudeOnAResume, type ResumeControl } from './lib/provider-double'
+import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
 // ⚑ **673 · Claude's resume shape lives in the shared double now** — moved from here, with the two
 // changes named in its header (`send` passes every argument; a question's ids are renamed too).
-import { claudeOnAResume, type ResumeControl } from './lib/provider-double'
 
 /**
  * 🔴 **653 · a woken conversation drawn as ended.**
@@ -216,22 +217,12 @@ describe('653 · a woken conversation drawn as ended', () => {
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) =>
         new ClaudeLikeRuntime(provider, toolsets, issued, crash, control),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

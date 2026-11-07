@@ -17,7 +17,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { AgentToolset, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
@@ -67,6 +66,7 @@ import type {
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { agentPreamble } from '../src/main/runtime/agent-preamble'
 import { APPROVALS_ARE_THE_PERSONS, howYouWork } from './lib/the-core'
+import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * ⚑ **584 · a LOCAL constant** (`HO-078` §1). ⛔ `PROJECT_MANAGER_PROFILE_ID` named the one other
@@ -1179,15 +1179,9 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ContextWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

@@ -1,6 +1,6 @@
 import { TASK_STATES } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,9 +11,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import {
   TOOL_REFUSALS,
   refuseTool,
@@ -26,8 +24,8 @@ import { pieceLine } from '../src/shared/piece-called'
 import { TASK_IS_OPEN, derivePieces } from '../src/shared/tasks'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { expectQueueFactsExcludeBriefs } from './helpers/queue-facts-source'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -39,17 +37,6 @@ const waitFor = async (ready: () => boolean, what: string, tries = 200): Promise
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
   throw new Error(`timed out waiting for ${what}`)
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 /**
@@ -193,16 +180,10 @@ describe('429 · taking work back', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new ToolWatchingRuntime(provider, handed, issued, gate),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

@@ -1,7 +1,7 @@
 import { TASK_OUTCOMES, TASK_STALL_CAUSES, TASK_STATES } from '../src/shared/task-contracts'
 import type { TaskState, WorkReport } from '../src/shared/task-contracts'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -12,9 +12,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { replyText, workAnswered, workUndriven } from '../src/main/runtime/reply-rails'
 import { resourcesRoot } from '../src/main/resources/resources'
@@ -37,8 +35,8 @@ import {
   workReading,
 } from '../src/renderer/src/lib/work-report'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **406 · finished, and finished with a question** — HO-019 §2's property, and the two defects
@@ -97,17 +95,6 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
   throw new Error(`timed out waiting for ${what}`)
 }
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** ⛔ **Comment-stripped**, so a census reads what the code does and not what a docblock says. */
 const codeOnly = (source: string): string =>
   source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
@@ -148,16 +135,10 @@ describe('406 · finished, and finished with a question', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions: issued }),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

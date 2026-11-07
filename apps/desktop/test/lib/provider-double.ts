@@ -1,5 +1,6 @@
 import { FakeRuntime, type FakeProviderSessions } from '@brobot2/runtime'
 import type {
+  AgentToolset,
   FakeSessionHandle,
   ResumeOptions,
   RuntimeEvent,
@@ -266,5 +267,31 @@ export class ProviderDouble extends FakeRuntime {
     return this.resumeGate.silentUntilItsFirstTurn
       ? claudeOnAResume(handle, { pause: null, renameIds: true })
       : handle
+  }
+}
+
+export class ToolWatchingRuntime extends FakeRuntime {
+  constructor(
+    provider: Provider,
+    protected readonly handed: AgentToolset[],
+    sessions: FakeProviderSessions,
+  ) {
+    super(provider, { sessions })
+  }
+  override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
+    const handle = await super.start(options)
+    if (options.agentTools) this.handed.push(options.agentTools)
+    return handle
+  }
+}
+
+export class ToolWatchingResumeRuntime extends ToolWatchingRuntime {
+  override async resume(
+    ref: SessionRef,
+    options: ResumeOptions,
+  ): ReturnType<FakeRuntime['resume']> {
+    const handle = await super.resume(ref, options)
+    if (options.agentTools) this.handed.push(options.agentTools)
+    return handle
   }
 }

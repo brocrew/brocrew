@@ -1,21 +1,22 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { ToolWatchingRuntime } from './lib/provider-double'
+import { neutralHostDeps, RecordingSink, syntheticProviderHome } from './lib/host-fixture'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { AgentToolset, StartOptions } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime'
+import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { CallerIdentity, RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import type { CallerIdentity } from '../src/main/runtime/runtime-host'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **431 · the message that crosses a project** — HO-024 §4 row 6, owed since Slice 4, and
@@ -81,33 +82,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** Keeps the toolsets the HOST handed out, so an agent's calls go through the real one. */
-class ToolWatchingRuntime extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handed: AgentToolset[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-    const handle = await super.start(options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
-  }
-}
-
 describe('431 · the message that crosses a project', () => {
   let userData: string
   let root: string
@@ -126,15 +101,9 @@ describe('431 · the message that crosses a project', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

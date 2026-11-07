@@ -1,22 +1,21 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { ToolWatchingRuntime } from './lib/provider-double'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { AgentToolset, StartOptions } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime'
+import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -43,7 +42,7 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  * ## ⚑ D-016 · the document became a RESOURCE, and HO-057 carried
  *
  * ⚠️ The document registry is gone: a reply's files are kept as RESOURCES, and `read_document`
- * reads one by its `res_…` id — any agent, any resource, the bytes re-checked against their hash.
+ * reads one by its `res_…` id — any agent, any resource, using the current local bytes.
  * ⛔ **`list_documents` went with the registry**, so the listing §2 measured has no subject and §2
  * is gone; a resource is found through `list_tasks`, naming its piece.
  *
@@ -65,32 +64,7 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  * somebody not named yet* — is `the-five-tools.test.ts` §5's exhaustive `Record<ToolName, …>`.
  */
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** ⚑ **A `FakeRuntime` that keeps the toolset it was launched with** — `431`'s device. */
-class ToolWatchingRuntime extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handed: AgentToolset[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-    const handle = await super.start(options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
-  }
-}
 
 describe('549 · two withdrawals — open what was scoped', () => {
   let userData: string
@@ -119,19 +93,13 @@ describe('549 · two withdrawals — open what was scoped', () => {
     issued = new FakeProviderSessions()
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       // ⛔ **Wired, and it is the difference between a measurement and a vacuous pass.** With no
       // root, no reply can keep a file and every read below refuses for a reason that has nothing
       // to do with this dispatch.
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
@@ -349,9 +317,7 @@ describe('549 · two withdrawals — open what was scoped', () => {
       expect(tool?.description).not.toContain('you kept')
       expect(tool?.description).not.toContain('you gave')
       expect(tool?.description).toContain('Read a resource this app keeps')
-      // ⚑ **And it still names what did NOT widen**, because a reader told only *any document* has
-      // no way to know the bytes are re-checked.
-      expect(tool?.description).toContain('hash')
+      expect(tool?.description).not.toContain('hash')
     })
   })
 
@@ -361,11 +327,11 @@ describe('549 · two withdrawals — open what was scoped', () => {
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
   // ─────────────────────────────────────────────────────────────────────────────────────────────
-  // §3 · HO-057 §1.4 · the hash did NOT move
+  // Local edits remain readable across profiles.
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('§3 · widening who may read did not widen what may be returned', () => {
-    it('🔴 a tampered canonical copy refuses the reader who did not write it too', async () => {
+  describe('reading local edits', () => {
+    it('returns edited bytes to a reader who did not write the resource', async () => {
       const { readerTools, mine, theirs } = await twoConversations()
       // ⚑ **D-016** · the kept copy is `<resources>/<sha256>/<name>`, off the resource's own row.
       const row = store.resource(theirs)
@@ -376,10 +342,10 @@ describe('549 · two withdrawals — open what was scoped', () => {
       writeFileSync(at, 'somebody edited this\n')
 
       const answered = await callOn(readerTools, 'read_document', { resource: theirs })
-      expect(answered.rail).toBe('resource-bytes-changed')
-      expect(answered.content).toBeUndefined()
-      // ⛔ **The bytes on disk never leave the process**, which is the property the rail exists for.
-      expect(JSON.stringify(answered)).not.toContain('somebody edited this')
+      expect(answered.outcome).toBe('ok')
+      expect(answered.content).toEqual({ as: 'markdown' })
+      const reader = readerTools.tools.find((tool) => tool.name === 'read_document')!
+      expect((await reader.call({ resource: theirs })).text).toBe('somebody edited this\n')
 
       // ⚑ **The control that plants TWO** — the untouched resource, same caller, same call.
       const untouched = await callOn(readerTools, 'read_document', { resource: mine })

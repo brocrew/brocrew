@@ -34,6 +34,7 @@ import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { aChoiceIsInForce } from '../src/shared/model-choice'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
+import { fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * # 🔴 682 · A person's choice holds the whole launch — PM ruling `R31`, four parts
@@ -232,13 +233,7 @@ describe('682 · a person’s choice holds the whole launch', () => {
       announce: ({ what }) => void (what !== 'persons' && announced.push(what)),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 

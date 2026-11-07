@@ -1,5 +1,5 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -22,6 +22,7 @@ import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { A_PERSONS_ANSWER_TO_AN_ENDED_QUESTION } from '../src/main/runtime/question-rails'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
+import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
 
 /**
  * 🔴 **D-017 · R6 — an answer a quit cannot lose** (D-017 §3, decision 4's queue case, and the
@@ -132,22 +133,12 @@ describe('D-017 · an answer a quit cannot lose', () => {
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) =>
         new CountingRuntime(provider, launched, handed, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

@@ -1,5 +1,5 @@
 import type { HandedPath } from '../src/shared/attachment-contracts'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -13,6 +13,7 @@ import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { type FirstMessageAnswer } from '../src/shared/runtime-ipc'
+import { syntheticProviderHome } from './lib/host-fixture'
 
 /**
  * # 🔴 735 M4 · the second ask, asked AGAIN after the disk read, must refuse on its own
@@ -69,11 +70,7 @@ describe('735 M4 · a race the second ask sees refuses without joining the arriv
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions: issued }),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

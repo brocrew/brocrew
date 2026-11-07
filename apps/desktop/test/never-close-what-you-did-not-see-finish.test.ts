@@ -3,7 +3,7 @@ import type { PieceRow, TaskState } from '../src/shared/task-contracts'
 import { REQUEST_STATES } from '../src/shared/question-contracts'
 import { MAILBOX_KINDS } from '../src/shared/conversation-events'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -20,9 +20,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { isGiverStallNotice, RuntimeHost } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -33,11 +31,11 @@ import {
   derivePieces,
 } from '../src/shared/tasks'
 import { pieceLine } from '../src/shared/piece-called'
-
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
-
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { codeOnly, sourceOf, expectTypeImports } from './helpers/source-contracts'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+
+
 
 /**
  * 🔴 **400 · never close what you did not see finish** — HO-018's three amendments, under one
@@ -113,17 +111,6 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
   throw new Error(`timed out waiting for ${what}`)
 }
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** `394`'s double, with the handles kept — a test has to BE the provider to ask like one. */
 class ProviderDouble extends FakeRuntime {
   constructor(
@@ -164,16 +151,10 @@ describe('400 · never close what you did not see finish', () => {
   const buildHost = (over: SessionStore = store): RuntimeHost => {
     const built = new RuntimeHost({
       store: over,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

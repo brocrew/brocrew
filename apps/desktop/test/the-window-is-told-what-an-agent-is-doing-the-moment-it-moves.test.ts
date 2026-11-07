@@ -1,6 +1,6 @@
 import type { AgentState } from '../src/shared/agent-state-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,24 +11,17 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { conversationList } from '../src/renderer/src/lib/conversation-list'
 import { aWaitIsReadFrom } from '../src/shared/questions'
 import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-
-import type {
-  AgentIdentity,
-  ResumableSessionInfo,
-  RuntimeEventMessage,
-  RuntimeStatesMessage,
-  UnresumableSessionInfo,
-} from '../src/shared/runtime-ipc'
+import { type AgentIdentity, type ResumableSessionInfo, type RuntimeStatesMessage, type UnresumableSessionInfo } from '../src/shared/runtime-ipc'
 import { proseSpans } from './lib/prose-spans'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+
 
 /**
  * # D-019 · the window is told what an agent is doing the moment it moves
@@ -95,17 +88,6 @@ async function settle(): Promise<void> {
     for (let turn = 0; turn < 5; turn++) await new Promise((resolve) => setImmediate(resolve))
     await new Promise((resolve) => setTimeout(resolve, 30))
   }
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 class ProviderDouble extends FakeRuntime {
@@ -225,16 +207,10 @@ describe('D-019 · main tells the window the moment an agent’s state moves', (
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store: countingStore(store),
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

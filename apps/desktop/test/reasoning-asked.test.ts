@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -7,7 +8,6 @@ import { FakeRuntime, type ProviderRuntimeContext } from '@brobot2/runtime'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type {
   CreateSessionInput,
@@ -131,9 +131,7 @@ describe('274 · the header reads what the launcher asked for, and nothing more'
     applyMigrations(db, migrationsFolder)
     host = new RuntimeHost({
       store: createSessionStore(db),
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: () => runtime,
       prepareProviderHome: (provider) => join(userData, 'provider-homes', provider),
       providerHomePath: (provider) => join(userData, 'provider-homes', provider),

@@ -1,6 +1,6 @@
 import type { HandedPath } from '../src/shared/attachment-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -39,6 +39,7 @@ import {
   type SessionLivenessMessage,
 } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
+import { syntheticProviderHome } from './lib/host-fixture'
 
 /**
  * D-017b · a message sent from a conversation's view goes where the HOST ruled, and the window says
@@ -219,11 +220,7 @@ describe('D-017b · a message from a conversation’s view goes where the host r
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) =>
         new LaunchCountingRuntime(provider, launches, issued, gate),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

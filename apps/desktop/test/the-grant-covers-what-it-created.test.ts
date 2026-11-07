@@ -1,5 +1,5 @@
 import type { SessionInstructions } from '../src/shared/instruction-contracts'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -19,7 +19,6 @@ import {
   identityCreatorColumn,
   readIdentityCreator,
 } from '../src/main/db/identity'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
@@ -28,6 +27,7 @@ import {
   type IdentityCreator,
   type RuntimeEventMessage,
 } from '../src/shared/runtime-ipc'
+import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const srcRoot = join(here, '../src')
@@ -136,15 +136,9 @@ describe('598 · the grant covers what it created', () => {
     window = new Sink('webContents:1')
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new WatchingRuntime(provider, handed, sessions),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

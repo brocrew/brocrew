@@ -13,20 +13,15 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand, runtimeCommandSchema } from '../src/main/runtime/ipc'
 import { AN_AGENT_THIS_APP_CANNOT_NAME } from '../src/main/runtime/reply-rails'
 import { resourceTitle, resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { DocumentForm } from '../src/shared/documents'
-import type {
-  FilesKept,
-  KeptFile,
-  RuntimeEventMessage,
-  RuntimeStatesMessage,
-} from '../src/shared/runtime-ipc'
+import { type FilesKept, type KeptFile, type RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
+import { fixtureProviderConfig, RecordingSink, syntheticProviderHome } from './lib/host-fixture'
 
 /**
  * # D-026 · a kept file is titled by its bytes, and one door lists the files a window draws
@@ -283,17 +278,6 @@ describe('D-026 · the rule: a file is titled by what its own bytes say', () => 
 // The rig: a real host, a real ledger, the real toolsets, the Fake provider only
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /**
  * A stretch of the event loop long enough for everything a provider row starts to have run: five
  * turns of `setImmediate` (each pump, and the flush a mark arms, run there) and a short timer.
@@ -393,23 +377,13 @@ describe('D-026 · one door lists the kept files, and every door that keeps one 
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued, gate),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       resourcesRoot: () => resourcesRoot(userData),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       // ⚑ **The dep the push is measured through** — what main hands every window.
       statesMoved: (message) => {
         pushed.push(message)

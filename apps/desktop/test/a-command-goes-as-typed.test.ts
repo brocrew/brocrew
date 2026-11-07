@@ -1,6 +1,6 @@
 import type { HandedPath } from '../src/shared/attachment-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -36,6 +36,7 @@ import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentName, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
+import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
 
 /**
  * 🔴 **708 · `R42` — a person's command goes to the provider exactly as typed.**
@@ -136,11 +137,7 @@ describe('708 · R42 — a person’s command goes to the provider exactly as ty
       exportDirectory: () => join(userData, 'exports'),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
@@ -148,13 +145,7 @@ describe('708 · R42 — a person’s command goes to the provider exactly as ty
       // ⚑ Short, so the arm whose provider never answers ends in this test's time and not in five
       // seconds — the bound is what is under test there, not its length.
       commandListWaitMs: 60,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink(sinkOwnerId({ id: 1 }))
   })

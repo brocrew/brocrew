@@ -1,7 +1,7 @@
 import type { LedgerWalk, PersonsDecision } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import type { WorkReport } from '../src/shared/task-contracts'
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -49,6 +49,7 @@ import { isRefusal } from '../src/renderer/src/lib/user-input-offer'
 import { WORK_REPORT_MARK } from '../src/renderer/src/lib/work-report'
 import { THE_APP_IS_THE_AUTHOR } from '../src/shared/app-notice'
 import { decisionReading, readingSentence } from '../src/shared/questions'
+import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
 
 /**
  * 🔴 **701 · what main handed the renderer and nobody drew** — `701` §2, four facts main already
@@ -218,23 +219,13 @@ class HostWorld {
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) => new HandingRuntime(provider, this.handed, this.issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${String(++this.counter)}`,
       now: this.tick,
       announce: () => {},
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     this.hosts.push(built)
     return built

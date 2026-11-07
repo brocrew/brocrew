@@ -1,5 +1,5 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -16,9 +16,8 @@ import type { Provider, TurnEnding } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
-import type { AgentCard, RuntimeEventSink } from './helpers/giver-notice-host'
+import { type AgentCard } from './helpers/giver-notice-host'
 import { TOOL_NAMES, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import {
   INTERRUPT_RAILS,
@@ -51,8 +50,8 @@ import { deriveRoutedRequests } from '../src/shared/questions'
 import { ENDING_SENTENCE } from '../src/renderer/src/lib/ending'
 import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
 import { askedToStopSays } from '../src/renderer/src/lib/stop-unanswered'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { agentName, type AgentIdentity } from '../src/shared/runtime-ipc'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 🔴 **395 · the interruption that looks like a provider fault** — Slice 4 S5, HO-007's last build
@@ -96,17 +95,6 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
   throw new Error(`timed out waiting for ${what}`)
 }
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** `394`'s double, with the handles kept — a test has to BE the provider to fault like one. */
 class ProviderDouble extends FakeRuntime {
   constructor(
@@ -147,16 +135,10 @@ describe('395 · the interruption that looks like a provider fault', () => {
   const buildHost = (over: SessionStore = store): RuntimeHost => {
     const built = new RuntimeHost({
       store: over,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

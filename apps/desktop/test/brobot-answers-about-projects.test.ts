@@ -1,11 +1,11 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { AgentToolset, StartOptions } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime'
+import { type AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -16,6 +16,8 @@ import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { ToolWatchingRuntime } from './lib/provider-double'
+import { syntheticProviderHome } from './lib/host-fixture'
 
 /**
  * ⚑ **584 · a LOCAL constant** (`HO-078` §1). ⛔ `PROJECT_MANAGER_PROFILE_ID` named the one other
@@ -78,21 +80,6 @@ class RecordingSink implements RuntimeEventSink {
 }
 
 /** Keeps the toolsets the HOST handed out, so an agent's calls go through the real one. */
-class ToolWatchingRuntime extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handed: AgentToolset[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-    const handle = await super.start(options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
-  }
-}
-
 describe('439 · BroBot asks a PM, and both conversations hold both halves', () => {
   let userData: string
   let root: string
@@ -114,11 +101,7 @@ describe('439 · BroBot asks a PM, and both conversations hold both halves', () 
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

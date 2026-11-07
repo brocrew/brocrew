@@ -1,3 +1,4 @@
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -6,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { messageNamingItsSender, THE_PERSON_AT_A_WINDOW } from '../src/main/runtime/turn-origin'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { createSessionStore as createRendererStore } from '../src/renderer/src/lib/session-store'
@@ -115,9 +115,7 @@ describe('336 §5 · a conversation nobody asked for, taken over and shown', () 
     let counter = 0
     host = new RuntimeHost({
       store: ledger,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: () => provider,
       prepareProviderHome: () => {
         const home = join(userData, 'provider-homes', 'claude')
@@ -127,13 +125,7 @@ describe('336 §5 · a conversation nobody asked for, taken over and shown', () 
       providerHomePath: () => join(userData, 'provider-homes', 'claude'),
       resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
       newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     windowA = new DemoWindow(1)
     windowB = new DemoWindow(2)

@@ -1,7 +1,7 @@
 import type { AgentState } from '../src/shared/agent-state-contracts'
 import type { PieceRow } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -20,17 +20,12 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
+import { type ResumableSessionInfo, type RuntimeStatesMessage, type UnresumableSessionInfo } from '../src/shared/runtime-ipc'
+import { fixtureProviderConfig, RecordingSink, syntheticProviderHome } from './lib/host-fixture'
 
-import type {
-  ResumableSessionInfo,
-  RuntimeEventMessage,
-  RuntimeStatesMessage,
-  UnresumableSessionInfo,
-} from '../src/shared/runtime-ipc'
 
 /**
  * # The idle stop · a start or a delivery on its way in keeps a *needs you* conversation running
@@ -71,17 +66,6 @@ async function settle(): Promise<void> {
     for (let turn = 0; turn < 5; turn++) await new Promise((resolve) => setImmediate(resolve))
     await new Promise((resolve) => setTimeout(resolve, 30))
   }
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 /** The provider double: collects every handle it issues and the toolset each launch was handed. */
@@ -167,23 +151,13 @@ describe('the idle stop and what is on its way into a conversation that needs yo
       exportDirectory: () => join(userData, 'exports'),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, handed, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       // The dep that arms the countdown at all.
       statesMoved: (message) => {
         pushed.push(message)

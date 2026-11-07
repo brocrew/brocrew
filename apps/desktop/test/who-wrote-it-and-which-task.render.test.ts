@@ -1,5 +1,5 @@
 import type { MessageSentEvent, TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -52,12 +52,13 @@ import {
   GO_AHEAD_SENDER,
   TAKE_BACK_THE_GO_AHEAD,
 } from '../src/renderer/src/lib/plan-mode'
-// ⚑ 700 · `688` H2 — main's sentence and the row's are one value now, in `shared/`.
 import {
   THE_GO_AHEAD_TAKEN_BACK,
   THE_GO_AHEAD_WAS_NOT_SENT,
   TYPE_TO_CARRY_ON,
 } from '../src/shared/the-go-ahead'
+import { syntheticProviderHome } from './lib/host-fixture'
+// ⚑ 700 · `688` H2 — main's sentence and the row's are one value now, in `shared/`.
 
 // These SSR checks read expanded row details; browser controls exercise the real fold.
 vi.mock('../src/renderer/src/components/OutsideCard.vue', async () => {
@@ -266,11 +267,7 @@ describe('688 · draw who wrote it, and which task', () => {
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) => new Watching(provider),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

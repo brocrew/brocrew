@@ -10,13 +10,13 @@ import type { Provider } from '@brobot2/shared'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, NULL_SESSION_STORE } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import {
   MEMORY_NOTES_PER_EVENT,
   MEMORY_NOTE_TEXT_CAP,
   type RuntimeEventMessage,
 } from '../src/shared/runtime-ipc'
+import { neutralHostDeps } from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsDir = join(here, '../src/main/db/migrations')
@@ -132,9 +132,7 @@ describe('318 · the host says what appeared while the turn ran', () => {
           recorded.push({ ordinal, event })
         },
       },
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => {
         const runtime = new FakeRuntime(provider)
         const start = runtime.start.bind(runtime)

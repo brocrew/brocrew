@@ -1,23 +1,24 @@
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { AgentToolset, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime'
+import { type AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { mailboxOf, stillHeld } from '../src/shared/mailbox'
-import { theMessagesOf, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { theMessagesOf } from '../src/shared/runtime-ipc'
+import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
+import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
 
 /**
  * 🔴 **440 · an identity that owns something, and the callers who wait** — HO-024 §4 criteria 26
@@ -87,41 +88,7 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
   throw new Error(`timed out waiting for ${what}`)
 }
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** `373`'s double; its registry is shared so every launch's toolset can be reached. */
-class ToolWatchingRuntime extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handed: AgentToolset[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-    const handle = await super.start(options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
-  }
-  override async resume(
-    ref: SessionRef,
-    options: ResumeOptions,
-  ): ReturnType<FakeRuntime['resume']> {
-    const handle = await super.resume(ref, options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
-  }
-}
-
 describe('440 · one session, and the callers who wait', () => {
   let userData: string
   let root: string
@@ -144,11 +111,7 @@ describe('440 · one session, and the callers who wait', () => {
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

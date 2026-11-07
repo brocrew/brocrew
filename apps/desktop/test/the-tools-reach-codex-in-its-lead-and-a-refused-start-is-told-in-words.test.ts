@@ -74,6 +74,7 @@ import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble as GatedDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
+import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
 
 /**
  * 🔴 **D-039 · the tools reach a Codex model in its lead, the namespace stays under the app-server's
@@ -1091,21 +1092,11 @@ describe('§6 to §8 · what a failed start says at each door', () => {
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) => new GatedDouble(provider, handles, issued, gate),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:1')
   })

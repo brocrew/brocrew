@@ -16,6 +16,7 @@ import { attentionQueue } from '../src/renderer/src/lib/attention'
 import { createSessionRecord } from '../src/renderer/src/lib/session-record'
 import { applyEvent } from '../src/renderer/src/lib/transcript'
 import type { CreatedSession, RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * A Claude card the SDK aborts while it waits, end to end: the real Claude adapter under the real
@@ -129,13 +130,7 @@ describe('a Claude card the SDK aborts while it waits is closed in the record', 
       resolveCwd: (sessionId, requested) => requested ?? join(folder, 'scratch', sessionId),
       newSessionId: () => `sess_${++counter}`,
       now: () => clock++,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     sink = new RecordingSink()
   })

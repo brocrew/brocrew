@@ -1,11 +1,11 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { AgentToolset, StartOptions } from '@brobot2/runtime'
+import { type AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
@@ -20,9 +20,11 @@ import {
   type SessionStore,
 } from '../src/main/db/session-store'
 import { rowsUnreadOnce } from '../src/main/db/rows-unread'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
+import { ToolWatchingRuntime } from './lib/provider-double'
+import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
 
 /**
  * 🔴 **D-017 · R8 — one bad row never stops the app**, pinned against `session-store.ts`'s
@@ -68,17 +70,6 @@ const nextLineAfter = (source: string, marker: string): string => {
   const eol = source.indexOf('\n', at)
   const nextEol = source.indexOf('\n', eol + 1)
   return source.slice(eol + 1, nextEol).trim()
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 /* ══════════════════ §1 · the two counters, pure — no database at all ══════════════════ */
@@ -212,11 +203,7 @@ describe('D-017 · the instruction-ask ledger', () => {
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) => new FakeRuntime(provider),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_bad_row_asks_${String(tick())}`,
@@ -376,11 +363,7 @@ describe("D-017 · the launch sweep's own sentence", () => {
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) => new FakeRuntime(provider),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_sweep_${String(tick())}`,
@@ -575,21 +558,6 @@ describe('D-017 · agent-tools.ts, by its source', () => {
 
 /* ══════════════════ §7 · a healthy record never claims it could not be read ══════════════════ */
 
-class ToolWatchingRuntime extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handed: AgentToolset[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-    const handle = await super.start(options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
-  }
-}
-
 describe('D-017 · a healthy record never claims it could not be read', () => {
   let userData: string
   let root: string
@@ -611,11 +579,7 @@ describe('D-017 · a healthy record never claims it could not be read', () => {
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${String(++counter)}`,

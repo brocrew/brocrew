@@ -1,6 +1,6 @@
 import type { CardNobodyHolds, LedgerWalk, PersonsDecision } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -31,8 +31,9 @@ import {
   type PersonsQueueRow,
 } from '../src/renderer/src/lib/persons-queue'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
-
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { syntheticProviderHome } from './lib/host-fixture'
+
 
 /**
  * A helper an agent started in Ask mode, parked on a permission, that no window has opened: its row
@@ -113,11 +114,7 @@ describe('a helper nobody opened is answered from Waiting on you', () => {
       exportDirectory: () => join(userData, 'exports'),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${String(++counter)}`,

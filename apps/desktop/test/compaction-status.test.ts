@@ -7,7 +7,6 @@ import { TheCliAnswersInOrder } from '../../../packages/runtime/test/the-cli-ans
 import { ClaudeRuntime, type AgentRuntime } from '@brobot2/runtime'
 import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import {
   NEEDING_TOKEN,
@@ -23,6 +22,7 @@ import type {
   SessionLiveness,
   SessionLivenessMessage,
 } from '../src/shared/runtime-ipc'
+import { neutralHostDeps } from './lib/host-fixture'
 
 /**
  * **133 · ninety-one seconds of `idle` while a 90,000-token context was compacted.**
@@ -239,9 +239,7 @@ describe('a compaction the app can see (133)', () => {
       )
     return new RuntimeHost({
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime,
       prepareProviderHome: (provider) => join(userData, 'provider-homes', provider),
       providerHomePath: (provider) => join(userData, 'provider-homes', provider),

@@ -1,7 +1,7 @@
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import type { PieceRow } from '../src/shared/task-contracts'
 import { performance } from 'node:perf_hooks'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,14 +18,12 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
-
 import { derivePieces } from '../src/shared/tasks'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+
 
 /**
  * 🔴 **D-016c · a stop changes nothing about a piece — the four places it is decided**
@@ -429,17 +427,6 @@ describe('§2 · the fold — a stop ends the drive it cut, and nothing else', (
 // §3 · the host
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 const traceFixturePhase = <T>(phase: string, operation: () => T): T => {
   const began = performance.now()
   const emit = (event: string, outcome?: string): void => {
@@ -620,16 +607,10 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
     const sessions = new FakeProviderSessions()
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new LeveredRuntime(provider, launches, sessions, resumeHold),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

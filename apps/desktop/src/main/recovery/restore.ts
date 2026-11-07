@@ -796,9 +796,8 @@ async function planAReturn(
         gate.checkpointCreatedAt,
       )
     }
-    if ((await contentAt(fromRecorded(userData, places.aside), fs)).kind !== 'absent') {
+    if (await retrying(() => pathExists(fromRecorded(userData, places.aside), fs)))
       refuse(RESTORED_FOLDER_TAKEN)
-    }
     participants.push({ live, role, ...places, was, becomes })
   }
   return participants

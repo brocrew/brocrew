@@ -1,3 +1,4 @@
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -8,7 +9,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   RuntimeHost,
   THE_APP_ITSELF,
@@ -101,9 +101,7 @@ describe('716 · R62, D-017b — a conversation still closing says no process wo
     closeGate = null
     host = new RuntimeHost({
       store: ledger,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => {
         const runtime = new FakeRuntime(provider, { sessions })
         const start = runtime.start.bind(runtime)
@@ -124,13 +122,7 @@ describe('716 · R62, D-017b — a conversation still closing says no process wo
       newSessionId: () => `sess_${++counter}`,
       // ⚠️ A bound on the MACHINE, not on the rule (`418`'s note): one arm parks a teardown.
       closeDrainTimeoutMs: 40,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 

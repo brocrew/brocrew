@@ -8,13 +8,13 @@ import { TheCliAnswersInOrder } from '../../../packages/runtime/test/the-cli-ans
 import { ClaudeRuntime, type AgentRuntime } from '@brobot2/runtime'
 import type { Options, PermissionResult, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type {
   RuntimeEventMessage,
   SessionLiveness,
   SessionLivenessMessage,
 } from '../src/shared/runtime-ipc'
+import { neutralHostDeps } from './lib/host-fixture'
 
 /**
  * A stranded turn must have a way to end.
@@ -167,9 +167,7 @@ describe('a provider that goes on working after its turn ended (122)', () => {
       )
     return new RuntimeHost({
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime,
       prepareProviderHome: (provider) => join(userData, 'provider-homes', provider),
       providerHomePath: (provider) => join(userData, 'provider-homes', provider),

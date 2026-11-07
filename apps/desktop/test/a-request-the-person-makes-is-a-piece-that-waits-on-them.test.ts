@@ -1,7 +1,7 @@
 import type { PieceRow, TaskState, WorkGivenEvent } from '../src/shared/task-contracts'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import type { QuestionAskedEvent, RequestRoutedEvent } from '../src/shared/question-contracts'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,9 +18,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { giverStallNotices, RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -31,8 +29,8 @@ import {
   derivePieces,
   givenByAConversation,
 } from '../src/shared/tasks'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * D-016 · commit 6 · a request the person makes is a piece that waits on them.
@@ -323,17 +321,6 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
   throw new Error(`timed out waiting for ${what}`)
 }
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** The provider double, with the handles kept: a test has to BE the provider to park a turn. */
 class ProviderDouble extends FakeRuntime {
   constructor(
@@ -383,16 +370,10 @@ describe('D-016 · commit 6 · take_on_work — the host', () => {
     issued = new FakeProviderSessions()
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

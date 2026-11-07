@@ -11,7 +11,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   AN_IDENTITY_THIS_APP_CANNOT_NAME,
   RuntimeHost,
@@ -32,6 +31,7 @@ import {
   type RuntimeEventMessage,
 } from '../src/shared/runtime-ipc'
 import { theOwnerOf } from '../src/shared/piece-called'
+import { neutralHostDeps } from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -113,9 +113,7 @@ describe('610 · the roster that names nobody', () => {
     holdTheHome = null
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: () => new FakeRuntime('claude', { sessions }),
       prepareProviderHome: async (provider: Provider, profileId?: string) => {
         const home = join(userData, 'provider-homes', profileId ?? 'default', provider)

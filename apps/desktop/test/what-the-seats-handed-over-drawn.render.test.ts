@@ -57,6 +57,7 @@ import {
 } from '../src/shared/runtime-ipc'
 import { stalledWorkKey, type StalledWork } from '../src/shared/stalled-work'
 import { everythingOverTheWire } from './lib/the-wire'
+import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
 
 /**
  * # 🔴 712 · what the seats handed over, drawn — the node half, over real doors where there are any
@@ -228,22 +229,12 @@ describe('§2 · draw 2 (`702` GAP-3) — a giver told nothing is named so on th
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) => new ToolsetKeeper(provider, handed, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built
@@ -491,13 +482,7 @@ describe('§4 · draw 4 (R56, `696` L2) — the provider control says what its p
       resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
       listProfiles: () => [...folders],
       newSessionId: () => `sess_${Math.random().toString(36).slice(2)}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     const seat = new Seat('webContents:1')
     const run = async <T>(kind: string, input: Record<string, unknown> = {}): Promise<T> =>

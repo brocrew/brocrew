@@ -15,6 +15,7 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { ReopenQueue } from '../src/main/runtime/reopen-queue'
 import { MainThreadWork } from '../src/main/stall-watch'
 import type { RuntimeEventMessage, RuntimeStatesMessage } from '../src/shared/runtime-ipc'
+import { fixtureProviderConfig } from './lib/host-fixture'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
@@ -131,13 +132,7 @@ describe('sign-in reopens share a yielding queue', () => {
         workClock += costs.state
         states.push(message)
       },
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     sink = {
       ownerId: 'window:1',

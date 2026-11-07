@@ -12,6 +12,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
+import { fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * # A person's pick in a conversation, while the provider's list could not be read
@@ -122,13 +123,7 @@ describe('a person’s pick in a conversation, said against the list it was judg
       resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
       listProfiles: () => ['brobot', 'worker'],
       newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 

@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -12,7 +13,6 @@ import {
 } from '../src/main/runtime/ipc'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import {
   DEFAULT_PROFILE_ID,
@@ -79,9 +79,7 @@ describe('runtime IPC boundary', () => {
     startOptions = []
     deps = {
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider) => {
         const runtime = new FakeRuntime(provider)
         const start = runtime.start.bind(runtime)

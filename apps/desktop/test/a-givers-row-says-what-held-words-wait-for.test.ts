@@ -13,7 +13,6 @@ import {
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from './helpers/giver-notice-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import type {
@@ -21,6 +20,7 @@ import type {
   SessionLiveness,
   SessionLivenessMessage,
 } from '../src/shared/runtime-ipc'
+import { neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # The giver's `list_tasks` row says what the words held for its helper wait for
@@ -168,9 +168,7 @@ describe('the giver’s list_tasks row says what held words wait for', () => {
     store = createSessionStore(db)
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider) => new WatchedRuntime(provider, watch, sessions, handles),
       prepareProviderHome: (provider) => join(userData, 'provider-homes', provider),
       providerHomePath: (provider) => join(userData, 'provider-homes', provider),

@@ -28,6 +28,7 @@ import {
   type ModelLists,
 } from '../src/renderer/src/lib/model-lists'
 import { everythingOverTheWire } from './lib/the-wire'
+import { fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * # 🔴 685 · a person chooses each agent's model and effort — the control, over the REAL doors
@@ -175,13 +176,7 @@ describe('685 · a person chooses each agent’s model and effort — over the r
       // `persons` comes from the store's record of each commit, and is pinned in its own file.
       announce: ({ what }) => void (what !== 'persons' && announced.push(what)),
       newSessionId: () => `sess_${Math.random().toString(36).slice(2)}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     const sink: RuntimeEventSink = {
       ownerId: 'webContents:1',

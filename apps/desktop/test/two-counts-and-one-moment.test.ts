@@ -1,5 +1,5 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,15 +15,11 @@ import {
   type SessionStore,
 } from '../src/main/db/session-store'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { RuntimeHost, type RuntimeEventSink } from './helpers/giver-notice-host'
+import { RuntimeHost } from './helpers/giver-notice-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { personsQueueView, type PersonsQueueKind } from '../src/renderer/src/lib/persons-queue'
 import { RUNTIME_CHANGE_SUBJECTS } from '../src/shared/runtime-ipc'
-import type {
-  RuntimeChangeMessage,
-  RuntimeCommand,
-  RuntimeEventMessage,
-} from '../src/shared/runtime-ipc'
+import { type RuntimeChangeMessage, type RuntimeCommand } from '../src/shared/runtime-ipc'
 import {
   WHAT_A_READING_COUNTS,
   WHAT_NEEDS_A_PERSON,
@@ -37,6 +33,7 @@ import {
   type WhatNeedsAPerson,
   type WorkspaceReading,
 } from '../src/shared/workspace-reading'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # 567 · two counts and one moment
@@ -94,17 +91,6 @@ function code(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1')
 }
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 describe('567 · two counts and one moment', () => {
   let userData: string
   let workspace: string
@@ -128,15 +114,9 @@ describe('567 · two counts and one moment', () => {
     store = createSessionStore(db, tick)
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_567_${String(tick())}`,

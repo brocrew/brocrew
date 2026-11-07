@@ -23,7 +23,6 @@ import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   DEFAULT_PROFILE_ID,
   createProviderAuthOps,
@@ -40,6 +39,7 @@ import {
 } from '../src/renderer/src/lib/transcript'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
+import { neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # A copy of a Codex sign-in that Codex refused is replaced once, by the one refreshed last
@@ -313,9 +313,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
     aSignIn = () => Promise.reject(new Error('no sign-in is staged'))
     host = new RuntimeHost({
       store: (store = createSessionStore(db)),
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => (provider === 'codex' ? codex : new AClaude(claudes)),
       prepareProviderHome: (provider, profileId) =>
         prepareProviderHome(

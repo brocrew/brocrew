@@ -19,8 +19,9 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { THE_PERSON_AT_A_WINDOW } from '../src/main/runtime/turn-origin'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { MainThreadWork } from '../src/main/stall-watch'
-
 import { aStallItsGiverCanBeToldOf } from '../src/shared/tasks'
+import { fixtureProviderConfig } from './lib/host-fixture'
+
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 const NOW = Date.UTC(2026, 9, 5, 9)
@@ -111,13 +112,7 @@ describe('stall deliveries read limits only for automatic mail', () => {
       newSessionId: () => `sess_wave_${++serial}`,
       now: () => clock++,
       signInChanges: { read: () => new Map([['claude', NOW - 1]]), write: () => {} },
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     boundary = host as unknown as DeliveryBoundary
   })

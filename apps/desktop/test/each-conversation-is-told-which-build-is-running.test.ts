@@ -1,3 +1,4 @@
+import { fixtureProviderConfig, neutralHostDeps, syntheticProviderHome } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -6,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { FakeSessionHandle, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
 import { BUILD_IS_DEV, BUILD_IS_UNRECORDED, type Provider } from '@brobot2/shared'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { buildIdentity } from '../src/main/build-identity'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -225,26 +225,14 @@ describe('F006 · §2 · each launch is told the build, and a build it cannot re
   const buildHost = (wired: { whichBuild: boolean } = { whichBuild: true }): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new LaunchWatchingRuntime(provider, launches, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       ...(wired.whichBuild
         ? {
             whichBuild: (): TheBuildRunning => {

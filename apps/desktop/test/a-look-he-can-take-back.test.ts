@@ -9,7 +9,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import {
   type AgentCard,
@@ -22,6 +21,7 @@ import {
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
 import { agentStateWords } from '../src/shared/agent-state'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { neutralHostDeps } from './lib/host-fixture'
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
@@ -146,9 +146,7 @@ describe('523 · a look he can take back', () => {
     let counter = 0
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => {
         const held = runtimes.get(provider) ?? new CapturingRuntime(provider)
         runtimes.set(provider, held)

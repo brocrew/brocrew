@@ -1,3 +1,4 @@
+import { fixtureProviderConfig, neutralHostDeps, syntheticProviderHome } from './lib/host-fixture'
 import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -9,7 +10,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { keepResource, resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -102,28 +102,16 @@ describe('F046 · titleTheOlderFiles', () => {
   const buildHost = (withResources: boolean): RuntimeHost =>
     new RuntimeHost({
       store: watched(store),
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions }),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       ...(withResources ? { resourcesRoot: () => resourcesRoot(userData) } : {}),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       announce: (change) => said.push(change),
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
 
   beforeEach(() => {
@@ -208,7 +196,7 @@ describe('F046 · titleTheOlderFiles', () => {
     const plain = keptUntitled('plain.md', 'no heading here\n')
     // ⛔ Bytes gone: the name.
     const gone = plantUntitled('gone.md', '2'.repeat(64))
-    // ⛔ Bytes changed since they were kept — the hash re-checked — the name, not either heading.
+    // Local edits supply the current heading when the older file is titled.
     const changed = keptUntitled('changed.md', '# Before\n')
     writeFileSync(keptAt(changed.sha256, 'changed.md'), '# After\n')
     // ⛔ Something unreadable where the file is kept (a directory): the name.
@@ -245,7 +233,7 @@ describe('F046 · titleTheOlderFiles', () => {
     expect(titleOf(page.id), 'a page’s <title>, its entity decoded').toBe('The leaf & more')
     expect(titleOf(plain.id), 'read, and no heading').toBe('plain.md')
     expect(titleOf(gone), 'bytes gone').toBe('gone.md')
-    expect(titleOf(changed.id), 'bytes changed').toBe('changed.md')
+    expect(titleOf(changed.id), 'bytes changed').toBe('After')
     expect(titleOf(unreadable), 'bytes unreadable').toBe('folder.md')
     expect(titleOf(drawing.id), 'an image').toBe('drawing.svg')
     expect(titleOf(kept), 'a row already titled').toBe('Taken as it was kept')

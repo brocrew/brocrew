@@ -4,6 +4,30 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  AuthUnavailableError,
+  ClaudeRuntime,
+  CodexRuntime,
+  FakeProviderSessions,
+  createSpawnTransportFactory,
+} from '@brobot2/runtime'
+import type { FakeSessionHandle } from '@brobot2/runtime'
+import type { Provider } from '@brobot2/shared'
+import { type AppDatabase, openDatabase } from '../src/main/db/connection'
+import { applyMigrations } from '../src/main/db/migrate'
+import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
+import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { CodexUnavailableError } from '../src/main/runtime/codex-binary'
+import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
+import { TASK_IS_OPEN } from '../src/shared/tasks'
+import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
+import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
+import {
+  aSpawnRefusedAfterItsPipes,
+  aSpawnThatRanOutOf,
+} from '../../../packages/runtime/test/fixtures/a-spawn-that-failed'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * ⚑ **Codex's transport spawns through `node:child_process` with no seam**, so the ONE spawn a test
@@ -22,32 +46,6 @@ vi.mock('node:child_process', async (importOriginal) => {
   }
 })
 
-import {
-  AuthUnavailableError,
-  ClaudeRuntime,
-  CodexRuntime,
-  FakeProviderSessions,
-  createSpawnTransportFactory,
-} from '@brobot2/runtime'
-import type { FakeSessionHandle } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import { CodexUnavailableError } from '../src/main/runtime/codex-binary'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { TASK_IS_OPEN } from '../src/shared/tasks'
-import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
-import {
-  aSpawnRefusedAfterItsPipes,
-  aSpawnThatRanOutOf,
-} from '../../../packages/runtime/test/fixtures/a-spawn-that-failed'
 
 /**
  * # 🔴 707 · R39, extended — a spawn that ran short is not a broken tool
@@ -75,17 +73,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 /** ⚑ The new word — spelled here as a string, so `main` (which has no such word) can run this file. */
 const SHORTAGE = 'agent-could-not-start-just-now'
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 describe('707 · R39, extended — a spawn that ran short', () => {
   let userData: string
   let root: string
@@ -106,9 +93,7 @@ describe('707 · R39, extended — a spawn that ran short', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued, gate),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
         if (homeFails !== undefined) throw homeFails()

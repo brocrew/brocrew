@@ -8,7 +8,6 @@ import { FakeRuntime, type AgentInfo, type SessionHandle } from '@brobot2/runtim
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type {
   CreateSessionInput,
@@ -17,6 +16,7 @@ import type {
   SessionLiveness,
   SessionLivenessMessage,
 } from '../src/shared/runtime-ipc'
+import { neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 179 · **The model you cannot see.**
@@ -116,9 +116,7 @@ describe('179 — what a conversation can say about the model it is running', ()
     applyMigrations(db, migrationsFolder)
     host = new RuntimeHost({
       store: createSessionStore(db),
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: () => runtime,
       prepareProviderHome: (provider) => join(userData, 'provider-homes', provider),
       providerHomePath: (provider) => join(userData, 'provider-homes', provider),

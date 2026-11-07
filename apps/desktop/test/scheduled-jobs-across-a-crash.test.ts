@@ -17,7 +17,6 @@ import {
   type SessionStore,
 } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
@@ -25,8 +24,8 @@ import {
   scheduleAttemptsFile,
   writeKeptAttempts,
 } from '../src/main/schedule-attempts-file'
+import { RecordingSink } from './lib/host-fixture'
 
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * # Scheduled jobs across a crash
@@ -101,17 +100,6 @@ async function settle(): Promise<void> {
     for (let turn = 0; turn < 5; turn++) await new Promise((resolve) => setImmediate(resolve))
     await new Promise((resolve) => setTimeout(resolve, GAP + 30))
   }
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 /** Something a life waits on that a test never lets through, until the test ends. */

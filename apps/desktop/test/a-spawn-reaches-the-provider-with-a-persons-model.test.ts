@@ -42,9 +42,10 @@ import {
 } from './helpers/giver-notice-host'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
+import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
+
 
 /**
  * # 🔴 677 · `R25` §4.1 and §4.4 — what reaches the PROVIDER, and what a WAKE reads
@@ -294,13 +295,7 @@ describe('677 §1-§2 · a spawn reaches the provider with exactly the person’
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 
@@ -602,22 +597,12 @@ describe('677 §3 · a wake is a launch — 🔴 D-042: it replays the conversat
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) =>
         new RecordingDouble(provider, handles, issued, gate, started, resumed),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 

@@ -2,7 +2,7 @@ import { TASK_STATES } from '../src/shared/task-contracts'
 import type { PieceRow, WhatAConversationIsWaitingOn } from '../src/shared/task-contracts'
 import type { RoutedRequest } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -19,7 +19,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { isGiverStallNotice, RuntimeHost } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
@@ -36,6 +35,7 @@ import { WORK_STATE_WORD } from '../src/renderer/src/lib/work-report'
 import { aPersonOwesAnAnswerIn } from '../src/shared/questions'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { spacedCode, expectNoDeadlineDeps } from './helpers/source-contracts'
+import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 🔴 **609 · three waits, one family** — `HO-088` §5, straight after B1 (`608`).
@@ -136,15 +136,9 @@ describe('609 · three waits, one family', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

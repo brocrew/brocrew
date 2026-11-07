@@ -27,6 +27,7 @@ import {
 } from '../src/shared/runtime-ipc'
 import type { ProtectedPlaceNotice } from '../src/shared/work-folders'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
+import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
 
 /**
  * # A give's folder, granted on the helper's existing conversation: who holds it, when it ends,
@@ -96,21 +97,11 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) =>
         new ProviderDouble(provider, handles, sessions, anOpenGate()),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${String(++counter)}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       protectedPlaceOf: (folder) => placeOf(folder),
     })
   }

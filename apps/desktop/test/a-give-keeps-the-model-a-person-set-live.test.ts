@@ -25,6 +25,7 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
+import { fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * # 🔴 D-042 · F1 — a give naming another pair keeps the one a PERSON set live
@@ -179,13 +180,7 @@ describe('D-042 · F1 — a give naming another pair keeps the one a person set 
       ],
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 
