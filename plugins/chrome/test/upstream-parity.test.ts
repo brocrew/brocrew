@@ -3,8 +3,6 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
 import { harness } from './fakes.js'
-import { saveVisibleSession, restoreVisibleSession } from '../src/restoreSession.js'
-import { silentLogger } from '../src/logger.js'
 import { createAgentChromeTools } from '../src/tools/index.js'
 import { assertOwnProfileDir } from '../src/shared/browser/launchGuard.js'
 import { launchPersistentChromium } from '../src/shared/browser/browser-launch.js'
@@ -157,35 +155,21 @@ it('generic show and hide return immediately and tools still work while the pers
   await h.call('hide_tab', { tabId: opened.tabId })
   expect(h.browser.state('fern')?.mode).toBe('headless')
 })
-it('a graceful visible-session save restores every eligible tab in order, without reserving the window', async () => {
-  const h = setup()
-  const file = path.join(h.home, 'restore.json')
-  const urls = [
-    'https://fictional.invalid/one',
-    'https://fictional.invalid/two',
-    'https://fictional.invalid/three',
-  ]
-  const now = () => new Date('2026-10-19T00:00:00Z')
-  saveVisibleSession(file, { visiblePages: () => [{ profile: 'fern', urls }] }, () => true, now)
-  expect(
-    await restoreVisibleSession({
-      file,
-      store: h.store,
-      browser: h.browser,
-      tabs: h.tabs,
-      logger: silentLogger,
-      now,
-    }),
-  ).toEqual(['fern'])
-  expect(h.browser.pages.get('fern')!.map((page) => page.url())).toEqual(urls)
-  expect(fs.existsSync(file)).toBe(false)
-  await h.call('open_tab', { profile: 'fern', url: 'https://fictional.invalid/four' })
-  expect(h.browser.state('fern')?.mode).toBe('visible')
-})
 it('contains no global temporary-browser orphan sweep and retains the owned shutdown entry', () => {
   const entry = fs.readFileSync('plugins/chrome/src/index.ts', 'utf8')
   expect(entry).not.toMatch(/endStrayBrowsers|strayBrowsers|tempProfileBrowsers/)
   expect(fs.existsSync('plugins/chrome/src/browser/strayBrowsers.ts')).toBe(false)
-  expect(entry).toContain('await browser.closeAll()')
+  expect(entry).toContain('closeAll: () => browser.closeAll()')
   expect(entry).toContain("channel: 'brocrew-plugin-node:v1'")
+})
+// A restart reopens nothing (Majid: "the agents or user can open or close at will"). The
+// service once saved visible windows at shutdown and reopened them, with their tabs, on its next
+// start. The entry now only closes at shutdown, and nothing records or reads a saved session.
+it('a restart reopens nothing: shutdown only closes, and no session is saved or restored', () => {
+  const entry = fs.readFileSync('plugins/chrome/src/index.ts', 'utf8')
+  expect(entry).toContain('installShutdownSignals({ closeAll: () => browser.closeAll() })')
+  expect(entry).not.toMatch(/restoreVisibleSession|saveVisibleSession|restoreFileOf|restore\.json/)
+  expect(fs.existsSync('plugins/chrome/src/restoreSession.ts')).toBe(false)
+  const browser = fs.readFileSync('plugins/chrome/src/browser/chromeBrowser.ts', 'utf8')
+  expect(browser).not.toMatch(/visiblePages\(/)
 })

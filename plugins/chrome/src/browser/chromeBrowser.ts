@@ -824,24 +824,6 @@ export class ChromeBrowser implements ProfileBrowser {
       else this.releaseLease(e)
     })
   }
-  visiblePages(): Array<{
-    profile: string
-    urls: string[]
-  }> {
-    const out: Array<{
-      profile: string
-      urls: string[]
-    }> = []
-    for (const e of this.entries.values()) {
-      if (!e.ctx || e.mode !== 'visible') continue
-      try {
-        out.push({ profile: e.name, urls: e.ctx.pages().map((p) => p.url()) })
-      } catch {
-        /* Continue without this optional result. */
-      }
-    }
-    return out
-  }
   async closeAll(): Promise<void> {
     this.shuttingDown = true
     await Promise.all(
