@@ -192,3 +192,21 @@ it('a hung route read delays only the first send; the next does not wait and ado
     await a.close()
   }
 })
+
+it('delivers the message when the plugin service refuses the route read because it is draining', async () => {
+  // The 00:34 case: plugins flapping while the person sent. A draining owner answers the route
+  // read with a refusal; the message still goes out on the live handle, and so does the next.
+  const f = claudeFixture()
+  const a = await f.runtime.start(initial)
+  vi.mocked(f.source.read).mockRejectedValue(
+    Object.assign(new Error('Plugin unavailable. Try again.'), { code: 'cleanup-pending' }),
+  )
+  try {
+    await expect(a.send('fictional words')).resolves.toBeUndefined()
+    await expect(a.send('second words')).resolves.toBeUndefined()
+    expect(f.send).toHaveBeenCalledTimes(2)
+    expect(f.close).not.toHaveBeenCalled()
+  } finally {
+    await a.close()
+  }
+})
