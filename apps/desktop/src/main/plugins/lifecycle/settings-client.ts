@@ -23,7 +23,12 @@ import { PluginPackageVault } from './vault'
 import { ConsumerCommand, connectPersonPluginControl } from './person-control'
 import type { PersonProjection } from './types'
 import { Installation } from '../state/format'
-import { PLUGIN_STATES, pluginRemovalOutcome } from '../../../shared/plugin-settings'
+import {
+  PLUGIN_STATES,
+  PLUGIN_UNAVAILABLE_REASONS,
+  PluginStartupDiagnosticSchema,
+  pluginRemovalOutcome,
+} from '../../../shared/plugin-settings'
 import { createRepoAwarePluginVerifier } from '../package-verifier'
 import { pluginSha256, verifyPluginDigest, PLUGIN_LIMITS } from '../package-digests'
 import { strictPluginJson } from '../strict-json'
@@ -44,6 +49,8 @@ const Cards = z
       installed: z.boolean(),
       priorityClamped: z.boolean().nullable().optional(),
       toolsUnavailable: z.literal(true).optional(),
+      unavailableReason: z.enum(PLUGIN_UNAVAILABLE_REASONS).optional(),
+      startupDiagnostic: PluginStartupDiagnosticSchema.optional(),
       toolsCause: z
         .string()
         .regex(/^[a-z][a-z0-9-]{0,63}(?:: [a-z][a-z0-9-]{0,63})?$/)
@@ -524,11 +531,13 @@ export async function connectPluginSettings(options: {
       try {
         reply = await channel.call({
           kind: modern
-            ? features.includes('tool-cause-v1')
-              ? 'list-tool-cause'
-              : features.includes('tool-health-v1')
-                ? 'list-tool-health'
-                : 'list-v2'
+            ? features.includes('startup-diagnostic-v1')
+              ? 'list-startup-diagnostic'
+              : features.includes('tool-cause-v1')
+                ? 'list-tool-cause'
+                : features.includes('tool-health-v1')
+                  ? 'list-tool-health'
+                  : 'list-v2'
             : 'list',
         })
       } catch (error) {

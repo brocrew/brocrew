@@ -38,6 +38,7 @@ export function createSupervisedPluginHost(
     return Object.freeze({
       runId: process.runId,
       receiptPath: process.receiptPath,
+      startupDiagnostic: () => process.startupDiagnostic?.(),
       ready: () => process.ready(),
       exited: child.exited,
       async stop(): Promise<void> {

@@ -147,10 +147,13 @@ describe.skipIf(process.platform === 'win32')('immutable supervisor launcher ref
       },
     })
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
-    const result = PluginWorkspaceLease.attach({ ...options, launch }).catch(
-      (error: unknown) => error,
-    )
-    await vi.advanceTimersByTimeAsync(OWNER_LAUNCH_MS + 20)
+    let settled = false
+    const result = PluginWorkspaceLease.attach({ ...options, launch }).catch((error: unknown) => {
+      settled = true
+      return error
+    })
+    await vi.advanceTimersByTimeAsync(10)
+    expect(settled).toBe(true)
     expect(await result).toMatchObject({ code: 'unavailable', cause: { cause: original } })
     expect(program.start).not.toHaveBeenCalled()
   })

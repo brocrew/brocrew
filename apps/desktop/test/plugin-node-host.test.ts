@@ -1,3 +1,4 @@
+import { pluginStartupTrace } from '../src/main/plugins/startup-failure'
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { once } from 'node:events'
@@ -20,6 +21,7 @@ import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
+import { pluginStartupDiagnostic } from '../src/main/plugins/startup-failure'
 import { createPluginNodeHost } from '../src/main/plugins/node-host'
 import {
   preparePluginNodeRuntime,
@@ -717,6 +719,91 @@ const auth = JSON.parse(fs.readFileSync(authPath, 'utf8'));`,
     await expect(host.start(spec)).rejects.toThrow('plugin-host-paths')
     expect(await readFile(path, 'utf8')).toBe('fictional tampered package')
   }, 15000)
+  it('keeps the server error and real exit code when the guardian exits cleanly', async () => {
+    const { host, home } = await context()
+    const child = await host.start(
+      fixture(`
+import fs from 'node:fs';
+const auth = JSON.parse(fs.readFileSync(process.env.BROCREW_CHROME_AUTH, 'utf8'));
+fs.writeSync(2, 'Error: rejected /fictional/plugin/auth.json '+auth.mcpToken+'\\n');
+fs.writeSync(2, 'x'.repeat(20000));
+fs.writeSync(2, '\\n at /fictional/first-stack.mjs '+auth.adminToken+'\\n');
+process.exit(23);
+`),
+    )
+    const refusal = await child.ready().catch((error: unknown) => error)
+    expect(pluginStartupDiagnostic(refusal)).toEqual({
+      exitCode: 23,
+      signal: null,
+      stderr: 'Error: rejected /fictional/plugin/auth.json [redacted]',
+    })
+    expect(await child.exited).toMatchObject({ exited: true })
+    const firstLog = resolve(child.receiptPath, '..', 'plugin-startup.log')
+    await vi.waitFor(async () => {
+      const log = await readFile(firstLog, 'utf8')
+      expect(log).toContain('Exit code 23')
+      expect(log).toContain('/fictional/first-stack.mjs [redacted]')
+      expect(log).toContain('[stderr truncated to last 16 KiB]')
+      expect(log).not.toMatch(/[a-f0-9]{64}/i)
+      expect(log.length).toBeLessThan(18 * 1024)
+    })
+    const second = await host.start(
+      fixture(`
+import fs from 'node:fs';
+const auth = JSON.parse(fs.readFileSync(process.env.BROCREW_CHROME_AUTH, 'utf8'));
+fs.writeSync(2, 'Error: second startup failure\\n at /fictional/second-stack.mjs '+auth.adminToken+'\\n');
+process.exit(24);
+`),
+    )
+    const secondFailure = await second.ready().catch((error: unknown) => error)
+    expect(pluginStartupDiagnostic(secondFailure)?.exitCode).toBe(24)
+    expect(await second.exited).toMatchObject({ exited: true })
+    await vi.waitFor(async () => {
+      const log = await readFile(resolve(second.receiptPath, '..', 'plugin-startup.log'), 'utf8')
+      expect(log).toContain('Exit code 24')
+      expect(log).toContain('/fictional/second-stack.mjs [redacted]')
+      expect(log).not.toMatch(/[a-f0-9]{64}/i)
+      expect(await readFile(join(home, 'plugin-startup.log'), 'utf8')).toContain('Exit code 24')
+    })
+    expect(await readFile(firstLog, 'utf8')).toContain('/fictional/first-stack.mjs [redacted]')
+  }, 20000)
+  it('retains the server cause after a ready run exits', async () => {
+    const { host } = await context()
+    const body = source.replace(
+      "if (req.url === '/v1/owner') return res.end(JSON.stringify({pid:process.ppid}));",
+      "if (req.url === '/v1/owner') { res.end('{}'); setTimeout(() => { fs.writeSync(2, 'Error: ended /fictional/plugin/server.mjs\\n'); process.exit(17) }, 20); return; }",
+    )
+    expect(body).not.toBe(source)
+    const child = await host.start(fixture(body))
+    const ready = await child.ready()
+    const admin = ready.admin()
+    await (await fetch(admin.url + '/owner', { headers: admin.headers })).text()
+    expect(await child.exited).toMatchObject({ exited: true })
+    expect(child.startupDiagnostic?.()).toEqual({
+      exitCode: 17,
+      signal: null,
+      stderr: 'Error: ended /fictional/plugin/server.mjs',
+    })
+  }, 15000)
+  it('retains stderr and the actual exit when a server announces failed over IPC', async () => {
+    const { host } = await context()
+    const child = await host.start(
+      fixture(`
+import fs from 'node:fs';
+process.on('SIGTERM', () => {});
+fs.writeSync(2, 'Error: failed /fictional/plugin/server.mjs\\n');
+process.send({ channel: 'brocrew-plugin-node:v1', runId: process.env.BROCREW_PLUGIN_RUN_ID, type: 'failed' },
+  () => setTimeout(() => process.exit(29), 25));
+`),
+    )
+    const refusal = await child.ready().catch((error: unknown) => error)
+    expect(pluginStartupDiagnostic(refusal)).toEqual({
+      exitCode: 29,
+      signal: null,
+      stderr: 'Error: failed /fictional/plugin/server.mjs',
+    })
+    expect(await child.exited).toMatchObject({ exited: true })
+  }, 15000)
   it('a guardian that dies at start names its own error as the cause of the refusal', async () => {
     // A kept runtime whose guardian fails before it starts anything, as it would on a machine
     // where its process setup is refused.
@@ -752,6 +839,7 @@ const auth = JSON.parse(fs.readFileSync(authPath, 'utf8'));`,
     ).rejects.toThrow('plugin-host-runtime')
   })
   it('refuses modified executable or bootstrap bytes in a kept runtime', async () => {
+    pluginStartupTrace.destination(root)
     const runtime = await preparePluginNodeRuntime({
       resourcesRoot: resources,
       durableRoot: join(root, 'other-runtimes'),
@@ -760,8 +848,14 @@ const auth = JSON.parse(fs.readFileSync(authPath, 'utf8'));`,
     await chmod(paths.node, 0o700)
     await writeFile(paths.node, 'fictional replaced node')
     await expect(runtimeFiles(runtime)).rejects.toThrow('plugin-host-runtime')
+    await pluginStartupTrace.flush()
+    pluginStartupTrace.destination(undefined)
+    expect(await readFile(join(root, 'plugin-startup-trace.log'), 'utf8')).toContain(
+      'runtime-files-verify failure',
+    )
   })
   it('retries the same runtime after an interrupted private copy without publishing partial bytes', async () => {
+    pluginStartupTrace.destination(root)
     const durableRoot = join(root, 'interrupted-runtime')
     copyFault.once = true
     await expect(
@@ -777,6 +871,17 @@ const auth = JSON.parse(fs.readFileSync(authPath, 'utf8'));`,
     expect(retried.id).toBe(runtime.id)
     expect((await runtimeFiles(retried)).node).toBe(join(durableRoot, retried.id, 'node'))
     expect(await readFile(join(orphan, 'node'), 'utf8')).toBe('partial fictional executable')
+    await preparePluginNodeRuntime({ resourcesRoot: resources, durableRoot })
+    await pluginStartupTrace.flush()
+    pluginStartupTrace.destination(undefined)
+    const log = await readFile(join(root, 'plugin-startup-trace.log'), 'utf8')
+    for (const phase of [
+      'runtime-hash end',
+      'runtime-copy failure',
+      'runtime-copy end',
+      'runtime-verify end',
+    ])
+      expect(log).toContain(phase)
   }, 15000)
   it('refuses a tampered published runtime on preparation instead of repairing it', async () => {
     const durableRoot = join(root, 'published-tamper')

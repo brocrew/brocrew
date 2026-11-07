@@ -1,3 +1,4 @@
+import { pluginStartupTrace } from './plugins/startup-failure'
 import type { HandedPath } from '../shared/attachment-contracts'
 import { providerSetupServices } from './providers/program-compat'
 import { setupProcesses } from './provider-setup/process'
@@ -2393,17 +2394,8 @@ function start(ownership: HostGateVerdict): void {
     .then(async () => {
       // Set the icon before the hidden launch's `hide()`, so hiding remains the final Dock action.
       if (!app.isPackaged) showTheLogoInTheDock()
-      // Hide test launches from the Dock and application switcher too; an unshown window alone
-      // can still make Electron a foreground app. `app.dock` is macOS-only.
       if (presentation.hidden) app.dock?.hide()
-      // Install the document's policy before loading it. Vite's HTTP responses pass through here;
-      // packaged `file://` loads may not, so the built HTML also carries a policy `<meta>`.
-      // Both derive the same value from `rendererCsp` (`electron.vite.config.ts`). Installed before
-      // the start-up check, so the recovery window's document is held to it too.
       installCspHeaders(session.defaultSession.webRequest, rendererCsp(isDevServer()))
-      // Install the app menu before any ordinary or recovery window. Electron's default Reload
-      // navigates and releases conversations, so `app-menu.ts` removes it. Set the displayed
-      // BroBot labels without changing `app.getName()`, which also determines the data folder.
       app.setAboutPanelOptions({
         applicationName: PERSONS_TITLE,
         applicationVersion: shownVersion(app.getVersion(), app.isPackaged),
@@ -2422,9 +2414,6 @@ function start(ownership: HostGateVerdict): void {
       app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) showThisStartsWindow()
       })
-      // Silent while the main thread keeps up; a stall of half a second or more is logged with
-      // the work that ran in it (`stall-watch.ts`). Started before the database opens, and the
-      // start below is timed as one piece of work, so a slow start is logged under its own name.
       try {
         const watch = startStallWatch({
           work: mainThreadWork,
@@ -2452,11 +2441,10 @@ function start(ownership: HostGateVerdict): void {
       } catch (error) {
         console.warn('the stall watch could not start:', error)
       }
-      // Nothing opens the workspace's data before the start-up check has said it may: an
-      // unfinished restore is settled, a restored copy stays read-only, a newer or unreadable
-      // database is refused, and a checked copy is made before the data changes. A start it
-      // refuses ends in the recovery window, and none of what follows runs.
+      pluginStartupTrace.destination(presentation.hidden ? undefined : app.getPath('logs'))
+      let finishStartupPhase = pluginStartupTrace.begin('workspace-recovery')
       const verdict = await theVerdictBeforeTheData(ownership)
+      finishStartupPhase(verdict.kind === 'open' ? undefined : verdict.kind)
       // A quit asked during the check has ended this start already, and its data never opens.
       if (closedWhileCheckingSaid) return
       if (verdict.kind !== 'open') {
@@ -2464,9 +2452,6 @@ function start(ownership: HostGateVerdict): void {
         return
       }
       const startBegan = performance.now()
-      // Read and watch the system time zone before reporting times (`system-zone.ts`). Notify
-      // every live window when it changes, with each send guarded independently, and reschedule
-      // waiting jobs in the new zone.
       const localZone = keepTheSystemZone((moved) => {
         for (const window of BrowserWindow.getAllWindows()) {
           try {
@@ -2480,6 +2465,7 @@ function start(ownership: HostGateVerdict): void {
         host?.placeTheWakeUpsAgain()
       })
       readLocalTimeFrom(localZone)
+      finishStartupPhase = pluginStartupTrace.begin('themes-database-runtime-host')
       themes = new ThemeStore({
         assertWorkspace: () => workspaceStartup(app)?.assertDatabase(),
         ...themeRoots({
@@ -2516,14 +2502,10 @@ function start(ownership: HostGateVerdict): void {
         }
       })
       host = await createRuntimeHost(initDatabase())
+      finishStartupPhase()
       registerIpc(host, localZone)
       startTheDockLabel()
-      // Start updates for packaged builds with a release feed: check at launch and once daily
-      // when enabled, with the window reading and controlling `updates-in-the-app.ts`.
       updates = startUpdates({ app, host, hidden: presentation.hidden })
-      // List, open and create workspaces through `workspaces-in-the-app.ts`. A visible launch
-      // adds its folder to the list. Its actual data folder was already chosen by
-      // `pinTheDataFolder` or `--user-data-dir`; listing workspaces does not choose it.
       startWorkspaces({
         app,
         hidden: presentation.hidden,
@@ -2535,17 +2517,10 @@ function start(ownership: HostGateVerdict): void {
           return picked.canceled ? null : (picked.filePaths[0] ?? null)
         },
       })
-      // Load snapshots of each bundled provider's own model instructions from this build's files,
-      // without querying a provider (`provider-snapshots.ts`).
       startProviderSnapshots()
-      // Install per-session image serving before the window can request it. Any existing image
-      // file is served by type, without a root restriction (`asset-protocol.ts`).
       installAssetProtocol(session.defaultSession.protocol)
       installThemeProtocol(session.defaultSession.protocol, themes)
       theDataOpened = true
-      // The workspace is open; plugin startup must not block the rest of the app.
-      // Only matching explicit workspace selection records change the ordinary shared setup.
-      // Hidden starts require an explicit scratch root and never fall back to the live one.
       try {
         const root = pluginSupervisorRoot({
           appData: app.getPath('appData'),
@@ -2554,6 +2529,7 @@ function start(ownership: HostGateVerdict): void {
           scratchRoot: app.commandLine.getSwitchValue('plugin-global-root'),
         })
         if (root && ownership === 'sole') {
+          finishStartupPhase = pluginStartupTrace.begin('workspace-admission')
           pluginController.start({
             devSource: !app.isPackaged
               ? { isPackaged: app.isPackaged, appData: app.getPath('appData') }
@@ -2579,8 +2555,10 @@ function start(ownership: HostGateVerdict): void {
             appVersion: app.getVersion(),
             supervisor: pluginSupervisor,
           })
+          finishStartupPhase()
         }
-      } catch {
+      } catch (error) {
+        pluginStartupTrace.failure('workspace-admission', error)
         // Plugin unavailability cannot prevent agents or the rest of the app from starting.
         console.warn('[plugins] plugin-initialization-failed')
       }
@@ -2590,15 +2568,7 @@ function start(ownership: HostGateVerdict): void {
       startRederive(host)
       startTitlingTheOlderFiles(host)
       startRecordingWhatTheOlderOnesRan(host)
-      // Said once in the log when anyone else may read the data folder; Settings shows it too.
-
-      // Log only when app memory grows or agents exceed runaway floors (`memory-watch.ts`).
-      // Write to a file as well as the console: packaged stderr may have no recipient, and a
-      // terminal log may be lost after the process is killed. Keep `sample`'s last app reading
-      // for the same breakdown the line reports.
       let itself = whatTheAppItselfHolds([])
-      // ⚑ **Where both lines go, and the timers both run on** — the same for the app's own line and
-      // the agents' own.
       const intoTheMemoryLog = (message: string): void => {
         console.warn(message)
         try {
@@ -2606,35 +2576,23 @@ function start(ownership: HostGateVerdict): void {
           mkdirSync(logs, { recursive: true })
           appendFileSync(join(logs, 'memory.log'), `${new Date().toISOString()} ${message}\n`)
         } catch {
-          // A log that cannot be written must not take the app down — the console line above is
-          // still the fallback, and this whole mechanism is diagnostics, not function.
+          // Diagnostic writes cannot interrupt the app.
         }
       }
       const unrefdInterval = (fn: () => void, ms: number): unknown => {
         const timer = setInterval(fn, ms)
-        // Diagnostics must never be the reason the process stays alive; Electron's own message
-        // loop keeps it running, so an unref'd timer still fires for as long as the app exists.
         timer.unref()
         return timer
       }
       const stopInterval = (handle: unknown): void =>
         clearInterval(handle as ReturnType<typeof setInterval>)
       startMemoryWatch({
-        // ⚑ **The app ITSELF — the Chromium half, main, its window, the GPU and the utilities — and
-        // its agents apart** (`memory-watch.ts` says why: the agents held 63–95% of every total the
-        // watchdog called *far above normal*). `getAppMetrics()` lists Chromium's processes and none
-        // this app spawned; `workingSetSize` is in KILOBYTES (Electron's unit).
         sample: () => {
           // Kick the next reading of the agents off, for the line's other half; never wait for `ps`.
           spawnedReader.refresh()
           itself = whatTheAppItselfHolds(app.getAppMetrics())
           return itself.bytes
         },
-        // ⚑ **The app's own processes, each by a plain name, then what its agents hold apart** — read
-        // from the last listing of what it spawned, up to one tick old (`createSpawnedReader`).
-        // ⚠️ A listing not read yet, an unreadable `ps` and an app with no agents would all be an
-        // empty list; saying which is the difference between "nothing was running" and "we could not
-        // see what was running".
         detail: () =>
           `[${itself.said}] ${whatItsAgentsHoldApart(
             !spawnedReader.everRead()
@@ -2647,11 +2605,6 @@ function start(ownership: HostGateVerdict): void {
         setInterval: unrefdInterval,
         clearInterval: stopInterval,
       })
-      // ⚑ **The agents' own line** — what they and the commands they run hold together, past a floor
-      // only a runaway reaches (`agentsMemoryFloorFor`), naming the agents holding the most, and
-      // begun again once an episode ends. ⛔ **No listing of its own**: it reads the one the app's
-      // line starts each tick (`spawnedReader`), looking `AGENTS_LINE_LAG_MS` after it so that tick's
-      // listing has landed, and names the agents only when it writes.
       const agentsFloor = agentsMemoryFloorFor(totalmem())
       setTimeout(() => {
         startMemoryWatch({
@@ -2675,36 +2628,23 @@ function start(ownership: HostGateVerdict): void {
         })
       }, AGENTS_LINE_LAG_MS).unref()
 
-      // Register quit-signal handlers from `whenReady`, after Chromium installs its own handlers.
-      // Module-scope listeners can be overwritten. This placement lets repeated signals reach
-      // the app's ordered teardown rather than bypassing JavaScript; see `AppLifetime.quitSignal`.
       for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
         process.on(signal, () => lifetime.quitSignal(signal))
       }
 
       mainThreadWork.add('the start', performance.now() - startBegan)
-      // Once, last, when every step of the start has run; something watching the start matches the
-      // line. Only then may old recovery copies go.
       recoveryStartSucceeded = true
       sayAtOnce(READY_LINE)
       void letGoOfOldCopies()
     })
     .catch((error: unknown) => {
-      // A person's launch ends in the recovery window, never in a bare error box or in silence; a
-      // hidden one says the fail line and the reason, and exits 1.
+      pluginStartupTrace.failure('app-startup', error)
       void endAFailedStart(error, ownership)
     })
 }
 
-/**
- * Wire shutdown ordering through `app-lifetime.ts`, which owns the policy in a module
- * that can be loaded independently for tests.
- */
 const lifetime = createAppLifetime({
   recordOpenSessions: () => host?.recordOpenForQuit(),
-  // Announce closing to every window. Guard sends individually so one destroyed `webContents`
-  // does not suppress notices to later windows. Check both objects: a live `BrowserWindow`
-  // can still have destroyed contents.
   announceClosing: () => {
     for (const window of BrowserWindow.getAllWindows()) {
       try {

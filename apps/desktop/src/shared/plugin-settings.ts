@@ -137,6 +137,7 @@ export const PLUGIN_UNAVAILABLE_REASONS = [
   'catalogue',
   'runtime',
   'service-start',
+  'plugin-start',
   'service-version',
   'connection',
   'connection-lost',
@@ -157,6 +158,8 @@ export function pluginUnavailableNotice(reason?: PluginUnavailableReason): strin
       return "BroCrew couldn't load or verify the plugin catalogue. Check your connection and try again."
     case 'runtime':
       return "BroCrew couldn't prepare its bundled plugin runtime. Restart BroCrew or reinstall the app if retrying fails."
+    case 'plugin-start':
+      return 'The plugin could not start or stopped unexpectedly.'
     case 'service-start':
       return "BroCrew couldn't start the plugin service. Try again."
     case 'service-version':

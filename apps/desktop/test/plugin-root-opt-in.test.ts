@@ -317,7 +317,7 @@ describe('workspace opt-in keeps every other plugin setup unchanged', () => {
     const block = code.match(/const root = pluginSupervisorRoot\(\{([\s\S]*?)\}\)/)?.[1]
     expect(block).toMatch(/workspaceRoot:\s*app\.getPath\('userData'\)/)
     expect(code).toMatch(
-      /if \(root && ownership === 'sole'\) \{\s*pluginController\.start\(\{[\s\S]*?\n\s*root,/,
+      /if \(root && ownership === 'sole'\) \{\s*finishStartupPhase = pluginStartupTrace\.begin\('workspace-admission'\)\s*pluginController\.start\(\{[\s\S]*?\n\s*root,/,
     )
     expect(code.match(/pluginController\.start\(/g)).toHaveLength(1)
     const base = new URL('../src/', import.meta.url)

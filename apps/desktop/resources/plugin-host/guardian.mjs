@@ -169,7 +169,19 @@ if (!finishing) {
     cwd: config.home,
     env: process.env,
     detached: true,
-    stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+    stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+  })
+  let stderr = '',
+    firstLine,
+    errorLine,
+    stderrTruncated = false
+  child.stderr.setEncoding('utf8')
+  child.stderr.on('data', (chunk) => {
+    stderr += chunk
+    firstLine ??= stderr.match(/[^\r\n]*\S[^\r\n]*\r?\n/)?.[0]?.slice(0, 16384)
+    errorLine ??= stderr.match(/^[\w.]*Error(?:\s*\[[^\]\n]+\])?:[^\n]*\n/m)?.[0]?.slice(0, 16384)
+    stderrTruncated ||= stderr.length > 16384
+    stderr = stderr.slice(-16384)
   })
   child.on('message', (message) => {
     if (message?.channel !== 'brocrew-plugin-node:v1' || message.runId !== config.runId) return
@@ -197,10 +209,20 @@ if (!finishing) {
       )
     else if (message?.type === 'failed') void finish('server-failed')
   })
-  child.once('error', () => {
+  child.once('error', (error) => {
+    send({ type: 'server-closed', exitCode: null, signal: null, stderr: error.message })
     void finish('server-error')
   })
-  child.once('close', () => {
+  child.once('close', (exitCode, signal) => {
+    if (!finishing || cause === 'server-failed')
+      send({
+        type: 'server-closed',
+        exitCode,
+        signal,
+        stderr: errorLine ?? firstLine ?? stderr,
+        stderrOutput: stderr,
+        stderrTruncated,
+      })
     closed = true
     closedResolve()
     void finish('server-closed')

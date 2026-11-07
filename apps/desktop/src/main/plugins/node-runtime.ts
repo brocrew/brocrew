@@ -1,3 +1,4 @@
+import { pluginStartupTrace } from './startup-failure'
 import { join, isAbsolute, dirname, basename } from 'node:path'
 import {
   privateRoot,
@@ -49,6 +50,7 @@ export async function preparePluginNodeRuntime(options: {
 }): Promise<PluginNodeRuntime> {
   if (!isAbsolute(options.resourcesRoot) || !isAbsolute(options.durableRoot))
     throw new PluginHostError('runtime')
+  let finish = pluginStartupTrace.begin('runtime-hash')
   try {
     const base = join(options.resourcesRoot, 'plugin-node')
     const metadata = JSON.parse(
@@ -75,15 +77,21 @@ export async function preparePluginNodeRuntime(options: {
     scripts.set('LICENSE', await sourceBytes(join(base, 'LICENSE'), 512 * 1024))
     const id = identity(metadata, scripts)
     const root = await privateRoot(options.durableRoot)
+    finish()
+    finish = pluginStartupTrace.begin('runtime-publish')
     const kept = await publishPrivateDirectory(
       root,
       id,
       async (stage) => {
+        finish()
+        finish = pluginStartupTrace.begin('runtime-copy')
         await immutableFile(join(stage, NODE), node, true)
         await immutableFile(join(stage, 'runtime.json'), Buffer.from(JSON.stringify(metadata)))
         for (const [name, bytes] of scripts) await immutableFile(join(stage, name), bytes)
       },
       async (directory) => {
+        finish()
+        finish = pluginStartupTrace.begin('runtime-verify')
         await verifyImmutableFile(join(directory, NODE), node)
         await verifyImmutableFile(
           join(directory, 'runtime.json'),
@@ -92,6 +100,7 @@ export async function preparePluginNodeRuntime(options: {
         for (const [name, bytes] of scripts) await verifyImmutableFile(join(directory, name), bytes)
       },
     )
+    finish()
     const runtime = Object.freeze({ id, version: metadata.version })
     prepared.set(runtime, {
       node: join(kept, NODE),
@@ -100,7 +109,8 @@ export async function preparePluginNodeRuntime(options: {
       scripts,
     })
     return runtime
-  } catch {
+  } catch (error) {
+    finish(error)
     throw new PluginHostError('runtime')
   }
 }
@@ -148,19 +158,26 @@ export async function resumePluginNodeRuntime(options: {
 export async function runtimeFiles(
   runtime: PluginNodeRuntime,
 ): Promise<Readonly<{ node: string; guardian: string }>> {
-  const paths = prepared.get(runtime)
-  if (!paths) throw new PluginHostError('runtime')
-  if (digest(await sourceBytes(paths.node, 256 * 1024 * 1024)) !== paths.digest)
-    throw new PluginHostError('runtime')
-  for (const [name, bytes] of paths.scripts)
-    if (
-      !(
-        await sourceBytes(
-          join(paths.guardian, '..', name),
-          name === 'LICENSE' ? 512 * 1024 : 64 * 1024,
-        )
-      ).equals(bytes)
-    )
+  const finish = pluginStartupTrace.begin('runtime-files-verify')
+  try {
+    const paths = prepared.get(runtime)
+    if (!paths) throw new PluginHostError('runtime')
+    if (digest(await sourceBytes(paths.node, 256 * 1024 * 1024)) !== paths.digest)
       throw new PluginHostError('runtime')
-  return Object.freeze({ node: paths.node, guardian: paths.guardian })
+    for (const [name, bytes] of paths.scripts)
+      if (
+        !(
+          await sourceBytes(
+            join(paths.guardian, '..', name),
+            name === 'LICENSE' ? 512 * 1024 : 64 * 1024,
+          )
+        ).equals(bytes)
+      )
+        throw new PluginHostError('runtime')
+    finish()
+    return Object.freeze({ node: paths.node, guardian: paths.guardian })
+  } catch (error) {
+    finish(error)
+    throw error
+  }
 }
