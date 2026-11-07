@@ -9,9 +9,9 @@ import { GATE_SOCKET, SUN_PATH_MAX } from './smoke-run.mjs'
  * Worst-case cost is their sum because the last question can start one pause beyond the
  * search deadline. `step-budgets.test.mjs` derives each isolated launch's charge from these.
  */
-export const GATE_SOCKET_WAIT_MS = 10_000
-export const GATE_ANSWER_MS = 5_000
-export const GATE_POLL_MS = 100
+const GATE_SOCKET_WAIT_MS = 10_000
+const GATE_ANSWER_MS = 5_000
+const GATE_POLL_MS = 100
 
 /**
  * ⛔ **Proof that `236` §3's gate RAN AND ANSWERED, not that the app started** (242 §1).

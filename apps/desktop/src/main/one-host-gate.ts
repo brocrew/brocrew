@@ -84,7 +84,7 @@ export interface OutsideGates {
 }
 
 /** What a gate reads of a folder or a name it is about to trust. */
-export type GateEntry = Pick<Stats, 'uid' | 'mode' | 'isDirectory' | 'isSocket'>
+type GateEntry = Pick<Stats, 'uid' | 'mode' | 'isDirectory' | 'isSocket'>
 
 /**
  * This user's {@link OutsideGates}, with a test's changes; null where there are no user ids or the

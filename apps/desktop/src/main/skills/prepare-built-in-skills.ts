@@ -25,8 +25,6 @@ import type { SkillLaunchSelection } from './launch-selection'
 import type { InstalledSkillVersion } from '../../shared/skills-installation'
 import { builtInSkillView, installNewSkillView, type NewSkillViewStorage } from './skill-view'
 
-export { BUILT_IN_SKILLS_FAILURE } from '../../shared/built-in-skills'
-
 export interface PreparedBuiltInSkills {
   readonly sharedRoot?: string
   readonly context: BuiltInSkillsContext

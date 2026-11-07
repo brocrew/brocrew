@@ -61,12 +61,12 @@ export function skillAlias(origin: SkillOrigin, name: string): string {
   if (origin.kind === 'built-in') return name
   return `${origin.kind === 'person' ? 'personal' : 'plugin'}-${name.slice(0, 24)}-${hash(keyFor(origin, name)).slice(0, 16)}`
 }
-export function skillRequirement(origin: SkillOrigin, name: string): SkillRequirement {
+function skillRequirement(origin: SkillOrigin, name: string): SkillRequirement {
   if (origin.kind !== 'built-in') return null
   if (name === 'build-a-team') return 'create-agents'
   return name === 'add-a-capability' ? 'create-agents-or-coordinator' : null
 }
-export function checkedSkillDraft(input: SkillDraft): SkillDraft {
+function checkedSkillDraft(input: SkillDraft): SkillDraft {
   const parsed = SkillDraft.safeParse(input)
   if (!parsed.success) {
     const fields = parsed.error.issues.map((issue) => issue.path[0])
