@@ -34,7 +34,7 @@ import type { ProviderRefusal } from '../events'
 export const THE_CLIS_OWN_MODEL = '<synthetic>'
 
 /** Whether this assistant frame was written by the CLI rather than by a model (see above). */
-export function isTheClisOwnMessage(message: SDKMessage): boolean {
+function isTheClisOwnMessage(message: SDKMessage): boolean {
   if (message.type !== 'assistant') return false
   const inner: unknown = message.message
   if (inner === null || typeof inner !== 'object') return false

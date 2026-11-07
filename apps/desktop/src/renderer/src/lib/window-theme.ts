@@ -50,7 +50,7 @@ export interface WindowThemeOptions {
 }
 
 /** Whether a reading is of the theme a change announced, at the version it announced. */
-export function readingMatches(change: ThemeChanged, reading: ThemeReading): boolean {
+function readingMatches(change: ThemeChanged, reading: ThemeReading): boolean {
   if (reading.active !== change.active) return false
   const announced = change.themes.find((row) => row.id === change.active)?.version
   return announced === undefined || announced === reading.version

@@ -121,7 +121,7 @@ export function agentsMemoryFloorFor(machineBytes: number): number {
  */
 export const AGENTS_LINE_LAG_MS = 5_000
 /** Every 30s: fine enough to catch a climb of minutes, coarse enough to cost nothing. */
-export const MEMORY_INTERVAL_MS = 30_000
+const MEMORY_INTERVAL_MS = 30_000
 
 export interface MemoryWatch {
   stop(): void

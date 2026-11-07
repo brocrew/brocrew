@@ -118,7 +118,7 @@ export interface SpawnSafety {
   forget(): void
 }
 
-export function createSpawnSafety(): SpawnSafety {
+function createSpawnSafety(): SpawnSafety {
   const identities: Ref<AgentIdentities | null> = ref(null)
   const confirming = ref(false)
   let commit: ((enabled: boolean) => void) | null = null

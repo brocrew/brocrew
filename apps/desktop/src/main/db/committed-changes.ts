@@ -49,7 +49,7 @@ export function committedRowOf(
 export type WholeChange = 'imported' | 'promoted' | 'deleted' | 'listing'
 
 /** One outermost commit that wrote something persistent. */
-export interface CommittedChange {
+interface CommittedChange {
   readonly commit: number
   readonly resync: false
   readonly rows: readonly CommittedRow[]
@@ -70,7 +70,7 @@ export interface CommittedChange {
 }
 
 /** What was committed can't be told: every reader starts again. */
-export interface CommittedResync {
+interface CommittedResync {
   readonly commit: number
   readonly resync: true
 }

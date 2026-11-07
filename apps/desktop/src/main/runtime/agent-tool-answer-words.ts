@@ -373,7 +373,7 @@ export function theLabelWasUsedUp(label: string): string {
  * The words added after a refusal's text: its detail, a used-up label, then its permanence.
  * Empty for an answer that is not a refusal.
  */
-export function whatARefusalAdds(
+function whatARefusalAdds(
   structured: Readonly<Record<string, unknown>> | undefined,
   context: AnswerWordsContext,
 ): string {

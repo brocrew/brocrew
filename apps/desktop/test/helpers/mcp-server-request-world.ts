@@ -45,7 +45,7 @@ export function deferred() {
   return { promise, release }
 }
 
-export async function mcpRequestServer(tools = ['read_notes'], fail = false) {
+async function mcpRequestServer(tools = ['read_notes'], fail = false) {
   let connections = 0
   let requests = 0
   let responseWait: Promise<void> | null = null

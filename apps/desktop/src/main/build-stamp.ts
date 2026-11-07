@@ -129,7 +129,7 @@ export function describeBuild(
  */
 export const COMBINED_BRANCH = 'develop'
 /** The branches the follower combines, in the order it merges them. */
-export const COMBINED_FROM = ['dev', 'prompts', 'ui'] as const
+const COMBINED_FROM = ['dev', 'prompts', 'ui'] as const
 
 /**
  * One branch of a combined build: held at its tip; held at an older commit of it (it moved after it

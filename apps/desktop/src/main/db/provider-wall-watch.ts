@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3'
 
 /** The event types the provider wall read reads: the walls, the launches that date them, the clears. */
-export const PROVIDER_WALL_EVENT_TYPES = ['error', 'launched', 'provider_limit_clear'] as const
+const PROVIDER_WALL_EVENT_TYPES = ['error', 'launched', 'provider_limit_clear'] as const
 
 /**
  * The most rows the queue holds since it was last emptied. A write past it empties the queue,

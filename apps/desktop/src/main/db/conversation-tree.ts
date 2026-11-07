@@ -96,7 +96,7 @@ export function whatTiesTheTreeOutside(db: AppDatabase, tree: readonly string[])
 }
 
 /** A file kept for a piece, as `resources/<sha256>/<name>` names it. */
-export interface KeptFileName {
+interface KeptFileName {
   readonly sha256: string
   readonly name: string
 }

@@ -55,17 +55,17 @@ export interface WindowRoutes {
   readonly questions: ReturnType<SessionStore['questionsAPersonMustAnswer']>
   readonly decisions: ReturnType<SessionStore['decisionsAwaitingAPerson']>
 }
-export interface WindowLeads {
+interface WindowLeads {
   readonly kind: 'leads'
   readonly rows: readonly ThreadLeadRow[]
 }
-export interface WindowFiles {
+interface WindowFiles {
   readonly kind: 'files'
   readonly tree: ReturnType<SessionStore['filesKept']>
   readonly added: ReturnType<SessionStore['filesKept']>
   readonly roster: ReturnType<SessionStore['agentIdentities']>
 }
-export interface WindowActivity extends RecentActivityReading {
+interface WindowActivity extends RecentActivityReading {
   readonly kind: 'activity'
 }
 export interface IncidentReading {

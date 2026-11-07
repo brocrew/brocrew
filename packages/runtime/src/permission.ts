@@ -246,7 +246,7 @@ export type PermissionAmendment = z.infer<typeof permissionAmendmentSchema>
  *    `addDirectories`).
  *  - `command-prefix` — Codex's `prefix_rule`: every command whose argv starts with `prefix`.
  */
-export const grantRuleSchema = z.discriminatedUnion('kind', [
+const grantRuleSchema = z.discriminatedUnion('kind', [
   z.object({
     kind: z.literal('tool'),
     tool: z.string(),

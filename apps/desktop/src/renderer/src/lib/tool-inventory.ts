@@ -92,7 +92,7 @@ export interface ForeignServer {
 }
 
 /** BroBot's own server, joined. */
-export interface OwnServer {
+interface OwnServer {
   readonly name: string
   /**
    * The child's own word for the connection, or `null` when the child did not name this server.

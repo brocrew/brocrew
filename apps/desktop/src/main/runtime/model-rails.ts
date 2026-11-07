@@ -200,7 +200,7 @@ export function refuseModel(rail: ModelRail, detail: ModelRefusalDetail = {}): M
 export type ListsAsLastRead = Partial<Record<Provider, readonly ListedModel[]>>
 
 /** How many of one provider's models a tool's description names before it leaves the rest to a refusal. */
-export const MODELS_A_DESCRIPTION_NAMES = 8
+const MODELS_A_DESCRIPTION_NAMES = 8
 
 /**
  * The models a description names for one provider: the whole list when it is short, else the

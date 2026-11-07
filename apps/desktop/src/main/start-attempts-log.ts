@@ -8,9 +8,9 @@ export const START_ATTEMPTS_FILE = 'start-attempts.jsonl'
 /** Where the file is moved once full; the one there before is replaced. */
 export const START_ATTEMPTS_OLDER_FILE = 'start-attempts.1.jsonl'
 /** The most either file holds: a line that would take it past this moves it aside first. */
-export const START_ATTEMPTS_MOST_BYTES = 2 * 1024 * 1024
+const START_ATTEMPTS_MOST_BYTES = 2 * 1024 * 1024
 /** The most lines waiting to be written; one more is dropped. */
-export const START_ATTEMPTS_MOST_WAITING = 64
+const START_ATTEMPTS_MOST_WAITING = 64
 
 /** How a launch ended: ready, given up on at its deadline, failed, or stopped while it started. */
 export type StartAttemptOutcome = 'ready' | 'timed-out' | 'failed' | 'cancelled'

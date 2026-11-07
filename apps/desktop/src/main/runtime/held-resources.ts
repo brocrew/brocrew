@@ -124,8 +124,3 @@ export function claimResource(key: string, holder: string): ResourceClaimResult 
     },
   }
 }
-
-/** Who holds `key`, or null. Diagnostics and tests; no admission decision is made from this. */
-export function resourceHolder(key: string): string | null {
-  return held.get(key)?.holder ?? null
-}

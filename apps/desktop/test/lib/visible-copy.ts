@@ -82,7 +82,7 @@ import { parse as parseSfc } from 'vue/compiler-sfc'
  */
 
 /** Where a visible string came from — the axis `536` F3 found the old census blind to. */
-export type CopyOrigin = 'single' | 'double' | 'template' | 'text' | 'attribute'
+type CopyOrigin = 'single' | 'double' | 'template' | 'text' | 'attribute'
 
 /** One string a person can read, and the shape it was written in. */
 export interface VisibleString {

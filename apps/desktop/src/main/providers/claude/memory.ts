@@ -87,7 +87,7 @@ export function readClaudeAgentMemory(providerHome: string): ClaudeMemoryRead {
   }
 }
 
-export function claudeMemoryTopics(dir: string): {
+function claudeMemoryTopics(dir: string): {
   names: string[]
   refused: RefusedInstruction | null
 } {

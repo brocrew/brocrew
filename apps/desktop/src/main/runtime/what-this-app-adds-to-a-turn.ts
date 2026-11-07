@@ -162,7 +162,7 @@ export interface AQuestionItHasOpen {
 }
 
 /** Someone who gave the conversation a piece it still holds open. */
-export interface AGiverWaitingOnIt {
+interface AGiverWaitingOnIt {
   /** The giver, as a sentence names a conversation. */
   readonly who: string
   /** The piece: its label and title. */
@@ -170,7 +170,7 @@ export interface AGiverWaitingOnIt {
 }
 
 /** Someone whose question to the conversation is still open. */
-export interface AnAskerWaitingOnIt {
+interface AnAskerWaitingOnIt {
   readonly who: string
   readonly id: string
   readonly askedAt: number

@@ -100,7 +100,7 @@ export function dockLabelOf(
 }
 
 /** A change applied to what the file says; a name that shows nothing goes back to the default. */
-export function changedDockLabel(saved: Saved, change: DockLabelChange): Saved {
+function changedDockLabel(saved: Saved, change: DockLabelChange): Saved {
   const next: { on?: boolean; name?: string; colour?: DockLabelColour } = { ...saved }
   if (change.on !== undefined) next.on = change.on
   if (change.name !== undefined) {
@@ -463,7 +463,7 @@ function blend(pixels: Float32Array, at: number, top: Rgba, k: number): void {
 }
 
 /** A labelled icon being painted, some rows at a time. */
-export interface DockLabelPainter {
+interface DockLabelPainter {
   /** Paints rows `from` up to `to`. */
   rows(from: number, to: number): void
   /** The painted icon as premultiplied 8-bit pixels, red first (`0`) or third (`2`). */
@@ -475,7 +475,7 @@ export interface DockLabelPainter {
  * by row. Only the band's rows change; the rest of the icon, its top-right corner where the Dock
  * shows a count among it, is left exactly as it is.
  */
-export function dockLabelPainter(
+function dockLabelPainter(
   icon: Uint8Array,
   name: string,
   colour: DockLabelColour,

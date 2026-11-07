@@ -11,8 +11,7 @@ import {
   signed,
   inventory,
 } from '../test/plugin-package-fixtures'
-export const ORIGINAL_CHROME_SHA =
-  'b3abe51ddeef240895ca6d9147e607cc32637edfe22c87ebc53a9050e27a2076'
+const ORIGINAL_CHROME_SHA = 'b3abe51ddeef240895ca6d9147e607cc32637edfe22c87ebc53a9050e27a2076'
 export function verifyChromeUiArchive(archive: Buffer, compression: 'tar' | 'tar.gz' = 'tar') {
   const files = readPluginArchive(archive, compression),
     manifest = parsePluginManifest(files.get('plugin.json')!)

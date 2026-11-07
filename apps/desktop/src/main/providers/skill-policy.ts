@@ -2,7 +2,7 @@ import type { GivenSkills } from '../../shared/what-this-agent-was-given'
 import type { ListedSkills } from './given-policy'
 import type { ZodType } from 'zod'
 
-export interface LegacySkillReminder {
+interface LegacySkillReminder {
   readonly field: string
   readonly schema: ZodType<string>
   canonical(name: string, text: string): string | null

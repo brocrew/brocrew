@@ -18,11 +18,11 @@ import {
 } from '../../src/shared/questions'
 import { mount } from './harness'
 
-export const MARKDOWN_NOW = Date.UTC(2026, 8, 21, 14)
-export const MARKDOWN_PROMPT =
+const MARKDOWN_NOW = Date.UTC(2026, 8, 21, 14)
+const MARKDOWN_PROMPT =
   '**Choose a draft**\n\n- Read `notes.md`\n- Open [the preview](https://example.test/preview)\n\nSee /work/sample/notes.md.'
 export const LITERAL_COMMAND = 'printf "%s" "**rm** [draft](sample) `literal`"'
-export const LONG_MARKDOWN =
+const LONG_MARKDOWN =
   '[https://example.test/' +
   'preview'.repeat(70) +
   '](https://example.test/preview)\n\n```sh\n' +

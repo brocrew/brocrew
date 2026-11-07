@@ -128,7 +128,7 @@ export function realPath(path: string): string {
   }
 }
 
-export function dropPartialTail(bytes: Buffer): Buffer {
+function dropPartialTail(bytes: Buffer): Buffer {
   for (let back = 1; back <= 3 && back <= bytes.length; back += 1) {
     const byte = bytes[bytes.length - back]!
     if ((byte & 0b1100_0000) === 0b1000_0000) continue // continuation byte — keep walking back

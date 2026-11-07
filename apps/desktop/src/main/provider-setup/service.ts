@@ -29,7 +29,7 @@ export function unsupportedSetup(provider: Provider): ProviderSetupState {
   }
 }
 
-export interface SetupOutput {
+interface SetupOutput {
   on(event: 'data' | 'error', listener: (chunk: unknown) => void): void
   removeListener(event: 'data' | 'error', listener: (chunk: unknown) => void): void
   destroy(): void

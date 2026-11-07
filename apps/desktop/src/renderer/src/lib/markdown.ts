@@ -116,7 +116,7 @@ for (const md of [renderer, chatRenderer]) {
 
 /** Windows destinations keep separators that CommonMark would treat as punctuation escapes. */
 const A_WINDOWS_PATH = /^(?:[A-Za-z]:\\|\\\\)/
-export const LOCAL_LINK_ATTRIBUTE = 'data-local-path'
+const LOCAL_LINK_ATTRIBUTE = 'data-local-path'
 export const LOCAL_LINK_START = '<!--local-file:'
 export const LOCAL_LINK_END = '<!--/local-file:'
 export const LOCAL_LABEL_END = '<!--/local-file-label:'

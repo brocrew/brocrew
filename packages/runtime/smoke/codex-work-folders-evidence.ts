@@ -108,7 +108,7 @@ export function addedMessages(before: unknown, body: unknown): ToldItem[] {
 }
 
 /** The tags Codex tells its model about roots and permissions in — what the probe searches for. */
-export const ROOT_TAGS = [
+const ROOT_TAGS = [
   '<environment_context>',
   '<workspace_roots>',
   '<writable_roots>',
