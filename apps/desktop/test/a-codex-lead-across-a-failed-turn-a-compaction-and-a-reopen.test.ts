@@ -1,3 +1,4 @@
+import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -18,7 +19,6 @@ import {
   turnStartResponse,
   turnStartedNotification,
 } from '../../../packages/runtime/test/fixtures/codex-protocol'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { limitsWriterSampler } from '../src/main/db/fresh-limits-snapshot'
@@ -367,9 +367,7 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     }
     const host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => {
         if (provider !== 'codex') throw new Error(`this rig opens Codex only, not ${provider}`)
         return new CodexRuntime(
@@ -377,11 +375,7 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
             new ScriptedCodex(launch.providerHome, script, `th_${String(++threads)}`),
         )
       },
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider, profileId: string) =>
         join(userData, 'provider-homes', profileId, provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),

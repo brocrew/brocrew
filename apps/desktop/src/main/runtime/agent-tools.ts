@@ -6593,17 +6593,10 @@ export function agentToolsFor(
       name: 'read_document',
       handlerOwnsMissingInput: true,
       /**
-       * 🔴 **D-016 · a RESOURCE, by its id** — an input its giver handed over, or a file the agent
-       * holding it kept or handed back with its reply, which this app keeps for the piece (plan
-       * ruling 13: the tool keeps its name and reads a resource).
-       *
-       * ⚑ **What it says is what is TRUE and what is still bounded**: any resource — no entitlement
-       * is asked (HO-057, carried from the documents resources replaced) — and the bytes are
-       * re-checked against the hash they were kept with, which is the one thing that was never
-       * widened.
+       * Reads a kept resource by id, returning its current local bytes.
        */
       description:
-        'Read a resource this app keeps for a piece of work — an input its giver handed over, or a file the agent holding it kept or handed back with its reply. A report comes back as Markdown and a page as its source; an image or a PDF comes back saying so. The app re-checks the bytes against the hash first.',
+        'Read a resource this app keeps for a piece of work — an input its giver handed over, or a file the agent holding it kept or handed back with its reply. A report comes back as Markdown and a page as its source; an image or a PDF comes back saying so.',
       /**
        * 🔴 **486 · the rails are the whole gate** (HO-031 §2.4).
        *

@@ -1,3 +1,4 @@
+import { fixtureProviderConfig } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -132,13 +133,7 @@ describe('a Claude card the SDK aborts while it waits is closed in the record', 
       resolveCwd: (sessionId, requested) => requested ?? join(folder, 'scratch', sessionId),
       newSessionId: () => `sess_${++counter}`,
       now: () => clock++,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     sink = new RecordingSink()
   })

@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
@@ -116,9 +117,7 @@ describe('534 · a conversation that is born while he is looking at the rail', (
     swallowing = false
     host = new RuntimeHost({
       store: ledger,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => sharedRuntime(provider, sessions),
       prepareProviderHome: (provider: Provider, profileId: string) => {
         const home = join(userData, 'provider-homes', profileId, provider)

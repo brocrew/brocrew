@@ -1,3 +1,4 @@
+import { RecordingSink } from './lib/host-fixture'
 import {
   existsSync,
   lstatSync,
@@ -19,12 +20,11 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { keepResource, resourcesRoot, sha256Hex } from '../src/main/resources/resources'
 import { pieceNumbersOf } from '../src/shared/piece-called'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { TranscriptEvent } from '../src/shared/runtime-ipc'
 
 /**
  * # D-016b part 2 - what the tree's landing left unpinned
@@ -46,17 +46,6 @@ import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
   for (let attempt = 0; attempt < 400; attempt++) {

@@ -1,10 +1,12 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { ToolWatchingRuntime } from './lib/provider-double'
+import { syntheticProviderHome } from './lib/host-fixture'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { AgentToolset, StartOptions } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime'
+import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -54,21 +56,6 @@ describe('D-012 · a giver looks closer', () => {
     sendLiveness(): void {}
   }
 
-  class ToolWatchingRuntime extends FakeRuntime {
-    constructor(
-      provider: Provider,
-      private readonly order: AgentToolset[],
-      sessions: FakeProviderSessions,
-    ) {
-      super(provider, { sessions })
-    }
-    override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-      const handle = await super.start(options)
-      if (options.agentTools) this.order.push(options.agentTools)
-      return handle
-    }
-  }
-
   let userData: string
   let root: string
   let db: AppDatabase
@@ -93,11 +80,7 @@ describe('D-012 · a giver looks closer', () => {
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, order, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

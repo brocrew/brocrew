@@ -1,7 +1,15 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readSync,
+  rmSync,
+  symlinkSync,
+  truncateSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   MOST_BYTES_A_WINDOW_DRAWS,
   MOST_BYTES_OF_ANY_FORM,
@@ -11,9 +19,15 @@ import {
   keptFileToShow,
   keptPictureOrPdf,
   pictureSize,
+  resourceBytes,
   sha256Hex,
   type KeptResource,
 } from '../src/main/resources/resources'
+
+vi.mock('node:fs', async (importOriginal) => {
+  const fs = await importOriginal<typeof import('node:fs')>()
+  return { ...fs, readSync: vi.fn(fs.readSync) }
+})
 
 /**
  * 🔴 D-032 · what main hands a window to draw, read off the file's own bytes — and what it refuses.
@@ -378,7 +392,7 @@ describe('🔴 16 MiB: what a window is handed, at the bound and one byte past i
     })
   })
 
-  it('⚑ a real file of exactly 16 MiB is read, hashed and handed over whole', () => {
+  it('⚑ a real file of exactly 16 MiB is read and handed over whole', () => {
     const body = Buffer.alloc(SIXTEEN_MIB)
     png(1, 1).copy(body)
     const row = kept('full.png', body)
@@ -393,7 +407,7 @@ describe('🔴 16 MiB: what a window is handed, at the bound and one byte past i
 
   it('⛔ a file on disk one byte past it is `unreadable` to draw and to show, whatever its row says', () => {
     // A row edited to say little, over a file grown past every bound this app keeps to: it is
-    // never read, so it is never hashed, and it is never handed to Finder either.
+    // never read or handed to Finder.
     const sha256 = sha256Hex(text('the row says this'))
     const folder = join(root, sha256)
     mkdirSync(folder, { recursive: true })
@@ -455,10 +469,14 @@ describe('keptPictureOrPdf · the name says the kind, the bytes say the type', (
     }
   })
 
-  it('⚑ bytes that changed are `changed`; a file that is gone is `unreadable`', () => {
+  it('draws locally edited bytes and still refuses a missing file', () => {
     const changed = kept('changed.png', png(4, 4))
     writeFileSync(whereItIs(changed), png(5, 5))
-    expect(keptPictureOrPdf(root, changed)).toEqual({ ok: false, reason: 'changed' })
+    expect(keptPictureOrPdf(root, changed)).toEqual({
+      ok: true,
+      drawnAs: 'image/png',
+      bytes: new Uint8Array(png(5, 5)),
+    })
     const gone = kept('gone.png', png(6, 6))
     rmSync(whereItIs(gone))
     expect(keptPictureOrPdf(root, gone)).toEqual({ ok: false, reason: 'unreadable' })
@@ -466,15 +484,28 @@ describe('keptPictureOrPdf · the name says the kind, the bytes say the type', (
 })
 
 describe('keptFileToShow · where Finder is pointed, and when it is not', () => {
+  it('reports a read I/O failure as unreadable and can read the same file afterward', () => {
+    const body = png(1, 1)
+    const row = kept('read-error.png', body)
+    vi.mocked(readSync).mockImplementationOnce(() => {
+      throw Object.assign(new Error('fixture read failure'), { code: 'EIO' })
+    })
+    expect(resourceBytes(root, row)).toMatchObject({
+      ok: false,
+      refusal: { rail: 'resource-bytes-unreadable' },
+    })
+    expect(resourceBytes(root, row)).toMatchObject({ ok: true, bytes: body })
+  })
+
   it('⚑ an untouched kept file is shown where it was kept, and not as changed', () => {
     const row = kept('chart.png', png(1, 1))
     expect(keptFileToShow(root, row)).toEqual({ ok: true, path: whereItIs(row), changed: false })
   })
 
-  it('🔴 a file whose bytes changed IS shown, at the same place, and says so', () => {
+  it('shows a locally edited file at the same path without a hash-change warning', () => {
     const row = kept('chart.png', png(1, 1))
     writeFileSync(whereItIs(row), 'somebody edited it\n')
-    expect(keptFileToShow(root, row)).toEqual({ ok: true, path: whereItIs(row), changed: true })
+    expect(keptFileToShow(root, row)).toEqual({ ok: true, path: whereItIs(row), changed: false })
   })
 
   it('⛔ nothing at the place is `gone` — the file, or its whole folder', () => {
