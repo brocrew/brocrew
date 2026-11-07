@@ -9,7 +9,7 @@ vi.mock('node:child_process', async (original) => ({
   execFileSync: run,
 }))
 // This commit retains the exact published 0.1.8 implementation, not a proposed new reader.
-import { identity, ownerState, withSharedLock } from '../src/profiles/sharedLock.js'
+import { identity, ownerState, withSharedLock } from './fixtures/shared-lock-018.js'
 const roots: string[] = []
 
 afterEach(() => {
@@ -62,6 +62,16 @@ it('empty birth refuses the old bakery but does not make a persisted lease unkno
   expect(work).not.toHaveBeenCalled()
   expect(fs.existsSync(live)).toBe(true)
   expect(ownerState({ pid: process.pid, birth: '' })).toBe('gone')
+})
+
+it('an owner not enrolled yet provides no exclusion to the old reader', () => {
+  legacyWindows()
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fictional-pending-birth-'))
+  roots.push(root)
+  const mutation = vi.fn()
+  withSharedLock(root, { pid: process.pid, birth: '638980000000000000' }, mutation)
+  expect(mutation).toHaveBeenCalledOnce()
+  expect(ownerState({ pid: process.pid } as { pid: number; birth: string })).toBe('gone')
 })
 
 it('the published startup identity throws when the native query times out', () => {
