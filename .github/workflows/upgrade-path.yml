@@ -146,11 +146,16 @@ jobs:
           [[ "$EXPECTED_INSTALLER_SHA256" =~ ^[0-9a-f]{64}$ ]]
           mapfile -t installers < <(find candidate-installer -type f -iname '*setup*.exe')
           test "${#installers[@]}" = 1
-          test "$(basename "${installers[0]}")" = 'BroCrew-Setup-0.2.11-x64.exe'
           printf '%s *%s\n' "$EXPECTED_INSTALLER_SHA256" "${installers[0]}" > evidence/candidate-installer-sha256.txt
           sha256sum --check evidence/candidate-installer-sha256.txt
+          printf '%s\n' "${installers[0]}" > evidence/candidate-installer-original-path.txt
+          wc -c < "${installers[0]}" > evidence/candidate-installer-bytes.txt
           printf '%s\n' "$INSTALLER_RUN_ID" "$INSTALLER_ARTIFACT" > evidence/candidate-artifact.txt
-          printf 'CANDIDATE_DIR=%s\n' "$(dirname "${installers[0]}")" >> "$GITHUB_ENV"
+          mkdir candidate-normalized
+          cp -- "${installers[0]}" candidate-normalized/BroCrew-Setup-0.2.11-x64.exe
+          printf '%s *%s\n' "$EXPECTED_INSTALLER_SHA256" 'candidate-normalized/BroCrew-Setup-0.2.11-x64.exe' > evidence/candidate-installer-normalized-sha256.txt
+          sha256sum --check evidence/candidate-installer-normalized-sha256.txt
+          printf 'CANDIDATE_DIR=candidate-normalized\n' >> "$GITHUB_ENV"
 
       - name: Install old app and plugins, upgrade, start and call both plugins
         shell: bash
