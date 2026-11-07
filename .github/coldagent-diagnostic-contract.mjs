@@ -5,7 +5,14 @@ import { join } from 'node:path'
 const [phase, folder] = process.argv.slice(2)
 const read = (name) => readFileSync(join(folder, name), 'utf8')
 const report = JSON.parse(read('report.json'))
-const results = report.testResults.flatMap((one) => one.assertionResults)
+assert.equal(report.testResults.length, 1, 'exactly one test file must report')
+const file = report.testResults[0]
+assert.match(file.name.replaceAll('\\', '/'), /\/apps\/desktop\/test\/a-cold-agent-gets-each-plugin-that-is-ready\.test\.ts$/)
+assert.equal(file.message, '', 'no suite or file error may accompany the result')
+const results = file.assertionResults
+const output = read('stdout.log') + '\n' + read('stderr.log')
+assert.doesNotMatch(output, /Unhandled (?:Errors?|Rejections?|Exceptions?)|Vitest caught \d+ unhandled error/i)
+
 const name = 'a cold agent gets each plugin that is ready pending warmups reserve the existing route capacity until their cleanup completes'
 const pins = {
   red: ['2aad4833cc2b2254ed2254eb4b9360b41753ab91', '21fa5ee26522be396e687ae722605e6a5806ab2b'],
@@ -25,8 +32,10 @@ if (phase === 'red') {
   const failed = results.filter((one) => one.status === 'failed')
   assert.equal(failed.length, 1)
   assert.equal(failed[0].fullName, name)
-  assert.match(failed[0].failureMessages.join('\n'), /expected \[\] to deeply equal \[ 'aster' \]/)
-  const output = read('stdout.log') + '\n' + read('stderr.log')
+  assert.equal(failed[0].failureMessages.length, 1, 'only the expected assertion error may occur')
+  assert.ok(results.filter((one) => one !== failed[0]).every((one) => one.status === 'skipped' && one.failureMessages.length === 0))
+  assert.equal(file.status, 'failed')
+  assert.match(failed[0].failureMessages[0], /^AssertionError: expected \[\] to deeply equal \[ 'aster' \](?:\r?\n|$)/)
   const events = (label) => output.split(/\r?\n/).filter((line) => line.includes(label + ' '))
     .map((line) => JSON.parse(line.slice(line.indexOf(label + ' ') + label.length + 1)))
   const reads = events('COLD_AGENT_READ')
@@ -61,7 +70,8 @@ if (phase === 'red') {
   assert.equal(report.numFailedTests, 0)
   assert.equal(report.numPendingTests, 0)
   assert.equal(report.success, true)
-  assert.ok(results.every((one) => one.status === 'passed'))
+  assert.equal(file.status, 'passed')
+  assert.ok(results.every((one) => one.status === 'passed' && one.failureMessages.length === 0))
   assert.equal(results.filter((one) => one.fullName === name).length, 1)
   console.log('GREEN contract PASS: exact product candidate, native exit=0, all 22 tests pass')
 }
