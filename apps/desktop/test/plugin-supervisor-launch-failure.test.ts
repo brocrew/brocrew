@@ -45,10 +45,11 @@ it.each(['exit', 'spawn'] as const)(
       (error: unknown) => error,
     )
     expect(error).toMatchObject({ code: 'unavailable' })
-    expect(pluginStartupDiagnostic(error)).toEqual({
+    expect(pluginStartupDiagnostic(launch.diagnostic(error) ?? error)).toEqual({
       exitCode: failure === 'exit' ? 1 : null,
       signal: null,
-      stderr: failure === 'exit' ? "Error: Cannot find module 'fictional-missing-startup-module'" : null,
+      stderr:
+        failure === 'exit' ? "Error: Cannot find module 'fictional-missing-startup-module'" : null,
     })
     if (failure === 'spawn') expect(pluginFailureCause(error)).toContain('ENOENT')
     expect(performance.now() - began).toBeLessThan(2_000)
