@@ -16,6 +16,7 @@ import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { listenersOn } from './lib/renderer-cdp.mjs'
 import { pidsLaunchedOn, watchOffScreen } from './lib/hidden-launch.mjs'
 import { createOwnedProcessLifecycle } from './lib/owned-process.mjs'
 import { descendantsOf, tearDownAndRemove } from './lib/owned-teardown.mjs'
@@ -218,22 +219,6 @@ function freePort() {
   })
 }
 
-/**
- * ⛔ **Three states, not two** — who listens on `port`, or *we could not ask* (`lsof -t` exits 1 on
- * no match, so a bare catch would make "nothing there" and "could not look" one answer).
- */
-function listenersOn(port) {
-  try {
-    const out = execFileSync('lsof', ['-t', `-iTCP:${String(port)}`, '-sTCP:LISTEN'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-    return { asked: true, pids: out.trim().split('\n').filter(Boolean).map(Number) }
-  } catch (error) {
-    if (error?.status === 1) return { asked: true, pids: [] }
-    return { asked: false, pids: [], why: error?.message ?? String(error) }
-  }
-}
 
 /**
  * 🔒 **The debugger this probe drives is its OWN launch's** — polled until it listens, and refused

@@ -21,7 +21,7 @@ import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { RendererCdp, listenersOn } from './lib/renderer-cdp.mjs'
+import { RendererCdp, listenersOn, waitFor } from './lib/renderer-cdp.mjs'
 import { createOwnedProcessLifecycle } from './lib/owned-process.mjs'
 import { descendantsOf, tearDownAndRemove } from './lib/owned-teardown.mjs'
 
@@ -71,20 +71,6 @@ function freePort() {
   })
 }
 
-async function waitFor(what, read, budgetMs) {
-  const deadline = Date.now() + budgetMs
-  while (Date.now() < deadline) {
-    let last
-    try {
-      last = await read()
-    } catch {
-      last = null
-    }
-    if (last !== null && last !== undefined && last !== false) return last
-    await new Promise((resolve) => setTimeout(resolve, POLL_MS))
-  }
-  throw new Error(`timed out after ${String(budgetMs)}ms waiting for ${what}`)
-}
 
 // --- page-side expressions ---
 //
@@ -197,6 +183,7 @@ async function main() {
         }
       },
       OWNERSHIP_MS,
+      POLL_MS,
     )
   } catch (error) {
     try {
@@ -250,6 +237,7 @@ async function main() {
       async () =>
         await cdp.evaluate(`return Boolean(document.querySelector('[data-cy=rail-team]'))`),
       SETTLE_MS,
+      POLL_MS,
     )
 
     // ── the overlay, so the lane is on screen at all ──────────────────────────────────────────
@@ -259,6 +247,7 @@ async function main() {
       async () =>
         await cdp.evaluate(`return Boolean(document.querySelector('[data-cy=team-workspace]'))`),
       SETTLE_MS,
+      POLL_MS,
     )
     const opened = await cdp.evaluate(PRESS_AN_OPENER)
     if (opened) {
@@ -268,6 +257,7 @@ async function main() {
           async () =>
             await cdp.evaluate(`return Boolean(document.querySelector('.overlay-corner'))`),
           GESTURE_MS,
+          POLL_MS,
         )
         process.stdout.write(`  ⚑ the lane is on screen behind ${opened}\n`)
       } catch (error) {
@@ -297,6 +287,7 @@ async function main() {
               async () =>
                 (await cdp.evaluate(`return window.outerWidth`)) === width ? true : null,
               GESTURE_MS,
+              POLL_MS,
             )
             how = 'an OS resize'
           } catch (error) {

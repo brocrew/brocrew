@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
 
-async function waitFor(what, read, budgetMs, pollMs) {
+export async function waitFor(what, read, budgetMs, pollMs) {
   const deadline = Date.now() + budgetMs
   while (Date.now() < deadline) {
     let last
