@@ -328,10 +328,14 @@ function scheduleReaderHooks(
             try {
               const level = input.effort?.level
               if (typeof level === 'string' && level !== '') noteEffort(level)
-            } catch {}
+            } catch {
+              // An unreadable effort must not fail the turn.
+            }
             try {
               note(input.session_crons)
-            } catch {}
+            } catch {
+              // Unreadable scheduling data must not fail the turn.
+            }
           }
           return { continue: true }
         },
@@ -1162,7 +1166,9 @@ export class ClaudeSessionHandle implements SessionHandle {
         'claude account',
       )
       said = sessionAccountFrom({ email: info.email, organization: info.organization })
-    } catch {}
+    } catch {
+      // Do not expose an account-read failure that might identify the account.
+    }
     if (this.query === query) this.accountSaid = said
   }
 
@@ -1186,7 +1192,9 @@ export class ClaudeSessionHandle implements SessionHandle {
         ...(dropped > 0 ? { dropped } : {}),
         source: 'initializationResult',
       })
-    } catch {}
+    } catch {
+      // An unavailable inventory remains unreported rather than inventing provider data.
+    }
   }
 
   async providerCommands(): Promise<ProviderCommandAnswer> {
@@ -1257,14 +1265,18 @@ export class ClaudeSessionHandle implements SessionHandle {
   noteSchedulingCall(input: unknown): void {
     try {
       this.schedulingCalls.called(input)
-    } catch {}
+    } catch {
+      // Scheduling observations must not break tool calls.
+    }
   }
 
   noteSchedulingAnswer(input: unknown): void {
     try {
       const event = this.schedulingCalls.answered(input)
       if (event !== undefined) this.emit(event)
-    } catch {}
+    } catch {
+      // Unreadable scheduling receipts must not break tool calls.
+    }
   }
 
   noteReportedEffort(level: string): void {
@@ -1531,7 +1543,9 @@ export class ClaudeSessionHandle implements SessionHandle {
     if (this.query) {
       try {
         this.query.close()
-      } catch {}
+      } catch {
+        // Detach failure must not prevent session cleanup.
+      }
     }
   }
 
@@ -1541,7 +1555,9 @@ export class ClaudeSessionHandle implements SessionHandle {
     if (!query?.return) return
     try {
       await withTimeout(Promise.resolve(query.return()), CLOSE_EXIT_RECEIPT_TIMEOUT_MS)
-    } catch {}
+    } catch {
+      // A synchronous return failure leaves teardown with nothing further to do.
+    }
   }
 
   private settleRequests(permissionAnswer?: PermissionDecision): void {
@@ -1577,7 +1593,9 @@ export class ClaudeSessionHandle implements SessionHandle {
     if (this.query) {
       try {
         this.query.close()
-      } catch {}
+      } catch {
+        // Detach failure must not replace the resume error.
+      }
     }
     this.input.close()
     this.finishUnexpected(reason, true)
@@ -1641,7 +1659,9 @@ export class ClaudeSessionHandle implements SessionHandle {
       const current = await this.authTokenProviderAsync()
       if (current !== null && credentialFingerprint(current) === this.launchCredential)
         return 'auth'
-    } catch {}
+    } catch {
+      // An unreadable credential cannot prove the rejected token is still current.
+    }
     return 'auth_stale'
   }
 
@@ -1828,7 +1848,9 @@ export class ClaudeSessionHandle implements SessionHandle {
     this.settleRequests(STOPPED_INSTEAD_OF_ANSWERING)
     try {
       await withTimeout(Promise.resolve(this.query.interrupt()), INTERRUPT_ACK_TIMEOUT_MS)
-    } catch {}
+    } catch {
+      // A refused interrupt must not block recovery.
+    }
 
     if (!this.machine.isTerminal) this.machine.forceEnd()
   }
@@ -2647,7 +2669,9 @@ export class ClaudeRuntime implements AgentRuntime {
       if (query !== null) {
         try {
           query.close()
-        } catch {}
+        } catch {
+          // Detach failure must not replace the original start failure.
+        }
       }
       input.close()
 
@@ -2714,7 +2738,9 @@ export class ClaudeRuntime implements AgentRuntime {
 
       try {
         await closeProbe()
-      } catch {}
+      } catch {
+        // A probe that cannot close has no further cleanup available here.
+      }
     }
   }
 
@@ -2828,7 +2854,9 @@ export class ClaudeRuntime implements AgentRuntime {
       if (query) {
         try {
           query.close()
-        } catch {}
+        } catch {
+          // Detach failure must not replace the original resume failure.
+        }
       }
       input?.close()
 

@@ -23,7 +23,6 @@ export {
   PLAN_CONSENTS,
   ALWAYS_HONOURED,
   isAlwaysHonoured,
-
   publishedOffer,
   answerToForward,
   duplicateAnswerKey,
@@ -283,7 +282,6 @@ export {
   type CodexCopyIdentity,
   provisionCodexAuth,
   replaceARefusedCodexCopy,
-
   reprovisionCodexAuth,
   codexAuthHealth,
   assertCodexSqliteHomeContained,
