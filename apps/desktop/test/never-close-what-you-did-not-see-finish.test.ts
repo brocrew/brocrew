@@ -41,7 +41,6 @@ import {
   neutralHostDeps,
 } from './lib/host-fixture'
 
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
@@ -304,7 +303,6 @@ describe('400 · never close what you did not see finish', () => {
     return out
   }
 
-
   describe('§1 · one word for “nothing is driving this”, and the two vocabularies stay two', () => {
     it('🔴 `silent` is gone, `stalled` survives, and nothing in the app still spells the old one', () => {
       expect([...TASK_STATES]).toEqual([
@@ -412,7 +410,6 @@ describe('400 · never close what you did not see finish', () => {
       expect(stallBody).toContain('stall(piece, cause, at, by, stopped, limit, login)')
     })
   })
-
 
   describe('§2 · a turn that ends with the work open, and the parent is TOLD', () => {
     it('🔴 the headline: the turn ends, the task stalls, and the parent is pushed WITH NO WINDOW', async () => {
@@ -559,7 +556,6 @@ describe('400 · never close what you did not see finish', () => {
       expect(noticesTo(pm, label)).toHaveLength(1)
     })
   })
-
 
   describe('§3 · the app is killed while the work is running', () => {
     it('🔴 the headline: a task that was RUNNING comes back OPEN, with the app’s own row saying why', async () => {
@@ -742,7 +738,6 @@ describe('400 · never close what you did not see finish', () => {
     })
   })
 
-
   describe('§4 · a question that was pending when the app stopped', () => {
     const aChildHoldingWorkAndAQuestion = async (): Promise<{
       pm: string
@@ -846,7 +841,6 @@ describe('400 · never close what you did not see finish', () => {
     })
   })
 
-
   describe('§5 · both providers, and the order', () => {
     for (const provider of ['claude', 'codex'] as const) {
       it(`🔴 ${provider}: a turn ends and the parent is told; the app dies and the work stays open`, async () => {
@@ -917,7 +911,6 @@ describe('400 · never close what you did not see finish', () => {
       ])
     })
   })
-
 
   describe('§6 · the censuses', () => {
     it('⛔ the fold still reaches nothing — no clock, no store, no timer', () => {

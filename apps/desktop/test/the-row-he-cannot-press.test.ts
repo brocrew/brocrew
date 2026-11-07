@@ -19,7 +19,6 @@ import {
   fixtureProviderConfig,
 } from './lib/host-fixture'
 
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsDir = join(here, '../src/main/db/migrations')
 const STORE_SRC = join(here, '../src/main/db/session-store.ts')
@@ -90,7 +89,6 @@ describe('504 · the row he cannot press', () => {
     )
     return id
   }
-
 
   describe('§1 · `472` F1, asked of the code rather than quoted', () => {
     it('🔴 a conversation whose ledger this app holds is dropped by `find`', () => {
@@ -164,9 +162,7 @@ describe('504 · the row he cannot press', () => {
     })
   })
 
-
   describe('§2 · what the Library answers about a recording', () => {
-
     it('⚑ `hasTranscript` is the ledger and not the row', () => {
       store.create({
         id: 'sess_empty',

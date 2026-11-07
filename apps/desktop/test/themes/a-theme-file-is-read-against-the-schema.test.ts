@@ -250,16 +250,14 @@ describe('files are held to the limits', () => {
 
   it('a picture over 4 MB', () => {
     expect(
-      problems(withPicture, { 'assets/a.png': png(100, 100, 5 * 1024 * 1024) }).map(
-        (p) => p.says,
-      ),
+      problems(withPicture, { 'assets/a.png': png(100, 100, 5 * 1024 * 1024) }).map((p) => p.says),
     ).toEqual(['assets/a.png is 5 MB; a picture can be up to 4 MB.'])
   })
 
   it('a picture over 4096 pixels a side', () => {
-    expect(
-      problems(withPicture, { 'assets/a.png': png(5000, 100) }).map((p) => p.says),
-    ).toEqual(['assets/a.png is 5000×100 pixels; a picture can be up to 4096 pixels a side.'])
+    expect(problems(withPicture, { 'assets/a.png': png(5000, 100) }).map((p) => p.says)).toEqual([
+      'assets/a.png is 5000×100 pixels; a picture can be up to 4096 pixels a side.',
+    ])
   })
 
   it('an animated picture', () => {
