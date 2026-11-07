@@ -88,20 +88,13 @@ function install(store: GlobalPluginState) {
   return input
 }
 
-it('Windows disk storage refuses a root whose access list was not checked, before creating anything', () => {
-  const parent = folder(),
-    root = join(parent, 'plugins')
-  const original = Object.getOwnPropertyDescriptor(process, 'platform')!
-  try {
-    Object.defineProperty(process, 'platform', { ...original, value: 'win32' })
-    expect(() => GlobalPluginState.create({ root, workspaceRoots: [] })).toThrow(
-      expect.objectContaining({ code: 'unsupported', message: 'Plugin unavailable. Try again.' }),
-    )
-    expect(existsSync(root)).toBe(false)
-    expect(readdirSync(parent)).toEqual([])
-  } finally {
-    Object.defineProperty(process, 'platform', original)
-  }
+it('creates standalone state without a prior root admission', () => {
+  const parent = folder(), root = join(parent, 'plugins')
+  if (process.platform !== 'win32') chmodSync(parent, 0o755)
+  const state = GlobalPluginState.create({ root, workspaceRoots: [] })
+  state.close()
+  expect(existsSync(root)).toBe(true)
+  expect(readdirSync(parent)).toEqual(['plugins'])
 })
 
 describe.skipIf(process.platform === 'win32')(

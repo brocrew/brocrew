@@ -556,6 +556,7 @@ describe('codexAuthHealth (022)', () => {
     'accepts a readable file without changing its permissions',
     () => {
       writeFileSync(join(home, 'auth.json'), 'x', { mode: 0o644 })
+      chmodSync(join(home, 'auth.json'), 0o644)
       expect(codexAuthHealth(home)).toEqual({ ok: true })
       expect(lstatSync(join(home, 'auth.json')).mode & 0o777).toBe(0o644)
     },
