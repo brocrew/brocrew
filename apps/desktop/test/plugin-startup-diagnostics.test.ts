@@ -10,7 +10,12 @@ import {
   connectPersonPluginControl,
 } from '../src/main/plugins/lifecycle/person-control'
 import { sharedLifecycleWorkspaces } from '../src/main/plugins/lifecycle/workspaces'
-import { fixture, projection, deferred, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
+import {
+  fixture,
+  projection,
+  deferred,
+  cleanupLifecycleFixtures,
+} from './plugin-lifecycle-fixtures'
 
 afterEach(async () => {
   vi.unstubAllGlobals()

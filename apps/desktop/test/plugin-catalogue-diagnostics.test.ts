@@ -46,9 +46,13 @@ it.each(['owner-check', 'rpc', 'schema'] as const)(
       const kind = (value as { kind: string }).kind
       if (stage === 'owner-check' && kind === 'features') return Promise.reject(original)
       if (
-        ['list', 'list-v2', 'list-tool-health', 'list-tool-cause', 'list-startup-diagnostic'].includes(
-          kind,
-        )
+        [
+          'list',
+          'list-v2',
+          'list-tool-health',
+          'list-tool-cause',
+          'list-startup-diagnostic',
+        ].includes(kind)
       ) {
         lists.push(kind)
         if (stage === 'rpc') return Promise.reject(original)
