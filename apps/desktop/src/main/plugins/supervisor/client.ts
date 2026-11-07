@@ -64,8 +64,6 @@ function serializedLaunch(identity: string, launch: () => Promise<void>): Promis
   launches.set(identity, work)
   return work
 }
-// This bounded, process-local observation changes advice only, never ownership or admission.
-// Sixty seconds matches the owner's complete child-cleanup grace, not its caller's shorter wait.
 const releasedDrains = new Map<string, { epoch: string; key: string; since: number }>()
 function releasedDrainStalled(
   storage: SupervisorStorage,
@@ -113,10 +111,6 @@ function releasedDrainStalled(
     return false
   }
 }
-/**
- * Open the app's held connection: one hold request whose reply arrives, after which the
- * connection simply stays open until this app ends or the owner goes away.
- */
 function holdSupervisorConnection(
   storage: SupervisorStorage,
   record: OwnerRecord,
@@ -244,7 +238,6 @@ export interface SupervisorClientOptions {
   generation: string
   build: string
   wire?: WireVersion
-  /** Slice 6 supplies only a verified immutable supervisor/Node launcher. Never an app-bundle fallback. */
   launch?: () => Promise<void>
   onLost?: () => void
 }
@@ -364,7 +357,6 @@ export class PluginWorkspaceLease {
         if (launched) return
         launched = true
         if (!options.launch) refuse()
-        // Exactly one attempt here. The launched service itself must acquire the OS fence.
         let timer: ReturnType<typeof setTimeout> | undefined
         const until = performance.now() + OWNER_LAUNCH_MS
         const root = realpathSync.native(storage!.root)
@@ -381,8 +373,8 @@ export class PluginWorkspaceLease {
           ])
         } catch (error) {
           launchError = error
-          // A simultaneous starter may have won the fence. Only its authenticated record can
-          // turn this failed launch into an attachment; never launch a second time here.
+          record = readOwner()
+          return
         } finally {
           clearTimeout(timer)
         }
@@ -475,8 +467,6 @@ export class PluginWorkspaceLease {
       }
       const hello = Hello.parse(answer)
       const lease = new PluginWorkspaceLease(storage, record, options, workspaceId, hello)
-      // An older owner without the held connection keeps the ordinary heartbeat. An owner that
-      // offers it and then fails to hold is a real failure, never a quiet return to expiry.
       if (lease.features.includes(APP_HELD_CONNECTION)) {
         try {
           await lease.hold()
@@ -509,14 +499,6 @@ export class PluginWorkspaceLease {
   private identity() {
     return { workspace: this.workspace, generation: this.options.generation, lease: this.lease }
   }
-  /**
-   * A renewal that got no answer is tried again with the same counter and renewal, which the
-   * owner accepts whether or not it applied the first. An owner without RENEW_RETRY is sent no
-   * renewal and accepts the retry only if it never applied the first. The lease ends on the
-   * owner's refusal or a wrong answer, once its public record stops accepting this epoch, or once
-   * its expiry has surely passed: the owner applied the last confirmed renewal before its reply
-   * came back.
-   */
   renew(): Promise<void> {
     if (this.ended) return Promise.reject(new PluginSupervisorError('unavailable'))
     this.renewing ??= (async () => {
@@ -718,11 +700,6 @@ export class PluginSupervisorAttachment {
   async ready(): Promise<boolean> {
     return Boolean((await this.pending) && !this.ended)
   }
-  /**
-   * True when the owner this lease came from has proven a clean stop; the next start launches
-   * a new one. The owner writes stopped only after every child and descendant has exited, and a
-   * successor starts only over that record and under the owner lock, so a new epoch proves it too.
-   */
   stoppedCleanly(): boolean {
     const lease = this.lease
     if (this.ended || !lease || !this.where) return false
@@ -741,10 +718,6 @@ export class PluginSupervisorAttachment {
     this.pending = undefined
     return true
   }
-  /**
-   * True while this lease still stands and its owner still accepts: the app may reconnect to that
-   * owner, which detaches a lost person channel's consumer by itself.
-   */
   holdsLease(): boolean {
     const lease = this.lease
     if (

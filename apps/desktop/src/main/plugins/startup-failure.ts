@@ -172,7 +172,7 @@ export function observePluginSupervisorLaunch(child: ChildProcess, secrets: read
   const snapshot = () =>
     new PluginSupervisorLaunchFailure(
       {
-        exitCode: child.exitCode,
+        exitCode: child.exitCode !== null && child.exitCode < 0 ? null : child.exitCode,
         signal: child.signalCode,
         stderr: pluginStartupStderr(errorLine ?? firstLine ?? stderr, secrets),
       },
