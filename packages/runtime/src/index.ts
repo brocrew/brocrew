@@ -489,10 +489,4 @@ export {
   type ManagedPluginAttachment,
   type ManagedPluginAttachmentSource,
 } from './managed-plugin-session'
-export {
-  managedPluginFailure,
-  ManagedPluginFailure,
-  pluginFailureReason,
-  type PluginFailureStage,
-  type PluginFailureCause,
-} from './managed-plugin-failure'
+export { managedPluginFailure, ManagedPluginFailure } from './managed-plugin-failure'
