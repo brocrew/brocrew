@@ -41,6 +41,15 @@ it('retains the concrete native failure for self without granting foreign owners
   expect(ownerState({ pid: process.pid, birth: ticks })).toBe('unknown')
 })
 
+it('shows the native OS diagnostic instead of only the child exit status', () => {
+  platform('win32')
+  run.mockImplementation(() => {
+    throw Object.assign(new Error('Command failed'), { stderr: Buffer.from('OpenProcess: Access is denied.\n') })
+  })
+  expect(identity).toThrow('OpenProcess: Access is denied.')
+  expect(ownerState({ pid: process.pid, birth: ticks })).toBe('unknown')
+})
+
 it.each(['', 'unknown\n', '638980000000000001\n638980000000000002\n', '3155378976000000000\n'])(
   'refuses invalid native output %j before self enrollment', (output) => {
     platform('win32')

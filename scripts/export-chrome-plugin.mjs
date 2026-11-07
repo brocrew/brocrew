@@ -145,6 +145,17 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '22.23.3'
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - name: Verify native birth source and select pinned compiler
+        run: |
+          set -eu
+          cd plugins/chrome/native/process-birth
+          GOTOOLCHAIN=local go test ./...
+          GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go vet ./...
+          echo "BROCREW_GO=$(command -v go)" >> "$GITHUB_ENV"
       - name: Validate explicit canonical source pin
         run: node -e 'if (!/^[a-f0-9]{40}$/.test(process.env.BROCREW_PLUGIN_SOURCE_COMMIT || "")) throw new Error("A full reviewed source pin is required")'
       - uses: actions/checkout@v7
@@ -196,6 +207,17 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: '22.23.3'
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - name: Verify native birth source and select pinned compiler
+        run: |
+          set -eu
+          cd plugins/chrome/native/process-birth
+          GOTOOLCHAIN=local go test ./...
+          GOTOOLCHAIN=local CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go vet ./...
+          echo "BROCREW_GO=$(command -v go)" >> "$GITHUB_ENV"
       - name: Validate explicit canonical source pin
         run: node -e 'if (!/^[a-f0-9]{40}$/.test(process.env.BROCREW_PLUGIN_SOURCE_COMMIT || "")) throw new Error("A full reviewed source pin is required")'
       - uses: actions/checkout@v7
@@ -211,7 +233,7 @@ jobs:
         run: |
           set -eu
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/chrome/src plugins/chrome/ui plugins/chrome/bridge plugins/chrome/build.mjs plugins/chrome/manifest-template.json plugins/chrome/package.json plugins/chrome/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs package.json package-lock.json)"
+          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/chrome/src plugins/chrome/ui plugins/chrome/bridge plugins/chrome/native plugins/chrome/build.mjs plugins/chrome/manifest-template.json plugins/chrome/package.json plugins/chrome/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs package.json package-lock.json)"
       - run: npm run build -- artifact
       - run: npm run build -- artifact-repeat
       - name: Verify reproducible archive bytes
@@ -223,10 +245,11 @@ jobs:
         run: |
           set -eu
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/chrome/src plugins/chrome/ui plugins/chrome/bridge plugins/chrome/build.mjs plugins/chrome/manifest-template.json plugins/chrome/package.json plugins/chrome/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs package.json package-lock.json)"
+          test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- plugins/chrome/src plugins/chrome/ui plugins/chrome/bridge plugins/chrome/native plugins/chrome/build.mjs plugins/chrome/manifest-template.json plugins/chrome/package.json plugins/chrome/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs package.json package-lock.json)"
           git rev-parse HEAD > artifact/source-commit.txt
           node --version > artifact/node-version.txt
           npm --version > artifact/npm-version.txt
+          go version > artifact/go-version.txt
           node -p "require('./plugins/chrome/node_modules/esbuild/package.json').version" > artifact/esbuild-version.txt
           sha256sum package-lock.json plugins/chrome/package-lock.json scripts/build-plugin-release.mjs scripts/plugin-source.mjs plugins/chrome/build.mjs .github/workflows/release.yml > artifact/build-inputs.sha256
           sha256sum artifact/*.tar.gz artifact/plugin-list-entry.json > artifact/downloads.sha256

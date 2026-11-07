@@ -20,30 +20,13 @@ afterEach(() => {
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true })
 })
 
-it('keeps native birth identity when cold Windows PowerShell needs more than two seconds', () => {
-  vi.stubGlobal('process', Object.create(process, { platform: { value: 'win32' } }))
-  run.mockImplementation((_program, _args, options) => {
-    if (options.timeout < 30000)
-      throw Object.assign(new Error('spawnSync powershell ETIMEDOUT'), { code: 'ETIMEDOUT' })
-    return nativeBirth + '\n'
-  })
-
-  expect(identity()).toEqual({ pid: process.pid, birth: nativeBirth })
-  expect(run).toHaveBeenCalledOnce()
-  expect(run.mock.calls[0][0]).toBe('powershell')
-  expect(run.mock.calls[0][1]).toEqual([
-    '-NoProfile', '-NonInteractive', '-Command',
-    `(Get-Process -Id ${process.pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`,
-  ])
-})
-
 it.each(['old-holds', 'new-holds'])(
   'old and new readers preserve the live contender while %s',
   (direction) => {
     vi.stubGlobal('process', Object.create(process, { platform: { value: 'win32' } }))
     const contenderBirth = '638980000000000001'
     run.mockImplementation((_program, args) =>
-      args[3] === `(Get-Process -Id ${process.pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`
+      args[0] === String(process.pid) || args[3] === `(Get-Process -Id ${process.pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`
         ? nativeBirth + '\n'
         : contenderBirth + '\n',
     )
@@ -62,10 +45,13 @@ it.each(['old-holds', 'new-holds'])(
       expect(() => contend(root, other, work, 15)).toThrow('Shared Chrome registry busy; try again.')
       expect(work).not.toHaveBeenCalled()
       expect(fs.readdirSync(locks)).toEqual(before)
-      expect(run).toHaveBeenCalledWith('powershell', [
-        '-NoProfile', '-NonInteractive', '-Command',
-        `(Get-Process -Id ${owner.pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`,
-      ], expect.any(Object))
+      if (direction === 'old-holds')
+        expect(run).toHaveBeenCalledWith(expect.stringMatching(/chrome-process-birth\.exe$/), [String(owner.pid)], expect.any(Object))
+      else
+        expect(run).toHaveBeenCalledWith('powershell', [
+          '-NoProfile', '-NonInteractive', '-Command',
+          `(Get-Process -Id ${owner.pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`,
+        ], expect.any(Object))
     })
     expect(fs.readdirSync(path.join(root, 'registry.lock'))).toEqual([])
   },
