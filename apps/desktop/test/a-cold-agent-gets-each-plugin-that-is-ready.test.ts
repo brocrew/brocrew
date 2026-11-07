@@ -239,8 +239,7 @@ describe('a cold agent gets each plugin that is ready', () => {
     }
     try {
       expect((await read(first)).pending).toEqual(['aster'])
-      for (let n = 1; n < 1100; n++)
-        expect((await read(request())).pending).toEqual(['aster'])
+      for (let n = 1; n < 1100; n++) expect((await read(request())).pending).toEqual(['aster'])
       expect(
         w.diagnostic.mock.calls.filter(([, reason]) => reason === 'attachment-capacity'),
       ).toHaveLength(76)
