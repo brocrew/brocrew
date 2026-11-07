@@ -11,7 +11,7 @@ import {
 import { StringDecoder } from 'node:string_decoder'
 import type { ChildProcess } from 'node:child_process'
 import { PluginSupervisorError, ownerDiagnosticLine } from './supervisor/protocol'
-import { managedPluginFailure, ManagedPluginFailure } from '@brobot2/runtime'
+import { managedPluginFailure, ManagedPluginFailure } from '@brobot2/runtime/plugin-failure'
 
 function redactPluginStartupText(text: string, secrets: readonly string[]): string {
   // Strip terminal escapes before matching secrets, so normalization cannot reveal one.

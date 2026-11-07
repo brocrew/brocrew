@@ -8,9 +8,18 @@ import { PluginWorkspaceLease } from '../src/main/plugins/supervisor/client'
 import { LaunchConfig } from '../src/main/plugins/supervisor/launch-format'
 import { OWNER_LAUNCH_MS } from '../src/main/plugins/supervisor/protocol'
 import { preparePluginNodeRuntime, runtimeFiles } from '../src/main/plugins/node-runtime'
-import { digest, immutableFile, privateChild, privateRoot, sourceBytes } from '../src/main/plugins/node-host-files'
+import {
+  digest,
+  immutableFile,
+  privateChild,
+  privateRoot,
+  sourceBytes,
+} from '../src/main/plugins/node-host-files'
 import { windowsSystemEnvironment } from '../src/main/plugins/system-environment'
-import { observePluginSupervisorLaunch, recordPluginStartupFailure } from '../src/main/plugins/startup-failure'
+import {
+  observePluginSupervisorLaunch,
+  recordPluginStartupFailure,
+} from '../src/main/plugins/startup-failure'
 
 export async function smoke(resources: string, scratch: string) {
   const root = await privateRoot(join(scratch, 'p'))
@@ -25,40 +34,57 @@ export async function smoke(resources: string, scratch: string) {
   const entry = join(await privateChild(root, `supervisor-entries/${digest(bytes)}`), 'entry.cjs')
   await immutableFile(entry, bytes)
   const directory = await privateChild(root, `supervisor-launches/${randomUUID()}`)
-  const input = Buffer.from(JSON.stringify(LaunchConfig.parse({
-    format: 1,
-    root,
-    workspaceRoots: [workspace],
-    runtime: { directory: dirname(node), id: runtime.id },
-  })))
+  const input = Buffer.from(
+    JSON.stringify(
+      LaunchConfig.parse({
+        format: 1,
+        root,
+        workspaceRoots: [workspace],
+        runtime: { directory: dirname(node), id: runtime.id },
+      }),
+    ),
+  )
   const configPath = join(directory, 'launch.json')
   await immutableFile(configPath, input)
   const child = spawn(node, [entry, configPath, digest(input)], {
     cwd: root,
     stdio: ['ignore', 'ignore', 'pipe'],
     windowsHide: true,
-    env: process.platform === 'win32'
-      ? { ...windowsSystemEnvironment(), USERPROFILE: root, TEMP: scratch, TMP: scratch }
-      : { HOME: root, PATH: '/usr/bin:/bin', LC_ALL: 'C' },
+    env:
+      process.platform === 'win32'
+        ? { ...windowsSystemEnvironment(), USERPROFILE: root, TEMP: scratch, TMP: scratch }
+        : { HOME: root, PATH: '/usr/bin:/bin', LC_ALL: 'C' },
   })
   const diagnostic = observePluginSupervisorLaunch(child, [])
   let spawnError: Error | undefined
   let ended = false
   const closed = new Promise<void>((resolve) => {
-    child.once('error', (error) => { spawnError = error })
-    child.once('close', () => { ended = true; resolve() })
+    child.once('error', (error) => {
+      spawnError = error
+    })
+    child.once('close', () => {
+      ended = true
+      resolve()
+    })
   })
   const waitForExit = async (within: number) => {
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
-      await Promise.race([closed, new Promise<void>((resolve) => { timer = setTimeout(resolve, within) })])
+      await Promise.race([
+        closed,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, within)
+        }),
+      ])
       return ended
     } finally {
       clearTimeout(timer)
     }
   }
   // The driver can time out independently of readiness; stop only this owned child handle.
-  const interrupted = () => { child.kill('SIGTERM') }
+  const interrupted = () => {
+    child.kill('SIGTERM')
+  }
   process.on('SIGTERM', interrupted)
   process.on('SIGINT', interrupted)
   let lease: PluginWorkspaceLease | undefined
@@ -88,7 +114,9 @@ export async function smoke(resources: string, scratch: string) {
       workspaceRoot: workspace,
       generation: randomUUID(),
       build: 'packaged-service-smoke',
-      launch: async () => { throw new Error('shipped service exited before attachment') },
+      launch: async () => {
+        throw new Error('shipped service exited before attachment')
+      },
     })
     // Observe the live shipped process after startup, then require an authenticated response.
     await new Promise((resolve) => setTimeout(resolve, 1000))
@@ -96,7 +124,11 @@ export async function smoke(resources: string, scratch: string) {
     await lease.renew()
     assert.equal(await lease.close(), true, 'packaged plugin service did not drain')
     lease = undefined
-    assert.equal(await waitForExit(5000), true, 'packaged plugin service did not exit after release')
+    assert.equal(
+      await waitForExit(5000),
+      true,
+      'packaged plugin service did not exit after release',
+    )
     assert.equal(child.exitCode, 0)
     console.log('[plugin-service-check] ready, alive, authenticated, drained and exited')
   } catch (error) {

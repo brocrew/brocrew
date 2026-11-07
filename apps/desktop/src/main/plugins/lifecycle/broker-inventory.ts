@@ -1,7 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { PluginLifecycleController } from './controller'
-import { managedPluginFailure, type PluginFailureStage } from '@brobot2/runtime'
+import { managedPluginFailure, type PluginFailureStage } from '@brobot2/runtime/plugin-failure'
 
 /**
  * The plugin's tools that a binding may offer: only reviewed names, and none whose definition carries

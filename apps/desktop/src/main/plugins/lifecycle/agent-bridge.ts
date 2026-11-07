@@ -4,11 +4,8 @@ import {
   type PluginToolFailureDetail,
 } from '../tool-diagnostics'
 import { randomUUID } from 'node:crypto'
-import {
-  managedPluginFailure,
-  pluginFailureReason,
-  type ManagedPluginMcpServer,
-} from '@brobot2/runtime'
+import type { ManagedPluginMcpServer } from '@brobot2/runtime'
+import { managedPluginFailure, pluginFailureReason } from '@brobot2/runtime/plugin-failure'
 import {
   createPluginToolBroker,
   type BrokerOptions,

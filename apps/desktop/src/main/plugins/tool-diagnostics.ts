@@ -4,7 +4,7 @@ import {
   managedPluginFailure,
   type PluginFailureStage,
   type PluginFailureCause,
-} from '@brobot2/runtime'
+} from '@brobot2/runtime/plugin-failure'
 
 const reasons = [
   'invalid',
