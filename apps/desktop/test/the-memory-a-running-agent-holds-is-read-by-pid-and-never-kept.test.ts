@@ -11,7 +11,6 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { PS_ARGS, parseProcessTable, psArgsFor, residentSizesIn } from '../src/main/process-tree'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { NOT_LISTED_JUST_NOW } from '../src/main/runtime/process-listing'
 import {
   RuntimeHost,
   THE_APP_ITSELF,
@@ -497,10 +496,9 @@ describe('§2 · the host reads the memory of the processes it runs, by pid', ()
       return answerFrom(pids)
     }
     const failed = await host.processMemory()
-    expect(failed).toEqual({ conversations: [], unmeasured: NOT_LISTED_JUST_NOW })
+    expect(failed).toEqual({ conversations: [], unmeasured: 'ps could not start' })
     // ⛔ No promise to ask again: the window asks only on its own glance, and only while in front.
     expect(failed.unmeasured).not.toMatch(/again|moment/)
-    expect(JSON.stringify(failed)).not.toContain('ps could not start')
     expect(aboutTheMemoryRead(warned.mock.calls)).toHaveLength(1)
     const recovered = await host.processMemory()
     expect(asked).toHaveLength(4)

@@ -83,13 +83,14 @@ describe('the listing on Windows', () => {
     )
   })
 
-  it('on this computer, if it is Windows, lists this very process with its parent and its memory', async (ctx) => {
-    ctx.skip(process.platform !== 'win32', 'the CIM table is Windows’ own')
-    const rows = await listProcesses()
-    const self = rows.find((row) => row.pid === process.pid)
-    expect(self).toMatchObject({ pid: process.pid, ppid: process.ppid })
+  it('a failed reading leaves the next Windows reading able to answer', async () => {
+    const failed = new Error('fictional CIM failure')
+    await expect(listProcesses('win32', async () => { throw failed })).rejects.toBe(failed)
+    const rows = await listProcesses('win32', async () => TABLE)
+    const self = rows.find((row) => row.pid === 4101)
+    expect(self).toMatchObject({ pid: 4101, ppid: 900 })
     expect(self?.rssKb).toBeGreaterThan(1024)
-    expect(memoryOf([process.pid], rows).get(process.pid)).toBeGreaterThan(1024 * 1024)
+    expect(memoryOf([4101], rows).get(4101)).toBeGreaterThan(1024 * 1024)
   })
 })
 
