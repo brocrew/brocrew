@@ -4,7 +4,7 @@
 // closed summary of booleans and counts, and the archives' public digests, leave the runner.
 import fs from 'node:fs'
 import path from 'node:path'
-import { createHash, randomBytes } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { execFile, spawn } from 'node:child_process'
 import { createServer } from 'node:http'
 import { promisify } from 'node:util'
@@ -260,21 +260,6 @@ export function onlyTheThree(sddl, sid) {
       return [sid, SYSTEM, ADMINISTRATORS].includes(account)
     })
   )
-}
-export async function readList(folder) {
-  const saved = path.join(process.env.TEMP, `fictional-acl-${randomBytes(6).toString('hex')}.txt`)
-  try {
-    await command(system32('icacls.exe'), [folder, '/save', saved, '/Q'])
-    return (
-      fs
-        .readFileSync(saved)
-        .toString('utf16le')
-        .replace(/^\uFEFF/, '')
-        .split(/\r?\n/)[1] ?? ''
-    )
-  } finally {
-    fs.rmSync(saved, { force: true })
-  }
 }
 
 export function readOwned(file, maximum = 128 * 1024 * 1024) {
