@@ -967,6 +967,10 @@ describe('609 · three waits, one family', () => {
       // control cannot be another member of it.
       expect(codeOf('shared/questions.ts')).not.toContain('ESCALATION_WINDOW_MS')
       expect(codeOf('main/runtime/runtime-host.ts')).not.toContain('escalationWindowMs')
+      const dependencies = codeOf('main/runtime/host-dependencies.ts')
+      expect(dependencies).toContain('export interface RuntimeHostDeps {')
+      expect(dependencies).not.toContain('proposalBoundMs')
+      expect(dependencies).not.toContain('escalationWindowMs')
       // ⚑ **THE POSITIVE CONTROL for four negatives, and it carries the DISTINCTION** (standing
       // rule 34.2): the vocabulary these numbers belonged to is still here and still readable,
       // and this class still resolves numbers — they bound this app's own teardown rather than

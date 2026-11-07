@@ -449,6 +449,17 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       // half-applied. ⚑ **Two withdrawals, one file, and this is now the whole of both.**
       expect(store_).not.toContain('work_quiet')
       expect(host_).not.toContain('work_quiet')
+      const dependencies = codeOnly(sourceOf(join(mainRoot, 'runtime'), 'host-dependencies.ts'))
+      expect(dependencies).toContain('export interface RuntimeHostDeps {')
+      for (const gone of [
+        'watchForEscalation',
+        'armEscalationLook',
+        'writeWhatIsDue',
+        'escalationWindowMs',
+        'work_quiet',
+      ]) {
+        expect(dependencies, gone).not.toContain(gone)
+      }
     })
   })
 
@@ -889,6 +900,11 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       expect(host_).not.toContain('positiveWindow')
       expect(host_).not.toContain('escalationWindowMs')
       expect(host_).not.toContain('proposalBoundMs')
+      const dependencies = codeOnly(sourceOf(join(mainRoot, 'runtime'), 'host-dependencies.ts'))
+      expect(dependencies).toContain('export interface RuntimeHostDeps {')
+      for (const gone of ['positiveWindow', 'escalationWindowMs', 'proposalBoundMs']) {
+        expect(dependencies, gone).not.toContain(gone)
+      }
       // ⚑ **THE POSITIVE CONTROL, and it is the distinction rather than a spare string.** ⚠️ This
       // class still resolves three injected numbers — the drain, the interrupt wait and the
       // launch timeout — and none of them is a deadline on somebody ANSWERING; they bound this

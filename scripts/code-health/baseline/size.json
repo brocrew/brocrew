@@ -15,7 +15,7 @@
   "apps/desktop/src/main/runtime/ipc.ts": 3273,
   "apps/desktop/src/main/runtime/question-rails.ts": 1164,
   "apps/desktop/src/main/runtime/reply-rails.ts": 1433,
-  "apps/desktop/src/main/runtime/runtime-host.ts": 48713,
+  "apps/desktop/src/main/runtime/runtime-host.ts": 44409,
   "apps/desktop/src/main/runtime/spawn-rails.ts": 1348,
   "apps/desktop/src/main/runtime/what-this-agent-was-given.ts": 1664,
   "apps/desktop/src/main/themes/store.ts": 1016,

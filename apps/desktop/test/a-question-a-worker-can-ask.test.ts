@@ -1097,6 +1097,14 @@ describe('437 · a question a worker can ask its parent', () => {
       // are gone from this class together, so a deadline cannot come back without its rule.
       expect(hostCode).not.toContain('proposalBoundMs')
       expect(hostCode).not.toContain('positiveWindow')
+      const dependencies = readFileSync(join(mainRoot, 'runtime/host-dependencies.ts'), 'utf8')
+      const dependenciesCode = dependencies
+        .replace(/\/\*[\s\S]*?\*\//g, ' ')
+        .replace(/^[ \t]*\/\/.*$/gm, ' ')
+      expect(dependenciesCode).toContain('export interface RuntimeHostDeps {')
+      for (const gone of ['askBoundMs', 'escalationWindowMs', 'proposalBoundMs', 'positiveWindow']) {
+        expect(dependenciesCode, gone).not.toContain(gone)
+      }
       // ⚑ **THE POSITIVE CONTROL, and it is a distinction rather than a spare string**: this class
       // still resolves three injected numbers — they bound THIS APP's own teardown and launch, not
       // how long somebody has to answer — so *no deadline window is resolved here* is a

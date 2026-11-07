@@ -702,6 +702,17 @@ describe('608 · the turn that no longer waits', () => {
       expect(hostCode).not.toContain('escalationWindowMs')
       expect(hostCode).not.toContain('PROPOSAL_BOUND_MS')
       expect(hostCode).not.toContain('proposalBoundMs')
+      const dependencies = codeOf('main/runtime/host-dependencies.ts')
+      expect(dependencies).toContain('export interface RuntimeHostDeps {')
+      for (const gone of [
+        'ASK_BOUND_MS',
+        'askBoundMs',
+        'escalationWindowMs',
+        'PROPOSAL_BOUND_MS',
+        'proposalBoundMs',
+      ]) {
+        expect(dependencies, gone).not.toContain(gone)
+      }
     })
 
     it('⛔ the flag and the promise are gone from the map, and both answer doors take ONE route', () => {
