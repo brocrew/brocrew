@@ -19,7 +19,12 @@ import { derivePieces } from '../src/shared/tasks'
 import { theResourcesAReportNames } from '../src/renderer/src/lib/the-document-a-report-names'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { type ResourceReading } from '../src/shared/runtime-ipc'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
 
 /**
  * # 🔴 510 · the id this app hands a person and cannot open
@@ -107,13 +112,7 @@ describe('510 · the id this app hands a person', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:1')
   })
@@ -341,13 +340,7 @@ describe('510 · the id this app hands a person', () => {
         resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
         newSessionId: () => `sess_blind_${++counter}`,
         now: tick,
-        readProviderConfig: (provider, home) => ({
-          home,
-          homeEnv: 'CLAUDE_CONFIG_DIR',
-          model: 'm',
-          authNote: null,
-          files: [],
-        }),
+        readProviderConfig: fixtureProviderConfig,
       })
       const seen = blind.readResourceForAPerson('res_anything')
       expect(seen.ok || seen.reason).toBe('no-store')

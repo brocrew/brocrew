@@ -19,7 +19,12 @@ import { pieceNumbersOf } from '../src/shared/piece-called'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import { code, sourceFiles, spellingsIn } from './lib/task-spellings'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
 
 /**
  * # 🔴 705 · R38 — anywhere a person may read it, a task is *Task #N*
@@ -103,13 +108,7 @@ describe('705 · R38 — the receipts a model and a person both read', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(host)
     window = new RecordingSink('webContents:1')

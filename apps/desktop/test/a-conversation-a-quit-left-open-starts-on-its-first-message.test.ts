@@ -1,3 +1,4 @@
+import { fixtureProviderConfig } from './lib/host-fixture'
 import type { LedgerWalk } from '../src/shared/question-contracts'
 import type { HandedPath } from '../src/shared/attachment-contracts'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
@@ -253,13 +254,7 @@ describe('§1 · 701 · `692` F-a, D-017b — through a real host, a real ledger
         announced.push(change)
         for (const one of windows) one.announce(change)
       },
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

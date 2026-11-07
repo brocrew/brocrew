@@ -24,7 +24,7 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { keepResource, resourcesRoot, sha256Hex } from '../src/main/resources/resources'
 import { pieceNumbersOf } from '../src/shared/piece-called'
-import { RecordingSink } from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink } from './lib/host-fixture'
 
 /**
  * # D-016b part 2 - what the tree's landing left unpinned
@@ -111,13 +111,7 @@ const mount = (
     resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
     newSessionId: () => `sess_${++counter}`,
     now: tick,
-    readProviderConfig: (_provider, home) => ({
-      home,
-      homeEnv: 'CLAUDE_CONFIG_DIR',
-      model: 'm',
-      authNote: null,
-      files: [],
-    }),
+    readProviderConfig: fixtureProviderConfig,
   })
   const window = new RecordingSink('webContents:1')
   const events = (sessionId: string): TranscriptEvent[] =>

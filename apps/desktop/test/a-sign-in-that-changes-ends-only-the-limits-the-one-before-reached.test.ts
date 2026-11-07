@@ -18,7 +18,7 @@ import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
-import { RecordingSink } from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink } from './lib/host-fixture'
 
 /**
  * # 🔴 13a0ab52 — a Claude sign-in that changes ends the limits the sign-in before reached, and ONLY those
@@ -280,13 +280,7 @@ describe('13a0ab52 · a sign-in that changes ends only the limits the sign-in be
         commandListWaitMs: 200,
         afterALimitResetsMs: 20,
         now: () => pinned ?? Date.now(),
-        readProviderConfig: (_provider, home) => ({
-          home,
-          homeEnv: 'CLAUDE_CONFIG_DIR',
-          model: 'm',
-          authNote: null,
-          files: [],
-        }),
+        readProviderConfig: fixtureProviderConfig,
         providerAuth,
         // 🔒 A key store that keeps no key: `read` answers none, so every launch stays on the
         // (fake) login, and nothing here is a credential.
@@ -515,13 +509,7 @@ describe('13a0ab52 · a sign-in that changes ends only the limits the sign-in be
         providerHomePath: (which) => join(dir, 'homes', which),
         resolveCwd: () => cwd,
         newSessionId: () => `sess_door_${String(++counter)}`,
-        readProviderConfig: (_which, home) => ({
-          home,
-          homeEnv: 'CLAUDE_CONFIG_DIR',
-          model: 'm',
-          authNote: null,
-          files: [],
-        }),
+        readProviderConfig: fixtureProviderConfig,
       })
     })
 

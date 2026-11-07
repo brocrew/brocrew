@@ -24,7 +24,7 @@ import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import { RecordingSink } from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink } from './lib/host-fixture'
 
 /**
  * A wait names what will end it.
@@ -113,13 +113,7 @@ describe('a wait names what will end it', () => {
         newSessionId: () => `sess_${++counter}`,
         now: tick,
         startGapMs: 1,
-        readProviderConfig: (provider, home) => ({
-          home,
-          homeEnv: 'CLAUDE_CONFIG_DIR',
-          model: 'm',
-          authNote: null,
-          files: [],
-        }),
+        readProviderConfig: fixtureProviderConfig,
         statesMoved: () => undefined,
       })
     host = buildHost()

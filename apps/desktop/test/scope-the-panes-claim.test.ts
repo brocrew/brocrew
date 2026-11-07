@@ -38,7 +38,7 @@ import {
   readingSentence,
   aPersonsSince,
 } from '../src/shared/questions'
-import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 🔴 **602 · the pane may only claim what it looked at, and nothing may send a person to a card
@@ -114,13 +114,7 @@ describe('§1 · which row raised it, read off the ledger', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${String(++counter)}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 

@@ -817,13 +817,7 @@ describe('§6 · draw 8 (`707` GAP-5, R41) — every identity a person reads is 
         resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
         listProfiles: () => [DEFAULT_PROFILE_ID],
         newSessionId: () => `sess_${Math.random().toString(36).slice(2)}`,
-        readProviderConfig: (_provider, home) => ({
-          home,
-          homeEnv: 'CLAUDE_CONFIG_DIR',
-          model: 'm',
-          authNote: null,
-          files: [],
-        }),
+        readProviderConfig: fixtureProviderConfig,
       })
     })
 

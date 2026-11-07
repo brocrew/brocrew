@@ -1,3 +1,4 @@
+import { fixtureProviderConfig } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -218,13 +219,7 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
         providerHomePath: (provider) => join(userData, 'provider-homes', provider),
         resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
         newSessionId: () => `sess_${++counter}`,
-        readProviderConfig: (provider, home) => ({
-          home,
-          homeEnv: 'CLAUDE_CONFIG_DIR',
-          model: 'm',
-          authNote: null,
-          files: [],
-        }),
+        readProviderConfig: fixtureProviderConfig,
       })
       one = new RecordingSink('webContents:1')
       two = new RecordingSink('webContents:2')

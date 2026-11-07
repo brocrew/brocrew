@@ -1,3 +1,4 @@
+import { fixtureProviderConfig } from './lib/host-fixture'
 import { registerCalendarRevisionCases } from './helpers/calendar-revision-cases'
 import type { PersistedEventInfo } from '../src/shared/conversation-events'
 import type { AgentState } from '../src/shared/agent-state-contracts'
@@ -1564,13 +1565,7 @@ describe('§6 · the host puts a job’s time in the zone the Mac moved to', () 
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       // ⚑ **The dep that makes a host push, and start a stopped conversation for its job** — a host
       // nobody listens to arms no wake-up.
       statesMoved: (message) => {

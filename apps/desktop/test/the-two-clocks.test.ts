@@ -1,3 +1,4 @@
+import { fixtureProviderConfig } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { RoutedRequest } from '../src/shared/question-contracts'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
@@ -187,13 +188,7 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

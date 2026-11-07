@@ -21,7 +21,12 @@ import {
   type ResumableSessionInfo,
   type UnresumableSessionInfo,
 } from '../src/shared/runtime-ipc'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
 
 /**
  * The window's list of conversations says which piece a helper waits on on purpose.
@@ -77,13 +82,7 @@ describe('a listed row says which piece its conversation waits on on purpose', (
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       statesMoved: () => undefined,
     })
     window = new RecordingSink('webContents:1')

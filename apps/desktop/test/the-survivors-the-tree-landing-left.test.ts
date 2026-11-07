@@ -21,7 +21,7 @@ import { undrivenSentence } from '../src/shared/tasks'
 import { readOfferedResource } from '../src/main/resources/resources'
 import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
-import { RecordingSink } from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink } from './lib/host-fixture'
 
 /**
  * # The survivors the tree landing left — four mutation rows that no test killed
@@ -183,13 +183,7 @@ describe('the survivors the tree landing left', () => {
         resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
         newSessionId: () => `sess_${++counter}`,
         now: tick,
-        readProviderConfig: (_provider, home) => ({
-          home,
-          homeEnv: 'CLAUDE_CONFIG_DIR',
-          model: 'm',
-          authNote: null,
-          files: [],
-        }),
+        readProviderConfig: fixtureProviderConfig,
       })
       hosts.push(built)
       return built

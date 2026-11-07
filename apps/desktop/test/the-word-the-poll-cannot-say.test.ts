@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -162,13 +162,7 @@ describe('509 · the word the poll cannot say', () => {
       // the default reporter prints it only when a test in the file fails and it then sits
       // directly above the `AssertionError`. There is no assertion on the drain here.
       closeDrainTimeoutMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 

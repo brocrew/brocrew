@@ -18,7 +18,12 @@ import { scheduleHead } from '../src/renderer/src/lib/scheduled-work'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { clockTime } from '../src/shared/clock'
 import { type RuntimeStatesMessage } from '../src/shared/runtime-ipc'
-import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
 
 /**
  * # A scheduled job is listed, and leaves the listing, as it happens
@@ -152,13 +157,7 @@ describe('what is scheduled is said as it changes', () => {
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       // ⚑ Main hands every window this; without it the host arms neither countdown nor wake-up.
       statesMoved: (message: RuntimeStatesMessage): void => {
         pushed.push(message)
