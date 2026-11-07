@@ -24,6 +24,7 @@ const Request = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('list-v2') }),
   z.strictObject({ kind: z.literal('list-tool-health') }),
   z.strictObject({ kind: z.literal('list-tool-cause') }),
+  z.strictObject({ kind: z.literal('list-startup-diagnostic') }),
   z.strictObject({ kind: z.literal('features') }),
   z.strictObject({ kind: z.literal('restart-chrome') }),
   z.strictObject({ kind: z.literal('mutation-policy'), catalogueDigest: Hex }),
@@ -244,6 +245,7 @@ export async function servePersonPluginControl(options: {
                 ...PLUGIN_FRAMEWORK_FEATURES,
                 'tool-health-v1',
                 'tool-cause-v1',
+                'startup-diagnostic-v1',
                 ...(options.restartChrome ? ['chrome-recovery-v1'] : []),
                 ...(options.controller.preparedMutationFeature()
                   ? ['authors-v1', 'prepared-mutations-v1']
@@ -267,6 +269,8 @@ export async function servePersonPluginControl(options: {
               .filter((card) => visible(card.id))
               .map((card) => {
                 const legacy = { ...card }
+                delete legacy.unavailableReason
+                delete legacy.startupDiagnostic
                 delete legacy.toolsUnavailable
                 delete legacy.toolsCause
                 return legacy
@@ -277,10 +281,21 @@ export async function servePersonPluginControl(options: {
               .filter((card) => visible(card.id))
               .map((card) => {
                 const health = { ...card }
+                delete health.unavailableReason
+                delete health.startupDiagnostic
                 delete health.toolsCause
                 return health
               })
           case 'list-tool-cause':
+            return (await options.controller.status()).cards
+              .filter((card) => visible(card.id))
+              .map((card) => {
+                const legacy = { ...card }
+                delete legacy.unavailableReason
+                delete legacy.startupDiagnostic
+                return legacy
+              })
+          case 'list-startup-diagnostic':
             return (await options.controller.status()).cards.filter((card) => visible(card.id))
           case 'restart-chrome':
             if (!options.restartChrome || !visible('chrome'))

@@ -256,6 +256,7 @@ export function productionPluginController() {
                 (card) => card.installed && !releases.some((release) => release.id === card.id),
               ),
             ]
+      const pendingPlugin = observeInstallations()?.pending
       const cards: PluginCard[] = offered.map((entry) => {
         const card = admittedCards.find((one) => one.id === entry.id)
         if (card && (card.state !== 'Unavailable' || card.installed === true)) {
@@ -264,7 +265,11 @@ export function productionPluginController() {
           return {
             ...installed,
             ...(card.state === 'Unavailable'
-              ? { unavailableReason: 'operation-pending' as const }
+              ? {
+                  unavailableReason:
+                    card.unavailableReason ??
+                    (pendingPlugin === card.id ? ('operation-pending' as const) : undefined),
+                }
               : {}),
             ...(card.installed === true && !release ? { updatesUnavailable: true as const } : {}),
             ...(updateVersion && release?.version === updateVersion ? { updateVersion } : {}),
@@ -275,9 +280,11 @@ export function productionPluginController() {
         return {
           ...hint,
           unavailableReason:
-            hint.installed !== false || releases.some((one) => one.id === entry.id)
+            pendingPlugin === entry.id
               ? 'operation-pending'
-              : 'unsupported',
+              : hint.installed !== false || releases.some((one) => one.id === entry.id)
+                ? card?.unavailableReason
+                : 'unsupported',
         }
       })
       entries = cards.map((card) => ({
