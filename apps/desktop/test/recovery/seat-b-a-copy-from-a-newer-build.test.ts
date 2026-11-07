@@ -484,7 +484,7 @@ function stoppedAfterTheMarker(): { fs: RecoveryFs; stopped: () => boolean } {
     mkdir: (path, options) => change(() => UNFLUSHED.mkdir(path, options)),
     rmdir: (path) => change(() => UNFLUSHED.rmdir(path)),
     mkdtemp: (prefix) => change(() => UNFLUSHED.mkdtemp(prefix)),
-    chmod: (path, mode) => change(() => UNFLUSHED.chmod(path, mode)),
+
     open: async (path, flags, mode) => {
       if (flags === 'r') return UNFLUSHED.open(path, flags, mode)
       const handle = await change(() => UNFLUSHED.open(path, flags, mode))

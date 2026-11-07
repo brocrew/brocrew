@@ -102,7 +102,6 @@ export interface RecoveryFs {
     options?: { readonly mode?: number; readonly flag?: string },
   ): Promise<void>
   readdir(path: string): Promise<string[]>
-  chmod(path: string, mode: number): Promise<void>
 }
 
 /** Keep Windows' 64-bit file IDs exact while retaining the existing safe-number representation. */
@@ -152,7 +151,6 @@ export const nodeFs: RecoveryFs = {
   readFile: (path) => nodeFsPromises.readFile(path, 'utf8'),
   writeFile: (path, data, options) => nodeFsPromises.writeFile(path, data, options),
   readdir: (path) => nodeFsPromises.readdir(path),
-  chmod: (path, mode) => nodeFsPromises.chmod(path, mode),
 }
 
 /** A Node error's `code` (`ENOENT`, `EBUSY`…), or undefined for anything else. */

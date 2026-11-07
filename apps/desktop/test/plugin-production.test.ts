@@ -14,7 +14,6 @@ import { packageFixture } from './plugin-package-fixtures'
 import { repoListFor } from './plugin-repo-list-fixtures'
 import { PLUGIN_LIST_URL, PLUGIN_LIST_V2_URL } from '../src/main/plugins/catalogue/download'
 import { readPluginInstructions } from '../src/main/plugins/instructions'
-import * as privateFiles from '../src/main/plugins/private-files'
 vi.mock('../src/main/plugins/ui/host', () => ({ openPluginConfigurationView: vi.fn() }))
 const seams = vi.hoisted(() => ({
   connect: vi.fn(),

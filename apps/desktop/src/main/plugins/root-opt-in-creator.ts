@@ -165,7 +165,6 @@ export async function createPluginRootSelection(options: Options, hooks: Hooks =
   if (options.mode !== undefined && options.mode !== 'own') fail('mode must be own or shared')
   const initial = plan(options)
 
-
   if (!options.apply || initial.status === 'already selected') return publicPlan(initial)
   const lockPath = join(initial.parent, 'plugin-root-pins.lock')
   let lock: number
@@ -177,7 +176,6 @@ export async function createPluginRootSelection(options: Options, hooks: Hooks =
   const lockIdentity = lstatSync(lockPath, { bigint: true })
   const held: Array<{ path: string; pin: DirectoryPin; identity: BigIntStats }> = []
   try {
-
     writeFileSync(lock, 'Offline plugin setup creation in progress.\n')
     fsyncSync(lock)
     const current = plan(options)
@@ -209,8 +207,6 @@ export async function createPluginRootSelection(options: Options, hooks: Hooks =
       const path = join(directory, `.plugin-root-${label}-${randomUUID()}.tmp`)
       const fd = openSync(path, 'wx', 0o600)
       try {
-
-
         writeFileSync(fd, content)
         fsyncSync(fd)
       } finally {
@@ -375,7 +371,6 @@ function removalPreview(value: ReturnType<typeof removalPlan>) {
 async function removePluginRootSelection(options: Options, hooks: Hooks) {
   const initial = removalPlan(options)
 
-
   if (!options.apply || initial.status === 'already shared') return removalPreview(initial)
   const lockPath = join(initial.parent, 'plugin-root-pins.lock')
   let lock: number
@@ -387,7 +382,6 @@ async function removePluginRootSelection(options: Options, hooks: Hooks) {
   const lockIdentity = lstatSync(lockPath, { bigint: true })
   const held: Array<{ path: string; pin: DirectoryPin; identity: BigIntStats }> = []
   try {
-
     writeFileSync(lock, 'Offline shared plugin setup selection in progress.\n')
     fsyncSync(lock)
     const current = removalPlan(options)
@@ -420,8 +414,6 @@ async function removePluginRootSelection(options: Options, hooks: Hooks) {
       pinTemp = join(current.parent, `.plugin-root-pins-${randomUUID()}.tmp`)
       const fd = openSync(pinTemp, 'wx', 0o600)
       try {
-
-
         writeFileSync(fd, JSON.stringify(current.remaining, null, 2) + '\n')
         fsyncSync(fd)
       } finally {
@@ -553,7 +545,6 @@ export async function rootOptInCommand(args: string[]) {
 async function pluginRootState(options: Options): Promise<'own' | 'shared'> {
   if (options.apply) return fail('state is read-only; omit --apply')
   const paths = selectionPaths(options, true)
-
 
   const root = workspacePluginRoot({
     appData: paths.appData,

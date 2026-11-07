@@ -46,7 +46,6 @@ describe('provisionProviderHome (021)', () => {
     await provisionProviderHome(root, home)
     expect(existsSync(home)).toBe(true)
 
-
   })
 
   it('is idempotent when the home already exists', async () => {

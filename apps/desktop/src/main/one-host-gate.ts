@@ -152,9 +152,8 @@ export function hostGatePath(
  *
  * The folder is in this user's home as the user database records it, never read from the
  * environment: two launches on one folder that disagree about `HOME` or `TMPDIR` would otherwise
- * find two gates, and both answer `sole`. No other user can write there, so none can take the
- * place first. It is made private and checked before every use all the same: a folder or a name
- * there that is not this user's own answers `unknown`, never `sole` or `taken`.
+ * find two gates, and both answer `sole`. Socket kind, liveness and the protocol decide whether
+ * another host is present; filesystem ownership does not supply that answer.
  */
 export interface OutsideGates {
   /** `~/Library/Caches/brobot2-gates` on macOS, `~/.cache/brobot2-gates` elsewhere. */
@@ -256,9 +255,8 @@ function namesFit(gate: PosixGate, platform: string): boolean {
 }
 
 /**
- * Whether the folder of gates outside their data folders is this user's: a folder owned by this
- * user, or a link the person made to one. Made first when `make` is set. A folder others may enter
- * is made private again, and used either way: the name in it must still be this user's socket.
+ * Whether the outside gate folder exists as a directory, following a link the person made.
+ * Create it first when `make` is set; actual filesystem errors prevent its use.
  */
 function thePrivateFolder(
   outside: OutsideGates,
@@ -288,7 +286,7 @@ function thePrivateFolder(
   return 'private'
 }
 
-/** What is at a public name outside the data folder: nothing, this user's socket, or anything else. */
+/** What is at a public name outside the data folder: nothing, a socket, or anything else. */
 function atThePublicName(path: string, outside: OutsideGates): 'nothing' | 'ours' | 'not-ours' {
   try {
     const seen = outside.lstat(path)

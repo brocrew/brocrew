@@ -2592,7 +2592,6 @@ function start(ownership: HostGateVerdict): void {
       startRecordingWhatTheOlderOnesRan(host)
       // Said once in the log when anyone else may read the data folder; Settings shows it too.
 
-
       // Log only when app memory grows or agents exceed runaway floors (`memory-watch.ts`).
       // Write to a file as well as the console: packaged stderr may have no recipient, and a
       // terminal log may be lost after the process is killed. Keep `sample`'s last app reading

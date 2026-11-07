@@ -1,5 +1,4 @@
 import Database from 'better-sqlite3'
-import { execFileSync } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
 import {
   appendFileSync,

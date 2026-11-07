@@ -173,7 +173,6 @@ function ownedViewStorage(managedRoot: string, home: string, current: () => bool
     },
     async complete() {
       verify()
-      verify()
     },
   }
   return {

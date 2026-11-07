@@ -149,10 +149,13 @@ describe('private Chrome package', () => {
       loadConfig({ BROCREW_CHROME_DATA: config.home, BROCREW_CHROME_AUTH: link }),
     ).toThrow('Plugin unavailable')
     if (process.platform !== 'win32') {
+      fs.chmodSync(config.home, 0o755)
       fs.chmodSync(config.authPath, 0o644)
       expect(() =>
         loadConfig({ BROCREW_CHROME_DATA: config.home, BROCREW_CHROME_AUTH: config.authPath }),
       ).not.toThrow()
+      expect(fs.statSync(config.home).mode & 0o777).toBe(0o755)
+      expect(fs.statSync(config.authPath).mode & 0o777).toBe(0o644)
     }
   })
   it('authenticates health and admin separately from tools, and refuses browser origins', async () => {

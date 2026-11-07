@@ -431,7 +431,7 @@ function dyingAt(at: number): { readonly fs: RecoveryFs; readonly changes: () =>
     mkdir: (path, options) => change(() => real.mkdir(path, options)),
     mkdtemp: (prefix) => change(() => real.mkdtemp(prefix)),
     writeFile: (path, data, options) => change(() => real.writeFile(path, data, options)),
-    chmod: (path, mode) => change(() => real.chmod(path, mode)),
+
     open: async (path, flags, mode) => {
       if (flags === 'r') return real.open(path, flags, mode)
       const handle = await change(() => real.open(path, flags, mode))

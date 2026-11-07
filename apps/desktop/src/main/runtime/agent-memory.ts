@@ -617,7 +617,6 @@ async function rewrite(
   const before = lstatSync(path)
   if (!before.isFile()) throw new Error(`${path} is not a regular file, so it was not rewritten`)
   const staged = aStagingName(join(folder, `.${basename(path)}`))
-  seams.beforeStageCreate?.(folder)
   const fd = createFreshFile(staged)
   writing.add(staged)
   try {

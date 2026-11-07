@@ -497,7 +497,6 @@ export function productionPluginController() {
         let attempt: Peer | undefined
         let storage: SupervisorStorage | undefined
         try {
-
           storage = new SupervisorStorage(options.root, [options.workspaceRoot], true)
           diagnosticRoot = options.root
           phase = 'catalogue'

@@ -298,7 +298,7 @@ export function createSharedProfileStore(
     }
     return r
   }
-  const initialRegistry = read()
+  read()
   const local = createProfileStore({ home: o.home, now: o.now, scopedAuthorization: true })
   const write = (r: Registry) => {
     r.revision++

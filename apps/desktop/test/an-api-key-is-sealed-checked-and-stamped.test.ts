@@ -336,7 +336,6 @@ describe('bringTheCodexKeyTo', () => {
     expect(stamp()).toEqual({ setAt: 500 })
     expect(readFileSync(join(home, STAMP), 'utf8')).not.toContain(KEY)
 
-
     expect(await bringTheCodexKeyTo(home, seam)).toBe('the-key')
     expect(changes).toHaveBeenCalledTimes(1)
   })

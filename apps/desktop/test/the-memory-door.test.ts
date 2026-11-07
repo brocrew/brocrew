@@ -727,16 +727,19 @@ describe('durable memory operations through the person window doors', () => {
         },
         sink,
       )
+      await waiting
       expect(
         quitting.agentIdentities().use.find((one) => one.slug === 'lark')?.isChangingMemory,
       ).toBe(true)
       await quitting.closeAll()
       const before = reads.mock.calls.length
+      release()
       expect(await change).toBeNull()
       expect(reads.mock.calls.length).toBe(before)
       expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
       expect(store.hasPendingMemoryAmendment('lark')).toBe(true)
     } finally {
+      release()
       await quitting.closeAll()
     }
   })
@@ -771,8 +774,10 @@ describe('memory shutdown and missing-service boundaries', () => {
       )
       await new Promise<void>((yes) => setImmediate(yes))
       expect(settled).toBe(false)
+      release()
       await expect(closing).rejects.toThrow('Fictional session close failure')
     } finally {
+      release()
       restoreClose()
       await gated.closeAll()
     }

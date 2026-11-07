@@ -122,7 +122,7 @@ async function readBounded(response: Response): Promise<unknown> {
 }
 
 /**
- * Copies the packaged program into the private bin folder as an owner-only executable, but only when
+ * Copies the packaged program into its bin folder as an executable, but only when
  * its bytes are the ones this server was built with. The package's own files are read-only. The copy
  * keeps the program's extension: Windows starts no program file without one, such as `.exe`.
  */
