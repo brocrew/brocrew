@@ -151,7 +151,8 @@ it('retains a split first stderr line and real child exit through wrappers into 
   const log = await readFile(join(root, 'plugin-startup.log'), 'utf8')
   expect(log).toContain(pluginStartupDiagnosticNotice(diagnostic))
   expect(log).not.toContain('fictional-capability')
-  expect(log).not.toContain('second private stack line') // It fell outside the retained stderr tail.
+  expect(diagnostic.stderr).not.toContain('second private stack line')
+  expect(log).toContain('second private stack line')
 })
 it('does not invent a child exit or stderr at an attachment timeout and bounds escaped text', () => {
   const snapshot = observePluginSupervisorLaunch(
@@ -175,7 +176,9 @@ it('does not invent a child exit or stderr at an attachment timeout and bounds e
 it('keeps the real multiline startup error after a loader preamble in Settings and the log', async () => {
   const stderr = Object.assign(new EventEmitter(), { unref: vi.fn() })
   const child = { stderr, exitCode: 1, signalCode: null }
-  const snapshot = observePluginSupervisorLaunch(child as unknown as ChildProcess, ['fictional-key'])
+  const snapshot = observePluginSupervisorLaunch(child as unknown as ChildProcess, [
+    'fictional-key',
+  ])
   stderr.emit('data', Buffer.from('node:internal/modules/cjs/loader:2142\n  throw error;\n'))
   stderr.emit('data', Buffer.from(' '.repeat(5000)))
   stderr.emit('data', Buffer.from("\nError: Cannot find module 'fictional-missing-module'\n"))

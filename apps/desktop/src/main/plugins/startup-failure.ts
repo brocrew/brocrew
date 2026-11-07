@@ -159,13 +159,20 @@ export function observePluginSupervisorLaunch(child: ChildProcess, secrets: read
   })
   ;(child.stderr as (NodeJS.ReadableStream & { unref?(): void }) | null)?.unref?.()
   const snapshot = () =>
-    new PluginSupervisorLaunchFailure({
-      exitCode: child.exitCode,
-      signal: child.signalCode,
-      stderr: pluginStartupStderr(errorLine ?? firstLine ?? stderr, secrets),
-    }, undefined, redactPluginStartupText(stderr, secrets)
-      .replace(/[\p{Cc}\p{Cs}\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu, (one) => one === '\n' ? '\n' : ' ')
-      .slice(-16 * 1024).trim())
+    new PluginSupervisorLaunchFailure(
+      {
+        exitCode: child.exitCode,
+        signal: child.signalCode,
+        stderr: pluginStartupStderr(errorLine ?? firstLine ?? stderr, secrets),
+      },
+      undefined,
+      redactPluginStartupText(stderr, secrets)
+        .replace(/[\p{Cc}\p{Cs}\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu, (one) =>
+          one === '\n' ? '\n' : ' ',
+        )
+        .slice(-16 * 1024)
+        .trim(),
+    )
   return Object.assign(snapshot, {
     async drainUntil(deadline: number): Promise<void> {
       if (ended) return
@@ -264,7 +271,11 @@ export async function recordPluginStartupFailure(
   if (!root) return
   const temporary = join(root, `.plugin-startup-${randomUUID()}.log`)
   try {
-    await writeFile(temporary, `${new Date().toISOString()} ${line}\n${stderrOutput ? `${stderrOutput}\n` : ''}`, { flag: 'wx', mode: 0o600 })
+    await writeFile(
+      temporary,
+      `${new Date().toISOString()} ${line}\n${stderrOutput ? `${stderrOutput}\n` : ''}`,
+      { flag: 'wx', mode: 0o600 },
+    )
     // Replacement never follows an existing diagnostic-file symlink.
     await rename(temporary, join(root, 'plugin-startup.log'))
   } catch {

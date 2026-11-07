@@ -22,23 +22,33 @@ export async function checkPackagedPluginService(resources) {
       platform: 'node',
       target: 'node24',
       format: 'cjs',
-      plugins: [{
-        name: 'standalone-node-sqlite',
-        setup(builder) {
-          builder.onResolve({ filter: /^better-sqlite3$/ }, () => ({
-            path: join(root, 'apps/desktop/src/main/plugins/supervisor/sqlite-adapter.ts'),
-          }))
+      plugins: [
+        {
+          name: 'standalone-node-sqlite',
+          setup(builder) {
+            builder.onResolve({ filter: /^better-sqlite3$/ }, () => ({
+              path: join(root, 'apps/desktop/src/main/plugins/supervisor/sqlite-adapter.ts'),
+            }))
+          },
         },
-      }],
+      ],
     })
     const node = join(resources, 'plugin-node', process.platform === 'win32' ? 'node.exe' : 'node')
-    const program = 'require(process.argv[1]).smoke(process.argv[2], process.argv[3]).catch(e => { console.error(e); process.exitCode = 1 })'
+    const program =
+      'require(process.argv[1]).smoke(process.argv[2], process.argv[3]).catch(e => { console.error(e); process.exitCode = 1 })'
     const result = spawnSync(node, ['-e', program, harness, resources, scratch], {
       cwd: scratch,
       env: {
-        ...(process.platform === 'win32' ? { SystemRoot: process.env.SystemRoot, windir: process.env.windir } : {}),
-        HOME: scratch, USERPROFILE: scratch, TMPDIR: scratch, TMP: scratch, TEMP: scratch,
-        PATH: process.platform === 'win32' ? `${process.env.SystemRoot}\\System32` : '/usr/bin:/bin',
+        ...(process.platform === 'win32'
+          ? { SystemRoot: process.env.SystemRoot, windir: process.env.windir }
+          : {}),
+        HOME: scratch,
+        USERPROFILE: scratch,
+        TMPDIR: scratch,
+        TMP: scratch,
+        TEMP: scratch,
+        PATH:
+          process.platform === 'win32' ? `${process.env.SystemRoot}\\System32` : '/usr/bin:/bin',
       },
       encoding: 'utf8',
       timeout: 60000,
@@ -48,7 +58,9 @@ export async function checkPackagedPluginService(resources) {
     if (result.stdout) process.stdout.write(result.stdout)
     if (result.stderr) process.stderr.write(result.stderr)
     if (result.error || result.status !== 0)
-      throw new Error(`Packaged plugin service failed: exit=${result.status} signal=${result.signal}; ${result.error?.message ?? ''}; evidence=${scratch}`)
+      throw new Error(
+        `Packaged plugin service failed: exit=${result.status} signal=${result.signal}; ${result.error?.message ?? ''}; evidence=${scratch}`,
+      )
     passed = true
   } finally {
     if (passed) await rm(scratch, { recursive: true, force: true })
