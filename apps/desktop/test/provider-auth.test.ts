@@ -84,18 +84,13 @@ class FakeAuthOps implements ProviderAuthOps {
     this.pending.shift()?.(outcome)
   }
 
-  /**
-   * When set, `check` never settles **while nobody has aborted it** — so the host's deadline is what
-   * has to end the WAIT.
-   *
-   * ⛔ **It settles on abort, and 202 is why that clause had to be added.** The double used to hang
-   * forever regardless of the signal, which is not what it stands in for: `probeCodexAuthInHome`
-   * closes its transport in a `finally` and its docblock pins the contract — *"a cancelled check
-   * answers `unknown`; it does not throw"*. That difference was invisible while nothing waited on
-   * the work; once a quit started waiting for the CHILD rather than for its own patience (191 H2),
-   * a double that never lets go models a provider this app does not have.
-   */
+  /** A held check answers only when released or when its own signal is aborted. */
   hangCheck = false
+  private heldCheck: ((state: AuthState) => void) | null = null
+  releaseCheck(): void {
+    this.heldCheck?.(this.state)
+    this.heldCheck = null
+  }
   /** When set, `check` fails with it: the question could not be asked at all. */
   failCheck: Error | null = null
   /**
@@ -127,6 +122,7 @@ class FakeAuthOps implements ProviderAuthOps {
     if (this.failCheck !== null) throw this.failCheck
     if (this.hangCheck) {
       return await new Promise<AuthState>((resolve) => {
+        this.heldCheck = resolve
         signal?.addEventListener('abort', () => resolve({ state: 'unknown', reason: 'canceled' }), {
           once: true,
         })
@@ -712,25 +708,37 @@ describe('the credential commands, at the boundary that validates them (098)', (
     expect(await pending).toMatchObject({ success: false })
   })
 
-  it('a check that never answers becomes `unknown`, rather than a promise nobody can settle', async () => {
+  it('a slow check stays pending without aborting, then returns the answer it receives', async () => {
     auth.hangCheck = true
-    const state = (await run({ kind: 'checkProviderAuth', provider: 'codex' })) as AuthState
-    expect(state.state).toBe('unknown')
-    // 🔒 And the reason is OURS — a rejected transport carries up to 500 bytes of the child's raw
-    // stderr, and the child is the one holding a credential.
-    expect(state.state === 'unknown' && state.reason).not.toMatch(/stderr|token/i)
-    // 🔴 It says the check ran out of time and that nothing was learned about the sign-in, so a
-    // person does not read it as signed out.
-    expect(state.state === 'unknown' && state.reason).toBe(signInNotChecked(true))
-    expect(signInNotChecked(true)).toContain('did not finish in time')
-    expect(signInNotChecked(true)).toContain(A_CHECK_NOT_ANSWERED_SAYS)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const pending = run({ kind: 'checkProviderAuth', provider: 'codex' })
+    let settled = false
+    void pending.then(
+      () => {
+        settled = true
+      },
+      () => {
+        settled = true
+      },
+    )
+    try {
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(auth.signals).toHaveLength(1)
+      expect(auth.signals[0]?.aborted).toBe(false)
+      expect(settled).toBe(false)
+      auth.releaseCheck()
+      expect(await pending).toEqual(auth.state)
+      expect(auth.signals[0]?.aborted).toBe(false)
+    } finally {
+      auth.releaseCheck()
+      vi.useRealTimers()
+    }
 
-    // Paired: with the hang cleared the same command answers properly, so the deadline is not
-    // swallowing every result.
     auth.hangCheck = false
     expect(((await run({ kind: 'checkProviderAuth', provider: 'codex' })) as AuthState).state).toBe(
       'usable',
     )
+    expect(auth.signals[1]?.aborted).toBe(false)
   }, 20_000)
 
   it('🔴 a check that could not be asked says so, apart from one that ran out of time', async () => {
@@ -745,29 +753,40 @@ describe('the credential commands, at the boundary that validates them (098)', (
     expect(signInNotChecked(false)).not.toBe(signInNotChecked(true))
   })
 
-  /**
-   * ⛔ **185 · the deadline releases the waiter; the abort releases the work.**
-   *
-   * `withDeadline`'s own docblock has said so since 058 — *"It does not cancel `p`… Rejecting only
-   * releases the AWAITER"* — and on this path `p` is a detached `codex app-server`. Measured before
-   * the fix, 5 trials: 5/5 left a live child and a held boot gate ten seconds after the app had
-   * already answered `unknown`, and 5/5 of those survived the quit.
-   */
-  it('⛔ a check that never answers has its WORK released too, not just its waiter', async () => {
+  it('quitting a slow check aborts its work and settles its waiter', async () => {
     auth.hangCheck = true
-    const state = (await run({ kind: 'checkProviderAuth', provider: 'codex' })) as AuthState
-
-    expect(state.state).toBe('unknown')
-    expect(auth.signals, 'the op was given something that can reach the child').toHaveLength(1)
-    expect(auth.signals[0]?.aborted, 'and it was used when the deadline expired').toBe(true)
-
-    // The pairing, and it is what makes this about the deadline rather than about always aborting:
-    // a check that answers is never cancelled, so its app-server tears itself down the ordinary way.
-    auth.hangCheck = false
-    expect(((await run({ kind: 'checkProviderAuth', provider: 'codex' })) as AuthState).state).toBe(
-      'usable',
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const pending = run({ kind: 'checkProviderAuth', provider: 'codex' })
+    let settled = false
+    void pending.then(
+      () => {
+        settled = true
+      },
+      () => {
+        settled = true
+      },
     )
-    expect(auth.signals[1]?.aborted).toBe(false)
+    try {
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(auth.signals).toHaveLength(1)
+      expect(auth.signals[0]?.aborted).toBe(false)
+      expect(settled).toBe(false)
+      vi.useRealTimers()
+      await host.closeAll()
+      expect(auth.signals[0]?.aborted).toBe(true)
+      expect(await pending).toMatchObject({
+        state: 'unknown',
+        reason: 'The sign-in check was cancelled.',
+      })
+      expect(await run({ kind: 'checkProviderAuth', provider: 'codex' })).toMatchObject({
+        state: 'unknown',
+        reason: 'BroCrew is shutting down, so it did not ask.',
+      })
+      expect(auth.signals).toHaveLength(1)
+    } finally {
+      auth.releaseCheck()
+      vi.useRealTimers()
+    }
   }, 20_000)
 
   it('⛔ quitting releases a credential check still in flight', async () => {

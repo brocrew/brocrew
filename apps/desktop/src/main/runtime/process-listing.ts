@@ -30,16 +30,6 @@ export interface ListedProcess {
   readonly cpu: number
 }
 
-/** What a person reads when a listing that can be made failed this once. */
-export const NOT_LISTED_JUST_NOW = 'This computer did not list its processes just now.'
-
-/**
- * The same, where the listing is asked again within seconds: the Providers screen, which samples
- * for as long as it is looked at. ⛔ Not for a reader nothing asks again soon.
- */
-export const NOT_LISTED_AND_ASKED_AGAIN =
-  'This computer did not list its processes just now; it is asked again in a moment.'
-
 /** Runs a PowerShell command and answers what it printed. */
 export type RunPowerShell = (command: string) => Promise<string>
 

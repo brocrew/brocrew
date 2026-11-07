@@ -42,14 +42,6 @@ import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runt
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
-/**
- * ⚑ **D-017b · the `not-confirmed-stopped` refusal's own clause** — it said *"its agent has not
- * confirmed that it stopped"*, a process fact (`05` rule 5), and now says what BroBot2 has not
- * finished. ⛔ One literal for the refusal AND for the paired *no longer refused for that reason*
- * below, so the negative cannot go vacuous under a rewording the positive did not follow.
- */
-const NOT_CONFIRMED_STOPPED = 'has not finished putting away its last session'
-
 class RecordingSink implements RuntimeEventSink {
   readonly aPersonIsBehindIt = false
   readonly messages: RuntimeEventMessage[] = []
@@ -76,6 +68,20 @@ async function waitFor(predicate: () => boolean, what: string, timeoutMs = 2_000
     await new Promise((resolve) => setTimeout(resolve, 5))
   }
   throw new Error(`timed out waiting for ${what}`)
+}
+
+async function expectWaitingForExit(work: Promise<unknown>): Promise<void> {
+  let settled = false
+  void work.then(
+    () => {
+      settled = true
+    },
+    () => {
+      settled = true
+    },
+  )
+  await new Promise((resolve) => setTimeout(resolve, 100))
+  expect(settled).toBe(false)
 }
 
 /**
@@ -407,7 +413,7 @@ describe('hand-back keeps the id until the provider is really gone (070, from 06
     rmSync(dir, { recursive: true, force: true })
   })
 
-  it('refuses a resume attempted while the handed-back provider is still closing', async () => {
+  it('a resume waits while the handed-back provider is still closing', async () => {
     const sink = new RecordingSink()
     const created = await host.createSession({ provider: 'claude', cwd: dir }, sink)
     await waitFor(() => store.find(created.sessionId)?.ref !== undefined, 'the provider ref')
@@ -433,22 +439,19 @@ describe('hand-back keeps the id until the provider is really gone (070, from 06
     const handedBack = gated
     expect(handedBack?.closed()).toBe(false)
 
-    // ⚠️ **Two providers for one record must be impossible.** Before 070 the reservation was freed
-    // on the first line of `handBack`, so this resume was admitted and spawned a second child onto
-    // the same transcript while the first was still shutting down.
-    await expect(
-      host.resumeSession(created.sessionId, new RecordingSink('owner:2')),
-    ).rejects.toThrow(NOT_CONFIRMED_STOPPED)
-    expect(resumes).toBe(1)
-
-    // …and the id comes back the moment the provider really is gone. Refusing forever would be a
-    // different bug: a conversation permanently unopenable because one close was slow.
-    arriving = null
-    closing.resolve()
+    // The old provider remains owned: this same reopen waits without launching another child.
+    const next = host.resumeSession(created.sessionId, new RecordingSink('owner:2'))
+    try {
+      await expectWaitingForExit(next)
+      expect(resumes).toBe(1)
+      expect(handedBack?.closed()).toBe(false)
+    } finally {
+      arriving = null
+      closing.resolve()
+    }
     await waitFor(() => handedBack?.closed() === true, 'the provider to finish closing')
-    await expect(
-      host.resumeSession(created.sessionId, new RecordingSink('owner:3')),
-    ).resolves.toMatchObject({ sessionId: created.sessionId })
+    await expect(next).resolves.toMatchObject({ sessionId: created.sessionId })
+    expect(resumes).toBe(2)
   })
 })
 
@@ -569,11 +572,12 @@ describe('a provider the host could not confirm stopped (070)', () => {
 
   function buildHost() {
     let counter = 0
+    const sessions = new FakeProviderSessions()
     return new RuntimeHost({
       store,
       ...neutralHostDeps(() => dir),
       createRuntime: (provider): AgentRuntime => {
-        const real = new FakeRuntime(provider)
+        const real = new FakeRuntime(provider, { sessions })
         return {
           provider,
           listModels: (context) => real.listModels(context),
@@ -672,7 +676,7 @@ describe('a provider the host could not confirm stopped (070)', () => {
     expect(store.recordedOne(created.sessionId)?.lastEnding).toBe('unknown')
   })
 
-  it('keeps the id refused until the provider really goes', async () => {
+  it('keeps the reopen waiting until the provider really goes', async () => {
     const sink = new RecordingSink()
     const created = await host.createSession({ provider: 'codex', cwd: dir }, sink)
     await waitFor(() => store.find(created.sessionId)?.ref !== undefined, 'the provider ref')
@@ -681,9 +685,14 @@ describe('a provider the host could not confirm stopped (070)', () => {
     // The slot is gone — the session is over as far as the UI is concerned — but the process is not
     // confirmed down, and the UI's Reopen button is one click away.
     expect(host.sessionIds).toEqual([])
-    await expect(
-      host.resumeSession(created.sessionId, new RecordingSink('owner:2')),
-    ).rejects.toThrow(NOT_CONFIRMED_STOPPED)
+    const next = host.resumeSession(created.sessionId, new RecordingSink('owner:2'))
+    try {
+      await expectWaitingForExit(next)
+      expect(host.sessionIds).toEqual([])
+    } finally {
+      closing.resolve()
+    }
+    await expect(next).resolves.toMatchObject({ sessionId: created.sessionId })
   })
 })
 
@@ -1042,7 +1051,7 @@ describe('233 · a close that resolves is not a process that exited (from 229 H1
     expect(store.find(created.sessionId)?.status).toBe('ended')
   })
 
-  it('⛔ keeps the launch, so a reopen into the gap is refused with a sentence', async () => {
+  it('keeps the launch, so a reopen waits until the resolved close has a proven exit', async () => {
     const sink = new RecordingSink()
     const created = await host.createSession({ provider: 'codex', cwd: dir }, sink)
     await waitFor(() => store.find(created.sessionId)?.ref !== undefined, 'the provider ref')
@@ -1052,11 +1061,15 @@ describe('233 · a close that resolves is not a process that exited (from 229 H1
     // The slot is gone — the UI has moved this conversation to Reopen — and the process is not.
     expect(host.sessionIds).toEqual([])
     expect(exit.isConfirmed).toBe(false)
-    await expect(
-      host.resumeSession(created.sessionId, new RecordingSink('owner:2')),
-    ).rejects.toThrow(NOT_CONFIRMED_STOPPED)
-    // ⛔ **Refused, not raced.** Before 233 this resume SUCCEEDED against a live process, because
-    // `launches.finish` had been handed the resolved teardown as the termination fact.
+    const next = host.resumeSession(created.sessionId, new RecordingSink('owner:2'))
+    try {
+      await expectWaitingForExit(next)
+      expect(exit.isConfirmed).toBe(false)
+      expect(host.sessionIds).toEqual([])
+    } finally {
+      exit.confirm()
+    }
+    await expect(next).resolves.toMatchObject({ sessionId: created.sessionId })
   })
 
   it('⛔ warns on the quit instead of certifying a clean stop', async () => {
@@ -1091,7 +1104,7 @@ describe('233 · a close that resolves is not a process that exited (from 229 H1
 
     await host.close(created.sessionId, sink)
 
-    // ⚑ **Ownership released, asserted as the mirror of the refusal two tests up.** A resume that
+    // Ownership released, paired with the pending reopen above. A resume that
     // RESOLVES is the only observation available from outside that `launches.finish` let the entry
     // go — and it is the better one, because it is the user-visible consequence: the Reopen button
     // works the moment the process is really gone.
@@ -1181,7 +1194,7 @@ describe('233 · a launch handed back while starting is owned against the proces
     rmSync(dir, { recursive: true, force: true })
   })
 
-  it('⛔ keeps the id refused after handBack, until the process is proven gone', async () => {
+  it('keeps a reopen pending after handBack until exit, then says the conversation was never recorded', async () => {
     const sink = new RecordingSink()
     const creating = host.createSession({ provider: 'codex', cwd: dir }, sink)
     creating.catch(() => {})
@@ -1199,18 +1212,17 @@ describe('233 · a launch handed back while starting is owned against the proces
     // The teardown resolved — the double's `close()` has no `await` in its body, exactly as a
     // wedged Claude's resolves on the SDK's bounded receipt — and the process did not.
     expect(exit.isConfirmed).toBe(false)
-    await expect(host.resumeSession('sess_1', new RecordingSink('owner:2'))).rejects.toThrow(
-      NOT_CONFIRMED_STOPPED,
-    )
-
-    // ⚑ **The paired positive: the refusal is the OWNERSHIP's, and it lifts when the process goes.**
-    // Asserted as "no longer refused for that reason" rather than as a successful reopen, because a
-    // handed-back launch never registered a provider ref for one to resume onto — so a resolved
-    // resume here would be a different claim than the one under test.
-    exit.confirm()
-    await new Promise((resolve) => setTimeout(resolve, 20))
-    await expect(host.resumeSession('sess_1', new RecordingSink('owner:2'))).rejects.not.toThrow(
-      NOT_CONFIRMED_STOPPED,
-    )
+    expect(store.recordedOne('sess_1')).toBeNull()
+    const next = host.resumeSession('sess_1', new RecordingSink('owner:2'))
+    try {
+      await expectWaitingForExit(next)
+      expect(starts).toBe(1)
+      expect(exit.isConfirmed).toBe(false)
+    } finally {
+      exit.confirm()
+    }
+    await expect(next).rejects.toMatchObject({ cause: { unavailable: 'not-recorded' } })
+    expect(store.recordedOne('sess_1')).toBeNull()
+    expect(starts).toBe(1)
   })
 })

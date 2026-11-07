@@ -866,17 +866,13 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       expect(host_).not.toContain('proposalBoundMs')
       expectNoDeadlineDeps(mainRoot, 'answer-windows')
       // ⚑ **THE POSITIVE CONTROL, and it is the distinction rather than a spare string.** ⚠️ This
-      // class still resolves three injected numbers — the drain, the interrupt wait and the
-      // launch timeout — and none of them is a deadline on somebody ANSWERING; they bound this
-      // app's own teardown and launch. ⛔ So *no deadline window is resolved here* is a
+      // class still resolves two injected numbers — the drain and the interrupt wait — and neither
+      // is a deadline on somebody ANSWERING; they bound this app's own teardown. ⛔ So *no deadline window is resolved here* is a
       // measurement rather than a reader pointed at a file that moved (standing rule 34.2).
       expect(host_).toContain('deps.closeDrainTimeoutMs ?? DEFAULT_CLOSE_DRAIN_TIMEOUT_MS')
       expect(host_).toContain('deps.interruptWaitMs ?? DEFAULT_INTERRUPT_WAIT_MS')
-      expect(host_).toContain('const defaults = providerDescriptor(provider).launch')
-      expect(host_).toContain('fresh: deps.launchTimeoutMs ?? defaults.freshTimeoutMs')
-      expect(host_).toContain(
-        'resume: deps.resumeTimeouts?.[provider] ?? deps.launchTimeoutMs ?? defaults.resumeTimeoutMs',
-      )
+      // ⛔ …and a launch has no deadline at all: a slow provider is waited for.
+      expect(host_).not.toContain('launchTimeoutMs')
     })
 
     /**

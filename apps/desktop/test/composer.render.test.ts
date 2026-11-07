@@ -348,7 +348,7 @@ describe('the composer renders as a multi-line field', () => {
     // the interrupting chord as an ask — `737` F-7: *"Interrupt-and-send still claims a stop"* — and
     // `739`'s review round 1 put the host's limit in the same clause (`739` #2, #25).
     expect(html).toContain(
-      'is Stop and send: the turn is asked to stop; this is sent once it has ended, or comes back to you if it has not within seconds',
+      'is Stop and send: the turn is asked to stop; this is sent once it has ended',
     )
   })
 

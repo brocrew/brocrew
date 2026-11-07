@@ -195,6 +195,66 @@ describe('person-window commands preserve stream ownership', () => {
     ).resolves.toBeUndefined()
   })
 
+  it('a person’s send waits while the session is still starting', async () => {
+    const stalling = new RuntimeHost({
+      store,
+      ...neutralHostDeps(() => dir),
+      createRuntime: (provider) => ({
+        provider,
+        // ⚑ **D-042 · R1 — a Codex launch naming nothing reads `model/list` and names its
+        // `isDefault` row**, at that row's own default effort; an empty list names no model, and the
+        // launch was refused `nothing-names-a-model` before the slot it stalls in could hold. ⚠️ So
+        // the list marks a default, as Codex's does, and the launch reaches the `start` below.
+        listModels: () =>
+          Promise.resolve([
+            {
+              id: 'fake',
+              label: 'fake',
+              isDefault: true as const,
+              efforts: [{ id: 'medium', label: 'medium' }],
+              defaultEffort: 'medium',
+            },
+          ]),
+        // A launch that never answers: the slot is reserved and no session is ever registered.
+        start: () => new Promise(() => {}),
+        resume: () => Promise.reject(new Error('not used here')),
+      }),
+      prepareProviderHome: (provider, profileId) =>
+        join(dir, 'provider-homes', profileId, provider),
+      providerHomePath: (provider, profileId) => join(dir, 'provider-homes', profileId, provider),
+      resolveCwd: (id, requested) => requested ?? join(dir, 'scratch', id),
+      newSessionId: () => 'sess_starting',
+      readProviderConfig: (_provider, home) => ({
+        home,
+        homeEnv: 'CODEX_HOME',
+        model: 'fake',
+        authNote: null,
+        files: [],
+      }),
+      // The launch never answers, so the quit below must not wait the default bound for it.
+      closeDrainTimeoutMs: 50,
+    })
+    // Reserved synchronously, inside `createSession`, before its first `await`.
+    const launching = stalling.createSession({ provider: 'codex', cwd: dir }, owner)
+    launching.catch(() => {})
+
+    // The person's words wait for this same start; its stream ownership does not move.
+    const ownersSend = executeRuntimeCommand(stalling, owner, {
+      kind: 'send',
+      sessionId: 'sess_starting',
+      text: 'x',
+    }).then(
+      () => 'delivered',
+      (error: unknown) => (error as Error).message,
+    )
+    const stillPending = new Promise<string>((resolve) => {
+      setTimeout(() => resolve('still pending'), 100)
+    })
+    expect(await Promise.race([ownersSend, stillPending])).toBe('still pending')
+
+    await stalling.closeAll()
+  })
+
   it('resume and claim still respect the current stream owner', async () => {
     expect(host.attachOpenSessions(stranger)).toEqual([])
     await expect(host.resumeSession(sessionId, stranger)).rejects.toThrow(

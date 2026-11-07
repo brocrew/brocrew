@@ -375,7 +375,7 @@ describe('§3 · `PromptComposer` says, while `busy`, that Stop joins the ask th
     })
     // ⛔ `main` 5f406f2f: *"… · ⇧⌘↵ to interrupt and send now"*.
     expect(footOf(html)).toContain(
-      `is Stop and send: the turn is ${ASKED_TO_STOP}; this is sent once it has ended, or comes back to you if it has not within seconds`,
+      `is Stop and send: the turn is ${ASKED_TO_STOP}; this is sent once it has ended`,
     )
     expect(footOf(html)).not.toContain('has not answered')
   })

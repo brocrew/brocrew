@@ -72,8 +72,6 @@ export interface ProviderDescriptor {
       Record<'ask' | 'auto', readonly ('the-card-before-an-act' | 'the-sandbox-around-an-act')[]>
     >
   }
-  /** Default bounds, before per-host injected timeout overrides. */
-  readonly launch: { readonly freshTimeoutMs: number; readonly resumeTimeoutMs: number }
   readonly limitClearsOnSignInChange: boolean
   readonly toolInstructionsInText: boolean
   readonly identityPreamble: boolean
@@ -151,7 +149,6 @@ export const PROVIDER_DESCRIPTORS = [
       grantReach: 'reads',
       protections: { ask: ['the-card-before-an-act'], auto: [] },
     },
-    launch: { freshTimeoutMs: 15_000, resumeTimeoutMs: 15_000 },
     limitClearsOnSignInChange: true,
     toolInstructionsInText: false,
     identityPreamble: false,
@@ -228,7 +225,6 @@ export const PROVIDER_DESCRIPTORS = [
         auto: [],
       },
     },
-    launch: { freshTimeoutMs: 15_000, resumeTimeoutMs: 60_000 },
     limitClearsOnSignInChange: false,
     toolInstructionsInText: true,
     identityPreamble: true,

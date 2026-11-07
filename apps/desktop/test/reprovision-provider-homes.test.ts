@@ -199,7 +199,7 @@ describe('copying this install’s provider sign-ins', () => {
   })
 
   for (const opening of ['start', 'resume'] as const) {
-    for (const change of ['changed-back', 'cancel', 'timeout'] as const) {
+    for (const change of ['changed-back', 'cancel', 'slow-then-cancel'] as const) {
       for (const proof of ['held', 'rejected'] as const) {
         it(`${opening} ${change} keeps a pending sign-in copy behind ${proof} process-exit proof`, async () => {
           const previous =
@@ -226,7 +226,8 @@ describe('copying this install’s provider sign-ins', () => {
             entered()
             await returning
           }
-          if (change === 'timeout') vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+          if (change === 'slow-then-cancel')
+            vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
           const launchKey = 'fictional-raced-launch'
           const openingResult = (
             previous
@@ -242,12 +243,17 @@ describe('copying this install’s provider sign-ins', () => {
           try {
             await arrived
             expect(await run()).toMatchObject({ replaced: 2, pending: 1 })
-            const cancelling =
+            let cancelling =
               change === 'cancel' ? host.cancelLaunch(launchKey, sink.ownerId) : undefined
             if (change === 'changed-back') connectionRevision += 2
-            if (change === 'timeout') {
+            if (change === 'slow-then-cancel') {
+              let settled = false
+              void openingResult.then(() => {
+                settled = true
+              })
               await vi.advanceTimersByTimeAsync(300_000)
-              expect(await openingResult).toBe(true)
+              expect(settled).toBe(false)
+              cancelling = host.cancelLaunch(launchKey, sink.ownerId)
               vi.useRealTimers()
             }
             release()

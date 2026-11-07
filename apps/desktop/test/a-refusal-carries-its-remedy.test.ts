@@ -131,8 +131,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
  *    `a-refusal-that-clears-on-its-own.test.ts` §1–§3, where a held launch is refused and the same
  *    call is admitted once it lands — or meets `no-such-agent` once it fails. ⛔ *"The only place
  *    this rail is reachable"* stopped being true when the word was shared.
- *  - `agent-took-too-long-to-start` — `a-launch-that-did-not-start.test.ts` §1, where a launch that
- *    never answers is refused through `spawn_agent` and the same call starts once it can.
  *  - `agent-could-not-start-just-now` — `a-spawn-that-ran-short.test.ts` §1 (`707`), where a spawn
  *    the machine ran short for is refused and the same call starts once the shortage has passed.
  *  - ⛔ `agent-started-a-turn-first` stood in this list from `650` to `657`; `657` made a lost race a
@@ -454,7 +452,6 @@ describe('425 · a refusal carries its remedy', () => {
           // ⚑ **707 · the sixteenth (R39, extended)**: a spawn refused because the machine ran short —
           // the wake's fourteenth, at the start door.
           'TOOL_REFUSALS · agent-could-not-start-just-now',
-          'TOOL_REFUSALS · agent-took-too-long-to-start',
           // ⚑ **705 · the fourteenth (R39)**: a wake refused because the machine ran short — a
           // shortage it gets back with nobody acting, so the same call once it has passed.
           'TOOL_REFUSALS · that-conversation-could-not-be-woken-just-now',
@@ -495,7 +492,7 @@ describe('425 · a refusal carries its remedy', () => {
       )
       // ⚑ One fewer — `its-work-has-stalled` went, so a give is no longer refused over a stall;
       // services added two. Four more: a piece that cannot end with the copies of its questions.
-      expect(carrying).toHaveLength(31)
+      expect(carrying).toHaveLength(30)
     })
 
     it('🔴 the named rails with no remedy are independently not retryable', () => {
@@ -589,7 +586,7 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ Four more — a piece that cannot end with the copies of its questions, two words at two
       // vocabularies.
       const retryable = everyRail().filter((one) => one.permanence === 'while-this-holds')
-      expect(retryable).toHaveLength(31)
+      expect(retryable).toHaveLength(30)
       expect(retryable.filter((one) => one.remedy === null)).toEqual([])
     })
 
@@ -859,7 +856,6 @@ describe('425 · a refusal carries its remedy', () => {
           'QUESTION_RAILS · move-offer-is-held',
           // ⚑ **707 · R39, extended · the wake's act at the spawn door** — the same call, once it passes.
           'TOOL_REFUSALS · agent-could-not-start-just-now',
-          'TOOL_REFUSALS · agent-took-too-long-to-start',
           // ⚑ **705 · R39 · the same act once a shortage has passed** — nothing to change but the moment.
           'TOOL_REFUSALS · that-conversation-could-not-be-woken-just-now',
           'TOOL_REFUSALS · that-conversation-has-not-started',
@@ -1015,7 +1011,7 @@ describe('425 · a refusal carries its remedy', () => {
       // ⚑ And one more: a service asked for while services are off.
       // ⚑ Four more: a piece that cannot end with the copies of its questions, at two vocabularies.
       // The walk also includes the fixed service provider and a pool with no matching provider.
-      expect(walked).toHaveLength(118)
+      expect(walked).toHaveLength(117)
       expect(walked).toEqual(everyRail().map((one) => `${one.vocabulary} · ${one.rail}`))
     })
   })

@@ -89,11 +89,10 @@ const INTERRUPT_KEY = interruptKeyLabel(navigator.platform)
  * ⚑ R43's clause, the draw's, and its sentences — verbatim ONCE; each subject composes them too.
  * ⚠️ `739` review round 1: the host's limit is in the clause, so the title and every foot carry it.
  */
-const THE_LIMIT = 'or comes back to you if it has not within seconds'
-const STOP_THEN_SENT =
-  'the turn is asked to stop; this is sent once it has ended, or comes back to you if it has not within seconds'
-const TITLE = `Stop and send — the turn is asked to stop; this is sent once it has ended, or comes back to you if it has not within seconds (${INTERRUPT_KEY})`
-const FOOT_TAIL = `finishes · ${INTERRUPT_KEY} is Stop and send: the turn is asked to stop; this is sent once it has ended, or comes back to you if it has not within seconds`
+const THE_LIMIT = 'comes back to you'
+const STOP_THEN_SENT = 'the turn is asked to stop; this is sent once it has ended'
+const TITLE = `Stop and send — the turn is asked to stop; this is sent once it has ended (${INTERRUPT_KEY})`
+const FOOT_TAIL = `finishes · ${INTERRUPT_KEY} is Stop and send: the turn is asked to stop; this is sent once it has ended`
 const PLAIN_STOP_TITLE = 'Stop — the turn is asked to stop (Esc)'
 
 /** ⚑ A Codex conversation — the host's echo of its provider on `meta`, as `737`'s suite builds it. */
@@ -112,7 +111,7 @@ const WHO = agentName(CODEX_META.profileId, null)
  * only a command goes alone; it said *"…after <who> finishes and takes what is already waiting"*.
  * ⚠️ 15 characters longer, so §3 still asks that it is drawn whole beside the drawer.
  */
-const FOOT_WAITING = `${SEND_KEY} to send when ${WHO} finishes, with what is already waiting — a command goes alone · ${INTERRUPT_KEY} is Stop and send: the turn is asked to stop; this is sent once it has ended, or comes back to you if it has not within seconds`
+const FOOT_WAITING = `${SEND_KEY} to send when ${WHO} finishes, with what is already waiting — a command goes alone · ${INTERRUPT_KEY} is Stop and send: the turn is asked to stop; this is sent once it has ended`
 
 const DRAFT = 'no, look at the migration first'
 
@@ -198,7 +197,7 @@ describe('§1 · a running Codex conversation with a draft: Stop and send says t
     const foot = m.q('composer-hint')
     expect(text(foot)).toBe(`${SEND_KEY} to send after ${WHO} ${FOOT_TAIL}`)
     // ⚑ `739` #2: the always-visible foot carries the limit, not only the hover.
-    expect(text(foot)).toContain(THE_LIMIT)
+    expect(text(foot)).not.toContain(THE_LIMIT)
     expect(keyHints(foot)).toEqual([SEND_KEY, INTERRUPT_KEY])
     expect(visible(foot)).toBe(true)
     assertDrawn(foot, 'the busy foot with a draft, in R43’s words', m.host)
@@ -206,7 +205,7 @@ describe('§1 · a running Codex conversation with a draft: Stop and send says t
     // ⚑ rule 5 — composed from the module's clause, and that from `737`'s and `ASKED_TO_STOP`.
     const { asks, sent } = await theClauses()
     expect(asks).toBe(`the turn is ${ASKED_TO_STOP}`)
-    expect(sent).toBe(`${asks}; this is sent once it has ended, ${THE_LIMIT}`)
+    expect(sent).toBe(`${asks}; this is sent once it has ended`)
     expect(sent).toBe(STOP_THEN_SENT)
     expect(stopAndSendTitle(m)).toBe(`Stop and send — ${sent} (${INTERRUPT_KEY})`)
     expect(text(foot)).toBe(
@@ -240,7 +239,7 @@ describe('§2 · with a message already waiting, the foot queues behind it and s
       expect(m.all('queued-entry')).toHaveLength(1)
       const foot = m.q('composer-hint')
       expect(text(foot)).toBe(FOOT_WAITING)
-      expect(text(foot)).toContain(THE_LIMIT)
+      expect(text(foot)).not.toContain(THE_LIMIT)
       expect(text(foot)).not.toContain('Cancel it')
       expect(keyHints(foot)).toEqual([SEND_KEY, INTERRUPT_KEY])
       assertDrawn(foot, `the foot with a message waiting (not yours: ${String(notYours)})`, m.host)

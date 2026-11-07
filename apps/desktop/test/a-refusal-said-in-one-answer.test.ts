@@ -202,12 +202,12 @@ describe('the ledger quote adds only the reviewed app clauses', () => {
   })
 
   it('keeps the app-generated unused label when the exact whole answer contains only it and permanence', () => {
-    const before = answered(refuseTool('agent-took-too-long-to-start'), {
+    const before = answered(refuseTool('agent-could-not-start-just-now'), {
       label_not_used: 'W1.23',
     })
     const after = answerInWords(before, context)
     const quote = `${String(before.structured!['reason'])} The label W1.23 was used up by this failed give and names no piece. ${WHILE}`
-    expect(after.text).toBe(`refused (agent-took-too-long-to-start): ${quote}`)
+    expect(after.text).toBe(`refused (agent-could-not-start-just-now): ${quote}`)
     expect(appOnlyRefusalQuote(after.structured, after.text)).toBe(quote)
     expect(appOnlyRefusalQuote(after.structured, `${after.text} Another clause.`)).toBe(
       before.structured!['reason'],

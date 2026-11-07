@@ -830,13 +830,6 @@ describe('412 · what an agent is told about its work', () => {
         'that-conversation-has-not-started',
         'the launch already in flight settles, either way, without anyone acting',
       ],
-      [
-        'TOOL_REFUSALS',
-        // 🔴 **657's addition** — and it replaces `650`'s `agent-started-a-turn-first`, which `657`
-        // retired: a lost race is HELD now, so it is not a refusal a caller retries.
-        'agent-took-too-long-to-start',
-        'the timed-out launch is stopped and its reservation abandoned — nobody decides anything',
-      ],
       // ⚑ **D-016** — a second give in the same tick waited on the first one's start, which failed.
       [
         'TOOL_REFUSALS',
@@ -954,7 +947,7 @@ describe('412 · what an agent is told about its work', () => {
       // `its-work-has-stalled` went, and a give names a stall instead.
       // Four more: a piece that cannot end with the copies of its questions, at two vocabularies.
       // A full work-search queue clears when a waiting slot becomes free.
-      expect(retryable.length).toBe(35)
+      expect(retryable.length).toBe(34)
       // ⚑ …and `retryable` still agrees with the word, at every door, over the same walk.
       for (const [name, rail] of STILL_RETRYABLE.map(([n, r]) => [n, r] as const)) {
         const vocabulary = VOCABULARIES.find((one) => one.name === name)

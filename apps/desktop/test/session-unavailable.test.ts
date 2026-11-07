@@ -210,32 +210,19 @@ describe('the sentence a refused open shows a person (100)', () => {
     }
   })
 
-  it('states the bound the one refusal nobody chose was given (102)', () => {
-    // `took-too-long` is the launch's own ending — nobody pressed anything, so what it waited for
-    // and how long is the whole of what it has to say. It reads the SEPARATE `waitedForMs`, not
-    // `still-opening`'s elapsed time: one is the budget and the other is the spend, and a sentence
-    // that confused them would tell a person a number about the wrong thing.
-    const expired = describeUnavailable('took-too-long', { waitedForMs: 15_000, openingForMs: 900 })
-
-    expect(expired).toContain('agent did not answer within 15s')
-    expect(expired).not.toContain('900')
-    // …and it is still a sentence with no measurement at all, because the context is optional at
-    // every call site.
-    expect(describeUnavailable('took-too-long')).toContain('did not answer in time')
-    expect(describeUnavailable('took-too-long')).not.toContain('undefined')
-  })
-
   it('states how long the one refusal with no other way out has been waiting', () => {
     // `still-opening` was the state nothing transitioned out of on its own — measured then: only
-    // Codex reached it, because its handshake had no deadline. ⚠️ Since `102` the launch gives up on
-    // itself, and since `716` the sentence says so (`710` F-5); the elapsed time is still the fact a
-    // person decides on, so the number stays.
+    // Codex reached it. A launch waits for its provider however long it takes, and the sentence says
+    // it opens by itself when its agent answers; the elapsed time is the fact a person decides on,
+    // so the number stays.
     const waited = describeUnavailable('still-opening', { openingForMs: 42_000 })
 
     expect(waited).toContain('42s')
     // …and it is still a sentence without it, because the context is optional at every call site.
     expect(describeUnavailable('still-opening')).not.toContain('undefined')
     expect(describeUnavailable('still-opening')).toContain('waiting for its agent')
+    // …and never that BroCrew stops it when its agent is slow.
+    expect(describeUnavailable('still-opening')).not.toContain('in time')
   })
 
   it('keeps the diagnostic on the error and the id out of the sentence', () => {

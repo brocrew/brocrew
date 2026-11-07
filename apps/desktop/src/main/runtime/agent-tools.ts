@@ -807,8 +807,8 @@ export const TOOL_REFUSALS = [
    * — R67 gave it `agent-could-not-be-started`, one word for a missing program on both providers.
    * ⚑ **On `give_work` a reservation has no owner a window could Close**, so what stopped it is this
    * app shutting down or a person's own act on the conversation — and a new give is then a new
-   * decision, not a retry (review of `657`). ⛔ A launch that simply took too long is NOT here — see the next
-   * word — and anything this tool does not recognise still propagates.
+   * decision, not a retry (review of `657`). ⛔ A launch that is only slow is waited for, never
+   * refused, and anything this tool does not recognise still propagates.
    *
    * 🔴 **D-039 · R2 — and a start whose provider never answered it in a way this app will run**
    * (`StartFailed`: its process ended first, or its answer failed the adapter's checks) — a broken
@@ -816,16 +816,6 @@ export const TOOL_REFUSALS = [
    * `its-provider-could-not-be-started`; the diagnostic goes to the log.
    */
   'agent-did-not-start',
-  /**
-   * 🔴 **657 · the start was admitted and its provider did not answer in time.**
-   *
-   * ⚑ **Its own word because its permanence differs**: nothing about the state needs a person — the
-   * timed-out launch is stopped and its reservation abandoned, so the same call is a new launch
-   * that can succeed. ⛔ Folded into the word above it would carry `until-a-person-changes-it`
-   * beside the host's own *"Try again"*, which is one payload contradicting itself. ⚠️ **The
-   * measured real case** (`100`/`102`): a handshake that normally answers in under a second.
-   */
-  'agent-took-too-long-to-start',
   /**
    * 🔴 **D-016 · a give found a conversation with that agent still STARTING, and that start did
    * not happen** — `give_work` alone meets it.
@@ -1077,11 +1067,9 @@ export const TOOL_REFUSALS = [
    * answered `no-such-agent` instead (review, round two: this word said *try again* to it, about a
    * call the host already knew would meet the fold).
    *
-   * ⚠️ **Reachable at a wake and at no spawn, and that is why it is new here.** A spawn mints a
-   * fresh id, so a retry after `agent-took-too-long-to-start` never meets the launch it gave up on;
-   * a wake names the SAME id, and `reserve` refuses that id until the abandoned launch is gone —
-   * because two runs of one transcript is the failure 070 exists to prevent. ⚑ So the retry that
-   * sentence recommends can meet this one, and this one says the same thing again.
+   * ⚠️ **Reachable at a wake and at no spawn.** A spawn mints a fresh id, so it never meets an
+   * earlier launch; a wake names the SAME id, and `reserve` refuses that id until the earlier
+   * launch is gone — because two runs of one transcript is the failure 070 exists to prevent.
    *
    * ⛔ **It says what to do and never that it will work** (`REFUSAL_REMEDIES`' own rule): a provider
    * that never answers and never dies keeps its launch held, and nothing here can promise otherwise.
@@ -1972,9 +1960,6 @@ export const TOOL_PERMANENCE: Readonly<Record<ToolRefusal, RailPermanence>> = {
   // decide something first (after an end, the caller itself: a new spawn is a new decision), and none
   // clears because time passes. See the word's own note. ⚠️ A binary was here until `716` (R67).
   'agent-did-not-start': 'until-a-person-changes-it',
-  // ⚑ **657 · a provider that did not answer in time** — the timed-out launch is stopped and its
-  // reservation abandoned, so the same call is a fresh launch nobody has to act before.
-  'agent-took-too-long-to-start': 'while-this-holds',
   // ⚑ **D-016 · the start it waited on has landed, and failed** — nothing is left in flight, and the
   // identical give starts a new conversation with nobody acting first.
   'the-start-it-waited-on-did-not-happen': 'while-this-holds',
@@ -2119,9 +2104,6 @@ const TOOL_REMEDY: Readonly<Record<ToolRefusal, RefusalRemedy | null>> = {
   'spawning-disabled': null,
   // ⛔ **657 · nothing this caller can do** — the biconditional's other half.
   'agent-did-not-start': null,
-  // ⚑ **657 · the same call, once the stopped launch is gone** — which is this word's own
-  // definition: something in flight, and the act is the same call after it has landed.
-  'agent-took-too-long-to-start': 'make-the-same-call-when-this-settles',
   // ⚑ **D-016 · the same call, now the start it waited on has settled** — the biconditional's
   // other half: retryable, so it carries the act.
   'the-start-it-waited-on-did-not-happen': 'make-the-same-call-when-this-settles',
@@ -2390,8 +2372,6 @@ const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
   // or this app quitting (`shutting-down`), and *somebody stopped it first* is true of both.
   'agent-did-not-start':
     'ask a person to read the detail and decide whether to start that conversation again. It did not start, no rule refused it, and nothing was sent: somebody stopped it first or a person must fix something.',
-  'agent-took-too-long-to-start':
-    'that agent\u2019s conversation did not answer in time and was stopped before it started, so nothing was sent. Nobody has to act: make the same call again.',
   // ⚑ **D-016 · the act first, inside the cut.** ⚠️ Why the start failed is not this call's to say:
   // the call that was starting it met that failure and answers it.
   'the-start-it-waited-on-did-not-happen':
@@ -2970,10 +2950,7 @@ const AS_A_DELIVERY: Readonly<Record<NewBriefDelivery, TellDelivery>> = {
  */
 export function aLaunchThatDidNotStart(error: unknown): {
   readonly rail:
-    | 'agent-did-not-start'
-    | 'agent-took-too-long-to-start'
-    | 'agent-could-not-start-just-now'
-    | 'agent-could-not-be-started'
+    'agent-did-not-start' | 'agent-could-not-start-just-now' | 'agent-could-not-be-started'
   readonly because: string
   /**
    * 🔴 **716** · for `agent-could-not-be-started`: what a person must fix — the program, or a folder.
@@ -3050,7 +3027,6 @@ export function aLaunchThatDidNotStart(error: unknown): {
   const reason =
     unavailableOf(error) ??
     (error instanceof Error ? unavailableOf((error as { cause?: unknown }).cause) : null)
-  if (reason === 'took-too-long') return { rail: 'agent-took-too-long-to-start', because: reason }
   // ⚑ **D-042 · F2 — nothing names a model, or a named model's effort** (its provider's list could
   // not be read, or names no default): a person looks, or names one, so the same permanent word.
   if (

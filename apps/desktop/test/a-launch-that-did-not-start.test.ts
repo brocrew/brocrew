@@ -18,11 +18,10 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import { agentToolsFor, refuseTool, type ToolName } from '../src/main/runtime/agent-tools'
+import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { SessionUnavailable, unavailableOf } from '../src/main/runtime/session-unavailable'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { permanenceInWords, theLabelWasUsedUp } from '../src/main/runtime/agent-tool-answer-words'
 
 /**
  * # 🔴 657 · a launch that did not start (`650` F2)
@@ -37,8 +36,7 @@ import { permanenceInWords, theLabelWasUsedUp } from '../src/main/runtime/agent-
  * ⚑ **What `657` built instead is per tool, as the module note always meant**: the starting door
  * classifies the typed launch failures it knows into two words and rethrows the rest (`375`).
  *
- *  - §1 · a provider that did not answer in time — `agent-took-too-long-to-start`, retryable,
- *    because the same call is a fresh launch nobody has to act before.
+ *  - §1 · a provider that is slow to answer is waited for: no deadline refuses the give.
  *  - §2 · a launch the app stopped before it started (D-017: `end_agent` is gone; it was a launch
  *    its parent ended) — `agent-did-not-start`: a decision, not a retry, and the sentence does not
  *    say a person has to act (the review of `657` found its first draft did, on exactly this arm).
@@ -78,7 +76,7 @@ describe('657 · a launch that did not start', () => {
   let homeFails: Error | null
   const gatesMade: FakeLaunchGate[] = []
 
-  const buildHost = (launchTimeoutMs?: number): RuntimeHost =>
+  const buildHost = (): RuntimeHost =>
     new RuntimeHost({
       store,
       ...neutralHostDeps(() => userData),
@@ -101,7 +99,6 @@ describe('657 · a launch that did not start', () => {
         authNote: null,
         files: [],
       }),
-      ...(launchTimeoutMs === undefined ? {} : { launchTimeoutMs }),
     })
 
   beforeEach(() => {
@@ -185,54 +182,23 @@ describe('657 · a launch that did not start', () => {
     throw new Error(`timed out waiting for ${what}`)
   }
 
-  it('§1 a provider that did not answer in time is ANSWERED, retryably, and the same call then starts', async () => {
-    host = buildHost(40)
+  it('§1 a provider that is slow to answer is waited for, and the give lands once it answers', async () => {
     const call = await aParentThatMaySpawn()
-    holdTheNextLaunch()
-
-    // 🔴 **It answers — RED before `657`, where this call REJECTED**: the throw reached the model as
-    // a broken tool. ⚑ This is the assertion a pass-through in its place would fail.
-    const answered = await call('give_work', A_GIVE)
-    expect(payload(answered)).toMatchObject({
-      outcome: 'refused',
-      rail: 'agent-took-too-long-to-start',
-      permanence: 'while-this-holds',
-      retryable: true,
-      remedy: 'make-the-same-call-when-this-settles',
-      detail: { profile: 'worker', because: 'took-too-long' },
+    const held = holdTheNextLaunch()
+    const giving = call('give_work', A_GIVE)
+    await until(() => held.held > 0, 'the launch to reach its gate')
+    // Past the fifteen seconds' worth of shortened bound a launch used to be given: still waiting.
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    let settled = false
+    void giving.then(() => {
+      settled = true
     })
-    expect(payload(answered).reason).toBe(refuseTool('agent-took-too-long-to-start').reason)
-    expect(payload(answered).reason).toContain('Nobody has to act')
-    // A person's row shows the rail and its whole reason; the answer then adds only a used-up
-    // label, when there is one, and the permanence.
-    const kept = `refused (agent-took-too-long-to-start): ${String(payload(answered).reason)}`
-    expect(kept.length).toBeLessThanOrEqual(200)
-    const unused = payload(answered).label_not_used
-    const tail = [
-      ...(typeof unused === 'string' ? [theLabelWasUsedUp(unused)] : []),
-      permanenceInWords('agent-took-too-long-to-start', 'while-this-holds'),
-    ].join(' ')
-    expect(answered.text).toBe(`${kept} ${tail}\n[Ada](brocrew://agent/aid%3Aworker)`)
-    // The ledger keeps all the final words after the rail, including the unused label.
-    const refusedRow = store
-      .events(giver)
-      .map((one) => one.event)
-      .filter((one) => one.type === 'tool_refused')
-      .at(-1)
-    const keptText = refusedRow?.type === 'tool_refused' ? refusedRow.told?.text : undefined
-    expect(keptText).toBe(`${String(payload(answered).reason)} ${tail}`)
-    // ⛔ **D-016 · R4 — no piece was written**: the number the refused give took is burned.
-    expect(piecesUnderTheRoot()).toEqual([])
-
-    // ⚠️ **The control, one fact over**: the same call with nothing holding the launch starts —
-    // under the NEXT number, because a number is never handed out twice.
-    gate = null
-    expect(payload(await call('give_work', A_GIVE))).toMatchObject({
-      outcome: 'ok',
-      label: 'W2.2',
-      started: true,
-    })
-    expect(piecesUnderTheRoot()).toEqual(['W2.2'])
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(settled).toBe(false)
+    held.release()
+    const answered = payload(await giving)
+    expect(answered.outcome).not.toBe('refused')
+    expect(piecesUnderTheRoot()).toHaveLength(1)
   })
 
   it('§2 a launch the app stopped before it started is answered as not started, a decision and not a retry', async () => {
@@ -333,14 +299,16 @@ describe('657 · a launch that did not start', () => {
   })
 
   it('§5 the host keeps the class as `cause`, and the sentence a person reads is unchanged', async () => {
-    host = buildHost(40)
-    holdTheNextLaunch()
-    const failed = await host
+    const held = holdTheNextLaunch()
+    const failing = host
       .createSession({ provider: 'claude', profileId: 'worker', cwd: work }, window)
       .then(
         () => null,
         (error: unknown) => error,
       )
+    await until(() => held.held > 0, 'the launch to reach its gate')
+    await host.closeAll()
+    const failed = await failing
     expect(failed).toBeInstanceOf(Error)
     // ⚑ **The person's sentence, as before** — and not the class name.
     expect(String((failed as Error).message)).not.toContain('SessionUnavailable')
@@ -348,6 +316,6 @@ describe('657 · a launch that did not start', () => {
     // 🔴 **The class survives one step down**, which is what `give_work` classifies by.
     const cause = (failed as Error).cause
     expect(cause).toBeInstanceOf(SessionUnavailable)
-    expect(unavailableOf(cause)).toBe('took-too-long')
+    expect(unavailableOf(cause)).toBe('shutting-down')
   })
 })

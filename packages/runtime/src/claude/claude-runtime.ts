@@ -118,7 +118,7 @@ import { buildChildEnv } from '../internal/child-env'
 import {
   assertNotCancelled,
   cancelWith,
-  didNotAnswerInTime,
+  untilCancelled,
   withDeadline,
   withTimeout,
 } from '../internal/bounded'
@@ -1187,21 +1187,12 @@ const COMMAND_READ_TIMEOUT_MS = 15_000
  */
 const INTERRUPT_ACK_TIMEOUT_MS = 2000
 
-/**
- * How long the queued model/effort/plan changes may take to land before the turn that is waiting on
- * them is failed (202, from 191 H5).
- *
- * ⛔ **There was no bound at all**, and `send` awaits these three control requests between opening
- * the turn and pushing the user's message. An SDK that never answered therefore hung the send IPC
- * for the life of the app, with a turn open and a renderer waiting — the same never-settling shape
- * 058's review found on the model probe and 074 found on `interrupt`, in the one place where the
- * caller is a person who has just pressed Send.
- *
- * Ten seconds because these are local control requests over a pipe to a process that is already
- * running — `interrupt` gets two, and the probe fifteen because it may be starting one. Wide enough
- * that a busy machine is never mistaken for a wedged one; short enough that the composer comes back.
- */
-const SETTINGS_ACK_TIMEOUT_MS = 10_000
+/** A turn's preparation that the person's Stop or a close ended before its message was sent. */
+class StoppedBeforeItWasSent extends Error {
+  constructor() {
+    super('the turn was stopped before its message could be sent')
+  }
+}
 
 /**
  * How long `close()` waits for the CLI child to actually exit (202, from 191 H3).
@@ -1828,6 +1819,38 @@ export class ClaudeSessionHandle implements SessionHandle {
   private sharedSkillsRoot?: string
   noteSharedSkills(root: string | undefined): void {
     this.sharedSkillsRoot = root
+  }
+  /** What says the shared skills changed, and the generation this query last loaded. */
+  private sharedSkillsGeneration?: () => number
+  private sharedSkillsLoaded?: number
+  noteSharedSkillsGeneration(generation: (() => number) | undefined): void {
+    this.sharedSkillsGeneration = generation
+    this.sharedSkillsLoaded = generation?.()
+  }
+  /** Whether a turn must reload the shared skills: always, when nothing says when they change. */
+  private sharedSkillsMoved(): boolean {
+    if (!this.sharedSkillsRoot) return false
+    if (this.sharedSkillsGeneration === undefined) return true
+    return this.sharedSkillsGeneration() !== this.sharedSkillsLoaded
+  }
+  /**
+   * Released by Stop and by close, so a turn waiting on its settings or its skill reload ends when
+   * the person stops it — however long the CLI takes to answer those requests.
+   */
+  private preparationStopped: { promise: Promise<void>; release: () => void } | null = null
+  private releasePreparation(): void {
+    this.preparationStopped?.release()
+    this.preparationStopped = null
+  }
+  private async untilStopped<T>(call: Promise<T>): Promise<T> {
+    const stopped = this.preparationStopped
+    if (stopped === null) return call
+    return Promise.race([
+      call,
+      stopped.promise.then((): never => {
+        throw new StoppedBeforeItWasSent()
+      }),
+    ])
   }
   private withSharedSkills(folders: readonly string[]): readonly string[] {
     return this.sharedSkillsRoot ? [...new Set([...folders, this.sharedSkillsRoot])] : folders
@@ -2463,9 +2486,11 @@ export class ClaudeSessionHandle implements SessionHandle {
   }
 
   /**
-   * Ask the CLI who this session is signed in as, once, through {@link ClaudeQuery.accountInfo}. An
-   * answer that names no email, a query that cannot say, a call that fails and one that never
-   * answers all leave the account not known.
+   * Ask the CLI who this session is signed in as, once, through {@link ClaudeQuery.accountInfo}, and
+   * wait for the answer however long it takes: a slow answer is still the account. An answer that
+   * names no email, a query that cannot say and a call that fails leave the account not known; until
+   * the CLI answers, it is not known yet (`undefined`), and the host waits for it or for the life
+   * to end.
    * ⛔ The answer is held here and read through {@link account} only: no event carries it, and
    * nothing logs it.
    */
@@ -2477,11 +2502,7 @@ export class ClaudeSessionHandle implements SessionHandle {
     }
     let said: SessionAccount | null = null
     try {
-      const info = await withDeadline(
-        query.accountInfo(),
-        COMMAND_READ_TIMEOUT_MS,
-        'claude account',
-      )
+      const info = await query.accountInfo()
       said = sessionAccountFrom({ email: info.email, organization: info.organization })
     } catch {
       // Not known, and nothing to say about why: the reason could name the account.
@@ -3527,6 +3548,11 @@ export class ClaudeSessionHandle implements SessionHandle {
     // and in the same shape; this is the half that had not needed one until now.
     const modeBefore = this.approvals.effective
     this.approvals.adopt()
+    let release!: () => void
+    const promise = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    this.preparationStopped = { promise, release }
     try {
       await this.applyPendingSettings()
     } catch (error) {
@@ -3534,12 +3560,14 @@ export class ClaudeSessionHandle implements SessionHandle {
       // send after the failure re-applies the whole set.
       this.approvals.rollback(modeBefore)
       throw error
+    } finally {
+      this.preparationStopped = null
     }
     // ⛔ **The turn this method opened must still be the turn that is running** (202, from 191 H5).
     //
-    // Everything above is an `await`, and Stop is what can land during it: `interrupt()` bounds the
-    // SDK ack at two seconds and then FORCE-ENDS the turn locally, so by the time the settings
-    // resolve the app has already told the user the turn is over — published `interrupted`, gone
+    // Everything above is an `await`, and Stop is what can land during it: `interrupt()` releases
+    // that wait, bounds the SDK ack at two seconds and then FORCE-ENDS the turn locally, so by the
+    // time the settings resolve the app has already told the user the turn is over — published `interrupted`, gone
     // idle, put the composer back. The push below would then start provider work anyway, including
     // consequential tools, on a session the user believes they stopped. ⚑ **086's rule, and 122's
     // before it: the app must not run a turn it has said it ended.**
@@ -3587,34 +3615,36 @@ export class ClaudeSessionHandle implements SessionHandle {
    * letting the error escape alone.
    */
   /**
-   * One control request, bounded (202, from 191 H5) — see {@link SETTINGS_ACK_TIMEOUT_MS}.
-   *
-   * ⚠️ **Per call rather than around the group**, because the group is three independent requests
-   * and {@link applyPendingSettings} adopts each only if its own call succeeded. A single bound over
-   * all three would let a slow first one spend the budget the third needed, and the third would then
-   * be reported as refused by the CLI when it had simply never been asked.
+   * One control request, waited for until the CLI answers or the person stops the turn.
    *
    * `undefined` — the method is missing on this query — passes straight through: an absent optional
    * is not a call that failed to answer, and the caller treats it as "this query cannot be
    * re-modelled" a line later.
    */
-  private async settled(call: Promise<void> | undefined, what: string): Promise<void> {
+  private async settled(call: Promise<void> | undefined): Promise<void> {
     if (call === undefined) return
-    await withDeadline(call, SETTINGS_ACK_TIMEOUT_MS, `claude ${what}`)
+    await this.untilStopped(call)
   }
 
   private async applyPendingSettings(): Promise<void> {
     const turnId = this.machine.activeTurnId
-    let reloadTimedOut = false
     try {
-      if (this.sharedSkillsRoot) {
+      // The shared skills are reloaded only when they changed since this query loaded them. A
+      // reload that fails is said and the message still goes, with the skills the query has.
+      if (this.sharedSkillsMoved()) {
         if (!this.query?.reloadPlugins) throw new Error(BUILT_IN_SKILLS_FAILURE)
-        const reload = this.query.reloadPlugins()
+        const seen = this.sharedSkillsGeneration?.()
         try {
-          await withDeadline(reload, 60_000, 'reloadPlugins')
+          await this.untilStopped(this.query.reloadPlugins())
+          this.sharedSkillsLoaded = seen
         } catch (error) {
-          reloadTimedOut = didNotAnswerInTime(error)
-          throw error
+          if (error instanceof StoppedBeforeItWasSent || this.machine.activeTurnId !== turnId)
+            throw error
+          this.emit({
+            type: 'error',
+            fatal: false,
+            message: `Shared skills could not be reloaded: ${errorMessage(error)}`,
+          })
         }
       }
 
@@ -3622,7 +3652,7 @@ export class ClaudeSessionHandle implements SessionHandle {
         // `setModel(undefined)` is the SDK's own way to say "back to the default" — its signature is
         // `setModel(model?: string)` and the doc reads "or undefined to use the default". So handing
         // our own `undefined` straight through is the documented gesture, not a coincidence.
-        await this.settled(this.query?.setModel?.(this.models.requested), 'setModel')
+        await this.settled(this.query?.setModel?.(this.models.requested))
         this.models.adopt()
       }
       if (this.efforts.pending) {
@@ -3643,7 +3673,6 @@ export class ClaudeSessionHandle implements SessionHandle {
             effortLevel: wanted === undefined ? null : claudeEffort(wanted),
             ...(this.ultracodeAsked ? { ultracode: true } : {}),
           }),
-          'applyFlagSettings',
         )
         this.efforts.adopt()
       }
@@ -3670,7 +3699,6 @@ export class ClaudeSessionHandle implements SessionHandle {
             this.query.applyFlagSettings({
               permissions: flagPermissionsOf(this.keptRules, this.withSharedSkills(next)),
             }),
-            'applyFlagSettings',
           )
         }
         this.folders.adopt()
@@ -3680,10 +3708,7 @@ export class ClaudeSessionHandle implements SessionHandle {
         // which the launch now shares. Moving the approval floor from here would give this app two
         // mechanisms for one safety boundary, which is the thing 034 decided against and
         // {@link approvals} explains at length.
-        await this.settled(
-          this.query?.setPermissionMode?.(permissionModeFor(this.plan.requested)),
-          'setPermissionMode',
-        )
+        await this.settled(this.query?.setPermissionMode?.(permissionModeFor(this.plan.requested)))
         this.plan.adopt()
       }
     } catch (error) {
@@ -3695,17 +3720,11 @@ export class ClaudeSessionHandle implements SessionHandle {
       // `completeTurn` had that debt absorb this very failure — leaving the turn open forever, which
       // is the "session bricked by its own error path" the comment above is about.
       // ⚑ Before the push: the message never left this app (F080 — a burst it joined runs on).
-      if (this.machine.activeTurnId === turnId)
+      // A Stop that ended the wait ends the turn itself, as stopped.
+      if (!(error instanceof StoppedBeforeItWasSent) && this.machine.activeTurnId === turnId)
         this.machine.failTurn(`could not apply the queued settings: ${errorMessage(error)}`, {
           neverSent: true,
         })
-      if (reloadTimedOut) {
-        // The deadline released this send, not the SDK's control request. Seal this query before
-        // another turn can begin: a late reload answer must never race a second reload or a push.
-        // close() enters `closing` synchronously; its bounded child-exit receipt runs in the
-        // background so the unsent message gets its failure promptly.
-        void this.close().catch(() => {})
-      }
       throw error
     }
   }
@@ -3847,6 +3866,7 @@ export class ClaudeSessionHandle implements SessionHandle {
     if (this.machine.isTerminal || !this.query) return
     if (!this.machine.hasProviderWork && this.machine.waiting === 0) return
     this.machine.requestInterrupt()
+    this.releasePreparation()
     // ⚑ **F084 — the Bash the turn is waiting on ends with the stop**: the CLI ends it (measured:
     // gone 106 ms after the stop, its card answered *"The user doesn't want to proceed…"*), and the
     // turn's ending says so. ⚠️ Background Bash is not among them: its call was answered as it was
@@ -3937,6 +3957,7 @@ export class ClaudeSessionHandle implements SessionHandle {
   }
 
   private async doClose(): Promise<void> {
+    this.releasePreparation()
     if (!this.machine.beginClose()) {
       // Already terminal (errored/closed): finishUnexpected/an earlier close already
       // emitted the terminal events — just ensure the provider resources are released.
@@ -5274,10 +5295,18 @@ export class ClaudeRuntime implements AgentRuntime {
   /**
    * Read the launch's key once, without blocking, and only read the login when no key is saved.
    */
-  private async authForALaunch(): Promise<{ key: string | null; login?: string | null }> {
-    const key = (await this.apiKeyProvider?.()) ?? null
+  /**
+   * The key or login a launch runs on, waited for however long the Keychain or key storage takes —
+   * a prompt there is the person being asked — and released at once when the launch is cancelled.
+   */
+  private async authForALaunch(
+    signal: AbortSignal | undefined,
+  ): Promise<{ key: string | null; login?: string | null }> {
+    const read = <T>(work: T | Promise<T>): Promise<T> =>
+      untilCancelled(Promise.resolve(work), signal, 'claude launch')
+    const key = (await read(this.apiKeyProvider?.())) ?? null
     if (key !== null && key !== '') return { key }
-    return { key: null, login: await this.launchTokenProvider?.() }
+    return { key: null, login: await read(this.launchTokenProvider?.()) }
   }
 
   /** ⚑ What a launch with nothing to run on says — see the constructor. */
@@ -5365,7 +5394,7 @@ export class ClaudeRuntime implements AgentRuntime {
       opts.workFolders,
     )
     handle.noteAlwaysRulesFile()
-    const auth = await this.authForALaunch()
+    const auth = await this.authForALaunch(opts.signal)
     assertNotCancelled(opts.signal, 'claude start')
     // ⚑ Read without holding the thread: the repository gate asks git.
     const kept = await keptRulesForALaunch(
@@ -5394,6 +5423,7 @@ export class ClaudeRuntime implements AgentRuntime {
     )
     handle.noteBuiltInSkills(opts.builtInSkills)
     handle.noteSharedSkills(opts.sharedSkillsRoot)
+    handle.noteSharedSkillsGeneration(opts.sharedSkillsGeneration)
     // **`ultracode`, and it is set HERE rather than inside `optionsFor` on purpose** (106).
     //
     // ⚠️ `optionsFor` is shared with `resume`, which spreads its result — so a line added there
@@ -5532,7 +5562,7 @@ export class ClaudeRuntime implements AgentRuntime {
    */
   async listModels(context: ProviderRuntimeContext): Promise<ModelChoice[]> {
     assertNotCancelled(context.signal, 'claude model list') // a probe is a launch (070)
-    const auth = await this.authForALaunch()
+    const auth = await this.authForALaunch(context.signal)
     assertNotCancelled(context.signal, 'claude model list')
     // ⚑ `740` · `null`: a model list runs in no project, so no project's kept rules are read.
     const kept = await keptRulesForALaunch(context.providerHome, null, context.signal)
@@ -5734,7 +5764,7 @@ export class ClaudeRuntime implements AgentRuntime {
         // go of a conversation for `noSuchSession`, never for a missing cause (`705` F-3).
         throw new ResumeError(ref, `session not found: ${ref.sessionId}`, { noSuchSession: true })
       }
-      const auth = await this.authForALaunch()
+      const auth = await this.authForALaunch(options.signal)
       // Asked again on the far side of the FIRST await this launch makes, and that is where it earns
       // its keep: the precheck is a filesystem probe over a provider home, and a cancel that lands
       // during it must stop the launch BEFORE the query below spawns a CLI — not after, where the
@@ -5838,6 +5868,7 @@ export class ClaudeRuntime implements AgentRuntime {
       )
       handle.noteBuiltInSkills(options.builtInSkills)
       handle.noteSharedSkills(options.sharedSkillsRoot)
+      handle.noteSharedSkillsGeneration(options.sharedSkillsGeneration)
       // One witness per launch, taken from the options this launch was built with, so an API key
       // filed against them reaches this spawn's descriptor ({@link launchKeys}).
       child = this.spawnWitness(built)

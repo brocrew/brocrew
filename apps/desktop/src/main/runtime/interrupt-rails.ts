@@ -191,7 +191,7 @@ export function interruptRetryableOf(rail: InterruptRail): boolean {
  * remedy that promised the outcome as well would be two fields saying one thing, and the weaker of
  * the two would be the one that was wrong. 🔴 **This is the only INTERRUPT rail carrying that word;
  * `TOOL_REFUSALS` also assigns it to `that-work-is-being-sent`, since `650` to this same word,
- * since `657` to `agent-took-too-long-to-start`, since `663` to `that-conversation-is-still-stopping`,
+ * since `663` to `that-conversation-is-still-stopping`,
  * since `705` to `that-conversation-could-not-be-woken-just-now`, and since `707` to
  * `agent-could-not-start-just-now`.** (`650` gave it to `agent-started-a-turn-first` as well; `657`
  * retired that word, because a lost race is held now rather than refused. `703` gave it to

@@ -138,18 +138,13 @@ export const A_STOP_ASKS_THE_TURN = `the turn is ${ASKED_TO_STOP}`
  * R43 (`709`) the provider may finish the turn first: *"A turn is `interrupted` only when the
  * provider says it was."* ⚑ **Each word, read off the host** (`RuntimeHost.runSendInterrupting`):
  * where a turn is running, the press asks it anew — it never joins a standing ask (`723` F-5) —
- * then waits a BOUNDED while for it to end (the ask's 2 s, then `waitForIdle`'s 5 s), then sends.
- * *ended* is true whichever word the provider gives it, `interrupted` or `completed`; *instead* was
- * false when it finished first, and *now* was false for the seconds the host waits.
- * ⚠️ **The limit, rule 8.4, in the words themselves**: a turn still running when those waits run out
- * refuses the words, and they come back to the box (`RuntimeScreen`'s `restoreRefused`) beside the
- * host's own sentence — so *"or comes back to you if it has not within seconds"*, never a promise
- * that the words go whenever the turn ends. *within seconds* and not a number: the host's bounds are
- * not on the wire (`739` GAP), and a copy would drift.
+ * then waits for it to end, however long the provider takes, then sends. *ended* is true whichever
+ * word the provider gives it, `interrupted` or `completed`; *instead* was false when it finished
+ * first, and *now* was false for as long as the provider takes to stop.
  * ⚠️ **Two branches the words do not name, stated here**: a turn that had already ended when the host
  * looked is asked nothing and the words go at once (still *sent once it has ended*); and a send that
  * LOSES the race to another sender's turn is held behind that turn — or refused, where a work message
  * of the person's is already waiting (the one-work-message rule) — rather than sent when THIS turn
  * ends.
  */
-export const A_STOP_THEN_THIS_IS_SENT = `${A_STOP_ASKS_THE_TURN}; this is sent once it has ended, or comes back to you if it has not within seconds`
+export const A_STOP_THEN_THIS_IS_SENT = `${A_STOP_ASKS_THE_TURN}; this is sent once it has ended`

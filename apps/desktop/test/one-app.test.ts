@@ -50,8 +50,11 @@ async function waitFor(predicate: () => boolean, what: string, timeoutMs = 2_000
 class NeverArrives implements AgentRuntime {
   readonly provider = 'claude' as const
   private readonly inner = new FakeRuntime('claude')
+  /** Set once the provider has been asked to start: from here a process may exist. */
+  asked = false
 
   start(): Promise<SessionHandle> {
+    this.asked = true
     return new Promise<SessionHandle>(() => {})
   }
 
@@ -303,29 +306,24 @@ describe('one app per data folder', () => {
       // is exactly where a second host's repair would land — the row is `working`, nothing is
       // registered, and `sessionIds` (which filters to sessions with a handle to drive) would report
       // silence. `workInFlight` reads the slot MAP for this reason.
+      const runtime = new NeverArrives()
       const host = buildHost({
-        createRuntime: () => new NeverArrives(),
+        createRuntime: () => runtime,
         newSessionId: () => 'sess_reserved',
-        // ⚠️ **Short deadlines, because the WAIT is not what is under test.** A launch that never
-        // arrives is given up on at `launchTimeoutMs` (102), and the default fifteen seconds is
-        // fifteen seconds of `pnpm run ci` spent asserting nothing. The reservation is taken
-        // synchronously inside `createSession`, so the assertion below is already true before this
-        // clock has ticked at all.
-        launchTimeoutMs: 500,
         closeDrainTimeoutMs: 25,
       })
       const opening = host.createSession({ provider: 'claude', cwd: dir }, SINK)
       void opening.catch(() => {})
 
       await waitFor(() => [...host.workInFlight()].includes('sess_reserved'), 'the reservation')
+      // Asked, so a process may now exist: a quit before this point owns nothing to wait for.
+      await waitFor(() => runtime.asked, 'the provider to be asked')
 
-      // Handed back, so the pending launch ends rather than running out this file's clock.
       await host.closeAll()
-      await opening.catch(() => {})
       // 🔴 **This line used to assert silence, and the silence was the defect** (265 §3, from 259
-      // lens B finding 3). The reservation really is gone — `awaitLaunch` abandons it when the bound
-      // expires — but the LAUNCH is deliberately retained, because a handshake that never answered
-      // never confirmed its child died. `closeAll` says so out loud in the same breath: *"1 provider
+      // lens B finding 3). The quit aborted the launch, but this provider never answers the abort,
+      // so the LAUNCH is deliberately retained: a handshake that never answered never confirmed its
+      // child died. `closeAll` says so out loud in the same breath: *"1 provider
       // launch(es) had not confirmed termination … a provider process may still be running"*. So the
       // honest answer to *"what is this host holding"* is this id, and the old `[]` is exactly what
       // a second host could not see before it started a provider onto the same transcript.

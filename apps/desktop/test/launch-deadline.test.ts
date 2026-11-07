@@ -15,17 +15,15 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
- * **A launch that ends, and a launch you can end** (102).
+ * **A launch you can end** (102).
  *
- * 100 shipped with one door named and left open: *"a slot wedged in `starting` has no in-app
- * release… its symptom is a launcher that never settles"*. Two halves, and they are separable —
- * the handshake had no deadline where its sibling probe has had one since 058, and even with a
- * deadline a person watching a launcher spin should not have to wait it out.
+ * A launch has no deadline: a slow provider is waited for (`a-slow-provider-is-waited-for.test.ts`).
+ * What ends one before its provider answers is the person's Cancel, and these tests hold that it
+ * reaches the provider, releases the conversation and confirms the provider stopped.
  *
  * ⚠️ **Every test that proves a refusal is paired with one proving the ordinary launch still
- * works.** A suite that only asserted "cancel refuses" and "the deadline fires" would pass in full
- * against a host that had stopped being able to open anything at all, which is the vacuity 102
- * asked for by name.
+ * works.** A suite that only asserted "cancel refuses" would pass in full against a host that had
+ * stopped being able to open anything at all.
  */
 
 class RecordingSink implements RuntimeEventSink {
@@ -118,7 +116,7 @@ class StallingRuntime implements AgentRuntime {
      *
      * ⚑ Handed to the inner double rather than modelled here, so the handle that arrives late is a
      * real `FakeSessionHandle` publishing a real `awaitProcessExit` — which is the whole question
-     * on the `arrives-anyway` path: `giveUpOnLaunch` owns that provider against something, and
+     * on the `arrives-anyway` path: the host owns that provider against something, and
      * until 233 it owned it against the bounded `close()`.
      */
     exit?: FakeProcessExit,
@@ -193,190 +191,6 @@ class StallingRuntime implements AgentRuntime {
   }
 }
 
-describe('a launch that cannot complete (102)', () => {
-  let userData: string
-  let sink: RecordingSink
-
-  function buildHost(
-    runtime: AgentRuntime,
-    overrides: Partial<ConstructorParameters<typeof RuntimeHost>[0]> = {},
-  ): RuntimeHost {
-    let counter = 0
-    return new RuntimeHost({
-      store: NULL_SESSION_STORE,
-      ...neutralHostDeps(() => userData),
-      createRuntime: () => runtime,
-      prepareProviderHome: (provider) => join(userData, 'provider-homes', provider),
-      providerHomePath: (provider) => join(userData, 'provider-homes', provider),
-      resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
-      newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CODEX_HOME',
-        model: 'fake',
-        authNote: null,
-        files: [],
-      }),
-      // Short, so the wedge is reproduced rather than waited out. The value under test is the
-      // BEHAVIOUR at expiry; the fifteen seconds the app ships is argued from the latency probe.
-      launchTimeoutMs: 40,
-      closeDrainTimeoutMs: 40,
-      ...overrides,
-    })
-  }
-
-  beforeEach(() => {
-    userData = mkdtempSync(join(tmpdir(), 'brobot2-launch-'))
-    sink = new RecordingSink()
-  })
-
-  afterEach(() => {
-    rmSync(userData, { recursive: true, force: true })
-  })
-
-  it('ends by itself, saying what it waited for and how long — with no id in the sentence', async () => {
-    const runtime = new StallingRuntime('tears-down')
-    const host = buildHost(runtime)
-
-    const failure = await host.createSession({ provider: 'codex' }, sink).catch((e: Error) => e)
-
-    expect(failure).toBeInstanceOf(Error)
-    const sentence = (failure as Error).message
-    // What it waited for, and for how long. 40ms rounds to 0s, so the bound is stated by the shape
-    // of the sentence rather than by a number this test picked.
-    expect(sentence).toContain('agent did not answer')
-    // 🔴 **716 · `710` F-5 — what a person can do, said as a gesture** (rule 8.4): it was a bare
-    // *"Try again."* until `716`. A start left nothing behind, so it is started again.
-    expect(sentence).toContain('No conversation was made: start it again.')
-    // ⚠️ 085's rule, on the class 100 converted: no id, no owner, no internal state name.
-    expect(sentence).not.toContain('sess_')
-    expect(sentence).not.toContain('owner:')
-    expect(sentence).not.toContain('took-too-long')
-    // And it really was the deadline that ended it: the abort reached the adapter.
-    await waitFor(() => runtime.aborted, 'the launch to be aborted')
-    expect(runtime.running).toBe(false)
-    await host.closeAll()
-  })
-
-  it('…while an ordinary launch, on the same bound, still opens', async () => {
-    // The pair. Without it the test above passes against a host that cannot start anything.
-    const host = buildHost(new FakeRuntime('codex'))
-
-    const created = await host.createSession({ provider: 'codex' }, sink)
-
-    expect(created.sessionId).toBe('sess_1')
-    expect(host.sessionIds).toEqual(['sess_1'])
-    await host.closeAll()
-  })
-
-  it('keeps refusing the id until the provider it gave up on is confirmed gone', async () => {
-    // ⚠️ **070's split, on the new path.** The reservation goes at once so the user can try again;
-    // the LAUNCH is handed its own aftermath, so `reserve` keeps refusing until the process is
-    // really down. Without it the retry lands while the first provider is still alive.
-    const runtime = new StallingRuntime('slow-to-die')
-    const host = buildHost(runtime)
-
-    await host.createSession({ provider: 'codex' }, sink).catch(() => undefined)
-    await waitFor(() => runtime.aborted, 'the launch to be aborted')
-
-    const refused = await host.resumeSession('sess_1', sink).catch((e: Error) => e)
-    // ⚑ **D-017b** — 070's refusal in the new words (`not-confirmed-stopped`): *"cannot continue
-    // yet"*, with no process fact in it; it said *"its agent has not confirmed that it stopped"*.
-    expect((refused as Error).message).toContain('cannot continue yet')
-    expect((refused as Error).message).not.toContain('sess_')
-
-    runtime.finishTeardown()
-    // Once it IS confirmed, the id is free again — refusing forever would be a different bug. The
-    // next refusal is the ordinary "no such recording", which is a POSITIVE assertion that the
-    // reservation path was reached rather than merely that one sentence stopped appearing.
-    const until = Date.now() + 2_000
-    let message: string
-    do {
-      const again = await host.resumeSession('sess_1', sink).catch((e: Error) => e)
-      message = (again as Error).message
-      if (!message.includes('cannot continue yet')) break
-      await new Promise((resolve) => setTimeout(resolve, 5))
-    } while (Date.now() < until)
-    expect(message).toBe('There is no record of this conversation here.')
-    await host.closeAll()
-  })
-
-  it('closes a provider that arrives after we gave up, so two never reach one transcript', async () => {
-    // ⚠️ **Acceptance 5, and the reason `giveUpOnLaunch` does more than abort.** A handshake that
-    // answers one millisecond late hands back a live provider nobody is awaiting. Nothing else in
-    // this app would ever close it: the caller has already been told the launch failed.
-    const runtime = new StallingRuntime('arrives-anyway')
-    const host = buildHost(runtime)
-
-    const failure = await host.createSession({ provider: 'codex' }, sink).catch((e: Error) => e)
-    expect((failure as Error).message).toContain('agent did not answer')
-
-    runtime.arriveNow()
-
-    await waitFor(() => runtime.late !== null, 'the late provider to arrive')
-    await waitFor(() => runtime.late?.closed() === true, 'the late provider to be closed')
-    // It was never registered, and no second one was started on the same id.
-    expect(host.sessionIds).toEqual([])
-    await host.closeAll()
-  })
-
-  /**
-   * ⛔ **233, and the third of the three hand-back sites** (found by 233's own adversarial pass and
-   * confirmed by its mutation table, where the row for this line SURVIVED its first run).
-   *
-   * `giveUpOnLaunch` closes the provider that arrived too late — the test above proves that — and
-   * then owns the launch against something. Until 233 that something was the bounded `close()`,
-   * which for Claude resolves in ~200 ms with the CLI child alive. So the id was freed while a
-   * provider was still running, on the path whose whole purpose is that *"two never reach one
-   * transcript"*.
-   */
-  it('233 · keeps owning the late provider against its PROCESS, not against its close()', async () => {
-    const exit = new FakeProcessExit()
-    const runtime = new StallingRuntime('arrives-anyway', undefined, exit)
-    const host = buildHost(runtime)
-
-    const failure = await host.createSession({ provider: 'codex' }, sink).catch((e: Error) => e)
-    expect((failure as Error).message).toContain('agent did not answer')
-
-    runtime.arriveNow()
-    await waitFor(() => runtime.late?.closed() === true, 'the late provider to be closed')
-
-    // ⚑ The double's `close()` has no `await` in its body, so it has genuinely RESOLVED — and the
-    // process has not gone anywhere. That pair is the 229 H1 shape, here on the give-up path.
-    expect(exit.isConfirmed).toBe(false)
-    const refused = await host.resumeSession('sess_1', sink).catch((e: Error) => e)
-    expect((refused as Error).message).toContain('cannot continue yet')
-
-    // …and once the process really goes, the id is free — refusing forever would be a different bug.
-    exit.confirm()
-    const until = Date.now() + 2_000
-    let message: string
-    do {
-      const again = await host.resumeSession('sess_1', sink).catch((e: Error) => e)
-      message = (again as Error).message
-      if (!message.includes('cannot continue yet')) break
-      await new Promise((resolve) => setTimeout(resolve, 5))
-    } while (Date.now() < until)
-    expect(message).toBe('There is no record of this conversation here.')
-    await host.closeAll()
-  })
-
-  it('leaves no half-attached session behind — the host holds nothing for the window', async () => {
-    // 100's regression shape. `attachOpen` is what a reloaded window reconciles against; a launch
-    // that was given up on must not appear there, or the rail offers a conversation with nothing
-    // behind it.
-    const runtime = new StallingRuntime('tears-down')
-    const host = buildHost(runtime)
-
-    await host.createSession({ provider: 'codex' }, sink).catch(() => undefined)
-
-    expect(host.attachOpenSessions(sink)).toEqual([])
-    expect(host.sessionIds).toEqual([])
-    expect(sink.messages).toEqual([])
-    await host.closeAll()
-  })
-})
-
 describe('cancelling a launch (102)', () => {
   let userData: string
   let sink: RecordingSink
@@ -401,8 +215,6 @@ describe('cancelling a launch (102)', () => {
         authNote: null,
         files: [],
       }),
-      // Long enough that nothing here can be the deadline firing: every ending below is a Cancel.
-      launchTimeoutMs: 30_000,
       closeDrainTimeoutMs: 40,
       ...overrides,
     })
@@ -498,11 +310,11 @@ describe('cancelling a launch (102)', () => {
     await host.closeAll()
   })
 
-  it('refuses the id thereafter when termination CANNOT be confirmed', async () => {
+  it('holds a reopen of the id until termination is confirmed, and starts nothing before', async () => {
     // ⚠️ **Acceptance 4's second half, and the line 102 said not to weaken.** The provider arrives
-    // during the cancel and its `close()` never returns, so nothing may say it stopped. `close()`
-    // still resolves on its bound — a hung provider must not hang the button — and the id keeps
-    // being refused for exactly as long as we do not know.
+    // during the cancel and its `close()` does not return, so nothing may say it stopped. `close()`
+    // still resolves on its bound — a hung provider must not hang the button — and a reopen of the
+    // id WAITS for exactly as long as we do not know: no second provider, and no refusal for it.
     const closing = deferred()
     const runtime = new StallingRuntime('arrives-anyway', closing.promise)
     const host = buildHost(runtime)
@@ -519,12 +331,24 @@ describe('cancelling a launch (102)', () => {
     // It was handed back, not registered…
     expect(host.sessionIds).toEqual([])
     expect(runtime.late?.closed()).toBe(false)
-    // …and the id is refused, in 070's words, because we cannot say the process is gone.
-    const refused = await host.resumeSession('sess_1', sink).catch((e: Error) => e)
-    expect((refused as Error).message).toContain('cannot continue yet')
+    // …and a reopen of the id waits, because we cannot say the process is gone.
+    let reopened = false
+    const reopening = host.resumeSession('sess_1', sink).then(
+      () => {
+        reopened = true
+      },
+      () => {
+        reopened = true
+      },
+    )
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    expect(reopened).toBe(false)
+    expect(runtime.late?.closed()).toBe(false)
 
     closing.resolve()
     await waitFor(() => runtime.late?.closed() === true, 'the hand-back to finish')
+    await reopening
+    expect(reopened).toBe(true)
     await host.closeAll()
   })
 

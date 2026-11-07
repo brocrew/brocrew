@@ -257,7 +257,7 @@ describe('688 §3 · R22 — the composer does not point at a Cancel the row doe
       const m = await composerOver(queued)
       const foot = m.q('composer-hint')
       expect(words(foot)).toMatch(
-        /^.+ to send when .+ finishes, with what is already waiting — a command goes alone · .+ is Stop and send: the turn is asked to stop; this is sent once it has ended, or comes back to you if it has not within seconds$/,
+        /^.+ to send when .+ finishes, with what is already waiting — a command goes alone · .+ is Stop and send: the turn is asked to stop; this is sent once it has ended$/,
       )
       expect(words(foot)).not.toContain('Cancel it')
       expect(words(foot)).not.toContain('Wait for it to go')

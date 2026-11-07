@@ -721,7 +721,6 @@ const ACT: Readonly<Record<string, string>> = {
   'TOOL_REFUSALS|spawning-disabled': 'no retry will pass until they switch it back on',
   'TOOL_REFUSALS|agent-did-not-start':
     'ask a person to read the detail and decide whether to start that conversation again',
-  'TOOL_REFUSALS|agent-took-too-long-to-start': 'make the same call again',
   // ⚑ 707 · R39, extended — the wake's act (`705`), first and inside the cut at the spawn door.
   'TOOL_REFUSALS|agent-could-not-start-just-now': 'Make the same call again in a moment',
   // ⚑ **710 · R51** — the wake's permanent act (below), at the spawn's door.

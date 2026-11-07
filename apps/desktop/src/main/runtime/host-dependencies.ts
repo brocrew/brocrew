@@ -63,6 +63,8 @@ export interface RuntimeHostDeps {
   prepareSharedSkills?: () => Promise<void>
   beforeSkillDiscovery?: () => Promise<void>
   sharedSkillsRoot?: () => Promise<string>
+  /** Moves whenever the shared skills change, so a session reloads them only then. */
+  sharedSkillsGeneration?: () => number
   closeSharedSkills?: () => void
   skillsForAPerson?: SkillsWindow
   savedMethods?: SavedMethodService
@@ -248,8 +250,6 @@ export interface RuntimeHostDeps {
     read(): KeptCuts
     write(kept: KeptCuts): void
   }
-  /** How long a woken life's account is waited for before its continuation is not sent. */
-  accountWaitMs?: number
   /**
    * Where the Claude account its usage readings were read on is kept (`provider-accounts-file.ts`),
    * with the only copy of its email. Optional: without it the account is known for this run only.
@@ -466,10 +466,6 @@ export interface RuntimeHostDeps {
    * {@link DEFAULT_INTERRUPT_WAIT_MS}.
    */
   interruptWaitMs?: number
-  /** How long a launch may go unanswered; also overrides the resume limit unless given separately. */
-  launchTimeoutMs?: number
-  /** Per-provider resume limits, before the shared launch limit or provider default. */
-  resumeTimeouts?: Partial<Record<Provider, number>>
   /**
    * How long a reopened Codex thread's leads read may still take once its provider has answered;
    * past it the whole text is owed. {@link DEFAULT_REOPEN_LEADS_GRACE_MS} when not given.

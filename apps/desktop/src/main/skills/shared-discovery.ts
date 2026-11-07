@@ -87,6 +87,15 @@ export class SharedSkillDiscovery {
     this.generation++
     this.cached = undefined
   }
+  /**
+   * A mark that moves whenever the shared skills tree may have changed: on each change its
+   * watchers see, and on every ask while the tree is not being watched, because then nothing can
+   * say it is unchanged.
+   */
+  changeMark(): number {
+    if (!this.watcher || !this.offWatcher) this.invalidate()
+    return this.generation
+  }
   async root(): Promise<string> {
     await this.ready
     if (this.closed)
