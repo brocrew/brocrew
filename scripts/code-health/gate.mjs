@@ -72,11 +72,11 @@ export const knipKeys = (report) =>
     }),
   )
 
-function run(name, args, out, accepted) {
+function run(name, args, out, accepted, executable = path.join(here, 'node_modules', '.bin', name)) {
   const stdout = path.join(out, `${name}.stdout`)
   const stderr = path.join(out, `${name}.stderr`)
   const [o, e] = [fs.openSync(stdout, 'w'), fs.openSync(stderr, 'w')]
-  const result = spawnSync(path.join(here, 'node_modules', '.bin', name), args, {
+  const result = spawnSync(executable, args, {
     cwd: root,
     stdio: ['ignore', o, e],
     env: { ...process.env, NODE_OPTIONS: '--max-old-space-size=3072' },
@@ -110,9 +110,13 @@ const TOOLS = {
   jscpd(files, out) {
     run(
       'jscpd',
-      ['.', '--config', path.join(here, 'jscpd.json'), '--output', out],
+      [
+        '--prefix', here, 'run', '--silent', 'scan:clones', '--',
+        root, '--absolute', '--config', path.join(here, 'jscpd.json'), '--output', out,
+      ],
       out,
       (s) => s === 0,
+      'npm',
     )
     const r = readJson('jscpd', path.join(out, 'jscpd-report.json'), (r) =>
       Array.isArray(r?.duplicates),
