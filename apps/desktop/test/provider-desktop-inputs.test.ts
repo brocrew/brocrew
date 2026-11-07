@@ -243,12 +243,7 @@ describe('provider-owned desktop inputs', () => {
       const key = f.inputs.codex.home.key
       if (key === undefined) throw new Error('The key binding is absent')
       await key.change('/fictional/profile', { to: 'no-key' }, preparation.signal)
-      const args = f.changeKey.mock.calls[0] as unknown as [
-        unknown,
-        string,
-        unknown,
-        AbortSignal,
-      ]
+      const args = f.changeKey.mock.calls[0] as unknown as [unknown, string, unknown, AbortSignal]
       expect(args[3].aborted).toBe(false)
       const [cancelled, other] = owner === 'app' ? [app, preparation] : [preparation, app]
       cancelled.abort()
