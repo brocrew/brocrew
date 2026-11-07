@@ -181,7 +181,7 @@ function liveHosts(service) {
       const guardianPath=join(dirname(service.process.ExecutablePath),'guardian.mjs');assert((guardian.CommandLine??'').toLowerCase().includes(guardianPath.toLowerCase()))
       assert((guardian.CommandLine??'').toLowerCase().includes(dirname(receipt.path).toLowerCase()))
       const config=readJson(join(dirname(receipt.path),'launch.json'));assert.equal(config.runId,receipt.value.runId);assert.equal(config.pluginId,id);assert.equal(config.releaseDigest,wanted.sha256)
-      const manifest=readJson(join(evidence,`post-upgrade-${id}-plugin.json`)),entry=manifest.executor?.kind==='node'?manifest.executor.entry:manifest.server.entry
+      const manifest=readJson(join(evidence,`candidate-installed-${id}-plugin.json`)),entry=manifest.executor?.kind==='node'?manifest.executor.entry:manifest.server.entry
       assert(samePath(config.entry,join(pluginRoot,'host','packages',wanted.sha256,entry)))
       const packageFiles=manifest.files.map(file=>{const path=join(pluginRoot,'host','packages',wanted.sha256,file.path),stat=lstatSync(path);assert(stat.isFile()&&!stat.isSymbolicLink());const bytes=readFileSync(path);assert.equal(bytes.length,file.size);assert.equal(digest(bytes),file.sha256);return{path:file.path,sha256:file.sha256,bytes:file.size}})
       const job=readJson(join(dirname(receipt.path),'job-ready.json'));assert.equal(job.state,'assigned-ready');assert.equal(job.job.guardian.pid,guardian.ProcessId);assert.equal(job.job.guardian.birth,nativeBirth(guardian.ProcessId))
