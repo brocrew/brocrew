@@ -178,6 +178,24 @@ async function live(
     },
   }
 }
+async function holdToolCall(
+  f: Awaited<ReturnType<typeof live>>,
+  quiescent: Promise<void> = new Promise(() => {}),
+  clock?: BrokerClock,
+) {
+  const original = await f.binding()
+  f.binding.mockResolvedValueOnce({
+    ...original,
+    ...(clock ? { clock } : {}),
+    server: {
+      ...original.server,
+      tool() {
+        f.call()
+        return { result: new Promise<never>(() => {}), quiescent, cancel() {} }
+      },
+    },
+  })
+}
 describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, inert server', () => {
   it.each(['idle', 'active'] as const)(
     'recovers after a positive unexpected exact-host exit with an %s broker',
@@ -191,21 +209,7 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       const restart = (runId: string, stopped: () => void) =>
         f.controller.restartChromeTools(runId, stopped)
       if (mode === 'active') {
-        const original = await f.binding()
-        f.binding.mockResolvedValueOnce({
-          ...original,
-          server: {
-            ...original.server,
-            tool() {
-              f.call()
-              return {
-                result: new Promise<never>(() => {}),
-                quiescent: new Promise<void>(() => {}),
-                cancel() {},
-              }
-            },
-          },
-        })
+        await holdToolCall(f)
       }
       const owner = lease(),
         req = request(f.local.sink.workspaceId)
@@ -499,22 +503,7 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
   })
   it('uninstall during a call that is still being cancelled completes, and the call ends with a plain refusal', async () => {
     const f = await live()
-    const original = await f.binding()
-    // A call whose server never answers and never proves it has gone quiet.
-    f.binding.mockResolvedValueOnce({
-      ...original,
-      server: {
-        ...original.server,
-        tool() {
-          f.call()
-          return {
-            result: new Promise<never>(() => {}),
-            quiescent: new Promise<void>(() => {}),
-            cancel() {},
-          }
-        },
-      },
-    })
+    await holdToolCall(f)
     const owner = lease(),
       req = request(f.local.sink.workspaceId)
     const [route] = await f.bridge.routes(owner, req)
@@ -535,22 +524,12 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
   })
   it('reports an unavailable broker on the Running card, withholds dead routes and never overlaps a failed proof', async () => {
     const f = await live()
-    const original = await f.binding()
     let rejectProof!: (error: Error) => void
     const proof = new Promise<void>((_resolve, reject) => {
       rejectProof = reject
     })
     void proof.catch(() => undefined)
-    f.binding.mockResolvedValueOnce({
-      ...original,
-      server: {
-        ...original.server,
-        tool() {
-          f.call()
-          return { result: new Promise<never>(() => {}), quiescent: proof, cancel() {} }
-        },
-      },
-    })
+    await holdToolCall(f, proof)
     const close = closes.pop()!
     try {
       const owner = lease(),
@@ -583,27 +562,12 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
   })
   it('replaces a failed broker only after positive completion and rotates both live callers', async () => {
     const f = await live(),
-      original = await f.binding(),
       time = brokerClock()
     let prove!: () => void
     const quiet = new Promise<void>((resolve) => {
       prove = resolve
     })
-    f.binding.mockResolvedValueOnce(
-      Object.assign(
-        {
-          ...original,
-          server: {
-            ...original.server,
-            tool() {
-              f.call()
-              return { result: new Promise<never>(() => {}), quiescent: quiet, cancel() {} }
-            },
-          },
-        },
-        { clock: time.clock },
-      ),
-    )
+    await holdToolCall(f, quiet, time.clock)
     const owner = lease(),
       first = request(f.local.sink.workspaceId),
       second = request(f.local.sink.workspaceId)

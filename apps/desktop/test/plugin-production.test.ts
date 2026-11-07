@@ -1826,18 +1826,16 @@ it.skipIf(process.platform === 'win32')(
   },
 )
 
-it('refuses restart projection from an authenticated inconsistent Hello diagnostic', async () => {
+async function busyOwner(
+  options: Awaited<ReturnType<typeof setup>>['options'],
+  diagnostic?: Record<string, string>,
+) {
   const { createServer } = await import('node:net')
   const { pack, unpack, secret } = await import('../src/main/plugins/supervisor/protocol')
-  const f = await setup()
-  await privateFiles.keepPluginRootPrivate(f.options.root)
-  const storage = new SupervisorStorage(f.options.root, [f.options.workspaceRoot], true)
+  await privateFiles.keepPluginRootPrivate(options.root)
+  const storage = new SupervisorStorage(options.root, [options.workspaceRoot], true)
   const record: OwnerRecord = {
-    version: 1,
-    epoch: randomUUID(),
-    key: secret(),
-    phase: 'accepting',
-    wire: OWNER_WIRE,
+    version: 1, epoch: randomUUID(), key: secret(), phase: 'accepting', wire: OWNER_WIRE,
   }
   storage.write(record)
   const authenticated = vi.fn()
@@ -1846,33 +1844,30 @@ it('refuses restart projection from an authenticated inconsistent Hello diagnost
     socket.write(JSON.stringify({ challenge }) + '\n')
     socket.once('data', (packet) => {
       const request = unpack(record.key, 'request', packet.toString().trim()) as {
-        epoch: string
-        nonce: string
-        challenge: string
-        command: { kind: string }
+        epoch: string; nonce: string; challenge: string; command: { kind: string }
       }
-      expect(request.epoch).toBe(record.epoch)
-      expect(request.challenge).toBe(challenge)
-      expect(request.command.kind).toBe('hello')
-      authenticated()
-      socket.end(
-        pack(record.key, 'response', {
-          ok: false,
-          nonce: request.nonce,
-          epoch: record.epoch,
-          code: 'busy',
-          diagnostic: {
-            phase: 'blocked',
-            stage: 'recovery',
-            probe: 'no-answer',
-            reason: 'restart-required',
-          },
-        }),
-      )
+      if (diagnostic) {
+        expect(request.epoch).toBe(record.epoch)
+        expect(request.challenge).toBe(challenge)
+        expect(request.command.kind).toBe('hello')
+        authenticated()
+      }
+      socket.end(pack(record.key, 'response', {
+        ok: false, nonce: request.nonce, epoch: record.epoch, code: 'busy',
+        ...(diagnostic ? { diagnostic } : {}),
+      }))
     })
   })
-  const supervisor = new PluginSupervisorAttachment()
   await new Promise<void>((resolve) => server.listen(storage.endpoint(record), resolve))
+  return { storage, server, authenticated }
+}
+
+it('refuses restart projection from an authenticated inconsistent Hello diagnostic', async () => {
+  const f = await setup()
+  const { storage, server, authenticated } = await busyOwner(f.options, {
+    phase: 'blocked', stage: 'recovery', probe: 'no-answer', reason: 'restart-required',
+  })
+  const supervisor = new PluginSupervisorAttachment()
   try {
     f.controller.start({ ...f.options, supervisor })
     await f.controller.ready!()
@@ -1890,36 +1885,9 @@ it('refuses restart projection from an authenticated inconsistent Hello diagnost
 }, 15000)
 
 it('resets authenticated busy continuity when the root inode changes but its supervisor directory survives', async () => {
-  const { createServer } = await import('node:net')
   const { rename } = await import('node:fs/promises')
-  const { pack, unpack, secret } = await import('../src/main/plugins/supervisor/protocol')
   const f = await setup()
-  await privateFiles.keepPluginRootPrivate(f.options.root)
-  const storage = new SupervisorStorage(f.options.root, [f.options.workspaceRoot], true)
-  const record: OwnerRecord = {
-    version: 1,
-    epoch: randomUUID(),
-    key: secret(),
-    phase: 'accepting',
-    wire: OWNER_WIRE,
-  }
-  storage.write(record)
-  const server = createServer((socket) => {
-    const challenge = secret()
-    socket.write(JSON.stringify({ challenge }) + '\n')
-    socket.once('data', (packet) => {
-      const request = unpack(record.key, 'request', packet.toString().trim()) as { nonce: string }
-      socket.end(
-        pack(record.key, 'response', {
-          ok: false,
-          nonce: request.nonce,
-          epoch: record.epoch,
-          code: 'busy',
-        }),
-      )
-    })
-  })
-  await new Promise<void>((resolve) => server.listen(storage.endpoint(record), resolve))
+  const { storage, server } = await busyOwner(f.options)
   try {
     const options = { ...f.options, generation: randomUUID() }
     const first = await PluginWorkspaceLease.attach(options).catch((e) => e)
