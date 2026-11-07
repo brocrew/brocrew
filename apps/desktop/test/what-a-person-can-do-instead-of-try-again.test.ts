@@ -1,19 +1,15 @@
 import { fixtureProviderConfig, neutralHostDeps, prepareUnprofiledHome } from './lib/host-fixture'
+import { migratedSessionStore } from './lib/migrated-session-store'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime, type AgentRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import type { SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import * as unavailable from '../src/main/runtime/session-unavailable'
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 const TRY_AGAIN = /try again/i
 
@@ -97,8 +93,7 @@ describe('§2 · what a person reads at the door', () => {
   beforeEach(() => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-716-f5-'))
     db = openDatabase(join(userData, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
-    store = createSessionStore(db)
+    store = migratedSessionStore(db)
     stall = false
     counter = 0
     const sessions = new FakeProviderSessions()

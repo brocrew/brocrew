@@ -1,17 +1,14 @@
 import { neutralHostDeps, NonPersonSink as RecordingSink } from './lib/host-fixture'
+import { migratedSessionStore } from './lib/migrated-session-store'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeRuntime, type AgentRuntime, type SessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import type { SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, type RuntimeHostDeps } from '../src/main/runtime/runtime-host'
-
-const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
 const SHORT_OLD_BOUNDS: Record<string, number> = {
   launchTimeoutMs: 40,
@@ -121,8 +118,7 @@ describe.each<Provider>(['claude', 'codex'])('a slow %s provider is waited for',
     const userData = join(dir, 'userData')
     mkdirSync(userData, { recursive: true })
     db = openDatabase(join(dir, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
-    store = createSessionStore(db)
+    store = migratedSessionStore(db)
     controls = {
       startHeld: null,
       resumeHeld: null,

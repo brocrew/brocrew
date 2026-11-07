@@ -1,3 +1,4 @@
+import { NonPersonSink as RecordingSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -13,21 +14,9 @@ import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly messages: RuntimeEventMessage[] = []
-  readonly alive = true
-  constructor(readonly ownerId = 'owner:1') {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
   let resolve!: () => void

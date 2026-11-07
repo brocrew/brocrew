@@ -1,16 +1,13 @@
 import { neutralHostDeps, NonPersonSink as RecordingSink } from './lib/host-fixture'
+import { migratedSessionStore } from './lib/migrated-session-store'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeRuntime, type AgentRuntime, type SessionHandle } from '@brobot2/runtime'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import type { SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-
-const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
 function saidClosed(sink: RecordingSink): boolean {
   return sink.messages.some(
@@ -67,8 +64,7 @@ describe('a conversation the app has said is closed can be reopened (075, from 0
     userData = join(dir, 'userData')
     mkdirSync(userData, { recursive: true })
     db = openDatabase(join(dir, 'brobot2.sqlite'))
-    applyMigrations(db, migrationsFolder)
-    store = createSessionStore(db)
+    store = migratedSessionStore(db)
     gate = deferred()
     handles = []
     resumed = []

@@ -1,5 +1,5 @@
-import { neutralHostDeps } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { neutralHostDeps, prepareUnprofiledHome } from './lib/host-fixture'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -98,11 +98,7 @@ describe('421 · a live conversation is never drawn as ended', () => {
         }
         return runtime
       },
-      prepareProviderHome: (provider: Provider) => {
-        const home = join(userData, 'provider-homes', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: (provider: Provider) => prepareUnprofiledHome(userData, provider),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
       newSessionId: () => `sess_${++counter}`,
