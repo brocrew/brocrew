@@ -109,16 +109,18 @@ function theCard(
     readings?: readonly ProviderUsageReading[]
     provider?: 'claude' | 'codex'
     capabilities?: ProviderCapabilityMap
+    foldKey?: boolean
   } = {},
 ) {
   const moved = ref(0)
   const limit = ref<ProviderCondition | null>(over.limit ?? null)
   const authChanged: string[] = []
+  const revealed: string[] = []
 
   const checkProviderAuth: NonNullable<Doors['checkProviderAuth']> =
     doors.checkProviderAuth ?? (async () => SIGNED_IN)
   const apiKeyStatus: NonNullable<Doors['apiKeyStatus']> =
-    doors.apiKeyStatus ?? (async () => ({ ...NO_KEY }))
+    doors.apiKeyStatus ?? (async () => ({ ...NO_KEY, provider: over.provider ?? 'claude' }))
   const setApiKey: NonNullable<Doors['setApiKey']> = doors.setApiKey ?? (async () => ({ ...A_KEY }))
   const removeApiKey: NonNullable<Doors['removeApiKey']> =
     doors.removeApiKey ?? (async () => ({ ...NO_KEY }))
@@ -184,12 +186,16 @@ function theCard(
           resourcesError: null,
           loginMoved: moved.value,
           lists,
+          open: over.foldKey
+            ? { login: true, key: false, version: true, usage: true, resources: true, models: true }
+            : undefined,
+          onReveal: (part: string) => revealed.push(part),
           onAuthChanged: (profileId: string) => authChanged.push(profileId),
         })
     },
   })
   const m = mount(Host, {}, { width: 720, height: 1400 })
-  return { m, runtime, moved, limit, authChanged }
+  return { m, runtime, moved, limit, authChanged, revealed }
 }
 
 const keyInput = (m: Mounted): HTMLInputElement => m.q('provider-key-input') as HTMLInputElement
@@ -215,14 +221,15 @@ describe('saved-key read progress', () => {
     let notice: Parameters<RuntimeBridge['onProvidersChanged']>[0] = () => {}
     const stopped = vi.fn()
     let status: ApiKeyStatus = { ...A_KEY }
-    const { m, runtime, authChanged } = theCard({
+    const { m, runtime, authChanged, revealed } = theCard({
       apiKeyStatus: async () => status,
       onProvidersChanged: (listener) => {
         notice = listener
         return stopped
       },
-    })
+    }, { foldKey: true })
     await settled()
+    revealed.length = 0
     const before = runtime.apiKeyStatus.mock.calls.length
     status = { ...A_KEY, inUse: false, readState: 'reading' } as unknown as ApiKeyStatus
     notice({ what: 'key-read', provider: 'codex' } as never)
@@ -236,6 +243,11 @@ describe('saved-key read progress', () => {
     expect(text(m.q('provider-key-in-use'))).toBe('Reading the saved key…')
     expect(m.q('provider-key-in-use').classList.contains('warn')).toBe(false)
     expect(m.host.textContent).not.toContain('This computer can’t read it')
+    expect(revealed).not.toContain('key')
+    status = { ...A_KEY, inUse: false, readState: 'unreadable' }
+    notice({ what: 'key-read', provider: 'claude' })
+    await settled()
+    expect(revealed).toEqual(['key'])
     unmountAll()
     expect(stopped).toHaveBeenCalledTimes(1)
   })
