@@ -451,32 +451,6 @@ export async function keepToThisUser(
   }
 }
 
-/**
- * On Windows, gives `file` a list of its own that lets in this user, SYSTEM and Administrators alone,
- * inheriting nothing from its folder, and checks it; throws {@link NotKeptToThisUser} when it could
- * not. A file made to take another's place takes its folder's list, which can let in accounts the
- * file it replaces did not. Elsewhere, does nothing.
- */
-export async function keepFileToThisUser(
-  file: string,
-  lists: FileAccessLists = windowsAccessLists,
-  platform: NodeJS.Platform = process.platform,
-): Promise<void> {
-  if (platform !== 'win32') return
-  const said = (error: unknown): string => (error instanceof Error ? error.message : String(error))
-  try {
-    const user = await lists.userSid()
-    await lists.restrictFile(file, user)
-    await verifyFileToThisUser(file, lists, platform)
-  } catch (error) {
-    throw new NotKeptToThisUser(
-      `BroCrew could not make ${file} readable by you alone: ${said(error)}`,
-      said(error),
-      { cause: error },
-    )
-  }
-}
-
 /** Checks the inherited file ACL without changing it or granting access to an existing handle. */
 export async function verifyFileToThisUser(
   file: string,

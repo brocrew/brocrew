@@ -1,5 +1,4 @@
 import type { KeyObject } from 'node:crypto'
-import type { PluginCard } from '../../../shared/plugin-settings'
 import type { PluginReleasePin } from '../package-verifier'
 import type { PluginRelease, PluginTarget } from '../package-schema'
 import type { GlobalPluginState } from '../state/store'
@@ -74,8 +73,4 @@ declare const workspaceBrand: unique symbol
 export interface LifecycleWorkspace {
   readonly [workspaceBrand]: true
 }
-export interface LifecycleStatus {
-  readonly cards: readonly PluginCard[]
-  readonly cleanupPending: readonly string[]
-}
-export type { Installation, PluginReleasePin, PluginRelease }
+export type { Installation, PluginReleasePin }
