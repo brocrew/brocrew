@@ -42,3 +42,11 @@ Existing disposable upgrade-path.yml, one windows-2022 job, proof_stage early-re
 ## Proof limits
 
 All five phases and terminal summary must succeed with only the explicitly expected beta failure. Forced candidate cleanup fails; baseline containment is not normal shutdown. Runs42408293855/42409664795 stay RED. Synthetic observer acceptance proves no UI/account/provider behavior. No real accounts, messages or browser profiles. The previous Darwin probe is call-pattern-only. Early success cannot qualify changed final inputs; SAME-harness exact final installer proof remains required.
+
+## Post-release native019 public-route checks
+
+W15 req47584391 supersedes the failed018 baseline for the new public019 modes. `public-019-clean` skips beta installation/launch; `public-019-upgrade` installs actual0136, attempts Chrome019 through beta Settings using the current real catalogue, records its actual success OR failure without asserting failure, and preserves that state through same-root NSIS. This is the post-release current-user path, not a reproduction of the earlier018 failures. Earlier018 modes remain historical and unchanged.
+
+Candidate pins: Chrome019 native product a3acd9f105e666f71d49d1eb967dfe0b790fa762, archive4373190bytes/SHA2569f763685263abfde06f91aa1c26ae93a726a53b568719368650251874c84e57b, manifest0f13c23a672133fd5f6334230e8c5029f167e57320a6b29bd6a67585b2d8f20a; unchanged WA014. Real catalogue/release/asset hash+size+URL must agree, installed manifest source must agree. No custom inputs, interception, debugger transport, seeding or prewarm. Both Settings installs/retries, tools/list and Chrome profiles call, native/payload/installed service identities and NORMAL candidate exit/cleanup are mandatory; no Chrome019 exception. Any failure FAILS. Beta containment, if needed, remains explicitly recorded and unproved normal shutdown. Snapshot tar command now retains bounded stderr/status/argv evidence before unchanged assertions; no tar flag, timeout or fallback change.
+
+Run only after actual native019 publication and exact qualified final installer receipt, clean first then current-user upgrade. These are post-release checks, not publication gates. No publication or dispatch is claimed by this source.

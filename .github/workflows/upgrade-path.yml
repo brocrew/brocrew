@@ -32,7 +32,7 @@ on:
       test_path:
         description: Failed beta recovery or independent clean-install control
         type: choice
-        options: [failed-beta-recovery, clean-install, app-upgrade-compat]
+        options: [failed-beta-recovery, clean-install, app-upgrade-compat, public-019-clean, public-019-upgrade]
         default: failed-beta-recovery
       proof_stage:
         description: Early recipe check or final candidate proof
@@ -124,15 +124,21 @@ jobs:
           set -euo pipefail
           gh api repos/brocrew/brocrew/releases/tags/v0.1.36 > evidence/beta-release.json
           cp evidence/beta-release.json inputs/beta-release.json
-          gh api repos/brocrew/brocrew-plugin-chrome/releases/tags/v0.1.8 > evidence/chrome-release.json
+          chrome_version=0.1.8
+          chrome_sha=d05363044da6b65cacfccee0149772b97c1a7e5dca83c8262bf91e70de84c8a0
+          if [[ "$TEST_PATH" == public-019-* ]]; then
+            chrome_version=0.1.9
+            chrome_sha=9f763685263abfde06f91aa1c26ae93a726a53b568719368650251874c84e57b
+          fi
+          gh api "repos/brocrew/brocrew-plugin-chrome/releases/tags/v$chrome_version" > evidence/chrome-release.json
           gh api repos/brocrew/brocrew-plugin-whatsapp/releases/tags/v0.1.4 > evidence/whatsapp-release.json
           gh release download v0.1.36 --repo brocrew/brocrew --pattern BroCrew-Setup-0.1.36-x64.exe --dir inputs
-          gh release download v0.1.8 --repo brocrew/brocrew-plugin-chrome --pattern chrome-win32-x64.tar.gz --dir inputs
+          gh release download "v$chrome_version" --repo brocrew/brocrew-plugin-chrome --pattern chrome-win32-x64.tar.gz --dir inputs
           gh release download v0.1.4 --repo brocrew/brocrew-plugin-whatsapp --pattern whatsapp-win32-x64.tar.gz --dir inputs
           cd inputs
           printf '%s\n' \
             '856b87c2fd1306745a881f7e5e97591888695dbf9a15d784b477a85f8f35578f *BroCrew-Setup-0.1.36-x64.exe' \
-            'd05363044da6b65cacfccee0149772b97c1a7e5dca83c8262bf91e70de84c8a0 *chrome-win32-x64.tar.gz' \
+            "$chrome_sha *chrome-win32-x64.tar.gz" \
             '49497b4c15adffefdbc63f8490da542ebae78016975a72c6b55e4476aa3dc769 *whatsapp-win32-x64.tar.gz' > ../evidence/published-sha256.txt
           sha256sum --check ../evidence/published-sha256.txt
 

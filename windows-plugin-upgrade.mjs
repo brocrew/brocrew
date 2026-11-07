@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import { parseArgs } from 'node:util'
 import { chromeCompatibilityResult, appCompatibilityVerdict, freshClosedChromeRuns } from './chrome-compatibility-result.mjs'
+import { public019Profile } from './public-019-profile.mjs'
 import { readCustomPluginInputs } from './custom-plugin-inputs.mjs'
 import { transportLabel, readTransportFixture, assertUnusedInspectorPort, coldMainArgument, attachColdMain, attachSupervisor } from './instrumented-plugin-transport.mjs'
 
@@ -21,13 +22,15 @@ const publishedExpected = {
   chrome: { version: '0.1.8', bytes: 3608965, sha256: 'd05363044da6b65cacfccee0149772b97c1a7e5dca83c8262bf91e70de84c8a0', manifest: 'b8432edfc43657715a695dcca57164c7ba0e9229fd98570d4159afeb9be8f7d3', repo: 'brocrew-plugin-chrome' },
   whatsapp: { version: '0.1.4', bytes: 8228798, sha256: '49497b4c15adffefdbc63f8490da542ebae78016975a72c6b55e4476aa3dc769', manifest: 'fe6f04050ac0ec9cc0b577de9d57dc249987d7d3a43cc7e16a9350e68ca83c8d', repo: 'brocrew-plugin-whatsapp' },
 }
-let expected=structuredClone(publishedExpected)
+const public019=public019Profile(args['test-path'],Boolean(args['plugin-inputs']))
+let expected=public019?{...structuredClone(publishedExpected),chrome:public019.chrome}:structuredClone(publishedExpected)
 assert.equal(Boolean(args['plugin-inputs']),Boolean(args['plugin-receipt-sha256']),'custom plugin directory and receipt hash required together')
-assert(['failed-beta-recovery','clean-install','app-upgrade-compat'].includes(args['test-path']))
-const cleanInstall=args['test-path']==='clean-install'
+assert(['failed-beta-recovery','clean-install','app-upgrade-compat','public-019-clean','public-019-upgrade'].includes(args['test-path']))
+const cleanInstall=args['test-path']==='clean-install'||args['test-path']==='public-019-clean'
 const appCompat=args['test-path']==='app-upgrade-compat'
 assert(!appCompat||!args['plugin-inputs'],'app compatibility mode uses exact published018/014, not custom archive instrumentation')
-const plan = cleanInstall ? ['verify exact candidate installer and published win32/x64 plugin pins', 'install candidate NSIS on a clean runner without installing or launching beta', 'install both published plugins through candidate Settings', 'call Chrome list_browser_profiles and WhatsApp tools/list through installed service', 'verify normal candidate shutdown and cleanup'] : ['verify public beta installer, exact candidate bytes and published win32/x64 plugin pins', 'install actual 0.1.36 NSIS', 'record beta Settings Chrome installation failure as the expected baseline', 'stop beta and retain its real residual plugin state without seeding or repair', 'install exact 0.2.11 candidate NSIS over beta', 'install or retry the two published plugins through candidate Settings', 'attach observer to candidate-owned service; Chrome list_browser_profiles and WhatsApp tools/list over HTTP', 'detach observer, quit app, verify owner/host exits and process cleanup']
+const plan = cleanInstall ? ['verify exact candidate installer and published win32/x64 plugin pins', 'install candidate NSIS on a clean runner without installing or launching beta', 'install both published plugins through candidate Settings', 'call Chrome list_browser_profiles and WhatsApp tools/list through installed service', 'verify normal candidate shutdown and cleanup'] : ['verify public beta installer, exact candidate bytes and published win32/x64 plugin pins', 'install actual 0.1.36 NSIS', public019?'attempt beta Settings current019 and retain actual success or failure':'record beta Settings Chrome installation failure as the expected baseline', public019?'stop beta and retain its actual current019 state without seeding or repair':'stop beta and retain its real residual plugin state without seeding or repair', 'install exact 0.2.11 candidate NSIS over beta', 'install or retry the two published plugins through candidate Settings', 'attach observer to candidate-owned service; Chrome list_browser_profiles and WhatsApp tools/list over HTTP', 'detach observer, quit app, verify owner/host exits and process cleanup']
+if(public019)plan.unshift('POST-RELEASE CURRENT-USER PUBLIC ROUTE: exact native Chrome019; beta attempts current catalogue with actual success/failure retained; both candidate plugins mandatory, no Chrome exception')
 if(appCompat)plan.unshift('APP COMPATIBILITY ONLY: known Chrome018 identity failure may be non-blocking; WhatsApp/service/upgrade/normal cleanup remain mandatory')
 if(args['plugin-inputs'])plan.unshift(transportLabel)
 if (!args.execute) { console.log(JSON.stringify({ execute: false, plan, expected }, null, 2)); process.exit(0) }
@@ -296,7 +299,8 @@ function snapshot(label) {
     const folder=join(pluginRoot,'package-vault',wanted.sha256),archive=readFileSync(join(folder,'archive')),catalogue=readFileSync(join(folder,'catalogue.json'))
     assert.equal(archive.length,wanted.bytes);assert.equal(digest(archive),wanted.sha256);assert.equal(readFileSync(join(folder,'catalogue.sha256'),'utf8'),digest(catalogue))
     const entries=JSON.parse(catalogue).entries,release=entries.find(e=>e.id===id);assert(release);assert.equal(release.manifestSha256,wanted.manifest);assert.equal(release.archive.sha256,wanted.sha256)
-    const manifest=spawnSync('tar.exe',['-xOzf',join(folder,'archive'),'plugin.json'],{encoding:null,timeout:30000,maxBuffer:1048576});assert.ifError(manifest.error);assert.equal(manifest.status,0);assert.equal(digest(manifest.stdout),wanted.manifest)
+    const manifest=spawnSync('tar.exe',['-xOzf',join(folder,'archive'),'plugin.json'],{encoding:null,timeout:30000,maxBuffer:1048576});keep(`${label}-${id}-manifest-extraction.json`,{executable:'tar.exe',argv:['-xOzf',join(folder,'archive'),'plugin.json'],cwd:process.cwd(),status:manifest.status,signal:manifest.signal,errorCode:manifest.error?.code,stderrBytes:manifest.stderr?.length??0,stderr:manifest.stderr?.subarray(0,16384).toString('utf8'),stderrTruncated:(manifest.stderr?.length??0)>16384,stdoutBytes:manifest.stdout?.length??0,stdoutSha256:manifest.stdout?digest(manifest.stdout):null});assert.ifError(manifest.error);assert.equal(manifest.status,0,'manifest extraction failed; see retained extraction receipt');assert.equal(digest(manifest.stdout),wanted.manifest)
+    if(wanted.sourceCommit)assert.equal(JSON.parse(manifest.stdout).sourceCommit,wanted.sourceCommit)
     keep(`${label}-${id}-plugin.json`,manifest.stdout);keep(`${label}-${id}-catalogue.json`,catalogue)
     vault.push({id,archiveSha256:wanted.sha256,manifestSha256:wanted.manifest,bytes:archive.length})
   }
@@ -374,8 +378,8 @@ try {
     esbuild.buildSync({entryPoints:[join(evidence,'observer.ts')],bundle:true,platform:'node',format:'cjs',target:'node24',outfile:join(evidence,'observer.cjs'),absWorkingDir:source})
     summary.inputs={beta:installer(join(inputs,'BroCrew-Setup-0.1.36-x64.exe'),betaMetadata[0],'0.1.36','856b87c2fd1306745a881f7e5e97591888695dbf9a15d784b477a85f8f35578f'),candidate:{path:candidatePath,sha256:digest(candidateBytes),bytes:candidateBytes.length,sourceSha:args['candidate-sha'],provenance:'exact-source build or operator-pinned artifact; see workflow intake'},sourceSha:args['candidate-sha'],driverSha256:digest(readFileSync(new URL(import.meta.url))),helperSha256:digest(readFileSync(join(evidence,'observer.cjs')))}
     const catalogue=await publicJson('https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue-v2.json','public-catalogue-v2.json')
-    for(const [id,wanted]of Object.entries(publishedExpected)) {
-      const entry=catalogue.entries.find(e=>e.id===id);assert.equal(entry?.version,wanted.version)
+    for(const [id,wanted]of Object.entries(public019?expected:publishedExpected)) {
+      const entry=catalogue.entries.find(e=>e.id===id);assert.equal(entry?.version,wanted.version);if(wanted.sourceCommit)assert.equal(entry.sourceCommit,wanted.sourceCommit)
       const target=entry.targets.find(t=>t.os==='win32'&&t.cpu==='x64');assert.equal(target?.sha256,wanted.sha256);assert.equal(target?.manifestSha256,wanted.manifest);assert.equal(target?.bytes,wanted.bytes)
       const release=await publicJson(`https://api.github.com/repos/brocrew/${wanted.repo}/releases/tags/v${wanted.version}`,`public-${id}-release.json`)
       assert.equal(release.draft,false);assert.equal(release.tag_name,`v${wanted.version}`)
@@ -409,23 +413,24 @@ try {
   let beta
   if(!cleanInstall) {
   beta=await phase('actual beta NSIS install',()=>install(summary.inputs.beta,'0.1.36'))
-  await phase('beta Chrome installation failure baseline',async()=>{
+  await phase(public019?'beta current-catalogue Chrome attempt':'beta Chrome installation failure baseline',async()=>{
     await launch(beta,'0.1.36',9345)
     assert.equal((await request({kind:'availability'},'beta-availability')).available,true)
     const listed=await request({kind:'list'},'beta-list');assert.equal(listed.ok,true)
-    for(const [id,wanted]of [['chrome',publishedExpected.chrome]]) {
+    for(const [id,wanted]of [['chrome',public019?expected.chrome:publishedExpected.chrome]]) {
       const card=listed.cards.find(c=>c.id===id);assert(card);assert.equal(card.installed,false)
       let consent
       if(card.preparationRequired) {const prepared=await request({kind:'prepare',id,action:'install'},`beta-${id}-review`);assert.equal(prepared.ok,true);assert.equal(prepared.review.details.version,wanted.version);assert.equal(prepared.review.details.manifestSha256,wanted.manifest);assert.equal(prepared.review.details.digest,wanted.sha256);consent=prepared.review.consent}
       const installed=await request({kind:'install',id,...(consent?{consent}:{})},`beta-${id}-install`)
-      summary.baseline={expectedFailure:true,reply:installed,cause:'unknown',hostReceipts:hostReceipts()}
-      keep('beta-failure-baseline.json',summary.baseline)
-      assert.equal(installed.ok,false,'this journey requires the observed failing beta installation baseline')
+      assert.equal(typeof installed.ok,'boolean','beta install must return a concrete outcome')
+      summary.baseline={expectedFailure:!public019,journey:public019?'post-release current-user path, not a 0.1.8 reproduction':'historical failed018 recovery',version:wanted.version,reply:installed,cause:installed.ok?'not applicable':'unknown',hostReceipts:hostReceipts()}
+      keep(public019?'beta-current-catalogue-baseline.json':'beta-failure-baseline.json',summary.baseline)
+      if(!public019)assert.equal(installed.ok,false,'this journey requires the observed failing beta installation baseline')
     }
-    await screenshot('beta-failed-install.png')
+    await screenshot(public019?'beta-current-catalogue-attempt.png':'beta-failed-install.png')
     try{await quit('beta');summary.baseline.normalShutdown=true}
     catch(error){summary.baseline.normalShutdown=false;summary.baseline.quitFailure=error.stack??String(error);summary.baseline.cleanup=await cleanup('baseline-cleanup',true);running=null}
-    keep('beta-failure-baseline.json',summary.baseline)
+    keep(public019?'beta-current-catalogue-baseline.json':'beta-failure-baseline.json',summary.baseline)
     summary.residualPreUpgrade=residualState('baseline-residual-state')
     keep('pre-upgrade-host-receipts.json',hostReceipts())
   })
