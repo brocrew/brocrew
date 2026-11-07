@@ -223,7 +223,6 @@ const PORT_RELEASE_MS = 1_000
  */
 const OWNERSHIP_MS = 10_000
 
-
 /**
  * Does anything answer on the one-host gate socket?
  *
