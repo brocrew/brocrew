@@ -1835,7 +1835,11 @@ async function busyOwner(
   await privateFiles.keepPluginRootPrivate(options.root)
   const storage = new SupervisorStorage(options.root, [options.workspaceRoot], true)
   const record: OwnerRecord = {
-    version: 1, epoch: randomUUID(), key: secret(), phase: 'accepting', wire: OWNER_WIRE,
+    version: 1,
+    epoch: randomUUID(),
+    key: secret(),
+    phase: 'accepting',
+    wire: OWNER_WIRE,
   }
   storage.write(record)
   const authenticated = vi.fn()
@@ -1844,7 +1848,10 @@ async function busyOwner(
     socket.write(JSON.stringify({ challenge }) + '\n')
     socket.once('data', (packet) => {
       const request = unpack(record.key, 'request', packet.toString().trim()) as {
-        epoch: string; nonce: string; challenge: string; command: { kind: string }
+        epoch: string
+        nonce: string
+        challenge: string
+        command: { kind: string }
       }
       if (diagnostic) {
         expect(request.epoch).toBe(record.epoch)
@@ -1852,10 +1859,15 @@ async function busyOwner(
         expect(request.command.kind).toBe('hello')
         authenticated()
       }
-      socket.end(pack(record.key, 'response', {
-        ok: false, nonce: request.nonce, epoch: record.epoch, code: 'busy',
-        ...(diagnostic ? { diagnostic } : {}),
-      }))
+      socket.end(
+        pack(record.key, 'response', {
+          ok: false,
+          nonce: request.nonce,
+          epoch: record.epoch,
+          code: 'busy',
+          ...(diagnostic ? { diagnostic } : {}),
+        }),
+      )
     })
   })
   await new Promise<void>((resolve) => server.listen(storage.endpoint(record), resolve))
@@ -1865,7 +1877,10 @@ async function busyOwner(
 it('refuses restart projection from an authenticated inconsistent Hello diagnostic', async () => {
   const f = await setup()
   const { storage, server, authenticated } = await busyOwner(f.options, {
-    phase: 'blocked', stage: 'recovery', probe: 'no-answer', reason: 'restart-required',
+    phase: 'blocked',
+    stage: 'recovery',
+    probe: 'no-answer',
+    reason: 'restart-required',
   })
   const supervisor = new PluginSupervisorAttachment()
   try {
