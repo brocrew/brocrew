@@ -49,25 +49,33 @@ const QUIET: Theme = {
   },
 }
 
-function bridge(): ThemesBridge {
+type PreviewTrace = (event: string, detail?: unknown) => void
+
+function bridge(trace: PreviewTrace): ThemesBridge {
   const themes: Record<string, Theme | null> = { classic: null, sparse: SPARSE, tuned: TUNED }
   return {
-    list: async () => ({
-      active: 'classic',
-      requested: 'classic',
-      themes: Object.keys(themes).map((id) => ({
-        id,
-        name: id,
-        source: 'mine' as const,
-        status: 'ok' as const,
-      })),
-    }),
-    read: async (id?: string): Promise<ThemeReading> => ({
-      active: 'classic',
-      theme: themes[id ?? 'classic'] ?? null,
-      version: null,
-      assetVersions: {},
-    }),
+    list: async () => {
+      trace('list-return', Object.keys(themes))
+      return {
+        active: 'classic',
+        requested: 'classic',
+        themes: Object.keys(themes).map((id) => ({
+          id,
+          name: id,
+          source: 'mine' as const,
+          status: 'ok' as const,
+        })),
+      }
+    },
+    read: async (id?: string): Promise<ThemeReading> => {
+      trace('read-return', id ?? 'classic')
+      return {
+        active: 'classic',
+        theme: themes[id ?? 'classic'] ?? null,
+        version: null,
+        assetVersions: {},
+      }
+    },
     set: async () => ({ outcome: 'refused', rail: 'theme-unknown', problems: [] }),
     duplicate: async () => ({ outcome: 'refused', rail: 'theme-unknown', problems: [] }),
     delete: async () => ({ outcome: 'refused', rail: 'theme-unknown', problems: [] }),
@@ -90,24 +98,100 @@ const settle = async (): Promise<void> => {
 
 /** The painted colours of one card's preview, inside the light scope as on the Providers screen. */
 async function cardColours(): Promise<Record<string, Record<string, string>>> {
-  const m = mount(ThemesSection, { themes: bridge() }, { width: 900 })
-  m.host.setAttribute('data-chat-theme', 'light')
-  await settle()
-  const out: Record<string, Record<string, string>> = {}
-  for (const id of ['classic', 'sparse', 'tuned']) {
-    const at = (part: string): string =>
-      getComputedStyle(m.host.querySelector(`[data-theme-id="${id}"] ${part}`)!).backgroundColor
-    out[id] = {
-      bar: at('.mini-bar'),
-      rail: at('.mini-rail'),
-      on: at('.mini-rail i.on'),
-      pane: at('.mini-pane'),
-      bubble: at('.mini-bubble'),
-      line: at('.mini-line'),
+  const events: unknown[] = []
+  const trace: PreviewTrace = (event, detail) => {
+    try {
+      events.push({ at: performance.now(), event, detail })
+    } catch {
+      // Diagnostics must not change the observed operation.
     }
   }
-  m.unmount()
-  return out
+  const NativeObserver = globalThis.IntersectionObserver
+  class RecordedObserver extends NativeObserver {
+    constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+      super(function (this: IntersectionObserver, entries, observer) {
+        try {
+          trace(
+            'intersection',
+            entries.map((entry) => ({
+              id: entry.target.getAttribute('data-theme-id'),
+              isIntersecting: entry.isIntersecting,
+              ratio: entry.intersectionRatio,
+              time: entry.time,
+              rect: entry.boundingClientRect.toJSON(),
+              root: entry.rootBounds?.toJSON(),
+            })),
+          )
+        } catch {
+          // Forward the native callback even if recording fails.
+        }
+        callback.call(this, entries, observer)
+      }, options)
+      trace('observer-created', options?.rootMargin)
+    }
+
+    override observe(target: Element): void {
+      trace('observe', target.getAttribute('data-theme-id'))
+      super.observe(target)
+    }
+  }
+  globalThis.IntersectionObserver = RecordedObserver
+  try {
+    const m = mount(ThemesSection, { themes: bridge(trace) }, { width: 900 })
+    m.host.setAttribute('data-chat-theme', 'light')
+    await settle()
+    const out: Record<string, Record<string, string>> = {}
+    for (const id of ['classic', 'sparse', 'tuned']) {
+      const at = (part: string): string => {
+        try {
+          return getComputedStyle(m.host.querySelector(`[data-theme-id="${id}"] ${part}`)!)
+            .backgroundColor
+        } catch (error) {
+          try {
+            console.error(
+              'Theme preview diagnostic',
+              JSON.stringify({
+                id,
+                part,
+                events,
+                viewport: { width: innerWidth, height: innerHeight, x: scrollX, y: scrollY },
+                fold: m.host
+                  .querySelector('[data-cy="themes-fold"]')
+                  ?.getAttribute('aria-expanded'),
+                cards: m.all('theme-card').map((card) => ({
+                  id: card.dataset.themeId,
+                  rect: card.getBoundingClientRect().toJSON(),
+                  placeholder: !!card.querySelector('.preview-placeholder'),
+                  preview: card
+                    .querySelector('[data-theme-preview]')
+                    ?.getAttribute('data-theme-preview'),
+                })),
+                styles: [...document.querySelectorAll('style[data-theme-previews]')].map(
+                  (style) => style.textContent?.length,
+                ),
+                dom: m.host.outerHTML,
+              }),
+            )
+          } catch {
+            // Preserve the original style-query failure if diagnostics also fail.
+          }
+          throw error
+        }
+      }
+      out[id] = {
+        bar: at('.mini-bar'),
+        rail: at('.mini-rail'),
+        on: at('.mini-rail i.on'),
+        pane: at('.mini-pane'),
+        bubble: at('.mini-bubble'),
+        line: at('.mini-line'),
+      }
+    }
+    m.unmount()
+    return out
+  } finally {
+    globalThis.IntersectionObserver = NativeObserver
+  }
 }
 
 /** Classic's frame colour, read from the token file rather than restated, so a new palette moves both. */
