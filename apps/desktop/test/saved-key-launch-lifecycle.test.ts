@@ -88,6 +88,25 @@ it('publishes read-only provider facts and stops observing when the host closes'
   expect(f.listed).not.toHaveBeenCalled()
 })
 
+it('publishes the settled fact without changing credentials or starting another operation', async () => {
+  const f = pendingKey('codex')
+  const revision = f.keys.revision('codex')
+  const first = f.keys.current('codex')
+  const second = f.keys.current('codex')
+  f.answer()
+  await Promise.all([first, second])
+  expect(f.notices.mock.calls).toEqual([
+    [{ what: 'key-read', provider: 'codex' }],
+    [{ what: 'key-read', provider: 'codex' }],
+  ])
+  expect(f.keys.status('codex')).toMatchObject({ inUse: true })
+  expect(f.keys.revision('codex')).toBe(revision)
+  expect(f.open).toHaveBeenCalledTimes(1)
+  expect(f.started).not.toHaveBeenCalled()
+  expect(f.listed).not.toHaveBeenCalled()
+  await f.host.closeAll()
+})
+
 function deferred<T>() {
   let resolve!: (value: T) => void
   let reject!: (error: Error) => void

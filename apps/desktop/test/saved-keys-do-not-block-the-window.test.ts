@@ -85,9 +85,10 @@ describe('saved keys and the window', () => {
     expect(subscribe).toBeTypeOf('function')
     if (subscribe === undefined) return
     const states: unknown[] = []
+    const providers: Provider[] = []
     let shared: ReturnType<ApiKeys['current']> | undefined
     const stop = subscribe.call(keys, (provider) => {
-      expect(provider).toBe('claude')
+      providers.push(provider)
       const state = keys.status(provider)
       states.push(state)
       if (state.readState === ('reading' as string)) shared = keys.current(provider)
@@ -98,6 +99,7 @@ describe('saved keys and the window', () => {
     door.resolve({ result: FAKE_KEY, shouldReEncrypt: false })
     await read
     expect(states).toHaveLength(2)
+    expect(providers).toEqual(['claude', 'claude'])
     expect(states[1]).toMatchObject({ inUse: true })
     expect(native.decryptStringAsync).toHaveBeenCalledTimes(1)
     expect(JSON.stringify(states)).not.toContain(FAKE_KEY)
@@ -150,6 +152,22 @@ describe('saved keys and the window', () => {
     expect(heard).toHaveBeenCalledExactlyOnceWith('claude')
     expect(disposed).toHaveBeenCalledExactlyOnceWith('claude')
     expect(keys.status('claude')).toMatchObject({ set: false })
+  })
+
+  it('keeps observer failures separate from a native rejection and publishes only sanitized facts', async () => {
+    const native = storage()
+    native.decryptStringAsync.mockRejectedValue(new Error(`fictional native refusal ${FAKE_KEY}`))
+    const keys = new ApiKeys(store(), safeStorageCipher(native))
+    const states: unknown[] = []
+    keys.onReadStateChanged(() => { throw new Error('fictional window observer failed') })
+    keys.onReadStateChanged((provider) => { states.push(keys.status(provider)) })
+    await expect(keys.current('claude')).rejects.toBeInstanceOf(ApiKeyUnreadableError)
+    expect(states).toHaveLength(2)
+    expect(states[0]).toMatchObject({ readState: 'reading' })
+    expect(states[1]).toMatchObject({ readState: 'unreadable' })
+    expect(JSON.stringify(states)).not.toContain(FAKE_KEY)
+    expect(JSON.stringify(states)).not.toContain('fictional native refusal')
+    expect(native.decryptStringAsync).toHaveBeenCalledTimes(1)
   })
 
   it('constructs and reports a saved key before the window opens without initializing encryption', async () => {

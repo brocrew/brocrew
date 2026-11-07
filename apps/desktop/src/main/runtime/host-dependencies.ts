@@ -101,6 +101,7 @@ export interface RuntimeHostDeps {
   memoryKnowledge?: MemoryService
   providerAuth?: ProviderAuthOps
   apiKeys?: Pick<ApiKeys, 'status' | 'remove'> & {
+    onReadStateChanged?(listener: (provider: Provider) => void): () => void
     revision?(provider: Provider): number
     set(provider: Provider, key: string): string | null | Promise<string | null>
     read(provider: Provider): string | null | Promise<string | null>

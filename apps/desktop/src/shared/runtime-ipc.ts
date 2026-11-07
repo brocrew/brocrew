@@ -269,7 +269,7 @@ export interface ApiKeyStatus {
   readonly set: boolean
   readonly setAt: number | null
   readonly inUse: boolean
-  readonly readState?: 'not-checked' | 'unreadable'
+  readonly readState?: 'not-checked' | 'reading' | 'unreadable'
   readonly unreadableReason?: string
   readonly refusedForBilling?: {
     readonly at: number
@@ -391,7 +391,7 @@ export type ProviderResources = {
 )
 
 export interface ProvidersChangedMessage {
-  readonly what: 'login' | 'usage' | 'key'
+  readonly what: 'login' | 'usage' | 'key' | 'key-read'
   readonly provider: Provider
 }
 

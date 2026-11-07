@@ -42,9 +42,10 @@ export class ApiKeys {
   private readonly lastSavedAt = new Map<Provider, number>()
   private readonly operations = new Map<Provider, Promise<unknown>>()
   private readonly removals = new Map<Provider, number>()
+  private readonly readObservers = new Set<(provider: Provider) => void>()
   private readonly reads = new Map<
     Provider,
-    { sealed: string; setAt: number; work: Promise<OpenKey> }
+    { sealed: string; setAt: number; generation: number | undefined; work: Promise<OpenKey> }
   >()
 
   constructor(
@@ -62,13 +63,15 @@ export class ApiKeys {
     if (kept === null) return { provider, set: false, setAt: null, inUse: false, ...spends }
     const read = this.readability.get(provider)
     const known = read?.sealed === kept.sealed && read.setAt === kept.setAt ? read : undefined
+    const pending = this.reads.get(provider)
+    const reading = pending !== undefined && this.stillCurrent(provider, pending, pending.generation)
     return {
       provider,
       set: true,
       setAt: kept.setAt,
       inUse: known !== undefined && known.unreadableReason === undefined,
-      ...(known === undefined ? { readState: 'not-checked' as const } : {}),
-      ...(known?.unreadableReason === undefined
+      ...(reading ? { readState: 'reading' as const } : known === undefined ? { readState: 'not-checked' as const } : {}),
+      ...(reading || known?.unreadableReason === undefined
         ? {}
         : { readState: 'unreadable' as const, unreadableReason: known.unreadableReason }),
       ...spends,
@@ -83,11 +86,26 @@ export class ApiKeys {
     return this.changes.get(provider) ?? 0
   }
 
+  onReadStateChanged(listener: (provider: Provider) => void): () => void {
+    this.readObservers.add(listener)
+    return () => { this.readObservers.delete(listener) }
+  }
+
+  private readStateChanged(provider: Provider): void {
+    for (const listener of [...this.readObservers]) {
+      try {
+        listener(provider)
+      } catch {
+        continue
+      }
+    }
+  }
+
   current(provider: Provider): Promise<OpenKey | null> {
     const kept = this.store.keptApiKey(provider)
     if (kept === null) return Promise.resolve(null)
     const reading = this.reads.get(provider)
-    if (reading?.sealed === kept.sealed && reading.setAt === kept.setAt) return reading.work
+    if (reading !== undefined && this.stillCurrent(provider, reading, reading.generation)) return reading.work
     const change = this.changes.get(provider)
     const work = (async (): Promise<OpenKey> => {
       try {
@@ -103,11 +121,14 @@ export class ApiKeys {
         throw error
       }
     })()
-    this.reads.set(provider, { ...kept, work })
+    this.reads.set(provider, { ...kept, generation: change, work })
     const release = (): void => {
-      if (this.reads.get(provider)?.work === work) this.reads.delete(provider)
+      if (this.reads.get(provider)?.work !== work) return
+      this.reads.delete(provider)
+      if (this.stillCurrent(provider, kept, change)) this.readStateChanged(provider)
     }
     void work.then(release, release)
+    this.readStateChanged(provider)
     return work
   }
 

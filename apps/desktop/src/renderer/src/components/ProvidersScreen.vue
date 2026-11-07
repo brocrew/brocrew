@@ -303,6 +303,8 @@ onMounted(() => {
   stopListening = window.api.runtime.onProvidersChanged((message) => {
     if (message.what === 'usage') {
       emit('usageMoved')
+    } else if (message.what === 'key-read') {
+      if (providers.value.includes(message.provider)) void accessFor(message.provider).readKey()
     } else {
       if (providers.value.includes(message.provider)) readAccess(message.provider)
       loginMoved.value = {
@@ -322,6 +324,7 @@ onBeforeUnmount(() => {
   frameObserver?.disconnect()
   window.removeEventListener('resize', measureDrawer)
   stopListening?.()
+  for (const access of accesses.values()) access.invalidateKeyRead()
   document.removeEventListener('visibilitychange', lookAgain)
   window.removeEventListener('focus', lookAgain)
   window.removeEventListener('blur', lookAgain)

@@ -412,6 +412,7 @@ async function saveKey(): Promise<void> {
   keySaid.value = null
   try {
     const changed = await window.api.runtime.setApiKey({ provider: props.provider, key })
+    access.invalidateKeyRead()
     keyStatus.value = changed
     if (changed.refused !== undefined) {
       keySaid.value = { text: `The key wasn’t saved. ${changed.refused}`, tone: 'warn' }
@@ -435,6 +436,7 @@ async function removeKey(): Promise<void> {
   keySaid.value = null
   try {
     const changed = await window.api.runtime.removeApiKey({ provider: props.provider })
+    access.invalidateKeyRead()
     keyStatus.value = changed
     keySaid.value = {
       text:
@@ -464,6 +466,7 @@ const loginBehindTheKey = computed(() => {
 const keyInUseSays = computed(() => {
   const status = keyStatus.value
   if (status === null) return ''
+  if (status.readState === 'reading') return 'Reading the saved key…'
   if (status.readState === 'not-checked')
     return 'Saved. BroCrew will read the key when a conversation starts or you check it works.'
   if (status.unreadableReason === undefined && status.inUse) {
@@ -565,12 +568,15 @@ async function refreshConnectedModels(): Promise<void> {
 watch(
   () => props.provider,
   () => {
+    if (props.access === undefined) access.invalidateKeyRead()
     modelRefresh?.abort()
     modelsRefreshing.value = false
   },
 )
 onBeforeUnmount(() => {
   cardOpen = false
+  stopKeyReadNotices?.()
+  if (props.access === undefined) access.invalidateKeyRead()
   clearTimeout(copyHomesTimer)
   modelRefresh?.abort()
 })
@@ -907,8 +913,12 @@ watch(
   },
 )
 
+let stopKeyReadNotices: (() => void) | undefined
 onMounted(() => {
   if (props.access === undefined) {
+    stopKeyReadNotices = window.api.runtime.onProvidersChanged?.((message) => {
+      if (message.what === 'key-read' && message.provider === props.provider) void readKey()
+    })
     void check()
     void readKey()
   }
@@ -952,7 +962,7 @@ const whatEachPartSays = computed<Record<ProviderPart, string | null>>(() => {
     key:
       keyRefusedSays.value ??
       (keySaid.value?.tone === 'warn' ? keySaid.value.text : null) ??
-      (key?.set === true && !key.inUse && key.readState !== 'not-checked'
+      (theKeyCantBeRead(key)
         ? keyInUseSays.value
         : null),
     version:
@@ -1405,7 +1415,7 @@ defineExpose({ beginSetup })
           </p>
           <p
             class="line"
-            :class="{ warn: !keyStatus.inUse && keyStatus.readState !== 'not-checked' }"
+            :class="{ warn: keyCantBeRead }"
             data-cy="provider-key-in-use"
           >
             {{ keyInUseSays }}

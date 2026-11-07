@@ -2897,6 +2897,7 @@ export class RuntimeHost implements LiveHost {
   >()
 
   private readonly workReads: WorkReads
+  private readonly stopKeyReadNotices: (() => void) | undefined
 
   constructor(private readonly deps: RuntimeHostDeps) {
     this.ledgerIdentity = deps.store
@@ -2904,6 +2905,9 @@ export class RuntimeHost implements LiveHost {
       ...deps,
       store: this.windowRoutingReads.store(this.windowIncidentReads.store(deps.store)),
     }
+    this.stopKeyReadNotices = deps.apiKeys?.onReadStateChanged?.((provider) => {
+      this.providersMoved({ what: 'key-read', provider })
+    })
     this.workReads = new WorkReads({
       store: this.deps.store,
       oneWaitReadPerAnswer: (unread) => this.oneWaitReadPerAnswer(unread),
@@ -25901,6 +25905,7 @@ export class RuntimeHost implements LiveHost {
   private quitRecorded = false
 
   async closeAll(): Promise<void> {
+    this.stopKeyReadNotices?.()
     this.recordOpenForQuit()
     this.stopHearingCommits()
     const memoryClosed = this.deps.memoryKnowledge?.close() ?? Promise.resolve()

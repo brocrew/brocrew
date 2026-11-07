@@ -17,6 +17,11 @@ export function createProviderAccess(
   const keyError = ref<string | null>(null)
   let checkAgain = false
   let probeAgain = false
+  let keyReadTicket = 0
+
+  function invalidateKeyRead(): void {
+    keyReadTicket += 1
+  }
 
   const asked = () => ({ provider: provider(), profileId: DEFAULT_PROFILE_ID })
 
@@ -58,15 +63,20 @@ export function createProviderAccess(
   }
 
   async function readKey(): Promise<void> {
+    const ticket = ++keyReadTicket
+    const owner = provider()
+    const current = (): boolean => ticket === keyReadTicket && provider() === owner
     try {
-      keyStatus.value = await bridge().apiKeyStatus({ provider: provider() })
+      const status = await bridge().apiKeyStatus({ provider: owner })
+      if (!current() || status.provider !== owner) return
+      keyStatus.value = status
       keyError.value = null
     } catch (error) {
-      keyError.value = readableError(error)
+      if (current()) keyError.value = readableError(error)
     }
   }
 
-  return { auth, authBusy, keyStatus, keyError, asked, withGesture, check, readKey }
+  return { auth, authBusy, keyStatus, keyError, asked, withGesture, check, readKey, invalidateKeyRead }
 }
 
 export type ProviderAccess = ReturnType<typeof createProviderAccess>
