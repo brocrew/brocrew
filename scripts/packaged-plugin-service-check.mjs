@@ -6,7 +6,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-export async function checkPackagedPluginService(resources) {
+export async function checkPackagedPluginService(resources, packages) {
   resources = await realpath(resources)
   const scratch = await realpath(await mkdtemp(join(tmpdir(), 'ps-')))
   const req = createRequire(join(root, 'apps/desktop/package.json'))
@@ -33,7 +33,7 @@ export async function checkPackagedPluginService(resources) {
       ],
     })
     // Keep timeout cleanup in the process that owns the real service child on Windows too.
-    await req(harness).smoke(resources, scratch)
+    await req(harness).smoke(resources, scratch, packages)
     passed = true
   } finally {
     if (passed) await rm(scratch, { recursive: true, force: true })
@@ -43,5 +43,8 @@ export async function checkPackagedPluginService(resources) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   if (!process.argv[2]) throw new Error('Supply the built app Resources directory')
-  await checkPackagedPluginService(resolve(process.argv[2]))
+  await checkPackagedPluginService(
+    resolve(process.argv[2]),
+    process.argv[3] && resolve(process.argv[3]),
+  )
 }
