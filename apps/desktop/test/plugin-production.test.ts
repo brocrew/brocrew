@@ -1,34 +1,21 @@
-import { PluginSupervisorLaunchFailure } from '../src/main/plugins/startup-failure'
+import { setup, seams } from './plugin-production-fixtures'
+import {
+  pluginStartupTrace,
+  PluginSupervisorLaunchFailure,
+} from '../src/main/plugins/startup-failure'
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
-import { fixture, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
+import { fixture } from './plugin-lifecycle-fixtures'
 import { registerPluginSettings } from '../src/main/plugins/settings'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises'
+import { mkdir, symlink, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { tmpdir } from 'node:os'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
 import type { PluginCard } from '../src/shared/plugin-settings'
 import { writeFile } from 'node:fs/promises'
-import { packageFixture } from './plugin-package-fixtures'
 import { repoListFor } from './plugin-repo-list-fixtures'
 import { PLUGIN_LIST_URL, PLUGIN_LIST_V2_URL } from '../src/main/plugins/catalogue/download'
 import { readPluginInstructions } from '../src/main/plugins/instructions'
-vi.mock('../src/main/plugins/ui/host', () => ({ openPluginConfigurationView: vi.fn() }))
-const seams = vi.hoisted(() => ({
-  connect: vi.fn(),
-  launch: vi.fn((options: unknown) => {
-    void options
-    return Object.assign(async () => {}, { diagnostic: () => undefined })
-  }),
-}))
-vi.mock('../src/main/plugins/lifecycle/settings-client', () => ({
-  connectPluginSettings: seams.connect,
-}))
-vi.mock('../src/main/plugins/supervisor/launcher', () => ({
-  createPluginSupervisorLauncher: seams.launch,
-}))
-import { productionPluginController } from '../src/main/plugins/production'
 import {
   PluginSupervisorAttachment,
   PluginWorkspaceLease,
@@ -42,64 +29,6 @@ import {
   PluginSupervisorError,
   type OwnerRecord,
 } from '../src/main/plugins/supervisor/protocol'
-const roots: string[] = []
-const controllers: ReturnType<typeof productionPluginController>[] = []
-afterEach(async () => {
-  for (const c of controllers.splice(0)) await c.close()
-  await cleanupLifecycleFixtures()
-  for (const r of roots.splice(0)) await rm(r, { recursive: true, force: true })
-  vi.restoreAllMocks()
-  vi.clearAllMocks()
-  vi.unstubAllGlobals()
-})
-async function setup(pkg = packageFixture()) {
-  const parent = await realpath(
-    await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-production-')),
-  )
-  roots.push(parent)
-  const workspaceRoot = join(parent, 'workspace')
-  await mkdir(workspaceRoot, { mode: 0o700 })
-  const fetch = vi.fn(async (url) => {
-    expect(String(url)).toBe(PLUGIN_LIST_URL)
-    return new Response(JSON.stringify(repoListFor(pkg.release)))
-  })
-  // Install the inert transport before construction, so an eager-start regression cannot fetch.
-  vi.stubGlobal('fetch', fetch)
-  const controller = productionPluginController()
-  controllers.push(controller)
-  const peer = {
-    catalogue: vi.fn(async (): Promise<PluginCard[]> => [
-      {
-        id: pkg.release.id,
-        name: pkg.release.id,
-        installed: false,
-        state: 'Available' as const,
-      },
-    ]),
-    refreshCatalogue: vi.fn(async () => {}),
-    install: vi.fn(async () => {}),
-    uninstall: vi.fn(async () => {}),
-    screen: vi.fn(),
-    close: vi.fn(async () => {}),
-  }
-  seams.connect.mockResolvedValue(peer)
-  const supervisor = {
-    start: vi.fn(),
-    ready: vi.fn(async () => true),
-    stoppedCleanly: vi.fn(() => false),
-    holdsLease: vi.fn(() => false),
-  }
-  const options = {
-    root: join(parent, 'global'),
-    workspaceRoot,
-    resourcesRoot: join(parent, 'resources'),
-    build: 'fictional-build',
-    appVersion: '0.0.0',
-    target: { os: 'linux', cpu: 'x64' } as const,
-    supervisor: supervisor as unknown as PluginSupervisorAttachment,
-  }
-  return { controller, options, peer, supervisor, fetch, pkg }
-}
 describe.skipIf(process.platform === 'win32')('first Settings startup catalogue reuse', () => {
   async function modern() {
     const f = await setup()
@@ -135,6 +64,16 @@ describe.skipIf(process.platform === 'win32')('first Settings startup catalogue 
     expect(await f.controller.catalogue(true)).toMatchObject([{ state: 'Available' }])
     expect(f.fetch).toHaveBeenCalledTimes(3)
     expect(f.peer.refreshCatalogue).not.toHaveBeenCalled()
+    await pluginStartupTrace.flush()
+    const log = await readFile(join(f.options.root, 'plugin-startup-trace.log'), 'utf8')
+    for (const phase of [
+      'catalogue start',
+      'catalogue end',
+      'catalogue-new-owner start',
+      'catalogue-new-owner end',
+      'controller-admission end',
+    ])
+      expect(log).toContain(phase)
   })
   it.each([30_000, 30_001, -1])(
     'refetches a startup catalogue at invalid age %s ms',
@@ -1470,10 +1409,14 @@ describe.skipIf(process.platform === 'win32')(
       })
       f.controller.start(f.options)
       await f.controller.ready!()
-      await vi.waitFor(() => expect(warning).toHaveBeenCalled())
-      expect(warning.mock.calls).toEqual([
-        ["[plugins] service-start: BroCrew couldn't start the plugin service. Try again."],
-      ])
+      await vi.waitFor(() =>
+        expect(warning.mock.calls.filter(([line]) => String(line).startsWith('[plugins]'))).toEqual(
+          [["[plugins] service-start: BroCrew couldn't start the plugin service. Try again."]],
+        ),
+      )
+      expect(
+        warning.mock.calls.some(([line]) => String(line).includes('controller-admission failure')),
+      ).toBe(true)
       expect(JSON.stringify(warning.mock.calls)).not.toContain('fictional-private-error-with-key')
       expect(f.supervisor.start).not.toHaveBeenCalled()
       await expect(f.controller.install(f.pkg.release.id)).rejects.toThrow(
@@ -1665,7 +1608,7 @@ it.skipIf(process.platform === 'win32')(
         id: 'whatsapp',
         installed: true,
         state: 'Unavailable',
-        unavailableReason: 'operation-pending',
+        unavailableReason: undefined,
       },
     ])
   },
@@ -1941,3 +1884,49 @@ it('catalogue diagnostics retain existing busy classification', async () => {
   expect(await f.controller.catalogue()).toMatchObject([{ unavailableReason: 'cleanup-pending' }])
   await vi.waitFor(() => expect(JSON.stringify(warn.mock.calls)).toContain('stage=rpc'))
 })
+
+it.skipIf(process.platform === 'win32')(
+  'keeps a plugin server failure on its Settings card',
+  async () => {
+    const f = await setup()
+    f.controller.start(f.options)
+    expect(await f.controller.ready!()).toBe(true)
+    const diagnostic = {
+      exitCode: 23,
+      signal: null,
+      stderr: 'Error: rejected /fictional/plugin/auth.json',
+    }
+    f.peer.catalogue.mockResolvedValue([
+      {
+        id: f.pkg.release.id,
+        name: f.pkg.release.id,
+        installed: true,
+        state: 'Unavailable',
+        unavailableReason: 'plugin-start',
+        startupDiagnostic: diagnostic,
+      },
+    ])
+    expect(await f.controller.catalogue(true)).toMatchObject([
+      { id: f.pkg.release.id, unavailableReason: 'plugin-start', startupDiagnostic: diagnostic },
+    ])
+  },
+)
+
+it.skipIf(process.platform === 'win32')(
+  'reports operation pending only when local pending evidence names that plugin',
+  async () => {
+    const f = await setup()
+    f.controller.start(f.options)
+    expect(await f.controller.ready!()).toBe(true)
+    vi.spyOn(GlobalPluginState, 'observeInstallations').mockReturnValue({
+      installed: [f.pkg.release.id],
+      pending: f.pkg.release.id,
+    })
+    f.peer.catalogue.mockResolvedValue([
+      { id: f.pkg.release.id, name: f.pkg.release.id, installed: true, state: 'Unavailable' },
+    ])
+    expect(await f.controller.catalogue(true)).toMatchObject([
+      { id: f.pkg.release.id, unavailableReason: 'operation-pending' },
+    ])
+  },
+)

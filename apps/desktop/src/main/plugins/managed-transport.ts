@@ -182,10 +182,7 @@ export function createPrivatePluginPort(options: {
             report('result-invalid')
             return { ok: false }
           }
-          if (checked.data.isError) {
-            report('tool-error')
-            return { ok: false }
-          }
+          if (checked.data.isError) report('tool-error')
           return { ok: true, value: checked.data as BrokerValue }
         } catch (error) {
           reportError(

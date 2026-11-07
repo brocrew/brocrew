@@ -130,7 +130,6 @@ interface Queue {
 }
 const nothing = (): void => {}
 
-/** One installed release/epoch. Only its owner can mint local attachment capabilities. */
 export function createPluginToolBroker(options: BrokerOptions): PluginToolBroker {
   try {
     return makeBroker(options)
@@ -181,11 +180,7 @@ function makeBroker(options: BrokerOptions): PluginToolBroker {
   const published = frozen(
     [...tools.values()].map((tool): PublishedBrokerTool => {
       const qualifiedName = `${namespace}__${tool.name}`
-      if (
-        occupied.has(fold(qualifiedName)) ||
-        typeof tool.description !== 'string' ||
-        tool.description.length > 2000
-      )
+      if (occupied.has(fold(qualifiedName)) || typeof tool.description !== 'string')
         return refuse('invalid')
       return {
         namespace,

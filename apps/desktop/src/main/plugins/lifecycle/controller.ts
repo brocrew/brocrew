@@ -1,3 +1,9 @@
+import {
+  pluginStartupDiagnostic,
+  pluginFailureCause,
+  pluginStartupStderr,
+} from '../startup-failure'
+import type { PluginStartupDiagnostic } from '../../../shared/plugin-settings'
 import { PluginVerificationError } from '../verification-error'
 import { PluginDownloadError, downloadPluginBytes } from '../catalogue/download'
 import { PluginListError } from '../catalogue/list-error'
@@ -100,6 +106,7 @@ export class PluginLifecycleController {
   private readonly cleanup = new Set<string>()
   /** Why an installed plugin could not start at attach, as `stage: cause`, until it next starts. */
   private readonly startFailures = new Map<string, string>()
+  private readonly startDiagnostics = new Map<string, PluginStartupDiagnostic>()
   private preparedMutationPolicy?: Readonly<{ revision: number; required: boolean }>
   private get catalogueRevision(): number {
     return this.preparedMutationPolicy?.revision ?? 0
@@ -503,12 +510,22 @@ export class PluginLifecycleController {
             this.startFailures.has(id)
               ? { toolsCause: this.startFailures.get(id)! }
               : {}),
+            ...(state.pending?.next?.pluginId === id
+              ? { unavailableReason: 'operation-pending' }
+              : this.startFailures.has(id) || this.startDiagnostics.has(id)
+                ? {
+                    unavailableReason: 'plugin-start',
+                    startupDiagnostic: this.startDiagnostics.get(id),
+                  }
+                : this.cleanup.has(id) || this.blocks.has(id)
+                  ? { unavailableReason: 'cleanup-pending' }
+                  : {}),
             installed:
               !!active ||
               (['uninstall', 'update'].includes(state.pending?.request.consent.action ?? '') &&
                 state.pending?.next?.pluginId === id),
             state:
-              this.cleanup.has(id) || this.blocks.has(id)
+              this.cleanup.has(id) || this.blocks.has(id) || this.startFailures.has(id)
                 ? 'Unavailable'
                 : active
                   ? this.runs.has(id) && !this.runs.get(id)!.ended
@@ -584,6 +601,7 @@ export class PluginLifecycleController {
             stage = 'start'
             await this.ensureRunning(installed, checked)
             this.startFailures.delete(installed.pluginId)
+            this.startDiagnostics.delete(installed.pluginId)
           } catch (error) {
             // One plugin that cannot start never hides the others. Its stage and cause reach
             // the agents' plugin line; the real message goes to the person's log.
@@ -591,6 +609,16 @@ export class PluginLifecycleController {
             const cause =
               typeof code === 'string' && /^[a-z][a-z0-9-]{0,63}$/.test(code) ? code : 'unknown'
             this.startFailures.set(installed.pluginId, `${stage}: ${cause}`)
+            this.startDiagnostics.set(
+              installed.pluginId,
+              pluginStartupDiagnostic(error) ??
+                this.runs.get(installed.pluginId)?.run.startupDiagnostic?.() ??
+                this.startDiagnostics.get(installed.pluginId) ?? {
+                  exitCode: null,
+                  signal: null,
+                  stderr: pluginStartupStderr(pluginFailureCause(error)),
+                },
+            )
             console.error(
               `[plugins] attach could not start ${installed.pluginId} (${stage})`,
               error,
@@ -650,6 +678,8 @@ export class PluginLifecycleController {
       if (proven) running.exitProven = true
       if (running.ended) return
       running.ended = true
+      const diagnostic = run.startupDiagnostic?.()
+      if (diagnostic) this.startDiagnostics.set(install.pluginId, diagnostic)
       // Intentional exits belong to the drain; unexpected exits must also revoke consumers.
       if (this.draining && proven) return
       const repairable =
@@ -1022,6 +1052,7 @@ export class PluginLifecycleController {
   /** Every live workspace now has this install; its consumers hear of a later detach or removal. */
   private given(install: Installation): void {
     this.startFailures.delete(install.pluginId)
+    this.startDiagnostics.delete(install.pluginId)
     for (const one of this.workspaces.values())
       if (one.live) one.installs.set(install.pluginId, install.installId)
     this.agentScopeChanged()
@@ -1210,6 +1241,8 @@ export class PluginLifecycleController {
       }
     }
     this.cleanup.delete(install.pluginId)
+    this.startFailures.delete(install.pluginId)
+    this.startDiagnostics.delete(install.pluginId)
     return logout
   }
   private async remove(

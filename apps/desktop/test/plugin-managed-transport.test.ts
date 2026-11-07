@@ -310,3 +310,25 @@ it('still diagnoses an actual failed call even though its MCP client also closes
   })
   expect(reasons).toContain('transport-call-failed')
 })
+
+it('delivers the real plugin tool error through the agent MCP route', async () => {
+  const reasons: string[] = []
+  const f = await pluginProviderFixture({ diagnostic: (reason) => reasons.push(reason) })
+  cleanup.push(() => f.close())
+  f.reply('tool-error')
+  const route = await f.route('fictional-window-timeout')
+  const client = new Client({ name: 'fictional-window-timeout', version: '1' })
+  client.onerror = () => undefined
+  cleanup.push(() => client.close())
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(route.server.url), {
+      requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
+    }),
+  )
+  expect(await client.callTool({ name: 'echo', arguments: { profile: 'fern' } })).toMatchObject({
+    isError: true,
+    content: [{ type: 'text', text: 'Error: window operation timed out' }],
+  })
+  expect(reasons).toContain('tool-error')
+  expect(f.broker.status().available).toBe(true)
+})

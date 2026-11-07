@@ -1,4 +1,8 @@
-import { PluginStartupError, observePluginSupervisorLaunch } from '../startup-failure'
+import {
+  pluginStartupTrace,
+  PluginStartupError,
+  observePluginSupervisorLaunch,
+} from '../startup-failure'
 import type { PluginUnavailableReason } from '../../../shared/plugin-settings'
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
@@ -38,6 +42,8 @@ export function createPluginSupervisorLauncher(options: {
     diagnostic = undefined
     const storage = new SupervisorStorage(captured.root, captured.workspaceRoots, true)
     let phase: PluginUnavailableReason = 'storage'
+    let finish: ((error?: unknown) => void) | undefined
+    let readyPhase: ((error?: unknown) => void) | undefined
     try {
       const root = storage.root
       phase = 'catalogue'
@@ -49,6 +55,7 @@ export function createPluginSupervisorLauncher(options: {
       })
       const { node } = await runtimeFiles(runtime)
       phase = 'service-start'
+      finish = pluginStartupTrace.begin('entry-publication')
       const bytes = await sourceBytes(
         join(captured.resourcesRoot, 'plugin-supervisor/entry.cjs'),
         16 * 1024 * 1024,
@@ -81,6 +88,8 @@ export function createPluginSupervisorLauncher(options: {
       storage.check()
       const temporary =
         process.platform === 'win32' ? await privateChild(root, 'supervisor-temp') : null
+      finish()
+      finish = pluginStartupTrace.begin('spawn')
       const child = spawn(node, [join(kept, 'entry.cjs'), configPath, digest(input)], {
         detached: true,
         stdio: ['ignore', 'ignore', 'pipe'],
@@ -97,6 +106,11 @@ export function createPluginSupervisorLauncher(options: {
         failed = true
         spawnError = error
       })
+      child.once('spawn', () => {
+        finish?.()
+        finish = undefined
+      })
+      readyPhase = pluginStartupTrace.begin('ready')
       child.unref()
       const until = performance.now() + OWNER_LAUNCH_MS - 200
       while (performance.now() < until) {
@@ -105,7 +119,10 @@ export function createPluginSupervisorLauncher(options: {
           const ready = JSON.parse(
             (await sourceBytes(join(directory, 'service.json'), 4096)).toString('utf8'),
           )
-          if (ready.format === 1 && ready.ready === true && ready.pid === child.pid) return
+          if (ready.format === 1 && ready.ready === true && ready.pid === child.pid) {
+            readyPhase()
+            return
+          }
         } catch {
           /* Missing private readiness is never authority to attach. */
         }
@@ -118,6 +135,8 @@ export function createPluginSupervisorLauncher(options: {
         cause: Object.assign(diagnostic(), { cause: spawnError }),
       })
     } catch (error) {
+      finish?.(error)
+      readyPhase?.(error)
       throw new PluginStartupError(phase, error)
     } finally {
       storage.close()

@@ -144,6 +144,19 @@ function setup(change: (options: BrokerOptions) => BrokerOptions = (options) => 
 }
 
 describe('plugin authority and all-agent reach', () => {
+  it('publishes a long tool description unchanged and keeps the tool callable', async () => {
+    const description = 'Read a fictional page. '.repeat(100)
+    const h = setup((o) => ({
+      ...o,
+      tools: o.tools.map((tool) => ({ ...tool, description })),
+    }))
+    expect(h.broker.agent.discover(h.agent)[0]!.description).toBe(description)
+    const result = h.call()
+    await tick()
+    expect(h.server.calls).toHaveLength(1)
+    h.server.finish(0)
+    await expect(result).resolves.toEqual({ done: true })
+  })
   it('offers tools to every existing/new agent in every attached workspace, without per-agent grants or provider choices', async () => {
     const h = setup()
     const newAgent = h.broker.owner.grantAgent(h.ws, 'cedar-life-one')

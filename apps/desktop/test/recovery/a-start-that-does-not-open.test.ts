@@ -152,7 +152,7 @@ function stopsBeforeTheData(code: string): boolean {
   const awaited = code.indexOf('const verdict = await theVerdictBeforeTheData(ownership)')
   const zone = code.indexOf('keepTheSystemZone(', awaited)
   if (awaited < 0 || zone < 0) return false
-  return /^const verdict = await theVerdictBeforeTheData\(ownership\)\s+if \(closedWhileCheckingSaid\) return\s+if \(verdict\.kind !== 'open'\) \{\s+endInRecovery\(verdict\)\s+return\s+\}\s+const startBegan = performance\.now\(\)\s+const localZone = $/.test(
+  return /^const verdict = await theVerdictBeforeTheData\(ownership\)\s+finishStartupPhase\(verdict\.kind === 'open' \? undefined : verdict\.kind\)\s+if \(closedWhileCheckingSaid\) return\s+if \(verdict\.kind !== 'open'\) \{\s+endInRecovery\(verdict\)\s+return\s+\}\s+const startBegan = performance\.now\(\)\s+const localZone = $/.test(
     code.slice(awaited, zone),
   )
 }
@@ -188,7 +188,7 @@ describe('the check stands between the start and its data', () => {
     expect(supervisorWaitsForTheData(CODE)).toBe(true)
     expect(CODE.match(/pluginController\.start\(/g)).toHaveLength(1)
     const block = CODE.match(
-      / {6}try \{\s+const root = pluginSupervisorRoot\(\{[\s\S]*?\n {6}\} catch \{[\s\S]*?\n {6}\}/,
+      / {6}try \{\s+const root = pluginSupervisorRoot\(\{[\s\S]*?\n {6}\} catch \(error\) \{[\s\S]*?\n {6}\}/,
     )?.[0]
     expect(block).toBeDefined()
     if (!block) throw new Error('the supervisor startup block is missing')
@@ -324,7 +324,7 @@ describe('a start that never opened its data', () => {
       CODE.indexOf('\nconst lifetime = createAppLifetime('),
     )
     expect(caught).toMatch(
-      /^\.catch\(\(error: unknown\) => \{\s+void endAFailedStart\(error, ownership\)\s+\}\)\s+\}/,
+      /^\.catch\(\(error: unknown\) => \{\s+pluginStartupTrace\.failure\('app-startup', error\)\s+void endAFailedStart\(error, ownership\)\s+\}\)\s+\}/,
     )
     expect(functionIn(CODE, 'async function endAFailedStart(')).toMatch(
       /theDataOpened = false\s+try \{\s+const endsOn = whatAFailedStartEndsOn\(error, ownership\)\s+void stopWhatTheStartStarted\(\)\s+endInRecovery\(await endsOn\)\s+\} catch \(failure\) \{[\s\S]*endTheProcess\(1\)/,

@@ -1,3 +1,4 @@
+import { pluginStartupTrace } from './plugins/startup-failure'
 import type { HandedPath } from '../shared/attachment-contracts'
 import { providerSetupServices } from './providers/program-compat'
 import { setupProcesses } from './provider-setup/process'
@@ -1887,7 +1888,10 @@ function start(ownership: HostGateVerdict): void {
       } catch (error) {
         console.warn('the stall watch could not start:', error)
       }
+      pluginStartupTrace.destination(presentation.hidden ? undefined : app.getPath('logs'))
+      let finishStartupPhase = pluginStartupTrace.begin('workspace-recovery')
       const verdict = await theVerdictBeforeTheData(ownership)
+      finishStartupPhase(verdict.kind === 'open' ? undefined : verdict.kind)
       if (closedWhileCheckingSaid) return
       if (verdict.kind !== 'open') {
         endInRecovery(verdict)
@@ -1907,6 +1911,7 @@ function start(ownership: HostGateVerdict): void {
         host?.placeTheWakeUpsAgain()
       })
       readLocalTimeFrom(localZone)
+      finishStartupPhase = pluginStartupTrace.begin('themes-database-runtime-host')
       themes = new ThemeStore({
         assertWorkspace: () => workspaceStartup(app)?.assertDatabase(),
         ...themeRoots({
@@ -1942,6 +1947,7 @@ function start(ownership: HostGateVerdict): void {
         }
       })
       host = await createRuntimeHost(initDatabase())
+      finishStartupPhase()
       registerIpc(host, localZone)
       startTheDockLabel()
       updates = startUpdates({ app, host, hidden: presentation.hidden })
@@ -1968,6 +1974,7 @@ function start(ownership: HostGateVerdict): void {
           scratchRoot: app.commandLine.getSwitchValue('plugin-global-root'),
         })
         if (root && ownership === 'sole') {
+          finishStartupPhase = pluginStartupTrace.begin('workspace-admission')
           pluginController.start({
             devSource: !app.isPackaged
               ? { isPackaged: app.isPackaged, appData: app.getPath('appData') }
@@ -1993,8 +2000,10 @@ function start(ownership: HostGateVerdict): void {
             appVersion: app.getVersion(),
             supervisor: pluginSupervisor,
           })
+          finishStartupPhase()
         }
-      } catch {
+      } catch (error) {
+        pluginStartupTrace.failure('workspace-admission', error)
         console.warn('[plugins] plugin-initialization-failed')
       }
       createWindow()
@@ -2073,6 +2082,7 @@ function start(ownership: HostGateVerdict): void {
       void letGoOfOldCopies()
     })
     .catch((error: unknown) => {
+      pluginStartupTrace.failure('app-startup', error)
       void endAFailedStart(error, ownership)
     })
 }

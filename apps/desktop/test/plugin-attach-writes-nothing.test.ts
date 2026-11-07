@@ -14,10 +14,6 @@ import {
   reopenLifecycleFixture,
 } from './plugin-lifecycle-fixtures'
 
-// The live first-send event: with a long plugin history, each new agent's attach wrote projection
-// records, and each write made the next read replay the whole history. A new agent or Settings
-// window now attaches and gets its first routes without writing or replaying anything.
-
 afterEach(async () => {
   vi.restoreAllMocks()
   await cleanupLifecycleFixtures()
@@ -100,7 +96,9 @@ it('one plugin that cannot start does not hide the others from a new agent', asy
     ['whatsapp', 'off'],
   ])
   expect((await later.status()).cards.find((card) => card.id === 'whatsapp')).toMatchObject({
-    state: 'Installed',
+    installed: true,
+    state: 'Unavailable',
+    unavailableReason: 'plugin-start',
     toolsCause: 'start: ready',
   })
 })
