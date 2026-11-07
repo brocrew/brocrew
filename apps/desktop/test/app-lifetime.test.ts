@@ -1,3 +1,4 @@
+import { deferred, registerQuitOpenListCases } from './helpers/quit-open-list-cases'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -102,14 +103,6 @@ function signalHarness(overrides: Partial<AppLifetimeDeps> = {}) {
   return { lifetime: built.lifetime, log }
 }
 
-function deferred(): { promise: Promise<void>; resolve: () => void } {
-  let resolve!: () => void
-  const promise = new Promise<void>((r) => {
-    resolve = r
-  })
-  return { promise, resolve }
-}
-
 /** One `before-quit` event, recording whether Electron was asked to hold the quit. */
 function quitEvent() {
   let prevented = 0
@@ -127,40 +120,7 @@ function quitEvent() {
 
 describe('app lifetime (051)', () => {
   describe('quitting', () => {
-    it('keeps the open list before stop callbacks and a slow drain', async () => {
-      const held = deferred()
-      const order: string[] = []
-      const { lifetime } = harness({
-        recordOpenSessions: () => {
-          order.push('record')
-        },
-        stopArchiveWork: () => {
-          order.push('stop')
-        },
-        closeAllSessions: () => held.promise,
-      })
-      lifetime.beforeQuit(quitEvent().event)
-      try {
-        await new Promise<void>((resolve) => setImmediate(resolve))
-        expect(order).toEqual(['record', 'stop'])
-      } finally {
-        held.resolve()
-        await lifetime.shuttingDown
-      }
-    })
-
-    it('still quits when keeping the open list fails', async () => {
-      const { lifetime, log } = harness({
-        recordOpenSessions: () => {
-          throw new Error('fictional open-list write failure')
-        },
-      })
-      lifetime.beforeQuit(quitEvent().event)
-      await lifetime.shuttingDown
-      expect(log).toContain('closeAllSessions')
-      expect(log).toContain('closeDatabase')
-      expect(log.at(-1)).toBe('quit')
-    })
+    registerQuitOpenListCases(harness, quitEvent)
 
     it('defers the quit, drains in order, and only then lets it through', async () => {
       const { lifetime, log } = harness()

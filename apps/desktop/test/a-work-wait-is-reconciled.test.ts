@@ -1,3 +1,4 @@
+import { countSqlReads, settle, registerPersistedWaitRevisionCase } from './helpers/persisted-wait-revision-cases'
 import type {
   ReconciliationReceipt,
   WorkReconciliationEvent,
@@ -45,46 +46,12 @@ import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runt
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-/** Count executed read statements, including those prepared before a control begins. */
-function countSqlReads(database: AppDatabase, read: (sql: string) => void): AppDatabase {
-  return new Proxy(database, {
-    get(target, property) {
-      if (property === 'prepare')
-        return (sql: string) => {
-          const statement = target.prepare(sql)
-          const wrapped: typeof statement = new Proxy(statement, {
-            get(prepared, method) {
-              const value = Reflect.get(prepared, method, prepared) as unknown
-              if (typeof value !== 'function') return value
-              return (...args: unknown[]) => {
-                if (method === 'get' || method === 'all' || method === 'iterate') read(sql)
-                const result = Reflect.apply(value, prepared, args)
-                return result === prepared ? wrapped : result
-              }
-            },
-          })
-          return wrapped
-        }
-      const value = Reflect.get(target, property, target) as unknown
-      return typeof value === 'function' ? value.bind(target) : value
-    },
-  })
-}
-
 async function waitFor(predicate: () => boolean, what: string): Promise<void> {
   for (let attempt = 0; attempt < 400; attempt++) {
     if (predicate()) return
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
   throw new Error(`timed out waiting for ${what}`)
-}
-
-/** Long enough for every pump and every flush a row arms to have run. */
-async function settle(): Promise<void> {
-  for (let round = 0; round < 2; round++) {
-    for (let turn = 0; turn < 5; turn++) await new Promise((resolve) => setImmediate(resolve))
-    await new Promise((resolve) => setTimeout(resolve, 30))
-  }
 }
 
 /** The provider double: it keeps the handles it gives out, so a test can report background work. */
@@ -286,32 +253,18 @@ describe('a work wait is reconciled without a window', () => {
     for (const folder of [userData, root]) rmSync(folder, { recursive: true, force: true })
   })
 
-  it('uses the persisted wait event revision across restart and distinguishes waits at the same time', async () => {
-    type Reading = {
-      reconcileWork(): void
-      reconciliationReading(): { rows: ReconciliationPiece[] }
-    }
-    vi.spyOn(host as unknown as Reading, 'reconcileWork').mockImplementation(() => {})
-    const { owner, work } = await create()
-    freezeClock = true
-    waiting(owner, work.piece, { kind: 'agent', piece: 'missing-first', label: 'W99.1' })
-    const key = () =>
-      (host as unknown as Reading)
-        .reconciliationReading()
-        .rows.find((row) => row.piece === work.piece)?.issue?.waitKey
-    const first = key()
-    expect(first).toBe(
-      `${owner}:${store.theActiveGeneration(owner)}:${store.rootLines(work.piece).statusLine!.revision}`,
-    )
-    await host.closeAll()
-    host = build()
-    vi.spyOn(host as unknown as Reading, 'reconcileWork').mockImplementation(() => {})
-    expect(key()).toBe(first)
-    const at = store.rootLines(work.piece).statusLine!.at
-    waiting(owner, work.piece, { kind: 'agent', piece: 'missing-second', label: 'W99.2' })
-    expect(store.rootLines(work.piece).statusLine!.at).toBe(at)
-    expect(key()).toBeDefined()
-    expect(key()).not.toBe(first)
+  registerPersistedWaitRevisionCase({
+    host: () => host,
+    replaceHost: (value) => {
+      host = value
+    },
+    freezeClock: () => {
+      freezeClock = true
+    },
+    create,
+    waiting,
+    store: () => store,
+    build: () => build(),
   })
 
   it('a quiet pass reads no names and several notices share one narrow names read', async () => {

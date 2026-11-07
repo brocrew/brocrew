@@ -1,3 +1,4 @@
+import { registerMigrationLineageCases } from './lib/migration-lineage-cases'
 import Database from 'better-sqlite3'
 import { applyMigrations } from '../../src/main/db/migrate'
 import { createHash } from 'node:crypto'
@@ -711,43 +712,7 @@ describe('a start that cannot read what it needs fails closed', () => {
     expect(await treeOf(userData)).toEqual(before)
   })
 
-  it.each(['time', 'hash'] as const)(
-    'names the differing migration %s and available build without opening it',
-    async (field) => {
-      const userData = await aWorkspace({ migrations: THIS_BUILD, checkpoints: [] })
-      const db = new Database(databaseFile(userData))
-      if (field === 'time')
-        db.prepare(
-          'UPDATE __drizzle_migrations SET created_at = created_at - 1 WHERE created_at = (SELECT min(created_at) FROM __drizzle_migrations)',
-        ).run()
-      else
-        db.prepare(
-          'UPDATE __drizzle_migrations SET hash = ? WHERE created_at = (SELECT min(created_at) FROM __drizzle_migrations)',
-        ).run('f'.repeat(64))
-      const recorded = db
-        .prepare('SELECT created_at, hash FROM __drizzle_migrations ORDER BY created_at LIMIT 1')
-        .get() as { created_at: number; hash: string }
-      db.close()
-      const before = await treeOf(userData)
-      const build = field === 'time' ? 'a'.repeat(40) : null
-      const verdict = await inspect(checkOf(userData, { build }).deps)
-      expect(verdict).toMatchObject({
-        kind: 'failed',
-        reason: 'database-unreadable',
-        canRetry: false,
-      })
-      if (verdict.kind !== 'failed') throw new Error('expected incompatible lineage')
-      expect(verdict.detail).toContain(databaseFile(userData))
-      expect(verdict.detail).toContain(
-        `migration 1 records time ${recorded.created_at} and hash ${recorded.hash}`,
-      )
-      expect(verdict.detail).toContain(`BroCrew ${THIS_VERSION}${build ? ` (${build})` : ''}`)
-      expect(verdict.detail).toContain(`expects time ${BUILD_LINEAGE[0]}`)
-      expect(verdict.detail).not.toContain('no version')
-      expect(verdict.detail).not.toContain('foreign')
-      expect(await treeOf(userData)).toEqual(before)
-    },
-  )
+  registerMigrationLineageCases({ aWorkspace, checkOf, treeOf })
 
   it('refuses a -wal with no database beside it, rather than make a new one it would take in', async () => {
     const userData = join(await aRoot(), 'data')
