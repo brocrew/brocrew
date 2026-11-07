@@ -112,14 +112,21 @@ export class GlobalPluginState {
     this.disk.resolve(state, success)
   }
   private active(state: LifecycleState): ActivationSnapshot {
-    const snapshot = this.activation(state)
+    if (state.pending !== null) refuseState('busy')
+    const snapshot = this.committed(state)
     if (this.disk.load().head !== state.head) refuseState('conflict')
     return snapshot
   }
-  private activation(state: LifecycleState): ActivationSnapshot {
-    if (state.pending !== null) refuseState('busy')
+  /**
+   * The last committed activation, less what a pending operation is changing: its plugin, whose
+   * guard already names the next state, or every plugin for one that names none (a global
+   * restore). Every other plugin is exactly as committed until the operation resolves.
+   */
+  private committed(state: LifecycleState): ActivationSnapshot {
+    const changing = pendingPlugin(state)
+    const kept = (id: string) => changing !== '*' && id !== changing
     if (state.activation === null) {
-      if (state.guards.size !== 0) refuseState('corrupt')
+      if ([...state.guards.keys()].some(kept)) refuseState('corrupt')
       return { format: 1, rootId: state.rootId, epoch: state.epoch, entries: [] }
     }
     const snapshot = this.disk.activationSnapshot(state.activation)
@@ -128,16 +135,24 @@ export class GlobalPluginState {
       snapshot.epoch !== state.epoch ||
       new Set(snapshot.entries.map((entry) => entry.pluginId)).size !== snapshot.entries.length ||
       snapshot.entries.some(
-        (entry) => entry.phase !== 'active' || !equalState(state.guards.get(entry.pluginId), entry),
+        (entry) =>
+          kept(entry.pluginId) &&
+          (entry.phase !== 'active' || !equalState(state.guards.get(entry.pluginId), entry)),
       )
     )
       refuseState('corrupt')
-    return snapshot
+    return changing === null
+      ? snapshot
+      : { ...snapshot, entries: snapshot.entries.filter((entry) => kept(entry.pluginId)) }
   }
   /** Back up only this data. lifecycle-guard is explicitly excluded from every restore set. */
   exportActivation(): Readonly<ActivationSnapshot> {
     const state = this.disk.load()
     return frozen(this.active(state))
+  }
+  /** What agents and the Plugins page may read while another plugin's operation is pending. */
+  committedActivation(): Readonly<ActivationSnapshot> {
+    return frozen(this.committed(this.disk.load()))
   }
   /** One state snapshot for a synchronous workspace admission decision. Never retain it. */
   readWorkspaceAdmission() {
@@ -148,10 +163,10 @@ export class GlobalPluginState {
     decide: (read: WorkspaceAdmission) => T extends PromiseLike<unknown> ? never : T,
   ): T {
     const state = this.disk.load()
-    const installations = state.pending ? [] : this.activation(state).entries
+    const installations = this.committed(state).entries
     const read = frozen({
       sequence: state.sequence,
-      pending: state.pending !== null,
+      pendingPlugin: pendingPlugin(state),
       guardIds: [...state.guards.keys()],
       installations,
     })
@@ -173,7 +188,12 @@ export class GlobalPluginState {
 
 export interface WorkspaceAdmission {
   readonly sequence: number
-  readonly pending: boolean
+  /** The plugin a pending operation is changing, '*' for one that names none, or null. */
+  readonly pendingPlugin: string | null
   readonly guardIds: readonly string[]
   readonly installations: readonly ActivationSnapshot['entries'][number][]
+}
+
+function pendingPlugin(state: LifecycleState): string | null {
+  return state.pending ? (state.pending.request.consent.pluginId ?? '*') : null
 }

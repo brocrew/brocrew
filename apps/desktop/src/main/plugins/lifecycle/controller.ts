@@ -437,10 +437,9 @@ export class PluginLifecycleController {
     if (!workspace?.live) return refuse()
     return workspace
   }
+  /** Another plugin's pending operation leaves this one as committed. */
   private current(id: string): Installation | undefined {
-    const state = this.options.state.inspect()
-    if (state.pending) return undefined
-    return this.options.state.exportActivation().entries.find((one) => one.pluginId === id)
+    return this.options.state.committedActivation().entries.find((one) => one.pluginId === id)
   }
   admitted(handle: LifecycleWorkspace, id: string, installId: string): boolean {
     try {
@@ -463,8 +462,8 @@ export class PluginLifecycleController {
   ) {
     const active = read.installations.find((one) => one.pluginId === id),
       run = this.runs.get(id)
+    // The committed installations already leave out a plugin whose operation is pending.
     return (
-      !read.pending &&
       workspace.live &&
       !this.blocks.has(id) &&
       active?.installId === installId &&
@@ -479,7 +478,7 @@ export class PluginLifecycleController {
       const state = this.options.state.inspect()
       if (state.pending?.next)
         unfinished = { install: state.pending.next, operationId: state.pending.request.operationId }
-      const activations = state.pending ? [] : this.options.state.exportActivation().entries
+      const activations = this.options.state.committedActivation().entries
       const names = new Set([
         ...releases.map((one) => one.id),
         ...state.guards.map((one) => one.pluginId),
@@ -601,9 +600,11 @@ export class PluginLifecycleController {
     const workspace: Workspace = { sink, installs: new Map(), live: true }
     this.workspaces.set(handle, workspace)
     try {
-      // Access comes from the current activation and its run. Attaching writes nothing.
+      // Access comes from the current activation and its run. Attaching writes nothing, and a
+      // plugin whose operation is pending is not in the committed set, so its old release is
+      // never started mid-update.
       await this.options.state.withExclusive(async () => {
-        for (const installed of this.options.state.exportActivation().entries) {
+        for (const installed of this.options.state.committedActivation().entries) {
           workspace.installs.set(installed.pluginId, installed.installId)
           let stage = 'vault-load'
           try {
@@ -1557,7 +1558,8 @@ export class PluginLifecycleController {
   ): T {
     if (this.draining) return pending()
     return this.options.state.withWorkspaceAdmission((state) => {
-      if (state.pending) return pending()
+      // A global restore changes every plugin; one plugin's operation leaves the others readable.
+      if (state.pendingPlugin === '*') return pending()
       const active = state.installations
       const consumers = [...this.workspaces.values()].filter(
         (one) => one.live && one.sink.workspaceId === workspaceId,
@@ -1573,7 +1575,8 @@ export class PluginLifecycleController {
       const entries = [...ids].sort().map((pluginId): AgentScopeEntry => {
         const installed = active.find((one) => one.pluginId === pluginId)
         const run = this.runs.get(pluginId)
-        if (this.blocks.has(pluginId)) return { pluginId, is: 'pending' }
+        if (this.blocks.has(pluginId) || pluginId === state.pendingPlugin)
+          return { pluginId, is: 'pending' }
         if (!installed) return { pluginId, is: 'off' }
         // A plugin that failed to start is not starting: agents don't wait for it.
         if (!run && this.startFailures.has(pluginId)) return { pluginId, is: 'off' }
