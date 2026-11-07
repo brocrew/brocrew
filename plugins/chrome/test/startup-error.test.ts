@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { expect, it } from 'vitest'
+import { ConfigError, loadConfig } from '../src/config.js'
 
 it('the packaged server reports the startup error message instead of only Error', () => {
   const artifact = process.env.BROCREW_CHROME_TEST_ARTIFACT
@@ -18,6 +19,10 @@ it('the packaged server reports the startup error message instead of only Error'
     fs.writeFileSync(path.join(home, 'files'), 'a file cannot be the workspace directory')
     const env: NodeJS.ProcessEnv = { ...process.env, BROCREW_CHROME_DATA: home, BROCREW_CHROME_AUTH: auth }
     delete env.BROCREW_CHROME_SHARED
+    let failure: unknown
+    try { loadConfig(env) } catch (error) { failure = error }
+    expect(failure).toBeInstanceOf(Error)
+    expect(failure).not.toBeInstanceOf(ConfigError)
     const result = spawnSync(process.execPath, [path.join(payload!, 'server.mjs')], {
       cwd: home, env, encoding: 'utf8', timeout: 10000,
     })

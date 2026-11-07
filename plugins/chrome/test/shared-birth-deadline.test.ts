@@ -41,9 +41,15 @@ it.each(['old-holds', 'new-holds'])(
   'old and new readers preserve the live contender while %s',
   (direction) => {
     vi.stubGlobal('process', Object.create(process, { platform: { value: 'win32' } }))
-    run.mockReturnValue(nativeBirth + '\n')
+    const contenderBirth = '638980000000000001'
+    run.mockImplementation((_program, args) =>
+      args[3] === `(Get-Process -Id ${process.pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`
+        ? nativeBirth + '\n'
+        : contenderBirth + '\n',
+    )
     const owner = identity()
     expect(owner).toEqual(oldIdentity())
+    const other = { pid: process.pid + 1, birth: contenderBirth }
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fictional-birth-coexist-'))
     roots.push(root)
     const hold = direction === 'old-holds' ? oldLock : withSharedLock
@@ -52,9 +58,14 @@ it.each(['old-holds', 'new-holds'])(
       const locks = path.join(root, 'registry.lock')
       const before = fs.readdirSync(locks)
       const work = vi.fn()
-      expect(() => contend(root, owner, work, 15)).toThrow('Shared Chrome registry busy; try again.')
+      run.mockClear()
+      expect(() => contend(root, other, work, 15)).toThrow('Shared Chrome registry busy; try again.')
       expect(work).not.toHaveBeenCalled()
       expect(fs.readdirSync(locks)).toEqual(before)
+      expect(run).toHaveBeenCalledWith('powershell', [
+        '-NoProfile', '-NonInteractive', '-Command',
+        `(Get-Process -Id ${owner.pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`,
+      ], expect.any(Object))
     })
     expect(fs.readdirSync(path.join(root, 'registry.lock'))).toEqual([])
   },
