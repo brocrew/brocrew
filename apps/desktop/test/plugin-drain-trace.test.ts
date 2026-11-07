@@ -19,7 +19,7 @@ afterEach(async () => {
   }
   if (parent) await rm(parent, { recursive: true, force: true })
 }, 30_000)
-it('logs actual drain stages and a sanitized failed-write errno while retaining the fence', async () => {
+it('logs actual drain stages and a sanitized failed-write errno, then closes after one attempt', async () => {
   parent = await realpath(
     await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-drain-trace-')),
   )
@@ -50,10 +50,9 @@ it('logs actual drain stages and a sanitized failed-write errno while retaining 
     }
     return write.call(this, value)
   })
-  expect(await owner.shutdown()).toBe(false)
-  await expect(PluginSupervisor.start({ root, workspaceRoots: [] })).rejects.toMatchObject({
-    code: 'busy',
-  })
+  // The stopped record only advises the next start, which recovers any record that isn't
+  // stopped (plugin-owner-recovery), so a refused write is traced once and the owner closes.
+  await owner.shutdown()
   await owner.closed
   expect(events).toMatchObject([
     { stage: 'drain', state: 'waiting', epoch: expect.any(String), reason: 'shutdown' },
@@ -70,8 +69,6 @@ it('logs actual drain stages and a sanitized failed-write errno while retaining 
       errno: 'EBUSY',
       cause: expect.stringContaining('Bearer [redacted]'),
     },
-    { stage: 'stopped-write', state: 'waiting', attempt: 2 },
-    { stage: 'stopped-write', state: 'complete', attempt: 2 },
     { stage: 'closed', state: 'complete' },
   ])
   const log = await readFile(join(root, 'plugin-drain.log'), 'utf8')
