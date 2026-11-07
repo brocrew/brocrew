@@ -960,7 +960,7 @@ export async function withProviderHomeLock<T>(
  * Fail-closed:
  *  - **rejects a path escape or a symlink component** that would redirect out of the root;
  *  - **rejects an existing regular file** (or any non-directory) at the home path;
- *  - **enforces `0700`** on an existing home directory (repairs a `0755`);
+ *  - leaves an existing directory’s filesystem permissions unchanged;
  *  - takes a **per-home cross-process lock** around the leaf create/repair so concurrent
  *    provisioning of the same home can't race.
  *
