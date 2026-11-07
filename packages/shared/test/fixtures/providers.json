@@ -313,7 +313,7 @@
       "files": [
         {
           "name": "auth.json",
-          "note": "the credential this profile runs on, at 0600 — copied from ~/.codex, or minted here by \"Sign in for this agent\""
+          "note": "the credential this profile runs on — copied from ~/.codex, or minted here by \"Sign in for this agent\""
         },
         {
           "name": "config.toml",
