@@ -628,11 +628,18 @@ export class PluginWorkspaceLease {
       while (performance.now() < until) {
         const record = this.storage.read()
         if (record?.phase !== 'draining') console.log('WINDOWS-DIAG close record', record?.phase)
-        if (!record || record.epoch !== this.record.epoch || record.phase === 'blocked')
+        if (!record || record.epoch !== this.record.epoch || record.phase === 'blocked') {
+          console.log('WINDOWS-DIAG close false record', {
+            missing: !record,
+            epochChanged: record?.epoch !== this.record.epoch,
+            phase: record?.phase,
+          })
           return false
+        }
         if (record.phase === 'stopped') return true
         await new Promise((resolve) => setTimeout(resolve, 10))
       }
+      console.log('WINDOWS-DIAG close false deadline', performance.now())
       return false
     } catch (error) {
       console.error('WINDOWS-DIAG lease close error', error)
