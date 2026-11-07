@@ -3,7 +3,7 @@ import type { ApiKeyCheck } from '../../../shared/runtime-ipc'
 import { checkKeyModelList } from '../key-check'
 
 /** Codex's model list checks its key without spending a token. */
-export async function checkCodexKey(
+async function checkCodexKey(
   key: string,
   fetchFor: typeof fetch = fetch,
 ): Promise<ApiKeyCheck> {

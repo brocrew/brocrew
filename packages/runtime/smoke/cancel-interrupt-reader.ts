@@ -37,7 +37,7 @@ export interface ReaderTransport {
 }
 
 /** Everything the reader saw, stamped by `since()` at the moment it saw it. */
-export interface ArmReading {
+interface ArmReading {
   readonly notifications: Stamped[]
   readonly requests: Stamped[]
   toolCalls: number

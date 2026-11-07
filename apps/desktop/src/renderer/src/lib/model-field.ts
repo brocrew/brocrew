@@ -55,7 +55,7 @@ import { needsProviderSetup } from './provider-models'
 export type ModelFieldState = 'listed' | 'empty' | 'asking' | 'no-profile' | 'closing' | 'refused'
 
 /** How loudly to draw {@link ModelField.message}. */
-export type ModelFieldTone = 'note' | 'warn'
+type ModelFieldTone = 'note' | 'warn'
 
 export interface ModelField {
   retry?: boolean

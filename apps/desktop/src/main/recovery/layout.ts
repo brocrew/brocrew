@@ -20,15 +20,15 @@ export const COPY_FILE = 'database.sqlite'
 export const BACKUPS_DIRNAME = 'backups'
 export const RECOVERY_DIRNAME = 'recovery'
 
-export const WORKSPACE_ID_FILE = 'workspace-id'
+const WORKSPACE_ID_FILE = 'workspace-id'
 export const MANIFEST_FILE = 'manifest.json'
 /** The empty file a checkpoint folder holds until its manifest is written. */
 export const UNFINISHED_FILE = 'unfinished'
 export const JOURNAL_FILE = 'restore-journal.json'
 export const GATE_FILE = 'history-only.json'
-export const STAGED_DIRNAME = 'staged'
-export const PRESERVED_DIRNAME = 'preserved'
-export const SCRATCH_DIRNAME = 'scratch'
+const STAGED_DIRNAME = 'staged'
+const PRESERVED_DIRNAME = 'preserved'
+const SCRATCH_DIRNAME = 'scratch'
 
 /** What a return adds to a restore's id to name the folder the restored copy is set aside in. */
 const RESTORED_SUFFIX = '-restored'

@@ -15,10 +15,10 @@ import { HELD_TOKENS, overridableIn } from '../../../shared/themes/schema'
 import { readingAssetUrl } from './window-theme'
 
 /** The selector a theme's preview sits under. */
-export const previewScope = (id: string): string => `[data-theme-preview='${id}']`
+const previewScope = (id: string): string => `[data-theme-preview='${id}']`
 
 /** The selector of a preview's conversation, its content zone. */
-export const previewContent = (id: string): string =>
+const previewContent = (id: string): string =>
   `${previewScope(id)} [data-preview-zone='content']`
 
 /** The declarations of the first rule whose selector starts a line with `selector`. */
@@ -47,12 +47,12 @@ const LIGHT = declarationsOf(TOKENS, /\[data-chat-theme='light'\],/)
 /** Every token a preview puts back to the app's own: those a theme can set, and those it can't yet. */
 const PUT_BACK = [...overridableIn('content'), ...HELD_TOKENS]
 
-export const CLASSIC_FRAME_TOKENS: Readonly<Record<string, string>> = Object.fromEntries(
+const CLASSIC_FRAME_TOKENS: Readonly<Record<string, string>> = Object.fromEntries(
   PUT_BACK.map((name) => [name, ROOT.get(`--${name}`) ?? 'initial']),
 )
 
 /** Each hand-tunable token as the app's own content scope has it: its own value, else the root's. */
-export const CLASSIC_CONTENT_TOKENS: Readonly<Record<string, string>> = Object.fromEntries(
+const CLASSIC_CONTENT_TOKENS: Readonly<Record<string, string>> = Object.fromEntries(
   PUT_BACK.map((name) => [name, LIGHT.get(`--${name}`) ?? ROOT.get(`--${name}`) ?? 'initial']),
 )
 

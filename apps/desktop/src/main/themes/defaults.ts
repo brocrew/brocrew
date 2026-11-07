@@ -10,7 +10,7 @@ export const DEFAULT_THEME_ID = 'crew-night'
  * The look a workspace keeps when it already held data before Crew Night became the default and
  * never chose a theme: classic, the appearance it has always had.
  */
-export const EXISTING_INSTALL_THEME_ID = 'classic'
+const EXISTING_INSTALL_THEME_ID = 'classic'
 export const CLASSIC_THEME: Theme = { format: 1, id: 'classic', name: 'Classic' }
 export const DEFAULT_THEME_BACKGROUND = '#182135'
 export const BUILT_IN_THEME_IDS = [
@@ -41,7 +41,7 @@ export const HIDDEN_BASE_THEME_IDS: readonly string[] = ['brocrew']
  * system says has no database yet is new, and starts in Crew Night. A database that can't be looked
  * at is taken to be there. The store writes the answer down once as the workspace's choice.
  */
-export function startingThemeFor(
+function startingThemeFor(
   userData: string,
   look: (path: string) => unknown = lstatSync,
 ): string {

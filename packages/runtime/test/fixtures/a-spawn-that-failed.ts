@@ -31,7 +31,7 @@ import { PassThrough } from 'node:stream'
  */
 
 /** ⚑ The errno CODE, which is what classifies — its number differs by platform and nothing reads it. */
-export type DeferredSpawnCode = 'EMFILE' | 'ENFILE' | 'EAGAIN' | 'EACCES' | 'ENOENT'
+type DeferredSpawnCode = 'EMFILE' | 'ENFILE' | 'EAGAIN' | 'EACCES' | 'ENOENT'
 
 /** ⚑ What the parent can see of a spawn that failed, in the terms the adapters read it. */
 export interface SpawnFailureShape {

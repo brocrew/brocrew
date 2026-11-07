@@ -31,7 +31,7 @@ export type StorageRequest =
   | { readonly kind: 'children'; readonly location: StorageLocation }
   | { readonly kind: 'reveal'; readonly location?: StorageLocation }
 export type StorageReply = StorageOverview | StorageDirectory | { readonly path: string }
-export const STORAGE_BOUNDS = { entries: 100_000, depth: 64, milliseconds: 10_000 } as const
+const STORAGE_BOUNDS = { entries: 100_000, depth: 64, milliseconds: 10_000 } as const
 export const STORAGE_MEASURE_TIMEOUT = STORAGE_PART_IDS.length * STORAGE_BOUNDS.milliseconds + 5000
 
 export class StorageFailure extends Error {

@@ -17,7 +17,7 @@ import { dirname, join } from 'node:path'
 export const ARCHIVED_FILE = 'archived.json'
 
 /** The shape this build writes, and the only one it reads. */
-export const ARCHIVED_FILE_VERSION = 1
+const ARCHIVED_FILE_VERSION = 1
 
 export interface ArchivedConversations {
   /** Whether `id` is archived. */

@@ -53,7 +53,7 @@ const sameFile = (a: BigIntStats, b: BigIntStats): boolean => a.dev === b.dev &&
 const unchanged = (a: BigIntStats, b: BigIntStats): boolean =>
   sameFile(a, b) && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs
 
-export function insideThemeFolder(root: string, path: string): boolean {
+function insideThemeFolder(root: string, path: string): boolean {
   const rest = relative(root, path)
   return rest !== '' && rest !== '..' && !rest.startsWith(`..${sep}`) && !isAbsolute(rest)
 }

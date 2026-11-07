@@ -55,7 +55,7 @@ const ITALIC = /(^|\s)[*_](\S(?:[^*_]*\S)?)[*_](?=\s|[.,;:!?)]|$)/g
 const CODE = /`([^`]+)`/g
 const LINK = /\[([^\]]+)\]\([^)]*\)/g
 
-export function plainParagraph(words: string): string {
+function plainParagraph(words: string): string {
   return words
     .split('\n')
     .filter((line) => !FENCE.test(line))

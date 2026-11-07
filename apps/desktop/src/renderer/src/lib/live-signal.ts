@@ -89,7 +89,7 @@ import {
  * rule"* — a rule written inside a component is a rule that can only be driven by mounting one,
  * and every sentence below is decided here so that the rail renders what it is handed.
  */
-export interface LiveSignalCell {
+interface LiveSignalCell {
   /** Which of {@link WHAT_A_READING_COUNTS} this cell is about. */
   readonly scope: WhatAReadingCounts
   /**
@@ -114,7 +114,7 @@ export interface LiveSignalCell {
  * scope. ⚑ Every word here is composed from {@link ProviderCondition}, which is the band's own
  * derivation: the rail is a second PLACE for the fact and never a second answer about it.
  */
-export interface LiveSignalStopped {
+interface LiveSignalStopped {
   /**
    * ⛔ **Which providers have stopped, in the fold's order** — strongest first, then soonest
    * return. ⚠️ **Possibly EMPTY**, and that is not a contradiction: an empty list with

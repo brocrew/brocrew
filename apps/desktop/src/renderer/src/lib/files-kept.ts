@@ -69,7 +69,7 @@ export function filesReadFor(
 }
 
 /** Another piece that kept the same bytes, and the conversation that holds that piece. */
-export interface AlsoKeptOn {
+interface AlsoKeptOn {
   readonly piece: string
   readonly label: string
   /** `null` where no conversation holding it is known. */
@@ -77,7 +77,7 @@ export interface AlsoKeptOn {
 }
 
 /** One file of the Files tab: drawn once, with the other pieces that kept the same bytes. */
-export interface TreeFileLine {
+interface TreeFileLine {
   readonly file: KeptFile
   readonly alsoOn: readonly AlsoKeptOn[]
 }

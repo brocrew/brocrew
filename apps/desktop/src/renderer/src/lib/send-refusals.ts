@@ -63,7 +63,7 @@
  * therefore unavoidable and gating it would be gating on a fact nobody has. Every press after it is
  * over a fact the window is holding, and that is the gap `219` closed.
  */
-export type RefusalKnowable =
+type RefusalKnowable =
   /**
    * The renderer holds the fact before any gesture, and something is dark because of it.
    *
@@ -439,7 +439,7 @@ export const CLOSING_BLOCK =
  * claim that survives is the one the census still pins: no row of `SEND_REFUSALS` is about an
  * attachment-only send.
  */
-export type WireVerdict =
+type WireVerdict =
   /** No gesture in the app can produce a payload that breaks this rule. */
   | 'composer-cannot'
   /** A person can build one, so the schema's words can reach a screen. */

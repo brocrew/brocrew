@@ -196,7 +196,7 @@ function waitSaid(mark: PieceWaitingOnPurpose): string {
 }
 
 /** What a conversation the host reads as idle says while it holds a piece waiting on purpose. */
-export const WAITING_ON_PURPOSE = WORK_STATE_WORD['waiting-on-purpose']
+const WAITING_ON_PURPOSE = WORK_STATE_WORD['waiting-on-purpose']
 
 /**
  * The word and its detail for a conversation that would read idle but holds a piece waiting on

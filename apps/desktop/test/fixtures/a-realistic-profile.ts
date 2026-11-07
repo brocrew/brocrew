@@ -43,14 +43,6 @@ export const TYPICAL: ProfileSize = {
   overflowEvery: 200,
 }
 
-export const HEAVY: ProfileSize = {
-  ...TYPICAL,
-  live: 1_400,
-  children: 600,
-  pieces: 6_000,
-  questions: 14_000,
-}
-
 export const EXTREME: ProfileSize = {
   ...TYPICAL,
   historical: 2_500,
@@ -75,7 +67,7 @@ export function scaled(size: ProfileSize, factor: number): ProfileSize {
 export const OWNER = 'fictional-owner'
 
 /** What the host's answers must hold, derived from the generator's own choices. */
-export interface Expectation {
+interface Expectation {
   /** Open pieces per owner. */
   readonly openPieces: ReadonlyMap<string, number>
   /** Open routed requests per asker, by request id, with the recipient. */

@@ -66,7 +66,7 @@ export function withoutHandles(text: string): string {
 }
 
 /** ⚑ What the card is, beside its heading — the `RELAYED_MARK` position. */
-export const REPLY_MARK = 'reply'
+const REPLY_MARK = 'reply'
 
 /** ⚑ A piece of work this conversation gave, beside its heading. */
 export const GIVE_MARK = 'work'

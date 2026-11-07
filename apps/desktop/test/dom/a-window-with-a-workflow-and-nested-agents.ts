@@ -15,7 +15,7 @@ import { META, mount, type Mounted } from './harness'
 const NOW = Date.now()
 
 /** A workflow and three nested sub-agents, after the window's own conversation. */
-export const STACKING_EVENTS: [unknown, number][] = [
+const STACKING_EVENTS: [unknown, number][] = [
   [{ type: 'tool_call', id: 'call_1', name: 'Task', summary: 'research the bakery' }, NOW - 50_000],
   [
     {
@@ -105,7 +105,7 @@ export const STACKING_EVENTS: [unknown, number][] = [
 ]
 
 /** What a drafter did, as the child-work viewer reads it. */
-export const CHILD_WORK = {
+const CHILD_WORK = {
   ok: true,
   part: 'transcript',
   name: 'agent-w1.jsonl',

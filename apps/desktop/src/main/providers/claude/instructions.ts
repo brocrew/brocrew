@@ -34,7 +34,7 @@ import {
   conventionFileIn,
 } from '../repository-instructions'
 
-export function linkOf(path: string, real: string): string | undefined {
+function linkOf(path: string, real: string): string | undefined {
   const dir = dirname(path)
   const derived =
     basename(dir) === INSTRUCTION_DOTDIR
@@ -81,7 +81,7 @@ export function claudeMemoryLoaded(read: ClaudeMemoryRead): MemoryLoadedEvent | 
   }
 }
 
-export function claudeMemoryNote(read: ClaudeMemoryRead): string {
+function claudeMemoryNote(read: ClaudeMemoryRead): string {
   if (read.dir === null || read.topicsFound === 0) return ''
   const parts = [
     read.injects

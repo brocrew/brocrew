@@ -56,7 +56,7 @@ import { parse as parseSfc } from 'vue/compiler-sfc'
  */
 
 /** How the comment was written — the axis a census that cares about docblocks needs. */
-export type ProseKind = 'block' | 'line' | 'html'
+type ProseKind = 'block' | 'line' | 'html'
 
 /** One comment, with enough to cite it in a finding. */
 export interface ProseSpan {

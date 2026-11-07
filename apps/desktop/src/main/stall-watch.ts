@@ -19,7 +19,7 @@ import { performance, PerformanceObserver } from 'node:perf_hooks'
  */
 
 /** How often the watch checks how late it is. */
-export const STALL_TICK_MS = 100
+const STALL_TICK_MS = 100
 
 /** The lateness that counts as a stall. */
 export const STALL_FLOOR_MS = 500
@@ -31,10 +31,10 @@ const NAMED_AT_MOST = 6
 const GC_HORIZON_MS = 30_000
 
 /** A tick late by this much or more, under the floor, joins a run of late ticks. */
-export const RUN_STEP_MS = 100
+const RUN_STEP_MS = 100
 
 /** How often the health line is written. */
-export const HEALTH_EVERY_MS = 10 * 60_000
+const HEALTH_EVERY_MS = 10 * 60_000
 
 /** Write a line; a log that throws loses the line, never the watch. */
 function sayingTo(log: (line: string) => void): (line: string) => void {

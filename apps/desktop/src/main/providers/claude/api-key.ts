@@ -61,7 +61,7 @@ function cannotPay(status: number, body: unknown): boolean {
 }
 
 /** The native one-token billing check, after the same no-cost list request. */
-export async function checkClaudeKey(
+async function checkClaudeKey(
   key: string,
   fetchFor: typeof fetch = fetch,
 ): Promise<ApiKeyCheck> {

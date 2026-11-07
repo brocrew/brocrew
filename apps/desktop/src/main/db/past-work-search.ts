@@ -15,7 +15,7 @@ import {
 const CELL_LIMIT = 1024 * 1024
 const DOCUMENT_LIMIT = 1_000_000
 const PROFILE_LIMIT = 1
-export const PAST_WORK_MESSAGE_LIMIT = 4096
+const PAST_WORK_MESSAGE_LIMIT = 4096
 type Source = { id: string; updated_at: number; version: number }
 type Document = {
   conversation: string

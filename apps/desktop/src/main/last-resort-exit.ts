@@ -122,7 +122,7 @@ export interface CloserSpawnOptions {
  * passes that function directly, so a signature only a fake could meet would be a seam that proves
  * nothing about the real call.
  */
-export type CloserSpawn = (
+type CloserSpawn = (
   command: string,
   args: string[],
   options: CloserSpawnOptions,

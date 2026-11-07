@@ -204,7 +204,7 @@ export function claudeOnAResume<Handle extends SessionHandle>(
  * are told apart by their ORDER on the page rather than by id.
  */
 export const WOKEN = 'woken:'
-export function ownIds(event: RuntimeEvent): RuntimeEvent {
+function ownIds(event: RuntimeEvent): RuntimeEvent {
   // ⚠️ **Every request a card is raised for, and its resolution** (`673`'s review): renaming the
   // resolution of a request that was NOT renamed would settle nothing on the page.
   if (

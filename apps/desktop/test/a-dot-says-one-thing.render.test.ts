@@ -152,14 +152,14 @@ interface TemplateProp {
  */
 type Size = { readonly px: number } | { readonly refused: string }
 
-export interface PlateTag {
+interface PlateTag {
   readonly line: number
   readonly size: Size
   /** The expression of a whole-object `v-bind`, or `null` where the facets are bound one at a time. */
   readonly spread: string | null
 }
 
-export interface PlateCallSite {
+interface PlateCallSite {
   /** Whether the file's script IMPORTS `AgentState.vue`, in ANY shape — found independently of the tags. */
   readonly imports: boolean
   readonly tags: readonly PlateTag[]
@@ -287,7 +287,7 @@ function dynamicTarget(node: TemplateNode): string | null {
   return null
 }
 
-export function plateCallSite(file: string, source: string): PlateCallSite {
+function plateCallSite(file: string, source: string): PlateCallSite {
   const { descriptor, errors } = parseSfc(source, { filename: file })
   // ⛔ `visible-copy.ts`' two refusals, for its two reasons: a parse error and an out-of-file
   // template each hand back an AST that is not the file, and a census over it would be quietly empty.

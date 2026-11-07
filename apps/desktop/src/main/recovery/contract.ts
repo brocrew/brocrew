@@ -26,7 +26,7 @@ export const MANIFEST_FORMAT = 'brobot-checkpoint'
 export const JOURNAL_FORMAT = 'brobot-restore'
 export const GATE_FORMAT = 'brobot-history-only'
 
-export const CHECKPOINT_REASONS = ['first-start-of-release', 'before-migration'] as const
+const CHECKPOINT_REASONS = ['first-start-of-release', 'before-migration'] as const
 export type CheckpointReason = (typeof CHECKPOINT_REASONS)[number]
 
 /** Whether a restore installs a state file with the database or leaves the live one in place. */
@@ -40,7 +40,7 @@ export type Step = (typeof STEPS)[number]
 export type RestoreKind = 'restore' | 'return'
 
 /** What a journal participant is: the database's main file, one of its sidecars, or a state file. */
-export const PARTICIPANT_ROLES = ['database', 'sidecar', 'state'] as const
+const PARTICIPANT_ROLES = ['database', 'sidecar', 'state'] as const
 export type ParticipantRole = (typeof PARTICIPANT_ROLES)[number]
 
 /** One applied migration, as the migrator records it: its journal `when` and its sha256. */

@@ -6,7 +6,7 @@ import {
 } from '../../../shared/team-profile-graph'
 import type { GraphReading } from '../composables/useTeamProfileGraph'
 
-export type SizeMetric =
+type SizeMetric =
   'conversations' | 'piecesHeld' | 'messagesSent' | 'recentTurns' | 'descendants' | 'equal'
 export type LineMetric = 'work' | 'messages' | 'questions' | 'all'
 export type Scaling = 'sqrt' | 'log'
@@ -48,8 +48,8 @@ export function normalized(value: number, maximum: number, scaling: Scaling): nu
   if (maximum <= 0) return 0
   return scaling === 'sqrt' ? Math.sqrt(value / maximum) : Math.log1p(value) / Math.log1p(maximum)
 }
-export type DrawnEdge = { source: string; target: string; count: number; width: number }
-export type PhysicalPair = { source: number; target: number; weight: number }
+type DrawnEdge = { source: string; target: string; count: number; width: number }
+type PhysicalPair = { source: number; target: number; weight: number }
 export type GraphView = {
   nodes: GraphNode[]
   radii: number[]

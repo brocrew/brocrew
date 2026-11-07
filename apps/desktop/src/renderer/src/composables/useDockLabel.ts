@@ -8,7 +8,7 @@ import {
 } from '../../../shared/dock-label'
 
 /** Said when the label can't be read or saved: the words Themes already uses. */
-export const DOCK_LABEL_FAILED = "That didn't work. Try again."
+const DOCK_LABEL_FAILED = "That didn't work. Try again."
 
 /**
  * This workspace's Dock label (`shared/dock-label.ts`), as Settings shows it. Every change is

@@ -48,34 +48,6 @@
  * `Provider`, and the sheet is a `v-for`. See {@link DISCLOSURE_FIELDS}.
  */
 
-import type { Provider } from '../../../shared/runtime-ipc'
-
-/**
- * ⚑ **v2.3's copy input, typed** — what `BroBotUI.bind({disclosures})` reads.
- *
- * ⛔ **Keyed by {@link Provider} and never by a literal.** The mock's own approval sheet hard-codes a
- * two-tab segmented control; the product's list is `SUPPORTED_PROVIDERS` and the sheet is a `v-for`.
- * ⚠️ `Partial`, because a provider whose copy has not arrived must draw v2.3's own
- * *"Exact product wording not supplied"* block rather than an empty string — and an empty string is
- * what a total record would hand it.
- */
-export type DisclosureInput = Readonly<
-  Partial<
-    Record<
-      Provider,
-      {
-        readonly launchText?: string
-        readonly modes?: readonly {
-          readonly id: string
-          readonly label: string
-          /** ⛔ Absent is a state: `canAct('setApprovalMode')` refuses a mode with no disclosure. */
-          readonly text?: string
-        }[]
-      }
-    >
-  >
->
-
 /* ---------------------------------------------------------------------------
    The shape of one answer
    --------------------------------------------------------------------------- */
@@ -89,7 +61,7 @@ export type DisclosureInput = Readonly<
  * `sentence` here is copy whose subject is what the app or a provider DOES, and it must have exactly
  * one source in the codebase.
  */
-export type FieldKind = 'fact' | 'sentence'
+type FieldKind = 'fact' | 'sentence'
 
 /**
  * A pointer at the product, resolvable rather than described.
@@ -1431,7 +1403,7 @@ export const V23_ACTIONS: readonly ActionMapping[] = [
  *  - **`false`** — ⛔ the product does not do this. It must be removed or narrowed, and `382 §3` is
  *    explicit that a removal or a narrowing ships without another round.
  */
-export type SentenceVerdict = 'supported' | 'unsourced' | 'blurred' | 'false'
+type SentenceVerdict = 'supported' | 'unsourced' | 'blurred' | 'false'
 
 export interface HandCarriedSentence {
   /**
@@ -1671,10 +1643,10 @@ export const HAND_CARRIED: readonly HandCarriedSentence[] = [
  * prose beside the fields is reviewed prose, and a component pairing can be wrong in a row whose
  * every checked field is green.
  */
-export type DrawingRevision = 'v2.3' | 'v2.7'
+type DrawingRevision = 'v2.3' | 'v2.7'
 
 /** A surface a person can reach in the drawing: a workspace route, or a sheet over one. */
-export type SurfaceKind = 'route' | 'sheet'
+type SurfaceKind = 'route' | 'sheet'
 
 /**
  * How much of a drawn surface the product has.
@@ -1686,7 +1658,7 @@ export type SurfaceKind = 'route' | 'sheet'
  *  - **`review-scaffold`** — the drawing's own review chrome. ⚑ Not a product surface and never
  *    will be; a row that called it `only-drawn` would put a permanent debt on the list.
  */
-export type SurfaceState = 'imported' | 'part-imported' | 'only-drawn' | 'review-scaffold'
+type SurfaceState = 'imported' | 'part-imported' | 'only-drawn' | 'review-scaffold'
 
 /**
  * One surface of the drawing, and the three things `455` §2.1 asks of it.

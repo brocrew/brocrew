@@ -31,17 +31,17 @@ export const TRUST = {
   notSent: 'Not sent',
 } as const
 
-export const providerCopy = (version: string): string => `Provider copy · ${version}`
+const providerCopy = (version: string): string => `Provider copy · ${version}`
 
 /** Where a heading, a paragraph or a memory file came from, as the host says. */
-export const TRUST_OF_KEPT: Readonly<Record<'as-launched' | 'composed-now' | 'read-now', string>> =
+const TRUST_OF_KEPT: Readonly<Record<'as-launched' | 'composed-now' | 'read-now', string>> =
   {
     'as-launched': 'Recorded at launch',
     'composed-now': 'This build',
     'read-now': 'Read now',
   }
 
-export const TRUST_OF_TEXT: Readonly<Record<GivenTextIs, string>> = {
+const TRUST_OF_TEXT: Readonly<Record<GivenTextIs, string>> = {
   'as-launched': TRUST.atLaunch,
   'read-now': TRUST.readNow,
   'composed-now': TRUST.thisBuild,
@@ -102,13 +102,13 @@ export interface ReaderRow {
 }
 
 /** A line between rows: where this app's text joins, or where a part of the request ends. */
-export interface ReaderMark {
+interface ReaderMark {
   readonly kind: 'join' | 'boundary'
   readonly key: string
   readonly text: string
 }
 
-export type ReaderItem = ReaderRow | ReaderMark
+type ReaderItem = ReaderRow | ReaderMark
 
 export interface ReaderTab {
   readonly key: string
@@ -125,7 +125,7 @@ export interface ReaderTab {
  * The words of this view that name this app. Author labels are `AUTHOR` in `agent-inputs.ts`.
  * The markers below match stored copies, including copies made before the app was renamed.
  */
-export const SELF_WORDS = {
+const SELF_WORDS = {
   joinsSystemPrompt: 'BroCrew’s text joins the system prompt here',
   joinsFirstMessage: 'BroCrew’s text joins the first message here',
   profileFileStarts: 'BroCrew’s profile file starts inside this message',
@@ -637,7 +637,7 @@ function firstTurnOf(messages: readonly InputMessage[]): InputMessage[] {
 }
 
 /** Where the first message would sit, when this window has not loaded the conversation's start. */
-export const FIRST_MESSAGE_NOT_LOADED = 'First message not loaded.'
+const FIRST_MESSAGE_NOT_LOADED = 'First message not loaded.'
 
 const MESSAGES_INTRO =
   'Every sent message belongs here in delivery order, including app notices, reports and answers. Open a row to read the whole received text.'
@@ -908,8 +908,8 @@ function skillsOf(ctx: Context): Piece[] {
   ]
 }
 
-export const SKILLS_NOT_LISTED = 'Not listed since launch.'
-export const NO_SKILLS = 'No skills listed.'
+const SKILLS_NOT_LISTED = 'Not listed since launch.'
+const NO_SKILLS = 'No skills listed.'
 export const SKILL_CUT = 'May be cut at 500 characters.'
 export const skillsNotShown = (count: number): string => `${String(count)} more not shown.`
 
@@ -1047,9 +1047,9 @@ function instructionsTabs(ctx: Context, messages: readonly InputMessage[]): Read
  * placement is the only fact left: text in the system prompt means a system prompt, and text in the
  * first message is the instructions layout's (the shared type's `placement`).
  */
-export type RequestLayout = 'system-prompt' | 'instructions'
+type RequestLayout = 'system-prompt' | 'instructions'
 
-export function layoutOf(given: WhatThisAgentWasGiven): RequestLayout {
+function layoutOf(given: WhatThisAgentWasGiven): RequestLayout {
   const shape = given.providerParts.snapshot?.shape
   if (shape !== undefined) return shape === 'messages' ? 'system-prompt' : 'instructions'
   return given.placement === 'system-prompt' ? 'system-prompt' : 'instructions'

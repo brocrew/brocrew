@@ -75,7 +75,7 @@ export type Overlay =
    */
   | { kind: 'deleteConversation'; sessionId: string }
 
-export interface Toast {
+interface Toast {
   id: number
   text: string
 }

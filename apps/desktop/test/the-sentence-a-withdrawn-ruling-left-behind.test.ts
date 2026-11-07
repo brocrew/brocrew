@@ -109,7 +109,7 @@ const ABOUT_THE_INSTRUCTION_LAYER =
  * *"the approval profile depends on these instructions"* and *"replacing the prompt strips the
  * approval behaviour"*. §1.1 plants one sentence per member and requires each to fire.
  */
-export const THE_WITHDRAWN_FRAMING: Readonly<Record<string, RegExp>> = {
+const THE_WITHDRAWN_FRAMING: Readonly<Record<string, RegExp>> = {
   /** ⛔ `HO-023` §7's own noun, in every inflection. */
   'it is a safety property': /\bsafety propert\w+/i,
   /** ⚠️ The status claim as a dependency — the shape four shipped sentences used. */

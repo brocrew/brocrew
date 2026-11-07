@@ -14,7 +14,7 @@ export const backAtKey = (workspace: string): string => `brocrew:back-at:${works
  * In this window's session storage: when it was left by being reloaded or closed. A reload keeps
  * session storage and a quit or a new window does not, which is how a reload is told apart.
  */
-export const reloadedAtKey = (workspace: string): string => `brocrew:reloaded-at:${workspace}`
+const reloadedAtKey = (workspace: string): string => `brocrew:reloaded-at:${workspace}`
 
 function storageOf(name: 'localStorage' | 'sessionStorage'): ToggleStorage | null {
   try {

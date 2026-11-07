@@ -10,7 +10,7 @@ import {
   type TeamProfileGraphResult,
 } from '../../../shared/team-profile-graph'
 
-export type GraphHeader = Extract<TeamProfileGraphResult, { type: 'snapshot' }>
+type GraphHeader = Extract<TeamProfileGraphResult, { type: 'snapshot' }>
 export type GraphReading = {
   header: GraphHeader
   nodes: readonly GraphNode[]
