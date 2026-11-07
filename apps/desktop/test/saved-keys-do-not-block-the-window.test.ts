@@ -1,10 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  ApiKeys,
-  ApiKeyUnreadableError,
-  KEY_STORAGE_TIMEOUT_MS,
-  safeStorageCipher,
-} from '../src/main/runtime/api-keys'
+import { ApiKeys, ApiKeyUnreadableError, safeStorageCipher } from '../src/main/runtime/api-keys'
 import { createProviderAuthOps } from '../src/main/runtime/provider-homes'
 import { STALL_FLOOR_MS } from '../src/main/stall-watch'
 
@@ -15,9 +10,12 @@ vi.mock('../src/main/providers/claude/backing-login', () => ({
 const FAKE_KEY = 'fictional-key-for-tests'
 const SEALED = Buffer.from('fictional-ciphertext').toString('base64')
 
-function store(saved = true) {
+/** The fifteen seconds a key read or save used to be given before it was refused. */
+const PAST_THE_OLD_BOUND_MS = 16_000
+
+function store(saved = true, provider = 'claude') {
   const rows = new Map<string, { sealed: string; setAt: number }>()
-  if (saved) rows.set('claude', { sealed: SEALED, setAt: 1 })
+  if (saved) rows.set(provider, { sealed: SEALED, setAt: 1 })
   return {
     rows,
     keptApiKey: (provider: string) => rows.get(provider) ?? null,
@@ -116,35 +114,38 @@ describe('saved keys and the window', () => {
     expect(native.decryptStringAsync).not.toHaveBeenCalled()
   })
 
-  it('a slow decrypt lets timer ticks through and refuses by the deadline without another native request', async () => {
-    vi.useFakeTimers()
-    const native = storage()
-    const door = held<{ result: string; shouldReEncrypt: boolean }>()
-    native.decryptStringAsync.mockReturnValue(door.promise)
-    const keys = new ApiKeys(store(), safeStorageCipher(native), Date.now, 'darwin')
-    const failure = keys.read('claude').catch((error: unknown) => error)
-    let ticks = 0
-    const heartbeat = setInterval(() => {
-      ticks += 1
-    }, STALL_FLOOR_MS / 5)
-    await vi.advanceTimersByTimeAsync(KEY_STORAGE_TIMEOUT_MS)
-    const error = await failure
-    expect(ticks).toBe(KEY_STORAGE_TIMEOUT_MS / (STALL_FLOOR_MS / 5))
-    expect(error).toBeInstanceOf(ApiKeyUnreadableError)
-    expect((error as Error).message).toContain('macOS may be waiting for permission')
-    expect((error as Error).message).toContain('Save it again')
-    expect(keys.status('claude')).toMatchObject({
-      readState: 'unreadable',
-      unreadableReason: (error as Error).message,
-    })
-    await expect(keys.read('claude')).rejects.toThrow(ApiKeyUnreadableError)
-    expect(native.decryptStringAsync).toHaveBeenCalledTimes(1)
-    expect(native.forbidden).not.toHaveBeenCalled()
-    door.resolve({ result: FAKE_KEY, shouldReEncrypt: false })
-    await vi.advanceTimersByTimeAsync(0)
-    expect(keys.status('claude').inUse).toBe(false)
-    clearInterval(heartbeat)
-  })
+  it.each(['claude', 'codex'] as const)(
+    'a slow %s decrypt lets timer ticks through and is waited for: the key is read when the Keychain answers',
+    async (provider) => {
+      vi.useFakeTimers()
+      const native = storage()
+      const door = held<{ result: string; shouldReEncrypt: boolean }>()
+      native.decryptStringAsync.mockReturnValue(door.promise)
+      const keys = new ApiKeys(store(true, provider), safeStorageCipher(native), Date.now, 'darwin')
+      let outcome: unknown = 'pending'
+      const reading = keys.read(provider).then(
+        (key) => (outcome = key),
+        (error: unknown) => (outcome = error),
+      )
+      let ticks = 0
+      const heartbeat = setInterval(() => {
+        ticks += 1
+      }, STALL_FLOOR_MS / 5)
+      await vi.advanceTimersByTimeAsync(PAST_THE_OLD_BOUND_MS)
+      expect(ticks).toBe(PAST_THE_OLD_BOUND_MS / (STALL_FLOOR_MS / 5))
+      // 🔴 Still waiting, and not cached as unreadable: macOS may be asking the person.
+      expect(outcome).toBe('pending')
+      expect(keys.status(provider).readState).not.toBe('unreadable')
+      door.resolve({ result: FAKE_KEY, shouldReEncrypt: false })
+      await vi.advanceTimersByTimeAsync(0)
+      await reading
+      expect(outcome).toBe(FAKE_KEY)
+      expect(keys.status(provider).inUse).toBe(true)
+      expect(native.decryptStringAsync).toHaveBeenCalledTimes(1)
+      expect(native.forbidden).not.toHaveBeenCalled()
+      clearInterval(heartbeat)
+    },
+  )
 
   it('a refused decrypt gives recovery words, never the native error, and a later permitted read can work', async () => {
     const native = storage()
@@ -172,7 +173,7 @@ describe('saved keys and the window', () => {
     expect(native.decryptStringAsync).toHaveBeenCalledTimes(2)
   })
 
-  it('a refused save during a live read does not invalidate the unchanged saved key', async () => {
+  it('a save during a live read waits for it: the read gets the saved key, then the new one is kept', async () => {
     const native = storage()
     const door = held<{ result: string; shouldReEncrypt: boolean }>()
     native.decryptStringAsync.mockReturnValueOnce(door.promise)
@@ -182,14 +183,17 @@ describe('saved keys and the window', () => {
     const alsoReading = keys.current('claude')
     expect(alsoReading).toBe(reading)
     await Promise.resolve()
-    expect(await keys.set('claude', 'another-fictional-key')).toContain('could not encrypt')
+    const saving = keys.set('claude', 'another-fictional-key')
+    await Promise.resolve()
     expect(keys.current('claude')).toBe(reading)
+    expect(native.encryptStringAsync).not.toHaveBeenCalled()
     door.resolve({ result: FAKE_KEY, shouldReEncrypt: false })
     expect(await reading).toEqual({ key: FAKE_KEY, setAt: 1 })
     expect(await alsoReading).toEqual({ key: FAKE_KEY, setAt: 1 })
+    expect(await saving).toBeNull()
     expect(native.decryptStringAsync).toHaveBeenCalledTimes(1)
-    expect(saved.rows.get('claude')).toEqual({ sealed: SEALED, setAt: 1 })
-    expect(native.encryptStringAsync).not.toHaveBeenCalled()
+    expect(native.encryptStringAsync).toHaveBeenCalledExactlyOnceWith('another-fictional-key')
+    expect(saved.rows.get('claude')?.sealed).not.toBe(SEALED)
   })
 
   it('removal during decrypt never hands the old key to a launch', async () => {
@@ -220,7 +224,7 @@ describe('saved keys and the window', () => {
     })
   })
 
-  it('a competing save refuses before the deadline and leaves the admitted save intact', async () => {
+  it('a competing save waits its turn, and the later key is the one kept', async () => {
     vi.useFakeTimers()
     const native = storage()
     const door = held<Buffer>()
@@ -230,34 +234,39 @@ describe('saved keys and the window', () => {
     const first = keys.set('claude', FAKE_KEY)
     await vi.advanceTimersByTimeAsync(0)
     expect(native.encryptStringAsync).toHaveBeenCalledExactlyOnceWith(FAKE_KEY)
-    expect(await keys.set('claude', 'another-fictional-key')).toContain('could not encrypt')
+    const second = keys.set('claude', 'another-fictional-key')
     door.resolve(Buffer.from('admitted-ciphertext'))
+    native.encryptStringAsync.mockResolvedValue(Buffer.from('later-ciphertext'))
     await vi.advanceTimersByTimeAsync(0)
     expect(await first).toBeNull()
+    expect(await second).toBeNull()
     expect(saved.rows.get('claude')).toEqual({
-      sealed: Buffer.from('admitted-ciphertext').toString('base64'),
-      setAt: 12,
+      sealed: Buffer.from('later-ciphertext').toString('base64'),
+      setAt: 13,
     })
-    expect(native.encryptStringAsync).toHaveBeenCalledTimes(1)
+    expect(native.encryptStringAsync).toHaveBeenCalledTimes(2)
   })
 
-  it('a slow initialization is bounded and cannot start encryption after timeout', async () => {
+  it('a slow initialization is waited for, and the key is saved when it answers', async () => {
     vi.useFakeTimers()
     const native = storage()
     const door = held<boolean>()
     native.isAsyncEncryptionAvailable.mockReturnValue(door.promise)
     const saved = store(false)
     const keys = new ApiKeys(saved, safeStorageCipher(native))
-    const save = keys.set('claude', FAKE_KEY)
-    await vi.advanceTimersByTimeAsync(KEY_STORAGE_TIMEOUT_MS)
-    expect(await save).toContain('could not encrypt the key')
+    let said: unknown = 'pending'
+    const save = keys.set('claude', FAKE_KEY).then((answer) => (said = answer))
+    await vi.advanceTimersByTimeAsync(PAST_THE_OLD_BOUND_MS)
+    expect(said).toBe('pending')
     door.resolve(true)
     await vi.advanceTimersByTimeAsync(0)
-    expect(native.encryptStringAsync).not.toHaveBeenCalled()
-    expect(saved.rows.size).toBe(0)
+    await save
+    expect(said).toBeNull()
+    expect(native.encryptStringAsync).toHaveBeenCalledExactlyOnceWith(FAKE_KEY)
+    expect(saved.rows.size).toBe(1)
   })
 
-  it('a slow encryption neither blocks timers nor saves a late result', async () => {
+  it('a slow encryption does not block timers, and its result is saved when it comes', async () => {
     vi.useFakeTimers()
     const native = storage()
     const door = held<Buffer>()
@@ -269,13 +278,33 @@ describe('saved keys and the window', () => {
     setTimeout(tick, STALL_FLOOR_MS / 5)
     await vi.advanceTimersByTimeAsync(STALL_FLOOR_MS / 5)
     expect(tick).toHaveBeenCalledTimes(1)
-    await vi.advanceTimersByTimeAsync(KEY_STORAGE_TIMEOUT_MS)
-    expect(await save).toContain('macOS may be waiting for permission')
-    expect(await keys.set('claude', FAKE_KEY)).toContain('could not encrypt')
+    let said: unknown = 'pending'
+    void save.then((answer) => (said = answer))
+    await vi.advanceTimersByTimeAsync(PAST_THE_OLD_BOUND_MS)
+    expect(said).toBe('pending')
     expect(native.encryptStringAsync).toHaveBeenCalledTimes(1)
     door.resolve(Buffer.from('late-ciphertext'))
     await vi.advanceTimersByTimeAsync(0)
+    expect(await save).toBeNull()
+    expect(saved.rows.get('claude')?.sealed).toBe(Buffer.from('late-ciphertext').toString('base64'))
+  })
+
+  it('🔴 removing the key while a save waits behind a slow read cancels that save', async () => {
+    const native = storage()
+    const door = held<{ result: string; shouldReEncrypt: boolean }>()
+    native.decryptStringAsync.mockReturnValueOnce(door.promise)
+    const saved = store()
+    const keys = new ApiKeys(saved, safeStorageCipher(native))
+    const reading = keys.current('claude').catch(() => null)
+    await Promise.resolve()
+    const saving = keys.set('claude', 'another-fictional-key')
+    await Promise.resolve()
+    keys.remove('claude')
+    door.resolve({ result: FAKE_KEY, shouldReEncrypt: false })
+    await reading
+    expect(await saving).toContain('saved key changed')
     expect(saved.rows.size).toBe(0)
+    expect(keys.status('claude').set).toBe(false)
   })
 
   it('removing a key while its replacement is encrypting cancels the late save', async () => {
@@ -335,22 +364,6 @@ describe('why a saved key did not open, in the words a person reads', () => {
     const windows = await refusalOn('win32', fails)
     expect(windows.said).not.toContain('macOS')
     expect(windows.said).not.toContain('Keychain')
-  })
-
-  it('a Keychain that has not answered by this app’s own deadline is said to be waiting too', async () => {
-    vi.useFakeTimers()
-    const native = storage()
-    native.decryptStringAsync.mockReturnValue(held<never>().promise)
-    const keys = new ApiKeys(store(), safeStorageCipher(native), Date.now, 'darwin')
-    const failure = keys.read('claude').catch((caught: unknown) => caught)
-    await vi.advanceTimersByTimeAsync(KEY_STORAGE_TIMEOUT_MS)
-    const said = ((await failure) as Error).message
-    expect(said).toContain(WAITING)
-    expect(said).not.toContain(ANOTHER_ENTRY)
-    // A read while that one is still out says the same, and asks the Keychain nothing more.
-    const again = await keys.read('claude').catch((caught: unknown) => caught)
-    expect((again as Error).message).toBe(said)
-    expect(native.decryptStringAsync).toHaveBeenCalledTimes(1)
   })
 
   it('a key the Keychain’s sealing key does not open is said to be saved with another entry, and macOS is not said to wait', async () => {

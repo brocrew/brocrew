@@ -595,6 +595,28 @@ describe('ClaudeRuntime — who the session is signed in as', () => {
     await consumer
   })
 
+  it('🔴 an account the CLI names only after fifteen seconds is still the account', async () => {
+    let answer: (info: AccountInfo) => void = () => undefined
+    // The clock is faked before the start, so a bound the read arms at attach is on it.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const { fq, handle, consumer } = await startFake({
+      whoAmI: () => new Promise<AccountInfo>((resolve) => (answer = resolve)),
+    })
+    try {
+      // Past the fifteen seconds the read used to be given before it was taken as no account.
+      await vi.advanceTimersByTimeAsync(16_000)
+      expect(handle.account?.()).toBeUndefined()
+      answer({ email: EMAIL })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(handle.account?.()).toEqual({ email: EMAIL })
+    } finally {
+      vi.useRealTimers()
+    }
+    await handle.close()
+    fq.end()
+    await consumer
+  })
+
   it('⚑ until the CLI has answered, the account is not yet said', async () => {
     let answer: (info: AccountInfo) => void = () => undefined
     const { fq, handle, consumer } = await startFake({
@@ -8675,31 +8697,6 @@ describe('202 · the receipt, and the turn that must not start (191 H3, H5)', ()
     expect(await listing).toHaveLength(1)
     expect(probe.returnCount).toBe(1)
   })
-
-  it('⛔ H5 · settings that never answer fail the turn instead of hanging the send', async () => {
-    const { fq, handle, events, consumer } = await startFake()
-    fq.emit(init('sess_hang', '/tmp/x'))
-    await vi.waitFor(has(events, (e) => e.type === 'session'))
-    await handle.setModel('opus')
-    fq.holdSettings = new Promise<void>(() => {}) // never
-
-    vi.useFakeTimers()
-    try {
-      const sending = handle.send('hello')
-      sending.catch(() => {})
-      await vi.advanceTimersByTimeAsync(11_000)
-      // ⛔ The send IPC comes back. Before 202 it never did — three unbounded control requests
-      // between opening the turn and pushing the message.
-      await expect(sending).rejects.toThrow(/did not answer within/)
-    } finally {
-      vi.useRealTimers()
-    }
-    // …and the turn it opened was terminalized rather than left running forever.
-    expect(events.filter((e) => e.type === 'turn').at(-1)).toMatchObject({ state: 'failed' })
-
-    await handle.close()
-    await consumer
-  })
 })
 
 /**
@@ -10093,8 +10090,10 @@ describe('shared skills at a Claude turn boundary', () => {
       fq.emit({ type: 'result', subtype: 'success', is_error: false })
       await vi.waitFor(() => expect(handle.status()).toBe('idle'))
       reload.mockRejectedValueOnce(new Error('fictional reload failure'))
-      await expect(handle.send('An unread refresh.')).rejects.toThrow('fictional reload failure')
-      expect(handle.status()).toBe('idle')
+      // A failed reload is said and the message still goes, with the skills already loaded.
+      await handle.send('An unread refresh.')
+      fq.emit({ type: 'result', subtype: 'success', is_error: false })
+      await vi.waitFor(() => expect(handle.status()).toBe('idle'))
       await handle.send('Check the edited recipe.')
       expect(reload).toHaveBeenCalledTimes(3)
       fq.emit({ type: 'result', subtype: 'success', is_error: false })
@@ -10184,35 +10183,52 @@ describe('shared skills at a Claude turn boundary', () => {
       await consumer
     }
   })
+})
 
-  it('retires a query whose reload timed out, without sending or retrying on that query', async () => {
+describe('a slow Claude CLI is waited for at a turn boundary', () => {
+  let home: string
+  let unmock: () => void
+  beforeEach(() => {
+    home = realpathSync(mkdtempSync(join(tmpdir(), 'fictional-slow-claude-')))
+    const note = vi
+      .spyOn(ClaudeSessionHandle.prototype, 'noteAlwaysRulesFile')
+      .mockImplementation(() => {})
+    const files = vi.spyOn(ClaudeSessionHandle.prototype, 'launchLocalFiles').mockReturnValue([])
+    unmock = () => {
+      note.mockRestore()
+      files.mockRestore()
+    }
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    unmock()
+    rmSync(home, { recursive: true, force: true })
+  })
+
+  /** A Claude session with shared skills, whose reloads and sent messages the test sees. */
+  async function aSessionWithSharedSkills(generation?: () => number): Promise<{
+    fq: FakeQuery
+    handle: Awaited<ReturnType<ClaudeRuntime['start']>>
+    reload: ReturnType<typeof vi.fn>
+    sent: string[]
+    events: RuntimeEvent[]
+    consumer: Promise<void>
+  }> {
     const fq = new FakeQuery()
-    let finishReload!: () => void
-    let finishExit!: () => void
-    const reload = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          finishReload = resolve
-        }),
-    )
+    const reload = vi.fn(async () => ({}))
     Object.assign(fq, { reloadPlugins: reload })
-    fq.holdReturn = new Promise<void>((resolve) => {
-      finishExit = resolve
-    })
-    let sent = 0
-    let nextQuery = fq
+    const sent: string[] = []
     const runtime = new ClaudeRuntime(
       (params) => {
-        const query = nextQuery
-        query.cli.listen(
+        fq.cli.listen(
           (async function* () {
             for await (const message of params.prompt) {
-              sent++
+              sent.push(JSON.stringify(message))
               yield message
             }
           })(),
         )
-        return query
+        return fq
       },
       async () => true,
       undefined,
@@ -10223,74 +10239,237 @@ describe('shared skills at a Claude turn boundary', () => {
       undefined,
       '/fictional/claude',
     )
-    const context = {
+    const handle = await runtime.start({
+      cwd: home,
       providerHome: home,
       builtInSkills: { root: join(home, 'built-in-skills'), skills: [] },
       sharedSkillsRoot: join(home, 'skills'),
-    }
-    const handle = await runtime.start({ ...context, cwd: home })
+      ...(generation ? { sharedSkillsGeneration: generation } : {}),
+    })
     const events: RuntimeEvent[] = []
     const consumer = collect(handle, events)
     fq.emit({
-      ...init('sess_reload_timeout', home),
+      ...init('sess_slow_cli', home),
       plugins: [{ name: 'brobot', path: join(home, 'built-in-skills') }],
       skills: [],
     })
     await vi.waitFor(() => expect(handle.ref).not.toBeNull())
+    return { fq, handle, reload, sent, events, consumer }
+  }
 
-    vi.useFakeTimers()
+  const endTheTurn = async (fq: FakeQuery, handle: { status(): string }): Promise<void> => {
+    // A macrotask first, so the CLI has read the message its result answers.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    fq.emit({ type: 'result', subtype: 'success', is_error: false })
+    await vi.waitFor(() => expect(handle.status()).toBe('idle'))
+  }
+
+  it('reloads the shared skills only when they changed since the session loaded them', async () => {
+    let generation = 4
+    const { fq, handle, reload, consumer } = await aSessionWithSharedSkills(() => generation)
     try {
-      const sending = handle.send('A message awaiting plugin refresh.')
-      sending.catch(() => {})
-      await vi.advanceTimersByTimeAsync(60_000)
-      await expect(sending).rejects.toThrow('reloadPlugins did not answer within 60000ms')
-      expect(events.filter((event) => event.type === 'turn')).toHaveLength(1)
-      expect(events.filter((event) => event.type === 'turn').at(-1)).toMatchObject({
-        state: 'failed',
-      })
-      expect(sent).toBe(0)
-      expect(fq.closeCount).toBe(1)
-      expect(fq.returnCount).toBe(1)
-      expect(handle.status()).toBe('idle')
-      expect(handle.isRetiring?.()).toBe(true)
-
-      await expect(handle.send('Retry while old query exits.')).rejects.toThrow()
+      await handle.send('First, with the skills it launched with.')
+      await endTheTurn(fq, handle)
+      await handle.send('Second, nothing changed.')
+      await endTheTurn(fq, handle)
+      expect(reload).not.toHaveBeenCalled()
+      generation = 5
+      await handle.send('Third, after a skill was edited.')
+      await endTheTurn(fq, handle)
       expect(reload).toHaveBeenCalledTimes(1)
-      finishReload()
-      await vi.advanceTimersByTimeAsync(0)
-      await expect(handle.send('Retry after late reload answer.')).rejects.toThrow()
+      await handle.send('Fourth, nothing changed again.')
+      await endTheTurn(fq, handle)
       expect(reload).toHaveBeenCalledTimes(1)
-      expect(sent).toBe(0)
     } finally {
-      finishExit()
       await handle.close()
-      expect(handle.isRetiring?.()).toBe(false)
-      expect(handle.status()).toBe('ended')
-      vi.useRealTimers()
       await consumer
     }
+  })
 
-    const fresh = new FakeQuery()
-    const freshReload = vi.fn(async () => ({}))
-    Object.assign(fresh, { reloadPlugins: freshReload })
-    nextQuery = fresh
-    const retry = await runtime.resume(
-      { provider: 'claude', sessionId: 'sess_reload_timeout', cwd: home, rotation: 0 },
-      context,
+  it('a reload slower than a minute is waited for, the message goes, and nothing closes the query', async () => {
+    const { fq, handle, reload, sent, events, consumer } = await aSessionWithSharedSkills()
+    let finish!: () => void
+    reload.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          finish = () => done({})
+        }),
     )
+    vi.useFakeTimers()
     try {
-      fresh.emit({
-        ...init('sess_reload_timeout', home),
-        plugins: [{ name: 'brobot', path: context.builtInSkills.root }],
-        skills: [],
-      })
-      await vi.waitFor(() => expect(retry.ref).not.toBeNull())
-      await retry.send('Retry on a fresh query.')
-      await vi.waitFor(() => expect(sent).toBe(1))
-      expect(freshReload).toHaveBeenCalledTimes(1)
-      expect(reload).toHaveBeenCalledTimes(1)
+      const sending = handle.send('Wait for the reload, however long.')
+      sending.catch(() => {})
+      await vi.advanceTimersByTimeAsync(61_000)
+      expect(sent).toHaveLength(0)
+      expect(fq.closeCount).toBe(0)
+      expect(events.some((event) => event.type === 'turn' && event.state === 'failed')).toBe(false)
+      finish()
+      await sending
+      await vi.advanceTimersByTimeAsync(0)
+      expect(sent).toHaveLength(1)
+      expect(sent[0]).toContain('Wait for the reload, however long.')
+      expect(fq.closeCount).toBe(0)
     } finally {
-      await retry.close()
+      vi.useRealTimers()
+      await handle.close()
+      await consumer
     }
   })
+
+  it('settings slower than ten seconds are waited for, and the message goes', async () => {
+    const { fq, handle, sent, events, consumer } = await aSessionWithSharedSkills(() => 0)
+    await handle.setModel('opus')
+    let answer!: () => void
+    fq.holdSettings = new Promise<void>((done) => {
+      answer = done
+    })
+    vi.useFakeTimers()
+    try {
+      const sending = handle.send('Use the new model when it is set.')
+      sending.catch(() => {})
+      await vi.advanceTimersByTimeAsync(11_000)
+      expect(sent).toHaveLength(0)
+      expect(events.some((event) => event.type === 'turn' && event.state === 'failed')).toBe(false)
+      answer()
+      await sending
+      await vi.advanceTimersByTimeAsync(0)
+      expect(sent).toHaveLength(1)
+      expect(fq.calls).toContain('setModel:opus')
+    } finally {
+      vi.useRealTimers()
+      await handle.close()
+      await consumer
+    }
+  })
+
+  it('Stop ends a turn waiting on its reload, as a stop and not a failure', async () => {
+    const { handle, reload, sent, events, consumer } = await aSessionWithSharedSkills()
+    reload.mockImplementationOnce(() => new Promise(() => {}))
+    try {
+      const sending = handle.send('Stopped before it went.')
+      const refused = sending.then(
+        () => 'sent',
+        (error: unknown) => (error instanceof Error ? error.message : String(error)),
+      )
+      await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1))
+      await handle.interrupt()
+      expect(await refused).toContain('stopped before its message')
+      expect(sent).toHaveLength(0)
+      const turns = events.filter((event) => event.type === 'turn')
+      expect(turns.some((event) => event.type === 'turn' && event.state === 'failed')).toBe(false)
+      await vi.waitFor(() => expect(handle.status()).toBe('idle'))
+    } finally {
+      await handle.close()
+      await consumer
+    }
+  })
+
+  it('Stop during a settings request ends that turn; its late answer adopts nothing and asks nothing more', async () => {
+    const { fq, handle, events, consumer } = await aSessionWithSharedSkills(() => 0)
+    await handle.setModel('opus')
+    await handle.setReasoningEffort('high')
+    let answer!: () => void
+    fq.holdSettings = new Promise<void>((done) => {
+      answer = done
+    })
+    try {
+      const first = handle.send('Stopped while its model was being set.')
+      const refused = first.then(
+        () => 'sent',
+        (error: unknown) => (error instanceof Error ? error.message : String(error)),
+      )
+      await vi.waitFor(() => expect(fq.calls).toContain('setModel:opus'))
+      await handle.interrupt()
+      expect(await refused).toContain('stopped before its message')
+      await vi.waitFor(() => expect(handle.status()).toBe('idle'))
+      // A new turn, with a different model asked for.
+      fq.holdSettings = null
+      await handle.setModel('sonnet')
+      const asked = fq.calls.length
+      await handle.send('The replacement.')
+      await vi.waitFor(() => expect(fq.calls.slice(asked)).toContain('setModel:sonnet'))
+      // The first turn's late answer: nothing after it runs.
+      const before = [...fq.calls]
+      answer()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(fq.calls).toEqual(before)
+      expect(events.some((event) => event.type === 'turn' && event.state === 'failed')).toBe(false)
+    } finally {
+      answer()
+      await handle.close()
+      await consumer
+    }
+  })
+
+  it('a reload that fails is said, and the message still goes', async () => {
+    let generation = 1
+    const { fq, handle, reload, sent, events, consumer } = await aSessionWithSharedSkills(
+      () => generation,
+    )
+    generation = 2
+    reload.mockRejectedValueOnce(new Error('fictional reload failure'))
+    try {
+      await handle.send('Go with the skills already loaded.')
+      await vi.waitFor(() => expect(sent).toHaveLength(1))
+      expect(
+        events.some(
+          (event) =>
+            event.type === 'error' &&
+            event.fatal === false &&
+            event.message === 'Shared skills could not be reloaded: fictional reload failure',
+        ),
+      ).toBe(true)
+      expect(events.some((event) => event.type === 'turn' && event.state === 'failed')).toBe(false)
+      await endTheTurn(fq, handle)
+      // Not loaded, so the next turn asks again.
+      await handle.send('Try the reload again.')
+      await endTheTurn(fq, handle)
+      expect(reload).toHaveBeenCalledTimes(2)
+    } finally {
+      await handle.close()
+      await consumer
+    }
+  })
+})
+
+describe('a Claude launch waiting on its credentials ends when it is cancelled', () => {
+  let home: string
+  beforeEach(() => {
+    home = realpathSync(mkdtempSync(join(tmpdir(), 'fictional-cancelled-claude-')))
+  })
+  afterEach(() => {
+    rmSync(home, { recursive: true, force: true })
+  })
+
+  it.each(['the Keychain login', 'the saved API key'] as const)(
+    'a cancel releases a start waiting on %s, and nothing is spawned after',
+    async (waitingOn) => {
+      let spawned = 0
+      const never = (): Promise<string | null> => new Promise(() => {})
+      const runtime = new ClaudeRuntime(
+        () => {
+          spawned += 1
+          return new FakeQuery()
+        },
+        async () => true,
+        undefined,
+        undefined,
+        undefined,
+        waitingOn === 'the saved API key' ? never : undefined,
+        process.platform,
+        undefined,
+        '/fictional/claude',
+        waitingOn === 'the Keychain login' ? never : undefined,
+      )
+      const launch = new AbortController()
+      const starting = runtime.start({ cwd: home, providerHome: home, signal: launch.signal }).then(
+        () => 'started',
+        (error: unknown) => (error instanceof Error ? error.message : String(error)),
+      )
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      launch.abort()
+      expect(await starting).toContain('cancelled')
+      expect(spawned).toBe(0)
+    },
+  )
 })

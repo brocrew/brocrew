@@ -1,27 +1,24 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * 149 · **A Keychain read that cannot hang the app that makes it** — 148 H4.
+ * 149 · **A Keychain read that cannot hang the app that makes it** — 148 H4 — **and that waits for
+ * the Keychain however long it takes.**
  *
- * A synchronous `security find-generic-password` without a timeout can block Electron’s main
- * process on every send and queue through `RuntimeHost.assertSignInCurrent`. A locked
- * Keychain, prompt, or stalled `securityd` can keep it from returning, freezing even close
- * and reopen. Bound the read rather than assume an unlocked, unprompted Keychain.
+ * A synchronous `security find-generic-password` can block Electron's main process, so the app's
+ * readers are the callback ones and only the blocking library default keeps a bound. The callback
+ * readers wait for `security`: a locked Keychain or an access prompt is the person being asked, and
+ * a read that takes long is not a missing login.
  *
  * ## What is asserted here, and why it is asserted through a mock
  *
- * Replace `node:child_process` rather than call the real reader, which would access a
- * personal credential, depend on machine state, and still not produce a hang on demand. Read
- * the three relevant facts off the call:
+ * Replace `node:child_process` rather than call the real reader, which would access a personal
+ * credential and depend on machine state. Read the relevant facts off the call:
  *
- *  1. the bound is passed to the spawn at all — a `timeout`, and a `killSignal` a wedged process
- *     cannot ignore;
- *  2. the turn-path reader is the CALLBACK one (`execFile`), never `execFileSync` — that is the
- *     whole of H4, and a regression to the blocking call is exactly what this catches;
- *  3. ⚠️ **a read that fails — which is how Node reports a timeout kill — yields `null`, not a
- *     throw**, because null is what `checkSignIn` reads as *"cannot tell"* and allows the turn.
- *     Fail OPEN, stated: see `ClaudeSessionHandle.checkSignIn` for why availability wins here and
- *     fail-closed stays at launch.
+ *  1. the app's readers are the CALLBACK one (`execFile`), never `execFileSync`; the readers that
+ *     fail open (the turn gate's and the blocking one) keep their bound, and the launch's has none;
+ *  2. the turn-path read that fails yields `null` — *"cannot tell"*, which `checkSignIn` allows;
+ *  3. the launch's read is `null` only when the Keychain has no such item; any other failure is
+ *     said in the Keychain's own words, never as a missing login.
  */
 
 const execFile = vi.hoisted(() => vi.fn())
@@ -30,6 +27,7 @@ const execFileSync = vi.hoisted(() => vi.fn())
 vi.mock('node:child_process', () => ({ execFile, execFileSync }))
 
 const {
+  AuthUnavailableError,
   KEYCHAIN_READ_TIMEOUT_MS,
   defaultKeychainReader,
   defaultKeychainReaderAsync,
@@ -50,15 +48,15 @@ afterEach(() => {
 })
 
 /** Answer the next `execFile` call the way a finished `security` would. */
-function answerWith(error: Error | null, stdout = ''): void {
+function answerWith(error: Error | null, stdout = '', stderr = ''): void {
   execFile.mockImplementation((_cmd, _args, _opts, done) => {
-    done(error, stdout, '')
+    done(error, stdout, stderr)
     return undefined
   })
 }
 
-describe('149 — the turn-path Keychain read is bounded and does not block', () => {
-  it('spawns `security` through the CALLBACK API, with a deadline and a kill it cannot ignore', async () => {
+describe('149 — the turn-path Keychain read does not block, and fails open', () => {
+  it('spawns `security` through the CALLBACK API, with a bound that fails OPEN and a kill it cannot ignore', async () => {
     answerWith(null, '{"claudeAiOauth":{}}\n')
     await defaultKeychainReaderAsync()
 
@@ -75,12 +73,12 @@ describe('149 — the turn-path Keychain read is bounded and does not block', ()
     ]
     expect(command).toBe('security')
     expect(args).toEqual(['find-generic-password', '-s', 'Claude Code-credentials', '-w'])
+    // The turn gate's read refuses nothing at its bound: `null` is "cannot tell", and the turn goes.
     expect(options['timeout']).toBe(KEYCHAIN_READ_TIMEOUT_MS)
-    // SIGTERM is Node's default and a process parked inside a Keychain prompt may not take it.
     expect(options['killSignal']).toBe('SIGKILL')
   })
 
-  it('is two orders of magnitude above the measured cost of a read that works', () => {
+  it('the fail-open readers’ bound is two orders of magnitude above the measured cost of a read that works', () => {
     // 19–26 ms over seven runs (147 §3). The bound is not a guess about the slow case — it is far
     // enough out that only a genuinely stuck `security` reaches it, and near enough that a stuck one
     // costs a turn two seconds rather than the session.
@@ -157,8 +155,8 @@ describe('149 — the turn-path Keychain read is bounded and does not block', ()
   })
 })
 
-describe('the launch’s Keychain read does not block, and a shortage still throws', () => {
-  it('spawns `security` through the CALLBACK API, with the bound and the kill, and never the blocking one', async () => {
+describe('the launch’s Keychain read does not block, waits for the Keychain, and a shortage still throws', () => {
+  it('spawns `security` through the CALLBACK API, with no deadline, and never the blocking one', async () => {
     answerWith(null, '{"claudeAiOauth":{"accessToken":"tok"}}\n')
     await expect(defaultKeychainReaderForALaunch()).resolves.toBe(
       '{"claudeAiOauth":{"accessToken":"tok"}}',
@@ -170,15 +168,29 @@ describe('the launch’s Keychain read does not block, and a shortage still thro
       Record<string, unknown>,
     ]
     expect(command).toBe('security')
-    expect(options['timeout']).toBe(KEYCHAIN_READ_TIMEOUT_MS)
-    expect(options['killSignal']).toBe('SIGKILL')
+    expect(options['timeout']).toBeUndefined()
+    expect(options['killSignal']).toBeUndefined()
   })
 
-  it('⚑ a read the Keychain refused, or one killed at the bound, is no login: null', async () => {
+  it('⚑ a Keychain with no such item is no login: null', async () => {
     answerWith(Object.assign(new Error('Command failed: security'), { code: 44 }))
     await expect(defaultKeychainReaderForALaunch()).resolves.toBeNull()
+  })
+
+  it('🔴 any other Keychain failure is said in the Keychain’s words, never as a missing login', async () => {
+    answerWith(
+      Object.assign(new Error('Command failed: security'), { code: 51 }),
+      '',
+      'security: SecKeychainSearchCopyNext: User interaction is not allowed.\n',
+    )
+    const refused = await defaultKeychainReaderForALaunch().catch((error: unknown) => error)
+    expect(refused).toBeInstanceOf(AuthUnavailableError)
+    expect((refused as Error).message).toBe(
+      "The Keychain did not give BroCrew this Mac's Claude login: security: SecKeychainSearchCopyNext: User interaction is not allowed.",
+    )
+    expect((refused as Error).message).not.toContain('missing')
     answerWith(Object.assign(new Error('killed'), { killed: true, signal: 'SIGKILL' }))
-    await expect(defaultKeychainReaderForALaunch()).resolves.toBeNull()
+    await expect(defaultKeychainReaderForALaunch()).rejects.toBeInstanceOf(AuthUnavailableError)
   })
 
   it('🔴 a machine that ran short rejects with it, whether Node says so later or at once', async () => {

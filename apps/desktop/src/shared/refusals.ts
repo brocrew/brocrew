@@ -270,7 +270,7 @@ export const REFUSAL_REMEDIES = [
    *
    * ⚑ **The owner-scoped rows are `that-conversation-has-not-started` in `INTERRUPT_RAILS` and in
    * `TOOL_REFUSALS` (one word shared on purpose since `650`), and `that-work-is-being-sent`,
-   * `agent-took-too-long-to-start` (since `657`), `that-conversation-is-still-stopping` (since
+   * `that-conversation-is-still-stopping` (since
    * `663`), `that-conversation-could-not-be-woken-just-now` (since `705`),
    * `agent-could-not-start-just-now` (since `707`) and `the-start-it-waited-on-did-not-happen`
    * (since D-016) in `TOOL_REFUSALS`.** `429` added the

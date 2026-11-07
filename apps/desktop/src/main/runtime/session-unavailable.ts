@@ -80,8 +80,6 @@ export const UNAVAILABLE_REASONS = [
   'run-by-another-host',
   /** Reserved, but its provider has not arrived. */
   'still-opening',
-  /** 102: its provider never answered, so the launch gave up and shut it down. */
-  'took-too-long',
   /** 102: stopped on purpose — the Cancel beside the launcher, or a window that went away. */
   'cancelled',
   /** A teardown is running and outlived the wait 075 makes. */
@@ -419,8 +417,6 @@ export class AGiveThatGaveNothing extends Error {
 export interface UnavailableContext {
   /** How long a reservation has been waiting for its provider, ms. */
   openingForMs?: number
-  /** The bound a launch was given before it was given up on, ms (102). */
-  waitedForMs?: number
   /**
    * 🔴 **The ROW's own reason a reopen will not work** (504) — `SessionStore.reopenRefusalOf`,
    * verbatim, for `cannot-be-reopened`.
@@ -451,7 +447,7 @@ export interface UnavailableContext {
   /**
    * ⚑ **710 · the gesture was a REOPEN** — the conversation exists and did not come back, so the way
    * forward is to reopen it, never to *start it again* (a new conversation). ⚑ Read by
-   * `machine-ran-short`, and since `716` by `took-too-long` and `still-closing`; set at the reopen's
+   * `machine-ran-short`; set at the reopen's
    * doors by {@link saidOfAReopen}.
    */
   reopening?: true
@@ -583,12 +579,9 @@ export function whatAFolderRefused(folder: UnavailableContext['folder']): {
  * Each one says what is holding the conversation and what to do about it, because a refusal that
  * names neither leaves quitting the app as the only move — which is the report this exists for.
  *
- * ⚠️ **Two of them say "and how long"**, and they are the two where a duration is information
- * rather than noise. `still-opening` is what another gesture is told while a launch is in flight,
- * so the number is what a person decides on; `took-too-long` is the launch's own ending, and the
- * bound is the whole of what it has to report. 100 said this class had no in-app release and that
- * the wedge was a Codex handshake with no deadline — 102 gave it one (measured: a healthy handshake
- * answers in 80ms warm and 530-916ms cold) and put a Cancel beside the launcher.
+ * ⚠️ **One of them says "and how long"**: `still-opening`, what another gesture is told while a
+ * launch is in flight, where the number is what a person decides on. A launch has no deadline: it
+ * opens when its provider answers, and the Cancel beside the launcher is how a person ends it.
  */
 export function describeUnavailable(reason: Unavailable, context: UnavailableContext = {}): string {
   /** Whole seconds, because a person choosing whether to wait is not choosing in milliseconds. */
@@ -641,38 +634,18 @@ export function describeUnavailable(reason: Unavailable, context: UnavailableCon
       return 'This conversation is already being run by another part of BroCrew, and only one part can drive it at a time, so it was not opened here. It can continue here once that part has let it go.'
     case 'still-opening': {
       // 🔴 **716 · `710` F-5 — what the app does by itself, instead of *"try again in a moment"***
-      // (rule 8.4). ⚑ A start in flight ENDS on its own: it registers, or it is given up at the launch
-      // bound (`RuntimeHost.awaitLaunch`) — so a person has nothing to do, and pressing again only
-      // meets this again. ⚠️ It does not promise the person refused here is TOLD when it ends: the one
+      // (rule 8.4). ⚑ A start in flight ends on its own: it registers when its provider answers, or
+      // fails with its provider's own error (`RuntimeHost.awaitLaunch`) — so a person has nothing to
+      // do, and pressing again only meets this again. ⚠️ It does not promise the person refused here is TOLD when it ends: the one
       // told is whoever started it (round two of `716`'s review). ⚠️ Reached only while the start is still in flight: a
       // reservation somebody CLOSED is `still-closing`, at both doors (`716` moved the claim door's
       // order to match {@link RuntimeHost.reserve}'s).
       //
-      // ⛔ **Two things it does NOT say, both found by `716`'s review.** No bound: the elapsed time
-      // counts from the reservation and the launch bound from `awaitLaunch`, after the cwd and the
-      // home, so *"opening for 20s"* beside *"within 15s"* would read as a contradiction. And no
-      // *"it can be reopened"*: a START in flight leaves no row behind to reopen.
+      // ⛔ **It does NOT say** *"it can be reopened"*: a START in flight leaves no row behind to
+      // reopen.
       const forMs = context.openingForMs
       const waited = forMs === undefined ? '' : ` It has been opening for ${seconds(forMs)}.`
-      return `This conversation is still opening — it is waiting for its agent to answer.${waited} It opens by itself when its agent answers; if its agent does not answer in time, BroCrew stops it.`
-    }
-    case 'took-too-long': {
-      // ⚠️ **What it waited for AND how long** (102 acceptance 3). "It did not open" would be the
-      // same non-answer 100 was reported for: the only fact a person has to decide on is that the
-      // agent itself never spoke, and for how long we let it not speak.
-      //
-      // 🔴 **716 · `710` F-5 — and what a person can do, which a bare *"Try again."* did not say**
-      // (rule 8.4). ⚑ The gesture differs by door, as `machine-ran-short`'s does: a start left
-      // nothing behind (the row is written at registration), so it is started again; a reopen left
-      // the conversation where it was, so it is reopened. ⚑ And what it means if it keeps
-      // happening, which is the one fact a second failure adds: the provider is not answering.
-      const boundMs = context.waitedForMs
-      const forHowLong = boundMs === undefined ? 'in time' : `within ${seconds(boundMs)}`
-      const stopped = `This conversation's agent did not answer ${forHowLong}, so BroCrew stopped waiting and shut it down.`
-      const keeps = 'If it keeps not answering, its provider is not responding on this machine.'
-      return context.reopening === true
-        ? `${stopped} The conversation is kept: ${reopenIt}. ${keeps}`
-        : `${stopped} No conversation was made: start it again. ${keeps}`
+      return `This conversation is still opening — it is waiting for its agent to answer.${waited} It opens by itself when its agent answers.`
     }
     case 'cancelled':
       // The one refusal a person ASKED for. It says what happened and gets out of the way — no
@@ -680,20 +653,17 @@ export function describeUnavailable(reason: Unavailable, context: UnavailableCon
       return 'This conversation was stopped before it opened. Start it again whenever you are ready.'
     case 'still-closing':
       // 🔴 **716 · `710` F-5 — what is happening and the gesture that works** (rule 8.4), never
-      // *"try again in a moment"*. ⚑ PM ruling R62: *"the reopen is the gesture that works (the host
-      // waits up to 10 s for the close, then reopens)"* — so a claim or a hand-back refused here is
-      // pointed at the reopen, and a REOPEN refused here is one that already waited that long and
-      // found the teardown still running (`RuntimeHost.settleTeardown`): pressing it again waits
-      // again. ⚠️ Its finalizer's archive has no bound of its own, so neither says when.
+      // *"try again in a moment"*. A reopen and a message wait for the close however long it takes
+      // (`RuntimeHost.settleTeardown`), so the one refused here is a claim or a hand-back, pointed
+      // at the message that waits. ⚠️ Its finalizer's archive has no bound of its own, so it never
+      // says when.
       //
-      // ⛔ **The claim's and the hand-back's sentence promises no reopen** (review of `716`): a start a
-      // person closed before its provider arrived is on its way out too, and left no row to reopen.
+      // ⛔ **It promises no reopen** (review of `716`): a start a person closed before its provider
+      // arrived is on its way out too, and left no row to reopen.
       // ⚑ **D-017b · no process fact** (`05` rule 5), and no change the person never made: what is
       // settling is BroBot2 putting away the conversation's last session — a stop, from a window
       // closing or a provider failing — and a message waits for it.
-      return context.reopening === true
-        ? `BroCrew was still putting away this conversation's last session and waited as long as it will, so your message did not go in. To wait longer, ${reopenIt}.`
-        : "BroCrew is still putting away this conversation's last session, so nothing was done to it. A message sent to it waits until that is done."
+      return "BroCrew is still putting away this conversation's last session, so nothing was done to it. A message sent to it waits until that is done."
     case 'not-confirmed-stopped':
       // Deliberately says WHY the refusal is the safe answer: 070 exists because reopening into
       // this gap is what put two providers on one transcript, and a user told only "no" would
@@ -740,8 +710,8 @@ export function describeUnavailable(reason: Unavailable, context: UnavailableCon
     case 'its-provider-refused-it': {
       // 🔴 **D-039 · R2 — what failed, in its provider's own words, what was not done, and what will
       // not help** — never the protocol's envelope, and never *"try again"*: the provider refuses the
-      // same start the same way until what it refused is changed. ⚑ The gesture differs by door, as
-      // `took-too-long`'s does: a start left nothing behind, a reopen left the conversation kept.
+      // same start the same way until what it refused is changed. ⚑ The gesture differs by door: a
+      // start left nothing behind, a reopen left the conversation kept.
       // ⛔ **A reopen names no message**: the grant sheet's close-and-reopen reopens with none.
       const said = context.providerSaid
       const saying = said === undefined ? ' and gave no reason' : `, saying “${said}”`

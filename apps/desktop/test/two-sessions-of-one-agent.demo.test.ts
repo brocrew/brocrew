@@ -729,24 +729,38 @@ describe('418 · two sessions of one agent', () => {
       )
       expect(host.sessionIds).toContain(first)
 
-      const during = await call('give_work', {
+      const record = sessions.record.bind(sessions)
+      let launches = 0
+      sessions.record = (...args: Parameters<FakeProviderSessions['record']>) => {
+        launches++
+        record(...args)
+      }
+      const during = call('give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',
         title: 'two',
         brief: 'two',
       })
-      // 🔴 **A give issued while the first one is going away is refused, and it names the
-      // conversation that is ALREADY ENDING** — the lookup found it, and two runs of one
-      // conversation must never overlap, so it is asked again once the teardown settles.
-      expect(during).toMatchObject({
-        outcome: 'refused',
-        rail: 'that-conversation-is-still-stopping',
-        retryable: true,
-        detail: { agent: first },
-      })
-
-      closeGate.release()
-      await ending
+      let settled = false
+      void during.then(
+        () => {
+          settled = true
+        },
+        () => {
+          settled = true
+        },
+      )
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        expect(settled).toBe(false)
+        expect(launches).toBe(0)
+        expect(host.sessionIds.filter((id) => id !== parent)).toEqual([first])
+      } finally {
+        closeGate.release()
+        await ending
+      }
+      expect(await during).toMatchObject({ outcome: 'ok', agent: first, started: false })
+      expect(launches).toBe(1)
       const afterTheStop = await call('give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: 'worker',

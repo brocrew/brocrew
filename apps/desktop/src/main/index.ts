@@ -860,6 +860,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     },
     skillImports: (from, to) => sharedSkills.recentImports(from, to),
     sharedSkillsRoot: () => sharedDiscovery.root(),
+    sharedSkillsGeneration: () => sharedDiscovery.changeMark(),
     prepareSharedSkills: () => sharedDiscovery.prepareLaunch(),
     beforeSkillDiscovery: () => sharedDiscovery.library.beforeOffer(),
     closeSharedSkills: () => sharedDiscovery.close(),

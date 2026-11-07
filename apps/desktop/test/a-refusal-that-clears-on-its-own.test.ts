@@ -83,6 +83,48 @@ class RecordingSink implements RuntimeEventSink {
   sendLiveness(): void {}
 }
 
+/**
+ * A provider whose sends wait for {@link HeldSendRuntime.held} before they go in — a provider still
+ * preparing a turn (a skill reload, settings) and slow to do it. With `unattended`, its sessions run
+ * with nothing asked, so a turn ends by itself.
+ */
+class HeldSendRuntime extends FakeRuntime {
+  static held: Promise<void> | null = null
+  static unattended = false
+  static readonly sent: string[] = []
+  constructor(sessions: FakeProviderSessions) {
+    super('claude', { sessions })
+  }
+  private holdSends<H extends { send: (text: string, ...rest: never[]) => Promise<void> }>(
+    handle: H,
+  ): H {
+    const send = handle.send.bind(handle)
+    const unattended = HeldSendRuntime.unattended
+    const setApprovalMode = (
+      handle as unknown as { setApprovalMode?: (m: string) => Promise<void> }
+    ).setApprovalMode
+    return Object.assign(handle, {
+      // An unattended session stays unattended: nothing asked, so each turn ends by itself.
+      ...(unattended && setApprovalMode !== undefined
+        ? { setApprovalMode: async (): Promise<void> => {} }
+        : {}),
+      send: async (text: string, ...rest: never[]): Promise<void> => {
+        if (HeldSendRuntime.held !== null) await HeldSendRuntime.held
+        HeldSendRuntime.sent.push(text)
+        await send(text, ...rest)
+      },
+    })
+  }
+  override async start(...args: Parameters<FakeRuntime['start']>) {
+    const mode = HeldSendRuntime.unattended ? { approvalMode: 'auto' as const } : {}
+    return this.holdSends(await super.start({ ...args[0], ...mode }))
+  }
+  override async resume(...args: Parameters<FakeRuntime['resume']>) {
+    const mode = HeldSendRuntime.unattended ? { approvalMode: 'auto' as const } : {}
+    return this.holdSends(await super.resume(args[0], { ...args[1], ...mode }))
+  }
+}
+
 describe('650 · a refusal that clears on its own', () => {
   let userData: string
   let work: string
@@ -126,7 +168,7 @@ describe('650 · a refusal that clears on its own', () => {
       discoverSessions: NO_DISCOVERY,
       nativeTranscriptPath: () => null,
       exportDirectory: () => join(userData, 'exports'),
-      createRuntime: () => new FakeRuntime('claude', { sessions }),
+      createRuntime: () => new HeldSendRuntime(sessions),
       prepareProviderHome: async (provider: Provider, profileId?: string) => {
         const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
         mkdirSync(home, { recursive: true })
@@ -449,6 +491,11 @@ describe('650 · a refusal that clears on its own', () => {
     // message still waits**: a Close is a stop, and a message waits it out and starts it again.
     const closing = host.close(child, window)
     closing.catch(() => undefined)
+    // ⚑ Asked at the Close, before anything starts it again: the Close ends the held start at once
+    // (a cancel never waits on the provider), and the message below then starts a new one.
+    const interruptedWhileClosing = payload(
+      await call('interrupt_agent', { agent: child, reason: 'wait' }),
+    )
     const messagedWhileClosing = call('message_agent', {
       agent: child,
       text: 'are you back',
@@ -456,9 +503,6 @@ describe('650 · a refusal that clears on its own', () => {
       piece,
     })
     expect(await stillPending(messagedWhileClosing)).toBe('still pending')
-    const interruptedWhileClosing = payload(
-      await call('interrupt_agent', { agent: child, reason: 'wait' }),
-    )
     // 🔴 **RED before `650`**: this said `that-conversation-has-not-started` — *wait for it to be
     // working* — about a launch that was being cancelled. ⚑ **D-017 — and it is no ending either**:
     // a Close is a stop, and a stop has no turn running, so nothing was interrupted or asked.
@@ -738,5 +782,50 @@ describe('650 · a refusal that clears on its own', () => {
       1,
     )
     expect(labelsIn(worker.agent)).toEqual(['W3.2'])
+  })
+
+  it('a note to an agent whose provider is slow to prepare its turn is held and delivered, never refused', async () => {
+    HeldSendRuntime.unattended = true
+    const { call, sibling } = await aParentWithASibling()
+    let lastSeen: unknown
+    await until(async () => {
+      lastSeen = (await cardsOf(call)).find((card) => card.agent === sibling)?.state
+      return lastSeen !== undefined && lastSeen !== 'active'
+    }, 'the sibling to finish its first turn').catch((error: unknown) => {
+      throw new Error(`${String(error)}; its card last read ${JSON.stringify(lastSeen)}`)
+    })
+    let release = (): void => {}
+    HeldSendRuntime.held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    try {
+      const noting = call('message_agent', {
+        agent: sibling,
+        text: 'a note while its provider prepares',
+        kind: 'note',
+      })
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      const settled = await Promise.race([
+        noting.then((answer) => payload(answer)),
+        new Promise((resolve) => setTimeout(() => resolve('still pending'), 0)),
+      ])
+      // Pending, or held for it — never a refusal while the provider is only slow.
+      if (settled !== 'still pending')
+        expect((settled as Record<string, unknown>).outcome).not.toBe('refused')
+      expect(
+        HeldSendRuntime.sent.some((text) => text.includes('a note while its provider prepares')),
+      ).toBe(false)
+      release()
+      expect(payload(await noting).outcome).not.toBe('refused')
+      await until(
+        () =>
+          HeldSendRuntime.sent.some((text) => text.includes('a note while its provider prepares')),
+        'the note to reach the provider',
+      )
+    } finally {
+      release()
+      HeldSendRuntime.held = null
+      HeldSendRuntime.unattended = false
+    }
   })
 })

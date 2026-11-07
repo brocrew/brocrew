@@ -1525,7 +1525,7 @@ describe('347 · the five tools', () => {
       // one-open-task rail until the stall rule replaced it (the mailbox rail before D-010).
       expect(refuseTool('malformed-request').retryable).toBe(false)
       expect(refuseTool('no-such-agent').retryable).toBe(false)
-      expect(refuseTool('agent-took-too-long-to-start').retryable).toBe(true)
+      expect(refuseTool('agent-could-not-start-just-now').retryable).toBe(true)
     })
 
     it('🔴 an agent may name its own session as a PARENT, and may not command it', async () => {

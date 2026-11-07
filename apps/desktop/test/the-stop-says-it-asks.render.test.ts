@@ -484,13 +484,13 @@ describe('§5b · interrupt-and-send, which `739` moved: its title and foot are 
   /**
    * 🔴 **`739` Draw 5, seen from this file** (`739` review #21: it stood under *"untouched"* as a
    * control, and it is RED on `main` 5f406f2f by assertion — `main` draws *"Stop Codex and send
-   * this instead"* and *"to interrupt and send now"*). ⚑ The words are pinned whole, limit and all,
+   * this instead"* and *"to interrupt and send now"*). ⚑ The words are pinned whole,
    * by `stop-and-send-says-it-asks.render.test.ts`; this keeps the neighbour's own reading here, in
    * the clause this file owns (`THE_TURN_IS_ASKED_TO_STOP`).
    */
-  it('🔴 `busy` with a draft: the pair’s title and the foot say Stop and send in R43’s words, with the host’s limit', async () => {
+  it('`busy` with a draft: the pair’s title and the foot say the turn is asked to stop, then this is sent once it ends', async () => {
     const html = await composer({ state: 'busy', draft: 'no, do this instead' })
-    const STOP_THEN_SENT = `${THE_TURN_IS_ASKED_TO_STOP}; this is sent once it has ended, or comes back to you if it has not within seconds`
+    const STOP_THEN_SENT = `${THE_TURN_IS_ASKED_TO_STOP}; this is sent once it has ended`
     expect(titlesOf(html, 'interrupt-send-prompt')).toEqual([
       `Stop and send — ${STOP_THEN_SENT} (${INTERRUPT_KEY})`,
     ])

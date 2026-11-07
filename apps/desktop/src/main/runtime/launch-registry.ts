@@ -118,6 +118,13 @@ export interface LaunchRegistry {
   readonly closed: boolean
   /** Everything still owned, so a shutdown can wait for it. Never rejects; may be empty. */
   pending(): Promise<void>
+  /**
+   * Settles once every launch of `subject` held now, other than `except`, is over and confirmed down
+   * — at once when there is none — so a reopen can wait for its last provider instead of being
+   * refused. `except` is the conversation's own live launch, which a reopen does not wait for.
+   * Never rejects.
+   */
+  gone(subject: string, except?: Launch): Promise<void>
   /** How many launches are still owned. For tests and diagnostics. */
   readonly size: number
 }
@@ -225,6 +232,13 @@ export function createLaunchRegistry(): LaunchRegistry {
 
     pending() {
       return Promise.all([...entries].map((entry) => entry.launch.settled)).then(() => undefined)
+    },
+
+    gone(subject, except) {
+      const held = [...entries].filter(
+        (entry) => entry.launch.subject === subject && entry.launch !== except,
+      )
+      return Promise.all(held.map((entry) => entry.launch.settled)).then(() => undefined)
     },
 
     get size(): number {

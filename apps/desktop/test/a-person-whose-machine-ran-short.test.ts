@@ -167,7 +167,10 @@ const aSecurityThatCouldNotStart = (): never => {
 
 /** What `security` looks like when the login is simply not there — exit 44, and no errno at all. */
 const aKeychainWithNoLogin = (): never => {
-  throw Object.assign(new Error('Command failed: security find-generic-password'), { status: 44 })
+  throw Object.assign(new Error('Command failed: security find-generic-password'), {
+    status: 44,
+    code: 44,
+  })
 }
 
 /** ⚠️ `defaultKeychainReader` answers `null` off macOS before it asks, so a Keychain arm pins it. */

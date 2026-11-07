@@ -317,7 +317,6 @@ describe('provider facts use existing reads and existing live carriers', () => {
           kept = value
         },
       },
-      accountWaitMs: 1000,
     })
     const a = await live()
     host.resumableSessions()
