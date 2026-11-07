@@ -1,0 +1,1 @@
+export const MAX_SETTINGS_BYTES = 256 * 1024
