@@ -304,11 +304,20 @@ describe('automatic initial service recovery', () => {
   afterEach(() => vi.useRealTimers())
   async function failingStart() {
     const f = await setup()
-    const lease = { close: vi.fn(async () => true), features: [], agentRoutes: vi.fn(async () => ({ format: 1, value: [] })) }
+    const lease = {
+      close: vi.fn(async () => true),
+      standing: () => false,
+      features: [],
+      agentRoutes: vi.fn(async () => ({ format: 1, value: [] })),
+    }
     let failures = 0
     const attach = vi.spyOn(PluginWorkspaceLease, 'attach').mockImplementation(async () => {
       failures++
-      throw new PluginSupervisorLaunchFailure({ exitCode: failures, signal: null, stderr: `Error: startup attempt ${failures}` })
+      throw new PluginSupervisorLaunchFailure({
+        exitCode: failures,
+        signal: null,
+        stderr: `Error: startup attempt ${failures}`,
+      })
     })
     const supervisor = new PluginSupervisorAttachment()
     vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -331,7 +340,9 @@ describe('automatic initial service recovery', () => {
       expect(f.attach).toHaveBeenCalledTimes(2)
       expect(seams.connect).toHaveBeenCalledOnce()
       expect(readPluginInstructions(f.controller)?.[0]?.state).toBe('Available')
-      await expect(f.supervisor.agentRoutes({ workspaceId: 'workspace', incarnation: 'turn', occupied: [] })).resolves.toEqual({ format: 1, value: [] })
+      await expect(
+        f.supervisor.agentRoutes({ workspaceId: 'workspace', incarnation: 'turn', occupied: [] }),
+      ).resolves.toEqual({ format: 1, value: [] })
       await f.advance(30_000)
       expect(f.attach).toHaveBeenCalledTimes(2)
     } finally {
@@ -344,7 +355,15 @@ describe('automatic initial service recovery', () => {
     try {
       for (const [index, delay] of [1000, 2000, 4000].entries()) {
         for (let poll = 0; poll < 3; poll++) {
-          expect(await f.controller.catalogue(poll === 0)).toMatchObject([{ state: 'Unavailable', startupDiagnostic: { exitCode: index + 1, stderr: `Error: startup attempt ${index + 1}` } }])
+          expect(await f.controller.catalogue(poll === 0)).toMatchObject([
+            {
+              state: 'Unavailable',
+              startupDiagnostic: {
+                exitCode: index + 1,
+                stderr: `Error: startup attempt ${index + 1}`,
+              },
+            },
+          ])
         }
         expect(f.attach).toHaveBeenCalledTimes(index + 1)
         await f.advance(delay - 1)
@@ -353,7 +372,9 @@ describe('automatic initial service recovery', () => {
         expect(f.attach).toHaveBeenCalledTimes(index + 2)
       }
       await f.advance(60_000)
-      expect(await f.controller.catalogue()).toMatchObject([{ startupDiagnostic: { exitCode: 4, stderr: 'Error: startup attempt 4' } }])
+      expect(await f.controller.catalogue()).toMatchObject([
+        { startupDiagnostic: { exitCode: 4, stderr: 'Error: startup attempt 4' } },
+      ])
       expect(f.attach).toHaveBeenCalledTimes(4)
       f.attach.mockResolvedValue(f.lease as never)
       expect(await f.controller.retry!(f.pkg.release.id)).toMatchObject([{ state: 'Available' }])
@@ -369,7 +390,11 @@ describe('automatic initial service recovery', () => {
     try {
       f.attach.mockResolvedValue(f.lease as never)
       if (action === 'close') await f.controller.close()
-      else await Promise.all([f.controller.retry!(f.pkg.release.id), f.controller.retry!(f.pkg.release.id)])
+      else
+        await Promise.all([
+          f.controller.retry!(f.pkg.release.id),
+          f.controller.retry!(f.pkg.release.id),
+        ])
       await f.advance(30_000)
       expect(f.attach).toHaveBeenCalledTimes(action === 'close' ? 1 : 2)
       expect(seams.connect).toHaveBeenCalledTimes(action === 'close' ? 0 : 1)

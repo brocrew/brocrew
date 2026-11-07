@@ -331,7 +331,13 @@ export function productionPluginController() {
   const catalogue = async (refreshList: boolean): Promise<PluginCard[]> => {
     if (ended) return fail()
     if (transition) await transition
-    else if (!connected && initialize && initialRetries === undefined && (!cleanupUncertain || recover())) await enter()
+    else if (
+      !connected &&
+      initialize &&
+      initialRetries === undefined &&
+      (!cleanupUncertain || recover())
+    )
+      await enter()
     if (listFailure) throw listFailure
     if (ended || !entries) return fail()
     if (!connected || cleanupUncertain) return unavailableCards()
