@@ -32,7 +32,11 @@ import {
   type ThemeReadFiles,
 } from '../../src/main/themes/files'
 import { registerThemeIpc } from '../../src/main/themes/ipc'
-import { themePictureSampler, type ThemeImages } from '../../src/main/themes/picture-samples'
+import {
+  bitmapRedIndex,
+  themePictureSampler,
+  type ThemeImages,
+} from '../../src/main/themes/picture-samples'
 import { themesBridge } from '../../src/preload/themes'
 import { THEMES_CHANNELS, type ThemeChanged } from '../../src/shared/theme-library'
 import { LIMITS, type AssetFacts } from '../../src/shared/themes/assets'
@@ -784,6 +788,39 @@ const pngFacts = (width = 1, height = 1): AssetFacts => ({
   width,
   height,
   animated: false,
+})
+
+describe('native bitmap channel order', () => {
+  it.each([
+    [Buffer.from([255, 0, 0, 255]), 0],
+    [Buffer.from([0, 0, 255, 255]), 2],
+    [Buffer.from([0, 0, 0, 255]), null],
+    [Buffer.from([255, 1, 0, 255]), null],
+    [Buffer.from([255, 0, 0, 128]), null],
+    [Buffer.alloc(3), null],
+    [Buffer.alloc(0), null],
+  ] as const)('calibrates native pixel %#', (pixel, expected) => {
+    const images: ThemeImages = {
+      createFromBuffer: vi.fn(
+        () =>
+          ({
+            isEmpty: () => false,
+            toBitmap: () => pixel,
+          }) as NativeImage,
+      ),
+    }
+    expect(bitmapRedIndex(images)).toBe(expected)
+    expect(images.createFromBuffer).toHaveBeenCalledExactlyOnceWith(RED_PNG)
+  })
+
+  it('refuses an empty native image before reading its bitmap', () => {
+    const toBitmap = vi.fn()
+    const images: ThemeImages = {
+      createFromBuffer: () => ({ isEmpty: () => true, toBitmap }) as unknown as NativeImage,
+    }
+    expect(bitmapRedIndex(images)).toBeNull()
+    expect(toBitmap).not.toHaveBeenCalled()
+  })
 })
 
 describe('native picture validation', () => {

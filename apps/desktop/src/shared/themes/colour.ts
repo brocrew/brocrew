@@ -194,7 +194,7 @@ export function over(top: Rgba, under: Rgba): Rgba {
 }
 
 /** WCAG relative luminance of an opaque colour. */
-export function luminance(c: Rgba): number {
+function luminance(c: Rgba): number {
   return 0.2126 * toLinear(c.r) + 0.7152 * toLinear(c.g) + 0.0722 * toLinear(c.b)
 }
 

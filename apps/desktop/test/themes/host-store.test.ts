@@ -663,11 +663,7 @@ describe('theme intake and publication', () => {
   it.each(['create', 'replace'] as const)(
     'refuses depth-nine assets for %s before publication and preserves the prior choice',
     async (operation) => {
-      const sample = vi.fn(() => ({
-        darkest: { r: 255, g: 0, b: 0, a: 1 },
-        lightest: { r: 255, g: 0, b: 0, a: 1 },
-        seeThrough: false,
-      }))
+      const sample = vi.fn(() => true)
       const store = fixture.store({ loader: { sample } })
       await store.start()
       if (operation === 'replace') {

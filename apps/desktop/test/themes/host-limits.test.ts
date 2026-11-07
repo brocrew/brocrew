@@ -194,7 +194,7 @@ describe('theme intake limits and decoder formats', () => {
         throw new Error('decoder must not run')
       }),
     }
-    if (sniffed.ok) expect(themePictureSampler(images)(bytes, sniffed.facts)).toBeNull()
+    if (sniffed.ok) expect(themePictureSampler(images)(bytes, sniffed.facts)).toBe(false)
     expect(images.createFromBuffer).not.toHaveBeenCalled()
     expect(
       await store.save({
