@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import type { PieceRow } from '../src/shared/task-contracts'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -222,14 +223,6 @@ describe('§3 · the giver is told why, and that a person has to fix it', () => 
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 /** The machine behind each handle, so a test ends its turns by hand, and what each was sent. */
 const controls = new Map<FakeSessionHandle, { machine: SessionMachine; sent: string[] }>()

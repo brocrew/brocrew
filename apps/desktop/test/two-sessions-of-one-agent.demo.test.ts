@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import { syntheticProviderHome } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -131,14 +132,6 @@ function holdingItsClose(handle: SessionHandle, gate: Promise<void>): SessionHan
       return typeof value === 'function' ? (value as () => unknown).bind(target) : value
     },
   })
-}
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
 }
 
 describe('418 · two sessions of one agent', () => {

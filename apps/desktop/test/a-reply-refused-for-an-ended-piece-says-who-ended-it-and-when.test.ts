@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import { TASK_STATES } from '../src/shared/task-contracts'
 import type { PieceRow } from '../src/shared/task-contracts'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
@@ -46,14 +47,6 @@ import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/hos
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 /** The one sentence an ended piece is refused in, up to the part that says how it ended. */
 const STOP = 'stop work on that piece; no further reply is owed.'

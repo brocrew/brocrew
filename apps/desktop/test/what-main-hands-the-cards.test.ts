@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import type { MessageSentEvent, TranscriptEvent } from '../src/shared/conversation-events'
 import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -47,14 +48,6 @@ import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 /** `373`'s double; its registry is shared so every launch's toolset can be reached. */
 describe('671 · what main hands the cards', () => {

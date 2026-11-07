@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import { TASK_OUTCOMES, TASK_STALL_CAUSES, TASK_STATES } from '../src/shared/task-contracts'
 import type { TaskState, WorkReport } from '../src/shared/task-contracts'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
@@ -85,14 +86,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
 const sharedRoot = join(here, '../src/shared')
 const rendererRoot = join(here, '../src/renderer/src')
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 /** ⛔ **Comment-stripped**, so a census reads what the code does and not what a docblock says. */
 const codeOnly = (source: string): string =>

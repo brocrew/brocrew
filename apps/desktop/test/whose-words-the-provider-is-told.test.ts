@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import {
   mkdtempSync,
@@ -80,14 +81,6 @@ import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/hos
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const srcRoot = join(here, '../src')
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 /**
  * ⚑ **A `query()` that hears every pushed turn and answers it** — a `system/init` for the first,

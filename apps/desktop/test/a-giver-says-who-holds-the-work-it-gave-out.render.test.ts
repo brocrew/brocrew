@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import type { AgentState, AgentStateFacts } from '../src/shared/agent-state-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import type {
@@ -114,14 +115,6 @@ const AMARA = 'Amara (the owner of W1.2 · Review it)'
 /** The words the one state says of a holder: one name, then each further agent as ` +N`. */
 const WAITING_ON_ADA = `waiting on ${ADA}`
 const WAITING_ON_ALI = `waiting on ${ALI}`
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 /**
  * A stretch of the event loop long enough for everything a provider row starts to have run: five

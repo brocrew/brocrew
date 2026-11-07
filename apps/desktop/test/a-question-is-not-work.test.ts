@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import { AGENT_MESSAGE_KINDS } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
@@ -74,14 +75,6 @@ const FINISHING_LINE = 'Finish it by calling reply_to_parent with piece '
  * quoted once, as the line above is.
  */
 const THE_RECORD_REFUSED_IT = 'BroCrew could not write it into that conversation’s record.'
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 /** `373`'s double; its registry is shared so every launch's toolset can be reached. */
 class ToolWatchingRuntime extends FakeRuntime {

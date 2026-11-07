@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import {
   countSqlReads,
   settle,
@@ -49,14 +50,6 @@ import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runt
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 /** The provider double: it keeps the handles it gives out, so a test can report background work. */
 class ProviderDouble extends FakeRuntime {

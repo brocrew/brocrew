@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -19,14 +20,6 @@ import { theOwnerOf } from '../src/shared/piece-called'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 class ToolWatchingRuntime extends FakeRuntime {
   constructor(

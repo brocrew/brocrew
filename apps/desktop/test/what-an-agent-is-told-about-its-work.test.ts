@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -91,14 +92,6 @@ const FINISHING_LINE = 'Finish it by calling reply_to_parent with piece '
 
 /** The shape of a piece's label, as `pieceCalled` writes it — and as a model reading a turn sees it. */
 const A_LABEL = /W[1-9][0-9]*(?:\.[1-9][0-9]*)+/
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 class RecordingSink implements RuntimeEventSink {
   readonly aPersonIsBehindIt = true

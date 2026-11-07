@@ -1,3 +1,4 @@
+import { waitFor } from './lib/f093-host'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -102,14 +103,6 @@ const codeOnly = (source: string): string =>
 /** The host's source, comments stripped — the subject of every census in this file. */
 const hostSource = (): string =>
   codeOnly(readFileSync(join(mainRoot, 'runtime/runtime-host.ts'), 'utf8'))
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 class RecordingSink implements RuntimeEventSink {
   readonly aPersonIsBehindIt = true
