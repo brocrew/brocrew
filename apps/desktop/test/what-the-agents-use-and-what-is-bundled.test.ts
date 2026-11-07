@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   listProcesses,
+  WINDOWS_LISTING,
   resourcesFromTheListing,
   type ListedProcess,
 } from '../src/main/runtime/process-listing'
@@ -34,6 +35,7 @@ const versionPrograms = vi.hoisted(() => ({
         file: string,
         options: { env?: Record<string, string> },
         callback: (error: Error | null, output: string) => void,
+        args: readonly string[],
       ) => boolean),
 }))
 
@@ -42,13 +44,13 @@ vi.mock('node:child_process', async (importOriginal) => {
   return {
     ...actual,
     execFile: ((...args: unknown[]) => {
-      const [file, , options, callback] = args as [
+      const [file, command, options, callback] = args as [
         string,
         string[],
         { env?: Record<string, string> },
         (error: Error | null, output: string) => void,
       ]
-      if (versionPrograms.run?.(file, options, callback))
+      if (versionPrograms.run?.(file, options, callback, command))
         return {} as ReturnType<typeof actual.execFile>
       return Reflect.apply(actual.execFile, actual, args) as ReturnType<typeof actual.execFile>
     }) as typeof actual.execFile,
@@ -121,18 +123,84 @@ describe('resourcesFromTheListing', () => {
 })
 
 describe('listProcesses', () => {
-  it('🔴 reads one listing of the machine, and this very process is in it, with a size and a pid parent', async () => {
-    const rows = await listProcesses()
-    const mine = rows.find((one) => one.pid === process.pid)
-    expect(mine, 'the test process is not in the listing').toBeDefined()
-    expect(mine!.ppid).toBe(process.ppid)
-    expect(mine!.rssKb).toBeGreaterThan(0)
-    expect(Number.isFinite(mine!.cpu)).toBe(true)
-    // Every row is four finite numbers: nothing else (a command, an argument) was read.
-    for (const one of rows) {
-      expect(Object.keys(one).sort()).toEqual(['cpu', 'pid', 'ppid', 'rssKb'])
-    }
+  afterEach(() => {
+    versionPrograms.run = null
   })
+
+  const listing = (platform: 'linux' | 'win32'): string =>
+    platform === 'win32'
+      ? '4101 900 209715200 50000000 133799999000000000 133800000000000000'
+      : '4101 900 204800 5.0'
+
+  it.each(['linux', 'win32'] as const)(
+    'reads one %s listing with a size and a pid parent',
+    async (platform) => {
+      let calls = 0
+      versionPrograms.run = (file, options, callback, args) => {
+        calls += 1
+        expect(file).toBe(platform === 'win32' ? 'powershell.exe' : 'ps')
+        expect(args).toEqual(
+          platform === 'win32'
+            ? ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_LISTING]
+            : ['-axo', 'pid=,ppid=,rss=,%cpu='],
+        )
+        expect(options).toMatchObject({
+          encoding: 'utf8',
+          maxBuffer: 8 * 1024 * 1024,
+          timeout: platform === 'win32' ? 15_000 : 2_000,
+          ...(platform === 'win32'
+            ? { windowsHide: true }
+            : { killSignal: 'SIGKILL', env: expect.objectContaining({ LC_ALL: 'C' }) }),
+        })
+        callback(null, listing(platform))
+        return true
+      }
+      const rows = await listProcesses(platform)
+      expect(calls).toBe(1)
+      expect(rows).toEqual([{ pid: 4101, ppid: 900, rssKb: 204800, cpu: 5 }])
+      for (const one of rows) {
+        expect(Object.keys(one).sort()).toEqual(['cpu', 'pid', 'ppid', 'rssKb'])
+      }
+    },
+  )
+
+  it.each(['linux', 'win32'] as const)(
+    'preserves a %s command error and reads again on the next ask',
+    async (platform) => {
+      const failure = Object.assign(new Error('fictional process command failed'), {
+        code: 1,
+        signal: null,
+        killed: false,
+        stderr: 'fictional process table unavailable',
+      })
+      let calls = 0
+      versionPrograms.run = (_file, _options, callback) => {
+        calls += 1
+        if (calls === 1) callback(failure, listing(platform))
+        else callback(null, listing(platform))
+        return true
+      }
+      await expect(listProcesses(platform)).rejects.toBe(failure)
+      expect(calls).toBe(1)
+      expect(await listProcesses(platform)).toEqual([
+        { pid: 4101, ppid: 900, rssKb: 204800, cpu: 5 },
+      ])
+      expect(calls).toBe(2)
+    },
+  )
+
+  it.each(['linux', 'win32'] as const)(
+    'rejects a successful %s command with no readable rows',
+    async (platform) => {
+      versionPrograms.run = (_file, _options, callback) => {
+        callback(null, 'not a process table')
+        return true
+      }
+      await expect(listProcesses(platform)).rejects.toThrow(
+        'the process listing had no line it could read',
+      )
+    },
+  )
 })
 
 describe('providerVersionsReader', () => {
