@@ -19,7 +19,11 @@ afterEach(async () => {
 it.each(['exit', 'spawn'] as const)(
   'fails promptly after a real child %s failure, keeping the actual diagnostic',
   async (failure) => {
-    root = await realpath(await mkdtemp(join(tmpdir(), 'fictional-launch-failure-')))
+    root = await realpath(
+      await mkdtemp(
+        join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-launch-failure-'),
+      ),
+    )
     const workspaceRoot = join(root, 'workspace')
     const resourcesRoot = join(root, 'resources')
     await mkdir(workspaceRoot)
