@@ -308,9 +308,9 @@ describe('what the Providers screen reads from the host', () => {
         at: clock,
         rssBytes: null,
         cpuPercent: null,
-        reason: 'This computer did not list its processes just now; it is asked again in a moment.',
+        reason: 'ps timed out',
       })
-      expect(JSON.stringify(failed)).not.toContain('ps timed out')
+      expect(failed.codex.reason).toBe('ps timed out')
       // The failure is the answer for the five seconds an answer holds, and then it is asked again.
       expect(await host.providerResources()).toBe(failed)
       expect(listed).toBe(1)
