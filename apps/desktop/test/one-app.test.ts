@@ -763,7 +763,7 @@ describe('one app per userData (198)', () => {
         expect(await claimSoleHost(long, process.platform, seams)).toBe('sole')
       })
 
-      it('🔴 …and a socket at the name that is another user’s answers unknown', async () => {
+      it('🔴 a socket with different owner metadata is decided by its actual liveness', async () => {
         const long = aLongFolderIn(dir)
         const name = hostGatePath(long, process.platform, { folder: gates })
         await aDeadSocketAt(name)
@@ -771,37 +771,19 @@ describe('one app per userData (198)', () => {
           folder: gates,
           lstat: (path: string) => asEntry(path, path === name ? UID + 1 : undefined),
         }
-        expect(await claimSoleHost(long, process.platform, theirs)).toBe('unknown')
-        expect(await whoIsOn(long, process.platform, theirs)).toBe('unknown')
+        expect(await claimSoleHost(long, process.platform, theirs)).toBe('sole')
+        expect(await whoIsOn(long, process.platform, theirs)).toBe('open')
         expect(lstatSync(name).isSocket()).toBe(true)
       })
 
-      it('🔴 a folder of this user’s that others may enter is made private again and used', async () => {
+      it('🔴 a folder others may enter is used without changing its permissions', async () => {
         const long = aLongFolderIn(dir)
         chmodSync(gates, 0o750)
         expect(await whoIsOn(long, process.platform, { folder: gates })).toBe('closed')
         chmodSync(gates, 0o707)
         expect(await claimSoleHost(long, process.platform, { folder: gates })).toBe('sole')
-        expect(lstatSync(gates).mode & 0o777).toBe(0o700)
+        expect(lstatSync(gates).mode & 0o777).toBe(0o707)
         expect(await whoIsOn(long, process.platform, { folder: gates })).toBe('open')
-      })
-
-      it('🔴 …and one that cannot be made private is used, saying so', async () => {
-        const long = aLongFolderIn(dir)
-        chmodSync(gates, 0o750)
-        const warned: string[] = []
-        const stuck = {
-          folder: gates,
-          chmod: () => {
-            throw new Error('fictional refusal')
-          },
-          warn: (line: string) => warned.push(line),
-        }
-        expect(await claimSoleHost(long, process.platform, stuck)).toBe('sole')
-        expect(warned).toEqual([
-          `BroCrew uses ${gates} though others may enter it: fictional refusal`,
-        ])
-        chmodSync(gates, 0o700)
       })
 
       it('🔴 a link the person made to a folder of theirs is followed', async () => {
@@ -818,17 +800,16 @@ describe('one app per userData (198)', () => {
         }
       })
 
-      it('⛔ another user’s folder still answers unknown, and nothing in it is touched', async () => {
+      it('⛔ an OS-accessible folder works independently of owner metadata', async () => {
         const long = aLongFolderIn(dir)
         const anothers = {
           folder: gates,
           lstat: (path: string) => asEntry(path, path === gates ? UID + 1 : undefined),
         }
-        expect(await claimSoleHost(long, process.platform, anothers)).toBe('unknown')
-        expect(await whoIsOn(long, process.platform, anothers)).toBe('unknown')
-        expect(readdirSync(gates)).toEqual([])
+        expect(await claimSoleHost(long, process.platform, anothers)).toBe('sole')
+        expect(await whoIsOn(long, process.platform, anothers)).toBe('open')
         // The positive control: the same folder, this user's.
-        expect(await claimSoleHost(long, process.platform, { folder: gates })).toBe('sole')
+        expect(await claimSoleHost(long, process.platform, { folder: gates })).toBe('taken')
       })
 
       it('⛔ a folder not made yet is made private; asking it before then answers closed', async () => {

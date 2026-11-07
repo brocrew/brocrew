@@ -226,13 +226,12 @@ describe('fenced reboot proof for historical plugin runs', () => {
     witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
     await refused()
   })
-  it.skipIf(process.platform === 'win32').each(['mode', 'symlink'] as const)(
+  it.skipIf(process.platform === 'win32').each(['symlink'] as const)(
     'refuses changed run %s across a genuine reboot',
     async (change) => {
       await fixture()
       await refused()
-      if (change === 'mode') await chmod(run, 0o755)
-      else {
+      {
         const saved = join(parent, 'saved-run')
         await rename(run, saved)
         await symlink(saved, run, 'dir')

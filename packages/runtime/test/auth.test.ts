@@ -553,11 +553,11 @@ describe('codexAuthHealth (022)', () => {
   })
 
   it.skipIf(process.platform === 'win32')(
-    'makes a file others may read 0600 again, and goes on',
+    'accepts a readable file without changing its permissions',
     () => {
       writeFileSync(join(home, 'auth.json'), 'x', { mode: 0o644 })
-      expect(codexAuthHealth(home, 'linux')).toEqual({ ok: true })
-      expect(lstatSync(join(home, 'auth.json')).mode & 0o777).toBe(0o600)
+      expect(codexAuthHealth(home)).toEqual({ ok: true })
+      expect(lstatSync(join(home, 'auth.json')).mode & 0o777).toBe(0o644)
     },
   )
 

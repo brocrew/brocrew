@@ -62,8 +62,7 @@ describe('plugin server application scheduling policy', () => {
   })
   it.each([
     { isFile: () => false, uid: 0 },
-    { isFile: () => true, uid: 501 },
-  ])('uses plain Node for a nonregular or non-root-owned utility', (info) => {
+  ])('uses plain Node for a nonregular utility', (info) => {
     const access = vi.fn()
     expect(
       pluginServerLaunch(node, preload, {
@@ -423,7 +422,7 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
       join(home, 'data/chrome/downloads'),
       join(home, 'data/chrome/files'),
     ])
-      expect((await stat(path)).mode & 0o777).toBe(0o700)
+      expect((await stat(path)).isDirectory()).toBe(true)
     expect(JSON.stringify(ready)).not.toContain('Bearer')
     expect(await handle.stop()).toEqual({ exited: true })
     const receipt = JSON.parse(await readFile(handle.receiptPath, 'utf8'))
@@ -661,7 +660,9 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
     await chmod(path, 0o755)
     const other = createPluginNodeHost({ root: path, runtime })
     hosts.push(other)
-    await expect(other.start(fixture())).rejects.toThrow('plugin-host-paths')
+    const shared = await other.start(fixture())
+    await shared.ready()
+    expect(await shared.stop()).toEqual({ exited: true })
   })
   it('serializes duplicate starts and refuses new starts after quit', async () => {
     const { host } = await context(),

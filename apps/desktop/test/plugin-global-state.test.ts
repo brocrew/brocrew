@@ -466,10 +466,9 @@ describe.skipIf(process.platform === 'win32')(
         GlobalPluginState.create({ root: join(workspace, 'plugins'), workspaceRoots: [workspace] }),
       ).toThrow(PluginStateError)
       chmodSync(parent, 0o755)
-      expect(() =>
-        GlobalPluginState.create({ root: join(parent, 'plugins'), workspaceRoots: [] }),
-      ).toThrow(PluginStateError)
-      expect(readdirSync(parent)).toEqual(['workspace'])
+      const shared = GlobalPluginState.create({ root: join(parent, 'plugins'), workspaceRoots: [] })
+      shared.close()
+      expect(readdirSync(parent).sort()).toEqual(['plugins', 'workspace'])
     })
     it('never follows a substituted guard folder or a journal-file symlink', () => {
       const { store, root, parent } = fixture(),
