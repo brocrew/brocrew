@@ -1721,14 +1721,9 @@ export class ClaudeSessionHandle implements SessionHandle {
   private pluginRefresh?: (
     servers: readonly ManagedPluginMcpServer[],
   ) => NonNullable<Options['mcpServers']>
-  private managedPluginServers: readonly ManagedPluginMcpServer[] = []
   private managedPluginGeneration = 0
-  configurePluginRefresh(
-    build: NonNullable<ClaudeSessionHandle['pluginRefresh']>,
-    servers: readonly ManagedPluginMcpServer[] = [],
-  ): void {
+  configurePluginRefresh(build: NonNullable<ClaudeSessionHandle['pluginRefresh']>): void {
     this.pluginRefresh = build
-    this.managedPluginServers = servers.map((server) => ({ ...server }))
   }
   async managedPluginHealth(
     servers: readonly ManagedPluginMcpServer[],
@@ -1786,7 +1781,6 @@ export class ClaudeSessionHandle implements SessionHandle {
         this.isShuttingDown
       )
         throw new Error('Plugin unavailable. Try again.')
-      this.managedPluginServers = next
     } catch {
       throw new Error('Plugin unavailable. Try again.')
     }
@@ -5969,7 +5963,6 @@ export class ClaudeRuntime implements AgentRuntime {
     const mcpServers = claudeMcpServersFor(agentTools, externalMcp?.servers ?? [], managedPluginMcp)
     handle.configurePluginRefresh(
       (next) => claudeMcpServersFor(agentTools, externalMcp?.servers ?? [], next) ?? {},
-      managedPluginMcp,
     )
     // ⛔ **The same argument, read a second time and for the surface** (358). `353` proved the
     // ordinary path really does put these five into the child's inventory and that a launch without
