@@ -8,7 +8,7 @@ import { basename, dirname, join, resolve, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import { parseArgs } from 'node:util'
-import { chromeCompatibilityResult } from './chrome-compatibility-result.mjs'
+import { chromeCompatibilityResult, appCompatibilityVerdict } from './chrome-compatibility-result.mjs'
 import { readCustomPluginInputs } from './custom-plugin-inputs.mjs'
 import { transportLabel, readTransportFixture, assertUnusedInspectorPort, coldMainArgument, attachColdMain, attachSupervisor } from './instrumented-plugin-transport.mjs'
 
@@ -494,7 +494,7 @@ finally {
   // Preserve only synthetic fixture metadata and native receipts; never upload capabilities or plugin data.
   for(const name of ['plugin-startup.log'])if(ownsFixture&&existsSync(join(pluginRoot,name)))copyFileSync(join(pluginRoot,name),join(evidence,name))
   summary.finished=new Date().toISOString();const complete=summary.failures.length===0&&summary.phases.length===(cleanInstall?3:5)&&summary.phases.every(p=>p.passed)
-  summary.verdict=!complete?'FAIL':summary.chromeCompatibility?.status==='PARTIAL'?'PARTIAL':summary.chromeCompatibility?.status==='KNOWN-ISSUE'?'APP-COMPAT-PASS-WITH-KNOWN-CHROME-ISSUE':'PASS'
+  summary.verdict=appCompatibilityVerdict(complete,summary.chromeCompatibility?.status)
   summary.passed=complete&&summary.verdict!=='PARTIAL'
   keep('summary.json',summary);console.log(JSON.stringify({passed:summary.passed,transport:summary.transport,verdict:summary.verdict,chrome:summary.chromeCompatibility,failures:summary.failures,evidence}));process.exitCode=summary.passed?0:summary.verdict==='PARTIAL'?2:1
 }

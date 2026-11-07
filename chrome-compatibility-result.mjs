@@ -19,3 +19,10 @@ export function chromeCompatibilityResult({version,sha256,reply,serverClosed,std
   if(!serverClosed)return result('PARTIAL','Chrome unavailable, cause unproven: no fresh matching server-closed receipt for this attempt')
   return result('KNOWN-ISSUE','Exact published Chrome 0.1.8 failed with the captured identity-startup diagnostic; Chrome did not pass')
 }
+
+export function appCompatibilityVerdict(complete,chromeStatus) {
+  if(!complete||chromeStatus==='FAIL')return 'FAIL'
+  if(chromeStatus==='PARTIAL')return 'PARTIAL'
+  if(chromeStatus==='KNOWN-ISSUE')return 'APP-COMPAT-PASS-WITH-KNOWN-CHROME-ISSUE'
+  return 'PASS'
+}
