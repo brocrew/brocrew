@@ -1,5 +1,6 @@
 import { mkdtemp, mkdir, realpath, rm, access } from 'node:fs/promises'
 import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -28,7 +29,7 @@ describe.skipIf(process.platform === 'win32')('immutable supervisor launcher ref
     vi.restoreAllMocks()
   })
   it('a missing bundled runtime is unavailable without executing system Node or app code', async () => {
-    root = await realpath(await mkdtemp('/tmp/fictional-launcher-'))
+    root = await realpath(await mkdtemp(join(tmpdir(), 'fictional-launcher-')))
     const workspace = join(root, 'workspace')
     await mkdir(workspace, { mode: 0o700 })
     const launch = createPluginSupervisorLauncher({
@@ -69,7 +70,7 @@ describe.skipIf(process.platform === 'win32')('immutable supervisor launcher ref
     }
   })
   async function workspaceOptions() {
-    root = await realpath(await mkdtemp('/tmp/fictional-launcher-'))
+    root = await realpath(await mkdtemp(join(tmpdir(), 'fictional-launcher-')))
     const workspaceRoot = join(root, 'workspace')
     await mkdir(workspaceRoot, { mode: 0o700 })
     return {
@@ -147,10 +148,13 @@ describe.skipIf(process.platform === 'win32')('immutable supervisor launcher ref
       },
     })
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
-    const result = PluginWorkspaceLease.attach({ ...options, launch }).catch(
-      (error: unknown) => error,
-    )
-    await vi.advanceTimersByTimeAsync(OWNER_LAUNCH_MS + 20)
+    let settled = false
+    const result = PluginWorkspaceLease.attach({ ...options, launch }).catch((error: unknown) => {
+      settled = true
+      return error
+    })
+    await vi.advanceTimersByTimeAsync(10)
+    expect(settled).toBe(true)
     expect(await result).toMatchObject({ code: 'unavailable', cause: { cause: original } })
     expect(program.start).not.toHaveBeenCalled()
   })
@@ -173,7 +177,7 @@ describe.skipIf(process.platform === 'win32')('immutable supervisor launcher ref
     }
   })
   it('refuses a global root inside a workspace before writing or starting anything', async () => {
-    root = await realpath(await mkdtemp('/tmp/fictional-launcher-'))
+    root = await realpath(await mkdtemp(join(tmpdir(), 'fictional-launcher-')))
     const launch = createPluginSupervisorLauncher({
       root: join(root, 'global'),
       workspaceRoots: [root],
