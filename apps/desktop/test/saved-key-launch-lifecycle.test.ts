@@ -1,11 +1,15 @@
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { FakeRuntime } from '@brobot2/runtime'
+import { FakeRuntime, type CodexIncoming, type CodexTransport } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 import { ApiKeys } from '../src/main/runtime/api-keys'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
+import { codexDesktopInputs } from '../src/main/providers/codex/desktop'
+import { codexModuleFactory } from '../src/main/providers/codex'
 import { fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/host-fixture'
 
 function pendingKey(provider: Provider) {
@@ -58,6 +62,195 @@ function pendingKey(provider: Provider) {
 afterEach(() => {
   vi.restoreAllMocks()
   vi.useRealTimers()
+})
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (error: Error) => void
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes
+    reject = no
+  })
+  return { promise, resolve, reject }
+}
+
+function codexPreparation(holdKey: boolean) {
+  const root = mkdtempSync(join(tmpdir(), 'fictional-home-cancellation-'))
+  const home = join(root, 'codex')
+  const key = deferred<string>()
+  const login = deferred<unknown>()
+  const cleanup = deferred<void>()
+  const open = vi.fn(() => holdKey ? key.promise : Promise.resolve('fictional-key'))
+  const keys = new ApiKeys(
+    {
+      keptApiKey: () => ({ sealed: 'fictional-seal', setAt: 1 }),
+      keepSealedApiKey: () => {},
+      forgetApiKey: () => false,
+    },
+    { available: () => true, seal: () => 'fictional-seal', open },
+    Date.now,
+    'darwin',
+  )
+  const wire: CodexTransport = {
+    request: vi.fn(async (method) => {
+      if (method === 'initialize') return { codexHome: home }
+      if (method === 'account/login/start') return login.promise
+      if (method === 'getAuthStatus') return { authMethod: 'apikey' }
+      return {}
+    }),
+    notify: () => {},
+    respond: () => {},
+    respondError: () => {},
+    incoming: async function* (): AsyncIterable<CodexIncoming> {},
+    close: vi.fn(() => {
+      login.reject(new Error('fictional child stopped'))
+      return cleanup.promise
+    }),
+  }
+  const transport = vi.fn(() => wire)
+  const inputs = codexDesktopInputs(
+    {
+      isPackaged: false,
+      resourcesPath: root,
+      platform: 'darwin',
+      arch: 'arm64',
+      managedRoot: root,
+      signal: new AbortController().signal,
+      commandLine: { hasSwitch: () => false, getSwitchValue: () => '' },
+      keys,
+    },
+    { resolveProgram: () => ({ path: '/fictional/codex', from: 'carried' }), transportFactory: () => transport },
+  )
+  const strategy = codexModuleFactory.home(
+    { managedRoot: root, defaultProfile: DEFAULT_PROFILE_ID, homeOf: () => home, profiles: () => [], assertMayOpen: () => {} },
+    { ...inputs.home, provisionHome: (_root, target) => { mkdirSync(target, { recursive: true }) } },
+  )
+  const runtime = new FakeRuntime('codex')
+  const started = vi.spyOn(runtime, 'start')
+  const listed = vi.spyOn(runtime, 'listModels')
+  const host = new RuntimeHost({
+    store: NULL_SESSION_STORE,
+    ...neutralHostDeps(() => root),
+    createRuntime: () => runtime,
+    prepareProviderHome: (_provider, profile, signal) => strategy.prepare(profile, signal),
+    providerHomePath: () => home,
+    resolveCwd: (_session, requested) => requested ?? root,
+    newSessionId: () => 'sess_fictional-actual-home',
+    readProviderConfig: fixtureProviderConfig,
+    apiKeys: keys,
+    closeDrainTimeoutMs: 40,
+  })
+  return {
+    host, strategy, home, keys, open, transport, wire, started, listed, login, cleanup, key,
+    dispose: async () => {
+      key.resolve('fictional-key')
+      login.resolve({})
+      cleanup.resolve()
+      await vi.advanceTimersByTimeAsync(0)
+      await host.closeAll()
+      rmSync(root, { recursive: true, force: true })
+    },
+  }
+}
+
+describe.each(['Quit', 'Stop'] as const)('actual Codex home preparation on %s', (action) => {
+  function start(fixture: ReturnType<typeof codexPreparation>) {
+    if (action === 'Quit') return fixture.host.providerModels(DEFAULT_PROFILE_ID, 'codex')
+    return fixture.host.createSession(
+      { provider: 'codex', cwd: fixture.home, launchKey: 'launch:actual-home' },
+      new RecordingSink('window:actual-home'),
+    ).catch((error: unknown) => error)
+  }
+  async function stop(fixture: ReturnType<typeof codexPreparation>) {
+    if (action === 'Quit') fixture.host.recordOpenForQuit()
+    else expect(await fixture.host.cancelLaunch('launch:actual-home', 'window:actual-home')).toBe(true)
+  }
+
+  it('does not start credential work when the shared native read answers after cancellation', async () => {
+    vi.useFakeTimers()
+    const fixture = codexPreparation(true)
+    const outcome = start(fixture)
+    try {
+      await vi.advanceTimersByTimeAsync(0)
+      expect(fixture.open).toHaveBeenCalledTimes(1)
+      const shared = fixture.keys.current('codex')
+      await stop(fixture)
+      await vi.advanceTimersByTimeAsync(0)
+      await outcome
+      await fixture.host.closeAll()
+      expect(fixture.open).toHaveBeenCalledTimes(1)
+      fixture.key.resolve('fictional-key')
+      expect(await shared).toEqual({ key: 'fictional-key', setAt: 1 })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(fixture.transport).not.toHaveBeenCalled()
+      expect(existsSync(join(fixture.home, 'brobot-api-key-login.json'))).toBe(false)
+      expect(fixture.started).not.toHaveBeenCalled()
+      expect(fixture.listed).not.toHaveBeenCalled()
+    } finally {
+      await fixture.dispose()
+      await outcome
+    }
+  })
+
+  it('keeps an already-started credential child owned until its cleanup settles', async () => {
+    vi.useFakeTimers()
+    const fixture = codexPreparation(false)
+    const outcome = start(fixture)
+    try {
+      await vi.advanceTimersByTimeAsync(0)
+      expect(fixture.wire.request).toHaveBeenCalledWith('account/login/start', { type: 'apiKey', apiKey: 'fictional-key' })
+      await stop(fixture)
+      let closed = false
+      const closing = fixture.host.closeAll().then(() => { closed = true })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(fixture.wire.close).toHaveBeenCalled()
+      expect(closed).toBe(false)
+      fixture.cleanup.resolve()
+      await vi.advanceTimersByTimeAsync(0)
+      await closing
+      await outcome
+      expect(existsSync(join(fixture.home, 'brobot-api-key-login.json'))).toBe(false)
+      expect(fixture.started).not.toHaveBeenCalled()
+      expect(fixture.listed).not.toHaveBeenCalled()
+    } finally {
+      await fixture.dispose()
+      await outcome
+    }
+  })
+})
+
+it('cancels a queued home subscriber without releasing the preceding credential operation', async () => {
+  vi.useFakeTimers()
+  const fixture = codexPreparation(false)
+  const firstAbort = new AbortController()
+  const queuedAbort = new AbortController()
+  const first = fixture.strategy.prepare(DEFAULT_PROFILE_ID, firstAbort.signal).catch((error: unknown) => error)
+  let queued: unknown = 'pending'
+  const second = fixture.strategy.prepare(DEFAULT_PROFILE_ID, queuedAbort.signal).then(
+    (value) => { queued = value },
+    (error: unknown) => { queued = error },
+  )
+  try {
+    await vi.advanceTimersByTimeAsync(0)
+    expect(fixture.transport).toHaveBeenCalledTimes(1)
+    queuedAbort.abort()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(queued).toBeInstanceOf(Error)
+    const thirdAbort = new AbortController()
+    const third = fixture.strategy.prepare(DEFAULT_PROFILE_ID, thirdAbort.signal).catch((error: unknown) => error)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(fixture.transport).toHaveBeenCalledTimes(1)
+    thirdAbort.abort()
+    firstAbort.abort()
+    fixture.cleanup.resolve()
+    await vi.advanceTimersByTimeAsync(0)
+    await Promise.all([first, second, third])
+    expect(fixture.transport).toHaveBeenCalledTimes(1)
+    expect(existsSync(join(fixture.home, 'brobot-api-key-login.json'))).toBe(false)
+  } finally {
+    await fixture.dispose()
+    await Promise.all([first, second])
+  }
 })
 
 describe.each(['claude', 'codex'] as const)('pending %s saved-key launches', (provider) => {
