@@ -43875,6 +43875,7 @@ export class RuntimeHost implements LiveHost {
         }
         const slot = this.slots.get(at)
         if (slot?.session != null && !onItsWayOut(slot) && !mayControl(slot, sink)) {
+          const session = slot.session
           try {
             await this.sendAs(at, text, sink, attachments, {
               facts: {},
@@ -43882,7 +43883,18 @@ export class RuntimeHost implements LiveHost {
             })
             return { sent: this.recordedHandover(at, sink) }
           } catch (error) {
-            return notSent('after-the-start', aSentence(errorMessage(error)), error)
+            // The refusal describes the same life that was asked to send, if it still runs.
+            const current = this.slots.get(at)
+            const stillHere =
+              current === slot &&
+              current.session === session &&
+              !onItsWayOut(current) &&
+              session.handle.status() !== 'ended'
+            return notSent('after-the-start', aSentence(errorMessage(error)), error, {
+              running: stillHere
+                ? { ...this.recordedHandover(at, sink), liveness: livenessFor(session) }
+                : null,
+            })
           }
         }
         const running =
