@@ -363,17 +363,17 @@ describe('510 · the id this app hands a person', () => {
       expect(seen.ok || seen.reason).toBe('no-store')
     })
 
-    it('🔴 the hash is re-checked, so `changed` and `unreadable` are two different answers', async () => {
+    it('local edits are read and missing files are unreadable', async () => {
       const [changedId, goneId] = await aReplyKeeps([
         { name: 'original.md', text: 'original\n' },
         { name: 'vanishing.md', text: 'vanishing\n' },
       ])
       if (changedId === undefined || goneId === undefined) throw new Error('expected two resources')
       writeFileSync(whereItIs(changedId), 'somebody edited it\n')
-      expect(
-        host.readResourceForAPerson(changedId).ok ||
-          readReason(host.readResourceForAPerson(changedId)),
-      ).toBe('changed')
+      expect(host.readResourceForAPerson(changedId)).toMatchObject({
+        ok: true,
+        text: 'somebody edited it\n',
+      })
 
       rmSync(whereItIs(goneId))
       expect(readReason(host.readResourceForAPerson(goneId))).toBe('unreadable')

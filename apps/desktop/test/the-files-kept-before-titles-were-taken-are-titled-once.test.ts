@@ -196,7 +196,7 @@ describe('F046 · titleTheOlderFiles', () => {
     const plain = keptUntitled('plain.md', 'no heading here\n')
     // ⛔ Bytes gone: the name.
     const gone = plantUntitled('gone.md', '2'.repeat(64))
-    // ⛔ Bytes changed since they were kept — the hash re-checked — the name, not either heading.
+    // Local edits supply the current heading when the older file is titled.
     const changed = keptUntitled('changed.md', '# Before\n')
     writeFileSync(keptAt(changed.sha256, 'changed.md'), '# After\n')
     // ⛔ Something unreadable where the file is kept (a directory): the name.
@@ -233,7 +233,7 @@ describe('F046 · titleTheOlderFiles', () => {
     expect(titleOf(page.id), 'a page’s <title>, its entity decoded').toBe('The leaf & more')
     expect(titleOf(plain.id), 'read, and no heading').toBe('plain.md')
     expect(titleOf(gone), 'bytes gone').toBe('gone.md')
-    expect(titleOf(changed.id), 'bytes changed').toBe('changed.md')
+    expect(titleOf(changed.id), 'bytes changed').toBe('After')
     expect(titleOf(unreadable), 'bytes unreadable').toBe('folder.md')
     expect(titleOf(drawing.id), 'an image').toBe('drawing.svg')
     expect(titleOf(kept), 'a row already titled').toBe('Taken as it was kept')
