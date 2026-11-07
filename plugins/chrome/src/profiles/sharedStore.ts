@@ -558,36 +558,6 @@ export function createSharedProfileStore(
       if (!supported(p, r)) throw new ProfileStoreError('Profile is reserved.')
       return `shared:${p.id}`
     },
-    resolveSaved(name, savedIdentity, legacy) {
-      const r = read()
-      const resolved = (p: SharedRecord | undefined) =>
-        p && supported(p, r) ? { name: p.name, identity: `shared:${p.id}` } : undefined
-      const migrated = (match: (m: Migration) => boolean) =>
-        r.profiles.find(
-          (p) =>
-            p.migration?.workspaceId === o.workspaceId &&
-            match(p.migration) &&
-            same(p.migration.home, fileIdentity(o.home)),
-        )
-      if (savedIdentity?.startsWith('shared:'))
-        return resolved(r.profiles.find((p) => p.id === savedIdentity.slice(7)))
-      if (savedIdentity?.startsWith('local:')) {
-        const sourceAlias = savedIdentity.slice(6)
-        const p = migrated((m) => m.sourceAlias === sourceAlias)
-        if (p) return resolved(p)
-        const lp = localRecord(sourceAlias)
-        return lp ? { name: alias(lp), identity: `local:${alias(lp)}` } : undefined
-      }
-      // Only unversioned local saves may use the legacy rename map. A new save
-      // without its immutable identity is never guessed from an overlapping name.
-      if (!legacy) return undefined
-      const p = migrated((m) => m.sourceName === name || m.sourceAlias === name)
-      if (p) return resolved(p)
-      const lp = local.get(name) ?? localRecord(name)
-      return lp
-        ? { name: alias(lp), identity: `local:${alias(lp)}` }
-        : resolved(r.profiles.find((p) => p.name === name))
-    },
     admission: admissionSnapshot,
     authorization(name) {
       return admissionSnapshot(name).authorization
