@@ -402,9 +402,16 @@ describe('664 · one task, one reading, in every place it is drawn', () => {
     it('⛔ every host read of a conversation’s tasks is COMPOSED or named — the host', () => {
       // ⚑ **D-016** — `tasksOf` is `piecesOwnedBy` (and `openPiecesOf`), `tasksAssignedBy` is
       // `piecesGivenBy`.
-      const calls = callsOf(
-        readFileSync(HOST_SOURCE, 'utf8'),
-        /\.(?:piecesOwnedBy|turnBlockPiecesOwnedBy|openPiecesOf|piecesGivenBy|piecesOwnedBefore)\(/g,
+      const host = codeOnly(readFileSync(HOST_SOURCE, 'utf8'))
+      const workReads = readFileSync(join(here, '../src/main/runtime/work-reads.ts'), 'utf8')
+      expect(host).toContain('return this.workReads.pieceBoard(sessionId)')
+      expect(host).toContain('return this.workReads.pieceRecord(sessionId, spelled)')
+      expect(host).toContain('this.workReads = new WorkReads({\n      store: this.deps.store,')
+      const calls = [host, workReads].flatMap((source) =>
+        callsOf(
+          source,
+          /\.(?:piecesOwnedBy|turnBlockPiecesOwnedBy|openPiecesOf|piecesGivenBy|piecesOwnedBefore)\(/g,
+        ),
       )
       expect(
         calls

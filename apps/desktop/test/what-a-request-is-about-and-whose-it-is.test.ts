@@ -833,17 +833,17 @@ describe('474 · what a request is about, and whose it is', () => {
     })
 
     it('⛔ the person’s reader reads the question row, and asks the ASKER for it', () => {
-      const runtime = sourceOf('main', 'runtime', 'runtime-host.ts')
+      const runtime = sourceOf('main', 'runtime', 'persons-questions.ts')
       const method = runtime.slice(
         runtime.indexOf('questionsForAPerson(): LedgerWalk<PersonsQuestion>'),
-        runtime.indexOf('questionsAPersonMayNotDelegate'),
+        runtime.indexOf('decisionsForAPerson(): LedgerWalk<PersonsDecision>'),
       )
       expect(method).not.toBe('')
       expect(method).toContain('raisedIn(request.askedBy).get(request.requestId)')
       expect(method).toContain('workNamed(pieces(request.askedBy), id)')
       // ⛔ **One ledger read per asker, not two** — the memo is shared by both folds.
-      expect(method).toContain('this.onePieceReadPerAnswer()')
-      expect(method).toContain('this.oneWorkReadPerAnswer(pieces)')
+      expect(method).toContain('this.reads.onePieceReadPerAnswer()')
+      expect(method).toContain('this.reads.oneWorkReadPerAnswer(pieces)')
     })
 
     /**

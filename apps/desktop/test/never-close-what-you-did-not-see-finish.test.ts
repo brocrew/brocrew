@@ -1426,7 +1426,7 @@ describe('400 · never close what you did not see finish', () => {
           .filter(({ text }) => text.includes('escalationsDue'))
           .map(({ path }) => path)
           .sort(),
-      ).toEqual(['db/session-store.ts', 'runtime/runtime-host.ts'])
+      ).toEqual(['db/session-store.ts', 'runtime/persons-questions.ts'])
     })
 
     it('⛔ the runtime package never learns either of this dispatch’s words', () => {

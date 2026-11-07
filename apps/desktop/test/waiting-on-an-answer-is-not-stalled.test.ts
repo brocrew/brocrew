@@ -1058,6 +1058,8 @@ describe('603 · waiting on an answer is not stalled', () => {
       // fold for a surface, and both of them compose.
       const host = code(readFileSync(hostSource, 'utf8'))
       const store = code(readFileSync(storeSource, 'utf8'))
+      const workReads = code(readFileSync(join(here, '../src/main/runtime/work-reads.ts'), 'utf8'))
+      expect(workReads).toContain('openQuestionsByWork')
       expect(host).toContain('composeWhatEachPieceIsWaitingOn')
       expect(store).toContain('composeWhatEachPieceIsWaitingOn')
       // ⚠️ **Each raw read that feeds a surface is wrapped, asserted by the EXPRESSION** — a call
@@ -1069,10 +1071,10 @@ describe('603 · waiting on an answer is not stalled', () => {
       // as one line, and still as the WRAPPED expression: a bare read would not match.
       // ⚑ **D-016 · `pieceBoard`'s halves** — what it holds, and what the ids it stands for gave.
       for (const raw of [
-        /composeWhatEachPieceIsWaitingOn\(\s*this\.deps\.store\.piecesOwnedBy\(sessionId, unread\),\s*waiting,?\s*\)/,
-        /composeWhatEachPieceIsWaitingOn\(\s*this\.deps\.store\.piecesGivenBy\(giver, unread\),\s*waiting,?\s*\)/,
+        /composeWhatEachPieceIsWaitingOn\(\s*this\.sources\.store\.piecesOwnedBy\(sessionId, unread\),\s*waiting,?\s*\)/,
+        /composeWhatEachPieceIsWaitingOn\(\s*this\.sources\.store\.piecesGivenBy\(giver, unread\),\s*waiting,?\s*\)/,
       ]) {
-        expect(host, `a surface stopped reading the composition: ${String(raw)}`).toMatch(raw)
+        expect(workReads, `a surface stopped reading the composition: ${String(raw)}`).toMatch(raw)
       }
       // ⛔ **And the ONE derivation is shared rather than spelled at each reader.**
       expect(host).toContain('openQuestionsByWork')
