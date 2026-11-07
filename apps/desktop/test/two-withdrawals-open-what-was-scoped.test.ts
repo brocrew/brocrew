@@ -1,4 +1,4 @@
-import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 import { ToolWatchingRuntime } from './lib/provider-double'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -11,7 +11,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
@@ -94,9 +93,7 @@ describe('549 · two withdrawals — open what was scoped', () => {
     issued = new FakeProviderSessions()
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       // ⛔ **Wired, and it is the difference between a measurement and a vacuous pass.** With no
       // root, no reply can keep a file and every read below refuses for a reason that has nothing
       // to do with this dispatch.
