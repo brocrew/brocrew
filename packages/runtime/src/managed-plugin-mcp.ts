@@ -1,13 +1,11 @@
-import type { JsonValue } from './codex/protocol/serde_json/JsonValue'
+import type { JsonValue } from './json-value'
 
 /** A per-launch broker capability, never the plugin server's credential. */
 export interface ManagedPluginMcpServer {
   readonly name: string
   readonly url: string
   readonly capability: string
-  /** Stable plugin identity in a negotiated partial reply. */
   readonly pluginId?: string
-  /** Configured from an earlier reply, but not served by the latest read. */
   readonly retained?: true
 }
 export function managedPluginHttpServers(servers: readonly ManagedPluginMcpServer[] = []) {

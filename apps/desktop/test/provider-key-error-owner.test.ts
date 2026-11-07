@@ -22,3 +22,20 @@ describe('provider key error ownership', () => {
     expect(vaultImports).toEqual([])
   })
 })
+
+it('keeps the vault error export identical to the shared error constructor', async () => {
+  const neutral = await import('../src/main/providers/api-key-error')
+  const vault = await import('../src/main/runtime/api-keys')
+  expect(vault.ApiKeyUnreadableError).toBe(neutral.ApiKeyUnreadableError)
+  expect(vault.PROVIDER_CARD).toBe(neutral.PROVIDER_CARD)
+  const error = new neutral.ApiKeyUnreadableError('claude', 'darwin', 'storage-not-answering')
+  expect(error).toBeInstanceOf(vault.ApiKeyUnreadableError)
+  expect(error.name).toBe('ApiKeyUnreadableError')
+  expect(error.provider).toBe('claude')
+  expect(error.message).toBe(
+    'BroCrew can’t read the API key saved for Claude on this computer. ' +
+      'macOS may be waiting for permission to read its saved key. ' +
+      'Save it again under “API key” on the Claude card in Providers, ' +
+      'or remove it there to use your sign-in instead.',
+  )
+})
