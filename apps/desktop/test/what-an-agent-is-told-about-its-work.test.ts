@@ -41,6 +41,15 @@ import { DEFAULT_CAPABILITIES, type ProfileCapabilities } from '../src/shared/ca
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
+import * as toolExports from '../src/main/runtime/agent-tools'
+import * as spawnExports from '../src/main/runtime/spawn-rails'
+import * as messageExports from '../src/main/runtime/message-rails'
+import * as replyExports from '../src/main/runtime/reply-rails'
+import * as questionExports from '../src/main/runtime/question-rails'
+import * as interruptExports from '../src/main/runtime/interrupt-rails'
+import * as resourceExports from '../src/main/resources/resources'
+import * as modelExports from '../src/main/runtime/model-rails'
+import * as workSearchExports from '../src/shared/work-search-words'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -373,6 +382,7 @@ describe('412 · what an agent is told about its work', () => {
     const VOCABULARIES = [
       {
         name: 'WORK_SEARCH_RAILS',
+        exports: workSearchExports,
         module: 'shared/work-search-words.ts',
         rails: WORK_SEARCH_RAILS,
         reason: (rail: string) =>
@@ -386,6 +396,7 @@ describe('412 · what an agent is told about its work', () => {
       },
       {
         name: 'SPAWN_RAILS',
+        exports: spawnExports,
         module: 'runtime/spawn-rails.ts',
         rails: SPAWN_RAILS as readonly string[],
         reason: (rail: string) => refuse(rail as never).reason,
@@ -393,6 +404,7 @@ describe('412 · what an agent is told about its work', () => {
       },
       {
         name: 'TOOL_REFUSALS',
+        exports: toolExports,
         module: 'runtime/agent-tools.ts',
         rails: TOOL_REFUSALS as readonly string[],
         reason: (rail: string) => refuseTool(rail as never).reason,
@@ -400,6 +412,7 @@ describe('412 · what an agent is told about its work', () => {
       },
       {
         name: 'MESSAGE_RAILS',
+        exports: messageExports,
         module: 'runtime/message-rails.ts',
         rails: MESSAGE_RAILS as readonly string[],
         reason: (rail: string) => refuseMessage(rail as never).reason,
@@ -407,6 +420,7 @@ describe('412 · what an agent is told about its work', () => {
       },
       {
         name: 'REPLY_RAILS',
+        exports: replyExports,
         module: 'runtime/reply-rails.ts',
         rails: REPLY_RAILS as readonly string[],
         reason: (rail: string) => refuseReply(rail as never).reason,
@@ -414,6 +428,7 @@ describe('412 · what an agent is told about its work', () => {
       },
       {
         name: 'QUESTION_RAILS',
+        exports: questionExports,
         module: 'runtime/question-rails.ts',
         rails: QUESTION_RAILS as readonly string[],
         reason: (rail: string) => refuseQuestion(rail as never).reason,
@@ -421,6 +436,7 @@ describe('412 · what an agent is told about its work', () => {
       },
       {
         name: 'INTERRUPT_RAILS',
+        exports: interruptExports,
         module: 'runtime/interrupt-rails.ts',
         rails: INTERRUPT_RAILS as readonly string[],
         reason: (rail: string) => refuseInterrupt(rail as never).reason,
@@ -428,6 +444,7 @@ describe('412 · what an agent is told about its work', () => {
       },
       {
         name: 'RESOURCE_RAILS',
+        exports: resourceExports,
         module: 'resources/resources.ts',
         rails: RESOURCE_RAILS as readonly string[],
         reason: (rail: string) => refuseResource(rail as never).reason,
@@ -435,6 +452,7 @@ describe('412 · what an agent is told about its work', () => {
       },
       {
         name: 'MODEL_RAILS',
+        exports: modelExports,
         module: 'runtime/model-rails.ts',
         rails: MODEL_RAILS as readonly string[],
         reason: (rail: string) => refuseModel(rail as never).reason,
@@ -797,21 +815,18 @@ describe('412 · what an agent is told about its work', () => {
     })
 
     it('⚑ …and the values this walks are the lists the modules export, not a copy', () => {
+      const isPublishedRoster = (one: {
+        name: string
+        exports: object
+        rails: readonly string[]
+      }): boolean => {
+        const published: unknown = Reflect.get(one.exports, one.name)
+        return Array.isArray(published) && published === one.rails
+      }
       for (const one of VOCABULARIES) {
-        const source = codeOnly(
-          readFileSync(
-            join(one.module.startsWith('shared/') ? join(mainRoot, '..') : mainRoot, one.module),
-            'utf8',
-          ),
-        )
-        expect(source, `${one.name} is not exported by ${one.module}`).toContain(
-          `export const ${one.name} = [`,
-        )
-        for (const rail of one.rails) {
-          expect(source, `${one.name} lists ${rail} nowhere in ${one.module}`).toContain(
-            `'${rail}'`,
-          )
-        }
+        expect(isPublishedRoster(one), `${one.name} is not the published array`).toBe(true)
+        expect(isPublishedRoster({ ...one, rails: [...one.rails] }), one.name).toBe(false)
+        expect(isPublishedRoster({ ...one, rails: one.rails.slice(1) }), one.name).toBe(false)
       }
     })
   })
