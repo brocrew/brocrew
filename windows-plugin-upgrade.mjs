@@ -8,19 +8,24 @@ import { basename, dirname, join, resolve, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import { parseArgs } from 'node:util'
+import { readCustomPluginInputs } from './custom-plugin-inputs.mjs'
+import { transportLabel, readTransportFixture, coldMainArgument, attachColdMain, attachSupervisor } from './instrumented-plugin-transport.mjs'
 
 const { values: args } = parseArgs({ options: {
   execute: { type: 'boolean', default: false }, 'test-path': { type: 'string', default: 'failed-beta-recovery' }, 'source-root': { type: 'string' },
   'candidate-dir': { type: 'string' }, 'candidate-sha': { type: 'string' },
-  'candidate-version': { type: 'string' }, inputs: { type: 'string' }, evidence: { type: 'string' },
+  'candidate-version': { type: 'string' }, 'plugin-inputs': {type:'string'}, 'plugin-receipt-sha256': {type:'string'}, inputs: { type: 'string' }, evidence: { type: 'string' },
 } })
-const expected = {
+const publishedExpected = {
   chrome: { version: '0.1.8', bytes: 3608965, sha256: 'd05363044da6b65cacfccee0149772b97c1a7e5dca83c8262bf91e70de84c8a0', manifest: 'b8432edfc43657715a695dcca57164c7ba0e9229fd98570d4159afeb9be8f7d3', repo: 'brocrew-plugin-chrome' },
   whatsapp: { version: '0.1.4', bytes: 8228798, sha256: '49497b4c15adffefdbc63f8490da542ebae78016975a72c6b55e4476aa3dc769', manifest: 'fe6f04050ac0ec9cc0b577de9d57dc249987d7d3a43cc7e16a9350e68ca83c8d', repo: 'brocrew-plugin-whatsapp' },
 }
+let expected=structuredClone(publishedExpected)
+assert.equal(Boolean(args['plugin-inputs']),Boolean(args['plugin-receipt-sha256']),'custom plugin directory and receipt hash required together')
 assert(['failed-beta-recovery','clean-install'].includes(args['test-path']))
 const cleanInstall=args['test-path']==='clean-install'
 const plan = cleanInstall ? ['verify exact candidate installer and published win32/x64 plugin pins', 'install candidate NSIS on a clean runner without installing or launching beta', 'install both published plugins through candidate Settings', 'call Chrome list_browser_profiles and WhatsApp tools/list through installed service', 'verify normal candidate shutdown and cleanup'] : ['verify public beta installer, exact candidate bytes and published win32/x64 plugin pins', 'install actual 0.1.36 NSIS', 'record beta Settings Chrome installation failure as the expected baseline', 'stop beta and retain its real residual plugin state without seeding or repair', 'install exact 0.2.11 candidate NSIS over beta', 'install or retry the two published plugins through candidate Settings', 'attach observer to candidate-owned service; Chrome list_browser_profiles and WhatsApp tools/list over HTTP', 'detach observer, quit app, verify owner/host exits and process cleanup']
+if(args['plugin-inputs'])plan.unshift(transportLabel)
 if (!args.execute) { console.log(JSON.stringify({ execute: false, plan, expected }, null, 2)); process.exit(0) }
 assert.equal(process.platform, 'win32', 'execution is Windows only')
 assert.equal(process.arch, 'x64')
@@ -55,6 +60,8 @@ $rows | Where-Object {$_.PSChildName -eq '${installKey}'} | Select-Object PSChil
 const appRoot = join(process.env.APPDATA, '@brobot2'), pluginRoot = join(appRoot, 'plugins')
 const products = new Set(['BroCrew.exe', 'BroBot.exe', 'BroBot2.exe']), installDirs = new Set(), owned = new Map()
 let ownsFixture = false
+let transportManifest, transportFixture
+const transportHandles=new Map()
 const allProcesses = () => rows(powershell('Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,ExecutablePath,CommandLine,CreationDate | ConvertTo-Json -Compress'))
 const samePath = (a,b) => typeof a === 'string' && typeof b === 'string' && resolve(a).toLowerCase() === resolve(b).toLowerCase()
 const birthMs = row => {const match=/^\/Date\((-?\d+)(?:[+-]\d+)?\)\/$/.exec(row.CreationDate??'');return match?Number(match[1]):Date.parse(row.CreationDate)}
@@ -114,12 +121,53 @@ async function connect(url) {
   const evaluate = async (body, ms = 60000) => { const reply = await call('Runtime.evaluate',{expression:`(async()=>{${body}})()`,awaitPromise:true,returnByValue:true}, ms); assert(!reply.exceptionDetails, JSON.stringify(reply.exceptionDetails)); return reply.result?.value }
   return {call,evaluate,close:()=>socket.close()}
 }
+function observeTransportProcess(pid) {
+  assert(Number.isSafeInteger(pid)&&pid>0)
+  const result=JSON.parse(powershell(`Get-Process -Id ${pid} | ForEach-Object { @{pid=$_.Id;birth=$_.StartTime.ToFileTimeUtc().ToString();executablePath=$_.Path} } | ConvertTo-Json -Compress`))
+  assert.equal(result.pid,pid);return result
+}
+function transportExpected(row) {
+  const identity=observeTransportProcess(row.ProcessId)
+  assert(samePath(identity.executablePath,row.ExecutablePath))
+  return {...identity,executableSha256:digest(readFileSync(identity.executablePath))}
+}
+async function finishTransport(requireHits=false) {
+  const receipts={label:transportLabel,targets:{}}
+  let failure
+  for(const [label,hook]of transportHandles) {
+    try {receipts.targets[label]=await hook.snapshot();keep(`transport-${label}-calls.json`,receipts.targets[label])}
+    catch(error){failure??=error}
+  }
+  for(const [label,hook]of [...transportHandles].reverse()) {
+    try{keep(`transport-${label}-restore.json`,await hook.detach())}
+    catch(error){hook.close();failure??=error}
+  }
+  transportHandles.clear()
+  keep('instrumented-transport-result.json',receipts)
+  if(failure)throw failure
+  if(requireHits) {
+    const main=receipts.targets.main,service=receipts.targets.supervisor
+    assert(main&&service,'both installed transport hooks required')
+    for(const value of Object.values(receipts.targets)){assert.equal(value.label,transportLabel);assert.equal(value.denied.length,0)}
+    assert(main.calls.some(c=>c.url.endsWith('/catalogue-v2.json')),'main did not read the custom catalogue')
+    for(const wanted of Object.values(expected))assert(service.calls.some(c=>c.sha256===wanted.sha256),'supervisor did not read each pinned archive through instrumented transport')
+  }
+  return receipts
+}
 async function launch(installed, version, port) {
   const started=Date.now()
   const fd = openSync(join(evidence, `app-${version}.log`), 'wx')
-  const child = spawn(installed.exe, ['--remote-debugging-address=127.0.0.1', `--remote-debugging-port=${port}`], { stdio:['ignore',fd,fd], env:appEnvironment }); closeSync(fd)
+  const instrumented=version==='0.2.11'&&Boolean(transportFixture)
+  const inspectorArgs=instrumented?[coldMainArgument(9356)]:[]
+  const child = spawn(installed.exe, [...inspectorArgs,'--remote-debugging-address=127.0.0.1', `--remote-debugging-port=${port}`], { stdio:['ignore',fd,fd], env:appEnvironment }); closeSync(fd)
   let spawnFailure; child.on('error', error => {spawnFailure = error})
   running = {child, version, port, started}
+  if(instrumented) {
+    const row=await until(()=>ownProcesses().find(p=>p.ProcessId===child.pid),30000,'cold main native process')
+    assert(samePath(row.ExecutablePath,installed.exe))
+    const hook=await attachColdMain({execute:true,fixture:transportFixture,expected:transportExpected(row),observeProcess:observeTransportProcess,port:9356})
+    transportHandles.set('main',hook);keep('transport-main-attach.json',hook.receipt)
+  }
   const root = `http://127.0.0.1:${port}`
   const info = await until(async () => { if(spawnFailure) throw spawnFailure; try { const r = await fetch(`${root}/json/version`,{signal:AbortSignal.timeout(2000)});return r.ok ? r.json() : null } catch{return null} }, 180000, `${version} CDP`)
   running.browser = await connect(info.webSocketDebuggerUrl)
@@ -298,7 +346,7 @@ try {
     esbuild.buildSync({entryPoints:[join(evidence,'observer.ts')],bundle:true,platform:'node',format:'cjs',target:'node24',outfile:join(evidence,'observer.cjs'),absWorkingDir:source})
     summary.inputs={beta:installer(join(inputs,'BroCrew-Setup-0.1.36-x64.exe'),betaMetadata[0],'0.1.36','856b87c2fd1306745a881f7e5e97591888695dbf9a15d784b477a85f8f35578f'),candidate:{path:candidatePath,sha256:digest(candidateBytes),bytes:candidateBytes.length,sourceSha:args['candidate-sha'],provenance:'exact-source build or operator-pinned artifact; see workflow intake'},sourceSha:args['candidate-sha'],driverSha256:digest(readFileSync(new URL(import.meta.url))),helperSha256:digest(readFileSync(join(evidence,'observer.cjs')))}
     const catalogue=await publicJson('https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue-v2.json','public-catalogue-v2.json')
-    for(const [id,wanted]of Object.entries(expected)) {
+    for(const [id,wanted]of Object.entries(publishedExpected)) {
       const entry=catalogue.entries.find(e=>e.id===id);assert.equal(entry?.version,wanted.version)
       const target=entry.targets.find(t=>t.os==='win32'&&t.cpu==='x64');assert.equal(target?.sha256,wanted.sha256);assert.equal(target?.manifestSha256,wanted.manifest);assert.equal(target?.bytes,wanted.bytes)
       const release=await publicJson(`https://api.github.com/repos/brocrew/${wanted.repo}/releases/tags/v${wanted.version}`,`public-${id}-release.json`)
@@ -306,6 +354,28 @@ try {
       const asset=release.assets.find(a=>a.name===`${id}-win32-x64.tar.gz`);assert.equal(asset?.digest,`sha256:${wanted.sha256}`);assert.equal(asset?.size,wanted.bytes);assert.equal(asset?.browser_download_url,target.url)
       const inputArchive=readFileSync(join(inputs,asset.name));assert.equal(inputArchive.length,wanted.bytes);assert.equal(digest(inputArchive),wanted.sha256)
     }
+    if(args['plugin-inputs']) {
+      const custom=readCustomPluginInputs(resolve(args['plugin-inputs']),args['plugin-receipt-sha256'],catalogue)
+      expected=custom.expected;summary.expected=expected;summary.customPlugins=custom.witness
+      summary.transport='instrumented transport, not public delivery'
+      keep('custom-plugin-input-witness.json',custom.witness)
+      keep('transport-catalogue-v2.json',custom.catalogueBytes)
+      const legacy=await publicJson('https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue.json','transport-catalogue-v1.json')
+      const legacyBytes=readFileSync(join(evidence,'transport-catalogue-v1.json'))
+      assert.equal(legacy.format,1)
+      transportManifest={format:1,entries:[
+        {url:'https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue-v2.json',path:join(evidence,'transport-catalogue-v2.json'),size:custom.catalogueBytes.length,sha256:digest(custom.catalogueBytes)},
+        {url:'https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue.json',path:join(evidence,'transport-catalogue-v1.json'),size:legacyBytes.length,sha256:digest(legacyBytes)},...custom.archives]}
+      // Published unchanged plugins also travel through the same pinned fixture transport.
+      for(const [id,wanted]of Object.entries(expected))if(!transportManifest.entries.some(e=>e.sha256===wanted.sha256)) {
+        const entry=catalogue.entries.find(e=>e.id===id),target=entry.targets.find(t=>t.os==='win32'&&t.cpu==='x64')
+        const path=join(inputs,`${id}-win32-x64.tar.gz`),bytes=readFileSync(path)
+        assert.equal(bytes.length,wanted.bytes);assert.equal(digest(bytes),wanted.sha256)
+        transportManifest.entries.push({url:target.url,path,size:bytes.length,sha256:wanted.sha256})
+      }
+      keep('instrumented-transport-manifest.json',transportManifest)
+      transportFixture=readTransportFixture(join(evidence,'instrumented-transport-manifest.json'))
+    } else summary.transport='public delivery'
     ownsFixture=true
   })
   let beta
@@ -315,7 +385,7 @@ try {
     await launch(beta,'0.1.36',9345)
     assert.equal((await request({kind:'availability'},'beta-availability')).available,true)
     const listed=await request({kind:'list'},'beta-list');assert.equal(listed.ok,true)
-    for(const [id,wanted]of [['chrome',expected.chrome]]) {
+    for(const [id,wanted]of [['chrome',publishedExpected.chrome]]) {
       const card=listed.cards.find(c=>c.id===id);assert(card);assert.equal(card.installed,false)
       let consent
       if(card.preparationRequired) {const prepared=await request({kind:'prepare',id,action:'install'},`beta-${id}-review`);assert.equal(prepared.ok,true);assert.equal(prepared.review.details.version,wanted.version);assert.equal(prepared.review.details.manifestSha256,wanted.manifest);assert.equal(prepared.review.details.digest,wanted.sha256);consent=prepared.review.consent}
@@ -343,6 +413,12 @@ try {
   await phase('installed candidate plugin tools',async()=>{
     await launch(candidate,'0.2.11',9346)
     assert.equal((await request({kind:'availability'},'candidate-availability')).available,true)
+    if(transportFixture) {
+      const service=installedService(candidate,'pre-install-transport'),expectedProcess=transportExpected(service.process)
+      await transportHandles.get('main').activateSupervisorInspector(expectedProcess,observeTransportProcess)
+      const hook=await attachSupervisor({execute:true,fixture:transportFixture,expected:expectedProcess,observeProcess:observeTransportProcess})
+      transportHandles.set('supervisor',hook);keep('transport-supervisor-attach.json',hook.receipt)
+    }
     for(const [id,wanted]of Object.entries(expected)) {
       const listed=await request({kind:'list'},`candidate-${id}-before-install`);assert.equal(listed.ok,true)
       const card=listed.cards.find(c=>c.id===id);assert(card)
@@ -364,6 +440,7 @@ try {
     assert.equal(summary.observer.ownerEpoch,summary.candidateService.owner.epoch)
     await screenshot('candidate-tools.png')
     const after=await request({kind:'status'},'candidate-after-tools');assert.equal(after.ok,true)
+    if(transportFixture)summary.transportReceipts=await finishTransport(true)
     await quit('candidate')
     summary.finalState=snapshot('final');assert.deepEqual(summary.finalState.activation,summary.candidateInstalled.activation)
     const receipts=hostReceipts();keep('final-host-receipts.json',receipts)
@@ -373,9 +450,10 @@ try {
   })
 } catch(error) {summary.failures.push(error.stack??String(error));await screenshot('failure.png')}
 finally {
+  if(transportHandles.size)try{await finishTransport()}catch(error){summary.failures.push(`transport cleanup: ${error.stack??error}`)}
   try{await cleanup()}catch(error){summary.failures.push(`cleanup: ${error.stack??error}`)}
   // Preserve only synthetic fixture metadata and native receipts; never upload capabilities or plugin data.
   for(const name of ['plugin-startup.log'])if(ownsFixture&&existsSync(join(pluginRoot,name)))copyFileSync(join(pluginRoot,name),join(evidence,name))
   summary.finished=new Date().toISOString();summary.passed=summary.failures.length===0&&summary.phases.length===(cleanInstall?3:5)&&summary.phases.every(p=>p.passed)
-  keep('summary.json',summary);console.log(JSON.stringify({passed:summary.passed,failures:summary.failures,evidence}));process.exitCode=summary.passed?0:1
+  keep('summary.json',summary);console.log(JSON.stringify({passed:summary.passed,transport:summary.transport,failures:summary.failures,evidence}));process.exitCode=summary.passed?0:1
 }

@@ -20,6 +20,15 @@ on:
         description: Exact installer SHA256 from Dara's receipt
         required: true
         type: string
+      plugin_run_id:
+        description: Optional unpublished plugin build run (all three plugin inputs required)
+        type: string
+      plugin_artifact:
+        description: Exact unpublished plugin input artifact
+        type: string
+      plugin_receipt_sha256:
+        description: SHA256 of plugin-inputs.json inside the artifact
+        type: string
       test_path:
         description: Failed beta recovery or independent clean-install control
         type: choice
@@ -46,6 +55,9 @@ jobs:
       INSTALLER_RUN_ID: ${{ inputs.installer_run_id }}
       INSTALLER_ARTIFACT: ${{ inputs.installer_artifact }}
       EXPECTED_INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
+      PLUGIN_RUN_ID: ${{ inputs.plugin_run_id }}
+      PLUGIN_ARTIFACT: ${{ inputs.plugin_artifact }}
+      PLUGIN_RECEIPT_SHA256: ${{ inputs.plugin_receipt_sha256 }}
       TEST_PATH: ${{ inputs.test_path }}
       PROOF_STAGE: ${{ inputs.proof_stage }}
     steps:
@@ -77,6 +89,11 @@ jobs:
           [[ "$INSTALLER_RUN_ID" =~ ^[0-9]+$ ]]
           test -n "$INSTALLER_ARTIFACT"
           [[ "$EXPECTED_INSTALLER_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          if [[ -n "$PLUGIN_RUN_ID$PLUGIN_ARTIFACT$PLUGIN_RECEIPT_SHA256" ]]; then
+            [[ "$PLUGIN_RUN_ID" =~ ^[0-9]+$ ]]
+            test -n "$PLUGIN_ARTIFACT"
+            [[ "$PLUGIN_RECEIPT_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          fi
           mkdir -p evidence inputs
           git -C carrier rev-parse HEAD > evidence/carrier-sha.txt
           printf '%s\n' "$CANDIDATE_SHA" > evidence/candidate-sha.txt
@@ -118,6 +135,15 @@ jobs:
             'd05363044da6b65cacfccee0149772b97c1a7e5dca83c8262bf91e70de84c8a0 *chrome-win32-x64.tar.gz' \
             '49497b4c15adffefdbc63f8490da542ebae78016975a72c6b55e4476aa3dc769 *whatsapp-win32-x64.tar.gz' > ../evidence/published-sha256.txt
           sha256sum --check ../evidence/published-sha256.txt
+
+      - name: Fetch exact unpublished plugin inputs
+        if: inputs.plugin_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.plugin_run_id }}
+          name: ${{ inputs.plugin_artifact }}
+          path: plugin-inputs
 
       - name: Install observer build dependencies from the exact candidate
         working-directory: candidate
@@ -167,7 +193,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          node carrier/windows-plugin-upgrade.mjs --execute --test-path "$TEST_PATH" \
+          plugin_args=()
+          if [[ -n "$PLUGIN_RUN_ID" ]]; then
+            plugin_args=(--plugin-inputs plugin-inputs --plugin-receipt-sha256 "$PLUGIN_RECEIPT_SHA256")
+          fi
+          node carrier/windows-plugin-upgrade.mjs --execute "${plugin_args[@]}" --test-path "$TEST_PATH" \
             --source-root candidate --candidate-dir "$CANDIDATE_DIR" \
             --candidate-sha "$CANDIDATE_SHA" --candidate-version "$CANDIDATE_VERSION" \
             --inputs inputs --evidence evidence
