@@ -50,7 +50,7 @@ async function generic(kind = 'turn.context.titles') {
   const pkg = packageFixture({ manifest })
   const options: typeof f.opts = {
     ...f.opts,
-    catalogue: { bytes: pkg.bytes, signature: pkg.signature },
+    catalogue: { bytes: pkg.bytes },
     download: async () => pkg.archive,
   }
   const controller = await PluginLifecycleController.open(options)
@@ -102,7 +102,7 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
     const before = get.call(f.controller, f.handle, f.pkg.manifest.id)
     const next = packageFixture({ manifest: { ...f.pkg.manifest, version: '1.0.3' } })
     f.options.refreshCatalogue = async () => ({
-      catalogue: { bytes: next.bytes, signature: next.signature },
+      catalogue: { bytes: next.bytes },
       names: f.opts.names,
     })
     f.options.download = async () => next.archive
@@ -141,9 +141,8 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
     const old = parseRepoPluginList(legacyRaw, f.opts.target, '1.0.0')
     const options = {
       ...f.opts,
-      pinnedPublicKey: null,
       repoCatalogueSha256: source.sha256,
-      catalogue: { bytes: source.bytes, signature: Buffer.alloc(0) },
+      catalogue: { bytes: source.bytes },
       repoList: { bytes: raw, sha256: pluginSha256(raw), appVersion: '1.0.0' },
       legacyRepoList: { bytes: legacyRaw, sha256: pluginSha256(legacyRaw), appVersion: '1.0.0' },
     }
@@ -159,10 +158,9 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
       root: f.root,
       path: bridge.path,
       personKey: 'b'.repeat(64),
-      pinnedPublicKey: null,
       repoCatalogueSha256: old.sha256,
       target: f.opts.target,
-      catalogue: { bytes: old.bytes, signature: Buffer.alloc(0) },
+      catalogue: { bytes: old.bytes },
       projection: projection().sink,
       propose() {},
     })
@@ -182,9 +180,8 @@ describe.skipIf(process.platform === 'win32')('independent owned contributions',
       path: bridge.path,
       personKey: 'c'.repeat(64),
       root: f.root,
-      pinnedPublicKey: f.opts.pinnedPublicKey,
       target: f.opts.target,
-      catalogue: { bytes: f.pkg.bytes, signature: f.pkg.signature },
+      catalogue: { bytes: f.pkg.bytes },
       projection: projection().sink,
       propose() {},
     })

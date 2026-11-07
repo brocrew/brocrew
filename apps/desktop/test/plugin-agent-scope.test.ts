@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { randomUUID } from 'node:crypto'
 import { fixture, cleanupLifecycleFixtures, projection } from './plugin-lifecycle-fixtures'
-import { manifestFor, packageFixture, signed } from './plugin-package-fixtures'
+import { manifestFor, packageFixture, catalogueBytes } from './plugin-package-fixtures'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 
 afterEach(async () => {
@@ -38,7 +38,7 @@ async function twoPlugins(installWhatsapp: boolean) {
   const start = f.opts.runtime.start.bind(f.opts.runtime)
   const controller = await PluginLifecycleController.open({
     ...f.opts,
-    catalogue: signed({ format: 1, entries: [f.pkg.release, other.release] }),
+    catalogue: catalogueBytes({ format: 1, entries: [f.pkg.release, other.release] }),
     download: async (release: { id: string }) =>
       release.id === 'chrome' ? f.pkg.archive : other.archive,
     runtime: {

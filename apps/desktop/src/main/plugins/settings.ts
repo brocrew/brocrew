@@ -73,10 +73,7 @@ export interface PluginSettingsController {
   ready?(): Promise<boolean>
   catalogue(refresh?: boolean): Promise<PluginCard[]>
   refreshFailed?(): boolean
-  refreshCatalogue?(
-    digest: string,
-    source?: { bytes: Uint8Array; signature: Uint8Array },
-  ): Promise<void>
+  refreshCatalogue?(digest: string, source?: { bytes: Uint8Array }): Promise<void>
   update?(id: string, consent?: PluginMutationConsent): Promise<void>
   /** Reattach person control only; no install or removal. */
   retry?(id: string): Promise<PluginCard[]>

@@ -57,7 +57,8 @@
         "../../../src/main/plugins/lifecycle/vault": "./vault",
         "../../../src/shared/plugin-settings": "../../../shared/plugin-settings",
         "../plugin-delete-parent/types": "./types"
-      }
+      },
+      "unsignedApiSha256": "34c22499eda87343dd0277bee484270e75d930db0b53e776c0812f890482fa0d"
     },
     {
       "path": "apps/desktop/src/main/plugins/lifecycle/files.ts",
@@ -101,7 +102,8 @@
         "../../../src/main/plugins/package-verifier": "../package-verifier",
         "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol",
         "../plugin-delete-parent/types": "./types"
-      }
+      },
+      "unsignedApiSha256": "da855ca6543c50362446ae3e4bfab7db1639b9688308727b88dffc706cf11386"
     },
     {
       "path": "apps/desktop/src/main/plugins/production.ts",
@@ -121,7 +123,8 @@
         "../../../src/main/plugins/supervisor/protocol": "./supervisor/protocol",
         "../../../src/shared/plugin-settings": "../../shared/plugin-settings",
         "../../../src/main/plugins/package-schema": "./package-schema"
-      }
+      },
+      "unsignedApiSha256": "e0aeb06aa25f0c48a3d4a8d4c932e2f2da0af31ab5ee8b64d2f098e15b929d47"
     },
     {
       "path": "apps/desktop/src/main/plugins/lifecycle/profile-ledger.ts",

@@ -1,50 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { createPrivateKey, createPublicKey, createSecretKey, sign } from 'node:crypto'
 import { strictPluginJson } from '../src/main/plugins/strict-json'
 import { pluginPackagePath, PluginPackagePaths } from '../src/main/plugins/package-path'
 import { PluginVerificationError } from '../src/main/plugins/verification-error'
-import {
-  pluginCatalogueSignatures,
-  pluginSha256,
-  verifyPluginDigest,
-} from '../src/main/plugins/package-digests'
+import { pluginSha256, verifyPluginDigest } from '../src/main/plugins/package-digests'
 
 const json = (text: string, limit = 1024) => strictPluginJson(Buffer.from(text), limit)
 
-// A public, deterministic fixture seed. It is never a production catalogue signing key.
-const fictionalKey = (byte = 0x42) =>
-  createPrivateKey({
-    key: Buffer.concat([
-      Buffer.from('302e020100300506032b657004220420', 'hex'),
-      Buffer.alloc(32, byte),
-    ]),
-    format: 'der',
-    type: 'pkcs8',
-  })
-
-describe('one pinned catalogue key and exact-byte digests', () => {
-  it('verifies exact catalogue bytes and refuses whitespace changes or another key', () => {
-    const key = fictionalKey()
-    const bytes = Buffer.from('{"format":1,"entries":[]}\n')
-    const signature = sign(null, bytes, key)
-    const verify = pluginCatalogueSignatures(createPublicKey(key))
-    expect(() => verify(bytes, signature)).not.toThrow()
-    expect(() => verify(Buffer.from('{"format":1,"entries":[]} '), signature)).toThrow(
-      PluginVerificationError,
-    )
-    expect(() => verify(bytes, sign(null, bytes, fictionalKey(0x43)))).toThrow(
-      PluginVerificationError,
-    )
-    expect(() => verify(bytes, signature.subarray(1))).toThrow(PluginVerificationError)
-  })
-
-  it('rejects a private key or a non-asymmetric key instead of silently changing key roles', () => {
-    expect(() => pluginCatalogueSignatures(fictionalKey())).toThrow(PluginVerificationError)
-    expect(() => pluginCatalogueSignatures(createSecretKey(Buffer.alloc(32)))).toThrow(
-      PluginVerificationError,
-    )
-  })
-
+describe('exact-byte digests', () => {
   it('checks size, digest and the bound independently', () => {
     const bytes = Buffer.from('fictional recipe')
     const expected = { size: bytes.length, sha256: pluginSha256(bytes) }
@@ -72,7 +34,7 @@ describe('one pinned catalogue key and exact-byte digests', () => {
 })
 
 describe('strict plugin metadata', () => {
-  it('reads nested JSON without changing the bytes whose signature is checked', () => {
+  it('reads nested JSON without changing the input bytes', () => {
     expect(json(' {"a":[1,true,null,{"b":"fictional recipe"}]}\n')).toEqual({
       a: [1, true, null, { b: 'fictional recipe' }],
     })

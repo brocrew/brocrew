@@ -1,6 +1,4 @@
-import type { KeyObject } from 'node:crypto'
 import type { PluginCard } from '../../../src/shared/plugin-settings'
-import type { PluginReleasePin } from '../../../src/main/plugins/package-verifier'
 import type { PluginRelease, PluginTarget } from '../../../src/main/plugins/package-schema'
 import type { GlobalPluginState } from './store'
 import type { ProjectionReceipt, Installation } from '../../../src/main/plugins/state/format'
@@ -37,19 +35,18 @@ export interface WorkspaceProjection {
 export interface LifecycleOptions {
   root: string
   state: GlobalPluginState
-  pinnedPublicKey: KeyObject | null
-  /** App-admitted repo-list digest authority only; exclusive with the dormant signing key. */
+  /** App-admitted repo-list digest authority. */
   repoCatalogueSha256?: string
   /** Raw list bound by trusted app launch input, used to derive older minimum-version views. */
   repoList?: { bytes: Uint8Array; sha256: string; appVersion: string }
   legacyRepoList?: { bytes: Uint8Array; sha256: string; appVersion: string }
   target: PluginTarget
-  catalogue: { bytes: Uint8Array; signature: Uint8Array }
+  catalogue: { bytes: Uint8Array }
   /** Reviewed host-owned display names, never remote unreviewed text. */
   names: Readonly<Record<string, string>>
   /** Re-read only the source fixed by trusted app launch code. */
   refreshCatalogue?: () => Promise<{
-    catalogue: { bytes: Uint8Array; signature: Uint8Array }
+    catalogue: { bytes: Uint8Array }
     repoCatalogueSha256?: string
     repoList?: { bytes: Uint8Array; sha256: string; appVersion: string }
     legacyRepoList?: { bytes: Uint8Array; sha256: string; appVersion: string }
@@ -73,4 +70,4 @@ export interface LifecycleStatus {
   readonly cards: readonly PluginCard[]
   readonly cleanupPending: readonly string[]
 }
-export type { ProjectionReceipt, Installation, PluginReleasePin, PluginRelease }
+export type { ProjectionReceipt, Installation, PluginRelease }

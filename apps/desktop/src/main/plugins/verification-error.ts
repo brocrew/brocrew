@@ -1,12 +1,5 @@
 export type PluginVerificationFailure =
-  | 'invalid'
-  | 'signature'
-  | 'digest'
-  | 'path'
-  | 'limit'
-  | 'target'
-  | 'immutable-release'
-  | 'install-hook'
+  'invalid' | 'digest' | 'path' | 'limit' | 'target' | 'install-hook'
 
 /** Error details never carry package text or an upstream exception across the host boundary. */
 export class PluginVerificationError extends Error {

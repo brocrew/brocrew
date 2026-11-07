@@ -103,13 +103,12 @@ async function setup(fixedVersion = false, invalidSource?: 'digest' | 'view') {
   }
   const ownerOptions = {
     ...f.opts,
-    pinnedPublicKey: null,
     repoCatalogueSha256: initial.sha256,
-    catalogue: { bytes: initial.bytes, signature: Buffer.alloc(0) },
+    catalogue: { bytes: initial.bytes },
     repoList,
     names: { whatsapp: 'Fictional messages', chrome: 'Fictional browser' },
     refreshCatalogue: async () => ({
-      catalogue: { bytes: source.bytes, signature: Buffer.alloc(0) },
+      catalogue: { bytes: source.bytes },
       repoCatalogueSha256: source.sha256,
       repoList,
       names: {
@@ -142,10 +141,9 @@ async function setup(fixedVersion = false, invalidSource?: 'digest' | 'view') {
     path: bridge.path,
     personKey: key,
     root: f.root,
-    pinnedPublicKey: null,
     repoCatalogueSha256: catalogue.sha256,
     target: f.opts.target,
-    catalogue: { bytes: catalogue.bytes, signature: Buffer.alloc(0) },
+    catalogue: { bytes: catalogue.bytes },
     projection: projection().sink,
     propose: () => {},
   })

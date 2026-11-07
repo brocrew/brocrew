@@ -6,7 +6,7 @@ import {
   cleanupLifecycleFixtures,
   deferred,
 } from './plugin-lifecycle-fixtures'
-import { packageFixture, signed } from './plugin-package-fixtures'
+import { packageFixture, catalogueBytes } from './plugin-package-fixtures'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { sharedLifecycleWorkspaces } from '../src/main/plugins/lifecycle/workspaces'
 import {
@@ -46,7 +46,7 @@ function modern(f: Awaited<ReturnType<typeof fixture>>, version: string) {
         '/fictional.tar',
     },
   }
-  return { ...pkg, release, ...signed({ format: 2, entries: [release] }) }
+  return { ...pkg, release, ...catalogueBytes({ format: 2, entries: [release] }) }
 }
 async function setup(installed = false, legacyEntry = false, v1Owner = false) {
   const f = await fixture()
@@ -58,10 +58,10 @@ async function setup(installed = false, legacyEntry = false, v1Owner = false) {
   let sourceVersion = v1Owner ? 1 : 2
   const catalogue = (p: typeof next) =>
     sourceVersion === 1
-      ? { bytes: p.bytes, signature: p.signature }
+      ? { bytes: p.bytes }
       : legacyEntry
-        ? signed({ format: 2, entries: [{ ...p.release, legacy: true }] })
-        : { bytes: p.bytes, signature: p.signature }
+        ? catalogueBytes({ format: 2, entries: [{ ...p.release, legacy: true }] })
+        : { bytes: p.bytes }
   let offer = first
   const options = {
     ...f.opts,
@@ -75,7 +75,7 @@ async function setup(installed = false, legacyEntry = false, v1Owner = false) {
     const seed = await PluginLifecycleController.open({
       ...options,
       // Authorless historical releases are seeded from their original v1 source.
-      catalogue: { bytes: first.bytes, signature: first.signature },
+      catalogue: { bytes: first.bytes },
     })
     const handle = await seed.attach(projection().sink)
     if (first.release.authors) {
@@ -480,15 +480,10 @@ it('keeps existing v1 incompatible failures unchanged before policy negotiation'
 it('rechecks retained archive bytes against the currently admitted release metadata', async () => {
   const f = await setup(),
     c = await f.wire()
-  const vault = new PluginPackageVault(f.root, f.opts.pinnedPublicKey, f.opts.target)
-  await vault.stage(
-    f.next.release,
-    f.next.archive,
-    { bytes: f.next.bytes, signature: f.next.signature },
-    [],
-  )
+  const vault = new PluginPackageVault(f.root, f.opts.target)
+  await vault.stage(f.next.release, f.next.archive, { bytes: f.next.bytes })
   const release = { ...f.next.release, authors: ['fern-makers'], sourceCommit: 'b'.repeat(40) }
-  const changed = { ...f.next, release, ...signed({ format: 2, entries: [release] }) }
+  const changed = { ...f.next, release, ...catalogueBytes({ format: 2, entries: [release] }) }
   await f.refresh(changed)
   await f.negotiate(c)
   const before = f.snapshot()

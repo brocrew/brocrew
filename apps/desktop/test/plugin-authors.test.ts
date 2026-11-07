@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { parsePluginManifest, parsePluginCatalogue } from '../src/main/plugins/package-schema'
 import { parseRepoPluginList } from '../src/main/plugins/catalogue/repo-list'
 import { repoListFor } from './plugin-repo-list-fixtures'
-import { manifestFor, packageFixture, signed, verifier } from './plugin-package-fixtures'
+import { manifestFor, packageFixture, catalogueBytes, verifier } from './plugin-package-fixtures'
 
 function modern() {
   const legacy = manifestFor()
@@ -16,10 +16,10 @@ function modern() {
 }
 function check(authors = ['brocrew']) {
   const pkg = packageFixture({ manifest: modern() })
-  const catalogue = signed({ format: 2, entries: [{ ...pkg.release, authors }] })
+  const catalogue = catalogueBytes({ format: 2, entries: [{ ...pkg.release, authors }] })
   return () =>
     verifier()
-      .verifyCatalogue(catalogue.bytes, catalogue.signature)
+      .verifyCatalogue(catalogue.bytes)
       .verifyPackage(pkg.release.id, pkg.release.version, pkg.archive)
 }
 describe('declared package authors', () => {

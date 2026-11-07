@@ -31,13 +31,13 @@ apps/desktop/src/main/provider-snapshots/**/*.json
 # Approved skill texts are copied byte for byte, not reflowed.
 apps/desktop/resources/built-in-skills/**/*.md
 
-# Parent-version compatibility fixtures retain their pinned source bytes apart from import paths.
+# Adapted parent-version regression fixtures retain pinned bytes after imports and unsigned API edits.
 apps/desktop/test/fixtures/plugin-update-parent/**/*.ts
 
-# Frozen pre-delete compatibility reader retains source bytes apart from import paths.
+# Adapted pre-delete regression reader retains pinned bytes after imports and unsigned API edits.
 apps/desktop/test/fixtures/plugin-delete-parent/**/*.ts
 
-# Frozen mixed-version disclosure fixtures retain source bytes apart from import paths.
+# Adapted mixed-version disclosure fixtures retain pinned bytes after imports and unsigned API edits.
 apps/desktop/test/fixtures/plugin-disclosure-mixed/**/*.ts
 
 # Source-pinned reload fixture payloads are copied verbatim as qualification data.

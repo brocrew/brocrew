@@ -3,14 +3,9 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { readPluginArchive } from '../src/main/plugins/package-archive'
 import { parsePluginManifest } from '../src/main/plugins/package-schema'
-import { createPluginVerifier } from '../src/main/plugins/package-verifier'
+import { createRepoAwarePluginVerifier } from '../src/main/plugins/package-verifier'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
-import {
-  fictionalPublicKey,
-  packageFixture,
-  signed,
-  inventory,
-} from '../test/plugin-package-fixtures'
+import { packageFixture, catalogueBytes, inventory } from '../test/plugin-package-fixtures'
 const ORIGINAL_CHROME_SHA = 'b3abe51ddeef240895ca6d9147e607cc32637edfe22c87ebc53a9050e27a2076'
 export function verifyChromeUiArchive(archive: Buffer, compression: 'tar' | 'tar.gz' = 'tar') {
   const files = readPluginArchive(archive, compression),
@@ -28,12 +23,11 @@ export function verifyChromeUiArchive(archive: Buffer, compression: 'tar' | 'tar
     },
     manifestSha256: pluginSha256(files.get('plugin.json')!),
   }
-  const catalogue = signed({ format: 1, entries: [release] })
-  const verified = createPluginVerifier({
-    pinnedPublicKey: fictionalPublicKey,
+  const catalogue = catalogueBytes({ format: 1, entries: [release] })
+  const verified = createRepoAwarePluginVerifier({
     target: { os: 'darwin', cpu: 'arm64' },
   })
-    .verifyCatalogue(catalogue.bytes, catalogue.signature)
+    .verifyCatalogue(catalogue.bytes)
     .verifyPackage('chrome', manifest.version, archive)
   return { verified, release }
 }

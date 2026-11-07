@@ -6,7 +6,7 @@ import { verifyPluginDigest, PLUGIN_LIMITS } from '../package-digests'
 import type { PluginRelease } from '../package-schema'
 import { openFileNotThroughALink, pinDirectory, type DirectoryPin } from '../private-files'
 /** Same-user build input. Check no-follow snapshots and parent identities; callers must verify
- * every returned byte by pinned signature/digest. This is not an openat ancestry guarantee.
+ * every returned byte by its expected digest. This is not an openat ancestry guarantee.
  */
 export async function readLocalRelease(
   root: string,

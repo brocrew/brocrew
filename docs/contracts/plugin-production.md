@@ -1,6 +1,6 @@
 # Repository plugin list and one-press installation
 
-Production reads one fixed URL: `https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue.json`. Plugins come only from BroCrew’s repositories. The list is ordinary JSON served over HTTPS; there is no signing key, detached signature, bundled catalogue or bundled archive in the production path. The legacy signed-catalogue and local-source verifier remain available for their existing tests, but index.ts does not select them.
+Production reads one fixed URL: `https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue.json`. Plugins come only from BroCrew’s repositories. The list is ordinary JSON served over HTTPS; there is no signing key, detached signature, bundled catalogue or bundled archive in the production path. Explicit local fixture sources remain available for tests. Catalogue structure and archive, manifest and file digests are checked by the package verifier.
 
 ## List format
 
@@ -8,7 +8,7 @@ Production reads one fixed URL: `https://raw.githubusercontent.com/brocrew/brocr
 
 The list is strict UTF-8 JSON, at most 1 MiB and 200 entries, with unique plugin ids and OS/CPU targets. Names/descriptions are bounded single lines. Minimum app versions are numeric major.minor.patch; archive support also requires the matching target. All target URLs are checked, including targets not selected on the current machine. Unsupported versions/targets are shown as Unavailable. The current Chrome release supports macOS arm64; other app hosts remain unavailable until their existing runtime/storage support is built.
 
-The app trusts the repository HTTPS response, not a signature. A compromised repository can publish a different plugin; this is the accepted first-party repository trust decision. Catalogue bytes are normalized into the existing release descriptor format and snapshotted by hash in the private global store. That exact admitted digest is passed in the immutable supervisor launch plan, never an agent/person IPC packet. Both main and supervisor recheck it. The vault records a catalogue digest rather than pretending it is a signature. Cached metadata can only select the exact archive/manifest pins supplied by the authenticated installation or newly admitted list; a later list description change does not revoke that installation’s package bytes. Existing immutable release pins, journal/tombstones and per-file checks still apply.
+The app trusts the repository HTTPS response, not a signature. A compromised repository can publish a different plugin; this is the accepted first-party repository trust decision. Catalogue bytes are normalized into the existing release descriptor format and snapshotted by hash in the private global store. That exact admitted digest is passed in the immutable supervisor launch plan, never an agent/person IPC packet. Both main and supervisor recheck it. The vault records a catalogue digest rather than pretending it is a signature. Cached metadata can only select the exact archive/manifest pins supplied by the authenticated installation or newly admitted list; a later list description change does not revoke that installation’s package bytes. Exact installed archive/manifest digests, journal/tombstones and per-file checks still apply.
 
 ## Download and install
 

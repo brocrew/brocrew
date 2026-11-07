@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { Client } from '../../apps/desktop/node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js'
@@ -292,11 +292,9 @@ describe.skipIf(process.platform === 'win32')(
         const release = await buildChromePackage(built, 'a'.repeat(40))
         const catalogue = Buffer.from(JSON.stringify({ format: 1, entries: [release] }))
         const verified = createRepoAwarePluginVerifier({
-          pinnedPublicKey: null,
-          repoCatalogueSha256: createHash('sha256').update(catalogue).digest('hex'),
           target: { os: process.platform, cpu: process.arch },
         })
-          .verifyCatalogue(catalogue, new Uint8Array())
+          .verifyCatalogue(catalogue)
           .verifyPackage(
             release.id,
             release.version,

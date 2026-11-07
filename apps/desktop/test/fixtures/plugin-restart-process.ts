@@ -6,4 +6,3 @@ export { sharedLifecycleWorkspaces } from '../../src/main/plugins/lifecycle/work
 export { createLifecycleAgentBridge } from '../../src/main/plugins/lifecycle/agent-bridge'
 export { servePersonPluginControl } from '../../src/main/plugins/lifecycle/person-control'
 export { requirePluginAdapter } from '../../src/main/plugins/lifecycle/adapters'
-export { fictionalPublicKey } from '../plugin-package-fixtures'

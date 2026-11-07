@@ -50,9 +50,8 @@ async function setup(installed: boolean) {
       },
     }
   }
-  f.opts.pinnedPublicKey = null
   f.opts.repoCatalogueSha256 = pluginSha256(f.pkg.bytes)
-  f.opts.catalogue = { bytes: f.pkg.bytes, signature: Buffer.alloc(0) }
+  f.opts.catalogue = { bytes: f.pkg.bytes }
   const initial = await PluginLifecycleController.open(f.opts)
   closers.push(() => initial.drain())
   const handle = await initial.attach(projection(f.events).sink)
@@ -101,7 +100,7 @@ async function restarted(appVersion: string, empty: boolean) {
   recordGuards()
   const controller = await PluginLifecycleController.open({
     ...f.opts,
-    catalogue: { bytes: view.bytes, signature: Buffer.alloc(0) },
+    catalogue: { bytes: view.bytes },
     repoCatalogueSha256: view.sha256,
     names: {},
     repoList: { bytes: raw, sha256: pluginSha256(raw), appVersion },
@@ -111,7 +110,7 @@ async function restarted(appVersion: string, empty: boolean) {
       appVersion,
     },
     refreshCatalogue: async () => ({
-      catalogue: { bytes: view.bytes, signature: Buffer.alloc(0) },
+      catalogue: { bytes: view.bytes },
       repoCatalogueSha256: view.sha256,
       repoList: { bytes: raw, sha256: pluginSha256(raw), appVersion },
       names: {},
@@ -130,10 +129,9 @@ async function restarted(appVersion: string, empty: boolean) {
     path: bridge.path,
     personKey: 'e'.repeat(64),
     root: f.root,
-    pinnedPublicKey: null,
     repoCatalogueSha256: view.sha256,
     target: f.opts.target,
-    catalogue: { bytes: view.bytes, signature: Buffer.alloc(0) },
+    catalogue: { bytes: view.bytes },
     projection: projection(f.events).sink,
     propose() {},
   })

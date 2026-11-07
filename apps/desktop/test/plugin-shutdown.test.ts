@@ -7,7 +7,7 @@ import { PluginWorkspaceLease } from '../src/main/plugins/supervisor/client'
 import { createSupervisorLifecycle } from '../src/main/plugins/lifecycle/supervisor'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import type { createPluginNodeHost, PluginNodeProcess } from '../src/main/plugins/node-host'
-import { fictionalPublicKey, manifestFor, packageFixture, signed } from './plugin-package-fixtures'
+import { manifestFor, packageFixture, catalogueBytes } from './plugin-package-fixtures'
 import type { LifecycleRuntime } from '../src/main/plugins/lifecycle/types'
 import { pluginFailureCause } from '../src/main/plugins/startup-failure'
 import {
@@ -110,7 +110,6 @@ describe.skipIf(process.platform === 'win32')(
         path: service.path,
         personKey: 'a'.repeat(64),
         root: f.root,
-        pinnedPublicKey: fictionalPublicKey,
         target: f.opts.target,
         catalogue: f.opts.catalogue,
         projection: stableSink,
@@ -183,7 +182,6 @@ describe.skipIf(process.platform === 'win32')(
         path: run.service.path,
         personKey: 'a'.repeat(64),
         root: f.root,
-        pinnedPublicKey: fictionalPublicKey,
         target: f.opts.target,
         catalogue: f.opts.catalogue,
         projection: secondSink,
@@ -341,7 +339,7 @@ describe.skipIf(process.platform === 'win32')(
       manifest.skills = []
       manifest.platforms = [f.opts.target]
       const other = packageFixture({ manifest })
-      f.opts.catalogue = signed({ format: 1, entries: [f.pkg.release, other.release] })
+      f.opts.catalogue = catalogueBytes({ format: 1, entries: [f.pkg.release, other.release] })
       f.opts.download = async (release) => (release.id === 'chrome' ? f.pkg.archive : other.archive)
       const first = await attached(f)
       let closed = false

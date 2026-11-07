@@ -16,7 +16,7 @@ import { SupervisorStorage } from './storage'
 import { readRecoveryAdvice } from './recovery-advice'
 import { windowsSystemEnvironment } from '../system-environment'
 import { OWNER_LAUNCH_MS, PluginSupervisorError } from './protocol'
-import { LaunchConfig, type PluginLifecyclePlan, type PluginStartupPlan } from './launch-format'
+import { LaunchConfig, type PluginLifecyclePlan } from './launch-format'
 import type { SharedDataOwner } from '../shared-data'
 
 /** App/controller input only; no defaults to a system executable, app entry or live root. */
@@ -25,7 +25,6 @@ export function createPluginSupervisorLauncher(options: {
   workspaceRoots: readonly string[]
   resourcesRoot: string
   browserExecutable?: string
-  startup?: PluginStartupPlan
   lifecycle?: PluginLifecyclePlan
   sharedDataOwner?: SharedDataOwner
   /** Resolves the app-fixed modern source only when a new owner is actually needed. */
@@ -73,7 +72,6 @@ export function createPluginSupervisorLauncher(options: {
         workspaceRoots: captured.workspaceRoots,
         runtime: { directory: dirname(node), id: runtime.id },
         browserExecutable: captured.browserExecutable,
-        startup: captured.startup,
         lifecycle,
         sharedDataOwner: captured.sharedDataOwner,
       })

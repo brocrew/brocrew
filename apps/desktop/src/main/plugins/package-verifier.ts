@@ -1,11 +1,5 @@
-import type { KeyObject } from 'node:crypto'
 import { SkillRelease } from '../../shared/skills-catalogue'
-import {
-  PLUGIN_LIMITS,
-  pluginCatalogueSignatures,
-  verifyPluginDigest,
-  pluginSha256,
-} from './package-digests'
+import { PLUGIN_LIMITS, verifyPluginDigest } from './package-digests'
 import { readPluginArchive } from './package-archive'
 import {
   parsePluginCatalogue,
@@ -19,22 +13,13 @@ import { PLUGIN_FRAMEWORK_FEATURES } from './hooks/definitions'
 import { strictPluginJson } from './strict-json'
 import { refusePlugin } from './verification-error'
 
-export interface PluginReleasePin {
-  readonly id: string
-  readonly version: string
-  readonly archiveSha256: string
-  readonly manifestSha256: string
-}
 export interface PluginApiSupport {
   readonly major: number
   readonly minor: number
   readonly features: readonly string[]
 }
 export interface PluginVerifierOptions {
-  readonly pinnedPublicKey: KeyObject
   readonly target: PluginTarget
-  /** Persist these pins in the later installer; this pure verifier never writes them. */
-  readonly knownReleases?: readonly PluginReleasePin[]
   readonly apiSupport?: {
     readonly host: PluginApiSupport
     readonly tools: PluginApiSupport
@@ -55,7 +40,6 @@ export interface VerifiedPluginPackage {
 export interface VerifiedPluginCatalogue {
   readonly format: 1 | 2
   readonly entries: readonly Readonly<PluginRelease>[]
-  readonly pins: readonly PluginReleasePin[]
   verifyPackage(id: string, version: string, downloaded: Uint8Array): VerifiedPluginPackage
 }
 
@@ -109,36 +93,8 @@ function noInstallRecipes(path: string, bytes: Buffer): void {
   }
 }
 
-/** All authority comes from one app-supplied public key and its exact signed descriptors. */
-export function createPluginVerifier(options: PluginVerifierOptions) {
-  const signatures = pluginCatalogueSignatures(options.pinnedPublicKey)
-  return catalogueVerifier(options, (bytes, signature) => {
-    if (signature.byteLength !== 64) refusePlugin('signature')
-    signatures(bytes, Buffer.from(signature))
-  })
-}
-/** Trusted app-admitted repository list only. Its expected digest comes from the fixed HTTPS source, never
- * from workspace, agent or person-control packets. The legacy signed verifier stays strict.
- */
-export function createRepoAwarePluginVerifier(
-  options: Omit<PluginVerifierOptions, 'pinnedPublicKey'> & {
-    pinnedPublicKey: KeyObject | null
-    repoCatalogueSha256?: string
-  },
-) {
-  if (options.pinnedPublicKey && options.repoCatalogueSha256 === undefined)
-    return createPluginVerifier({ ...options, pinnedPublicKey: options.pinnedPublicKey })
-  if (options.pinnedPublicKey !== null || !/^[a-f0-9]{64}$/.test(options.repoCatalogueSha256 ?? ''))
-    return refusePlugin('invalid')
-  const expected = options.repoCatalogueSha256
-  return catalogueVerifier(options, (bytes, signature) => {
-    if (signature.byteLength !== 0 || pluginSha256(bytes) !== expected) refusePlugin('digest')
-  })
-}
-function catalogueVerifier(
-  options: Omit<PluginVerifierOptions, 'pinnedPublicKey'>,
-  authenticate: (bytes: Buffer, signature: Uint8Array) => void,
-) {
+/** Verify catalogue structure and each selected package's bytes. */
+export function createRepoAwarePluginVerifier(options: PluginVerifierOptions) {
   const target = PluginTarget.safeParse(options.target)
   if (!target.success) refusePlugin('target')
   const defaultApi = { major: 1, minor: 0, features: [] as string[] }
@@ -149,50 +105,16 @@ function catalogueVerifier(
       ui: defaultApi,
     },
   )
-  const pins = new Map<string, PluginReleasePin>()
-  const remember = (pin: PluginReleasePin, into: Map<string, PluginReleasePin>) => {
-    if (
-      !/^[a-z][a-z0-9-]{0,63}$/.test(pin.id) ||
-      !/^[A-Za-z0-9][A-Za-z0-9.+_-]{0,79}$/.test(pin.version) ||
-      !/^[a-f0-9]{64}$/.test(pin.archiveSha256) ||
-      !/^[a-f0-9]{64}$/.test(pin.manifestSha256)
-    )
-      refusePlugin('invalid')
-    const key = `${pin.id}/${pin.version}`
-    const before = into.get(key)
-    if (
-      before &&
-      (before.archiveSha256 !== pin.archiveSha256 || before.manifestSha256 !== pin.manifestSha256)
-    )
-      refusePlugin('immutable-release')
-    into.set(key, freeze({ ...pin }))
-  }
-  for (const pin of options.knownReleases ?? []) remember(pin, pins)
-
   return Object.freeze({
-    verifyCatalogue(input: Uint8Array, signature: Uint8Array): VerifiedPluginCatalogue {
+    verifyCatalogue(input: Uint8Array): VerifiedPluginCatalogue {
       if (input.byteLength > PLUGIN_LIMITS.catalogueBytes) refusePlugin('limit')
       const bytes = Buffer.from(input)
-      authenticate(bytes, signature)
       const entries = freeze(parsePluginCatalogue(bytes))
       const format = (strictPluginJson(bytes, PLUGIN_LIMITS.catalogueBytes) as { format: 1 | 2 })
         .format
-      const nextPins = new Map(pins)
-      for (const entry of entries)
-        remember(
-          {
-            id: entry.id,
-            version: entry.version,
-            archiveSha256: entry.archive.sha256,
-            manifestSha256: entry.manifestSha256,
-          },
-          nextPins,
-        )
-      for (const [key, pin] of nextPins) pins.set(key, pin)
       return Object.freeze({
         format,
         entries,
-        pins: Object.freeze([...pins.values()]),
         verifyPackage(id: string, version: string, input: Uint8Array): VerifiedPluginPackage {
           const release = entries.find((value) => value.id === id && value.version === version)
           if (!release) refusePlugin('invalid')

@@ -20,7 +20,6 @@ import type {
   WorkspaceProjection,
   ProjectionReceipt,
   Installation,
-  PluginReleasePin,
 } from '../plugin-delete-parent/types'
 import type { PluginCard, PluginRemovalOutcome } from '../../../src/shared/plugin-settings'
 
@@ -93,9 +92,7 @@ export class PluginLifecycleController {
         await LifecycleEffects.open(options.root, state.guards.length === 0),
         new PluginPackageVault(
           options.root,
-          options.pinnedPublicKey,
           options.target,
-          options.repoCatalogueSha256,
         ),
       )
       const catalogue = controller.catalogue() // Complete verification before retaining provenance.
@@ -111,21 +108,6 @@ export class PluginLifecycleController {
       return refuse()
     }
   }
-  private pins(): PluginReleasePin[] {
-    return this.options.state.inspect().operations.flatMap(({ operation }) => {
-      const consent = operation.request.consent
-      return consent.pluginId && consent.release
-        ? [
-            {
-              id: consent.pluginId,
-              version: consent.release.version,
-              archiveSha256: consent.release.archiveSha256,
-              manifestSha256: consent.release.manifestSha256,
-            },
-          ]
-        : []
-    })
-  }
   catalogueIdentity(): string {
     return pluginSha256(this.options.catalogue.bytes)
   }
@@ -139,7 +121,6 @@ export class PluginLifecycleController {
   private retainRepoList(source: LifecycleOptions['repoList'], expected: string | undefined): void {
     if (!source) return
     if (
-      this.options.pinnedPublicKey !== null ||
       !expected ||
       pluginSha256(source.bytes) !== source.sha256
     )
@@ -157,7 +138,7 @@ export class PluginLifecycleController {
   }
   private retainLegacyRepoList(source: LifecycleOptions['legacyRepoList']): void {
     if (!source) return
-    if (this.options.pinnedPublicKey !== null || pluginSha256(source.bytes) !== source.sha256)
+    if (pluginSha256(source.bytes) !== source.sha256)
       return refuse()
     const parsed = parseRepoPluginList(source.bytes, this.options.target, source.appVersion)
     if (parsed.format !== 1) return refuse()
@@ -182,12 +163,11 @@ export class PluginLifecycleController {
     if (!/^[a-f0-9]{64}$/.test(expectedDigest) || !this.options.refreshCatalogue) return refuse()
     await this.options.state.withExclusive(async () => {
       const next = await this.options.refreshCatalogue!()
+      if (next.repoCatalogueSha256 !== undefined &&
+          pluginSha256(next.catalogue.bytes) !== next.repoCatalogueSha256) return refuse()
       const verified = createRepoAwarePluginVerifier({
-        pinnedPublicKey: this.options.pinnedPublicKey,
-        repoCatalogueSha256: next.repoCatalogueSha256,
         target: this.options.target,
-        knownReleases: this.pins(),
-      }).verifyCatalogue(next.catalogue.bytes, next.catalogue.signature)
+      }).verifyCatalogue(next.catalogue.bytes)
       if (pluginSha256(next.catalogue.bytes) !== expectedDigest) return refuse()
       this.retainRepoList(next.repoList, next.repoCatalogueSha256)
       this.retainLegacyRepoList(next.legacyRepoList)
@@ -203,12 +183,12 @@ export class PluginLifecycleController {
     })
   }
   private catalogue() {
+    if (this.options.repoCatalogueSha256 !== undefined &&
+        pluginSha256(this.options.catalogue.bytes) !== this.options.repoCatalogueSha256)
+      return refuse()
     return createRepoAwarePluginVerifier({
-      pinnedPublicKey: this.options.pinnedPublicKey,
-      repoCatalogueSha256: this.options.repoCatalogueSha256,
       target: this.options.target,
-      knownReleases: this.pins(),
-    }).verifyCatalogue(this.options.catalogue.bytes, this.options.catalogue.signature)
+    }).verifyCatalogue(this.options.catalogue.bytes)
   }
   /** Verify author identity before revoking or changing any installation authority. */
   private async mutationPackage(id: string) {
@@ -217,7 +197,7 @@ export class PluginLifecycleController {
     const release = catalogue.entries.find((entry) => entry.id === id)
     if (!release?.authors) return refuse()
     let bytes: Uint8Array | undefined
-    const checked = await this.vault.load(release, this.pins(), catalogue).catch(async () => {
+    const checked = await this.vault.load(release, catalogue).catch(async () => {
       bytes = await (this.options.download ?? downloadPluginArchive)(
         release,
         AbortSignal.timeout(30000),
@@ -410,7 +390,7 @@ export class PluginLifecycleController {
           workspace.receipts.delete(id)
           const installed = active.find((one) => one.pluginId === id)
           if (installed) {
-            const checked = await this.vault.load(this.descriptor(installed), this.pins())
+            const checked = await this.vault.load(this.descriptor(installed))
             await this.ensureRunning(installed, checked)
             // Only authenticated current owner state, readiness and a fresh consumer ack can rebind.
             await this.project(workspace, installed)
@@ -541,7 +521,7 @@ export class PluginLifecycleController {
           )
             return refuse()
           if (!installed || installed.installId !== prior.operation.next?.installId) return refuse()
-          const checked = await this.vault.load(this.descriptor(installed), this.pins())
+          const checked = await this.vault.load(this.descriptor(installed))
           await this.ensureRunning(installed, checked)
           await this.project(workspace, installed)
           const effect = await this.effects.read(operationId)
@@ -610,7 +590,7 @@ export class PluginLifecycleController {
           await this.effects.write(effect)
           this.options.fault?.('prepared')
           const staged = bytes
-            ? await this.vault.stage(release, bytes, this.options.catalogue, this.pins())
+            ? await this.vault.stage(release, bytes, this.options.catalogue)
             : checked
           this.options.fault?.('staged')
           await this.ensureRunning(install, staged)
@@ -729,7 +709,7 @@ export class PluginLifecycleController {
         )
           return refuse()
         // Cache the verified replacement durably before reserving an update. Recovery needs no download.
-        if (bytes) await this.vault.stage(release, bytes, this.options.catalogue, this.pins())
+        if (bytes) await this.vault.stage(release, bytes, this.options.catalogue)
         this.options.fault?.('staged')
         if (!workspace.live) return refuse()
         this.options.state.requireUpdateReader()
@@ -779,7 +759,7 @@ export class PluginLifecycleController {
     }
   }
   private async finishUpdate(effect: Effect, install: Installation): Promise<void> {
-    const checked = await this.vault.load(this.descriptor(install), this.pins())
+    const checked = await this.vault.load(this.descriptor(install))
     // Revoke consumers and prove the old run stopped before starting the replacement. No logout or data removal.
     const stopped = await Promise.allSettled([
       this.stop(install.pluginId, effect.operationId),
@@ -868,7 +848,7 @@ export class PluginLifecycleController {
   }
   private async removeFiles(install: Installation, operationId: string): Promise<void> {
     await this.options.runtime.removeCode(install.pluginId, install.release.archiveSha256)
-    await this.vault.remove(this.descriptor(install), this.pins(), {
+    await this.vault.remove(this.descriptor(install), {
       operationId,
       installId: install.installId,
     })

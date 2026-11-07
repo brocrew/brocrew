@@ -60,10 +60,8 @@ export async function networkProof(root: string, candidate: Buffer, appVersion: 
       throw new Error('Public list changed; re-review')
     const parsed = parseRepoPluginList(candidate, target, appVersion)
     const admitted = createRepoAwarePluginVerifier({
-      pinnedPublicKey: null,
-      repoCatalogueSha256: parsed.sha256,
       target,
-    }).verifyCatalogue(parsed.bytes, Buffer.alloc(0))
+    }).verifyCatalogue(parsed.bytes)
     const expected: Record<string, unknown> = {}
     for (const release of parsed.releases) {
       request = release.id

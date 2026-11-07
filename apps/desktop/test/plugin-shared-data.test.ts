@@ -4,8 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { manifestFor, packageFixture, verified } from './plugin-package-fixtures'
-import { createPluginVerifier } from '../src/main/plugins/package-verifier'
-import { fictionalPublicKey } from './plugin-package-fixtures'
+import { createRepoAwarePluginVerifier } from '../src/main/plugins/package-verifier'
 import { parsePluginManifest } from '../src/main/plugins/package-schema'
 import {
   sharedDataEnvironment,
@@ -101,12 +100,11 @@ it('keeps old manifests valid and refuses new capability on a host without its f
   expect(parsePluginManifest(old.manifestBytes).sharedData).toBeUndefined()
   const f = fixturePackage()
   const defaultApi = { major: 1, minor: 0, features: [] }
-  const checked = createPluginVerifier({
-    pinnedPublicKey: fictionalPublicKey,
+  const checked = createRepoAwarePluginVerifier({
     target: { os: 'linux', cpu: 'x64' },
     apiSupport: { host: defaultApi, tools: defaultApi, ui: defaultApi },
   })
-    .verifyCatalogue(f.bytes, f.signature)
+    .verifyCatalogue(f.bytes)
     .verifyPackage(f.manifest.id, f.manifest.version, f.archive)
   expect(checked.compatibility.host).toBe(false)
   expect(verified(f).compatibility.host).toBe(true)

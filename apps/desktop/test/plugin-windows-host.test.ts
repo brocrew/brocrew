@@ -30,11 +30,11 @@ import {
   type PluginNodeRuntime,
 } from '../src/main/plugins/node-runtime'
 import { thisMachine } from '../src/main/plugins/package-schema'
-import { createPluginVerifier } from '../src/main/plugins/package-verifier'
+import { createRepoAwarePluginVerifier } from '../src/main/plugins/package-verifier'
 import { endProcessesByIdentity, endWindowsTree } from '../resources/plugin-host/process-groups.mjs'
 import { startJobKeeper } from '../resources/plugin-host/windows-job.mjs'
 import { writeReceipt } from '../resources/plugin-host/receipts.mjs'
-import { manifestFor, packageFixture, fictionalPublicKey } from './plugin-package-fixtures'
+import { manifestFor, packageFixture } from './plugin-package-fixtures'
 
 const optionalRecoveryReader = vi.hoisted(() => vi.fn(async () => null))
 vi.mock('../resources/plugin-host/boot-witness.mjs', async (original) => ({
@@ -603,10 +603,9 @@ function fixture(body: string) {
   manifest.ui = null
   manifest.uiApi = null
   const value = packageFixture({ files, manifest })
-  const catalogue = createPluginVerifier({
-    pinnedPublicKey: fictionalPublicKey,
+  const catalogue = createRepoAwarePluginVerifier({
     target: manifest.platforms[0]!,
-  }).verifyCatalogue(value.bytes, value.signature)
+  }).verifyCatalogue(value.bytes)
   return {
     package: catalogue.verifyPackage('chrome', manifest.version, value.archive),
     releaseDigest: value.release.archive.sha256,

@@ -13,7 +13,7 @@ import {
 import type { PluginRelease } from '../package-schema'
 import { proposalFor } from './proposals'
 import { pluginAdapter } from './adapters'
-import { randomUUID, type KeyObject } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import type { PluginSettingsController } from '../settings'
 import type { PluginUiHostOptions } from '../ui/host'
@@ -54,15 +54,14 @@ const Cards = z
     }),
   )
   .max(200)
-/** Electron-main adapter for the exact app-admitted repo list, or the dormant signed test path. */
+/** Electron-main adapter for the exact app-admitted repo list. */
 export async function connectPluginSettings(options: {
   path: string
   personKey: string
   root: string
-  pinnedPublicKey: KeyObject | null
   repoCatalogueSha256?: string
   target: PluginTarget
-  catalogue: { bytes: Uint8Array; signature: Uint8Array }
+  catalogue: { bytes: Uint8Array }
   projection: PersonProjection
   propose(publicProposal: unknown, revision: number): void
   lost?(): void
@@ -70,15 +69,17 @@ export async function connectPluginSettings(options: {
   /** Inert unit-test transport; production uses the bounded admitted archive transport. */
   download?(release: Readonly<PluginRelease>, signal: AbortSignal): Promise<Uint8Array>
 }): Promise<PluginSettingsController & { close(): Promise<void> }> {
+  if (
+    options.repoCatalogueSha256 !== undefined &&
+    pluginSha256(options.catalogue.bytes) !== options.repoCatalogueSha256
+  )
+    throw new PluginSupervisorError('unavailable')
   let catalogueProof = {
     bytes: Buffer.from(options.catalogue.bytes),
-    signature: Buffer.from(options.catalogue.signature),
   }
   let admitted = createRepoAwarePluginVerifier({
-    pinnedPublicKey: options.pinnedPublicKey,
-    repoCatalogueSha256: options.repoCatalogueSha256,
     target: options.target,
-  }).verifyCatalogue(catalogueProof.bytes, catalogueProof.signature)
+  }).verifyCatalogue(catalogueProof.bytes)
   let sourceFormat = (
     strictPluginJson(catalogueProof.bytes, PLUGIN_LIMITS.catalogueBytes) as { format: 1 | 2 }
   ).format
@@ -100,12 +101,7 @@ export async function connectPluginSettings(options: {
       .regex(/^[a-f0-9]{64}$/)
       .optional(),
   })
-  const vault = new PluginPackageVault(
-    options.root,
-    options.pinnedPublicKey,
-    options.target,
-    options.repoCatalogueSha256,
-  )
+  const vault = new PluginPackageVault(options.root, options.target)
   const screens = new Map<
     string,
     { install: string; live: boolean; revokers: Set<() => void | Promise<void>> }
@@ -576,14 +572,10 @@ export async function connectPluginSettings(options: {
       : {}),
     ...(modern
       ? {
-          async refreshCatalogue(
-            catalogueDigest: string,
-            source?: { bytes: Uint8Array; signature: Uint8Array },
-          ) {
+          async refreshCatalogue(catalogueDigest: string, source?: { bytes: Uint8Array }) {
             if (source)
               source = {
                 bytes: Buffer.from(source.bytes),
-                signature: Buffer.from(source.signature),
               }
             pendingCatalogueRefreshes++
             invalidateConsent()
@@ -599,12 +591,8 @@ export async function connectPluginSettings(options: {
                     try {
                       if (pluginSha256(source.bytes) !== catalogueDigest) return failPolicy()
                       const verified = createRepoAwarePluginVerifier({
-                        pinnedPublicKey: options.pinnedPublicKey,
-                        repoCatalogueSha256:
-                          options.pinnedPublicKey === null ? catalogueDigest : undefined,
                         target: options.target,
-                        knownReleases: admitted.pins,
-                      }).verifyCatalogue(source.bytes, source.signature)
+                      }).verifyCatalogue(source.bytes)
                       const format = (
                         strictPluginJson(source.bytes, PLUGIN_LIMITS.catalogueBytes) as {
                           format: 1 | 2
@@ -613,7 +601,6 @@ export async function connectPluginSettings(options: {
                       if (sourceFormat === 2 && format !== 2) return failPolicy()
                       catalogueProof = {
                         bytes: Buffer.from(source.bytes),
-                        signature: Buffer.from(source.signature),
                       }
                       admitted = verified
                       sourceFormat = format
@@ -684,15 +671,12 @@ export async function connectPluginSettings(options: {
       const installed = Installation.parse(await channel.call({ kind: 'screen', pluginId }))
       if (installed.pluginId !== pluginId || installed.phase !== 'active')
         throw new PluginSupervisorError('unavailable')
-      const checked = await vault.load(
-        {
-          id: pluginId,
-          version: installed.release.version,
-          manifestSha256: installed.release.manifestSha256,
-          archive: { sha256: installed.release.archiveSha256 },
-        },
-        [],
-      )
+      const checked = await vault.load({
+        id: pluginId,
+        version: installed.release.version,
+        manifestSha256: installed.release.manifestSha256,
+        archive: { sha256: installed.release.archiveSha256 },
+      })
       if (!alive || (generations.get(pluginId) ?? 0) !== generation)
         throw new PluginSupervisorError('unavailable')
       const state = {

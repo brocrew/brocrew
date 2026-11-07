@@ -16,7 +16,7 @@ import { Command, pack } from '../src/main/plugins/supervisor/protocol'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { sharedLifecycleWorkspaces } from '../src/main/plugins/lifecycle/workspaces'
 
-import { packageFixture, fictionalPublicKey, signed } from './plugin-package-fixtures'
+import { packageFixture, catalogueBytes } from './plugin-package-fixtures'
 
 import {
   fixture,
@@ -34,9 +34,9 @@ describe.skipIf(process.platform === 'win32')(
   'person plugin lifecycle, inert process peers',
   () => {
     it('verifies the catalogue before exposing a controller', async () => {
-      await expect(
-        fixture({ catalogue: { bytes: Buffer.from('{}'), signature: Buffer.alloc(64) } }),
-      ).rejects.toMatchObject({ code: 'unavailable' })
+      await expect(fixture({ catalogue: { bytes: Buffer.from('{}') } })).rejects.toMatchObject({
+        code: 'unavailable',
+      })
     })
     it('downloads, verifies, journals, stages and checks readiness before activation', async () => {
       const f = await fixture()
@@ -474,7 +474,6 @@ describe.skipIf(process.platform === 'win32')(
           path: bridge.path,
           personKey: key,
           root: f.root,
-          pinnedPublicKey: fictionalPublicKey,
           target: f.opts.target,
           catalogue: f.opts.catalogue,
           projection: local.sink,
@@ -528,7 +527,6 @@ describe.skipIf(process.platform === 'win32')(
             path: bridge.path,
             personKey: key,
             root: f.root,
-            pinnedPublicKey: fictionalPublicKey,
             target: f.opts.target,
             catalogue: f.opts.catalogue,
             projection: projection().sink,
@@ -564,7 +562,6 @@ describe.skipIf(process.platform === 'win32')(
           path: bridge.path,
           personKey: key,
           root: f.root,
-          pinnedPublicKey: fictionalPublicKey,
           target: f.opts.target,
           catalogue: f.opts.catalogue,
           projection: projection().sink,
@@ -674,15 +671,14 @@ describe.skipIf(process.platform === 'win32')(
         await bridge.close()
       }
     })
-    it('a signed empty catalogue cannot expose the Settings controller', async () => {
+    it('an empty catalogue cannot connect to a missing Settings owner', async () => {
       const f = await fixture()
-      const empty = signed({ format: 1, entries: [] })
+      const empty = catalogueBytes({ format: 1, entries: [] })
       await expect(
         connectPluginSettings({
           path: join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-never-used.sock'),
           personKey: 'a'.repeat(64),
           root: f.root,
-          pinnedPublicKey: fictionalPublicKey,
           target: f.opts.target,
           catalogue: empty,
           projection: f.local.sink,
@@ -824,7 +820,6 @@ it.skipIf(process.platform === 'win32')(
       path: service.path,
       personKey: key,
       root: f.root,
-      pinnedPublicKey: f.opts.pinnedPublicKey,
       target: f.opts.target,
       catalogue: f.opts.catalogue,
       projection: projection().sink,

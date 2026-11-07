@@ -29,11 +29,9 @@ async function setup(repo = false) {
   let offered = old
   const catalogueFor = (pkg: typeof old) => ({
     bytes: pkg.bytes,
-    signature: repo ? Buffer.alloc(0) : pkg.signature,
   })
   f.opts.catalogue = catalogueFor(old)
   if (repo) {
-    f.opts.pinnedPublicKey = null
     f.opts.repoCatalogueSha256 = pluginSha256(old.bytes)
   }
   const controller = repo ? await PluginLifecycleController.open(f.opts) : f.controller
@@ -202,7 +200,7 @@ describe.skipIf(process.platform === 'win32')(
       await f.controller.detach(f.handle)
       let offered = f.old
       f.opts.refreshCatalogue = async () => ({
-        catalogue: { bytes: offered.bytes, signature: Buffer.alloc(0) },
+        catalogue: { bytes: offered.bytes },
         repoCatalogueSha256: pluginSha256(offered.bytes),
         names: f.opts.names,
       })
@@ -216,10 +214,9 @@ describe.skipIf(process.platform === 'win32')(
         path: bridge.path,
         personKey: 'a'.repeat(64),
         root: f.root,
-        pinnedPublicKey: f.opts.pinnedPublicKey,
         target: f.opts.target,
         repoCatalogueSha256: pluginSha256(f.old.bytes),
-        catalogue: { bytes: f.old.bytes, signature: Buffer.alloc(0) },
+        catalogue: { bytes: f.old.bytes },
         projection: projection().sink,
         propose() {},
       })

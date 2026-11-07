@@ -35,7 +35,7 @@ describe('author verification stays dormant before v2 publication', () => {
     f.opts.download = async (release) =>
       release.version === next.release.version ? next.archive : f.pkg.archive
     f.opts.refreshCatalogue = async () => ({
-      catalogue: { bytes: next.bytes, signature: next.signature },
+      catalogue: { bytes: next.bytes },
       names: f.opts.names,
     })
     const key = randomBytes(32).toString('hex')
@@ -49,7 +49,6 @@ describe('author verification stays dormant before v2 publication', () => {
       path: bridge.path,
       personKey: key,
       root: f.root,
-      pinnedPublicKey: f.opts.pinnedPublicKey,
       target: f.opts.target,
       catalogue: f.opts.catalogue,
       projection: projection().sink,

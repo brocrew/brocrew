@@ -44,9 +44,8 @@ describe.skipIf(process.platform === 'win32')('unpackaged local plugin source', 
       })
       const controller = await PluginLifecycleController.open({
         ...f.opts,
-        pinnedPublicKey: null,
         repoCatalogueSha256: loaded.sha256,
-        catalogue: { bytes: loaded.bytes, signature: Buffer.alloc(0) },
+        catalogue: { bytes: loaded.bytes },
         download: (release) => devPluginArchive(devSource!, release),
       })
       const handle = await controller.attach(projection().sink)

@@ -24,7 +24,7 @@ import {
   cleanupLifecycleFixtures,
   deferred,
 } from './plugin-lifecycle-fixtures'
-import { manifestFor, packageFixture, signed } from './plugin-package-fixtures'
+import { manifestFor, packageFixture, catalogueBytes } from './plugin-package-fixtures'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import {
@@ -55,14 +55,14 @@ afterEach(async () => {
 })
 
 const program = `
-const {PluginSupervisor,PluginLifecycleController,GlobalPluginState,sharedLifecycleWorkspaces,createLifecycleAgentBridge,servePersonPluginControl,requirePluginAdapter,fictionalPublicKey}=require(process.argv[1]);
+const {PluginSupervisor,PluginLifecycleController,GlobalPluginState,sharedLifecycleWorkspaces,createLifecycleAgentBridge,servePersonPluginControl,requirePluginAdapter}=require(process.argv[1]);
 const {randomUUID}=require('node:crypto');
 const c=JSON.parse(process.argv[2]);
 (async()=>{
 
  const state=GlobalPluginState.open({root:c.root+'/state',workspaceRoots:[c.workspace]});
  let loads=0,loadMs=0;const originalLoad=state.disk.load.bind(state.disk);state.disk.load=(...args)=>{const began=performance.now();try{return originalLoad(...args)}finally{loads++;loadMs+=performance.now()-began}};
- const controller=sharedLifecycleWorkspaces(await PluginLifecycleController.open({root:c.root,state,pinnedPublicKey:fictionalPublicKey,target:c.target,catalogue:{bytes:Buffer.from(c.bytes,'hex'),signature:Buffer.from(c.signature,'hex')},names:{chrome:'Chrome',whatsapp:'WhatsApp'},deny(){},runtime:{previousOwnerClean:async()=>true,removeCode:async()=>{},removeData:async()=>{},start:async spec=>{let end;const exited=new Promise(resolve=>end=resolve);return {runId:randomUUID(),exited,ready:async()=>({serverPid:404941,origin:c.origin,mcp:()=>({url:c.origin+'/'+spec.package.manifest.id+'/mcp',headers:{Authorization:'Bearer '+c.token}}),admin:()=>({url:c.origin+'/'+spec.package.manifest.id+'/admin',headers:{Authorization:'Bearer '+c.token}})}),stop:async()=>end()}}}}));
+ const controller=sharedLifecycleWorkspaces(await PluginLifecycleController.open({root:c.root,state,target:c.target,catalogue:{bytes:Buffer.from(c.bytes,'hex')},names:{chrome:'Chrome',whatsapp:'WhatsApp'},deny(){},runtime:{previousOwnerClean:async()=>true,removeCode:async()=>{},removeData:async()=>{},start:async spec=>{let end;const exited=new Promise(resolve=>end=resolve);return {runId:randomUUID(),exited,ready:async()=>({serverPid:404941,origin:c.origin,mcp:()=>({url:c.origin+'/'+spec.package.manifest.id+'/mcp',headers:{Authorization:'Bearer '+c.token}}),admin:()=>({url:c.origin+'/'+spec.package.manifest.id+'/admin',headers:{Authorization:'Bearer '+c.token}})}),stop:async()=>end()}}}}));
  const owner=await PluginSupervisor.start({root:c.root,workspaceRoots:[c.workspace]});
  const agents=createLifecycleAgentBridge({owner,controller,binding:(view,diagnostic)=>requirePluginAdapter(view.installation.pluginId).broker(view,async()=>{},diagnostic)});
  owner.bindAgentBridge({...agents,agentRoutes:async(lease,request)=>{const began=performance.now(),beforeLoads=loads,beforeMs=loadMs;try{return await agents.agentRoutes(lease,request)}finally{process.send({profile:true,release:request.release,routeMs:performance.now()-began,loads:loads-beforeLoads,loadMs:loadMs-beforeMs})}}});
@@ -166,7 +166,7 @@ it.each([
       { id: 'whatsapp', label: 'Fictional chats', read: true, write: true },
     ]
     const whatsapp = packageFixture({ manifest: whatsappManifest })
-    const catalogue = signed({ format: 1, entries: [pkg.release, whatsapp.release] })
+    const catalogue = catalogueBytes({ format: 1, entries: [pkg.release, whatsapp.release] })
     const f = await fixture({
       catalogue,
       download: async (release) => (release.id === 'chrome' ? pkg.archive : whatsapp.archive),
@@ -213,7 +213,6 @@ it.each([
       workspace: f.workspace,
       target: f.opts.target,
       bytes: catalogue.bytes.toString('hex'),
-      signature: catalogue.signature.toString('hex'),
       origin,
       token,
     }
@@ -243,7 +242,6 @@ it.each([
         path: join(f.root, 'person-control/person.sock'),
         personKey: 'a'.repeat(64),
         root: f.root,
-        pinnedPublicKey: f.opts.pinnedPublicKey,
         target: f.opts.target,
         catalogue: f.opts.catalogue,
         projection: {

@@ -23,7 +23,7 @@ import { requirePluginAdapter } from '../src/main/plugins/lifecycle/adapters'
 import { sharedLifecycleWorkspaces } from '../src/main/plugins/lifecycle/workspaces'
 import type { WorkspaceLease } from '../src/main/plugins/supervisor/owner'
 import { fixture, deferred, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
-import { manifestFor, packageFixture, signed } from './plugin-package-fixtures'
+import { manifestFor, packageFixture, catalogueBytes } from './plugin-package-fixtures'
 
 const cleanup: (() => Promise<unknown>)[] = []
 afterEach(async () => {
@@ -128,7 +128,7 @@ describe.skipIf(process.platform === 'win32')('Running before a fresh session st
         return packageFixture({ manifest })
       })
       const f = await fixture({
-        catalogue: signed({ format: 1, entries: packages.map((pkg) => pkg.release) }),
+        catalogue: catalogueBytes({ format: 1, entries: packages.map((pkg) => pkg.release) }),
         download: async (release) => packages.find((pkg) => pkg.release.id === release.id)!.archive,
       })
       f.opts.runtime.start = async (spec) => {

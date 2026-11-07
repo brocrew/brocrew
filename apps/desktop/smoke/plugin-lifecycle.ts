@@ -1,4 +1,4 @@
-// Offline scratch proof only: a signed fictional catalogue, actual Chrome package, inert browser.
+// Offline scratch proof only: an unsigned fictional catalogue, actual Chrome package, inert browser.
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { registerPluginSettings } from '../src/main/plugins/settings'
@@ -12,7 +12,8 @@ import { preparePluginNodeRuntime, runtimeFiles } from '../src/main/plugins/node
 import { privateChild } from '../src/main/plugins/node-host-files'
 import { liveGroupMembers } from '../resources/plugin-host/process-groups.mjs'
 import { verifyChromeUiArchive } from './chrome-ui-archive'
-import { fictionalPublicKey, signed } from '../test/plugin-package-fixtures'
+import { catalogueBytes } from '../test/plugin-package-fixtures'
+import { pluginSha256 } from '../src/main/plugins/package-digests'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import type { PersonProjection } from '../src/main/plugins/lifecycle/types'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
@@ -63,11 +64,16 @@ export async function proof(config: { root: string; resources: string; archive: 
   )
   const checked = verifyChromeUiArchive(await readFile(config.archive))
   assert.equal(checked.verified.manifest.skills.length, 0)
-  const catalogue = signed({ format: 1, entries: [checked.release] })
-  const cataloguePath = join(root, 'fictional-catalogue.json'),
-    signaturePath = join(root, 'fictional-catalogue.sig')
+  const catalogue = catalogueBytes({ format: 1, entries: [checked.release] })
+  const cataloguePath = join(root, 'fictional-catalogue.json')
   await writeFile(cataloguePath, catalogue.bytes, { mode: 0o600 })
-  await writeFile(signaturePath, catalogue.signature, { mode: 0o600 })
+  const fixtureSource = await privateChild(root, 'fixture-release')
+  const archives = await privateChild(fixtureSource, 'archives')
+  await writeFile(
+    join(archives, checked.release.archive.sha256 + '.tar'),
+    await readFile(config.archive),
+    { mode: 0o600 },
+  )
   const personKey = 'd'.repeat(64)
   const launch = createPluginSupervisorLauncher({
     root,
@@ -75,11 +81,12 @@ export async function proof(config: { root: string; resources: string; archive: 
     resourcesRoot: config.resources,
     browserExecutable: browser,
     lifecycle: {
-      publicKey: fictionalPublicKey.export({ format: 'der', type: 'spki' }).toString('base64'),
+      source: 'repo-list',
       catalogue: cataloguePath,
-      signature: signaturePath,
+      catalogueSha256: pluginSha256(catalogue.bytes),
+      fixtureSource,
+      names: { chrome: 'Chrome' },
       personKey,
-      downloads: [{ id: 'chrome', version: checked.release.version, archive: config.archive }],
     },
   })
   let lease: PluginWorkspaceLease | undefined,
@@ -126,7 +133,6 @@ export async function proof(config: { root: string; resources: string; archive: 
       path: join(root, 'person-control/person.sock'),
       personKey,
       root,
-      pinnedPublicKey: fictionalPublicKey,
       target: { os: process.platform as 'darwin' | 'linux', cpu: process.arch as 'arm64' | 'x64' },
       catalogue,
       projection,
@@ -217,7 +223,7 @@ export async function proof(config: { root: string; resources: string; archive: 
       passed: true,
       assertions: 27,
       realPackage: true,
-      fictionalSignedCatalogue: true,
+      fictionalUnsignedCatalogue: true,
       fixtureDownload: true,
       durableEntry: true,
       personBridge: true,

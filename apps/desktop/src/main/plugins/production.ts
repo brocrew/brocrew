@@ -350,7 +350,6 @@ export function productionPluginController() {
             if (next.format === 2)
               await connection.refreshCatalogue(next.sha256, {
                 bytes: next.bytes,
-                signature: new Uint8Array(),
               })
             else await connection.refreshCatalogue(next.sha256)
             if (ended || connected !== connection) return fail()
@@ -679,12 +678,10 @@ export function productionPluginController() {
                 path: join(options.root, 'person-control/person.sock'),
                 personKey,
                 root: options.root,
-                pinnedPublicKey: null,
                 repoCatalogueSha256: catalogueEntries.sha256,
                 target: options.target ?? thisMachine(),
                 catalogue: {
                   bytes: catalogueEntries.bytes,
-                  signature: Buffer.alloc(0),
                 },
                 projection: {
                   workspaceId: pluginWorkspaceIdentity(options.workspaceRoot),

@@ -1,7 +1,6 @@
 import { loadRepoPluginList, parseRepoPluginList } from '../catalogue/repo-list'
 import { localPluginArchive } from '../catalogue/local'
 import { devPluginArchive } from '../catalogue/dev-source'
-import { createPublicKey } from 'node:crypto'
 import { join } from 'node:path'
 import { lstat } from 'node:fs/promises'
 import { GlobalPluginState } from '../state/store'
@@ -15,7 +14,7 @@ import type { PluginSupervisor } from '../supervisor/owner'
 import type { createPluginNodeHost } from '../node-host'
 import type { PluginLifecyclePlan } from '../supervisor/launch-format'
 
-/** Trusted immutable app launch input. Repo-list production and legacy signed fixtures stay explicit. */
+/** Trusted immutable app launch input for the repo list. */
 export async function bootstrapPluginLifecycle(options: {
   root: string
   workspaceRoots: readonly string[]
@@ -23,25 +22,18 @@ export async function bootstrapPluginLifecycle(options: {
   host: ReturnType<typeof createPluginNodeHost>
   plan: PluginLifecyclePlan
 }) {
-  const plan = options.plan
-  const repo = 'source' in plan ? plan : null
-  const legacy = 'publicKey' in plan ? plan : null
-  const pinnedPublicKey = legacy
-    ? createPublicKey({ key: Buffer.from(legacy.publicKey, 'base64'), format: 'der', type: 'spki' })
-    : null
+  const repo = options.plan
   const target = thisMachine()
   const catalogue = {
-    bytes: await sourceBytes(plan.catalogue, PLUGIN_LIMITS.catalogueBytes),
-    signature: legacy ? await sourceBytes(legacy.signature, 64) : Buffer.alloc(0),
+    bytes: await sourceBytes(repo.catalogue, PLUGIN_LIMITS.catalogueBytes),
   }
-  // Empty authenticated catalogues still leave installed packages under their saved pins.
+  if (pluginSha256(catalogue.bytes) !== repo.catalogueSha256) throw new Error('unavailable')
+  // Empty catalogues still leave installed packages available.
   createRepoAwarePluginVerifier({
-    pinnedPublicKey,
-    repoCatalogueSha256: repo?.catalogueSha256,
     target,
-  }).verifyCatalogue(catalogue.bytes, catalogue.signature)
+  }).verifyCatalogue(catalogue.bytes)
   let repoList: { bytes: Uint8Array; sha256: string; appVersion: string } | undefined
-  if (repo?.repoList) {
+  if (repo.repoList) {
     if (!repo.appVersion) throw new Error('unavailable')
     const bytes = await sourceBytes(repo.repoList.path, PLUGIN_LIMITS.catalogueBytes)
     await verifyImmutableFile(repo.repoList.path, bytes)
@@ -55,7 +47,7 @@ export async function bootstrapPluginLifecycle(options: {
     repoList = { bytes, sha256: repo.repoList.sha256, appVersion: repo.appVersion }
   }
   let legacyRepoList: typeof repoList
-  if (repo?.legacyRepoList) {
+  if (repo.legacyRepoList) {
     if (repo.sourceVersion !== 2 || !repo.appVersion) throw new Error('unavailable')
     const bytes = await sourceBytes(repo.legacyRepoList.path, PLUGIN_LIMITS.catalogueBytes)
     await verifyImmutableFile(repo.legacyRepoList.path, bytes)
@@ -95,7 +87,7 @@ export async function bootstrapPluginLifecycle(options: {
     const service = await createSupervisorLifecycle({
       owner: options.owner,
       host: options.host,
-      personKey: plan.personKey,
+      personKey: repo.personKey,
       async read(id, connection) {
         const abort = new AbortController()
         const active = reads.get(id) ?? new Set<AbortController>()
@@ -110,14 +102,13 @@ export async function bootstrapPluginLifecycle(options: {
       lifecycle: {
         root: options.root,
         state,
-        pinnedPublicKey,
-        repoCatalogueSha256: repo?.catalogueSha256,
+        repoCatalogueSha256: repo.catalogueSha256,
         repoList,
         legacyRepoList,
         target,
         catalogue,
-        names: repo?.names ?? { chrome: 'Chrome' },
-        refreshCatalogue: repo?.appVersion
+        names: repo.names,
+        refreshCatalogue: repo.appVersion
           ? async () => {
               const list = await loadRepoPluginList({
                 root: options.root,
@@ -146,7 +137,7 @@ export async function bootstrapPluginLifecycle(options: {
                       appVersion: repo.appVersion!,
                     }
                   : undefined,
-                catalogue: { bytes: list.bytes, signature: Buffer.alloc(0) },
+                catalogue: { bytes: list.bytes },
                 repoCatalogueSha256: list.sha256,
                 repoList: {
                   bytes: list.rawBytes,
@@ -164,20 +155,11 @@ export async function bootstrapPluginLifecycle(options: {
           reads.delete(id)
         },
         // The trusted launch plan binds one source for the complete install; no local network fallback.
-        download: repo?.devSource
+        download: repo.devSource
           ? async (release) => devPluginArchive(repo.devSource!, release)
-          : repo?.fixtureSource || legacy?.localSource
-            ? async (release) =>
-                localPluginArchive((repo?.fixtureSource ?? legacy?.localSource)!, release)
-            : legacy?.downloads
-              ? async (release) => {
-                  const file = legacy.downloads!.find(
-                    (one) => one.id === release.id && one.version === release.version,
-                  )
-                  if (!file) throw new Error('unavailable')
-                  return sourceBytes(file.archive, PLUGIN_LIMITS.archiveBytes)
-                }
-              : undefined,
+          : repo.fixtureSource
+            ? async (release) => localPluginArchive(repo.fixtureSource!, release)
+            : undefined,
       },
     })
     void options.owner.closed.finally(() => state.close())

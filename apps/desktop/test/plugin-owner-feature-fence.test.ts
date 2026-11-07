@@ -6,7 +6,7 @@ import {
   cleanupLifecycleFixtures,
   deferred,
 } from './plugin-lifecycle-fixtures'
-import { packageFixture, signed } from './plugin-package-fixtures'
+import { packageFixture, catalogueBytes } from './plugin-package-fixtures'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import {
   servePersonPluginControl,
@@ -36,8 +36,8 @@ it.each([1, 2] as const)(
     const source =
       format === 1
         ? pkg
-        : signed({ format: 2, entries: [{ ...pkg.release, authors: ['fern-makers'] }] })
-    const options = { ...f.opts, catalogue: { bytes: source.bytes, signature: source.signature } }
+        : catalogueBytes({ format: 2, entries: [{ ...pkg.release, authors: ['fern-makers'] }] })
+    const options = { ...f.opts, catalogue: { bytes: source.bytes } }
     const controller = await PluginLifecycleController.open(options)
     const key = randomBytes(32).toString('hex'),
       bridge = await servePersonPluginControl({
@@ -79,7 +79,7 @@ it.each([1, 2] as const)(
     }
     expect(f.state.inspect()).toEqual(before)
     options.refreshCatalogue = async () => ({
-      catalogue: { bytes: Buffer.from('{"format":2,"entries":[{}]}'), signature: source.signature },
+      catalogue: { bytes: Buffer.from('{"format":2,"entries":[{}]}') },
       names: f.opts.names,
     })
     await expect(controller.refreshCatalogue('0'.repeat(64))).rejects.toThrow()

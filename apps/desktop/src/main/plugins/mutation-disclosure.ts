@@ -49,15 +49,12 @@ export async function installedDisclosure(root: string, id: string, vault: Plugi
   if (!identity) return { identity, details: null }
   try {
     const p = identity
-    const pkg = await vault.load(
-      {
-        id,
-        version: p.version,
-        manifestSha256: p.manifestSha256,
-        archive: { sha256: p.archiveSha256 },
-      },
-      [],
-    )
+    const pkg = await vault.load({
+      id,
+      version: p.version,
+      manifestSha256: p.manifestSha256,
+      archive: { sha256: p.archiveSha256 },
+    })
     return { identity, details: releaseDisclosure(pkg) }
   } catch {
     return { identity, details: null }
