@@ -1,0 +1,52 @@
+name: Windows process birth environment DIAGNOSTIC
+on:
+  push:
+    branches: [diagnostic/windows-birth-environment-0211]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  diagnostic:
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [host, runner]
+        first: [cmdlet, dotnet]
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: '42407090126'
+          name: brobot2-windows
+          path: installer
+      - name: Install sealed early candidate without launching it
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory evidence | Out-Null
+          $installers = @(Get-ChildItem installer -Recurse -Filter '*Setup*.exe')
+          if ($installers.Count -ne 1) { throw 'expected one installer' }
+          $exe = $installers[0].FullName
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $exe).Hash.ToLowerInvariant()
+          if ($hash -ne 'acc9610f51ce2ce3b4a9e1479d7694b8720f4d9702c856eca294bb61f60956f5') { throw 'installer hash differs' }
+          $hash | Set-Content evidence/installer-sha256.txt
+          $installed = Start-Process -FilePath $exe -ArgumentList '/S' -Wait -PassThru
+          if ($installed.ExitCode -ne 0) { throw "installer exit $($installed.ExitCode)" }
+      - name: Measure targeted cmdlet and direct .NET query under one environment
+        shell: pwsh
+        run: |
+          $resources = Join-Path $env:LOCALAPPDATA 'Programs/BroCrew/resources'
+          $node = Join-Path $resources 'plugin-node/node.exe'
+          & $node windows-birth-environment-diagnostic.mjs $resources '${{ matrix.environment }}' '${{ matrix.first }}' evidence
+          if ($LASTEXITCODE -ne 0) { throw "diagnostic driver exit $LASTEXITCODE" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-birth-${{ matrix.environment }}-${{ matrix.first }}
+          path: evidence
+          if-no-files-found: error
+          retention-days: 7
