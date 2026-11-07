@@ -45,7 +45,6 @@ vi.mock('node:child_process', async (importOriginal) => {
   }
 })
 
-
 /**
  * # 🔴 710 · R51 — a spawn a person must fix has a permanent word of its own
  *

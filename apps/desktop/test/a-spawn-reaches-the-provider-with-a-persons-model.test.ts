@@ -46,7 +46,6 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
 
-
 /**
  * # 🔴 677 · `R25` §4.1 and §4.4 — what reaches the PROVIDER, and what a WAKE reads
  *

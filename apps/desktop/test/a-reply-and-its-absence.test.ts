@@ -33,7 +33,6 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN, derivePieces } from '../src/shared/tasks'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
-
 /**
  * 🔴 **393 · a reply, and its absence** — Slice 4 S2 + S3, HO-007 criteria 3 and 4, HO-015 §1.3.
  *

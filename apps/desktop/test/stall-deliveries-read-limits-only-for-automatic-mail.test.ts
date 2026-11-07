@@ -22,7 +22,6 @@ import { MainThreadWork } from '../src/main/stall-watch'
 import { aStallItsGiverCanBeToldOf } from '../src/shared/tasks'
 import { fixtureProviderConfig } from './lib/host-fixture'
 
-
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 const NOW = Date.UTC(2026, 9, 5, 9)
 const RESET = NOW + 60_000

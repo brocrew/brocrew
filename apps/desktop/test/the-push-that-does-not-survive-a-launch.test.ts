@@ -40,7 +40,6 @@ import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/hos
  */
 const THE_MESSAGE_NEVER_WENT = undrivenSentence('message_never_sent')
 
-
 /**
  * 🔴 **404 · the push that does not survive a launch** — `402`'s F6, and the seam `400` left.
  *

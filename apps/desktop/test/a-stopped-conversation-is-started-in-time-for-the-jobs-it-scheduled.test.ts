@@ -36,7 +36,6 @@ import type { RuntimeEventMessage, RuntimeStatesMessage } from '../src/shared/ru
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
-
 /**
  * # D-029 · a stopped conversation is started in time for the jobs it scheduled
  *

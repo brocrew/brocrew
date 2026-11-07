@@ -46,7 +46,6 @@ vi.mock('node:child_process', async (importOriginal) => {
   }
 })
 
-
 /**
  * # 🔴 707 · R39, extended — a spawn that ran short is not a broken tool
  *

@@ -31,7 +31,6 @@ import {
 } from '../src/shared/tasks'
 import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
-
 /**
  * D-016 · commit 6 · a request the person makes is a piece that waits on them.
  *

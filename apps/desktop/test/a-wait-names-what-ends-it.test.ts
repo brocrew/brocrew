@@ -25,7 +25,6 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { RecordingSink } from './lib/host-fixture'
 
-
 /**
  * A wait names what will end it.
  *

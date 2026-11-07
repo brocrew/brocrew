@@ -25,7 +25,6 @@ import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
 
-
 /**
  * A to-do for a person.
  *

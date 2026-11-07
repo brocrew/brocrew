@@ -22,7 +22,6 @@ import { MAX_FOREST_CONVERSATIONS } from '../src/shared/the-whole-forest'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
 import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
 
-
 /**
  * 🔴 **664 · one task, one reading, in every place it is drawn** (`D32`, found by `654`).
  *

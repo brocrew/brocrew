@@ -16,7 +16,13 @@ import { RuntimeHost } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { REPLY_SUMMARY_LIMIT } from '../src/main/runtime/reply-rails'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DEFAULT_PROFILE_ID, DEFAULT_PROFILE_LABEL, agentName, type AgentIdentity, type LibraryEntry } from '../src/shared/runtime-ipc'
+import {
+  DEFAULT_PROFILE_ID,
+  DEFAULT_PROFILE_LABEL,
+  agentName,
+  type AgentIdentity,
+  type LibraryEntry,
+} from '../src/shared/runtime-ipc'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
 import { RecordingSink, syntheticProviderHome } from './lib/host-fixture'
 
