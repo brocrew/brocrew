@@ -72,7 +72,13 @@ export const knipKeys = (report) =>
     }),
   )
 
-function run(name, args, out, accepted, executable = path.join(here, 'node_modules', '.bin', name)) {
+function run(
+  name,
+  args,
+  out,
+  accepted,
+  executable = path.join(here, 'node_modules', '.bin', name),
+) {
   const stdout = path.join(out, `${name}.stdout`)
   const stderr = path.join(out, `${name}.stderr`)
   const [o, e] = [fs.openSync(stdout, 'w'), fs.openSync(stderr, 'w')]
@@ -111,8 +117,18 @@ const TOOLS = {
     run(
       'jscpd',
       [
-        '--prefix', here, 'run', '--silent', 'scan:clones', '--',
-        root, '--absolute', '--config', path.join(here, 'jscpd.json'), '--output', out,
+        '--prefix',
+        here,
+        'run',
+        '--silent',
+        'scan:clones',
+        '--',
+        root,
+        '--absolute',
+        '--config',
+        path.join(here, 'jscpd.json'),
+        '--output',
+        out,
       ],
       out,
       (s) => s === 0,
