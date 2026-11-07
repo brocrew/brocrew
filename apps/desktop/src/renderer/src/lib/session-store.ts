@@ -1074,7 +1074,11 @@ export function createSessionStore(bridge: RuntimeBridge): SessionStore {
    */
   function settleHeld(record: SessionRecord, mayLookAgain = true): void {
     if (record.phase !== 'recorded') {
+      const wasOpen = record.phase === 'open'
       foldHeldEvents(record)
+      if (wasOpen && phaseOf(record) === 'recorded' && mayLookAgain) {
+        void store.look(record.sessionId, 'again')
+      }
       return
     }
     record.earlyEvents = mayLookAgain
