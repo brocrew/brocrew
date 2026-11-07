@@ -25,31 +25,6 @@ import {
 } from '../src/main/runtime/provider-homes'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 
-/**
- * # ⛔ A conversation of ANY profile lives in the one home folder (D-016a, commit 2)
- *
- * Until D-016 the folder between `provider-homes/` and the profile was a project's slug, looked up
- * per session and per identity. It is now one folder, {@link HOME_FOLDER} (`'default'`), and no
- * caller passes a segment any more. So the path of a home is a function of two things — the profile
- * and the provider — and there are three places that must agree on it without sharing a variable:
- *
- *  1. **the credential key** a sign-in, a re-copy and a check are admitted under
- *     (`ProviderAuthOps.credentialHome`), which is a NAME and must be the directory the gesture
- *     writes;
- *  2. **the home an ENDED conversation is read from** (`RuntimeHost.providerHomeFor`), which the
- *     Info panel's Open and Finder both use, and which must be the profile's the row records; and
- *  3. **the two seams and the profile list `main/index.ts` wires**, which is the one file that binds
- *     Electron and so cannot be mounted here.
- *
- * The expected paths are literals rather than values read from `HOME_FOLDER`, so renaming the
- * constant cannot silently change the oracle. Provider homes use `default`, and resume must
- * find a conversation where it originally ran.
- *
- * ⚠️ **The third is a source census and is named as one** (`one-way-to-stage.test.ts`'s shape). It
- * proves the seams are written as they must be, not that they work; the first two are what prove
- * the behaviour, and the last one proves the census can see a defect.
- */
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrations = join(here, '../src/main/db/migrations')
 const MAIN = join(here, '../src/main/index.ts')
@@ -73,7 +48,6 @@ describe('a credential gesture is keyed by the home it writes (D-016a)', () => {
     rmSync(userData, { recursive: true, force: true })
   })
 
-  /** The real ops over a deliberately absent codex binary, so nothing is ever launched. */
   const ops = (): ReturnType<typeof createProviderAuthOps> =>
     createProviderAuthOps(userData, { codexCommand: () => join(userData, 'no-such-codex') })
 
@@ -84,19 +58,15 @@ describe('a credential gesture is keyed by the home it writes (D-016a)', () => {
     expect(ops().credentialHome('claude', 'developer')).toBe(
       join(userData, 'provider-homes', 'default', 'developer', 'claude'),
     )
-    // ⚑ The default profile is a profile like any other here: its folder is `default` and its
-    // profile is `brobot`, and the two names are not to be confused with each other.
+
     expect(ops().credentialHome('codex', DEFAULT_PROFILE_ID)).toBe(
       join(userData, 'provider-homes', 'default', 'brobot', 'codex'),
     )
-    // Asking is a NAME, not a provisioning: nothing was made, not even the managed root.
+
     expect(existsSync(join(userData, 'provider-homes'))).toBe(false)
-    // An id that is not a path segment names no home at all, so it names no key either.
+
     expect(() => ops().credentialHome('codex', 'a/b')).toThrow(/invalid profileId/)
 
-    // The paired positive: the gesture that REALLY provisions, against a profile that exists,
-    // writes the directory the key named — so the key a gesture is admitted under and the place it
-    // writes are one place in the one folder, and nothing else appeared beside it.
     mkdirSync(join(userData, 'provider-homes', 'default', 'developer', 'claude'), {
       recursive: true,
     })
@@ -115,15 +85,14 @@ describe('an ended conversation is read from its own profile’s home (D-016a)',
   let db: AppDatabase
   let store: SessionStore
   let runtimes: Map<string, FakeRuntime>
-  /** The home `readProviderConfig` was handed, in order — what the assertions read. */
+
   let asked: string[]
 
   async function realHome(provider: Provider, profileId: string): Promise<string> {
     return await prepareProviderHome(
       dir,
       { profileId, provider },
-      // No credential is read and no directory is made here (the test lays its own files down):
-      // the path is what is under test.
+
       {
         provisionHome: () => {},
         provisionCodexAuth: () => {},
@@ -132,11 +101,6 @@ describe('an ended conversation is read from its own profile’s home (D-016a)',
     )
   }
 
-  /**
-   * ⚠️ **The REAL derivation, not a profile-blind stub.** Most hosts in this suite wire
-   * `providerHomePath` to something that ignores which profile it is asked about, which is exactly
-   * what would let "every ended conversation reads the default profile's home" pass unseen.
-   */
   function buildHost(): RuntimeHost {
     let counter = 0
     return new RuntimeHost({
@@ -166,7 +130,6 @@ describe('an ended conversation is read from its own profile’s home (D-016a)',
     })
   }
 
-  /** Lay down a `config.toml` that says whose home it is in, so a read can be told apart by text. */
   function furnish(profileId: string): string {
     const home = join(dir, 'provider-homes', 'default', profileId, 'codex')
     mkdirSync(home, { recursive: true })
@@ -196,23 +159,19 @@ describe('an ended conversation is read from its own profile’s home (D-016a)',
     const sink = new NullSink()
     const work = await first.createSession({ provider: 'codex', profileId: 'work' }, sink)
     const client = await first.createSession({ provider: 'codex', profileId: 'client' }, sink)
-    // The two were launched into the two homes the literal paths name, or the reads below would be
-    // comparing against something the launch never used.
+
     expect(work.providerHome).toBe(join(dir, 'provider-homes', 'default', 'work', 'codex'))
     expect(client.providerHome).toBe(join(dir, 'provider-homes', 'default', 'client', 'codex'))
     await first.close(work.sessionId, sink)
     await first.close(client.sessionId, sink)
     await first.closeAll()
 
-    // ⚑ A host that holds no slot at all: the only branch left is the ended one, which reads the
-    // home off the LEDGER ROW. A host that still held the live session would answer from the
-    // session's own home and never ask the row.
     const relaunched = buildHost()
     asked.length = 0
 
     const workRead = relaunched.readConfigFile(work.sessionId, 'config.toml')
     expect(asked).toEqual([join(dir, 'provider-homes', 'default', 'work', 'codex')])
-    // ⚠️ `toContain`: the launch itself appends the memory gates to a Codex home's `config.toml`.
+
     expect(workRead).toMatchObject({ ok: true })
     expect(workRead.ok && workRead.text).toContain('# the home of work')
     expect(workRead.ok && workRead.text).not.toContain('# the home of client')
@@ -224,12 +183,9 @@ describe('an ended conversation is read from its own profile’s home (D-016a)',
     expect(clientRead.ok && clientRead.text).toContain('# the home of client')
     expect(clientRead.ok && clientRead.text).not.toContain('# the home of work')
 
-    // Two ended conversations of two profiles did not read one home.
     expect(workHome).not.toBe(clientHome)
     await relaunched.closeAll()
 
-    // The paired positive: a row that records NO profile ran in the default profile's home — which
-    // is `default/brobot`, the profile, and not `default/default`, the folder said twice.
     db.prepare('UPDATE provider_session SET profile_id = NULL WHERE id = ?').run(client.sessionId)
     const defaultHome = furnish(DEFAULT_PROFILE_ID)
     const reopened = buildHost()
@@ -246,12 +202,6 @@ describe('an ended conversation is read from its own profile’s home (D-016a)',
   })
 })
 
-/**
- * The file with comments removed — line comments and block comments.
- *
- * ⛔ Copied from `one-way-to-stage.test.ts`, for its reason: `main/index.ts` NAMES `HOME_FOLDER` in a
- * comment on purpose, and a census of what it SPELLS must not count prose.
- */
 function codeOf(source: string): string {
   let inBlock: '*/' | null = null
   return source
@@ -279,21 +229,18 @@ function codeOf(source: string): string {
     .join('\n')
 }
 
-/** Whitespace collapsed, so a census does not measure where the formatter chose to wrap. */
 function flat(source: string): string {
   return source.replace(/\s+/g, ' ').replace(/\(\s/g, '(')
 }
 
-/** How many times `needle` occurs in `haystack` — the count, not merely whether. */
 function times(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1
 }
 
-// The provider's bound home strategy prepares the profile it is given. The binding gets its paths
-// from the same pure facade as the read seam; neither call invents another layout.
 const PREPARE_SEAM =
   'prepareProviderHome: async (provider, profileId, signal) => { transcriptRetention?.beforeLaunch() return providerModules[provider].home.prepare(profileId, signal) },'
-const FORBIDDEN_SEGMENT = /\(provider, profileId, (?!signal\b)\w+\) =>|\(provider, profileId, signal, \w+\) =>/
+const FORBIDDEN_SEGMENT =
+  /\(provider, profileId, (?!signal\b)\w+\) =>|\(provider, profileId, signal, \w+\) =>/
 const MODULE_PATHS =
   'const providerModules = createProviderModules((provider) => homePathsForProvider(userData, provider),'
 const PATH_SEAM =
@@ -306,8 +253,6 @@ describe('main wires the home seams to the one folder (D-016a)', () => {
   it('main wires the two home seams and the profile list to the one folder and to nothing else', () => {
     const main = flat(codeOf(readFileSync(MAIN, 'utf8')))
 
-    // ⚑ Presence first — every negative below rides on these, and a census that read nothing would
-    // satisfy all of them.
     expect(main.length, 'main/index.ts moved — re-point this').toBeGreaterThan(1000)
     expect(times(main, PREPARE_SEAM), 'the prepareProviderHome seam').toBe(1)
     expect(times(main, MODULE_PATHS), 'the bound provider paths').toBe(1)
@@ -315,20 +260,15 @@ describe('main wires the home seams to the one folder (D-016a)', () => {
     expect(times(main, PROFILES_SEAM), 'the listProfiles seam').toBe(1)
     expect(times(main, DISCOVERY_SEAM), 'the discoverSessions map').toBe(1)
 
-    // The folder has one author, provider-homes.ts: preparation receives its bound paths, while
-    // reads use the pure derivation directly.
     expect(times(main, 'providerModules[provider].home.prepare(profileId, signal)')).toBe(1)
     expect(times(main, 'deriveProviderHome(userData')).toBe(1)
-    // …and main never spells the layout itself.
+
     expect(main).not.toMatch(/HOME_FOLDER|['"]provider-homes['"]/)
-    // …and neither seam takes a third parameter, which is where a segment used to arrive.
+
     expect(main).not.toMatch(FORBIDDEN_SEGMENT)
   })
 
   it('the census has teeth: a seam that ignores the profile it is given is not the seam', () => {
-    // ⛔ Every assertion above is a string search. This runs the same helpers over source that has
-    // the defect (main's providerHomePath always deriving the default profile's home) and requires
-    // it to be visible, and runs them over the real shape to show the search can also say yes.
     const defective = [
       'providerHomePath: (provider, _profileId) =>',
       "  deriveProviderHome(userData, { profileId: 'brobot', provider }),",
@@ -347,21 +287,35 @@ describe('main wires the home seams to the one folder (D-016a)', () => {
     )
     expect(times(honest, PATH_SEAM)).toBe(1)
 
-    // A third parameter is seen by the pattern, and a comment that names the folder is not code.
     expect(flat(codeOf('prepareProviderHome: (provider, profileId, segment) => x'))).toMatch(
       FORBIDDEN_SEGMENT,
     )
     const main = flat(codeOf(readFileSync(MAIN, 'utf8')))
     expect(times(main, PREPARE_SEAM)).toBe(1)
     for (const defective of [
-      main.replace(PREPARE_SEAM, PREPARE_SEAM.replace('(provider, profileId, signal) =>', '(provider, profileId, segment) =>')),
-      main.replace(PREPARE_SEAM, PREPARE_SEAM.replace('(provider, profileId, signal) =>', '(provider, profileId, signal, segment) =>')),
+      main.replace(
+        PREPARE_SEAM,
+        PREPARE_SEAM.replace(
+          '(provider, profileId, signal) =>',
+          '(provider, profileId, segment) =>',
+        ),
+      ),
+      main.replace(
+        PREPARE_SEAM,
+        PREPARE_SEAM.replace(
+          '(provider, profileId, signal) =>',
+          '(provider, profileId, signal, segment) =>',
+        ),
+      ),
     ]) {
       expect(defective).not.toBe(main)
       expect(defective).toMatch(FORBIDDEN_SEGMENT)
       expect(times(defective, PREPARE_SEAM)).toBe(0)
     }
-    const withoutSignal = main.replace(PREPARE_SEAM, PREPARE_SEAM.replace('home.prepare(profileId, signal)', 'home.prepare(profileId)'))
+    const withoutSignal = main.replace(
+      PREPARE_SEAM,
+      PREPARE_SEAM.replace('home.prepare(profileId, signal)', 'home.prepare(profileId)'),
+    )
     expect(withoutSignal).not.toBe(main)
     expect(times(withoutSignal, PREPARE_SEAM)).toBe(0)
     expect(main).not.toMatch(FORBIDDEN_SEGMENT)

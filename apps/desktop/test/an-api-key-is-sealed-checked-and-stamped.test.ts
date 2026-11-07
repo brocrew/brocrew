@@ -15,19 +15,8 @@ import {
 import { bringTheCodexKeyTo, prepareProviderHome } from '../src/main/runtime/provider-homes'
 import type { CodexKeySeam } from '../src/main/runtime/provider-homes'
 
-/**
- * # 🔒 API keys · the sealed store, the check, and the Codex home's stamp
- *
- * Landing coverage for the backend of the Providers screen's key field: what `ApiKeys` keeps and
- * says, what `askTheProvider` asks and how it answers, and `bringTheCodexKeyTo`'s stamp — which
- * decides when a Codex home is logged in again — with its one-at-a-time queue and the early return of
- * `prepareProviderHome`. ⛔ **No test here holds a real key**: each uses a made-up string, and each
- * also asserts it is in no sentence the code says.
- */
-
 const KEY = 'sk-test-0123456789abcdef' // gitleaks:allow — a made-up key
 
-/** A store that keeps rows in memory, the way the database's three statements do. */
 function aStore() {
   const rows = new Map<string, { sealed: string; setAt: number }>()
   return {
@@ -40,7 +29,6 @@ function aStore() {
   }
 }
 
-/** A cipher that reverses the key: sealed text that is not the key, and opened only by itself. */
 function aCipher(over: Partial<KeyCipher> = {}): KeyCipher {
   return {
     available: () => true,
@@ -113,7 +101,7 @@ describe('ApiKeys', () => {
       aCheckSpendsAToken: true,
     })
     expect(JSON.stringify(keys.status('claude'))).not.toContain(KEY)
-    // One provider's key says nothing about the other's, and Codex's check spends nothing.
+
     expect(keys.status('codex').set).toBe(false)
     expect(keys.status('codex')).not.toHaveProperty('aCheckSpendsAToken')
   })
@@ -228,7 +216,7 @@ describe('askTheProvider', () => {
     const LIST = {
       data: [{ id: 'claude-opus-9' }, { id: 'claude-haiku-9' }, { id: 'claude-haiku-8' }],
     }
-    /** The model list, then the one-token request's answer. */
+
     const listThenAnswer = (status: number, body: unknown = {}) =>
       vi.fn(async (url: string) =>
         url.includes('/v1/models')
@@ -312,7 +300,6 @@ describe('bringTheCodexKeyTo', () => {
   function aSeam(
     current: () => { key: string; setAt: number } | null,
     change: (home: string, change: CodexKeyChange) => Promise<CodexKeyOutcome> = async (_h, c) => {
-      // A real login writes the credential the stamp is later checked against.
       if (c.to === 'the-key') writeFileSync(join(home, 'auth.json'), '{}')
       return { ok: true, authMethod: c.to === 'the-key' ? 'apikey' : null }
     },
@@ -356,7 +343,11 @@ describe('bringTheCodexKeyTo', () => {
     setAt = 900
     key = 'sk-second'
     await bringTheCodexKeyTo(home, seam)
-    expect(changes).toHaveBeenLastCalledWith(home, { to: 'the-key', apiKey: 'sk-second' }, undefined)
+    expect(changes).toHaveBeenLastCalledWith(
+      home,
+      { to: 'the-key', apiKey: 'sk-second' },
+      undefined,
+    )
     expect(stamp()).toEqual({ setAt: 900 })
   })
 
@@ -368,7 +359,7 @@ describe('bringTheCodexKeyTo', () => {
     expect(await bringTheCodexKeyTo(home, seam)).toBe('its-login')
     expect(changes).toHaveBeenLastCalledWith(home, { to: 'no-key' }, undefined)
     expect(existsSync(join(home, STAMP))).toBe(false)
-    // …and with the stamp gone, the next look has nothing to undo.
+
     await bringTheCodexKeyTo(home, seam)
     expect(changes).toHaveBeenCalledTimes(2)
   })
@@ -429,7 +420,7 @@ describe('bringTheCodexKeyTo', () => {
     expect(error).toBeInstanceOf(AuthUnavailableError)
     expect((error as Error).message).toContain('can’t read the API key saved for Codex')
     expect(changes).not.toHaveBeenCalled()
-    // Any OTHER failure is not dressed up as that one.
+
     const { seam: broken } = aSeam(() => {
       throw new TypeError('a bug')
     })
@@ -442,7 +433,6 @@ describe('bringTheCodexKeyTo', () => {
     let first = true
     let reads = 0
     const { seam } = aSeam(
-      // Read when each change RUNS, so the second one sees the key saved after the first.
       () => {
         reads += 1
         return { key: `sk-${reads}`, setAt: reads }
@@ -466,7 +456,7 @@ describe('bringTheCodexKeyTo', () => {
     )
     const one = bringTheCodexKeyTo(home, seam)
     const two = bringTheCodexKeyTo(home, seam)
-    // Let the second ask its question: it must not have started the login while the first runs.
+
     for (let i = 0; i < 10; i++) await new Promise((resolve) => setTimeout(resolve, 2))
     expect(order).toEqual(['start sk-1'])
     gate.release()
