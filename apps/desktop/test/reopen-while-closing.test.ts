@@ -429,17 +429,14 @@ describe('a conversation the app has said is closed can be reopened (075, from 0
     expect(host.sessionIds).toEqual([sessionId])
   })
 
-  it('says "still closing" rather than "already open" when the teardown outlives the wait', async () => {
-    // The refusal has to survive, because going around a live teardown is what puts two providers
-    // on one transcript. What changes is the sentence: it now names the state the app is in.
-    //
-    // ⚠️ **Reached the way a person reaches it**, not by writing the state in: Close pressed while
-    // the provider was still starting, against a handshake that never answers. The slot stays
-    // `closing` with no session — `whyNotOurs` is what keeps it that way, deliberately — so the
-    // bounded wait expires with the reservation still held. This also covers `settleTeardown`'s
-    // other branch, the one that routes to `awaitArrival`.
+  it('waits for a closed start to finish stopping, rather than refusing the reopen as still closing', async () => {
+    // ⚑ Reached the way a person reaches it: Close pressed while the provider was still starting,
+    // against a handshake that never answers and takes its time to stop once cancelled. The reopen
+    // waits for that, however long it takes, instead of refusing with "still closing" — the wait
+    // is what keeps two providers off one transcript.
     let asked = false
-    const never = new Promise<never>(() => {})
+    let stoppedAt = 0
+    const STOPS_AFTER_MS = 150
     const stuck = new RuntimeHost({
       store,
       discoverSessions: NO_DISCOVERY,
@@ -448,11 +445,21 @@ describe('a conversation the app has said is closed can be reopened (075, from 0
       createRuntime: (provider): AgentRuntime => ({
         provider,
         listModels: () => Promise.resolve([]),
-        start: () => {
+        start: (options) => {
           asked = true
-          return never
+          return new Promise<never>((_, reject) => {
+            options.signal?.addEventListener(
+              'abort',
+              () =>
+                setTimeout(() => {
+                  stoppedAt = Date.now()
+                  reject(new Error('the start was cancelled'))
+                }, STOPS_AFTER_MS),
+              { once: true },
+            )
+          })
         },
-        resume: () => never,
+        resume: () => new Promise<never>(() => {}),
       }),
       prepareProviderHome: (provider, profileId) =>
         join(userData, 'provider-homes', 'default', profileId, provider),
@@ -472,24 +479,21 @@ describe('a conversation the app has said is closed can be reopened (075, from 0
     const sink = new RecordingSink()
     void stuck.createSession({ provider: 'claude', cwd: join(dir, 'work') }, sink).catch(() => {})
     await waitFor(() => asked, 'the provider to be asked for')
-    const reserved = 'sess_stuck'
-    await stuck.close(reserved, sink)
+    await stuck.close('sess_stuck', sink)
 
-    // 🔴 **716 · `710` F-5 — and a REOPEN is told it waited, and how to wait longer** (rule 8.4):
-    // the sentence said *"Try again in a moment"* until `716`.
-    // ⚑ **D-017b · in the words of the one gesture that carries a conversation on** — a message
-    // sent from its view — and with no process fact (`05` rule 5): *"still closing … its agent to
-    // stop"* became what BroBot has not finished putting away.
-    await expect(stuck.resumeSession(reserved, new RecordingSink('owner:2'))).rejects.toThrow(
-      "BroCrew was still putting away this conversation's last session and waited as long as it will, so your message did not go in. To wait longer, send it your message again.",
+    const reopened = await stuck.resumeSession('sess_stuck', new RecordingSink('owner:2')).then(
+      () => null,
+      (error: unknown) => error,
     )
-    // …and NOT the sentence it used to give, which sent the reader looking for a session to close.
-    await expect(stuck.resumeSession(reserved, new RecordingSink('owner:2'))).rejects.not.toThrow(
-      'already open',
-    )
-    // …nor the id, which is 100's half of this: the diagnostic keeps it, the sentence does not.
-    await expect(stuck.resumeSession(reserved, new RecordingSink('owner:2'))).rejects.not.toThrow(
-      reserved,
-    )
+    const answeredAt = Date.now()
+    // ⚑ Answered only once the cancelled start had stopped…
+    expect(stoppedAt).toBeGreaterThan(0)
+    expect(answeredAt).toBeGreaterThanOrEqual(stoppedAt)
+    // …and never refused for being slow to stop. A start leaves no row, so there may be nothing to
+    // reopen — but that is not "still closing", and not "already open".
+    const said = reopened instanceof Error ? reopened.message : ''
+    expect(said).not.toContain('putting away')
+    expect(said).not.toContain('already open')
+    await stuck.closeAll()
   })
 })

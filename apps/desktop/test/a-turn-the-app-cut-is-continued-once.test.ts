@@ -316,7 +316,9 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
             writeKeptCuts(turnsTheAppCutFile(folder), kept)
           },
         },
-        accountWaitMs: ACCOUNT_WAIT,
+        // The fifteen seconds' bound this test used to shorten: a host that still gives up on a
+        // slow account does so here, and one that waits ignores it.
+        ...({ accountWaitMs: ACCOUNT_WAIT } as Record<string, number>),
         startGapMs: GAP,
         aProgramStartsAgainAfterMs: stops.programWaitMs ?? PROGRAM_WAIT,
         limitWakesApartMs: LIMIT_GAP,
@@ -517,10 +519,20 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       expect(running(now, a)).toBe(false)
     })
 
-    it('⛔ with an account that does not answer in time, it is not continued and not tried again', async () => {
+    it('🔴 with an account its provider names only after a long while, it is still continued', async () => {
       const a = await aTurnRunsIn()
       await now.host.closeAll()
-      starts(SOON, { account: 'never' })
+      // Named well past the bound the host used to give the account.
+      starts(SOON, { accountAfterMs: ACCOUNT_WAIT * 3 })
+      await waitFor(() => continuations(a).length > 0, 'the continuation')
+      expect(continuations(a)).toHaveLength(1)
+      expect(stateOf(a)).not.toEqual({ ended: 'account-not-known' })
+    })
+
+    it('⛔ with an account its provider says it has none of, it is not continued and not tried again', async () => {
+      const a = await aTurnRunsIn()
+      await now.host.closeAll()
+      starts(SOON, { account: 'none' })
       await waitFor(() => typeof stateOf(a) === 'object', 'the cut to end')
       await settle()
       expect(continuations(a)).toEqual([])
@@ -567,7 +579,8 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
     it('⛔ a person who writes first takes the conversation: no stale continuation follows', async () => {
       const a = await aTurnRunsIn()
       await now.host.closeAll()
-      starts(SOON, { account: 'never' })
+      // Its account is named only after the person has written.
+      starts(SOON, { accountAfterMs: ACCOUNT_WAIT })
       const sent = await now.host.startAndSend(a, 'where were we?', window)
       expect('notSent' in sent, JSON.stringify(sent)).toBe(false)
       await waitFor(() => typeof stateOf(a) === 'object', 'the cut to end')

@@ -90,6 +90,33 @@ export function assertNotCancelled(signal: AbortSignal | undefined, what: string
   if (signal?.aborted === true) throw new Error(`${what} was cancelled before it started`)
 }
 
+/**
+ * Wait for `work` until it settles or `signal` is aborted, whichever is first: a cancelled launch
+ * stops waiting at once, while the work itself goes on for whoever else shares it. No clock.
+ */
+export function untilCancelled<T>(
+  work: Promise<T>,
+  signal: AbortSignal | undefined,
+  what: string,
+): Promise<T> {
+  if (signal === undefined) return work
+  if (signal.aborted) return Promise.reject(new Error(`${what} was cancelled`))
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => reject(new Error(`${what} was cancelled`))
+    signal.addEventListener('abort', onAbort, { once: true })
+    work.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort)
+        resolve(value)
+      },
+      (error: unknown) => {
+        signal.removeEventListener('abort', onAbort)
+        reject(error)
+      },
+    )
+  })
+}
+
 /** A launch's cancel, wired to the teardown of what the launch has built. See {@link cancelWith}. */
 export interface LaunchCancel {
   /** Whether the launch has been cancelled — read after every await inside the launch. */

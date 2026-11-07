@@ -3,13 +3,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CodexIncoming, CodexTransport } from '../src/index'
-import { A_CHECK_NOT_ANSWERED_SAYS, signInNotCheckedInTime } from '../src/auth-state'
+import { signInNotCheckedInTime } from '../src/auth-state'
 import { AsyncQueue } from '../src/internal/async-queue'
-import {
-  CREDENTIAL_HANDSHAKE_TIMEOUT_MS,
-  probeCodexAuthInHome,
-  startCodexLogin,
-} from '../src/codex/codex-login'
+import { probeCodexAuthInHome, startCodexLogin } from '../src/codex/codex-login'
 import { beginCodexHomeBoot, resetCodexHomeBoots } from '../src/codex/home-boot'
 
 /**
@@ -124,21 +120,26 @@ describe('185 · a credential gesture owns its app-server from the spawn', () =>
     return waited
   }
 
-  it('⛔ A · a check whose handshake never answers leaves no transport open and no gate held', async () => {
+  it('⛔ A · a check whose handshake is slow is waited for; a cancel ends it, with no transport open and no gate held', async () => {
     const home = join(root, 'codex')
+    const asking = new AbortController()
+    let answered = false
+    const checking = probeCodexAuthInHome(transports(null), home, home, asking.signal).then(
+      (state) => {
+        answered = true
+        return state
+      },
+    )
+    // 🔴 Slow is not a failure: past the eight seconds a check used to be given, still waiting.
+    await new Promise((resolve) => setTimeout(resolve, 8_500))
+    expect(answered).toBe(false)
+    expect(spawned[0]!.closes).toBe(0)
 
-    const started = Date.now()
-    const state = await probeCodexAuthInHome(transports(null), home, home)
-    const elapsed = Date.now() - started
-
+    asking.abort()
+    const state = await checking
     expect(state.state).toBe('unknown')
-    // 🔴 Said as Codex being too slow, and as nothing learned about the sign-in: a person must not
-    // read it as signed out.
-    expect(state.state === 'unknown' && state.reason).toBe(signInNotCheckedInTime('Codex'))
-    expect(signInNotCheckedInTime('Codex')).toContain(A_CHECK_NOT_ANSWERED_SAYS)
-    // The budget is what ends it — not the caller's deadline, which used to be the only bound and
-    // released nobody but itself.
-    expect(elapsed).toBeGreaterThanOrEqual(CREDENTIAL_HANDSHAKE_TIMEOUT_MS - 200)
+    // Nothing learned about the sign-in: a person must not read it as signed out.
+    expect(state.state === 'unknown' && state.reason).not.toBe(signInNotCheckedInTime('Codex'))
     expect(spawned).toHaveLength(1)
     expect(spawned[0]!.closes, 'the app-server it spawned was closed').toBe(1)
     expect(await gateWait(home), "the home's boot gate was handed back").toBeLessThan(200)
@@ -159,11 +160,21 @@ describe('185 · a credential gesture owns its app-server from the spawn', () =>
     expect(await gateWait(home)).toBeLessThan(200)
   })
 
-  it('⛔ B · a sign-in whose handshake never answers closes the child rather than stranding it', async () => {
+  it('⛔ B · a sign-in whose handshake is slow is waited for; a cancel closes the child rather than stranding it', async () => {
     const home = join(root, 'codex')
+    const signing = new AbortController()
+    let settled = false
+    const login = startCodexLogin(transports(null), home, home, signing.signal).finally(() => {
+      settled = true
+    })
+    login.catch(() => {})
+    // Past the eight seconds a sign-in's handshake used to be given: still waiting.
+    await new Promise((resolve) => setTimeout(resolve, 8_500))
+    expect(settled).toBe(false)
+    expect(spawned[0]!.closes).toBe(0)
 
-    await expect(startCodexLogin(transports(null), home, home)).rejects.toThrow(/initialize/)
-
+    signing.abort()
+    await expect(login).rejects.toThrow()
     expect(spawned).toHaveLength(1)
     expect(spawned[0]!.closes).toBe(1)
     expect(await gateWait(home)).toBeLessThan(200)
@@ -225,10 +236,9 @@ describe('185 · a credential gesture owns its app-server from the spawn', () =>
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(spawned).toHaveLength(1)
     checking.abort()
-    // ⚑ **Asserted before the promise is awaited, and that is the whole point.** The budget closes
-    // this child too, eight seconds later — so a test that only checked `closes` after awaiting
-    // would pass with no `cancelWith` at all and measure nothing but the deadline (180's lesson:
-    // a fake that finishes its work anyway cannot show when a thing was released).
+    // ⚑ **Asserted before the promise is awaited, and that is the whole point**: nothing but the
+    // abort closes this child, so the count shows the abort reached it (180's lesson: a fake that
+    // finishes its work anyway cannot show when a thing was released).
     expect(spawned[0]!.closes, 'the abort reached the child, not just its awaiter').toBe(1)
     expect(await check).toMatchObject({ state: 'unknown' })
 
@@ -265,17 +275,24 @@ describe('185 · a credential gesture owns its app-server from the spawn', () =>
    * answer names Codex as too slow. A bound at or above the host's ten seconds would leave the
    * host's deadline in charge, which cannot say who was slow, and the child alive for the difference.
    */
-  it('says Codex was too slow, within its own budget, when a later step goes quiet', async () => {
+  it('waits for a later step that is slow, rather than calling Codex too slow', async () => {
     const home = join(root, 'codex')
-    // Answers the handshake, then goes silent — so the budget is spent on the SECOND request.
-    const state = await probeCodexAuthInHome(
+    // Answers the handshake, then goes silent on the second request.
+    let answered = false
+    const asking = new AbortController()
+    const checking = probeCodexAuthInHome(
       transports({ initialize: { codexHome: home } }),
       home,
       home,
-    )
-    expect(state.state).toBe('unknown')
-    expect(state.state === 'unknown' && state.reason).toBe(signInNotCheckedInTime('Codex'))
-    expect(CREDENTIAL_HANDSHAKE_TIMEOUT_MS).toBeLessThan(10_000)
+      asking.signal,
+    ).then((state) => {
+      answered = true
+      return state
+    })
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    expect(answered).toBe(false)
+    asking.abort()
+    expect((await checking).state).toBe('unknown')
   }, 20_000)
 
   /**

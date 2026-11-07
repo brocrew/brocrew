@@ -57,6 +57,11 @@ export interface ProviderRuntimeContext {
   builtInSkills?: BuiltInSkillsContext
   /** The writable skills root shared by every profile. */
   sharedSkillsRoot?: string
+  /**
+   * A number that moves whenever the shared skills change. A session reloads them at a turn
+   * boundary only when it moved since that session last loaded them; without it, at every turn.
+   */
+  sharedSkillsGeneration?: () => number
   /** Hide retained native originals before a provider reads its skill catalogue. */
   beforeSkillDiscovery?: () => Promise<void>
   /**

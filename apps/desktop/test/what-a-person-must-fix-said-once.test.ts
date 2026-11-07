@@ -582,14 +582,6 @@ describe('716 · what a person must fix, said once', () => {
         },
       ],
       [
-        'a start that took too long',
-        'launch',
-        () => {
-          gate.startFails = () =>
-            new SessionUnavailable('took-too-long', 'x', { waitedForMs: 15_000 })
-        },
-      ],
-      [
         'a start stopped before it opened',
         'cancelled',
         () => {

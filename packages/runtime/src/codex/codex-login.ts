@@ -87,42 +87,6 @@ const INITIALIZE_PARAMS = {
 }
 
 /**
- * ⛔ **How long a credential gesture gives the app-server to answer its handshake and its one
- * question** (185, from 182 H2).
- *
- * ## Why there was no number here at all
- *
- * `transport.request` settles when the child answers, when it EXITS, or when the transport is
- * closed — so an app-server that is **alive and silent** settles nothing, and both functions below
- * awaited exactly that with no bound. Their `finally` clauses do close the transport and release the
- * home's boot slot; neither can run until the `await` above it returns. 185 measured the result on
- * the pinned 0.146.0 binary, 5 trials per path: **5/5 left a live `codex app-server` and a boot gate
- * still held**, on both paths, surviving the app's own quit.
- *
- * ## The number
- *
- * | | |
- * |---|---|
- * | a cold handshake, measured by 180 | **85–95 ms**, 239 ms on the first spawn after a boot |
- * | the whole check — spawn, handshake, two auth round trips | **~0.6 s**, measured in 098 |
- * | this bound | **8 s** — 33× the worst measured handshake, 13× the whole call |
- *
- * ⚑ **The ceiling is what picks it, not the floor.** `RuntimeHost` gives a credential check ten
- * seconds; a bound at or above that would never be the one that fires, and the caller would be back
- * to a generic *"could not ask"* with no idea which step went quiet — while the child it is about
- * stays alive for the difference. Eight leaves two seconds of headroom and still sits far above
- * anything this binary has been measured doing (`176`'s rule: catch a 15× regression, not a slow
- * morning).
- *
- * ⚠️ **It is a budget for the whole gesture, not a per-request timeout** — the same choice
- * `listModels` made and for the same reason: the budget belongs to the QUESTION, and a per-request
- * bound lets a server that is slow twice spend it twice. The browser round trip on the sign-in path
- * is deliberately outside it (the host's five minutes owns that), because a person reading their
- * email is not a wedged provider.
- */
-export const CREDENTIAL_HANDSHAKE_TIMEOUT_MS = 8_000
-
-/**
  * How long {@link CodexLogin.cancel} waits for the provider to acknowledge its own withdrawal (185).
  *
  * Deliberately shorter than `RuntimeHost`'s three-second `SIGN_IN_CANCEL_TIMEOUT_MS`, so this one is
@@ -131,13 +95,6 @@ export const CREDENTIAL_HANDSHAKE_TIMEOUT_MS = 8_000
  * cost of it expiring is one `loginId` the app-server is about to be killed holding.
  */
 const LOGIN_CANCEL_ACK_TIMEOUT_MS = 2_000
-
-/** A budget shared by every request of one credential gesture. See {@link CREDENTIAL_HANDSHAKE_TIMEOUT_MS}. */
-function handshakeBudget(): <T>(p: Promise<T>, what: string) => Promise<T> {
-  const deadline = Date.now() + CREDENTIAL_HANDSHAKE_TIMEOUT_MS
-  return <T>(p: Promise<T>, what: string): Promise<T> =>
-    withDeadline(p, Math.max(1, deadline - Date.now()), `codex ${what}`)
-}
 
 /** Canonical absolute path (resolving symlinks like macOS `/tmp` → `/private/tmp`), lexical if not. */
 function canonicalPath(path: string): string {
@@ -166,13 +123,9 @@ function canonicalPath(path: string): string {
  * `sqlite_home` is attested too, for the same reason `begin` attests it: a profile `config.toml` can
  * redirect state out of the home, and this runs before any of it is written.
  */
-async function initializeInHome(
-  transport: CodexTransport,
-  providerHome: string,
-  bounded: <T>(p: Promise<T>, what: string) => Promise<T>,
-): Promise<void> {
+async function initializeInHome(transport: CodexTransport, providerHome: string): Promise<void> {
   assertCodexSqliteHomeContained(providerHome) // pre-traffic, exactly as `begin` does
-  const result = await bounded(transport.request('initialize', INITIALIZE_PARAMS), 'initialize')
+  const result = await transport.request('initialize', INITIALIZE_PARAMS)
   const reported =
     typeof result === 'object' &&
     result !== null &&
@@ -248,14 +201,10 @@ export class CodexLogin {
     const spawned = transport
     const cancel = cancelWith(signal, () => spawned.close())
     const login = new CodexLogin(transport)
-    const bounded = handshakeBudget()
     try {
-      await initializeInHome(transport, providerHome, bounded)
+      await initializeInHome(transport, providerHome)
       bootSettled()
-      const result = await bounded(
-        transport.request('account/login/start', { type: 'chatgpt' }),
-        'account/login/start',
-      )
+      const result = await transport.request('account/login/start', { type: 'chatgpt' })
       const loginId = readString(result, 'loginId')
       const authUrl = readString(result, 'authUrl')
       if (!loginId || !authUrl) {
@@ -397,10 +346,9 @@ export function startCodexLogin(
  *
  * ⛔ **"Bounded" was not true, and 185 measured how untrue** (182 H2). The `finally` below closes the
  * transport on every path it can REACH, and a silent app-server means it reaches none of them: the
- * `await` never returns. `RuntimeHost` wrapping this call in a ten-second deadline changed only who
- * was waiting. Two things make the sentence true now — a budget on the requests
- * ({@link CREDENTIAL_HANDSHAKE_TIMEOUT_MS}) and `signal`, which reaches the child rather than the
- * awaiter.
+ * `await` never returns. What makes the sentence true is `signal`, which reaches the child rather
+ * than the awaiter: a person's cancel, or this app quitting, closes the transport, and every request
+ * then settles. A slow app-server is waited for, never given up on.
  *
  * ⚠️ **A cancelled check answers `unknown`; it does not throw.** That is this function's contract
  * and 098's whole point — *a question we could not get an answer to says nothing about the
@@ -424,10 +372,9 @@ export async function probeCodexAuthInHome(
     transport = spawned
     // Ownership from the spawn, not from the handshake (070/185) — see {@link CodexLogin.start}.
     cancel = cancelWith(signal, () => spawned.close())
-    const bounded = handshakeBudget()
-    await initializeInHome(spawned, providerHome, bounded)
+    await initializeInHome(spawned, providerHome)
     bootSettled()
-    const state = await bounded(probeCodexAuth(spawned), 'auth status')
+    const state = await probeCodexAuth(spawned)
     if (cancel.cancelled) throw new Error('codex sign-in check was cancelled')
     return state
   } catch (error) {
@@ -461,10 +408,9 @@ export async function probeCodexAuthInHome(
   } finally {
     bootSettled?.()
     cancel?.release()
-    // ⚠️ Reached on the deadline and cancel paths too, and that is the point: `withDeadline` releases
-    // the AWAITER, never the child. THIS releases the child — `close()` is itself a bounded teardown
-    // (end stdin → SIGTERM → SIGKILL), so a check cannot leak an app-server even when the reason it
-    // failed is that the app-server stopped talking.
+    // ⚠️ Reached on the cancel path too, and that is the point: THIS releases the child —
+    // `close()` is itself a bounded teardown (end stdin → SIGTERM → SIGKILL), so a check cannot leak
+    // an app-server even when it was cancelled because the app-server stopped talking.
     await transport?.close()
   }
 }
@@ -491,7 +437,7 @@ export type CodexKeyOutcome =
  * words, and the provider's text — which a request's rejection carries — is never handed on.
  *
  * ⚑ **The same gates as a sign-in**: the home's boot slot, the home attested at `initialize`, every
- * request bounded, and the app-server closed on every path.
+ * request ended by `signal` rather than by a clock, and the app-server closed on every path.
  */
 export async function changeCodexKeyInHome(
   transports: TransportFactory,
@@ -509,17 +455,13 @@ export async function changeCodexKeyInHome(
     const spawned = transports({ cwd: providerHome, providerHome })
     transport = spawned
     cancel = cancelWith(signal, () => spawned.close())
-    const bounded = handshakeBudget()
-    await initializeInHome(spawned, providerHome, bounded)
+    await initializeInHome(spawned, providerHome)
     bootSettled()
     try {
       if (change.to === 'the-key') {
-        await bounded(
-          spawned.request('account/login/start', { type: 'apiKey', apiKey: change.apiKey }),
-          'account/login/start',
-        )
+        await spawned.request('account/login/start', { type: 'apiKey', apiKey: change.apiKey })
       } else {
-        await bounded(spawned.request('account/logout', undefined), 'account/logout')
+        await spawned.request('account/logout', undefined)
       }
     } catch {
       return { ok: false, reason: `Codex would not ${what}.` }
@@ -527,10 +469,7 @@ export async function changeCodexKeyInHome(
     if (cancel.cancelled) return { ok: false, reason: `Codex was stopped before it could ${what}.` }
     let status: unknown
     try {
-      status = await bounded(
-        spawned.request('getAuthStatus', { includeToken: false, refreshToken: false }),
-        'getAuthStatus',
-      )
+      status = await spawned.request('getAuthStatus', { includeToken: false, refreshToken: false })
     } catch {
       return {
         ok: false,

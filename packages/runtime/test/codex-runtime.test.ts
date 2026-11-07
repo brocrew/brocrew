@@ -12517,11 +12517,14 @@ describe('CodexRuntime — 713 · R59, a compaction asked for', () => {
     await consumer
   })
 
-  it('⚑ an interrupt asked before the id is known is sent the moment the turn starts, naming it', async () => {
+  it('⚑ an interrupt asked before the id is known ends the turn here, and is sent the moment the turn starts, naming it', async () => {
     const { transport, handle, events, consumer } = await startCodex()
     await handle.compact?.()
     await handle.interrupt()
     expect(transport.requests.some((r) => r.method === 'turn/interrupt')).toBe(false)
+    // The Stop ends the turn here at once: no clock, and no wait for Codex.
+    await vi.waitFor(has(events, (e) => e.type === 'turn' && e.state === 'interrupted'))
+    expect(handle.status()).toBe('idle')
     transport.notification('turn/started', turnStartedNotification('th_1', 'tn_compact'))
     await vi.waitFor(() =>
       expect(transport.requests.filter((r) => r.method === 'turn/interrupt')).toEqual([
@@ -12537,51 +12540,50 @@ describe('CodexRuntime — 713 · R59, a compaction asked for', () => {
     await consumer
   })
 
-  it('⛔ an accepted compaction that never STARTS is given up, in words — not left `working`', async () => {
-    const { handle, events, consumer } = await startCodex()
+  it('🔴 an accepted compaction that is slow to START is waited for, and runs when Codex starts it', async () => {
+    const { transport, handle, events, consumer } = await startCodex()
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     try {
       await handle.compact?.()
-      // Let the `{}` answer land, which is what arms the bound.
       await vi.advanceTimersByTimeAsync(0)
-      await vi.advanceTimersByTimeAsync(14_999)
+      // Past the fifteen seconds an accepted compaction used to be given before it was failed.
+      await vi.advanceTimersByTimeAsync(16_000)
       expect(events.some((e) => e.type === 'turn' && e.state === 'failed')).toBe(false)
-      await vi.advanceTimersByTimeAsync(1)
+      expect(handle.status()).not.toBe('idle')
     } finally {
       vi.useRealTimers()
     }
-    await vi.waitFor(has(events, (e) => e.type === 'turn' && e.state === 'failed'))
-    expect(
-      events.some(
-        (e) =>
-          e.type === 'error' &&
-          e.message === 'Codex accepted the compaction and did not start it within 15 seconds',
-      ),
-    ).toBe(true)
-    expect(handle.status()).toBe('idle')
+    codexCompacts(transport, 'tn_slow')
+    await vi.waitFor(() =>
+      expect(events.filter((e) => e.type === 'turn' && e.state === 'completed')).toHaveLength(1),
+    )
+    expect(compactions(events).map((e) => e.compactionId)).toEqual(['cc_tn_slow'])
     await handle.close()
     await consumer
   })
 
-  /** ⚑ Let the bound give a compaction up: asked, answered `{}`, and never started. */
-  const aCompactionGivenUp = async (
-    handle: SessionHandle,
-    events: RuntimeEvent[],
-  ): Promise<void> => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-    try {
-      await handle.compact?.()
-      await vi.advanceTimersByTimeAsync(0)
-      await vi.advanceTimersByTimeAsync(15_000)
-    } finally {
-      vi.useRealTimers()
-    }
-    await vi.waitFor(has(events, (e) => e.type === 'turn' && e.state === 'failed'))
+  it('⛔ Stop ends an accepted compaction Codex has not started, here and as a stop', async () => {
+    const { handle, events, consumer } = await startCodex()
+    await handle.compact?.()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await handle.interrupt()
+    await vi.waitFor(() => expect(handle.status()).toBe('idle'))
+    expect(events.some((e) => e.type === 'turn' && e.state === 'failed')).toBe(false)
+    await handle.close()
+    await consumer
+  })
+
+  /** ⚑ A compaction asked, answered `{}`, and stopped before Codex started it. */
+  const aCompactionStoppedBeforeItStarted = async (handle: SessionHandle): Promise<void> => {
+    await handle.compact?.()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await handle.interrupt()
+    await vi.waitFor(() => expect(handle.status()).toBe('idle'))
   }
 
-  it('⛔ after a give-up, a second compaction is refused until the first shows itself — its start is never taken for the second’s', async () => {
+  it('⛔ after such a stop, a second compaction is refused until the first shows itself — its start is never taken for the second’s', async () => {
     const { transport, handle, events, consumer } = await startCodex()
-    await aCompactionGivenUp(handle, events)
+    await aCompactionStoppedBeforeItStarted(handle)
     const asked = () => transport.requests.filter((r) => r.method === 'thread/compact/start').length
     expect(asked()).toBe(1)
     // ⛔ Asked again while the first may still start: refused in words, and Codex is asked nothing.
@@ -12603,9 +12605,41 @@ describe('CodexRuntime — 713 · R59, a compaction asked for', () => {
     await consumer
   })
 
+  it.each([
+    ['its own start', 'tn_mine', 'tn_mine', []],
+    ['the stopped compaction', 'tn_stray', 'tn_mine', ['tn_stray']],
+  ] as const)(
+    '🔴 after such a stop, a start seen before the next message is answered is placed by that answer: %s',
+    async (_, startedFirst, answered, interrupted) => {
+      const { transport, handle, events, consumer } = await startCodex()
+      await aCompactionStoppedBeforeItStarted(handle)
+      transport.deferNextTurnStart()
+      await handle.send('the next message')
+      await vi.waitFor(() =>
+        expect(transport.requests.filter((r) => r.method === 'turn/start')).toHaveLength(1),
+      )
+      // A start arrives before that message's `turn/start` is answered.
+      transport.notification('turn/started', turnStartedNotification('th_1', startedFirst))
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      expect(transport.requests.filter((r) => r.method === 'turn/interrupt')).toEqual([])
+      transport.settleTurnStart(answered)
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      // Never the next message; the stopped compaction only once its id is known not to be ours.
+      expect(
+        transport.requests
+          .filter((r) => r.method === 'turn/interrupt')
+          .map((r) => (r.params as { turnId: string }).turnId),
+      ).toEqual(interrupted)
+      expect(handle.status()).not.toBe('idle')
+      expect(events.filter((e) => e.type === 'turn' && e.state === 'interrupted')).toHaveLength(1)
+      await handle.close()
+      await consumer
+    },
+  )
+
   it('⚑ …and a turn of OURS that runs to its end clears the wait — its own start does not', async () => {
     const { transport, handle, events, consumer } = await startCodex()
-    await aCompactionGivenUp(handle, events)
+    await aCompactionStoppedBeforeItStarted(handle)
     await handle.send('go')
     await vi.waitFor(() => expect(transport.lastTurnId).toBe('tn_1'))
     transport.notification('turn/started', turnStartedNotification('th_1', 'tn_1'))
@@ -12953,10 +12987,18 @@ describe('shared skills at a Codex turn boundary', () => {
       transport.onRequest('skills/list', () =>
         Promise.reject(new Error('fictional reload failure')),
       )
+      // A failed refresh is said and the turn still goes, with the skills already loaded.
       await handle.send('An unread refresh.')
+      await vi.waitFor(() =>
+        expect(transport.requests.filter((one) => one.method === 'turn/start')).toHaveLength(3),
+      )
+      transport.notification(
+        'turn/completed',
+        turnCompletedNotification('th_1', completedTurn(transport.lastTurnId)),
+      )
       await vi.waitFor(() => expect(handle.status()).toBe('idle'))
       const afterFailure = transport.requests.filter((one) => one.method === 'turn/start').length
-      expect(afterFailure).toBe(2)
+      expect(afterFailure).toBe(3)
       let release!: () => void
       transport.onRequest(
         'skills/list',
@@ -13072,5 +13114,155 @@ describe('managed resume ownership', () => {
       await handle.close()
     }
     await handle.awaitProcessExit!()
+  })
+})
+
+describe('a slow Codex app-server is waited for at a turn boundary', () => {
+  let home: string
+  beforeEach(() => {
+    home = realpathSync(mkdtempSync(join(tmpdir(), 'fictional-slow-codex-')))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    rmSync(home, { recursive: true, force: true })
+  })
+
+  /** A Codex session with shared skills, whose skill refreshes and turns the test answers. */
+  async function aSessionWithSharedSkills(generation?: () => number): Promise<{
+    transport: FakeTransport
+    handle: Awaited<ReturnType<CodexRuntime['start']>>
+    events: RuntimeEvent[]
+    consumer: Promise<void>
+  }> {
+    const transport = new FakeTransport()
+    transport.onRequest('thread/start', () => okThread('th_1', home))
+    transport.onRequest('skills/list', () => ({ data: [{ cwd: home, errors: [], skills: [] }] }))
+    const runtime = new CodexRuntime(adopt(transport))
+    const handle = await runtime.start({
+      cwd: home,
+      providerHome: home,
+      builtInSkills: { root: join(home, 'built-in-skills'), skills: [] },
+      sharedSkillsRoot: join(home, 'shared-skills'),
+      ...(generation ? { sharedSkillsGeneration: generation } : {}),
+    })
+    const events: RuntimeEvent[] = []
+    const consumer = collect(handle, events)
+    return { transport, handle, events, consumer }
+  }
+
+  const asked = (transport: FakeTransport, method: string): number =>
+    transport.requests.filter((one) => one.method === method).length
+
+  const endTheTurn = async (
+    transport: FakeTransport,
+    handle: { status(): string },
+  ): Promise<void> => {
+    transport.notification(
+      'turn/completed',
+      turnCompletedNotification('th_1', completedTurn(transport.lastTurnId)),
+    )
+    await vi.waitFor(() => expect(handle.status()).toBe('idle'))
+  }
+
+  it('refreshes the shared skills only when they changed since the session loaded them', async () => {
+    let generation = 7
+    const { transport, handle, consumer } = await aSessionWithSharedSkills(() => generation)
+    try {
+      const atLaunch = asked(transport, 'skills/list')
+      await handle.send('First, with the skills it launched with.')
+      await vi.waitFor(() => expect(asked(transport, 'turn/start')).toBe(1))
+      await endTheTurn(transport, handle)
+      expect(asked(transport, 'skills/list')).toBe(atLaunch)
+      generation = 8
+      await handle.send('Second, after a skill was edited.')
+      await vi.waitFor(() => expect(asked(transport, 'turn/start')).toBe(2))
+      await endTheTurn(transport, handle)
+      expect(asked(transport, 'skills/list')).toBe(atLaunch + 1)
+      await handle.send('Third, nothing changed.')
+      await vi.waitFor(() => expect(asked(transport, 'turn/start')).toBe(3))
+      await endTheTurn(transport, handle)
+      expect(asked(transport, 'skills/list')).toBe(atLaunch + 1)
+    } finally {
+      await handle.close()
+      await consumer
+    }
+  })
+
+  it('a skill refresh slower than fifteen seconds is waited for, and the turn reaches Codex', async () => {
+    const { transport, handle, events, consumer } = await aSessionWithSharedSkills()
+    let answer!: () => void
+    transport.onRequest(
+      'skills/list',
+      () =>
+        new Promise((done) => {
+          answer = () => done({ data: [] })
+        }),
+    )
+    vi.useFakeTimers()
+    try {
+      await handle.send('Reach Codex once the skills are in.')
+      await vi.advanceTimersByTimeAsync(16_000)
+      expect(asked(transport, 'turn/start')).toBe(0)
+      expect(events.some((event) => event.type === 'turn' && event.state === 'failed')).toBe(false)
+      answer()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(asked(transport, 'turn/start')).toBe(1)
+    } finally {
+      vi.useRealTimers()
+      await handle.close()
+      await consumer
+    }
+  })
+
+  it('Stop ends a turn waiting on its skill refresh, and nothing is sent after it', async () => {
+    const { transport, handle, events, consumer } = await aSessionWithSharedSkills()
+    let answer!: () => void
+    transport.onRequest(
+      'skills/list',
+      () =>
+        new Promise((done) => {
+          answer = () => done({ data: [] })
+        }),
+    )
+    try {
+      await handle.send('Stopped before it went.')
+      await vi.waitFor(() => expect(answer).toBeDefined())
+      await handle.interrupt()
+      await vi.waitFor(() => expect(handle.status()).toBe('idle'))
+      answer()
+      await new Promise((done) => setTimeout(done, 10))
+      expect(asked(transport, 'turn/start')).toBe(0)
+      expect(events.some((event) => event.type === 'turn' && event.state === 'failed')).toBe(false)
+      // The next turn is usable, and it is the only one that reaches Codex.
+      transport.onRequest('skills/list', () => ({ data: [] }))
+      await handle.send('The next one.')
+      await vi.waitFor(() => expect(asked(transport, 'turn/start')).toBe(1))
+    } finally {
+      await handle.close()
+      await consumer
+    }
+  })
+
+  it('a skill refresh that fails is said, and the turn still reaches Codex', async () => {
+    let generation = 1
+    const { transport, handle, events, consumer } = await aSessionWithSharedSkills(() => generation)
+    generation = 2
+    transport.onRequest('skills/list', () => Promise.reject(new Error('fictional refresh failure')))
+    try {
+      await handle.send('Go with the skills already loaded.')
+      await vi.waitFor(() => expect(asked(transport, 'turn/start')).toBe(1))
+      expect(
+        events.some(
+          (event) =>
+            event.type === 'error' &&
+            event.fatal === false &&
+            event.message === 'Shared skills could not be refreshed: fictional refresh failure',
+        ),
+      ).toBe(true)
+      await endTheTurn(transport, handle)
+    } finally {
+      await handle.close()
+      await consumer
+    }
   })
 })

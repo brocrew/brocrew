@@ -23,18 +23,14 @@ import { ASKED_TO_STOP } from '../src/shared/how-work-stopped'
  * provider's word.** … A turn is `interrupted` only when the provider says it was."*
  *
  * ⛔ **So the press ASKS, and the words go once the turn has ENDED** — stopped, or finished first
- * (`RuntimeHost.runSendInterrupting`: ask, a bounded wait, then the send). *instead* was false when
- * the provider finished first, and *now* was false for the whole bounded wait. ⚑ `739` composes the
- * words from `737`'s clause — `A_STOP_THEN_THIS_IS_SENT` = `${A_STOP_ASKS_THE_TURN}; this is sent
- * once it has ended, or comes back to you if it has not within seconds`.
+ * (`RuntimeHost.runSendInterrupting`: ask, wait for the turn to end however long it takes, then the
+ * send). *instead* was false when the provider finished first, and *now* was false for as long as
+ * the provider takes to stop. ⚑ `739` composes the words from `737`'s clause —
+ * `A_STOP_THEN_THIS_IS_SENT` = `${A_STOP_ASKS_THE_TURN}; this is sent once it has ended`.
  *
- * ⚠️ **Re-aimed at `739`'s review round 1** (rule 26; `739` #2, #25, #4). ⛔ The clause said *"…, and
- * this is sent once it has ended"* with no limit, in all three feet, and the title alone added *"; if
- * it does not end, this comes back to you"* — ⚑ but the host sends only if the turn has ended within
- * ITS bounded waits (the ask's 2 s, then `waitForIdle`'s 5 s); a Codex turn that ends at 8 s has
- * ended, and the words came back. ⚑ So the limit is IN the clause — *"or comes back to you if it
- * has not within seconds"* — and the title and the three feet each carry it, because each draws the
- * clause. §1–§3 pin the new bytes whole; §3 also refuses the round-0 title's *"if it does not end"*.
+ * ⚠️ **No limit in the words, because the host has none**: a slow provider's turn is waited for and
+ * the words are never handed back for slowness, so no sentence promises they come back. §1–§3 pin
+ * the bytes whole and refuse both the old limit and the round-0 title's *"if it does not end"*.
  *
  * | § | surface | 🔴 subject (RED on `main` 5f406f2f, by assertion) | ⚑ control, one fact over (green on both) |
  * |---|---|---|---|
@@ -78,17 +74,16 @@ const INTERRUPT_KEY = interruptKeyLabel(PLATFORM)
  * ⚠️ `739` review round 1: the limit is in the clause (see the header), so each sentence carries it.
  */
 const THE_TURN_IS_ASKED_TO_STOP = 'the turn is asked to stop'
-const THE_LIMIT = 'or comes back to you if it has not within seconds'
-const STOP_THEN_SENT =
-  'the turn is asked to stop; this is sent once it has ended, or comes back to you if it has not within seconds'
-const TITLE = `Stop and send — the turn is asked to stop; this is sent once it has ended, or comes back to you if it has not within seconds (${INTERRUPT_KEY})`
-const FOOT = `${SEND_KEY} to send after Codex finishes · ${INTERRUPT_KEY} is Stop and send: the turn is asked to stop; this is sent once it has ended, or comes back to you if it has not within seconds`
+const THE_LIMIT = 'comes back to you'
+const STOP_THEN_SENT = 'the turn is asked to stop; this is sent once it has ended'
+const TITLE = `Stop and send — the turn is asked to stop; this is sent once it has ended (${INTERRUPT_KEY})`
+const FOOT = `${SEND_KEY} to send after Codex finishes · ${INTERRUPT_KEY} is Stop and send: the turn is asked to stop; this is sent once it has ended`
 /**
  * ⚑ **D-010** — one foot while something waits, whoever wrote it. ⚑ **D-027 moved its first half**:
  * what waits no longer goes first, one turn each — this goes WITH it, in one turn, oldest first, and
  * only a command goes alone; it said *"…after Codex finishes and takes what is already waiting"*.
  */
-const FOOT_WAITING = `${SEND_KEY} to send when Codex finishes, with what is already waiting — a command goes alone · ${INTERRUPT_KEY} is Stop and send: the turn is asked to stop; this is sent once it has ended, or comes back to you if it has not within seconds`
+const FOOT_WAITING = `${SEND_KEY} to send when Codex finishes, with what is already waiting — a command goes alone · ${INTERRUPT_KEY} is Stop and send: the turn is asked to stop; this is sent once it has ended`
 /**
  * ⛔ `739` round 0's title limit — an unbounded condition: the host hands the words back when the
  * turn has not ended within ITS waits, not when it *does not end* (`739` #2, #25).
@@ -195,9 +190,7 @@ describe('§1 · `busy` with a draft: *Stop and send* says the turn is ASKED to 
     // ⚑ rule 5 — the clause is the module's, and the module's is `737`'s clause plus the send.
     const { A_STOP_ASKS_THE_TURN, A_STOP_THEN_THIS_IS_SENT } = await since739()
     expect(A_STOP_ASKS_THE_TURN).toBe(THE_TURN_IS_ASKED_TO_STOP)
-    expect(A_STOP_THEN_THIS_IS_SENT).toBe(
-      `${A_STOP_ASKS_THE_TURN}; this is sent once it has ended, ${THE_LIMIT}`,
-    )
+    expect(A_STOP_THEN_THIS_IS_SENT).toBe(`${A_STOP_ASKS_THE_TURN}; this is sent once it has ended`)
     expect(A_STOP_THEN_THIS_IS_SENT).toBe(STOP_THEN_SENT)
     expect(A_STOP_THEN_THIS_IS_SENT).toContain(ASKED_TO_STOP)
     // ⚑ `739` review round 1: the title is the clause and the chord — no clause of its own beside it.
@@ -210,7 +203,7 @@ describe('§1 · `busy` with a draft: *Stop and send* says the turn is ASKED to 
     const html = await busyWithADraft()
     expect(footOf(html)).toBe(FOOT)
     // ⚑ `739` #2: the foot is always visible and promised the send without condition.
-    expect(footOf(html)).toContain(THE_LIMIT)
+    expect(footOf(html)).not.toContain(THE_LIMIT)
     // ⚑ The key hint is the foot's own `<strong>`, as 737's busy foot draws Esc.
     expect(footMarkupOf(html)).toContain(`<strong>${INTERRUPT_KEY}</strong> is Stop and send: `)
     // ⚑ …and the half `077` wrote is untouched, `<strong>` and all.
@@ -256,7 +249,7 @@ describe('§2 · with a message already waiting, the foot queues behind it and s
   it('🔴 whoever wrote what waits: queue behind it, then Stop and send in R43’s words, limit and all', async () => {
     const html = await busyWithADraft({ hasQueued: true })
     expect(footOf(html)).toBe(FOOT_WAITING)
-    expect(footOf(html)).toContain(THE_LIMIT)
+    expect(footOf(html)).not.toContain(THE_LIMIT)
     expect(footOf(html)).not.toContain('Cancel it')
     expect(footMarkupOf(html)).toContain(`<strong>${INTERRUPT_KEY}</strong> is Stop and send:`)
     // ⚑ The title does not depend on the queue — the same Stop and send.
@@ -298,7 +291,7 @@ describe('§3 · no word of Stop and send promises a stop', () => {
       expect(one, one).toContain(ASKED_TO_STOP)
       expect(one, one).toContain(STOP_THEN_SENT)
       // ⚑ `739` #2, #25: every one of them carries the host's limit, not only the hover…
-      expect(one, one).toContain(THE_LIMIT)
+      expect(one, one).not.toContain(THE_LIMIT)
       // ⛔ …and none says round 0's unbounded *if it does not end* — beside the positive above.
       expect(one, one).not.toContain(ROUND_0_LIMIT)
     }
@@ -397,9 +390,7 @@ describe('§5 · the clause has one spelling, composed from `737`’s, and the c
     const code = codeOnly(source(MODULE))
     const declared = code.split('\n').filter((line) => line.includes('A_STOP_THEN_THIS_IS_SENT ='))
     expect(declared).toHaveLength(1)
-    expect(declared[0]).toContain(
-      '`${A_STOP_ASKS_THE_TURN}; this is sent once it has ended, or comes back to you if it has not within seconds`',
-    )
+    expect(declared[0]).toContain('`${A_STOP_ASKS_THE_TURN}; this is sent once it has ended`')
     // ⚑ One declaration of `737`'s clause still, and the second half is spelled once in the module.
     expect(code.split('\n').filter((line) => line.includes('A_STOP_ASKS_THE_TURN ='))).toHaveLength(
       1,

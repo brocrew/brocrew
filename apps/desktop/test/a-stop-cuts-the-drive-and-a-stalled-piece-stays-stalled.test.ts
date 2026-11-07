@@ -906,16 +906,10 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
     })
 
   // ─────────────────────────────────────────────────────────────────────────────────────────
-  /** ⚑ The stop's own answer to a give: the same give again, once the stop has settled. */
-  const turnedAwayWhileItStops = (answer: Record<string, unknown>): void => {
-    expect(answer.outcome, JSON.stringify(answer)).toBe('refused')
-    expect(answer.rail).toBe('that-conversation-is-still-stopping')
-    expect(answer.retryable).toBe(true)
-  }
-
+  /** A give waits for the old close and keeps the stalled piece intact. */
   // ─────────────────────────────────────────────────────────────────────────────────────────
   describe('a stalled piece is named to a give whatever its holder’s process is doing', () => {
-    it('🔴 a holder whose Close is under way turns a give away until the stop settles, and then the give names the piece it stalled', async () => {
+    it('a give to a holder whose Close is under way waits, then names the unchanged stalled piece', async () => {
       const { pmLaunch, worker, workerLaunch } = await aPmAndItsWorker('auto')
       const [piece] = stalledOf(worker)
       // ⚑ The premise: the brief's turn ended and stalled the piece on it.
@@ -926,16 +920,28 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       // ⚑ **The Close is under way and held open**: the slot is `closing`, the ledger unchanged.
       host.claimSession(worker, window)
       const closing = host.close(worker, window)
+      let giving: Promise<Record<string, unknown>> | undefined
       try {
         await waitFor(() => listSaysClosing(worker), 'the worker’s Close to be under way')
         expect(stalledOf(worker)).toEqual([{ label, because: 'turn_ended' }])
 
-        // ⚑ The stall refuses nothing; the stop's own rail answers the give.
-        turnedAwayWhileItStops(await theGive(pmLaunch))
+        giving = theGive(pmLaunch)
+        let settled = false
+        void giving.then(
+          () => {
+            settled = true
+          },
+          () => {
+            settled = true
+          },
+        )
+        await new Promise<void>((resolve) => setImmediate(resolve))
+        expect(settled).toBe(false)
         expect(launches.length).toBe(launched)
+        expect(stalledOf(worker)).toEqual([{ label, because: 'turn_ended' }])
 
         // ⚑ **The paired positive · another profile the pm has never given to gives** — the
-        // answer above is about this holder's stop, not about the giver.
+        // wait above is about this holder's stop, not about the giver.
         await bringIdentityIntoBeing('other')
         const launchedBeforeOther = launches.length
         const other = await theGive(pmLaunch, 'other')
@@ -947,9 +953,10 @@ describe('§3 · the host — a stop changes nothing about a piece or about the 
       }
 
       // ⚑ **The stop completed and moved nothing**: the piece is still stalled, and the same give
-      // now goes through and names it.
+      // completes and names it.
       expect(stalledOf(worker)).toEqual([{ label, because: 'turn_ended' }])
-      namesTheStalledPiece(await theGive(pmLaunch), [label])
+      expect(giving).toBeDefined()
+      namesTheStalledPiece(await giving!, [label])
     })
 
     /**
