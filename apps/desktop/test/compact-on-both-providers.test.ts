@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import type { HandedPath } from '../src/shared/attachment-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -30,7 +31,6 @@ import {
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
@@ -296,9 +296,7 @@ function anApp(
   let counter = 0
   const host = new RuntimeHost({
     store,
-    discoverSessions: NO_DISCOVERY,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => join(userData, 'exports'),
+    ...neutralHostDeps(() => userData),
     createRuntime,
     prepareProviderHome: (provider: Provider, profileId?: string) => {
       const home = join(userData, 'provider-homes', profileId ?? 'default', provider)

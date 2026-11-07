@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -22,7 +23,6 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 
 const AVAILABLE: PluginInstructionEntry = {
   id: 'fictional-atlas',
@@ -275,9 +275,7 @@ for (const provider of ['claude', 'codex'] as const) {
       newSessionId: () => `sess_fictional_${++serial}`,
       now: () => Date.now(),
       plugins: controller,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(root, 'exports'),
+      ...neutralHostDeps(() => root),
       resolveCwd: (_session, requested) => requested ?? root,
       createRuntime: (kind: Provider) => new ObservedRuntime(kind, { sessions }),
       prepareProviderHome: (kind, profile) => {

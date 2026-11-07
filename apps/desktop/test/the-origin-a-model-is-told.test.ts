@@ -1,4 +1,4 @@
-import { fixtureProviderConfig } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
@@ -12,7 +12,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import type { Caller, RuntimeEventSink } from './helpers/giver-notice-host'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -149,9 +148,7 @@ describe('414 · the origin a model is told', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
       prepareProviderHome: (provider: Provider, profileId?: string) => {

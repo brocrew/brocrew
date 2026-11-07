@@ -1,4 +1,4 @@
-import { fixtureProviderConfig } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import type { AgentState } from '../src/shared/agent-state-contracts'
 import type { PieceRow } from '../src/shared/task-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
@@ -20,7 +20,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -188,9 +187,7 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
   const buildHost = (idleStopAfterMs?: number): RuntimeHost => {
     const built = new RuntimeHost({
       store: wrappedStore(store),
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, handed, issued),
       prepareProviderHome: (provider: Provider, profileId?: string) => {

@@ -22,7 +22,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { giverStallReceipts, RuntimeHost } from './helpers/giver-notice-host'
 import type { RuntimeEventSink, RuntimeHostDeps } from './helpers/giver-notice-host'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
@@ -51,7 +50,7 @@ import {
 } from '../src/main/runtime/what-this-app-adds-to-a-turn'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
+import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
@@ -150,9 +149,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
   const buildHost = (withSkills = false, extra: Partial<RuntimeHostDeps> = {}): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
       prepareProviderHome: syntheticProviderHome(() => userData),
       ...(withSkills

@@ -25,7 +25,6 @@ import {
   createSessionStore,
   type SessionStore,
 } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, THE_APP_ITSELF, type RuntimeEventSink } from './helpers/giver-notice-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -34,7 +33,7 @@ import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { aChoiceIsInForce } from '../src/shared/model-choice'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
-import { fixtureProviderConfig } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # 🔴 682 · A person's choice holds the whole launch — PM ruling `R31`, four parts
@@ -204,9 +203,7 @@ describe('682 · a person’s choice holds the whole launch', () => {
     const gate = anOpenGate()
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new HomeListDouble(provider, handles, issued, gate, world),
       prepareProviderHome: (provider: Provider, profileId?: string) => {

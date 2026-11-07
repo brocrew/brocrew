@@ -11,14 +11,13 @@ import { TheCliAnswersInOrder } from '../../../packages/runtime/test/the-cli-ans
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { resourcesRoot } from '../src/main/resources/resources'
 import type { ProviderAuthOps } from '../src/main/runtime/provider-homes'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
-import { fixtureProviderConfig, RecordingSink } from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # 🔴 13a0ab52 — a Claude sign-in that changes ends the limits the sign-in before reached, and ONLY those
@@ -263,9 +262,7 @@ describe('13a0ab52 · a sign-in that changes ends only the limits the sign-in be
       }
       host = new RuntimeHost({
         store,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(userData, 'exports'),
+        ...neutralHostDeps(() => userData),
         resourcesRoot: () => resourcesRoot(userData),
         createRuntime: (provider: Provider) =>
           new ProviderDouble(provider, handles, issued, anOpenGate()),
@@ -486,9 +483,7 @@ describe('13a0ab52 · a sign-in that changes ends only the limits the sign-in be
       let counter = 0
       host = new RuntimeHost({
         store: ledger,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(dir, 'exports'),
+        ...neutralHostDeps(() => dir),
         createRuntime: () =>
           new ClaudeRuntime(
             (params) => {

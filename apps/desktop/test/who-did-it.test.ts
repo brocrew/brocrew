@@ -14,7 +14,6 @@ import {
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
@@ -34,7 +33,7 @@ import {
 } from '../src/shared/who-did-it'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import type { RuntimeEvent } from '@brobot2/runtime'
-import { RecordingSink } from './lib/host-fixture'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 🔴 **477 · who did it** — HO-029 §2, landed.
@@ -137,9 +136,7 @@ describe('477 · who did it', () => {
     buildHost = () =>
       new RuntimeHost({
         store,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(userData, 'exports'),
+        ...neutralHostDeps(() => userData),
         createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, sessions),
         prepareProviderHome: (provider: Provider, profileId?: string) => {
           const home = join(userData, 'provider-homes', profileId ?? 'default', provider)

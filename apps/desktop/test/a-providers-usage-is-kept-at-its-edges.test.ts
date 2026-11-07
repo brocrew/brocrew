@@ -1,4 +1,4 @@
-import { RecordingSink } from './lib/host-fixture'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -9,7 +9,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
@@ -60,9 +59,7 @@ describe('F096 · a provider’s usage, kept at its edges', () => {
       const issued = new FakeProviderSessions()
       return new RuntimeHost({
         store,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(userData, 'exports'),
+        ...neutralHostDeps(() => userData),
         createRuntime: (provider: Provider) =>
           new ProviderDouble(provider, handles, issued, anOpenGate()),
         prepareProviderHome: (provider: Provider, profileId?: string) => {

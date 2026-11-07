@@ -9,7 +9,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { userProviderHomePath } from '../src/main/adopt/user-homes'
 import { aProtectedPlace, type ThePlaces } from '../src/main/protected-places'
 import {
@@ -27,7 +26,7 @@ import {
 } from '../src/shared/runtime-ipc'
 import type { ProtectedPlaceNotice } from '../src/shared/work-folders'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
-import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
+import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # A give's folder, granted on the helper's existing conversation: who holds it, when it ends,
@@ -92,9 +91,7 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
     const sessions = new FakeProviderSessions()
     return new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new ProviderDouble(provider, handles, sessions, anOpenGate()),
       prepareProviderHome: syntheticProviderHome(() => userData),

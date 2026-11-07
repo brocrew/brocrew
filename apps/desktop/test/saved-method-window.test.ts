@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -12,7 +13,6 @@ import { createSavedMethodService } from '../src/main/saved-method-service'
 import { stageKnowledgeFile, sweepKnowledgeStages } from '../src/main/runtime/agent-memory'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand, runtimeCommandSchema } from '../src/main/runtime/ipc'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import type { MethodLibrary, MethodDeleteSelection } from '../src/shared/saved-method-library'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
@@ -78,9 +78,7 @@ beforeEach(async () => {
   })
   host = new RuntimeHost({
     store,
-    discoverSessions: NO_DISCOVERY,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => join(root, 'exports'),
+    ...neutralHostDeps(() => root),
     createRuntime: (provider) => new FakeRuntime(provider),
     prepareProviderHome: () => root,
     providerHomePath: () => root,

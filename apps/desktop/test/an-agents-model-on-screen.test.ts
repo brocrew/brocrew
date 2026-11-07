@@ -9,7 +9,6 @@ import { FakeRuntime, type ModelChoice, type ProviderRuntimeContext } from '@bro
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import type { RuntimeBridge } from '../src/shared/runtime-ipc'
@@ -28,7 +27,7 @@ import {
   type ModelLists,
 } from '../src/renderer/src/lib/model-lists'
 import { everythingOverTheWire } from './lib/the-wire'
-import { fixtureProviderConfig } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # 🔴 685 · a person chooses each agent's model and effort — the control, over the REAL doors
@@ -151,9 +150,7 @@ describe('685 · a person chooses each agent’s model and effort — over the r
     sent = []
     host = new RuntimeHost({
       store: sessions,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new CatalogueDouble(
           provider,

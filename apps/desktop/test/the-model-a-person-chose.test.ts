@@ -22,7 +22,6 @@ import {
   parseModelChoice,
   type SessionStore,
 } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   RuntimeHost,
   type CallerIdentity,
@@ -45,7 +44,7 @@ import {
   whatAModelChoiceReaches,
 } from '../src/shared/model-choice'
 import { agentCallerId, whatItRunsOnSaid } from '../src/main/runtime/agent-tools'
-import { fixtureProviderConfig } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # 🔴 677 · `R25` — each agent runs on the model and effort a PERSON chose — 🔴 D-042: on its DEFAULT
@@ -518,9 +517,7 @@ describe('677 §4 · the door — `setAgentModelAndEffort`, against the provider
     launched = []
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new CatalogueDouble(
           provider,

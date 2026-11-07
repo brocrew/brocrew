@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -10,7 +11,6 @@ import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type {
   RuntimeEventMessage,
@@ -170,9 +170,7 @@ describe('the plan phase a provider moved, written down (150 §0)', () => {
       )
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime,
       prepareProviderHome: (provider) => join(dir, 'provider-homes', provider),
       providerHomePath: (provider) => join(dir, 'provider-homes', provider),

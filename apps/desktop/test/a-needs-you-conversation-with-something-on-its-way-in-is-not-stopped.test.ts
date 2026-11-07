@@ -18,7 +18,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
@@ -28,7 +27,12 @@ import {
   type RuntimeStatesMessage,
   type UnresumableSessionInfo,
 } from '../src/shared/runtime-ipc'
-import { fixtureProviderConfig, RecordingSink, syntheticProviderHome } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
 
 /**
  * # The idle stop · a start or a delivery on its way in keeps a *needs you* conversation running
@@ -149,9 +153,7 @@ describe('the idle stop and what is on its way into a conversation that needs yo
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, handed, issued),
       prepareProviderHome: syntheticProviderHome(() => userData),

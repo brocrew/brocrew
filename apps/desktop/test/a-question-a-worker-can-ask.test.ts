@@ -11,7 +11,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { REPLY_ADDRESSING_KEYS, type ToolName } from '../src/main/runtime/agent-tools'
@@ -24,7 +23,7 @@ import { stillHeld } from '../src/shared/mailbox'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { bodyOf, sourceOf, expectNoDeadlineDeps } from './helpers/source-contracts'
 import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
-import { syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
+import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 🔴 **437 · the question a worker can ask its parent** — criterion 29, HO-019 §1.
@@ -115,9 +114,7 @@ describe('437 · a question a worker can ask its parent', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
       prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),

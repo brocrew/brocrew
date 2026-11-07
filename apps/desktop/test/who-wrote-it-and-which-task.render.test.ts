@@ -12,7 +12,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
@@ -56,7 +55,7 @@ import {
   THE_GO_AHEAD_WAS_NOT_SENT,
   TYPE_TO_CARRY_ON,
 } from '../src/shared/the-go-ahead'
-import { syntheticProviderHome } from './lib/host-fixture'
+import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 // ⚑ 700 · `688` H2 — main's sentence and the row's are one value now, in `shared/`.
 
 // These SSR checks read expanded row details; browser controls exercise the real fold.
@@ -262,9 +261,7 @@ describe('688 · draw who wrote it, and which task', () => {
     created = new Map()
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new Watching(provider),
       prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),

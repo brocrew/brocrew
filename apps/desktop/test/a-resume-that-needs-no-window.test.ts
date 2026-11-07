@@ -15,12 +15,16 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
-import { RecordingSink, syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  fixtureProviderConfig,
+  neutralHostDeps,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **652 · a resume that needs no window.**
@@ -132,9 +136,7 @@ describe('652 · a resume that needs no window', () => {
   const buildHost = (over: SessionStore = store): RuntimeHost => {
     const built = new RuntimeHost({
       store: over,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new WatchingRuntime(provider, handed, issued, () => credentialGeneration),
       prepareProviderHome: syntheticProviderHome(() => userData),

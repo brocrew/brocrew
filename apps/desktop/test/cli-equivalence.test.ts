@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
@@ -9,7 +10,6 @@ import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { checkSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { RuntimeEventMessage, SessionLiveness } from '../src/shared/runtime-ipc'
@@ -153,9 +153,7 @@ describe('BroBot behaves like the CLI (160; `726` · R92 withdrew the neighbours
         )
       host = new RuntimeHost({
         store,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(dir, 'exports'),
+        ...neutralHostDeps(() => dir),
         createRuntime,
         prepareProviderHome: (provider) => join(dir, 'provider-homes', provider),
         providerHomePath: (provider) => join(dir, 'provider-homes', provider),

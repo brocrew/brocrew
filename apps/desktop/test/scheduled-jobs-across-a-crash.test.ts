@@ -8,7 +8,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime, FakeSessionHandle } from '@brobot2/runtime'
 import type { ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import {
@@ -24,7 +23,7 @@ import {
   scheduleAttemptsFile,
   writeKeptAttempts,
 } from '../src/main/schedule-attempts-file'
-import { RecordingSink } from './lib/host-fixture'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # Scheduled jobs across a crash
@@ -203,9 +202,7 @@ describe('scheduled jobs across a crash', () => {
       asked,
       host: new RuntimeHost({
         store,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(folder, 'exports'),
+        ...neutralHostDeps(() => folder),
         resourcesRoot: () => resourcesRoot(folder),
         createRuntime: (provider: Provider) => new ProviderOfALife(provider, stops, asked),
         prepareProviderHome: (provider: Provider, profileId?: string) => {

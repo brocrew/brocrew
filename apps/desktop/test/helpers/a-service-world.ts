@@ -1,3 +1,4 @@
+import { neutralHostDeps } from '../lib/host-fixture'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { RuntimeHost as GiverNoticeHost } from './giver-notice-host'
 import { makeWorkerPieceFolder } from '../../src/main/worker-piece-folder'
@@ -15,7 +16,6 @@ import type {
   StartOptions,
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { NO_DISCOVERY } from '../../src/main/adopt/discover-sessions'
 import { openDatabase, type AppDatabase } from '../../src/main/db/connection'
 import { applyMigrations } from '../../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../../src/main/db/session-store'
@@ -350,9 +350,7 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
       const Host = fixture.holderReminders === 'declined' ? GiverNoticeHost : RuntimeHost
       const host = new Host({
         store: opts.store ?? world.store,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(folder, 'exports'),
+        ...neutralHostDeps(() => folder),
         resourcesRoot: () => resourcesRoot(folder),
         createRuntime: (provider: Provider) =>
           new ProviderOfThisWorld(provider, { sessions: issued }),

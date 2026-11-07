@@ -19,7 +19,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { type ToolName } from '../src/main/runtime/agent-tools'
@@ -55,7 +54,7 @@ import {
 } from '../src/shared/runtime-ipc'
 import { stalledWorkKey, type StalledWork } from '../src/shared/stalled-work'
 import { everythingOverTheWire } from './lib/the-wire'
-import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
+import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # 🔴 712 · what the seats handed over, drawn — the node half, over real doors where there are any
@@ -206,9 +205,7 @@ describe('§2 · draw 2 (`702` GAP-3) — a giver told nothing is named so on th
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ToolsetKeeper(provider, handed, issued),
       prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
@@ -450,9 +447,7 @@ describe('§4 · draw 4 (R56, `696` L2) — the provider control says what its p
     folders = new Set([DEFAULT_PROFILE_ID])
     host = new RuntimeHost({
       store: sessions,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new CatalogueOnly(provider),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
         const home = join(userData, 'provider-homes', profileId ?? DEFAULT_PROFILE_ID, provider)
@@ -785,9 +780,7 @@ describe('§6 · draw 8 (`707` GAP-5, R41) — every identity a person reads is 
       applyMigrations(db, migrationsFolder)
       host = new RuntimeHost({
         store: createSessionStore(db),
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(userData, 'exports'),
+        ...neutralHostDeps(() => userData),
         createRuntime: (provider: Provider) => new CatalogueOnly(provider),
         prepareProviderHome: (provider: Provider, profileId?: string) => {
           const home = join(userData, 'provider-homes', profileId ?? DEFAULT_PROFILE_ID, provider)

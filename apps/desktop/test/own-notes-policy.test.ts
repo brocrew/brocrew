@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -16,7 +17,6 @@ import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { agentCallerId, TOOL_NAMES } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { RuntimeHost, type Caller, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
@@ -126,9 +126,7 @@ describe('own notes tools bind to their caller and person controls stay in the w
     host = new RuntimeHost({
       store,
       announce,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(root, 'exports'),
+      ...neutralHostDeps(() => root),
       createRuntime: (provider) => new ToolRuntime(provider, handed, launches, providerSessions),
       prepareProviderHome: (provider, profile) => {
         const path = home(provider, profile)

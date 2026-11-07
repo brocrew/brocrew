@@ -47,7 +47,6 @@ import {
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { THE_MODEL_LIST } from './lib/scripted-codex-host'
 import {
   profileBundleSpans,
@@ -74,7 +73,7 @@ import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble as GatedDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
-import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
+import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 🔴 **D-039 · the tools reach a Codex model in its lead, the namespace stays under the app-server's
@@ -358,9 +357,7 @@ function anApp(
   let counter = 0
   const host = new RuntimeHost({
     store,
-    discoverSessions: NO_DISCOVERY,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => join(userData, 'exports'),
+    ...neutralHostDeps(() => userData),
     createRuntime,
     prepareProviderHome: (provider: Provider, profileId?: string) => {
       const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
@@ -1088,9 +1085,7 @@ describe('§6 to §8 · what a failed start says at each door', () => {
     gate = anOpenGate()
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new GatedDouble(provider, handles, issued, gate),
       prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),

@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -389,9 +390,7 @@ describe('a provider that is still starting is owned (062)', () => {
     const runtimes = new Map<string, AgentRuntime>()
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       // One runtime per provider, memoized: `FakeRuntime` validates resume against the refs IT
       // issued, so a fresh instance per call would refuse every reopen as a forged ref.
       createRuntime: (provider): AgentRuntime => {

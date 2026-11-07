@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import {
   countSqlReads,
@@ -32,7 +33,6 @@ import {
 } from '../src/main/db/window-read-protocol'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeHostDeps } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
@@ -218,9 +218,7 @@ describe('a work wait is reconciled without a window', () => {
         store,
         limitsWriterStamp: () => (stampsAvailable ? contentStamp() : null),
         windowWriterStamp: (query) => (stampsAvailable ? windowStamp(query) : null),
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(userData, 'exports'),
+        ...neutralHostDeps(() => userData),
         resourcesRoot: () => resourcesRoot(userData),
         createRuntime: (provider: Provider) => new Runtime(provider, handles, issued),
         prepareProviderHome: (provider, profileId) => {

@@ -17,7 +17,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -41,7 +40,7 @@ import { providerTakesEffectNextTime } from '../src/renderer/src/lib/front-door-
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { everythingOverTheWire } from './lib/the-wire'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
-import { fixtureProviderConfig } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # 🔴 696 · the model control reads R31 — `688` §1b, `688` L1's neighbour F-b, over the real doors
@@ -162,9 +161,7 @@ describe('696 §1–§5 · what a person reads about a model choice under R31', 
     folders = new Set(['brobot'])
     host = new RuntimeHost({
       store: sessions,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new CatalogueDouble(provider),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
         const home = join(userData, 'provider-homes', profileId ?? 'brobot', provider)
@@ -485,9 +482,7 @@ describe('696 §6 · D-042 — a default a stand-in’s list admitted is what it
     const lists = { 'brobot/codex': [WIDE, NARROW], 'brobot/claude': [WIDE, NARROW], '*': [NARROW] }
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new HomeListDouble(provider, handles, issued, gate, lists, started),
       prepareProviderHome: (provider: Provider, profileId?: string) => {

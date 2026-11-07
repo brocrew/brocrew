@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -7,7 +8,6 @@ import { FakeRuntime } from '@brobot2/runtime'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { answerFor, attentionQueue, OPEN_REQUEST_MISSED } from '../src/renderer/src/lib/attention'
@@ -71,9 +71,7 @@ describe('answering from the overview', () => {
     let counter = 0
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: (provider) => new FakeRuntime(provider),
       prepareProviderHome: (provider, profileId) =>
         join(dir, 'provider-homes', profileId, provider),

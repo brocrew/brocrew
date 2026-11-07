@@ -9,13 +9,12 @@ import { FakeProviderSessions, FakeRuntime, type FakeSessionHandle } from '@brob
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { ReopenQueue } from '../src/main/runtime/reopen-queue'
 import { MainThreadWork } from '../src/main/stall-watch'
 import type { RuntimeEventMessage, RuntimeStatesMessage } from '../src/shared/runtime-ipc'
-import { fixtureProviderConfig } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
@@ -119,9 +118,7 @@ describe('sign-in reopens share a yielding queue', () => {
     host = new RuntimeHost({
       mainThreadWork: timing,
       store: createSessionStore(db),
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(folder, 'exports'),
+      ...neutralHostDeps(() => folder),
       createRuntime: (provider) => new Runtime(provider, { sessions }),
       prepareProviderHome: (provider) => join(folder, 'homes', provider),
       providerHomePath: (provider) => join(folder, 'homes', provider),

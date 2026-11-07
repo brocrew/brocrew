@@ -1,6 +1,6 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { FakeRuntime } from '@brobot2/runtime'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { joinLiveHosts, providerProcessesAreInFlight } from '../src/main/runtime/live-hosts'
 import { createLaunchRegistry } from '../src/main/runtime/launch-registry'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
@@ -717,9 +717,7 @@ it('a move held in staging setup cannot start after the deadline releases a real
   const runtime = new FakeRuntime('codex')
   const live = new RuntimeHost({
     store: NULL_SESSION_STORE,
-    discoverSessions: NO_DISCOVERY,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => join(data, 'exports'),
+    ...neutralHostDeps(() => data),
     createRuntime: () => runtime,
     prepareProviderHome: (provider) => home(provider),
     providerHomePath: (provider) => home(provider),

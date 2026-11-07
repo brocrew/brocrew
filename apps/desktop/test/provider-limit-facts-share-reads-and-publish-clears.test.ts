@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -14,7 +15,6 @@ import { limitsWriterSampler } from '../src/main/db/fresh-limits-snapshot'
 import type { KeptAccounts } from '../src/main/provider-accounts-file'
 import { NO_CUTS_KEPT } from '../src/main/turns-the-app-cut-file'
 import { CurrentProviderLimitFacts } from '../src/main/runtime/current-provider-limit-facts'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { resourcesRoot } from '../src/main/resources/resources'
 import {
   RuntimeHost,
@@ -222,9 +222,7 @@ describe('provider facts use existing reads and existing live carriers', () => {
             ),
           }
         : {}),
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(directory, 'exports'),
+      ...neutralHostDeps(() => directory),
       resourcesRoot: () => resourcesRoot(directory),
       createRuntime: (provider) => new ProviderDouble(provider, handles, issued, anOpenGate()),
       prepareProviderHome: (provider, profileId) => {

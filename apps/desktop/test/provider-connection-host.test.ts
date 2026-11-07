@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -12,7 +13,6 @@ import { resolveProviderConnection } from '../src/main/db/provider-connections'
 import { onProviderConnection } from '../src/main/providers'
 import { prepareCodexHome } from '../src/main/providers/codex'
 import { ApiKeys } from '../src/main/runtime/api-keys'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 
 let db: AppDatabase
@@ -78,9 +78,7 @@ function fixture() {
   )
   const deps = {
     store,
-    discoverSessions: NO_DISCOVERY,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => join(dir, 'exports'),
+    ...neutralHostDeps(() => dir),
     createRuntime: create,
     beforeProviderLaunch: async () => state.beforeLaunch?.(),
     prepareProviderHome: prepare,

@@ -1,5 +1,5 @@
 import { waitFor } from './lib/f093-host'
-import { syntheticProviderHome } from './lib/host-fixture'
+import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -11,7 +11,6 @@ import type { WebContents } from 'electron'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { webContentsSink } from '../src/main/runtime/ipc'
 import { RuntimeHost, THE_APP_ITSELF, type RuntimeEventSink } from './helpers/giver-notice-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -164,9 +163,7 @@ describe('418 · two sessions of one agent', () => {
     closeGate = null
     host = new RuntimeHost({
       store: ledger,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       // Use the provider requested by the reproduction, allowing `codex` rather than
       // substituting the harness’s preference.
       createRuntime: (provider: Provider) => {

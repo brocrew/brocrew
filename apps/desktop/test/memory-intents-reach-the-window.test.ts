@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import ts from 'typescript'
 import {
   existsSync,
@@ -22,7 +23,6 @@ import {
   type SessionStore,
 } from '../src/main/db/session-store'
 import { createMemoryService, type MemoryService } from '../src/main/runtime/agent-memory'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   RuntimeHost,
   THE_APP_ITSELF,
@@ -82,9 +82,7 @@ beforeEach(async () => {
   const deps = {
     store,
     memoryKnowledge: service,
-    discoverSessions: NO_DISCOVERY,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => join(root, 'exports'),
+    ...neutralHostDeps(() => root),
     createRuntime: (provider: Provider) => new FakeRuntime(provider),
     prepareProviderHome: (provider: Provider, profileId: string) => home(provider, profileId),
     providerHomePath: home,

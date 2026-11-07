@@ -9,7 +9,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { aProtectedPlace, type ThePlaces } from '../src/main/protected-places'
 import {
   RuntimeHost,
@@ -26,7 +25,7 @@ import {
 } from '../src/shared/runtime-ipc'
 import { derivePieces } from '../src/shared/tasks'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
-import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
+import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # 🔴 W4.189 · A — a give's folder becomes a visible, work-linked grant on the helper's existing
@@ -75,9 +74,7 @@ describe('W4.189 · a give’s folder, as a grant on the conversation it has', (
     const sessions = new FakeProviderSessions()
     return new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new ProviderDouble(provider, handles, sessions, anOpenGate()),
       prepareProviderHome: syntheticProviderHome(() => userData),

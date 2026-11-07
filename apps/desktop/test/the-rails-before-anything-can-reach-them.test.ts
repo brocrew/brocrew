@@ -1,4 +1,4 @@
-import { fixtureProviderConfig } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -15,7 +15,6 @@ import {
   type SessionStore,
 } from '../src/main/db/session-store'
 import { CAPABILITY_COLUMNS, CAPABILITY_FIELDS } from '../src/shared/capabilities'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, THE_APP_ITSELF, type CallerIdentity } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
@@ -100,9 +99,7 @@ describe('341 · the rails, before anything can reach them', () => {
   const buildHost = (): RuntimeHost =>
     new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider),
       prepareProviderHome: (provider, profileId) => {
         const home = join(userData, 'provider-homes', profileId ?? 'default', provider)

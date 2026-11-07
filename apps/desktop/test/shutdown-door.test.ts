@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -12,7 +13,6 @@ import {
   runtimeCommandSchema,
 } from '../src/main/runtime/ipc'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type { RuntimeCommand, RuntimeCommandKind } from '../src/shared/runtime-ipc'
 
@@ -696,9 +696,7 @@ describe('when the door shuts (273 §1)', () => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-door-'))
     host = new RuntimeHost({
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider) => new FakeRuntime(provider),
       prepareProviderHome: (provider, profileId) =>
         join(userData, 'provider-homes', profileId, provider),

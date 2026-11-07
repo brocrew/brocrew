@@ -9,13 +9,12 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import { fixtureProviderConfig, RecordingSink } from './lib/host-fixture'
+import { fixtureProviderConfig, RecordingSink, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 🔴 **D-017 · a stop is not an ending — two lives the landed suite does not yet pin.**
@@ -51,9 +50,7 @@ describe('D-017 · a stop is not an ending', () => {
     const buildHost = (): RuntimeHost => {
       const built = new RuntimeHost({
         store,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(userData, 'exports'),
+        ...neutralHostDeps(() => userData),
         createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions: issued }),
         prepareProviderHome: (provider: Provider, profileId?: string) => {
           const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
@@ -200,9 +197,7 @@ describe('D-017 · a stop is not an ending', () => {
     const buildHost = (): RuntimeHost =>
       new RuntimeHost({
         store,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(userData, 'exports'),
+        ...neutralHostDeps(() => userData),
         createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions: issued }),
         prepareProviderHome: (provider: Provider, profileId?: string) => {
           const home = join(userData, 'provider-homes', profileId ?? 'default', provider)

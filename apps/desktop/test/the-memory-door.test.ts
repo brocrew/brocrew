@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -15,7 +16,6 @@ import {
 } from '../src/main/db/session-store'
 import { createMemoryService, type MemoryWriteSeams } from '../src/main/runtime/agent-memory'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   RuntimeHost,
   THE_APP_ITSELF,
@@ -117,9 +117,7 @@ async function hostDeps(
         : options.closeWaitMs === undefined
           ? memoryKnowledge
           : { ...memoryKnowledge, close: () => memoryKnowledge.close(options.closeWaitMs) },
-    discoverSessions: NO_DISCOVERY,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => join(userData, 'exports'),
+    ...neutralHostDeps(() => userData),
     createRuntime: (provider: Provider) => new FakeRuntime(provider),
     prepareProviderHome: (provider, profileId) => {
       const home = homeOf(provider, profileId)

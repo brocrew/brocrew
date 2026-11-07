@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -19,7 +20,6 @@ import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
@@ -169,9 +169,7 @@ describe('one finalizer owns the end of a session (051)', () => {
   function buildHost(options: { highWaterMark?: number; closeDrainTimeoutMs?: number } = {}) {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: (provider: Provider): AgentRuntime => ({
         provider,
         // ⚑ **D-042 · R1 moved a fact here: every start NAMES its model and effort**, and a Codex

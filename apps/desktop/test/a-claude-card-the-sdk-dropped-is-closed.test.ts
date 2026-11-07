@@ -10,13 +10,12 @@ import { TheCliAnswersInOrder } from '../../../packages/runtime/test/the-cli-ans
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { attentionQueue } from '../src/renderer/src/lib/attention'
 import { createSessionRecord } from '../src/renderer/src/lib/session-record'
 import { applyEvent } from '../src/renderer/src/lib/transcript'
 import type { CreatedSession, RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { fixtureProviderConfig } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * A Claude card the SDK aborts while it waits, end to end: the real Claude adapter under the real
@@ -113,9 +112,7 @@ describe('a Claude card the SDK aborts while it waits is closed in the record', 
     let counter = 0
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(folder, 'exports'),
+      ...neutralHostDeps(() => folder),
       createRuntime: () =>
         new ClaudeRuntime(
           (params) => {

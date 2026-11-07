@@ -10,7 +10,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -22,7 +21,7 @@ import { isAwaitingAnswer, type TranscriptState } from '../src/renderer/src/lib/
 import type { ResumedSession, RuntimeBridge, RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
 import { claudeOnAResume, type ResumeControl } from './lib/provider-double'
-import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
+import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 // ⚑ **673 · Claude's resume shape lives in the shared double now** — moved from here, with the two
 // changes named in its header (`send` passes every argument; a question's ids are renamed too).
 
@@ -212,9 +211,7 @@ describe('653 · a woken conversation drawn as ended', () => {
   const buildHost = (over: SessionStore): RuntimeHost => {
     const built = new RuntimeHost({
       store: over,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new ClaudeLikeRuntime(provider, toolsets, issued, crash, control),
       prepareProviderHome: syntheticProviderHome(() => userData),

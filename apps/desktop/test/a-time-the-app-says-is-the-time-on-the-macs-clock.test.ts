@@ -1,4 +1,4 @@
-import { fixtureProviderConfig } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import { registerCalendarRevisionCases } from './helpers/calendar-revision-cases'
 import type { PersistedEventInfo } from '../src/shared/conversation-events'
 import type { AgentState } from '../src/shared/agent-state-contracts'
@@ -16,7 +16,6 @@ import { nativeExportPath } from '../src/main/archive/export-session'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../src/main/resources/resources'
@@ -1550,9 +1549,7 @@ describe('§6 · the host puts a job’s time in the zone the Mac moved to', () 
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
       prepareProviderHome: (provider: Provider, profileId?: string) => {

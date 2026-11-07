@@ -9,7 +9,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { ASKED_TO_STOP, stoppedBy } from '../src/shared/how-work-stopped'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
@@ -20,7 +19,7 @@ import {
   createTranscript,
   type TranscriptState,
 } from '../src/renderer/src/lib/transcript'
-import { fixtureProviderConfig } from './lib/host-fixture'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # 🔴 725 · Draw 3 — R71: an ending THIS APP wrote is drawn as the app's word
@@ -225,9 +224,7 @@ describe('§4 · R71 over the real host — the mark the machine wrote is the on
     theWindow = new AWindow('webContents:725')
     host = new RuntimeHost({
       store: ledger,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions: issued }),
       prepareProviderHome: (provider: Provider) => {
         const home = join(userData, 'provider-homes', provider)

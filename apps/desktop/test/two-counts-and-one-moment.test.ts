@@ -6,7 +6,6 @@ import { fileURLToPath } from 'node:url'
 import { FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import {
@@ -550,9 +549,7 @@ describe('567 · two counts and one moment', () => {
     it('⛔ a store with no database omits the count and zeroes nothing', () => {
       const blind = new RuntimeHost({
         store: NULL_SESSION_STORE,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(userData, 'exports'),
+        ...neutralHostDeps(() => userData),
         createRuntime: (provider: Provider) => new FakeRuntime(provider),
         prepareProviderHome: () => join(userData, 'nowhere'),
         providerHomePath: () => join(userData, 'nowhere'),

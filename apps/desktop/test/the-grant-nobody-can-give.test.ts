@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -12,7 +13,6 @@ import {
   createSessionStore,
   type SessionStore,
 } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import {
   RuntimeHost,
@@ -101,9 +101,7 @@ describe('355 · the grant nobody can give', () => {
   /** The deps, apart from the host, so a second host can be built over a different store. */
   const depsOver = (over: Partial<RuntimeHostDeps> = {}): RuntimeHostDeps => ({
     store,
-    discoverSessions: NO_DISCOVERY,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => join(userData, 'exports'),
+    ...neutralHostDeps(() => userData),
     createRuntime: (provider: Provider) => new FakeRuntime(provider),
     listProfiles: () => folders,
     prepareProviderHome: (provider, profileId) => {

@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -5,7 +6,6 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { FakeRuntime } from '@brobot2/runtime'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import {
@@ -21,9 +21,7 @@ function aHostOver(store: SessionStore, profile: RealisticProfile, folder: strin
   return new RuntimeHost({
     store,
     archived: profile.archive(),
-    discoverSessions: NO_DISCOVERY,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => join(folder, 'exports'),
+    ...neutralHostDeps(() => folder),
     createRuntime: (provider) => new FakeRuntime(provider),
     prepareProviderHome: (provider) => join(folder, 'homes', provider),
     providerHomePath: (provider) => join(folder, 'homes', provider),

@@ -33,7 +33,6 @@ import {
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   RuntimeHost,
   THE_APP_ITSELF,
@@ -44,7 +43,7 @@ import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
-import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
+import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # 🔴 677 · `R25` §4.1 and §4.4 — what reaches the PROVIDER, and what a WAKE reads
@@ -282,9 +281,7 @@ describe('677 §1-§2 · a spawn reaches the provider with exactly the person’
     }
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime,
       prepareProviderHome: (provider: Provider, profileId?: string) => {
         const home = homeOf(provider, profileId ?? 'brobot')
@@ -591,9 +588,7 @@ describe('677 §3 · a wake is a launch — 🔴 D-042: it replays the conversat
     const gate = anOpenGate()
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new RecordingDouble(provider, handles, issued, gate, started, resumed),
       prepareProviderHome: syntheticProviderHome(() => userData),

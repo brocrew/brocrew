@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -8,7 +9,6 @@ import { FakeRuntime, type SessionHandle } from '@brobot2/runtime'
 import { createSessionStore, NULL_SESSION_STORE } from '../src/main/db/session-store'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 
 const cleanups: (() => Promise<void>)[] = []
@@ -62,9 +62,7 @@ it.each(['timeout', 'Stop', 'interrupt-and-send'] as const)(
     let servers: { name: string; url: string; capability: string }[] = []
     const host = new RuntimeHost({
       store: createSessionStore(db),
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(root, 'exports'),
+      ...neutralHostDeps(() => root),
       createRuntime: () => raw,
       pluginAttachments: {
         agent: () => ({
@@ -202,9 +200,7 @@ for (const provider of ['claude', 'codex'] as const)
     const host = new RuntimeHost({
       closeDrainTimeoutMs: 50,
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(root, 'exports'),
+      ...neutralHostDeps(() => root),
       createRuntime: () => raw,
       pluginAttachments: { agent },
       prepareProviderHome: () => join(root, 'home'),

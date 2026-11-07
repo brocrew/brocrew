@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -14,7 +15,6 @@ import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   RuntimeHost,
   type RuntimeHostDeps,
@@ -106,9 +106,7 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
       new RuntimeHost({
         store,
         prepareBuiltInSkills: skillPreparation,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(root, 'exports'),
+        ...neutralHostDeps(() => root),
         createRuntime: (provider) => new Runtime(provider, { sessions }),
         prepareProviderHome: (provider, profile) => {
           const value = home(provider, profile)

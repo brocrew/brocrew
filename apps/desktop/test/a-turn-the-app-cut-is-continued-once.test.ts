@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import {
   registerPersistedCutIdentityCases,
   registerLegacyCutIdentityCase,
@@ -21,7 +22,6 @@ import {
 import type { CodexTransport } from '@brobot2/runtime'
 import type { ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
@@ -248,9 +248,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       startedAt,
       host: new RuntimeHost({
         store,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(folder, 'exports'),
+        ...neutralHostDeps(() => folder),
         resourcesRoot: () => resourcesRoot(folder),
         createRuntime: (provider: Provider) =>
           new ProviderOfALife(provider, stops, asked, startedAt),

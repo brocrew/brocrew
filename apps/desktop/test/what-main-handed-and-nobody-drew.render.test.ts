@@ -15,7 +15,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
@@ -44,7 +43,7 @@ import { isRefusal } from '../src/renderer/src/lib/user-input-offer'
 import { WORK_REPORT_MARK } from '../src/renderer/src/lib/work-report'
 import { THE_APP_IS_THE_AUTHOR } from '../src/shared/app-notice'
 import { decisionReading, readingSentence } from '../src/shared/questions'
-import { fixtureProviderConfig, syntheticProviderHome } from './lib/host-fixture'
+import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 🔴 **701 · what main handed the renderer and nobody drew** — `701` §2, four facts main already
@@ -193,9 +192,7 @@ class HostWorld {
     const userData = this.userData
     const built = new RuntimeHost({
       store: this.store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new HandingRuntime(provider, this.handed, this.issued),
       prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),

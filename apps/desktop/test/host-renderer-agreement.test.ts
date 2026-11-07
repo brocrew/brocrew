@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -7,7 +8,6 @@ import { FakeRuntime } from '@brobot2/runtime'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore as createLedger, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { messageNamingItsSender, THE_PERSON_AT_A_WINDOW } from '../src/main/runtime/turn-origin'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
@@ -139,9 +139,7 @@ describe('the host and the renderer cannot disagree about what is running (100)'
     let counter = 0
     host = new RuntimeHost({
       store: ledger,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: (provider) => new FakeRuntime(provider),
       prepareProviderHome: (provider) => join(dir, 'homes', provider),
       providerHomePath: (provider) => join(dir, 'homes', provider),

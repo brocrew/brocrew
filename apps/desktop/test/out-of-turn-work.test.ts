@@ -14,7 +14,6 @@ import {
   createSessionStore,
   type SessionStore,
 } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import {
   NEEDING_TOKEN,
@@ -629,9 +628,7 @@ describe('a conversation whose ledger ends on a phantom `working` (123 §4)', ()
     let counter = 0
     return new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: (provider) => {
         const existing = runtimes.get(provider)
         if (existing) return existing

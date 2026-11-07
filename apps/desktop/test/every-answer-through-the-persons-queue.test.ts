@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import type {
   LedgerWalk,
   LedgerWalkKind,
@@ -26,7 +27,6 @@ import {
   type UserInputResponse,
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
@@ -221,9 +221,7 @@ describe('476 · every compact answer that reaches the host, plus the blocked pe
     const sessions = new FakeProviderSessions()
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: (provider) => new WatchingRuntime(provider, sessions, handles, toolsets),
       // Test-owned, isolated paths. Nothing here names or reads a real provider home.
       prepareProviderHome: (provider, profileId) =>

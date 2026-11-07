@@ -27,7 +27,6 @@ import { WorkSearchPageBudget, workSearchMaterialization } from '../src/main/db/
 import type { WorkSearchReader } from '../src/main/db/work-search-reader'
 import type { WorkSearchPage } from '../src/shared/work-search'
 import { workSearchQuery, clippedWorkText } from '../src/shared/work-search'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { keepResource, resourcesRoot } from '../src/main/resources/resources'
@@ -35,7 +34,12 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { CAPABILITY_FIELDS, MAX_CAPABILITY_COUNT } from '../src/shared/capabilities'
 import { MAX_RESOURCES_PER_REPLY, RESOURCE_ROLES } from '../src/shared/documents'
 import { PIECE_EVENT_TYPES } from '../src/shared/tasks'
-import { RecordingSink, syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  fixtureProviderConfig,
+  neutralHostDeps,
+} from './lib/host-fixture'
 
 /**
  * D-016b · a reply keeps the files it was handed exactly as they were, and the tables that hold
@@ -93,9 +97,7 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
     const built = new RuntimeHost({
       store,
       workSearchReader,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions: issued }),
       prepareProviderHome: syntheticProviderHome(() => userData),

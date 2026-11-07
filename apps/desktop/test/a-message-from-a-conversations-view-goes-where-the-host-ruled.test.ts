@@ -19,7 +19,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore as createLedger, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   RuntimeHost,
   THE_APP_ITSELF,
@@ -38,7 +37,7 @@ import {
   type SessionLivenessMessage,
 } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
-import { syntheticProviderHome } from './lib/host-fixture'
+import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * D-017b · a message sent from a conversation's view goes where the HOST ruled, and the window says
@@ -215,9 +214,7 @@ describe('D-017b · a message from a conversation’s view goes where the host r
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store: ledger,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new LaunchCountingRuntime(provider, launches, issued, gate),
       prepareProviderHome: syntheticProviderHome(() => userData),

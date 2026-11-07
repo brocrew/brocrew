@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import {
   existsSync,
   mkdirSync,
@@ -13,7 +14,6 @@ import { fileURLToPath } from 'node:url'
 import { FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
@@ -583,9 +583,7 @@ describe('the host takes the file as it starts', () => {
   ): RuntimeHost => {
     const host = new RuntimeHost({
       store: opts.store ?? store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(folder, 'exports'),
+      ...neutralHostDeps(() => folder),
       createRuntime: (provider: Provider) => new FakeRuntime(provider),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
         const home = join(folder, 'provider-homes', profileId ?? 'default', provider)
