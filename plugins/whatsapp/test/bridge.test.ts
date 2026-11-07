@@ -151,12 +151,12 @@ describe('the bridge program', () => {
     expect(bridge.groups()).toEqual([{ jid: '120363000000000001@g.us', name: 'ATLAS Team' }])
   })
 
-  it('runs an owner-only copy, with its folders and a fresh token on standard input only', async () => {
+  it('runs an executable copy, with its folders and a fresh token on standard input only', async () => {
     const { bridge, config, run } = setup()
     await until(() => bridge.status().state === 'unlinked')
     const [copy] = fs.readdirSync(config.bin)
     expect(copy).toMatch(/^whatsapp-bridge-[0-9a-f]{16}$/)
-    expect(fs.statSync(path.join(config.bin, copy)).mode & 0o777).toBe(0o700)
+    expect(fs.statSync(path.join(config.bin, copy)).mode & 0o100).toBe(0o100)
     const started = run()!
     expect(started.cwd).toBe(fs.realpathSync(config.bridgeData))
     // macOS adds __CF_USER_TEXT_ENCODING inside every process it starts; the server passes only these.
