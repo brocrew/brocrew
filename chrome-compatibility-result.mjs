@@ -16,5 +16,6 @@ export function chromeCompatibilityResult({version,sha256,reply,serverClosed,std
   for(const value of captured)for(const line of value.split(/\r?\n/)) {
     if((/^agent-chrome:/.test(line)||/^(?:\w*Error(?:\s*\[[^\]]+\])?|E[A-Z0-9_]+):/.test(line))&&!recognized(line))return result('FAIL','Chrome stderr includes another startup error')
   }
+  if(!serverClosed)return result('PARTIAL','Chrome unavailable, cause unproven: no fresh matching server-closed receipt for this attempt')
   return result('KNOWN-ISSUE','Exact published Chrome 0.1.8 failed with the captured identity-startup diagnostic; Chrome did not pass')
 }

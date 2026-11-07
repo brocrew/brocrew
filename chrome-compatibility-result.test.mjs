@@ -3,6 +3,7 @@ import { chromeCompatibilityResult, publishedChrome018Sha256 } from './chrome-co
 const base={version:'0.1.8',sha256:publishedChrome018Sha256,reply:{ok:false,mutationFailure:'unavailable'},serverClosed:true,stderr:['Cannot confirm plugin process identity']}
 const cases=[
  [base,'KNOWN-ISSUE'],
+ [{...base,serverClosed:false},'PARTIAL'],
  [{...base,stderr:['agent-chrome: cannot start: Error']},'KNOWN-ISSUE'],
  [{...base,reply:{ok:true},stderr:[]},'PASS'],
  [{...base,stderr:[]},'PARTIAL'],

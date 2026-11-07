@@ -197,9 +197,9 @@ function publicOwner(owner) { if(!owner)return null; const {key,...safe}=owner; 
 function requiredPluginIds() {
   return appCompat&&['KNOWN-ISSUE','PARTIAL'].includes(summary.chromeCompatibility?.status)?['whatsapp']:['chrome','whatsapp']
 }
-function chromeAttemptEvidence(reply, card) {
+function chromeAttemptEvidence(reply, card, attemptPaths) {
   const previous=new Set(readJson(join(evidence,'pre-upgrade-host-receipts.json')).map(r=>r.path))
-  const receipts=hostReceipts().filter(r=>!previous.has(r.path)&&r.value.pluginId==='chrome'&&r.value.releaseDigest===publishedExpected.chrome.sha256)
+  const receipts=hostReceipts().filter(r=>!previous.has(r.path)&&!attemptPaths.has(r.path)&&r.value.pluginId==='chrome'&&r.value.releaseDigest===publishedExpected.chrome.sha256)
   const stderr=[],logs=[]
   for(const diagnostic of [reply?.startupDiagnostic,reply?.diagnostic,card?.startupDiagnostic])if(typeof diagnostic?.stderr==='string')stderr.push(diagnostic.stderr)
   for(const receipt of receipts.filter(r=>r.path.endsWith('exit.json'))) {
@@ -451,6 +451,7 @@ try {
       const listed=await request({kind:'list'},`candidate-${id}-before-install`);assert.equal(listed.ok,true)
       const card=listed.cards.find(c=>c.id===id);assert(card)
       if(cleanInstall)assert.equal(card.installed,false,'clean candidate unexpectedly has an installed plugin')
+      const attemptPaths=appCompat&&id==='chrome'?new Set(hostReceipts().map(r=>r.path)):null
       let installed
       if(card.installed) {
         assert.equal(card.installedVersion,wanted.version)
@@ -462,7 +463,7 @@ try {
       }
       if(appCompat&&id==='chrome') {
         const current=await request({kind:'list'},'candidate-chrome-after-attempt');assert.equal(current.ok,true)
-        const evidence=chromeAttemptEvidence(installed,current.cards.find(c=>c.id==='chrome'))
+        const evidence=chromeAttemptEvidence(installed,current.cards.find(c=>c.id==='chrome'),attemptPaths)
         summary.chromeCompatibility=chromeCompatibilityResult({version:wanted.version,sha256:wanted.sha256,reply:installed,serverClosed:evidence.serverClosed,stderr:evidence.stderr})
         keep('candidate-chrome-compatibility-result.json',summary.chromeCompatibility)
         assert.notEqual(summary.chromeCompatibility.status,'FAIL',summary.chromeCompatibility.reason)
