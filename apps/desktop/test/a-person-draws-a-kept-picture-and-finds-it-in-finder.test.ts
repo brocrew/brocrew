@@ -1,4 +1,4 @@
-import { syntheticProviderHome } from './lib/host-fixture'
+import { neutralHostDeps, syntheticProviderHome } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -9,7 +9,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
 import {
   executeRuntimeCommand,
@@ -81,9 +80,7 @@ describe('D-032 · a person draws a kept picture or PDF, and finds any kept file
     const sessions = new FakeProviderSessions()
     return new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       ...(withResources ? { resourcesRoot: () => resourcesRoot(userData) } : {}),
       revealPath: (path: string) => void revealed.push(path),
       createRuntime: () => new FakeRuntime('claude', { sessions }),
