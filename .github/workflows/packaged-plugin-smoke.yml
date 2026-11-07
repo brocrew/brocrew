@@ -40,6 +40,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build the real plugin packages
         shell: bash
+        env:
+          GOCACHE: ${{ runner.temp }}/brocrew-go-cache
         run: |
           set -euo pipefail
           npm ci --prefix plugins/chrome --ignore-scripts --no-audit --no-fund
