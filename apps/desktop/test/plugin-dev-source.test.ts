@@ -214,6 +214,12 @@ describe.skipIf(process.platform === 'win32')('unpackaged local plugin source', 
     expect(fetch).toHaveBeenCalledOnce()
     expect(String(fetch.mock.calls[0]?.[0])).toBe(PLUGIN_LIST_URL)
   })
+  it('loads an OS-readable shared dev folder without changing its permissions', async () => {
+    const { directory, appData, fetch } = await setup()
+    await chmod(directory, 0o755)
+    expect(await devPluginSource({ isPackaged: false, appData })).toBeDefined()
+    expect(fetch).not.toHaveBeenCalled()
+  })
   it('keeps the existing source when the dev folder is absent', async () => {
     const { directory, appData } = await setup()
     await rename(directory, directory + '-absent')

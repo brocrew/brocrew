@@ -74,14 +74,14 @@ describe('provisionProviderHome (021)', () => {
 
   // --- 027 P1-H hardening ---
 
-  it('enforces 0700 on an existing home, repairing a loose 0755', async (ctx) => {
+  it('uses an existing 0755 home without changing its permissions', async (ctx) => {
     ctx.skip(process.platform === 'win32', 'Windows keeps no mode to loosen or repair')
     const home = join(root, 'proj', 'profile')
     mkdirSync(home, { recursive: true })
     chmodSync(home, 0o755)
     expect(lstatSync(home).mode & 0o777).toBe(0o755)
     await provisionProviderHome(root, home)
-    expect(lstatSync(home).mode & 0o777).toBe(0o700) // repaired to owner-only
+    expect(lstatSync(home).mode & 0o777).toBe(0o755)
   })
 
   it('rejects an existing regular file at the home path (must be a real directory)', async () => {
