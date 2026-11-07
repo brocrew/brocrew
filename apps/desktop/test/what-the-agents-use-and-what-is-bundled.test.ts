@@ -12,6 +12,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   listProcesses,
+  WINDOWS_LISTING,
   resourcesFromTheListing,
   type ListedProcess,
 } from '../src/main/runtime/process-listing'
@@ -34,6 +35,7 @@ const versionPrograms = vi.hoisted(() => ({
         file: string,
         options: { env?: Record<string, string> },
         callback: (error: Error | null, output: string) => void,
+        args: readonly string[],
       ) => boolean),
 }))
 
@@ -42,13 +44,13 @@ vi.mock('node:child_process', async (importOriginal) => {
   return {
     ...actual,
     execFile: ((...args: unknown[]) => {
-      const [file, , options, callback] = args as [
+      const [file, command, options, callback] = args as [
         string,
         string[],
         { env?: Record<string, string> },
         (error: Error | null, output: string) => void,
       ]
-      if (versionPrograms.run?.(file, options, callback))
+      if (versionPrograms.run?.(file, options, callback, command))
         return {} as ReturnType<typeof actual.execFile>
       return Reflect.apply(actual.execFile, actual, args) as ReturnType<typeof actual.execFile>
     }) as typeof actual.execFile,
@@ -134,10 +136,22 @@ describe('listProcesses', () => {
     'reads one %s listing with a size and a pid parent',
     async (platform) => {
       let calls = 0
-      versionPrograms.run = (file, options, callback) => {
+      versionPrograms.run = (file, options, callback, args) => {
         calls += 1
         expect(file).toBe(platform === 'win32' ? 'powershell.exe' : 'ps')
-        expect(options).toMatchObject({ encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 })
+        expect(args).toEqual(
+          platform === 'win32'
+            ? ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_LISTING]
+            : ['-axo', 'pid=,ppid=,rss=,%cpu='],
+        )
+        expect(options).toMatchObject({
+          encoding: 'utf8',
+          maxBuffer: 8 * 1024 * 1024,
+          timeout: platform === 'win32' ? 15_000 : 2_000,
+          ...(platform === 'win32'
+            ? { windowsHide: true }
+            : { killSignal: 'SIGKILL', env: expect.objectContaining({ LC_ALL: 'C' }) }),
+        })
         callback(null, listing(platform))
         return true
       }
