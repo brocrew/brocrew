@@ -9,20 +9,6 @@ import { toPersistedEvents, type EventRow } from '../db/session-store'
 import { errorCode, nodeFs, pathExists, type RecoveryFs } from './files'
 import { SIDECARS } from './layout'
 
-/**
- * Reads the conversations and transcripts of a restored copy of a workspace's database, for the
- * recovery window, without writing to the file or beside it.
- *
- * It opens the file read-only and runs SELECTs only. A read-only connection still creates `-wal`
- * and `-shm` beside a database in WAL mode, and cannot read one with a `-wal` or `-journal` beside
- * it without recovering it, so only a rollback-mode file with neither is opened, as a checkpoint's
- * copy is. Any other file is refused, unopened.
- *
- * Events are decoded by the session store's own row decoder, so each row reads here as it reads in
- * the main window: bounded the same way, and skipped the same way when it cannot be parsed. The
- * store itself is never constructed.
- */
-
 export interface HistoryReaderOptions {
   readonly fs?: RecoveryFs
 }
@@ -31,10 +17,6 @@ export interface HistoryReaderOptions {
 export interface ClosableHistoryReader extends HistoryReader {
   /** The folder a conversation worked in, for the paths its messages wrote; `null` for none. */
   workingFolder(id: string): Promise<string | null>
-  /**
-   * Closes the connection. Reads after it are refused rather than reopening the file, so the file
-   * can be moved once this returns. Closing again does nothing.
-   */
   close(): void
 }
 
@@ -44,10 +26,6 @@ const HEADER_BYTES = 100
 const SQLITE_MAGIC = 'SQLite format 3\u0000'
 const CLOSED = 'the history reader is closed'
 
-/**
- * The longest chain of pieces walked up to spell a label. No piece is given deeper than the widest
- * depth a person may grant below a root, so a longer chain is a database edited by hand.
- */
 const MAX_PIECE_DEPTH = MAX_CAPABILITY_COUNT + 2
 
 /** The piece event types, as the partial index over them lists them. */
@@ -83,10 +61,6 @@ interface Connection {
   readonly newestRetitle: Database.Statement
 }
 
-/**
- * A reader over `file`. Nothing is opened until the first read, which checks the file and opens
- * it; a read that fails is refused and the next one checks again.
- */
 export function createHistoryReader(
   file: string,
   options: HistoryReaderOptions = {},
@@ -154,10 +128,6 @@ export function createHistoryReader(
   }
 }
 
-/**
- * Refuses a file that SQLite could not read without writing to it or beside it: one that is not a
- * database, one in WAL mode, or one with a `-wal` or `-journal` beside it.
- */
 async function mayBeReadInPlace(file: string, fs: RecoveryFs): Promise<void> {
   const stats = await fs.stat(file).catch((error: unknown) => {
     if (errorCode(error) !== 'ENOENT') throw error
@@ -210,8 +180,6 @@ function connect(file: string): Connection {
            LEFT JOIN agent_identity identity ON identity.id = s.agent_identity_id
           ORDER BY s.updated_at DESC, s.id DESC`,
       ),
-      // A ledger rebuilt from its provider's file is read in the generation it was switched to;
-      // every other ledger has only generation 0.
       generation: db.prepare('SELECT active FROM derived_generation WHERE session_id = ?'),
       cwd: db.prepare('SELECT cwd FROM provider_session WHERE id = ?'),
       events: db.prepare(
@@ -229,9 +197,6 @@ function connect(file: string): Connection {
           LIMIT 1`,
       ),
       piece: db.prepare('SELECT id, parent_id, number, title FROM work WHERE id = ?'),
-      // The piece types are listed beside the one asked for so SQLite reads the owner's piece rows
-      // through their partial index, newest first, rather than the whole ledger; `+generation`
-      // keeps the unique index out of the choice. A payload that is not JSON names no piece.
       newestRetitle: db.prepare(
         `SELECT payload FROM events
           WHERE session_id = ? AND +generation = ?
@@ -252,11 +217,6 @@ function activeGeneration(c: Connection, conversation: string): number {
   return (c.generation.get(conversation) as { active: number } | undefined)?.active ?? 0
 }
 
-/**
- * Who is in a conversation, as the main window names them: its identity's chosen name, else the
- * app's name for that identity. `null` for one this app ran as nobody (found in a person's own
- * provider folder, or restored from a bundle), which the window names by its provider instead.
- */
 function agentOf(row: ConversationRow): string | null {
   const ranAsNobody =
     row.restored_at !== null || (row.adopted_at !== null && row.profile_id === null)
@@ -264,14 +224,6 @@ function agentOf(row: ConversationRow): string | null {
   return row.display_name ?? agentName(row.profile_id, null)
 }
 
-/**
- * The line the main window's list names a conversation by, `W1 · Bakery website`: the root it
- * owns, else the newest piece it holds, each with the title it stands under now. `null` when it
- * owns and holds none.
- *
- * The main window folds a conversation's record to prefer an open piece over one that ended and to
- * add how many more it holds; this reads no record, so it names the newest piece and adds nothing.
- */
 function titleOf(c: Connection, conversation: string): string | null {
   const titled = (piece: PieceRow, numbers: readonly number[]): string =>
     pieceLine(pieceCalled(numbers), titleNow(c, conversation, piece))
@@ -283,11 +235,6 @@ function titleOf(c: Connection, conversation: string): string | null {
   return numbers === null ? null : titled(held, numbers)
 }
 
-/**
- * The title a piece stands under now: the title its newest `work_retitled` says, else its title as
- * given, which is `null` for a root nobody has titled. A piece's retitles are written in its
- * owner's ledger, in that ledger's active generation.
- */
 function titleNow(c: Connection, owner: string, piece: PieceRow): string | null {
   const row = c.newestRetitle.get(owner, activeGeneration(c, owner), piece.id) as
     { payload: string } | undefined
@@ -296,10 +243,6 @@ function titleNow(c: Connection, owner: string, piece: PieceRow): string | null 
   return typeof said.title === 'string' ? said.title : piece.title
 }
 
-/**
- * The numbers a piece's label spells, from its root down, or `null` when its chain of parents does
- * not reach a root.
- */
 function numbersOf(c: Connection, piece: PieceRow): number[] | null {
   const numbers = [piece.number]
   let parent = piece.parent_id

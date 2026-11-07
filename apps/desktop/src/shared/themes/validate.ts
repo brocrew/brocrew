@@ -1,12 +1,5 @@
-/**
- * `validateTheme`: reads an untrusted `theme.json` against the schema, checks every file it names
- * against what the host found in it, and measures whether its text stays readable. It answers with
- * a clean theme, every value written back in one form, or with every problem as a plain sentence
- * naming the setting.
- */
 import { assetLimitProblems, assetPathProblem, LIMITS, type AssetFacts } from './assets'
 import { colourCss, parseColour } from './colour'
-import { contrastProblems, type PictureSamples } from './contrast'
 import { TYPE_DEFAULTS, TYPE_FLOOR, typeSizes } from './derive'
 import {
   EFFECT_PARAMS,
@@ -30,8 +23,6 @@ export type ThemeValidation =
   | {
       readonly ok: true
       readonly theme: Theme
-      /** Readability problems kept as notes, when `readability` is `'note'`. */
-      readonly notes?: readonly ThemeProblem[]
     }
   | { readonly ok: false; readonly problems: readonly ThemeProblem[] }
 
@@ -39,28 +30,13 @@ export type ThemeValidation =
 export interface ThemeContext {
   /** Every file in the theme's folder under `assets/`, with what the host read from its bytes. */
   readonly assets: ReadonlyMap<string, AssetFacts>
-  /**
-   * The darkest and lightest colours of each picture, sampled by the host: this theme's by their
-   * path, and its base's as `@<base id>/<path>`, since text may sit over an inherited picture.
-   */
-  readonly pictures?: ReadonlyMap<string, PictureSamples>
   /** The built-in themes, already valid: `extends` names one of these, and their ids are taken. */
   readonly builtIns: ReadonlyMap<string, Theme>
   /** Built-ins a theme may extend that an unknown `extends` doesn't suggest. */
   readonly hiddenBases?: ReadonlySet<string>
   /** True when validating a built-in itself, which may use its own reserved id. */
   readonly builtIn?: boolean
-  /**
-   * True to read the settings the window doesn't paint yet as well, by their own rules. No host
-   * sets it: a theme the app reads is refused for any of them.
-   */
   readonly readsHeld?: boolean
-  /**
-   * What a readability problem does: refuses the theme (the default, for a theme being saved or a
-   * built-in), or is kept as a note on a theme that otherwise loads — a person's saved theme,
-   * re-read after an update has made the readability check stricter.
-   */
-  readonly readability?: 'refuse' | 'note'
 }
 
 const ID = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/
@@ -73,10 +49,6 @@ function textFault(v: unknown, max: number): 'empty' | 'hidden' | 'long' | null 
   return null
 }
 
-/**
- * The built-in a theme file extends, named as validation reads it: `extends` admitted as text and
- * trimmed. Undefined when the file names none, or names one in a form validation refuses.
- */
 export function themeBaseName(raw: unknown): string | undefined {
   if (typeof raw !== 'object' || raw === null || !('extends' in raw)) return undefined
   const spec = THEME_SCHEMA.extends
@@ -646,18 +618,9 @@ export function validateTheme(raw: unknown, context: ThemeContext): ThemeValidat
   const theme = clean as unknown as Theme
   const small = smallTextProblem(theme, resolveTheme(theme, base))
   if (small) return { ok: false, problems: [small] }
-  const contrast = contrastProblems(resolveTheme(theme, base), context.pictures ?? new Map())
-  if (contrast.length > 0)
-    return context.readability === 'note'
-      ? { ok: true, theme, notes: contrast }
-      : { ok: false, problems: contrast }
   return { ok: true, theme }
 }
 
-/**
- * The text size and ratio, with what the theme inherits, must keep every text role at the floor or
- * above. Reported where the theme set it: at the ratio when that is all it set, else at the size.
- */
 function smallTextProblem(theme: Theme, resolved: Theme): ThemeProblem | null {
   const base = resolved.shared?.textBase ?? TYPE_DEFAULTS.base
   const ratio = resolved.shared?.typeRatio ?? TYPE_DEFAULTS.ratio

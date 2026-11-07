@@ -3,16 +3,16 @@ import { validateTheme } from '../../src/shared/themes/validate'
 import { contextFor, DEFINED, png, SAMPLES, woff2 } from './fixtures'
 
 const base = { format: 1, id: 'mine', name: 'Mine', extends: 'defined' }
-const valid = (file: Record<string, unknown>, assets = {}, pictures = {}) =>
-  validateTheme(file, contextFor(assets, pictures))
-const problems = (file: Record<string, unknown>, assets = {}, pictures = {}) => {
-  const r = valid(file, assets, pictures)
+const valid = (file: Record<string, unknown>, assets = {}) =>
+  validateTheme(file, contextFor(assets))
+const problems = (file: Record<string, unknown>, assets = {}) => {
+  const r = valid(file, assets)
   return r.ok ? [] : r.problems
 }
 
 describe('every live theme, written as settings, is accepted', () => {
   it.each(Object.entries(SAMPLES))('%s', (_, sample) => {
-    const r = validateTheme(sample.file, contextFor(sample.assets, sample.pictures))
+    const r = validateTheme(sample.file, contextFor(sample.assets))
     expect(r.ok ? [] : r.problems).toEqual([])
   })
 

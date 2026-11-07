@@ -3,10 +3,6 @@ import type { AppDatabase } from './connection'
 /** Below this much free space, giving it back is not worth a pause at launch. */
 export const COMPACT_FROM_FREE_BYTES = 64 * 1024 * 1024
 
-/**
- * The largest file launch compaction rewrites. Compaction reads every page of the file as it is now,
- * so its pause grows with the file; above this it is never run at launch.
- */
 export const COMPACT_AT_MOST_BYTES = 512 * 1024 * 1024
 
 /** What {@link compactWhenMuchIsFree} did. */
@@ -19,12 +15,6 @@ export type Compaction =
   /** Compacted, but a reader held the log, so the log file keeps its size until later. */
   | 'compacted-log-held'
 
-/**
- * Give free pages back to the disk when a quarter of the file or more is free — what a migration
- * that removed many rows leaves behind, since SQLite keeps a file its old size. Run before any
- * window opens, as migrations are. ⚠️ Not when the disk cannot hold a copy of what is kept and the
- * log beside it: `VACUUM` writes both before it lets the old pages go.
- */
 export function compactWhenMuchIsFree(
   db: AppDatabase,
   freeOnDisk: number | null,

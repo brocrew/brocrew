@@ -16,19 +16,6 @@ import type { WorkingOn } from './coordinator'
 import type { ClosableHistoryReader } from './history-reader'
 import { isUuid } from './layout'
 
-/**
- * What main answers the recovery window: the verdict, the restore, return and retry it offers, the
- * restored copy's history, the time zone, and quitting.
- *
- * Every call is checked against the verdict that stands: a restore only of the copy that verdict
- * offers, a return only from a restored copy, a retry only after a failure that may pass, and the
- * history only while a restored copy is open to be read. One restore, return or retry runs at a
- * time, and the history reader is closed before any of them moves a file.
- *
- * A failed migration is tried again by starting the app again: the new start checks the data and
- * migrates it, so a check here first would only copy the data twice.
- */
-
 export interface RecoveryCallsDeps {
   readonly service: RecoveryService
   /** The verdict the start ended on. */

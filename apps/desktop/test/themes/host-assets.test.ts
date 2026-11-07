@@ -32,11 +32,7 @@ import {
   type ThemeReadFiles,
 } from '../../src/main/themes/files'
 import { registerThemeIpc } from '../../src/main/themes/ipc'
-import {
-  samplesFromBitmap,
-  themePictureSampler,
-  type ThemeImages,
-} from '../../src/main/themes/picture-samples'
+import { themePictureSampler, type ThemeImages } from '../../src/main/themes/picture-samples'
 import { themesBridge } from '../../src/preload/themes'
 import { THEMES_CHANNELS, type ThemeChanged } from '../../src/shared/theme-library'
 import { LIMITS, type AssetFacts } from '../../src/shared/themes/assets'
@@ -48,7 +44,6 @@ import {
   picturedBase,
   putTheme,
   RED_PNG,
-  RED_SAMPLES,
   type HostFixture,
 } from './host-fixtures'
 
@@ -66,7 +61,7 @@ describe('theme asset registry and scheme', () => {
     await putTheme(fixture.builtIns, 'defined', picturedBase, { 'assets/red.png': RED_PNG })
     await putTheme(fixture.library, 'mine', childTheme('mine'), { 'assets/own.jpg': RED_PNG })
     // Its base draws a picture with an effect, a setting the window doesn't paint yet.
-    const store = fixture.store({ loader: { sample: () => RED_SAMPLES, readsHeld: true } })
+    const store = fixture.store({ loader: { sample: () => true, readsHeld: true } })
     await store.start()
     const own = store.asset('mine', 'assets/own.jpg')
     expect(own).not.toBeNull()
@@ -763,48 +758,24 @@ describe('theme IPC and preload facade', () => {
   })
 })
 
-// These objects exercise bitmap forwarding, never Electron or a decoder.
 function fakeImages(
-  red: 0 | 2,
   options: {
     width?: number
     height?: number
     empty?: boolean
-    calibration?: Buffer
-    bitmap?: Buffer
   } = {},
 ) {
-  const resized = vi.fn()
-  const bitmaps = vi.fn()
-  let calls = 0
   const width = options.width ?? 1
   const height = options.height ?? 1
   const images: ThemeImages = {
     createFromBuffer: vi.fn(() => {
-      calls++
-      const calibration = calls === 1
-      const pixel = red === 0 ? Buffer.from([255, 0, 0, 255]) : Buffer.from([0, 0, 255, 255])
-      const small = {
-        toBitmap: (settings: { scaleFactor?: number }) => {
-          bitmaps(settings)
-          return options.bitmap ?? pixel
-        },
-      } as NativeImage
       return {
-        isEmpty: () => !calibration && options.empty === true,
+        isEmpty: () => options.empty === true,
         getSize: () => ({ width, height }),
-        toBitmap: (settings: { scaleFactor?: number }) => {
-          bitmaps(settings)
-          return calibration ? (options.calibration ?? pixel) : (options.bitmap ?? pixel)
-        },
-        resize: (settings: { width?: number; height?: number; quality?: string }) => {
-          resized(settings)
-          return small
-        },
       } as NativeImage
     }),
   }
-  return { images, resized, bitmaps }
+  return { images }
 }
 
 const pngFacts = (width = 1, height = 1): AssetFacts => ({
@@ -815,101 +786,34 @@ const pngFacts = (width = 1, height = 1): AssetFacts => ({
   animated: false,
 })
 
-describe('picture bitmap helper', () => {
-  it.each([0, 2] as const)(
-    'calibrates channel order %s from its own red PNG and caches it',
-    (red) => {
-      const fake = fakeImages(red)
-      const sample = themePictureSampler(fake.images)
-      for (let i = 0; i < 2; i++)
-        expect(sample(RED_PNG, pngFacts())).toEqual({
-          darkest: { r: 255, g: 0, b: 0, a: 1 },
-          lightest: { r: 255, g: 0, b: 0, a: 1 },
-          seeThrough: false,
-        })
-      expect(fake.images.createFromBuffer).toHaveBeenCalledTimes(3)
-      expect(vi.mocked(fake.images.createFromBuffer).mock.calls[0]![0]).toEqual(RED_PNG)
-      expect(fake.resized).toHaveBeenCalledWith({ width: 1, height: 1, quality: 'best' })
-      expect(fake.bitmaps).toHaveBeenCalledWith({ scaleFactor: 1 })
-    },
-  )
-
-  it('forwards a bounded resize preserving aspect ratio', () => {
-    const bitmap = Buffer.alloc(32 * 16 * 4, 255)
-    const fake = fakeImages(0, { width: 64, height: 32, bitmap })
-    const sample = themePictureSampler(fake.images)
-    expect(sample(RED_PNG, pngFacts(64, 32))).not.toBeNull()
-    expect(fake.resized).toHaveBeenCalledWith({ width: 32, height: 16, quality: 'best' })
+describe('native picture validation', () => {
+  it('decodes the offered bytes and checks their dimensions', () => {
+    const fake = fakeImages({ width: 64, height: 32 })
+    expect(themePictureSampler(fake.images)(RED_PNG, pngFacts(64, 32))).toBe(true)
+    expect(fake.images.createFromBuffer).toHaveBeenCalledExactlyOnceWith(RED_PNG)
   })
 
-  it('unpremultiplies alpha and selects luminance extremes for either channel order', () => {
-    for (const red of [0, 2] as const) {
-      const rgba = Buffer.from([0, 0, 0, 255, 255, 255, 255, 255, 128, 0, 0, 128])
-      if (red === 2) {
-        rgba[8] = 0
-        rgba[10] = 128
-      }
-      expect(samplesFromBitmap(rgba, red)).toEqual({
-        darkest: { r: 0, g: 0, b: 0, a: 1 },
-        lightest: { r: 255, g: 255, b: 255, a: 1 },
-        seeThrough: true,
-      })
-      const translucent = samplesFromBitmap(rgba.subarray(8), red)
-      expect(translucent?.darkest.r).toBe(255)
-      expect(translucent?.darkest.a).toBeCloseTo(128 / 255)
-    }
-    expect(samplesFromBitmap(Buffer.from([255, 255, 255, 0]), 0)).toEqual({
-      darkest: { r: 0, g: 0, b: 0, a: 0 },
-      lightest: { r: 0, g: 0, b: 0, a: 0 },
-      seeThrough: true,
-    })
-  })
-
-  it('refuses empty, unaligned and over-budget bitmaps', () => {
-    for (const bitmap of [Buffer.alloc(0), Buffer.alloc(3), Buffer.alloc(32 * 32 * 4 + 4)])
-      expect(samplesFromBitmap(bitmap, 0)).toBeNull()
-  })
-
-  it('refuses failed calibration and caches the failure without guessing channel order', () => {
-    const fake = fakeImages(0, { calibration: Buffer.from([0, 0, 0, 255]) })
-    const sample = themePictureSampler(fake.images)
-    expect(sample(RED_PNG, pngFacts())).toBeNull()
-    expect(sample(RED_PNG, pngFacts())).toBeNull()
-    expect(fake.images.createFromBuffer).toHaveBeenCalledTimes(1)
-    expect(fake.resized).not.toHaveBeenCalled()
-  })
-
-  it('returns no samples when the image facade throws', () => {
+  it('refuses when the image facade throws', () => {
     const images: ThemeImages = {
       createFromBuffer: () => {
         throw new Error('fictional image failure')
       },
     }
-    expect(themePictureSampler(images)(RED_PNG, pngFacts())).toBeNull()
+    expect(themePictureSampler(images)(RED_PNG, pngFacts())).toBe(false)
   })
 
-  it.each(['empty', 'dimensions', 'bitmap', 'pixels', 'bytes', 'font'] as const)(
-    'refuses %s instead of supplying invented samples',
-    (kind) => {
-      const fake = fakeImages(
-        0,
-        kind === 'empty'
-          ? { empty: true }
-          : kind === 'dimensions'
-            ? { width: 2 }
-            : kind === 'bitmap'
-              ? { bitmap: Buffer.alloc(3) }
-              : {},
-      )
-      const sample = themePictureSampler(fake.images)
-      const facts: AssetFacts =
-        kind === 'pixels'
-          ? pngFacts(LIMITS.picturePixels + 1, 1)
-          : kind === 'font'
-            ? { type: 'woff2', bytes: 4 }
-            : pngFacts()
-      const bytes = kind === 'bytes' ? Buffer.alloc(LIMITS.pictureBytes + 1) : RED_PNG
-      expect(sample(bytes, facts)).toBeNull()
-    },
-  )
+  it.each(['empty', 'dimensions', 'pixels', 'bytes', 'font'] as const)('refuses %s', (kind) => {
+    const fake = fakeImages(
+      kind === 'empty' ? { empty: true } : kind === 'dimensions' ? { width: 2 } : {},
+    )
+    const sample = themePictureSampler(fake.images)
+    const facts: AssetFacts =
+      kind === 'pixels'
+        ? pngFacts(LIMITS.picturePixels + 1, 1)
+        : kind === 'font'
+          ? { type: 'woff2', bytes: 4 }
+          : pngFacts()
+    const bytes = kind === 'bytes' ? Buffer.alloc(LIMITS.pictureBytes + 1) : RED_PNG
+    expect(sample(bytes, facts)).toBe(false)
+  })
 })

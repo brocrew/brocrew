@@ -5,19 +5,13 @@ import ToolsRegister from '../../src/renderer/src/components/ToolsRegister.vue'
 import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
 import { contrastRatio, mixOklab, parseColour, type Rgba } from '../../src/shared/themes/colour'
-import { SOLID_HOVER_ACCENT } from '../../src/shared/themes/contrast'
 import { resolveTheme } from '../../src/shared/themes/theme'
 import { validateTheme } from '../../src/shared/themes/validate'
 import DEFINED_FILE from '../../resources/themes/defined/theme.json'
 import type { AgentIdentities, RuntimeBridge } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll } from './harness'
 
-/**
- * A solid primary button, as the window draws it: a real one, the Tools page's Add server…, at
- * rest and under the pointer, in the content zone and in the frame's. Each fill is the
- * colour the readability check measures its text against, and the text reads on both.
- */
-
+const SOLID_HOVER_ACCENT = 88
 const BASE = (() => {
   const read = validateTheme(DEFINED_FILE, {
     assets: new Map(),
@@ -51,7 +45,6 @@ canvas.width = 1
 canvas.height = 1
 const ctx = canvas.getContext('2d', { willReadFrequently: true })!
 
-/** The sRGB colour a computed colour paints. */
 function painted(computed: string): Rgba {
   ctx.clearRect(0, 0, 1, 1)
   ctx.fillStyle = '#000'
@@ -93,7 +86,7 @@ describe('a solid button reads at rest and under the pointer', () => {
     for (const fill of [rest, hover]) expect(contrastRatio(ink, fill)).toBeGreaterThanOrEqual(4.5)
   })
 
-  it('⛔ a dark accent override over a light seed: the hover is worked out from the override', async () => {
+  it('a dark accent override over a light seed: the hover is worked out from the override', async () => {
     // The stylesheet such a theme writes; whether the check accepts it is in the node tests.
     applyTheme(
       resolveTheme(
@@ -118,7 +111,6 @@ describe('a solid button reads at rest and under the pointer', () => {
   })
 })
 
-/** The Tools page's real Add server… button, in the content zone or the frame's. */
 async function toolsButton(zone: 'content' | 'frame'): Promise<HTMLElement> {
   const store = createAgentStore({
     agentIdentities: async () => NO_AGENTS,

@@ -1,15 +1,6 @@
-/**
- * The live themes, rewritten as theme files: what each one did with CSS selectors, said with
- * settings. The files they name are described by facts (the host reads real bytes), and each
- * picture by the darkest and lightest colours the host would sample from it.
- */
 import type { AssetFacts } from '../../src/shared/themes/assets'
-import { parseColour, type Rgba } from '../../src/shared/themes/colour'
-import type { PictureSamples } from '../../src/shared/themes/contrast'
 import type { Theme } from '../../src/shared/themes/theme'
 import type { ThemeContext } from '../../src/shared/themes/validate'
-
-const rgb = (hex: string): Rgba => parseColour(hex)!
 
 export const png = (width: number, height: number, bytes = 40_000): AssetFacts => ({
   type: 'png',
@@ -26,12 +17,6 @@ export const jpeg = (width: number, height: number, bytes = 900_000): AssetFacts
   animated: false,
 })
 export const woff2 = (bytes = 60_000): AssetFacts => ({ type: 'woff2', bytes })
-const samples = (darkest: string, lightest: string): PictureSamples => ({
-  darkest: rgb(darkest),
-  lightest: rgb(lightest),
-})
-
-/** The built-in base the samples extend. */
 export const DEFINED: Theme = {
   format: 1,
   id: 'defined',
@@ -41,27 +26,17 @@ export const DEFINED: Theme = {
   shared: { page: 7, line: 16, tint: 10, shadow: { strength: 9 }, borderWidth: 1, radius: 12 },
 }
 
-/**
- * What a host would hand the validator for a theme's folder. These samples use the settings the
- * window doesn't paint yet, so they are read with them, by their own rules.
- */
-export function contextFor(
-  assets: Record<string, AssetFacts> = {},
-  pictures: Record<string, PictureSamples> = {},
-): ThemeContext {
+export function contextFor(assets: Record<string, AssetFacts> = {}): ThemeContext {
   return {
     assets: new Map(Object.entries(assets)),
-    pictures: new Map(Object.entries(pictures)),
     builtIns: new Map([['defined', DEFINED]]),
     readsHeld: true,
   }
 }
 
-/** A sample: the raw file, and the folder it would sit in. */
 export interface Sample {
   readonly file: Record<string, unknown>
   readonly assets?: Record<string, AssetFacts>
-  readonly pictures?: Record<string, PictureSamples>
 }
 
 export const SAMPLES: Record<string, Sample> = {
@@ -335,7 +310,6 @@ export const SAMPLES: Record<string, Sample> = {
       },
     },
     assets: { 'assets/beach.jpg': jpeg(2000, 1333) },
-    pictures: { 'assets/beach.jpg': samples('#1d3b2a', '#f4f1e8') },
   },
   valentine: {
     file: {
@@ -387,10 +361,6 @@ export const SAMPLES: Record<string, Sample> = {
       'assets/heart.png': png(64, 64),
       'assets/fonts/script.woff2': woff2(),
     },
-    pictures: {
-      'assets/hearts.png': samples('#5a0f26', '#7a1432'),
-      'assets/heart.png': samples('#c2185b', '#ff4d7d'),
-    },
   },
   'retro-desktop': {
     file: {
@@ -440,7 +410,6 @@ export const SAMPLES: Record<string, Sample> = {
       conversation: { background: '#ffffff' },
     },
     assets: { 'assets/flag.png': png(256, 224) },
-    pictures: { 'assets/flag.png': samples('#000000', '#ffffff') },
   },
   paper: {
     file: {
@@ -553,11 +522,6 @@ export const SAMPLES: Record<string, Sample> = {
       'assets/network-light.png': png(560, 660),
       'assets/crew.png': png(96, 96),
     },
-    pictures: {
-      'assets/network.png': samples('#1b1f4b', '#2a2f66'),
-      'assets/network-light.png': samples('#ece9f4', '#fbfaf7'),
-      'assets/crew.png': samples('#14173a', '#ff8a5c'),
-    },
   },
   'green-sky': {
     file: {
@@ -603,7 +567,6 @@ export const SAMPLES: Record<string, Sample> = {
       },
     },
     assets: { 'assets/sky.png': png(2400, 1350, 3_500_000), 'assets/orbs.png': png(440, 300) },
-    pictures: { 'assets/sky.png': samples('#1f3d2a', '#d8f0c8') },
   },
   zen: {
     file: {
@@ -636,7 +599,6 @@ export const SAMPLES: Record<string, Sample> = {
       ],
     },
     assets: { 'assets/seigaiha.png': png(96, 48), 'assets/enso.png': png(680, 680) },
-    pictures: { 'assets/seigaiha.png': samples('#17213a', '#26324f') },
   },
   mario: {
     file: {
@@ -739,10 +701,6 @@ export const SAMPLES: Record<string, Sample> = {
       'assets/clouds.png': png(688, 56),
       'assets/hills.png': png(688, 80),
       'assets/goomba.png': png(32, 16, 300),
-    },
-    pictures: {
-      'assets/brick.png': samples('#000000', '#ffcec5'),
-      'assets/block.png': samples('#000000', '#fbd000'),
     },
   },
 }

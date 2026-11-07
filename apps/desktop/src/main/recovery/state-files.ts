@@ -3,21 +3,9 @@ import { PROVIDER_HOMES_DIRNAME } from '../runtime/provider-homes'
 import type { RestoreRule } from './contract'
 import { BACKUPS_DIRNAME, DATABASE_FILE, RECOVERY_DIRNAME, familyOf } from './layout'
 
-/**
- * Every name the app writes directly in its data folder, sorted into the state a checkpoint copies
- * beside the database and everything else, each with the reason. A test reads the source for every
- * name joined to the data folder and fails on one in neither list, so a new state file needs a
- * decision here before it can ship.
- */
-
 export interface AppStateFile {
   readonly name: string
   readonly kind?: 'tree'
-  /**
-   * `with-the-database`: a restore installs the checkpoint's copy with the database and sets the
-   * live one aside with the newer database. `kept-current`: copied too, but a restore leaves the
-   * live one as it is.
-   */
   readonly restore: RestoreRule
   readonly why: string
 }

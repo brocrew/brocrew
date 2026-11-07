@@ -53,11 +53,6 @@ export type ThemeFolderState =
   /** The system would not say, even after waiting out a brief hold. */
   | { readonly kind: 'unresolved' }
 
-/**
- * Whether a folder the themes live in is there, looked at through `look` and waiting out a file
- * held for a moment. Only the system saying it does not exist, or something other than a real
- * folder standing there, counts as absent.
- */
 export async function themeFolderState(
   path: string,
   look: (path: string) => Promise<Stats> = lstat,
@@ -80,10 +75,6 @@ export type ThemeChoice =
   /** The choice file is there but the system would not let it be read. */
   | { readonly kind: 'unresolved' }
 
-/**
- * The workspace's theme choice. No file, or one that holds no valid choice, is no choice; a file
- * the system won't let the app read, even after waiting out a brief hold, is an unknown choice.
- */
 export async function readThemeChoice(
   userData: string,
   readFiles: ThemeReadFiles = THEME_READ_FILES,
@@ -137,12 +128,6 @@ export async function writeActiveTheme(
   await writeWorkspaceFile(userData, ACTIVE_THEME_FILE, `${JSON.stringify({ theme: id })}\n`, files)
 }
 
-/**
- * Writes one small state file in a workspace's data folder: to an exclusive, unique temporary
- * file beside it (`<name>.<pid>.<uuid>.tmp`, mode 0600, never through a link), synced, then renamed
- * into place while the folder is still the one it was. A rename a file held for a moment refuses
- * is tried again.
- */
 export async function writeWorkspaceFile(
   userData: string,
   name: string,

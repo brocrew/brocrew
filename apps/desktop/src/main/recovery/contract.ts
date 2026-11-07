@@ -9,17 +9,6 @@ import {
   preservedAsRecorded,
 } from './layout'
 
-/**
- * The three recovery records, version 1: a checkpoint's manifest, the restore journal and the
- * history-only gate.
- *
- * Parsing is strict. An unknown `format`, a `version` other than 1, or a known field that is
- * missing or of the wrong type refuses the whole record with a reason; nothing is guessed, since a
- * record read wrongly could move or hide a database. Fields this build does not know are allowed:
- * the parsed value is the record itself, so they stay on it and are written back when it is
- * rewritten.
- */
-
 export type { HistoryOnlyGate, InstalledFile, PreservedFile }
 
 export const MANIFEST_FORMAT = 'brobot-checkpoint'
@@ -84,11 +73,6 @@ export type ManifestFile =
       readonly sha256: string
     }
 
-/**
- * One file a restore or return moves. `aside` and `incoming` are relative to the data folder and
- * `/`-separated; they are always the places this build computes for the participant (see
- * `participantPlaces`), and a journal naming any other is refused.
- */
 export interface Participant {
   readonly live: string
   readonly role: ParticipantRole
@@ -228,7 +212,6 @@ function uuid(record: Fields, key: string, where: string): string {
   return value
 }
 
-/** An ISO 8601 date and time with its offset, as `Date.prototype.toISOString` writes one. */
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/
 
 function instant(record: Fields, key: string, where: string): string {
@@ -282,10 +265,6 @@ function nested(record: Fields, key: string, where: string): Fields {
   return fields(field(record, key, where), `${where}.${key}`)
 }
 
-/**
- * A file's presence and, when present, its sha256. An absent file has no sha256: a record that
- * gives one is contradicting itself.
- */
 function fileState(record: Fields, where: string): FileState {
   if (bool(record, 'present', where))
     return { present: true, sha256: sha256(record, 'sha256', where) }
@@ -395,10 +374,6 @@ function readGate(record: Fields): HistoryOnlyGate {
   return record as unknown as HistoryOnlyGate
 }
 
-/**
- * A gate's list of live files: each named once by a name every system accepts, the database among
- * them and present.
- */
 function liveFiles(
   record: Fields,
   key: string,

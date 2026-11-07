@@ -1,12 +1,3 @@
-/**
- * Colours for themes: parsing what a theme file may write, writing it back in one canonical form,
- * and the maths the contrast check needs — oklab and sRGB mixing as CSS `color-mix()` does it,
- * compositing a translucent colour over an opaque one, and the WCAG contrast ratio.
- *
- * Nothing a theme writes reaches CSS as typed: every colour is parsed into numbers here and written
- * back as `#rrggbb` or `#rrggbbaa`.
- */
-
 /** Red, green and blue in 0–255; alpha in 0–1. */
 export interface Rgba {
   readonly r: number
@@ -103,11 +94,6 @@ function fromOklch(body: string): Rgba | null {
   return fromOklab({ L: clamp(L, 0, 1), a: C * Math.cos(angle), b: C * Math.sin(angle) }, a)
 }
 
-/**
- * Reads a colour a theme may write: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `rgb()`/`rgba()`,
- * `hsl()`/`hsla()`, `oklch()` with plain numbers, or `transparent`. Anything else — a name, a
- * `var()`, a `color-mix()`, a url — is `null`.
- */
 export function parseColour(text: unknown): Rgba | null {
   if (typeof text !== 'string' || text.length > 64) return null
   const t = text.trim().toLowerCase()
@@ -178,10 +164,6 @@ function fromOklab(o: Oklab, alpha: number): Rgba {
   }
 }
 
-/**
- * `color-mix(in oklab, a p%, b)`: `p` is a's share, 0–100. Like the engine, it interpolates
- * premultiplied by alpha, so a transparent side lends no hue.
- */
 export function mixOklab(a: Rgba, p: number, b: Rgba): Rgba {
   const w = clamp(p, 0, 100) / 100
   const alpha = a.a * w + b.a * (1 - w)
@@ -192,10 +174,6 @@ export function mixOklab(a: Rgba, p: number, b: Rgba): Rgba {
   return fromOklab({ L: mix(A.L, B.L), a: mix(A.a, B.a), b: mix(A.b, B.b) }, alpha)
 }
 
-/**
- * `color-mix(in srgb, a p%, b)`: `p` is a's share, 0–100. Each channel is mixed as written, in
- * sRGB, premultiplied by alpha as the engine does.
- */
 export function mixSrgb(a: Rgba, p: number, b: Rgba): Rgba {
   const w = clamp(p, 0, 100) / 100
   const alpha = a.a * w + b.a * (1 - w)

@@ -1,15 +1,6 @@
 import type { AppDatabase } from './connection'
 import { committedChangesOf } from './committed-changes'
 
-/**
- * A conversation and the conversations below it, the helpers it started and theirs, as a delete
- * reads and removes them.
- *
- * A helper's row hangs off the row of the conversation that started it, and its pieces off its
- * giver's pieces, so a conversation's records can go only with every conversation below it: the
- * tree is what a delete removes, or nothing.
- */
-
 /** Every conversation in `root`'s tree: `root` first, each before the ones it started. */
 export function conversationTree(db: AppDatabase, root: string): string[] {
   const rows = db
@@ -41,12 +32,6 @@ export interface TiedOutside {
     | 'gave-it-a-piece-below'
 }
 
-/**
- * What ties the tree to conversations outside it: work given to one of its conversations from
- * outside or by one of them to a conversation outside, words written or questions routed to a
- * helper from outside, files added to work outside, and work outside that hangs below the tree's. Words and questions sent to the root are not ties: the
- * root is what the person is deleting, and copies of what others sent it stay in their ledgers.
- */
 export function whatTiesTheTreeOutside(db: AppDatabase, tree: readonly string[]): TiedOutside[] {
   const inTree = new Set(tree)
   const [root] = tree
@@ -107,12 +92,6 @@ export interface TreeDeleted {
   readonly filesNoOneNames: readonly KeptFileName[]
 }
 
-/**
- * Deletes every row of the tree's conversations, in one transaction: the files kept for their
- * pieces, their pieces (each below its parent first), then the conversations (each started one
- * before the one that started it). Their ledgers, turns, archived frames and generations go with
- * their rows; an instruction one of them proposed keeps its text and names no conversation.
- */
 export function deleteTheTree(db: AppDatabase, tree: readonly string[]): TreeDeleted {
   const ids = JSON.stringify(tree)
   const committed = committedChangesOf(db)
@@ -158,12 +137,6 @@ export interface ProviderSessionOf {
   readonly cwd: string
 }
 
-/**
- * Every provider session a conversation had: the one its row names now, the one its launch minted,
- * and each one a life moved to (`session` and `conversation_reset` rows, which a clear or a new
- * plan start); and the Codex threads it started as helpers of its own (`sub_agent` rows naming a
- * thread). A provider's own files are named by these ids.
- */
 export function providerSessionsOf(db: AppDatabase, conversation: string): ProviderSessionOf[] {
   const row = db
     .prepare(`SELECT external_ref, launched_as, cwd FROM provider_session WHERE id = ?`)

@@ -3,11 +3,6 @@ import type { AppDatabase } from './connection'
 
 import { CASCADE_DELETE_WRITES, DERIVED_TABLES, TRIGGER_WRITES } from './question-copies'
 
-/**
- * What a committed row says to the readers that keep something of it: its place, its type and the
- * few fields that move another conversation's state. Taken from the event as it is written, never
- * read back.
- */
 export interface CommittedRow {
   readonly session: string
   readonly generation: number
@@ -57,10 +52,6 @@ interface CommittedChange {
   readonly whole: ReadonlyMap<string, WholeChange>
   /** Sessions a rebuild wrote into a generation nobody reads yet. */
   readonly staged: ReadonlySet<string>
-  /**
-   * The sessions a staged write took rows out of that a read over every generation still sees, so
-   * a reader of those rows reads them again although nothing shown moved.
-   */
   readonly stagedRemovedSeen: ReadonlySet<string>
   /** Files kept on a piece. */
   readonly kept: readonly { readonly piece: string; readonly resource: string }[]
@@ -92,10 +83,6 @@ export interface CommittedChanges {
   asAWhole<T>(write: () => T): T
   /** Runs `write` with its appends recorded as staged: a generation nobody reads yet. */
   asStaged<T>(write: () => T): T
-  /**
-   * Compares the file's `data_version` with the last one seen: a move means another connection
-   * committed, and one resync is published. Asked at the points a reader is about to answer.
-   */
   check(): void
 }
 
@@ -121,10 +108,6 @@ const frame = (): Frame => ({
   poisoned: false,
 })
 
-/**
- * Kept on the connection itself, so it reads the same through any proxy that forwards to it, and a
- * second store or module on the same connection finds the same recorder.
- */
 const RECORDER = Symbol('committed changes')
 
 const WRITES = /^(?:INSERT|REPLACE|UPDATE|DELETE|WITH)\b/i
@@ -143,18 +126,9 @@ function tableWrittenBy(sql: string): string | null {
   return name
 }
 
-/**
- * The record of what each commit on this connection wrote. One per raw connection, whichever
- * store or module asks for it. Every transaction made on the connection after this is installed
- * is framed: a nested one merges into its parent when it returns and is dropped when it throws,
- * and the outermost publishes once the connection has left its transaction. A persistent write
- * outside any transaction publishes on its own.
- */
 export function committedChangesOf(db: AppDatabase): CommittedChanges {
   const known = (db as unknown as Record<symbol, CommittedChanges | undefined>)[RECORDER]
   if (known !== undefined) return known
-  // What the connection itself answers for each method, called on whichever connection a proxy
-  // hands it: an own replacement installed before this one, or the prototype's.
   type Methods = {
     prepare(this: AppDatabase, sql: string): ReturnType<AppDatabase['prepare']>
     transaction(this: AppDatabase, fn: unknown): unknown

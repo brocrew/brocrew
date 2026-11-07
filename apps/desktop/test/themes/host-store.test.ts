@@ -13,7 +13,6 @@ import {
   picturedBase,
   putTheme,
   RED_PNG,
-  RED_SAMPLES,
   type HostFixture,
 } from './host-fixtures'
 
@@ -38,7 +37,7 @@ describe('theme registry and workspace choices', () => {
     await putTheme(fixture.library, 'broken', { format: 1, id: 'wrong', name: 'Broken' })
     await putTheme(fixture.library, 'defined', { format: 1, id: 'defined', name: 'Shadow' })
     // Its base draws a picture with an effect, a setting the window doesn't paint yet.
-    const store = fixture.store({ loader: { sample: () => RED_SAMPLES, readsHeld: true } })
+    const store = fixture.store({ loader: { sample: () => true, readsHeld: true } })
     const snapshot = await store.start()
     expect(snapshot.themes).toEqual(
       expect.arrayContaining([
@@ -515,7 +514,7 @@ describe('theme intake and publication', () => {
                             },
                           ]
                         : [{ name: 'red.png', path: source }]
-    const store = fixture.store(kind === 'decode' ? { loader: { sample: () => null } } : {})
+    const store = fixture.store(kind === 'decode' ? { loader: { sample: () => false } } : {})
     await store.start()
     expect(await store.save({ theme: childTheme('rejected'), assets })).toMatchObject({
       outcome: 'refused',

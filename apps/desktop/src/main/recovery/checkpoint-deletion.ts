@@ -134,8 +134,6 @@ async function removeBound(
 ): Promise<void> {
   await retrying(async () => {
     await assertOwnedPathsAreReal(userData, [directory ? path : dirname(path)], fs)
-    // Recheck the original chain on EVERY attempt, immediately before the pathname syscall.
-    // Node has no unlinkat/rmdirat: a deliberate same-user race after this check remains possible.
     await verifyParents(parents, fs)
     if (directory) await fs.rmdir(path)
     else await fs.unlink(path)
@@ -333,8 +331,6 @@ export async function finishCheckpointDeletion(
 ): Promise<boolean> {
   const remnant = await deletionRemnant(userData, deletion, fs)
   if (!remnant) return false
-  // Carry the confirmed root and original parent identities through the move and removal.
-  // A fresh binding after rename would silently authorize a replacement at the same path.
   const parents = await bindCopyParents(userData, remnant.folder, fs, deletion.root)
   // Refuse a pre-existing personal addition before even renaming its folder.
   if ((await fs.readdir(remnant.folder)).some((name) => !ALLOWED.has(name))) throw failed()
