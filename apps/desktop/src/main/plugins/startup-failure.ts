@@ -296,7 +296,7 @@ export function createPluginStartupTrace(now = () => performance.now()) {
       const diagnostic = pluginStartupDiagnostic(error)
       mark(
         phase,
-        `failure ${diagnostic ? pluginStartupDiagnosticNotice(diagnostic) : ''} ${pluginFailureCause(error)}${stderr ? `\n${stderr}` : ''}`,
+        `failure ${diagnostic ? pluginStartupDiagnosticNotice(diagnostic) : ''} ${phase === 'catalogue-response' ? pluginFailureCause(error) : ''}${stderr ? `\n${stderr}` : ''}`,
       )
     },
     flush: () => pending,
