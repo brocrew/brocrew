@@ -15,6 +15,7 @@ import {
   type AuthState,
   type ProviderCapabilityMap,
   type ProviderUsageReading,
+  type RuntimeBridge,
 } from '../../src/shared/runtime-ipc'
 import { useKeyAsked } from '../../src/renderer/src/composables/useKeyAsked'
 import { mount, unmountAll, visible, type Mounted } from './harness'
@@ -108,6 +109,7 @@ const LIST: ModelList = {
 }
 
 interface Doors {
+  onProvidersChanged?: RuntimeBridge['onProvidersChanged']
   checkProviderAuth?: () => Promise<AuthState>
   apiKeyStatus?: () => Promise<ApiKeyStatus>
   setApiKey?: (input: { provider: string; key: string }) => Promise<ApiKeyChanged>
@@ -151,6 +153,7 @@ function theCard(
   const reprovisionProviderAuth: NonNullable<Doors['reprovisionProviderAuth']> =
     doors.reprovisionProviderAuth ?? (async () => 'replaced')
   const runtime = {
+    onProvidersChanged: vi.fn(doors.onProvidersChanged ?? (() => () => {})),
     reprovisionProviderHomes: vi.fn(async (input: { provider: string; statusOnly?: boolean }) => {
       if (input.statusOnly)
         return (
@@ -232,6 +235,57 @@ async function typeKey(m: Mounted, key: string): Promise<void> {
   input.dispatchEvent(new Event('input'))
   await nextTick()
 }
+
+describe('saved-key read progress', () => {
+  it('hears only its own read facts without checking auth and removes its listener on close', async () => {
+    let notice: Parameters<RuntimeBridge['onProvidersChanged']>[0] = () => {}
+    const stopped = vi.fn()
+    let status: ApiKeyStatus = { ...A_KEY }
+    const { m, runtime, authChanged } = theCard({
+      apiKeyStatus: async () => status,
+      onProvidersChanged: (listener) => { notice = listener; return stopped },
+    })
+    await settled()
+    const before = runtime.apiKeyStatus.mock.calls.length
+    status = { ...A_KEY, inUse: false, readState: 'reading' } as unknown as ApiKeyStatus
+    notice({ what: 'key-read', provider: 'codex' } as never)
+    await settled()
+    expect(runtime.apiKeyStatus).toHaveBeenCalledTimes(before)
+    notice({ what: 'key-read', provider: 'claude' } as never)
+    await settled()
+    expect(runtime.apiKeyStatus).toHaveBeenCalledTimes(before + 1)
+    expect(runtime.checkProviderAuth).toHaveBeenCalledTimes(1)
+    expect(authChanged).toEqual([])
+    expect(text(m.q('provider-key-in-use'))).toBe('Reading the saved key…')
+    expect(m.q('provider-key-in-use').classList.contains('warn')).toBe(false)
+    expect(m.host.textContent).not.toContain('This computer can’t read it')
+    unmountAll()
+    expect(stopped).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['save', 'remove'] as const)('keeps the %s answer when an older status reply arrives', async (gesture) => {
+    let notice: Parameters<RuntimeBridge['onProvidersChanged']>[0] = () => {}
+    const late = held<ApiKeyStatus>()
+    let initial = true
+    const { m } = theCard({
+      apiKeyStatus: () => initial ? Promise.resolve(gesture === 'save' ? NO_KEY : A_KEY) : late.promise,
+      onProvidersChanged: (listener) => { notice = listener; return () => {} },
+    })
+    await settled()
+    initial = false
+    notice({ what: 'key-read', provider: 'claude' } as never)
+    await settled()
+    if (gesture === 'save') {
+      await typeKey(m, 'fictional-saved-key')
+      saveButton(m).click()
+    } else m.q('provider-key-remove').click()
+    await settled()
+    late.answer(gesture === 'save' ? NO_KEY : A_KEY)
+    await settled()
+    expect(m.all('provider-key-set')).toHaveLength(gesture === 'save' ? 1 : 0)
+    expect(m.all('provider-key-none')).toHaveLength(gesture === 'save' ? 0 : 1)
+  })
+})
 
 /* ================================================================ §1 · the key field */
 

@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiKeys, ApiKeyUnreadableError, safeStorageCipher } from '../src/main/runtime/api-keys'
 import { createProviderAuthOps } from '../src/main/runtime/provider-homes'
 import { STALL_FLOOR_MS } from '../src/main/stall-watch'
+import type { Provider } from '@brobot2/shared'
+import { keyCantBeRead } from '../src/renderer/src/lib/saved-key'
 
 vi.mock('../src/main/providers/claude/backing-login', () => ({
   machineLoginPresence: vi.fn(async () => undefined),
@@ -58,6 +60,98 @@ function storage() {
 afterEach(() => vi.useRealTimers())
 
 describe('saved keys and the window', () => {
+  it('reports an outstanding saved-key read without claiming that it failed', async () => {
+    const native = storage()
+    const door = held<{ result: string; shouldReEncrypt: boolean }>()
+    native.decryptStringAsync.mockReturnValue(door.promise)
+    const keys = new ApiKeys(store(), safeStorageCipher(native))
+    const reading = keys.current('claude')
+    const status = keys.status('claude')
+    door.resolve({ result: FAKE_KEY, shouldReEncrypt: false })
+    await reading
+    expect(status).toMatchObject({ set: true, inUse: false, readState: 'reading' })
+    expect(keyCantBeRead(status)).toBe(false)
+    expect(keys.status('claude')).toMatchObject({ inUse: true })
+    expect(native.decryptStringAsync).toHaveBeenCalledTimes(1)
+  })
+
+  it('installs the shared read before notifying a reentrant observer and settles before its notice', async () => {
+    const native = storage()
+    const door = held<{ result: string; shouldReEncrypt: boolean }>()
+    native.decryptStringAsync.mockReturnValue(door.promise)
+    const keys = new ApiKeys(store(), safeStorageCipher(native))
+    const subscribe = Reflect.get(keys, 'onReadStateChanged') as
+      ((listener: (provider: Provider) => void) => () => void) | undefined
+    expect(subscribe).toBeTypeOf('function')
+    if (subscribe === undefined) return
+    const states: unknown[] = []
+    let shared: ReturnType<ApiKeys['current']> | undefined
+    const stop = subscribe.call(keys, (provider) => {
+      expect(provider).toBe('claude')
+      const state = keys.status(provider)
+      states.push(state)
+      if (state.readState === ('reading' as string)) shared = keys.current(provider)
+    })
+    const read = keys.current('claude')
+    expect(shared).toBe(read)
+    expect(states).toHaveLength(1)
+    door.resolve({ result: FAKE_KEY, shouldReEncrypt: false })
+    await read
+    expect(states).toHaveLength(2)
+    expect(states[1]).toMatchObject({ inUse: true })
+    expect(native.decryptStringAsync).toHaveBeenCalledTimes(1)
+    expect(JSON.stringify(states)).not.toContain(FAKE_KEY)
+    expect(JSON.stringify(states)).not.toContain(SEALED)
+    stop()
+    await keys.current('claude')
+    expect(states).toHaveLength(2)
+  })
+
+  it('keeps a replacement read pending when a removed generation finally answers', async () => {
+    const native = storage()
+    const first = held<{ result: string; shouldReEncrypt: boolean }>()
+    const second = held<{ result: string; shouldReEncrypt: boolean }>()
+    native.decryptStringAsync.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
+    const saved = store()
+    const keys = new ApiKeys(saved, safeStorageCipher(native))
+    const old = keys.current('claude').catch((error: unknown) => error)
+    keys.remove('claude')
+    saved.keepSealedApiKey('claude', 'fictional-replacement-seal', 2)
+    const fresh = keys.current('claude')
+    const queued = keys.status('claude')
+    first.resolve({ result: FAKE_KEY, shouldReEncrypt: false })
+    expect(await old).toBeInstanceOf(ApiKeyUnreadableError)
+    const stillReading = keys.status('claude')
+    second.resolve({ result: 'fictional-replacement-key', shouldReEncrypt: false })
+    expect(await fresh).toEqual({ key: 'fictional-replacement-key', setAt: 2 })
+    expect(queued).toMatchObject({ setAt: 2, readState: 'reading' })
+    expect(stillReading).toMatchObject({ setAt: 2, readState: 'reading' })
+    expect(native.decryptStringAsync).toHaveBeenCalledTimes(2)
+  })
+
+  it('disposes read observers without cancelling shared work or publishing removed generations', async () => {
+    const native = storage()
+    const door = held<{ result: string; shouldReEncrypt: boolean }>()
+    native.decryptStringAsync.mockReturnValue(door.promise)
+    const keys = new ApiKeys(store(), safeStorageCipher(native))
+    const subscribe = Reflect.get(keys, 'onReadStateChanged') as
+      ((listener: (provider: Provider) => void) => () => void) | undefined
+    expect(subscribe).toBeTypeOf('function')
+    if (subscribe === undefined) return
+    const heard = vi.fn()
+    const disposed = vi.fn()
+    subscribe.call(keys, heard)
+    const stop = subscribe.call(keys, disposed)
+    const read = keys.current('claude').catch((error: unknown) => error)
+    stop()
+    keys.remove('claude')
+    door.resolve({ result: FAKE_KEY, shouldReEncrypt: false })
+    expect(await read).toBeInstanceOf(ApiKeyUnreadableError)
+    expect(heard).toHaveBeenCalledExactlyOnceWith('claude')
+    expect(disposed).toHaveBeenCalledExactlyOnceWith('claude')
+    expect(keys.status('claude')).toMatchObject({ set: false })
+  })
+
   it('constructs and reports a saved key before the window opens without initializing encryption', async () => {
     const native = storage()
     const keys = new ApiKeys(store(), safeStorageCipher(native))

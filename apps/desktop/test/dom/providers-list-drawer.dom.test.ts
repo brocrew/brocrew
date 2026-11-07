@@ -42,6 +42,35 @@ const row = (m: Mounted, provider: string) => {
 }
 
 describe('the Providers list opens the existing controls in one drawer', () => {
+  it('refreshes read facts alone through the shared owner while its drawer is open', async () => {
+    let notice: Parameters<typeof window.api.runtime.onProvidersChanged>[0] = () => {}
+    const stopped = vi.fn()
+    const listen = vi.fn<typeof window.api.runtime.onProvidersChanged>((listener) => {
+      notice = listener
+      return stopped
+    })
+    window.api.runtime.onProvidersChanged = listen
+    const auth = vi.spyOn(window.api.runtime, 'checkProviderAuth')
+    const key = vi.spyOn(window.api.runtime, 'apiKeyStatus')
+    const models = vi.spyOn(window.api.runtime, 'modelList')
+    const m = screen()
+    await settle()
+    row(m, 'claude').click()
+    await settle()
+    const before = { auth: auth.mock.calls.length, key: key.mock.calls.length, models: models.mock.calls.length }
+    key.mockResolvedValue({ provider: 'claude', set: true, setAt: NOW, inUse: false, readState: 'reading' } as never)
+    notice({ what: 'key-read', provider: 'claude' } as never)
+    await settle()
+    expect(listen).toHaveBeenCalledTimes(1)
+    expect(key).toHaveBeenCalledTimes(before.key + 1)
+    expect(key).toHaveBeenLastCalledWith({ provider: 'claude' })
+    expect(auth).toHaveBeenCalledTimes(before.auth)
+    expect(models).toHaveBeenCalledTimes(before.models)
+    expect(m.q('provider-key-in-use').textContent).toContain('Reading the saved key…')
+    expect(m.q('provider-key-in-use').classList.contains('warn')).toBe(false)
+    unmountAll()
+    expect(stopped).toHaveBeenCalledTimes(1)
+  })
   it('one Escape closes only the top dialog when a setup route arrives over another modal', async () => {
     const fixture = defineComponent({
       setup(_props, { expose }) {

@@ -37,6 +37,7 @@ function pendingKey(provider: Provider) {
   const started = vi.spyOn(runtime, 'start')
   const listed = vi.spyOn(runtime, 'listModels')
   let homesCompleted = 0
+  const notices = vi.fn()
   const host = new RuntimeHost({
     store: NULL_SESSION_STORE,
     ...neutralHostDeps(() => '/fictional-user-data'),
@@ -51,6 +52,7 @@ function pendingKey(provider: Provider) {
     newSessionId: () => 'sess_fictional-pending-key',
     readProviderConfig: fixtureProviderConfig,
     apiKeys: keys,
+    providersMoved: notices,
     closeDrainTimeoutMs: 40,
   })
   return {
@@ -59,6 +61,7 @@ function pendingKey(provider: Provider) {
     open,
     started,
     listed,
+    notices,
     homesCompleted: () => homesCompleted,
     answer: () => answer('fictional-readable-key'),
   }
@@ -67,6 +70,22 @@ function pendingKey(provider: Provider) {
 afterEach(() => {
   vi.restoreAllMocks()
   vi.useRealTimers()
+})
+
+it('publishes read-only provider facts and stops observing when the host closes', async () => {
+  const f = pendingKey('claude')
+  const revision = f.keys.revision('claude')
+  const reading = f.keys.current('claude')
+  const noticesBeforeClose = f.notices.mock.calls.slice()
+  await f.host.closeAll()
+  f.answer()
+  await reading
+  expect(noticesBeforeClose).toEqual([[{ what: 'key-read', provider: 'claude' }]])
+  expect(f.notices.mock.calls).toEqual(noticesBeforeClose)
+  expect(f.keys.revision('claude')).toBe(revision)
+  expect(f.open).toHaveBeenCalledTimes(1)
+  expect(f.started).not.toHaveBeenCalled()
+  expect(f.listed).not.toHaveBeenCalled()
 })
 
 function deferred<T>() {
