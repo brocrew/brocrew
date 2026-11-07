@@ -234,10 +234,7 @@ import type { ProviderAuthOps } from '../providers/auth-operations'
 import { aLoginRunsWithoutAKey, type ApiKeys } from './api-keys'
 import type { GivenFolder, ProtectedPlaceNotice, WorkFolderGrant } from '../../shared/work-folders'
 import type { SignInChanges } from '../sign-in-changes'
-import {
-  resourcesFromTheListing,
-  type ListedProcess,
-} from './process-listing'
+import { resourcesFromTheListing, type ListedProcess } from './process-listing'
 import {
   // 🔴 **610 · the derivation the rail already draws, CALLED rather than copied** (HO-092 §2.1).
   // ⛔ A second naming rule here would be the defect `449` closed on the other side: *"the identity
