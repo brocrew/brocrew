@@ -1,5 +1,3 @@
-// Module rules for the code-health gate. Findings already in baseline/depcruise.json pass;
-// anything new fails. See docs/code-health.md.
 const layer = (name, from, to) => ({
   name,
   severity: 'error',
@@ -36,7 +34,7 @@ module.exports = {
   ],
   options: {
     doNotFollow: { path: '(^|/)node_modules/' },
-    exclude: { path: '(^|/)(node_modules|\\.git)/' },
+    exclude: { path: '(^|/)\\.git/' },
     tsPreCompilationDeps: 'specify',
     tsConfig: { fileName: 'tsconfig.base.json' },
     enhancedResolveOptions: {

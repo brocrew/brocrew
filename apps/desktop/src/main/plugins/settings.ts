@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto'
 import { inspect } from 'node:util'
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron'
 import { PluginSupervisorError } from './supervisor/protocol'
-import { managedPluginFailure } from '@brobot2/runtime'
+import { managedPluginFailure } from '@brobot2/runtime/plugin-failure'
 import { displayedDetailsHash } from './mutation-disclosure'
 import { PluginListError } from './catalogue/list-error'
 import {
@@ -33,10 +33,7 @@ import {
   type PluginScreenBounds,
   type PluginSettingsReply,
 } from '../../shared/plugin-settings'
-/**
- * What a failed Settings request shows: the caught error's own message, its stack with every
- * nested cause, and each typed code on that chain. Nothing is replaced by a generic stand-in.
- */
+// Preserve the caught error message, stack and typed cause codes.
 function settingsFailureDetail(error: unknown): {
   detail: string
   stack: string
@@ -124,10 +121,7 @@ export function registerPluginSettings(
     if (state.screen === previous) state.screen = undefined
     return generation
   }
-  /**
-   * The part of the asked rectangle inside the window's content, or null when that part is
-   * smaller than a plugin screen may be. The window can shrink between a measure and its arrival.
-   */
+  // Intersect the requested screen with current content bounds.
   function rectangle(value: unknown, owner: BrowserWindow): PluginScreenBounds | null {
     if (!plain(value) || !exact(value, ['x', 'y', 'width', 'height'])) return null
     const { x, y, width, height } = value
@@ -546,8 +540,7 @@ export function registerPluginSettings(
         return { ok: true, cards: await catalogue() }
       } catch (error) {
         await created?.close().catch(() => {})
-        // Keep the typed refusal and say what actually happened: the caught message and stack,
-        // every typed code on its cause chain, and the known stage and cause.
+        // Return the caught error and typed cause details.
         const classified = managedPluginFailure(error, 'plugin-settings')
         const failure = {
           ...refused,
