@@ -224,6 +224,7 @@ const ids = (servers: readonly { pluginId: string }[]) => servers.map((one) => o
 
 describe('a cold agent gets each plugin that is ready', () => {
   it('pending warmups reserve the existing route capacity until their cleanup completes', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
     const w = await aWorkspace(['aster'], 5, Promise.resolve(), true)
     const binding = deferred<Binding>()
     w.state.get('aster')!.binding = binding.promise
@@ -231,29 +232,35 @@ describe('a cold agent gets each plugin that is ready', () => {
     const l = lease(),
       first = request()
     const closing = deferred<void>()
+    const read = async (req: Request) => {
+      const answer = w.bridge.agentRoutes(l, req)
+      await vi.advanceTimersByTimeAsync(5)
+      return answer
+    }
     try {
-      expect((await w.bridge.agentRoutes(l, first)).pending).toEqual(['aster'])
+      expect((await read(first)).pending).toEqual(['aster'])
       for (let n = 1; n < 1100; n++)
-        expect((await w.bridge.agentRoutes(l, request())).pending).toEqual(['aster'])
+        expect((await read(request())).pending).toEqual(['aster'])
       expect(
         w.diagnostic.mock.calls.filter(([, reason]) => reason === 'attachment-capacity'),
       ).toHaveLength(76)
       binding.resolve(undefined as unknown as Binding)
       await vi.waitFor(() => expect(w.opened.length).toBe(1024))
-      expect((await w.bridge.agentRoutes(l, first)).servers).toHaveLength(1)
+      expect((await read(first)).servers).toHaveLength(1)
       w.state.get('aster')!.close = closing.promise
       const releasing = w.bridge.agentRoutes(l, { ...first, release: true })
       await vi.waitFor(() => expect(w.closed).toHaveLength(1))
-      expect((await w.bridge.agentRoutes(l, request())).pending).toEqual(['aster'])
+      expect((await read(request())).pending).toEqual(['aster'])
       expect(w.opened).toHaveLength(1024)
       closing.resolve()
       await releasing
       w.state.get('aster')!.close = undefined
-      expect((await w.bridge.agentRoutes(l, request())).servers).toHaveLength(1)
+      expect((await read(request())).servers).toHaveLength(1)
       expect(w.opened).toHaveLength(1025)
     } finally {
       binding.resolve(undefined as unknown as Binding)
       closing.resolve()
+      vi.useRealTimers()
     }
   })
 
