@@ -617,7 +617,7 @@ describe.skipIf(process.platform === 'win32')(
       await expect(bridge.close()).resolves.toBeUndefined()
       expect(f.controller.cleanForShutdown()).toBe(true)
     })
-    it('a detach refused while its channel is open holds once that channel closes', async () => {
+    it('detach ends admission even when its open consumer refuses the revoke notice', async () => {
       const f = await fixture()
       await f.controller.detach(f.handle)
       const key = 'a'.repeat(64)
@@ -633,12 +633,13 @@ describe.skipIf(process.platform === 'win32')(
         key,
         handle: async (input) => !(refuses && (input as { kind: string }).kind === 'revoke'),
       })
-      await consumer.call({ kind: 'attach', workspaceId: randomUUID() })
+      const workspaceId = randomUUID()
+      await consumer.call({ kind: 'attach', workspaceId })
       await consumer.call({ kind: 'install', pluginId: 'chrome', operationId: randomUUID() })
+      expect(f.controller.agentAttachments(workspaceId)).toHaveLength(1)
       refuses = true // Its window could not close the plugin's screen.
-      await expect(consumer.call({ kind: 'detach' })).rejects.toMatchObject({
-        code: 'unavailable',
-      })
+      await expect(consumer.call({ kind: 'detach' })).resolves.toBe(true)
+      expect(f.controller.agentAttachments(workspaceId)).toEqual([])
       const consumerClosed = new Promise<void>((resolve) => consumer.onClose(resolve))
       await expect(bridge.close()).resolves.toBeUndefined()
       // The consumer learns of the close from its own socket, after the server has finished.

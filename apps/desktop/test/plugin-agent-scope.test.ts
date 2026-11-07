@@ -63,7 +63,7 @@ async function twoPlugins(installWhatsapp: boolean) {
 function pend(
   state: Awaited<ReturnType<typeof fixture>>['state'],
   action: 'install' | 'update' | 'uninstall' | 'global-restore',
-  release: unknown,
+  pkg: ReturnType<typeof packageFixture> | null,
 ) {
   const view = state.inspect()
   const guard = view.guards.find((one) => one.pluginId === 'whatsapp')
@@ -76,7 +76,15 @@ function pend(
       at: 1000,
       expectedSequence: view.sequence,
       expectedInstallId: action === 'global-restore' ? null : (guard?.installId ?? null),
-      release: action === 'install' || action === 'update' ? release : null,
+      release:
+        (action === 'install' || action === 'update') && pkg
+          ? {
+              version: pkg.release.version,
+              archiveSha256: pkg.release.archive.sha256,
+              manifestSha256: pkg.release.manifestSha256,
+              dataSchema: pkg.manifest.dataSchema,
+            }
+          : null,
     },
     snapshot: action === 'global-restore' ? state.exportActivation() : null,
   })
@@ -88,7 +96,7 @@ it.each(['install', 'update', 'uninstall'] as const)(
     const t = await twoPlugins(action !== 'install')
     const [view] = t.controller.agentAttachments(t.agent.sink.workspaceId)
     const run = t.runs.get('chrome')
-    pend(t.f.state, action, t.other.release)
+    pend(t.f.state, action, t.other)
     expect(t.scope()).toMatchObject([
       ['chrome', 'admitted'],
       ['whatsapp', 'pending'],
@@ -106,7 +114,7 @@ it.each(['install', 'update', 'uninstall'] as const)(
 )
 it('a new agent attaching during an update starts the others and never the old release', async () => {
   const t = await twoPlugins(true)
-  pend(t.f.state, 'update', t.other.release)
+  pend(t.f.state, 'update', t.other)
   // The update stopped WhatsApp's old run; a fresh owner would have none of them running.
   t.runs.clear()
   t.started.length = 0
@@ -131,7 +139,7 @@ it.each([true, false])(
   async (completed) => {
     const t = await twoPlugins(false)
     const run = t.runs.get('chrome')
-    const operationId = pend(t.f.state, 'install', t.other.release)
+    const operationId = pend(t.f.state, 'install', t.other)
     if (completed) t.f.state.complete(operationId)
     else t.f.state.abort(operationId)
     expect(t.scope()).toMatchObject([

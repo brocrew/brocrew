@@ -573,8 +573,8 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       expect(f.binding).toHaveBeenCalledTimes(2) // One fixture lookup, one broker. No replacement.
       expect(f.call).toHaveBeenCalledOnce()
     } finally {
-      // An intentionally rejected remote proof must remain a negative shutdown receipt.
-      await expect(close()).rejects.toThrow()
+      // Detach closes this consumer; it makes no claim about the host's exit.
+      await expect(close()).resolves.toBeUndefined()
     }
   })
   it('replaces a failed broker only after positive completion and rotates both live callers', async () => {
@@ -646,7 +646,6 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
     const restart = (runId: string, stopped: () => void) =>
       f.controller.restartChromeTools(runId, stopped)
     const bridgeClose = closes.pop()!
-    let negative = false
     try {
       const original = await f.binding()
       let rejectProof!: (error: Error) => void
@@ -677,7 +676,6 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
         await vi.waitFor(() => expect(f.call).toHaveBeenCalledTimes(attempt))
         rejectProof(new Error('fictional private failure'))
         expect(await pending).toMatchObject({ isError: true })
-        if (attempt === 4) negative = true
         if (attempt <= 3) await vi.waitFor(() => expect(f.starts()).toBe(attempt + 1))
         else
           await vi.waitFor(() =>
@@ -697,8 +695,11 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       expect(f.starts()).toBe(4)
       expect(f.diagnostic).toHaveBeenCalledWith('chrome', 'recovery-host-unproven')
     } finally {
-      if (negative) await expect(bridgeClose()).rejects.toThrow()
-      else await bridgeClose()
+      await expect(bridgeClose()).resolves.toBeUndefined()
+      // A detached consumer cannot turn the failed physical stop into a clean exit.
+      expect(f.controller.cleanForShutdown()).toBe(false)
+      expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
+      expect(f.starts()).toBe(4)
     }
   })
   it('reports failed binding, then clears the health warning only after a usable route exists', async () => {
@@ -849,9 +850,8 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
         expect((await f.controller.status()).cards[0]).not.toHaveProperty('toolsUnavailable')
       } finally {
         log.mockRestore()
-        // The revoked consumer's intentionally failed binding remains a negative cleanup receipt.
-        // A truthful warning must not clear that separate safety barrier.
-        if (close) await expect(close()).rejects.toThrow()
+        // The stale binding never held a host exit witness; detach is only its notice.
+        if (close) await expect(close()).resolves.toBeUndefined()
       }
     },
   )
