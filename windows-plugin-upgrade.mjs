@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync, openSync, closeSync, copyFileSync, renameSync } from 'node:fs'
-import { basename, dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 import { parseArgs } from 'node:util'
@@ -18,7 +18,7 @@ const expected = {
   chrome: { version: '0.1.8', bytes: 3608965, sha256: 'd05363044da6b65cacfccee0149772b97c1a7e5dca83c8262bf91e70de84c8a0', manifest: 'b8432edfc43657715a695dcca57164c7ba0e9229fd98570d4159afeb9be8f7d3', repo: 'brocrew-plugin-chrome' },
   whatsapp: { version: '0.1.4', bytes: 8228798, sha256: '49497b4c15adffefdbc63f8490da542ebae78016975a72c6b55e4476aa3dc769', manifest: 'fe6f04050ac0ec9cc0b577de9d57dc249987d7d3a43cc7e16a9350e68ca83c8d', repo: 'brocrew-plugin-whatsapp' },
 }
-const plan = ['verify public beta installer, exact candidate bytes and published win32/x64 plugin pins', 'install actual 0.1.36 NSIS', 'launch installed 0.1.36 and install Chrome 0.1.8 / WhatsApp 0.1.4 through Settings IPC', 'quit beta and bind committed pre-upgrade state and archive bytes', 'install exact 0.2.11 candidate NSIS over beta', 'launch installed candidate, verify identity and retained state', 'attach observer to candidate-owned service; Chrome list_browser_profiles and WhatsApp tools/list over HTTP', 'detach observer, quit app, verify owner/host exits and process cleanup']
+const plan = ['verify public beta installer, exact candidate bytes and published win32/x64 plugin pins', 'install actual 0.1.36 NSIS', 'record beta Settings Chrome installation failure as the expected baseline', 'stop beta and retain its real residual plugin state without seeding or repair', 'install exact 0.2.11 candidate NSIS over beta', 'install or retry the two published plugins through candidate Settings', 'attach observer to candidate-owned service; Chrome list_browser_profiles and WhatsApp tools/list over HTTP', 'detach observer, quit app, verify owner/host exits and process cleanup']
 if (!args.execute) { console.log(JSON.stringify({ execute: false, plan, expected }, null, 2)); process.exit(0) }
 assert.equal(process.platform, 'win32', 'execution is Windows only')
 assert.equal(process.arch, 'x64')
@@ -251,19 +251,34 @@ async function helper(service) {
   keep('observer.stdout.log',Buffer.concat(chunks));keep('observer.stderr.log',Buffer.concat(errors));keep('observer-exit.json',{...status,error:error?.message})
   assert.ifError(error);assert.ifError(witnessError);assert(witnessStarted,'observer never reached tool witness boundary');assert.deepEqual(status,{code:0,signal:null});const receipt=readJson(join(evidence,'observer-result.json'));assert.equal(receipt.passed,true);return receipt
 }
-async function cleanup() {
-  if(!ownsFixture){keep('cleanup.json',{skipped:true,reason:'fresh-runner precondition never established; no existing process or data touched'});return}
+async function cleanup(label='cleanup', baseline=false) {
+  if(!ownsFixture){keep(`${label}.json`,{skipped:true,reason:'fresh-runner precondition never established; no existing process or data touched'});return}
   const diagnostics=()=>{const found={};try{found.owner=publicOwner(ownerRecord())}catch(error){found.ownerError=String(error)}try{found.receipts=hostReceipts()}catch(error){found.receiptsError=String(error)}return found}
-  const before=ownProcesses();keep('cleanup-before.json',{...diagnostics(),processes:before})
+  const before=ownProcesses();keep(`${label}-before.json`,{...diagnostics(),processes:before})
   if(before.length) {
     // Failure-only containment. Re-read creation identity before stopping an owned process.
     for(const original of before) {const current=ownProcesses().find(p=>p.ProcessId===original.ProcessId&&p.CreationDate===original.CreationDate);if(current)spawnSync('taskkill',['/PID',String(current.ProcessId),'/T','/F'],{windowsHide:true,timeout:10000})}
-    summary.failures.push('forced cleanup was required; normal shutdown was not proved')
+    if(!baseline)summary.failures.push('forced cleanup was required; normal shutdown was not proved')
     await pause(3000)
   }
   running?.browser?.close();running?.cdp?.close()
-  const after=ownProcesses();keep('cleanup.json',{forced:before.length>0,processes:after,...diagnostics()})
+  const after=ownProcesses();const receipt={forced:before.length>0,processes:after,...diagnostics()};keep(`${label}.json`,receipt)
   assert.equal(after.length,0,'owned processes remain')
+  return receipt
+}
+function residualState(label) {
+  const files=[]
+  function walk(folder) {
+    if(!existsSync(folder))return
+    for(const entry of readdirSync(folder,{withFileTypes:true})) {
+      const path=join(folder,entry.name)
+      if(entry.isDirectory())walk(path)
+      else if(entry.isFile()){const bytes=readFileSync(path);files.push({path:relative(pluginRoot,path),bytes:bytes.length,sha256:digest(bytes)})}
+      else files.push({path:relative(pluginRoot,path),type:'non-file'})
+    }
+  }
+  for(const name of ['state','package-vault'])walk(join(pluginRoot,name))
+  files.sort((a,b)=>a.path.localeCompare(b.path));keep(`${label}.json`,files);return files
 }
 try {
   await phase('fresh runner and provenance',async()=>{
@@ -292,29 +307,45 @@ try {
     ownsFixture=true
   })
   const beta=await phase('actual beta NSIS install',()=>install(summary.inputs.beta,'0.1.36'))
-  await phase('beta app installs published plugins',async()=>{
+  await phase('beta Chrome installation failure baseline',async()=>{
     await launch(beta,'0.1.36',9345)
     assert.equal((await request({kind:'availability'},'beta-availability')).available,true)
     const listed=await request({kind:'list'},'beta-list');assert.equal(listed.ok,true)
-    for(const [id,wanted]of Object.entries(expected)) {
+    for(const [id,wanted]of [['chrome',expected.chrome]]) {
       const card=listed.cards.find(c=>c.id===id);assert(card);assert.equal(card.installed,false)
       let consent
       if(card.preparationRequired) {const prepared=await request({kind:'prepare',id,action:'install'},`beta-${id}-review`);assert.equal(prepared.ok,true);assert.equal(prepared.review.details.version,wanted.version);assert.equal(prepared.review.details.manifestSha256,wanted.manifest);assert.equal(prepared.review.details.digest,wanted.sha256);consent=prepared.review.consent}
-      const installed=await request({kind:'install',id,...(consent?{consent}:{})},`beta-${id}-install`);assert.equal(installed.ok,true)
+      const installed=await request({kind:'install',id,...(consent?{consent}:{})},`beta-${id}-install`)
+      summary.baseline={expectedFailure:true,reply:installed,cause:'unknown',hostReceipts:hostReceipts()}
+      keep('beta-failure-baseline.json',summary.baseline)
+      assert.equal(installed.ok,false,'this journey requires the observed failing beta installation baseline')
     }
-    const status=await request({kind:'status'},'beta-installed-status');assert.equal(status.ok,true)
-    for(const [id,wanted]of Object.entries(expected)){const card=status.cards.find(c=>c.id===id);assert.equal(card?.installed,true);assert.equal(card?.installedVersion,wanted.version)}
-    summary.betaService=installedService(beta,'beta')
-    await screenshot('beta-installed.png');await quit('beta')
-    summary.preUpgrade=snapshot('pre-upgrade')
+    await screenshot('beta-failed-install.png')
+    try{await quit('beta');summary.baseline.normalShutdown=true}
+    catch(error){summary.baseline.normalShutdown=false;summary.baseline.quitFailure=error.stack??String(error);summary.baseline.cleanup=await cleanup('baseline-cleanup',true);running=null}
+    keep('beta-failure-baseline.json',summary.baseline)
+    summary.residualPreUpgrade=residualState('baseline-residual-state')
     keep('pre-upgrade-host-receipts.json',hostReceipts())
   })
   const candidate=await phase('actual candidate NSIS upgrade',()=>install(summary.inputs.candidate,'0.2.11'))
   assert(samePath(candidate.folder,beta.folder),'candidate replaced the registered beta install location')
+  assert.deepEqual(residualState('after-installer-residual-state'),summary.residualPreUpgrade,'NSIS upgrade changed the retained beta plugin state before candidate launch')
   await phase('installed candidate plugin tools',async()=>{
     await launch(candidate,'0.2.11',9346)
     assert.equal((await request({kind:'availability'},'candidate-availability')).available,true)
-    const retained=snapshot('post-upgrade');assert.deepEqual(retained.activation,summary.preUpgrade.activation,'upgrade retained exact installed plugin identities')
+    for(const [id,wanted]of Object.entries(expected)) {
+      const listed=await request({kind:'list'},`candidate-${id}-before-install`);assert.equal(listed.ok,true)
+      const card=listed.cards.find(c=>c.id===id);assert(card)
+      if(card.installed) {
+        assert.equal(card.installedVersion,wanted.version)
+        assert.equal((await request({kind:'retry',id},`candidate-${id}-retry-existing`)).ok,true)
+      } else {
+        let consent
+        if(card.preparationRequired){const prepared=await request({kind:'prepare',id,action:'install'},`candidate-${id}-review`);assert.equal(prepared.ok,true);assert.equal(prepared.review.details.version,wanted.version);assert.equal(prepared.review.details.digest,wanted.sha256);assert.equal(prepared.review.details.manifestSha256,wanted.manifest);consent=prepared.review.consent}
+        assert.equal((await request({kind:'install',id,...(consent?{consent}:{})},`candidate-${id}-install`)).ok,true)
+      }
+    }
+    summary.candidateInstalled=snapshot('candidate-installed')
     const status=await request({kind:'list'},'candidate-list');assert.equal(status.ok,true)
     for(const [id,wanted]of Object.entries(expected)){const card=status.cards.find(c=>c.id===id);assert.equal(card?.installed,true);assert.equal(card?.installedVersion,wanted.version);assert.notEqual(card?.state,'Unavailable')}
     summary.candidateService=installedService(candidate,'candidate')
@@ -323,7 +354,7 @@ try {
     await screenshot('candidate-tools.png')
     const after=await request({kind:'status'},'candidate-after-tools');assert.equal(after.ok,true)
     await quit('candidate')
-    summary.finalState=snapshot('final');assert.deepEqual(summary.finalState.activation,summary.preUpgrade.activation)
+    summary.finalState=snapshot('final');assert.deepEqual(summary.finalState.activation,summary.candidateInstalled.activation)
     const receipts=hostReceipts();keep('final-host-receipts.json',receipts)
     const prePaths=new Set(readJson(join(evidence,'pre-upgrade-host-receipts.json')).map(r=>r.path))
     const candidateProcesses=receipts.filter(r=>r.path.endsWith('process.json')&&!prePaths.has(r.path)),candidateExits=receipts.filter(r=>r.path.endsWith('exit.json')&&!prePaths.has(r.path))
