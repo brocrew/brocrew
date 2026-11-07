@@ -20,7 +20,6 @@ const WINDOW_MS = 45_000
 const POLL_MS = 250
 const OWNERSHIP_MS = 10_000
 
-
 async function targets(port) {
   try {
     const response = await fetch(`http://127.0.0.1:${port}/json/list`, {
