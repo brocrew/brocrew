@@ -2,6 +2,7 @@ import { providerKnowledge } from '../providers/knowledge-definitions'
 import { providerDescriptor, type Provider } from '@brobot2/shared'
 import {
   SkillOrigin,
+  SkillName,
   SkillRelease,
   SKILL_LIMITS,
   type SkillDetail,
@@ -10,8 +11,8 @@ import {
   INSTALLED_SKILL_BYTE_LIMIT,
   type InstalledSkillVersion,
 } from '../../shared/skills-installation'
-import { checkedSkillDraft, skillAlias, skillRequirement } from './catalogue-store'
-import { skillDigest, verifyBuiltInSkills, type VerifiedBuiltInSkills } from './built-in-catalogue'
+import { readSkillDraft } from './catalogue-store'
+import { skillDigest, type VerifiedBuiltInSkills } from './built-in-catalogue'
 import type { BuiltInSkillView } from './skill-view'
 
 /** Native frontmatter is projected; the saved source and its digest remain unchanged. */
@@ -21,9 +22,8 @@ export function selectedSkillView(
   bundle: VerifiedBuiltInSkills,
   textPack = false,
 ): BuiltInSkillView & { reminder: string; versions: readonly InstalledSkillVersion[] } {
-  const verified = verifyBuiltInSkills(bundle.catalogue, bundle.bodies)
-  if (verified.digest !== bundle.digest || selected.length > SKILL_LIMITS.selected)
-    throw new Error('Invalid selected skill catalogue.')
+  const verified = bundle
+  if (selected.length > SKILL_LIMITS.selected) throw new Error('Invalid selected skill catalogue.')
   const files = providerKnowledge[provider].skills.initialFiles()
 
   const skills: BuiltInSkillView['skills'][number][] = []
@@ -33,7 +33,7 @@ export function selectedSkillView(
     aliases = new Set<string>()
   let total = [...files.values()].reduce((sum, text) => sum + Buffer.byteLength(text, 'utf8'), 0)
   for (const source of selected) {
-    const original = checkedSkillDraft({
+    const original = readSkillDraft({
       name: source.name,
       description: source.description,
       reminder: source.reminder,
@@ -43,17 +43,10 @@ export function selectedSkillView(
       sha256: source.sha256,
     })
     SkillRelease.parse({ ...original, version: source.version })
-    const origin = SkillOrigin.parse(source.origin)
-    const expectedId = `${origin.kind === 'plugin' ? `plugin/${origin.pluginId}` : origin.kind}/${source.name}`
-    if (
-      !source.active ||
-      source.id !== expectedId ||
-      source.alias !== skillAlias(origin, source.name) ||
-      source.requirement !== skillRequirement(origin, source.name) ||
-      ids.has(source.id) ||
-      aliases.has(source.alias)
-    )
-      throw new Error('Invalid selected skill identity.')
+    SkillOrigin.parse(source.origin)
+    SkillName.parse(source.alias)
+    if (!source.active || ids.has(source.id) || aliases.has(source.alias))
+      throw new Error(`Unavailable or duplicate selected skill ${source.id}`)
     ids.add(source.id)
     aliases.add(source.alias)
     let body = source.body,
@@ -63,23 +56,14 @@ export function selectedSkillView(
     if (source.origin.kind === 'built-in') {
       const item = verified.catalogue.skills.find((one) => one.name === source.name)
       if (!item) throw new Error('Unavailable shipped skill.')
-      if (
-        !textPack &&
-        (source.version !== verified.catalogue.version ||
-          source.sha256 !== item.sha256 ||
-          source.bytes !== item.bytes ||
-          source.description !== item.description ||
-          source.reminder !== item.reminder.slice(`${item.name} — `.length))
-      )
-        throw new Error('Changed shipped skill source.')
-      if (textPack) {
+      {
         body = verified.bodies.get(item.name)!
         description = item.description
         reminder = item.reminder.slice(`${item.name} — `.length)
         version = verified.catalogue.version
       }
     }
-    const draft = checkedSkillDraft({
+    const draft = readSkillDraft({
       name: source.name,
       description,
       reminder,
@@ -89,10 +73,6 @@ export function selectedSkillView(
       sha256: skillDigest(body),
     })
     SkillRelease.parse({ ...draft, version })
-    if (!textPack || source.origin.kind !== 'built-in') {
-      if (source.sha256 !== draft.sha256 || source.bytes !== draft.bytes)
-        throw new Error('Changed selected skill source.')
-    }
     const header = /^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n)/.exec(body)
     if (!header) throw new Error('Missing skill frontmatter.')
     let fields = header[2]!.replace(/^name: [^\r\n]+/m, `name: ${source.alias}`)
@@ -114,9 +94,9 @@ export function selectedSkillView(
     versions.push({
       id: source.id,
       versionId: source.versionId,
-      version: source.version,
+      version: textPack ? source.version : version,
       alias: source.alias,
-      sourceSha256: source.sha256,
+      sourceSha256: textPack ? source.sha256 : draft.sha256,
       sha256: installed.sha256,
       bytes,
       requirement: source.requirement,

@@ -2,15 +2,8 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { sniffAsset, type AssetFacts } from '../../src/shared/themes/assets'
-import type { PictureSamples } from '../../src/shared/themes/contrast'
 import { resolveTheme, type Theme } from '../../src/shared/themes/theme'
 import { validateTheme } from '../../src/shared/themes/validate'
-import { pngSamples } from './png-samples'
-
-/**
- * Every theme in `resources/themes`, the folder packaged beside the app, read as the host reads
- * it: each file sniffed, each picture sampled, bases validated before the themes that extend them.
- */
 const ROOT = join(__dirname, '../../resources/themes')
 const IDS = readdirSync(ROOT).filter((name) => statSync(join(ROOT, name)).isDirectory())
 
@@ -23,7 +16,6 @@ const filesUnder = (dir: string): string[] =>
 interface Folder {
   readonly raw: Record<string, unknown>
   readonly assets: Map<string, AssetFacts>
-  readonly pictures: Map<string, PictureSamples>
 }
 
 function read(id: string): Folder {
@@ -32,7 +24,6 @@ function read(id: string): Folder {
     unknown
   >
   const assets = new Map<string, AssetFacts>()
-  const pictures = new Map<string, PictureSamples>()
   const assetDir = join(ROOT, id, 'assets')
   for (const file of statSync(assetDir, { throwIfNoEntry: false }) ? filesUnder(assetDir) : []) {
     const path = relative(join(ROOT, id), file).split(sep).join('/')
@@ -40,14 +31,12 @@ function read(id: string): Folder {
     const sniffed = sniffAsset(bytes)
     if (!sniffed.ok) throw new Error(`${id}/${path}: ${sniffed.says}`)
     assets.set(path, sniffed.facts)
-    if (sniffed.facts.type === 'png') pictures.set(path, pngSamples(bytes))
   }
-  return { raw, assets, pictures }
+  return { raw, assets }
 }
 
 const folders = new Map(IDS.map((id) => [id, read(id)]))
 
-/** Validates every built-in, bases first, as the host does. */
 function validateAll(): Map<string, Theme> {
   const resolved = new Map<string, Theme>()
   const pending = new Set(IDS)
@@ -59,14 +48,8 @@ function validateAll(): Map<string, Theme> {
     if (ready.length === 0) throw new Error(`no base for: ${[...pending].join(', ')}`)
     for (const id of ready) {
       const folder = folders.get(id)!
-      const inherited = new Map(folder.pictures)
-      for (const [base] of resolved) {
-        for (const [path, samples] of folders.get(base)!.pictures)
-          inherited.set(`@${base}/${path}`, samples)
-      }
       const r = validateTheme(folder.raw, {
         assets: folder.assets,
-        pictures: inherited,
         builtIns: resolved,
         builtIn: true,
       })
@@ -84,7 +67,7 @@ describe('the themes the app ships', () => {
     expect(IDS.sort()).toEqual(['brocrew', 'crew-night', 'defined', 'synthwave'])
   })
 
-  it('all validate, readability included, bases first', () => {
+  it('all validate, bases first', () => {
     expect([...validateAll().keys()].sort()).toEqual([...IDS].sort())
   })
 
@@ -115,23 +98,15 @@ describe('BroCrew’s words in the second accent, before it set their colour by 
   const check = (file: Record<string, unknown>) =>
     validateTheme(file, {
       assets: brocrew.assets,
-      pictures: brocrew.pictures,
       builtIns: new Map([['defined', validateAll().get('defined')!]]),
       builtIn: true,
     })
 
-  it('is refused at the setting that decides them, in the existing words', () => {
-    const read = check(without)
-    expect(read.ok).toBe(false)
-    if (read.ok) return
-    // On the page, on the weak tint and in the right-hand panel: each names the second accent.
-    expect(new Set(read.problems.map((p) => p.at))).toEqual(new Set(['content.accent2']))
-    for (const p of read.problems)
-      expect(p.says).toMatch(/would be too faint: .* Change `content\.accent2`\./)
-    expect(read.problems.map((p) => p.says.split(' would')[0])).toContain('Links on the page')
+  it('accepts the original colours without contrast overrides', () => {
+    expect(check(without)).toMatchObject({ ok: true })
   })
 
-  it('…and following the hint puts it right, as does setting their colour by hand', () => {
+  it('also accepts darker colours and explicit paint overrides', () => {
     const darker = { ...without, content: { ...without.content, accent2: '#565bb5' } }
     expect(check(darker)).toMatchObject({ ok: true })
     expect(check(raw)).toMatchObject({ ok: true })

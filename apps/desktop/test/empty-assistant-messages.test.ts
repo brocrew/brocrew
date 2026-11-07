@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it, vi } from 'vitest'
 import { fileURLToPath } from 'node:url'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -13,7 +14,7 @@ import { transcripts as codexTranscripts } from '../src/main/providers/codex/tra
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { visibleItems } from '../src/renderer/src/lib/transcript-mode'
 import { panelWords } from '../src/renderer/src/lib/latest-words'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 function fold(events: TranscriptEvent[]) {
   const state = createTranscript()

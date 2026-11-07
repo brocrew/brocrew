@@ -49,16 +49,8 @@ pnpm-debug.log*
 # `**/` rather than a root anchor, matching the form `.git/info/exclude` already uses.
 **/.claude/worktrees/
 
-# Python bytecode from the mutation census/harness
+# Python bytecode
 __pycache__/
-
-# The mutation harness's one repository-global tree lock (196 H2). A run in progress owns it; a
-# leftover one is a machine fact for a person to look at, never something to commit.
-scripts/mutations/.tree-lock/
-
-# A table run's stream before it is published, and what an interrupted run leaves; only the
-# finished mutations.txt is the table's record.
-scripts/mutations/*/mutations.txt.partial*
 
 # Generated app-supplied plugin Node runtime (explicit packaging step).
 apps/desktop/resources/plugin-node/

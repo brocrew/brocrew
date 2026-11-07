@@ -1,3 +1,4 @@
+import type { SessionInstructions } from '../src/shared/instruction-contracts'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -14,7 +15,7 @@ import {
 import type { ToolRegistry } from '../src/renderer/src/lib/transcript'
 import { DIGEST_REGISTERS } from '../src/shared/digest'
 import { REGISTER_WORDS } from '../src/renderer/src/lib/digest'
-import type { SessionInstructions } from '../src/shared/runtime-ipc'
+
 import {
   claimedLayer,
   observedLayer,

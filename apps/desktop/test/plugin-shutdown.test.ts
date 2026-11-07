@@ -7,8 +7,9 @@ import { PluginWorkspaceLease } from '../src/main/plugins/supervisor/client'
 import { createSupervisorLifecycle } from '../src/main/plugins/lifecycle/supervisor'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import type { createPluginNodeHost, PluginNodeProcess } from '../src/main/plugins/node-host'
-import { fictionalPublicKey, manifestFor, packageFixture, signed } from './plugin-package-fixtures'
+import { manifestFor, packageFixture, catalogueBytes } from './plugin-package-fixtures'
 import type { LifecycleRuntime } from '../src/main/plugins/lifecycle/types'
+import { pluginFailureCause } from '../src/main/plugins/startup-failure'
 import {
   cleanupLifecycleFixtures,
   deferred,
@@ -109,7 +110,6 @@ describe.skipIf(process.platform === 'win32')(
         path: service.path,
         personKey: 'a'.repeat(64),
         root: f.root,
-        pinnedPublicKey: fictionalPublicKey,
         target: f.opts.target,
         catalogue: f.opts.catalogue,
         projection: stableSink,
@@ -126,7 +126,9 @@ describe.skipIf(process.platform === 'win32')(
       const run = await attached(f)
       // No host processes exist. The synthetic bridge child is still an exit witness.
       expect(run.fake.runs).toHaveLength(0)
-      const clean = vi.spyOn(run.service.controller, 'cleanForShutdown').mockReturnValue(false)
+      const clean = vi
+        .spyOn(run.service.controller, 'shutdownBlockers')
+        .mockReturnValue(['fictional lifecycle cleanup is unproven'])
       try {
         expect(await run.owner.shutdown()).toBe(false)
         await expect.poll(() => phase(f.root), { timeout: 1500 }).toBe('blocked')
@@ -180,7 +182,6 @@ describe.skipIf(process.platform === 'win32')(
         path: run.service.path,
         personKey: 'a'.repeat(64),
         root: f.root,
-        pinnedPublicKey: fictionalPublicKey,
         target: f.opts.target,
         catalogue: f.opts.catalogue,
         projection: secondSink,
@@ -275,45 +276,61 @@ describe.skipIf(process.platform === 'win32')(
         await draining.catch(() => undefined)
       }
     })
-    it.each(['revoke', 'reconcile', 'applied'] as const)(
-      'a proven exit retains an unacknowledged %s cleanup',
-      async (step) => {
-        const exit = deferred<void>()
-        const f = await fixture({ runtime: exitingRuntime(exit.promise) })
-        await f.controller.install(f.handle, 'chrome')
-        if (step === 'revoke') vi.spyOn(f.local.sink, step).mockResolvedValue(false)
-        else vi.spyOn(f.local.sink, step).mockRejectedValue(new Error('fictional cleanup refused'))
-        const revoke = vi.spyOn(f.local.sink, 'revoke')
-        exit.resolve()
-        await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
-        expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
-        expect(f.controller.cleanForShutdown()).toBe(false)
-        await expect(f.controller.drain()).rejects.toMatchObject({ code: 'cleanup-pending' })
-        expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
-      },
-    )
-    it('a late crash acknowledgement cannot clear a newer consumer cleanup failure', async () => {
-      const exit = deferred<void>(),
-        ack = deferred<boolean>()
+    it('a proven crash ends its cleanup even when a consumer is still winding down', async () => {
+      // The old rule waited for every consumer's revoke answer; that left a dead plugin
+      // Unavailable for good and refused the service's shutdown (0.2.5, 22:02).
+      const exit = deferred<void>()
       const f = await fixture({ runtime: exitingRuntime(exit.promise) })
       await f.controller.install(f.handle, 'chrome')
-      const revoke = vi.spyOn(f.local.sink, 'revoke').mockImplementation(() => ack.promise)
-      const applied = vi.spyOn(f.local.sink, 'applied')
+      const revoke = vi.spyOn(f.local.sink, 'revoke').mockResolvedValue(false)
       exit.resolve()
       await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
-      await expect(
-        f.controller.reconcileConsumer(f.handle, {
-          ...f.local.sink,
-          revoke: async () => true,
-          reconcile: async () => {
-            throw new Error('fictional newer cleanup failure')
-          },
-        }),
-      ).rejects.toMatchObject({ code: 'corrupt' })
-      ack.resolve(true)
-      await vi.waitFor(() => expect(applied).toHaveBeenCalledWith('chrome', null))
+      await vi.waitFor(async () => expect((await f.controller.status()).cleanupPending).toEqual([]))
+      // Cleanup is complete, but this crashed run stays denied until the owner is replaced.
+      expect((await f.controller.status()).cards[0]?.state).toBe('Unavailable')
+      expect(f.controller.agentAttachments(f.local.sink.workspaceId)).toEqual([])
+      expect(f.controller.cleanForShutdown()).toBe(true)
+      await expect(f.controller.drain()).resolves.toBeUndefined()
+    })
+    it('a crash whose exit is not proven keeps its cleanup, whatever consumers answer', async () => {
+      // Unchanged behaviour: the missing proof, not a consumer's answer, keeps the cleanup.
+      const exit = deferred<void>()
+      const f = await fixture({ runtime: exitingRuntime(exit.promise) })
+      await f.controller.install(f.handle, 'chrome')
+      const revoke = vi.spyOn(f.local.sink, 'revoke')
+      exit.reject(new Error('fictional exit witness lost'))
+      await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
       expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
+      expect((await f.controller.status()).cards[0]?.state).toBe('Unavailable')
       expect(f.controller.cleanForShutdown()).toBe(false)
+    })
+    it('a refused shutdown names what blocks it, down to the plugin and its missing proof', async () => {
+      const exit = deferred<void>()
+      const f = await fixture({ runtime: exitingRuntime(exit.promise) })
+      await f.controller.install(f.handle, 'chrome')
+      exit.reject(new Error('fictional exit witness lost'))
+      await vi.waitFor(async () =>
+        expect((await f.controller.status()).cleanupPending).toEqual(['chrome']),
+      )
+      expect(f.controller.shutdownBlockers()).toEqual(['chrome has not proven its cleanup'])
+      const refusal = await f.controller.drain().then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      expect(refusal).toMatchObject({ code: 'cleanup-pending' })
+      // The drain log's cause line carries it, not a bare "cleanup-pending".
+      expect(pluginFailureCause(refusal)).toContain('chrome: its exit was not proven')
+      expect(pluginFailureCause(refusal)).toContain('fictional exit witness lost')
+    })
+    it('uninstall completes when a consumer refuses or never answers its revoke', async () => {
+      const f = await fixture()
+      await f.controller.install(f.handle, 'chrome')
+      vi.spyOn(f.local.sink, 'revoke').mockRejectedValue(new Error('fictional consumer gone'))
+      await f.controller.uninstall(f.handle, 'chrome')
+      expect(f.state.exportActivation().entries).toEqual([])
+      expect(f.state.inspect().pending).toBeNull()
+      expect(f.events).toContain('remove-code')
+      expect((await f.controller.status()).cleanupPending).toEqual([])
     })
     it('a proven crash drains the shared owner and its successor starts while another plugin stays running', async () => {
       const f = await fixture()
@@ -322,7 +339,7 @@ describe.skipIf(process.platform === 'win32')(
       manifest.skills = []
       manifest.platforms = [f.opts.target]
       const other = packageFixture({ manifest })
-      f.opts.catalogue = signed({ format: 1, entries: [f.pkg.release, other.release] })
+      f.opts.catalogue = catalogueBytes({ format: 1, entries: [f.pkg.release, other.release] })
       f.opts.download = async (release) => (release.id === 'chrome' ? f.pkg.archive : other.archive)
       const first = await attached(f)
       let closed = false
@@ -471,14 +488,20 @@ describe.skipIf(process.platform === 'win32')(
           .mockResolvedValue(failure !== 'failed acknowledgement')
         run.fake.runs[0]!.exit.resolve({ exited: failure !== 'unproved exit' })
         await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
-        await expect(run.service.controller.drain()).rejects.toMatchObject({
-          code: 'cleanup-pending',
-        })
-        expect(await run.owner.shutdown()).toBe(false)
+        if (failure === 'unproved exit') {
+          await expect(run.service.controller.drain()).rejects.toMatchObject({
+            code: 'cleanup-pending',
+          })
+          expect(await run.owner.shutdown()).toBe(false)
+        } else {
+          // The consumer's false answer cannot veto the exact host's proven exit.
+          await expect(run.service.controller.drain()).resolves.toBeUndefined()
+          expect(await run.owner.shutdown()).toBe(true)
+        }
         await expect(run.client.catalogue()).rejects.toThrow()
         expect(run.fake.runs[0]!.process.stop).toHaveBeenCalled()
-        expect(run.service.controller.cleanForShutdown()).toBe(false)
-        expect(await phase(f.root)).toBe('blocked')
+        expect(run.service.controller.cleanForShutdown()).toBe(failure !== 'unproved exit')
+        expect(await phase(f.root)).toBe(failure === 'unproved exit' ? 'blocked' : 'stopped')
       },
     )
     it('intentional drain cannot turn an unproved exact-run exit into clean shutdown', async () => {

@@ -1,3 +1,6 @@
+import { waitFor } from './lib/f093-host'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createHash } from 'node:crypto'
@@ -11,7 +14,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   RuntimeHost,
   THE_APP_ITSELF,
@@ -34,7 +36,7 @@ import { AN_UNNAMED_RELAYER, RELAYED_MARK } from '../src/renderer/src/lib/relaye
 import { WORK_REPORT_MARK } from '../src/renderer/src/lib/work-report'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import type { TranscriptItem } from '../src/renderer/src/lib/transcript'
-import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import { TURN_AUTHORSHIP_KEYS, agentName } from '../src/shared/runtime-ipc'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { pieceLine, theOwnerOf } from '../src/shared/piece-called'
@@ -43,8 +45,6 @@ import { replyText } from '../src/main/runtime/reply-rails'
 
 /**
  * App-delivered words must not be attributed to the person.
- *
- * ⚑ The PO's sentence, quoted in the brief that asked for this:
  *
  * A receiver acting on words falsely attributed to the person is acting on false authority. A
  * measured corpus contained 12,646 such messages, so the regression can affect many
@@ -72,14 +72,6 @@ import { replyText } from '../src/main/runtime/reply-rails'
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 class RecordingSink implements RuntimeEventSink {
   readonly aPersonIsBehindIt = true
@@ -330,9 +322,7 @@ describe('413 · words the person did not say', () => {
   const buildHost = (withStore: SessionStore = store): RuntimeHost => {
     const built = new RuntimeHost({
       store: withStore,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
@@ -344,13 +334,7 @@ describe('413 · words the person did not say', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built
@@ -652,7 +636,8 @@ describe('413 · words the person did not say', () => {
         'private sendTheAppsWords(session: HostedSession, text: string): Promise<void>',
       )
       expect(code.match(/await session\.handle\.send\(/g) ?? []).toHaveLength(0)
-      expect(code).toContain('return session.handle.send(words, this.stampFor(from, handed))')
+      expect(code).toContain('return this.keepLeadWhenUnsent(session, owedLead, owedLeadIs, () =>')
+      expect(code).toContain('session.handle.send(words, this.stampFor(from, handed))')
       // 🔴 **D-027 · and a fifth: a turn of several held messages**, which the flush hands to
       // `handTogetherToProvider` — the second method that performs a handover, and RETURNS its
       // send for {@link handToProvider}'s ordering reason. ⚑ Pinned by its exact text as that one
@@ -662,12 +647,12 @@ describe('413 · words the person did not say', () => {
       expect(together.length).toBe(1)
       expect(code).toContain(
         [
-          'const sent = session.handle.send(',
-          '      this.withWhatThisLifeOwes(session, turn, currentPiece),',
-          '      this.stampForATurnOf(messages),',
+          'const sent = this.keepLeadWhenUnsent(session, owedLead, owedLeadIs, () =>',
+          '      session.handle.send(words, this.stampForATurnOf(messages)),',
           '    )',
         ].join('\n'),
       )
+      expect(code).toContain('const words = this.withWhatThisLifeOwes(session, turn, currentPiece)')
       expect(code).toContain('    return sent\n')
       // ⚑ **And a sixth: a turn that hands over nothing new**, after a repaired sign-in, so the
       // agent answers the message its thread already holds. No string reaches the model through it.
@@ -714,7 +699,7 @@ describe('413 · words the person did not say', () => {
       for (const call of calls.filter((one) => one.path === 'runtime/agent-tools.ts')) {
         expect(call.call, call.call).toMatch(/,\s*by\s*[,)]/)
       }
-      // 🔴 **735 · one host call passes a window, and it is the window `ipc.ts` handed it** —
+      // The host passes only the window that IPC handed it, for a recorded or a newly opened view.
       // `RuntimeHost.startAndSend`'s own send of the person's first message, the person's words.
       // ⛔ Every other call in the host names no window (they pass `THE_APP_ITSELF` or their own
       // caller), and the door is reached from `ipc.ts` alone, with the channel's `sink`.
@@ -724,6 +709,7 @@ describe('413 · words the person did not say', () => {
       // ⚑ **D-017 · R1 — the same window, now handed to `send`'s body** once the start is made:
       // `startAndSend` reopens it for the person's window and `sendTheFirstMessage` sends.
       expect(windowsInTheHost.map((one) => one.line)).toEqual([
+        'await this.sendAs(at, text, sink, attachments, {',
         'await this.sendAs(sessionId, text, sink, attachments, {',
       ])
       // ⛔ …and that method is reached from `startAndSend` alone, with the `sink` it was handed.

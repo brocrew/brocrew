@@ -15,7 +15,9 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { spawn, type ChildProcess } from 'node:child_process'
+import { once } from 'node:events'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 const proofIo = vi.hoisted(() => ({ failRename: false, deviceOffset: 0n, noFollowFallback: false }))
 // Exercise Windows' descriptor-vs-path check even on a Mac: Windows has no O_NOFOLLOW.
 vi.mock('node:fs', async () => {
@@ -69,8 +71,36 @@ vi.mock('node:fs/promises', async () => {
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
 import { previousRunsProvenStopped } from '../src/main/plugins/supervisor/recovery-proof'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
-import { keepPluginRootPrivate } from '../src/main/plugins/private-files'
 
+// A run reaches reboot proof only when its next start can't prove it stopped: its process record
+// names a group whose number now belongs to another process (a run with no record, or whose group
+// is gone, is proven directly; see plugin-owner-recovery).
+let stranger: ChildProcess
+beforeAll(async () => {
+  stranger = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+    detached: true,
+    stdio: 'ignore',
+  })
+  await once(stranger, 'spawn')
+})
+afterAll(() => {
+  stranger.kill('SIGKILL')
+})
+async function unprovable(run: string) {
+  const runId = run.split(/[\\/]/).at(-1)!
+  await writeFile(
+    join(run, 'process.json'),
+    JSON.stringify({
+      format: 1,
+      runId,
+      pluginId: 'fictional',
+      releaseDigest: 'f'.repeat(64),
+      guardianPid: 404941,
+      groups: [[stranger.pid, '0:a birth this number no longer has']],
+    }),
+    { mode: 0o600 },
+  )
+}
 describe('fenced reboot proof for historical plugin runs', () => {
   let parent = '',
     root = '',
@@ -99,7 +129,7 @@ describe('fenced reboot proof for historical plugin runs', () => {
       await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-reboot-')),
     )
     root = join(parent, 'plugins')
-    await keepPluginRootPrivate(root)
+
     const initial = await PluginSupervisor.start({ root, workspaceRoots: [] })
     await initial.shutdown()
     await initial.closed
@@ -111,6 +141,7 @@ describe('fenced reboot proof for historical plugin runs', () => {
     const id = randomUUID()
     run = join(root, 'host/runs', id)
     await mkdir(run, { recursive: true, mode: 0o700 })
+    await unprovable(run)
     if (exited !== undefined)
       await writeFile(
         join(run, 'exit.json'),
@@ -227,17 +258,14 @@ describe('fenced reboot proof for historical plugin runs', () => {
     witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
     await refused()
   })
-  it.skipIf(process.platform === 'win32').each(['mode', 'symlink'] as const)(
-    'refuses changed run %s across a genuine reboot',
-    async (change) => {
+  it.skipIf(process.platform === 'win32')(
+    'refuses a symlinked run across a genuine reboot',
+    async () => {
       await fixture()
       await refused()
-      if (change === 'mode') await chmod(run, 0o755)
-      else {
-        const saved = join(parent, 'saved-run')
-        await rename(run, saved)
-        await symlink(saved, run, 'dir')
-      }
+      const saved = join(parent, 'saved-run')
+      await rename(run, saved)
+      await symlink(saved, run, 'dir')
       witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
       await refused()
     },
@@ -347,11 +375,12 @@ describe('fenced reboot proof for historical plugin runs', () => {
     },
   )
   it.skipIf(process.platform === 'win32').each(['pending', 'certificate'] as const)(
-    'refuses a publicly writable %s proof as takeover authority',
+    'uses an OS-readable %s proof without tightening its permissions',
     async (kind) => {
       const path = await retainedProof(kind)
       await chmod(path, 0o666)
-      await refused()
+      await expect(attempt()).resolves.toBeDefined()
+      expect((await lstat(path)).mode & 0o777).toBe(0o666)
     },
   )
   it.each(['blocked', 'draining'] as const)(
@@ -455,7 +484,9 @@ describe('fenced reboot proof for historical plugin runs', () => {
     storage.write({ ...next, phase: 'blocked' })
     storage.close()
     epoch = next.epoch
-    await mkdir(join(root, 'host/runs', randomUUID()), { mode: 0o700 })
+    const later = join(root, 'host/runs', randomUUID())
+    await mkdir(later, { mode: 0o700 })
+    await unprovable(later)
     await refused()
     expect(JSON.parse(await readFile(marker(), 'utf8')).epoch).toBe(next.epoch)
   })
@@ -568,6 +599,7 @@ describe('fenced reboot proof for historical plugin runs', () => {
     await refused()
     await rename(run, join(parent, 'retained-old-run'))
     await mkdir(run, { mode: 0o700 })
+    await unprovable(run)
     witness = { kind: 'darwin-boot-session-v1', value: randomUUID() }
     await refused()
   })

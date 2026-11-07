@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import SheetShell from './SheetShell.vue'
 import { computed, ref } from 'vue'
 import {
   EXTERNAL_MCP_EVERYONE,
@@ -133,29 +134,22 @@ function onKey(event: KeyboardEvent): void {
 </script>
 
 <template>
-  <section class="external-mcp" data-cy="external-mcp-registry" @keydown="onKey">
-    <div class="sheet-header">
-      <div class="sheet-glyph">M</div>
-      <div class="sheet-header-copy">
-        <strong data-cy="external-mcp-title">External tools</strong>
-        <small
-          >MCP servers running on this machine. Registered once for the whole app, and every agent
-          can use one unless you restrict it.</small
-        >
-      </div>
-      <span class="spacer"></span>
-      <button
-        class="icon-button"
-        type="button"
-        aria-label="Close"
-        data-cy="close-overlay"
-        @click="emit('close')"
+  <SheetShell
+    glyph="M"
+    class="external-mcp"
+    data-cy="external-mcp-registry"
+    @keydown="onKey"
+    @close="emit('close')"
+  >
+    <template #header>
+      <strong data-cy="external-mcp-title">External tools</strong>
+      <small
+        >MCP servers running on this machine. Registered once for the whole app, and every agent can
+        use one unless you restrict it.</small
       >
-        <svg class="icon"><use href="#i-x" /></svg>
-      </button>
-    </div>
+    </template>
 
-    <div class="sheet-body">
+    <template #body>
       <p v-if="!store.loaded.value" class="note" data-cy="external-mcp-loading">
         Reading the registered servers…
       </p>
@@ -338,9 +332,9 @@ function onKey(event: KeyboardEvent): void {
         <svg class="icon"><use href="#i-alert" /></svg>
         <span>{{ removeRefusal }}</span>
       </p>
-    </div>
+    </template>
 
-    <div class="sheet-actions">
+    <template #actions>
       <button type="button" data-cy="external-mcp-cancel" @click="emit('close')">Close</button>
       <button
         class="primary"
@@ -354,93 +348,18 @@ function onKey(event: KeyboardEvent): void {
              needs to know that is what took the time. -->
         {{ adding ? 'Checking…' : 'Add server' }}
       </button>
-    </div>
-  </section>
+    </template>
+  </SheetShell>
 </template>
 
 <style scoped>
-/* The sheet shell — copied as DECLARATIONS from `NewAgent`, never borrowed as class names: `scoped`
-   styles are per-component, so a name shared with another file shares nothing
-   (`a-scoped-class-matches-nothing-in-another-component`). */
-.external-mcp {
-  display: flex;
-  width: min(560px, 92vw);
-  max-height: 88vh;
-  flex-direction: column;
-  overflow: hidden;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-  box-shadow: var(--shadow);
-}
-
-.sheet-header {
-  display: flex;
-  min-height: var(--surface-header-h);
-  flex: 0 0 auto;
-  align-items: center;
-  padding: var(--space-5) var(--space-7) var(--space-5) var(--space-9);
-  border-bottom: var(--border-width) solid var(--line);
-  gap: var(--space-6);
-}
-
-.sheet-glyph {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 auto;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-md);
-  background: var(--panel-2);
-  color: var(--muted);
-  font: var(--fw-bold) var(--type-caption) / 1 var(--font-mono);
-  place-items: center;
-}
-
-.sheet-header-copy strong {
-  display: block;
-  color: var(--text);
-  font-size: var(--type-body);
-  font-weight: var(--fw-bold);
-}
-
-.sheet-header-copy small {
-  display: block;
-  margin-top: var(--space-2);
-  color: var(--muted);
-  font-size: var(--type-caption);
-}
-
 .spacer {
   flex: 1;
-}
-
-.icon-button {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-md);
-  background: var(--wash-2);
-  color: var(--muted);
-  place-items: center;
 }
 
 .icon {
   width: 14px;
   height: 14px;
-}
-
-/* ⚠️ `min-height: 0` so the scrolling body can actually shrink inside the flex column — without it
-   a long note pushes the actions off a short window instead of scrolling. */
-.sheet-body {
-  display: flex;
-  min-height: 0;
-  flex-direction: column;
-  padding: var(--space-8) var(--space-9);
-  overflow-y: auto;
-  gap: var(--space-7);
 }
 
 .rows {
@@ -562,22 +481,5 @@ function onKey(event: KeyboardEvent): void {
 .note .icon {
   flex: 0 0 auto;
   margin-top: 1px;
-}
-
-.sheet-actions {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: flex-end;
-  padding: var(--space-6) var(--space-9);
-  border-top: var(--border-width) solid var(--line);
-  gap: var(--space-4);
-}
-
-/* ⚠️ Padding and size only. `button` and `button.primary` are styled GLOBALLY in `base.css`,
-   including the disabled state. */
-.sheet-actions button {
-  padding: var(--space-4) var(--space-7);
-  font-size: var(--type-caption);
 }
 </style>

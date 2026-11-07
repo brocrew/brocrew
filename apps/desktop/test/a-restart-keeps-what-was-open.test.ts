@@ -1,3 +1,5 @@
+import { neutralHostDeps } from './lib/host-fixture'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -25,16 +27,11 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentCallerId, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type {
-  RuntimeChangeMessage,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeChangeMessage, RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { stalledWorkSaid } from '../src/shared/stalled-work'
 import { undrivenSentence } from '../src/shared/tasks'
 import {
@@ -180,9 +177,7 @@ describe('692 · a restart keeps what was open', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new CountingRuntime(provider, launched, handed, issued, gate),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
@@ -1042,17 +1037,13 @@ describe('692 · a restart keeps what was open', () => {
     // ⛔ **`its parent’s end while its start is in flight leaves it closed` retired with `end_agent`
     // (D-017, commit 3)** — nothing ends a conversation now.
 
-    it('⚑ the quit writes its record only once everything it closed is down — a crash before then records nothing', async () => {
+    it('⚑ the quit records its open conversations before teardown starts', async () => {
       const { lead, children } = await theFourOpen()
       const quitting = store
       const seenWhenWritten: string[][] = []
       const write = quitting.closedByTheQuit.bind(quitting)
       quitting.closedByTheQuit = (ids, at) => {
-        // ⚑ **What the host is still running at the moment of the write** — nothing, or the write
-        // came before the teardown and a crash in between would have brought them back open.
-        // ⚠️ **By the RECORDED status, not by `running`** — a slot being torn down already reads
-        // `not-running`, so only the row the finalizer writes says the teardown is over (found by
-        // review, round two: a record written between the close and its end passed the old check).
+        // The open list is saved while these conversations are still running, before drains.
         seenWhenWritten.push(
           [lead, ...children].filter(
             (id) => quitting.resumable().find((row) => row.sessionId === id)?.status !== 'ended',
@@ -1061,7 +1052,7 @@ describe('692 · a restart keeps what was open', () => {
         write(ids, at)
       }
       await quitAndRelaunch()
-      expect(seenWhenWritten).toEqual([[]])
+      expect(seenWhenWritten).toEqual([[lead, ...children]])
       expect(listed(lead)).toEqual({ running: 'not-running' })
     })
 

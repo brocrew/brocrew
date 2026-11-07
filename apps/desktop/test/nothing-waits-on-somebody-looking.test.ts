@@ -1,4 +1,7 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { waitFor } from './lib/f093-host'
+import { REQUEST_STATES } from '../src/shared/question-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -16,15 +19,18 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { TOOL_NAMES, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { mailboxOf } from '../src/shared/mailbox'
-import { REQUEST_IS_OPEN, REQUEST_STATES, deriveRoutedRequests } from '../src/shared/questions'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import { REQUEST_IS_OPEN, deriveRoutedRequests } from '../src/shared/questions'
+import {
+  fixtureProviderConfig,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **396 · nothing waits on somebody looking** — Slice 4 S6, and the last build dispatch before X.
@@ -74,25 +80,6 @@ const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
 
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** `394`'s double, with the handles kept — a test has to BE the provider to ask like one. */
 class ProviderDouble extends FakeRuntime {
   constructor(
@@ -140,27 +127,15 @@ describe('396 · nothing waits on somebody looking', () => {
   const buildHost = (over: SessionStore = store): RuntimeHost => {
     const built = new RuntimeHost({
       store: over,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built
@@ -1009,14 +984,12 @@ describe('396 · nothing waits on somebody looking', () => {
       expect(body).not.toContain('if (!session.sink.alive) return')
     })
 
-    it('⛔ every `sink.alive` reader in the host is a DELIVERY — the family, enumerated', () => {
-      // ⚠️ **A negative needs a search shape** (standing rule 4). The claim is *"nothing else in this
-      // class gates WORK on whether anybody is looking"*, and the shape it is measured against is
-      // every line of `runtime-host.ts` that reads `sink.alive` — named, classified, and asserted
-      // equal, so a new reader arrives here as a red list rather than as a line nobody read.
-      const code = codeOnly(sourceOf(join(mainRoot, 'runtime'), 'runtime-host.ts'))
-      const readers = code
-        .split('\n')
+    it('⛔ every `sink.alive` reader in the host and window reads is a DELIVERY — the family, enumerated', () => {
+      // Enumerate delivery guards in the host and its window reads. A new reader must be
+      // classified here; moving a guard between these sources does not remove it from the census.
+      const sources = ['runtime-host.ts', 'window-reads.ts']
+      const readers = sources
+        .flatMap((file) => codeOnly(sourceOf(join(mainRoot, 'runtime'), file)).split('\n'))
         .map((line) => line.trim())
         .filter((line) => line.includes('sink.alive'))
         .sort()
@@ -1057,8 +1030,8 @@ describe('396 · nothing waits on somebody looking', () => {
           // A row written into a ledger nothing runs, shown to a window that has it open.
           'if (!sink.alive) {',
           // A Files query belongs to its window and has no work to deliver after that window closes.
-          'if (libraries === undefined || this.launches.closed || !sink.alive)',
-          "if (this.launches.closed || !sink.alive) return libraryUnavailable('closed')",
+          "if (libraries === undefined || read.closed() || !sink.alive) return libraryUnavailable('closed')",
+          "if (read.closed() || !sink.alive) return libraryUnavailable('closed')",
         ].sort(),
       )
       // ⚑ **The member is a DELIVERY only if `watching` chooses the sink and nothing else** — no

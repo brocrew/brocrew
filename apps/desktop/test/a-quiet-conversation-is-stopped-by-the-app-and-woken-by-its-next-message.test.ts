@@ -1,3 +1,7 @@
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import type { AgentState } from '../src/shared/agent-state-contracts'
+import type { PieceRow } from '../src/shared/task-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -16,19 +20,16 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { AgentState } from '../src/shared/agent-state'
-import type { PieceRow } from '../src/shared/tasks'
+
 import type {
   ResumableSessionInfo,
   RuntimeEventMessage,
   RuntimeStatesMessage,
-  TranscriptEvent,
   UnresumableSessionInfo,
 } from '../src/shared/runtime-ipc'
 
@@ -186,9 +187,7 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
   const buildHost = (idleStopAfterMs?: number): RuntimeHost => {
     const built = new RuntimeHost({
       store: wrappedStore(store),
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, handed, issued),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
@@ -201,13 +200,7 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       // The dep that arms the countdown at all: what main hands every window on `runtime:states`.
       statesMoved: (message) => {
         pushed.push(message)
@@ -679,9 +672,11 @@ describe('D-018 · a quiet conversation is stopped by the app, and woken by its 
 
   /** ⚑ W4.210 · the countdown the host holds for this one conversation. */
   const countdownOf = (id: string): Countdown => {
-    const timer = (host as unknown as { idleCountdowns: Map<string, unknown> }).idleCountdowns.get(
-      id,
-    )
+    const timer = (
+      host as unknown as {
+        conversationIdle: { idleCountdowns: Map<string, unknown> }
+      }
+    ).conversationIdle.idleCountdowns.get(id)
     const found = live().find((one) => one.timer === timer)
     if (found === undefined) throw new Error(`${id} holds no live countdown`)
     return found

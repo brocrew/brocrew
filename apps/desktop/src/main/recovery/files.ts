@@ -13,11 +13,6 @@ import {
   stagedRoot,
 } from './layout'
 
-/**
- * Every file operation recovery makes goes through a {@link RecoveryFs}, so a test can make any
- * one of them fail. Production uses {@link nodeFs}; a test spreads it and replaces what it needs.
- */
-
 export type { Step }
 
 /** Called before a journaled step's work begins. A test throws from it to stop there. */
@@ -26,10 +21,6 @@ export type BeforeStep = (step: Step) => void
 /** Called after a journaled step's work, before the journal names the step. */
 export type AfterStep = (step: Step) => void
 
-/**
- * One file a restore or return just renamed: the participant by its live name, and where it went.
- * `incoming` is only reached when an unfinished restore or return is undone.
- */
 export interface Moved {
   readonly live: string
   readonly to: 'aside' | 'live' | 'incoming'
@@ -102,11 +93,10 @@ export interface RecoveryFs {
     options?: { readonly mode?: number; readonly flag?: string },
   ): Promise<void>
   readdir(path: string): Promise<string[]>
-  chmod(path: string, mode: number): Promise<void>
 }
 
 /** Keep Windows' 64-bit file IDs exact while retaining the existing safe-number representation. */
-export function recoveryStats(stats: BigIntStats): RecoveryStats {
+function recoveryStats(stats: BigIntStats): RecoveryStats {
   const identity = (value: bigint): number | string =>
     value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : value.toString()
   return {
@@ -152,7 +142,6 @@ export const nodeFs: RecoveryFs = {
   readFile: (path) => nodeFsPromises.readFile(path, 'utf8'),
   writeFile: (path, data, options) => nodeFsPromises.writeFile(path, data, options),
   readdir: (path) => nodeFsPromises.readdir(path),
-  chmod: (path, mode) => nodeFsPromises.chmod(path, mode),
 }
 
 /** A Node error's `code` (`ENOENT`, `EBUSY`…), or undefined for anything else. */
@@ -161,10 +150,6 @@ export function errorCode(error: unknown): string | undefined {
   return typeof code === 'string' ? code : undefined
 }
 
-/**
- * Whether anything is at `path`, a link included even when what it points at is gone. Errors other
- * than its absence are thrown.
- */
 export async function pathExists(path: string, fs: RecoveryFs = nodeFs): Promise<boolean> {
   try {
     await fs.lstat(path)
@@ -192,10 +177,6 @@ export interface RetryOptions {
   readonly sleep?: (ms: number) => Promise<void>
 }
 
-/**
- * Runs `op`, and runs it again after a short wait while it fails with a code a briefly held file
- * gives. Any other failure, or the last one, is thrown as it came.
- */
 export async function retrying<T>(op: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
   const delays = options.delays ?? RETRY_DELAYS_MS
   const sleep =
@@ -211,10 +192,6 @@ export async function retrying<T>(op: () => Promise<T>, options: RetryOptions = 
   }
 }
 
-/**
- * A file's text, or null when there is none. A read a briefly held file refuses is tried again;
- * any other failure is thrown.
- */
 export async function readTextOrNull(
   path: string,
   fs: RecoveryFs = nodeFs,
@@ -228,18 +205,6 @@ export async function readTextOrNull(
   }
 }
 
-/**
- * Replaces `path` with `data` so that a reader finds the old file or the new one, never a part:
- * the data goes to a private temporary file beside it (mode 0600), is flushed to disk, and is
- * renamed over `path`; then the rename itself is put on disk, so it survives a power cut. A
- * failure before the rename leaves the old file as it was and removes the temporary one. A failure
- * to put the rename on disk is thrown too: the new file is in place, but nothing may count on it.
- *
- * The rename is put on disk by flushing the folder, except on Windows, which cannot flush a
- * folder: there the file is flushed again under its new name, through a handle that may write.
- * NTFS and ReFS log every change to a volume's names in order, so that flush also puts on disk
- * every rename and new file the app made on the volume before it.
- */
 export async function writeAtomically(
   path: string,
   data: string | Uint8Array,
@@ -274,17 +239,6 @@ export async function writeJsonAtomically(
   await writeAtomically(path, `${JSON.stringify(value, null, 2)}\n`, fs)
 }
 
-/**
- * Flushes a folder's entries to disk, so a rename or a new file in it survives a power cut. A
- * failure is thrown, since nothing written into the folder may then count as kept.
- *
- * Windows cannot flush a folder, so there this does nothing. Its names reach the disk with the next
- * file flushed after them, and NTFS and ReFS keep them in the order they were made, so a crash
- * leaves the earlier ones without the later ones. Every step a later one counts on ends with a
- * record written by {@link writeAtomically}, which flushes one. The renames that put files back
- * after a stopped restore, and the removal of a finished journal, reach the disk with the next file
- * flushed; until then the journal is still there, and the next start does them again.
- */
 export async function syncFolder(
   folder: string,
   fs: RecoveryFs = nodeFs,
@@ -299,10 +253,6 @@ export async function syncFolder(
   }
 }
 
-/**
- * Flushes a file's bytes and its entry, through a handle that may write: Windows flushes only those.
- * The open is tried again while another program briefly holds the file, as a rename is.
- */
 async function flushFile(path: string, fs: RecoveryFs): Promise<void> {
   const handle = await retrying(() => fs.open(path, 'r+'))
   try {
@@ -312,34 +262,21 @@ async function flushFile(path: string, fs: RecoveryFs): Promise<void> {
   }
 }
 
-/**
- * Copies `from` to a new file `to` (mode 0600) and puts its bytes and its name on disk before it
- * returns: the copy is flushed through a handle that may write, and then its folder is flushed.
- * On Windows the copy's flush puts its name on disk too. Never replaces a file already at `to`.
- */
 export async function copyDurably(
   from: string,
   to: string,
   fs: RecoveryFs = nodeFs,
 ): Promise<void> {
   await fs.copyFile(from, to, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE)
-  await fs.chmod(to, 0o600)
   await flushFile(to, fs)
   await syncFolder(dirname(to), fs)
 }
 
-/**
- * Makes `path` and any missing parents, readable by this user only (0700). A link standing where
- * the folder should be is refused, so the mode is never set on what it points at. Its parents are
- * not checked here: inside `backups/` and `recovery/`, {@link assertOwnedPathsAreReal} checks them
- * first.
- */
 export async function privateDir(path: string, fs: RecoveryFs = nodeFs): Promise<void> {
   await fs.mkdir(path, { recursive: true, mode: 0o700 })
   const stats = await fs.lstat(path)
   if (stats.isSymbolicLink()) throw new OwnedPathIsALink(path)
   if (!stats.isDirectory()) throw new Error(`${path} is not a folder`)
-  await fs.chmod(path, 0o700)
 }
 
 /** A link or junction where one of the app's own recovery folders or files should be. */
@@ -353,14 +290,6 @@ export class OwnedPathIsALink extends Error {
   }
 }
 
-/**
- * Refuses, with {@link OwnedPathIsALink}, when a folder the app owns is a link or a junction:
- * `backups/`, `recovery/`, `recovery/staged/`, `recovery/preserved/`, `recovery/scratch/`, and
- * every entry on the way to each of `paths` below `backups/` or `recovery/`, the path itself
- * included. Called before every rename, removal, mode change and sweep there, so none of them
- * reaches through a link into a folder the app does not own. A path not there yet is fine; paths
- * directly in the data folder have no owned parent to check.
- */
 export async function assertOwnedPathsAreReal(
   userData: string,
   paths: readonly string[] = [],
@@ -422,19 +351,11 @@ export async function sha256Of(path: string, fs: RecoveryFs = nodeFs): Promise<s
   return hash.digest('hex')
 }
 
-/**
- * What is at a path: nothing, a file with its full sha256, or something that is not a file (a
- * folder, or a link even to a file).
- */
 export type Content =
   | { readonly kind: 'absent' }
   | { readonly kind: 'file'; readonly sha256: string }
   | { readonly kind: 'other' }
 
-/**
- * What is at `path`, hashed whole when it is a file. A link is `other`, never what it points at: a
- * rename would move the link and leave its target where it is.
- */
 export async function contentAt(path: string, fs: RecoveryFs = nodeFs): Promise<Content> {
   let stats: RecoveryStats
   try {

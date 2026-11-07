@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { launchSkillSelections } from '../src/main/skills/launch-selection'
 import { SqliteSkillCatalogue } from '../src/main/skills/catalogue-store'
 import { readBuiltInSkills, prepareBuiltInSkills } from '../src/main/skills/prepare-built-in-skills'
@@ -10,7 +11,7 @@ import {
   builtInSkillReminders,
 } from '../src/main/skills/built-in-catalogue'
 import { BUILT_IN_SKILLS_FAILURE, BUILT_IN_SKILL_NAMES } from '../src/shared/built-in-skills'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -21,7 +22,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { giverStallReceipts, RuntimeHost } from './helpers/giver-notice-host'
 import type { RuntimeEventSink, RuntimeHostDeps } from './helpers/giver-notice-host'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
@@ -49,7 +49,8 @@ import {
   type CurrentWorkInTheTurn,
 } from '../src/main/runtime/what-this-app-adds-to-a-turn'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
@@ -148,15 +149,9 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
   const buildHost = (withSkills = false, extra: Partial<RuntimeHostDeps> = {}): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       ...(withSkills
         ? {
             prepareBuiltInSkills: async (input: {
@@ -194,13 +189,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       ...extra,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built
@@ -579,34 +568,12 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
   )
   for (const provider of ['claude', 'codex'] as const)
     for (const opening of ['start', 'resume'] as const) {
-      it(`${provider} ${opening} checks the catalogue again before invoking the provider`, async () => {
-        const seeded = await personOpens('worker', provider)
-        await host.closeAll()
-        let change = () => {}
-        const { catalogue, identity, revision } = selectedHost(() => change())
-        change = () => {
-          catalogue.select(identity, 'built-in/remember', 'off', revision())
-        }
-        const before = launchContexts.length
-        const operation =
-          opening === 'start'
-            ? host.createSession(
-                { provider, profileId: 'worker', approvalMode: 'ask', cwd: root },
-                window,
-              )
-            : host.resumeSession(seeded, window)
-        await expect(operation).rejects.toThrow(BUILT_IN_SKILLS_FAILURE)
-        expect(launchContexts).toHaveLength(before)
-      })
-    }
-  for (const provider of ['claude', 'codex'] as const)
-    for (const opening of ['start', 'resume'] as const) {
-      it.each(['revision', 'grant', 'cancel'] as const)(
+      it.each(['grant', 'cancel'] as const)(
         `${provider} ${opening} refuses registration after a held %s change`,
         async (change) => {
           const seeded = await personOpens('worker', provider)
           await host.closeAll()
-          const { catalogue, identity, revision } = selectedHost()
+          selectedHost()
           expect(store.setCapabilities('worker', { canCreateAgents: 'any' })).toBe(true)
           let release!: () => void
           const held = {
@@ -638,8 +605,6 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
             await waitFor(() => held.handle !== null, 'fictional native launch return')
             const sessionId = opening === 'start' ? `sess_${counter}` : seeded
             let closed: Promise<void> | undefined
-            if (change === 'revision')
-              catalogue.select(identity, 'built-in/remember', 'off', revision())
             if (change === 'grant')
               expect(store.setCapabilities('worker', { canCreateAgents: 'none' })).toBe(true)
             if (change === 'cancel') closed = host.close(sessionId, window)

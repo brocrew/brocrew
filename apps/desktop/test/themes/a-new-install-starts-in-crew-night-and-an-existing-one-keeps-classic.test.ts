@@ -20,20 +20,9 @@ import { ThemeStore, type ThemeStoreOptions } from '../../src/main/themes/store'
 import { ACTIVE_THEME_FILE, themeRoots, writeActiveTheme } from '../../src/main/themes/state'
 import { themeProblem } from '../../src/main/themes/words'
 import { putTheme } from './host-fixtures'
-import { pngSamples } from './png-samples'
 
-/**
- * Crew Night ships built in and is the look a new install starts in. A workspace that already holds
- * data from an earlier version and never chose a theme keeps classic, and that answer is written
- * down once so it never depends on the guess again. A choice a person made is never touched, a
- * theme of their own under the same id gives way to the built-in without being deleted, and a new
- * workspace added later starts in Crew Night too.
- */
-
-/** The database file whose presence says a workspace already holds data. */
 const DATABASE = 'brobot2.sqlite'
 
-/** The store's defaults for a workspace, as the app gives them when it starts there. */
 const themeDefaultsFor = (userData: string): Record<string, string> => {
   const app = themeDefaults as unknown as {
     themeDefaultsFor?: (userData: string) => Record<string, string>
@@ -62,7 +51,6 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-/** A workspace folder: empty, or holding an earlier version's database. */
 async function workspace(name: string, hasData: boolean): Promise<string> {
   const userData = join(root, name)
   await mkdir(userData, { recursive: true })
@@ -70,8 +58,6 @@ async function workspace(name: string, hasData: boolean): Promise<string> {
   return userData
 }
 
-/** The store as the app makes it for `userData`, over the built-ins as they ship. */
-/** With `refusesWrites`, the system refuses every rename into the workspace: a full disk, say. */
 function startedStore(userData: string, refusesWrites = false): ThemeStore {
   const roots = themeRoots({
     appData,
@@ -95,8 +81,7 @@ function startedStore(userData: string, refusesWrites = false): ThemeStore {
     builtInIds: BUILT_IN_THEME_IDS,
     hiddenBases: HIDDEN_BASE_THEME_IDS,
     loader: {
-      sample: (bytes: Buffer, facts: { type: string }) =>
-        facts.type === 'png' ? pngSamples(bytes) : null,
+      sample: () => true,
     },
     problem: themeProblem,
     trash: (path: string) => rm(path, { recursive: true, force: true }),

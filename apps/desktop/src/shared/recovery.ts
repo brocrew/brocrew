@@ -1,20 +1,7 @@
+import type { TranscriptEvent } from './conversation-events'
 import type { Provider } from '@brobot2/shared'
 import type { LocalZone } from './local-time'
-import type {
-  MessagePath,
-  MessagePathAsk,
-  MessagePathTarget,
-  RevealResult,
-  TranscriptEvent,
-} from './runtime-ipc'
-
-/**
- * What main and the recovery window share: the start-up verdict, the history reader's rows, the
- * bridge the recovery preload exposes as `window.recovery`, and the IPC channel names between them.
- *
- * Types and string constants only. The recovery preload is sandboxed and cannot load a shared
- * chunk, so nothing here may import a value.
- */
+import type { MessagePath, MessagePathAsk, MessagePathTarget, RevealResult } from './runtime-ipc'
 
 /** What the start-up check decided before the app opened its data. */
 export type StartupVerdict =
@@ -26,19 +13,11 @@ export type StartupVerdict =
       readonly offers: OfferedCheckpoint | null
     }
   | { readonly kind: 'history-only'; readonly gate: HistoryOnlyGate; readonly database: string }
-  /**
-   * A check, copy, restore or return that is still running; progress arrives on its own channel.
-   * `check` is the start-up check before it has decided whether to make a copy.
-   */
   | { readonly kind: 'working'; readonly what: 'check' | 'checkpoint' | 'restore' | 'return' }
   | {
       readonly kind: 'failed'
       readonly reason: StartFailure
       readonly canRetry: boolean
-      /**
-       * For `not-the-only-app-on-this-folder`: `taken` when another app is known to hold the
-       * workspace, `unknown` when sole use could not be confirmed.
-       */
       readonly ownership?: 'taken' | 'unknown'
       /** For `replaced-outside`: which record no longer matches the disk. */
       readonly where?: 'journal' | 'gate'
@@ -87,18 +66,9 @@ export interface HistoryOnlyGate {
   readonly checkpointId: string
   /** ISO. */
   readonly checkpointCreatedAt: string
-  /**
-   * Each live file the restore installed or left absent: the database, each of its sidecars and
-   * each state file restored with it. Every start checks them by full sha256.
-   */
   readonly installed: readonly InstalledFile[]
   /** The newer database set aside, relative to the data folder: `recovery/preserved/<restoreId>`. */
   readonly preserved: string
-  /**
-   * Each live file the restore set aside, recorded before anything moved. A return puts back only
-   * these, and only while each still matches, so nothing changed or added in the set-aside folder
-   * since reaches the live data.
-   */
   readonly preservedFiles: readonly PreservedFile[]
 }
 
@@ -141,19 +111,11 @@ export interface RecoveryBridge {
   retry(): Promise<StartupVerdict>
   /** Returns the function that stops listening. */
   onProgress(listener: (done: number, total: number) => void): () => void
-  /**
-   * Each verdict main settles on its own, once, such as the end of a `working` one. Returns the
-   * function that stops listening.
-   */
   onVerdict(listener: (verdict: StartupVerdict) => void): () => void
   quit(): Promise<void>
   /** The computer's own time zone, as the main window's `localZone` reads it. */
   zone(): Promise<LocalZone | null>
   history: HistoryReader
-  /**
-   * What the paths in one of the restored copy's messages name, read from that conversation's
-   * folder. Every `opens` is `false`: this window only shows a path, never opens one.
-   */
   resolveMessagePaths(ask: MessagePathAsk): Promise<MessagePath[]>
   /** Shows a message's path in the file manager. */
   revealMessagePath(target: MessagePathTarget): Promise<RevealResult>
@@ -177,10 +139,6 @@ export interface RecoveryProgress {
   readonly total: number
 }
 
-/**
- * The recovery window's IPC channels. All are invoked from the window except `progress`, which main
- * sends; main also sends each verdict it settles on its own on `verdict`.
- */
 export const RECOVERY_CHANNELS = {
   verdict: 'recovery:verdict',
   restore: 'recovery:restore',

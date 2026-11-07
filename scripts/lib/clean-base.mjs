@@ -302,12 +302,6 @@ export const SCHEDULE_ATTEMPTS_PART = /^schedule-attempts\.json\.\d+\.tmp$/
 export const PROFILE_EXECUTION_PART = /^profile-execution\.json\.\d+\.tmp$/
 
 /**
- * The gate's PRIVATE name, which `claimSoleHost` normally unlinks itself
- * (`main/one-host-gate.ts:227`). ⚠️ Eight lowercase hex, from a digest — not a glob on `.oh`.
- */
-export const GATE_PRIVATE = /^\.oh-[0-9a-f]{8}$/
-
-/**
  * What a folder or profile directory under `provider-homes/` may be named.
  *
  * ⚠️ **Copied from `apps/desktop/src/shared/runtime-ipc.ts:53-54`, and a test holds the two in
@@ -916,10 +910,6 @@ export function planCleanBase(anchor, { dropExports = false, keepAuth = false } 
     }
     if (rule) {
       actions.push({ rel: rule.name, expect: rule.expect, why: rule.why })
-      continue
-    }
-    if (GATE_PRIVATE.test(entry.name)) {
-      actions.push({ rel: entry.name, expect: 'unlink', why: GATE })
       continue
     }
     if (

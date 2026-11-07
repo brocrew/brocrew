@@ -1,3 +1,35 @@
+import { waitFor } from './lib/f093-host'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
+import type {
+  AgentToolset,
+  ApprovalMode,
+  FakeSessionHandle,
+  ResumeOptions,
+  SessionRef,
+  StartOptions,
+} from '@brobot2/runtime'
+import type { Provider } from '@brobot2/shared'
+import { type AppDatabase, openDatabase } from '../src/main/db/connection'
+import { applyMigrations } from '../src/main/db/migrate'
+import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
+import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { resourcesRoot } from '../src/main/resources/resources'
+import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
+import { howTheRulesBegin } from '../src/shared/own-instructions'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 /**
  * 🔴 **F009 · what an agent has done, read when a caller chooses whom to give work to** —
  * `list_profiles` naming a profile, measured on a real host with the fake runtime.
@@ -18,33 +50,6 @@
  *
  * ⛔ **The expected words are literals**; the record is the subject, never the oracle.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type {
-  AgentToolset,
-  ApprovalMode,
-  FakeSessionHandle,
-  ResumeOptions,
-  SessionRef,
-  StartOptions,
-} from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import { resourcesRoot } from '../src/main/resources/resources'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { howTheRulesBegin } from '../src/shared/own-instructions'
-import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -70,17 +75,6 @@ class ProviderDouble extends FakeRuntime {
 }
 
 /** The conversation a person is behind: the sink a window hands the host. */
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** What a tool answered: the payload a model parses and the sentence it reads. */
 interface Answer {
   readonly structured: Record<string, unknown>
@@ -131,29 +125,17 @@ describe('F009 · what an agent has done, read on demand', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
       announce: () => {},
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built
@@ -207,14 +189,6 @@ describe('F009 · what an agent has done, read on demand', () => {
 
   const turnsIn = (sessionId: string): number =>
     ledger(sessionId).filter((event) => event.type === 'turn').length
-
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
 
   /** A file on disk, to hand back. */
   const wrote = (name: string, content: string): string => {

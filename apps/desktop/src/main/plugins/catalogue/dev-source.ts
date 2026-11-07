@@ -5,7 +5,6 @@ import type { PluginRelease } from '../package-schema'
 import { PLUGIN_LIMITS, verifyPluginDigest } from '../package-digests'
 import { assertPluginArchiveUrl } from './download'
 import { readLocalRelease } from './local'
-import { isOwnerOnlyDirectory } from '../private-files'
 
 export interface DevPluginSource {
   readonly isPackaged: boolean
@@ -21,12 +20,7 @@ export async function devPluginSource(options?: DevPluginSource): Promise<string
     throw error
   })
   if (!stat) return undefined
-  if (
-    !stat.isDirectory() ||
-    stat.isSymbolicLink() ||
-    !isOwnerOnlyDirectory(stat) ||
-    (await realpath(root)) !== root
-  )
+  if (!stat.isDirectory() || stat.isSymbolicLink() || (await realpath(root)) !== root)
     throw new PluginSupervisorError('unavailable')
   return root
 }
@@ -41,7 +35,6 @@ export async function devPluginArchive(
     root,
     [asset],
     Math.min(release.archive.size, PLUGIN_LIMITS.archiveBytes),
-    true,
   )
   verifyPluginDigest(bytes, release.archive, PLUGIN_LIMITS.archiveBytes)
   return bytes

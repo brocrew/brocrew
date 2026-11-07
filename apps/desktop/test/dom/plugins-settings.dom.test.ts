@@ -462,33 +462,48 @@ it('offers the current update on every page opening and tells the truth about da
   await vi.waitFor(() => expect(f.calls.filter((call) => call.kind === 'list')).toHaveLength(2))
 })
 
-it('keeps the installed card and offers retry after an update failure, without uninstalling', async () => {
-  const f = fictionalPlugins()
-  f.set([
-    {
-      id: 'fictional-fir',
-      name: 'Fictional Fir',
-      installed: true,
-      state: 'Running',
-      installedVersion: '0.1.0',
-      updateVersion: '0.1.3',
-    },
-  ])
-  const request = f.client.request.bind(f.client)
-  f.client.request = async (input) =>
-    input.kind === 'update'
-      ? { ok: false, error: 'Plugin unavailable. Try again.' }
-      : request(input)
-  const m = mount(settingsWindow('plugins', 'classic', f.client), {}, { width: 1180, height: 900 })
-  await vi.waitFor(() => expect(m.all('plugin-update')).toHaveLength(1))
-  m.q('plugin-update').click()
-  await vi.waitFor(() =>
-    expect(m.q('plugins-error').textContent).toBe('Plugin unavailable. Try again.'),
-  )
-  expect((m.q('plugin-update') as HTMLButtonElement).disabled).toBe(false)
-  expect(m.q('plugin-state').textContent).toBe('Running')
-  expect(f.calls.some((call) => call.kind === 'uninstall')).toBe(false)
-})
+it.each([
+  { detail: undefined, expected: 'Plugin unavailable. Try again.' },
+  {
+    detail: 'The package files do not match the selected bytes.',
+    expected: 'Plugin unavailable. Try again. The package files do not match the selected bytes.',
+  },
+])(
+  'a refused update keeps the installed card, offers retry and shows its error ($detail)',
+  async ({ detail, expected }) => {
+    const f = fictionalPlugins()
+    f.set([
+      {
+        id: 'fictional-fir',
+        name: 'Fictional Fir',
+        installed: true,
+        state: 'Running',
+        installedVersion: '0.1.0',
+        updateVersion: '0.1.3',
+      },
+    ])
+    const request = f.client.request.bind(f.client)
+    f.client.request = async (input) =>
+      input.kind === 'update'
+        ? {
+            ok: false,
+            error: 'Plugin unavailable. Try again.',
+            detail,
+          }
+        : request(input)
+    const m = mount(
+      settingsWindow('plugins', 'classic', f.client),
+      {},
+      { width: 1180, height: 900 },
+    )
+    await vi.waitFor(() => expect(m.all('plugin-update')).toHaveLength(1))
+    m.q('plugin-update').click()
+    await vi.waitFor(() => expect(m.q('plugins-error').textContent).toBe(expected))
+    expect((m.q('plugin-update') as HTMLButtonElement).disabled).toBe(false)
+    expect(m.q('plugin-state').textContent).toBe('Running')
+    expect(f.calls.some((call) => call.kind === 'uninstall')).toBe(false)
+  },
+)
 
 it('shows the Configure screen over only the seen part of its stage in a window narrower than the app', async () => {
   // A 1024 by 728 window, the app's frame at its 1180 floor, as on a small display.
@@ -744,9 +759,8 @@ it.each([
       await vi.advanceTimersByTimeAsync(9_999)
       expect(m.all('plugins-list-slow')).toHaveLength(0)
       await vi.advanceTimersByTimeAsync(1)
-      expect(m.q('plugins-list-slow').textContent?.trim()).toBe(
-        'This can take a little while after BroCrew starts.',
-      )
+      expect(m.all('plugins-list-slow')).toHaveLength(0)
+      expect(loading.textContent?.trim()).toBe('Loading plugins…')
       expect(seen).toEqual([])
       answer(cards ? await cards.request({ kind: 'list' }) : { ok: true, cards: [] })
       await vi.advanceTimersByTimeAsync(0)

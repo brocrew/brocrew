@@ -1,4 +1,5 @@
-import type { CapabilityStatus, ModelCatalogue, ModelChoice } from '../../../shared/runtime-ipc'
+import type { ModelCatalogue } from '../../../shared/model-choice-contracts'
+import type { CapabilityStatus, ModelChoice } from '../../../shared/runtime-ipc'
 import { needsProviderSetup } from './provider-models'
 
 /**
@@ -55,7 +56,7 @@ import { needsProviderSetup } from './provider-models'
 export type ModelFieldState = 'listed' | 'empty' | 'asking' | 'no-profile' | 'closing' | 'refused'
 
 /** How loudly to draw {@link ModelField.message}. */
-export type ModelFieldTone = 'note' | 'warn'
+type ModelFieldTone = 'note' | 'warn'
 
 export interface ModelField {
   retry?: boolean

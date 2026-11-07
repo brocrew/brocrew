@@ -1,3 +1,5 @@
+import { neutralHostDeps } from './lib/host-fixture'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -7,7 +9,6 @@ import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { runtimeCommandSchema } from '../src/main/runtime/ipc'
 import {
@@ -15,7 +16,6 @@ import {
   type RuntimeEventMessage,
   type SessionLiveness,
   type SessionLivenessMessage,
-  type TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 
 /**
@@ -89,9 +89,7 @@ describe('354 · the message that has no name', () => {
   const buildHost = (over: SessionStore = store): RuntimeHost =>
     new RuntimeHost({
       store: over,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: (provider) => new FakeRuntime(provider, { sessions: providerSessions }),
       prepareProviderHome: (provider) => join(dir, 'provider-homes', provider),
       providerHomePath: (provider) => join(dir, 'provider-homes', provider),
@@ -363,9 +361,7 @@ describe('354 · the message that has no name', () => {
     }
     const runtime = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: (provider) => {
         const inner = new FakeRuntime(provider, { sessions: providerSessions })
         return new Proxy(inner, {

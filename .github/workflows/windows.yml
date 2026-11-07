@@ -35,6 +35,10 @@ on:
     tags: ['windows-beta-*', 'beta-*']
   workflow_dispatch:
     inputs:
+      package_version:
+        description: Version stamped into the artifact-only Windows build
+        type: string
+        default: '0.1.8'
       signing_witness:
         description: Record signing callback paths without secrets or signing (test only)
         type: boolean
@@ -151,9 +155,10 @@ jobs:
 
       - name: Build and package (NSIS, x64, unsigned)
         env:
+          PACKAGE_VERSION: ${{ inputs.package_version || '0.1.8' }}
           BROCREW_WINDOWS_SIGNING_RECORD_DIR: ${{ github.event_name == 'workflow_dispatch' && inputs.signing_witness && format('{0}/signing-witness', runner.temp) || '' }}
         shell: bash
-        run: pnpm --filter @brobot2/desktop package:win -c.extraMetadata.version=0.1.8
+        run: pnpm --filter @brobot2/desktop package:win "-c.extraMetadata.version=$PACKAGE_VERSION"
 
       - name: Check signing callbacks against packaged files
         if: github.event_name == 'workflow_dispatch' && inputs.signing_witness
@@ -308,7 +313,7 @@ jobs:
       - name: Plugin qualification source controls
         timeout-minutes: 2
         run: node --test --test-reporter=tap --test-concurrency=1 scripts/gates/plugin-v2/controls.test.mjs scripts/gates/plugin-v2/native-dependency.test.mjs scripts/gates/plugin-v2/reload-controls.test.mjs scripts/gates/plugin-v2/source-binding.test.mjs
-      - name: Stage the observed ref-selected source plan
+      - name: Stage the tested source SHA
         if: ${{ !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-') }}
         id: stage
         shell: bash
@@ -316,7 +321,7 @@ jobs:
           test "$RUNNER_ENVIRONMENT" = github-hosted
           control=$(node scripts/gates/plugin-v2/owner.mjs stage "${{ matrix.app_version }}")
           echo "control=$control" >> "$GITHUB_OUTPUT"
-      - name: Install the frozen app source dependencies in scratch
+      - name: Install the selected app dependencies in scratch
         if: ${{ !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-') }}
         shell: bash
         env:
@@ -357,7 +362,7 @@ jobs:
           path: ${{ steps.reload-stage.outputs.control }}/reload-summary.json
           if-no-files-found: error
           retention-days: 7
-      - name: Keep the closed required evidence
+      - name: Keep the product check summary
         if: ${{ (always() && steps.stage.outputs.control != '') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-') }}
         uses: actions/upload-artifact@v4
         with:

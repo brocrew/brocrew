@@ -1,5 +1,6 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { mount, paneProps, permission, record, unmountAll } from './harness'
 

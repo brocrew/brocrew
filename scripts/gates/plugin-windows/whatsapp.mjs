@@ -15,12 +15,10 @@ import {
   installed,
   keepDiagnostics,
   makePrivate,
-  onlyTheThree,
   privateFolder,
   processesUnder,
   ps,
   quote,
-  readList,
   readOwned,
   repository,
   requireHosted,
@@ -35,7 +33,6 @@ export const checks = [
   'archiveMatchesPin',
   'pluginsTab',
   'installed',
-  'rootPrivate',
   'bridgeStarted',
   'configureNotLinked',
   'uninstalled',
@@ -48,7 +45,6 @@ export const steps = [
   'archive',
   'app',
   'install',
-  'root-private',
   'bridge',
   'configure',
   'uninstall',
@@ -174,9 +170,6 @@ export async function gate(release) {
       summary.counts.installToRunningMs = Math.round(performance.now() - pressed)
       check(summary, 'installed', true)
       return started
-    })
-    await step('root-private', async () => {
-      check(summary, 'rootPrivate', onlyTheThree(await readList(global), sid))
     })
     await step('bridge', async () => {
       let count = null

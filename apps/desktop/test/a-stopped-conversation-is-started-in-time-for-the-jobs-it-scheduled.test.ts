@@ -1,4 +1,6 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import type { AgentState, ScheduleLevel } from '../src/shared/agent-state-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -6,7 +8,6 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import { FakeProviderSessions, FakeRuntime, FakeSessionHandle } from '@brobot2/runtime'
 import type { ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import {
@@ -30,14 +31,10 @@ import {
   writeKeptAttempts,
   type ConversationAttempts,
 } from '../src/main/schedule-attempts-file'
-import type { AgentState, ScheduleLevel } from '../src/shared/agent-state'
 import { clockTime, clockTimeFrom } from '../src/shared/clock'
-import type {
-  RuntimeEventMessage,
-  RuntimeStatesMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage, RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # D-029 · a stopped conversation is started in time for the jobs it scheduled
@@ -327,17 +324,6 @@ async function settle(): Promise<void> {
   }
 }
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** What a test can switch on the provider double, and what it reads off it. */
 interface ProviderControl {
   /** While set, a resume fails the way a machine that cannot spawn a process does. */
@@ -536,16 +522,10 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
   const buildHost = (idleStopAfterMs: number, listening = true): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, control, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

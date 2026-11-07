@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -228,9 +229,7 @@ describe('a launch nobody has a handle for is still terminable (070, from 068 fi
     const never = deferred()
     return new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: (provider): AgentRuntime => ({
         provider,
         // ⚑ **D-042 · R1 moved a fact here: a launch NAMES its model and effort before it spawns**,
@@ -350,9 +349,7 @@ describe('hand-back keeps the id until the provider is really gone (070, from 06
     const runtimes = new Map<string, AgentRuntime>()
     return new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: (provider): AgentRuntime => {
         const cached = runtimes.get(provider)
         if (cached) return cached
@@ -574,9 +571,7 @@ describe('a provider the host could not confirm stopped (070)', () => {
     let counter = 0
     return new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: (provider): AgentRuntime => {
         const real = new FakeRuntime(provider)
         return {
@@ -799,9 +794,7 @@ describe('model probes are owned (070, from 068 finding 7)', () => {
     let counter = 0
     return new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: (provider): AgentRuntime => ({
         provider,
         listModels: async (context: ProviderRuntimeContext) => {
@@ -947,9 +940,7 @@ describe('233 · a close that resolves is not a process that exited (from 229 H1
     let counter = 0
     return new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       // ⚑ **The plain double, with a process.** No `gateClose` anywhere: `close()` resolves
       // promptly and on its own, exactly as Claude's does, and the ONLY thing that has not happened
       // is the exit.
@@ -1150,9 +1141,7 @@ describe('233 · a launch handed back while starting is owned against the proces
     let counter = 0
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: (which): AgentRuntime => {
         const real = new FakeRuntime(which, { exit, sessions: provider })
         return {

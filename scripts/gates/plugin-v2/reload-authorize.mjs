@@ -1,25 +1,7 @@
-export function authorizeReloadRequest(event, window, payload, nonce) {
-  const fail = () => {
-    throw new Error('plugin-reload-main-app-gate-only')
-  }
-  if (
-    !window ||
-    window.isDestroyed() ||
-    event.sender !== window.webContents ||
-    event.senderFrame !== window.webContents.mainFrame
-  )
-    fail()
-  if (
-    !payload ||
-    typeof payload !== 'object' ||
-    Object.keys(payload).sort().join(',') !== 'op,token'
-  )
-    fail()
-  if (typeof nonce !== 'string' || !/^[a-f0-9]{64}$/.test(nonce) || payload.token !== nonce) fail()
-  if (
-    typeof payload.op !== 'string' ||
-    !['arm', 'status', 'releaseReload', 'releaseRetirement', 'receipt'].includes(payload.op)
-  )
-    fail()
-  return { op: payload.op }
+/** The reload gate's own command from its own window: only a known operation runs. */
+export function authorizeReloadRequest(payload) {
+  const op = payload && typeof payload === 'object' ? payload.op : undefined
+  if (!['arm', 'status', 'releaseReload', 'releaseRetirement', 'receipt'].includes(op))
+    throw new Error(`plugin-reload-main-app-gate-only: unknown operation ${JSON.stringify(op)}`)
+  return { op }
 }

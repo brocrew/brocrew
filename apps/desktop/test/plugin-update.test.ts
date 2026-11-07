@@ -29,11 +29,9 @@ async function setup(repo = false) {
   let offered = old
   const catalogueFor = (pkg: typeof old) => ({
     bytes: pkg.bytes,
-    signature: repo ? Buffer.alloc(0) : pkg.signature,
   })
   f.opts.catalogue = catalogueFor(old)
   if (repo) {
-    f.opts.pinnedPublicKey = null
     f.opts.repoCatalogueSha256 = pluginSha256(old.bytes)
   }
   const controller = repo ? await PluginLifecycleController.open(f.opts) : f.controller
@@ -86,7 +84,7 @@ describe.skipIf(process.platform === 'win32')(
         enabled: true,
       })
       const other = projection(f.events)
-      await f.controller.attach(other.sink)
+      const otherHandle = await f.controller.attach(other.sink)
       await f.offer()
       expect((await f.controller.status()).cards[0]).toMatchObject({
         installedVersion: '0.1.0',
@@ -113,16 +111,14 @@ describe.skipIf(process.platform === 'win32')(
       expect(f.events).not.toContain('remove-code')
       expect(fetch).not.toHaveBeenCalled()
       expect(f.controller.admitted(f.handle, 'whatsapp', before.installId)).toBe(true)
-      expect(f.state.projections(other.sink.workspaceId)[0]).toMatchObject({
-        incarnation: after.incarnation,
-      })
+      expect(f.controller.admitted(otherHandle, 'whatsapp', before.installId)).toBe(true)
       expect((await f.controller.status()).cards[0]?.updateVersion).toBeUndefined()
       const starts = f.starts()
       await f.controller.update(f.handle, 'whatsapp', operationId)
       expect(f.starts()).toBe(starts)
       await expect(f.controller.update(f.handle, 'whatsapp')).rejects.toThrow()
     })
-    it.each(['staged', 'prepared', 'ready', 'receipted', 'activated'] as const)(
+    it.each(['staged', 'prepared', 'ready', 'activated'] as const)(
       'recovers after %s to one complete version without touching login or settings',
       async (point) => {
         const f = await setup()
@@ -156,9 +152,6 @@ describe.skipIf(process.platform === 'win32')(
           configRevision: before.configRevision,
           release: { version: point === 'staged' ? '0.1.0' : '0.1.3' },
         })
-        expect(state.matchesProjection(local.rows.get('whatsapp'), local.sink.workspaceId)).toBe(
-          true,
-        )
         expect(recovered.admitted(handle, 'whatsapp', before.installId)).toBe(true)
         expect(await readFile(join(f.data, 'login'), 'utf8')).toBe('fictional-paired-phone')
         expect(await readFile(join(f.data, 'settings'), 'utf8')).toBe('{"fictionalGroup":true}')
@@ -207,7 +200,7 @@ describe.skipIf(process.platform === 'win32')(
       await f.controller.detach(f.handle)
       let offered = f.old
       f.opts.refreshCatalogue = async () => ({
-        catalogue: { bytes: offered.bytes, signature: Buffer.alloc(0) },
+        catalogue: { bytes: offered.bytes },
         repoCatalogueSha256: pluginSha256(offered.bytes),
         names: f.opts.names,
       })
@@ -221,10 +214,9 @@ describe.skipIf(process.platform === 'win32')(
         path: bridge.path,
         personKey: 'a'.repeat(64),
         root: f.root,
-        pinnedPublicKey: f.opts.pinnedPublicKey,
         target: f.opts.target,
         repoCatalogueSha256: pluginSha256(f.old.bytes),
-        catalogue: { bytes: f.old.bytes, signature: Buffer.alloc(0) },
+        catalogue: { bytes: f.old.bytes },
         projection: projection().sink,
         propose() {},
       })

@@ -1,4 +1,6 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { waitFor } from './lib/f093-host'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -6,19 +8,19 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import { FakeLaunchGate, FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { FakeSessionHandle, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type {
-  RuntimeEventMessage,
-  RuntimeStatesMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { type RuntimeStatesMessage } from '../src/shared/runtime-ipc'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * # ⚑ A restart wakes the conversations whose background work it stopped
@@ -41,17 +43,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 /** A moment on the Mac's wall clock in 2026, whatever the zone. */
 const local = (month: number, day: number, hour: number, minute: number, second = 0): number =>
   new Date(2026, month - 1, day, hour, minute, second).getTime()
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /** What a test can switch on the provider double. */
 interface ProviderControl {
@@ -111,28 +102,16 @@ describe('a restart wakes what it stopped in the background', () => {
   const buildHost = (listening = true): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, control, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       ...(listening
         ? { statesMoved: (message: RuntimeStatesMessage): void => void pushed.push(message) }
         : {}),
@@ -185,13 +164,6 @@ describe('a restart wakes what it stopped in the background', () => {
   const handlesOf = (id: string): FakeSessionHandle[] =>
     handles.filter((handle) => handle.ref.sessionId === providerIdOf(id))
 
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
   const settle = async (): Promise<void> => {
     for (let i = 0; i < 10; i += 1) await new Promise((resolve) => setTimeout(resolve, 5))
   }

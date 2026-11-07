@@ -1,6 +1,8 @@
+import type { LedgerWalkKind } from '../../../shared/question-contracts'
+import type { WhatEachConversationIsWaitingOn } from '../../../shared/task-contracts'
 import type { AgentIdentityName } from '../../../shared/runtime-ipc'
 import { agentName, DEFAULT_PROFILE_ID, foldProfileName } from '../../../shared/runtime-ipc'
-import type { LedgerWalkKind } from '../../../shared/questions'
+
 import { walkCovers } from '../../../shared/questions'
 import type {
   ForestConversation,
@@ -10,7 +12,7 @@ import type {
 } from '../../../shared/the-whole-forest'
 import type { ConversationAtWork, WhatIsBeingDone } from '../../../shared/what-is-being-done'
 import { byConversation, whatAPlateCanDraw } from '../../../shared/what-is-being-done'
-import type { WhatEachConversationIsWaitingOn } from '../../../shared/tasks'
+
 import { TASK_IS_OPEN } from '../../../shared/tasks'
 import { theWaitIn, theWorkIn, whatTheWaitsCouldNotRead } from './conversation-waits'
 import {
@@ -80,7 +82,7 @@ import { A_PERSON_ADDRESSED } from './outgoing-card'
 /**
  * Distinguish conversation rows from work rows.
  */
-export type ForestRowKind = 'a-conversation' | 'a-task'
+type ForestRowKind = 'a-conversation' | 'a-task'
 
 /**
  * ⚑ **One row of the drawing**, in the order a person reads it.
@@ -177,7 +179,7 @@ export interface TaskRow {
  *
  * Disclose incomplete coverage for the whole forest. Large trees need this explanation even when the smaller conversation band omits general reassurance.
  */
-export interface ForestCoverage {
+interface ForestCoverage {
   /** ⛔ **The walk's own sentence**, or `null` for a word this build cannot spell (fail-closed). */
   readonly covers: string | null
   /** ⚑ **How many conversations this app has PLACED** — counted before the bound. */

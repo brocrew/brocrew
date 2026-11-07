@@ -1,8 +1,9 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, type Component } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { DRAWER_TABS } from '../../src/renderer/src/lib/drawer'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { CAPABILITY_FIXTURE } from '../provider-capability-fixture'
 import { mount, paneProps, record, unmountAll, type Mounted } from './harness'
 

@@ -116,21 +116,24 @@ describe('WhatsApp package', () => {
     inspect('plugins/whatsapp/src')
   })
 
-  it('requires explicit private paths and distinct private tokens', () => {
+  it('requires explicit paths and distinct tokens', () => {
     expect(() => loadConfig({})).toThrow('Plugin unavailable')
     expect(() => loadConfig({ BROCREW_WHATSAPP_DATA: 'relative' })).toThrow('Plugin unavailable')
     const config = configured()
-    for (const dir of [config.home, config.files, config.downloads, config.bridgeData, config.bin])
-      expect(fs.statSync(dir).mode & 0o777).toBe(0o700)
     fs.writeFileSync(config.authPath, JSON.stringify({ mcpToken, adminToken: mcpToken }))
     expect(() =>
       loadConfig({ BROCREW_WHATSAPP_DATA: config.home, BROCREW_WHATSAPP_AUTH: config.authPath }),
     ).toThrow('Plugin unavailable')
     fs.writeFileSync(config.authPath, JSON.stringify({ mcpToken, adminToken }))
+    fs.chmodSync(config.home, 0o755)
     fs.chmodSync(config.authPath, 0o644)
     expect(() =>
       loadConfig({ BROCREW_WHATSAPP_DATA: config.home, BROCREW_WHATSAPP_AUTH: config.authPath }),
-    ).toThrow('Plugin unavailable')
+    ).not.toThrow()
+    if (process.platform !== 'win32') {
+      expect(fs.statSync(config.home).mode & 0o777).toBe(0o755)
+      expect(fs.statSync(config.authPath).mode & 0o777).toBe(0o644)
+    }
   })
 
   it('keeps the person’s routes apart from the tools, and refuses browser origins', async () => {

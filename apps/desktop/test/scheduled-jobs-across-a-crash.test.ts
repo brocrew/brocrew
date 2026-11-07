@@ -1,3 +1,5 @@
+import type { AgentState } from '../src/shared/agent-state-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -6,7 +8,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeProviderSessions, FakeRuntime, FakeSessionHandle } from '@brobot2/runtime'
 import type { ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import {
@@ -15,7 +16,6 @@ import {
   type SessionStore,
 } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
@@ -23,8 +23,7 @@ import {
   scheduleAttemptsFile,
   writeKeptAttempts,
 } from '../src/main/schedule-attempts-file'
-import type { AgentState } from '../src/shared/agent-state'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # Scheduled jobs across a crash
@@ -99,17 +98,6 @@ async function settle(): Promise<void> {
     for (let turn = 0; turn < 5; turn++) await new Promise((resolve) => setImmediate(resolve))
     await new Promise((resolve) => setTimeout(resolve, GAP + 30))
   }
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 /** Something a life waits on that a test never lets through, until the test ends. */
@@ -214,9 +202,7 @@ describe('scheduled jobs across a crash', () => {
       asked,
       host: new RuntimeHost({
         store,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(folder, 'exports'),
+        ...neutralHostDeps(() => folder),
         resourcesRoot: () => resourcesRoot(folder),
         createRuntime: (provider: Provider) => new ProviderOfALife(provider, stops, asked),
         prepareProviderHome: (provider: Provider, profileId?: string) => {

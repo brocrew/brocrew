@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -6,7 +7,6 @@ import { FakeRuntime } from '@brobot2/runtime'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 
@@ -56,9 +56,7 @@ describe('a pre-profile Codex row still finds its generated images (168 M6)', ()
   const host = (): RuntimeHost =>
     new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: (provider) => new FakeRuntime(provider),
       // ⚑ **`<root>/<projectId>/<profileId>/<provider>` — the real layout, not a shortened one**, so
       // the naming-convention candidate is built where the app builds it. (Until `726` the asset

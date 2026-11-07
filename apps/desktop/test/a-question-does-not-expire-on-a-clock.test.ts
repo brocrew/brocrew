@@ -1,26 +1,27 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { waitFor } from './lib/f093-host'
+import { TASK_STATES } from '../src/shared/task-contracts'
+import { REQUEST_STATES } from '../src/shared/question-contracts'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { AgentToolset, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime'
+import { type AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { TASK_IS_OPEN, TASK_STATES } from '../src/shared/tasks'
-import { REQUEST_IS_OPEN, REQUEST_STATES } from '../src/shared/questions'
-import type {
-  PersistedEventInfo,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { TASK_IS_OPEN } from '../src/shared/tasks'
+import { REQUEST_IS_OPEN } from '../src/shared/questions'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
+import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 🔴 **591 · a question does not expire on a clock** — HO-082 §1–§4.1.
@@ -89,29 +90,6 @@ describe('591 · a question does not expire on a clock', () => {
   }
 
   /** ⚑ `415`'s instrument: remember the toolset each launch was handed. */
-  class ToolWatchingRuntime extends FakeRuntime {
-    constructor(
-      provider: Provider,
-      private readonly handed: AgentToolset[],
-      sessions: FakeProviderSessions,
-    ) {
-      super(provider, { sessions })
-    }
-    override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-      const handle = await super.start(options)
-      if (options.agentTools) this.handed.push(options.agentTools)
-      return handle
-    }
-    override async resume(
-      ref: SessionRef,
-      options: ResumeOptions,
-    ): ReturnType<FakeRuntime['resume']> {
-      const handle = await super.resume(ref, options)
-      if (options.agentTools) this.handed.push(options.agentTools)
-      return handle
-    }
-  }
-
   let userData: string
   let root: string
   let db: AppDatabase
@@ -129,26 +107,14 @@ describe('591 · a question does not expire on a clock', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built
@@ -201,14 +167,6 @@ describe('591 · a question does not expire on a clock', () => {
 
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
-
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
 
   /**
    * ⛔ **Every way words can reach a conversation, read as ONE population** (591).
@@ -1036,7 +994,7 @@ describe('591 · a question does not expire on a clock', () => {
       expect(tools).toContain('reaches you as a message rather than as this call')
       // ⚠️ **Read as PROSE with its wrapping removed**, because a docblock sentence moves across
       // lines the moment anything above it changes length.
-      const questions = proseOf(join(mainRoot, '..'), 'shared/questions.ts')
+      const questions = proseOf(join(mainRoot, '..'), 'shared/question-contracts.ts')
       expect(questions).toContain('deleted the behaviour that sentence described')
     })
 

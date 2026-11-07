@@ -1,3 +1,4 @@
+import type { ModelList, SessionSettingChanged } from '../src/shared/model-choice-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -8,10 +9,9 @@ import { FakeRuntime, type ModelChoice, type ProviderRuntimeContext } from '@bro
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import type { ModelList, SessionSettingChanged } from '../src/shared/runtime-ipc'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # A person's pick in a conversation, while the provider's list could not be read
@@ -106,9 +106,7 @@ describe('a person’s pick in a conversation, said against the list it was judg
     counter = 0
     host = new RuntimeHost({
       store: sessions,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new CatalogueDouble(provider, () =>
           refusing ? new Error('not signed in') : provider === 'claude' ? CLAUDE_ROWS : [],
@@ -122,13 +120,7 @@ describe('a person’s pick in a conversation, said against the list it was judg
       resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
       listProfiles: () => ['brobot', 'worker'],
       newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 

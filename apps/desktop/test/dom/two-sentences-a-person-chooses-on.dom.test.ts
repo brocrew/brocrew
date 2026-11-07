@@ -1,3 +1,9 @@
+import type {
+  LedgerWalk,
+  PersonsDecision,
+  RequestOnlyAPersonCanSettle,
+  RoutedRequest,
+} from '../../src/shared/question-contracts'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
@@ -6,14 +12,7 @@ import type { AttentionRequest } from '../../src/renderer/src/lib/attention'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { userInputOffer, whatThisAnswerDoes } from '../../src/renderer/src/lib/user-input-offer'
 import type { UserInputRequestEvent } from '../../src/renderer/src/lib/transcript'
-import {
-  decisionReading,
-  readingSentence,
-  type LedgerWalk,
-  type PersonsDecision,
-  type RoutedRequest,
-  type RequestOnlyAPersonCanSettle,
-} from '../../src/shared/questions'
+import { decisionReading, readingSentence } from '../../src/shared/questions'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 
 /**

@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -13,7 +14,6 @@ import {
   createSessionStore,
   type SessionStore,
 } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import {
   NEEDING_TOKEN,
@@ -28,8 +28,8 @@ import type {
   RuntimeEventMessage,
   SessionLiveness,
   SessionLivenessMessage,
-  TranscriptEvent,
 } from '../src/shared/runtime-ipc'
+import { neutralHostDeps } from './lib/host-fixture'
 
 /**
  * **123 · Working outside a turn — four minutes of real work the app called `idle`.**
@@ -222,9 +222,7 @@ describe('the provider working outside a turn (123)', () => {
       )
     return new RuntimeHost({
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime,
       prepareProviderHome: (provider) => join(userData, 'provider-homes', provider),
       providerHomePath: (provider) => join(userData, 'provider-homes', provider),
@@ -630,9 +628,7 @@ describe('a conversation whose ledger ends on a phantom `working` (123 §4)', ()
     let counter = 0
     return new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: (provider) => {
         const existing = runtimes.get(provider)
         if (existing) return existing

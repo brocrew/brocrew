@@ -1,4 +1,6 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { waitFor } from './lib/f093-host'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -17,14 +19,11 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 D-033 · a turn that moves a piece of work is heard by every window at once
@@ -47,28 +46,9 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
-
 /** ⚑ A few macrotasks — long enough for the pump to drain what a push queued, and no longer. */
 async function settle(): Promise<void> {
   for (let n = 0; n < 5; n++) await new Promise((resolve) => setTimeout(resolve, 10))
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 /** ⚑ The fake runtime, with each start's handle passed through a decoration a test chooses. */
@@ -206,9 +186,7 @@ describe('D-033 · a turn that moves a piece of work is heard by every window at
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) =>
         new ProviderDouble(provider, handles, issued, (handle) => {
@@ -216,11 +194,7 @@ describe('D-033 · a turn that moves a piece of work is heard by every window at
           decorateNextHandle = null
           return decorate?.(handle) ?? handle
         }),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

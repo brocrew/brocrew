@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -14,7 +15,6 @@ import {
   HISTORY_WINDOW_MAX_EVENTS,
   type HistoryWindow,
   type RuntimeEventMessage,
-  type TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 
 /**

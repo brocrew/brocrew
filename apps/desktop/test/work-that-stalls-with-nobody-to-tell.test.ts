@@ -1,4 +1,8 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { waitFor } from './lib/f093-host'
+import { LEDGER_WALK_KINDS } from '../src/shared/question-contracts'
+import type { PieceRow, WorkStallTold } from '../src/shared/task-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,21 +19,23 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { runtimeCommandSchema } from '../src/main/runtime/ipc'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { LEDGER_WALK_KINDS, WALK_COVERS } from '../src/shared/questions'
+import { WALK_COVERS } from '../src/shared/questions'
 import { UNDRIVEN_SENTENCES, stalledWithACause } from '../src/shared/tasks'
-import type { PieceRow } from '../src/shared/tasks'
 import { stalledWorkKey, stalledWorkSaid } from '../src/shared/stalled-work'
 import type { StalledWork } from '../src/shared/stalled-work'
 import { KIND_WORDS, stalledWorkLead, stalledWorkView } from '../src/renderer/src/lib/persons-queue'
 import { OPEN_THE_CONVERSATION } from '../src/renderer/src/lib/taking-over'
-import type { RuntimeEventMessage, TranscriptEvent, WorkStallTold } from '../src/shared/runtime-ipc'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **557 · work that stalls with nobody left to tell** — HO-018 §2.1's criterion 4, whose
@@ -81,25 +87,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 const hostSource = readFileSync(join(here, '../src/main/runtime/runtime-host.ts'), 'utf8')
 const storeSource = readFileSync(join(here, '../src/main/db/session-store.ts'), 'utf8')
 
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** `394`'s double, with the handles kept — a test has to BE the provider to ask like one. */
 class ProviderDouble extends FakeRuntime {
   constructor(
@@ -140,27 +127,15 @@ describe('557 · work that stalls with nobody left to tell', () => {
   const buildHost = (over: SessionStore = store): RuntimeHost => {
     const built = new RuntimeHost({
       store: over,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built
@@ -798,7 +773,10 @@ describe('557 · work that stalls with nobody left to tell', () => {
         const body = source.slice(at, source.indexOf('\n  }\n', at) + 5)
         return body.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
       }
-      const reader = codeOf(hostSource, 'stalledWorkForAPerson(): LedgerWalk<StalledWork> {')
+      const reader = codeOf(
+        hostSource,
+        'stalledWorkForAPersonComposed(): LedgerWalk<StalledWork> {',
+      )
       const walk = codeOf(storeSource, 'stalledWorkNobodyWasToldAbout(counted) {')
       for (const [name, body] of [
         ['the host reader', reader],

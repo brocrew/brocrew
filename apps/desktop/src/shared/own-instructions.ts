@@ -1,3 +1,4 @@
+import type { InstructionProposedEvent, InstructionSettledEvent } from './conversation-events'
 /**
  * 🔴 **The `configured` layer — the one layer of `HO-009` §2 a PERSON OWNS** (582, `HO-063` gap 4).
  *
@@ -57,7 +58,6 @@ import type { ActedBy } from './who-did-it'
 // exactly. ⛔ It is a TYPE and never a value: the cycle exists only in the checker and is erased at
 // build time, and this module must stay reachable from a renderer without pulling `runtime-ipc.ts`
 // in as a value.
-import type { InstructionProposedEvent, InstructionSettledEvent } from './runtime-ipc'
 
 /**
  * ⛔ **The longest rule set a person may save, in characters.**
@@ -472,7 +472,6 @@ export interface OwnInstructionsWrite {
   readonly author?: RulesAuthor
   /** When supplied, both comparisons are made in the version allocation transaction. */
   readonly expectedVersion?: number
-  readonly currentText?: string
   /** The identity the rules are about. Folded by the store, as every other slug argument is. */
   readonly profileSlug: string
   /** ⛔ **Verbatim, and `''` is *take them away*.** Bounded by {@link OWN_INSTRUCTIONS_CHARS}. */

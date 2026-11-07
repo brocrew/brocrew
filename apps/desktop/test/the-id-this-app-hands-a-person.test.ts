@@ -1,12 +1,5 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -16,21 +9,21 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { workAnswered, workUndriven } from '../src/main/runtime/reply-rails'
 import { derivePieces } from '../src/shared/tasks'
 import { theResourcesAReportNames } from '../src/renderer/src/lib/the-document-a-report-names'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
-import type {
-  PersistedEventInfo,
-  ResourceReading,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { type ResourceReading } from '../src/shared/runtime-ipc'
+import {
+  fixtureProviderConfig,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
 
 /**
  * # 🔴 510 · the id this app hands a person and cannot open
@@ -84,17 +77,6 @@ const readReason = (result: ResourceReading): string => (result.ok ? 'ok' : resu
 
 const readSource = (path: string): string => readFileSync(path, 'utf8')
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 describe('510 · the id this app hands a person', () => {
   let userData: string
   let work: string
@@ -121,27 +103,15 @@ describe('510 · the id this app hands a person', () => {
     sessions = new FakeProviderSessions()
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions }),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:1')
   })
@@ -360,38 +330,30 @@ describe('510 · the id this app hands a person', () => {
       // be told than *there is no such resource*.
       const blind = new RuntimeHost({
         store,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(userData, 'exports'),
+        ...neutralHostDeps(() => userData),
         createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions }),
         prepareProviderHome: () => join(userData, 'provider-homes', 'default', 'claude'),
         providerHomePath: () => join(userData, 'provider-homes', 'claude'),
         resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
         newSessionId: () => `sess_blind_${++counter}`,
         now: tick,
-        readProviderConfig: (provider, home) => ({
-          home,
-          homeEnv: 'CLAUDE_CONFIG_DIR',
-          model: 'm',
-          authNote: null,
-          files: [],
-        }),
+        readProviderConfig: fixtureProviderConfig,
       })
       const seen = blind.readResourceForAPerson('res_anything')
       expect(seen.ok || seen.reason).toBe('no-store')
     })
 
-    it('🔴 the hash is re-checked, so `changed` and `unreadable` are two different answers', async () => {
+    it('local edits are read and missing files are unreadable', async () => {
       const [changedId, goneId] = await aReplyKeeps([
         { name: 'original.md', text: 'original\n' },
         { name: 'vanishing.md', text: 'vanishing\n' },
       ])
       if (changedId === undefined || goneId === undefined) throw new Error('expected two resources')
       writeFileSync(whereItIs(changedId), 'somebody edited it\n')
-      expect(
-        host.readResourceForAPerson(changedId).ok ||
-          readReason(host.readResourceForAPerson(changedId)),
-      ).toBe('changed')
+      expect(host.readResourceForAPerson(changedId)).toMatchObject({
+        ok: true,
+        text: 'somebody edited it\n',
+      })
 
       rmSync(whereItIs(goneId))
       expect(readReason(host.readResourceForAPerson(goneId))).toBe('unreadable')

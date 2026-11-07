@@ -1,10 +1,11 @@
+import type { AgentState } from '../../../shared/agent-state-contracts'
 import type {
   ConversationProviderBlock,
   LastKnownProviderBlock,
   QueuedMessageDisclosure,
 } from '../../../shared/runtime-ipc'
 import { providerName } from '../../../shared/runtime-ipc'
-import type { AgentState } from '../../../shared/agent-state'
+
 import { fullTime } from './clock'
 import { resetWords } from './usage-limit'
 import { limitsDisplayWords } from './limits-display'

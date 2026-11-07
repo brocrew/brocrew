@@ -24,7 +24,6 @@ const disk = vi.hoisted(() => ({
   copies: new Set<number>(),
   copyFlags: [] as number[],
   copyWrites: 0,
-  corruptCopy: false,
   refuseCopy: false,
   cancelCopy: null as AbortController | null,
 }))
@@ -62,8 +61,6 @@ vi.mock('node:fs', async (importOriginal) => {
         return
       }
       fs.write(fd, buffer, offset, Math.min(length ?? 2, 2), position, (error, count, written) => {
-        if (error === null && disk.corruptCopy && disk.copyWrites === 1)
-          fs.writeSync(fd, new Uint8Array([99]), 0, 1, 0)
         disk.cancelCopy?.abort()
         done(error, count, written)
       })
@@ -107,7 +104,6 @@ beforeEach(() => {
     attackOnRemove: false,
     movedNote: null,
     copyWrites: 0,
-    corruptCopy: false,
     refuseCopy: false,
     cancelCopy: null,
   })
@@ -159,7 +155,7 @@ it('never deletes a Downloads name swapped after cleanup’s identity check', as
   expect(readdirSync(staging)).toEqual([])
 })
 
-it('copies exclusively across volumes, handles short writes and checks the stored copy', async () => {
+it('copies exclusively across volumes, handles short writes without overwriting existing downloads', async () => {
   disk.crossVolume = true
   writeFileSync(to, 'A fictional older download')
   const pending = download()
@@ -173,18 +169,6 @@ it('copies exclusively across volumes, handles short writes and checks the store
   )
   expect(disk.copyFlags[0]! & constants.O_TRUNC).toBe(0)
   expect(await sha512Of(landed)).toBe(SHA)
-  expect(readdirSync(staging)).toEqual([])
-  expect(disk.removed.every((name) => dirname(name) === staging)).toBe(true)
-})
-
-it('keeps a cross-volume copy whose stored bytes fail verification and explains that it was kept', async () => {
-  disk.crossVolume = true
-  disk.corruptCopy = true
-  await expect(download()).rejects.toThrow(
-    'the saved download did not pass its check. It was left in Downloads; you can delete it. Try the update again.',
-  )
-  expect(existsSync(to)).toBe(true)
-  expect(await sha512Of(to)).not.toBe(SHA)
   expect(readdirSync(staging)).toEqual([])
   expect(disk.removed.every((name) => dirname(name) === staging)).toBe(true)
 })

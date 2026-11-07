@@ -1,9 +1,5 @@
-import type {
-  MessagePath,
-  MessagePathAsk,
-  MessagePathTarget,
-  TranscriptEvent,
-} from '../../src/shared/runtime-ipc'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
+import type { MessagePath, MessagePathAsk, MessagePathTarget } from '../../src/shared/runtime-ipc'
 import type {
   HistoryConversation,
   HistoryEvent,

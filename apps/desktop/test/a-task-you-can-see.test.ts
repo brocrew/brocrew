@@ -1,4 +1,8 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { waitFor } from './lib/f093-host'
+import { TASK_STATES } from '../src/shared/task-contracts'
+import type { TaskState } from '../src/shared/task-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,13 +19,18 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
-import type { CallerIdentity, RuntimeEventSink } from './helpers/giver-notice-host'
+import { type CallerIdentity } from './helpers/giver-notice-host'
 import { agentCallerId, type AgentToolHost, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { TASK_IS_OPEN, TASK_STATES, derivePieces, type TaskState } from '../src/shared/tasks'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import { TASK_IS_OPEN, derivePieces } from '../src/shared/tasks'
+import { expectQueueFactsExcludeBriefs } from './helpers/queue-facts-source'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **379 · a task you can see** — Slice 4 S1, HO-006 §4.1, HO-007 S1 + criterion 2.
@@ -71,25 +80,6 @@ const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
 const sharedRoot = join(here, '../src/shared')
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /** `373`'s double; its registry is shared so a restart can find refs the first launch issued. */
 class ToolWatchingRuntime extends FakeRuntime {
@@ -145,27 +135,15 @@ describe('379 · a task you can see', () => {
   const buildHost = (over: SessionStore = store): RuntimeHost => {
     const built = new RuntimeHost({
       store: over,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new ToolWatchingRuntime(provider, handed, issued, handles),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built
@@ -1295,13 +1273,13 @@ describe('379 · a task you can see', () => {
       // ⚑ **A SEVENTH edge, types only** — `model-choice.ts`'s `ModelAndEffort`, the pair a give
       // asked for, copied onto its row. ⛔ `import type`.
       expect(imports).toEqual([
+        './conversation-events',
+        './question-contracts',
+        './task-contracts',
+        './task-contracts',
         './how-work-stopped',
-        './runtime-ipc',
         './a-persons-own-words',
-        './questions',
         './piece-called',
-        './work-folders',
-        './model-choice',
       ])
       // 🔴 **494 · the first edge that takes a VALUE** — `whoCancelledIt`, the derivation that reads
       // a cancel's actor once for the three readers that fold one. ⚠️ Which is why the property
@@ -1311,11 +1289,16 @@ describe('379 · a task you can see', () => {
       )
       expect(lines).toHaveLength(7)
       const values = lines.filter((line) => !line.startsWith('import type '))
-      expect(values).toHaveLength(2)
-      expect(values[0]).toContain('./how-work-stopped')
-      expect(values[0]).toContain('whoCancelledIt')
-      expect(values[1]).toContain('./a-persons-own-words')
-      expect(values[1]).toContain('aPersonsOwnWords')
+      expect(values).toHaveLength(3)
+      expect(values[0]).toBe("import { AGENT_MESSAGE_KINDS, TASK_STATES } from './task-contracts'")
+      expect(values[1]).toContain('./how-work-stopped')
+      expect(values[1]).toContain('whoCancelledIt')
+      expect(values[2]).toContain('./a-persons-own-words')
+      expect(values[2]).toContain('aPersonsOwnWords')
+      const contracts = sourceOf(sharedRoot, 'task-contracts.ts')
+      for (const line of [...contracts.matchAll(/^import .*$/gm)]) {
+        expect(line[0].startsWith('import type '), line[0]).toBe(true)
+      }
       // ⛔ **F097 · and the second reaches a ledger type and nothing else**.
       expect(
         [
@@ -1323,12 +1306,12 @@ describe('379 · a task you can see', () => {
             /^import\s[\s\S]*?from\s+'[^']+'/gm,
           ),
         ].map((m) => m[0]),
-      ).toEqual(["import type { UserTurnEvent } from './runtime-ipc'"])
+      ).toEqual(["import type { UserTurnEvent } from './human-answer-contracts'"])
       // ⛔ **And the one module it can hold a value from reaches a ledger type and a vocabulary and
       // nothing else.**
       const reached = sourceOf(sharedRoot, 'how-work-stopped.ts')
       expect([...reached.matchAll(/^import\s[\s\S]*?from\s+'([^']+)'/gm)].map((m) => m[1])).toEqual(
-        ['./runtime-ipc', './who-did-it'],
+        ['./conversation-events', './who-did-it'],
       )
       expect([...sourceOf(sharedRoot, 'who-did-it.ts').matchAll(/^import\s/gm)]).toHaveLength(0)
       // ⚑ **The control that plants one of each** (standing rule 12): the same matcher over a value
@@ -1344,9 +1327,9 @@ describe('379 · a task you can see', () => {
       // is checked against. (`661`'s `LastToldAboutWork` went with `aNoticeIsOwed`, D-016c.)
       // ⛔ Still `import type`, so the property above is untouched: it can hand the fold nothing.
       expect(source).toMatch(
-        /^import type \{ PersistedEventInfo, TranscriptEvent \} from '\.\/runtime-ipc'$/m,
+        /^import type \{ PersistedEventInfo, TranscriptEvent \} from '\.\/conversation-events'$/m,
       )
-      expect(source).toMatch(/^import type \{ WorkInHand \} from '\.\/questions'$/m)
+      expect(source).toMatch(/^import type \{ WorkInHand \} from '\.\/question-contracts'$/m)
       expect(source).toMatch(
         /^import type \{ HowAPieceEnded, WorkThatNamesIt \} from '\.\/piece-called'$/m,
       )
@@ -1665,19 +1648,8 @@ describe('379 · a task you can see', () => {
       // commit 5** — the rail is spelled once, as `FactsAQueueCarries`, and it takes a new brief
       // (`rebriefing`, `update_work`'s alone) out beside the give.
       expect(codeOnly(host_).split('{ giving }')).toHaveLength(2)
-      expect(host_).toContain(
-        [
-          "type FactsAQueueCarries = Omit<TurnFacts, 'giving' | 'rebriefing'> & {",
-          '  readonly giving?: never',
-          '  readonly rebriefing?: never',
-          '}',
-        ].join('\n'),
-      )
-      // ⛔ **`queueMessage`'s own parameter, scoped BY NAME** — `send` takes the same type, and a
-      // file-wide match would be satisfied by that neighbour.
-      expect(
-        /\n {2}queueMessage\(([\s\S]*?)\n {2}\): Promise<QueueOutcome>/.exec(host_)?.[1] ?? '',
-      ).toContain('facts: FactsAQueueCarries = {},')
+      const records = sourceOf(join(mainRoot, 'runtime'), 'message-records.ts')
+      expectQueueFactsExcludeBriefs(records, host_)
       // 🔴 **The reply's delivery is the app's, not the agent's**, pinned by its bytes. ⛔ If it ever
       // passed the CALLER through instead, the app's words would arrive as the child's — its declared
       // kind, its receipt, its reach asked (`a-reply-and-its-absence.test.ts` §5 measures all three).

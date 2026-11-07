@@ -1,3 +1,9 @@
+import type { LedgerWalk, LedgerWalkKind } from '../src/shared/question-contracts'
+import type {
+  TaskState,
+  TaskWait,
+  WhatEachConversationIsWaitingOn,
+} from '../src/shared/task-contracts'
 import ts from 'typescript'
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import { camelize, capitalize, createSSRApp, h } from 'vue'
@@ -21,13 +27,8 @@ import {
   type CastReading,
   type WorkingTogetherInput,
 } from '../src/renderer/src/lib/working-together'
-import type { LedgerWalk, LedgerWalkKind } from '../src/shared/questions'
-import {
-  TASK_WAITS,
-  type TaskState,
-  type TaskWait,
-  type WhatEachConversationIsWaitingOn,
-} from '../src/shared/tasks'
+
+import { TASK_WAITS } from '../src/shared/tasks'
 import type { ForestNode, TheWholeForest } from '../src/shared/the-whole-forest'
 import type { WhatIsBeingDone } from '../src/shared/what-is-being-done'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../src/shared/who-called-whom'
@@ -152,14 +153,14 @@ interface TemplateProp {
  */
 type Size = { readonly px: number } | { readonly refused: string }
 
-export interface PlateTag {
+interface PlateTag {
   readonly line: number
   readonly size: Size
   /** The expression of a whole-object `v-bind`, or `null` where the facets are bound one at a time. */
   readonly spread: string | null
 }
 
-export interface PlateCallSite {
+interface PlateCallSite {
   /** Whether the file's script IMPORTS `AgentState.vue`, in ANY shape — found independently of the tags. */
   readonly imports: boolean
   readonly tags: readonly PlateTag[]
@@ -287,7 +288,7 @@ function dynamicTarget(node: TemplateNode): string | null {
   return null
 }
 
-export function plateCallSite(file: string, source: string): PlateCallSite {
+function plateCallSite(file: string, source: string): PlateCallSite {
   const { descriptor, errors } = parseSfc(source, { filename: file })
   // ⛔ `visible-copy.ts`' two refusals, for its two reasons: a parse error and an out-of-file
   // template each hand back an AST that is not the file, and a census over it would be quietly empty.

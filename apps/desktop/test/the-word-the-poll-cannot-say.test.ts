@@ -1,3 +1,5 @@
+import { waitFor } from './lib/f093-host'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -13,7 +15,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
 import { RUNNING_STATES } from '../src/shared/runtime-ipc'
@@ -95,14 +96,6 @@ class WindowSink implements RuntimeEventSink {
   sendLiveness(): void {}
 }
 
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
-
 describe('509 · the word the poll cannot say', () => {
   let userData: string
   let db: AppDatabase
@@ -124,9 +117,7 @@ describe('509 · the word the poll cannot say', () => {
     window1 = new WindowSink('webContents:1')
     host = new RuntimeHost({
       store: ledger,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => {
         const runtime = new FakeRuntime(provider, { sessions })
         const start = runtime.start.bind(runtime)
@@ -164,13 +155,7 @@ describe('509 · the word the poll cannot say', () => {
       // the default reporter prints it only when a test in the file fails and it then sits
       // directly above the `AssertionError`. There is no assertion on the drain here.
       closeDrainTimeoutMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 
@@ -264,6 +249,16 @@ describe('509 · the word the poll cannot say', () => {
 
     it('🔴 `livenessStateOf` is gone, and `runningStateOf` is called by six publishers and four asks', () => {
       const host_ = withoutProse(readFileSync(HOST_SRC, 'utf8'))
+      const workReads = withoutProse(
+        readFileSync(join(here, '../src/main/runtime/work-reads.ts'), 'utf8'),
+      )
+      expect(host_).toContain('return this.workReads.whoCalledWhom(sessionId)')
+      expect(host_).toContain('runningStateOf: (sessionId) => this.runningStateOf(sessionId),')
+      expect(workReads.split('this.sources.runningStateOf(').length - 1).toBe(1)
+      expect(workReads).not.toContain('livenessStateOf(')
+      expect(workReads).not.toMatch(
+        /^ {8}running: this\.sources\.runningStateOf\(row\.conversation\),$/m,
+      )
       const calls = (name: string): number => host_.split(`this.${name}(`).length - 1
       // ⛔ **It was ONE call, and it was the project room's.** Three publishers with the fact on one
       // of them was `402`'s finding — *a rule made at one of two depths is a rule nobody can rely
@@ -277,7 +272,9 @@ describe('509 · the word the poll cannot say', () => {
       // LINE, because as a substring it sits inside `whoCalledWhom`'s ten-space line below, which is
       // the control that the same pattern does match a line that is there.
       expect(host_).not.toMatch(/^ {8}running: this\.runningStateOf\(row\.conversation\),$/m)
-      expect(host_).toMatch(/^ {10}running: this\.runningStateOf\(row\.conversation\),$/m)
+      expect(workReads).toMatch(
+        /^ {10}running: this\.sources\.runningStateOf\(row\.conversation\),$/m,
+      )
       expect(host_).toContain('      running: this.runningStateOf(session.sessionId),')
       // ⚑ **699 · the unresumable half's mapper is a block now** — it carries a second fact
       // (`closedBecauseTheAppDidNotFinishQuitting`) — and its publisher is the same call, re-aimed at
@@ -312,10 +309,10 @@ describe('509 · the word the poll cannot say', () => {
       // `keptOpen` became `startable` for every other reader; the publisher line is unchanged.
       // ⚑ **D-017b — and the kept-open fact left the row** (there is no kept-open row or pane: every
       // conversation opens in the one full view), so the map is back to the one publisher line.
-      expect(host_).toContain(
+      expect(workReads).toContain(
         'rows: children.rows.map((row) => ({\n' +
           '          ...row,\n' +
-          '          running: this.runningStateOf(row.conversation),\n' +
+          '          running: this.sources.runningStateOf(row.conversation),\n' +
           '        })),',
       )
       expect(host_).not.toContain('keptOpenAcrossAQuit')
@@ -476,6 +473,7 @@ describe('509 · the word the poll cannot say', () => {
       // still land on the complement's side of it in silence — naming the type does not change that.
       expect(named).toEqual([
         'main/runtime/runtime-host.ts',
+        'main/runtime/work-reads.ts',
         'renderer/src/lib/taking-over.ts',
         'shared/runtime-ipc.ts',
         'shared/the-whole-forest.ts',

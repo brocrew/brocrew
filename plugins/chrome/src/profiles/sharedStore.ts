@@ -65,13 +65,14 @@ interface Migration {
   owner: Lease
   error?: string
 }
-interface SharedRecord extends Omit<ProfileRecord, 'enabled' | 'keepRunning'> {
+interface SharedRecord extends Omit<ProfileRecord, 'enabled'> {
   id: string
   directory: FileIdentity
   permissionRevision: number
   authorizationSchema: number
   state: 'ready' | 'moving' | 'deleting'
-  perWorkspace: Record<string, { enabled: boolean; keepRunning: boolean; [key: string]: unknown }>
+  // keepRunning: false is still written for older plugin copies, which require it; never read.
+  perWorkspace: Record<string, { enabled: boolean; [key: string]: unknown }>
   lease?: Lease
   migration?: Migration
   migratedFrom?: string
@@ -131,8 +132,6 @@ const same = (a: FileIdentity | undefined, b: FileIdentity | undefined) =>
   a.dev === b.dev &&
   a.ino === b.ino &&
   a.volume === b.volume &&
-  a.uid === b.uid &&
-  a.mode === b.mode &&
   a.birthtime === b.birthtime &&
   a.type === b.type
 /** A successful complete process listing AND absent native lock is required for an ended proof.
@@ -239,26 +238,16 @@ export function createSharedProfileStore(
     if (volume !== undefined && !/^(apfs:[a-f0-9-]{36}|winvol:[0-9]+)$/.test(volume))
       throw new ProfileStoreError('Profile folder identity changed.')
     const after = directoryStat(p)
-    if (
-      !after ||
-      s.dev !== after.dev ||
-      s.ino !== after.ino ||
-      s.uid !== after.uid ||
-      s.mode !== after.mode
-    )
+    if (!after || s.dev !== after.dev || s.ino !== after.ino)
       throw new ProfileStoreError('Profile folder identity changed.')
     return {
       dev,
       ino: String(s.ino),
       ...(volume ? { volume } : {}),
-      uid: String(s.uid),
-      mode: String(s.mode),
       birthtime: String(s.birthtimeNs),
       type: 'directory',
     }
   }
-  // createProfileStore enforces the home mode. Observe it first so that enforcement cannot
-  // accidentally hide a changed mode on a previously bound migration home.
   const initialHome = fileIdentity(o.home)
   const owner = o.processIdentity ?? identity()
   const alive = o.ownerState ?? ownerState
@@ -306,16 +295,7 @@ export function createSharedProfileStore(
     }
     return r
   }
-  const initialRegistry = read()
-  if (
-    process.platform !== 'win32' &&
-    initialRegistry.format === 1 &&
-    initialRegistry.profiles.some((p) => p.migration?.workspaceId === o.workspaceId) &&
-    (!initialHome ||
-      initialHome.uid !== String(process.getuid!()) ||
-      initialHome.mode !== String(0o40700))
-  )
-    throw new ProfileStoreError('Profile folder identity changed.')
+  read()
   const local = createProfileStore({ home: o.home, now: o.now, scopedAuthorization: true })
   const write = (r: Registry) => {
     r.revision++
@@ -350,7 +330,6 @@ export function createSharedProfileStore(
     ['on', 'off', 'turning-on'].includes(p.helper) &&
     (p.perWorkspace[o.workspaceId] === undefined ||
       (typeof p.perWorkspace[o.workspaceId].enabled === 'boolean' &&
-        typeof p.perWorkspace[o.workspaceId].keepRunning === 'boolean' &&
         (p.perWorkspace[o.workspaceId].accessEpoch === undefined ||
           (Number.isSafeInteger(p.perWorkspace[o.workspaceId].accessEpoch) &&
             Number(p.perWorkspace[o.workspaceId].accessEpoch) >= 0))))
@@ -366,7 +345,6 @@ export function createSharedProfileStore(
     allowSettings: p.allowSettings === true,
     allowSync: p.allowSync === true,
     enabled: supported(p, r) && p.perWorkspace[o.workspaceId]?.enabled === true,
-    keepRunning: supported(p, r) && p.perWorkspace[o.workspaceId]?.keepRunning === true,
   })
   const sharedDir = (name: string) => {
     if (!isProfileName(name)) throw new ProfileStoreError('Invalid profile name.')
@@ -559,36 +537,6 @@ export function createSharedProfileStore(
       if (!supported(p, r)) throw new ProfileStoreError('Profile is reserved.')
       return `shared:${p.id}`
     },
-    resolveSaved(name, savedIdentity, legacy) {
-      const r = read()
-      const resolved = (p: SharedRecord | undefined) =>
-        p && supported(p, r) ? { name: p.name, identity: `shared:${p.id}` } : undefined
-      const migrated = (match: (m: Migration) => boolean) =>
-        r.profiles.find(
-          (p) =>
-            p.migration?.workspaceId === o.workspaceId &&
-            match(p.migration) &&
-            same(p.migration.home, fileIdentity(o.home)),
-        )
-      if (savedIdentity?.startsWith('shared:'))
-        return resolved(r.profiles.find((p) => p.id === savedIdentity.slice(7)))
-      if (savedIdentity?.startsWith('local:')) {
-        const sourceAlias = savedIdentity.slice(6)
-        const p = migrated((m) => m.sourceAlias === sourceAlias)
-        if (p) return resolved(p)
-        const lp = localRecord(sourceAlias)
-        return lp ? { name: alias(lp), identity: `local:${alias(lp)}` } : undefined
-      }
-      // Only unversioned local saves may use the legacy rename map. A new save
-      // without its immutable identity is never guessed from an overlapping name.
-      if (!legacy) return undefined
-      const p = migrated((m) => m.sourceName === name || m.sourceAlias === name)
-      if (p) return resolved(p)
-      const lp = local.get(name) ?? localRecord(name)
-      return lp
-        ? { name: alias(lp), identity: `local:${alias(lp)}` }
-        : resolved(r.profiles.find((p) => p.name === name))
-    },
     admission: admissionSnapshot,
     authorization(name) {
       return admissionSnapshot(name).authorization
@@ -752,13 +700,12 @@ export function createSharedProfileStore(
       return mutate(name, (p) => {
         for (const f of FLAG_NAMES)
           if (typeof flags[f] === 'boolean') {
-            if (f === 'enabled' || f === 'keepRunning')
+            if (f === 'enabled')
               p.perWorkspace[o.workspaceId] = {
                 ...p.perWorkspace[o.workspaceId],
-                enabled: p.perWorkspace[o.workspaceId]?.enabled === true,
-                keepRunning: p.perWorkspace[o.workspaceId]?.keepRunning === true,
+                enabled: flags[f],
+                keepRunning: false,
                 accessEpoch: Number(p.perWorkspace[o.workspaceId]?.accessEpoch ?? 0) + 1,
-                [f]: flags[f],
               }
             else {
               p.permissionRevision++
@@ -853,12 +800,6 @@ export function createSharedProfileStore(
       /^[0-9]+$/.test(saved.ino) &&
       saved.ino === current.ino &&
       (saved.type === undefined || saved.type === current.type) &&
-      (saved.uid === undefined
-        ? current.uid === String(process.getuid?.() ?? 0)
-        : saved.uid === current.uid) &&
-      (saved.mode === undefined
-        ? process.platform === 'win32' || current.mode === String(0o40700)
-        : saved.mode === current.mode) &&
       (saved.birthtime === undefined || saved.birthtime === current.birthtime) &&
       (saved.volume === undefined || saved.volume === current.volume) &&
       (saved.dev === current.dev || current.volume?.startsWith('apfs:') === true)
@@ -893,7 +834,7 @@ export function createSharedProfileStore(
         volumes.clear()
         if (candidates.some((c) => !same(c.current, fileIdentity(c.path)))) continue
         // The explicit proportionate-security decision accepts a legacy same-path clone
-        // or restore with matching inode/private ownership. Its current UUID is enrolled
+        // or restore with matching inode. Its current UUID is enrolled
         // once; an already anchored volume mismatch is never accepted.
         for (const { saved, current } of candidates) {
           if (same(saved, current)) continue
@@ -936,7 +877,7 @@ export function createSharedProfileStore(
           const suffix = `-${createHash('sha256').update(o.workspaceId).digest('hex').slice(0, 6)}-${n++}`
           name = baseName.slice(0, 32 - suffix.length) + suffix
         }
-        const { enabled, keepRunning, authorizationEpoch: _localEpoch, ...global } = lp
+        const { enabled, authorizationEpoch: _localEpoch, ...global } = lp
         void _localEpoch
         r.profiles.push({
           ...global,
@@ -947,7 +888,7 @@ export function createSharedProfileStore(
           authorizationSchema: 1,
           state: 'moving',
           migratedFrom: lp.name,
-          perWorkspace: { [o.workspaceId]: { enabled, keepRunning } },
+          perWorkspace: { [o.workspaceId]: { enabled, keepRunning: false } },
           migration: {
             id: randomUUID(),
             workspaceId: o.workspaceId,

@@ -10,10 +10,12 @@ import { EventEmitter } from 'node:events'
 import type { ChildProcess } from 'node:child_process'
 import { afterEach, expect, it, vi } from 'vitest'
 import {
+  createPluginStartupTrace,
   PluginStartupError,
   PluginSupervisorLaunchFailure,
   observePluginSupervisorLaunch,
   pluginStartupDiagnostic,
+  pluginFailureCause,
   pluginStartupStderr,
   pluginStartupReason,
   recordPluginStartupFailure,
@@ -150,7 +152,8 @@ it('retains a split first stderr line and real child exit through wrappers into 
   const log = await readFile(join(root, 'plugin-startup.log'), 'utf8')
   expect(log).toContain(pluginStartupDiagnosticNotice(diagnostic))
   expect(log).not.toContain('fictional-capability')
-  expect(log).not.toContain('second private stack line')
+  expect(diagnostic.stderr).not.toContain('second private stack line')
+  expect(log).toContain('second private stack line')
 })
 it('does not invent a child exit or stderr at an attachment timeout and bounds escaped text', () => {
   const snapshot = observePluginSupervisorLaunch(
@@ -171,12 +174,39 @@ it('does not invent a child exit or stderr at an attachment timeout and bounds e
   expect(pluginStartupStderr('x'.repeat(2000))).toHaveLength(512)
 })
 
+it('keeps the real multiline startup error after a loader preamble in Settings and the log', async () => {
+  const stderr = Object.assign(new EventEmitter(), { unref: vi.fn() })
+  const child = { stderr, exitCode: 1, signalCode: null }
+  const snapshot = observePluginSupervisorLaunch(child as unknown as ChildProcess, [
+    'fictional-key',
+  ])
+  stderr.emit('data', Buffer.from('node:internal/modules/cjs/loader:2142\n  throw error;\n'))
+  stderr.emit('data', Buffer.from(' '.repeat(5000)))
+  stderr.emit('data', Buffer.from("\nError: Cannot find module 'fictional-missing-module'\n"))
+  stderr.emit('data', Buffer.from('Require stack:\n- /fictional/service/entry.cjs\n'))
+  stderr.emit('data', Buffer.from('personKey=fictional-key\n    at startup (entry.cjs:12:3)\n'))
+  stderr.emit('end')
+  const failure = snapshot()
+  expect(pluginStartupDiagnostic(failure)?.stderr).toBe(
+    "Error: Cannot find module 'fictional-missing-module'",
+  )
+  const root = await mkdtemp(join(tmpdir(), 'fictional-full-stderr-'))
+  roots.push(root)
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  await recordPluginStartupFailure(root, 'service-start', failure)
+  const log = await readFile(join(root, 'plugin-startup.log'), 'utf8')
+  expect(log).toContain("Error: Cannot find module 'fictional-missing-module'")
+  expect(log).toContain('Require stack:\n- /fictional/service/entry.cjs')
+  expect(log).toContain('at startup (entry.cjs:12:3)')
+  expect(log).not.toContain('fictional-key')
+})
+
 it('redacts a capability split by terminal escapes before display normalization', () => {
   const capability = 'abcd1234'.repeat(8)
   const escaped = capability.match(/.{16}/g)!.join('\u001b[0m')
   expect(pluginStartupStderr(`Error: ${escaped}`, [capability])).toBe('Error: [redacted]')
   const bounded = pluginStartupStderr('x'.repeat(511) + '😀')!
-  expect(bounded).toBe('x'.repeat(511))
+  expect(bounded).toBe('x'.repeat(511) + '…')
   expect(PluginStartupDiagnosticSchema.shape.stderr.safeParse(bounded).success).toBe(true)
 })
 it('drains stderr after exit before retaining the failure, within the original launch deadline', async () => {
@@ -211,4 +241,122 @@ it('drains stderr after exit before retaining the failure, within the original l
   } finally {
     vi.useRealTimers()
   }
+})
+
+it('catalogue logs include stage and bounded sanitized nested causes only on that path', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fictional-catalogue-cause-'))
+  roots.push(root)
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const original = new Error('owner-invalidated token=fictional-token\u001b[31m', {
+    cause: new Error('broker closed password=fictional-password'),
+  })
+  await recordPluginStartupFailure(
+    root,
+    'catalogue-response',
+    new PluginStartupError('catalogue-response', original, 'rpc'),
+  )
+  const log = await readFile(join(root, 'plugin-startup.log'), 'utf8')
+  expect(log).toContain('stage=rpc')
+  expect(log).toContain('owner-invalidated')
+  expect(log).toContain('broker closed')
+  expect(log).not.toMatch(/fictional-token|fictional-password/)
+  expect(log).not.toContain(String.fromCharCode(27))
+  expect(log.length).toBeLessThan(1024)
+  await recordPluginStartupFailure(root, 'connection', original)
+  expect(await readFile(join(root, 'plugin-startup.log'), 'utf8')).not.toContain(
+    'owner-invalidated',
+  )
+})
+it('cause formatting bounds cycles and survives hostile diagnostic properties', () => {
+  const cyclic = new Error('owner-invalidated')
+  cyclic.cause = cyclic
+  expect(pluginFailureCause(cyclic)).toContain('owner-invalidated')
+  // An aggregate that contains itself is named once, not walked without end.
+  const members: unknown[] = []
+  const loop = new AggregateError(members, 'fictional loop')
+  Object.defineProperty(loop, 'errors', { value: [loop] })
+  expect(pluginFailureCause(loop)).toContain('fictional loop')
+  expect(
+    pluginFailureCause(new Error('x'.repeat(10000), { cause: new Error('actual leaf') })).length,
+  ).toBeLessThanOrEqual(512)
+  expect(
+    pluginFailureCause(new Error('x'.repeat(10000), { cause: new Error('actual leaf') })),
+  ).toContain('actual leaf')
+  const hostile = Object.defineProperty({}, 'message', {
+    get() {
+      throw new Error('getter')
+    },
+  })
+  expect(() => pluginFailureCause(hostile)).not.toThrow()
+})
+it('cause diagnostics keep the real error text, including addresses and paths', () => {
+  const value = pluginFailureCause(
+    new Error('http://127.0.0.1:8123/mcp /fictional/private sdk-body-contents'),
+  )
+  expect(value).toBe('Error: http://127.0.0.1:8123/mcp /fictional/private sdk-body-contents')
+})
+it('catalogue logs retain the typed refusal code when its public Error message is generic', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fictional-typed-catalogue-error-'))
+  roots.push(root)
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  await recordPluginStartupFailure(
+    root,
+    'catalogue-response',
+    new PluginSupervisorError('policy-refused'),
+  )
+  const log = await readFile(join(root, 'plugin-startup.log'), 'utf8')
+  expect(log).toContain('PluginSupervisorError')
+  expect(log).toContain('code=policy-refused')
+})
+
+it('retains pre-controller time, nested phases and failures across retries and later writes', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'fictional-startup-trace-'))
+  roots.push(root)
+  let now = 100
+  const trace = createPluginStartupTrace(() => now)
+  const recovery = trace.begin('workspace-recovery')
+  now += 78_000
+  recovery()
+  trace.destination(root)
+  trace.attempt()
+  const catalogue = trace.begin('catalogue')
+  now += 5000
+  const failed = new PluginSupervisorLaunchFailure({
+    exitCode: 1,
+    signal: null,
+    stderr: 'Error: missing module',
+  })
+  catalogue(failed)
+  await recordPluginStartupFailure(root, 'service-start', failed)
+  trace.failure('service-start', failed)
+  trace.attempt()
+  trace.begin('catalogue-new-owner')()
+  trace.begin('ready')()
+  await trace.flush()
+  const log = await readFile(join(root, 'plugin-startup-trace.log'), 'utf8')
+  expect(log).toMatch(/launch=.* elapsed=0 attempt=0 workspace-recovery start/)
+  expect(log).toContain('elapsed=78000 attempt=0 workspace-recovery end')
+  expect(log).toContain('elapsed=83000 attempt=1 catalogue failure')
+  expect(log).toContain('attempt=2 catalogue-new-owner end')
+  expect(log).toContain('attempt=2 ready end')
+  expect(log).toContain('Exit code 1')
+  expect(log).toContain('Error: missing module')
+  expect(await readFile(join(root, 'plugin-startup.log'), 'utf8')).toContain(
+    'Error: missing module',
+  )
+})
+it('trace write failure never rejects or prevents later startup work', async () => {
+  const trace = createPluginStartupTrace()
+  trace.destination(join(tmpdir(), 'fictional-absent', 'trace'))
+  trace.begin('workspace-recovery')()
+  await expect(trace.flush()).resolves.toBeUndefined()
+  const root = await mkdtemp(join(tmpdir(), 'fictional-recovered-trace-'))
+  roots.push(root)
+  trace.destination(root)
+  trace.attempt()
+  trace.begin('ready')()
+  await expect(trace.flush()).resolves.toBeUndefined()
+  const log = await readFile(join(root, 'plugin-startup-trace.log'), 'utf8')
+  expect(log).toContain('attempt=0 workspace-recovery end')
+  expect(log).toContain('attempt=1 ready end')
 })

@@ -1,3 +1,4 @@
+import type { InjectedInstruction, RefusedInstruction } from '../../shared/instruction-contracts'
 import {
   closeSync,
   constants,
@@ -12,7 +13,7 @@ import {
   type Stats,
 } from 'node:fs'
 import { basename, dirname, join, resolve, sep } from 'node:path'
-import type { InjectedInstruction, RefusedInstruction } from '../../shared/runtime-ipc'
+
 import type { InstructionRead, AgentMemoryRead, MemoryCandidate } from './instruction-types'
 import { INSTRUCTION_FILE_CAP, AGENT_MEMORY_TOTAL_CAP } from './instruction-limits'
 
@@ -128,7 +129,7 @@ export function realPath(path: string): string {
   }
 }
 
-export function dropPartialTail(bytes: Buffer): Buffer {
+function dropPartialTail(bytes: Buffer): Buffer {
   for (let back = 1; back <= 3 && back <= bytes.length; back += 1) {
     const byte = bytes[bytes.length - back]!
     if ((byte & 0b1100_0000) === 0b1000_0000) continue // continuation byte — keep walking back

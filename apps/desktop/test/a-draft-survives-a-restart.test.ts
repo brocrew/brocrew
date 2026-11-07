@@ -1,3 +1,4 @@
+import type { HandedPath } from '../src/shared/attachment-contracts'
 import {
   chmodSync,
   linkSync,
@@ -43,7 +44,7 @@ import {
   savedDraftsBeforeDrawing,
   SAVED_DRAFTS_WITHIN_MS,
 } from '../src/renderer/src/lib/kept-drafts'
-import type { HandedPath } from '../src/shared/runtime-ipc'
+
 import {
   conversationOfSlot,
   LAST_DRAFT_SAVE_CHANNEL,
@@ -813,15 +814,10 @@ describe('§4 · the file — in the app’s own userData, whole, and read as un
     },
   )
 
-  it('⛔ a file ANOTHER build wrote (another version) is unreadable too — left for a build that can read it', async () => {
-    writeFileSync(
-      join(userData, SAVED_DRAFTS_FILE),
-      JSON.stringify({ version: 2, drafts: [{ slot: NEW_CONVERSATION, text: 'x', attached: [] }] }),
-    )
-    expect(await readDraftsFile(userData)).toEqual({
-      kind: 'unreadable',
-      why: 'written as version 2, not 1',
-    })
+  it('⚑ a file ANOTHER build wrote (another version) is read as a book, so this build restores and saves', async () => {
+    const raw = { version: 2, drafts: [{ slot: NEW_CONVERSATION, text: 'x', attached: [] }] }
+    writeFileSync(join(userData, SAVED_DRAFTS_FILE), JSON.stringify(raw))
+    expect(await readDraftsFile(userData)).toEqual({ kind: 'book', raw })
   })
 
   it('⚑ saves that arrive while one is written are coalesced to the NEWEST — the file ends on the last book', async () => {
@@ -1080,6 +1076,7 @@ describe('§5 · the wiring — `main.ts`, `RuntimeScreen` and main’s doors, w
     }
     expect(reaches('../src/main/saved-drafts.ts')).toEqual({
       from: [
+        '../shared/attachment-contracts',
         '../shared/runtime-ipc',
         '../shared/saved-drafts',
         './runtime/handed-path',

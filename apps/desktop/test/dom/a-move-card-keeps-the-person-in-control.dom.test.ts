@@ -1,3 +1,6 @@
+import type { PersonsQuestion, RoutedRequest } from '../../src/shared/question-contracts'
+import type { MoveOffer, MoveRequestAck } from '../../src/shared/move-contracts'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, reactive } from 'vue'
 import QuestionCard from '../../src/renderer/src/components/QuestionCard.vue'
@@ -13,16 +16,14 @@ import {
   chainReading,
   chainSentence,
   NOTHING_NAMED_THE_WORK,
-  type PersonsQuestion,
-  type RoutedRequest,
 } from '../../src/shared/questions'
 import { moveRequestFromWindow } from '../../src/renderer/src/lib/move-request'
 import type { QuestionCardReading } from '../../src/renderer/src/lib/question-card'
 import type { RequestDraft } from '../../src/renderer/src/lib/session-record'
-import type { MoveRequestAck, MoveOffer } from '../../src/shared/move-request'
+
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 import { MOVE_SEND_UNCONFIRMED } from '../../src/shared/move-request'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { conversationLink } from '../../src/shared/links'
 import { moveReceiptLine } from '../../src/shared/move-request'
 import type { LinkResolution } from '../../src/shared/runtime-ipc'
@@ -31,9 +32,7 @@ import { mount, paneProps, record, unmountAll, visible } from './harness'
 const MOVE: MoveOffer = {
   destination: 'target',
   destinationName: 'W2 · Fictional release',
-  sourceOrdinal: 1,
-  sourceGeneration: 0,
-  sourceDigest: 'a'.repeat(64),
+  sourceTurnId: 'fictional-turn',
 }
 const reading = (): QuestionCardReading => ({
   move: MOVE,

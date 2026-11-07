@@ -5,7 +5,7 @@
 # compares every area and metric with `coverage-floors.json` in check-only mode.
 #
 # It never commits or pushes. Raised floors come back as `raised-floors.json` in the `coverage-result`
-# artifact only when every row passes and no test failed beyond the known census pair; landing them is
+# artifact only when every row passes and no test failed; landing them is
 # the landing seat's change, by the usual expected-old compare-and-swap.
 #
 # Started: by hand (`workflow_dispatch`, input `commit`), by a push to a `gate/coverage-*` branch

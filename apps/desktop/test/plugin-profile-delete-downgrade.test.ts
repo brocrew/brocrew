@@ -11,12 +11,8 @@ import { PluginProfileLedger as OlderLedger } from './fixtures/plugin-delete-par
 import { ChromeProposal as OlderProposal } from './fixtures/plugin-delete-parent/chrome-apply'
 import source from './fixtures/plugin-delete-parent/source.json'
 import { PluginLifecycleController as OlderController } from './fixtures/plugin-delete-parent/controller'
-import {
-  fixture,
-  projection,
-  cleanupLifecycleFixtures,
-  reopenLifecycleFixture,
-} from './plugin-lifecycle-fixtures'
+import { GlobalPluginState as OlderState } from './fixtures/plugin-delete-parent/store'
+import { fixture, projection, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
 // Load the real package at runtime: its source is typechecked by the package's own project,
 // rather than importing its browser libraries into the host's Node-only compiler project.
 import {
@@ -50,15 +46,32 @@ afterEach(async () => {
   }
 })
 const snapshot = fileURLToPath(new URL('./fixtures/plugin-delete-parent/', import.meta.url))
-it.each(source.files)('pins the actual pre-delete reader source $path', async (file) => {
-  const adapted = await readFile(join(snapshot, file.file), 'utf8')
-  const imports = new Map<string, string>(Object.entries(file.imports))
-  const original = adapted.replace(/from '(\.[^']+)'/g, (_, spec: string) => {
-    expect(imports.has(spec)).toBe(true)
-    return `from '${imports.get(spec)}'`
-  })
-  expect(createHash('sha256').update(original).digest('hex')).toBe(file.sourceSha256)
-})
+it.each(source.files)(
+  'pins the pre-delete reader source with unsigned API adaptation $path',
+  async (file) => {
+    const adapted = await readFile(join(snapshot, file.file), 'utf8')
+    const imports = new Map<string, string>(Object.entries(file.imports))
+    let original = adapted.replace(/from '(\.[^']+)'/g, (_, spec: string) => {
+      expect(imports.has(spec)).toBe(true)
+      return `from '${imports.get(spec)}'`
+    })
+    // This executable fixture omits retired privacy predicates. Restore those exact clauses
+    // only in the historical source view, keeping the original commit's byte pin intact.
+    if (file.file === 'profile-ledger.ts')
+      original = original
+        .replace(
+          '  openFileNotThroughALink,',
+          '  isImmutableFile,\n  isPrivateEntry,\n  openFileNotThroughALink,',
+        )
+        .replace(
+          '          stat.size > 2048',
+          '          !isPrivateEntry(stat, 0) ||\n          !isImmutableFile(stat) ||\n          stat.size > 2048',
+        )
+    expect(createHash('sha256').update(original).digest('hex')).toBe(
+      'unsignedApiSha256' in file ? file.unsignedApiSha256 : file.sourceSha256,
+    )
+  },
+)
 it('the shared ledger refuses a destructive proposal if adapter projection is bypassed', async () => {
   const f = await fixture()
   const ledger = new PluginProfileLedger(f.root)
@@ -200,9 +213,11 @@ it.each(['success', 'lost-reply', 'partial-removal'] as const)(
     expect(entries[0].proposal).toEqual({ action: 'set-enabled', profile: 'fern', enabled: false })
     expect(JSON.stringify(entries)).not.toContain('delete-profile')
     expect(JSON.stringify(entries)).not.toContain('confirm')
-    const state = reopenLifecycleFixture(f)
+    // The older copy runs its own store over the same root, as a rolled-back app would.
+    f.state.close()
+    const state = OlderState.open({ root: join(f.root, 'state'), workspaceRoots: [f.workspace] })
     closers.push(() => state.close())
-    const older = await OlderController.open({ ...f.opts, state: state as never })
+    const older = await OlderController.open({ ...f.opts, state } as never)
     closers.push(() => older.drain())
     try {
       const handle = await older.attach(projection().sink)

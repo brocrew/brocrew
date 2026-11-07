@@ -1,4 +1,7 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { waitFor } from './lib/f093-host'
+import type { AgentState } from '../src/shared/agent-state-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,21 +18,22 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { AgentState } from '../src/shared/agent-state'
 import {
   DEFAULT_PROFILE_ID,
   type ResumableSessionInfo,
-  type RuntimeEventMessage,
   type RuntimeStatesMessage,
-  type TranscriptEvent,
   type UnresumableSessionInfo,
 } from '../src/shared/runtime-ipc'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * # F036 · an agent that owes another an answer says so — the host half (`80bff428`)
@@ -80,14 +84,6 @@ const ADA = 'Ada (the owner of W1.1 · Build the pages)'
 const OWES_ADA = `owes an answer to ${ADA}`
 const WAITING_ON_ADA = `waiting on ${ADA}`
 
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
-
 /**
  * A stretch of the event loop long enough for everything a provider row starts to have run: five
  * turns of `setImmediate` (each pump, and the flush a mark arms, run there) and a short timer.
@@ -129,17 +125,6 @@ class ProviderDouble extends FakeRuntime {
   }
 }
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** A delay no other timer in the host uses, and no test waits out (D-036 §15's). */
 const IDLE = 7_654_321
 
@@ -174,29 +159,17 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) =>
         new ProviderDouble(provider, handles, issued, startGate),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       // ⚑ The dep that makes the host derive and push at all — what main hands every window.
       statesMoved: (message) => {
         pushed.push(message)
@@ -606,6 +579,51 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
     expect(old?.state).toEqual({ is: 'idle' })
   })
 
+  it('🔴 §4b · an imported ledger that routes a question to a running conversation is owed at its next state, though it kept owing nothing', async () => {
+    const { brobot, ada, adaTools } = await aGiverWaitingOnAHelper()
+    const reviewer = await personOpens('reviewer')
+    await settle()
+    // Its owed questions are folded and kept: none.
+    expect(stateOf(reviewer)?.is).not.toBe('owes-an-answer')
+    const id = await adaAsksHerParent(adaTools)
+    await untilPushed(
+      brobot,
+      { is: 'owes-an-answer', to: [ADA], since: expect.any(Number) },
+      'the parent to be pushed as owing',
+    )
+    // Ada's question, as another machine exported it, now put to the reviewer by a conversation
+    // nothing here has seen.
+    const ledger = store
+      .events(ada)
+      .filter(({ event }) => JSON.stringify(event).includes(id))
+      .map(({ event, at }, ordinal) => ({
+        ordinal,
+        at,
+        event: JSON.parse(
+          JSON.stringify(event).replaceAll(id, 'imported-question').replaceAll(brobot, reviewer),
+        ) as TranscriptEvent,
+      }))
+    expect(ledger.map(({ event }) => event.type)).toContain('request_routed')
+    store.importSnapshot({
+      session: {
+        id: 'imported-asker',
+        provider: 'claude',
+        sessionId: 'fictional-imported-thread',
+        cwd: root,
+        profileId: 'worker',
+        updatedAt: clock,
+        createdAt: clock,
+      },
+      derivedThrough: 0,
+      ledger,
+    })
+    await waitFor(
+      () => lastSaid(reviewer)?.is === 'owes-an-answer',
+      'the reviewer to be pushed as owing the imported question',
+    )
+    expect(stateOf(reviewer)?.is).toBe('owes-an-answer')
+  })
+
   it('⚑ §5 · a listing folds an asker’s ledger once, though another row owes it an answer', async () => {
     const { brobot, brobotTools, ada, adaTools } = await aGiverWaitingOnAHelper()
     // ⚑ A second helper, the control: it holds a piece BroBot gave and asked nobody anything.
@@ -633,6 +651,8 @@ describe('F036 · the host says who a conversation owes an answer to, and moves 
     await settle()
 
     const reads = vi.spyOn(store, 'routedRequestsOf')
+    // A listing is shared until something it reads moves; a commit makes this one a fresh fold.
+    store.setModel(control, 'fictional-model')
     reads.mockClear()
     const rows = host.resumableSessions()
     const readsOf = (id: string): number =>

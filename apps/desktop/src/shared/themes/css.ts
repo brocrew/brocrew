@@ -1,13 +1,3 @@
-/**
- * `themeCss`: the stylesheet a validated theme becomes. It writes custom properties only — one
- * block on the theme's root, one for hand-tuned colours in the light zone — plus an `@font-face`
- * for each font file the theme carries. Every value is written from parsed numbers and names;
- * nothing a theme typed is copied through.
- *
- * A background never becomes a `background` shorthand. It becomes longhands — `-color`, `-image`,
- * `-size`, `-position`, `-repeat`, `-rendering` — so a component can paint its own fallback colour
- * under a theme's pictures without the two forming an invalid declaration.
- */
 import { GENERIC_FONTS, THEME_SCHEMA, type Spec } from './schema'
 import { assetOwner, type Theme, type ThemeFill, type ThemeLayer } from './theme'
 
@@ -25,22 +15,10 @@ export function themeAssetUrl(id: string, path: string, version?: string): strin
 export interface ThemeCssOptions {
   /** The selector the theme's block goes on. Default: `:root[data-theme='<id>']`. */
   readonly scope?: string
-  /**
-   * How a file in the theme becomes a URL. It receives the path as the resolved theme holds it,
-   * so an inherited file arrives as `@<base id>/assets/…`. Default: `themeAssetUrl` on its owner.
-   */
   readonly assetUrl?: (path: string) => string
-  /**
-   * The selector a theme's hand-tuned content colours go on. Default: the light content scope
-   * under {@link scope} (`[data-chat-theme='light']` and `[data-on-white]`).
-   */
   readonly contentScope?: string
 }
 
-/**
- * Set on the root when a theme gives the right-hand panel's cards an ink: every text inside a card
- * is then that ink, or worked out from it and the card's fill.
- */
 export const CARD_INK_ATTRIBUTE = 'data-card-ink'
 
 /** Every attribute a theme may set on its root; `applyTheme` clears them all before setting new ones. */
@@ -57,19 +35,11 @@ export const THEME_ATTRIBUTES: readonly string[] = (() => {
   return out
 })()
 
-/**
- * Written when a theme gives the logo an ink: the app's own drawn mark gives way to the mark drawn
- * in that ink, or to nothing when the ink is transparent and a picture is the logo.
- */
 export const BRAND_MARK_FIGURE = '--brand-mark-figure'
 
 /** The longhands a background setting is written as, after its name. */
 export const FILL_LONGHANDS = ['color', 'image', 'size', 'position', 'repeat', 'rendering'] as const
 
-/**
- * Every custom property a theme's settings can write (hand-tuned `tokens` aside). A preview sets
- * them all to `initial` before its own theme, so nothing leaks in from the theme the window wears.
- */
 export const THEME_CUSTOM_PROPERTIES: readonly string[] = (() => {
   const out: string[] = []
   const walk = (fields: Readonly<Record<string, Spec>>): void => {

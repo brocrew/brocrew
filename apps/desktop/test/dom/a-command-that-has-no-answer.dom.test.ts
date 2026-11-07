@@ -1,3 +1,4 @@
+import type { PersistedEventInfo, TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { computed, defineComponent, h, nextTick, reactive } from 'vue'
@@ -11,10 +12,8 @@ import type {
   AnswerAck,
   CreatedSession,
   PermissionDecision,
-  PersistedEventInfo,
   ResumedSession,
   RuntimeBridge,
-  TranscriptEvent,
 } from '../../src/shared/runtime-ipc'
 import { everythingOverTheWire } from '../lib/the-wire'
 import { assertDrawn, drawnReady } from './drawn'

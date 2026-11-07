@@ -1,6 +1,8 @@
-import type { MoveOffer, MoveReceipt } from '../../../shared/move-request'
+import type { MoveOffer, MoveReceipt } from '../../../shared/move-contracts'
+import type { AskedQuestion, OfferedAnswer } from '../../../shared/question-contracts'
+
 import { agentName, type AgentIdentity, type UserInputResponse } from '../../../shared/runtime-ipc'
-import type { AskedQuestion, OfferedAnswer } from '../../../shared/questions'
+
 import { clockTime } from '../../../shared/clock'
 import { whoAnsweredIt } from '../../../shared/who-did-it'
 import { fullTime } from './clock'
@@ -23,7 +25,8 @@ import {
   withoutHandles,
 } from './outgoing-card'
 import { THIS_CONVERSATION_FIRST } from './from-outside'
-import { sinceWords, type PersonsQueueRow } from './persons-queue'
+import type { PersonsQueueRow } from './persons-queue'
+import { sinceWords } from './queue-time'
 
 /**
  * # 🔴 UI-009 · A question is answered where it is asked, and in *Waiting on you*
@@ -84,7 +87,7 @@ export const PASSED_UP_WORD = 'passed up to'
 /** ⚑ Whom a question was asked of, when no row and no argument says — never a guess. */
 export const NOBODY_NAMED_YET = 'somebody'
 /** ⚑ The asker of a row whose chain names nobody. */
-export const AN_UNNAMED_ASKER = 'A conversation'
+const AN_UNNAMED_ASKER = 'A conversation'
 /** ⚑ What leads the note a conversation added when it passed a question up. */
 export const ADDED_BESIDE = 'Added:'
 /** ⚑ A queue row whose question's words BroBot could not find (D-046: `asked` is `null`). */
@@ -105,7 +108,7 @@ export const ANSWER_EACH_PART = 'Answer each part to send.'
 export const PICK_AT_LEAST_ONE = 'Pick at least one to send.'
 
 /** One choice a part offers. */
-export interface QuestionOption {
+interface QuestionOption {
   readonly label: string
   readonly description: string | null
 }

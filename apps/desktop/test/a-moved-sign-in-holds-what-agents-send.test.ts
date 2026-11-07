@@ -1,3 +1,5 @@
+import { neutralHostDeps } from './lib/host-fixture'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -12,7 +14,6 @@ import {
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { ACommandTakesNoAttachments } from '../src/main/runtime/a-command-goes-as-typed'
@@ -20,7 +21,6 @@ import type {
   RuntimeEventMessage,
   SessionLiveness,
   SessionLivenessMessage,
-  TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 import { PROVIDER_NAME } from '../src/shared/runtime-ipc'
 
@@ -190,9 +190,7 @@ describe.each(['claude', 'codex'] as const)(
       applyMigrations(db, migrationsFolder)
       host = new RuntimeHost({
         store: createSessionStore(db),
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(userData, 'exports'),
+        ...neutralHostDeps(() => userData),
         createRuntime: (provider) => new WatchedRuntime(provider, watch, sessions, handles),
         prepareProviderHome: (provider) => join(userData, 'provider-homes', provider),
         providerHomePath: (provider) => join(userData, 'provider-homes', provider),

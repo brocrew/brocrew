@@ -1,3 +1,6 @@
+import { waitFor } from './lib/f093-host'
+import type { SessionInstructions } from '../src/shared/instruction-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -45,7 +48,6 @@ import {
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { THE_MODEL_LIST } from './lib/scripted-codex-host'
 import {
   profileBundleSpans,
@@ -69,13 +71,10 @@ import { A_PERSON_SENT_IT } from '../src/main/runtime/turn-origin'
 import { toldView } from '../src/renderer/src/lib/told'
 import { whoseGroups } from '../src/renderer/src/lib/whose-groups'
 import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
-import type {
-  RuntimeEventMessage,
-  SessionInstructions,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble as GatedDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
+import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 🔴 **D-039 · the tools reach a Codex model in its lead, the namespace stays under the app-server's
@@ -326,14 +325,6 @@ class KeptHandles extends FakeRuntime {
   }
 }
 
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
-
 type HostOptions = ConstructorParameters<typeof RuntimeHost>[0]
 
 interface Harness {
@@ -359,9 +350,7 @@ function anApp(
   let counter = 0
   const host = new RuntimeHost({
     store,
-    discoverSessions: NO_DISCOVERY,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => join(userData, 'exports'),
+    ...neutralHostDeps(() => userData),
     createRuntime,
     prepareProviderHome: (provider: Provider, profileId?: string) => {
       const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
@@ -1089,25 +1078,13 @@ describe('§6 to §8 · what a failed start says at each door', () => {
     gate = anOpenGate()
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new GatedDouble(provider, handles, issued, gate),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:1')
   })

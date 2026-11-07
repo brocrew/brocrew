@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
@@ -8,7 +9,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   RuntimeHost,
   THE_APP_ITSELF,
@@ -116,9 +116,7 @@ describe('534 · a conversation that is born while he is looking at the rail', (
     swallowing = false
     host = new RuntimeHost({
       store: ledger,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => sharedRuntime(provider, sessions),
       prepareProviderHome: (provider: Provider, profileId: string) => {
         const home = join(userData, 'provider-homes', profileId, provider)
@@ -139,6 +137,9 @@ describe('534 · a conversation that is born while he is looking at the rail', (
       }),
       announce: (change) => {
         if (swallowing) return
+        // ⚑ `persons` is announced from the store's record of each commit, whichever host or door
+        // wrote it; this file is about the verbs' own announcements, so it is left to its own file.
+        if (change.what === 'persons') return
         said.push(change)
         // 🔴 **The host's own answer, read INSIDE the announcement.** This is what makes §2 an
         // assertion about ORDER rather than about arrival: an announcement fired before its write
@@ -213,9 +214,7 @@ describe('534 · a conversation that is born while he is looking at the rail', (
       // control for the whole file: the announcement is an addition, not a precondition.
       const quiet = new RuntimeHost({
         store: ledger,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(userData, 'exports'),
+        ...neutralHostDeps(() => userData),
         createRuntime: (provider: Provider) => sharedRuntime(provider, sessions),
         prepareProviderHome: (provider: Provider, profileId: string) => {
           const home = join(userData, 'provider-homes', profileId, provider)
@@ -555,6 +554,7 @@ describe('534 · a conversation that is born while he is looking at the rail', (
           // ⚑ **638 · the third arm.** ⛔ The rig has to carry every member or the Record does not
           // compile — which is rule 3 of `the-world-moved.ts` doing its job on this file too.
           work: () => read.push('work'),
+          persons: () => read.push('persons'),
         },
         () => closing.now,
       )

@@ -1,3 +1,13 @@
+import {
+  PluginSupervisorLaunchFailure,
+  pluginStartupStderr,
+  pluginStartupOutput,
+  recordPluginStartupFailure,
+} from './startup-failure'
+import {
+  PluginStartupDiagnosticSchema,
+  type PluginStartupDiagnostic,
+} from '../../shared/plugin-settings'
 import { z } from 'zod'
 import { pluginNodePolicy } from './node-policy'
 export { pluginNodePolicy } from './node-policy'
@@ -20,6 +30,7 @@ import {
 import { runtimeFiles, type PluginNodeRuntime } from './node-runtime'
 import { windowsSystemEnvironment } from './system-environment'
 import { sharedDataEnvironment, type SharedDataOwner } from './shared-data'
+import { createFileNotThroughALink } from './private-files'
 import {
   endWindowsTree,
   stopGroups,
@@ -47,6 +58,7 @@ export interface PluginNodeReady {
 export interface PluginNodeProcess {
   readonly runId: string
   readonly receiptPath: string
+  startupDiagnostic?(): PluginStartupDiagnostic | undefined
   ready(): Promise<PluginNodeReady>
   stop(): Promise<PluginNodeExit>
   readonly exited: Promise<PluginNodeExit>
@@ -289,12 +301,16 @@ export function createPluginNodeHost(options: {
     const mcpToken = randomBytes(32).toString('hex'),
       adminToken = randomBytes(32).toString('hex'),
       hookToken = randomBytes(32).toString('hex')
-    await immutableFile(
-      join(run, 'auth.json'),
-      Buffer.from(
+    // Published plugins require this bootstrap file to have no group or other mode bits.
+    const authFile = await createFileNotThroughALink(join(run, 'auth.json'), 0o600)
+    try {
+      await authFile.writeFile(
         JSON.stringify(hosted.transport === 'hooks' ? { hookToken } : { mcpToken, adminToken }),
-      ),
-    )
+      )
+      await authFile.sync()
+    } finally {
+      await authFile.close()
+    }
     await immutableFile(
       join(run, 'launch.json'),
       Buffer.from(
@@ -315,12 +331,17 @@ export function createPluginNodeHost(options: {
     }
     const forkedAt = Date.now()
     let guardianEndedAt = 0
+    /** The guardian's last 16 KiB of stderr, the cause when it dies before its plugin is ready. */
+    let guardianStderr = ''
+    let serverDiagnostic: PluginStartupDiagnostic | undefined
+    const secrets = [mcpToken, adminToken, hookToken]
     const child: ChildProcess = fork(runtime.guardian, [join(run, 'launch.json')], {
       execPath: runtime.node,
       execArgv: [],
       cwd: home,
       detached: true,
-      stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+      // Guardian errors stay separate from the plugin server's diagnostic.
+      stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
       env: {
         ...(windows
           ? {
@@ -392,6 +413,11 @@ export function createPluginNodeHost(options: {
         serverPid?: unknown
         exited?: unknown
         priorityClamped?: unknown
+        exitCode?: unknown
+        signal?: unknown
+        stderr?: unknown
+        stderrOutput?: unknown
+        stderrTruncated?: unknown
       }
       if (
         !value ||
@@ -421,7 +447,31 @@ export function createPluginNodeHost(options: {
           )
       } else if (value.type === 'group-gone' && groups.get(Number(value.pid)) === value.birth)
         groups.delete(Number(value.pid))
-      else if (value.type === 'stopped') proof = value.exited === true
+      else if (value.type === 'server-closed') {
+        const diagnostic = PluginStartupDiagnosticSchema.safeParse({
+          exitCode: value.exitCode,
+          signal: value.signal,
+          stderr:
+            typeof value.stderr === 'string' ? pluginStartupStderr(value.stderr, secrets) : null,
+        })
+        if (diagnostic.success) {
+          serverDiagnostic = diagnostic.data
+          const output = pluginStartupOutput(
+            typeof value.stderrOutput === 'string'
+              ? value.stderrOutput
+              : String(value.stderr ?? ''),
+            secrets,
+          )
+          const failure = new PluginSupervisorLaunchFailure(
+            serverDiagnostic,
+            undefined,
+            `plugin=${manifest.id} run=${runId}\n${value.stderrTruncated === true ? '[stderr truncated to last 16 KiB]\n' : ''}${output}`,
+          )
+          ready.reject(failure)
+          void recordPluginStartupFailure(run, 'plugin-start', failure)
+          void recordPluginStartupFailure(root, 'plugin-start', failure)
+        }
+      } else if (value.type === 'stopped') proof = value.exited === true
       else if (value.type === 'unsupported') unsupported = true
       else if (windows && value.type === 'job' && !stopped) {
         clearTimeout(timer)
@@ -512,12 +562,27 @@ export function createPluginNodeHost(options: {
       }
     })
     let finished = false
-    const finish = async () => {
+    const finish = async (
+      exit?: { code: number | null; signal: NodeJS.Signals | null },
+      failure?: Error,
+    ) => {
       if (finished) return
       finished = true
       stopped = true
       clearTimeout(timer)
-      ready.reject(new PluginHostError(unsupported ? 'unsupported' : 'ready'))
+      const said = pluginStartupStderr(guardianStderr, secrets)
+      ready.reject(
+        serverDiagnostic
+          ? new PluginSupervisorLaunchFailure(serverDiagnostic)
+          : new PluginHostError(unsupported ? 'unsupported' : 'ready', {
+              cause:
+                failure ??
+                new Error(
+                  `the plugin guardian exited (code ${exit?.code ?? 'none'}, signal ${exit?.signal ?? 'none'})` +
+                    (said ? `: ${said}` : ' and wrote nothing to stderr'),
+                ),
+            }),
+      )
       // A guardian crash is not an exit receipt; independently clean the groups already admitted.
       // On Windows that is the guardian's whole tree, its job keeper and the server's children
       // included: only a reading that finds none of it running is proof.
@@ -551,16 +616,21 @@ export function createPluginNodeHost(options: {
       if (clean) starts.delete(manifest.id)
       exited.resolve({ exited: clean })
     }
-    child.once('error', () => {
-      void finish()
+    child.stderr?.setEncoding('utf8')
+    child.stderr?.on('data', (chunk: string) => {
+      guardianStderr = (guardianStderr + chunk).slice(-16 * 1024)
     })
-    child.once('close', () => {
+    child.once('error', (error) => {
+      void finish(undefined, error)
+    })
+    child.once('close', (code, signal) => {
       guardianEndedAt = Date.now()
-      void finish()
+      void finish({ code, signal })
     })
     return Object.freeze({
       runId,
       receiptPath: join(run, 'exit.json'),
+      startupDiagnostic: () => serverDiagnostic,
       ready: () => ready.promise,
       stop,
       exited: exited.promise,

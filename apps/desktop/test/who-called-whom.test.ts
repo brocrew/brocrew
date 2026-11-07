@@ -1,11 +1,12 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { LEDGER_WALK_KINDS } from '../src/shared/question-contracts'
+import { TASK_STATES } from '../src/shared/task-contracts'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import {
@@ -14,14 +15,15 @@ import {
   type SessionStore,
 } from '../src/main/db/session-store'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { openElsewhere } from '../src/renderer/src/lib/taking-over'
-import { LEDGER_WALK_KINDS, walkCovers } from '../src/shared/questions'
+import { walkCovers } from '../src/shared/questions'
 import { RUNTIME_CHANGE_SUBJECTS } from '../src/shared/runtime-ipc'
-import type { RuntimeChangeMessage, RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { TASK_IS_OPEN, TASK_STATES } from '../src/shared/tasks'
+import { type RuntimeChangeMessage } from '../src/shared/runtime-ipc'
+import { TASK_IS_OPEN } from '../src/shared/tasks'
 import type { WhoCalledWhom } from '../src/shared/who-called-whom'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 🔴 **543 · who called whom — the read that has to exist first** (`540` §7 slice 1).
@@ -53,6 +55,7 @@ import type { WhoCalledWhom } from '../src/shared/who-called-whom'
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsDir = join(here, '../src/main/db/migrations')
 const HOST_SRC = join(here, '../src/main/runtime/runtime-host.ts')
+const WORK_READS_SRC = join(here, '../src/main/runtime/work-reads.ts')
 const IPC_SRC = join(here, '../src/main/runtime/ipc.ts')
 const EDGES_SRC = join(here, '../src/shared/who-called-whom.ts')
 const STORE_SRC = join(here, '../src/main/db/session-store.ts')
@@ -62,17 +65,6 @@ const NOW = 1_800_000_000_000
 /** ⛔ **Prose stripped before anything is counted** — a docblock quoting a call is not a call. */
 function code(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1')
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 describe('543 · who called whom', () => {
@@ -96,15 +88,9 @@ describe('543 · who called whom', () => {
     store = createSessionStore(db, tick)
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_543_${String(tick())}`,
@@ -572,10 +558,10 @@ describe('543 · who called whom', () => {
     })
 
     it('⚠️ there is no `await` between the first statement of the read and the stamp', () => {
-      const host_ = code(readFileSync(HOST_SRC, 'utf8'))
-      const at = host_.indexOf('whoCalledWhom(sessionId: string): WhoCalledWhom {')
+      const implementation = code(readFileSync(WORK_READS_SRC, 'utf8'))
+      const at = implementation.indexOf('whoCalledWhom(sessionId: string): WhoCalledWhom {')
       expect(at).toBeGreaterThan(-1)
-      const body = host_.slice(at, host_.indexOf('\n  }', at))
+      const body = implementation.slice(at, implementation.indexOf('\n  }', at))
       expect(body).toContain('readAt: Date.now(),')
       // ⛔ **A source census, because the property is about the SHAPE of the method** and a runtime
       // assertion can only see that this call happened not to be interrupted.
@@ -583,6 +569,13 @@ describe('543 · who called whom', () => {
       expect(body).not.toContain('async ')
       // ⚑ **The control** (standing rule 12's shape): the same slice of a method that DOES await
       // is found by the same expression, so this is not a search that could never fire.
+      const host_ = code(readFileSync(HOST_SRC, 'utf8'))
+      const forwardAt = host_.indexOf('whoCalledWhom(sessionId: string): WhoCalledWhom {')
+      expect(forwardAt).toBeGreaterThan(-1)
+      const forwarding = host_.slice(forwardAt, host_.indexOf('\n  }', forwardAt))
+      expect(forwarding).toContain('return this.workReads.whoCalledWhom(sessionId)')
+      expect(forwarding).not.toContain('await ')
+      expect(forwarding).not.toContain('async ')
       const awaits = host_.slice(host_.indexOf('async closeAll('))
       expect(awaits).toContain('await ')
       // ⛔ **And the door does not await it either** — an `await` on the `case` would not create the
@@ -679,9 +672,9 @@ describe('543 · who called whom', () => {
 
     it('⛔ the read publishes no `HereIs`, no gesture and no liveness', () => {
       const edges = code(readFileSync(EDGES_SRC, 'utf8'))
-      const host_ = code(readFileSync(HOST_SRC, 'utf8'))
-      const at = host_.indexOf('whoCalledWhom(sessionId: string): WhoCalledWhom {')
-      const body = host_.slice(at, host_.indexOf('\n  }', at))
+      const implementation = code(readFileSync(WORK_READS_SRC, 'utf8'))
+      const at = implementation.indexOf('whoCalledWhom(sessionId: string): WhoCalledWhom {')
+      const body = implementation.slice(at, implementation.indexOf('\n  }', at))
       // ⛔ **Collapsing the state here is the defect `540` MI-20 names**, and the shape is asserted
       // rather than the intention documented.
       expect(edges).not.toContain('HereIs')
@@ -769,9 +762,9 @@ describe('543 · who called whom', () => {
       // ⚑ **What keeps an agent off this door is that the verb lives on the window wire and on no
       // toolset** — `the-rails-before-anything-can-reach-them.test.ts` is where that inventory is
       // pinned, and this is the one line of it this dispatch owes.
-      const host_ = code(readFileSync(HOST_SRC, 'utf8'))
-      const at = host_.indexOf('whoCalledWhom(sessionId: string): WhoCalledWhom {')
-      const body = host_.slice(at, host_.indexOf('\n  }', at))
+      const implementation = code(readFileSync(WORK_READS_SRC, 'utf8'))
+      const at = implementation.indexOf('whoCalledWhom(sessionId: string): WhoCalledWhom {')
+      const body = implementation.slice(at, implementation.indexOf('\n  }', at))
       expect(body).not.toContain('requireAPerson')
       expect(body).not.toContain('Caller')
     })
@@ -795,7 +788,7 @@ describe('543 · who called whom', () => {
       // to re-read, and this read gives nobody anything new to re-read.
       // ⚑ **638 · a THIRD member**, `work` — the condition `534` set (*do not add a subject
       // nothing reads*) lapsed when `631` built the task lists that read it.
-      expect([...RUNTIME_CHANGE_SUBJECTS]).toEqual(['conversations', 'agents', 'work'])
+      expect([...RUNTIME_CHANGE_SUBJECTS]).toEqual(['conversations', 'agents', 'work', 'persons'])
     })
 
     it('⛔ 638 · a RAW ledger append still announces nothing — the announcement is at the VERB', () => {
@@ -813,7 +806,9 @@ describe('543 · who called whom', () => {
       // ⚠️ **The arrival half is pinned in `work-moved-and-nothing-announced-it.test.ts`**, driven
       // through the host's verbs end to end.
       expect(host.whoCalledWhom(pm).workGivenOut.rows).toHaveLength(1)
-      expect(announced).toEqual([])
+      // ⚑ Only `persons`, which the store's record of the commit carries for the work a person is
+      // asked about; every other subject is still the verb's.
+      expect(announced.filter((message) => message.what !== 'persons')).toEqual([])
       // ⛔ **THE CONTROL, REPAIRED.** ⚠️ It read `expect(announced.length).toBeGreaterThanOrEqual(0)`
       // — true of every array there is, so it proved nothing
       // (`a-positive-assertion-must-differ-from-the-default`). ⚑ A session row written through the

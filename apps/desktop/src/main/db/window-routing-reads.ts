@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import type { WindowWriterStamp } from './window-writer-stamp'
-import type { SessionStore, RowsUnread } from './session-store'
+import type { SessionStore } from './session-store'
+import type { RowsUnread } from './rows-unread'
 import type { RoutingReading, WindowRoutes } from './window-read-protocol'
 
 type Reading = {
@@ -30,13 +31,16 @@ export function sameWindowWriter(
 /** Scopes a validated worker routing snapshot to one synchronous window answer. */
 export class WindowRoutingReads {
   private readonly context = new AsyncLocalStorage<Reading>()
+  /** Each snapshot's routes by conversation, built once for as long as the snapshot is kept. */
+  private readonly indexed = new WeakMap<WindowRoutes, ReadonlyMap<string, RoutingReading>>()
 
   run<T>(snapshot: WindowRoutes, answer: () => T): T {
-    const reading: Reading = {
-      active: true,
-      snapshot,
-      routes: new Map(snapshot.routes.map((row) => [row.sessionId, row])),
+    let routes = this.indexed.get(snapshot)
+    if (routes === undefined) {
+      routes = new Map(snapshot.routes.map((row) => [row.sessionId, row]))
+      this.indexed.set(snapshot, routes)
     }
+    const reading: Reading = { active: true, snapshot, routes }
     try {
       return this.context.run(reading, answer)
     } finally {

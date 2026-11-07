@@ -1,9 +1,10 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import type { PermissionOutcome, RuntimeEvent } from '@brobot2/runtime'
 import { toWireEvent } from '../src/main/runtime/event-wire'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import AttentionQueue from '../src/renderer/src/components/AttentionQueue.vue'
 import PermissionCard from '../src/renderer/src/components/PermissionCard.vue'
 import { attentionQueue, type AttentionRequest } from '../src/renderer/src/lib/attention'

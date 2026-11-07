@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, sep } from 'node:path'
@@ -5,7 +6,6 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
@@ -97,9 +97,7 @@ describe('a profile name is unique at the boundary — since 417, the only place
     let counter = 0
     return new RuntimeHost({
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       // ⚠️ One adapter per provider for the whole test, not one per host: a resume asks the
       // provider for a session it issued, and a fresh double has never issued anything.
       createRuntime: (provider) => {

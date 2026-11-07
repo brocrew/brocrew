@@ -1,3 +1,6 @@
+import { neutralHostDeps, RecordingSink } from './lib/host-fixture'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
+import type { StoppedOnALimit } from '../src/shared/task-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -8,18 +11,13 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { resourcesRoot } from '../src/main/resources/resources'
 import {
   theStallAndItsAsk,
   undrivenWorkText,
   theLimitItStoppedOn,
 } from '../src/main/runtime/reply-rails'
-import {
-  RuntimeHost,
-  THE_APP_ITSELF,
-  type RuntimeEventSink,
-} from '../src/main/runtime/runtime-host'
+import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   readSignInChanges,
@@ -30,12 +28,7 @@ import {
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { clockTime } from '../src/shared/clock'
 import type { Exchange } from '../src/shared/last-exchange'
-import type {
-  PersistedEventInfo,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
-import { derivePieces, UNDRIVEN_SENTENCES, type StoppedOnALimit } from '../src/shared/tasks'
+import { derivePieces, UNDRIVEN_SENTENCES } from '../src/shared/tasks'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 
@@ -332,17 +325,6 @@ describe('F074 · a usage limit is named, and what the app would start waits for
 
   describe('§4 · the hold', () => {
     /** ⚑ A window: the one surface a person's words come through. */
-    class RecordingSink implements RuntimeEventSink {
-      readonly aPersonIsBehindIt = true
-      readonly messages: RuntimeEventMessage[] = []
-      alive = true
-      constructor(readonly ownerId: string) {}
-      send(message: RuntimeEventMessage): void {
-        this.messages.push(message)
-      }
-      sendLiveness(): void {}
-    }
-
     let userData: string
     let root: string
     let db: AppDatabase
@@ -372,9 +354,7 @@ describe('F074 · a usage limit is named, and what the app would start waits for
     function aHost(more: Partial<ConstructorParameters<typeof RuntimeHost>[0]> = {}): RuntimeHost {
       return new RuntimeHost({
         store,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(userData, 'exports'),
+        ...neutralHostDeps(() => userData),
         resourcesRoot: () => resourcesRoot(userData),
         createRuntime: (provider: Provider) =>
           new ProviderDouble(provider, handles, issued, anOpenGate()),
@@ -587,7 +567,7 @@ describe('F074 · a usage limit is named, and what the app would start waits for
       expect(host.limitsForAPerson().rows).toContainEqual(
         expect.objectContaining({
           provider: 'codex',
-          account: 'codex:fern-account',
+          account: 'codex:sign-in:fern-account',
           standing: 'stopped',
         }),
       )

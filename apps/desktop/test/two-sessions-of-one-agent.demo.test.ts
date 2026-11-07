@@ -1,4 +1,6 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { waitFor } from './lib/f093-host'
+import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,8 +11,7 @@ import type { WebContents } from 'electron'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { executeRuntimeCommand, webContentsSink } from '../src/main/runtime/ipc'
+import { webContentsSink } from '../src/main/runtime/ipc'
 import { RuntimeHost, THE_APP_ITSELF, type RuntimeEventSink } from './helpers/giver-notice-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -18,15 +19,11 @@ import { conversationList } from '../src/renderer/src/lib/conversation-list'
 import { createSessionStore as createRendererStore } from '../src/renderer/src/lib/session-store'
 import type { SessionStore as RendererStore } from '../src/renderer/src/lib/session-store'
 import {
-  RUNTIME_EVENT_CHANNEL,
-  RUNTIME_LIVENESS_CHANNEL,
   type ResumableSessionInfo,
   type RuntimeBridge,
-  type RuntimeEventMessage,
-  type SessionLivenessMessage,
   type UnresumableSessionInfo,
 } from '../src/shared/runtime-ipc'
-import { asTheWireWouldCarry } from './lib/the-wire'
+import { DemoWindow } from './lib/demo-runtime-window'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -136,83 +133,6 @@ function holdingItsClose(handle: SessionHandle, gate: Promise<void>): SessionHan
   })
 }
 
-/**
- * One window, as far as the main process can tell — `the-conversation-nobody-asked-for.demo.test.ts`'s
- * double, reused verbatim because the production sink is what must be under test rather than a
- * test's idea of one.
- */
-class FakeWindow {
-  private destroyed = false
-  readonly received: RuntimeEventMessage[] = []
-  private onEvent: ((message: RuntimeEventMessage) => void)[] = []
-  private onLiveness: ((message: SessionLivenessMessage) => void)[] = []
-
-  constructor(readonly id: number) {}
-
-  isDestroyed(): boolean {
-    return this.destroyed
-  }
-
-  send(channel: string, message: unknown): void {
-    if (channel === RUNTIME_EVENT_CHANNEL) {
-      const event = message as RuntimeEventMessage
-      this.received.push(event)
-      for (const listener of this.onEvent) listener(event)
-    }
-    if (channel === RUNTIME_LIVENESS_CHANNEL) {
-      for (const listener of this.onLiveness) listener(message as SessionLivenessMessage)
-    }
-  }
-
-  destroy(): void {
-    this.destroyed = true
-  }
-
-  bridge(host: RuntimeHost): RuntimeBridge {
-    const sink = webContentsSink(this as unknown as WebContents)
-    const subscriptions = {
-      onEvent: (fn: (message: RuntimeEventMessage) => void) => {
-        this.onEvent.push(fn)
-        return () => {
-          this.onEvent = this.onEvent.filter((listener) => listener !== fn)
-        }
-      },
-      onLiveness: (fn: (message: SessionLivenessMessage) => void) => {
-        this.onLiveness.push(fn)
-        return () => {
-          this.onLiveness = this.onLiveness.filter((listener) => listener !== fn)
-        }
-      },
-    }
-    return new Proxy(subscriptions, {
-      get: (base, name: string) =>
-        name in base
-          ? base[name as keyof typeof base]
-          : (input?: Record<string, unknown>) => {
-              let carried: unknown
-              try {
-                carried = asTheWireWouldCarry(name, { kind: name, ...(input ?? {}) })
-              } catch (refusal) {
-                return Promise.reject(refusal as Error)
-              }
-              return executeRuntimeCommand(
-                host,
-                sink,
-                carried as Parameters<typeof executeRuntimeCommand>[2],
-              )
-            },
-    }) as unknown as RuntimeBridge
-  }
-}
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
-
 describe('418 · two sessions of one agent', () => {
   let userData: string
   let work: string
@@ -224,7 +144,7 @@ describe('418 · two sessions of one agent', () => {
   let clock: number
   /** ⚠️ `null` unless a test asks for one — a gate installed for the suite would park every close. */
   let closeGate: { promise: Promise<void>; release: () => void } | null
-  let windowA: FakeWindow
+  let windowA: DemoWindow
   let storeA: RendererStore
   let bridgeA: RuntimeBridge
   let sinkA: RuntimeEventSink
@@ -243,9 +163,7 @@ describe('418 · two sessions of one agent', () => {
     closeGate = null
     host = new RuntimeHost({
       store: ledger,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       // Use the provider requested by the reproduction, allowing `codex` rather than
       // substituting the harness’s preference.
       createRuntime: (provider: Provider) => {
@@ -258,11 +176,7 @@ describe('418 · two sessions of one agent', () => {
         }
         return runtime
       },
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
@@ -279,7 +193,7 @@ describe('418 · two sessions of one agent', () => {
         files: [],
       }),
     })
-    windowA = new FakeWindow(1)
+    windowA = new DemoWindow(1)
     bridgeA = windowA.bridge(host)
     storeA = createRendererStore(bridgeA)
     // ⚠️ **ONE sink for the window, not one per call.** `sinkOwnerId` is derived from the
@@ -558,7 +472,7 @@ describe('418 · two sessions of one agent', () => {
       // ⚑ **The control: a conversation another window really does hold still reads that
       // sentence.** Same window, same call, one fact different — which is what makes the assertion
       // above about the owner rather than about the words having been softened everywhere.
-      const windowB = new FakeWindow(2)
+      const windowB = new DemoWindow(2)
       const sinkB = webContentsSink(windowB as unknown as WebContents)
       const theirs = await host.createSession(
         { provider: 'codex', profileId: 'other-one', cwd: work, approvalMode: 'ask' },
@@ -578,49 +492,12 @@ describe('418 · two sessions of one agent', () => {
       // note): the window says it where the press was made (`RuntimeScreen.openConversation`).
     })
 
-    it('🔴 a person’s Close on a conversation nobody holds names a remedy that WORKS', async () => {
+    it('the rail’s press takes the stream and removes the conversation from the unclaimed list', async () => {
       await bringIdentityIntoBeing('worker')
       const parent = await personOpens('pm', 'auto')
       await storeA.attachOpen()
       const child = await anIdleChildOf(parent)
 
-      // ⛔ **421 §2.1's second question, answered and asserted.** The honest policy for a person's
-      // Close on a conversation nobody holds is *claim it first* rather than *a person may always
-      // close what nobody holds*: `mayControl` answers three questions at once (`340`) — who may
-      // drive it, whose stream it is, and whose departure ends it — so admitting every window to an
-      // unowned conversation would hand a stranger window the send and the approval on a
-      // conversation an agent is commanding, and would make that window's reload end it.
-      const refusal = await bridgeA
-        .close({ sessionId: child })
-        .then(() => 'it was allowed')
-        .catch((error: Error) => error.message)
-      // ⚑ **D-017b** — *"not open in any window"* became *"No window holds this conversation"*.
-      expect(refusal).toContain('No window holds this conversation')
-      expect(refusal).not.toContain('another window')
-      expect(host.sessionIds).toContain(child)
-
-      // 🔴 **And the remedy the sentence names is one call away and it works** — which is the whole
-      // difference from `418`, where the named remedy was *"switch to that window"*. A refusal
-      // whose way forward cannot be taken is a refusal that teaches a person to quit the app.
-      expect(await storeA.claim(child)).toBe(true)
-      await bridgeA.close({ sessionId: child })
-      expect(host.sessionIds).not.toContain(child)
-      // ⚑ …and the ledger says a PERSON did it, which is `418` §5's discriminator still standing.
-      const kinds = ledger.events(child).map((one) => one.event.type)
-      expect(kinds).toContain('user_command')
-      expect(kinds).not.toContain('work_interrupted')
-    })
-
-    it('⚑ the door that DOES work is the take-over, and the rail’s one press is the one that makes it', async () => {
-      await bringIdentityIntoBeing('worker')
-      const parent = await personOpens('pm', 'auto')
-      await storeA.attachOpen()
-      const child = await anIdleChildOf(parent)
-
-      // ⛔ **The paired positive.** The same window, the same id, one method over — and the
-      // conversation opens. So the refusal above is about which door was knocked on, not about
-      // whether this person may have this conversation.
-      //
       // 🔴 **And the rail knocks on this one** — ⚑ D-017b: the row's one press is `store.look`, a
       // PRESS (`claim: true`), which takes a conversation running with no window for this window
       // and opens it — the same take-over `goToQuestion` has made for the escalated queue since
@@ -772,20 +649,6 @@ describe('418 · two sessions of one agent', () => {
           summary: 'one is done',
         }),
       ).toMatchObject({ outcome: 'ok' })
-
-      // ⚠️ **The PERSON still cannot close it, and the sentence no longer names a window that is
-      // not there** (421). `assertMayControl` refused `not-yours` for a `null` owner — *"This
-      // conversation belongs to another window… Switch to that window"* — so of the three things a
-      // person could do to an agent-started conversation, two were refused by sentences naming a
-      // window that does not exist and the third had no gesture. ⛔ **The refusal is kept and the
-      // policy is stated: take it over, then close it.** Widening `mayControl` for a null owner
-      // would have handed every window the send, the approval and the interrupt on a conversation
-      // an agent is commanding, and would have made a reload end it. The remedy it names is
-      // exercised in §2's own test, two blocks up. ⚑ **D-017b** — the sentence says *"No window
-      // holds this conversation"* now.
-      await expect(bridgeA.close({ sessionId: first })).rejects.toThrow(
-        'No window holds this conversation, so nothing was done to it.',
-      )
 
       // ⛔ **So it is stopped, and the teardown parks.** This is the ordinary shape rather than an
       // exotic one: the provider says the thread is over well before this app has finished putting

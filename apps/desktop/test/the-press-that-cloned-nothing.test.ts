@@ -1,3 +1,10 @@
+import type {
+  LedgerWalk,
+  PersonsDecision,
+  PersonsQuestion,
+  RoutedRequest,
+} from '../src/shared/question-contracts'
+import type { PersistedEventInfo } from '../src/shared/conversation-events'
 import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -26,15 +33,10 @@ import {
   chainReading,
   chainSentence,
   escalationChain,
-  type LedgerWalk,
-  type PersonsDecision,
-  type PersonsQuestion,
-  type RoutedRequest,
   aPersonsSince,
 } from '../src/shared/questions'
 import type {
   AnswerAck,
-  PersistedEventInfo,
   ResumedSession,
   RuntimeBridge,
   RuntimeEventMessage,

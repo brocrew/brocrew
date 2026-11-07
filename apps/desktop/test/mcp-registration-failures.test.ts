@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { createServer, type Server } from 'node:http'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -16,7 +17,6 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { registerRuntimeIpc } from '../src/main/runtime/ipc'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { createAgentStore, type AgentStore } from '../src/renderer/src/lib/agent-store'
 import { RUNTIME_COMMAND_CHANNEL, type RuntimeBridge } from '../src/shared/runtime-ipc'
@@ -45,9 +45,7 @@ beforeEach(() => {
   const store = createSessionStore(db)
   host = new RuntimeHost({
     store,
-    discoverSessions: NO_DISCOVERY,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => join(folder, 'exports'),
+    ...neutralHostDeps(() => folder),
     createRuntime: (provider) => new FakeRuntime(provider),
     prepareProviderHome: () => join(folder, 'fictional-provider-home'),
     providerHomePath: () => join(folder, 'fictional-provider-home'),

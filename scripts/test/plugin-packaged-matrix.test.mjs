@@ -15,7 +15,8 @@ import {
   safeMatrixReceipt,
   baselineSurvived,
 } from '../gates/plugin-packaged/matrix.mjs'
-import { safeReport, requireCI } from '../gates/plugin-packaged/contract.mjs'
+import { safeReport } from '../gates/plugin-packaged/contract.mjs'
+import { requireCI } from '../gates/plugin-packaged/fixture-guards.mjs'
 import { closedFrames, appStderrClassifier } from '../gates/plugin-packaged/diagnostics.mjs'
 
 const context = {

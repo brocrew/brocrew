@@ -3,21 +3,9 @@ import { PROVIDER_HOMES_DIRNAME } from '../runtime/provider-homes'
 import type { RestoreRule } from './contract'
 import { BACKUPS_DIRNAME, DATABASE_FILE, RECOVERY_DIRNAME, familyOf } from './layout'
 
-/**
- * Every name the app writes directly in its data folder, sorted into the state a checkpoint copies
- * beside the database and everything else, each with the reason. A test reads the source for every
- * name joined to the data folder and fails on one in neither list, so a new state file needs a
- * decision here before it can ship.
- */
-
 export interface AppStateFile {
   readonly name: string
   readonly kind?: 'tree'
-  /**
-   * `with-the-database`: a restore installs the checkpoint's copy with the database and sets the
-   * live one aside with the newer database. `kept-current`: copied too, but a restore leaves the
-   * live one as it is.
-   */
   readonly restore: RestoreRule
   readonly why: string
 }
@@ -174,11 +162,7 @@ export const NOT_STATE: readonly NotState[] = [
       'data; never copied or restored, and a reset may drop it.',
   },
   { name: 'updates', why: 'Downloaded updates and their private staging files, not state.' },
-  { name: 'one-host.sock', why: 'The live socket that keeps one app on this folder.' },
-  {
-    name: '.oh-*',
-    why: 'The private socket name used while claiming one-host.sock, removed at once.',
-  },
+  { name: 'one-host.sock', why: 'The live socket that reports whether this workspace is open.' },
   { name: BACKUPS_DIRNAME, why: "The workspace's own recovery copies." },
   {
     name: RECOVERY_DIRNAME,

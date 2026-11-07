@@ -48,6 +48,16 @@ const chatRenderer = new MarkdownIt({
 })
 chatRenderer.linkify.set({ fuzzyLink: false, fuzzyEmail: false })
 
+const inlineCode = chatRenderer.renderer.rules.code_inline!
+chatRenderer.renderer.rules.code_inline = (tokens, index, options, env, self) => {
+  const code = inlineCode(tokens, index, options, env, self)
+  const next = tokens[index + 1]
+  const punctuation = next?.type === 'text' ? /^[.,;:!?…]+(?=\s|$)/u.exec(next.content)?.[0] : null
+  if (!punctuation || !next) return code
+  next.content = next.content.slice(punctuation.length)
+  return `<span class="md-code-punctuation">${code}${chatRenderer.utils.escapeHtml(punctuation)}</span>`
+}
+
 /** Join punctuation escapes before linking bare labels, so file paths keep their meaning. */
 chatRenderer.core.ruler.after('text_join', 'work-label-links', (state) => {
   for (const block of state.tokens) {
@@ -106,7 +116,7 @@ for (const md of [renderer, chatRenderer]) {
 
 /** Windows destinations keep separators that CommonMark would treat as punctuation escapes. */
 const A_WINDOWS_PATH = /^(?:[A-Za-z]:\\|\\\\)/
-export const LOCAL_LINK_ATTRIBUTE = 'data-local-path'
+const LOCAL_LINK_ATTRIBUTE = 'data-local-path'
 export const LOCAL_LINK_START = '<!--local-file:'
 export const LOCAL_LINK_END = '<!--/local-file:'
 export const LOCAL_LABEL_END = '<!--/local-file-label:'
@@ -426,8 +436,11 @@ export function renderMarkdown(source: string): string {
 }
 
 /** What an agent said, in the conversation stream. */
-export function renderChatMarkdown(source: string): string {
-  return chatRenderer.render(source)
+export function renderChatMarkdown(source: string, lead?: string): string {
+  const html = chatRenderer.render(source)
+  if (!lead) return html
+  const label = `<span class="md-lead">${chatRenderer.utils.escapeHtml(lead)}</span>`
+  return html.startsWith('<p>') ? `<p>${label} ${html.slice(3)}` : `<p>${label}</p>\n${html}`
 }
 
 /** One short plain preview, parsed by the same markdown library as the full words. */

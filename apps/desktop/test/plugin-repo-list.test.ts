@@ -1,15 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { parseRepoPluginList, loadRepoPluginList } from '../src/main/plugins/catalogue/repo-list'
 import { PLUGIN_LIST_URL } from '../src/main/plugins/catalogue/download'
-import {
-  createPluginVerifier,
-  createRepoAwarePluginVerifier,
-} from '../src/main/plugins/package-verifier'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
+import { createRepoAwarePluginVerifier } from '../src/main/plugins/package-verifier'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { downloadPluginArchive } from '../src/main/plugins/lifecycle/download'
 import { fixture, projection, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
-import { packageFixture, fictionalPublicKey } from './plugin-package-fixtures'
+import { packageFixture } from './plugin-package-fixtures'
 import { PluginPackageVault } from '../src/main/plugins/lifecycle/vault'
 import { repoListFor } from './plugin-repo-list-fixtures'
 const target = { os: 'linux', cpu: 'x64' } as const
@@ -39,21 +36,11 @@ describe('fixed repository plugin list, no signing key', () => {
     list.entries[0]!.targets[0]!.url = url
     expect(() => parseRepoPluginList(Buffer.from(JSON.stringify(list)), target, '1.0.0')).toThrow()
   })
-  it('repo authority pins exact admitted bytes and never weakens the dormant signed verifier', () => {
+  it('validates unsigned catalogue metadata and refuses malformed bytes', () => {
     const bytes = packageFixture().bytes
-    const verifier = createRepoAwarePluginVerifier({
-      pinnedPublicKey: null,
-      target,
-      repoCatalogueSha256: pluginSha256(bytes),
-    })
-    expect(verifier.verifyCatalogue(bytes, Buffer.alloc(0)).entries).toHaveLength(1)
-    expect(() => verifier.verifyCatalogue(Buffer.from('{}'), Buffer.alloc(0))).toThrow()
-    expect(() =>
-      createPluginVerifier({ pinnedPublicKey: fictionalPublicKey, target }).verifyCatalogue(
-        bytes,
-        Buffer.alloc(0),
-      ),
-    ).toThrow()
+    const verifier = createRepoAwarePluginVerifier({ target })
+    expect(verifier.verifyCatalogue(bytes).entries).toHaveLength(1)
+    expect(() => verifier.verifyCatalogue(Buffer.from('{}'))).toThrow()
   })
 })
 describe.skipIf(process.platform === 'win32')(
@@ -77,14 +64,27 @@ describe.skipIf(process.platform === 'win32')(
       })
       const controller = await PluginLifecycleController.open({
         ...f.opts,
-        pinnedPublicKey: null,
         repoCatalogueSha256: loaded.sha256,
-        catalogue: { bytes: loaded.bytes, signature: Buffer.alloc(0) },
+        catalogue: { bytes: loaded.bytes },
         download: downloadPluginArchive,
       })
       const handle = await controller.attach(projection().sink)
       return { f, loaded, controller, handle, fetch }
     }
+    it('refuses changed app-admitted catalogue bytes before exposing a controller', async () => {
+      const f = await fixture()
+      const changed = Buffer.from(f.pkg.bytes.toString() + ' ')
+      await expect(
+        PluginLifecycleController.open({
+          ...f.opts,
+          repoCatalogueSha256: pluginSha256(f.pkg.bytes),
+          catalogue: { bytes: changed },
+        }),
+      ).rejects.toMatchObject({ code: 'unavailable' })
+      expect(f.starts()).toBe(0)
+      expect(f.downloads()).toBe(0)
+      expect(f.state.inspect().pending).toBeNull()
+    })
     it('reads only the fixed list and installs after one call with no key, signature or extra confirmation', async () => {
       const { f, controller, handle, fetch } = await setup()
       await expect(controller.install(handle, 'chrome')).resolves.toBeUndefined()
@@ -102,22 +102,15 @@ describe.skipIf(process.platform === 'win32')(
     it('an installed archive remains bound to its installation pins when list metadata changes', async () => {
       const { f, loaded } = await setup()
       const release = loaded.releases[0]!
-      const vault = new PluginPackageVault(f.root, null, f.opts.target, loaded.sha256)
-      await vault.stage(
-        release,
-        f.pkg.archive,
-        { bytes: loaded.bytes, signature: Buffer.alloc(0) },
-        [],
-      )
+      const vault = new PluginPackageVault(f.root, f.opts.target)
+      await vault.stage(release, f.pkg.archive, { bytes: loaded.bytes })
       const changed = repoListFor(f.pkg.release, 'Chrome')
       changed.entries[0]!.description = 'Fictional revised description.'
       const next = parseRepoPluginList(Buffer.from(JSON.stringify(changed)), f.opts.target, '1.0.0')
       expect(next.sha256).not.toBe(loaded.sha256)
-      const reopened = new PluginPackageVault(f.root, null, f.opts.target, next.sha256)
-      expect((await reopened.load(release, [])).manifest.id).toBe('chrome')
-      await expect(
-        reopened.load({ ...release, manifestSha256: '0'.repeat(64) }, []),
-      ).rejects.toThrow()
+      const reopened = new PluginPackageVault(f.root, f.opts.target)
+      expect((await reopened.load(release)).manifest.id).toBe('chrome')
+      await expect(reopened.load({ ...release, manifestSha256: '0'.repeat(64) })).rejects.toThrow()
     })
     it('a wrong archive hash never starts a run and leaves no active or half-finished install', async () => {
       const { f, controller, handle } = await setup(true)

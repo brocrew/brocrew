@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
 import { parseColour } from '../../src/shared/themes/colour'
-import { DEFAULT_SEEDS } from '../../src/shared/themes/contrast'
+import { DEFAULT_SEEDS } from '../../src/shared/themes/derive'
 import { deriveZone } from '../../src/shared/themes/derive'
 import { resolveTheme, type Theme } from '../../src/shared/themes/theme'
 import { validateTheme } from '../../src/shared/themes/validate'
@@ -11,13 +11,6 @@ import DEFINED_FILE from '../../resources/themes/defined/theme.json'
 import SYNTHWAVE from '../../resources/themes/synthwave/theme.json'
 import { mount, paneProps, unmountAll } from './harness'
 
-/**
- * A conversation under a theme paints that theme's page: the colour worked out from its content
- * ink, paper and page depth, flat. Classic alone draws its network over the page. A theme that
- * sets a conversation background of its own paints it there.
- */
-
-/** The shipped base, read as the app's own host reads it. */
 const BASE = (() => {
   const base = validateTheme(DEFINED_FILE, {
     assets: new Map(),
@@ -28,10 +21,6 @@ const BASE = (() => {
   return base.theme
 })()
 
-/**
- * A shipped theme, resolved over its base. Its pictures are read and checked with the files they
- * come from in `the-themes-the-app-ships-are-valid.test.ts`; a page here has no folder to read.
- */
 function shipped(file: unknown): Theme {
   const theme = file as Theme
   return theme.extends ? resolveTheme(theme, BASE) : theme
@@ -42,7 +31,6 @@ canvas.width = 1
 canvas.height = 1
 const ctx = canvas.getContext('2d', { willReadFrequently: true })!
 
-/** The sRGB bytes a computed colour paints. */
 function bytes(computed: string): [number, number, number] {
   ctx.clearRect(0, 0, 1, 1)
   ctx.fillStyle = '#000'
@@ -55,7 +43,6 @@ function bytes(computed: string): [number, number, number] {
 const near = (a: [number, number, number], b: [number, number, number]): boolean =>
   a.every((x, i) => Math.abs(x - b[i]!) <= 2)
 
-/** The page the theme check measures for `theme`: its content seeds, through the derivation. */
 function page(theme: Theme): [number, number, number] {
   const c = { ...DEFAULT_SEEDS.content, ...theme.content }
   const p = deriveZone({
@@ -70,7 +57,6 @@ function page(theme: Theme): [number, number, number] {
   return [Math.round(p.r), Math.round(p.g), Math.round(p.b)]
 }
 
-/** The conversation's own surface, mounted, and what it paints. */
 function conversation(): { color: [number, number, number]; image: string } {
   const m = mount(ConversationPane, paneProps(), { width: 900, height: 600 })
   const style = getComputedStyle(m.host.querySelector('.conversation-pane')!)
@@ -79,7 +65,6 @@ function conversation(): { color: [number, number, number]; image: string } {
   return out
 }
 
-/** A token as the frame paints it. */
 function frame(token: string): [number, number, number] {
   const el = document.createElement('i')
   el.style.color = `var(${token})`
@@ -101,7 +86,7 @@ const THEMES = {
 }
 
 describe('a conversation paints its theme’s page', () => {
-  it('⚑ classic: its own page, with its network drawn over it', () => {
+  it('classic: its own page, with its network drawn over it', () => {
     const { image } = conversation()
     expect(image).toMatch(/^url\("data:image\/svg\+xml/)
   })

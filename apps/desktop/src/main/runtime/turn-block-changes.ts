@@ -8,7 +8,7 @@ import {
 
 export const TURN_HELPER_OWNERS = 32
 export const TURN_HELPER_PIECES = 256
-export const TURN_HELPER_LINES = 5
+const TURN_HELPER_LINES = 5
 
 export interface TurnBlockSnapshot {
   readonly helpers: ReadonlyMap<string, string>

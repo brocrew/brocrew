@@ -1,9 +1,8 @@
 import type { RulesAuthor, WhoWroteIt } from './own-instructions'
 
-/** Both values describe the rules the caller read before attempting a replacement. */
+/** The version describes the rules the caller read before attempting a replacement. */
 export interface RulesBaseline {
   readonly expectedVersion: number
-  readonly currentText: string
 }
 
 export interface AgentRulesWrite extends RulesBaseline {

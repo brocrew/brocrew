@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -8,8 +9,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
@@ -22,7 +22,6 @@ import {
   writeKeptAccounts,
 } from '../src/main/provider-accounts-file'
 import { APP_STATE_FILES, NOT_STATE } from '../src/main/recovery/state-files'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 
 /**
@@ -43,17 +42,6 @@ import { ProviderDouble, anOpenGate } from './lib/provider-double'
  */
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 const HOUR = 60 * 60_000
 const WEEK = 7 * 24 * HOUR
@@ -85,16 +73,10 @@ describe('a usage reading belongs to the account it was read on', () => {
     const issued = new FakeProviderSessions()
     return new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new ProviderDouble(provider, handles, issued, anOpenGate()),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${String(++counter)}`,
@@ -441,9 +423,11 @@ describe('a usage reading belongs to the account it was read on', () => {
     it('⚑ the id is not made from the email: the same account, named afresh, gets another id', async () => {
       await reading(await openOn(ONE, ACCOUNT_A), weekly(82))
       const first = readKeptAccounts(providerAccountsFile(userData)).claude?.id
+      await host.closeAll()
       rmSync(providerAccountsFile(userData))
       rmSync(providerUsageFile(userData))
-      await restart()
+      clock += 25 * 60_000
+      host = hostOn()
       await reading(await openOn(ONE, ACCOUNT_A), weekly(82))
       const second = readKeptAccounts(providerAccountsFile(userData)).claude?.id
       expect(second).toMatch(AN_ACCOUNT_ID)

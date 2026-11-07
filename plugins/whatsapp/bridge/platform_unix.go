@@ -7,9 +7,6 @@ import (
 	"syscall"
 )
 
-// privateFiles makes every file and folder the bridge creates owner-only.
-func privateFiles() { syscall.Umask(0o077) }
-
 // openNoFollow opens name, refusing a link in its last part.
 func openNoFollow(name string, flag int, perm os.FileMode) (*os.File, error) {
 	return os.OpenFile(name, flag|syscall.O_NOFOLLOW, perm)

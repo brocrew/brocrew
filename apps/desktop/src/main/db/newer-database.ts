@@ -2,26 +2,6 @@ import type { Migration } from '../recovery/contract'
 import { lineageFit, migrationsRecordedIn, type BuildMigration } from '../recovery/database-facts'
 import type { AppDatabase } from './connection'
 
-/**
- * A build refuses a database a newer build migrated, one whose migration record it cannot read, and
- * one its own migrations do not lead to.
- *
- * Drizzle's migrator applies only the migrations later than the latest one the database records
- * (`drizzle-orm` `sqlite-core/dialect.js`: `lastDbMigration.created_at < migration.folderMillis`).
- * So an older build meeting a database a newer build migrated would apply nothing, say nothing, and
- * run on a schema it does not know: reading columns that moved, and writing rows the newer build
- * will misread. And a database whose record names migrations this build does not carry, at earlier
- * times, would have this build's later ones applied over a schema they were not written for.
- *
- * The record is read, and weighed against this build's migrations, by the rules the start-up check
- * reads a database file by (`recovery/database-facts.ts`): tables with no migration record, or a row
- * that cannot be read, is unreadable. A database whose latest migration is later than this build's
- * newest is newer. Any other must have applied this build's first migrations, by time and by hash.
- *
- * The start-up check (`recovery/coordinator.ts`) refuses all of these before anything opens the
- * database; this is the same rule at the open itself, for a database that changed in between.
- */
-
 /** Migrations, counted, with the latest one's time: a build's or a database's. */
 export interface Migrations {
   readonly count: number
@@ -120,12 +100,6 @@ export class UnreadableDatabaseError extends Error {
   }
 }
 
-/**
- * Open the database, or refuse it: the one step `initDatabase` takes before any migration. A
- * database this build fits opens as it always has. A newer one, or one whose record cannot be read
- * or does not lead to this build, is closed and refused ({@link NewerDatabaseError},
- * {@link UnreadableDatabaseError}).
- */
 export function openOrRefuse(
   database: AppDatabase,
   build: readonly BuildMigration[],

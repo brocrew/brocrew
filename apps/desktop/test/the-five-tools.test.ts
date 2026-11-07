@@ -1,3 +1,5 @@
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -16,7 +18,6 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { CAPABILITY_FIELDS } from '../src/shared/capabilities'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
@@ -40,7 +41,6 @@ import {
   DEFAULT_PROFILE_ID,
   DEFAULT_PROFILE_LABEL,
   type RuntimeEventMessage,
-  type TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 
@@ -137,9 +137,7 @@ describe('347 · the five tools', () => {
     gate = null
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       // ⚑ A fresh adapter per launch sharing ONE session ledger — the shape a resume needs, and
       // what lets a gate be installed for one launch rather than for the whole suite.
       createRuntime: () =>
@@ -153,13 +151,7 @@ describe('347 · the five tools', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:1')
   })

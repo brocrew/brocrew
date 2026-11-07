@@ -240,7 +240,7 @@ const filesSaid = computed(() => {
   const count = handBack.value ? (card.value?.resources.length ?? 0) : 0
   return count === 0 ? null : count === 1 ? '1 file' : `${count} files`
 })
-/** Cards drawn folded to one line, their words in markdown. */
+/** Cards drawn folded to one line. */
 const folds = computed(() => agentCard.value || takeOn.value || handBack.value)
 
 /** ⚑ A give's card wears the send glyph: work handed over. */
@@ -345,7 +345,6 @@ async function takeItBack(piece: string): Promise<void> {
       :reading="question"
       :draft="draft"
       :paths="props.paths"
-      :markdown="questionFolds"
       :without-recipient="questionFolds"
       @answer="answer"
       @move="(decision) => asking !== null && emit('move', asking, decision)"
@@ -467,7 +466,6 @@ async function takeItBack(piece: string): Promise<void> {
       class="msg-body"
       data-cy="outgoing-readable"
       :parts="jsonParts"
-      :markdown="folds"
       :title="fullTime(item.at)"
     />
     <div
@@ -477,7 +475,7 @@ async function takeItBack(piece: string): Promise<void> {
       :data-cut="card.bodyIsCut"
       :title="fullTime(item.at)"
     >
-      <MarkdownWords v-if="view === 'readable' && folds" :text="card.body" />
+      <MarkdownWords v-if="view === 'readable'" :text="card.body" />
       <template v-else>{{ card.body }}</template>
     </div>
     <!-- 🔴 **678 · a cut body SAYS it was cut, in words and outside the message's box** — never

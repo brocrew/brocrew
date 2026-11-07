@@ -1,3 +1,5 @@
+import { pluginStartupTrace } from './plugins/startup-failure'
+import type { HandedPath } from '../shared/attachment-contracts'
 import { providerSetupServices } from './providers/program-compat'
 import { setupProcesses } from './provider-setup/process'
 import { registerProviderSetup } from './provider-setup/ipc'
@@ -13,6 +15,8 @@ import { PLUGIN_SCHEME } from './plugins/ui/assets'
 import { installPluginUiRpc } from './plugins/ui/host'
 import { ipcMain } from './app-ipc'
 import startStorageWorker from './storage.worker?nodeWorker'
+import startRecoveryVerifier from './recovery-verify.worker?nodeWorker'
+import { verifyInAWorker } from './recovery/copy-check'
 import { StorageService } from './storage/service'
 import { clearHttpCache, httpCacheFolder } from './storage/cache'
 import { registerStorageIpc } from './storage/ipc'
@@ -46,6 +50,7 @@ import { keptShippedSkills, prepareBuiltInSkills } from './skills/prepare-built-
 import { factoryTextOf, readTextPack } from './skills/text-pack'
 import { aStartAttemptsLog } from './start-attempts-log'
 import { broadcastRuntime } from './runtime/window-broadcast'
+import { changeNotices } from './runtime/change-notices'
 import { execFile, spawn } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, writeSync } from 'node:fs'
 import { inspect } from 'node:util'
@@ -68,12 +73,7 @@ import {
 import type { NativeImage, OpenDialogOptions, WebContents } from 'electron'
 import { providerRecord, SUPPORTED_PROVIDERS, appInfoSchema, type AppInfo } from '@brobot2/shared'
 import { withDeadline } from '@brobot2/runtime'
-import type {
-  ChosenAttachment,
-  ChosenCwd,
-  DroppedPathVerdict,
-  HandedPath,
-} from '../shared/runtime-ipc'
+import type { ChosenAttachment, ChosenCwd, DroppedPathVerdict } from '../shared/runtime-ipc'
 import {
   APP_CLOSING_CHANNEL,
   BUNDLE_SUFFIX,
@@ -81,7 +81,6 @@ import {
   PROVIDERS_CHANGED_CHANNEL,
   RUNTIME_CHANGED_CHANNEL,
   RUNTIME_STATES_CHANNEL,
-  type RuntimeChangeSubject,
 } from '../shared/runtime-ipc'
 import { buildBranches, buildIdentity, shownVersion } from './build-identity'
 import { LIMITS_DISPLAY_CHANGED_CHANNEL } from '../shared/limits-display'
@@ -98,7 +97,7 @@ import { startWorkSearch } from './db/start-work-search'
 import { startPastWorkSearch } from './db/start-past-work-search'
 import { createAppLifetime } from './app-lifetime'
 import { armLastResortExit } from './last-resort-exit'
-import { ownershipFrom, runAsSoleInstance, type OwnershipAsked } from './single-instance'
+import { runAsSoleInstance } from './single-instance'
 import {
   KEPT_OUT_OF_SIGHT,
   keepOutOfSight,
@@ -107,7 +106,7 @@ import {
   PERSONS_TITLE,
   windowTitleFor,
 } from './launch-presentation'
-import { claimSoleHost, type HostGateVerdict } from './one-host-gate'
+import { publishWorkspacePresence, type HostGateVerdict } from './one-host-gate'
 import {
   AGENTS_LINE_LAG_MS,
   AGENTS_MEMORY_STEP_BYTES,
@@ -119,7 +118,7 @@ import {
   whatTheAppItselfHolds,
 } from './memory-watch'
 import { logWhenThePageStopsAnswering } from './page-answers'
-import { aStallLog } from './stall-log'
+import { aDiagnosticsSink, type DiagnosticsSink } from './diagnostics-sink'
 import { aPageReceipt, pageHeardSays, type PageReceipt } from './runtime/page-performance'
 import {
   MainThreadWork,
@@ -291,7 +290,6 @@ import {
   workspaceStartup,
   workspaceOf,
 } from './data-folder'
-import { whoMayReadTheDataFolder } from './data-folder-privacy'
 import { WorkspaceUnavailable } from './workspace-startup'
 import { nodeFs as recoveryFiles } from './recovery/files'
 
@@ -403,10 +401,44 @@ let saidItDidNotStart = false
 let saidOpenedForRecovery = false
 /** A failed start's stop of what it started, once begun; a quit's teardown waits for it. */
 let stoppingTheStart: Promise<void> | null = null
+/** Checks recovery copies in workers; the teardown ends any check under way before the data closes. */
+const recoveryCopyVerifier = verifyInAWorker((request) =>
+  startRecoveryVerifier({
+    workerData: request,
+    resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
+  }),
+)
+/** Recovery operations admitted before quit, including their unfinished-copy cleanup. */
+const recoveryWork = new Set<Promise<unknown>>()
+let stoppingRecoveryWork: Promise<void> | null = null
+
+/** Admit recovery work only while this process still accepts it. */
+function withRecoveryWork<T>(work: () => Promise<T>): Promise<T> {
+  if (stoppingRecoveryWork !== null) {
+    return Promise.reject(new Error('BroCrew is closing, so recovery work cannot start'))
+  }
+  const admitted = Promise.resolve().then(work)
+  recoveryWork.add(admitted)
+  const finished = () => {
+    recoveryWork.delete(admitted)
+  }
+  void admitted.then(finished, finished)
+  return admitted
+}
+
+/** Stop checks first, then join the operations that release their unfinished folders. */
+function stopRecoveryWork(): Promise<void> {
+  stoppingRecoveryWork ??= (async () => {
+    await recoveryCopyVerifier.stop()
+    await Promise.allSettled([...recoveryWork])
+  })()
+  return stoppingRecoveryWork
+}
+
 /** A test's hidden launch keeps its recovery window instead of exiting (unpackaged builds only). */
 let keepTheRecoveryWindowHidden: boolean | null = null
 /** The one-app check's answer, asked again on a retry while it is still `unknown`. */
-let theOneAppAnswer: OwnershipAsked | null = null
+let theOneAppAnswer: HostGateVerdict = 'unknown'
 /** This build's migrations, read by the start-up check of a start that opens its data. */
 let thisBuildsMigrations: readonly BuildMigration[] | null = null
 
@@ -534,6 +566,7 @@ function initDatabase(): AppDatabase {
       return openDatabase(dbPath, existing ? { fileMustExist: true } : undefined)
     } catch (error) {
       existing?.assertDatabase()
+      if (existing) throw new WorkspaceUnavailable(dbPath, error)
       throw error
     }
   })()
@@ -545,7 +578,10 @@ function initDatabase(): AppDatabase {
     folder: app.getPath('userData'),
   })
   try {
-    applyMigrations(database, migrationsFolder)
+    // Timed apart: a slow migration before the window is not read as the runtime's work.
+    mainThreadWork.timed('database migrations before the window', () =>
+      applyMigrations(database, migrationsFolder),
+    )
   } catch (error) {
     try {
       database.close()
@@ -563,6 +599,11 @@ function initDatabase(): AppDatabase {
     if (compaction === 'compacted-log-held') {
       console.info('BroCrew gave its free database space back; its log file shrinks later')
     }
+    if (compaction === 'deferred-too-large') {
+      console.info(
+        'BroCrew kept its free database space: the file is too large to compact at launch',
+      )
+    }
     if (compaction === 'not-enough-disk') {
       console.warn('BroCrew kept its free database space: the disk has no room to compact it')
     }
@@ -576,7 +617,7 @@ function initDatabase(): AppDatabase {
   // Count a successful database open once, even if a provider or window fails later.
   recoveryStartRecorded = withRecoveryCopies(() =>
     recordSuccessfulStart(app.getPath('userData'), theBuildsMigrations(), {
-      ownership: theOneAppAnswer?.held() ?? 'unknown',
+      ownership: theOneAppAnswer,
       currentAppVersion: app.getVersion(),
     }),
   )
@@ -754,7 +795,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     Date.now,
     transcriptStartupWasInterrupted(store),
   ))
-  retention.start()
+  setImmediate(() => retention.start())
   // Recovery observes interrupted operations before any host door can remove their identity.
   let knowledgeChanged: (slug: string) => void = () => {}
   const methodKnowledge = await createSavedMethodService({
@@ -900,10 +941,10 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
       Object.values(providerModules).flatMap((module) => module.connections?.list() ?? []),
     // Derive the profile from the session; keep its provider home under `HOME_FOLDER`.
     beforeProviderLaunch: async () => {
-      await transcriptRetention?.beforeLaunch()
+      transcriptRetention?.beforeLaunch()
     },
     prepareProviderHome: async (provider, profileId) => {
-      await transcriptRetention?.beforeLaunch()
+      transcriptRetention?.beforeLaunch()
       return providerModules[provider].home.prepare(profileId)
     },
     prepareBuiltInSkills: ({ pack, ...input }) =>
@@ -1145,10 +1186,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     // ⚑ Sent by {@link sayWhatMovedToTheWindows}, one message per subject per turn of the loop: a
     // burst of wakes moves the same lists many times, and each message makes every window read them
     // again.
-    announce: (change) => {
-      if (movedSubjects.size === 0) setImmediate(sayWhatMovedToTheWindows)
-      movedSubjects.add(change.what)
-    },
+    announce: (change) => windowChangeNotices.announce(change),
     // 🔴 **D-019 · tell every window what the agents whose state moved are doing now, and which
     // files were kept** (D-026) — see `RUNTIME_STATES_CHANNEL`. ⚑ {@link sayWhatMovedToTheWindows}'s
     // loop, for its reasons: every window, each send guarded on its own, and both objects asked.
@@ -1187,6 +1225,8 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
           ),
   })
   knowledgeChanged = () => runtimeHost.agentKnowledgeChanged()
+  // Older questions' copies are filled in the background, a bounded slice at a time.
+  runtimeHost.fillQuestionCopies()
   return runtimeHost
 }
 
@@ -1249,27 +1289,24 @@ const CHOOSE_WORKSPACE_OPTIONS: OpenDialogOptions = {
  */
 const presentation = launchPresentation((name) => app.commandLine.hasSwitch(name))
 
-/** What moved since the windows were last told; told once the loop has finished its turn. */
-const movedSubjects = new Set<RuntimeChangeSubject>()
-
 /**
- * Tells every window what moved: every window rather than the focused one, each send guarded on its
- * own so a destroyed window cannot take the notice from the windows after it, and both objects
- * asked because a live `BrowserWindow` can hold a dead `webContents`.
+ * Tells every window what moved, once the loop has finished its turn: every window rather than the
+ * focused one, each send guarded on its own so a destroyed window cannot take the notice from the
+ * windows after it, and both objects asked because a live `BrowserWindow` can hold a dead
+ * `webContents`.
  */
-function sayWhatMovedToTheWindows(): void {
-  const moved = [...movedSubjects]
-  movedSubjects.clear()
-  for (const what of moved)
+const windowChangeNotices = changeNotices(
+  (message) =>
     broadcastRuntime(
       () => BrowserWindow.getAllWindows(),
       RUNTIME_CHANGED_CHANNEL,
-      { what },
+      message,
       (error) => console.error('BroCrew could not tell a window that something moved:', error),
       mainThreadWork,
       'window change broadcast',
-    )
-}
+    ),
+  (flush) => setImmediate(flush),
+)
 
 /** The main thread's work, timed as it runs, for the stall watch to name. */
 const mainThreadWork = new MainThreadWork()
@@ -1293,22 +1330,16 @@ let lookAtTheWindow: () => void = () => {}
 let thePageReceipt: PageReceipt | null = null
 
 /**
- * A stall's line, to the console and to `stalls.log` beside `memory.log`. A hidden launch (a test
- * or a smoke, loading the machine on purpose) writes to its console only.
+ * A stall's line, to the console and to `stalls.log` beside `memory.log`, written off this thread
+ * so a slow disk or console never lengthens the stall it reports. A hidden launch (a test or a
+ * smoke, loading the machine on purpose) writes to its console only.
  */
 function intoTheStallLog(line: string): void {
-  const said = `pid ${String(process.pid)}: ${line}`
-  console.warn(said)
-  if (presentation.hidden) return
-  try {
-    theStallLog ??= aStallLog(app.getPath('logs'))
-    theStallLog(`${new Date().toISOString()} ${said}`)
-  } catch {
-    // Diagnostics only: the console line stands.
-  }
+  theStallSink ??= aDiagnosticsSink({ logs: presentation.hidden ? null : app.getPath('logs') })
+  theStallSink.accept(`${new Date().toISOString()} pid ${String(process.pid)}: ${line}`)
 }
 
-let theStallLog: ((line: string) => void) | null = null
+let theStallSink: DiagnosticsSink | null = null
 
 /**
  * Suppress Electron's error modal on hidden launches by adding an `uncaughtException`
@@ -1395,7 +1426,7 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
     clearCache: () => clearHttpCache(storage, () => session.defaultSession.clearCache()),
     pruneBackups: () =>
       withRecoveryCopies(async () => {
-        if (!recoveryStartSucceeded || theOneAppAnswer?.held() !== 'sole')
+        if (!recoveryStartSucceeded || theOneAppAnswer !== 'sole')
           throw new StorageFailure('unavailable')
         let failed = false
         await prune(app.getPath('userData'), theBuildsMigrations(), {
@@ -1437,7 +1468,7 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
   ipcMain.handle(RECOVERY_RETENTION_CHANNELS.read, () =>
     withRecoveryCopies(() =>
       retainedCopyInfo(app.getPath('userData'), theBuildsMigrations(), {
-        ownership: theOneAppAnswer?.held() ?? 'unknown',
+        ownership: theOneAppAnswer,
         currentAppVersion: app.getVersion(),
       }),
     ),
@@ -1448,7 +1479,7 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
         !recoveryStartSucceeded ||
         typeof id !== 'string' ||
         !(await deleteRetainedCopy(app.getPath('userData'), theBuildsMigrations(), id, {
-          ownership: theOneAppAnswer?.held() ?? 'unknown',
+          ownership: theOneAppAnswer,
           currentAppVersion: app.getVersion(),
         }))
       )
@@ -1823,8 +1854,7 @@ function theRecoveryService(launchOwnership: HostGateVerdict): RecoveryService {
   existing?.assertDatabase()
   const { commit } = buildIdentity()
   const userData = app.getPath('userData')
-  const asker = ownershipFrom(launchOwnership, () => claimSoleHost(userData))
-  theOneAppAnswer = asker
+  theOneAppAnswer = launchOwnership
   const deps: CoordinatorDeps = {
     userData,
     buildMigrationsFolder: resolveMigrationsFolder(),
@@ -1837,10 +1867,11 @@ function theRecoveryService(launchOwnership: HostGateVerdict): RecoveryService {
           fs: { ...recoveryFiles, mkdir: existing.mkdir.bind(existing) },
         }
       : {}),
-    ownership: asker.ask,
+    ownership: () => Promise.resolve(launchOwnership),
     log: sayAtOnce,
     working: (what) => sayWorkingIfItTakesLong(what),
     progress: (done, total) => recoveryCalls?.progress(done, total),
+    verifyCopy: recoveryCopyVerifier.verify,
   }
   const asked = app.commandLine.getSwitchValue(RECOVERY_FAULT_SWITCH)
   if (asked === '') return createRecoveryService(deps)
@@ -1870,7 +1901,7 @@ async function theVerdictBeforeTheData(launchOwnership: HostGateVerdict): Promis
   recoveryService = service
   checkingTheData = true
   try {
-    const verdict = await service.inspect()
+    const verdict = await withRecoveryWork(() => service.inspect())
     workspaceStartup(app)?.assertDatabase()
     // The open reads the database against the same migrations, to refuse one that changed since.
     if (verdict.kind === 'open') {
@@ -2075,13 +2106,15 @@ function showRecovery(verdict: StartupVerdict): void {
     recoveryCalls = createRecoveryCalls({
       // A retry reads the data only once a failed start has stopped writing it.
       service: {
-        inspect: () => service.inspect(),
-        restore: (checkpointId, progress) => service.restore(checkpointId, progress),
-        returnToNewer: (progress) => service.returnToNewer(progress),
-        retry: async () => {
-          await stoppingTheStart
-          return service.retry()
-        },
+        inspect: () => withRecoveryWork(() => service.inspect()),
+        restore: (checkpointId, progress) =>
+          withRecoveryWork(() => service.restore(checkpointId, progress)),
+        returnToNewer: (progress) => withRecoveryWork(() => service.returnToNewer(progress)),
+        retry: () =>
+          withRecoveryWork(async () => {
+            await stoppingTheStart
+            return service.retry()
+          }),
       },
       verdict,
       openReader: (database) => createHistoryReader(database),
@@ -2160,7 +2193,7 @@ async function letGoOfOldCopies(): Promise<void> {
     try {
       await recoveryStartRecorded
       const removed = await prune(app.getPath('userData'), theBuildsMigrations(), {
-        ownership: theOneAppAnswer?.held() ?? 'unknown',
+        ownership: theOneAppAnswer,
         currentAppVersion: app.getVersion(),
       })
       if (removed.length > 0) {
@@ -2173,13 +2206,17 @@ async function letGoOfOldCopies(): Promise<void> {
 }
 
 /**
- * Ends this process: at once with `code` when the start opened nothing, else through the ordinary
- * teardown, which closes the host and the database in their order, and whose last step exits with
- * code 1 for a start that did not finish.
+ * Ends this process after recovery work releases its copies when the start opened nothing, else
+ * through the ordinary teardown, which closes the host and the database in their order, and whose
+ * last step exits with code 1 for a start that did not finish.
  */
 function endTheProcess(code: number): void {
   if (host === null && db === null) {
-    app.exit(code)
+    void stopRecoveryWork()
+      .then(() => app.exit(code))
+      .catch((error: unknown) => {
+        sayAtOnce(`BroCrew could not finish its recovery work before closing: ${inspect(error)}`)
+      })
     return
   }
   app.quit()
@@ -2332,6 +2369,10 @@ function startTheDockLabel(): void {
 function start(ownership: HostGateVerdict): void {
   // Only the one app on this data may change which agents are services.
   soleAtThisLaunch = ownership === 'sole'
+  // Presence is for the workspace chooser and deletion check; it does not decide ownership.
+  void publishWorkspacePresence(app.getPath('userData')).catch((error: unknown) =>
+    console.warn('BroCrew could not announce this open workspace:', error),
+  )
 
   // The teardown's two entrances. Registered here rather than at module scope so that a second
   // launch — which has nothing to tear down and no database to close — never gets a `before-quit`
@@ -2353,17 +2394,8 @@ function start(ownership: HostGateVerdict): void {
     .then(async () => {
       // Set the icon before the hidden launch's `hide()`, so hiding remains the final Dock action.
       if (!app.isPackaged) showTheLogoInTheDock()
-      // Hide test launches from the Dock and application switcher too; an unshown window alone
-      // can still make Electron a foreground app. `app.dock` is macOS-only.
       if (presentation.hidden) app.dock?.hide()
-      // Install the document's policy before loading it. Vite's HTTP responses pass through here;
-      // packaged `file://` loads may not, so the built HTML also carries a policy `<meta>`.
-      // Both derive the same value from `rendererCsp` (`electron.vite.config.ts`). Installed before
-      // the start-up check, so the recovery window's document is held to it too.
       installCspHeaders(session.defaultSession.webRequest, rendererCsp(isDevServer()))
-      // Install the app menu before any ordinary or recovery window. Electron's default Reload
-      // navigates and releases conversations, so `app-menu.ts` removes it. Set the displayed
-      // BroBot labels without changing `app.getName()`, which also determines the data folder.
       app.setAboutPanelOptions({
         applicationName: PERSONS_TITLE,
         applicationVersion: shownVersion(app.getVersion(), app.isPackaged),
@@ -2382,9 +2414,6 @@ function start(ownership: HostGateVerdict): void {
       app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) showThisStartsWindow()
       })
-      // Silent while the main thread keeps up; a stall of half a second or more is logged with
-      // the work that ran in it (`stall-watch.ts`). Started before the database opens, and the
-      // start below is timed as one piece of work, so a slow start is logged under its own name.
       try {
         const watch = startStallWatch({
           work: mainThreadWork,
@@ -2412,11 +2441,10 @@ function start(ownership: HostGateVerdict): void {
       } catch (error) {
         console.warn('the stall watch could not start:', error)
       }
-      // Nothing opens the workspace's data before the start-up check has said it may: an
-      // unfinished restore is settled, a restored copy stays read-only, a newer or unreadable
-      // database is refused, and a checked copy is made before the data changes. A start it
-      // refuses ends in the recovery window, and none of what follows runs.
+      pluginStartupTrace.destination(presentation.hidden ? undefined : app.getPath('logs'))
+      let finishStartupPhase = pluginStartupTrace.begin('workspace-recovery')
       const verdict = await theVerdictBeforeTheData(ownership)
+      finishStartupPhase(verdict.kind === 'open' ? undefined : verdict.kind)
       // A quit asked during the check has ended this start already, and its data never opens.
       if (closedWhileCheckingSaid) return
       if (verdict.kind !== 'open') {
@@ -2424,9 +2452,6 @@ function start(ownership: HostGateVerdict): void {
         return
       }
       const startBegan = performance.now()
-      // Read and watch the system time zone before reporting times (`system-zone.ts`). Notify
-      // every live window when it changes, with each send guarded independently, and reschedule
-      // waiting jobs in the new zone.
       const localZone = keepTheSystemZone((moved) => {
         for (const window of BrowserWindow.getAllWindows()) {
           try {
@@ -2440,6 +2465,7 @@ function start(ownership: HostGateVerdict): void {
         host?.placeTheWakeUpsAgain()
       })
       readLocalTimeFrom(localZone)
+      finishStartupPhase = pluginStartupTrace.begin('themes-database-runtime-host')
       themes = new ThemeStore({
         assertWorkspace: () => workspaceStartup(app)?.assertDatabase(),
         ...themeRoots({
@@ -2476,14 +2502,10 @@ function start(ownership: HostGateVerdict): void {
         }
       })
       host = await createRuntimeHost(initDatabase())
+      finishStartupPhase()
       registerIpc(host, localZone)
       startTheDockLabel()
-      // Start updates for packaged builds with a release feed: check at launch and once daily
-      // when enabled, with the window reading and controlling `updates-in-the-app.ts`.
       updates = startUpdates({ app, host, hidden: presentation.hidden })
-      // List, open and create workspaces through `workspaces-in-the-app.ts`. A visible launch
-      // adds its folder to the list. Its actual data folder was already chosen by
-      // `pinTheDataFolder` or `--user-data-dir`; listing workspaces does not choose it.
       startWorkspaces({
         app,
         hidden: presentation.hidden,
@@ -2495,17 +2517,10 @@ function start(ownership: HostGateVerdict): void {
           return picked.canceled ? null : (picked.filePaths[0] ?? null)
         },
       })
-      // Load snapshots of each bundled provider's own model instructions from this build's files,
-      // without querying a provider (`provider-snapshots.ts`).
       startProviderSnapshots()
-      // Install per-session image serving before the window can request it. Any existing image
-      // file is served by type, without a root restriction (`asset-protocol.ts`).
       installAssetProtocol(session.defaultSession.protocol)
       installThemeProtocol(session.defaultSession.protocol, themes)
       theDataOpened = true
-      // The workspace is open; plugin startup must not block the rest of the app.
-      // Only matching explicit workspace selection records change the ordinary shared setup.
-      // Hidden starts require an explicit scratch root and never fall back to the live one.
       try {
         const root = pluginSupervisorRoot({
           appData: app.getPath('appData'),
@@ -2514,6 +2529,7 @@ function start(ownership: HostGateVerdict): void {
           scratchRoot: app.commandLine.getSwitchValue('plugin-global-root'),
         })
         if (root && ownership === 'sole') {
+          finishStartupPhase = pluginStartupTrace.begin('workspace-admission')
           pluginController.start({
             devSource: !app.isPackaged
               ? { isPackaged: app.isPackaged, appData: app.getPath('appData') }
@@ -2539,8 +2555,10 @@ function start(ownership: HostGateVerdict): void {
             appVersion: app.getVersion(),
             supervisor: pluginSupervisor,
           })
+          finishStartupPhase()
         }
-      } catch {
+      } catch (error) {
+        pluginStartupTrace.failure('workspace-admission', error)
         // Plugin unavailability cannot prevent agents or the rest of the app from starting.
         console.warn('[plugins] plugin-initialization-failed')
       }
@@ -2550,16 +2568,7 @@ function start(ownership: HostGateVerdict): void {
       startRederive(host)
       startTitlingTheOlderFiles(host)
       startRecordingWhatTheOlderOnesRan(host)
-      // Said once in the log when anyone else may read the data folder; Settings shows it too.
-      void whoMayReadTheDataFolder(app.getPath('userData'))
-
-      // Log only when app memory grows or agents exceed runaway floors (`memory-watch.ts`).
-      // Write to a file as well as the console: packaged stderr may have no recipient, and a
-      // terminal log may be lost after the process is killed. Keep `sample`'s last app reading
-      // for the same breakdown the line reports.
       let itself = whatTheAppItselfHolds([])
-      // ⚑ **Where both lines go, and the timers both run on** — the same for the app's own line and
-      // the agents' own.
       const intoTheMemoryLog = (message: string): void => {
         console.warn(message)
         try {
@@ -2567,35 +2576,23 @@ function start(ownership: HostGateVerdict): void {
           mkdirSync(logs, { recursive: true })
           appendFileSync(join(logs, 'memory.log'), `${new Date().toISOString()} ${message}\n`)
         } catch {
-          // A log that cannot be written must not take the app down — the console line above is
-          // still the fallback, and this whole mechanism is diagnostics, not function.
+          // Diagnostic writes cannot interrupt the app.
         }
       }
       const unrefdInterval = (fn: () => void, ms: number): unknown => {
         const timer = setInterval(fn, ms)
-        // Diagnostics must never be the reason the process stays alive; Electron's own message
-        // loop keeps it running, so an unref'd timer still fires for as long as the app exists.
         timer.unref()
         return timer
       }
       const stopInterval = (handle: unknown): void =>
         clearInterval(handle as ReturnType<typeof setInterval>)
       startMemoryWatch({
-        // ⚑ **The app ITSELF — the Chromium half, main, its window, the GPU and the utilities — and
-        // its agents apart** (`memory-watch.ts` says why: the agents held 63–95% of every total the
-        // watchdog called *far above normal*). `getAppMetrics()` lists Chromium's processes and none
-        // this app spawned; `workingSetSize` is in KILOBYTES (Electron's unit).
         sample: () => {
           // Kick the next reading of the agents off, for the line's other half; never wait for `ps`.
           spawnedReader.refresh()
           itself = whatTheAppItselfHolds(app.getAppMetrics())
           return itself.bytes
         },
-        // ⚑ **The app's own processes, each by a plain name, then what its agents hold apart** — read
-        // from the last listing of what it spawned, up to one tick old (`createSpawnedReader`).
-        // ⚠️ A listing not read yet, an unreadable `ps` and an app with no agents would all be an
-        // empty list; saying which is the difference between "nothing was running" and "we could not
-        // see what was running".
         detail: () =>
           `[${itself.said}] ${whatItsAgentsHoldApart(
             !spawnedReader.everRead()
@@ -2608,11 +2605,6 @@ function start(ownership: HostGateVerdict): void {
         setInterval: unrefdInterval,
         clearInterval: stopInterval,
       })
-      // ⚑ **The agents' own line** — what they and the commands they run hold together, past a floor
-      // only a runaway reaches (`agentsMemoryFloorFor`), naming the agents holding the most, and
-      // begun again once an episode ends. ⛔ **No listing of its own**: it reads the one the app's
-      // line starts each tick (`spawnedReader`), looking `AGENTS_LINE_LAG_MS` after it so that tick's
-      // listing has landed, and names the agents only when it writes.
       const agentsFloor = agentsMemoryFloorFor(totalmem())
       setTimeout(() => {
         startMemoryWatch({
@@ -2636,35 +2628,23 @@ function start(ownership: HostGateVerdict): void {
         })
       }, AGENTS_LINE_LAG_MS).unref()
 
-      // Register quit-signal handlers from `whenReady`, after Chromium installs its own handlers.
-      // Module-scope listeners can be overwritten. This placement lets repeated signals reach
-      // the app's ordered teardown rather than bypassing JavaScript; see `AppLifetime.quitSignal`.
       for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) {
         process.on(signal, () => lifetime.quitSignal(signal))
       }
 
       mainThreadWork.add('the start', performance.now() - startBegan)
-      // Once, last, when every step of the start has run; something watching the start matches the
-      // line. Only then may old recovery copies go.
       recoveryStartSucceeded = true
       sayAtOnce(READY_LINE)
       void letGoOfOldCopies()
     })
     .catch((error: unknown) => {
-      // A person's launch ends in the recovery window, never in a bare error box or in silence; a
-      // hidden one says the fail line and the reason, and exits 1.
+      pluginStartupTrace.failure('app-startup', error)
       void endAFailedStart(error, ownership)
     })
 }
 
-/**
- * Wire shutdown ordering through `app-lifetime.ts`, which owns the policy in a module
- * that can be loaded independently for tests.
- */
 const lifetime = createAppLifetime({
-  // Announce closing to every window. Guard sends individually so one destroyed `webContents`
-  // does not suppress notices to later windows. Check both objects: a live `BrowserWindow`
-  // can still have destroyed contents.
+  recordOpenSessions: () => host?.recordOpenForQuit(),
   announceClosing: () => {
     for (const window of BrowserWindow.getAllWindows()) {
       try {
@@ -2691,6 +2671,7 @@ const lifetime = createAppLifetime({
   // (046 review, P2): a pass still running when the connection closes would throw against it. It
   // ends at the next boundary.
   stopArchiveWork: () => {
+    void stopRecoveryWork()
     void stopProviderSetup?.()
     updates?.stop()
     void transcriptRetention?.stop()
@@ -2706,18 +2687,23 @@ const lifetime = createAppLifetime({
   },
   // …and then WAIT for the work already admitted, so the database closes under nobody (062).
   drainArchiveWork: async () => {
+    await stopRecoveryWork()
     await stopProviderSetup?.()
     await updates?.drain()
     await transcriptRetention?.stop()
     await (stoppingTheStart ?? host?.drainArchiveWork() ?? Promise.resolve())
     await themes?.close()
+    // Stall lines still queued, and the notice of what was left, get half a second in all.
+    await theStallSink?.close(500)
   },
   closeDatabase: () => {
     db?.close()
     db = null
   },
+  // Every first quit, including the last recovery window on Windows or Linux, enters teardown.
+  quit: () => app.quit(),
   // A start that never opened its data, or failed, ends with code 1 once the teardown is done.
-  quit: () => (theDataOpened && !startFailed ? app.quit() : app.exit(1)),
+  quitAfterShutdown: () => (theDataOpened && !startFailed ? app.quit() : app.exit(1)),
   // Force `exit` on a repeated quit signal without raising another `before-quit` or waiting
   // for the teardown the person has already asked to stop.
   exit: (code) => app.exit(code),
@@ -2764,9 +2750,6 @@ const lifetime = createAppLifetime({
  */
 void runAsSoleInstance({
   requestLock: () => app.requestSingleInstanceLock(),
-  // Use the same `userData` directory for the cross-process backstop and Chromium's lock.
-  // The backstop fails open if it cannot establish its verdict; see `one-host-gate.ts`.
-  claimGate: () => claimSoleHost(app.getPath('userData')),
   onSecondLaunch: (handler) => app.on('second-instance', () => handler()),
   focusExisting: () => {
     // Do not create a window after startup failed; the error may still be on screen.

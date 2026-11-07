@@ -1,3 +1,4 @@
+import { deferred, registerQuitOpenListCases } from './helpers/quit-open-list-cases'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -102,14 +103,6 @@ function signalHarness(overrides: Partial<AppLifetimeDeps> = {}) {
   return { lifetime: built.lifetime, log }
 }
 
-function deferred(): { promise: Promise<void>; resolve: () => void } {
-  let resolve!: () => void
-  const promise = new Promise<void>((r) => {
-    resolve = r
-  })
-  return { promise, resolve }
-}
-
 /** One `before-quit` event, recording whether Electron was asked to hold the quit. */
 function quitEvent() {
   let prevented = 0
@@ -127,6 +120,8 @@ function quitEvent() {
 
 describe('app lifetime (051)', () => {
   describe('quitting', () => {
+    registerQuitOpenListCases(harness, quitEvent)
+
     it('defers the quit, drains in order, and only then lets it through', async () => {
       const { lifetime, log } = harness()
       const first = quitEvent()

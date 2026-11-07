@@ -1,4 +1,11 @@
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import type {
+  AboutWork,
+  AboutWorkIs,
+  RoutedRequest,
+  WorkInHand,
+} from '../src/shared/question-contracts'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -8,7 +15,6 @@ import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { distil } from '../src/main/runtime/digest'
@@ -17,14 +23,10 @@ import {
   NOTHING_NAMED_THE_WORK,
   aboutTheWork,
   escalationChain,
-  type AboutWork,
-  type AboutWorkIs,
-  type RoutedRequest,
-  type WorkInHand,
 } from '../src/shared/questions'
 import { derivePieces, openWorkOf, workNamed } from '../src/shared/tasks'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
-import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/runtime-ipc'
+import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * 🔴 **474 · what a request is about, and whose it is** — `463`'s F4 and F2, which are two halves of
@@ -146,27 +148,15 @@ describe('474 · what a request is about, and whose it is', () => {
     store = createSessionStore(db, tick)
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new FakeRuntime(provider, { sessions: new FakeProviderSessions() }),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${String(++counter)}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 
@@ -831,17 +821,17 @@ describe('474 · what a request is about, and whose it is', () => {
     })
 
     it('⛔ the person’s reader reads the question row, and asks the ASKER for it', () => {
-      const runtime = sourceOf('main', 'runtime', 'runtime-host.ts')
+      const runtime = sourceOf('main', 'runtime', 'persons-questions.ts')
       const method = runtime.slice(
         runtime.indexOf('questionsForAPerson(): LedgerWalk<PersonsQuestion>'),
-        runtime.indexOf('questionsAPersonMayNotDelegate'),
+        runtime.indexOf('decisionsForAPerson(): LedgerWalk<PersonsDecision>'),
       )
       expect(method).not.toBe('')
       expect(method).toContain('raisedIn(request.askedBy).get(request.requestId)')
       expect(method).toContain('workNamed(pieces(request.askedBy), id)')
       // ⛔ **One ledger read per asker, not two** — the memo is shared by both folds.
-      expect(method).toContain('this.onePieceReadPerAnswer()')
-      expect(method).toContain('this.oneWorkReadPerAnswer(pieces)')
+      expect(method).toContain('this.reads.onePieceReadPerAnswer()')
+      expect(method).toContain('this.reads.oneWorkReadPerAnswer(pieces)')
     })
 
     /**

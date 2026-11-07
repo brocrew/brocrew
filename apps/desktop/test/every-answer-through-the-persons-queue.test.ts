@@ -1,3 +1,12 @@
+import { neutralHostDeps } from './lib/host-fixture'
+import type {
+  LedgerWalk,
+  LedgerWalkKind,
+  PersonsDecision,
+  PersonsQuestion,
+  RoutedRequest,
+} from '../src/shared/question-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -18,7 +27,6 @@ import {
   type UserInputResponse,
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
@@ -41,11 +49,6 @@ import {
   NOTHING_NAMED_THE_WORK,
   decisionReading,
   readingSentence,
-  type LedgerWalk,
-  type LedgerWalkKind,
-  type PersonsDecision,
-  type PersonsQuestion,
-  type RoutedRequest,
   aPersonsSince,
 } from '../src/shared/questions'
 import type { ChannelRefusal } from '@brobot2/runtime'
@@ -54,7 +57,6 @@ import {
   type CreatedSession,
   type RuntimeCommand,
   type RuntimeEventMessage,
-  type TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 
 /**
@@ -219,9 +221,7 @@ describe('476 · every compact answer that reaches the host, plus the blocked pe
     const sessions = new FakeProviderSessions()
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: (provider) => new WatchingRuntime(provider, sessions, handles, toolsets),
       // Test-owned, isolated paths. Nothing here names or reads a real provider home.
       prepareProviderHome: (provider, profileId) =>

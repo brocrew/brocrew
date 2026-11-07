@@ -1,3 +1,4 @@
+import type { ModelList } from '../src/shared/model-choice-contracts'
 import { describe, expect, it, vi } from 'vitest'
 import { NO_LAUNCH_CHOICES } from '../src/renderer/src/lib/launch-choices'
 import {
@@ -10,7 +11,6 @@ import {
   type PickedModel,
 } from '../src/renderer/src/lib/model-lists'
 import type { SessionRecord } from '../src/renderer/src/lib/session-record'
-import type { ModelList } from '../src/shared/runtime-ipc'
 
 /**
  * UI-012 · **the one model picker's holder and its arithmetic** — landing coverage for what the

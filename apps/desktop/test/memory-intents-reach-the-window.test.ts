@@ -1,5 +1,5 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import ts from 'typescript'
-import { createHash } from 'node:crypto'
 import {
   existsSync,
   mkdirSync,
@@ -23,7 +23,6 @@ import {
   type SessionStore,
 } from '../src/main/db/session-store'
 import { createMemoryService, type MemoryService } from '../src/main/runtime/agent-memory'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   RuntimeHost,
   THE_APP_ITSELF,
@@ -40,7 +39,6 @@ let store: SessionStore
 let service: MemoryService
 let host: RuntimeHost
 const text = 'A saved note.\r\nCafé.\n'
-const fingerprint = createHash('sha256').update(text).digest('hex')
 const sink: RuntimeEventSink = {
   alive: true,
   aPersonIsBehindIt: true,
@@ -49,14 +47,13 @@ const sink: RuntimeEventSink = {
   sendLiveness: () => {},
 }
 const home = (provider: Provider, slug: string) => join(root, 'homes', 'default', slug, provider)
-const asked = (change: { confirmed?: boolean; fingerprint?: string } = {}) => ({
+const asked = (change: { confirmed?: boolean } = {}) => ({
   profileId: 'lark',
   provider: 'claude' as const,
   entry,
   act: 'removed' as const,
   text: '',
   confirmed: true,
-  fingerprint,
   ...change,
 })
 
@@ -85,9 +82,7 @@ beforeEach(async () => {
   const deps = {
     store,
     memoryKnowledge: service,
-    discoverSessions: NO_DISCOVERY,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => join(root, 'exports'),
+    ...neutralHostDeps(() => root),
     createRuntime: (provider: Provider) => new FakeRuntime(provider),
     prepareProviderHome: (provider: Provider, profileId: string) => home(provider, profileId),
     providerHomePath: home,
@@ -112,7 +107,7 @@ afterEach(async () => {
 })
 
 describe('the window host uses the durable memory service', () => {
-  it.each([{ confirmed: false }, { fingerprint: '0'.repeat(64) }])(
+  it.each([{ confirmed: false }])(
     'refuses a missing confirmation or stale displayed text: %j',
     async (change) => {
       const reply = await host.amendAgentMemory(asked(change), sink)

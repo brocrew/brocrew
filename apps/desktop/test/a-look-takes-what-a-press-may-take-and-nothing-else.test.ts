@@ -1,3 +1,5 @@
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -14,19 +16,16 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore as createLedger, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { executeRuntimeCommand, runtimeCommandSchema } from '../src/main/runtime/ipc'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
 import { createSessionStore } from '../src/renderer/src/lib/session-store'
 import {
-  HELD_ELSEWHERE,
   type ResumedSession,
   type RuntimeBridge,
   type RuntimeCommand,
   type RuntimeEventMessage,
   type SessionLivenessMessage,
-  type TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 import { asTheWireWouldCarry, everythingOverTheWire } from './lib/the-wire'
 
@@ -203,9 +202,7 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
       let counter = 0
       host = new RuntimeHost({
         store: ledgerStore,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(userData, 'exports'),
+        ...neutralHostDeps(() => userData),
         createRuntime: (provider: Provider) => {
           const held = runtimes.get(provider) ?? new CapturingRuntime(provider)
           runtimes.set(provider, held)
@@ -219,13 +216,7 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
         providerHomePath: (provider) => join(userData, 'provider-homes', provider),
         resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
         newSessionId: () => `sess_${++counter}`,
-        readProviderConfig: (provider, home) => ({
-          home,
-          homeEnv: 'CLAUDE_CONFIG_DIR',
-          model: 'm',
-          authNote: null,
-          files: [],
-        }),
+        readProviderConfig: fixtureProviderConfig,
       })
       one = new RecordingSink('webContents:1')
       two = new RecordingSink('webContents:2')
@@ -326,7 +317,7 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
       expect(launches()).toBe(1)
     })
 
-    it('the owner of a conversation is handed it live, and a stranger who presses is handed the record and told who holds it', async () => {
+    it('the owner is handed it live and another window gets the record without its stream', async () => {
       const sessionId = await openFor(one)
       await agentSays(sessionId, 'said while owned')
 
@@ -339,7 +330,6 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
       // A second window presses: the press cannot take what somebody owns.
       const stranger = await host.look(sessionId, two, true)
       expect(stranger.handover).toBe('recorded')
-      expect(stranger.cannotTakeAMessage).toBe(HELD_ELSEWHERE)
       // Something runs it, so the record has no seam to settle at.
       expect(stranger.liveFrom).toBeUndefined()
 

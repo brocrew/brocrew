@@ -1,25 +1,22 @@
+import type {
+  PieceRow,
+  StoppedOnALogin,
+  TaskOutcome,
+  TaskStallCause,
+  TaskState,
+  WorkReport,
+} from '../../shared/task-contracts'
+import type { RequestState } from '../../shared/question-contracts'
 import { DEFAULT_IDENTITY_PROVIDER, providerDescriptor } from '@brobot2/shared'
 import { refusalReason } from '../../shared/refusals'
 import {
   aPieceNotEndedItsQuestionsUnread,
   aPieceNotEndedWhileAQuestionStarts,
+  type UnreadQuestion,
 } from '../../shared/questions'
-import {
-  A_PERSON_MUST_ACT_SENTENCE,
-  TASK_IS_OPEN,
-  undrivenSentence,
-  type PieceRow,
-  type StoppedOnALogin,
-  type TaskOutcome,
-  type TaskStallCause,
-  type TaskState,
-  type WorkReport,
-} from '../../shared/tasks'
+import { A_PERSON_MUST_ACT_SENTENCE, TASK_IS_OPEN, undrivenSentence } from '../../shared/tasks'
 import type { ResourceRefusal } from '../resources/resources'
-import type { RailPermanence } from './spawn-rails'
-// ⚑ **425 · from `shared/refusals.ts` and not through `spawn-rails.ts`'s re-export.** That
-// re-export exists so `405` could move `RailPermanence` without touching seven readers; a word
-// added today has no such history and names its own home.
+import type { RailPermanence } from '../../shared/refusals'
 import { HELD_FORMS_SAID } from '../../shared/documents'
 import type { RefusalRemedy } from '../../shared/refusals'
 // ⚑ **484 · one composition for the actor's clause**, shared with `list_tasks`' own line.
@@ -30,13 +27,11 @@ import {
   YOU_ASKED_IT_TO_STOP,
   type WhoStoppedIt,
 } from '../../shared/how-work-stopped'
-// ⚑ **D-012 · the preview of the last exchange**, in place of the 4 KB quote.
 import { exchangePreviewLines, type AConversation, type Exchange } from '../../shared/last-exchange'
-// ⚑ **D-016 · the one spelling of a piece beside its title** (`shared/piece-called`).
 import { pieceLine } from '../../shared/piece-called'
 // ⚑ **D-025 · the one clock time every surface says *when* in** (`shared/clock`).
 import { clockTime, clockTimeFrom } from '../../shared/clock'
-import type { RequestState } from '../../shared/questions'
+
 import { PROVIDER_NAME } from '../../shared/runtime-ipc'
 
 /**
@@ -253,6 +248,7 @@ export const REPLY_SUMMARY_LIMIT = 1_280
  * one gate that says *"there is no such piece"* must not be the reader that says whose it is.
  */
 export interface ReplyRefusalDetail {
+  readonly unreadQuestion?: UnreadQuestion
   /** The rejected main-document spelling, for the caller's answer only. */
   path?: string
   /** Whether the main document was absent from the list or had another resolved form. */
@@ -359,7 +355,7 @@ const REPLY_SENTENCES: Readonly<Record<ReplyRail, string>> = {
     "that piece wasn't handed back: a conversation with a question about it is still starting. Try again in a moment.",
   // Said with the piece's label when the detail holds it ({@link aPieceNotEndedItsQuestionsUnread}).
   'its-questions-could-not-all-be-read':
-    "that piece wasn't handed back: its questions couldn't all be read. Try again; if it fails again, ask a person.",
+    "that piece wasn't handed back: its question records could not be read. Check that record, then retry this call.",
 }
 
 function longSummarySentence(detail: ReplyRefusalDetail): string {
@@ -415,7 +411,11 @@ export function refuseReply(rail: ReplyRail, detail: ReplyRefusalDetail = {}): R
           : rail === 'a-conversation-with-its-questions-is-starting' && detail.label !== undefined
             ? aPieceNotEndedWhileAQuestionStarts(detail.label, 'work-replied')
             : rail === 'its-questions-could-not-all-be-read' && detail.label !== undefined
-              ? aPieceNotEndedItsQuestionsUnread(detail.label, 'work-replied')
+              ? aPieceNotEndedItsQuestionsUnread(
+                  detail.label,
+                  'work-replied',
+                  detail.unreadQuestion,
+                )
               : REPLY_SENTENCES[rail],
     ),
     remedy: replyRemedyOf(rail),

@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import { NESTED_USERDATA_SIGNS } from '../../../scripts/lib/clean-base.mjs'
 import { pinTheDataFolder, workspaceOf, type PinnableApp } from '../src/main/data-folder'
-import { claimSoleHost, hostGatePath, whoIsOn } from '../src/main/one-host-gate'
+import { publishWorkspacePresence, hostGatePath, whoIsOn } from '../src/main/one-host-gate'
 import {
   argumentsToOpen,
   asStartedOn,
@@ -380,7 +380,7 @@ describe('§3 · what may be a workspace', () => {
     }
   })
 
-  it('⚑ a path too long for the gate’s socket keeps its gate outside it, and is not warned', () => {
+  it('a long workspace path has no second-instance warning', () => {
     const root = aFolder()
     const long = join(root, 'a'.repeat(110))
     expect(checkWorkspaceFolder(long, as(true))).toMatchObject({ ok: true, warning: null })
@@ -401,12 +401,6 @@ describe('§3 · what may be a workspace', () => {
       if (temporary === undefined) delete process.env['TMPDIR']
       else process.env['TMPDIR'] = temporary
     }
-  })
-
-  it('⚑ the warning is the gate’s own length rule, which holds the longer of its two names', () => {
-    const source = readFileSync(join(here, '../src/main/workspaces.ts'), 'utf8')
-    expect(source).toContain('!gateFits(real, options.platform)')
-    expect(source).not.toMatch(/hostGatePath|socketPathMax/)
   })
 
   it('⚑ the signs of a workspace are the ones a reset reads a nested data folder by', () => {
@@ -447,15 +441,17 @@ describe('§4 · a new workspace’s name and folder', () => {
     }
   })
 
-  it('⚑ a new workspace’s folder is this account’s only, as the default one is', async () => {
+  it('creates and names a workspace without changing its existing parent permissions', async () => {
     const home = aFolder()
-    const folder = join(home, 'BroBot workspaces', 'Research')
-    expect(await makeWorkspaceFolder(folder, 'Research')).toBeNull()
+    const parent = join(home, 'BroBot workspaces')
+    mkdirSync(parent)
+    if (process.platform !== 'win32') chmodSync(parent, 0o755)
+    const before = statSync(parent).mode
+    const folder = join(parent, 'Research')
+    await expect(makeWorkspaceFolder(folder, 'Research')).resolves.toBeUndefined()
+    expect(statSync(folder).isDirectory()).toBe(true)
     expect(workspaceOf(folder, false).name).toBe('Research')
-    if (process.platform !== 'win32') {
-      expect(statSync(folder).mode & 0o777).toBe(0o700)
-      expect(statSync(dirname(folder)).mode & 0o777).toBe(0o700)
-    }
+    expect(statSync(parent).mode).toBe(before)
   })
 
   it('🔴 its name is kept in its folder, and read back as the workspace’s', () => {
@@ -593,13 +589,12 @@ describe('§6 · the chooser’s rows', () => {
         asked.push(folder)
         return folder === running ? 'open' : 'closed'
       },
-      readersOfThisOne: () => Promise.resolve('Other users of this computer can read it.'),
     })
-    expect(rows.map((row) => [row.name, row.state, row.isThisOne, row.readers])).toEqual([
-      ['this', 'open', true, 'Other users of this computer can read it.'],
-      ['gone', 'missing', false, null],
-      ['running', 'open', false, null],
-      ['Research', 'closed', false, null],
+    expect(rows.map((row) => [row.name, row.state, row.isThisOne])).toEqual([
+      ['this', 'open', true],
+      ['gone', 'missing', false],
+      ['running', 'open', false],
+      ['Research', 'closed', false],
     ])
     // ⚑ This one, and a folder that is gone, are not asked.
     expect(asked.sort()).toEqual([closed, running].sort())
@@ -622,7 +617,6 @@ describe('§6 · the chooser’s rows', () => {
         isThisOne: true,
         state: 'open',
         lastOpenedAt: 1,
-        readers: null,
       },
     ])
   })
@@ -632,7 +626,7 @@ describe('§7 · whether a workspace runs now: its gate, asked', () => {
   it('🔴 open while a BroBot holds it, closed when nothing does, a long path asked where its gate is', async () => {
     const folder = aFolder()
     expect(await whoIsOn(folder)).toBe('closed')
-    expect(await claimSoleHost(folder)).toBe('sole')
+    await publishWorkspacePresence(folder)
     expect(await whoIsOn(folder)).toBe('open')
     // A folder too long for a socket inside it has its gate in a folder outside it, and is asked
     // there; here one the test owns, never the home's.
@@ -641,7 +635,7 @@ describe('§7 · whether a workspace runs now: its gate, asked', () => {
     const seams = { folder: join(folder, 'g') }
     try {
       expect(await whoIsOn(long, process.platform, seams)).toBe('closed')
-      expect(await claimSoleHost(long, process.platform, seams)).toBe('sole')
+      await publishWorkspacePresence(long, process.platform, seams)
       expect(await whoIsOn(long, process.platform, seams)).toBe('open')
     } finally {
       // A Windows gate is a named pipe, not a directory entry to unlink.

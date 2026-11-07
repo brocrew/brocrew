@@ -16,6 +16,7 @@ import { whoAnsweredIt } from '../../../shared/who-did-it'
 import { escaped } from '../lib/named-in-a-reply'
 import { usePathsIn, type PathsHere } from '../composables/useMessagePaths'
 import PathsInText from './PathsInText.vue'
+import MarkdownWords from './MarkdownWords.vue'
 
 /**
  * A server-initiated question (or a permission-profile grant). Every question must be answered for
@@ -78,18 +79,11 @@ const questions = computed(() => props.item.request.questions)
 const grantCwd = computed(() => props.item.request.permission?.cwd ?? '')
 
 /**
- * The words on the card that may name a path. An option's description is not among them: it sits
- * inside the option's button, and a control cannot hold another.
+ * Grant fields stay literal; each prose block owns its own paths.
  */
 const paths = usePathsIn(
   () => props.paths,
-  () =>
-    [
-      props.item.request.prompt,
-      grantCwd.value,
-      ...(props.item.request.permission?.paths ?? []),
-      ...questions.value.map((question) => question.prompt),
-    ].map(escaped),
+  () => [grantCwd.value, ...(props.item.request.permission?.paths ?? [])].map(escaped),
 )
 
 /** Ids this card's field labels hang on; every card on a page shares provider question ids. */
@@ -363,13 +357,13 @@ function reject(): void {
       <span class="time" :title="fullTime(item.at)">{{ clockTime(item.at) }}</span>
     </div>
 
-    <div class="input-body" @click="paths.clicked">
-      <!-- ⚑ **605 · a hook, because the paragraph carries a claim that can be measured.** The
-           prompt may hold breaks the provider wrote — see `.input-body > p`'s `white-space` —
-           and a test that asserts they SURVIVE has to be able to find this element. -->
-      <p :id="promptId" data-cy="user-input-prompt">
-        <PathsInText :text="item.request.prompt" :found="paths" />
-      </p>
+    <div class="input-body">
+      <MarkdownWords
+        :id="promptId"
+        data-cy="user-input-prompt"
+        :text="item.request.prompt"
+        :paths="props.paths"
+      />
       <p
         v-if="paths.failure.value"
         class="message-path-failure"
@@ -382,7 +376,12 @@ function reject(): void {
            outside the grant block, because it is never a scope line. -->
       <p v-if="agentSays" data-cy="user-input-agent-reason">{{ agentSays }}</p>
 
-      <div v-if="item.request.permission" class="grant" data-cy="user-input-permission">
+      <div
+        v-if="item.request.permission"
+        class="grant"
+        data-cy="user-input-permission"
+        @click="paths.clicked"
+      >
         <div v-if="item.request.permission.reason">{{ item.request.permission.reason }}</div>
         <div v-if="grantCwd">cwd: <PathsInText :text="grantCwd" :found="paths" /></div>
         <div v-for="path in item.request.permission.paths" :key="path">
@@ -398,7 +397,7 @@ function reject(): void {
         :data-cy="`user-input-question-${question.id}`"
         :data-multi-select="question.multiSelect ? 'true' : 'false'"
       >
-        <p :id="askId(index)" class="ask">
+        <div :id="askId(index)" class="ask">
           <!-- ⚑ **The label both providers designed for this card** (143). Claude declares it
                required — *"Very short label displayed as a chip/tag (max 12 chars)"* — and so does
                Codex; BroBot read neither, so the compact summary the model wrote for exactly this
@@ -409,7 +408,7 @@ function reject(): void {
             class="header"
             :data-cy="`user-input-header-${question.id}`"
             >{{ question.header }}</span
-          >{{ ' ' }}<PathsInText :text="question.prompt" :found="paths" />{{
+          >{{ ' ' }}<MarkdownWords :text="question.prompt" :paths="props.paths" />{{
             ' '
           }}<!-- State multiple-selection mode before interaction; chips alone can look like a single-choice control. Use muted text so the question itself retains the attention signal. -->
           <span
@@ -419,7 +418,7 @@ function reject(): void {
           >
             pick as many as you like
           </span>
-        </p>
+        </div>
         <!-- Choice chips when the provider gave options, and a field alongside them whenever an
              answer off the list is allowed. Both write into the same answer map, so what is sent
              does not depend on how it was asked. -->
@@ -624,7 +623,8 @@ function reject(): void {
   padding: var(--space-6);
 }
 
-.input-body > p {
+.input-body > p,
+.input-body > .markdown-words {
   margin: 0 0 var(--space-5);
   color: var(--text-soft);
   font-size: var(--type-body);

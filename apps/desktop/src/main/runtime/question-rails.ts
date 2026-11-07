@@ -1,13 +1,13 @@
+import type {
+  QuestionRecipient,
+  RequestState,
+  RoutedRequest,
+} from '../../shared/question-contracts'
 import { refusalReason } from '../../shared/refusals'
-import { CHANNEL_REFUSAL_SENTENCES, type ChannelRefusal } from '@brobot2/runtime'
+import type { ChannelRefusal } from '@brobot2/runtime'
 import type { UserInputQuestion } from '@brobot2/runtime'
-import {
-  REQUEST_IS_OPEN,
-  type QuestionRecipient,
-  type RequestState,
-  type RoutedRequest,
-} from '../../shared/questions'
-import type { RailPermanence } from './spawn-rails'
+import { REQUEST_IS_OPEN } from '../../shared/questions'
+import type { RailPermanence } from '../../shared/refusals'
 // ⚑ **425 · from `shared/refusals.ts` and not through `spawn-rails.ts`'s re-export.** That
 // re-export exists so `405` could move `RailPermanence` without touching seven readers; a word
 // added today has no such history and names its own home.
@@ -1157,8 +1157,4 @@ export function aToDoAnsweredText(
     `You asked: ${question.prompt}`,
     ...(note === '' ? [] : [`Their note: ${note}`]),
   ].join('\n\n')
-}
-
-export function describeRouting(because: ChannelRefusal): string {
-  return CHANNEL_REFUSAL_SENTENCES[because]
 }

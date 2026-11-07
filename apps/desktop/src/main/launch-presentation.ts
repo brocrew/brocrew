@@ -117,7 +117,7 @@ export function otherDataFolder(userData: string, defaultUserData: string): stri
 }
 
 /** ⚑ **724** — what the title says for a data folder whose last segment has no readable name. */
-export const A_FOLDER_WITH_NO_NAME = 'another data folder'
+const A_FOLDER_WITH_NO_NAME = 'another data folder'
 
 /**
  * ⚑ **724 · the name a window wears in its own bar and in the OS** — `AppInfo.windowTitle`.

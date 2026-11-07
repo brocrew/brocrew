@@ -1,17 +1,13 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import type { BackgroundLevel, ScheduledRow } from '../src/shared/agent-state-contracts'
 import { describe, expect, it, vi } from 'vitest'
 import { plateWord, standingWord, stateHere } from '../src/renderer/src/lib/agent-state'
 import { createSessionRecord } from '../src/renderer/src/lib/session-record'
 import { applyEvent } from '../src/renderer/src/lib/transcript'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 // ⚑ **D-017 · R11 — the derivation is `shared/agent-state.ts`'s now**, words and details included,
 // so `main`'s `list_agents` says what the window draws; the rail and the plate still word it here.
-import {
-  IN_THE_BACKGROUND,
-  inTheBackground,
-  nextWake,
-  type BackgroundLevel,
-  type ScheduledRow,
-} from '../src/shared/agent-state'
+import { IN_THE_BACKGROUND, inTheBackground, nextWake } from '../src/shared/agent-state'
 import { clockTime } from '../src/shared/clock'
 
 /**

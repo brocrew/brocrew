@@ -1,9 +1,11 @@
+import type { UserTurnEvent } from '../../shared/human-answer-contracts'
 import Database from 'better-sqlite3'
 import type { AppDatabase } from './connection'
-import { rowsUnreadOnce, type SessionStore } from './session-store'
+import type { SessionStore } from './session-store'
+import { rowsUnreadOnce } from './rows-unread'
 import { conversationLink, pieceLink } from '../../shared/links'
 import { aPersonsOwnWords } from '../../shared/a-persons-own-words'
-import { theMessagesOf, type UserTurnEvent } from '../../shared/runtime-ipc'
+import { theMessagesOf } from '../../shared/runtime-ipc'
 import {
   pastWorkSearchQuery,
   type PastWorkField,
@@ -15,7 +17,7 @@ import {
 const CELL_LIMIT = 1024 * 1024
 const DOCUMENT_LIMIT = 1_000_000
 const PROFILE_LIMIT = 1
-export const PAST_WORK_MESSAGE_LIMIT = 4096
+const PAST_WORK_MESSAGE_LIMIT = 4096
 type Source = { id: string; updated_at: number; version: number }
 type Document = {
   conversation: string

@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import SideRail from '../../src/renderer/src/components/SideRail.vue'
@@ -8,7 +9,7 @@ import { homeAttention } from '../../src/renderer/src/lib/home-attention'
 import { DEFAULT_ACTIVITY_WINDOW_MS } from '../../src/renderer/src/lib/recent-activity'
 import type { ActivityLine, RecentActivityReading } from '../../src/shared/recent-activity'
 import { acceptEvent, createSessionRecord } from '../../src/renderer/src/lib/session-record'
-import type { RuntimeEventMessage, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 
 /**

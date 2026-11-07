@@ -1,4 +1,4 @@
-import type { LedgerWalk } from './questions'
+import type { LedgerWalk } from './question-contracts'
 
 /**
  * 🔴 **What a digest may say, and what it must say about how it knows** (438, HO-024 §5.1–5.3,

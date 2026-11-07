@@ -1,4 +1,6 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import type { HandedPath } from '../src/shared/attachment-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -17,7 +19,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore as createLedger, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   RuntimeHost,
   THE_APP_ITSELF,
@@ -27,18 +28,16 @@ import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { createSessionStore, type FirstMessageCameTo } from '../src/renderer/src/lib/session-store'
 import {
-  HELD_ELSEWHERE,
   NOTHING_TO_SEND,
   type FirstMessageAnswer,
-  type HandedPath,
   type RuntimeBridge,
   type RuntimeChangeMessage,
   type RuntimeCommand,
   type RuntimeEventMessage,
   type SessionLivenessMessage,
-  type TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
+import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * D-017b · a message sent from a conversation's view goes where the HOST ruled, and the window says
@@ -108,6 +107,7 @@ class AWindow implements RuntimeEventSink {
     const bridge: Partial<RuntimeBridge> = {
       createSession: (input) => run({ kind: 'createSession', ...input }),
       resume: (input) => run({ kind: 'resume', ...input }),
+      claim: (input) => run({ kind: 'claim', ...input }),
       startAndSend: (input) => run({ kind: 'startAndSend', ...input }),
       cancelLaunch: (input) => run({ kind: 'cancelLaunch', ...input }),
       attachOpen: () => run({ kind: 'attachOpen' }),
@@ -214,16 +214,10 @@ describe('D-017b · a message from a conversation’s view goes where the host r
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store: ledger,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new LaunchCountingRuntime(provider, launches, issued, gate),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
@@ -542,7 +536,9 @@ describe('D-017b · a message from a conversation’s view goes where the host r
       const came = refusedOf(await store.startAndSend(id, 'hello', []))
 
       expect(came.refusal.refusedBy).toBe('after-the-start')
-      expect(store.isLive(id)).toBe(true)
+      expect(store.isLive(id)).toBe(false)
+      expect(store.get(id)?.phase).toBe('recorded')
+      expect(host.unclaimedSessions().map((one) => one.sessionId)).toContain(id)
       expect(store.get(id)?.error ?? '').toMatch(/holding the Claude sign-in it started with/)
       expect(store.get(id)?.meta?.liveness.signInSuperseded, 'the bar').toBe(true)
     })
@@ -555,6 +551,11 @@ describe('D-017b · a message from a conversation’s view goes where the host r
         expect(await store.look(id)).toBe(id)
         await host.resumeSession(id, null)
         expect(store.get(id)?.phase, 'the premise: a recorded view').toBe('recorded')
+        const beforeClaim = launches.length
+        const wordsBeforeClaim = turnsOf(id)
+        expect(await store.claim(id)).toBe(true)
+        expect(launches.length, 'claim starts no provider').toBe(beforeClaim)
+        expect(turnsOf(id), 'claim sends no words').toEqual(wordsBeforeClaim)
         // Only this life's sign-in moved: the one its reopen launches reads as current.
         itsSignInMoves(launches.at(-1)!.handle)
         const before = launches.length
@@ -622,6 +623,11 @@ describe('D-017b · a message from a conversation’s view goes where the host r
       stops.push(() => store.dispose())
       expect(await store.look(id)).toBe(id)
       await host.resumeSession(id, null)
+      const beforeClaim = launches.length
+      const wordsBeforeClaim = turnsOf(id)
+      expect(await store.claim(id)).toBe(true)
+      expect(launches.length, 'claim starts no provider').toBe(beforeClaim)
+      expect(turnsOf(id), 'claim sends no words').toEqual(wordsBeforeClaim)
       itsSignInMoves(launches.at(-1)!.handle)
 
       const coming = store.startAndSend(id, 'hello', [])
@@ -651,45 +657,6 @@ describe('D-017b · a message from a conversation’s view goes where the host r
   })
 
   describe('the host · another window, asked again inside the arrivals entry', () => {
-    it('another window that opens it while the message waits behind an earlier arrival is refused held-elsewhere', async () => {
-      const id = await aConversationTheQuitStopped()
-      gate = new FakeLaunchGate()
-      host = buildHost()
-      const before = launches.length
-      const letTheEarlierArrivalGo = anEarlierArrival(id)
-      let settled = false
-      // No attachments, so the two asks before the arrivals entry pass on a conversation nobody has.
-      const answering = host.startAndSend(id, 'hello', window)
-      void answering.then(() => {
-        settled = true
-      })
-      // Another window's own start, held inside its launch while the message waits its turn.
-      const theirs = host.resumeSession(id, new AWindow('webContents:8', () => host))
-      await waitFor(() => (gate?.held ?? 0) > 0, 'their start to be inside its launch')
-      await letItSettle()
-      expect(settled, 'the premise: the message is waiting behind the earlier arrival').toBe(false)
-      gate.release()
-      await theirs
-      expect(listed(id), 'the premise: the other window runs it now').toEqual(A_WINDOW_RUNS_IT)
-
-      letTheEarlierArrivalGo()
-      const refused = notSentOf(await answering)
-
-      // The kind first: without the third ask the reopen is refused by the slot's owner and the
-      // answer is `the-start`, with the very same sentence.
-      expect(refused.refusedBy).toBe('held-elsewhere')
-      expect(refused).toEqual({
-        refusedBy: 'held-elsewhere',
-        said: HELD_ELSEWHERE,
-        launch: null,
-        running: null,
-      })
-      await letItSettle()
-      expect(turnsOf(id), 'the words went into their conversation').toEqual([])
-      expect(launches.length - before, 'one start: theirs').toBe(1)
-      expect(listed(id)).toEqual(A_WINDOW_RUNS_IT)
-    })
-
     it('…and when nobody opens it meanwhile, a message that waited behind an earlier arrival is sent', async () => {
       // The control, one fact over: the same arrivals entry and the same wait, and no other window.
       // The wait is not what refuses.

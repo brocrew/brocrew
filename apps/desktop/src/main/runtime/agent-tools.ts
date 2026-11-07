@@ -1,3 +1,26 @@
+import { CONVERSATIONS_LISTED } from './agent-directory'
+export { CONVERSATIONS_LISTED } from './agent-directory'
+import { agentCallerId, type Caller } from './conversation-caller'
+export { agentCallerId, sessionSpeakingAs } from './conversation-caller'
+import {
+  AGENT_MESSAGE_KINDS,
+  TASK_OUTCOMES,
+  TASK_STATES as WORK_SEARCH_TASK_STATES,
+} from '../../shared/task-contracts'
+import type {
+  AgentMessageKind,
+  PieceRow,
+  StatusLine,
+  TaskOutcome,
+} from '../../shared/task-contracts'
+import { PASS_UP_RECIPIENTS } from '../../shared/question-contracts'
+import type {
+  PassUpRecipient,
+  QuestionRecipient,
+  RequestState,
+  VisibleQuestion,
+} from '../../shared/question-contracts'
+import type { AgentModelChoice } from '../../shared/model-choice-contracts'
 import {
   providerAuthPolicies,
   legacyStartRefusalWords as A_START_ITS_SIGN_IN_REFUSED,
@@ -91,7 +114,6 @@ import type {
   AgentCard,
   AgentRecord,
   APieceItHolds,
-  Caller,
   EndedPieceDetail,
   FoundFile,
   NewBriefDelivery,
@@ -161,34 +183,14 @@ import {
   interruptRetryableOf,
   type InterruptRefusal,
 } from './interrupt-rails'
-import {
-  AGENT_MESSAGE_KINDS,
-  TASK_IS_OPEN,
-  TASK_OUTCOMES,
-  TASK_STATES as WORK_SEARCH_TASK_STATES,
-  // ⚑ **603/609 · the fact each WAIT stands for**, for `pieceText`'s rule that a state name is not
-  // one. ⛔ A table rather than a constant since `609`, so a wait added to the family cannot reach a
-  // model as a bare word.
-  WAITING_STANDS_FOR,
-  theWaitIn,
-  isAgentMessageKind,
-  type AgentMessageKind,
-  type PieceRow,
-  type StatusLine,
-  type TaskOutcome,
-} from '../../shared/tasks'
+import { TASK_IS_OPEN, WAITING_STANDS_FOR, theWaitIn, isAgentMessageKind } from '../../shared/tasks'
 import {
   QUESTION_RECIPIENTS,
   RECIPIENT_MEANS,
-  PASS_UP_RECIPIENTS,
   isPassUpRecipient,
-  type PassUpRecipient,
   REQUEST_IS_OPEN,
   isQuestionRecipient,
   theChannelRefusalIn,
-  type QuestionRecipient,
-  type RequestState,
-  type VisibleQuestion,
   aPieceNotEndedItsQuestionsUnread,
   aPieceNotEndedWhileAQuestionStarts,
 } from '../../shared/questions'
@@ -272,7 +274,7 @@ import {
   type ProviderUsageReading,
 } from '../../shared/runtime-ipc'
 import { usageWindowWord } from '../../shared/usage-window'
-import { aPairInWords, sameModel, type AgentModelChoice } from '../../shared/model-choice'
+import { aPairInWords, sameModel } from '../../shared/model-choice'
 import { agentStateWords } from '../../shared/agent-state'
 
 /** Where a question goes, in words rather than the recipient's internal name. */
@@ -2434,7 +2436,7 @@ const TOOL_SENTENCES: Readonly<Record<ToolRefusal, string>> = {
     "that piece wasn't taken back or closed: a conversation with a question about it is still starting. Try again in a moment.",
   // Said with the piece's label at each door (`aPieceNotEndedItsQuestionsUnread`).
   'its-questions-could-not-all-be-read':
-    "that piece wasn't taken back or closed: its questions couldn't all be read. Try again; if it fails again, ask a person.",
+    "that piece wasn't taken back or closed: its question records could not be read. Check that record, then retry this call.",
   // Grants do not select the app's direct writer.
   'may-not-write-rules':
     'Only BroBot writes other agents’ standing rules directly. You can propose a change with propose_agent_rules, and the person decides. Nothing was written.',
@@ -2785,8 +2787,9 @@ function takeBackDetail(
     case 'that-work-is-being-sent':
     case 'that-conversation-has-not-started':
     case 'a-conversation-with-its-questions-is-starting':
-    case 'its-questions-could-not-all-be-read':
       return { piece, label: refused.label }
+    case 'its-questions-could-not-all-be-read':
+      return { piece, label: refused.label, unreadQuestion: refused.unreadQuestion }
     default: {
       const exhaustive: never = refused
       void exhaustive
@@ -4609,24 +4612,6 @@ function whatADeliveryMet(
   return refusalAnswer(refuseTool('agent-cannot-take-a-message', { agent, said }))
 }
 
-export const agentCallerId = (sessionId: string): string => `agent:${sessionId}`
-
-/**
- * ⛔ **Which session is speaking, when the caller is an agent rather than a window** — the exact
- * inverse of {@link agentCallerId}, and `null` for every other kind of caller (347).
- *
- * ⚠️ **This is a decoder, not a permission.** It answers *"who is this"*, and every use of it has to
- * decide for itself what that entitles. It lives beside the encoder so the two spellings cannot
- * drift apart, which is the only reason a prefix scheme is safe to depend on.
- */
-export function sessionSpeakingAs(by: Caller): string | null {
-  if (typeof by !== 'object' || by === null) return null
-  const ownerId: unknown = (by as { ownerId?: unknown }).ownerId
-  if (typeof ownerId !== 'string' || !ownerId.startsWith('agent:')) return null
-  const said = ownerId.slice('agent:'.length)
-  return said.length === 0 ? null : said
-}
-
 /** What the tools are built against — the host, narrowed to what they may reach. */
 export interface AgentToolHost {
   readonly themes?: RuntimeHost['themes']
@@ -4872,7 +4857,6 @@ const notesReadQuery = z
 const notesWriteQuery = z
   .object({
     current_version: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-    current_text: notesTextQuery,
     notes: notesTextQuery,
     why: notesTextQuery.refine((value) => value.trim() !== '', OWN_NOTES_REASON_PROBLEM),
   })
@@ -4882,7 +4866,6 @@ const rulesWriteQuery = z
   .object({
     agent: z.string().refine(isPathSegment, PATH_SEGMENT_RULE),
     current_version: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
-    current_rules: z.string().max(OWN_INSTRUCTIONS_CHARS),
     rules: z.string().max(OWN_INSTRUCTIONS_CHARS),
     why: z
       .string()
@@ -4921,13 +4904,6 @@ const whoseText = (whose: WhoseConversation): string => {
   if (whose.is !== 'an-identity-this-app-holds') return THIS_APP_CANNOT_NAME_IT
   return whose.name === whose.profile ? whose.profile : `${whose.name} (${whose.profile})`
 }
-
-/**
- * ⚑ **D-017 · R12 — how many conversations `list_agents` names**, the most recently active first,
- * and the answer says how many more there are. Any other can still be messaged and looked at by its
- * id.
- */
-export const CONVERSATIONS_LISTED = 50
 
 /**
  * ⚑ What a conversation's turn is stopped on until a person answers it, and that nothing sent to it
@@ -6593,17 +6569,10 @@ export function agentToolsFor(
       name: 'read_document',
       handlerOwnsMissingInput: true,
       /**
-       * 🔴 **D-016 · a RESOURCE, by its id** — an input its giver handed over, or a file the agent
-       * holding it kept or handed back with its reply, which this app keeps for the piece (plan
-       * ruling 13: the tool keeps its name and reads a resource).
-       *
-       * ⚑ **What it says is what is TRUE and what is still bounded**: any resource — no entitlement
-       * is asked (HO-057, carried from the documents resources replaced) — and the bytes are
-       * re-checked against the hash they were kept with, which is the one thing that was never
-       * widened.
+       * Reads a kept resource by id, returning its current local bytes.
        */
       description:
-        'Read a resource this app keeps for a piece of work — an input its giver handed over, or a file the agent holding it kept or handed back with its reply. A report comes back as Markdown and a page as its source; an image or a PDF comes back saying so. The app re-checks the bytes against the hash first.',
+        'Read a resource this app keeps for a piece of work — an input its giver handed over, or a file the agent holding it kept or handed back with its reply. A report comes back as Markdown and a page as its source; an image or a PDF comes back saying so.',
       /**
        * 🔴 **486 · the rails are the whole gate** (HO-031 §2.4).
        *
@@ -8296,7 +8265,11 @@ export function agentToolsFor(
           if (!outcome.ok && outcome.refused.rail === 'its-questions-could-not-all-be-read') {
             return refusalAnswer({
               ...refuseTool(outcome.refused.rail, takeBackDetail(piece, outcome.refused)),
-              reason: aPieceNotEndedItsQuestionsUnread(outcome.refused.label, 'work-withdrawn'),
+              reason: aPieceNotEndedItsQuestionsUnread(
+                outcome.refused.label,
+                'work-withdrawn',
+                outcome.refused.unreadQuestion,
+              ),
             })
           }
           if (!outcome.ok) {
@@ -8413,7 +8386,7 @@ export function agentToolsFor(
           question: z
             .string()
             .describe(
-              `What you need decided, in your own words, at most ${REPLY_SUMMARY_LIMIT.toLocaleString('en-US')} characters (UTF-16 code units). Nothing is shortened for you.`,
+              `What you need decided, in your own words, at most ${REPLY_SUMMARY_LIMIT.toLocaleString('en-US')} characters (UTF-16 code units). Nothing is shortened for you. It shows under Waiting on you with Markdown: **bold**, lists, \`code\` for ids and paths, and links to files.`,
             ),
           who_answers: documentedToolEnum(
             TOOL_INPUT_ENUMS['ask_question:who_answers'],
@@ -9359,7 +9332,11 @@ export function agentToolsFor(
             if (updated.rail === 'its-questions-could-not-all-be-read') {
               return refusalAnswer({
                 ...refuseTool(updated.rail, { ...updated.detail }),
-                reason: aPieceNotEndedItsQuestionsUnread(updated.detail.label, 'work-closed'),
+                reason: aPieceNotEndedItsQuestionsUnread(
+                  updated.detail.label,
+                  'work-closed',
+                  updated.detail.unreadQuestion,
+                ),
               })
             }
             return refusalAnswer(refuseTool(updated.rail, updated.detail))
@@ -9900,7 +9877,7 @@ export function agentToolsFor(
         action: z
           .string()
           .describe(
-            `What the person should do, in plain words, at most ${String(REPLY_SUMMARY_LIMIT)} characters.`,
+            `What the person should do, in plain words, at most ${String(REPLY_SUMMARY_LIMIT)} characters. It shows under Waiting on you with Markdown: **bold**, lists, \`code\` for ids and paths, and links to files.`,
           ),
         resources: z
           .array(z.string())
@@ -10094,16 +10071,13 @@ export function agentToolsFor(
       {
         name: 'write_agent_rules' as const,
         description:
-          "Save another agent's complete standing rules. Only the person's own BroBot conversation may do this; helper conversations and self-targets are refused. First read_agent_rules, then supply its exact version and full text, the complete replacement, and why. The host refuses a stale baseline. The saved version names its author and reason, applies from that agent's next start, and the person can undo it.",
+          "Save another agent's complete standing rules. Only the person's own BroBot conversation may do this; helper conversations and self-targets are refused. First read_agent_rules, then supply its exact version, the complete replacement, and why. The host refuses a stale baseline. The saved version names its author and reason, applies from that agent's next start, and the person can undo it.",
         input: {
           agent: rulesWriteQuery.shape.agent.describe(
             'The profile name of the agent whose standing rules to replace.',
           ),
           current_version: rulesWriteQuery.shape.current_version.describe(
             'The current version returned by read_agent_rules. Zero means no rules have been saved.',
-          ),
-          current_rules: rulesWriteQuery.shape.current_rules.describe(
-            'The complete current text returned by read_agent_rules. Use empty text when no rules have been saved.',
           ),
           rules: rulesWriteQuery.shape.rules.describe(
             `The complete replacement rules, at most ${OWN_INSTRUCTIONS_CHARS} characters. Empty text saves an empty version.`,
@@ -10130,7 +10104,6 @@ export function agentToolsFor(
               {
                 about: value.agent,
                 expectedVersion: value.current_version,
-                currentText: value.current_rules,
                 text: value.rules,
                 why: value.why,
               },
@@ -10170,13 +10143,10 @@ export function agentToolsFor(
       {
         name: 'write_own_notes' as const,
         description:
-          "Replace your own complete notes. First read_own_notes, then supply its exact version and full text, the complete replacement, and why. You can write only your own profile's notes. The host refuses a stale baseline. Notes are limited to 4000 characters, load after the standing rules at each start, and the person can edit or undo them in Agent knowledge. All conversations of your profile share this page.",
+          "Replace your own complete notes. First read_own_notes, then supply its exact version, the complete replacement, and why. You can write only your own profile's notes. The host refuses a stale baseline. Notes are limited to 4000 characters, load after the standing rules at each start, and the person can edit or undo them in Agent knowledge. All conversations of your profile share this page.",
         input: {
           current_version: notesWriteQuery.shape.current_version.describe(
             'The current version returned by read_own_notes. Zero means no notes have been saved.',
-          ),
-          current_text: notesWriteQuery.shape.current_text.describe(
-            'The complete current text returned by read_own_notes. Use empty text when no notes have been saved.',
           ),
           notes: notesWriteQuery.shape.notes.describe(
             'The complete replacement, at most 4000 characters. Empty text saves an empty version.',
@@ -10203,7 +10173,6 @@ export function agentToolsFor(
               me,
               {
                 expectedVersion: value.current_version,
-                currentText: value.current_text,
                 text: value.notes,
                 why: value.why,
               },

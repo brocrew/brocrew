@@ -1,5 +1,6 @@
+import { waitFor } from './lib/f093-host'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import {
-  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -31,7 +32,6 @@ import {
   NULL_SESSION_STORE,
   type SessionStore,
 } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { giverStallReceipts, RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import type { Caller, RuntimeEventSink } from './helpers/giver-notice-host'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -43,8 +43,8 @@ import {
 } from '../src/main/runtime/turn-origin'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
 import { GO_AHEAD_MESSAGE } from '../src/renderer/src/lib/plan-mode'
+import { RecordingSink, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 🔴 **662 · who the PROVIDER is told wrote each turn, captured where the SDK receives it.**
@@ -81,25 +81,6 @@ import { GO_AHEAD_MESSAGE } from '../src/renderer/src/lib/plan-mode'
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const srcRoot = join(here, '../src')
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /**
  * ⚑ **A `query()` that hears every pushed turn and answers it** — a `system/init` for the first,
@@ -206,9 +187,7 @@ describe('662 · whose words the provider is told — the real Claude adapter, e
     let launched = 0
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       // ⛔ **No credential reader is wired**, so `checkSignIn` answers from nothing and no Keychain
       // is read. The third and fourth arguments are the ones a production host fills.
@@ -226,11 +205,7 @@ describe('662 · whose words the provider is told — the real Claude adapter, e
           },
           async () => true,
         ),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${String(++counter)}`,
@@ -558,9 +533,7 @@ describe('662 · the plan go-ahead hands the seam no stamp', () => {
     let counter = 0
     host = new RuntimeHost({
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new Recording(provider),
       prepareProviderHome: (provider: Provider) => join(userData, 'provider-homes', provider),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),

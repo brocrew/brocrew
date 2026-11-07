@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import PermissionCard from '../../src/renderer/src/components/PermissionCard.vue'
 import UserInputCard from '../../src/renderer/src/components/UserInputCard.vue'
@@ -10,7 +11,7 @@ import {
   type UserInputItem,
 } from '../../src/renderer/src/lib/transcript'
 import type { ActedBy } from '../../src/shared/who-did-it'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { contrast, mount, paintedInk, parseColor, permission, unmountAll, visible } from './harness'
 
 /**

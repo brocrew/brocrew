@@ -1,3 +1,5 @@
+import { neutralHostDeps } from './lib/host-fixture'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -14,7 +16,6 @@ import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type { ProviderAuthOps } from '../src/main/providers/auth-operations'
 import { claudeAuth, prepareOnTheLogin } from '../src/main/providers/claude'
@@ -24,12 +25,7 @@ import { createSessionStore as createRendererStore } from '../src/renderer/src/l
 import type { SessionRecord } from '../src/renderer/src/lib/session-record'
 import { REOPENED_ON_A_RENEWED_SIGN_IN, type NoticeItem } from '../src/renderer/src/lib/transcript'
 import { isVisibleIn } from '../src/renderer/src/lib/transcript-mode'
-import type {
-  ResumedSession,
-  RuntimeBridge,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { ResumedSession, RuntimeBridge, RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
 
 /**
@@ -187,9 +183,7 @@ describe('D-004 · R101 — a login renewed elsewhere reopens the conversation i
       providersMoved: (change) => {
         authChanges.push(change)
       },
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: () =>
         new ClaudeRuntime(
           (params) => {

@@ -58,7 +58,6 @@ export interface ChromeBrowserOptions {
   afterIdleClose?: (profile: string) => void | Promise<void>
   extensionsFor?: (profile: string) => boolean
   syncFor?: (profile: string) => boolean
-  keepRunningFor?: (profile: string) => boolean
   homedir?: () => string
   downloadsRoot?: string
   nativeDownloadsInHeadless?: boolean
@@ -534,7 +533,6 @@ export class ChromeBrowser implements ProfileBrowser {
   private downloadRoot(profileDir: string): string {
     const root = this.opts.downloadsRoot ?? path.join(profileDir, 'downloads')
     privateFolder(path.dirname(root), root, true)
-    if (process.platform !== 'win32') fs.chmodSync(root, 0o700)
     return root
   }
   private privateDownloadStage(profileDir: string): string {
@@ -825,24 +823,6 @@ export class ChromeBrowser implements ProfileBrowser {
       else this.releaseLease(e)
     })
   }
-  visiblePages(): Array<{
-    profile: string
-    urls: string[]
-  }> {
-    const out: Array<{
-      profile: string
-      urls: string[]
-    }> = []
-    for (const e of this.entries.values()) {
-      if (!e.ctx || e.mode !== 'visible') continue
-      try {
-        out.push({ profile: e.name, urls: e.ctx.pages().map((p) => p.url()) })
-      } catch {
-        /* Continue without this optional result. */
-      }
-    }
-    return out
-  }
   async closeAll(): Promise<void> {
     this.shuttingDown = true
     await Promise.all(
@@ -1005,8 +985,7 @@ export class ChromeBrowser implements ProfileBrowser {
   private idleFired(e: Entry): void {
     e.idleTimer = null
     if (!e.ctx || e.mode === 'visible') return
-    const kept = this.opts.keepRunningFor?.(e.name) === true
-    if (kept || e.waiters > 0 || e.barrier.inFlight() > 0) {
+    if (e.waiters > 0 || e.barrier.inFlight() > 0) {
       e.idleTimer = this.later(() => this.idleFired(e), this.idleMs)
       e.idleTimer.unref?.()
       return
@@ -1014,7 +993,7 @@ export class ChromeBrowser implements ProfileBrowser {
     const { generation, touched } = e
     void this.exclusive(e.name, async () => {
       if (e.generation !== generation || e.touched !== touched) return
-      if (e.mode === 'visible' || this.opts.keepRunningFor?.(e.name) === true) return
+      if (e.mode === 'visible') return
       this.logger.info('idle close', { generation })
       await this.close(e.name)
       await this.opts.afterIdleClose?.(e.name)

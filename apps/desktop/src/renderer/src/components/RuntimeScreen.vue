@@ -122,6 +122,15 @@ export function profilesToProbe(input: {
 </script>
 
 <script setup lang="ts">
+import type { WhatAPickBecame } from '../../../shared/model-choice-contracts'
+import type { HandedPath } from '../../../shared/attachment-contracts'
+import type { WhatEachConversationIsWaitingOn } from '../../../shared/task-contracts'
+import type {
+  LedgerWalk,
+  PersonsDecision,
+  PersonsQuestion,
+} from '../../../shared/question-contracts'
+import type { McpServerRequestForAPerson } from '../../../shared/conversation-events'
 import { closeWorkSays } from '../lib/close-work'
 import { moveRequestFromWindow } from '../lib/move-request'
 import {
@@ -154,14 +163,12 @@ import type {
   ProviderVersion,
   UserInputResponse,
   ResourceReading,
-  WhatAPickBecame,
   KeptFile,
   WorkflowOutputResult,
   InstructionSourceResult,
   RevealResult,
   ConfigFileResult,
   SessionPathTarget,
-  HandedPath,
 } from '../../../shared/runtime-ipc'
 import {
   agentName,
@@ -217,6 +224,7 @@ import {
   createDraftBook,
   draftKey,
   draftSlot,
+  handRefusedBack,
   sweepDrafts,
 } from '../lib/drafts'
 import { keepTheDraftBook, SAVED_DRAFTS } from '../lib/kept-drafts'
@@ -232,7 +240,7 @@ import {
   usePersonsQueue,
   type PersonsQueueRow,
 } from '../lib/persons-queue'
-import { askedQuestionItemIn, briefItemIn, markRequestFailed } from '../lib/transcript'
+import { askedQuestionItemIn, briefItemIn } from '../lib/transcript'
 import { THE_BRIEF_IS_FURTHER_BACK } from '../lib/outgoing-card'
 // 🔴 **636 · the reading `621` built and left with no reader** — see {@link readWhatIsWaiting}.
 // ⚠️ **This file is `631`'s and the edit is deliberately four small ones**; the response document
@@ -247,7 +255,7 @@ import {
   whoseWorkIn,
   stoppedWorkIn,
 } from '../lib/conversation-waits'
-import type { WhatEachConversationIsWaitingOn } from '../../../shared/tasks'
+
 import type { WhatIsBeingDone } from '../../../shared/what-is-being-done'
 import type { TheWholeForest } from '../../../shared/the-whole-forest'
 import { forestView } from '../lib/the-forest'
@@ -274,13 +282,13 @@ import type { WorkspaceReading } from '../../../shared/workspace-reading'
 import { useOverlays, type Overlay } from '../lib/overlay-store'
 import { useSessionStore } from '../composables/useSessionStore'
 import { LAUNCHER, useSurface } from '../composables/useSurface'
-import type { LedgerWalk, PersonsDecision, PersonsQuestion } from '../../../shared/questions'
+
 import type { StalledWork } from '../../../shared/stalled-work'
 import type { StoppedWorkForAPerson } from '../../../shared/stopped-work'
 import type { WorkIncident } from '../../../shared/work-incidents'
 import type { WaitingOnWhoWrote } from '../../../shared/waiting-on-who-wrote'
 import type { InstructionAskWaiting } from '../../../shared/own-instructions'
-import type { AnswerAck, McpServerRequestForAPerson } from '../../../shared/runtime-ipc'
+import type { AnswerAck } from '../../../shared/runtime-ipc'
 import type { FirstMessageCameTo, LaunchDoor, SendIntent } from '../lib/session-store'
 import type { TranscriptMode } from '../lib/transcript-mode'
 import { createWindow, openAt, prependPage, type WindowState } from '../lib/transcript-window'
@@ -529,8 +537,8 @@ provideOverlayLayer(overlayLayer)
 const todoDocument = ref<InstanceType<typeof CanonicalDocumentOverlay> | null>(null)
 
 /**
- * A person answers a to-do through the host's `answerAction` door.
- * `null` when it took the answer, else its words, and the look runs again so the row leaves.
+ * A person answers a to-do through the store, which settles its card.
+ * `null` when the host took the answer, else its words, and the look runs again so the row leaves.
  */
 async function answerATodo(
   sessionId: string,
@@ -539,20 +547,7 @@ async function answerATodo(
   note: string,
 ): Promise<string | null> {
   try {
-    const ack = await window.api.runtime.answerAction({
-      sessionId,
-      request,
-      done,
-      ...(note === '' ? {} : { note }),
-    })
-    if (ack.outcome === 'refused' && !ack.stillOpen) {
-      const record = store.get(sessionId)
-      if (record) {
-        markRequestFailed(record.transcript, request, ack.reason)
-        if (record.control !== record.transcript)
-          markRequestFailed(record.control, request, ack.reason)
-      }
-    }
+    const ack = await store.answerAction(sessionId, request, done, note)
     void lookForWhatIsYours()
     return ack.outcome === 'taken' ? null : ack.reason
   } catch (cause) {
@@ -1000,7 +995,13 @@ async function show(target: Place, archive: LinkedHistoryReading | null): Promis
   }
 }
 
-let travelling = false
+/**
+ * Where a step is: `reading` until the place it goes to is on screen, then `drawing` while that
+ * page settles (its scroll and focus are put back).
+ */
+let travelling: 'reading' | 'drawing' | null = null
+/** A press made while a step was drawing, and the arrivals count it was made at. */
+let pressedWhileDrawing: { step: -1 | 1; at: number } | null = null
 
 /**
  * Whether a step read so far may now be taken: refused when the person went somewhere meanwhile,
@@ -1019,9 +1020,17 @@ const sentenceStart = (name: string): string =>
  * in the history where they were. A person who goes somewhere meanwhile keeps their move.
  */
 async function go(step: -1 | 1): Promise<void> {
-  // A press while a step is under way is that step's, and does nothing more.
-  if (travelling || aDialogIsOpen()) return
-  travelling = true
+  if (aDialogIsOpen()) return
+  // Once the reached place is on screen, a press is the next step, taken when this one is done.
+  if (travelling === 'drawing') {
+    // The first press since the person's last move is kept; one from before that move is replaced.
+    if (pressedWhileDrawing === null || pressedWhileDrawing.at !== arrivals)
+      pressedWhileDrawing = { step, at: arrivals }
+    return
+  }
+  // A press while a step is still reading is that step's, and does nothing more.
+  if (travelling !== null) return
+  travelling = 'reading'
   const startedAt = arrivals
   const looked: string[] = []
   try {
@@ -1053,6 +1062,7 @@ async function go(step: -1 | 1): Promise<void> {
         say(`${sentenceStart(one.place.name)} was deleted, so ${way} went past it.`)
       if (reached === undefined) return
       await show(reached.place, ready.archive)
+      travelling = 'drawing'
       await nextTick()
       await new Promise<void>((done) =>
         requestAnimationFrame(() => requestAnimationFrame(() => done())),
@@ -1071,9 +1081,13 @@ async function go(step: -1 | 1): Promise<void> {
       return
     }
   } finally {
-    travelling = false
+    travelling = null
     // A conversation opened for a step that didn't happen is let go again.
     for (const id of looked) if (id !== onScreenNow.value) store.forget(id)
+    const next = pressedWhileDrawing
+    pressedWhileDrawing = null
+    // A person who went somewhere after the press keeps that move instead.
+    if (next !== null && next.at === arrivals) void go(next.step)
   }
 }
 
@@ -1793,7 +1807,7 @@ function say(message: string): void {
  * in `drafts.ts` does — including the wording, which is why this is three lines rather than thirty.
  */
 function restoreRefused(slot: string, text: string, attachments: HandedPath[]): void {
-  const refused = drafts.restore(slot, text, attachments)
+  const refused = handRefusedBack(drafts, slot, text, attachments)
   if (refused > 0) say(attachmentsNotRestored(refused))
 }
 
@@ -2548,7 +2562,6 @@ const lastLookAnswered = ref<{ questions: boolean; decisions: boolean }>({
 const limitsDisplay = ref<LimitsDisplayState>({ status: 'updating', reading: null })
 const limitsLane = limitsDisplayLane((state) => (limitsDisplay.value = state))
 let stopHearingLimits: (() => void) | null = null
-let actionableReadSequence = 0
 let actionableReadsClosed = false
 /**
  * 🔴 **557 · work that has stopped with nobody left to tell** — another read of the one look.
@@ -2622,9 +2635,23 @@ function lookAfterAUsageNotice(): void {
   })
 }
 
+/**
+ * The one entry every ask for the queue goes through: the tick, the `persons` notice, the
+ * `conversations` and `agents` notices, and each answer given here. `scheduled` keeps the limits
+ * walk on its own cadence; an explicit look reads it at once. The queue itself is read by
+ * {@link lookAtTheQueue}, so a burst of asks costs at most one more look.
+ */
 async function lookForWhatIsYours(scheduled = false): Promise<void> {
   void refreshLimitsDisplay(scheduled)
-  const mine = ++actionableReadSequence
+  await lookAtTheQueue()
+}
+
+/**
+ * One round of the queue's reads. A screen that has closed starts none, and a round that lands
+ * after it closed writes nothing.
+ */
+async function lookAtTheQueueOnce(): Promise<void> {
+  if (actionableReadsClosed) return
   const [questions, decisions, stalls, asks, owed, serverAsks, stops, incidents] =
     await Promise.all([
       store.questionsForAPerson(),
@@ -2647,7 +2674,7 @@ async function lookForWhatIsYours(scheduled = false): Promise<void> {
       // Open work no other list shows, in the same look: it is drawn beside the stops it never repeats.
       store.workIncidentsForAPerson(),
     ])
-  if (actionableReadsClosed || mine !== actionableReadSequence) return
+  if (actionableReadsClosed) return
   if (questions !== null) escalated.value = questions
   if (decisions !== null) decided.value = decisions
   // ⛔ **The last good answer is kept here too**, for the reads above's reason: a dropped call must
@@ -2678,6 +2705,12 @@ async function lookForWhatIsYours(scheduled = false): Promise<void> {
     decisions: decisions !== null,
   }
 }
+
+/**
+ * At most one round in flight and one owed, so the round that reads after the last ask always
+ * runs; rounds never overlap, so an older round's answer can't land over a newer one.
+ */
+const lookAtTheQueue = oneReadAtATime(lookAtTheQueueOnce)
 
 async function refreshLimitsDisplay(scheduled = false): Promise<void> {
   await lookAtLimits(() => limitsLane.refresh(() => store.readLimitsDisplay()), scheduled)
@@ -3080,14 +3113,19 @@ watch(surface, (now) => {
  * 🔴 **D-018 · the memory each running conversation's process holds, for the agent cards** —
  * asked with the band ({@link readTheCast}), so it moves when the band does: opening a
  * conversation, its tick, a start or a stop (`conversations`), and the work moving. ⚑ Main shares
- * one read between askers, so a later ask never gets an older answer and no counter is needed.
+ * one read between askers, so a later ask never gets an older answer; the counter is for this
+ * screen going, which retires every ask still out.
  *
  * ⛔ **A read that did not answer draws no figure**: a figure is a live process's, and a kept one
  * could belong to a process that has since stopped. ⚠️ **Not in the band's `Promise.all`**: the
  * figure is no part of the band's one moment, and awaiting it would hold the cards for a `ps`.
  */
+let memoryRead = 0
 async function readProcessMemory(): Promise<void> {
+  const mine = ++memoryRead
   const held = await store.processMemory()
+  // A read that lands after this screen has gone belongs to no screen.
+  if (mine !== memoryRead) return
   cast.processMemory.value = new Map(
     (held?.conversations ?? []).map((one) => [one.conversation, one.bytes]),
   )
@@ -3391,6 +3429,9 @@ onMounted(() => {
       // queue, whose writers `638` did not survey, so giving it this arm would be a subject
       // claiming a population nobody measured (`534`'s own rule, and `567` §5's reading of it).
       void readTheWorkspace()
+      // ⚑ **And the person's queue**, which reads who holds each conversation and what is archived:
+      // on the tick's terms, so a notice leaves the limits walk on its own cadence.
+      void lookForWhatIsYours(true)
     },
     // 🔴 **638 · the work moved somewhere in this app** — see {@link RUNTIME_CHANGE_SUBJECTS}.
     // ⛔ **The SAME reader the `conversations` arm calls**, deliberately: `631`'s two task lists and
@@ -3430,6 +3471,16 @@ onMounted(() => {
       filesLibrary.markStale()
       refreshAgents()
       void modelLists.reread()
+      // ⚑ **And the person's queue**, which names whoever asks and whoever is asked: on the tick's
+      // terms, like the arm above.
+      void lookForWhatIsYours(true)
+    },
+    // ⚑ **What a person must answer may have moved**: the queue and the rail's needs-you count are
+    // read again, each through its one-at-a-time read, so a burst costs at most one more look. The
+    // queue is asked on the tick's terms, and the five-second look stays until this arm is proven.
+    persons: () => {
+      void lookForWhatIsYours(true)
+      void readTheWorkspace()
     },
   })
   stopHearingLimits = window.api.runtime.onLimitsDisplayChanged((message) => {
@@ -3473,7 +3524,6 @@ onUnmounted(() => {
   stopProviderFacts = null
   programsRead++
   actionableReadsClosed = true
-  actionableReadSequence++
   limitsLane.close()
   stopHearingLimits?.()
   stopHearingLimits = null
@@ -3488,7 +3538,12 @@ onUnmounted(() => {
   // ⛔ **Handed back, because the ref outlives this component under HMR** — a band left holding a
   // press into a screen that has been replaced would claim through a store nobody is listening to.
   cast.goTo.value = null
+  // Every read still out belongs to this screen, so none of them may write once it has gone.
   castRead++
+  memoryRead++
+  filesRead++
+  glanceRead++
+  workRead++
   cast.loadingFor.value = null
   // ⚑ **UI-001 · and the rail's rows with it** — a band left holding them would draw a replaced
   // screen's words.
@@ -3504,6 +3559,8 @@ onUnmounted(() => {
   // that outlives this component under HMR, and a stale list of rows pointing at conversations a
   // new store has never heard of is worse than no list.
   persons.forget()
+  // And the stop switch, for the same reason: this screen supplied it.
+  safety.forget()
 })
 
 /**

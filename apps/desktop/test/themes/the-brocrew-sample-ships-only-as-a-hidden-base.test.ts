@@ -16,14 +16,7 @@ import { readingAssetUrl } from '../../src/renderer/src/lib/window-theme'
 import type { ThemeReading } from '../../src/shared/theme-library'
 import { themeCss } from '../../src/shared/themes/css'
 import { putTheme } from './host-fixtures'
-import { pngSamples } from './png-samples'
 
-/**
- * The BroCrew sample ships only as a base. A saved theme that extends it, as one duplicated from
- * the sample does, still loads and applies with its base's colours and pictures. The sample
- * itself is listed nowhere and can't be chosen, and a workspace that had it chosen opens on the
- * default look, says so in the existing words, and keeps its choice on disk.
- */
 let root: string
 let store: ThemeStore | undefined
 let roots: ReturnType<typeof themeRoots>
@@ -46,10 +39,6 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
-/**
- * The store as the app makes it, over the built-ins as they ship; with `unreadBuiltIns`, the
- * system refuses to let the built-ins folder be looked at.
- */
 function shippedStore(unreadBuiltIns = false): ThemeStore {
   store = new ThemeStore({
     ...roots,
@@ -65,7 +54,7 @@ function shippedStore(unreadBuiltIns = false): ThemeStore {
     defaultTheme: DEFAULT_THEME_ID,
     builtInIds: BUILT_IN_THEME_IDS,
     hiddenBases: HIDDEN_BASE_THEME_IDS,
-    loader: { sample: (bytes, facts) => (facts.type === 'png' ? pngSamples(bytes) : null) },
+    loader: { sample: () => true },
     problem: themeProblem,
     trash: async () => undefined,
     openFolder: async () => undefined,

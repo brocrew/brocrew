@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
+
 /*
  * ⛔ **`EventStream.vue` AS IT SHIPPED AT `4d771e8`, frozen** — the "before" column of `255`'s
  * measurement, and nothing else in this repo may import it.
@@ -16,7 +18,7 @@
  * `vitest.config.ts` excludes `test/dom/**` entirely. It runs only under `pnpm run probe:event-fold`.
  */
 import { computed } from 'vue'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { useStickToBottom } from '../../src/renderer/src/composables/useStickToBottom'
 import { describeEvent } from '../../src/renderer/src/lib/describe-event'
 import type { WindowState } from '../../src/renderer/src/lib/transcript-window'

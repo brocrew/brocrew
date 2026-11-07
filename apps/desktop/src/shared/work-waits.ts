@@ -1,4 +1,5 @@
-import type { ActionFile } from './questions'
+import type { ActionFile } from './question-contracts'
+
 import type { WorkIncidentKind } from './work-incidents'
 
 /** The three kinds Waiting on you draws as recovery, apart from the rest. */

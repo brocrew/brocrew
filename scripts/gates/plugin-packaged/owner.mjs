@@ -4,8 +4,10 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
-import { requireCI, ownedRoot, report, safeReport, finish } from './contract.mjs'
-import { fixtureEnvironment, removeFixture, repository } from './prepare.mjs'
+import { report, safeReport, finish } from './contract.mjs'
+import { requireCI, ownedRoot } from './fixture-guards.mjs'
+import { removeFixture } from './prepare.mjs'
+import { fixtureEnvironment, repository } from './fixture-command.mjs'
 import { bounded, stopApp, cancellation } from './processes.mjs'
 import {
   failureFor,

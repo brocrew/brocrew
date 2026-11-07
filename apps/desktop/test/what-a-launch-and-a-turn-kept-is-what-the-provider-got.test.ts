@@ -1,10 +1,11 @@
+import type { HandedPath } from '../src/shared/attachment-contracts'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { classifyHandedPath } from '../src/main/runtime/handed-path'
 import { composeSystemHint } from '../src/main/runtime/instructions'
 import { fingerprintOf, toolsetFingerprint } from '../src/main/runtime/what-this-agent-was-given'
-import { theMessagesOf, type HandedPath } from '../src/shared/runtime-ipc'
+import { theMessagesOf } from '../src/shared/runtime-ipc'
 import type { WhatALaunchGave } from '../src/shared/what-this-agent-was-given'
 import { F093World, waitFor, type Handed } from './lib/f093-host'
 

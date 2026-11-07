@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join, sep } from 'node:path'
@@ -8,7 +9,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { userProviderHomePath } from '../src/main/adopt/user-homes'
 import { aProtectedPlace, type ThePlaces } from '../src/main/protected-places'
 import {
@@ -23,10 +23,10 @@ import {
   type RuntimeEventMessage,
   type SessionLiveness,
   type SessionLivenessMessage,
-  type TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 import type { ProtectedPlaceNotice } from '../src/shared/work-folders'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
+import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # A give's folder, granted on the helper's existing conversation: who holds it, when it ends,
@@ -91,26 +91,14 @@ describe('a give’s folder as a grant: its holder, its end, its spelling and it
     const sessions = new FakeProviderSessions()
     return new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new ProviderDouble(provider, handles, sessions, anOpenGate()),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${String(++counter)}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       protectedPlaceOf: (folder) => placeOf(folder),
     })
   }

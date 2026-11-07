@@ -1,7 +1,8 @@
+import type { SessionInstructions } from '../../src/shared/instruction-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import AgentInstructionsSheet from '../../src/renderer/src/components/AgentInstructionsSheet.vue'
-import type { SessionInstructions } from '../../src/shared/runtime-ipc'
+
 import { mount, toldProps, unmountAll, type Mounted } from './harness'
 
 /**

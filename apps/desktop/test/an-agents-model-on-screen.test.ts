@@ -1,3 +1,4 @@
+import type { ModelList } from '../src/shared/model-choice-contracts'
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -8,10 +9,9 @@ import { FakeRuntime, type ModelChoice, type ProviderRuntimeContext } from '@bro
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import type { ModelList, RuntimeBridge } from '../src/shared/runtime-ipc'
+import type { RuntimeBridge } from '../src/shared/runtime-ipc'
 import { MODEL_CHOICE_SAID, whatAModelChoiceReaches } from '../src/shared/model-choice'
 import { createAgentStore, type AgentStore } from '../src/renderer/src/lib/agent-store'
 import {
@@ -27,6 +27,7 @@ import {
   type ModelLists,
 } from '../src/renderer/src/lib/model-lists'
 import { everythingOverTheWire } from './lib/the-wire'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # 🔴 685 · a person chooses each agent's model and effort — the control, over the REAL doors
@@ -149,9 +150,7 @@ describe('685 · a person chooses each agent’s model and effort — over the r
     sent = []
     host = new RuntimeHost({
       store: sessions,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new CatalogueDouble(
           provider,
@@ -171,15 +170,10 @@ describe('685 · a person chooses each agent’s model and effort — over the r
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
       listProfiles: () => [...folders],
-      announce: ({ what }) => announced.push(what),
+      // `persons` comes from the store's record of each commit, and is pinned in its own file.
+      announce: ({ what }) => void (what !== 'persons' && announced.push(what)),
       newSessionId: () => `sess_${Math.random().toString(36).slice(2)}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     const sink: RuntimeEventSink = {
       ownerId: 'webContents:1',

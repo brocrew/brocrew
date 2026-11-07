@@ -1,13 +1,3 @@
-/**
- * A theme's files: what kind each one really is (read from its first bytes, never its name), its
- * size in pixels, and whether it moves. The host reads each file and hands these facts to
- * `validateTheme`; nothing here touches the disk.
- */
-
-/**
- * Pictures a theme may use, and fonts. WebP is left out because the host can't sample its colours
- * for the contrast check.
- */
 export type AssetType = 'png' | 'jpeg' | 'woff2'
 
 export interface AssetFacts {
@@ -36,10 +26,6 @@ export const LIMITS = {
 /** `assets/…` with plain names: no `..`, no scheme, no leading slash. */
 const ASSET_PATH = /^assets\/(?:[A-Za-z0-9_-][A-Za-z0-9_.-]*\/)*[A-Za-z0-9_-][A-Za-z0-9_.-]*$/
 
-/**
- * Whether a reference names a file inside the theme's own `assets/` folder; if not, the sentence
- * that says why.
- */
 export function assetPathProblem(ref: unknown): string | null {
   if (typeof ref !== 'string' || ref === '')
     return 'it should name a file in the theme’s assets folder'

@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
@@ -20,7 +21,7 @@ import {
   type SessionRecord,
 } from '../../src/renderer/src/lib/session-record'
 import { CANCEL_STOPS_NOTHING } from '../../src/renderer/src/lib/user-input-offer'
-import type { CreatedSession, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { CreatedSession } from '../../src/shared/runtime-ipc'
 import { assertDrawn, drawnReady, lineCount } from './drawn'
 import { META, mount, paneProps, unmountAll, visible, type Mounted } from './harness'
 

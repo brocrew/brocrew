@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { navigationReply, expectIdsOnlyInLinkTargets } from './helpers/navigation-reply'
 import { conversationLink, agentLink, pieceLink } from '../src/shared/links'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -10,7 +11,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   AN_IDENTITY_THIS_APP_CANNOT_NAME,
   RuntimeHost,
@@ -29,9 +29,9 @@ import {
   DEFAULT_PROFILE_LABEL,
   agentName,
   type RuntimeEventMessage,
-  type TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 import { theOwnerOf } from '../src/shared/piece-called'
+import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -113,9 +113,7 @@ describe('610 · the roster that names nobody', () => {
     holdTheHome = null
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: () => new FakeRuntime('claude', { sessions }),
       prepareProviderHome: async (provider: Provider, profileId?: string) => {
         const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
@@ -127,13 +125,7 @@ describe('610 · the roster that names nobody', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:1')
   })

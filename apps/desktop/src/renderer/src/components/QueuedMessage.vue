@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import type { HandedPath } from '../../../shared/attachment-contracts'
+
 import { MOVE_SEND_UNCONFIRMED } from '../../../shared/move-request'
 import { messageLimitDisplay } from '../lib/provider-limit-status'
 import { computed } from 'vue'
 import { clockTime } from '../../../shared/clock'
 import { fullTime } from '../lib/clock'
-import type { AgentIdentity, HandedPath } from '../../../shared/runtime-ipc'
+import type { AgentIdentity } from '../../../shared/runtime-ipc'
 import type { QueuedItem, TranscriptItem } from '../lib/transcript'
 import { RELAYED_MARK, relayedSender } from '../lib/relayed-turn'
 import { APP_NOTICE_MARK, THE_APP_IS_THE_AUTHOR } from '../../../shared/app-notice'

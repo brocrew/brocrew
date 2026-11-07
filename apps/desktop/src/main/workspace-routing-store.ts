@@ -4,13 +4,13 @@ import {
   constants,
   fstatSync,
   linkSync,
-  lstatSync,
   mkdirSync,
   openSync,
   readSync,
   readdirSync,
   realpathSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs'
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
@@ -20,10 +20,8 @@ export const WORKSPACE_POLICY_FILE = 'workspace-policy.json'
 const MAX_BYTES = 1024 * 1024
 const OWNERS = 'packaged-workspace-owners'
 export type RoutingReason =
-  | 'linked-file'
   | 'not-a-file'
   | 'file-too-large'
-  | 'file-changed'
   | 'invalid-json'
   | 'file-read-failed'
   | 'malformed-policy'
@@ -34,11 +32,9 @@ export type RoutingReason =
   | 'forbidden-first-workspace'
   | 'malformed-bundle-metadata'
   | 'bundle-read-failed'
-  | 'linked-owners-directory'
   | 'not-an-owners-directory'
   | 'owners-directory-failed'
   | 'malformed-owner'
-  | 'owner-mismatch'
   | 'owner-path-invalid'
   | 'owner-write-failed'
   | 'too-many-owners'
@@ -53,8 +49,11 @@ export class WorkspaceRoutingError extends Error {
   readonly reason: RoutingReason
   readonly file: string
   readonly path: string
-  constructor(reason: RoutingReason, file: string, path = file) {
-    super(WORKSPACE_LIST_REFUSAL)
+  constructor(reason: RoutingReason, file: string, path = file, cause?: unknown) {
+    super(
+      `${WORKSPACE_LIST_REFUSAL} ${file}${path === file ? '' : ` (${path})`}: ${cause instanceof Error ? cause.message : reason.replaceAll('-', ' ')}`,
+      { cause },
+    )
     this.name = 'WorkspaceRoutingError'
     this.reason = reason
     this.file = file
@@ -62,9 +61,15 @@ export class WorkspaceRoutingError extends Error {
   }
 }
 
-export function routingFailure(reason: RoutingReason, file: string, path = file): never {
-  console.error(`[workspace-routing:${reason}] ${file}: ${path}`)
-  throw new WorkspaceRoutingError(reason, file, path)
+export function routingFailure(
+  reason: RoutingReason,
+  file: string,
+  path = file,
+  cause?: unknown,
+): never {
+  const error = new WorkspaceRoutingError(reason, file, path, cause)
+  console.error(error.message)
+  throw error
 }
 
 export function routingWarning(
@@ -82,30 +87,28 @@ export function routingWarning(
 export function readRoutingFile(file: string): { text: string; value: unknown } | undefined {
   let fd: number | undefined
   try {
-    const before = lstatSync(file)
-    if (before.isSymbolicLink()) return routingFailure('linked-file', file)
-    if (!before.isFile()) return routingFailure('not-a-file', file)
-    if (before.size > MAX_BYTES) return routingFailure('file-too-large', file)
-    fd = openSync(
-      file,
-      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
-    )
+    fd = openSync(file, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0))
     const opened = fstatSync(fd)
-    if (!opened.isFile() || opened.dev !== before.dev || opened.ino !== before.ino)
-      return routingFailure('file-changed', file)
+    if (!opened.isFile()) return routingFailure('not-a-file', file)
+    if (opened.size > MAX_BYTES) return routingFailure('file-too-large', file)
     const bytes = Buffer.alloc(MAX_BYTES + 1)
-    const length = readSync(fd, bytes, 0, bytes.length, 0)
+    let length = 0
+    while (length < bytes.length) {
+      const read = readSync(fd, bytes, length, bytes.length - length, null)
+      if (read === 0) break
+      length += read
+    }
     if (length > MAX_BYTES) return routingFailure('file-too-large', file)
     const text = bytes.subarray(0, length).toString('utf8')
     try {
       return { text, value: JSON.parse(text) }
-    } catch {
-      return routingFailure('invalid-json', file)
+    } catch (error) {
+      return routingFailure('invalid-json', file, file, error)
     }
   } catch (error) {
     if (error instanceof WorkspaceRoutingError) throw error
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
-    return routingFailure('file-read-failed', file)
+    return routingFailure('file-read-failed', file, file, error)
   } finally {
     if (fd !== undefined) closeSync(fd)
   }
@@ -192,22 +195,19 @@ function ownersRoot(appData: string, create: boolean): string | undefined {
   const root = join(appData, '@brobot2', OWNERS)
   try {
     if (create) mkdirSync(root, { recursive: true, mode: 0o700 })
-    const seen = lstatSync(root)
-    if (seen.isSymbolicLink()) return routingFailure('linked-owners-directory', root)
+    const seen = statSync(root)
     if (!seen.isDirectory()) return routingFailure('not-an-owners-directory', root)
     return root
   } catch (error) {
     if (error instanceof WorkspaceRoutingError) throw error
     if (!create && (error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
-    return routingFailure('owners-directory-failed', root)
+    return routingFailure('owners-directory-failed', root, root, error)
   }
 }
 function ownerPath(file: string): string {
   const value = readRoutingFile(file)?.value as { version?: unknown; path?: unknown } | undefined
   if (value?.version !== 1 || !routingPath(value.path))
     return routingFailure('malformed-owner', file)
-  if (basename(file) !== `${ownerKey(value.path)}.json`)
-    return routingFailure('owner-mismatch', file, value.path)
   return value.path
 }
 
@@ -226,11 +226,7 @@ export function claimPackagedWorkspace(appData: string, folder: string): void {
   const path = canonicalWorkspacePath(folder)
   if (!routingPath(path)) return routingFailure('owner-path-invalid', root, path)
   const file = join(root, `${ownerKey(path)}.json`)
-  if (readRoutingFile(file)) {
-    if (ownerKey(ownerPath(file)) !== ownerKey(path))
-      return routingFailure('owner-mismatch', file, path)
-    return
-  }
+  if (readRoutingFile(file)) return
   const temporary = `${file}.${randomUUID()}.tmp`
   try {
     writeFileSync(temporary, JSON.stringify({ version: 1, path }), { flag: 'wx', mode: 0o600 })
@@ -239,11 +235,9 @@ export function claimPackagedWorkspace(appData: string, folder: string): void {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
     }
-    if (ownerKey(ownerPath(file)) !== ownerKey(path))
-      return routingFailure('owner-mismatch', file, path)
   } catch (error) {
     if (error instanceof WorkspaceRoutingError) throw error
-    return routingFailure('owner-write-failed', file, path)
+    return routingFailure('owner-write-failed', file, path, error)
   } finally {
     rmSync(temporary, { force: true })
   }
@@ -253,11 +247,11 @@ export function packagedWorkspaceOwners(appData: string): string[] {
   const root = ownersRoot(appData, false)
   if (!root) return []
   try {
-    const names = readdirSync(root).filter((name) => /^[a-f0-9]{64}\.json$/.test(name))
+    const names = readdirSync(root).filter((name) => name.endsWith('.json'))
     if (names.length > 4096) return routingFailure('too-many-owners', root)
     return names.map((name) => ownerPath(join(root, name)))
   } catch (error) {
     if (error instanceof WorkspaceRoutingError) throw error
-    return routingFailure('owners-read-failed', root)
+    return routingFailure('owners-read-failed', root, root, error)
   }
 }

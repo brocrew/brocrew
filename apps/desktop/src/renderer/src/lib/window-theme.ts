@@ -1,9 +1,3 @@
-/**
- * The window's theme: read once before the window first draws, then kept in step with every
- * change the host announces — a person's choice, an agent's, a theme file edited by hand. Each
- * change is read again rather than trusted from the announcement, and only the newest read is
- * applied, so a slow answer never puts back an older theme.
- */
 import type {
   ThemeChanged,
   ThemeReading,
@@ -17,10 +11,6 @@ import { applyTheme, type AppliedTheme, type ThemeDocument } from './apply-theme
 /** How long the first draw waits for the theme; after that the window draws and the theme follows. */
 export const FIRST_THEME_WAIT_MS = 1500
 
-/**
- * A theme file's URL on the host's scheme: inherited files are served from their own theme's
- * folder, and every URL carries its theme's version, so an edited picture is fetched again.
- */
 export function readingAssetUrl(reading: ThemeReading): (path: string) => string {
   const id = reading.theme?.id ?? reading.active
   return (path) => {
@@ -41,34 +31,21 @@ export function applyReading(
 
 export interface WindowThemeOptions {
   readonly doc?: ThemeDocument
-  /**
-   * Called for a change whose own read is the one now on the window: the newest read, of the theme
-   * the change announced, at the version it announced. A change a newer one overtook, or whose read
-   * failed, is never reported.
-   */
   readonly onChange?: (change: ThemeChanged) => void
 }
 
 /** Whether a reading is of the theme a change announced, at the version it announced. */
-export function readingMatches(change: ThemeChanged, reading: ThemeReading): boolean {
+function readingMatches(change: ThemeChanged, reading: ThemeReading): boolean {
   if (reading.active !== change.active) return false
   const announced = change.themes.find((row) => row.id === change.active)?.version
   return announced === undefined || announced === reading.version
 }
 
 export interface WindowTheme {
-  /**
-   * Settles once a theme is on: the first read applied that no newer one overtook, or the app's own
-   * look when the first read fails. Never rejects.
-   */
   readonly ready: Promise<void>
   stop(): void
 }
 
-/**
- * Everything in the window that wants to know when the themes change hears it from here, so the
- * window has one listener on the host's themes channel: the one {@link startWindowTheme} holds.
- */
 const followers = new Set<(change: ThemeChanged) => void>()
 
 /** Calls `listener` on every change the host announces. Answers how to stop. */

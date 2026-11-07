@@ -1,3 +1,4 @@
+import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { fictionalSkills } from '../../look/fixtures/skills'
@@ -10,7 +11,6 @@ import { DEFAULT_CAPABILITIES } from '../../src/shared/capabilities'
 import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
 import type {
   AgentIdentities,
-  ModelList,
   Provider,
   RuntimeBridge,
   ResumedSession,
@@ -792,6 +792,55 @@ it('the conversation list refreshing while a step reads does not stop the step',
   await settle()
   finish(handed('recorded-a', 'Words of A.'))
   await expect.poll(() => m.q('transcript').textContent).toContain('Words of A.')
+})
+
+it('Back pressed once the place a step reached is on screen takes the next step, on slow frames too', async () => {
+  const m = await visitedA('rail-team', hostSays('available'))
+  runtime.look.mockResolvedValueOnce(handed('recorded-a', 'Words of A.'))
+  const back = () => m.q('nav-back') as HTMLButtonElement
+  // A busy or slow computer draws its frames late; each one here comes 150 ms after it is asked.
+  const frames = vi
+    .spyOn(window, 'requestAnimationFrame')
+    .mockImplementation((frame) => window.setTimeout(() => frame(performance.now()), 150))
+  try {
+    back().click()
+    await expect.poll(() => m.q('transcript').textContent).toContain('Words of A.')
+    // What a person sees now: A, and Back offered to the conversation behind it.
+    expect(back().disabled).toBe(false)
+    expect(back().title).toContain('Back to')
+    back().click()
+    await expect.poll(() => m.all('message-link')[0]?.textContent).toBe('W9.1')
+  } finally {
+    frames.mockRestore()
+  }
+})
+
+it('a Back pressed after going elsewhere while a step settles is the one taken, not one from before', async () => {
+  const m = await visitedA('rail-team', hostSays('available'))
+  runtime.look.mockResolvedValueOnce(handed('recorded-a', 'Words of A.'))
+  runtime.look.mockResolvedValueOnce(handed('recorded-a', 'Words of A.'))
+  const back = () => m.q('nav-back') as HTMLButtonElement
+  const frames = vi
+    .spyOn(window, 'requestAnimationFrame')
+    .mockImplementation((frame) => window.setTimeout(() => frame(performance.now()), 150))
+  try {
+    back().click()
+    await expect.poll(() => m.q('transcript').textContent).toContain('Words of A.')
+    // While A settles: Back, then Settings, then Back from Settings. Only the last is still meant.
+    back().click()
+    m.q('rail-settings').click()
+    await nextTick()
+    back().click()
+    await expect.poll(() => m.all('settings-screen').length).toBe(0)
+    expect(m.q('transcript').textContent).toContain('Words of A.')
+    // One step, from Settings to A: not on to the conversation behind A.
+    await expect
+      .poll(() => (m.q('nav-forward') as HTMLButtonElement).title)
+      .toBe('Forward to Settings (⌘])')
+    expect(m.all('message-link')).toHaveLength(0)
+  } finally {
+    frames.mockRestore()
+  }
 })
 
 it('another tab chosen while a step reads stops the step', async () => {

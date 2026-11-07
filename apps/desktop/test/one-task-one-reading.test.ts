@@ -1,25 +1,30 @@
+import type { TaskState } from '../src/shared/task-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { WORK_STATE_WORD } from '../src/shared/work-state-words'
-import type { TaskState } from '../src/shared/tasks'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { AgentToolset, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime'
+import { type AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import { aPersonOwesAnAnswerIn } from '../src/shared/questions'
 import { MAX_FOREST_CONVERSATIONS } from '../src/shared/the-whole-forest'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  fixtureProviderConfig,
+  neutralHostDeps,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **664 · one task, one reading, in every place it is drawn** (`D32`, found by `654`).
@@ -88,40 +93,6 @@ const callsOf = (source: string, callee: RegExp): { reader: string; composed: bo
   }))
 }
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
-class ToolWatchingRuntime extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handed: AgentToolset[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-    const handle = await super.start(options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
-  }
-  override async resume(
-    ref: SessionRef,
-    options: ResumeOptions,
-  ): ReturnType<FakeRuntime['resume']> {
-    const handle = await super.resume(ref, options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
-  }
-}
-
 describe('664 · one task, one reading, in every place it is drawn', () => {
   let userData: string
   let root: string
@@ -147,26 +118,14 @@ describe('664 · one task, one reading, in every place it is drawn', () => {
     issued = new FakeProviderSessions()
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:1')
   })
@@ -400,9 +359,16 @@ describe('664 · one task, one reading, in every place it is drawn', () => {
     it('⛔ every host read of a conversation’s tasks is COMPOSED or named — the host', () => {
       // ⚑ **D-016** — `tasksOf` is `piecesOwnedBy` (and `openPiecesOf`), `tasksAssignedBy` is
       // `piecesGivenBy`.
-      const calls = callsOf(
-        readFileSync(HOST_SOURCE, 'utf8'),
-        /\.(?:piecesOwnedBy|turnBlockPiecesOwnedBy|openPiecesOf|piecesGivenBy|piecesOwnedBefore)\(/g,
+      const host = codeOnly(readFileSync(HOST_SOURCE, 'utf8'))
+      const workReads = readFileSync(join(here, '../src/main/runtime/work-reads.ts'), 'utf8')
+      expect(host).toContain('return this.workReads.pieceBoard(sessionId)')
+      expect(host).toContain('return this.workReads.pieceRecord(sessionId, spelled)')
+      expect(host).toContain('this.workReads = new WorkReads({\n      store: this.deps.store,')
+      const calls = [host, workReads].flatMap((source) =>
+        callsOf(
+          source,
+          /\.(?:piecesOwnedBy|turnBlockPiecesOwnedBy|openPiecesOf|piecesGivenBy|piecesOwnedBefore)\(/g,
+        ),
       )
       expect(
         calls
@@ -429,8 +395,9 @@ describe('664 · one task, one reading, in every place it is drawn', () => {
           // are GONE with their subject: both asked whether the work still waited, for the held
           // *"It is waiting"* correction a reopen once sent — and since D-016c a reopen tells nobody
           // ⚑ `D-006` · F018 — where the work a RUNNING conversation holds stands, for the rail's
-          // plates: a state a person reads, so composed, as `list_tasks` composes the same rows
-          'whatEachConversationIsWaitingOn',
+          // plates: a state a person reads, so composed, as `list_tasks` composes the same rows —
+          // composed once per listing version and shared by every window that asks
+          'whatEachConversationIsWaitingOnComposed',
           // ⚑ When the piece a service is on stalled, said to the callers queued behind it: a
           // state, so composed — a piece waiting on its own question or child is not stalled
           'whenItsActivePieceStalled',

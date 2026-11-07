@@ -1,3 +1,4 @@
+import type { UserTurnEvent, UserTurnPart } from '../src/shared/human-answer-contracts'
 import { describe, expect, it } from 'vitest'
 import { conversationBlock } from '../src/main/runtime/instructions'
 import {
@@ -11,7 +12,6 @@ import {
   type ModelGotPart,
   type WhatALaunchGave,
 } from '../src/shared/what-this-agent-was-given'
-import type { UserTurnEvent, UserTurnPart } from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 F093 · C9 d — one message as the model got it: where each part sat, and why one is missing

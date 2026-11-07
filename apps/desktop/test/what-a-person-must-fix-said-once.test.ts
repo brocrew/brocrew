@@ -1,3 +1,5 @@
+import { waitFor } from './lib/f093-host'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import { chmodSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -14,7 +16,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, THE_APP_ITSELF, type RuntimeEventSink } from './helpers/giver-notice-host'
 import * as tools from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
@@ -120,9 +121,7 @@ describe('716 · what a person must fix, said once', () => {
     homeFails = undefined
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued, gate),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
         if (homeFails !== undefined) throw homeFails()
@@ -133,13 +132,7 @@ describe('716 · what a person must fix, said once', () => {
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:1')
   })
@@ -205,14 +198,6 @@ describe('716 · what a person must fix, said once', () => {
       title: 'The work',
       brief: 'the work',
     })
-
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
 
   /**
    * A worker the PM gave work, and that then STOPPED — the conversation a wake brings back
@@ -460,7 +445,7 @@ describe('716 · what a person must fix, said once', () => {
     })
 
     it('🔴 a call on an entry that EXISTS is refused by that entry — not by the folder that holds it', () => {
-      // ⚑ Round two of `716`'s review: the provider home's `chmod` runs on a home that exists.
+      // A metadata operation on an existing entry is refused by that entry.
       expect(
         describeUnavailable(
           'its-folder-could-not-be-made' as never,

@@ -1,57 +1,13 @@
-import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync } from 'node:fs'
-import { realpathSync, type BigIntStats, type Stats } from 'node:fs'
+import { closeSync, constants, fstatSync, fsyncSync, lstatSync, openSync } from 'node:fs'
+import { realpathSync, type BigIntStats } from 'node:fs'
 import { lstat, open, type FileHandle } from 'node:fs/promises'
-import { dirname, isAbsolute, posix, win32 } from 'node:path'
-import { windowsAccessLists, type OwnedAccessLists } from '../recovery/windows-privacy'
-
-/**
- * The plugin host's private folders and files, on each platform.
- *
- * On macOS and Linux an entry is private when this user owns it and its mode gives the group and
- * others nothing, and opens refuse a link with `O_NOFOLLOW`.
- *
- * A stat on Windows carries no owner and no real mode. There the plugin root's access list is
- * tightened best effort once per folder identity in a process ({@link keepPluginRootPrivate}).
- * Permission failures do not block plugins; entries inside an admitted root pass on their kind.
- * Opens look at the name again once open, since an open there follows a link; a directory is never fsynced, which Windows refuses (NTFS journals the
- * folder's own changes).
- */
+import { posix, win32 } from 'node:path'
 
 type Platform = NodeJS.Platform
-type AnyStats = Stats | BigIntStats
 
-/** Whether `stat` is this user's and gives nobody else anything under `mask`. */
-export function isPrivateEntry(
-  stat: AnyStats,
-  mask = 0o077,
-  platform: Platform = process.platform,
-): boolean {
-  if (platform === 'win32') return true
-  return Number(stat.uid) === process.getuid?.() && (Number(stat.mode) & mask) === 0
-}
-
-/**
- * The mode a file the host keeps unchanged is made with. On Windows it stays writable: Windows will
- * not rename a file over a read-only one, which the host's pointer and floor updates need, so there
- * such a file is held to its exact bytes alone.
- */
+/** New package files stay writable; executable files must remain runnable. */
 export function immutableMode(executable: boolean, platform: Platform = process.platform): number {
-  if (platform === 'win32') return 0o600
-  return executable ? 0o500 : 0o400
-}
-
-/** Whether `stat` is a file kept unchanged: mode 0400 or 0500; on Windows, any ({@link immutableMode}). */
-export function isImmutableFile(stat: AnyStats, platform: Platform = process.platform): boolean {
-  return platform === 'win32' || (Number(stat.mode) & 0o277) === 0
-}
-
-/** Whether `stat` is this user's directory with mode exactly 0700; on Windows, see above. */
-export function isOwnerOnlyDirectory(
-  stat: AnyStats,
-  platform: Platform = process.platform,
-): boolean {
-  if (platform === 'win32') return true
-  return Number(stat.uid) === process.getuid?.() && (Number(stat.mode) & 0o7777) === 0o700
+  return executable && platform !== 'win32' ? 0o755 : 0o666
 }
 
 /** Makes a directory durable where the platform allows it; Windows refuses a directory fsync. */
@@ -196,77 +152,4 @@ export function isWithinOrSame(
 /** Whether `path` names a drive-letter path, not a share (`\\server\…`) or a device (`\\?\…`). */
 export function isLocalDrivePath(path: string, platform: Platform = process.platform): boolean {
   return platform !== 'win32' || /^[A-Za-z]:\\/.test(path)
-}
-
-/** Structurally admitted plugin roots, by canonical path, with their folder identity. */
-const checkedRoots = new Map<string, { dev: bigint; ino: bigint }>()
-const rootTightenings = new Map<string, Promise<void>>()
-
-/**
- * On Windows, admits a plain local plugin folder and attempts once per identity to grant this
- * user, SYSTEM and Administrators access without inheritance. ACL and owner observations never
- * gate plugins. Only this folder is tightened; parent and workspace permissions are untouched.
- * Elsewhere does nothing: the root's mode is checked where it is pinned.
- */
-export async function keepPluginRootPrivate(
-  root: string,
-  options: { platform?: Platform; lists?: OwnedAccessLists } = {},
-): Promise<void> {
-  const platform = options.platform ?? process.platform
-  if (platform !== 'win32') return
-  const lists = options.lists ?? windowsAccessLists
-  if (!isAbsolute(root) || !isLocalDrivePath(root, platform)) throw new Error('unsafe-path')
-  const parent = realPath(dirname(root), platform)
-  if (parent.toLowerCase() !== dirname(root).toLowerCase()) throw new Error('unsafe-path')
-  try {
-    mkdirSync(root)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
-  }
-  const stat = lstatSync(root, { bigint: true })
-  if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('unsafe-path')
-  const canonical = realPath(root, platform).toLowerCase()
-  const checked = checkedRoots.get(canonical)
-  if (checked?.dev === stat.dev && checked.ino === stat.ino) return
-  const identity = `${canonical}:${stat.dev}:${stat.ino}`
-  let tightening = rootTightenings.get(identity)
-  if (!tightening) {
-    tightening = Promise.resolve().then(async () => {
-      try {
-        const user = await lists.userSid()
-        await lists.restrict(root, user, [])
-      } catch {
-        console.warn('Could not tighten plugin folder permissions; continuing.')
-      }
-    })
-    rootTightenings.set(identity, tightening)
-  }
-  await tightening
-  const again = lstatSync(root, { bigint: true })
-  if (
-    !again.isDirectory() ||
-    again.isSymbolicLink() ||
-    again.dev !== stat.dev ||
-    again.ino !== stat.ino
-  )
-    throw new Error('unsafe-path')
-  checkedRoots.set(canonical, { dev: stat.dev, ino: stat.ino })
-}
-
-/**
- * Whether `path` (canonical) is a root {@link keepPluginRootPrivate} admitted in this process, or
- * inside one that is still the folder it admitted. Always true off Windows.
- */
-export function isInsideCheckedRoot(path: string, platform: Platform = process.platform): boolean {
-  if (platform !== 'win32') return true
-  for (const [root, identity] of checkedRoots) {
-    if (!isWithinOrSame(root, path, platform)) continue
-    try {
-      const now = lstatSync(root, { bigint: true })
-      if (!now.isSymbolicLink() && now.dev === identity.dev && now.ino === identity.ino) return true
-    } catch {
-      /* A root gone since its check holds nothing. */
-    }
-  }
-  return false
 }

@@ -1,71 +1,14 @@
+import type {
+  AgentModelChoice,
+  ListedModel,
+  ModelAndEffort,
+  ModelChoiceRail,
+  ModelChoiceRefusalDetail,
+  ModelChoiceSaved,
+} from './model-choice-contracts'
 import type { Provider } from '@brobot2/shared'
 import type { ModelChoice } from '@brobot2/runtime'
 import { DEFAULT_PROFILE_ID, PROVIDER_NAME } from './runtime-ipc'
-
-/**
- * # 🔴 D-042 · every call names its model and effort, and agents choose their helpers'
- *
- * Choose models and reasoning effort consistently across picker surfaces:
- *
- *  - **R1 · every call names its model and effort.** Every conversation holds a selected pair on its
- *    row, and every start, wake and turn names it. Where it comes from, in this order: what a give or
- *    a person named for that conversation; else its agent's default; else the last pair the person
- *    picked on that provider; else the provider's own default, BY NAME — one entry in the list,
- *    never an absence.
- *  - **R2 · defaults.** A person's change to a conversation's model or effort, or to an agent's
- *    sheet, becomes that agent's default ({@link AgentModelChoice}); its other open conversations
- *    keep their own. ⛔ A give never changes a default; `create_agent` may set the new agent's.
- *  - **R3 · the list, one door**: the provider's own models (with what an alias points at, and each
- *    model's efforts), then the models a person added by hand ({@link theList}).
- *  - **R4 · agents choose** anything in that list — the person's hand-added ones included. ⚑ The
- *    agents' seam is `main/runtime/model-rails.ts`; ⛔ a person's own choice in the window never
- *    passes it.
- *
- * ## ⚑ Validated against what the PROVIDER answered, never a list written here
- *
- * ⛔ **There is no model id and no effort level anywhere in this file.** Every verdict reads the
- * catalogue the provider answered (`ModelChoice.efforts`, `.resolvesTo`, `.isDefault`) and the
- * person's own additions.
- *
- * ⚠️ **Here, in `shared/`, so the control a person will press can ask the same question before the
- * press that main asks after it** — `485`'s rule for a grant's words applied to a choice. It takes
- * no value from `@brobot2/shared` (`a-value-import-from-shared-costs-the-renderer-135kb`).
- */
-
-/**
- * ⚑ **A model and the effort it runs at** — `effort` is `null` only for a model whose list row
- * offers no effort level (Claude's `haiku`, measured): there is nothing to name.
- */
-export interface ModelAndEffort {
-  readonly model: string
-  readonly effort: string | null
-}
-
-/**
- * 🔴 **An agent's default — a pair FOR a provider** (R2; `agent_identity.model_choice`).
- *
- * ⚑ **The provider is part of it**, because a model name belongs to a provider: a Claude model is
- * never sent to Codex ({@link aChoiceIsInForce}).
- */
-export interface AgentModelChoice extends ModelAndEffort {
-  readonly provider: Provider
-}
-
-/** ⚑ **D-042 · R1 — where a conversation's selected pair came from**, in the ruling's order. */
-export type WhereItCameFrom = 'named' | 'its-default' | 'the-last-pick' | 'the-providers-default'
-
-/** ⚑ **D-042 · a conversation's selected pair, and where it came from.** */
-export interface SelectedModel extends ModelAndEffort {
-  readonly from: WhereItCameFrom
-}
-
-/**
- * ⚑ **One row of the list** — the provider's own, or one a person added by hand (R3). ⚠️ Only a
- * person's can be deleted: the provider's come back at its next answer.
- */
-export interface ListedModel extends ModelChoice {
-  readonly addedBy: 'the-provider' | 'a-person'
-}
 
 /**
  * ⚑ **682 · whose home a list is read in for an agent with no folder of its own** — the product's
@@ -225,63 +168,6 @@ export function judgeAgainstTheList(
   }
   return null
 }
-
-/**
- * ⛔ **Why a person's choice was not saved** — each a fact the door can state, never a sentence the
- * door has to invent. ⚑ See {@link MODEL_CHOICE_SAID} for what each says.
- */
-export const MODEL_CHOICE_RAILS = [
-  /** ⛔ Criterion 12: a name with no identity row is not a thing to configure into existence. */
-  'no-such-agent',
-  /**
-   * 🔴 **682 · the choice names another provider than the identity's own** (`R31b`). ⛔ Asked before
-   * any provider is, because it needs none. ⚑ An identity with NO provider of its own takes either.
-   */
-  'not-its-provider',
-  /** The provider was asked and did not answer — not signed in, the program missing, a quit. */
-  'models-unavailable',
-  /** The list — the provider's rows and the person's own — does not hold the model. */
-  'model-not-offered',
-  /** The model's row does not offer the effort — or offers efforts and none was named. */
-  'effort-not-offered',
-] as const
-
-export type ModelChoiceRail = (typeof MODEL_CHOICE_RAILS)[number]
-
-/** The facts a refusal may carry, as data beside the sentence (`UnavailableContext`'s rule, 100). */
-export interface ModelChoiceRefusalDetail {
-  readonly profileId: string
-  readonly provider?: Provider
-  readonly model?: string
-  readonly effort?: string
-  /** `models-unavailable`'s own reason, in the provider's words. */
-  readonly why?: string
-  /** `effort-not-offered`: what the model's row DOES offer, so a person can pick one of them. */
-  readonly offered?: readonly string[]
-  /** 682 · `not-its-provider`: the provider the identity itself runs on. */
-  readonly itsProvider?: Provider
-  /**
-   * 🔴 **707 · R41 — `not-its-provider`: the identity by the roster's NAME** (`agentName`), resolved
-   * by the caller — this module reads no roster. ⚠️ {@link profileId} stays the KEY.
-   */
-  readonly named?: string
-}
-
-/**
- * ⚑ **What the door answers** — the saved default read back, or the rail that stopped it.
- *
- * ⛔ **A refusal is a VALUE**, `AgentRemoved`'s shape: every one of these is a person's ordinary
- * mistake or an ordinary state of the machine. ⚠️ **`requireAPerson` still THROWS**: a caller that is
- * not a person reaching this door is the one thing it exists to prevent.
- */
-export type ModelChoiceSaved =
-  | { readonly ok: true; readonly choice: AgentModelChoice | null }
-  | {
-      readonly ok: false
-      readonly rail: ModelChoiceRail
-      readonly reason: string
-      readonly detail: ModelChoiceRefusalDetail
-    }
 
 const quoted = (values: readonly string[]): string => values.map((one) => `“${one}”`).join(', ')
 

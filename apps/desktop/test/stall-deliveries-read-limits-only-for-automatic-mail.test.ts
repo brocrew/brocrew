@@ -1,3 +1,5 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import type { PieceRow } from '../src/shared/task-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -7,7 +9,6 @@ import type { MockInstance } from 'vitest'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { FakeSessionHandle, RuntimeEvent, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
@@ -17,8 +18,8 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { THE_PERSON_AT_A_WINDOW } from '../src/main/runtime/turn-origin'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { MainThreadWork } from '../src/main/stall-watch'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
-import { aStallItsGiverCanBeToldOf, type PieceRow } from '../src/shared/tasks'
+import { aStallItsGiverCanBeToldOf } from '../src/shared/tasks'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 const NOW = Date.UTC(2026, 9, 5, 9)
@@ -94,9 +95,7 @@ describe('stall deliveries read limits only for automatic mail', () => {
     const issued = new FakeProviderSessions()
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(directory, 'exports'),
+      ...neutralHostDeps(() => directory),
       resourcesRoot: () => resourcesRoot(directory),
       createRuntime: () => new KeptHandles(handles, issued),
       prepareProviderHome: (provider, profileId) => {
@@ -109,13 +108,7 @@ describe('stall deliveries read limits only for automatic mail', () => {
       newSessionId: () => `sess_wave_${++serial}`,
       now: () => clock++,
       signInChanges: { read: () => new Map([['claude', NOW - 1]]), write: () => {} },
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     boundary = host as unknown as DeliveryBoundary
   })

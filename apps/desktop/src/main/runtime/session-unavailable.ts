@@ -542,8 +542,7 @@ export function whatAFolderRefused(folder: UnavailableContext['folder']): {
           : `write ${path}`
   const could = `could not ${what}`
   if (code === 'EACCES' || code === 'EPERM') {
-    // ⚠️ **Only a call that CREATES an entry is refused by its parent** (round two of `716`'s
-    // review): a `chmod` of the provider home that exists is refused by the home itself.
+    // Creating an entry needs its parent's permission; changing existing metadata needs the entry's.
     if (path === null) {
       return {
         failed: `${could}, because it may not write where it needs to`,

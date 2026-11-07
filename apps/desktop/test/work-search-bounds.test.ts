@@ -5,7 +5,7 @@ import {
   workSearchMaterialization,
   workSearchUnread,
 } from '../src/main/db/bounded-work-search'
-import { rowsUnreadOnce } from '../src/main/db/session-store'
+import { rowsUnreadOnce } from '../src/main/db/rows-unread'
 
 const rows =
   'WITH RECURSIVE n(x) AS (VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x < ?) SELECT x FROM n'

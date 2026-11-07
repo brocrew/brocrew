@@ -1,3 +1,5 @@
+import { neutralHostDeps } from './lib/host-fixture'
+import type { SessionInstructions } from '../src/shared/instruction-contracts'
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -5,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeLaunchGate, FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import type { RuntimeChangeMessage, SessionInstructions } from '../src/shared/runtime-ipc'
+import type { RuntimeChangeMessage } from '../src/shared/runtime-ipc'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import {
@@ -13,7 +15,6 @@ import {
   NULL_SESSION_STORE,
   type SessionStore,
 } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
@@ -148,9 +149,7 @@ describe('558 · every identity he has', () => {
   const buildHost = (): RuntimeHost =>
     new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         // ⚑ **The gate is read at LAUNCH rather than captured at construction**, so a test can hold
         // one launch open without building a second host.
@@ -164,7 +163,8 @@ describe('558 · every identity he has', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      announce: (change) => said.push(change),
+      // `persons` comes from the store's record of each commit, and is pinned in its own file.
+      announce: (change) => void (change.what !== 'persons' && said.push(change)),
       readProviderConfig: (provider, home) => ({
         home,
         homeEnv: 'CLAUDE_CONFIG_DIR',
@@ -525,10 +525,9 @@ describe('558 · every identity he has', () => {
               name: 'review.md',
               before: {
                 base64: '',
-                fingerprint: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
                 mode: 0o600,
               },
-              after: null,
+              afterBase64: null,
               afterMode: null,
             },
           ],
@@ -551,7 +550,7 @@ describe('558 · every identity he has', () => {
           'lark',
           change.id,
           'done',
-          [{ name: 'review.md', fingerprint: null, mode: null }],
+          [{ name: 'review.md', base64: null, mode: null }],
           { who: 'a-person' },
         ),
       ).toBe(true)
@@ -574,10 +573,9 @@ describe('558 · every identity he has', () => {
                 name: 'review.md',
                 before: {
                   base64: '',
-                  fingerprint: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
                   mode: 0o600,
                 },
-                after: null,
+                afterBase64: null,
                 afterMode: null,
               },
             ],
@@ -1175,7 +1173,7 @@ describe('558 · every identity he has', () => {
     it('⚑ a rename and a removal both announce `agents`, and the vocabulary is still two words', () => {
       // ⚑ **638 · a THIRD member**, `work` — the condition `534` set (*do not add a subject
       // nothing reads*) lapsed when `631` built the task lists that read it.
-      expect([...RUNTIME_CHANGE_SUBJECTS]).toEqual(['conversations', 'agents', 'work'])
+      expect([...RUNTIME_CHANGE_SUBJECTS]).toEqual(['conversations', 'agents', 'work', 'persons'])
       host.createAgent({ slug: 'worker', displayName: null, provider: null })
       said.length = 0
       host.setAgentDisplayName('worker', 'Worker')

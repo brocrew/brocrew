@@ -1,4 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { waitFor } from './lib/f093-host'
+import { MAILBOX_KINDS } from '../src/shared/conversation-events'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { REQUEST_STATES } from '../src/shared/question-contracts'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -18,9 +22,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { TOOL_NAMES, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import {
   QUESTION_RAILS,
@@ -33,13 +35,18 @@ import { REPLY_RAILS } from '../src/main/runtime/reply-rails'
 import { SPAWN_RAILS } from '../src/main/runtime/spawn-rails'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { MAILBOX_KINDS, theMessagesOf } from '../src/shared/runtime-ipc'
+import { theMessagesOf } from '../src/shared/runtime-ipc'
 import { CAPABILITY_FIELDS } from '../src/shared/capabilities'
 import { mailboxOf, stillHeld } from '../src/shared/mailbox'
-import { REQUEST_IS_OPEN, REQUEST_STATES, permissionShaped } from '../src/shared/questions'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import { REQUEST_IS_OPEN, permissionShaped } from '../src/shared/questions'
 import { APPROVALS_ARE_THE_PERSONS } from './lib/the-core'
 import { composeProfileBundle } from '../src/main/runtime/factory-text'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **394 · a question finds a person, and a permission never travels** — Slice 4 S4, HO-007
@@ -73,25 +80,6 @@ import { composeProfileBundle } from '../src/main/runtime/factory-text'
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /**
  * `373`'s double, with the handles kept too.
@@ -154,27 +142,15 @@ describe('394 · a question finds a person, and a permission never travels', () 
   const buildHost = (over: SessionStore = store): RuntimeHost => {
     const built = new RuntimeHost({
       store: over,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handed, handles, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

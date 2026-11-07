@@ -1,10 +1,10 @@
 import Database from 'better-sqlite3'
+import type { VerifyCopy } from './copy-check'
 import { randomUUID } from 'node:crypto'
 import { basename, dirname, join } from 'node:path'
 import type { OfferedCheckpoint, ProgressListener } from '../../shared/recovery'
 import type { RetainedRecoveryCopy } from '../../shared/recovery-retention'
 import { freeBytesOn } from '../archive/native-file'
-import { keepNoMoreOpenThanTheData } from '../data-folder-privacy'
 import type { HostGateVerdict } from '../one-host-gate'
 import {
   MANIFEST_FORMAT,
@@ -66,18 +66,6 @@ import {
 import { APP_STATE_FILES } from './state-files'
 import { copySkillTree, readSkillTree, stateContentAt as contentAt } from './trees'
 import { SKILL_TREES, SKILLS_CONVERSION_FILE } from '../skills/shared-paths'
-
-/**
- * The checked copies in `backups/`: whether a start needs one, making one, which ones this build
- * can offer, and which ones to let go.
- *
- * A copy is the database read through SQLite's backup API into a private folder of its own, turned
- * into a single rollback-mode file, checked by SQLite and hashed, with the app's state files copied
- * beside it. Every file is on disk before its manifest is written, last, so a folder without one is
- * never a checkpoint and a manifest never names a file a power cut lost. The writer's first file in
- * the folder is an empty `unfinished`, removed once the manifest is written: a folder with no
- * manifest is a copy that never finished only when it holds that file.
- */
 
 /** The steps of making a copy, in order. */
 export type CheckpointStep = 'copy' | 'verify' | 'files' | 'manifest'
@@ -151,23 +139,9 @@ export interface CheckpointFacts {
   readonly offerable: readonly Checkpoint[]
   /** {@link whenTheDatabaseLastChanged}'s answer. */
   readonly databaseChangedAt: number | null
-  /**
-   * The ids of offerable checkpoints whose files were hashed and match their manifests. A copy is
-   * reused in place of a new one only when it is among them, so a retry never leans on a copy
-   * damaged since it was made. {@link checkpointNeeded} hashes the one it would reuse.
-   */
   readonly intact?: ReadonlySet<string>
 }
 
-/**
- * Why this start needs a checkpoint before it opens the database, or null when it needs none.
- *
- * Migrations still to apply need one, unless this build already made a copy of the database as it
- * is now and that copy is intact: the same migrations, and nothing changed since (a retry after a
- * failed migration). A packaged build knows its copies by its release version, any other by the
- * commit it was made from. A packaged release's first start needs one too, found by there being no
- * offerable checkpoint made by it. An absent, empty or unreadable database never needs one.
- */
 export function needsACheckpoint(facts: CheckpointFacts): CheckpointReason | null {
   const { database } = facts
   if (database.kind !== 'recorded') return null
@@ -196,12 +170,6 @@ export interface CheckpointQuestion {
   readonly fs?: RecoveryFs
 }
 
-/**
- * {@link needsACheckpoint}, with the facts read from the data folder: the offerable copies, when
- * the database last changed, and, for the one copy a retry would reuse, a hash of every file a
- * restore of it installs. A copy is only ever reused in place of one made before migrations, so it
- * is hashed only when migrations are left to apply.
- */
 export async function checkpointNeeded(
   question: CheckpointQuestion,
 ): Promise<CheckpointReason | null> {
@@ -236,11 +204,6 @@ export async function checkpointNeeded(
   return needed
 }
 
-/**
- * This build's offerable copies of the database as it is now, newest first: made by this release,
- * or on a build that is not packaged by this commit; with the same migrations; and made no earlier
- * than the database last changed. A build that knows neither has none.
- */
 function reusableCopies(facts: CheckpointFacts): Checkpoint[] {
   const { database, release, databaseChangedAt } = facts
   const build = facts.build ?? null
@@ -255,11 +218,6 @@ function reusableCopies(facts: CheckpointFacts): Checkpoint[] {
   )
 }
 
-/**
- * When the live database last changed: the newest modification time of `brobot2.sqlite` and of a
- * `-wal` or `-journal` beside it that holds anything. Null when there is no database; a time that
- * cannot be read is thrown, never taken as no change.
- */
 export async function whenTheDatabaseLastChanged(
   userData: string,
   fs: RecoveryFs = nodeFs,
@@ -275,10 +233,6 @@ export async function whenTheDatabaseLastChanged(
   return newest
 }
 
-/**
- * Whether every file a restore of `checkpoint` installs still hashes to what its manifest records:
- * the database copy and each state file restored with it. Reads every byte of them.
- */
 export async function isIntact(checkpoint: Checkpoint, fs: RecoveryFs = nodeFs): Promise<boolean> {
   for (const { name, sha256 } of installedByARestore(checkpoint.manifest)) {
     const content = await contentAt(join(checkpoint.folder, name), fs).catch(() => null)
@@ -287,10 +241,6 @@ export async function isIntact(checkpoint: Checkpoint, fs: RecoveryFs = nodeFs):
   return true
 }
 
-/**
- * The newest of `offerable` that {@link isIntact} finds whole, hashing one copy at a time from the
- * newest, or null when none is. This is the copy a restore is offered from.
- */
 export async function theNewestIntact(
   offerable: readonly Checkpoint[],
   fs: RecoveryFs = nodeFs,
@@ -319,15 +269,10 @@ export interface MakeCheckpointOptions {
   readonly log?: (line: string) => void
   /** Called before each step; a test throws from it to stop the copy there. */
   readonly beforeStep?: (step: CheckpointStep) => void
+  /** Checks the copy before it is kept: in the app, in a worker. */
+  readonly verifyCopy: VerifyCopy
 }
 
-/**
- * Makes a checked copy of the live database and the app's state files in `backups/<id>/`, and
- * publishes it by writing its manifest. Every database handle on the live database must be closed
- * first. Any failure removes the unfinished folder and throws {@link CheckpointFailed}.
- *
- * Progress counts the database's pages three times: once copying, once checking, once hashing.
- */
 export async function makeCheckpoint(options: MakeCheckpointOptions): Promise<Checkpoint> {
   const { userData } = options
   const fs = options.fs ?? nodeFs
@@ -362,13 +307,13 @@ export async function makeCheckpoint(options: MakeCheckpointOptions): Promise<Ch
       checkFreeSpace(userData, pages * pageSize, options.freeBytes ?? freeBytesOn)
       await assertOwnedPathsAreReal(userData, [folder, workspaceIdFile(userData)], fs)
       await privateDir(backups, fs)
-      await keepNoMoreOpenThanTheData(backups, userData)
+
       await syncFolder(userData, fs)
       workspaceId = await workspaceIdFor(userData, fs)
       await fs.mkdir(folder, { mode: 0o700 })
       made = true
       await assertOwnedPathsAreReal(userData, [folder, marker], fs)
-      await fs.chmod(folder, 0o700)
+
       await syncFolder(backups, fs)
       await fs.writeFile(marker, '', { mode: 0o600, flag: 'wx' })
       await syncFolder(folder, fs)
@@ -388,7 +333,15 @@ export async function makeCheckpoint(options: MakeCheckpointOptions): Promise<Ch
     report(pages)
 
     beforeStep('verify')
-    verifyTheCopy(copy)
+    // Checked off the main thread; the copy is released before the answer comes.
+    const checked = await options.verifyCopy(copy)
+    if (checked.kind === 'damaged')
+      throw new CheckpointFailed(
+        `BroCrew's copy of this workspace's data did not pass SQLite's own check (${checked.check}), so ` +
+          'BroCrew changed nothing in the data.',
+        false,
+      )
+    if (checked.kind === 'failed') throw new Error(checked.message)
     await leaveOneFile(userData, copy, fs)
     const recorded = await migrationsOf(copy, { fs })
     if (recorded.kind !== 'recorded') {
@@ -401,7 +354,7 @@ export async function makeCheckpoint(options: MakeCheckpointOptions): Promise<Ch
     }
     report(2 * pages)
     await assertOwnedPathsAreReal(userData, [copy], fs)
-    await fs.chmod(copy, 0o600)
+
     await putOnDisk(copy, fs)
     const bytes = (await fs.lstat(copy)).size
     const sha256 = await sha256Of(copy, fs)
@@ -429,8 +382,6 @@ export async function makeCheckpoint(options: MakeCheckpointOptions): Promise<Ch
     if (made) await removeUnfinished(userData, folder, fs)
     throw failureFrom(error)
   }
-  // After the manifest, so no moment leaves a copy with neither. A marker that stays beside a
-  // manifest changes nothing: a folder with a manifest is read by its manifest alone.
   await assertOwnedPathsAreReal(userData, [marker], fs)
     .then(() => removeCheckpointEntry(userData, folder, UNFINISHED_FILE, fs))
     .catch(() => undefined)
@@ -438,10 +389,6 @@ export async function makeCheckpoint(options: MakeCheckpointOptions): Promise<Ch
   return { folder, manifest }
 }
 
-/**
- * Every checkpoint of this workspace whose manifest this build reads, newest first, whatever its
- * migrations and whether or not its files are still there. None when `backups/` cannot be read.
- */
 export async function listCheckpoints(
   userData: string,
   fs: RecoveryFs = nodeFs,
@@ -451,12 +398,6 @@ export async function listCheckpoints(
   return workspace.kind === 'id' ? ofThisWorkspace(workspace.id, folders) : []
 }
 
-/**
- * The checkpoints this build can offer, newest first: this workspace's, listing only state files
- * this build's registry names, whole (see {@link wholeness}), and holding migrations that are the
- * first of `lineage` by time and hash, so this build can open the copy. Their hashes are checked
- * when one is offered ({@link theNewestIntact}) and again when it is restored.
- */
 export async function listOfferable(
   userData: string,
   lineage: readonly BuildMigration[],
@@ -493,17 +434,6 @@ export interface PruneOptions {
   readonly currentAppVersion?: string
 }
 
-/**
- * Lets go of the checkpoints no longer kept, and returns the folder names it removed.
- *
- * Keeps the newest two intact, compatible copies of this workspace without age or start expiry.
- * Foreign, damaged, unreadable and newer-build copies remain protected and do not consume those
- * two places. Unfinished writers and non-UUID folders are untouched. Call only after startup
- * succeeds, or for an explicit Settings cleanup after that successful start.
- *
- * It removes nothing unless this process is the only app on the data folder, and nothing in a run
- * where anything in `backups/` could not be read, since what to keep is then not known.
- */
 export async function prune(
   userData: string,
   lineage: readonly BuildMigration[],
@@ -561,9 +491,6 @@ export async function prune(
     if (found === 'unknown') return notThisTime(`${checkpoint.folder} could not be read.`)
     if (found === 'whole') whole.push(checkpoint)
   }
-  // Hashing reads every byte of a copy, so a copy is hashed only when it matters: one that would be
-  // kept while another would go, newest first, giving its place to the next when it does not
-  // match; then each copy that would go, just before it goes.
   let candidates = whole
   const keepingOf = (copies: readonly Checkpoint[]): Set<string> =>
     new Set(copies.slice(0, KEEP_NEWEST).map(({ manifest }) => manifest.id))
@@ -727,10 +654,6 @@ async function readWorkspaceId(userData: string, fs: RecoveryFs): Promise<Worksp
   return id === null ? { kind: 'unreadable', canRetry: false } : { kind: 'id', id }
 }
 
-/**
- * The workspace's id, made the first time. One that cannot be read is never replaced, since every
- * checkpoint already made names it.
- */
 async function workspaceIdFor(userData: string, fs: RecoveryFs): Promise<string> {
   const found = await readWorkspaceId(userData, fs)
   if (found.kind === 'id') return found.id
@@ -746,41 +669,6 @@ async function workspaceIdFor(userData: string, fs: RecoveryFs): Promise<string>
   return id
 }
 
-/**
- * Turns the copy, which the backup leaves marked for WAL like its source, into one rollback-mode
- * file that a read-only reader can open in place, and has SQLite check all of it.
- */
-function verifyTheCopy(copy: string): void {
-  const db = new Database(copy, { fileMustExist: true })
-  try {
-    const mode = String(db.pragma('journal_mode = DELETE', { simple: true }))
-    if (mode !== 'delete') {
-      throw new Error(`SQLite kept the copy in ${mode} mode, so it is not one file`)
-    }
-    // Some damage makes the check itself fail rather than report; either way the data is damaged.
-    let check: string
-    try {
-      check = String(db.pragma('integrity_check', { simple: true }))
-    } catch (error) {
-      check = messageOf(error)
-    }
-    if (check !== 'ok') {
-      throw new CheckpointFailed(
-        `BroCrew's copy of this workspace's data did not pass SQLite's own check (${check}), so ` +
-          'BroCrew changed nothing in the data.',
-        false,
-      )
-    }
-  } finally {
-    db.close()
-  }
-}
-
-/**
- * Leaves the copy as one file. A rollback-mode database never reads a `-wal` or `-shm`, so one
- * left behind (Windows can fail to delete them on close) is removed; a `-journal` means a write
- * did not finish, and the copy is refused.
- */
 async function leaveOneFile(userData: string, copy: string, fs: RecoveryFs): Promise<void> {
   if (await pathExists(`${copy}-journal`, fs)) {
     throw new Error('the copy was left with an unfinished write beside it')
@@ -801,10 +689,6 @@ async function putOnDisk(path: string, fs: RecoveryFs): Promise<void> {
   }
 }
 
-/**
- * Copies each app state file that exists into the checkpoint folder, each one on disk before this
- * returns, and lists every one.
- */
 async function copyStateFiles(
   userData: string,
   folder: string,
@@ -965,11 +849,6 @@ const MANIFEST_BEING_WRITTEN = new RegExp(
   `^${MANIFEST_FILE.replace(/\./g, '\\.')}\\.[0-9a-f]{12}\\.tmp$`,
 )
 
-/**
- * The names of the files the writer makes in a checkpoint folder: its `unfinished` file; the copy,
- * and the sidecars SQLite keeps beside it while it is written and switched to one file; the state
- * files of this build's registry; and the manifest while it is written.
- */
 function isTheWritersName(name: string): boolean {
   return (
     [
@@ -1020,10 +899,6 @@ function installedByARestore(
   ]
 }
 
-/**
- * Whether the files a restore would install are there, as plain files at the sizes the manifest
- * records; `unknown` when one could not be looked at for any reason but its absence.
- */
 async function wholeness(
   checkpoint: Checkpoint,
   fs: RecoveryFs,

@@ -77,6 +77,35 @@ describe('nothing in a reply becomes markup', () => {
 })
 
 describe('the chat preset is tuned for what an agent writes', () => {
+  it('keeps sentence punctuation beside inline code without adding it to the code', () => {
+    expect(renderChatMarkdown('Read `summary.md`. Then continue.')).toBe(
+      '<p>Read <span class="md-code-punctuation"><code>summary.md</code>.</span> Then continue.</p>\n',
+    )
+    expect(renderChatMarkdown('Use `value`?!')).toContain('<code>value</code>?!</span>')
+    expect(renderChatMarkdown('Use `value`.member')).not.toContain('md-code-punctuation')
+    expect(renderChatMarkdown('```sh\nprintf sample\n```')).not.toContain('md-code-punctuation')
+  })
+
+  it('keeps a plain lead in the first paragraph without parsing it as markdown or HTML', () => {
+    expect(renderChatMarkdown('The customer is in **Germany**.', 'Added:')).toBe(
+      '<p><span class="md-lead">Added:</span> The customer is in <strong>Germany</strong>.</p>\n',
+    )
+    expect(renderChatMarkdown('A note.', '<img src=x> **label**')).toBe(
+      '<p><span class="md-lead">&lt;img src=x&gt; **label**</span> A note.</p>\n',
+    )
+  })
+
+  it('keeps leading blocks and link definitions intact beside a plain lead', () => {
+    for (const source of ['# Heading', '```sh\nprintf sample\n```', '- First\n- Second']) {
+      expect(renderChatMarkdown(source, 'Added:')).toBe(
+        '<p><span class="md-lead">Added:</span></p>\n' + renderChatMarkdown(source),
+      )
+    }
+    expect(
+      renderChatMarkdown('[draft]: https://example.test\n\nRead [draft].', 'Added:'),
+    ).toContain('<p><span class="md-lead">Added:</span> Read <a href="https://example.test"')
+  })
+
   it('a single newline is a line break — a settled reply keeps the shape it streamed with', () => {
     // Without this, a three-line file list collapses into one run-on line the instant the
     // authoritative message lands, reflowing text the reader has already started reading.

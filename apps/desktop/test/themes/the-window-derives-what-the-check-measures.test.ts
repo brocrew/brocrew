@@ -1,21 +1,18 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_SEEDS } from '../../src/shared/themes/contrast'
-import { DERIVATION, FRAME_STATUS, type Derivation } from '../../src/shared/themes/derive'
-
-/**
- * The theme check measures colours worked out by `DERIVATION`; the window paints colours worked
- * out by tokens.css. These tests keep the two the same formulas, so a theme the check passes is a
- * theme the window draws as measured.
- */
+import {
+  DEFAULT_SEEDS,
+  DERIVATION,
+  FRAME_STATUS,
+  type Derivation,
+} from '../../src/shared/themes/derive'
 
 const CSS = readFileSync(
   join(__dirname, '../../src/renderer/src/assets/tokens.css'),
   'utf8',
 ).replace(/\/\*[\s\S]*?\*\//g, '')
 
-/** Every rule as its selector and its declarations, in source order. */
 const RULES = [...CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({
   selector: m[1]!.trim().replace(/\s+/g, ' '),
   decls: new Map(
@@ -29,14 +26,12 @@ const RULES = [...CSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({
 const DERIVED = RULES.filter((r) => r.selector.includes(":not([data-theme='classic'])"))
 const SEEDS = RULES.find((r) => r.selector === ':root' && r.decls.has('--frame-ink'))
 
-/** A token's value in the derived rules: the first rule that declares it. */
 function derived(name: string): string {
   const rule = DERIVED.find((r) => r.decls.has(name))
   expect(rule, `${name} is not worked out in the derived rules`).toBeDefined()
   return rule!.decls.get(name)!
 }
 
-/** The `color-mix()` calls in a value, in order. */
 function mixes(value: string): string[] {
   const out: string[] = []
   let at = value.indexOf('color-mix(')
@@ -76,7 +71,6 @@ const source = (side: string): Derivation['a'] => {
   return SOURCE[name]!
 }
 
-/** A `color-mix()` call, or a bare zone colour, read back as a derivation. */
 function parse(value: string): Derivation {
   const bare = /^var\((--[\w-]+)\)$/.exec(value)
   if (bare) {
@@ -105,7 +99,6 @@ function parse(value: string): Derivation {
   return { a: source(a!), amount, b: source(b!), space: space as Derivation['space'] }
 }
 
-/** Where each derived colour is written: its own token, or a part of a shadow. */
 const WRITTEN: Record<string, [token: string, part: number]> = {
   'shadow-card-near': ['--shadow-card', 0],
   'shadow-card-far': ['--shadow-card', 1],
@@ -153,7 +146,7 @@ describe('the window works colours out as the theme check does', () => {
     expect(seed('--shadow-strength')).toBe(`${DEFAULT_SEEDS.shadow}%`)
   })
 
-  it('⛔ no rule for the light scope declares a setting, so a theme’s root block reaches it', () => {
+  it('no rule for the light scope declares a setting, so a theme’s root block reaches it', () => {
     const settings = [...SEEDS!.decls.keys()]
     const light = RULES.filter((r) => /data-chat-theme|data-on-white/.test(r.selector))
     expect(light.length).toBeGreaterThan(1)
@@ -165,7 +158,7 @@ describe('the window works colours out as the theme check does', () => {
     }
   })
 
-  it('⛔ a changed number is caught: muted at 70% in the window and 76% in the check', () => {
+  it('a changed number is caught: muted at 70% in the window and 76% in the check', () => {
     const muted = derived('--muted').replace('76%', '70%')
     expect(parse(muted)).not.toEqual(normal(DERIVATION.muted))
   })

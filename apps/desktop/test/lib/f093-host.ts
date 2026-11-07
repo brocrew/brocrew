@@ -1,3 +1,6 @@
+import { neutralHostDeps } from './host-fixture'
+import type { LaunchedEvent, TranscriptEvent } from '../../src/shared/conversation-events'
+import type { UserTurnEvent } from '../../src/shared/human-answer-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -14,7 +17,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../../src/main/db/connection'
 import { applyMigrations } from '../../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../../src/main/db/session-store'
-import { NO_DISCOVERY } from '../../src/main/adopt/discover-sessions'
 import {
   RuntimeHost,
   type RuntimeHostDeps,
@@ -32,12 +34,7 @@ import {
 } from '../../src/main/runtime/workspace'
 import { resolveSessionCwd } from '../../src/main/runtime/scratch-cwd'
 import { resourcesRoot } from '../../src/main/resources/resources'
-import type {
-  LaunchedEvent,
-  RuntimeEventMessage,
-  TranscriptEvent,
-  UserTurnEvent,
-} from '../../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 
 /**
  * # F093 · one world for the gap tests: a real host on the fake runtime, on throwaway folders
@@ -174,9 +171,7 @@ export class F093World {
     const userData = this.userData
     const built = new RuntimeHost({
       store: this.store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) =>
         new CapturingRuntime(provider, this.sessions, this.end),

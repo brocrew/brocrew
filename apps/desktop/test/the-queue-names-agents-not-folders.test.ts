@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -10,14 +11,17 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentName } from '../src/shared/runtime-ipc'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * # 🔴 734 · the queue names agents, not folders
@@ -39,17 +43,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** ⚑ The host's own bound on an unanswered stop — short, so §2 measures the host and not the clock. */
 const INTERRUPT_WAIT_MS = 40
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 /** ⚑ `ProviderDouble`, with one start's handle decorated. */
 class DecoratingDouble extends ProviderDouble {
@@ -142,32 +135,20 @@ describe('734 · the queue names agents, not folders', () => {
     decorateNext = null
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new DecoratingDouble(provider, handles, issued, gate, () => {
           const decorate = decorateNext
           decorateNext = null
           return decorate
         }),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: INTERRUPT_WAIT_MS,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:1')
   })
@@ -522,7 +503,7 @@ describe('734 · the queue names agents, not folders', () => {
       expect(said('count the rings')).toContain(second)
     })
 
-    it('⚑ §1.8 the roster is read ONCE per answer, however many agents it names — and again for the next', async () => {
+    it('⚑ §1.8 the roster is read ONCE per answer, however many agents it names — and again once a rename moves it', async () => {
       // ⚠️ **`oneNamingPerAnswer`'s docblock says so, and a memo nothing counts is a claim.** The
       // queue is polled every five seconds for the life of a window.
       const { pm } = await graceAndAda()
@@ -540,7 +521,15 @@ describe('734 · the queue names agents, not folders', () => {
         once.answer.rows.filter((one) => [bob, cleo].includes(one.request.askedBy)),
       ).toHaveLength(2)
       expect(once.reads).toBe(1)
-      expect(rosterReadsIn(() => host.decisionsForAPerson()).reads).toBe(1)
+      // The same answer is shared while nothing it reads moves; a rename moves it, and the next
+      // answer reads the roster once more and says the new name.
+      const shared = rosterReadsIn(() => host.decisionsForAPerson())
+      expect(shared.answer).toBe(once.answer)
+      expect(shared.reads).toBe(0)
+      expect(host.setAgentDisplayName('worker-g', 'Ben')).not.toBeNull()
+      const renamed = rosterReadsIn(() => host.decisionsForAPerson())
+      expect(renamed.reads).toBe(1)
+      expect(renamed.answer.rows.map((one) => one.sentence)).toContain('Ben waiting on you')
     })
   })
 

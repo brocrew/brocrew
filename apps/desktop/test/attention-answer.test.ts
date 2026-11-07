@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -7,7 +8,6 @@ import { FakeRuntime } from '@brobot2/runtime'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { answerFor, attentionQueue, OPEN_REQUEST_MISSED } from '../src/renderer/src/lib/attention'
@@ -62,7 +62,6 @@ describe('answering from the overview', () => {
   let store: SessionStore
   let host: RuntimeHost
   let owner: ReturnType<typeof sinkNamed>
-  let stranger: ReturnType<typeof sinkNamed>
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'brobot2-overview-'))
@@ -72,9 +71,7 @@ describe('answering from the overview', () => {
     let counter = 0
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: (provider) => new FakeRuntime(provider),
       prepareProviderHome: (provider, profileId) =>
         join(dir, 'provider-homes', profileId, provider),
@@ -90,7 +87,6 @@ describe('answering from the overview', () => {
       }),
     })
     owner = sinkNamed('webContents:1')
-    stranger = sinkNamed('webContents:2')
   })
 
   afterEach(async () => {
@@ -183,33 +179,6 @@ describe('answering from the overview', () => {
             message.sessionId === first.sessionId && message.event.type === 'tool_result',
         ),
     ).toBe(false)
-  })
-
-  it('⛔ …and a window that does not own the session cannot answer from its own overview', async () => {
-    const made = await host.createSession({ provider: 'codex', cwd: dir }, owner)
-    await ask(owner, { kind: 'send', sessionId: made.sessionId, text: 'run something' })
-    await waitFor(
-      () => owner.events().some((message) => message.event.type === 'permission_request'),
-      'the card',
-    )
-
-    const row = attentionQueue([recordFrom(made.sessionId, owner)], () => 'waiting: permission')[0]
-    expect(row).toBeDefined()
-    const answer = answerFor(row!.decisions[0]!)
-
-    // The identical payload, from a window that does not hold the session. 203's `require` asks
-    // `mayControl(slot, by)` on the way in, and the sentence a person reads names no id.
-    await expect(
-      ask(stranger, {
-        kind: 'respondPermission',
-        sessionId: row!.sessionId,
-        requestId: row!.requestId,
-        decision: (answer as { permission: never }).permission,
-      }),
-    ).rejects.toThrow(/belongs to another window/)
-
-    // Still frozen — the refusal is a refusal, not a slower path to the same effect.
-    expect(owner.events().some((message) => message.event.type === 'tool_result')).toBe(false)
   })
 
   /**

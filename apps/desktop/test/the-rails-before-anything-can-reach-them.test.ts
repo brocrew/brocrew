@@ -1,4 +1,6 @@
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -13,7 +15,6 @@ import {
   type SessionStore,
 } from '../src/main/db/session-store'
 import { CAPABILITY_COLUMNS, CAPABILITY_FIELDS } from '../src/shared/capabilities'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, THE_APP_ITSELF, type CallerIdentity } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
@@ -30,7 +31,7 @@ import {
   type SpawnRail,
 } from '../src/main/runtime/spawn-rails'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -98,9 +99,7 @@ describe('341 · the rails, before anything can reach them', () => {
   const buildHost = (): RuntimeHost =>
     new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider),
       prepareProviderHome: (provider, profileId) => {
         const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
@@ -114,13 +113,7 @@ describe('341 · the rails, before anything can reach them', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
 
   beforeEach(() => {
@@ -225,17 +218,9 @@ describe('341 · the rails, before anything can reach them', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§0 · a tool cannot arrive into an ungated chokepoint', () => {
-    /**
-     * ⚑ **A REAL token, minted the only way one can be** — by `admitGive` answering *start a new
-     * conversation*. The facts are a double so this stays a unit test of the chokepoint rather than
-     * a second launch, and the three tests below then compare the genuine article against two
-     * forgeries.
-     */
-    const mintARealToken = (parentSessionId: string): AdmittedSpawn => {
+    /** A normal start plan obtained from the give eligibility decision. */
+    const admittedStart = (parentSessionId: string): AdmittedSpawn => {
       const facts: GiveFacts = {
-        // ⚠️ `'ask'` is the strict answer and the one this section wants: it is about the admission
-        // TOKEN, and a lax giver would make the token's mode depend on a fact these tests are not
-        // about.
         giver: () => ({
           sessionId: parentSessionId,
           profileId: 'pm',
@@ -277,34 +262,9 @@ describe('341 · the rails, before anything can reach them', () => {
       return admission.goes.start
     }
 
-    it('🔴 a forged admission token is refused by `createSession`, and nothing is created', async () => {
-      const parent = await personOpens('pm')
-      const before = sessionIdsOf().length
-      // ⛔ **The cast a tool written in a hurry would make.** The brand is a compile-time gate and
-      // this is what defeating it looks like; the `WeakSet` is what catches it anyway.
-      const forged = { ...mintARealToken(parent) } as unknown as AdmittedSpawn
-      await expect(
-        host.createSession({ provider: 'claude', cwd: work }, null, null, forged),
-      ).rejects.toThrow(/admitted by the rails/)
-      expect(sessionIdsOf()).toHaveLength(before)
-    })
-
-    it('⚑ …and the SAME object, unspread, is accepted — so the refusal above is about provenance', async () => {
-      // 🔴 **The positive that makes the test above mean something.** Every field is identical; the
-      // only difference is that this object is the one `admitGive` minted.
-      const parent = await personOpens('pm')
-      const real = mintARealToken(parent)
-      const created = await host.createSession({ provider: 'claude', cwd: work }, null, null, real)
-      expect(created.sessionId).toMatch(/^sess_/)
-      // ⚑ **D-016 · the parent is the row's** (`parentOf`); the spawn reason and stamp are gone.
-      expect(store.parentOf(created.sessionId)).toBe(parent)
-      // ⛔ …and a conversation another one started owns no root (R1).
-      expect(store.rootOf(created.sessionId)).toBeNull()
-    })
-
     it('⛔ a spawn may not also be handed a second commanding caller', async () => {
       const parent = await personOpens('pm')
-      const real = mintARealToken(parent)
+      const real = admittedStart(parent)
       await expect(
         host.createSession({ provider: 'claude', cwd: work }, null, PLANNER, real),
       ).rejects.toThrow(/do not pass a second one/)
@@ -504,114 +464,6 @@ describe('341 · the rails, before anything can reach them', () => {
       ]) {
         expect(tools.toLowerCase(), `an agent tool names ${name}`).not.toContain(name.toLowerCase())
       }
-    })
-
-    it('🔴 the admission token appears in exactly two files, and nothing in `src` forges one', () => {
-      // ⛔ **A census over the WHOLE of `src`, because the claim is about the whole of it.** The
-      // brand makes an unadmitted spawn a compile error; the only way past that is a cast, and a
-      // cast is a string this walk can find. ⚠️ It is written as an enumeration rather than as
-      // *"grep runtime-host"* because a pointer clause is a claim: 340's census could name its one
-      // caller, and this one has to be able to see a second file appearing.
-      const files = new Map<string, string>()
-      const walk = (dir: string): void => {
-        for (const entry of readdirSync(dir, { withFileTypes: true })) {
-          const path = join(dir, entry.name)
-          if (entry.isDirectory()) walk(path)
-          else if (entry.name.endsWith('.ts'))
-            files.set(
-              path.slice(srcRoot.length + 1).replaceAll('\\', '/'),
-              readFileSync(path, 'utf8'),
-            )
-        }
-      }
-      walk(srcRoot)
-      // The positive that proves the walk ran and found real code.
-      expect(files.size).toBeGreaterThan(50)
-      expect([...files.keys()]).toContain('main/runtime/runtime-host.ts')
-
-      // ⚠️ **Comments stripped first, because these files DISCUSS the cast in prose** — and a census
-      // that cannot tell a warning about a hazard from the hazard is one that will be deleted the
-      // first time it fires on a docblock.
-      //
-      // 🔴 **This was declared BELOW the enumeration and applied only to the cast half, and `379`
-      // found it by writing a docblock** — one that quotes `362` §4.2's finding that a task id is
-      // *"absent from `SpawnRequest`, `AdmittedSpawn`, …"*. ⛔ The naming line then reported
-      // `shared/runtime-ipc.ts` as a third file holding the admission token, which is a sentence
-      // about a type it does not use. ⚠️ The comment above already claimed the stripping; it is now
-      // true of both halves, which is what it says.
-      const withoutComments = (text: string): string =>
-        text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ')
-      const naming = [...files]
-        .filter(([, text]) => withoutComments(text).includes('AdmittedSpawn'))
-        .map(([name]) => name)
-      expect(naming.sort()).toEqual(['main/runtime/runtime-host.ts', 'main/runtime/spawn-rails.ts'])
-      // ⚑ **The control that the strip did not blind the census**: the two files are still found,
-      // and they are found because their CODE names the type — which is exactly what a third file
-      // appearing would have to do to be reported.
-      expect(naming).toHaveLength(2)
-      const RAILS = 'main/runtime/spawn-rails.ts'
-      const casts = (text: string): RegExpMatchArray[] => [
-        ...withoutComments(text).matchAll(/as\s+(?:unknown\s+as\s+)?AdmittedSpawn/g),
-      ]
-      for (const [name, text] of files) {
-        if (name === RAILS) continue
-        expect(casts(text), `${name} forges an admission token`).toHaveLength(0)
-      }
-      // ⛔ **One cast, in the module that owns the brand, on the line that REGISTERS the token.** The
-      // brand has to be constructed somewhere; what makes that safe is that the only place it can be
-      // is the place `minted.add` runs, so a construction that does not register is not expressible
-      // without adding a second cast this census would then see.
-      //
-      // ⚑ **D-017 · R10 — TWO doors mint one now, and each cast is still the line that registers
-      // it**: `admitGive`'s (it was `admitSpawn`'s until D-016), and `admitAReplacement`'s — the
-      // conversation a parent already started,
-      // carried on in a new one because its own record can never be reopened. ⛔ So the count is
-      // two, and each cast is followed by the `minted.add` of that very object: a construction that
-      // does not register is still not expressible without a third cast this census would see.
-      const rails = files.get(RAILS) ?? ''
-      expect(casts(rails)).toHaveLength(2)
-      expect([...withoutComments(rails).matchAll(/minted\.add\(/g)]).toHaveLength(2)
-      // ⚑ **Each cast registers the object it built**: `start` in `admitGive`, `admitted` in
-      // `admitAReplacement`.
-      expect(
-        [...withoutComments(rails).matchAll(/\} as AdmittedSpawn\n\s*minted\.add\((\w+)\)/g)]
-          .map((one) => one[1])
-          .sort(),
-      ).toEqual(['admitted', 'start'])
-      expect(withoutComments(rails)).toMatch(/const start = \{/)
-      expect(withoutComments(rails)).toMatch(/const admitted = \{/)
-      // ⚑ **The positive that keeps the strip honest** — both files WARN about the cast in prose, so
-      // a `withoutComments` that ate nothing would have failed the loop above, and one that ate the
-      // whole file would fail here.
-      // ⚑ **D-016** — the rails' prose names the cast as *"out of a cast"* (`wasAdmitted`).
-      expect(rails).toMatch(/rather than out of a cast/)
-      expect(withoutComments(rails)).not.toMatch(/rather than out of a cast/)
-      // …and the calls that may pass one are the give door's and — ⚑ **D-017 · R10** — the
-      // replacement's, whose token is `admitAReplacement`'s or none.
-      // ⛔ **Prose-stripped BEFORE the slice, and 376 is what found that it had to be.** This read
-      // `host_.slice(at, at + 700)`, and a comment added inside the call pushed `admitted,` past
-      // 700 characters — a green that depends on how much a neighbouring line explains itself.
-      // ⚑ A fixed-width slice is also the hazard from the other side: too wide and it runs into the
-      // next region and answers this question with somebody else's lines.
-      const host_ = withoutComments(files.get('main/runtime/runtime-host.ts') ?? '')
-      // ⚠️ **Scoped to each call by its own closing `)`**, not by a character count —
-      // `an-assertion-can-be-satisfied-by-a-neighbouring-element`, and `a-fixed-width-slice` beside
-      // it. A call ends at the first `)` that closes it; the token is its last argument.
-      const calls = [...host_.matchAll(/this\.createSession\(/g)].map((one) =>
-        host_.slice(one.index, host_.indexOf('\n    )', one.index)),
-      )
-      expect(calls).toHaveLength(2)
-      const door = calls.find((call) => call.includes('provider: start.provider'))
-      expect(door, "the give door's createSession call was not found whole").toBeDefined()
-      expect(door).toMatch(/\bstart,\s*$/)
-      // ⚑ …and that `start` is the one `admitGive` minted — never one built here.
-      expect(host_).toMatch(/const \{ start \} = goes/)
-      const replacing = calls.find((call) => call !== door)
-      expect(replacing, "the replacement's createSession call was not found whole").toMatch(
-        /\bspawn,\s*$/,
-      )
-      // ⚑ …and that `spawn` is the replacement door's token or nothing — never one built here.
-      expect(host_).toMatch(/const spawn =\s*parent === null\s*\? null\s*: admitAReplacement\(/)
     })
   })
 

@@ -6,11 +6,11 @@ This is a one-time port of the standalone browser server and its closed set of s
 
 The package requires Node 22 and installed Google Chrome on macOS arm64. It does not download Chrome. In this folder, run `npm ci --ignore-scripts --no-audit --no-fund`. From the repository root, run `BROCREW_PLUGIN_SOURCE_COMMIT=$(git rev-parse HEAD) node plugins/chrome/build.mjs /absolute/fresh/output`. The output must not exist. This produces a flat runtime: bundled MCP SDK/Express, one pinned `node_modules/playwright-core`, licenses, UI assets, a complete `plugin.json`, and uncompressed USTAR. No symlinks, scripts/hooks, native builds or shell recipes are shipped. Build/dependency tools and source are not in the archive. Package versions are pinned in package-lock.json.
 
-Run the fake-only controls from the repository root: `BROCREW_CHROME_TEST_ARTIFACT=/absolute/fresh/output pnpm exec vitest run --config plugins/chrome/vitest.config.ts`. They exercise authentication, profile enable/window controls, tools and typed tabs through a fake browser, then verify the actual archive with the app’s pure verifier and a public fictional key held only in memory. They never start Chrome. No catalogue is signed with a production key or published by this build; fixture-release.json is test metadata with an invalid example URL.
+Run the fake-only controls from the repository root: `BROCREW_CHROME_TEST_ARTIFACT=/absolute/fresh/output pnpm exec vitest run --config plugins/chrome/vitest.config.ts`. They exercise authentication, profile enable/window controls, tools and typed tabs through a fake browser, then verify the actual archive with the app’s pure verifier and SHA-256 package checks. They never start Chrome. No catalogue is published by this build; fixture-release.json is test metadata with an invalid example URL.
 
 ## Host attachment
 
-The later Node host supplies `BROCREW_CHROME_DATA` (absolute private data root), `BROCREW_CHROME_AUTH` (absolute owner-only JSON file containing distinct mcpToken and adminToken strings, each 32–4096 non-whitespace printable characters), and optional `BROCREW_CHROME_PORT` (default 0). These are server-side configuration only. The supervisor creates the auth file; this package never generates a production credential. The executable refuses missing/invalid inputs, links at the auth leaf, or broad POSIX auth modes. Data, profiles, file roots and all downloads stay under the supplied private root. The Node host owns only the supplied root and its parents, including their Windows ACLs. Within that root, this package checks profile and download directories with lstat and realpath, refuses links even to another internal profile, and checks permissions again when queued actions reach execution; POSIX data directories are 0700, records and reserved files 0600. There is no fallback to another browser or workspace. Data remains when the executable stops.
+The Node host supplies `BROCREW_CHROME_DATA` (an absolute data root), `BROCREW_CHROME_AUTH` (an absolute JSON file containing distinct mcpToken and adminToken strings, each 32–4096 non-whitespace printable characters), and optional `BROCREW_CHROME_PORT` (default 0). These are server-side configuration only. The supervisor creates the auth file; this package never generates a production credential. The executable refuses missing or invalid inputs and links at the auth leaf, while ordinary OS permissions govern access. It does not tighten existing folders or refuse readable files because other users may read them. Data, profiles, files and downloads stay under the supplied root. Directory kind and path checks remain, and queued actions recheck the person's profile and Settings choices. There is no fallback to another browser or workspace. Data remains when the executable stops.
 
 Start with supplied Node: `node /verified/package/server.mjs`. All HTTP binds are loopback. MCP is `/mcp` with the tool token. Health `/healthz`, profile admin `/v1/profiles` and typed tab snapshot `GET /v1/tabs` require the distinct person-admin token; Origin-bearing requests are denied everywhere. Neither token is sent to UI or tools. The later broker keeps those credentials private and enforces person-only admin. Profiles start disabled. Person admin can create/enable a profile or open its window; agents cannot enable profiles. Open window launches the installed Chrome into that private profile; it does not wait for sign-in or reserve a person-step session. Stop with SIGTERM/SIGINT; the ported shutdown handler closes owned profiles and saves visible-session metadata. Proven descendant exit remains the later Node host’s release gate, not a claim of this package.
 
@@ -22,7 +22,7 @@ The assets use only the contract’s window DOM packets: read/subscribe/unsubscr
 
 `manifest-template.json` contains the complete static UI text and method schemas. Package wording and production catalogue signing require separate review. No install, dispatch, provider integration or BroCrew launch code is added here.
 
-Within the plugin’s owner-only private folder, a same-user process swapping a checked directory during download placement is within the accepted trust boundary; these path checks do not provide atomic protection against that race.
+The path checks do not provide atomic protection against concurrent directory replacement during download placement.
 
 ## Window targeting and local files
 
@@ -35,7 +35,7 @@ can change after a restart. Conflicting selectors and dead/foreign anchors are r
 `open_tab` and `navigate` accept HTTP(S), `file:` URLs, native absolute paths and `about:blank`.
 Native paths are encoded as file URLs, preserving spaces, Unicode, `#` and `?`; relative and tilde
 paths are rejected. Chrome and the OS determine local-file access; navigation has no upload-root
-allowlist. File tabs are eligible for normal mode/session URL restoration. The separate
+allowlist. The separate
 `download_url` transport stays HTTP(S)-only, including redirects; upload/download guards remain.
 
 Background opening grants no user activation and never shows or activates a Chrome window. Its
@@ -71,13 +71,13 @@ and do not prove native focus. Never use real or signed-in profiles for those ch
 
 With a host supporting `shared-data-v1`, permanent Chrome profiles live in the host-provided,
 verified `shared/chrome` namespace once the released platform signal enables it. Settings lists the same profiles in every eligible workspace.
-On/off and Keep running apply to the current Chrome owner/root. Pinned roots each have their own switch; workspaces using the default root share one switch in v1. The default owner also sees the machine-wide list. Sync, extensions, Chrome settings and the
+On/off applies to the current Chrome owner/root. Pinned roots each have their own switch; workspaces using the default root share one switch in v1. The default owner also sees the machine-wide list. Sync, extensions, Chrome settings and the
 BroCrew helper belong to the profile in every workspace. New profiles are on in the creating
-workspace and off elsewhere. Temporary profiles, saved files, downloads and restore state stay
+workspace and off elsewhere. Temporary profiles, saved files and downloads stay
 local; while the shared facade is enabled, unmigrated local profiles use stable `local-…` names to prevent collisions with shared names.
 
 A profile can run in one workspace at a time. The other workspace sees “in use in <workspace>”.
-Keep running retains that lease. Settings changes to launch configuration apply at the next
+Settings changes to launch configuration apply at the next
 launch; permission revocation fences queued and subsequent browser commands immediately.
 Only the person can delete a permanent profile. The confirmation lists its enabled workspaces
 and binds to its immutable identity and current registry revision. Any held lease prevents delete.

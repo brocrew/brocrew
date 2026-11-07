@@ -15,7 +15,7 @@ afterEach(async () => {
   vi.useRealTimers()
   for (const close of cleanup.splice(0)) await close()
 })
-it('a timed-out Claude setMcpServers never overlaps a sent turn even if it settles later', async () => {
+it('a Claude setMcpServers still pending after the wait lets the message go out once, and a late settle changes nothing', async () => {
   vi.useFakeTimers()
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'fictional-slow-refresh-')))
   const frames = new AsyncQueue<SDKMessage>()
@@ -65,13 +65,15 @@ it('a timed-out Claude setMcpServers never overlaps a sent turn even if it settl
   await vi.advanceTimersByTimeAsync(PLUGIN_ATTACHMENT_WAIT_MS + 1)
   try {
     expect(setMcpServers).toHaveBeenCalledOnce()
-    expect(sent).not.toHaveBeenCalled()
-    expect(refused).toBeInstanceOf(Error)
+    expect(refused).toBeUndefined()
+    expect(sent).toHaveBeenCalledExactlyOnceWith('fictional turn')
   } finally {
     finish()
     await sending.catch(() => {})
   }
-  expect(sent).not.toHaveBeenCalled()
+  await vi.advanceTimersByTimeAsync(0)
+  expect(sent).toHaveBeenCalledOnce()
+  expect(setMcpServers).toHaveBeenCalledOnce()
 })
 it('Claude uses its supported refresh and preserves the person server while replacing only the managed route', async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'fictional-claude-refresh-'))),
@@ -148,6 +150,9 @@ it.each([false, true])(
       async (servers: Parameters<NonNullable<ClaudeQuery['setMcpServers']>>[0]) => {
         const server = servers[currentRoute.name]!
         if (!('url' in server)) throw new Error('fictional managed server must use HTTP')
+        // A replacement creates its own connection; the failed old endpoint cannot
+        // authorize a reconnect of the new one. An unchanged endpoint still needs recovery.
+        if (server.url !== installedUrl) connected = true
         installedUrl = server.url
         return { added: [], removed: [], errors: {} }
       },
@@ -197,6 +202,7 @@ it.each([false, true])(
     expect(saved?.sessionId).toBe('fictional-claude')
     await handle.send('fictional first tool call')
     expect(setMcpServers).not.toHaveBeenCalled()
+    mcpServerStatus.mockClear()
     connected = false
     if (changed)
       currentRoute = {
@@ -205,15 +211,20 @@ it.each([false, true])(
         capability: 'b'.repeat(64),
       }
     await handle.send('fictional recovered tool call')
-    expect(mcpServerStatus).toHaveBeenCalled()
-    expect(reconnectMcpServer).toHaveBeenCalledWith('plugin-fern')
+    if (changed) {
+      expect(mcpServerStatus).not.toHaveBeenCalled()
+      expect(reconnectMcpServer).not.toHaveBeenCalled()
+    } else {
+      expect(mcpServerStatus).toHaveBeenCalled()
+      expect(reconnectMcpServer).toHaveBeenCalledWith('plugin-fern')
+    }
     expect(handle.ref).toEqual(saved)
     expect(resume).not.toHaveBeenCalled()
     expect(successfulCalls).toEqual(['http://127.0.0.1:8123/mcp', currentRoute.url])
     const refreshes = setMcpServers.mock.calls.length
     await handle.send('fictional healthy following call')
     expect(setMcpServers).toHaveBeenCalledTimes(refreshes)
-    expect(reconnectMcpServer).toHaveBeenCalledOnce()
+    expect(reconnectMcpServer).toHaveBeenCalledTimes(changed ? 0 : 1)
   },
 )
 

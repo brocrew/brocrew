@@ -18,8 +18,8 @@
 # folder — `scripts/windows-packaged-check.mjs`,
 # `scripts/macos-packaged-check.mjs`) and `scripts/release-check.mjs` — the update file names this
 # version and every file it names is there, with the size and sha512 it says; the app looks at this
-# repository. Beside the builds, the recovery window is checked through the app's real entry on
-# both systems (`recovery-real-entry.yml`). Only when all four pass does the `publish` job, in the
+# repository. Each build also checks recovery through its packaged app's real entry. Only when
+# both builds and their checks pass does the `publish` job, in the
 # `release` environment (where a reviewer can be required), attest the files (on a public
 # repository) and publish them as one release.
 #
@@ -183,6 +183,19 @@ jobs:
         run: node scripts/windows-packaged-check.mjs apps/desktop/dist/win-unpacked
       - name: Check the update files (version, sizes, sha512, where the app looks)
         run: node scripts/release-check.mjs apps/desktop/dist ${{ needs.plan.outputs.version }} ${{ needs.plan.outputs.repo }} apps/desktop/dist/win-unpacked/resources/app-update.yml
+      - name: Recovery real-entry check
+        env:
+          BROBOT_RECOVERY_EVIDENCE: ${{ runner.temp }}/recovery-evidence
+        run: node scripts/recovery-real-entry-check.mjs --packaged apps/desktop/dist/win-unpacked/BroCrew.exe
+      - name: Keep what the recovery check saw
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-evidence-windows
+          path: ${{ runner.temp }}/recovery-evidence
+          if-no-files-found: warn
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
           name: release-windows
@@ -246,6 +259,19 @@ jobs:
         run: node scripts/macos-packaged-check.mjs apps/desktop/dist/mac-arm64/BroCrew.app apps/desktop/dist/BroCrew-${{ needs.plan.outputs.version }}-arm64.dmg
       - name: Check the update files (version, sizes, sha512, where the app looks)
         run: node scripts/release-check.mjs apps/desktop/dist ${{ needs.plan.outputs.version }} ${{ needs.plan.outputs.repo }} apps/desktop/dist/mac-arm64/BroCrew.app/Contents/Resources/app-update.yml
+      - name: Recovery real-entry check
+        env:
+          BROBOT_RECOVERY_EVIDENCE: ${{ runner.temp }}/recovery-evidence
+        run: node scripts/recovery-real-entry-check.mjs --packaged apps/desktop/dist/mac-arm64/BroCrew.app/Contents/MacOS/BroCrew
+      - name: Keep what the recovery check saw
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-evidence-macos
+          path: ${{ runner.temp }}/recovery-evidence
+          if-no-files-found: warn
+          retention-days: 14
       - uses: actions/upload-artifact@v4
         with:
           name: release-macos
@@ -258,27 +284,9 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # The recovery window through the built app's real entry, on both systems
-  # (`recovery-real-entry.yml`, the same check the beta builds run). Jobs of this run, so they check
-  # the tag's own commit, and `publish` needs both: no earlier run, on this commit or another,
-  # stands in for them.
-  recovery-windows:
-    name: Recovery real-entry check (Windows)
-    uses: ./.github/workflows/recovery-real-entry.yml
-    with:
-      runner: windows-2022
-      evidence: recovery-evidence-windows
-
-  recovery-macos:
-    name: Recovery real-entry check (macOS)
-    uses: ./.github/workflows/recovery-real-entry.yml
-    with:
-      runner: ${{ vars.MAC_RUNNER || 'macos-15' }}
-      evidence: recovery-evidence-macos
-
   publish:
     name: Publish the release
-    needs: [plan, windows, macos, recovery-windows, recovery-macos]
+    needs: [plan, windows, macos]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # ⚑ Where a required reviewer can hold the release until it is approved (a setting of the repository).

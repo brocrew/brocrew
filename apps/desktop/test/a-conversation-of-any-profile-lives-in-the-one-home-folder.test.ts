@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import {
   existsSync,
   mkdirSync,
@@ -13,7 +14,6 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeRuntime } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
@@ -141,9 +141,7 @@ describe('an ended conversation is read from its own profile’s home (D-016a)',
     let counter = 0
     return new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: (provider) => {
         const existing = runtimes.get(provider)
         if (existing) return existing
@@ -294,7 +292,7 @@ function times(haystack: string, needle: string): number {
 // The provider's bound home strategy prepares the profile it is given. The binding gets its paths
 // from the same pure facade as the read seam; neither call invents another layout.
 const PREPARE_SEAM =
-  'prepareProviderHome: async (provider, profileId) => { await transcriptRetention?.beforeLaunch() return providerModules[provider].home.prepare(profileId) },'
+  'prepareProviderHome: async (provider, profileId) => { transcriptRetention?.beforeLaunch() return providerModules[provider].home.prepare(profileId) },'
 const MODULE_PATHS =
   'const providerModules = createProviderModules((provider) => homePathsForProvider(userData, provider),'
 const PATH_SEAM =

@@ -46,7 +46,6 @@ export class TranscriptRetentionHost {
   private loading: Promise<Saved> | null = null
   private changes: Promise<void> = Promise.resolve()
   private running: Promise<void> | null = null
-  private launchGate: Promise<void> | null = null
   private deleting: Promise<unknown> | null = null
   private attempted = false
   private stopped = false
@@ -138,10 +137,10 @@ export class TranscriptRetentionHost {
   async recent(from: number, to: number): Promise<readonly TranscriptsCleared[]> {
     return (await this.load()).cleared.filter((line) => line.at >= from && line.at <= to).reverse()
   }
-  /** New provider processes wait until the pass ends or its startup deadline passes. */
-  async beforeLaunch(): Promise<void> {
-    this.attempted = true
-    await this.launchGate
+  /** A provider launch stops further background cleanup without waiting for disk work. */
+  beforeLaunch(): Promise<void> {
+    this.stopped = true
+    return Promise.resolve()
   }
   start(): void {
     void this.run().catch((error: unknown) =>
@@ -153,11 +152,6 @@ export class TranscriptRetentionHost {
     if (this.attempted || this.stopped) return Promise.resolve()
     this.attempted = true
     if (this.interrupted || this.inUse()) return Promise.resolve()
-    let release!: () => void
-    const gate = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    this.launchGate = gate
     let expired = false
     let progress: PassProgress | null = null
     let noticeStarted = false
@@ -168,15 +162,9 @@ export class TranscriptRetentionHost {
         console.warn('Transcript cleanup could not record its deadline.', error),
       )
     }
-    const releaseLaunches = (): void => {
-      if (this.launchGate !== gate) return
-      this.launchGate = null
-      release()
-    }
     const expire = (): void => {
       if (expired) return
       expired = true
-      releaseLaunches()
       recordDeadline()
     }
     const deadlineAt = performance.now() + this.deadlineMs
@@ -191,7 +179,6 @@ export class TranscriptRetentionHost {
       if (expired) recordDeadline()
     }, pastDeadline).finally(() => {
       clearTimeout(timer)
-      releaseLaunches()
       this.running = null
     })
     return this.running

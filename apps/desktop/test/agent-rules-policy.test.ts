@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -15,7 +16,6 @@ import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { agentCallerId, TOOL_NAMES } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { RuntimeHost, type Caller, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
@@ -26,7 +26,7 @@ import type { AgentInstructionsReading } from '../src/shared/own-instructions'
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
 // A local expected contract lets this fixture compile before the host methods are added.
-type Baseline = { readonly expectedVersion: number; readonly currentText: string }
+type Baseline = { readonly expectedVersion: number }
 type PolicyHost = {
   proposeAgentRules(
     me: string,
@@ -144,9 +144,7 @@ describe('standing-rule authority belongs to the host and changes remain attribu
       join(root, 'homes', profile ?? 'default', provider)
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(root, 'exports'),
+      ...neutralHostDeps(() => root),
       createRuntime: (provider) => new ToolRuntime(provider, handed, launches, providerSessions),
       prepareProviderHome: (provider, profile) => {
         const path = home(provider, profile)
@@ -199,7 +197,6 @@ describe('standing-rule authority belongs to the host and changes remain attribu
         text: 'New rules',
         why: 'Clarify the work',
         expectedVersion: 0,
-        currentText: '',
         ...extra,
       },
       caller(me),
@@ -278,7 +275,6 @@ describe('standing-rule authority belongs to the host and changes remain attribu
           text: 'Forged caller',
           why: 'Pretend',
           expectedVersion: 0,
-          currentText: '',
         },
         caller(ordinary),
       ).ok,
@@ -407,8 +403,7 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     const me = await start(DEFAULT_PROFILE_ID)
     policy().instructAgent('lark', 'Person rules', undefined, window)
     expect(replace(me).ok).toBe(false)
-    expect(replace(me, { expectedVersion: 1, currentText: 'Wrong' }).ok).toBe(false)
-    const written = replace(me, { expectedVersion: 1, currentText: 'Person rules' })
+    const written = replace(me, { expectedVersion: 1 })
     expect(written).toMatchObject({
       ok: true,
       result: { version: 2, previousVersion: 1, replacedPersonVersion: 1 },
@@ -447,7 +442,6 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     const written = await call(me, 'write_agent_rules', {
       agent: 'lark',
       current_version: 1,
-      current_rules: 'Approved proposal',
       rules: 'Revised checklist',
       why: 'Clarify the sequence',
     })
@@ -471,7 +465,6 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     const written = await call(me, 'write_agent_rules', {
       agent: 'lark',
       current_version: 0,
-      current_rules: '',
       rules: 'Read the checklist first.',
       why: 'Keep the work reviewable.',
     })
@@ -503,7 +496,6 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     const input = {
       agent: 'lark',
       current_version: 0,
-      current_rules: '',
       rules: 'Replacement',
       why: 'Explain this change',
     }
@@ -530,13 +522,11 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     const seen = await call(me, 'read_agent_rules', { agent: 'lark' })
     policy().instructAgent('lark', 'The person saved this later', undefined, window, {
       expectedVersion: 0,
-      currentText: '',
     })
     expect(
       await call(me, 'write_agent_rules', {
         agent: 'lark',
         current_version: seen['version'],
-        current_rules: seen['text'],
         rules: 'Stale replacement',
         why: 'Based on an old read',
       }),
@@ -545,18 +535,16 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     expect(store.ownInstructionsOf('lark').versions[0]?.text).toBe('The person saved this later')
   })
 
-  it('requires the complete bounded baseline and reason on the direct tool', async () => {
+  it('requires the version, bounded replacement and reason on the direct tool', async () => {
     await start('lark')
     const me = await start(DEFAULT_PROFILE_ID)
     const input = {
       agent: 'lark',
       current_version: 0,
-      current_rules: '',
       rules: 'Replacement',
       why: 'Explain the replacement',
     }
     for (const changed of [
-      { current_rules: undefined },
       { current_version: -1 },
       { current_version: Number.MAX_SAFE_INTEGER + 1 },
       { why: '   ' },
@@ -581,7 +569,6 @@ describe('standing-rule authority belongs to the host and changes remain attribu
     expect(
       policy().instructAgent('lark', 'Stale person save', undefined, window, {
         expectedVersion: 0,
-        currentText: '',
       }),
     ).toBeNull()
     const agentSink: RuntimeEventSink = {

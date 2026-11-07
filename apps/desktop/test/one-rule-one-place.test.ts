@@ -1,4 +1,10 @@
 import {
+  fixtureProviderConfig,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
+import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -16,8 +22,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentCallerId, agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
@@ -26,7 +31,7 @@ import {
   refuseResource,
   resourcesRoot,
 } from '../src/main/resources/resources'
-import type { ResourceReading, RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import type { ResourceReading } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -73,17 +78,6 @@ const mainRoot = join(here, '../src/main')
  * an argument-shaped plant would measure a door that does not exist.
  */
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** ⚠️ Prose quotes code, so a census that reads source has to read the code only. */
 const codeOnly = (source: string): string =>
   source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ')
@@ -123,27 +117,15 @@ describe('517 · one rule, one place, and both doors narrow', () => {
   const deps = (): ConstructorParameters<typeof RuntimeHost>[0] =>
     ({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions }),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     }) satisfies ConstructorParameters<typeof RuntimeHost>[0]
 
   afterEach(async () => {
@@ -522,6 +504,7 @@ describe('517 · one rule, one place, and both doors narrow', () => {
     it('🔴 `resourceBytes` places, and the host does not', () => {
       const resources = sourceOf('resources/resources.ts')
       const hostSource = sourceOf('runtime/runtime-host.ts')
+      const keptFilesSource = sourceOf('runtime/kept-files.ts')
       // ⛔ **The one rule, at the one place** — its lexical arm and its real-path arm, once each.
       expect(resources.split('within(lexicalRoot, lexicalPath)')).toHaveLength(2)
       expect(resources.split('within(filesystemSpelling(lexicalRoot), realPath)')).toHaveLength(2)
@@ -533,13 +516,13 @@ describe('517 · one rule, one place, and both doors narrow', () => {
       expect(hostSource.split('keepResource(root, file)')).toHaveLength(2)
       // 🔴 **And zero in the host.** `169` §1 is that one rule in two places drifts; the copy that
       // drifts is the one further from the thing it is about.
-      expect(hostSource).not.toContain('within(')
-      expect(hostSource).not.toContain('realpathSync')
+      expect(hostSource + keptFilesSource).not.toContain('within(')
+      expect(hostSource + keptFilesSource).not.toContain('realpathSync')
       // ⚠️ **Non-vacuity — the sweep CAN find things in that file.** Both doors read through the
       // one reader: the agent's and the person's — ⚑ and, since F046, the pass that titles the files
       // kept before titles were taken, and since W4.98 its second half, which titles again the files
       // an older reader titled (by their name, or by a heading before front matter was read).
-      expect(hostSource.split('resourceBytes(root, row)')).toHaveLength(5)
+      expect(keptFilesSource.split('resourceBytes(root, row)')).toHaveLength(5)
     })
 
     it('⛔ which files may SPELL each word, pinned — another one is a rule spelled twice', () => {
@@ -572,12 +555,12 @@ describe('517 · one rule, one place, and both doors narrow', () => {
       // which is what `169` §1 is about — so it goes red here.
       expect(spelling("'resource-bytes-changed'")).toEqual([
         'resources/resources.ts',
-        'runtime/runtime-host.ts',
+        'runtime/kept-files.ts',
       ])
-      // ⚠️ **And exactly once in the host** — a second occurrence is a second decision, however it
-      // is spelled.
-      const hostSource = sourceOf('runtime/runtime-host.ts')
-      expect(hostSource.split("'resource-bytes-changed'")).toHaveLength(2)
+      // ⚠️ **And exactly once in the kept-file reader** — a second occurrence is a second decision,
+      // however it is spelled.
+      const keptFilesSource = sourceOf('runtime/kept-files.ts')
+      expect(keptFilesSource.split("'resource-bytes-changed'")).toHaveLength(2)
 
       // 🔴 **The control that plants TWO** (standing rule 12). ⛔ A needle assembled at run time
       // so the sweep cannot find it in this file's own source, and a broad one that must come back

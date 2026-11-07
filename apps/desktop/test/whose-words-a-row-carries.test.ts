@@ -1,3 +1,5 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import type { WorkReport } from '../src/shared/task-contracts'
 import { describe, expect, it } from 'vitest'
 import {
   applyEvent,
@@ -12,8 +14,6 @@ import {
   WHOSE_WORDS,
   whoseWordsOf,
 } from '../src/renderer/src/lib/from-outside'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
-import type { WorkReport } from '../src/shared/tasks'
 
 /**
  * # 🔴 658 · Whose words a row carries — and so whether it may be drawn as a participant's

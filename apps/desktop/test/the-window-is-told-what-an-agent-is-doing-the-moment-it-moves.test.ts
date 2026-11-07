@@ -1,4 +1,7 @@
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
+import { waitFor } from './lib/f093-host'
+import type { AgentState } from '../src/shared/agent-state-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,25 +12,26 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { conversationList } from '../src/renderer/src/lib/conversation-list'
 import { aWaitIsReadFrom } from '../src/shared/questions'
 import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import type { AgentState } from '../src/shared/agent-state'
-import type {
-  AgentIdentity,
-  ResumableSessionInfo,
-  RuntimeEventMessage,
-  RuntimeStatesMessage,
-  TranscriptEvent,
-  UnresumableSessionInfo,
+import {
+  type AgentIdentity,
+  type ResumableSessionInfo,
+  type RuntimeStatesMessage,
+  type UnresumableSessionInfo,
 } from '../src/shared/runtime-ipc'
 import { proseSpans } from './lib/prose-spans'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * # D-019 · the window is told what an agent is doing the moment it moves
@@ -77,14 +81,6 @@ const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const SRC = join(here, '../src')
 
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
-
 /**
  * A stretch of the event loop long enough for everything a provider row starts to have run: five
  * turns of `setImmediate` (each pump, and the flush a mark arms, run there) and a short timer.
@@ -94,17 +90,6 @@ async function settle(): Promise<void> {
     for (let turn = 0; turn < 5; turn++) await new Promise((resolve) => setImmediate(resolve))
     await new Promise((resolve) => setTimeout(resolve, 30))
   }
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
 }
 
 class ProviderDouble extends FakeRuntime {
@@ -224,28 +209,16 @@ describe('D-019 · main tells the window the moment an agent’s state moves', (
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store: countingStore(store),
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       // ⚑ **The dep under test** — what main hands every window on `runtime:states`.
       statesMoved: (message) => {
         pushed.push(message)

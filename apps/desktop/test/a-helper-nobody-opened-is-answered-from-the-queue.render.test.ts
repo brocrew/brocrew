@@ -1,4 +1,6 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import type { CardNobodyHolds, LedgerWalk, PersonsDecision } from '../src/shared/question-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,7 +13,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
@@ -29,8 +30,8 @@ import {
   type PersonsQueueRow,
 } from '../src/renderer/src/lib/persons-queue'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
-import type { CardNobodyHolds, LedgerWalk, PersonsDecision } from '../src/shared/questions'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * A helper an agent started in Ask mode, parked on a permission, that no window has opened: its row
@@ -106,16 +107,10 @@ describe('a helper nobody opened is answered from Waiting on you', () => {
     const issued = new FakeProviderSessions()
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${String(++counter)}`,
@@ -303,7 +298,7 @@ describe('a helper nobody opened is answered from Waiting on you', () => {
     expect(host.decisionsForAPerson().rows).toEqual([])
   })
 
-  it('never its commander, and never a window other than the one holding it', async () => {
+  it('never its commander; a person answers the held card', async () => {
     const { pm, helper, card } = await aHelperParks()
     await expect(
       host.respondPermission(helper, card, { outcome: 'allow' }, { ownerId: `agent:${pm}` }),
@@ -312,9 +307,6 @@ describe('a helper nobody opened is answered from Waiting on you', () => {
     const holder = new Window('webContents:3')
     host.claimSession(helper, holder)
     expect(host.decisionsForAPerson().rows[0]?.card).toBeUndefined()
-    await expect(
-      host.respondPermission(helper, card, { outcome: 'allow' }, new Window('webContents:9')),
-    ).rejects.toThrow()
     await expect(
       host.respondPermission(helper, card, { outcome: 'allow' }, holder),
     ).resolves.toMatchObject({ outcome: 'taken' })

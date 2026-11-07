@@ -1,16 +1,9 @@
-import {
-  closeSync,
-  mkdirSync,
-  openSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-  writeSync,
-} from 'node:fs'
+import type { TranscriptEvent } from '../../shared/conversation-events'
+import { closeSync, mkdirSync, openSync, renameSync, rmSync, writeSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { SessionRef } from '@brobot2/runtime'
 import { type Provider, type SessionStatus } from '@brobot2/shared'
-import type { TranscriptEvent } from '../../shared/runtime-ipc'
+
 import { readLines } from './native-io'
 import { providerDefinitions } from '../providers/definitions'
 
@@ -70,7 +63,7 @@ export interface ExportableSession {
  * A version-1 bundle is still readable: its entries simply do not say when they happened, and the
  * importer fills that in rather than refusing a file it can perfectly well understand.
  */
-export type BundleVersion = 1 | 2
+type BundleVersion = 1 | 2
 
 export interface SessionBundle {
   bundleVersion: BundleVersion
@@ -96,13 +89,6 @@ export function buildBundle(
   return { bundleVersion: BUNDLE_VERSION, meta, raw, ledger }
 }
 
-/** Write a file and the directories above it, and hand back where it went. */
-export function writeExport(path: string, contents: string): string {
-  mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, contents)
-  return path
-}
-
 /**
  * # Exports are written in windows, not assembled in memory (053)
  *
@@ -123,7 +109,7 @@ export function writeExport(path: string, contents: string): string {
  * single-digit megabytes.
  */
 export const EXPORT_FRAME_BATCH = 1_000
-export const EXPORT_LEDGER_BATCH = 1_000
+const EXPORT_LEDGER_BATCH = 1_000
 
 /** One window of rows, keyed by ordinal — the shape both {@link SessionStore} windows already have. */
 export type RowWindow<T> = (fromOrdinal: number, limit: number) => T[]

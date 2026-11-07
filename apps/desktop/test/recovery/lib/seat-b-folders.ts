@@ -26,6 +26,7 @@ import {
   type RecoveryFixture,
   type RecoveryFixtureOptions,
 } from './recovery-fixture'
+import { checkTheCopyHere } from '../../helpers/check-the-copy-here'
 
 /**
  * Helpers for the release-gate tests: real data folders laid down once and copied per case, the
@@ -88,6 +89,7 @@ export function aService(
     appVersion: THIS_VERSION,
     ownership: 'sole',
     log: () => undefined,
+    verifyCopy: checkTheCopyHere,
     ...more,
   })
 }
@@ -199,7 +201,7 @@ export interface Move {
  * The move a rename makes, read from its paths: into the data folder is a file arriving live, out
  * of it a file set aside. Renames inside `recovery/` (the records) are not moves.
  */
-export function moveOf(userData: string, from: string, to: string): Move | null {
+function moveOf(userData: string, from: string, to: string): Move | null {
   if (dirname(to) === userData) return { live: basename(to), to: 'live' }
   if (dirname(from) === userData) return { live: basename(from), to: 'aside' }
   return null
@@ -292,7 +294,7 @@ export function crashingAt(userData: string, point: CrashPoint | null): Crashing
     rmdir: (path) => change(() => real.rmdir(path)),
     mkdtemp: (prefix) => change(() => real.mkdtemp(prefix)),
     writeFile: (path, data, options) => change(() => real.writeFile(path, data, options)),
-    chmod: (path, mode) => change(() => real.chmod(path, mode)),
+
     open: async (path, flags, mode) => {
       if (flags === 'r') return real.open(path, flags, mode)
       const handle = await change(() => real.open(path, flags, mode))

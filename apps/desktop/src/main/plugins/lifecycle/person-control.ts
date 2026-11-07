@@ -1,7 +1,7 @@
 import { PLUGIN_FRAMEWORK_FEATURES } from '../hooks/definitions'
 import { PluginProposal } from './proposals'
 import { createServer, createConnection, type Socket } from 'node:net'
-import { chmod, lstat, unlink } from 'node:fs/promises'
+import { lstat, unlink } from 'node:fs/promises'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { isSocketFile, localEndpoint } from '../local-endpoint'
@@ -23,6 +23,8 @@ const Request = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('list') }),
   z.strictObject({ kind: z.literal('list-v2') }),
   z.strictObject({ kind: z.literal('list-tool-health') }),
+  z.strictObject({ kind: z.literal('list-tool-cause') }),
+  z.strictObject({ kind: z.literal('list-startup-diagnostic') }),
   z.strictObject({ kind: z.literal('features') }),
   z.strictObject({ kind: z.literal('restart-chrome') }),
   z.strictObject({ kind: z.literal('mutation-policy'), catalogueDigest: Hex }),
@@ -182,19 +184,6 @@ export async function servePersonPluginControl(options: {
               workspaceId: request.workspaceId,
               revoke: async (pluginId, installId) =>
                 (await tell({ kind: 'revoke', pluginId, installId })) === true,
-              applied: async (pluginId, receipt) => {
-                await tell({ kind: 'applied', pluginId, receipt })
-              },
-              reconcile: async (change) => {
-                await tell({
-                  kind: 'reconcile',
-                  change: {
-                    pluginId: change.pluginId,
-                    before: change.before,
-                    receipt: change.receipt,
-                  },
-                })
-              },
             })
           } catch (error) {
             session.attaching = false
@@ -255,6 +244,8 @@ export async function servePersonPluginControl(options: {
               features: [
                 ...PLUGIN_FRAMEWORK_FEATURES,
                 'tool-health-v1',
+                'tool-cause-v1',
+                'startup-diagnostic-v1',
                 ...(options.restartChrome ? ['chrome-recovery-v1'] : []),
                 ...(options.controller.preparedMutationFeature()
                   ? ['authors-v1', 'prepared-mutations-v1']
@@ -278,10 +269,33 @@ export async function servePersonPluginControl(options: {
               .filter((card) => visible(card.id))
               .map((card) => {
                 const legacy = { ...card }
+                delete legacy.unavailableReason
+                delete legacy.startupDiagnostic
                 delete legacy.toolsUnavailable
+                delete legacy.toolsCause
                 return legacy
               })
           case 'list-tool-health':
+            // Its clients validate strictly; the cause needs its own negotiated list.
+            return (await options.controller.status()).cards
+              .filter((card) => visible(card.id))
+              .map((card) => {
+                const health = { ...card }
+                delete health.unavailableReason
+                delete health.startupDiagnostic
+                delete health.toolsCause
+                return health
+              })
+          case 'list-tool-cause':
+            return (await options.controller.status()).cards
+              .filter((card) => visible(card.id))
+              .map((card) => {
+                const legacy = { ...card }
+                delete legacy.unavailableReason
+                delete legacy.startupDiagnostic
+                return legacy
+              })
+          case 'list-startup-diagnostic':
             return (await options.controller.status()).cards.filter((card) => visible(card.id))
           case 'restart-chrome':
             if (!options.restartChrome || !visible('chrome'))
@@ -432,7 +446,6 @@ export async function servePersonPluginControl(options: {
       resolve()
     })
   })
-  if (isSocketFile()) await chmod(path, 0o600)
   const held = isSocketFile() ? await lstat(path, { bigint: true }) : null
   server.on('error', () => {
     for (const channel of channels) channel.close()

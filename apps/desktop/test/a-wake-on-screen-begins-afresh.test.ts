@@ -1,6 +1,7 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import type { SessionRef } from '@brobot2/runtime'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+
 import {
   applyEvent,
   createTranscript,

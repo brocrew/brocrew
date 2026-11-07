@@ -813,7 +813,7 @@ describe('§4 · the Mac’s guided download, against a local server', () => {
           stallsAfterMs: 1_000,
         }),
         path,
-      ).rejects.toThrow('the download stalled: nothing arrived for 1 s')
+      ).rejects.toThrow('the download stalled: no progress for 1 s')
       expect(readdirSync(dirname(to)), path).toEqual([])
     }
   })
@@ -1055,10 +1055,10 @@ describe('§5 · the wiring', () => {
     expect(ipc).toBeGreaterThan(-1)
     expect(started).toBeGreaterThan(ipc)
     expect(index).toContain(
-      '  stopArchiveWork: () => {\n    void stopProviderSetup?.()\n    updates?.stop()',
+      '  stopArchiveWork: () => {\n    void stopRecoveryWork()\n    void stopProviderSetup?.()\n    updates?.stop()',
     )
     expect(index).toContain(
-      '  drainArchiveWork: async () => {\n    await stopProviderSetup?.()\n    await updates?.drain()',
+      '  drainArchiveWork: async () => {\n    await stopRecoveryWork()\n    await stopProviderSetup?.()\n    await updates?.drain()',
     )
   })
 })

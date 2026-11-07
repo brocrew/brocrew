@@ -97,6 +97,7 @@
  * ~0.2 s — or in ~2.2 s on the runs where Electron does not exit on its own and the app's own bound
  * has to stop it. It opens no provider session, spends nothing, and removes its `--user-data-dir`.
  */
+import { freePort } from './lib/free-port.mjs'
 import { execFileSync, spawn } from 'node:child_process'
 import {
   closeSync,
@@ -107,7 +108,7 @@ import {
   readFileSync,
   rmSync,
 } from 'node:fs'
-import { connect, createServer } from 'node:net'
+import { connect } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -221,18 +222,6 @@ const PORT_RELEASE_MS = 1_000
  * alternative to a bound here is a check that removes a directory it never owned (325).
  */
 const OWNERSHIP_MS = 10_000
-
-/** A port nothing holds, handed over by the kernel rather than guessed. */
-function freePort() {
-  return new Promise((resolve, reject) => {
-    const server = createServer()
-    server.on('error', reject)
-    server.listen(0, '127.0.0.1', () => {
-      const { port } = server.address()
-      server.close(() => resolve(port))
-    })
-  })
-}
 
 /**
  * Does anything answer on the one-host gate socket?

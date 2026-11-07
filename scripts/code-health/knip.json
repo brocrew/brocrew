@@ -1,0 +1,169 @@
+{
+  "$schema": "https://unpkg.com/knip@6.44.1/schema.json",
+  "includeEntryExports": true,
+  "ignore": ["scripts/code-health/depcruise.cjs"],
+  "workspaces": {
+    ".": {
+      "project": [
+        "*.{ts,js,mjs,cjs}",
+        "scripts/**/*.{ts,js,mjs,cjs}",
+        ".github/workflows/*.{yml,yaml}",
+        ".github/**/*.{mjs,cjs,js,ts}"
+      ],
+      "entry": [
+        "scripts/app-closes-check.mjs",
+        "scripts/beta-release.mjs",
+        "scripts/build-plugin-release.mjs",
+        "scripts/check-plugins.mjs",
+        "scripts/check-protocol.mjs",
+        "scripts/claude-code-newest.mjs",
+        "scripts/clean-base.mjs",
+        "scripts/coverage-gate.mjs",
+        "scripts/db-generate.mjs",
+        "scripts/download-counts.mjs",
+        "scripts/draft-survives-a-restart-probe.mjs",
+        "scripts/drop-hazard-probe.mjs",
+        "scripts/engine-check.mjs",
+        "scripts/gates/plugin-packaged/owner.mjs",
+        "scripts/gates/plugin-v2/controls.test.mjs",
+        "scripts/gates/plugin-v2/native-dependency.test.mjs",
+        "scripts/gates/plugin-v2/owner.mjs",
+        "scripts/gates/plugin-v2/reload-controls.test.mjs",
+        "scripts/gates/plugin-v2/reload-owner.mjs",
+        "scripts/gates/plugin-v2/source-binding.test.mjs",
+        "scripts/gates/plugin-windows/gate.mjs",
+        "scripts/gates/plugin-windows/whatsapp-release.mjs",
+        "scripts/gates/plugin-windows/whatsapp.mjs",
+        "scripts/generate-protocol.mjs",
+        "scripts/lane-geometry-probe.mjs",
+        "scripts/leak-check.mjs",
+        "scripts/lib/scripted-claude.mjs",
+        "scripts/lib/smoke-globalsetup.mjs",
+        "scripts/lib/tests-run-in-a-fictional-home.mjs",
+        "scripts/lifecycle-runner.mjs",
+        "scripts/look-capture.mjs",
+        "scripts/mac-update-test.mjs",
+        "scripts/macos-packaged-check.mjs",
+        "scripts/nav-order-probe.mjs",
+        "scripts/one-app-probe.mjs",
+        "scripts/packaged-smoke.mjs",
+        "scripts/plugin-source.mjs",
+        "scripts/recovery-real-entry-check.mjs",
+        "scripts/release-check.mjs",
+        "scripts/resume-live-smoke.mjs",
+        "scripts/secret-scan-redaction-check.mjs",
+        "scripts/test-dom-in-groups.mjs",
+        "scripts/test/mac-update-test.test.mjs",
+        "scripts/test/upgrade-path.test.mjs",
+        "scripts/third-party-notices.mjs",
+        "scripts/ui-live-smoke.mjs",
+        "scripts/update-rehearsal-feed.mjs",
+        "scripts/update-rehearsal-lane.mjs",
+        "scripts/upgrade-path.mjs",
+        "scripts/window-controls-probe.mjs",
+        "scripts/window-opens-check.mjs",
+        "scripts/windows-packaged-check.mjs",
+        "scripts/windows-signing-witness.mjs",
+        "scripts/windows-update-test.mjs",
+        "*.config.{ts,js,mjs,cjs}",
+        "eslint.config.*",
+        "scripts/test/**/*.test.{mjs,js,ts}",
+        "scripts/native/*-check.ts",
+        "scripts/test/fixtures/*.mjs",
+        ".github/windows-suite-failures.mjs"
+      ]
+    },
+    "scripts/code-health": {
+      // loaded at runtime by dependency-cruiser to parse .vue files; knip cannot see it
+      "ignoreDependencies": ["@vue/compiler-sfc"],
+      "project": ["**/*.{mjs,cjs}"],
+      "entry": ["gate.mjs", "gate.test.mjs"]
+    },
+    "apps/desktop": {
+      "project": ["**/*.{ts,tsx,js,mjs,cjs,vue,html}"],
+      "entry": [
+        "src/main/index.ts",
+        "src/main/plugins/supervisor/entry.ts",
+        "src/main/plugins/supervisor/sqlite-adapter.ts",
+        "src/preload/index.ts",
+        "src/preload/recovery.ts",
+        "src/preload/plugin-ui.ts",
+        "src/renderer/index.html",
+        "src/renderer/recovery.html",
+        "src/renderer/src/main.ts",
+        "src/renderer/src/recovery.ts",
+        "test/**/*.test.{ts,mjs,js}",
+        "smoke/**/*.smoke.ts",
+        "*.config.ts",
+        "electron.vite.config.ts",
+        "gate-only/**/*.test.ts",
+        "look/scenes/**/*.look.ts",
+        "look/plugins-window.ts",
+        "resources/plugin-host/*.mjs",
+        "test/**/*.worker.ts",
+        "test/helpers/plugin-disclosure-reader-worker.ts",
+        "smoke/packaged-plugin-service.ts",
+        "smoke/plugin-lifecycle.ts",
+        "smoke/plugin-node-host.ts",
+        "smoke/plugin-production.ts",
+        "smoke/plugin-settings-isolation.ts",
+        "smoke/plugin-settings-preload.ts",
+        "smoke/plugin-settings-themes.ts",
+        "smoke/plugin-supervisor-host.ts",
+        "smoke/plugin-ui-isolation.ts",
+        "smoke/run-plugin-settings-isolation.mjs",
+        "smoke/run-plugin-ui-isolation.mjs",
+        "test/themes/native-pictures.smoke.ts"
+      ],
+      "paths": {
+        "@renderer/*": ["./src/renderer/src/*"]
+      }
+    },
+    "packages/runtime": {
+      "project": ["**/*.{ts,tsx,js,jsx,mjs,cjs,vue,html}"],
+      "entry": [
+        "src/index.ts",
+        "test/**/*.test.{ts,mjs,js}",
+        "smoke/**/*.smoke.ts",
+        "src/internal/provider-home.ts",
+        "test/fixtures/*.mjs"
+      ]
+    },
+    "packages/shared": {
+      "project": ["**/*.{ts,tsx,js,jsx,mjs,cjs,vue,html}"],
+      "entry": [
+        "src/index.ts",
+        "test/**/*.test.{ts,mjs,js}",
+        "smoke/**/*.smoke.ts",
+        "src/providers.ts"
+      ]
+    },
+    "packages/orchestration": {
+      "project": ["**/*.{ts,tsx,js,jsx,mjs,cjs,vue,html}"],
+      "entry": ["src/index.ts", "test/**/*.test.{ts,mjs,js}", "smoke/**/*.smoke.ts"]
+    },
+    "plugins/chrome": {
+      "project": ["**/*.{ts,js,mjs,cjs,html}"],
+      "entry": [
+        "src/index.ts",
+        "build.mjs",
+        "ui/index.html",
+        "ui/app.js",
+        "helper/*.js",
+        "test/**/*.test.ts",
+        "test/**/*.test.mjs"
+      ]
+    },
+    "plugins/whatsapp": {
+      "project": ["**/*.{ts,js,mjs,cjs,html}"],
+      "entry": [
+        "src/index.ts",
+        "build.mjs",
+        "ui/index.html",
+        "ui/app.js",
+        "test/**/*.test.ts",
+        "test/**/*.test.mjs"
+      ]
+    }
+  }
+}

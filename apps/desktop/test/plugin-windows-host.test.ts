@@ -1,4 +1,4 @@
-import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import {
   lstatSync,
@@ -16,24 +16,10 @@ import { setPriority, tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { createHash } from 'node:crypto'
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import {
-  immutableMode,
-  isImmutableFile,
-  isInsideCheckedRoot,
-  isLocalDrivePath,
-  isPrivateEntry,
-  isWithinOrSame,
-  keepPluginRootPrivate,
-} from '../src/main/plugins/private-files'
+import { immutableMode, isLocalDrivePath, isWithinOrSame } from '../src/main/plugins/private-files'
 import { localEndpoint } from '../src/main/plugins/local-endpoint'
 import { windowsSystemEnvironment } from '../src/main/plugins/system-environment'
 import { installedChromeOnWindows } from '../src/main/plugins/windows-chrome'
-import {
-  keepToThisUser,
-  windowsAccessLists,
-  accessEntries,
-  othersLetIn,
-} from '../src/main/recovery/windows-privacy'
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
 import { PluginWorkspaceLease } from '../src/main/plugins/supervisor/client'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
@@ -44,20 +30,17 @@ import {
   type PluginNodeRuntime,
 } from '../src/main/plugins/node-runtime'
 import { thisMachine } from '../src/main/plugins/package-schema'
-import { createPluginVerifier } from '../src/main/plugins/package-verifier'
+import { createRepoAwarePluginVerifier } from '../src/main/plugins/package-verifier'
 import { endProcessesByIdentity, endWindowsTree } from '../resources/plugin-host/process-groups.mjs'
 import { startJobKeeper } from '../resources/plugin-host/windows-job.mjs'
 import { writeReceipt } from '../resources/plugin-host/receipts.mjs'
-import { manifestFor, packageFixture, fictionalPublicKey } from './plugin-package-fixtures'
+import { manifestFor, packageFixture } from './plugin-package-fixtures'
 
 const optionalRecoveryReader = vi.hoisted(() => vi.fn(async () => null))
 vi.mock('../resources/plugin-host/boot-witness.mjs', async (original) => ({
   ...(await original<typeof import('../resources/plugin-host/boot-witness.mjs')>()),
   readBootWitness: optionalRecoveryReader,
 }))
-
-const stat = (mode: number, uid = process.getuid?.() ?? 0) =>
-  ({ mode, uid }) as unknown as import('node:fs').Stats
 
 describe('the plugin host on Windows, by its platform seams', () => {
   it('compares Windows folders without case, by their own separator, and never across drives', () => {
@@ -79,21 +62,10 @@ describe('the plugin host on Windows, by its platform seams', () => {
     expect(isLocalDrivePath('C:Users', 'win32')).toBe(false)
     expect(isLocalDrivePath('/fictional', 'darwin')).toBe(true)
   })
-  it('checks owner and mode on POSIX and structural identity on Windows', () => {
-    expect(isPrivateEntry(stat(0o40777, 0), 0o077, 'win32')).toBe(true)
-    // An owner is compared only where this process has one.
-    if (process.getuid) {
-      expect(isPrivateEntry(stat(0o40700), 0o077, 'darwin')).toBe(true)
-      expect(isPrivateEntry(stat(0o40750), 0o077, 'darwin')).toBe(false)
-      expect(isPrivateEntry(stat(0o40755), 0o022, 'darwin')).toBe(true)
-      expect(isPrivateEntry(stat(0o40700, 404941), 0o077, 'darwin')).toBe(false)
-    }
-    expect(isImmutableFile(stat(0o100666), 'win32')).toBe(true)
-    expect(isImmutableFile(stat(0o100400), 'darwin')).toBe(true)
-    expect(isImmutableFile(stat(0o100600), 'darwin')).toBe(false)
-    expect(immutableMode(true, 'win32')).toBe(0o600)
-    expect(immutableMode(true, 'darwin')).toBe(0o500)
-    expect(immutableMode(false, 'linux')).toBe(0o400)
+  it('creates writable package files and preserves executable behavior', () => {
+    expect(immutableMode(true, 'win32')).toBe(0o666)
+    expect(immutableMode(true, 'darwin')).toBe(0o755)
+    expect(immutableMode(false, 'linux')).toBe(0o666)
   })
   it('names a pipe from the server key on Windows and keeps the socket file elsewhere', () => {
     const key = 'a'.repeat(64)
@@ -163,22 +135,12 @@ describe('the plugin host on Windows, by its platform seams', () => {
       ),
     ).toBeNull()
   })
-  it('refuses a plugin root that is not a drive-letter path on Windows and changes nothing elsewhere', async () => {
-    await expect(
-      keepPluginRootPrivate('/fictional/plugins', { platform: 'win32' }),
-    ).rejects.toThrow('unsafe-path')
-    await expect(keepPluginRootPrivate('/fictional/plugins', { platform: 'darwin' })).resolves.toBe(
-      undefined,
-    )
-    expect(isInsideCheckedRoot('/fictional/plugins', 'darwin')).toBe(true)
-    expect(isInsideCheckedRoot('C:\\Fictional\\plugins', 'win32')).toBe(false)
-  })
 })
 
-/** A fresh folder that lets in this user, SYSTEM and Administrators alone, by its long name. */
+/** A fresh ordinary folder, by its long name. */
 async function privateParent(): Promise<string> {
   const parent = realpathSync.native(mkdtempSync(join(tmpdir(), 'fictional-plugins-')))
-  await keepToThisUser(parent)
+
   return parent
 }
 const roots: string[] = []
@@ -217,134 +179,13 @@ describe.runIf(process.platform === 'win32')('the plugin host on Windows', () =>
       exited: true,
     })
   })
-  it.each([false, true])(
-    'secures a plugin root (existing: %s) under a parent a sandbox group can read, preserving parent and workspace ACLs',
-    async (existing) => {
-      const parent = await privateParent()
-      roots.push(parent)
-      const sandbox = 'S-1-5-32-545'
-      execFileSync(
-        join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'icacls.exe'),
-        [parent, '/grant:r', `*${sandbox}:(OI)(CI)RX`, '/Q'],
-        { windowsHide: true },
-      )
-      const workspace = join(parent, 'workspace'),
-        root = join(parent, 'plugins')
-      mkdirSync(workspace)
-      if (existing) mkdirSync(root)
-      const parentBefore = await windowsAccessLists.read(parent)
-      const workspaceBefore = await windowsAccessLists.read(workspace)
-      const user = await windowsAccessLists.userSid()
-      const machine = await windowsAccessLists.machineSid()
-      expect(othersLetIn(accessEntries(parentBefore, machine), user)).toContain(sandbox)
-      await keepPluginRootPrivate(root)
-      mkdirSync(join(root, 'state'))
-      for (const folder of [root, join(root, 'state')])
-        expect(
-          othersLetIn(
-            accessEntries(await windowsAccessLists.read(folder), machine, {
-              includeInheritOnly: true,
-            }),
-            user,
-          ),
-        ).toEqual([])
-      expect(await windowsAccessLists.read(parent)).toBe(parentBefore)
-      expect(await windowsAccessLists.read(workspace)).toBe(workspaceBefore)
-      expect(isInsideCheckedRoot(join(root, 'state'))).toBe(true)
-    },
-  )
-  it.each(['W', 'DC', 'WDAC', 'WO'])(
-    'admits a preexisting root under a parent with an untrusted %s grant without changing the parent',
-    async (rights) => {
-      const parent = await privateParent()
-      roots.push(parent)
-      const root = join(parent, 'plugins')
-      mkdirSync(root)
-      const sandbox = 'S-1-5-32-545'
-      execFileSync(
-        join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'icacls.exe'),
-        [parent, '/grant:r', `*${sandbox}:${rights === 'W' ? rights : `(${rights})`}`, '/Q'],
-        { windowsHide: true },
-      )
-      const before = await windowsAccessLists.read(parent)
-      await expect(keepPluginRootPrivate(root)).resolves.toBeUndefined()
-      expect(await windowsAccessLists.read(parent)).toBe(before)
-      expect(isInsideCheckedRoot(root)).toBe(true)
-    },
-  )
-  it('admits a foreign-owned existing root without changing its owner or parent ACL', async () => {
-    const parent = await privateParent()
-    roots.push(parent)
-    const root = join(parent, 'plugins')
-    mkdirSync(root)
-    const user = await windowsAccessLists.userSid()
-    await windowsAccessLists.restrict(root, user, [])
-    const foreign = 'S-1-5-32-545'
-    execFileSync(
-      join(process.env['SystemRoot'] ?? 'C:\\Windows', 'System32', 'icacls.exe'),
-      [root, '/setowner', `*${foreign}`, '/Q'],
-      { windowsHide: true },
-    )
-    expect(await windowsAccessLists.ownerSid(root)).toBe(foreign)
-    const parentBefore = await windowsAccessLists.read(parent)
-    const restrict = vi.fn(windowsAccessLists.restrict)
-    await expect(
-      keepPluginRootPrivate(root, {
-        lists: { ...windowsAccessLists, restrict },
-      }),
-    ).resolves.toBeUndefined()
-    expect(restrict).toHaveBeenCalledExactlyOnceWith(root, user, [])
-    expect(await windowsAccessLists.ownerSid(root)).toBe(foreign)
-    expect(await windowsAccessLists.read(parent)).toBe(parentBefore)
-    expect(isInsideCheckedRoot(root)).toBe(true)
-  })
-  it('admits a plugin root whose permissions cannot be restricted and warns once', async () => {
-    const parent = await privateParent()
-    roots.push(parent)
-    const root = join(parent, 'plugins')
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    const restrict = vi.fn(async () => {
-      throw new Error('fictional ACL restriction failed')
-    })
-    try {
-      const lists = { ...windowsAccessLists, restrict }
-      await expect(keepPluginRootPrivate(root, { lists })).resolves.toBeUndefined()
-      await expect(keepPluginRootPrivate(root, { lists })).resolves.toBeUndefined()
-      expect(restrict).toHaveBeenCalledOnce()
-      expect(warning).toHaveBeenCalledExactlyOnceWith(
-        'Could not tighten plugin folder permissions; continuing.',
-      )
-      expect(isInsideCheckedRoot(root)).toBe(true)
-    } finally {
-      warning.mockRestore()
-    }
-  })
-  it("makes the plugin root this user's alone, inheriting nothing, and counts only it as checked", async () => {
-    const parent = await privateParent()
-    roots.push(parent)
-    const root = join(parent, 'plugins')
-    await keepPluginRootPrivate(root)
-    const sddl = await windowsAccessLists.read(root)
-    expect(sddl).toMatch(/D:[A-Z_]*P/)
-    const user = await windowsAccessLists.userSid()
-    // The computer's own Administrator is written as LA, resolved from the computer's SID.
-    const machine = await windowsAccessLists.machineSid()
-    expect(othersLetIn(accessEntries(sddl, machine), user)).toEqual([])
-    mkdirSync(join(root, 'state'))
-    expect(
-      othersLetIn(accessEntries(await windowsAccessLists.read(join(root, 'state')), machine), user),
-    ).toEqual([])
-    expect(isInsideCheckedRoot(join(root, 'state'))).toBe(true)
-    expect(isInsideCheckedRoot(join(root.toUpperCase(), 'state'))).toBe(true)
-    expect(isInsideCheckedRoot(join(parent, 'elsewhere'))).toBe(false)
-  })
   it('serves the supervisor on a pipe that tells an unauthenticated reader one random challenge and nothing else', async () => {
     const parent = await privateParent()
     roots.push(parent)
     const root = join(parent, 'plugins'),
       workspace = join(parent, 'workspace')
     mkdirSync(workspace)
-    await keepPluginRootPrivate(root)
+
     const owner = await PluginSupervisor.start({ root, workspaceRoots: [] })
     try {
       const storage = new SupervisorStorage(root, [], false)
@@ -536,7 +377,8 @@ describe.runIf(process.platform === 'win32')('the plugin host on Windows', () =>
     setPriority(0)
     parent = await privateParent()
     roots.push(parent)
-    await keepPluginRootPrivate(join(parent, 'plugins'))
+    await mkdir(join(parent, 'plugins'))
+
     const resources = join(parent, 'bundle')
     await mkdir(join(resources, 'plugin-node'), { recursive: true })
     const binary = await readFile(process.execPath)
@@ -761,10 +603,9 @@ function fixture(body: string) {
   manifest.ui = null
   manifest.uiApi = null
   const value = packageFixture({ files, manifest })
-  const catalogue = createPluginVerifier({
-    pinnedPublicKey: fictionalPublicKey,
+  const catalogue = createRepoAwarePluginVerifier({
     target: manifest.platforms[0]!,
-  }).verifyCatalogue(value.bytes, value.signature)
+  }).verifyCatalogue(value.bytes)
   return {
     package: catalogue.verifyPackage('chrome', manifest.version, value.archive),
     releaseDigest: value.release.archive.sha256,

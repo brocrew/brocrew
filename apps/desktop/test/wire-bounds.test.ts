@@ -40,7 +40,6 @@ import { LIBRARY_QUERY_MAX, MAX_PATH_CHARS } from '../src/shared/runtime-ipc'
  * | `agentDisplayName` | 🔴 **the new-agent sheet's display name, since 423** | ⛔ `AGENT_DISPLAY_NAME_CHARS` |
  * | `resolveLink.target` | copied from an app-authored navigation link or recorded work label | `LINK_TARGET_LIMIT`; no control types it |
  * | `agentMethodBody.key` and `removeAgentMethod.selection.key` | copied from a saved-method row | 1–1,024 characters; main resolves the key afresh |
- * | `removeAgentMethod.selection.fingerprint` and `.indexFingerprint` | copied from main's file reading | 64 lowercase hex characters or null; no control types them |
  * | `undoAgentMethod.changeId` | copied from a saved-method history row | 1–1,024 characters; main checks the latest effective change |
  *
  * ⛔ **Three rows changed hands at `417` (HO-022 §2) and none of them lost a bound.** The launcher
@@ -372,10 +371,6 @@ describe('221 §3 · the count is pinned, so a new field must be classified', ()
       // carries its own bounded key, and main resolves it against a fresh listing.
       'key', // agentMethodBody
       'key', // removeAgentMethod.selection
-      // These nullable hashes come from main's guarded reading, never a text control.
-      // The wire requires 64 lowercase hex characters; main rechecks both images.
-      'fingerprint',
-      'indexFingerprint',
       // A person chooses a history row. Main checks its id still names the latest
       // effective change; no person types this 1–1,024-character ledger identifier.
       'changeId',
@@ -391,8 +386,6 @@ describe('221 §3 · the count is pinned, so a new field must be classified', ()
       // `a-positive-assertion-must-differ-from-the-default` at a validator. 🔴 The `.max(4096)` is
       // the ordinary size bound every string on this wire carries, and nothing turns on it.
       'entry',
-      // Hash of the text displayed to the person, and a main-issued source record id.
-      'fingerprint',
       'sourceId',
       // ⛔ **`askId`** (582) — classified: **no person types it.** It is the name this app minted
       // for an ask an agent made (`iprop_<uuid>`), drawn on the identity's sheet and sent straight

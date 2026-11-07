@@ -1,38 +1,5 @@
+import type { MoveOffer, MoveOrigin, MoveReceipt } from './move-contracts'
 import { linkTargetId } from './links'
-
-export interface MoveOffer {
-  readonly destination: string
-  readonly destinationName: string
-  readonly sourceOrdinal: number
-  readonly sourceGeneration: number
-  readonly sourceDigest: string
-}
-
-export interface MoveOrigin {
-  readonly sessionId: string
-  readonly name: string
-  readonly ordinal: number
-  readonly requestId: string
-}
-
-export interface MoveReceipt {
-  readonly sessionId: string
-  readonly messageId: string
-  /** Absent on receipts recorded before destination links were kept. */
-  readonly destinationLink?: string
-  readonly receiptLine?: string
-}
-
-export interface DecideMoveRequestInput {
-  readonly sessionId: string
-  readonly requestId: string
-  readonly decision: 'move' | 'here'
-}
-
-export type MoveRequestAck =
-  | ({ readonly outcome: 'moved' } & MoveReceipt)
-  | { readonly outcome: 'here' }
-  | { readonly outcome: 'refused'; readonly reason: string }
 
 export const MOVE_IT = 'Move it'
 export const DO_IT_HERE = 'Do it here'
@@ -60,18 +27,15 @@ export function moveOfferOf(value: unknown): MoveOffer | undefined {
     !record(value) ||
     !name(value.destination) ||
     !label(value.destinationName) ||
-    !ordinal(value.sourceOrdinal) ||
-    !ordinal(value.sourceGeneration) ||
-    typeof value.sourceDigest !== 'string' ||
-    !/^[0-9a-f]{64}$/.test(value.sourceDigest)
+    (!name(value.sourceTurnId) && !ordinal(value.sourceOrdinal))
   )
     return undefined
   return {
     destination: value.destination,
     destinationName: value.destinationName,
-    sourceOrdinal: value.sourceOrdinal,
-    sourceGeneration: value.sourceGeneration,
-    sourceDigest: value.sourceDigest,
+    ...(name(value.sourceTurnId)
+      ? { sourceTurnId: value.sourceTurnId }
+      : { sourceOrdinal: value.sourceOrdinal as number }),
   }
 }
 

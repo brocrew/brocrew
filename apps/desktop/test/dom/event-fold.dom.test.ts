@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, ref } from 'vue'
 import EventStream from '../../src/renderer/src/components/EventStream.vue'
@@ -7,7 +8,7 @@ import {
   WINDOW_MAX_EVENTS,
   type WindowState,
 } from '../../src/renderer/src/lib/transcript-window'
-import type { RuntimeEventMessage, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll } from './harness'
 
 /**
@@ -94,14 +95,7 @@ function open(entries: RuntimeEventMessage[], over: Partial<WindowState> = {}): 
   return m.q('event-log')
 }
 
-/**
- * ⛔ **`ledgerRows`, verbatim** — the live smoke's own read, run here against a real folded list.
- *
- * ⚠️ **A copy, and the copy is the point.** `scripts/ui-live-smoke.mjs` cannot import from the app
- * and this file cannot import from it, so `scripts/test/step-census.test.mjs` pins the three lines
- * below against the smoke's source. ⛔ If they ever go out of step that census reddens — which is
- * what stops this test certifying a query the instrument no longer makes.
- */
+/** Read rendered ledger rows the same way as the live smoke. */
 function ledgerRows(log: Element, type: string): string[] {
   return [...log.querySelectorAll('li')]
     .filter((li) => li.dataset.type === type)

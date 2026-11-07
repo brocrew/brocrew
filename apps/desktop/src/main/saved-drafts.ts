@@ -1,11 +1,6 @@
+import type { HandedPath, PastedImage } from '../shared/attachment-contracts'
 import { isAbsolute } from 'node:path'
-import {
-  MAX_HANDED_PATHS,
-  MAX_PATH_CHARS,
-  hasControlCharacter,
-  type HandedPath,
-  type PastedImage,
-} from '../shared/runtime-ipc'
+import { MAX_HANDED_PATHS, MAX_PATH_CHARS, hasControlCharacter } from '../shared/runtime-ipc'
 import { conversationOfSlot, type SavedDraft, type SavedDrafts } from '../shared/saved-drafts'
 import { classifyHandedPath } from './runtime/handed-path'
 
@@ -34,7 +29,7 @@ import { classifyHandedPath } from './runtime/handed-path'
  * process's four filesystem workers until the volume answers — so asking every path at once could
  * leave every worker stuck and the drafts' own writes queued behind them. One stuck question at most.
  */
-export const STILL_THERE_WITHIN_MS = 1_000
+const STILL_THERE_WITHIN_MS = 1_000
 
 /**
  * ⛔ **…and how long ALL of them may take together** (744 review, round three). Asked one at a time,
@@ -42,7 +37,7 @@ export const STILL_THERE_WITHIN_MS = 1_000
  * (`SAVED_DRAFTS_WITHIN_MS`, 3 s) — and a window that stopped waiting draws with nothing restored
  * and keeps nothing that run. ⚑ Well under it: past this, the rest are restored unmarked.
  */
-export const RESTORE_WITHIN_MS = 1_500
+const RESTORE_WITHIN_MS = 1_500
 
 function pastedFrom(raw: unknown): PastedImage | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined

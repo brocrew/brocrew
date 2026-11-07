@@ -1,4 +1,5 @@
-import type { AgentState as OneState } from '../../../shared/agent-state'
+import type { AgentState as OneState } from '../../../shared/agent-state-contracts'
+
 import { agentStateWords } from '../../../shared/agent-state'
 import type { WorkThatNamesIt } from '../../../shared/piece-called'
 import type {
@@ -41,7 +42,7 @@ const known = <T>(value: T): Fact<T> => ({ value })
 /** Why a conversation whose process was looked for has no memory figure. */
 export const NOT_RUNNING_NOW = 'Not running now.'
 /** Why a conversation that is working has none: its process has not been measured yet. */
-export const NOT_MEASURED_YET = 'Not measured yet.'
+const NOT_MEASURED_YET = 'Not measured yet.'
 /** The short word where a memory figure could not be measured. */
 export const NOT_MEASURED = 'not measured'
 const missing = (why: string): Fact<never> => ({ value: null, why })
@@ -73,7 +74,7 @@ export interface AgentPanelInput {
   readonly now: number
 }
 
-export interface AgentPanelTask {
+interface AgentPanelTask {
   readonly piece: string
   readonly label: string
   readonly title: string

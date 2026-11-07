@@ -1,4 +1,6 @@
+import { registerMigrationLineageCases } from './lib/migration-lineage-cases'
 import Database from 'better-sqlite3'
+import { applyMigrations } from '../../src/main/db/migrate'
 import { createHash } from 'node:crypto'
 import {
   appendFile,
@@ -52,6 +54,7 @@ import {
   makeRecoveryFixture,
   type RecoveryFixtureOptions,
 } from './lib/recovery-fixture'
+import { checkTheCopyHere } from '../helpers/check-the-copy-here'
 
 /**
  * The start-up check, on real data folders: databases built by the app's own migrations, copies
@@ -91,6 +94,7 @@ function checkOf(
     deps: {
       userData,
       buildMigrationsFolder: MIGRATIONS_FOLDER,
+      verifyCopy: checkTheCopyHere,
       appVersion: THIS_VERSION,
       build: null,
       packaged: false,
@@ -277,6 +281,7 @@ describe('a copy before a migration', () => {
     const newest = fixture.checkpoints[4]!
     const { deps } = checkOf(userData, {
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+      verifyCopy: checkTheCopyHere,
       now: () => now,
       freeBytes: () => (existsSync(oldest.dir) ? 0 : 1_000_000_000),
     })
@@ -300,6 +305,7 @@ describe('a copy before a migration', () => {
     const before = await treeOf(backupsDir(userData))
     const { deps } = checkOf(userData, {
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+      verifyCopy: checkTheCopyHere,
       now: () => now,
       freeBytes: () => 0,
     })
@@ -316,6 +322,7 @@ describe('a copy before a migration', () => {
     })
     const { deps } = checkOf(userData, {
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+      verifyCopy: checkTheCopyHere,
       now: () => now,
       freeBytes: () => 0,
     })
@@ -344,6 +351,7 @@ describe('a copy before a migration', () => {
     })
     const { deps } = checkOf(userData, {
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+      verifyCopy: checkTheCopyHere,
       now: () => now,
       freeBytes: () => 0,
     })
@@ -379,6 +387,7 @@ describe('a copy before a migration', () => {
       const reached: { step: string; fallbackExists: boolean }[] = []
       const { deps, seen } = checkOf(userData, {
         buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+        verifyCopy: checkTheCopyHere,
         now: () => now,
         freeBytes: () => 1_000_000_000,
         beforeCheckpointStep: (step) => {
@@ -444,6 +453,7 @@ describe('a copy before a migration', () => {
     const live = await sha256Of(databaseFile(userData))
     const { deps, seen } = checkOf(userData, {
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+      verifyCopy: checkTheCopyHere,
     })
     expect(await inspect(deps)).toEqual({ kind: 'open', checkpoint: 'made' })
     expect(seen.lines).toEqual([CHECKPOINT_LINE])
@@ -457,10 +467,53 @@ describe('a copy before a migration', () => {
     expect(made?.manifest.database.migrations).toHaveLength(THIS_BUILD)
   })
 
+  it('the real migrator rolls back a write when its second statement fails and keeps its checkpoint intact', async () => {
+    const userData = await aWorkspace({ migrations: THIS_BUILD, checkpoints: [] })
+    const before = new Database(databaseFile(userData))
+    before.exec("CREATE TABLE rollback_probe (x TEXT); INSERT INTO rollback_probe VALUES ('kept')")
+    before.close()
+    const buildMigrationsFolder = await aBuildWithOneMoreMigration()
+    const tag = `${String(BUILD_LINEAGE.length).padStart(4, '0')}_one_more`
+    await writeFile(
+      join(buildMigrationsFolder, `${tag}.sql`),
+      `INSERT INTO rollback_probe VALUES (migration_wrote('interrupted'));
+--> statement-breakpoint
+SELECT * FROM no_such_migration_table;`,
+    )
+    const { deps } = checkOf(userData, { buildMigrationsFolder })
+    expect(await inspect(deps)).toEqual({ kind: 'open', checkpoint: 'made' })
+    const [checkpoint] = await listCheckpoints(userData)
+    expect(checkpoint).toBeDefined()
+    const copyBefore = await sha256Of(join(checkpoint!.folder, 'database.sqlite'))
+    const db = new Database(databaseFile(userData))
+    let writes = 0
+    db.function('migration_wrote', (value) => {
+      writes++
+      return value
+    })
+    const snapshot = () => ({
+      rows: db.prepare('SELECT * FROM rollback_probe').all(),
+      schema: db.prepare('SELECT * FROM sqlite_master ORDER BY name').all(),
+      journal: db.prepare('SELECT * FROM __drizzle_migrations ORDER BY id').all(),
+    })
+    const prior = snapshot()
+    try {
+      expect(() => applyMigrations(db, buildMigrationsFolder)).toThrow('no_such_migration_table')
+      expect(writes).toBe(1)
+      expect(snapshot()).toEqual(prior)
+      expect(db.inTransaction).toBe(false)
+    } finally {
+      db.close()
+    }
+    expect(await isIntact(checkpoint!)).toBe(true)
+    expect(await sha256Of(join(checkpoint!.folder, 'database.sqlite'))).toBe(copyBefore)
+  })
+
   it('is made once by a release: a retry after a failed migration reuses it', async () => {
     const userData = await aWorkspace({ migrations: THIS_BUILD, checkpoints: [] })
     const { deps, seen } = checkOf(userData, {
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+      verifyCopy: checkTheCopyHere,
       packaged: true,
     })
     expect(await inspect(deps)).toEqual({ kind: 'open', checkpoint: 'made' })
@@ -521,6 +574,7 @@ describe('a copy before a migration', () => {
       fs: recording,
       working: said,
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+      verifyCopy: checkTheCopyHere,
       packaged: true,
     })
     expect(await inspect(reusing.deps)).toEqual({ kind: 'open', checkpoint: 'made' })
@@ -554,6 +608,7 @@ describe('a copy before a migration', () => {
     const before = await treeOf(userData)
     const { deps, seen } = checkOf(userData, {
       buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+      verifyCopy: checkTheCopyHere,
       freeBytes: () => 0,
     })
     const verdict = await inspect(deps)
@@ -657,21 +712,7 @@ describe('a start that cannot read what it needs fails closed', () => {
     expect(await treeOf(userData)).toEqual(before)
   })
 
-  it('refuses migrations this build does not carry when none is later than its own', async () => {
-    const userData = await aWorkspace({ migrations: THIS_BUILD, checkpoints: [] })
-    const db = new Database(databaseFile(userData))
-    db.prepare(
-      'UPDATE __drizzle_migrations SET created_at = created_at - 1 WHERE created_at = (SELECT min(created_at) FROM __drizzle_migrations)',
-    ).run()
-    db.close()
-    const before = await treeOf(userData)
-    expect(await inspect(checkOf(userData).deps)).toMatchObject({
-      kind: 'failed',
-      reason: 'database-unreadable',
-      canRetry: false,
-    })
-    expect(await treeOf(userData)).toEqual(before)
-  })
+  registerMigrationLineageCases({ aWorkspace, checkOf, treeOf })
 
   it('refuses a -wal with no database beside it, rather than make a new one it would take in', async () => {
     const userData = join(await aRoot(), 'data')
@@ -821,6 +862,7 @@ describe('only the sole app on the folder changes its data', () => {
       const { deps, seen } = checkOf(userData, {
         ...owned(ownership),
         buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+        verifyCopy: checkTheCopyHere,
       })
       expect(await inspect(deps)).toEqual(notTheOnlyApp(ownership))
       expect(seen.lines).toEqual([])
@@ -891,6 +933,7 @@ describe('a start the one-app check could not decide', () => {
     const service = createRecoveryService(
       checkOf(userData, {
         buildMigrationsFolder: await aBuildWithOneMoreMigration(),
+        verifyCopy: checkTheCopyHere,
         ownership: () => Promise.resolve(answers.shift() ?? 'unknown'),
       }).deps,
     )
@@ -1258,11 +1301,11 @@ describe('a test keeping the recovery window on a hidden launch', () => {
     ])
   })
 
-  it('is ignored by a packaged build, and the ignoring is said', () => {
+  it('is kept by a packaged build for its hidden recovery check, and said', () => {
     const said: string[] = []
-    expect(keepsTheRecoveryWindow(true, true, (line) => said.push(line))).toBe(false)
+    expect(keepsTheRecoveryWindow(true, true, (line) => said.push(line))).toBe(true)
     expect(said).toEqual([
-      'BroCrew ignored --brobot-test-keep-recovery-window: a packaged build takes no test switch',
+      'BroCrew keeps its recovery window on a hidden launch: --brobot-test-keep-recovery-window',
     ])
   })
 

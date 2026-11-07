@@ -1,3 +1,5 @@
+import type { MoveOffer } from '../src/shared/move-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { writeFileSync, unlinkSync, realpathSync } from 'node:fs'
@@ -12,7 +14,6 @@ import {
   MOVE_WORDS,
   movedHereLine,
   moveReceiptOf,
-  type MoveOffer,
 } from '../src/shared/move-request'
 import { conversationLink } from '../src/shared/links'
 import type { SessionStore } from '../src/main/db/session-store'
@@ -20,7 +21,6 @@ import { DEFAULT_CAPABILITIES } from '../src/shared/capabilities'
 import { RecordingSink } from './helpers/a-service-world'
 import { answerCodexToolCall } from '../../../packages/runtime/src/codex/agent-tools'
 import type { AgentToolAnswer } from '@brobot2/runtime'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
 
 const ORIGINAL = 'Please check the fictional release notes.'
 const PERSON = { who: 'a-person' as const }
@@ -348,48 +348,32 @@ describe('a person moves the stored request', () => {
     expect(world.store.theDecisionOn(source, requestId)?.movedTo?.sessionId).toBe(target)
   })
 
-  it('a changed generation or stored request digest cannot reuse the offer', async () => {
+  it('moves the same eligible turn without a generation or content seal', async () => {
     const requestId = await offer()
     const bound = world.store.questionsRaisedIn(source).get(requestId)!.move!
-    const changedGeneration: SessionStore = {
+    expect(bound.sourceTurnId).toBeTypeOf('string')
+    const changed: SessionStore = {
       ...world.store,
-      generationOf: () => bound.sourceGeneration + 1,
-    }
-    expect(() =>
-      recordMovedRequest(
-        changedGeneration,
-        source,
-        requestId,
-        bound,
-        'Source',
-        [],
-        PERSON,
-        world.clock++,
-      ),
-    ).toThrow(MOVE_WORDS.noOriginal)
-    const changedText: SessionStore = {
-      ...world.store,
-      eventsFrom(id, from, limit) {
-        return world.store
-          .eventsFrom(id, from, limit)
-          .map((one) =>
-            one.event.type === 'user_turn'
-              ? { ...one, event: { ...one.event, text: 'Different stored words.' } }
-              : one,
-          )
+      generationOf: () => 999,
+      recordedTurnMessage(id, turn) {
+        const message = world.store.recordedTurnMessage(id, turn)
+        return message === null
+          ? null
+          : { ...message, event: { ...message.event, text: 'Updated stored words.' } }
       },
     }
+    recordMovedRequest(changed, source, requestId, bound, 'Source', [], PERSON, world.clock++)
+    expect(world.store.messagesWaitingIn(target).map((one) => one.text)).toEqual([
+      'Updated stored words.',
+    ])
+  })
+
+  it('reports a genuinely missing source turn without recording a move', async () => {
+    const requestId = await offer()
+    const bound = world.store.questionsRaisedIn(source).get(requestId)!.move!
+    const missing: SessionStore = { ...world.store, recordedTurnMessage: () => null }
     expect(() =>
-      recordMovedRequest(
-        changedText,
-        source,
-        requestId,
-        bound,
-        'Source',
-        [],
-        PERSON,
-        world.clock++,
-      ),
+      recordMovedRequest(missing, source, requestId, bound, 'Source', [], PERSON, world.clock++),
     ).toThrow(MOVE_WORDS.noOriginal)
     expect(world.store.theDecisionOn(source, requestId)).toBeNull()
     expect(world.store.messagesWaitingIn(target)).toHaveLength(0)
@@ -722,7 +706,7 @@ describe('a person moves the stored request', () => {
         }
         finish()
         const ack = await deciding
-        if (change === 'unchanged') {
+        if (change === 'unchanged' || change === 'owner') {
           expect(ack.outcome).toBe('moved')
           await expect.poll(() => targetWords().length).toBe(1)
         } else {
@@ -913,17 +897,17 @@ describe('a person moves the stored request', () => {
   )
 
   it('provider-transcript stored words cannot be offered through the composed final tool', async () => {
-    const read = world.store.eventsFrom
-    world.store.eventsFrom = (id, from, limit) =>
-      read(id, from, limit).map((one) =>
-        one.event.type === 'user_turn'
-          ? { ...one, event: { ...one.event, attribution: 'provider_transcript' } }
-          : one,
-      )
+    const read = world.store.recordedTurnMessage
+    world.store.recordedTurnMessage = (id, turn) => {
+      const row = read(id, turn)
+      return row === null
+        ? null
+        : { ...row, event: { ...row.event, attribution: 'provider_transcript' } }
+    }
     try {
       await expectMoveRail('move-offer-not-available', 'permanent', false, null, target)
     } finally {
-      world.store.eventsFrom = read
+      world.store.recordedTurnMessage = read
     }
   })
 

@@ -11,7 +11,7 @@ import type {
  */
 
 /** The words that name this app, kept apart so a rename changes them here. */
-export const SETTING_SELF_WORDS = {
+const SETTING_SELF_WORDS = {
   noSettingsFiles: 'Off. This app adds the instruction files itself.',
   attributionSet: 'Set by this app.',
 } as const
@@ -20,7 +20,7 @@ export const SETTING_SELF_WORDS = {
  * The words for each setting this window knows. ⚠️ Partial on purpose: the host may record a setting
  * before the window has words for it, and that one is drawn by its key and its value as sent.
  */
-export const SETTING_LABEL: Readonly<Partial<Record<LaunchSettingKey, string>>> = {
+const SETTING_LABEL: Readonly<Partial<Record<LaunchSettingKey, string>>> = {
   approval: 'Approval',
   mode: 'Plan',
   'collaboration-mode': 'Plan',
@@ -39,7 +39,7 @@ export const SETTING_LABEL: Readonly<Partial<Record<LaunchSettingKey, string>>> 
 }
 
 /** One value in words, with any list the words stand for kept apart to draw in mono. */
-export interface SettingSaid {
+interface SettingSaid {
   readonly words: string | null
   readonly lines: readonly string[]
 }
@@ -57,7 +57,7 @@ const said = (words: string | null, lines: readonly string[] = []): SettingSaid 
   lines,
 })
 
-export function settingSaid(key: LaunchSettingKey, value: LaunchSettingValue): SettingSaid {
+function settingSaid(key: LaunchSettingKey, value: LaunchSettingValue): SettingSaid {
   switch (key) {
     case 'approval':
       return said(
@@ -142,7 +142,7 @@ function wordsFor(key: LaunchSettingKey, value: LaunchSettingValue): SettingSaid
   return one.words === null && one.lines.length === 0 ? said(`${asSent(value)}.`) : one
 }
 
-export function settingRow(setting: GivenLaunchSetting, recorded: boolean): SettingRow {
+function settingRow(setting: GivenLaunchSetting, recorded: boolean): SettingRow {
   const label = SETTING_LABEL[setting.key] ?? setting.key
   const now = setting.now === undefined ? null : wordsFor(setting.key, setting.now)
   // ⚠️ A recorded launch's null is a kept value (Codex's memory when its config could not be read):

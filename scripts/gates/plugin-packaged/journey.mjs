@@ -5,16 +5,14 @@ import { spawn } from 'node:child_process'
 import { pathToFileURL } from 'node:url'
 import { attach, press } from '../../lib/update-rehearsal-app.mjs'
 import { HIDDEN_LAUNCH_ARG } from '../../lib/hidden-launch.mjs'
-import { privateFolder, fixtureEnvironment, fixtureAppEnvironment, command } from './prepare.mjs'
 import {
-  ownedRoot,
-  requireCI,
-  digest,
-  report,
-  safeReport,
-  finish,
-  requireCheck,
-} from './contract.mjs'
+  privateFolder,
+  fixtureEnvironment,
+  fixtureAppEnvironment,
+  command,
+} from './fixture-command.mjs'
+import { digest, report, safeReport, finish, requireCheck } from './contract.mjs'
+import { ownedRoot, requireCI } from './fixture-guards.mjs'
 import { bounded, stopApp } from './processes.mjs'
 import { registerChild } from './runner-processes.mjs'
 import { observeApp, probeStep, waitDevtools } from './probe.mjs'
@@ -99,9 +97,13 @@ async function startApp(root, plan, workspace, global, processes, diagnose = fal
     ]
     const child = spawn(exe, args, {
       env: fixtureAppEnvironment(root, plan.app),
-      stdio: ['ignore', 'ignore', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe'],
       detached: true,
     })
+    // The nested app's own stdout and stderr, byte for byte and unclassified, go into this
+    // journey's stderr, which the owner echoes into the uploaded fixture-output.log.
+    child.stdout?.on('data', (bytes) => process.stderr.write(bytes))
+    child.stderr?.on('data', (bytes) => process.stderr.write(bytes))
     const observed = observeApp(child)
     run = {
       ...observed,

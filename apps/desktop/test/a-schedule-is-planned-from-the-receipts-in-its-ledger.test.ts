@@ -10,6 +10,7 @@ import {
   aConversationsScope,
   aJobsMaking,
   heldUntil,
+  hostCalendar,
   noticesWorthTelling,
   RECEIPTS_LEVEL_SOURCE,
   ScheduleEvidence,
@@ -18,6 +19,7 @@ import {
   type ScheduleEvidenceRow,
 } from '../src/main/runtime/schedule-evidence'
 import { planReceiptSchedule } from '../src/shared/schedule-receipts'
+import { readLocalTimeFrom, theZoneReadNow } from '../src/shared/local-time'
 import { createIntlCalendar, eligibilityBounds } from '../src/shared/schedule-wake'
 
 /**
@@ -93,6 +95,47 @@ function planned(rows: readonly ScheduleEvidenceRow[], now: number) {
 }
 
 describe('the evidence a ledger holds', () => {
+  it.each([5, 40])(
+    'keeps a stamped beta receipt known when reopened %i minutes later',
+    (minutes) => {
+      const zone = { before: 0, changes: [], rule: null }
+      const priorZone = theZoneReadNow()
+      readLocalTimeFrom(() => zone)
+      try {
+        // The persisted stamp emitted by 0.2.7 for this exact zone, not today's implementation.
+        const stamp = { calendar: 'mac-local', version: '248359b327c286a6' }
+        const calendar = hostCalendar(zone)
+        const rows = [
+          launched(T0),
+          created(T0 + MINUTE, 'toolu_beta', 'a1b2c3d4', '30 10 7 10 *', false, {
+            calledAt: T0 + MINUTE - 3,
+            stamp,
+          }),
+          level(T0 + 2 * MINUTE, [{ id: 'a1b2c3d4', schedule: '30 10 7 10 *', recurring: false }]),
+          ended(T0 + 3 * MINUTE),
+        ]
+        const ledger = scheduleEvidenceOf(CONVERSATION, rows, ONE_ERA, calendar)
+        const plan = planReceiptSchedule(ledger, aConversationsScope(CONVERSATION), {
+          now: T0 + minutes * MINUTE,
+          wakeLeadMs: 30_000,
+          calendar,
+          clockEra: 'wall-1',
+          clockContinuous: true,
+          noticeDelivery: { acceptedIds: [], mailbox: [] },
+        })
+        expect(plan.states[0]?.result.kind).toBe('known')
+        expect(plan.states[0]?.pendingNominalAt).toBe(T0 + 30 * MINUTE)
+        expect(plan.notices.map((notice) => notice.reason)).toEqual(
+          minutes < 30 ? [] : ['offline-time-passed'],
+        )
+        if (minutes < 30) expect(plan.wake.startAt).toBeGreaterThan(T0 + minutes * MINUTE)
+        expect(calendar.version).toBe(stamp.version)
+      } finally {
+        readLocalTimeFrom(() => priorZone)
+      }
+    },
+  )
+
   it('🔴 a one-shot created with its bracket has a known time, and a stopped conversation is woken just before it', () => {
     const plan = planned(
       [

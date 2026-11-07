@@ -1,5 +1,6 @@
+import type { LedgerWalk, LedgerWalkKind } from '../../../shared/question-contracts'
 import { agentName, type AgentIdentity } from '../../../shared/runtime-ipc'
-import { walkCovers, type LedgerWalk, type LedgerWalkKind } from '../../../shared/questions'
+import { walkCovers } from '../../../shared/questions'
 import { TASK_IS_OPEN } from '../../../shared/tasks'
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../../shared/who-called-whom'
 import type { TheWholeForest } from '../../../shared/the-whole-forest'

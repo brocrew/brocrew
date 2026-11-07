@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -16,7 +17,6 @@ import {
   createSessionStore,
   type SessionStore,
 } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
@@ -74,9 +74,7 @@ describe('session persistence', () => {
     let counter = 0
     return new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: (provider) => new FakeRuntime(provider),
       prepareProviderHome: (provider) => join(dir, 'homes', provider),
       providerHomePath: (provider) => join(dir, 'homes', provider),
@@ -815,9 +813,7 @@ describe('resume', () => {
     let counter = 0
     return new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: (provider) => {
         const existing = runtimes.get(provider)
         if (existing) return existing

@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -12,7 +13,6 @@ import {
   runtimeCommandSchema,
 } from '../src/main/runtime/ipc'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type { RuntimeCommand, RuntimeCommandKind } from '../src/shared/runtime-ipc'
 
@@ -141,6 +141,9 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   mcpServerRequestsForAPerson: { kind: 'mcpServerRequestsForAPerson' },
   stalledWorkForAPerson: { kind: 'stalledWorkForAPerson' },
   stoppedWorkForAPerson: { kind: 'stoppedWorkForAPerson' },
+  currentEpoch: { kind: 'currentEpoch' },
+  personsQueue: { kind: 'personsQueue' },
+  listConversations: { kind: 'listConversations' },
   workIncidentsForAPerson: { kind: 'workIncidentsForAPerson' },
   // F097 · no arguments either, for its neighbours' reason: a person is not inside one family.
   waitingOnWhoWroteForAPerson: { kind: 'waitingOnWhoWroteForAPerson' },
@@ -279,9 +282,6 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
     selection: {
       confirmed: true,
       key: 'method:review.md',
-      fingerprint: null,
-      indexState: 'absent',
-      indexFingerprint: null,
     },
   },
   undoAgentMethod: { kind: 'undoAgentMethod', profileId: 'lark', changeId: 'method-change-one' },
@@ -296,7 +296,6 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
     kind: 'saveOwnNotes',
     profileId: 'pm',
     expectedVersion: 0,
-    currentText: '',
     text: 'Keep scope.',
     why: 'Person edit.',
   },
@@ -313,7 +312,6 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
   whatTheModelGot: { kind: 'whatTheModelGot', sessionId: SESSION, ordinal: 0 },
   amendAgentMemory: {
     kind: 'amendAgentMemory',
-    fingerprint: '0'.repeat(64),
     confirmed: true,
     profileId: 'pm',
     provider: 'claude',
@@ -394,6 +392,8 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
  */
 const ANSWERED_DURING_A_QUIT: ReadonlySet<RuntimeCommandKind> = new Set([
   'capabilities',
+  // What this run is called: nothing is read.
+  'currentEpoch',
   'profiles',
   'checkCwd',
   'checkProviderAuth',
@@ -621,7 +621,12 @@ describe('the shutdown door (273)', () => {
 
   it('refuses every database-reaching command once a quit has begun, and asks the host nothing', async () => {
     for (const kind of KINDS) {
-      if (ANSWERED_DURING_A_QUIT.has(kind)) continue
+      if (
+        ANSWERED_DURING_A_QUIT.has(kind) ||
+        kind === 'personsQueue' ||
+        kind === 'listConversations'
+      )
+        continue
       const { host, touched } = recordingHost(true)
       await expect(executeRuntimeCommand(host, new RecordingSink(), SAMPLES[kind])).rejects.toThrow(
         refusedDuringAQuit(kind),
@@ -630,6 +635,19 @@ describe('the shutdown door (273)', () => {
       // stopping it."* So the host is not asked, at all, and that is what is asserted.
       expect(touched, `${kind} reached the host during a quit`).toEqual([])
     }
+  })
+
+  it('refuses the stamped queue during a quit with its stamp, reading nothing', async () => {
+    const { host, touched } = recordingHost(true)
+    await executeRuntimeCommand(host, new RecordingSink(), SAMPLES.personsQueue)
+    // Only the refusal is built: what this run is called and its sequence, no store and no queue.
+    expect(touched).toEqual(['personsQueueRefused'])
+  })
+
+  it('refuses the stamped listing during a quit with its stamp, reading nothing', async () => {
+    const { host, touched } = recordingHost(true)
+    await executeRuntimeCommand(host, new RecordingSink(), SAMPLES.listConversations)
+    expect(touched).toEqual(['listingRefused'])
   })
 
   it('still answers the nine that touch no database, or refuse themselves better', async () => {
@@ -678,9 +696,7 @@ describe('when the door shuts (273 §1)', () => {
     userData = mkdtempSync(join(tmpdir(), 'brobot2-door-'))
     host = new RuntimeHost({
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider) => new FakeRuntime(provider),
       prepareProviderHome: (provider, profileId) =>
         join(userData, 'provider-homes', profileId, provider),

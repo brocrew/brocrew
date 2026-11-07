@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import type { IpcMain } from 'electron'
 import { registerProviderSetup } from '../src/main/provider-setup/ipc'
 import { EventEmitter } from 'node:events'
@@ -14,7 +15,6 @@ import {
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { CLAUDE_SETUP_BOUNDS, ClaudeSetupService } from '../src/main/providers/claude/setup-service'
 import type { KeptUsage } from '../src/main/provider-usage-file'
@@ -82,9 +82,7 @@ describe('native setup completion reaches existing runtime readiness notificatio
     }
     host = new RuntimeHost({
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(folder, 'exports'),
+      ...neutralHostDeps(() => folder),
       createRuntime: (provider) => new ScriptedRuntime(provider),
       prepareProviderHome: (provider, profile) => join(folder, 'homes', profile, provider),
       providerHomePath: (provider, profile) => join(folder, 'homes', profile, provider),

@@ -5,7 +5,6 @@ import type {
   StartupVerdict,
 } from '../../shared/recovery'
 import type { HostGateVerdict } from '../one-host-gate'
-import { PACKAGED_WORKSPACE_REFUSAL } from '../workspace-routing'
 import {
   CheckpointFailed,
   CheckpointNoRoom,
@@ -24,6 +23,7 @@ import { STEPS, type HistoryOnlyGate, type RestoreKind, type Step } from './cont
 import {
   buildLineage,
   hasPendingMigrations,
+  isTheBuildsMigration,
   isLineagePrefix,
   lineageFit,
   migrationsOf,
@@ -54,23 +54,7 @@ import {
   type RecordOnDisk,
   type Recovered,
 } from './restore'
-
-/**
- * The start-up check: what a start may do with the workspace's data, decided before anything else
- * opens it, and the recovery window's service built on the same check.
- *
- * {@link inspect} runs in this order, and the first step that decides ends it:
- * 1. an unfinished restore or return is settled (a record that cannot be read refuses the start);
- * 2. the history-only gate is checked against the files it names;
- * 3. the database's migrations are read: absent or empty opens, unreadable refuses, newer offers a
- *    copy this build can open;
- * 4. a checked copy is made when the data is about to change;
- * 5. the data opens.
- *
- * Steps 1 and 4, every restore or return, and a start with migrations to apply change files, so they
- * need this process to be the only app on the data folder. A new workspace needs nothing, so it
- * opens whatever the one-app check said.
- */
+import type { VerifyCopy } from './copy-check'
 
 /** Whether this process is the only app on the data folder, as the launch's one-app check found. */
 export type Ownership = HostGateVerdict
@@ -95,10 +79,6 @@ export interface CoordinatorDeps {
   /** A packaged release makes a copy at its first start on existing data. */
   readonly packaged: boolean
   readonly requireExistingDatabase?: boolean
-  /**
-   * The one-app check's answer. Asked once per check, restore or return, so an answer that was
-   * `unknown` may be asked again when the person tries again.
-   */
   readonly ownership: () => Promise<Ownership>
   readonly fs?: RecoveryFs
   /** Called before each journaled step of a restore or return. A test throws from it. */
@@ -115,14 +95,11 @@ export interface CoordinatorDeps {
   readonly freeBytes?: (path: string) => number | null
   /** Where the copy's line goes. */
   readonly log?: (line: string) => void
-  /**
-   * Told before the steps of a check that can take a while, so a window can say so: settling an
-   * unfinished restore or return, and reading the database, which may copy it, hash a copy to
-   * reuse, or make one. Told again only when what it is working on changes.
-   */
   readonly working?: (what: WorkingOn) => void
   /** That step's progress. */
   readonly progress?: ProgressListener
+  /** Checks a recovery copy before it is kept: in the app, in a worker. */
+  readonly verifyCopy: VerifyCopy
 }
 
 /** What this start may do with the workspace's data. Never throws. */
@@ -148,19 +125,11 @@ export function createRecoveryService(deps: CoordinatorDeps): RecoveryService {
   }
 }
 
-/**
- * Where a test stops the work: before a journaled step of a restore or return, or after its work
- * and before its journal names it; just after one file's rename; or at a step of making a copy.
- */
 export type FaultPoint = Step | CheckpointStep | { readonly move: string; readonly to: Moved['to'] }
 
 /** A fault a test asks for, to stop a copy, a restore or a return at a chosen point. */
 export interface RecoveryFaults {
   readonly at: FaultPoint
-  /**
-   * For a journaled step: after its work, before its journal names it, instead of before its work.
-   * For a step of making a copy: before the next step. A rename's fault is always just after it.
-   */
   readonly after?: boolean
   /** The code the fault's error carries, as a briefly held file or a full disk gives one. */
   readonly error?: FaultCode
@@ -192,10 +161,6 @@ export interface RecoveryTestOptions extends Omit<
   readonly faults?: RecoveryFaults
 }
 
-/**
- * The service with a fault built in, for tests. The fault fires once, the first time its point is
- * reached, so the recovery that follows a stopped restore or return can finish it.
- */
 export function createRecoveryServiceForTests(options: RecoveryTestOptions): RecoveryService {
   const { migrationsFolder, ownership, build, packaged, faults, ...deps } = options
   return createRecoveryService({
@@ -246,25 +211,15 @@ export function hooksFor(
     : { beforeStep: (step) => (step === at ? fire(`before "${at}"`) : undefined) }
 }
 
-/**
- * The launch switch a test passes to keep the recovery window on a hidden launch, so it can drive
- * that window. It changes only what a refused hidden start does next (stay open instead of
- * exiting), never the verdict or any step on the data. Honoured only by a build that is not
- * packaged.
- */
 export const KEEP_RECOVERY_WINDOW_SWITCH = 'brobot-test-keep-recovery-window'
 
 /** Whether a hidden launch keeps its recovery window, saying so either way when it was asked. */
 export function keepsTheRecoveryWindow(
   asked: boolean,
-  packaged: boolean,
+  _packaged: boolean,
   warn: (line: string) => void,
 ): boolean {
   if (!asked) return false
-  if (packaged) {
-    warn(`BroCrew ignored --${KEEP_RECOVERY_WINDOW_SWITCH}: a packaged build takes no test switch`)
-    return false
-  }
   warn(`BroCrew keeps its recovery window on a hidden launch: --${KEEP_RECOVERY_WINDOW_SWITCH}`)
   return true
 }
@@ -281,10 +236,6 @@ function faultError(code: FaultCode | undefined, where: string): Error {
   return error
 }
 
-/**
- * The launch switch a test asks for a fault with: `<step>[,after][,<code>]`, or
- * `move:<live name>:<aside|live|incoming>[,<code>]`. Honoured only by a build that is not packaged.
- */
 export const RECOVERY_FAULT_SWITCH = 'brobot-recovery-fault'
 
 /** The faults a switch value asks for, or null when it names none this build knows. */
@@ -313,10 +264,6 @@ export function faultsFromSwitch(value: string): RecoveryFaults | null {
   return { at, ...(after ? { after } : {}), ...(error === undefined ? {} : { error }) }
 }
 
-/**
- * The line a start that did not open its data prints after the fail line: the verdict in one
- * sentence, with the check's own detail when it has one.
- */
 export function whyItDidNotStart(verdict: StartupVerdict): string {
   switch (verdict.kind) {
     case 'open':
@@ -363,11 +310,6 @@ const FAILURES: Readonly<Record<StartFailure, string>> = {
   'start-failed': 'BroCrew could not finish starting.',
 }
 
-/**
- * Lets go of the recovery copies no longer kept. Only for a start that opened its data, after it
- * said so, and only when it is the sole app on the folder: a copy is never removed while a restore
- * could still want it, or while another app may be reading it.
- */
 export async function pruneTheCopies(
   userData: string,
   buildMigrationsFolder: string,
@@ -389,10 +331,6 @@ function failed(reason: StartFailure, canRetry: boolean, detail?: string): Start
   return { kind: 'failed', reason, canRetry, ...(detail === undefined ? {} : { detail }) }
 }
 
-/**
- * Another app holds the folder, or sole use could not be confirmed. Only the second may pass on
- * another try, which asks the one-app check again.
- */
 function notTheOnlyApp(ownership: Exclude<Ownership, 'sole'>): StartupVerdict {
   return {
     kind: 'failed',
@@ -457,9 +395,6 @@ async function decide(
   const gate = await readGateOnDisk(userData, fs)
   if (gate.kind === 'unreadable') return unreadableRecord(gate)
   if (gate.kind === 'present') return historyOnly(userData, gate.value, fs)
-  // From here the check may copy the database to read it, hash a copy it would reuse, or make one,
-  // so it says it is checking before any of them, and that it is making a copy only once it has
-  // decided to. After settling a restore or return it goes on naming that until it makes a copy.
   if (journal.kind === 'absent') working('check')
   // With no journal and no gate this only removes what an interrupted restore or read left.
   if (owner === 'sole') await sweepLeftovers(userData, fs).catch(() => undefined)
@@ -472,7 +407,11 @@ async function decide(
   })
   if (database.kind === 'absent') {
     if (deps.requireExistingDatabase)
-      return failed('database-unreadable', false, PACKAGED_WORKSPACE_REFUSAL)
+      return failed(
+        'database-unreadable',
+        false,
+        `Database ${databaseFile(userData)} does not exist (ENOENT).`,
+      )
     const stray = await strayData(userData, fs)
     return stray === null ? OPEN_NOT_NEEDED : failed('database-unreadable', false, stray)
   }
@@ -497,19 +436,25 @@ async function decide(
   switch (lineageFit(applied, lineage)) {
     case 'newer':
       return newer(deps, applied.length, lineage, fs)
-    case 'foreign':
+    case 'foreign': {
+      const index = applied.findIndex(
+        (migration, at) => !isTheBuildsMigration(migration, lineage[at]),
+      )
+      const recorded = applied[index]!
+      const expected = lineage[index]
+      const build = `${deps.appVersion}${deps.build ? ` (${deps.build})` : ''}`
       return failed(
         'database-unreadable',
         false,
-        `${databaseFile(userData)} records migrations this version of BroCrew does not carry, and none later ` +
-          'than its own, so no version of BroCrew this one knows made it.',
+        `${databaseFile(userData)}: migration ${index + 1} records time ${recorded.createdAt} and hash ${recorded.hash}. ` +
+          `BroCrew ${build} ${expected ? `expects time ${expected.createdAt} and hash ${expected.hash}` : 'has no migration at that position'}. ` +
+          'This build cannot open that migration history.',
       )
+    }
     case 'fits':
       break
   }
 
-  // Migrations still to apply change the data, so they need the sole app on the folder even when
-  // a copy made before them is kept.
   const pending = hasPendingMigrations(applied, lineage)
   const reason = await checkpointNeeded({
     userData,
@@ -531,6 +476,7 @@ async function decide(
       build: deps.build,
       reason,
       fs,
+      verifyCopy: deps.verifyCopy,
       ...(deps.progress === undefined ? {} : { progress: quietly(deps.progress) }),
       ...(deps.now === undefined ? {} : { now: deps.now }),
       ...(deps.freeBytes === undefined ? {} : { freeBytes: deps.freeBytes }),
@@ -620,10 +566,6 @@ function restoreFailed(during: RestoreKind, detail: string, canRetry = true): St
   return { kind: 'failed', reason: 'restore-failed', canRetry, during, detail }
 }
 
-/**
- * The gate stands: the files must still be as the restore installed them, with no sidecar beside
- * the copy. Anything else was put there from outside, and nothing is touched.
- */
 async function historyOnly(
   userData: string,
   gate: HistoryOnlyGate,
@@ -658,8 +600,6 @@ async function newer(
   lineage: readonly BuildMigration[],
   fs: RecoveryFs,
 ): Promise<StartupVerdict> {
-  // The newest copy a restore would take as it is: its database and every state file restored with
-  // it still hash to its manifest; one that does not is passed over for the next.
   const offered = await theNewestIntact(await listOfferable(deps.userData, lineage, fs), fs)
   const checkpoints = await listCheckpoints(deps.userData, fs)
   return {
@@ -674,10 +614,6 @@ async function newer(
   }
 }
 
-/**
- * The app that moved the database past this build, as the newest copy that says so names it: a copy
- * holding more migrations than this build carries, or one another version made before migrating.
- */
 function newerAppOf(
   checkpoints: readonly Checkpoint[],
   inTheBuild: number,
@@ -739,12 +675,6 @@ async function returnThenInspect(
   return inspect(deps)
 }
 
-/**
- * A restore or return that stopped. One that left its journal is settled at once, as the next start
- * would settle it, so the window shows where the data now stands; one that could not put a file
- * back is not, since trying again at once cannot help. A return that found the files changed
- * outside BroBot since the restore is said as that.
- */
 async function afterAStop(
   deps: CoordinatorDeps,
   fs: RecoveryFs,

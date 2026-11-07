@@ -1,9 +1,10 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import NoticeEntry from '../../src/renderer/src/components/NoticeEntry.vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import type { ToolAnswer, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { ToolAnswer } from '../../src/shared/runtime-ipc'
 import { assertDrawn, drawnReady } from './drawn'
 import { META, mount, paneProps, record, unmountAll, type Mounted } from './harness'
 

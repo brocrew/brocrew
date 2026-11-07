@@ -1,3 +1,4 @@
+import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, type Component } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
@@ -13,7 +14,6 @@ import { readingSays } from '../../src/renderer/src/lib/usage-limit'
 import type {
   ApiKeyStatus,
   AuthState,
-  ModelList,
   Provider,
   ProviderCapabilityMap,
   ProviderResources,
@@ -360,12 +360,14 @@ describe('§1 · 25cca325 · what is running is sampled only while a person can 
   it('⛔ leaving the screen clears the timer, the listeners and the subscription', async () => {
     const { m, runtime, unsubscribe } = theScreen()
     await flush()
-    expect(runtime.onProvidersChanged).toHaveBeenCalledTimes(1)
+    // Two listeners: the screen's own, and the window's usage holder while this screen reads it.
+    expect(runtime.onProvidersChanged).toHaveBeenCalledTimes(2)
     m.unmount()
     await vi.advanceTimersByTimeAsync(60_000)
     await flush()
     expect(runtime.providerResources).toHaveBeenCalledTimes(1)
-    expect(unsubscribe).toHaveBeenCalledTimes(1)
+    // This screen was the holder's only reader, so both go.
+    expect(unsubscribe).toHaveBeenCalledTimes(2)
     // ⚑ The window's own events no longer reach it.
     await leaveTheFront()
     await comeBack()
@@ -438,7 +440,8 @@ describe('§2 · 25cca325 · the provider’s own change notices redraw the scre
     await settled()
     expect([asked('claude'), asked('codex')]).toEqual([1, 2])
     expect([keyAsked('claude'), keyAsked('codex')]).toEqual([1, 2])
-    expect(runtime.providerUsage).toHaveBeenCalledTimes(1)
+    // The window's usage holder reads usage again on a login, for every surface at once.
+    expect(runtime.providerUsage).toHaveBeenCalledTimes(2)
     expect(usageMoved).not.toHaveBeenCalled()
   })
 

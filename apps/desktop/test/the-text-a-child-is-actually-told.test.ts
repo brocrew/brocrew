@@ -1,3 +1,5 @@
+import { ToolWatchingResumeRuntime } from './lib/provider-double'
+import type { InjectedInstructionKind } from '../src/shared/instruction-contracts'
 import { legacyWorkspaceFiles } from './helpers/legacy-workspace-files'
 import {
   lstatSync,
@@ -13,13 +15,12 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { AgentToolset, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime'
+import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { InjectedInstructionKind, RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
@@ -66,6 +67,7 @@ import type {
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { agentPreamble } from '../src/main/runtime/agent-preamble'
 import { APPROVALS_ARE_THE_PERSONS, howYouWork } from './lib/the-core'
+import { syntheticProviderHome, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * ⚑ **584 · a LOCAL constant** (`HO-078` §1). ⛔ `PROJECT_MANAGER_PROFILE_ID` named the one other
@@ -1126,26 +1128,9 @@ describe('§5 · the repository’s AGENTS layer, selected as Codex selects it',
  * say nothing about who is launching. ⚠️ **A resume that built a poorer context would be invisible
  * to every other test in this file**, because they all ask the compiler directly.
  */
-class ContextWatchingRuntime extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handed: AgentToolset[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-    const handle = await super.start(options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
-  }
-  override async resume(
-    ref: SessionRef,
-    options: ResumeOptions,
-  ): ReturnType<FakeRuntime['resume']> {
-    const handle = await super.resume(ref, options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
+class ContextWatchingRuntime extends ToolWatchingResumeRuntime {
+  constructor(provider: Provider, handed: AgentToolset[], sessions: FakeProviderSessions) {
+    super(provider, handed, sessions)
   }
 }
 
@@ -1178,26 +1163,14 @@ describe('§8 · what the host tells the reader, at a launch and at a reopen', (
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ContextWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       // ⚑ **The whole point of the section**: what the host hands the reader, captured verbatim.
       readInstructions: (provider, cwd, providerHome, ctx) => {
         seen.push(ctx)

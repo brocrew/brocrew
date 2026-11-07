@@ -155,7 +155,6 @@ it('a changed release after refresh invalidates the displayed details and old co
     next = await f.replaceRelease()
   await c.refreshCatalogue!(pluginSha256(next.bytes), {
     bytes: next.bytes,
-    signature: next.signature,
   })
   const before = await f.snapshot()
   await expect(commit(c, 'install', old.consent)).rejects.toMatchObject({ code: 'policy-refused' })

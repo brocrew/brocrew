@@ -1,3 +1,36 @@
+import { waitFor } from './lib/f093-host'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
+import type {
+  AgentToolset,
+  ApprovalMode,
+  FakeSessionHandle,
+  ResumeOptions,
+  SessionRef,
+  StartOptions,
+} from '@brobot2/runtime'
+import type { Provider } from '@brobot2/shared'
+import { type AppDatabase, openDatabase } from '../src/main/db/connection'
+import { applyMigrations } from '../src/main/db/migrate'
+import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import { RuntimeHost } from './helpers/giver-notice-host'
+import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { resourcesRoot } from '../src/main/resources/resources'
+import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
+import type { RuntimeChangeMessage } from '../src/shared/runtime-ipc'
+import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 /**
  * 🔴 **F033 · a conversation is named by the work it holds NOW, and a sentence about one piece by
  * that piece** — measured on a real host with the fake runtime, one case per rule.
@@ -17,33 +50,6 @@
  *
  * ⛔ **The expected words are literals**; `nameByItsWork` is the subject, never the oracle.
  */
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type {
-  AgentToolset,
-  ApprovalMode,
-  FakeSessionHandle,
-  ResumeOptions,
-  SessionRef,
-  StartOptions,
-} from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import { resourcesRoot } from '../src/main/resources/resources'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import type { RuntimeChangeMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
-import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -78,17 +84,6 @@ class ProviderDouble extends FakeRuntime {
 }
 
 /** The conversation a person is behind: the sink a window hands the host. */
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** What a tool answered: the payload a model parses and the sentence it reads. */
 interface Answer {
   readonly structured: Record<string, unknown>
@@ -117,17 +112,11 @@ describe('F033 · a conversation is named by the work it holds now', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) =>
         new ProviderDouble(provider, handles, issued, resumeGate),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
@@ -137,13 +126,7 @@ describe('F033 · a conversation is named by the work it holds now', () => {
         announced.push(change.what)
         atAnnouncement?.(change.what)
       },
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built
@@ -202,14 +185,6 @@ describe('F033 · a conversation is named by the work it holds now', () => {
 
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
-
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
 
   /** A parent (auto) and a child given one piece, idle after its first turn. */
   const aChildWithOnePiece = async (): Promise<{

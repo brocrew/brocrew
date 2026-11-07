@@ -3,8 +3,10 @@ import {
   PluginStartupDiagnosticSchema,
 } from '../../shared/plugin-settings'
 import { randomUUID } from 'node:crypto'
+import { inspect } from 'node:util'
 import type { BrowserWindow, IpcMain, IpcMainInvokeEvent } from 'electron'
 import { PluginSupervisorError } from './supervisor/protocol'
+import { managedPluginFailure } from '@brobot2/runtime/plugin-failure'
 import { displayedDetailsHash } from './mutation-disclosure'
 import { PluginListError } from './catalogue/list-error'
 import {
@@ -31,6 +33,30 @@ import {
   type PluginScreenBounds,
   type PluginSettingsReply,
 } from '../../shared/plugin-settings'
+// Preserve the caught error message, stack and typed cause codes.
+function settingsFailureDetail(error: unknown): {
+  detail: string
+  stack: string
+  codes: string[]
+} {
+  const codes: string[] = []
+  const seen = new Set<unknown>()
+  for (
+    let one: unknown = error, depth = 0;
+    depth < 8 && one && typeof one === 'object' && !seen.has(one);
+    depth++
+  ) {
+    seen.add(one)
+    const code = (one as { code?: unknown }).code
+    if (typeof code === 'string' || typeof code === 'number') codes.push(String(code))
+    one = (one as { cause?: unknown }).cause
+  }
+  return {
+    detail: error instanceof Error ? error.message : inspect(error),
+    stack: inspect(error, { depth: 8, breakLength: Infinity }).slice(0, 32 * 1024),
+    codes,
+  }
+}
 /** Person-owned install/uninstall controller. Tests inject explicitly fictional fakes. */
 export interface PluginSettingsController {
   features?(): readonly string[]
@@ -44,10 +70,7 @@ export interface PluginSettingsController {
   ready?(): Promise<boolean>
   catalogue(refresh?: boolean): Promise<PluginCard[]>
   refreshFailed?(): boolean
-  refreshCatalogue?(
-    digest: string,
-    source?: { bytes: Uint8Array; signature: Uint8Array },
-  ): Promise<void>
+  refreshCatalogue?(digest: string, source?: { bytes: Uint8Array }): Promise<void>
   update?(id: string, consent?: PluginMutationConsent): Promise<void>
   /** Reattach person control only; no install or removal. */
   retry?(id: string): Promise<PluginCard[]>
@@ -98,10 +121,7 @@ export function registerPluginSettings(
     if (state.screen === previous) state.screen = undefined
     return generation
   }
-  /**
-   * The part of the asked rectangle inside the window's content, or null when that part is
-   * smaller than a plugin screen may be. The window can shrink between a measure and its arrival.
-   */
+  // Intersect the requested screen with current content bounds.
   function rectangle(value: unknown, owner: BrowserWindow): PluginScreenBounds | null {
     if (!plain(value) || !exact(value, ['x', 'y', 'width', 'height'])) return null
     const { x, y, width, height } = value
@@ -153,6 +173,7 @@ export function registerPluginSettings(
               'installed',
               'priorityClamped',
               'toolsUnavailable',
+              'toolsCause',
               'canRestart',
               'installedVersion',
               'updateVersion',
@@ -173,6 +194,10 @@ export function registerPluginSettings(
               PluginStartupDiagnosticSchema.safeParse(card.startupDiagnostic).success)) &&
           (card.toolsUnavailable === undefined ||
             (card.state === 'Running' && card.toolsUnavailable === true)) &&
+          (card.toolsCause === undefined ||
+            ((card.toolsUnavailable === true || card.state === 'Installed') &&
+              typeof card.toolsCause === 'string' &&
+              /^[a-z][a-z0-9-]{0,63}(?:: [a-z][a-z0-9-]{0,63})?$/.test(card.toolsCause))) &&
           (card.canRestart === undefined ||
             (card.canRestart === true &&
               card.id === 'chrome' &&
@@ -515,6 +540,15 @@ export function registerPluginSettings(
         return { ok: true, cards: await catalogue() }
       } catch (error) {
         await created?.close().catch(() => {})
+        // Return the caught error and typed cause details.
+        const classified = managedPluginFailure(error, 'plugin-settings')
+        const failure = {
+          ...refused,
+          ...settingsFailureDetail(error),
+          stage: classified.pluginStage,
+          cause: classified.pluginCause,
+        }
+        console.error('[plugins] settings-request-failed', failure.stack)
         if (mutationContext) {
           const code = error instanceof PluginSupervisorError ? error.code : 'unavailable'
           const mutationFailure: PluginMutationFailure =
@@ -523,9 +557,9 @@ export function registerPluginSettings(
               : ['policy-refused', 'source-mismatch', 'network'].includes(code)
                 ? (code as PluginMutationFailure)
                 : 'unavailable'
-          return { ...refused, mutationFailure }
+          return { ...failure, mutationFailure }
         }
-        return refused
+        return failure
       }
     },
   )

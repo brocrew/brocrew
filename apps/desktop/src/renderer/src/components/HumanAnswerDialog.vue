@@ -1,13 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { HumanTurnAnswer } from '../../../shared/human-turn-answer'
-import { renderChatMarkdown } from '../lib/markdown'
+import type { HumanTurnAnswer } from '../../../shared/human-answer-contracts'
+
+import MarkdownWords from './MarkdownWords.vue'
 import OverlayHost from './OverlayHost.vue'
 
-const props = defineProps<{ answer: HumanTurnAnswer }>()
+defineProps<{ answer: HumanTurnAnswer }>()
 defineEmits<{ close: [] }>()
-const prompt = computed(() => renderChatMarkdown(props.answer.prompt))
-const final = computed(() => renderChatMarkdown(props.answer.final?.text ?? ''))
 </script>
 
 <template>
@@ -19,11 +17,9 @@ const final = computed(() => renderChatMarkdown(props.answer.final?.text ?? ''))
       </header>
       <div class="answer-scroll">
         <h3>You asked</h3>
-        <!-- eslint-disable-next-line vue/no-v-html -- the existing chat renderer escapes HTML. -->
-        <div class="md-chat" data-cy="human-answer-prompt" v-html="prompt" />
+        <MarkdownWords data-cy="human-answer-prompt" :text="answer.prompt" />
         <h3>Final answer</h3>
-        <!-- eslint-disable-next-line vue/no-v-html -- the existing chat renderer escapes HTML. -->
-        <div class="md-chat" data-cy="human-answer-final" v-html="final" />
+        <MarkdownWords data-cy="human-answer-final" :text="answer.final?.text ?? ''" />
       </div>
     </section>
   </OverlayHost>

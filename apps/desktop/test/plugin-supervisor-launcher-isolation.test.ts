@@ -8,7 +8,6 @@ import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
 import { OWNER_LAUNCH_MS } from '../src/main/plugins/supervisor/protocol'
 import { PluginStartupError } from '../src/main/plugins/startup-failure'
-import { keepPluginRootPrivate } from '../src/main/plugins/private-files'
 
 vi.mock('../src/main/plugins/supervisor/storage', async (original) => {
   const actual = await original<typeof import('../src/main/plugins/supervisor/storage')>()
@@ -50,7 +49,7 @@ describe('supervisor launch isolation between roots', () => {
     const workspaceRoot = join(folder, 'workspace')
     await mkdir(workspaceRoot, { mode: 0o700 })
     await mkdir(join(folder, 'plugins'), { mode: 0o700 })
-    await keepPluginRootPrivate(join(folder, 'plugins'))
+
     return {
       root: join(folder, 'plugins'),
       workspaceRoot,

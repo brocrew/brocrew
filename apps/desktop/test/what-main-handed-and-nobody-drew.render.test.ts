@@ -1,23 +1,20 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { ToolWatchingResumeRuntime } from './lib/provider-double'
+import type { LedgerWalk, PersonsDecision } from '../src/shared/question-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import type { WorkReport } from '../src/shared/task-contracts'
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type {
-  AgentToolset,
-  PermissionOutcome,
-  ResumeOptions,
-  SessionRef,
-  StartOptions,
-} from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime'
+import type { AgentToolset, PermissionOutcome } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
@@ -45,14 +42,8 @@ import {
 import { isRefusal } from '../src/renderer/src/lib/user-input-offer'
 import { WORK_REPORT_MARK } from '../src/renderer/src/lib/work-report'
 import { THE_APP_IS_THE_AUTHOR } from '../src/shared/app-notice'
-import {
-  decisionReading,
-  readingSentence,
-  type LedgerWalk,
-  type PersonsDecision,
-} from '../src/shared/questions'
-import { type TranscriptEvent } from '../src/shared/runtime-ipc'
-import { type WorkReport } from '../src/shared/tasks'
+import { decisionReading, readingSentence } from '../src/shared/questions'
+import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 🔴 **701 · what main handed the renderer and nobody drew** — `701` §2, four facts main already
@@ -139,26 +130,9 @@ class RecordingSink implements RuntimeEventSink {
 }
 
 /** ⚑ The provider double, keeping every toolset the HOST handed out — how a parent's tools are called. */
-class HandingRuntime extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handed: AgentToolset[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-    const handle = await super.start(options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
-  }
-  override async resume(
-    ref: SessionRef,
-    options: ResumeOptions,
-  ): ReturnType<FakeRuntime['resume']> {
-    const handle = await super.resume(ref, options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
+class HandingRuntime extends ToolWatchingResumeRuntime {
+  constructor(provider: Provider, handed: AgentToolset[], sessions: FakeProviderSessions) {
+    super(provider, handed, sessions)
   }
 }
 
@@ -218,27 +192,15 @@ class HostWorld {
     const userData = this.userData
     const built = new RuntimeHost({
       store: this.store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new HandingRuntime(provider, this.handed, this.issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${String(++this.counter)}`,
       now: this.tick,
       announce: () => {},
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     this.hosts.push(built)
     return built

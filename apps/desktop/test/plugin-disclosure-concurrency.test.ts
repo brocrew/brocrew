@@ -24,9 +24,9 @@ afterEach(async () => {
 const program = `
 const fs = require('node:fs');
 const { syncBuiltinESMExports } = require('node:module');
-const { displayRead, keepPluginRootPrivate } = require(process.argv[1]);
+const { displayRead } = require(process.argv[1]);
 (async () => {
-  await keepPluginRootPrivate(require('node:path').dirname(process.argv[2]));
+
   const read = fs.readSync;
   let paused = false;
   fs.readSync = (fd, ...args) => {

@@ -1,8 +1,9 @@
+import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
-import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/questions'
+
 import type { SpawnEdge, WhoCalledWhom, WorkEdge } from '../../src/shared/who-called-whom'
 import type { ConversationAtWork, WhatIsBeingDone } from '../../src/shared/what-is-being-done'
 import { META, drawerProps, mount, unmountAll } from './harness'

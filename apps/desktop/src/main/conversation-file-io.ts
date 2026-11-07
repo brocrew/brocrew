@@ -91,7 +91,7 @@ export function isThere(path: string): boolean {
   }
 }
 
-export function whyNotRemoved(error: unknown): string {
+function whyNotRemoved(error: unknown): string {
   const code = (error as NodeJS.ErrnoException).code
   if (code === 'EBUSY' || code === 'EPERM' || code === 'EACCES') {
     return 'another program has it open, or this user may not remove it'

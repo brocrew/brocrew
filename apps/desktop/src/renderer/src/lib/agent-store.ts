@@ -1,3 +1,4 @@
+import type { AgentModelChoice } from '../../../shared/model-choice-contracts'
 import { ref, type Ref } from 'vue'
 import type { AgentInstructionsReading } from '../../../shared/own-instructions'
 import type { RulesBaseline } from '../../../shared/agent-rules'
@@ -10,7 +11,7 @@ import type {
   RuntimeBridge,
 } from '../../../shared/runtime-ipc'
 import { agentName } from '../../../shared/runtime-ipc'
-import type { AgentModelChoice } from '../../../shared/model-choice'
+
 import type { CapabilityGrant } from '../../../shared/capabilities'
 import type { ExternalMcpServerReach } from '../../../shared/external-mcp'
 // ⚑ **558 · a VALUE import, and it costs nothing here.** ⛔ The 135 kB rule is about the workspace
@@ -495,7 +496,6 @@ export function createAgentStore(bridge: RuntimeBridge): AgentStore {
             : {
                 baseline: {
                   expectedVersion: baseline.expectedVersion,
-                  currentText: baseline.currentText,
                 },
               }),
         })

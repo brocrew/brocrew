@@ -8,6 +8,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { inspect } from '../src/main/recovery/coordinator'
 import { listCheckpoints } from '../src/main/recovery/checkpoint'
 import { checkpointDatabase } from '../src/main/recovery/layout'
+import { checkTheCopyHere } from './helpers/check-the-copy-here'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 let folder: string
@@ -92,6 +93,7 @@ it('upgrades from 0007 without losing old rows and makes the automatic pre-migra
       await inspect({
         userData: folder,
         buildMigrationsFolder: migrations,
+        verifyCopy: checkTheCopyHere,
         appVersion: '1.0.0',
         build: 'fictional-receipt-index',
         packaged: false,

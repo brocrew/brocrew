@@ -132,7 +132,7 @@ const COMPARES_AFTER = /^\s*[=!]==?/
  * Exported so the tests below can run it over sources they wrote themselves. A scanner that has only
  * ever been pointed at code that passes is a scanner nobody has proved fires.
  */
-export function providerLiteralSites(file: string, source: string): ProviderLiteralSite[] {
+function providerLiteralSites(file: string, source: string): ProviderLiteralSite[] {
   const code = stripComments(source)
   const lines = code.split('\n')
   const sites: ProviderLiteralSite[] = []

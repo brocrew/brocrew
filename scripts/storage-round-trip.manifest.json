@@ -1,0 +1,16 @@
+{
+  "old": {
+    "source": "4c70f40b7243965a1f167c5508aee35a6b0f3bbc",
+    "tree": "5fc0cc2177d8dfe45a666717841f0dff7ca5163d",
+    "version": "0.2.2",
+    "runId": "42088997543",
+    "artifactId": "13444657642",
+    "archiveSha256": "90aacead9ed64a49acdb855ed647b08aed2edc681bb8c9e91704c56a15ddc13e",
+    "dmgSha256": "08ba1724915d8351dcbcf625734ed64576435e8be218e95eaab116e6264c7458"
+  },
+  "f13": {
+    "source": "9fdeca5995a3cc35dcc40469a4af15864c00f1fd",
+    "tree": "e90b4aea3bcc636bd2ee7b846e3e34411618ed93",
+    "version": "0.2.5-f13"
+  }
+}

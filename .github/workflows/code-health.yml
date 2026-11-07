@@ -1,0 +1,81 @@
+name: Code health
+
+on:
+  push:
+    branches: [main, 'gate/prepare-*']
+  pull_request:
+  schedule:
+    - cron: '0 6 * * 0'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Git comparison target (empty uses the current revision)
+        type: string
+      plugin_bootstrap:
+        description: Explicit first bootstrap against reviewed a42 base
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: code-health-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: code health
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+
+      - name: Install dependencies and the pinned tools
+        run: |
+          pnpm install --frozen-lockfile
+          for plugin in plugins/*/; do
+            if [ -f "$plugin/package-lock.json" ]; then
+              npm ci --ignore-scripts --no-audit --no-fund --prefix "$plugin"
+            fi
+          done
+          npm ci --ignore-scripts --no-audit --no-fund --prefix scripts/code-health
+
+      - name: Gate rules
+        run: node --test scripts/code-health/gate.test.mjs
+
+      - name: Scan and compare with the baselines
+        env:
+          CODE_HEALTH_TARGET: ${{ inputs.target }}
+          PLUGIN_BOOTSTRAP: ${{ inputs.plugin_bootstrap || 'false' }}
+          PLUGIN_AUTO_BOOTSTRAP: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+        run: |
+          args=()
+          if [ "$PLUGIN_BOOTSTRAP" = true ]; then args+=(--bootstrap-plugin-policy); fi
+          node scripts/code-health/gate.mjs --out "$RUNNER_TEMP/code-health" "${args[@]}"
+
+      - name: Report
+        if: always()
+        run: cat "$RUNNER_TEMP/code-health/report.md" >> "$GITHUB_STEP_SUMMARY" || true
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: code-health
+          path: ${{ runner.temp }}/code-health/
+          retention-days: 90

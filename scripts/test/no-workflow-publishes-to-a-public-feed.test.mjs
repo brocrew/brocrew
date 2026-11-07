@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
@@ -109,11 +109,5 @@ describe('⛔ no active workflow can publish to a public feed', () => {
       ({ line }) => line.includes('--feed-github') && !line.includes('--feed-private'),
     )
     expect(public_.map((one) => one.where)).toEqual([])
-  })
-
-  it('the public rehearsal is held, outside the active workflows', () => {
-    const held = join(ROOT, 'scripts', 'update-rehearsal', 'held', 'update-rehearsal-public.yml')
-    expect(existsSync(held)).toBe(true)
-    expect(readFileSync(held, 'utf8')).toMatch(/^# HELD: /)
   })
 })

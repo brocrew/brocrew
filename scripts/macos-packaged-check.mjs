@@ -12,21 +12,18 @@
 // they could access a person's data or login. Stop only the process this check starts.
 // Node built-ins and the repository's hidden-launch switch only. Exit 0 means every check held.
 import { spawn, spawnSync } from 'node:child_process'
-import {
-  closeSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  openSync,
-  readdirSync,
-  readFileSync,
-  readSync,
-  rmSync,
-} from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  entriesUnder,
+  asarEntries,
+  claudeCodeIn,
+  versionOrder,
+} from './lib/packaged-app-inventory.mjs'
 import { HIDDEN_LAUNCH_ARG } from './lib/hidden-launch.mjs'
+import { checkPackagedPluginService } from './packaged-plugin-service-check.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const APP_ID = 'com.brobot2.desktop'
@@ -65,68 +62,6 @@ const aHostedRunner =
   process.env.GITHUB_ACTIONS === 'true' &&
   process.env.RUNNER_ENVIRONMENT === 'github-hosted' &&
   process.env.ACT !== 'true'
-
-/** Every file and folder under `dir`: its path relative to `dir`, spelled with `/`. */
-function entriesUnder(dir) {
-  let entries
-  try {
-    entries = readdirSync(dir, { withFileTypes: true, recursive: true })
-  } catch {
-    return []
-  }
-  return entries.map((entry) => ({
-    path: relative(dir, join(entry.parentPath, entry.name)).split(sep).join('/'),
-    isFile: entry.isFile(),
-  }))
-}
-
-/** Every file and folder packed in an asar archive, read from its header — nothing is unpacked. */
-function asarEntries(archive) {
-  const fd = openSync(archive, 'r')
-  try {
-    const head = Buffer.alloc(16)
-    readSync(fd, head, 0, 16, 0)
-    const length = head.readUInt32LE(12)
-    const json = Buffer.alloc(length)
-    readSync(fd, json, 0, length, 16)
-    const entries = []
-    const walk = (node, at) => {
-      for (const [name, child] of Object.entries(node.files ?? {})) {
-        const path = at === '' ? name : `${at}/${name}`
-        entries.push({ path, isFile: child.files === undefined })
-        walk(child, path)
-      }
-    }
-    walk(JSON.parse(json.toString('utf8')), '')
-    return entries
-  } finally {
-    closeSync(fd)
-  }
-}
-
-/** What of Claude Code `entries` hold: each `claude` program, and each Agent SDK platform package once. */
-function claudeCodeIn(entries) {
-  const found = new Set()
-  for (const { path, isFile } of entries) {
-    const parts = path.split('/')
-    const at = parts.findIndex(
-      (part, index) => parts[index - 1] === '@anthropic-ai' && part.startsWith('claude-agent-sdk-'),
-    )
-    if (at !== -1) found.add(parts.slice(0, at + 1).join('/'))
-    else if (isFile && /^claude(\.exe)?$/i.test(parts.at(-1))) found.add(path)
-  }
-  return [...found]
-}
-
-/** `-1`, `0` or `1` as `a` is older than, the same as or newer than `b`, part by part. */
-function versionOrder(a, b) {
-  const parts = (text) => text.split(/[.+-]/, 3).map((part) => Number.parseInt(part, 10) || 0)
-  const [x, y] = [parts(a), parts(b)]
-  for (let at = 0; at < 3; at += 1) {
-    if (x[at] !== y[at]) return Math.sign(x[at] - y[at])
-  }
-  return 0
-}
 
 function pinned() {
   const desktop = JSON.parse(readFileSync(join(ROOT, 'apps/desktop/package.json'), 'utf8'))
@@ -423,6 +358,13 @@ async function theAppStarts() {
   else fail(`the app ran ${START_WAIT_MS / 1000} s and made no database in ${folder}`)
 }
 await theAppStarts()
+
+try {
+  await checkPackagedPluginService(resources)
+  say('✓ the shipped plugin service starts, answers and exits after release')
+} catch (error) {
+  fail(error.message)
+}
 
 for (const made of scratch) {
   try {

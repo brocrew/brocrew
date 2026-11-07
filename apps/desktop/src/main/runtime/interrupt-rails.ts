@@ -1,6 +1,6 @@
 import { refusalReason } from '../../shared/refusals'
 import type { SessionStatus } from '@brobot2/shared'
-import type { RailPermanence } from './spawn-rails'
+import type { RailPermanence } from '../../shared/refusals'
 // ⚑ **425 · from `shared/refusals.ts` and not through `spawn-rails.ts`'s re-export.** That
 // re-export exists so `405` could move `RailPermanence` without touching seven readers; a word
 // added today has no such history and names its own home.

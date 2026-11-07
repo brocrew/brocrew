@@ -1,6 +1,6 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { FakeRuntime } from '@brobot2/runtime'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { joinLiveHosts, providerProcessesAreInFlight } from '../src/main/runtime/live-hosts'
 import { createLaunchRegistry } from '../src/main/runtime/launch-registry'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
@@ -105,7 +105,13 @@ const codex = (id: string, days: number) =>
     days,
   )
 const unused = () => false
-const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+const activityWindowAnswer = () => ({
+  kind: 'activity',
+  window: { from: NOW - DAY, to: NOW },
+  read: { walk: 'one-window-over-every-agents-conversation', ledgers: 0, rowsUnread: 0 },
+  lines: [],
+  capped: false,
+})
 
 it('one rule clears both providers at 91 days, retains 89 days and everything outside their transcripts', async () => {
   const a = claude(OLD, 91),
@@ -358,7 +364,7 @@ it('a live agent or unsettled probe anywhere in the app admits no cleanup work',
   }
 })
 
-it('a launch requested during scanning waits until the whole clearing pass ends', async () => {
+it('a launch requested during scanning proceeds and stops further cleanup', async () => {
   const target = claude(OLD, 365)
   let release!: () => void
   let arrived!: () => void
@@ -381,13 +387,13 @@ it('a launch requested during scanning waits until the whole clearing pass ends'
       started++
     })
     await Promise.resolve()
-    expect(started).toBe(0)
+    expect(started).toBe(1)
     expect(existsSync(target)).toBe(true)
     release()
     await pass
     await launch
     expect(started).toBe(1)
-    expect(existsSync(target)).toBe(false)
+    expect(existsSync(target)).toBe(true)
   } finally {
     release()
     await pass
@@ -446,7 +452,7 @@ async function expectDeadlineReceipt(host: TranscriptRetentionHost) {
   expect(receipts).toHaveLength(1)
   expect(receipts[0]).toMatchObject({ conversations: 0, bytes: 0, stoppedEarly: true })
   expect(transcriptsClearedWords(receipts[0]!)).toBe(
-    'Transcript clearing stopped after 15 seconds so agents could start. No transcripts were cleared. The rest will be checked next time BroCrew starts.',
+    'Transcript clearing stopped after 15 seconds. No transcripts were cleared. The rest will be checked next time BroCrew starts.',
   )
 }
 
@@ -525,7 +531,7 @@ it.each(['suppressed', 'wrong', 'rejected'] as const)(
     try {
       await scan.arrived
       await host.beforeLaunch()
-      expect(save).toHaveBeenCalledTimes(1)
+      await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1))
       expect(existsSync(target)).toBe(true)
       if (fault !== 'suppressed') await persistence.arrived
       persistence.release()
@@ -593,6 +599,7 @@ it('a deletion already in flight settles, but no later deletion starts after the
     }
   }
   // Hold only the startup deadline behind filesystem setup; retries keep their real timers.
+  let deadlineReached = false
   const clock = vi.spyOn(performance, 'now').mockReturnValue(0)
   const realTimeout = globalThis.setTimeout
   const deadlineTimer = vi
@@ -602,6 +609,7 @@ it('a deletion already in flight settles, but no later deletion starts after the
       return realTimeout(() => {
         void arrived.then(() => {
           clock.mockReturnValue(60)
+          deadlineReached = true
           if (typeof callback === 'function') callback(...args)
         })
       }, delay)
@@ -612,6 +620,7 @@ it('a deletion already in flight settles, but no later deletion starts after the
     await arrived
     const launch = host.beforeLaunch()
     await launch
+    await vi.waitFor(() => expect(deadlineReached).toBe(true))
     release()
     await pass
     expect(existsSync(first)).toBe(false)
@@ -620,7 +629,7 @@ it('a deletion already in flight settles, but no later deletion starts after the
     const line = (await host.recent(0, NOW))[0]!
     expect(line).toMatchObject({ conversations: 1, stoppedEarly: true })
     expect(transcriptsClearedWords(line)).toBe(
-      `Transcript clearing stopped after 15 seconds so agents could start. Cleared the transcripts of 1 conversation unused for 90 days, freeing ${firstBytes} B. The rest will be checked next time BroCrew starts.`,
+      `Transcript clearing stopped after 15 seconds. Cleared the transcripts of 1 conversation unused for 90 days, freeing ${firstBytes} B. The rest will be checked next time BroCrew starts.`,
     )
   } finally {
     release()
@@ -654,12 +663,13 @@ it('a staged move that settles after the deadline restores its file before the p
     }
   }
   vi.spyOn(console, 'warn').mockImplementation(() => {})
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] })
   const host = new TranscriptRetentionHost(data, unused, () => NOW, false, 20)
   const pass = host.run()
   try {
     await arrived
     const launch = host.beforeLaunch()
-    await wait(60)
+    await vi.advanceTimersByTimeAsync(60)
     await launch
     release()
     await pass
@@ -671,6 +681,7 @@ it('a staged move that settles after the deadline restores its file before the p
     ).toBe(false)
     expect((await host.recent(0, NOW))[0]).toMatchObject({ conversations: 0, stoppedEarly: true })
   } finally {
+    vi.useRealTimers()
     release()
     await pass
     await host.stop()
@@ -707,9 +718,7 @@ it('a move held in staging setup cannot start after the deadline releases a real
   const runtime = new FakeRuntime('codex')
   const live = new RuntimeHost({
     store: NULL_SESSION_STORE,
-    discoverSessions: NO_DISCOVERY,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => join(data, 'exports'),
+    ...neutralHostDeps(() => data),
     createRuntime: () => runtime,
     prepareProviderHome: (provider) => home(provider),
     providerHomePath: (provider) => home(provider),
@@ -1083,7 +1092,7 @@ it.each([30, 90, 365] as const)(
     ])
   },
 )
-it('a provider launch waits for a removal already in progress', async () => {
+it('a provider launch proceeds while background removal is in progress', async () => {
   const target = claude(OLD, 365)
   let release!: () => void
   let arrived!: () => void
@@ -1114,7 +1123,7 @@ it('a provider launch waits for a removal already in progress', async () => {
       started++
     })
     await Promise.resolve()
-    expect(started).toBe(0)
+    expect(started).toBe(1)
     release()
     await pass
     await provider
@@ -1141,13 +1150,7 @@ it('a concurrent first read cannot overwrite a newly saved Forever choice', asyn
 it('Recent activity carries cleanup metadata and marks an unreadable cleanup history incomplete', async () => {
   const live = Object.create(RuntimeHost.prototype) as RuntimeHost
   const row = { at: NOW, days: 90, conversations: 2, bytes: 1024 }
-  const windowAnswer = {
-    kind: 'activity',
-    window: { from: NOW - DAY, to: NOW },
-    read: { walk: 'one-window-over-every-agents-conversation', ledgers: 0, rowsUnread: 0 },
-    lines: [],
-    capped: false,
-  }
+  const windowAnswer = activityWindowAnswer()
   const deps = {
     windowReader: { read: async () => windowAnswer },
     transcriptsCleared: async () => [row],
@@ -1176,13 +1179,7 @@ it('a closed host cannot publish a cleanup reading that arrived after it closed'
     finish = resolve
   })
   const life = { closed: false }
-  const windowAnswer = {
-    kind: 'activity',
-    window: { from: NOW - DAY, to: NOW },
-    read: { walk: 'one-window-over-every-agents-conversation', ledgers: 0, rowsUnread: 0 },
-    lines: [],
-    capped: false,
-  }
+  const windowAnswer = activityWindowAnswer()
   Object.assign(live, {
     launches: life,
     deps: {

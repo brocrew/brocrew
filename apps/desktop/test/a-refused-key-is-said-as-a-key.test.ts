@@ -1,3 +1,5 @@
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
+import type { PieceRow } from '../src/shared/task-contracts'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -20,8 +22,8 @@ import { nativeTranscriptPath } from '../src/main/archive/native-file'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { theStallAndItsAsk } from '../src/main/runtime/reply-rails'
 import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
-import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/runtime-ipc'
-import { derivePieces, type PieceRow } from '../src/shared/tasks'
+
+import { derivePieces } from '../src/shared/tasks'
 
 /**
  * # A Claude key that stops working is said as a key, and reading old history needs no credential

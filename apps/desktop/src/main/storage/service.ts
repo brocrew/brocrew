@@ -3,7 +3,7 @@ import type { StorageError } from '../../shared/storage'
 import type { StorageReply, StorageRequest, StorageRoots } from './engine'
 import { STORAGE_MEASURE_TIMEOUT } from './engine'
 
-export interface StorageWorker {
+interface StorageWorker {
   once(...args: Parameters<Worker['once']>): void
   terminate: Worker['terminate']
 }

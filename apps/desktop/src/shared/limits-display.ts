@@ -1,4 +1,5 @@
-import type { LedgerWalk } from './questions'
+import type { LedgerWalk } from './question-contracts'
+
 import type { ProviderLimitSeen } from './provider-limit'
 
 export interface LimitsDisplayScope {

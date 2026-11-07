@@ -13,7 +13,6 @@ export const WORKSPACES: WorkspaceRow[] = [
     isThisOne: true,
     state: 'open',
     lastOpenedAt: NOW - 3_600_000,
-    readers: null,
   },
   {
     path: '/Users/someone/BroBot workspaces/Bakery',
@@ -22,7 +21,6 @@ export const WORKSPACES: WorkspaceRow[] = [
     isThisOne: false,
     state: 'closed',
     lastOpenedAt: NOW - 2 * 86_400_000,
-    readers: null,
   },
   {
     path: '/Users/someone/BroBot workspaces/Old client',
@@ -31,7 +29,6 @@ export const WORKSPACES: WorkspaceRow[] = [
     isThisOne: false,
     state: 'missing',
     lastOpenedAt: NOW - 40 * 86_400_000,
-    readers: null,
   },
 ]
 

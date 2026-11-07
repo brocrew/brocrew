@@ -35,6 +35,13 @@ export const LOST_CHANNEL_ENDS = 'lost-channel-ends'
 /** Person configuration can explicitly negotiate checkpoint ledgers and safe-integer revisions. */
 export const CONFIGURATION_LEDGER_V2 = 'configuration-ledger-v2'
 export const OWNER_RECOVERY = 'owner-recovery'
+/** Per-lease negotiation for served, pending, off and unknown route facts. */
+export const AGENT_ROUTES_FORMAT_2 = 'agent-routes-format-2'
+/**
+ * The app holds one connection open for its whole life; its close, not a late heartbeat, ends
+ * the app's registration. A busy or suspended app keeps it open.
+ */
+export const APP_HELD_CONNECTION = 'app-held-connection'
 export const OWNER_WIRE: WireVersion = {
   major: 1,
   minMinor: 0,
@@ -44,6 +51,8 @@ export const OWNER_WIRE: WireVersion = {
     LOST_CHANNEL_ENDS,
     CONFIGURATION_LEDGER_V2,
     OWNER_RECOVERY,
+    AGENT_ROUTES_FORMAT_2,
+    APP_HELD_CONNECTION,
     ...PLUGIN_FRAMEWORK_FEATURES,
   ],
 }
@@ -86,6 +95,7 @@ export const Command = z.discriminatedUnion('kind', [
     renewal: Hex.optional(),
   }),
   z.strictObject({ kind: z.literal('release'), ...Identity, lease: Hex }),
+  z.strictObject({ kind: z.literal('hold'), ...Identity, lease: Hex }),
   z.strictObject({
     kind: z.literal('agent-routes'),
     ...Identity,
@@ -94,6 +104,7 @@ export const Command = z.discriminatedUnion('kind', [
     incarnation: Uuid,
     occupied: z.array(z.string().min(1).max(128)).max(128),
     release: z.boolean(),
+    format: z.literal(2).optional(),
   }),
 ])
 export type Command = z.infer<typeof Command>
@@ -111,7 +122,7 @@ export type Refusal =
   | 'network'
 export const OwnerDiagnostic = z.strictObject({
   phase: z.enum(['accepting', 'draining', 'blocked', 'stopped', 'missing', 'unreadable']),
-  stage: z.enum(['attach-record', 'hello', 'detach', 'lease-lost', 'recovery']),
+  stage: z.enum(['attach-record', 'hello', 'hold', 'detach', 'lease-lost', 'recovery']),
   probe: z.enum(['live', 'no-answer', 'unknown']),
   reason: z.enum([
     'duplicate-workspace',

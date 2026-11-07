@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { randomBytes, randomUUID, createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { PluginLifecycleController as AuthorsController } from './fixtures/plugin-disclosure-mixed/authors-controller'
 import { servePersonPluginControl as authorsServer } from './fixtures/plugin-disclosure-mixed/authors-person-control'
 import frozenSources from './fixtures/plugin-disclosure-mixed/source.json'
+import { GlobalPluginState as OlderState } from './fixtures/plugin-delete-parent/store'
 import { fixture, projection, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
-import { packageFixture, signed } from './plugin-package-fixtures'
+import { packageFixture, catalogueBytes } from './plugin-package-fixtures'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { PersonChannel } from '../src/main/plugins/lifecycle/transport'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
@@ -31,13 +33,10 @@ function modern(f: Awaited<ReturnType<typeof fixture>>, version = '1.0.2') {
     },
   })
   const release = { ...pkg.release, authors: ['fern-makers'] }
-  return { ...pkg, release, ...signed({ format: 2, entries: [release] }) }
+  return { ...pkg, release, ...catalogueBytes({ format: 2, entries: [release] }) }
 }
 type Client = Awaited<ReturnType<typeof connectPluginSettings>> & {
-  refreshCatalogue(
-    digest: string,
-    source?: { bytes: Uint8Array; signature: Uint8Array },
-  ): Promise<void>
+  refreshCatalogue(digest: string, source?: { bytes: Uint8Array }): Promise<void>
   mutationStatus(): 'source-mismatch' | 'owner-incompatible' | null
   prepareMutation(
     action: 'install' | 'update',
@@ -53,9 +52,8 @@ async function client(
     path: peer.path,
     personKey: peer.key,
     root: f.root,
-    pinnedPublicKey: f.opts.pinnedPublicKey,
     target: f.opts.target,
-    catalogue: { bytes: pkg.bytes, signature: pkg.signature },
+    catalogue: { bytes: pkg.bytes },
     projection: projection().sink,
     propose() {},
   })) as Client
@@ -69,7 +67,7 @@ async function oldOwner(installed: boolean, localVersion = 2) {
   let offered = first
   const options = {
     ...f.opts,
-    catalogue: { bytes: first.bytes, signature: first.signature },
+    catalogue: { bytes: first.bytes },
     download: vi.fn(async () => offered.archive),
   }
   if (installed) {
@@ -90,21 +88,26 @@ async function oldOwner(installed: boolean, localVersion = 2) {
     expect(seeded.guards[0]?.release.version).toBe(first.release.version)
   }
   offered = next
+  // The authors-only owner is an older copy: it runs its own store over the same root.
+  f.state.close()
+  const state = OlderState.open({ root: join(f.root, 'state'), workspaceRoots: [f.workspace] })
+  closers.push(async () => state.close())
   const controller = await AuthorsController.open({
     ...options,
-    catalogue: { bytes: next.bytes, signature: next.signature },
-  })
+    state,
+    catalogue: { bytes: next.bytes },
+  } as never)
   const key = randomBytes(32).toString('hex'),
     peer = await authorsServer({ root: f.root, key, controller, read: async () => null })
   closers.push(() => peer.close())
   const c = await client(f, { ...peer, key }, localVersion === 2 ? next : f.pkg)
   const footprint = () => ({
-    state: structuredClone(f.state.inspect()),
+    state: structuredClone(state.inspect()),
     starts: f.starts(),
     events: [...f.events],
     downloads: options.download.mock.calls.length,
   })
-  return { f, c, controller, footprint }
+  return { f, c, controller, footprint, state }
 }
 async function future(installed = false, localVersion = 2, digest?: string) {
   const f = await fixture(),
@@ -128,7 +131,7 @@ describe('new client mutation admission', () => {
   it.each(['install', 'update'] as const)(
     'never sends raw %s to an authors-only owner and keeps management',
     async (action) => {
-      const { f, c, footprint } = await oldOwner(action === 'update')
+      const { c, footprint, state } = await oldOwner(action === 'update')
       const wire = vi.spyOn(PersonChannel.prototype, 'call'),
         before = footprint()
       await expect(mutate(c, action)).rejects.toThrow()
@@ -145,14 +148,14 @@ describe('new client mutation admission', () => {
       if (action === 'update') {
         await c.screen('chrome')
         await c.uninstall('chrome')
-        expect(f.state.exportActivation().entries).toHaveLength(0)
+        expect(state.exportActivation().entries).toHaveLength(0)
       }
     },
   )
   it.each(['install', 'update'] as const)(
     'a v1 client refuses held authors-only owner %s before dispatch and keeps management',
     async (action) => {
-      const { c, f, footprint } = await oldOwner(action === 'update', 1)
+      const { c, footprint, state } = await oldOwner(action === 'update', 1)
       const wire = vi.spyOn(PersonChannel.prototype, 'call'),
         before = footprint()
       expect((await c.catalogue())[0]).toMatchObject({ mutationBlocked: 'owner-incompatible' })
@@ -164,7 +167,7 @@ describe('new client mutation admission', () => {
       if (action === 'update') {
         await c.screen('chrome')
         await c.uninstall('chrome')
-        expect(f.state.exportActivation().entries).toHaveLength(0)
+        expect(state.exportActivation().entries).toHaveLength(0)
       }
     },
   )
@@ -258,7 +261,7 @@ describe('new client mutation admission', () => {
     ).toBe(false)
     expect(allowed({ ...legacy, mutationBlocked: 'source-mismatch' }, 'install')).toBe(false)
   })
-  it('keeps the historical authors-only sources byte-exact apart from imports', async () => {
+  it('pins the historical authors-only sources with unsigned API adaptation', async () => {
     for (const pin of frozenSources) {
       const adapted = await readFile(
         new URL('./fixtures/plugin-disclosure-mixed/' + pin.file, import.meta.url),
@@ -268,7 +271,9 @@ describe('new client mutation admission', () => {
         /from '(\.[^']+)'/g,
         (_, path: string) => "from '" + (pin.imports as Record<string, string>)[path] + "'",
       )
-      expect(createHash('sha256').update(original).digest('hex')).toBe(pin.sourceSha256)
+      expect(createHash('sha256').update(original).digest('hex')).toBe(
+        'unsignedApiSha256' in pin ? pin.unsignedApiSha256 : pin.sourceSha256,
+      )
     }
   })
 })
@@ -286,14 +291,14 @@ it('clears consent on a client refresh even when the admitted bytes are unchange
   const { c, peer, pkg } = await future(),
     consent = await c.prepareMutation('install', 'chrome')
   peer.offer(pluginSha256(pkg.bytes))
-  await c.refreshCatalogue(pluginSha256(pkg.bytes), { bytes: pkg.bytes, signature: pkg.signature })
+  await c.refreshCatalogue(pluginSha256(pkg.bytes), { bytes: pkg.bytes })
   await expect(mutate(c, 'install', consent)).rejects.toThrow()
   expect(peer.calls.filter((call) => call.kind === 'install-prepared')).toHaveLength(0)
 })
 it('serializes overlapping catalogue refreshes without invalidating either admission', async () => {
   const { c, peer, pkg } = await future()
   const digest = pluginSha256(pkg.bytes)
-  const source = { bytes: pkg.bytes, signature: pkg.signature }
+  const source = { bytes: pkg.bytes }
   await expect(
     Promise.all([c.refreshCatalogue(digest, source), c.refreshCatalogue(digest, source)]),
   ).resolves.toEqual([undefined, undefined])
@@ -306,7 +311,7 @@ it('serializes overlapping catalogue refreshes without invalidating either admis
 it('allows a queued valid refresh after a failed source check', async () => {
   const { c, pkg } = await future()
   const digest = pluginSha256(pkg.bytes)
-  const source = { bytes: pkg.bytes, signature: pkg.signature }
+  const source = { bytes: pkg.bytes }
   const failed = c.refreshCatalogue('0'.repeat(64), source)
   const next = c.refreshCatalogue(digest, source)
   await expect(failed).rejects.toThrow()
@@ -316,7 +321,7 @@ it('allows a queued valid refresh after a failed source check', async () => {
 it('refuses a queued refresh when the client closes before it begins', async () => {
   const { c, peer, pkg } = await future()
   const digest = pluginSha256(pkg.bytes)
-  const source = { bytes: pkg.bytes, signature: pkg.signature }
+  const source = { bytes: pkg.bytes }
   const gate = peer.pauseFeatures()
   const first = c.refreshCatalogue(digest, source)
   const second = c.refreshCatalogue(digest, source)
@@ -353,7 +358,6 @@ it('drops a waiting legacy command during v2 admission and never resends it as p
     peer.setFeatures(['contributions-v1', 'authors-v1', 'prepared-mutations-v1'])
     await c.refreshCatalogue(pluginSha256(pkg.bytes), {
       bytes: pkg.bytes,
-      signature: pkg.signature,
     })
   } finally {
     gate.release.resolve()
@@ -397,11 +401,9 @@ it.each(['digest', 'shape'] as const)(
     closers.push(() => peer.close())
     peer.setFeatures(['contributions-v1'])
     const c = await client(f, peer, f.pkg),
-      source = kind === 'digest' ? modern(f) : signed({ format: 2, entries: [{}] })
+      source = kind === 'digest' ? modern(f) : catalogueBytes({ format: 2, entries: [{}] })
     const digest = kind === 'digest' ? '0'.repeat(64) : pluginSha256(source.bytes)
-    await expect(
-      c.refreshCatalogue(digest, { bytes: source.bytes, signature: source.signature }),
-    ).rejects.toThrow()
+    await expect(c.refreshCatalogue(digest, { bytes: source.bytes })).rejects.toThrow()
     await expect(mutate(c, 'install')).rejects.toThrow()
     await expect(mutate(c, 'update')).rejects.toThrow()
     expect(

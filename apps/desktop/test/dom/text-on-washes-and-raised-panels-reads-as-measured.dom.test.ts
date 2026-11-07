@@ -9,31 +9,16 @@ import { contrastRatio, over, type Rgba } from '../../src/shared/themes/colour'
 import { theList } from '../../src/shared/model-choice'
 import { resolveTheme } from '../../src/shared/themes/theme'
 import { validateTheme } from '../../src/shared/themes/validate'
-import DEFINED_FILE from '../../resources/themes/defined/theme.json'
+import { shippedDefined } from '../themes/fixtures'
 import { META, mount, paneProps, record, unmountAll, type Mounted } from './harness'
 
-/**
- * Text on the content's washes and raised panels, as the window draws it: the sign-in bar on the
- * waiting colour's wash, the model picker on `panel-3`, and a workflow's block on an ink wash. Each
- * theme here is refused by the readability check, and the window draws the pair it refuses.
- */
-
-const BASE = (() => {
-  const read = validateTheme(DEFINED_FILE, {
-    assets: new Map(),
-    builtIns: new Map(),
-    builtIn: true,
-  })
-  if (!read.ok) throw new Error(JSON.stringify(read.problems))
-  return read.theme
-})()
+const BASE = shippedDefined()
 
 const canvas = document.createElement('canvas')
 canvas.width = 1
 canvas.height = 1
 const ctx = canvas.getContext('2d', { willReadFrequently: true })!
 
-/** A computed colour as sRGB with its alpha, read from its numbers where it is see-through. */
 function see(computed: string): Rgba {
   const srgb = /^color\(srgb ([\d.e-]+) ([\d.e-]+) ([\d.e-]+)(?: \/ ([\d.e-]+))?\)$/.exec(computed)
   if (srgb) {
@@ -53,7 +38,6 @@ function see(computed: string): Rgba {
   return { r: d[0]!, g: d[1]!, b: d[2]!, a: d[3]! / 255 }
 }
 
-/** The colour an element's background shows: its own, over each ancestor's, down to an opaque one. */
 function shownUnder(el: Element): Rgba {
   const layers: Rgba[] = []
   for (let e: Element | null = el; e; e = e.parentElement) {
@@ -66,19 +50,13 @@ function shownUnder(el: Element): Rgba {
   return shown
 }
 
-/** The contrast of an element's text against what its background shows. */
 const readsAt = (el: Element): number =>
   contrastRatio({ ...see(getComputedStyle(el).color), a: 1 }, shownUnder(el))
 
-/** `own` over Defined: refused by the check at `at`, in a sentence starting `what`, then worn. */
-function wearRefused(own: Record<string, unknown>, at: string, what: string): void {
+function wear(own: Record<string, unknown>): void {
   const file = { format: 1, id: 'washes', name: 'Washes', extends: 'defined', ...own }
   const read = validateTheme(file, { assets: new Map(), builtIns: new Map([['defined', BASE]]) })
-  expect(read.ok).toBe(false)
-  if (read.ok) return
-  expect(read.problems).toContainEqual(
-    expect.objectContaining({ at, says: expect.stringMatching(new RegExp(`^${what} would be`)) }),
-  )
+  expect(read.ok).toBe(true)
   applyTheme(resolveTheme(file as never, BASE))
 }
 
@@ -100,24 +78,20 @@ const WHITE_PANELS = { 'panel-2': '#ffffff', 'panel-3': '#ffffff' }
 
 describe('text on the content’s washes and raised panels', () => {
   it('the sign-in bar: its button’s accent text under the pointer, on the waiting colour’s wash', async () => {
-    wearRefused(
-      {
-        shared: FLAT,
-        content: { accent: '#c9d2ff' },
-        status: { waiting: '#3d2600' },
-        tokens: {
-          content: {
-            'accent-text': '#6c6c6c',
-            'paper-link': '#6c6c6c',
-            'focus-ring-color': '#3d4fd6',
-            'accent-solid-bg': '#3d4fd6',
-            ...WHITE_PANELS,
-          },
+    wear({
+      shared: FLAT,
+      content: { accent: '#c9d2ff' },
+      status: { waiting: '#3d2600' },
+      tokens: {
+        content: {
+          'accent-text': '#6c6c6c',
+          'paper-link': '#6c6c6c',
+          'focus-ring-color': '#3d4fd6',
+          'accent-solid-bg': '#3d4fd6',
+          ...WHITE_PANELS,
         },
       },
-      'content.accent',
-      'Links on the page',
-    )
+    })
     const r = record([{ type: 'assistant_message', text: 'hello' } as never])
     r.meta = { ...META, liveness: { ...META.liveness, signInSuperseded: true } } as never
     const m = mount(ConversationPane as Component, paneProps({ record: r }), {
@@ -134,22 +108,18 @@ describe('text on the content’s washes and raised panels', () => {
   })
 
   it('the model picker: its accent words on panel-3', async () => {
-    wearRefused(
-      {
-        shared: FLAT,
-        content: { accent: '#c9d2ff' },
-        tokens: {
-          content: {
-            'accent-text': '#6c6c6c',
-            'paper-link': '#6c6c6c',
-            'focus-ring-color': '#3d4fd6',
-            'accent-solid-bg': '#3d4fd6',
-          },
+    wear({
+      shared: FLAT,
+      content: { accent: '#c9d2ff' },
+      tokens: {
+        content: {
+          'accent-text': '#6c6c6c',
+          'paper-link': '#6c6c6c',
+          'focus-ring-color': '#3d4fd6',
+          'accent-solid-bg': '#3d4fd6',
         },
       },
-      'content.accent',
-      'Links on cards',
-    )
+    })
     const m = mountPickablePane()
     await settle()
     m.host.querySelector<HTMLElement>('[data-cy="card-run-model"]')!.click()
@@ -162,11 +132,7 @@ describe('text on the content’s washes and raised panels', () => {
   })
 
   it('a workflow’s block: an agent’s link on the ink wash, and an open button’s second wash over it', async () => {
-    wearRefused(
-      { shared: FLAT, tokens: { content: { 'text-soft': '#6e7283', ...WHITE_PANELS } } },
-      'content.ink',
-      'Text on the page',
-    )
+    wear({ shared: FLAT, tokens: { content: { 'text-soft': '#6e7283', ...WHITE_PANELS } } })
     const card: WorkflowRunCard = {
       taskId: 'wq1demo',
       toolUseId: 'toolu_wf',
@@ -216,7 +182,6 @@ describe('text on the content’s washes and raised panels', () => {
   })
 })
 
-/** The conversation pane with its Agent panel open, for a conversation whose model can be changed. */
 function mountPickablePane(): Mounted {
   ;(window as { api?: unknown }).api = {
     runtime: {

@@ -39,7 +39,6 @@ import {
   saysAbsent,
   themeDirectory,
   themeFolderState,
-  themeWriteLock,
   writeActiveTheme,
   type ThemeCommitFiles,
 } from './state'
@@ -52,7 +51,6 @@ export type ThemeStoreProblem =
   | 'absolute-path'
   | 'base64'
   | 'save'
-  | 'busy'
   | 'choice'
   | 'trash'
   | 'open-folder'
@@ -67,10 +65,6 @@ export interface ThemeStoreOptions {
   /** Built-ins loaded only as a base: not listed, and not chosen. */
   readonly hiddenBases?: readonly string[]
   readonly forceDefault?: boolean
-  /**
-   * A workspace with no choice file is given {@link startingTheme} as its choice, written once, so the
-   * look it starts in never depends on judging the workspace again.
-   */
   readonly writesItsDefault?: boolean
   /** The look a workspace with no choice file starts in; {@link defaultTheme} unless given. */
   readonly startingTheme?: string
@@ -280,10 +274,6 @@ export class ThemeStore implements ThemeAssetRegistry {
     })
   }
 
-  /**
-   * A folder's names, waiting out a brief hold. A folder the system says is not there lists
-   * nothing; one it won't list answers null.
-   */
   private async names(path: string): Promise<readonly string[] | null> {
     try {
       return await retrying(() => (this.files.readdir ?? readdir)(path))
@@ -292,30 +282,17 @@ export class ThemeStore implements ThemeAssetRegistry {
     }
   }
 
-  /**
-   * A theme folder's load, tried again while the system refuses a read it needed. A refusal that
-   * outlasts the waits answers that refused load, so the theme is listed as one that can't be used.
-   */
   private async settledLoad(
     path: string,
     id: string,
     bases: ReadonlyMap<string, LoadedTheme>,
     unread: UnreadBases,
     builtIn = false,
-    readability: 'refuse' | 'note' = 'refuse',
   ): Promise<ThemeLoad> {
     let last: ThemeLoad | undefined
     try {
       return await retrying(async () => {
-        const load = await loadThemeFolder(
-          path,
-          id,
-          bases,
-          this.loader,
-          builtIn,
-          readability,
-          unread,
-        )
+        const load = await loadThemeFolder(path, id, bases, this.loader, builtIn, unread)
         if (!load.ok && load.refused !== undefined) {
           last = load
           throw load.refused
@@ -333,16 +310,6 @@ export class ThemeStore implements ThemeAssetRegistry {
     }
   }
 
-  /**
-   * Puts back a theme a save set aside and could not return: one whose folder is missing while a
-   * `.previous` copy of it is there. Every look and read waits out a brief hold, and only the
-   * system saying a path does not exist counts as missing. The newest copy that reads and checks
-   * as a complete theme is moved back under the theme's own name. A partial or broken copy is
-   * left on disk as it is and not shown. A copy that can't be looked at or read, or that extends a
-   * built-in that can't be read, a theme folder that can't be looked at, or a move that stays
-   * refused moves nothing more, puts no older copy back past a newer one, and leaves the theme
-   * listed as one that can't be used. Answers the ids listed so.
-   */
   private async putBackSetAside(
     root: string,
     bases: ReadonlyMap<string, LoadedTheme>,
@@ -350,8 +317,6 @@ export class ThemeStore implements ThemeAssetRegistry {
     names: readonly string[],
   ): Promise<string[]> {
     const copies = new Map<string, { path: string; at: number }[]>()
-    // Themes with a copy the system won't let the app look at: its age is unknown, so no other
-    // copy of the theme is put back past it.
     const unseen = new Set<string>()
     for (const name of names) {
       const id = SET_ASIDE.exec(name)?.[1]
@@ -387,9 +352,7 @@ export class ThemeStore implements ThemeAssetRegistry {
       let complete: string | undefined
       let refused = false
       for (const copy of [...found].sort((a, b) => b.at - a.at)) {
-        // Judged as the theme will be once it is back: a copy that fails only a readability check
-        // is complete, and loads with notes.
-        const loaded = await this.settledLoad(copy.path, id, bases, unread, false, 'note')
+        const loaded = await this.settledLoad(copy.path, id, bases, unread)
         if (loaded.ok) {
           complete = copy.path
           break
@@ -423,8 +386,6 @@ export class ThemeStore implements ThemeAssetRegistry {
     this.options.assertWorkspace?.()
     const library = await themeFolderState(this.options.library, this.files.lstat)
     this.libraryRoot = library.kind === 'here' ? library.root : null
-    // Where a folder of themes couldn't be looked at or listed, the themes known from the last
-    // load (and the workspace's choice) stay listed as ones that can't be used.
     const unlisted = new Set<ThemeSource>(library.kind === 'unresolved' ? ['mine'] : [])
     const next = new Map<string, ThemeEntry>()
     const bases = new Map<string, LoadedTheme>()
@@ -439,7 +400,6 @@ export class ThemeStore implements ThemeAssetRegistry {
       root: '',
       version: createHash('sha256').update(JSON.stringify(CLASSIC_THEME)).digest('hex'),
       assets: new Map(),
-      pictures: new Map(),
     })
     const built = await themeFolderState(this.options.builtIns, this.files.lstat)
     const builtRoot = built.kind === 'here' ? built.root : null
@@ -448,9 +408,6 @@ export class ThemeStore implements ThemeAssetRegistry {
     if (builtNames === null) unlisted.add('built-in')
     const builtIds = (builtNames ?? []).filter((name) => THEME_ID.test(name)).sort()
     for (const id of builtIds) this.reserved.add(id)
-    // Built-ins that couldn't be read on this load: each one whose read stayed refused, and, when
-    // the built-in folder couldn't be looked at or listed, every built-in the app knows of. A
-    // theme that extends one is listed as one that can't be used, never judged invalid.
     const refusedBuiltIns = new Set<string>()
     const builtInsUnknown = unlisted.has('built-in')
     const reserved = this.reserved
@@ -516,18 +473,7 @@ export class ThemeStore implements ThemeAssetRegistry {
     if (this.libraryRoot) {
       for (const id of libraryIds) {
         if (this.reserved.has(id)) continue
-        // A person's own theme was accepted when it was saved. If a stricter readability check
-        // has come since, it still loads, and what the check now says is kept as its notes; only
-        // a broken or unsafe theme is refused, and a read the system refused leaves it unresolved.
-        const result = await this.settledLoad(
-          join(this.libraryRoot, id),
-          id,
-          bases,
-          unread,
-          false,
-          'note',
-        )
-        const notes = result.ok ? result.loaded.notes : undefined
+        const result = await this.settledLoad(join(this.libraryRoot, id), id, bases, unread)
         next.set(
           id,
           result.ok
@@ -538,7 +484,6 @@ export class ThemeStore implements ThemeAssetRegistry {
                   source: 'mine',
                   status: 'ok',
                   version: result.loaded.version,
-                  ...(notes?.length ? { problems: notes, reason: notes[0]!.says } : {}),
                 },
                 loaded: result.loaded,
               }
@@ -592,8 +537,6 @@ export class ThemeStore implements ThemeAssetRegistry {
       try {
         await writeActiveTheme(this.options.userData, starting, this.files)
       } catch (error) {
-        // It still shows this launch. A later start judges the workspace again, and by then a new
-        // workspace may hold data and be given classic.
         this.options.warn?.(
           `BroCrew could not keep this workspace's starting look: ${(error as Error).message}`,
         )
@@ -813,15 +756,7 @@ export class ThemeStore implements ThemeAssetRegistry {
           ),
         },
       ])
-    const checked = validateThemeBytes(
-      raw,
-      offered,
-      this.bases,
-      this.loader,
-      false,
-      'refuse',
-      this.unread,
-    )
+    const checked = validateThemeBytes(raw, offered, this.bases, this.loader, false, this.unread)
     if (!checked.ok)
       return refused(checked.tooLarge ? 'theme-too-large' : 'theme-invalid', checked.problems)
     const savedDocument = `${JSON.stringify(checked.theme, null, 2)}\n`
@@ -837,8 +772,6 @@ export class ThemeStore implements ThemeAssetRegistry {
       ])
     const root = this.libraryRoot
     if (!root) return this.problem('theme-invalid', 'theme.json', 'save')
-    const release = await themeWriteLock(root, id)
-    if (!release) return this.problem('theme-invalid', 'theme.json', 'busy')
     let stage: string | undefined
     let previous: string | undefined
     let published = false
@@ -888,8 +821,6 @@ export class ThemeStore implements ThemeAssetRegistry {
         if (current.isSymbolicLink() || current.dev !== old.dev || current.ino !== old.ino)
           throw new Error('changed theme folder')
         previous = join(root, `.theme-${id}.${randomUUID()}.previous`)
-        // A file another program holds for a moment (antivirus, an indexer) is tried again, so a
-        // save neither fails nor loses the theme for a lock that clears by itself.
         const kept = previous
         await retrying(() => this.files.rename(target, kept))
       }
@@ -922,7 +853,6 @@ export class ThemeStore implements ThemeAssetRegistry {
       if (stage) await rm(stage, { recursive: true, force: true }).catch(() => undefined)
       if (published && previous)
         await rm(previous, { recursive: true, force: true }).catch(() => undefined)
-      await release().catch(() => undefined)
     }
   }
 
@@ -958,10 +888,20 @@ export class ThemeStore implements ThemeAssetRegistry {
       }
       const assets: { name: string; base64: string }[] = []
       for (const asset of source.assets.values()) {
-        const read = await readThemeFile(source.root, asset.path, asset.facts.bytes)
-        if (!read.ok) return this.problem('theme-invalid', asset.path, read.failure)
-        if (createHash('sha256').update(read.bytes).digest('hex') !== asset.digest)
-          return this.problem('theme-invalid', asset.path, 'changed')
+        const read = await readThemeFile(
+          source.root,
+          asset.path,
+          asset.facts.type === 'woff2' ? LIMITS.fontBytes : LIMITS.pictureBytes,
+        )
+        if (!read.ok)
+          return refused('theme-invalid', [
+            {
+              at: join(source.root, asset.path),
+              says: [this.options.problem(read.failure), 'cause' in read ? String(read.cause) : '']
+                .filter(Boolean)
+                .join(': '),
+            },
+          ])
         assets.push({ name: asset.path, base64: read.bytes.toString('base64') })
       }
       return this.saveInside({ theme: { ...source.theme, id: next, name }, assets })
@@ -973,31 +913,23 @@ export class ThemeStore implements ThemeAssetRegistry {
       await this.reload()
       if (this.reserved.has(id)) return refused('theme-is-built-in')
       if (!this.registry.has(id) || !this.libraryRoot) return refused('theme-unknown')
-      const release = await themeWriteLock(this.libraryRoot, id)
-      if (!release) return this.problem('theme-invalid', 'theme.json', 'busy')
+      const target = join(this.libraryRoot, id)
+      if (!(await themeDirectory(target)))
+        return this.problem('theme-invalid', 'theme.json', 'link')
       try {
-        const target = join(this.libraryRoot, id)
-        if (!(await themeDirectory(target)))
-          return this.problem('theme-invalid', 'theme.json', 'link')
-        try {
-          await this.options.trash(target)
-        } catch {
-          return this.problem('theme-invalid', 'theme.json', 'trash')
-        }
-        const previous = this.active
-        if (this.requested === id) {
-          await writeActiveTheme(
-            this.options.userData,
-            this.options.defaultTheme,
-            this.files,
-          ).catch(() => undefined)
-        }
-        await this.reload()
-        this.announce(previous)
-        return { outcome: 'ok', id, active: this.active }
-      } finally {
-        await release().catch(() => undefined)
+        await this.options.trash(target)
+      } catch {
+        return this.problem('theme-invalid', 'theme.json', 'trash')
       }
+      const previous = this.active
+      if (this.requested === id) {
+        await writeActiveTheme(this.options.userData, this.options.defaultTheme, this.files).catch(
+          () => undefined,
+        )
+      }
+      await this.reload()
+      this.announce(previous)
+      return { outcome: 'ok', id, active: this.active }
     })
   }
 

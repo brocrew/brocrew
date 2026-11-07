@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../../src/shared/conversation-events'
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import {
@@ -19,7 +20,7 @@ import { fileURLToPath } from 'node:url'
 import { openDatabase, type AppDatabase } from '../../../src/main/db/connection'
 import { applyMigrations } from '../../../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../../../src/main/db/session-store'
-import type { TranscriptEvent } from '../../../src/shared/runtime-ipc'
+
 import {
   makeCheckpoint as writeACheckpoint,
   type Checkpoint,
@@ -59,6 +60,7 @@ import {
 } from '../../../src/main/recovery/layout'
 import { restore, RestoreStopped } from '../../../src/main/recovery/restore'
 import { APP_STATE_FILES, type AppStateFile } from '../../../src/main/recovery/state-files'
+import { checkTheCopyHere } from '../../helpers/check-the-copy-here'
 
 /**
  * A data folder for recovery tests, laid down from real files: a database built by the app's own
@@ -120,7 +122,7 @@ export type Schema = number
  */
 export type CheckpointFault = 'no-manifest' | 'copy-changed' | 'version-2' | 'another-workspace'
 
-export interface CheckpointSpec {
+interface CheckpointSpec {
   /** The schema of the database when the copy was made. */
   readonly migrations: Schema
   /** ISO. When not given, the copies are a day apart and the newest is a day before `now`. */
@@ -198,7 +200,7 @@ export interface FixtureCheckpoint {
   readonly conversations: readonly string[]
 }
 
-export interface FixtureRestore {
+interface FixtureRestore {
   readonly id: string
   readonly checkpointId: string
   /** As last written, or null once the restore finished and removed it. */
@@ -573,6 +575,7 @@ async function checkpointByTheWriter(
     await source.backup(databaseFile(writing))
     await writeStateFiles(writing, texts)
     made = await writeACheckpoint({
+      verifyCopy: checkTheCopyHere,
       userData: writing,
       ownership: 'sole',
       appVersion: plan.appVersion,

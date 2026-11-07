@@ -51,10 +51,9 @@ describe('fixed person-only Chrome profile action mapping', () => {
         allowSync: false,
         allowExtensions: true,
         allowSettings: false,
-        keepRunning: true,
       },
       '/profiles/birch/flags',
-      { allowSync: false, allowExtensions: true, allowSettings: false, keepRunning: true },
+      { allowSync: false, allowExtensions: true, allowSettings: false },
       200,
     ],
     [
@@ -132,10 +131,10 @@ describe('fixed person-only Chrome profile action mapping', () => {
       }),
     ).toBeNull()
     expect(
-      chromeProfileIntent({ action: 'set-flags', profile: 'birch', keepRunning: true }),
+      chromeProfileIntent({ action: 'set-flags', profile: 'birch', allowSync: true }),
     ).toBeNull()
     expect(
-      ChromeLedgerProposal.safeParse({ action: 'set-flags', profile: 'birch', keepRunning: true })
+      ChromeLedgerProposal.safeParse({ action: 'set-flags', profile: 'birch', allowSync: true })
         .success,
     ).toBe(false)
   })

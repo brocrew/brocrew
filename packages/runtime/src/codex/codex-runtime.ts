@@ -90,7 +90,6 @@ import {
   assertCodexSqliteHomeContained,
   codexAccountIn,
   codexAccountInNow,
-  signInTagOf,
   type AuthHealth,
   CodexRefusedItsSignInError,
   codexCopyIdentityIn,
@@ -104,7 +103,7 @@ import { endsOpenSubAgents, OpenSubAgents } from '../internal/open-sub-agents'
 import { RequestBroker } from '../internal/request-broker'
 import { isProviderWork } from '../internal/provider-work'
 import { SessionMachine } from '../internal/session-machine'
-import { isReasoning, StallWatchdog, stallNotice } from '../internal/stall-watchdog'
+import { StallWatchdog, stallNotice } from '../internal/stall-watchdog'
 import {
   RateLimitWatch,
   codexToolAnswerParts,
@@ -178,7 +177,7 @@ function savedKeyTagIn(home: string): string | null {
     if (!stat.isFile() || stat.size > 256) return null
     const revision = (JSON.parse(readFileSync(file, 'utf8')) as { setAt?: unknown }).setAt
     return typeof revision === 'number' && Number.isSafeInteger(revision) && revision >= 0
-      ? signInTagOf(`brobot-api-key:${revision}`)
+      ? `api-revision:${revision}`
       : null
   } catch {
     return null
@@ -2710,7 +2709,9 @@ export class CodexSessionHandle implements SessionHandle {
   private currentStatus: SessionStatus = 'idle'
   /** The current local↔provider turn binding, or null between turns (029, 023 P1-C). */
   private currentTurn: CodexTurn | null = null
-  private managedPluginsChecked = false
+  private managedPluginsChecked: string | undefined
+  private managedPluginObservationVersion = 0
+  private managedPluginFailureReported = false
   private managedPluginWait: {
     localId: CodexTurn['localId']
     controller: AbortController
@@ -3648,7 +3649,7 @@ export class CodexSessionHandle implements SessionHandle {
   signInTag(): string | null {
     const account = this.launchAccount
     if (account === 'api-key') return this.launchKeyTag
-    return account === null || account === undefined ? null : signInTagOf(account)
+    return account === null || account === undefined ? null : `account:${account}`
   }
 
   /**
@@ -3914,31 +3915,8 @@ export class CodexSessionHandle implements SessionHandle {
     })
   }
 
-  /** Keep the watchdog in step with the turn: any event is progress; a terminal ends the watch. */
-  private trackProgress(event: RuntimeEvent): void {
-    if (event.type === 'turn' || (event.type === 'session' && event.state === 'ended')) {
-      this.stallWatchdog.stop()
-      return
-    }
-    if (event.type === 'status') {
-      if (event.state === 'working') this.stallWatchdog.notice()
-      else this.stallWatchdog.stop()
-      return
-    }
-    // The stall notice itself is not provider progress: counting it would re-arm the watchdog and
-    // forget that the silence followed reasoning.
-    if (event.type === 'error' && event.stall) return
-    // ⚠️ **`hasProviderWork`, and without it 123 would ship a false stall notice** (found while
-    // wiring it). The watchdog is armed off `status: working`, which now covers a burst with no turn
-    // behind it — but progress was still counted only for a turn, so a burst that worked steadily
-    // for two minutes would have gone quiet-by-definition and raised *"no activity for 120s"* over
-    // an agent that had not stopped for a moment. The watchdog measures silence, and this is the
-    // line that decides what counts as not-silence.
-    if (this.machine.hasProviderWork) this.stallWatchdog.notice(isReasoning(event))
-  }
-
   private deliver(event: RuntimeEvent): void {
-    this.trackProgress(event)
+    this.stallWatchdog.progress(event, this.machine.hasProviderWork)
     // ⚑ **Where the app learns the provider is working with no turn open** (123). Codex correlates
     // almost everything to a thread turn, so this fires far less often here than on Claude — the
     // live corpus holds 18 out-of-turn bursts and every one of them is Claude's. It is wired anyway,
@@ -5896,32 +5874,76 @@ export class CodexSessionHandle implements SessionHandle {
     servers: readonly ManagedPluginMcpServer[],
   ): Promise<readonly string[] | undefined> {
     if (!this._ref || this.status() !== 'idle') return undefined
-    return failedManagedPluginConnections(
+    const scope = this.managedPluginObservationScope()
+    const version = ++this.managedPluginObservationVersion
+    const checked = this.managedPluginsChecked
+    // Until this reading settles, the next explicit turn must observe for itself.
+    this.managedPluginsChecked = undefined
+    const failed = await failedManagedPluginConnections(
       this.transport,
       this._ref.sessionId,
       servers.map((server) => server.name),
     )
+    if (
+      !this.isShuttingDown &&
+      this.status() === 'idle' &&
+      this.managedPluginObservationVersion === version &&
+      this.managedPluginObservationScope() === scope
+    )
+      // A late reply cannot restore a fast path invalidated by a newer turn.
+      this.managedPluginsChecked = failed?.length === 0 ? checked : undefined
+    return failed
+  }
+
+  /** Set before each turn by the managed session; until then, the served routes it was given. */
+  private managedPluginsAwaited?: readonly string[]
+
+  awaitManagedPlugins(names: readonly string[]): void {
+    const configured = new Set(this.managedPluginMcp?.map((server) => server.name))
+    this.managedPluginsAwaited = names.filter((name) => configured.has(name))
+  }
+
+  private awaitedManagedPlugins(): readonly string[] {
+    return (
+      this.managedPluginsAwaited ??
+      this.managedPluginMcp?.filter((server) => !server.retained).map((server) => server.name) ??
+      []
+    )
+  }
+
+  private managedPluginObservationScope(): string {
+    return JSON.stringify([this._ref?.sessionId, [...this.awaitedManagedPlugins()].sort()])
   }
 
   private startAfterManagedPlugins(localId: CodexTurn['localId'], dispatch: () => void): void {
-    if (this.managedPluginsChecked || !this.managedPluginMcp?.length) {
+    this.managedPluginObservationVersion++
+    const scope = this.managedPluginObservationScope()
+    // A route kept while its plugin is starting is configured but never awaited here.
+    const served = this.awaitedManagedPlugins()
+    if (this.managedPluginsChecked === scope || !served.length) {
       dispatch()
       return
     }
-    this.managedPluginsChecked = true
     const waiting = { localId, controller: new AbortController() }
     this.managedPluginWait = waiting
     void waitForManagedPluginTools(
       this.transport,
       this._ref!.sessionId,
-      this.managedPluginMcp.map((server) => server.name),
+      served,
       waiting.controller.signal,
     ).then((outcome) => {
       if (this.managedPluginWait !== waiting) return
       this.managedPluginWait = null
-      if (this.isShuttingDown || this.currentTurn?.localId !== localId || outcome === 'cancelled')
+      if (
+        this.isShuttingDown ||
+        this.currentTurn?.localId !== localId ||
+        this.managedPluginObservationScope() !== scope ||
+        outcome === 'cancelled'
+      )
         return
-      if (outcome !== 'ready')
+      if (outcome === 'ready') this.managedPluginsChecked = scope
+      else if (!this.managedPluginFailureReported) {
+        this.managedPluginFailureReported = true
         this.emit(
           wrapUnknown(
             'codex',
@@ -5935,6 +5957,7 @@ export class CodexSessionHandle implements SessionHandle {
             'managed-plugin/discovery',
           ),
         )
+      }
       dispatch()
     })
   }
@@ -5943,7 +5966,7 @@ export class CodexSessionHandle implements SessionHandle {
     const waiting = this.managedPluginWait
     if (!waiting) return
     this.managedPluginWait = null
-    this.managedPluginsChecked = false
+    this.managedPluginsChecked = undefined
     waiting.controller.abort()
   }
 
@@ -6650,6 +6673,7 @@ function questionText(params: unknown): string {
  */
 export class CodexRuntime implements AgentRuntime {
   readonly provider = 'codex' as const
+  readonly canRecreateMissingUnusedSession = true
   private readonly transportFactory: TransportFactory
   private readonly authHealth: ((providerHome: string) => AuthHealth) | undefined
 
@@ -6786,6 +6810,7 @@ export class CodexRuntime implements AgentRuntime {
     try {
       // A malformed thread/start now throws from begin() (empty/missing id) —
       // close the transport so the spawned app-server can't leak, then reject.
+      opts.onSessionCreated?.(handle)
       await handle.begin('started', opts.model, opts.systemHint, bootSettled)
       // Asked AFTER the await, because that is the interval it is about. A cancel that landed during
       // the handshake has already closed the transport above; this is what stops a dead handle being

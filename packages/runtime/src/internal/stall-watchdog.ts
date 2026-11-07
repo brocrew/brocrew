@@ -87,6 +87,29 @@ export class StallWatchdog {
     }, this.timeoutMs)
   }
 
+  /** Keep the watchdog in step with the turn: any event is progress; a terminal ends the watch. */
+  progress(event: RuntimeEvent, hasProviderWork: boolean): void {
+    if (event.type === 'turn' || (event.type === 'session' && event.state === 'ended')) {
+      this.stop()
+      return
+    }
+    if (event.type === 'status') {
+      if (event.state === 'working') this.notice()
+      else this.stop()
+      return
+    }
+    // The stall notice itself is not provider progress: counting it would re-arm the watchdog and
+    // forget that the silence followed reasoning.
+    if (event.type === 'error' && event.stall) return
+    // ⚠️ **`hasProviderWork`, and without it 123 would ship a false stall notice** (found while
+    // wiring it). The watchdog is armed off `status: working`, which now covers a burst with no turn
+    // behind it — but progress was still counted only for a turn, so a burst that worked steadily
+    // for two minutes would have gone quiet-by-definition and raised *"no activity for 120s"* over
+    // an agent that had not stopped for a moment. The watchdog measures silence, and this is the
+    // line that decides what counts as not-silence.
+    if (hasProviderWork) this.notice(isReasoning(event))
+  }
+
   /** The turn is over (terminal, interrupted, closed): stop watching. Idempotent. */
   stop(): void {
     if (this.handle !== null) {

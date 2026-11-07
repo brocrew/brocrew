@@ -23,7 +23,7 @@
 export type Arm = 'early' | 'late' | 'none'
 
 /** One `turn/interrupt` the product wrote, and what came back — `ok`, Codex's error, or `pending`. */
-export interface InterruptSent {
+interface InterruptSent {
   /** ms after this turn's `turn/start` was written */
   readonly sentAt: number
   readonly answer: string

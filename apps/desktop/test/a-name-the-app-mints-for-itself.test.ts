@@ -1,3 +1,5 @@
+import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
+import type { SessionInstructions } from '../src/shared/instruction-contracts'
 import { performance } from 'node:perf_hooks'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
@@ -10,7 +12,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
@@ -20,7 +21,6 @@ import {
   agentName,
   type AgentIdentity,
   type RuntimeEventMessage,
-  type SessionInstructions,
 } from '../src/shared/runtime-ipc'
 import { HUMAN_NAMES, aNameForANewAgent } from '../src/shared/human-names'
 
@@ -167,9 +167,7 @@ describe('538 · a name the app mints for itself', () => {
       () =>
         new RuntimeHost({
           store,
-          discoverSessions: NO_DISCOVERY,
-          nativeTranscriptPath: () => null,
-          exportDirectory: () => join(userData, 'exports'),
+          ...neutralHostDeps(() => userData),
           createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions }),
           prepareProviderHome: (provider: Provider, profileId?: string) => {
             const home = join(
@@ -186,13 +184,7 @@ describe('538 · a name the app mints for itself', () => {
           resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
           newSessionId: () => `sess_${++counter}`,
           now: tick,
-          readProviderConfig: (provider, home) => ({
-            home,
-            homeEnv: 'CLAUDE_CONFIG_DIR',
-            model: 'm',
-            authNote: null,
-            files: [],
-          }),
+          readProviderConfig: fixtureProviderConfig,
           readInstructions: () => ({
             instructions: NOTHING_INJECTED,
             systemHint: undefined,

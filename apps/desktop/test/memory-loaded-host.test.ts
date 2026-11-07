@@ -1,3 +1,5 @@
+import type { MemoryLoadedEvent, TranscriptEvent } from '../src/shared/conversation-events'
+import type { SessionInstructions } from '../src/shared/instruction-contracts'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -8,14 +10,9 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import type {
-  MemoryLoadedEvent,
-  RuntimeEventMessage,
-  SessionInstructions,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { neutralHostDeps } from './lib/host-fixture'
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
@@ -115,9 +112,7 @@ describe('332 · the row that says how the conversation opened', () => {
           return store.append(sessionId, ordinal, event, at)
         },
       },
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       // ⚠️ **One runtime per provider, HELD** — a fresh `FakeRuntime` per call cannot resume a
       // session it never issued, and the resume tests below are the point of the file.
       createRuntime: (provider: Provider) => {

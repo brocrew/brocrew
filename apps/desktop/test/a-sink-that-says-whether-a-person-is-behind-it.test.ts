@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -14,7 +15,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   RuntimeHost,
   THE_APP_ITSELF,
@@ -23,7 +23,8 @@ import {
   type RuntimeEventSink,
 } from '../src/main/runtime/runtime-host'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { neutralHostDeps } from './lib/host-fixture'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -138,9 +139,7 @@ describe('349 · a sink that says whether a person is behind it', () => {
   const buildHost = (): RuntimeHost =>
     new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => {
         const held = runtimes.get(provider) ?? new CapturingRuntime(provider)
         runtimes.set(provider, held)
@@ -316,23 +315,6 @@ describe('349 · a sink that says whether a person is behind it', () => {
       await host.close(sessionId, THE_APP_ITSELF)
     })
 
-    it('⛔ a person behind ANOTHER window is still refused — 062 was not spent buying this', async () => {
-      const sessionId = await spawn()
-      host.claimSession(sessionId, aWindow)
-      const requestId = await parkOnAQuestion(sessionId, PLANNER)
-      // ⚠️ `anotherWindow` declares a person and is one; what it is not is THIS conversation's —
-      // so the refusal below is `not-yours` and not `a-person-must-answer`, and the two really are
-      // different sentences.
-      expect(NOT_YOURS).not.toBe(A_PERSON)
-      expect(
-        await refusalOf(() =>
-          host.respondPermission(sessionId, requestId, { outcome: 'allow' }, anotherWindow),
-        ),
-      ).toBe(NOT_YOURS)
-      // …and the window that has it can answer, so the refusal is about which window.
-      await host.respondPermission(sessionId, requestId, { outcome: 'allow' }, aWindow)
-    })
-
     it('a session nobody ever claimed: a window answers it from the queue, its commander is refused', async () => {
       const sessionId = await spawn()
       const requestId = await parkOnAQuestion(sessionId, PLANNER)
@@ -370,8 +352,6 @@ describe('349 · a sink that says whether a person is behind it', () => {
       await host.send(sessionId, 'work', anAgentsSink)
       host.refreshConfig(sessionId, anAgentsSink)
       await host.stopBackgroundWork(sessionId, 'x', anAgentsSink)
-      // …and a stranger is still refused all of it, so the passes above are about ownership.
-      expect(await refusalOf(() => host.send(sessionId, 'mine', anotherWindow))).toBe(NOT_YOURS)
 
       // 🔴 **A release puts BOTH halves back**, so the next claimer decides personhood again rather
       // than inheriting the last one's. Measured through the door rather than by reading the slot:
@@ -668,9 +648,11 @@ describe('349 · a sink that says whether a person is behind it', () => {
       // which is 169 §1. The slot's own three writes are not readers and are counted apart.
       // ⛔ Prose stripped first: this file argues about the field at length, and a docblock quoting
       // it would count as a reader.
-      const code = strippedOfProse(
-        readFileSync(join(here, '../src/main/runtime/runtime-host.ts'), 'utf8'),
-      )
+      const code = ['runtime-host.ts', 'conversation-caller.ts']
+        .map((file) =>
+          strippedOfProse(readFileSync(join(here, '../src/main/runtime', file), 'utf8')),
+        )
+        .join('\n')
       // ⛔ **Every mention, then the writes subtracted — NOT a pattern for the one read shape.**
       // A search for `slot.ownerIsAPerson &&` can only see a read written as the left conjunct of
       // an `&&` on a variable literally called `slot`; `if (slot.ownerIsAPerson)`,

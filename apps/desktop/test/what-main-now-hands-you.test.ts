@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -17,7 +18,7 @@ import {
   NEW_AGENT,
   WHERE_AGENTS_ARE_CREATED,
 } from '../src/renderer/src/lib/where-agents-are-created'
-import type { RuntimeBridge, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeBridge } from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 678 · Draw what main now hands you — the folds, the Events tab, and the two censuses

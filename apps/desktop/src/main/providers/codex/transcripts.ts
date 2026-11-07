@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../../shared/conversation-events'
 import { splitQualified, CODEX_TOOL_NAMING } from '@brobot2/runtime'
 import { imageResolver } from './images'
 import { scanRetention } from './retention'
@@ -8,7 +9,7 @@ import { join } from 'node:path'
 import { localFields } from '../../../shared/local-time'
 import { importCodexRollout } from './import-transcript'
 import { nativePath, ownsRecord } from './native-record'
-import type { TranscriptEvent } from '../../../shared/runtime-ipc'
+
 import type { TranscriptPolicy } from '../transcript-policy'
 function eventForDisplay(event: TranscriptEvent): TranscriptEvent {
   if (

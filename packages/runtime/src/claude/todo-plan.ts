@@ -46,7 +46,7 @@ export type TodoWriteTool = (typeof TODO_WRITE_TOOLS)[number]
 export const TODO_READ_TOOLS = ['TaskList', 'TaskGet'] as const
 
 /** A todo tool that only reads the list. Named for the same reason {@link TodoWriteTool} is. */
-export type TodoReadTool = (typeof TODO_READ_TOOLS)[number]
+type TodoReadTool = (typeof TODO_READ_TOOLS)[number]
 
 /** Any tool whose entire effect is the agent's own checklist. */
 export type TodoTool = TodoWriteTool | TodoReadTool

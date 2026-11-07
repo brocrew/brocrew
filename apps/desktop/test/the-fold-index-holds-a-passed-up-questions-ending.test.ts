@@ -22,6 +22,7 @@ import {
 import { listCheckpoints } from '../src/main/recovery/checkpoint'
 import { inspect, type CoordinatorDeps } from '../src/main/recovery/coordinator'
 import { databaseFile } from '../src/main/recovery/layout'
+import { checkTheCopyHere } from './helpers/check-the-copy-here'
 
 /**
  * Migration `0009` · **the fold index holds a passed-up question's ending** — it drops and creates
@@ -299,6 +300,7 @@ describe('0009 · the copy the start-up check makes before it', () => {
     const deps: CoordinatorDeps = {
       userData,
       buildMigrationsFolder: real,
+      verifyCopy: checkTheCopyHere,
       appVersion: '0.1.0',
       build: null,
       packaged: false,

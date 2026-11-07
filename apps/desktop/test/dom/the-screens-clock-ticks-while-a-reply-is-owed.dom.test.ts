@@ -1,12 +1,13 @@
-import { afterEach, describe, expect, it } from 'vitest'
-import type { AttentionRequest } from '../../src/renderer/src/lib/attention'
-import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import type {
   LedgerWalk,
   LedgerWalkKind,
   PersonsDecision,
   PersonsQuestion,
-} from '../../src/shared/questions'
+} from '../../src/shared/question-contracts'
+import { afterEach, describe, expect, it } from 'vitest'
+import type { AttentionRequest } from '../../src/renderer/src/lib/attention'
+import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
+
 import type { WaitingOnWhoWrote } from '../../src/shared/waiting-on-who-wrote'
 
 /**

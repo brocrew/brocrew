@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { checkOnly, KNOWN_FAILURES } from '../coverage-gate.mjs'
+import { checkOnly } from '../coverage-gate.mjs'
 import { COVERAGE_AREAS, COVERAGE_METRICS } from '../lib/coverage-floors.mjs'
 import { areaOf, shippedSources } from '../lib/coverage-check-only.mjs'
 
@@ -18,7 +18,7 @@ import { areaOf, shippedSources } from '../lib/coverage-check-only.mjs'
  *    declarations or the generated Codex protocol — and each belongs to one floor row;
  *  - ⛔ a row below its floor fails (exit 1) and is named, beside the rows that pass;
  *  - ⛔ a shipped source the measurement never reached fails (exit 1) rather than counting as zero;
- *  - ⛔ a failed test beyond the known census pair is exit 2 and writes no raised floors;
+ *  - ⛔ a failed test is exit 2 and writes no raised floors;
  *  - ⚑ a clean pass writes the raised floors and nothing inside the repository.
  */
 
@@ -211,8 +211,7 @@ describe('a measurement against the committed floors', () => {
     expect(result.raised).toBeNull()
   })
 
-  it('⚑ a test beyond the known census pair is exit 2 with no raised floors; the known pair is not', async () => {
-    const [file, name] = JSON.parse([...KNOWN_FAILURES][0])
+  it('⛔ a failed test is exit 2 with no raised floors', async () => {
     const stray = {
       ...report([{ status: 'failed', name: 'something else' }]),
     }
@@ -228,25 +227,6 @@ describe('a measurement against the committed floors', () => {
     expect(result.exitCode).toBe(2)
     expect(result.unknown).toEqual([['scripts/test/something.test.mjs', 'something else']])
     expect(result.raised).toBeNull()
-
-    const known = {
-      numPassedTests: 0,
-      numFailedTests: 1,
-      numPendingTests: 0,
-      numTodoTests: 0,
-      testResults: [
-        { name: join(root, file), assertionResults: [{ status: 'failed', fullName: name }] },
-      ],
-    }
-    writeFileSync(reportFile, JSON.stringify(known))
-    const accepted = await checkOnly({
-      repo: root,
-      coverageFinal,
-      testReports: [reportFile],
-      out: join(out, 'known-result'),
-    })
-    expect(accepted.exitCode).toBe(0)
-    expect(accepted.unknown).toEqual([])
   })
 
   it('⛔ a test file that fails to load, with no failed assertion, is an unknown failure: exit 2, no raised floors', async () => {

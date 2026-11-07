@@ -8,14 +8,9 @@ let made = 0
 </script>
 
 <script setup lang="ts">
+import type { ModelList, ReportedModel } from '../../../shared/model-choice-contracts'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import type {
-  CapabilityStatus,
-  ModelList,
-  Provider,
-  ProviderCapabilityMap,
-  ReportedModel,
-} from '../../../shared/runtime-ipc'
+import type { CapabilityStatus, Provider, ProviderCapabilityMap } from '../../../shared/runtime-ipc'
 import { PROVIDER_NAME } from '../../../shared/runtime-ipc'
 import { MODEL_CHOICE_SAID, sameModel, theListedRow } from '../../../shared/model-choice'
 import { modelField } from '../lib/model-field'

@@ -1,3 +1,5 @@
+import type { LaunchedEvent, TranscriptEvent } from '../src/shared/conversation-events'
+import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -54,14 +56,10 @@ import {
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { SNAPSHOT_FILES, snapshotFor } from '../src/main/provider-snapshots'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
-import type {
-  LaunchedEvent,
-  RuntimeEventMessage,
-  TranscriptEvent,
-  UserTurnEvent,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 import { howYouWork } from './lib/the-core'
+import { fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * # F093 · what an agent was given — recorded with each launch and each turn (R2), read in one go
@@ -145,13 +143,7 @@ describe('F093 · what an agent was given', () => {
       providerHomesRoot: () => join(userData, 'provider-homes'),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       whichBuild: () => ({ id: 'abc1234', commit: 'abc1234def', dirty: false, schema: 7 }),
       // ⚑ `main/index.ts`'s own wiring: the snapshots this build carries.
       providerSnapshot: (provider, model) => snapshotFor(provider, model),

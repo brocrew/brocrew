@@ -1,3 +1,4 @@
+import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
@@ -8,7 +9,6 @@ import type {
   AgentIdentities,
   AgentIdentity,
   AgentProviderSet,
-  ModelList,
   RuntimeBridge,
 } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, type Mounted } from './harness'

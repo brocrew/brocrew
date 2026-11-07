@@ -1,3 +1,6 @@
+import { fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/host-fixture'
+import { waitFor } from './lib/f093-host'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -9,9 +12,8 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import type { Caller, RuntimeEventSink } from './helpers/giver-notice-host'
+import type { Caller } from './helpers/giver-notice-host'
 import { agentCallerId, agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import {
@@ -24,8 +26,8 @@ import {
 import { messageNamingThePiece } from '../src/main/runtime/reply-rails'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/runtime-ipc'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+
+import { expectQueueFactsExcludeBriefs } from './helpers/queue-facts-source'
 import { agentName } from '../src/shared/runtime-ipc'
 import type { WhereTheSenderStands } from '../src/main/runtime/turn-origin'
 import { theOwnerOf } from '../src/shared/piece-called'
@@ -101,25 +103,6 @@ const codeOnly = (source: string): string =>
 const hostSource = (): string =>
   codeOnly(readFileSync(join(mainRoot, 'runtime/runtime-host.ts'), 'utf8'))
 
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 class ProviderDouble extends FakeRuntime {
   constructor(
     provider: Provider,
@@ -153,9 +136,7 @@ describe('414 · the origin a model is told', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
@@ -167,13 +148,7 @@ describe('414 · the origin a model is told', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built
@@ -1053,14 +1028,9 @@ describe('414 · the origin a model is told', () => {
      * `session.handle.send(` in `handTogetherToProvider`. ⛔ A door and not the handover, because
      * it is the second place callers' words reach a provider, so it is counted with the others;
      * ⚑ its frame is composed a few lines above it, one message at a time, and is pinned there
-     * ({@link theTurnOfSeveral}). Spelled as the host writes it, over four lines.
+     * ({@link theTurnOfSeveral}). Spelled as the host writes it; the original send promise is preserved by the lead guard.
      */
-    const THE_TURN_OF_SEVERAL = [
-      'session.handle.send(',
-      '      this.withWhatThisLifeOwes(session, turn, currentPiece),',
-      '      this.stampForATurnOf(messages),',
-      '    )',
-    ].join('\n')
+    const THE_TURN_OF_SEVERAL = 'session.handle.send(words, this.stampForATurnOf(messages))'
     /** The body of {@link handToProvider}, from its signature to its closing brace. */
     const theHandover = (source: string): string => {
       const opens = source.indexOf('\n  private handToProvider(')
@@ -1140,6 +1110,12 @@ describe('414 · the origin a model is told', () => {
       expect(framing).toHaveLength(1)
       expect(framing[0]).toContain('queued.origin ?? null,')
       expect(together).not.toContain('this.originOf(')
+      expect(together).toContain(
+        'const words = this.withWhatThisLifeOwes(session, turn, currentPiece)',
+      )
+      expect(together).toContain(
+        'const sent = this.keepLeadWhenUnsent(session, owedLead, owedLeadIs, () =>',
+      )
       expect(balancedCalls(together, 'session.handle.send(')).toEqual([THE_TURN_OF_SEVERAL])
       expect(theBodyOf(hostSource(), 'stampForATurnOf')).toContain(
         'this.stampFor(queued.origin ?? null, handed.paths)',
@@ -1236,17 +1212,8 @@ describe('414 · the origin a model is told', () => {
       // **and `rebriefing`**, a new brief of one (`update_work`'s alone). ⚑ The rail is spelled
       // ONCE, as `FactsAQueueCarries`, each key beside its `never`, and `queueMessage` takes that
       // type rather than an inline copy of it.
-      expect(source).toContain(
-        [
-          "type FactsAQueueCarries = Omit<TurnFacts, 'giving' | 'rebriefing'> & {",
-          '  readonly giving?: never',
-          '  readonly rebriefing?: never',
-          '}',
-        ].join('\n'),
-      )
-      const queueMessageTakes =
-        /\n {2}queueMessage\(([\s\S]*?)\n {2}\): Promise<QueueOutcome>/.exec(source)?.[1] ?? ''
-      expect(queueMessageTakes).toContain('facts: FactsAQueueCarries = {},')
+      const records = codeOnly(readFileSync(join(mainRoot, 'runtime/message-records.ts'), 'utf8'))
+      expectQueueFactsExcludeBriefs(records, source)
       // ⛔ **A task id says nothing about whose words a turn is**, and a signature that took one
       // could be read as though it might.
       //

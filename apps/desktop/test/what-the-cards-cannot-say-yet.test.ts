@@ -1,4 +1,13 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import { waitFor } from './lib/f093-host'
+import type { HandedPath } from '../src/shared/attachment-contracts'
+import type {
+  MessageSentEvent,
+  QueuedMessageEvent,
+  TranscriptEvent,
+  UnqueuedMessageEvent,
+} from '../src/shared/conversation-events'
+import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
+import { mkdtempSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,24 +18,18 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type {
-  HandedPath,
-  MessageSentEvent,
   QueuedMessageDisclosure,
-  QueuedMessageEvent,
   RuntimeEventMessage,
   SessionLivenessMessage,
-  TranscriptEvent,
-  UnqueuedMessageEvent,
-  UserTurnEvent,
 } from '../src/shared/runtime-ipc'
 import { GO_AHEAD_MESSAGE } from '../src/renderer/src/lib/plan-mode'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
+import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # 687 — what the cards cannot say yet
@@ -52,14 +55,6 @@ import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 /** A latch a test opens by hand. */
 const latch = (): { promise: Promise<void>; open: () => void } => {
@@ -190,15 +185,9 @@ describe('687 · what the cards cannot say yet', () => {
   function buildHost(over: SessionStore): RuntimeHost {
     const built = new RuntimeHost({
       store: over,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new Watching(provider),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,

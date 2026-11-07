@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './host-fixture'
 import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -21,7 +22,6 @@ import {
 import { type AppDatabase, openDatabase } from '../../src/main/db/connection'
 import { applyMigrations } from '../../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../../src/main/db/session-store'
-import { NO_DISCOVERY } from '../../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../../src/main/runtime/scratch-cwd'
 import type { RuntimeEventMessage, SessionLivenessMessage } from '../../src/shared/runtime-ipc'
@@ -303,9 +303,7 @@ export function aHostOverScriptedCodex(
   }
   const host = new RuntimeHost({
     store,
-    discoverSessions: NO_DISCOVERY,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => join(userData, 'exports'),
+    ...neutralHostDeps(() => userData),
     createRuntime,
     prepareProviderHome: (provider: Provider, profileId?: string) => {
       const home = join(userData, 'provider-homes', profileId ?? 'default', provider)

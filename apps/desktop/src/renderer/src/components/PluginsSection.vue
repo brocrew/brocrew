@@ -47,10 +47,6 @@ let alive = true,
   observer: ResizeObserver | undefined
 /** Null until the list answers; the first answer waits for the plugin service to start. */
 const listState = ref<PluginListState | null>(null)
-/** After this long, the loading line also says why the first list can be slow. */
-const SLOW_LIST_MS = 10_000
-const listSlow = ref(false)
-let slowTimer: ReturnType<typeof setTimeout> | undefined
 const listFailureReason = ref<PluginListFailureReason>()
 const refreshFailed = ref(false)
 let healthTimer: ReturnType<typeof setTimeout> | undefined
@@ -103,6 +99,11 @@ const listMessage = computed(() => {
   }
 })
 const unavailable = 'Plugin unavailable. Try again.'
+/** The refusal with what actually went wrong, when main said so. */
+function refusal(answer: PluginSettingsReply): string {
+  const detail = !answer.ok && 'detail' in answer ? answer.detail : undefined
+  return detail && detail !== unavailable ? `${unavailable} ${detail}` : unavailable
+}
 const failedRetries = ref(new Set<string>())
 const cannotStart = (card: PluginCard) => card.state === 'Unavailable'
 async function restartChrome() {
@@ -114,7 +115,7 @@ async function restartChrome() {
   if (!alive) return
   busy.value = false
   if (answer.ok && answer.cards) cards.value = answer.cards
-  else error.value = unavailable
+  else error.value = refusal(answer)
 }
 async function retry(card: PluginCard) {
   if (busy.value) return
@@ -138,10 +139,6 @@ async function request(input: PluginSettingsRequest): Promise<PluginSettingsRepl
     return failure
   }
 }
-/**
- * The part of the stage inside the window. A window narrower than the app's frame scrolls the frame
- * sideways, so the stage can run past either edge; the plugin's screen covers only what is seen.
- */
 function bounds() {
   const box = stage.value?.getBoundingClientRect()
   if (!box) return null
@@ -237,7 +234,7 @@ async function preview(action: 'install' | 'update', card: PluginCard) {
     error.value =
       !answer.ok && 'mutationFailure' in answer && answer.mutationFailure
         ? pluginMutationFailureNotice(answer.mutationFailure)
-        : unavailable
+        : refusal(answer)
 }
 async function cancelReview() {
   reviews.value.clear()
@@ -288,7 +285,7 @@ async function change(kind: 'install' | 'update' | 'uninstall', card: PluginCard
     error.value =
       guarded && !answer.ok && 'mutationFailure' in answer && answer.mutationFailure
         ? pluginMutationFailureNotice(answer.mutationFailure)
-        : unavailable
+        : refusal(answer)
     if (guarded) {
       const listed = await request({ kind: 'list' })
       if (alive && listed.ok && listed.cards) cards.value = listed.cards
@@ -309,11 +306,7 @@ onMounted(async () => {
     }) ?? (() => {})
   window.addEventListener('resize', move)
   window.addEventListener('scroll', move, true)
-  slowTimer = setTimeout(() => {
-    listSlow.value = true
-  }, SLOW_LIST_MS)
   const answer = await request({ kind: 'list' })
-  clearTimeout(slowTimer)
   if (!alive) return
   if (answer.ok && answer.cards) {
     cards.value = answer.cards
@@ -327,7 +320,6 @@ onMounted(async () => {
 })
 onUnmounted(() => {
   alive = false
-  clearTimeout(slowTimer)
   clearTimeout(healthTimer)
   generation++
   configurationAbort?.abort()
@@ -367,9 +359,6 @@ onUnmounted(() => {
       data-cy="plugins-list-loading"
     >
       <p><span class="spinner" aria-hidden="true"></span>Loading plugins…</p>
-      <p v-if="listSlow" class="plugins-loading-slow" data-cy="plugins-list-slow">
-        This can take a little while after BroCrew starts.
-      </p>
     </div>
     <p v-if="listMessage" role="status" class="plugin-error" data-cy="plugins-list-status">
       {{ listMessage }}
@@ -800,9 +789,6 @@ button:disabled {
   align-items: center;
   gap: var(--space-4);
   margin: 0;
-}
-.plugins-loading .plugins-loading-slow {
-  padding-left: calc(14px + var(--space-4));
 }
 .spinner {
   width: 14px;

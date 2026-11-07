@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import TranscriptView from '../../src/renderer/src/components/TranscriptView.vue'
@@ -5,7 +6,7 @@ import AgentCard from '../../src/renderer/src/components/AgentCard.vue'
 import { facetsOfState } from '../../src/renderer/src/lib/agent-state'
 import { sessionPanel } from '../../src/renderer/src/lib/session-panel'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
+
 import { mount, unmountAll } from './harness'
 
 afterEach(unmountAll)

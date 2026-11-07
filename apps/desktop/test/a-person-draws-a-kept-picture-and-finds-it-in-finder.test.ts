@@ -1,3 +1,4 @@
+import { neutralHostDeps, syntheticProviderHome, fixtureProviderConfig } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -8,7 +9,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
 import {
   executeRuntimeCommand,
@@ -80,28 +80,16 @@ describe('D-032 · a person draws a kept picture or PDF, and finds any kept file
     const sessions = new FakeProviderSessions()
     return new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       ...(withResources ? { resourcesRoot: () => resourcesRoot(userData) } : {}),
       revealPath: (path: string) => void revealed.push(path),
       createRuntime: () => new FakeRuntime('claude', { sessions }),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   }
 
@@ -238,10 +226,14 @@ describe('D-032 · a person draws a kept picture or PDF, and finds any kept file
       expect(reasonOf(host.drawResourceForAPerson(at))).toBe('ok')
     })
 
-    it('⚑ bytes that changed are `changed`, and a file that is gone is `unreadable`', async () => {
+    it('draws locally edited bytes and still refuses a missing file', async () => {
       const changed = await mustKeep('changed.png', png(4, 4))
       writeFileSync(whereItIs(changed), png(5, 5))
-      expect(host.drawResourceForAPerson(changed)).toEqual({ ok: false, reason: 'changed' })
+      expect(host.drawResourceForAPerson(changed)).toMatchObject({
+        ok: true,
+        drawnAs: 'image/png',
+        bytes: new Uint8Array(png(5, 5)),
+      })
       const gone = await mustKeep('gone.png', png(6, 6))
       rmSync(whereItIs(gone))
       expect(host.drawResourceForAPerson(gone)).toEqual({ ok: false, reason: 'unreadable' })
@@ -276,10 +268,10 @@ describe('D-032 · a person draws a kept picture or PDF, and finds any kept file
       expect(JSON.stringify(shown)).not.toContain(userData)
     })
 
-    it('🔴 a file whose bytes changed is still shown, and the answer says so', async () => {
+    it('shows a locally edited file at the same path without a hash-change warning', async () => {
       const resource = await mustKeep('chart.png', png(1, 1))
       writeFileSync(whereItIs(resource), 'somebody edited it\n')
-      expect(host.revealResource(resource)).toEqual({ ok: true, changed: true })
+      expect(host.revealResource(resource)).toEqual({ ok: true, changed: false })
       expect(revealed).toEqual([whereItIs(resource)])
     })
 

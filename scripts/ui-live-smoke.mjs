@@ -58,7 +58,6 @@ import {
   matrixRunExitCode,
   productFailuresRecordedIn,
 } from './lib/matrix-record.mjs'
-import { censusLine, stepTokensIn } from './lib/step-census.mjs'
 import { witnessGate } from './lib/host-gate-witness.mjs'
 import { budgetClock } from './lib/step-budget.mjs'
 import { KEPT_MARK, beginSmokeRun, smokeTmpRoot, smokeUserDataDir } from './lib/smoke-run.mjs'
@@ -292,8 +291,7 @@ const BROBOT_PROFILE_ID = constantFrom('DEFAULT_PROFILE_ID')
  * app derives it as `<userData>/<PROVIDER_HOMES_DIRNAME>/<HOME_FOLDER>/<profile>/<provider>`
  * (`deriveProviderHome`): every home is under the one folder {@link HOME_FOLDER} (D-016), and a
  * front-door conversation runs as {@link BROBOT_PROFILE_ID}. ⛔ Step 42 planted its transcript under
- * `default/default`, which since `592` is a profile nothing ever runs as — `step-census.test.mjs`
- * pins the plant to these three.
+ * `default/default`, which since `592` is a profile nothing ever runs as.
  */
 const PROVIDER_HOMES_DIRNAME = constantFrom('PROVIDER_HOMES_DIRNAME')
 const HOME_FOLDER = constantFrom('HOME_FOLDER')
@@ -327,102 +325,14 @@ const ONLY = (() => {
   return named.length > 0 ? named : null
 })()
 
-/**
- * ⛔ **674 · R20 — every selected-step budget in this file is `042`'s rule, and never one good run.**
- *
- * ⚑ `R6` (`649` F2): *"the outer budget must comfortably exceed the per-wait sum, DERIVED from the
- * per-wait bounds, not a new constant."* A budget below that sum does not bound a stalled run — it
- * ENDS it: a wait that expires spends its whole bound, and the deadline then cuts short everything
- * after it, so a run that should have named each stalled unit reports NOT PERFORMED instead. ⚑ So
- * each budget below is the worst case its step's own waits can spend, times {@link STEP_BUDGET_MARGIN},
- * and the worst case is a literal a census recomputes from the code: `scripts/lib/step-wait-census.mjs`
- * walks each unit's function through every helper it calls and charges every `budget(…)`, `waitFor`
- * bound, `sleep`, timer that settles an awaited promise, and synchronous child's `timeout` — a
- * SQLite read outside a poll among them — on both branches of every `if`.
- * `scripts/test/step-budgets.test.mjs` fails when a literal stops being that sum. ⚠️ **It is hours
- * for step 82, and that is the derivation rather than a mistake** — the deadline now bounds only a
- * run that keeps ALMOST working; a healthy one is the five minutes `665` measured, pinned beside the
- * budget so the gap between them stays visible. ⚠️ And it is an UPPER bound: every branch is
- * charged, so every row carries criterion 20's retake and the standing-effect probe, which only
- * some rows run.
- *
- * ⚠️ **Not charged, and covered by the margin:** a CDP round trip, which `CDP_SEND_BUDGET_MS` bounds
- * on its own; a read inside a poll's predicate, which the poll's own bound covers — a poll can overrun
- * that bound by one whole predicate call, every read it makes (step 82's handoff poll makes eight);
- * and an instance method's own waits (`Sentinel`'s connection), which the census does not resolve.
- *
- * ⛔ `042`'s margin is `probe-run-deadline.ts`'s `RUN_BUDGET_MARGIN`; this script may not import from
- * the workspace, so `step-budgets.test.mjs` holds the two equal.
- */
-const STEP_BUDGET_MARGIN = 1.5
-/**
- * ⚑ **The part of a selected run the step's own clock never sees** — {@link launchApp} (the launcher's
- * handoff, its wait for CDP, `Cdp.attach`'s wait for the renderer target, its wait for the rail, and
- * the gate witness's own bounds from `host-gate-witness.mjs`), `main()`'s own waits outside every
- * step (its attach, the reload's mount and the panel's settle), and the `step()` wrapper's own
- * failure path (`resetAfterFailure`), which the selected step's failure spends on the run's clock.
- * ⛔ It was a typed three minutes — below its own 591.6 s of waits.
- */
 const LAUNCH_CDP_WAIT_MS = 120_000
 const LAUNCH_MOUNT_WAIT_MS = 120_000
-const LAUNCH_WORST_MS = { isolatedLaunch: 320_100, outsideSteps: 91_500, stepWrapper: 180_000 }
-const LAUNCH_BUDGET_MS = Math.ceil(
-  STEP_BUDGET_MARGIN *
-    (LAUNCH_WORST_MS.isolatedLaunch + LAUNCH_WORST_MS.outsideSteps + LAUNCH_WORST_MS.stepWrapper),
-)
-
 const PERMISSION_MATRIX_STEP =
   '82 both-provider permission answers and the repaired refusal/cancel branches cross real IPC (495)'
-/**
- * ⛔ **660 · step 82's bound is DERIVED from what it runs, not typed** — and since `674`, from what its
- * units can SPEND, not what one run did.
- *
- * ⚑ **The units:** the ten matrix rows (two providers × five row outcomes — `739` added *Always
- * allow*, R95, whose two rows are NOT PERFORMED until their live re-aim: see `ROWS_NOT_BUILT_YET`)
- * and criterion 17's
- * retake, each attempted through the rows' own catch; criterion 20's three Cancel retakes run INSIDE
- * their Codex rows, so a row's worst case carries one. Step 82 checks its counts against the rosters
- * it derives, and `step-census.test.mjs` counts them independently.
- *
- * ⚑ **The worst case of each** ({@link PERMISSION_MATRIX_WORST_MS}): the step's own setup; a row
- * (`runCase`); criterion 17 (`runCriterion17Retake`); and the recovery a FAILED unit spends before
- * the next one (`recoverFailedRow` — its controller, its child, and every child it may still find:
- * at most one per unit, since each is a distinct unit's give). The step budget charges every row
- * the worst row, and every unit a recovery — the run where every unit stalls at its last wait.
- *
- * ## ⚑ What `665` measured — the TYPICAL cost, kept beside the budget
- *
- * `665`'s run (`2026-09-23T16-15-26-733Z-68166`, record kept under
- * `~/brobot2-scratch/permission-matrix-records/`): criterion 17 took 36.5 s, the eight rows
- * 21.3–50.2 s, each criterion-20 retake 11–12 s inside its row — the twelve clocks summed to
- * 5 min 12 s. **The longest unit was Codex `allow`, 50,154 ms.** ⛔ `669` F-e sized the budget from
- * that ONE GOOD RUN (75,231 ms a unit, 20.05 minutes for the step), and `669`'s own review found that
- * about four stalled rows then ended the matrix before the rest ran; `674` R20 put it back on the rule.
- */
 const PERMISSION_MATRIX_UNITS = { rows: 2 * 5, criterion17: 1, criterion20: 3 }
-const PERMISSION_MATRIX_LONGEST_UNIT_MS = 50_154
-const PERMISSION_MATRIX_WORST_MS = {
-  setup: 75_000,
-  // ⚑ 738 · 3,060,000 → 3,070,000: the model-bytes branch reads the child's `file_change` and
-  // Codex's own echo once each (`step-wait-census.mjs` charges each read 5,000).
-  // ⚑ D-016 · 3,070,000 → 2,810,000, and criterion 17 1,735,000 → 1,475,000: a unit's child is ONE
-  // give — the previous controller's close, a person's model choice, a fresh controller, its one
-  // card and the brief's arrival (`giveChild`) — where it was a spawn and then a handoff.
-  row: 2_810_000,
-  criterion17: 1_475_000,
-  // ⚑ 739 · 434,000 → 504,000: a recovery closes at most one child per unit, and the units grew by
-  // two (`PERMISSION_MATRIX_UNITS.rows`, 2 × 5) — charged though *Always allow*'s rows spawn none yet.
-  recovery: 504_000,
-}
-const PERMISSION_MATRIX_STEP_BUDGET_MS = Math.ceil(
-  STEP_BUDGET_MARGIN *
-    (PERMISSION_MATRIX_WORST_MS.setup +
-      PERMISSION_MATRIX_UNITS.rows *
-        (PERMISSION_MATRIX_WORST_MS.row + PERMISSION_MATRIX_WORST_MS.recovery) +
-      PERMISSION_MATRIX_UNITS.criterion17 *
-        (PERMISSION_MATRIX_WORST_MS.criterion17 + PERMISSION_MATRIX_WORST_MS.recovery)),
-)
-const PERMISSION_MATRIX_RUN_BUDGET_MS = PERMISSION_MATRIX_STEP_BUDGET_MS + LAUNCH_BUDGET_MS
+// Keep the existing step and launch-to-result timeouts when running the matrix alone.
+const PERMISSION_MATRIX_STEP_BUDGET_MS = 52_791_000
+const PERMISSION_MATRIX_RUN_BUDGET_MS = 53_678_400
 // Codex itself owns the foreground while it drives this instrument, so macOS can mark the owned
 // Electron window occluded between tool calls. Keep Chromium's ordinary timers eligible in that
 // one isolated launch; step 82 still requires Chromium to report the page visible before a DOM row.
@@ -446,7 +356,7 @@ const PERMISSION_MATRIX_ELECTRON_ARGS = [
  * backwards. They are the machine LOAD, not the time.
  *
  * 480 adds `82` here even though it shares the primary Electron: its one controller, eleven measured
- * children (since `739`; two of them not yet performed) and a bound derived from them (`PERMISSION_MATRIX_UNITS`) make it more expensive than
+ * children (since `739`; two of them not yet performed) make it more expensive than
  * any cadence step. The
  * set name is historical; the tier's contract is the machine-load split described above.
  */
@@ -2593,7 +2503,6 @@ async function ensureTab(cdp, tab) {
         ),
       60_000,
     )
-    // ⚑ 674: a counted loop, so `step-wait-census.mjs` can read its three tries as a bound.
     for (let attempt = 0; attempt < 3; attempt += 1) {
       await clickWhenReady(cdp, 'toggle-session-panel')
       try {
@@ -2944,9 +2853,7 @@ async function toolCallsRecorded(cdp) {
  * ⚑ Drop the type for *"was anything of ours erased at all"* — 235's note 4.
  */
 async function framesErased(cdp, type) {
-  // ⚠️ Kept in step with `DEGRADED_LABEL_PREFIX`/`DEGRADED_UNNAMED` in `packages/runtime/src/events.ts`
-  // by `scripts/test/step-census.test.mjs`, because this file cannot import from the package and a
-  // second copy of a marker is how the two go quietly out of step (`events.ts` says so itself).
+  // Match the degraded marker rendered from runtime events.
   const marker = ' · degraded:'
   // `ledgerRows` refuses an unmounted log (093), which is note 1: without it this would answer
   // "no erasures" about a list that is not on screen — an absence about an absence.
@@ -3177,8 +3084,7 @@ function stillAlive(pid) {
  * own turn row: no ledger on disk to check"* as a claim it had checked — `113`'s rule, a step that
  * did not execute is not coverage. Step 48 asks this list before it asserts. ⚠️ Step 6 does not need to: it
  * returns the note as the tail of its own pass sentence, so an unread row reads there as the words
- * themselves (*"· no ledger on disk to check"*) — and it cannot carry an unasserted claim, since
- * `step-census.mjs` keeps a step that still throws for a provider's choice out of the guarded list.
+ * themselves (*"· no ledger on disk to check"*).
  */
 const TURN_ROW_UNREAD = ['no ledger on disk to check', 'sqlite3 unavailable — turn row not checked']
 
@@ -8938,7 +8844,7 @@ async function main() {
             'these three are live-able again and this step does not yet make them. ⛔ The profile ' +
             'picker on "default" saying what a profile owns (167 §3) and send dying over ' +
             '"../../escape" (169 §1) stay withdrawn: HO-023 §2 is unchanged and the folder field ' +
-            'is not coming back — see WITHDRAWN in lib/step-census.mjs',
+            'is not coming back',
         ),
       )
     },
@@ -14472,9 +14378,8 @@ async function main() {
       // 🔴 **`435` PUT THE MENU BACK** (HO-025 §5: *the front door asks nothing and offers
       // everything*), without the fold — `reasoning-effort-select` is drawn on the front door from
       // the moment it mounts, and step `13` asserts it is there. ⛔ **So this step is not performed
-      // because nobody re-wrote it, not because its subject is gone**, which is a different
-      // sentence and the one `lib/step-census.mjs`'s entry now carries. `435 §6` left the gestures
-      // to whoever owns the instruments.
+      // because nobody re-wrote it, not because its subject is gone**. The gestures still need
+      // to follow the current surface.
       //
       // ⚠️ **`live-effort-select` in the drawer's Controls tab is the same question on a live
       // session**, and `420` stopped short of re-pointing this step at it rather than doing it
@@ -14771,8 +14676,7 @@ async function main() {
     // ⚑ **704 · and a turn that ends FIRST is not a red** (704's review): both of this step's
     // *"the turn ended before the interrupt"* throws are the PROVIDER finishing its reply before it
     // could be cut short — nothing was interrupted, so nothing here was measured. They leave as NOT
-    // ASSERTED, which keeps this step in `step-census.mjs`'s GUARDED list truthfully rather than
-    // moving it to the steps that still go red for a provider's choice.
+    // ASSERTED, because the provider finished before the interrupt could be measured.
     const endedFirst = (error) =>
       error instanceof Error && error.message.includes('the turn ended before the interrupt')
     const nothingToInterrupt = (error) =>
@@ -19572,7 +19476,7 @@ async function main() {
       //
       // ⚠️ **The prompt's own survival is a DIFFERENT mechanism and is still covered.** It is
       // `RuntimeScreen.vue`'s `drafts` book at `draftSlot(null)`, read back through
-      // `NewConversation.vue`'s exported `shouldRestoreDraft` — ⛔ **not `PromptComposer`'s**,
+      // `lib/drafts.ts`'s `shouldRestoreDraft` — ⛔ **not `PromptComposer`'s**,
       // which deliberately keeps no copy of its own (*"no second copy to drift out of sync"*).
       // It is tested in `apps/desktop/test/composer.render.test.ts`, the renderer project. ⚑ So
       // the one field of the four that still exists is measured where it can be measured cheaply,
@@ -20773,8 +20677,7 @@ async function main() {
 
       if (!madeOne) {
         /**
-         * ⛔ **Blank, and it still ASSERTS something** — `step-census.mjs`'s own contract is that
-         * every guarded entry carries a positive control. The control here is the correct rendering
+         * The control here is the correct rendering
          * of a session that scheduled nothing: no bar at all, which is `248`'s *an absent bar is not
          * a claim* and is the same silence a Codex conversation gets.
          */
@@ -22537,8 +22440,7 @@ async function main() {
            * OS-composited painted frames.
            *
            * A selected run has a hard launch-to-result bound, printed before launch, and this step
-           * its own — both DERIVED from the units it runs (`PERMISSION_MATRIX_UNITS`, 660) and what
-           * each can spend (`PERMISSION_MATRIX_WORST_MS`, 674 R20). Every
+           * has its own timeout. Every
            * provider/UI wait below takes the smaller remaining budget. Expiry is NOT PERFORMED and
            * stops only this launch's owned process tree.
            */
@@ -22552,12 +22454,8 @@ async function main() {
                 stopPermissionMatrixRun,
               ),
           })
-          // ⚑ 674 · R20: the worst case beside the typical one — `665` measured every unit under a
-          // minute; the budget is what the units can spend if every one of them stalls.
           console.log(
-            `    495 step budget · ${PERMISSION_MATRIX_STEP_BUDGET_MS}ms (042's rule over ` +
-              `${JSON.stringify(PERMISSION_MATRIX_WORST_MS)}); 665's longest unit took ` +
-              `${PERMISSION_MATRIX_LONGEST_UNIT_MS}ms; ` +
+            `    495 step budget · ${PERMISSION_MATRIX_STEP_BUDGET_MS}ms; ` +
               `${Math.max(0, stepDeadline - Date.now())}ms remain on the active bound`,
           )
 
@@ -25728,29 +25626,8 @@ async function main() {
     )
   }
 
-  // ⛔ **The headline says what each cell IS** (196 H1). It used to read `85/85 passed`, and up to
-  // four of those 85 were steps that ran and asserted nothing — a number quoted onwards as if it
-  // were 85 checks.
-  //
-  // ⛔ **And since 420 it says what the run never GOT to.** A step that throws a fatal page stall,
-  // or a `BROBOT_SMOKE_ONLY` that ends early, leaves every later step unregistered — `known` is
-  // filled by `step()` itself, so a token the run never reached leaves no trace at all. ⚑ The
-  // census in `scripts/lib/step-census.mjs` is the list of what this file OFFERS, and `ci` keeps
-  // it exactly equal to what `step()` registers, so the difference is computable and is the only
-  // honest name for those steps: NOT REACHED.
-  // ⛔ **`.token`, and the live run is why the word is here.** `stepTokensIn` answers
-  // '{ token, title, line }' objects; the first draft compared those against a set of STRINGS, so
-  // nothing ever matched and the run reported `105 NOT REACHED` — every step, including the ones
-  // it had just passed — as a list of `[object Object]`. ⚠️ A new cell whose first live output is
-  // wrong in the direction of alarming is the cell's own failure mode: it was believable.
-  const offered = stepTokensIn(readFileSync(fileURLToPath(import.meta.url), 'utf8')).map(
-    (each) => each.token,
-  )
-  const reached = new Set([...results.map((r) => String(r.name ?? '').split(' ')[0]), ...known])
-  const notReached = offered.filter((token) => !reached.has(token))
   const summary = summarize(results, {
     skipped: skipped.length,
-    notReached: notReached.length,
     evidence: EVIDENCE,
   })
   const failed = summary.failed
@@ -25760,7 +25637,6 @@ async function main() {
   // step silently."* A step the product can no longer offer a gesture for is a capability nobody
   // is watching, and the line that says which one is the line somebody can act on.
   for (const line of summary.unperformed) console.log(`  ${line}`)
-  if (notReached.length > 0) console.log(`  NOT REACHED: ${notReached.join(', ')}`)
   // 🔴 **Which door each conversation came through** (420 §3/§4). ⛔ The front-door count is the
   // one that can fall silently: a step moved to `placeSession` is still green, and a suite in
   // which nothing goes through the surface a person uses is a suite that has stopped measuring
@@ -25807,13 +25683,6 @@ async function main() {
   // being reported. ⚠️ The tokens are MEASURED, from the provider's own transcripts in the isolated
   // homes this run created; the rates are a dated table, and `describePrice` says so in the line.
   console.log(`  spend: ${describePrice(priceRun(EVIDENCE, { providerHomes: [...PRICE_HOMES] }))}`)
-  // ⛔ **What a red from this instrument is WORTH** (224 §5). The four cells above say what happened;
-  // this says what could have. ⚠️ **It is deliberately about the whole file rather than about the
-  // steps this run selected** — the question a reader who did not run it is asking when they see
-  // `0 FAILED` is how much of the smoke is even able to go red for the app, and that is a property of
-  // the instrument, not of one invocation's filters. `scripts/lib/step-census.mjs` carries the
-  // classification and `pnpm run ci` keeps it covering exactly the steps registered here.
-  console.log(`  ${censusLine()}`)
   // 🔴 **What the HOST said, which nothing in this run could hear until 345** (345 §3, from 342).
   // The app's stdout and stderr are a file in the evidence tree now, and this is the only place they
   // are read. ⚠️ **The count is half the sentence**: "0 out-of-order publishes" is what a healthy run

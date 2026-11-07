@@ -1,3 +1,8 @@
+import { waitFor } from './lib/f093-host'
+import { fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/host-fixture'
+import { registerCalendarRevisionCases } from './helpers/calendar-revision-cases'
+import type { PersistedEventInfo } from '../src/shared/conversation-events'
+import type { AgentState } from '../src/shared/agent-state-contracts'
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
@@ -12,17 +17,13 @@ import { nativeExportPath } from '../src/main/archive/export-session'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { keepTheSystemZone } from '../src/main/system-zone'
 import { sinceWords } from '../src/renderer/src/lib/recent-activity'
 import { createWindow, openAt, type WindowState } from '../src/renderer/src/lib/transcript-window'
-import { hostCalendar } from '../src/main/runtime/schedule-evidence'
 import { agentStateWords } from '../src/shared/agent-state'
-import { nextCronOccurrence } from '../src/shared/schedule-wake'
 import { clockTime, clockTimeFrom } from '../src/shared/clock'
 import {
   LOCAL_ZONE_MOVED_CHANNEL,
@@ -31,13 +32,8 @@ import {
   sameLocalDay,
   type LocalZone,
 } from '../src/shared/local-time'
-import type {
-  LibraryEntry,
-  PersistedEventInfo,
-  RuntimeEventMessage,
-  RuntimeStatesMessage,
-} from '../src/shared/runtime-ipc'
-import type { AgentState } from '../src/shared/agent-state'
+import type { LibraryEntry, RuntimeStatesMessage } from '../src/shared/runtime-ipc'
+
 import { calendarDay, fullTime } from '../src/renderer/src/lib/clock'
 import { proseSpans } from './lib/prose-spans'
 
@@ -690,27 +686,7 @@ describe('§2 · every time the app says is the Mac’s, in the person’s own l
     expect(recencyOf(Date.UTC(2026, 0, 15, 21, 30), Date.UTC(2026, 0, 15, 22, 30))).toBe('today')
   })
 
-  it('a scheduled job is placed on the Mac wall clock, and another zone is another calendar', () => {
-    const from = Date.UTC(2026, 9, 1, 12, 0)
-    const next = (zone: typeof Z_UTC): number | null => {
-      readLocalTimeFrom(() => zone)
-      const found = nextCronOccurrence('0 3 * * *', {
-        after: from,
-        inclusive: false,
-        zone: 'UTC',
-        calendar: hostCalendar(zone),
-      })
-      return found.kind === 'known' ? found.nominalAt : null
-    }
-    expect(next(Z_UTC)).toBe(Date.UTC(2026, 9, 2, 3, 0))
-    // ⚑ The same expression and the same `from` in another zone: 03:00 at +5:45 is 21:15 UTC.
-    expect(next(Z_NP)).toBe(Date.UTC(2026, 9, 1, 21, 15))
-    // ⚑ A zone that moved is another version of the calendar, so a time placed on the one before
-    // is placed again; the same zone read twice is the same one.
-    expect(hostCalendar(Z_NP).version).not.toBe(hostCalendar(Z_UTC).version)
-    expect(hostCalendar(Z_NP).version).toBe(hostCalendar({ ...Z_NP }).version)
-    expect(hostCalendar(null).version).not.toBe(hostCalendar(Z_UTC).version)
-  })
+  registerCalendarRevisionCases(Z_UTC, Z_NP)
 
   it('the time "Since you were last here" starts, the reading pane date and a Codex export name say the Mac time', async () => {
     const to = Date.UTC(2026, 9, 1, 17, 0)
@@ -1381,6 +1357,7 @@ describe('§5 · the window, main and the host agree on the zone', () => {
         'host?.placeTheWakeUpsAgain()',
         '})',
         'readLocalTimeFrom(localZone)',
+        "finishStartupPhase = pluginStartupTrace.begin('themes-database-runtime-host')",
         'themes = new ThemeStore({',
         ANYTHING,
         'await themes.start()',
@@ -1388,6 +1365,7 @@ describe('§5 · the window, main and the host agree on the zone', () => {
         'stopThemeIpc = registerThemeIpc(ipcMain, themes, (change) => {',
         ANYTHING,
         'host = await createRuntimeHost(initDatabase())',
+        'finishStartupPhase()',
         'registerIpc(host, localZone)',
       ),
       'the window asks main for it': inOrder("ipcMain.handle('app:local-zone', () => localZone())"),
@@ -1497,17 +1475,6 @@ describe('§5 · the window, main and the host agree on the zone', () => {
 
 // ─── The host half ─────────────────────────────────────────────────────────────────────────────
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 class ProviderDouble extends FakeRuntime {
   constructor(
     provider: Provider,
@@ -1526,14 +1493,6 @@ class ProviderDouble extends FakeRuntime {
     this.handles.push(handle)
     return handle
   }
-}
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
 }
 
 /** A stretch of the event loop long enough for everything a provider row starts to have run. */
@@ -1569,9 +1528,7 @@ describe('§6 · the host puts a job’s time in the zone the Mac moved to', () 
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
@@ -1584,13 +1541,7 @@ describe('§6 · the host puts a job’s time in the zone the Mac moved to', () 
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       // ⚑ **The dep that makes a host push, and start a stopped conversation for its job** — a host
       // nobody listens to arms no wake-up.
       statesMoved: (message) => {

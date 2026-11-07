@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { randomUUID } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
@@ -20,7 +21,7 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { runScratch } from '../../../packages/runtime/smoke/run-paths'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /** 443: one real Haiku child, one in-flight command, one interrupt, one neutral continuation. */
 const LIMIT_MS = 90_000

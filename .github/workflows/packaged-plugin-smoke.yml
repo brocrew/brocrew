@@ -1,0 +1,58 @@
+name: Packaged plugin smoke
+on:
+  push:
+    branches: ['gate/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  packaged-plugin-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ${{ vars.MAC_RUNNER || 'macos-15' }}
+            target: darwin-arm64
+            script: package:mac-beta
+            resources: apps/desktop/dist/mac-arm64/BroCrew.app/Contents/Resources
+          - runner: windows-2022
+            target: win32-x64
+            script: package:win
+            resources: apps/desktop/dist/win-unpacked/resources
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.2'
+          cache-dependency-path: plugins/whatsapp/bridge/go.sum
+      - run: pnpm install --frozen-lockfile
+      - name: Build the real plugin packages
+        shell: bash
+        env:
+          GOCACHE: ${{ runner.temp }}/brocrew-go-cache
+        run: |
+          set -euo pipefail
+          npm ci --prefix plugins/chrome --ignore-scripts --no-audit --no-fund
+          npm ci --prefix plugins/whatsapp --ignore-scripts --no-audit --no-fund
+          export BROCREW_PLUGIN_SOURCE_COMMIT="$GITHUB_SHA"
+          export BROCREW_GO="$(node -p "require('node:path').join(process.argv[1], 'bin', process.platform === 'win32' ? 'go.exe' : 'go')" "$(go env GOROOT)")"
+          node plugins/chrome/build.mjs "$RUNNER_TEMP/smoke-plugins/chrome" "${{ matrix.target }}"
+          wa_started=$SECONDS
+          node plugins/whatsapp/build.mjs "$RUNNER_TEMP/smoke-plugins/whatsapp" "${{ matrix.target }}"
+          echo "WhatsApp archive build: $((SECONDS-wa_started)) seconds"
+      - name: Build the app directory
+        run: pnpm --filter @brobot2/desktop ${{ matrix.script }} --dir -c.extraMetadata.version=0.2.9 --publish never
+      - name: Call Chrome and describe WhatsApp through the built service
+        run: node scripts/packaged-plugin-service-check.mjs "${{ matrix.resources }}" "$RUNNER_TEMP/smoke-plugins"

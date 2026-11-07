@@ -1,15 +1,15 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
-import type { AgentToolset, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime'
+import { type AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
@@ -20,8 +20,9 @@ import {
   RUNTIME_CHANGE_SUBJECTS,
   type RuntimeChangeMessage,
   type RuntimeEventMessage,
-  type TranscriptEvent,
 } from '../src/shared/runtime-ipc'
+import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
+import { syntheticProviderHome, fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 🔴 **638 · work moved and nothing announced it** — `631` §6.2, in the frontend seat's own words:
@@ -62,29 +63,6 @@ describe('638 · a change to a conversation’s work announces itself', () => {
     sendLiveness(): void {}
   }
 
-  class ToolWatchingRuntime extends FakeRuntime {
-    constructor(
-      provider: Provider,
-      private readonly handed: AgentToolset[],
-      sessions: FakeProviderSessions,
-    ) {
-      super(provider, { sessions })
-    }
-    override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-      const handle = await super.start(options)
-      if (options.agentTools) this.handed.push(options.agentTools)
-      return handle
-    }
-    override async resume(
-      ref: SessionRef,
-      options: ResumeOptions,
-    ): ReturnType<FakeRuntime['resume']> {
-      const handle = await super.resume(ref, options)
-      if (options.agentTools) this.handed.push(options.agentTools)
-      return handle
-    }
-  }
-
   let userData: string
   let root: string
   let db: AppDatabase
@@ -117,26 +95,14 @@ describe('638 · a change to a conversation’s work announces itself', () => {
     issued = new FakeProviderSessions()
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       announce: (message) => {
         announced.push(message)
         // ⛔ **§3's measurement, taken INSIDE the announcement** — what a window would have read
@@ -239,8 +205,8 @@ describe('638 · a change to a conversation’s work announces itself', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§1 · the subject', () => {
-    it('⛔ `work` is a member, and the three name three populations', () => {
-      expect([...RUNTIME_CHANGE_SUBJECTS]).toEqual(['conversations', 'agents', 'work'])
+    it('⛔ `work` is a member, and the four name four populations', () => {
+      expect([...RUNTIME_CHANGE_SUBJECTS]).toEqual(['conversations', 'agents', 'work', 'persons'])
       // ⚑ **Distinct**, because a duplicate would make one reader run for the other's fact —
       // `an-enumeration-whose-members-must-differ-needs-a-distinctness-check`.
       expect(new Set(RUNTIME_CHANGE_SUBJECTS).size).toBe(RUNTIME_CHANGE_SUBJECTS.length)
@@ -251,8 +217,16 @@ describe('638 · a change to a conversation’s work announces itself', () => {
       // composed from OTHER conversations' ledgers, so an id would name a transitive closure
       // nobody has bounded — see {@link RUNTIME_CHANGE_SUBJECTS}' own note.
       const wire = codeOf('shared/runtime-ipc.ts')
-      expect(wire).toContain(
-        'export interface RuntimeChangeMessage {\n  readonly what: RuntimeChangeSubject\n}',
+      const at = wire.indexOf('export interface RuntimeChangeMessage {')
+      expect(at).toBeGreaterThan(-1)
+      const body = wire.slice(at, wire.indexOf('\n}', at))
+      // The subject, and on a `persons` notice the publication it was made at: an epoch and a
+      // sequence, which name no conversation.
+      const fields = [...body.matchAll(/^ {2}readonly (\w+)\??:/gm)].map((one) => one[1])
+      expect(fields).toEqual(['what', 'published'])
+      expect(body).toContain('readonly what: RuntimeChangeSubject')
+      expect(body).toContain(
+        'readonly published?: { readonly epoch: PublicationEpoch; readonly seq: number }',
       )
     })
   })
@@ -512,6 +486,7 @@ describe('638 · a change to a conversation’s work announces itself', () => {
   describe('§5 · one signal, one reader', () => {
     it('⚑ every announcement is at a VERB, after its append — never in the shared plumbing', () => {
       const host_ = codeOf('main/runtime/runtime-host.ts')
+      const keptFiles = codeOf('main/runtime/kept-files.ts')
       // ⛔ **These call sites and no more** — the count is the assertion's. ⚠️ One in `publishOurs`, `recordOurs` or `deliver`
       // would make EVERY ledger append announce, which is §4's firehose — and that property, not
       // the number, is what this guards.
@@ -572,7 +547,12 @@ describe('638 · a change to a conversation’s work announces itself', () => {
       // waits for services, announced once after the services list is written.
       // ⚑ **+1**: `closeForAPerson` — a person's close of stopped work, announced once after its
       // `work_closed` row.
-      expect(host_.split("this.theWorldMoved('work')").length - 1).toBe(36)
+      // +1: `rebuildLedger` — a replaced ledger can take work away from its giver's drawer,
+      // announced once after the new generation is promoted.
+      const hostAnnouncements = host_.split("this.theWorldMoved('work')").length - 1
+      const keptFileAnnouncements =
+        keptFiles.split("this.operations.theWorldMoved('work')").length - 1
+      expect(hostAnnouncements + keptFileAnnouncements).toBe(37)
       for (const verb of [
         'private declineMoveOffersFromText(',
         'async decideMoveRequest(',

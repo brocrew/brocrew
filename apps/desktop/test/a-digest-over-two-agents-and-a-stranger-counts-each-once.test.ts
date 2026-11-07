@@ -1,3 +1,4 @@
+import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -8,7 +9,6 @@ import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { DigestReading } from '../src/shared/digest'
@@ -103,9 +103,7 @@ function aHost(): RuntimeHost {
   let counter = 0
   const host = new RuntimeHost({
     store,
-    discoverSessions: NO_DISCOVERY,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => join(userData, 'exports'),
+    ...neutralHostDeps(() => userData),
     createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions }),
     prepareProviderHome: (provider: Provider, profileId?: string) => {
       const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
@@ -116,13 +114,7 @@ function aHost(): RuntimeHost {
     resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
     newSessionId: () => `sess_host_${String(++counter)}`,
     now: () => TO,
-    readProviderConfig: (provider, home) => ({
-      home,
-      homeEnv: 'CLAUDE_CONFIG_DIR',
-      model: 'm',
-      authNote: null,
-      files: [],
-    }),
+    readProviderConfig: fixtureProviderConfig,
   })
   hosts.push(host)
   return host

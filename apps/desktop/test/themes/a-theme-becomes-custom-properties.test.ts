@@ -12,12 +12,11 @@ import { contextFor, DEFINED, SAMPLES } from './fixtures'
 
 function sample(name: string): Theme {
   const s = SAMPLES[name]!
-  const r = validateTheme(s.file, contextFor(s.assets, s.pictures))
+  const r = validateTheme(s.file, contextFor(s.assets))
   if (!r.ok) throw new Error(JSON.stringify(r.problems))
   return resolveTheme(r.theme, DEFINED)
 }
 
-/** Every `--name: value` the stylesheet declares. */
 const declarations = (css: string): [string, string][] =>
   [...css.matchAll(/^\s*(--[a-z0-9-]+):\s*(.+);$/gm)].map((m) => [m[1]!, m[2]!])
 
@@ -70,11 +69,8 @@ describe('a theme becomes one block of custom properties', () => {
     expect(css).toContain('--font-brand: "brobot-theme-valentine-1", var(--font-sans);')
   })
 
-  it('a file inherited from the base is served from the base’s folder, and measured there', () => {
-    const brocrew = validateTheme(
-      SAMPLES.brocrew!.file,
-      contextFor(SAMPLES.brocrew!.assets, SAMPLES.brocrew!.pictures),
-    )
+  it('a file inherited from the base is served from the base’s folder', () => {
+    const brocrew = validateTheme(SAMPLES.brocrew!.file, contextFor(SAMPLES.brocrew!.assets))
     if (!brocrew.ok) throw new Error('brocrew should be valid')
     const builtIns = new Map([
       ['defined', DEFINED],
@@ -87,16 +83,7 @@ describe('a theme becomes one block of custom properties', () => {
       extends: 'brocrew',
       content: { accent: '#c2410c' },
     }
-    const unsampled = validateTheme(mine, { assets: new Map(), builtIns })
-    expect(unsampled.ok ? [] : unsampled.problems.map((p) => p.says).join('\n')).toMatch(
-      /couldn’t read the colours of @brocrew\/assets\/network\.png/,
-    )
-    const pictures = new Map(
-      Object.entries(SAMPLES.brocrew!.pictures!).map(
-        ([path, s]) => [`@brocrew/${path}`, s] as const,
-      ),
-    )
-    const r = validateTheme(mine, { assets: new Map(), builtIns, pictures })
+    const r = validateTheme(mine, { assets: new Map(), builtIns })
     expect(r.ok ? [] : r.problems).toEqual([])
     const css = themeCss(resolveTheme(r.ok ? r.theme : DEFINED, builtIns.get('brocrew')))
     expect(css).toContain('--rail-bg-image: url("brobot-theme://brocrew/assets/network.png");')

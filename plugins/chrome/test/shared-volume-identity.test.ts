@@ -73,7 +73,7 @@ it('legacy anchorless record on a renumbered or cloned volume is rebound and log
   expect(warn).not.toHaveBeenCalled()
 })
 it.each(
-  ['inode', 'mode', 'uid', 'type', 'birthtime', 'volume', 'replacement', 'symlink'].filter(
+  ['inode', 'type', 'birthtime', 'volume', 'replacement', 'symlink'].filter(
     (change) => change !== 'mode' || process.platform !== 'win32',
   ),
 )('refuses %s and preserves the record', (change) => {
@@ -82,11 +82,6 @@ it.each(
   if (change === 'inode')
     f.edit((r) => {
       r.profiles[0].directory.ino = '999999999'
-    })
-  if (change === 'mode') fs.chmodSync(dir, 0o755)
-  if (change === 'uid')
-    f.edit((r) => {
-      r.profiles[0].directory.uid = '999999999'
     })
   if (change === 'type')
     f.edit((r) => {
@@ -146,17 +141,15 @@ it('rebinds directory, migrated source and owner home together without touching 
   expect(log).toHaveBeenCalledTimes(3)
 })
 it.skipIf(process.platform === 'win32')(
-  'refuses a legacy directory with changed private mode rather than repairing it',
+  'accepts a legacy directory after a permission-only change',
   () => {
     const f = fixture()
     f.edit((r) => {
       r.profiles[0].directory = { dev: '999999999', ino: r.profiles[0].directory.ino }
     })
-    const before = JSON.stringify(f.read().profiles[0])
     const dir = path.join(f.shared, 'profiles/fern')
     fs.chmodSync(dir, 0o755)
-    expect(f.open().get('fern')?.enabled).toBe(false)
-    expect(JSON.stringify(f.read().profiles[0])).toBe(before)
+    expect(f.open().get('fern')?.enabled).toBe(true)
     expect(fs.statSync(dir).mode & 0o777).toBe(0o755)
   },
 )
@@ -170,20 +163,20 @@ it('a Windows serial change is refused even for an anchorless legacy record', ()
   expect(() => open.shared.acquire('fern')).toThrow()
 })
 it.skipIf(process.platform === 'win32')(
-  'does not chmod a changed migration home before judging its legacy identity',
+  'accepts an unchanged migration home after its permissions change',
   () => {
     const f = fixture()
     createProfileStore({ home: f.home }).create('moss', 'panel')
     f.open({ migrationApproved: true })
     fs.chmodSync(f.home, 0o755)
     const before = JSON.stringify(f.read().profiles)
-    expect(() => f.open()).toThrow('Profile folder identity changed.')
-    expect(() => f.open()).toThrow('Profile folder identity changed.')
+    expect(() => f.open()).not.toThrow()
+    expect(() => f.open()).not.toThrow()
     expect(fs.statSync(f.home).mode & 0o777).toBe(0o755)
     expect(JSON.stringify(f.read().profiles)).toBe(before)
   },
 )
-it('a legacy record still requires current-user ownership', () => {
+it('accepts legacy owner metadata without using it as admission', () => {
   const f = fixture(),
     dir = path.join(f.shared, 'profiles/fern')
   f.edit((r) => {
@@ -199,8 +192,8 @@ it('a legacy record still requires current-user ownership', () => {
     return Object.assign(Object.create(Object.getPrototypeOf(s)), s, { uid: 999999999n })
   }) as typeof fs.lstatSync)
   const store = f.open()
-  expect(store.get('fern')?.enabled).toBe(false)
-  expect(() => store.shared.acquire('fern')).toThrow()
+  expect(store.get('fern')?.enabled).toBe(true)
+  store.shared.acquire('fern').release()
 })
 it('never publishes a rebind when a directory changes during native observation', () => {
   const f = fixture(),
@@ -224,7 +217,7 @@ it('never publishes a rebind when a directory changes during native observation'
   expect(store.get('fern')?.enabled).toBe(false)
   expect(JSON.stringify(f.read().profiles[0])).toBe(before)
 })
-it.each(['private-mode', 'anchored-volume', 'different-disk-home'])(
+it.each(['anchored-volume', 'different-disk-home'])(
   'a refused legacy migration still reserves local access and suppresses duplicate migration: %s',
   (change) => {
     const f = fixture()
@@ -252,10 +245,9 @@ it.each(['private-mode', 'anchored-volume', 'different-disk-home'])(
         p.migration.home.volume = 'apfs:22222222-2222-4222-8222-222222222222'
       if (change === 'different-disk-home') {
         p.migration.error = 'different-disk'
-        p.migration.home.uid = '999999999'
+        p.migration.home.ino = '999999998'
       }
     })
-    if (change === 'private-mode') fs.chmodSync(source, 0o755)
     const store = f.open()
     const alias = store.list().find((p) => p.name.startsWith('local-'))!.name
     expect(store.get(alias)?.enabled).toBe(false)
@@ -310,4 +302,15 @@ it('each admission snapshot observes the current volume even when device and ino
   expect(() => store.shared.admission('fern')).toThrow(/reserved/)
   f.volume('apfs:11111111-1111-4111-8111-111111111111')
   expect(store.shared.admission('fern').profile.enabled).toBe(true)
+})
+
+it('ignores historical uid and mode fields while retaining profile identity', () => {
+  const f = fixture()
+  f.edit((r) => {
+    r.profiles[0].directory.uid = '999999999'
+    r.profiles[0].directory.mode = '16895'
+  })
+  const store = f.open()
+  expect(store.get('fern')?.enabled).toBe(true)
+  store.shared.acquire('fern').release()
 })

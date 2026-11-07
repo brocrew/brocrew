@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import type { RuntimeEvent } from '@brobot2/runtime'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
@@ -8,7 +9,6 @@ import {
   type ToolItem,
   type TranscriptState,
 } from '../src/renderer/src/lib/transcript'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
 
 /**
  * 330 · 🔴 **The fold and the raw stream, for a memory write.**

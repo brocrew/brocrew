@@ -1,19 +1,15 @@
+import { ToolWatchingRuntime } from './lib/provider-double'
+import type { SessionInstructions } from '../src/shared/instruction-contracts'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {
-  FakeProviderSessions,
-  FakeRuntime,
-  type AgentToolset,
-  type StartOptions,
-} from '@brobot2/runtime'
+import { FakeProviderSessions, type AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { thisAppWouldMintIt } from '../src/shared/agent-roster'
@@ -24,9 +20,9 @@ import {
   agentName,
   foldProfileName,
   type RuntimeEventMessage,
-  type SessionInstructions,
 } from '../src/shared/runtime-ipc'
 import { HUMAN_NAMES, aNameForANewAgent, aNameKey } from '../src/shared/human-names'
+import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * # 🔴 584 · seed one identity, and generate the names
@@ -84,18 +80,9 @@ class Sink implements RuntimeEventSink {
 }
 
 /** ⚑ The toolset a launch was handed — the one a model on that conversation would call. */
-class HandingRuntime extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handed: AgentToolset[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-    const handle = await super.start(options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
+class HandingRuntime extends ToolWatchingRuntime {
+  constructor(provider: Provider, handed: AgentToolset[], sessions: FakeProviderSessions) {
+    super(provider, handed, sessions)
   }
 }
 
@@ -115,9 +102,7 @@ describe('584 · seed one identity, and generate the names', () => {
   const buildHost = (): RuntimeHost =>
     new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new HandingRuntime(provider, handed, sessions),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
         const home = join(userData, 'provider-homes', 'default', profileId ?? 'default', provider)
@@ -128,13 +113,7 @@ describe('584 · seed one identity, and generate the names', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       readInstructions: () => {
         return { instructions: NOTHING_INJECTED, systemHint: undefined, memoryLoaded: null }
       },

@@ -1,3 +1,9 @@
+import type {
+  InjectedInstruction,
+  InjectedInstructionKind,
+  RefusedInstruction,
+} from '../../../shared/instruction-contracts'
+import type { MemoryLoadedEvent } from '../../../shared/conversation-events'
 import { given } from './given'
 import { workspaceInstructionFile as INSTRUCTION_FILENAME } from './layout.mjs'
 import { homedir } from 'node:os'
@@ -7,12 +13,6 @@ import { readClaudeAgentMemory, type ClaudeMemoryRead } from './memory'
 import { agentPreamble } from '../../runtime/agent-preamble'
 import type { InstructionInputs, SessionLaunchRead } from '../instruction-types'
 
-import type {
-  InjectedInstruction,
-  InjectedInstructionKind,
-  RefusedInstruction,
-  MemoryLoadedEvent,
-} from '../../../shared/runtime-ipc'
 import {
   allocate,
   theProfileFileOf,
@@ -34,7 +34,7 @@ import {
   conventionFileIn,
 } from '../repository-instructions'
 
-export function linkOf(path: string, real: string): string | undefined {
+function linkOf(path: string, real: string): string | undefined {
   const dir = dirname(path)
   const derived =
     basename(dir) === INSTRUCTION_DOTDIR
@@ -81,7 +81,7 @@ export function claudeMemoryLoaded(read: ClaudeMemoryRead): MemoryLoadedEvent | 
   }
 }
 
-export function claudeMemoryNote(read: ClaudeMemoryRead): string {
+function claudeMemoryNote(read: ClaudeMemoryRead): string {
   if (read.dir === null || read.topicsFound === 0) return ''
   const parts = [
     read.injects

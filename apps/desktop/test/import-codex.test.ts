@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdtempSync, readFileSync, rmSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -7,7 +8,6 @@ import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { FakeRuntime } from '@brobot2/runtime'
 import { importCodexRollout } from '../src/main/archive/import-codex'
 import { splitCodexMessage } from '../src/main/archive/codex-injected'
@@ -38,9 +38,7 @@ describe('importing a Codex rollout', () => {
   const host = (): RuntimeHost =>
     new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: (provider) => new FakeRuntime(provider),
       prepareProviderHome: (provider) => join(dir, 'homes', provider),
       providerHomePath: (provider) => join(dir, 'homes', provider),

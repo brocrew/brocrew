@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { fixtureProviderConfig, neutralHostDeps, syntheticProviderHome } from './lib/host-fixture'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -9,7 +10,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, THE_APP_ITSELF, type RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -89,12 +89,14 @@ const ACTS = {
   // the brief as its first turn — and the pin is what that act announces (re-measured at D-016).
   // Each give and its stall announce work; the serial giver notice then queues and sends,
   // announcing both queue changes. Three pieces therefore produce twelve work announcements.
-  'give 3': { conversations: 3, agents: 3, work: 12 },
-  '3 replies': { work: 3 },
+  // ⚑ `persons` is announced from the store's record, once per commit holding a row the person's
+  // queue reads; the window hears each subject once per turn of the loop.
+  'give 3': { conversations: 3, agents: 3, work: 12, persons: 27 },
+  '3 replies': { work: 3, persons: 9 },
   // ⚑ **D-017** — it was *end 3*, the parent's `end_agent` on each child, and nothing ends a
   // conversation any more: the act is the STOP, the app's own close — the teardown `end_agent`
   // escalated to.
-  'stop 3': { conversations: 6 },
+  'stop 3': { conversations: 6, persons: 3 },
 } as const satisfies Record<string, Tally>
 type Act = keyof typeof ACTS
 
@@ -129,26 +131,14 @@ describe('§1 · announcements per act, through the real host', () => {
     const issued = new FakeProviderSessions()
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       announce: (message: RuntimeChangeMessage) => {
         heard.push({ act, what: message.what })
       },
@@ -302,6 +292,7 @@ const ARMS: Record<RuntimeChangeSubject, readonly ('workspace' | 'forest')[]> = 
   conversations: ['workspace', 'forest'],
   work: ['forest'],
   agents: [],
+  persons: ['workspace'],
 }
 
 describe('§2 · reads per act, through `whenTheWorldMoves` and `oneReadAtATime`', () => {
@@ -326,11 +317,13 @@ describe('§2 · reads per act, through `whenTheWorldMoves` and `oneReadAtATime`
     const conversationsAt = at('    conversations: () => {', from)
     const workAt = at('    work: () => {', conversationsAt)
     const agentsAt = at('    agents: ', workAt)
-    const endAt = at('\n  })', agentsAt)
+    const personsAt = at('    persons: ', agentsAt)
+    const endAt = at('\n  })', personsAt)
     const arms: Record<RuntimeChangeSubject, string> = {
       conversations: screen.slice(conversationsAt, workAt),
       work: screen.slice(workAt, agentsAt),
-      agents: screen.slice(agentsAt, endAt),
+      agents: screen.slice(agentsAt, personsAt),
+      persons: screen.slice(personsAt, endAt),
     }
     // ⚑ **Derived from ARMS**, both ways: every reader the table lists is called in that arm, and
     // every reader it does not list is not — so the table §2 feeds cannot drift from the screen.
@@ -370,6 +363,9 @@ describe('§2 · reads per act, through `whenTheWorldMoves` and `oneReadAtATime`
             for (const one of ARMS.work) void wrapped[one]()
           },
           agents: () => {},
+          persons: () => {
+            for (const one of ARMS.persons) void wrapped[one]()
+          },
         },
         () => false,
       )

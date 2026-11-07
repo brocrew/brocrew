@@ -1,3 +1,4 @@
+import type { UserCommandEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -8,16 +9,12 @@ import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { isVisibleIn } from '../src/renderer/src/lib/transcript-mode'
-import type {
-  CreatedSession,
-  RuntimeEventMessage,
-  UserCommandEvent,
-} from '../src/shared/runtime-ipc'
+import type { CreatedSession, RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { neutralHostDeps } from './lib/host-fixture'
 
 /**
  * **Which control the user pressed** (097 §2, from 085's *"the thing that would have saved me an
@@ -74,9 +71,7 @@ describe('the user_command breadcrumb (097)', () => {
         files: [],
       }),
       store: createSessionStore(db),
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider) => new FakeRuntime(provider),
       prepareProviderHome: (provider, profileId) =>
         join(userData, 'provider-homes', profileId, provider),

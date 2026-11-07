@@ -48,34 +48,6 @@
  * `Provider`, and the sheet is a `v-for`. See {@link DISCLOSURE_FIELDS}.
  */
 
-import type { Provider } from '../../../shared/runtime-ipc'
-
-/**
- * ⚑ **v2.3's copy input, typed** — what `BroBotUI.bind({disclosures})` reads.
- *
- * ⛔ **Keyed by {@link Provider} and never by a literal.** The mock's own approval sheet hard-codes a
- * two-tab segmented control; the product's list is `SUPPORTED_PROVIDERS` and the sheet is a `v-for`.
- * ⚠️ `Partial`, because a provider whose copy has not arrived must draw v2.3's own
- * *"Exact product wording not supplied"* block rather than an empty string — and an empty string is
- * what a total record would hand it.
- */
-export type DisclosureInput = Readonly<
-  Partial<
-    Record<
-      Provider,
-      {
-        readonly launchText?: string
-        readonly modes?: readonly {
-          readonly id: string
-          readonly label: string
-          /** ⛔ Absent is a state: `canAct('setApprovalMode')` refuses a mode with no disclosure. */
-          readonly text?: string
-        }[]
-      }
-    >
-  >
->
-
 /* ---------------------------------------------------------------------------
    The shape of one answer
    --------------------------------------------------------------------------- */
@@ -89,7 +61,7 @@ export type DisclosureInput = Readonly<
  * `sentence` here is copy whose subject is what the app or a provider DOES, and it must have exactly
  * one source in the codebase.
  */
-export type FieldKind = 'fact' | 'sentence'
+type FieldKind = 'fact' | 'sentence'
 
 /**
  * A pointer at the product, resolvable rather than described.
@@ -149,6 +121,11 @@ export interface FieldMapping {
    --------------------------------------------------------------------------- */
 
 const IPC = 'apps/desktop/src/shared/runtime-ipc.ts'
+const ATTACHMENTS = 'apps/desktop/src/shared/attachment-contracts.ts'
+const CONVERSATION_EVENTS = 'apps/desktop/src/shared/conversation-events.ts'
+const HUMAN_ANSWERS = 'apps/desktop/src/shared/human-answer-contracts.ts'
+const INSTRUCTIONS = 'apps/desktop/src/shared/instruction-contracts.ts'
+const MODEL_CHOICES = 'apps/desktop/src/shared/model-choice-contracts.ts'
 const CAPS = 'apps/desktop/src/shared/capabilities.ts'
 const PROVIDER_CAPABILITIES = 'packages/shared/src/provider-capabilities.ts'
 const EVENTS = 'packages/runtime/src/events.ts'
@@ -320,7 +297,10 @@ const LAUNCH: readonly FieldMapping[] = [
     kind: 'fact',
     binding: {
       state: 'bound',
-      from: [ref(IPC, 'SessionSettingsDisclosure.model'), ref(IPC, 'ProviderConfigInfo.model')],
+      from: [
+        ref(MODEL_CHOICES, 'SessionSettingsDisclosure.model'),
+        ref(IPC, 'ProviderConfigInfo.model'),
+      ],
     },
     absent:
       '`Not reported`. ⚑ `292 §3`: omitting a setting is a REPORTED state of its own and must not read as a default.',
@@ -328,7 +308,10 @@ const LAUNCH: readonly FieldMapping[] = [
   {
     path: 'launch.reasoning',
     kind: 'fact',
-    binding: { state: 'bound', from: [ref(IPC, 'SessionSettingsDisclosure.reasoningEffort')] },
+    binding: {
+      state: 'bound',
+      from: [ref(MODEL_CHOICES, 'SessionSettingsDisclosure.reasoningEffort')],
+    },
     absent:
       '`Not reported` — and it is still the ordinary case, because the front door OFFERS a reasoning control and requires nothing of it (435, HO-025 §5). ⚠️ `417`\'s clause read *"because the launcher asks for nothing"*, which stopped being the reason the day the menu came back: an untouched door sends no `reasoningEffort` at all, which is what keeps the reported value a fact rather than an echo of a box.',
   },
@@ -348,7 +331,7 @@ const LAUNCH: readonly FieldMapping[] = [
   {
     path: 'launch.planMode',
     kind: 'fact',
-    binding: { state: 'bound', from: [ref(IPC, 'SessionSettingsDisclosure.planMode')] },
+    binding: { state: 'bound', from: [ref(MODEL_CHOICES, 'SessionSettingsDisclosure.planMode')] },
     absent: '`Not reported`.',
   },
   {
@@ -396,7 +379,7 @@ const REPORT: readonly FieldMapping[] = [
     kind: 'fact',
     binding: {
       state: 'derived',
-      from: [ref(IPC, 'PersistedEventInfo')],
+      from: [ref(CONVERSATION_EVENTS, 'PersistedEventInfo')],
       note: 'Events carry their own time; there is no session-level “last report at”. Take the newest event’s.',
     },
     absent:
@@ -481,7 +464,7 @@ const REPORT: readonly FieldMapping[] = [
   {
     path: 'children[].at',
     kind: 'fact',
-    binding: { state: 'bound', from: [ref(IPC, 'PersistedEventInfo')] },
+    binding: { state: 'bound', from: [ref(CONVERSATION_EVENTS, 'PersistedEventInfo')] },
     absent: '`Time not reported`.',
   },
   {
@@ -507,7 +490,7 @@ const REPORT: readonly FieldMapping[] = [
   {
     path: 'children[].events[].at',
     kind: 'fact',
-    binding: { state: 'bound', from: [ref(IPC, 'PersistedEventInfo')] },
+    binding: { state: 'bound', from: [ref(CONVERSATION_EVENTS, 'PersistedEventInfo')] },
     absent: '`Time not reported`.',
   },
   {
@@ -562,7 +545,7 @@ const SOURCES: readonly FieldMapping[] = [
   {
     path: 'sources',
     kind: 'fact',
-    binding: { state: 'bound', from: [ref(IPC, 'SessionInstructions')] },
+    binding: { state: 'bound', from: [ref(INSTRUCTIONS, 'SessionInstructions')] },
     absent:
       'null ⇒ `No provider report yet. Headings are shown without invented totals or source files.`',
   },
@@ -571,7 +554,7 @@ const SOURCES: readonly FieldMapping[] = [
     kind: 'fact',
     binding: {
       state: 'derived',
-      from: [ref(IPC, 'InjectedInstruction'), ref(IPC, 'SessionInstructions')],
+      from: [ref(INSTRUCTIONS, 'InjectedInstruction'), ref(INSTRUCTIONS, 'SessionInstructions')],
       note: '⛔ **`reach` is carried by the `agent-memory*` kinds ALONE** (`317 §2.2`). Every other injected kind is in the prompt by construction and has no `reach` to read, so the split is: everything without a `reach`, plus the memory rows whose `reach` is `prompt`.',
     },
     absent: '`No sources in this report.`',
@@ -581,7 +564,7 @@ const SOURCES: readonly FieldMapping[] = [
     kind: 'fact',
     binding: {
       state: 'bound',
-      from: [ref(IPC, 'InjectedInstruction')],
+      from: [ref(INSTRUCTIONS, 'InjectedInstruction')],
       note: '⚠️ `on-request` is a statement about AVAILABILITY and never about what the model has read — `009`’s rule and `305`’s defect. The mock’s caption says exactly that; keep it.',
     },
     absent: '`No sources in this report.`',
@@ -589,7 +572,10 @@ const SOURCES: readonly FieldMapping[] = [
   {
     path: 'sources.files',
     kind: 'fact',
-    binding: { state: 'bound', from: [ref(IPC, 'HandedPath'), ref(IPC, 'MAX_HANDED_PATHS')] },
+    binding: {
+      state: 'bound',
+      from: [ref(ATTACHMENTS, 'HandedPath'), ref(IPC, 'MAX_HANDED_PATHS')],
+    },
     absent: '`No sources in this report.`',
   },
   {
@@ -607,7 +593,7 @@ const SOURCES: readonly FieldMapping[] = [
     kind: 'fact',
     binding: {
       state: 'derived',
-      from: [ref(IPC, 'ProviderInstruction'), ref(IPC, 'InstructionScope')],
+      from: [ref(INSTRUCTIONS, 'ProviderInstruction'), ref(INSTRUCTIONS, 'InstructionScope')],
       note: '⚠️ The product’s nearest fact is `ProviderInstruction` — a file the PROVIDER reported loading on its own, with a `scope` that may be `unknown`. That is *reported and unattributed*, which is not the same as *not published*. A boolean here would flatten the two.',
     },
     absent: 'false ⇒ draw nothing. ⛔ Absence of the flag is not proof the inventory is complete.',
@@ -617,7 +603,7 @@ const SOURCES: readonly FieldMapping[] = [
     kind: 'fact',
     binding: {
       state: 'derived',
-      from: [ref(IPC, 'InjectedInstruction')],
+      from: [ref(INSTRUCTIONS, 'InjectedInstruction')],
       note: '⛔ **There is no separate id.** An injected instruction is identified by its absolute path, which is also what `readInstructionSource` takes — a synthesised key would be a second identity for one file.',
     },
     absent: 'Not optional.',
@@ -627,7 +613,7 @@ const SOURCES: readonly FieldMapping[] = [
     kind: 'fact',
     binding: {
       state: 'derived',
-      from: [ref(IPC, 'InjectedInstruction')],
+      from: [ref(INSTRUCTIONS, 'InjectedInstruction')],
       note: 'The path’s leaf. ⚠️ Two sources can share a leaf — a profile and a project both hold an instruction file — so the leaf is a LABEL and the path is the identity beside it.',
     },
     absent: 'Not optional.',
@@ -637,7 +623,7 @@ const SOURCES: readonly FieldMapping[] = [
     kind: 'fact',
     binding: {
       state: 'derived',
-      from: [ref(IPC, 'InjectedInstruction'), ref(IPC, 'RefusedInstruction')],
+      from: [ref(INSTRUCTIONS, 'InjectedInstruction'), ref(INSTRUCTIONS, 'RefusedInstruction')],
       note: '🔴 **A fourth state the mock has no vocabulary for: REFUSED.** `RefusedInstruction` is a file on the chain this app would not read and why. ⚠️ **The vocabulary is SEVEN words across two declarations, and `382`’s list named four of them** — `InstructionRefusal` (`main/runtime/instructions.ts`) is `symlink | not-a-regular-file | too-large | not-utf8 | unreadable`, and `RefusedInstruction`’s own docblock adds `over-budget` and `dangling-link`. ⛔ **`reason` on the wire is a bare `string`**, so the type bounds the reader and not the row. 🔴 **Two of the seven are DECLARED AND NEVER WRITTEN**: `main/runtime/instructions.ts` produces `absent`, `dangling-link`, `not-a-regular-file`, `not-utf8`, `over-budget`, `symlink` and `unreadable` — **`too-large` has no producer anywhere in the product**, and `absent` is written and declared by neither type. ⚠️ **`455` first “corrected” this note by deleting `too-large` as a word that belonged to another type. That was wrong** — it is a member of this one, in both declarations — and the true finding is the smaller one: an enumeration a reader takes for the reasons they may SEE contains one nothing can produce. It is neither confirmed, offered nor unexposed, and it is the state a person most needs to see because it means an instruction they wrote did not arrive.',
     },
     absent: '`Unknown`.',
@@ -648,9 +634,9 @@ const SOURCES: readonly FieldMapping[] = [
     binding: {
       state: 'derived',
       from: [
-        ref(IPC, 'InjectedInstruction'),
-        ref(IPC, 'InjectedInstructionKind'),
-        ref(IPC, 'RefusedInstruction'),
+        ref(INSTRUCTIONS, 'InjectedInstruction'),
+        ref(INSTRUCTIONS, 'InjectedInstructionKind'),
+        ref(INSTRUCTIONS, 'RefusedInstruction'),
       ],
       note: '⛔ **Per KIND, and the kinds are enumerated** — eight of them, and the panel already owns a label for each. A caption composed in a template is a ninth source of words for a closed set that already has one.',
     },
@@ -670,7 +656,7 @@ const SOURCES: readonly FieldMapping[] = [
     kind: 'fact',
     binding: {
       state: 'bound',
-      from: [ref(IPC, 'InjectedInstruction'), ref(IPC, 'SessionPathTarget')],
+      from: [ref(INSTRUCTIONS, 'InjectedInstruction'), ref(IPC, 'SessionPathTarget')],
     },
     absent: 'Omit both the reveal fold and the copy button.',
   },
@@ -836,7 +822,7 @@ const REQUESTS: readonly FieldMapping[] = [
     kind: 'fact',
     binding: {
       state: 'derived',
-      from: [ref(IPC, 'UserDecisionEvent'), ref(IPC, 'AnswerAck')],
+      from: [ref(CONVERSATION_EVENTS, 'UserDecisionEvent'), ref(IPC, 'AnswerAck')],
       note: '`UserDecisionEvent.outcome` is the decision the person made; the mock’s `submitted` (decided, provider outcome not yet reported) is a real and separate state and the product has `AnswerAck` for it.',
     },
     absent: '`pending`.',
@@ -844,7 +830,7 @@ const REQUESTS: readonly FieldMapping[] = [
   {
     path: 'requests[].at',
     kind: 'fact',
-    binding: { state: 'bound', from: [ref(IPC, 'PersistedEventInfo')] },
+    binding: { state: 'bound', from: [ref(CONVERSATION_EVENTS, 'PersistedEventInfo')] },
     absent: '`Time not reported`.',
   },
   {
@@ -920,7 +906,7 @@ const REQUESTS: readonly FieldMapping[] = [
     kind: 'fact',
     binding: {
       state: 'derived',
-      from: [ref(IPC, 'UserDecisionEvent')],
+      from: [ref(CONVERSATION_EVENTS, 'UserDecisionEvent')],
       note: '⛔ The product’s outcomes include `allow_for_session`, `allow_all_for_session` and, since `736`, `allow_always` (kept beyond the conversation); the mock has `allow-once` and `deny`. A standing grant rendered as a one-off is `086` in the dangerous direction.',
     },
     absent: 'Unknown.',
@@ -930,7 +916,7 @@ const REQUESTS: readonly FieldMapping[] = [
     kind: 'fact',
     binding: {
       state: 'derived',
-      from: [ref(IPC, 'UserDecisionEvent')],
+      from: [ref(CONVERSATION_EVENTS, 'UserDecisionEvent')],
       note: 'UserDecisionEvent.by records ActedBy from the caller when an answer is taken. whoAnsweredIt displays the actor kind, never a conversation ID or an invented personal name. A person means a window answered; conversation IDs remain on the Events tab.',
     },
     absent:
@@ -939,13 +925,13 @@ const REQUESTS: readonly FieldMapping[] = [
   {
     path: 'requests[].decisionAt',
     kind: 'fact',
-    binding: { state: 'bound', from: [ref(IPC, 'PersistedEventInfo')] },
+    binding: { state: 'bound', from: [ref(CONVERSATION_EVENTS, 'PersistedEventInfo')] },
     absent: '`Time not reported`.',
   },
   {
     path: 'requests[].finalAt',
     kind: 'fact',
-    binding: { state: 'bound', from: [ref(IPC, 'PersistedEventInfo')] },
+    binding: { state: 'bound', from: [ref(CONVERSATION_EVENTS, 'PersistedEventInfo')] },
     absent: '`Time not reported`.',
   },
   {
@@ -953,7 +939,10 @@ const REQUESTS: readonly FieldMapping[] = [
     kind: 'fact',
     binding: {
       state: 'derived',
-      from: [ref(IPC, 'TranscriptEvent'), ref(IPC, 'UserDecisionEvent')],
+      from: [
+        ref(CONVERSATION_EVENTS, 'TranscriptEvent'),
+        ref(CONVERSATION_EVENTS, 'UserDecisionEvent'),
+      ],
       note: '⚠️ `381`’s boundary, restated so it cannot be lost: the source establishes durable decision events THROUGH A REMOUNT. It does NOT establish that a refused-but-still-pending explanatory line survives a full restart and replay. ⛔ Do not strengthen the copy past that.',
     },
     absent: '`not reported` — which is the ordinary state while the turn is still running.',
@@ -961,13 +950,16 @@ const REQUESTS: readonly FieldMapping[] = [
   {
     path: 'messages[].role',
     kind: 'fact',
-    binding: { state: 'bound', from: [ref(IPC, 'UserTurnEvent'), ref(IPC, 'TranscriptEvent')] },
+    binding: {
+      state: 'bound',
+      from: [ref(HUMAN_ANSWERS, 'UserTurnEvent'), ref(CONVERSATION_EVENTS, 'TranscriptEvent')],
+    },
     absent: 'Not optional.',
   },
   {
     path: 'messages[].time',
     kind: 'fact',
-    binding: { state: 'bound', from: [ref(IPC, 'PersistedEventInfo')] },
+    binding: { state: 'bound', from: [ref(CONVERSATION_EVENTS, 'PersistedEventInfo')] },
     absent: 'Omit the timestamp.',
   },
   {
@@ -975,7 +967,7 @@ const REQUESTS: readonly FieldMapping[] = [
     kind: 'fact',
     binding: {
       state: 'bound',
-      from: [ref(IPC, 'TranscriptEvent')],
+      from: [ref(CONVERSATION_EVENTS, 'TranscriptEvent')],
       note: '⛔ **`TranscriptEvent` is a union of far more than two roles** — thinking, tool calls, memory notes, compaction, workflow output, notices. v2.3 draws a two-role transcript; the product’s transcript is the union, and every arm has its own component today.',
     },
     absent: 'Not optional.',
@@ -1344,7 +1336,10 @@ export const V23_ACTIONS: readonly ActionMapping[] = [
   },
   {
     action: 'attachFile',
-    binding: { state: 'bound', from: [ref(IPC, 'ChosenAttachment'), ref(IPC, 'HandedPath')] },
+    binding: {
+      state: 'bound',
+      from: [ref(IPC, 'ChosenAttachment'), ref(ATTACHMENTS, 'HandedPath')],
+    },
   },
   {
     action: 'decidePermission',
@@ -1431,7 +1426,7 @@ export const V23_ACTIONS: readonly ActionMapping[] = [
  *  - **`false`** — ⛔ the product does not do this. It must be removed or narrowed, and `382 §3` is
  *    explicit that a removal or a narrowing ships without another round.
  */
-export type SentenceVerdict = 'supported' | 'unsourced' | 'blurred' | 'false'
+type SentenceVerdict = 'supported' | 'unsourced' | 'blurred' | 'false'
 
 export interface HandCarriedSentence {
   /**
@@ -1547,7 +1542,7 @@ export const HAND_CARRIED: readonly HandCarriedSentence[] = [
     heldIn: ['v2.3'],
     verdict: 'supported',
     where: 'contextView() — the muted line',
-    renderFrom: [ref(IPC, 'InjectedInstruction')],
+    renderFrom: [ref(INSTRUCTIONS, 'InjectedInstruction')],
     why: '`reach`’s own contract: `on-request` is a statement about AVAILABILITY, never about what the model has read.',
   },
   {
@@ -1626,7 +1621,10 @@ export const HAND_CARRIED: readonly HandCarriedSentence[] = [
     heldIn: ['v2.3'],
     verdict: 'supported',
     where: 'requestsView() — the muted line',
-    renderFrom: [ref(IPC, 'UserDecisionEvent'), ref(IPC, 'TranscriptEvent')],
+    renderFrom: [
+      ref(CONVERSATION_EVENTS, 'UserDecisionEvent'),
+      ref(CONVERSATION_EVENTS, 'TranscriptEvent'),
+    ],
     why: '🔴 **The clause that failed was repaired by `477`, and this row went on saying it had not been** — the PM’s own *“two sentences that were false for a month”*. ⛔ The old reading was *“nothing is attributed to anybody”* — true when `382` wrote it, and untrue from the moment `UserDecisionEvent.by` existed; `494` F2 found the sentence still standing and `503` corrected it with the surface. ⚑ **Attributed means the KIND of caller and not a name**, which is all this app can ever know: `a-person` is *a window on somebody’s screen*. ⚠️ *Stays* is within `381`’s boundary exactly as the neighbouring supported row is — durable through a remount; a full restart and replay is not established, and the copy must not be strengthened past that.',
   },
   {
@@ -1634,7 +1632,10 @@ export const HAND_CARRIED: readonly HandCarriedSentence[] = [
     heldIn: ['v2.3'],
     verdict: 'supported',
     where: 'renderDecisionRecord() — the closing line of a refused record',
-    renderFrom: [ref(IPC, 'UserDecisionEvent'), ref(IPC, 'TranscriptEvent')],
+    renderFrom: [
+      ref(CONVERSATION_EVENTS, 'UserDecisionEvent'),
+      ref(CONVERSATION_EVENTS, 'TranscriptEvent'),
+    ],
     why: '⚠️ Within `381`’s boundary: durable through a remount. ⛔ Not established through a full restart and replay, and the sentence must not be strengthened past that.',
   },
 ]
@@ -1671,10 +1672,10 @@ export const HAND_CARRIED: readonly HandCarriedSentence[] = [
  * prose beside the fields is reviewed prose, and a component pairing can be wrong in a row whose
  * every checked field is green.
  */
-export type DrawingRevision = 'v2.3' | 'v2.7'
+type DrawingRevision = 'v2.3' | 'v2.7'
 
 /** A surface a person can reach in the drawing: a workspace route, or a sheet over one. */
-export type SurfaceKind = 'route' | 'sheet'
+type SurfaceKind = 'route' | 'sheet'
 
 /**
  * How much of a drawn surface the product has.
@@ -1686,7 +1687,7 @@ export type SurfaceKind = 'route' | 'sheet'
  *  - **`review-scaffold`** — the drawing's own review chrome. ⚑ Not a product surface and never
  *    will be; a row that called it `only-drawn` would put a permanent debt on the list.
  */
-export type SurfaceState = 'imported' | 'part-imported' | 'only-drawn' | 'review-scaffold'
+type SurfaceState = 'imported' | 'part-imported' | 'only-drawn' | 'review-scaffold'
 
 /**
  * One surface of the drawing, and the three things `455` §2.1 asks of it.

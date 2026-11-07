@@ -1,8 +1,38 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { waitFor } from './lib/f093-host'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  ClaudeRuntime,
+  CodexRuntime,
+  FakeProviderSessions,
+  ResumeError,
+  createSpawnTransportFactory,
+} from '@brobot2/runtime'
+import type { FakeSessionHandle } from '@brobot2/runtime'
+import type { Provider } from '@brobot2/shared'
+import { type AppDatabase, openDatabase } from '../src/main/db/connection'
+import { applyMigrations } from '../src/main/db/migrate'
+import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
+import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
+import { TASK_IS_OPEN } from '../src/shared/tasks'
+import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
+import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
+import {
+  aSpawnRefusedAfterItsPipes,
+  aSpawnThatRanOutOf,
+} from '../../../packages/runtime/test/fixtures/a-spawn-that-failed'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * ⚑ **Codex's transport spawns through `node:child_process` with no seam**, so the ONE spawn a test
@@ -20,32 +50,6 @@ vi.mock('node:child_process', async (importOriginal) => {
     },
   }
 })
-
-import {
-  ClaudeRuntime,
-  CodexRuntime,
-  FakeProviderSessions,
-  ResumeError,
-  createSpawnTransportFactory,
-} from '@brobot2/runtime'
-import type { FakeSessionHandle } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { TASK_IS_OPEN } from '../src/shared/tasks'
-import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
-import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
-import {
-  aSpawnRefusedAfterItsPipes,
-  aSpawnThatRanOutOf,
-} from '../../../packages/runtime/test/fixtures/a-spawn-that-failed'
 
 /**
  * # 🔴 705 · R39 — a shortage that clears by itself is not *until a person changes it*
@@ -72,17 +76,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 /** ⚑ The new word — spelled here as a string, so `main` (which has no such word) can run this file. */
 const SHORTAGE = 'that-conversation-could-not-be-woken-just-now'
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 describe('705 · R39 — a shortage that clears by itself', () => {
   let userData: string
   let root: string
@@ -101,26 +94,14 @@ describe('705 · R39 — a shortage that clears by itself', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued, gate),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built
@@ -152,14 +133,6 @@ describe('705 · R39 — a shortage that clears by itself', () => {
 
   const events = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
-
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
 
   const personOpens = async (profileId: string): Promise<string> => {
     const { sessionId } = await host.createSession(

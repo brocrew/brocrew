@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -6,7 +7,7 @@ import { createSessionRecord, type SessionRecord } from '../src/renderer/src/lib
 import { applyEvent } from '../src/renderer/src/lib/transcript'
 import { createAttachmentBook, draftKey } from '../src/renderer/src/lib/drafts'
 import { plainToolName, workingLine } from '../src/renderer/src/lib/working-line'
-import type { CreatedSession, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { CreatedSession } from '../src/shared/runtime-ipc'
 
 /**
  * While a turn runs, whatever started it, the end of the conversation says so: a quiet "working…",

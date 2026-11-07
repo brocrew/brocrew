@@ -4,7 +4,6 @@ import { z } from 'zod'
 import { createHash } from 'node:crypto'
 import { workspacePluginRoot } from './root-selection'
 import { defaultPluginRoot } from './supervisor/client'
-import { keepPluginRootPrivate } from './private-files'
 import { privateChild, privateRoot, PluginHostError } from './node-host-files'
 import { verifiedPluginDigest, type VerifiedPluginPackage } from './package-verifier'
 import { sharedWorkspaceLabel, SHARED_DATA_FEATURE } from './shared-data-contract'
@@ -93,7 +92,7 @@ export async function sharedDataEnvironment(
     throw new PluginHostError('package')
   const owner = checkedSharedDataOwner(input, hostRoot)
   const sharedRoot = join(owner.appData, '@brobot2', 'shared')
-  await keepPluginRootPrivate(sharedRoot)
+
   const root = await privateRoot(sharedRoot)
   const shared = await privateChild(root, pkg.manifest.id)
   return {

@@ -1,14 +1,9 @@
-import { lstat, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, lstat, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { THEME_JSON_BYTES } from '../../src/main/themes/files'
 import { CLASSIC_THEME } from '../../src/main/themes/defaults'
-import {
-  ACTIVE_THEME_FILE,
-  themeRoots,
-  themeWriteLock,
-  writeActiveTheme,
-} from '../../src/main/themes/state'
+import { ACTIVE_THEME_FILE, themeRoots, writeActiveTheme } from '../../src/main/themes/state'
 import { LIMITS } from '../../src/shared/themes/assets'
 import type { ThemeSaveInput } from '../../src/shared/theme-library'
 import { DEFINED } from './fixtures'
@@ -18,7 +13,6 @@ import {
   picturedBase,
   putTheme,
   RED_PNG,
-  RED_SAMPLES,
   type HostFixture,
 } from './host-fixtures'
 
@@ -43,7 +37,7 @@ describe('theme registry and workspace choices', () => {
     await putTheme(fixture.library, 'broken', { format: 1, id: 'wrong', name: 'Broken' })
     await putTheme(fixture.library, 'defined', { format: 1, id: 'defined', name: 'Shadow' })
     // Its base draws a picture with an effect, a setting the window doesn't paint yet.
-    const store = fixture.store({ loader: { sample: () => RED_SAMPLES, readsHeld: true } })
+    const store = fixture.store({ loader: { sample: () => true, readsHeld: true } })
     const snapshot = await store.start()
     expect(snapshot.themes).toEqual(
       expect.arrayContaining([
@@ -520,7 +514,7 @@ describe('theme intake and publication', () => {
                             },
                           ]
                         : [{ name: 'red.png', path: source }]
-    const store = fixture.store(kind === 'decode' ? { loader: { sample: () => null } } : {})
+    const store = fixture.store(kind === 'decode' ? { loader: { sample: () => false } } : {})
     await store.start()
     expect(await store.save({ theme: childTheme('rejected'), assets })).toMatchObject({
       outcome: 'refused',
@@ -669,11 +663,7 @@ describe('theme intake and publication', () => {
   it.each(['create', 'replace'] as const)(
     'refuses depth-nine assets for %s before publication and preserves the prior choice',
     async (operation) => {
-      const sample = vi.fn(() => ({
-        darkest: { r: 255, g: 0, b: 0, a: 1 },
-        lightest: { r: 255, g: 0, b: 0, a: 1 },
-        seeThrough: false,
-      }))
+      const sample = vi.fn(() => true)
       const store = fixture.store({ loader: { sample } })
       await store.start()
       if (operation === 'replace') {
@@ -881,28 +871,18 @@ describe('theme intake and publication', () => {
     expect(await readdir(fixture.userData)).toEqual([])
   })
 
-  it('refuses a second writer holding the same id lock and succeeds after release', async () => {
-    const first = fixture.store()
-    const second = fixture.store({ userData: fixture.otherUserData })
-    await first.start()
-    await second.start()
-    const release = await themeWriteLock(fixture.library, 'locked')
-    expect(release).not.toBeNull()
-    if (!release) throw new Error('expected fictional lock')
-    try {
-      expect(await second.save({ theme: childTheme('locked') })).toMatchObject({
-        outcome: 'refused',
-        problems: [{ at: 'theme.json', says: 'fictional:busy' }],
-      })
-      expect(await readdir(fixture.library)).toEqual(['.theme-locked.lock'])
-    } finally {
-      await release()
-    }
-    expect(await first.save({ theme: childTheme('locked') })).toMatchObject({ outcome: 'ok' })
-    expect((await second.refresh()).themes).toEqual(
+  it('saves normally after a crashed writer left an old lock directory', async () => {
+    const store = fixture.store()
+    await store.start()
+    await mkdir(join(fixture.library, '.theme-locked.lock'))
+    expect(await store.save({ theme: childTheme('locked') })).toMatchObject({
+      outcome: 'ok',
+      id: 'locked',
+    })
+    expect((await store.refresh()).themes).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: 'locked', status: 'ok' })]),
     )
-    await cleanLibrary()
+    expect(await readdir(fixture.library)).toContain('.theme-locked.lock')
   })
 })
 

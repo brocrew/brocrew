@@ -1,3 +1,6 @@
+import { neutralHostDeps } from './lib/host-fixture'
+import type { ModelCatalogue } from '../src/shared/model-choice-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -24,11 +27,9 @@ import { DEFAULT_PROFILE_ID, NOTHING_TO_SEND } from '../src/shared/runtime-ipc'
 
 import type {
   CreateSessionInput,
-  ModelCatalogue,
   RuntimeEventMessage,
   SessionLiveness,
   SessionLivenessMessage,
-  TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 
 /**
@@ -90,9 +91,7 @@ describe('RuntimeHost', () => {
     let counter = 0
     return new RuntimeHost({
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider),
       prepareProviderHome: (provider) => {
         const home = join(userData, 'provider-homes', provider)
@@ -346,9 +345,7 @@ describe('RuntimeHost', () => {
     let closes = 0
     const counting = buildHost({
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => {
         const runtime = new FakeRuntime(provider)
         return {
@@ -441,9 +438,7 @@ describe('RuntimeHost', () => {
   it('registers nothing when the provider fails to start', async () => {
     const failing = buildHost({
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: () =>
         ({
           provider: 'claude' as const,
@@ -461,9 +456,7 @@ describe('RuntimeHost', () => {
   it('turns a failing event stream into a fatal error and unregisters the session', async () => {
     const exploding = buildHost({
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: () => new ExplodingRuntime(),
     })
 
@@ -502,9 +495,7 @@ describe('RuntimeHost — an empty message is not a turn (234 §3)', () => {
     let counter = 0
     host = new RuntimeHost({
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider),
       prepareProviderHome: (provider) => join(userData, 'provider-homes', provider),
       providerHomePath: (provider) => join(userData, 'provider-homes', provider),
@@ -600,9 +591,7 @@ describe('RuntimeHost liveness', () => {
   function hostWith(runtime: AgentRuntime, windowMs: number): RuntimeHost {
     return new RuntimeHost({
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: () => runtime,
       prepareProviderHome: () => join(userData, 'home'),
       providerHomePath: () => join(userData, 'home'),
@@ -861,9 +850,7 @@ describe('RuntimeHost.sendInterrupting — send anyway, mid-turn (074)', () => {
     sink = new RecordingSink()
     host = new RuntimeHost({
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider),
       prepareProviderHome: (provider) => join(userData, 'provider-homes', provider),
       providerHomePath: (provider) => join(userData, 'provider-homes', provider),
@@ -968,9 +955,7 @@ describe('RuntimeHost — approval mode (078)', () => {
     const started: StartOptions[] = []
     const host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => {
         const runtime = new FakeRuntime(provider)
         const start = runtime.start.bind(runtime)
@@ -1160,9 +1145,7 @@ describe('RuntimeHost — the agent config rows (081)', () => {
     let counter = 0
     return new RuntimeHost({
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => {
         const runtime = new FakeRuntime(provider)
         const start = runtime.start.bind(runtime)
@@ -1284,9 +1267,7 @@ describe('RuntimeHost — the workspace cwd is recorded and replayed (006)', () 
     const resumedHints: (string | undefined)[] = []
     const host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => {
         const runtime = new FakeRuntime(provider)
         const start = runtime.start.bind(runtime)
@@ -1503,9 +1484,7 @@ describe('RuntimeHost — the model catalogue, asked once (058)', () => {
     let counter = 0
     return new RuntimeHost({
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime,
       prepareProviderHome: (provider) => join(userData, 'provider-homes', provider),
       providerHomePath: (provider) => join(userData, 'provider-homes', provider),
@@ -1663,9 +1642,7 @@ describe('257 · one model menu per PROFILE, because a catalogue is what a login
     let counter = 0
     return new RuntimeHost({
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider) => {
         const runtime = new FakeRuntime(provider)
         return Object.assign(Object.create(runtime) as typeof runtime, {
@@ -1807,9 +1784,7 @@ describe('RuntimeHost — a wholesale grant is disclosed the moment it is made (
     let counter = 0
     host = new RuntimeHost({
       store: NULL_SESSION_STORE,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider),
       prepareProviderHome: (provider) => join(userData, 'provider-homes', provider),
       providerHomePath: (provider) => join(userData, 'provider-homes', provider),
@@ -1939,9 +1914,7 @@ describe('RuntimeHost — changing a setting mid-conversation (076)', () => {
         startPlanMode: (sessionId) => writes.push(`planOn:${sessionId}`),
         endPlanMode: (sessionId) => writes.push(`planOff:${sessionId}`),
       },
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider),
       prepareProviderHome: (provider) => join(userData, 'provider-homes', provider),
       providerHomePath: (provider) => join(userData, 'provider-homes', provider),
@@ -2116,9 +2089,7 @@ describe('RuntimeHost — the go-ahead that releases a plan (060)', () => {
         ...NULL_SESSION_STORE,
         endPlanMode: (sessionId, at) => ended.push({ sessionId, at }),
       },
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider),
       prepareProviderHome: (provider) => join(userData, 'provider-homes', provider),
       providerHomePath: (provider) => join(userData, 'provider-homes', provider),

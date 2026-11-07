@@ -71,7 +71,12 @@ describe('§6 · the words the queue declares, and the readers that take them', 
     // regex that found nothing would make every loop below vacuous (rule 34.2).
     expect(tables).toContain('KIND_WORDS')
     expect(tables).toContain('DID_WORDS')
-    expect(/^export function sinceWords\(/m.test(queue)).toBe(true)
+    expect(
+      /^export function sinceWords\(/m.test(
+        readFileSync(new URL('../src/renderer/src/lib/queue-time.ts', import.meta.url), 'utf8'),
+      ),
+    ).toBe(true)
+    expect(/^export function sinceWords\(/m.test(queue)).toBe(false)
     const readers = everyReaderOfTheQueue()
     expect(readers.map((one) => one.name)).toContain('PersonsQueue.vue')
     // … and no component that reads this module re-declares any of them. ⛔ Over the RAW file on
@@ -99,7 +104,7 @@ describe('§6 · the words the queue declares, and the readers that take them', 
       }
       if (draws(source, /KIND_WORDS\[row\.kind\]/)) {
         expect(source, `${name} draws a kind without the shared words`).toContain('  KIND_WORDS,\n')
-        expect(source).toContain('  sinceWords,\n')
+        expect(source).toContain("import { sinceWords } from '../lib/queue-time'")
       }
     }
     // ⛔ **One, and the number is asserted so a rename of `row.chain` cannot empty this loop

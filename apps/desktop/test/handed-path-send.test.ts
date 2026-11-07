@@ -1,3 +1,6 @@
+import { neutralHostDeps } from './lib/host-fixture'
+import type { HandedPath } from '../src/shared/attachment-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -5,7 +8,6 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { FakeRuntime, type AgentRuntime, type SessionHandle } from '@brobot2/runtime'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
@@ -14,7 +16,7 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { classifyHandedPath } from '../src/main/runtime/handed-path'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { messageNamingItsSender, THE_PERSON_AT_A_WINDOW } from '../src/main/runtime/turn-origin'
-import { MAX_HANDED_PATHS, type HandedPath, type TranscriptEvent } from '../src/shared/runtime-ipc'
+import { MAX_HANDED_PATHS } from '../src/shared/runtime-ipc'
 import { createAttachmentBook, createDraftBook, draftKey } from '../src/renderer/src/lib/drafts'
 import { overTheWire } from '../src/renderer/src/lib/session-store'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
@@ -150,9 +152,7 @@ describe('handing the agent a path, through the host (216)', () => {
     let counter = 0
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: () => runtime,
       prepareProviderHome: (provider) => join(dir, 'homes', provider),
       providerHomePath: (provider) => join(dir, 'homes', provider),

@@ -286,9 +286,6 @@ const LEDGER: readonly Row[] = [
   },
 
   /* ---- drawn by the sweep, nothing cut ---- */
-  // ⚑ **D-016** — the rows of the components it deleted came out with them: `AllDocumentsSheet`,
-  // `DocumentDrawer`, `DispatchModal` and `ProjectSheet` (ranked), `ProjectWorkspace` (measured),
-  // and `AgentRow`, `AttentionRow`, `DocumentRow`, `ProjectCard` and `RecruitSheet` (clean).
   { component: 'AgentState.vue', standing: 'clean-at-531', note: '' },
   { component: 'AttentionQueue.vue', standing: 'clean-at-531', note: '' },
   { component: 'ChildWorkViewer.vue', standing: 'clean-at-531', note: '' },
@@ -496,7 +493,7 @@ const CLAMPED: Readonly<Record<string, { readonly clamp: string; readonly recove
     recovery:
       '⚑ a PRESS — the whole description is one press away in the tool detail. Ranked 6 at `531`, cut 10–68 px on y.',
   },
-  'QuestionCard.vue · .words.folded': {
+  'QuestionCard.vue · .words.folded :deep(.md-chat)': {
     clamp: '4',
     recovery:
       '⚑ a PRESS — *more* beside the folded words draws the whole question (UI-009, F052), offered only when they overflow the four lines; and the conversation draws the same card unfolded, one press away on *Open the conversation*.',
@@ -872,7 +869,10 @@ function questionOf(name: string, code: string): Question {
 }
 
 const HAND_ROLLED: Readonly<Record<string, Question>> = {
+  // Markdown cards fit while their complete code lines scroll inside each block.
+  'waiting-on-you-markdown.dom.test.ts': 'does-this-box-fit',
   'files-library.dom.test.ts': 'does-this-box-fit',
+  'shared-dialog-shells.dom.test.ts': 'does-this-box-fit',
   'legacy-kept-file-lists.dom.test.ts': 'does-this-box-fit',
   'the-viewer-says-what-a-file-is.dom.test.ts': 'does-this-box-fit',
   // The archived panel fits the viewport while its transcript can scroll to either end.

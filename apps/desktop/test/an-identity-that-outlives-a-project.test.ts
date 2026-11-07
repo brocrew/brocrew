@@ -1,3 +1,4 @@
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -8,7 +9,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { HOME_FOLDER } from '../src/main/runtime/provider-homes'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -106,9 +106,7 @@ describe('369 · an identity that outlives a project', () => {
       store = createSessionStore(db)
       host = new RuntimeHost({
         store,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(userData, 'exports'),
+        ...neutralHostDeps(() => userData),
         createRuntime: (provider: Provider) => new FakeRuntime(provider),
         listProfiles: () => folders,
         prepareProviderHome: (provider, profileId) => {
@@ -120,13 +118,7 @@ describe('369 · an identity that outlives a project', () => {
           join(userData, 'provider-homes', HOME_FOLDER, profileId, provider),
         resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
         newSessionId: () => `sess_${++counter}`,
-        readProviderConfig: (_provider, home) => ({
-          home,
-          homeEnv: 'CLAUDE_CONFIG_DIR',
-          model: 'm',
-          authNote: null,
-          files: [],
-        }),
+        readProviderConfig: fixtureProviderConfig,
       })
     })
     afterEach(async () => {
@@ -249,9 +241,7 @@ describe('369 · an identity that outlives a project', () => {
       let counter = 0
       const host = new RuntimeHost({
         store: createSessionStore(db),
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(userData, 'exports'),
+        ...neutralHostDeps(() => userData),
         createRuntime: (provider: Provider) => new FakeRuntime(provider),
         listProfiles: () => ['default', 'worker'],
         prepareProviderHome: (provider, profileId) => {
@@ -263,13 +253,7 @@ describe('369 · an identity that outlives a project', () => {
           join(userData, 'provider-homes', HOME_FOLDER, profileId, provider),
         resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
         newSessionId: () => `sess_${++counter}`,
-        readProviderConfig: (_provider, home) => ({
-          home,
-          homeEnv: 'CLAUDE_CONFIG_DIR',
-          model: 'm',
-          authNote: null,
-          files: [],
-        }),
+        readProviderConfig: fixtureProviderConfig,
       })
       try {
         const sink = new NullSink()

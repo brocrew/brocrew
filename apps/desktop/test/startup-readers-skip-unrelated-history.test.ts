@@ -248,7 +248,17 @@ describe('startup readers skip unrelated history', () => {
       const plan = db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...parameters) as {
         detail: string
       }[]
-      expect(plan.some((one) => one.detail.includes('events_fold_idx'))).toBe(true)
+      // Each skips unrelated history by an index that holds only what it reads: replacements and
+      // schedule levels seek their one type on the type/owner index, the others the fold index.
+      const seeksItsType =
+        sql.includes('AS first_listed') ||
+        sql.startsWith('SELECT session_id, payload FROM events INDEXED')
+      expect(
+        plan.some((one) =>
+          one.detail.includes(seeksItsType ? 'events_kind_owner_idx (type=?' : 'events_fold_idx'),
+        ),
+        sql.slice(0, 80),
+      ).toBe(true)
       expect(
         plan.some(
           (one) =>

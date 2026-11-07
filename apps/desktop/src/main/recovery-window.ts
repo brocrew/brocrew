@@ -9,13 +9,6 @@ import {
   type AppDocument,
 } from './window-navigation'
 
-/**
- * The window a start that did not open its data ends in: it says why, offers what can be done, and
- * reads a restored copy's history. Its own document, its own preload (`window.recovery` and nothing
- * else), and only the `recovery:*` calls; the app's own window, IPC and runtime never start beside
- * it.
- */
-
 /** The recovery window's document: `recovery.html` beside the app's own, in both builds. */
 export function recoveryDocument(devServerUrl: string | undefined): AppDocument {
   return {
@@ -66,10 +59,6 @@ export function openRecoveryWindow(options: RecoveryWindowOptions): BrowserWindo
   return window
 }
 
-/**
- * Registers the window's calls. Each one is answered only for the recovery window's own top frame,
- * so no other page can restore, return or read the history.
- */
 export function registerRecoveryIpc(
   ipc: Pick<IpcMain, 'handle'>,
   window: () => BrowserWindow | null,

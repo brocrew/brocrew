@@ -2,7 +2,8 @@ import type {
   InjectedInstruction,
   InjectedInstructionKind,
   SessionInstructions,
-} from '../../../shared/runtime-ipc'
+} from '../../../shared/instruction-contracts'
+
 import type { ToldLayer } from '../../../shared/told'
 import { pathTail } from '../../../shared/path-tail'
 import {
@@ -101,7 +102,7 @@ export interface ToldBlock {
 }
 
 /** ⚑ **A block read from a file** — every block but this conversation's own (D-024 · R1). */
-export type FileBlock = ToldBlock & {
+type FileBlock = ToldBlock & {
   readonly path: string
   readonly kind: InjectedInstructionKind
 }
@@ -155,7 +156,7 @@ export interface WhoseGroup {
  * reassuring answer. ⚠️ Reachable in production: a host one build behind sends no `sections`, and
  * the reader attaches none when the file on disk is not the file it composed.
  */
-export interface UnsplitBundle {
+interface UnsplitBundle {
   readonly block: FileBlock
   readonly says: string
 }

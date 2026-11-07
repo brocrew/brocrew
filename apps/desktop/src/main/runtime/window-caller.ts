@@ -6,7 +6,7 @@ import type { WebContents } from 'electron'
  *
  * ## ⛔ Its own module because both halves have to be here, and only one of them used to be
  *
- * ⚠️ **`agent-tools.ts` already holds this pattern for the other kind of caller**:
+ * ⚠️ **`conversation-caller.ts` already holds this pattern for the other kind of caller**:
  * {@link agentCallerId} mints `agent:<session>` and `sessionSpeakingAs` decodes it, and its own
  * docblock states the reason — *"it lives beside the encoder so the two spellings cannot drift
  * apart, which is the only reason a prefix scheme is safe to depend on."* ⛔ **The window half had

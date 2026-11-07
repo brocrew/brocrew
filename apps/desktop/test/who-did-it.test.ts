@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -13,18 +14,12 @@ import {
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { distil } from '../src/main/runtime/digest'
-import {
-  RuntimeHost,
-  THE_APP_ITSELF,
-  whoDidIt,
-  type RuntimeEventSink,
-} from '../src/main/runtime/runtime-host'
+import { RuntimeHost, THE_APP_ITSELF, whoDidIt } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { WHO_STOPPED_IT } from '../src/shared/how-work-stopped'
 import {
@@ -38,7 +33,7 @@ import {
 } from '../src/shared/who-did-it'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import type { RuntimeEvent } from '@brobot2/runtime'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 🔴 **477 · who did it** — HO-029 §2, landed.
@@ -90,17 +85,6 @@ const NEXT_TO = TO + 12 * HOUR
 const INSIDE_NEXT = TO + 6 * HOUR
 
 /** A window sink: `aPersonIsBehindIt` is what the person's answer door reads (`340`, `349`). */
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** Keep the provider handles, so a card can be raised through the real path. */
 class ProviderDouble extends FakeRuntime {
   constructor(
@@ -152,9 +136,7 @@ describe('477 · who did it', () => {
     buildHost = () =>
       new RuntimeHost({
         store,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(userData, 'exports'),
+        ...neutralHostDeps(() => userData),
         createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, sessions),
         prepareProviderHome: (provider: Provider, profileId?: string) => {
           const home = join(userData, 'provider-homes', profileId ?? 'default', provider)

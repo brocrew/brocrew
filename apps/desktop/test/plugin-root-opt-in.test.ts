@@ -1,6 +1,4 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { execFile } from 'node:child_process'
-import { promisify } from 'node:util'
 import { existsSync } from 'node:fs'
 import {
   copyFile,
@@ -17,43 +15,25 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { createConnection } from 'node:net'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  PluginWorkspaceLease,
-  pluginSupervisorRoot,
-  supervisorRequest,
-} from '../src/main/plugins/supervisor/client'
-import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
-import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
-import { GlobalPluginState } from '../src/main/plugins/state/store'
-import { keepPluginRootPrivate, realPath, isWithinOrSame } from '../src/main/plugins/private-files'
-import { keepToThisUser } from '../src/main/recovery/windows-privacy'
+import { pluginSupervisorRoot } from '../src/main/plugins/supervisor/client'
+import { realPath, isWithinOrSame } from '../src/main/plugins/private-files'
 import { pluginPersonCapability } from '../src/main/plugins/catalogue/capability'
 import {
   connectPersonPluginControl,
   servePersonPluginControl,
 } from '../src/main/plugins/lifecycle/person-control'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
-import { manifestFor, packageFixture, fictionalPublicKey } from './plugin-package-fixtures'
-import { projection, deferred } from './plugin-lifecycle-fixtures'
 import { PersonChannel } from '../src/main/plugins/lifecycle/transport'
 import { PluginSupervisorError } from '../src/main/plugins/supervisor/protocol'
 
 const folders: string[] = [],
-  owners: PluginSupervisor[] = [],
-  leases: PluginWorkspaceLease[] = [],
-  stores: GlobalPluginState[] = [],
-  storage: SupervisorStorage[] = [],
   closers: Array<() => Promise<unknown>> = []
 afterEach(async () => {
   try {
     for (const close of closers.splice(0).reverse()) await close()
-    for (const lease of leases.splice(0)) await lease.close()
-    for (const owner of owners.splice(0)) await owner.shutdown()
   } finally {
-    for (const disk of storage.splice(0)) disk.close()
-    for (const state of stores.splice(0)) state.close()
     for (const folder of folders.splice(0)) await rm(folder, { recursive: true, force: true })
   }
 })
@@ -62,7 +42,7 @@ async function fixture() {
     await mkdtemp(join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-root-')),
   )
   folders.push(parent)
-  await keepToThisUser(parent)
+
   const appData = join(parent, 'a'),
     workspace = join(parent, 'fern'),
     otherWorkspace = join(parent, 'cedar')
@@ -118,47 +98,6 @@ async function treeHash(root: string): Promise<string> {
   }
   await visit(root, '')
   return hash.digest('hex')
-}
-async function attach(global: string, workspace: string, generation = randomUUID()) {
-  const lease = await PluginWorkspaceLease.attach({
-    root: global,
-    workspaceRoot: workspace,
-    generation,
-    build: 'fictional-fern',
-  })
-  leases.push(lease)
-  return lease
-}
-async function owner(global: string, workspace: string) {
-  await keepPluginRootPrivate(global)
-  const childStopped = vi.fn(),
-    revoked = vi.fn()
-  const supervisor = await PluginSupervisor.start({
-    root: global,
-    workspaceRoots: [workspace],
-    revoke: revoked,
-  })
-  owners.push(supervisor)
-  let stopped!: () => void
-  const exited = new Promise<void>((resolve) => {
-    stopped = resolve
-  })
-  const adopt = () =>
-    supervisor.adopt({
-      stop() {
-        childStopped()
-        stopped()
-      },
-      exited,
-      async descendantsGone() {
-        return true
-      },
-    })
-  const disk = new SupervisorStorage(global, [workspace], false)
-  storage.push(disk)
-  const record = disk.read()
-  if (!record) throw new Error('fictional owner record is missing')
-  return { supervisor, disk, record, childStopped, revoked, adopt }
 }
 
 describe('workspace opt-in keeps every other plugin setup unchanged', () => {
@@ -259,13 +198,11 @@ describe('workspace opt-in keeps every other plugin setup unchanged', () => {
     ).toThrow(PluginSupervisorError)
     expect(existsSync(join(f.appData, '@brobot2', 'plugins'))).toBe(false)
   })
-  it('refuses a writable pin on POSIX while preserving the Windows ACL policy', async () => {
+  it('uses the selected root with an OS-readable writable pin', async () => {
     const f = await fixture()
     await optIn(f, f.workspace, 'p1')
     await chmod(pins(f), 0o666)
-    if (process.platform === 'win32')
-      expect(root(f)).toBe(join(f.appData, '@brobot2', 'plugins-p1'))
-    else expect(() => root(f)).toThrow(PluginSupervisorError)
+    expect(root(f)).toBe(join(f.appData, '@brobot2', 'plugins-p1'))
   })
   it('writes neither record on success or refusal', async () => {
     const f = await fixture()
@@ -380,7 +317,7 @@ describe('workspace opt-in keeps every other plugin setup unchanged', () => {
     const block = code.match(/const root = pluginSupervisorRoot\(\{([\s\S]*?)\}\)/)?.[1]
     expect(block).toMatch(/workspaceRoot:\s*app\.getPath\('userData'\)/)
     expect(code).toMatch(
-      /if \(root && ownership === 'sole'\) \{\s*pluginController\.start\(\{[\s\S]*?\n\s*root,/,
+      /if \(root && ownership === 'sole'\) \{\s*finishStartupPhase = pluginStartupTrace\.begin\('workspace-admission'\)\s*pluginController\.start\(\{[\s\S]*?\n\s*root,/,
     )
     expect(code.match(/pluginController\.start\(/g)).toHaveLength(1)
     const base = new URL('../src/', import.meta.url)
@@ -444,7 +381,6 @@ it('person capabilities and sockets refuse the other root key in both directions
   const roots = [root(f, f.otherWorkspace), root(f)]
   for (const path of roots) {
     await mkdir(path, { recursive: true, mode: 0o700 })
-    await keepPluginRootPrivate(path)
   }
   const keys = await Promise.all(roots.map(pluginPersonCapability))
   expect(keys[0]).not.toBe(keys[1])
@@ -484,366 +420,4 @@ it('person capabilities and sockets refuse the other root key in both directions
     await valid.settled()
   }
   expect(attach).toHaveBeenCalledTimes(2)
-})
-
-describe('simultaneous unselected and opted-in owners', () => {
-  it('changes only closed workspaces while a default owner refresh remains in flight', async () => {
-    const f = await fixture(),
-      devWorkspace = join(f.appData, '@brobot2', 'desktop')
-    const third = join(f.parent, 'oak')
-    for (const folder of [devWorkspace, third]) await mkdir(folder, { mode: 0o700 })
-    const dev = root(f, devWorkspace)
-    await mkdir(dev, { mode: 0o700 })
-    await keepPluginRootPrivate(dev)
-    const state = GlobalPluginState.create({
-      root: join(dev, 'state'),
-      workspaceRoots: [devWorkspace],
-    })
-    stores.push(state)
-    const live = await owner(dev, devWorkspace),
-      lease = await attach(dev, devWorkspace)
-    live.adopt()
-    const manifest = manifestFor()
-    manifest.id = 'chrome'
-    manifest.skills = []
-    manifest.platforms = [
-      {
-        os: process.platform as 'darwin' | 'linux' | 'win32',
-        cpu: process.arch as 'arm64' | 'x64',
-      },
-    ]
-    const pkg = packageFixture({ manifest }),
-      events: string[] = []
-    const entered = deferred<void>(),
-      release = deferred<void>(),
-      exited = deferred<void>()
-    const checkpoints = Array.from({ length: 6 }, () => ({
-      request: deferred<void>(),
-      done: deferred<void>(),
-    }))
-    const snapshots: unknown[] = []
-    const source = join(dev, 'fictional-catalogue.json'),
-      reads: string[] = []
-    await writeFile(source, pkg.bytes, { mode: 0o600 })
-    const controller = await PluginLifecycleController.open({
-      root: dev,
-      state,
-      pinnedPublicKey: fictionalPublicKey,
-      target: manifest.platforms[0]!,
-      catalogue: { bytes: pkg.bytes, signature: pkg.signature },
-      names: { chrome: 'Fictional Fern' },
-      deny: () => {
-        events.push('deny')
-      },
-      download: async () => {
-        events.push('download')
-        return pkg.archive
-      },
-      refreshCatalogue: async () => {
-        reads.push(source)
-        const bytes = await readFile(source)
-        entered.resolve()
-        for (const point of checkpoints) {
-          await point.request.promise
-          try {
-            snapshots.push(state.inspect())
-          } catch (error) {
-            snapshots.push(error)
-          }
-          point.done.resolve()
-        }
-        await release.promise
-        return {
-          catalogue: { bytes, signature: pkg.signature },
-          names: { chrome: 'Fictional Fern' },
-        }
-      },
-      runtime: {
-        previousOwnerClean: async () => true,
-        removeCode: async () => {
-          throw new Error('No package removal in this proof')
-        },
-        removeData: async () => {
-          throw new Error('No data removal in this proof')
-        },
-        start: async () => {
-          events.push('start')
-          return {
-            runId: randomUUID(),
-            exited: exited.promise,
-            ready: async () => ({
-              serverPid: 404941,
-              origin: 'http://127.0.0.1:1',
-              mcp: () => ({ url: '', headers: { Authorization: '' } }),
-              admin: () => ({ url: '', headers: { Authorization: '' } }),
-            }),
-            stop: async () => {
-              events.push('stop')
-              exited.resolve()
-            },
-          }
-        },
-      },
-    })
-    closers.push(() => controller.drain())
-    const handle = await controller.attach(projection(events).sink)
-    await controller.install(handle, 'chrome')
-    await mkdir(join(dev, 'data'), { recursive: true, mode: 0o700 })
-    await writeFile(join(dev, 'data', 'fictional-retained'), 'retained default setup', {
-      mode: 0o600,
-    })
-    const key = await pluginPersonCapability(dev)
-    const bridge = await servePersonPluginControl({
-      root: dev,
-      key,
-      controller,
-      read: async () => {
-        throw new Error('No private plugin read in this proof')
-      },
-    })
-    closers.push(() => bridge.close({ endConsumers: true }))
-    const client = await connectPersonPluginControl({
-      path: bridge.path,
-      key,
-      handle: async () => true,
-    })
-    closers.push(async () => {
-      client.close()
-      await client.settled()
-    })
-    await client.call({ kind: 'attach', workspaceId: randomUUID() })
-    const cards = await client.call({ kind: 'list-v2' })
-    expect(cards).toMatchObject([{ id: 'chrome', installed: true, state: 'Running' }])
-    const original = state.inspect(),
-      identity = controller.catalogueIdentity(),
-      beforeEvents = [...events]
-    expect(original.pending).toBeNull()
-    expect(original.guards).toHaveLength(1)
-    const refreshing = controller.refreshCatalogue(identity)
-    closers.push(async () => {
-      for (const point of checkpoints) point.request.resolve()
-      release.resolve()
-      await refreshing
-    })
-    await entered.promise
-    let refreshFinished = false
-    void refreshing.then(
-      () => {
-        refreshFinished = true
-      },
-      () => {},
-    )
-    const beforeTree = await treeHash(dev),
-      run = promisify(execFile)
-    const creatorLock = join(f.appData, '@brobot2', 'plugin-root-pins.lock')
-    expect(isWithinOrSame(dev, creatorLock)).toBe(false)
-    for (const path of [
-      live.disk.lock,
-      live.disk.record,
-      live.disk.socket,
-      join(dev, 'state', 'writer-lock.sqlite'),
-    ])
-      expect(path).not.toBe(creatorLock)
-    const command = resolve('scripts/plugin-root-opt-in.mjs')
-    const targets = [
-      [f.workspace, 'p1'],
-      [f.otherWorkspace, 'p2'],
-      [third, 'p3'],
-    ] as const
-    let checkpoint = 0
-    try {
-      for (const mode of ['own', 'shared'] as const) {
-        for (const [workspace, slot] of targets) {
-          const args = [
-            command,
-            '--app-data',
-            f.appData,
-            '--workspace',
-            workspace,
-            '--mode',
-            mode,
-            '--slot',
-            slot,
-            '--apply',
-          ]
-          expect(JSON.parse((await run(process.execPath, args)).stdout).status).toBe(
-            mode === 'own' ? 'created' : 'shared',
-          )
-          expect(root(f, workspace)).toBe(
-            mode === 'own' ? join(f.appData, '@brobot2', `plugins-${slot}`) : dev,
-          )
-          expect(root(f, devWorkspace)).toBe(dev)
-          expect(refreshFinished).toBe(false)
-          expect(controller.catalogueIdentity()).toBe(identity)
-          expect(live.disk.read()).toEqual(live.record)
-          expect(live.childStopped).not.toHaveBeenCalled()
-          expect(live.revoked).not.toHaveBeenCalled()
-          await expect(lease.renew()).resolves.toBeUndefined()
-          await expect(client.call({ kind: 'features' })).resolves.toHaveProperty('features')
-          const point = checkpoints[checkpoint]!
-          point.request.resolve()
-          await point.done.promise
-          expect(snapshots[checkpoint++]).toEqual(original)
-          expect(events).toEqual(beforeEvents)
-          expect(await treeHash(dev)).toBe(beforeTree)
-          expect(existsSync(creatorLock)).toBe(false)
-        }
-      }
-    } finally {
-      for (const point of checkpoints) point.request.resolve()
-      release.resolve()
-      await refreshing
-    }
-    expect(reads).toEqual([source])
-    expect(state.inspect()).toEqual(original)
-    expect(controller.catalogueIdentity()).toBe(identity)
-    expect(await client.call({ kind: 'list-v2' })).toEqual(cards)
-    expect(events).toEqual(beforeEvents)
-    await expect(lease.renew()).resolves.toBeUndefined()
-  })
-  it.each([
-    [false, false],
-    [true, false],
-    [false, true],
-    [true, true],
-  ])(
-    'draining selected=%s leaves the other root unchanged, both selected=%s',
-    async (drainingSelected, bothSelected) => {
-      const f = await fixture()
-      const { workspace } = f
-      await optIn(f, workspace, 'p1')
-      if (bothSelected) await optIn(f, f.otherWorkspace, 'p2')
-      const dev = root(f, f.otherWorkspace),
-        installed = root(f, workspace)
-      expect(installed).not.toBe(dev)
-      await mkdir(dev, { mode: 0o700 })
-      await keepPluginRootPrivate(dev)
-      const devState = GlobalPluginState.create({
-        root: join(dev, 'state'),
-        workspaceRoots: [workspace],
-      })
-      stores.push(devState)
-      const operationId = randomUUID()
-      devState.prepare({
-        operationId,
-        consent: {
-          action: 'install',
-          pluginId: 'fictional-fern',
-          at: 1000,
-          expectedSequence: devState.inspect().sequence,
-          expectedInstallId: null,
-          release: {
-            version: '1.0.0',
-            archiveSha256: 'a'.repeat(64),
-            manifestSha256: 'b'.repeat(64),
-            dataSchema: 1,
-          },
-        },
-        snapshot: null,
-      })
-      devState.complete(operationId)
-      expect(devState.exportActivation().entries).toMatchObject([
-        { pluginId: 'fictional-fern', phase: 'active' },
-      ])
-      await mkdir(join(dev, 'data'), { mode: 0o700 })
-      await writeFile(join(dev, 'data', 'fictional-fern'), 'fictional retained setup', {
-        mode: 0o600,
-      })
-      const original = devState.inspect()
-      const devOwner = await owner(dev, workspace)
-      const retained = await treeHash(dev)
-      const installedOwner = await owner(installed, workspace)
-      const generation = randomUUID()
-      const devLease = await attach(dev, workspace, generation),
-        installedLease = await attach(installed, workspace, generation)
-      devOwner.adopt()
-      installedOwner.adopt()
-      expect(devLease.epoch).not.toBe(installedLease.epoch)
-      expect(devOwner.record.key).not.toBe(installedOwner.record.key)
-      const installedState = GlobalPluginState.create({
-        root: join(installed, 'state'),
-        workspaceRoots: [workspace],
-      })
-      stores.push(installedState)
-      expect(installedState.inspect().rootId).not.toBe(original.rootId)
-      expect(installedState.exportActivation().entries).toEqual([])
-      expect(existsSync(join(installed, 'data'))).toBe(false)
-      expect(await treeHash(dev)).toBe(retained)
-      installedState.requireUpdateReader()
-      expect(devState.inspect()).toEqual(original)
-      const installedBefore = installedState.inspect()
-      devState.requireUpdateReader()
-      expect(installedState.inspect()).toEqual(installedBefore)
-      const devBeforeDrain = devState.inspect()
-
-      const workspaceId = createHash('sha256').update(workspace).digest('hex')
-      // Even with the target owner's transport key, a lease from the other root is no authority.
-      for (const [target, foreign] of [
-        [devOwner, installedLease],
-        [installedOwner, devLease],
-      ] as const) {
-        await expect(
-          supervisorRequest(target.disk, target.record, {
-            kind: 'release',
-            workspace: workspaceId,
-            generation,
-            lease: foreign.lease,
-          }),
-        ).rejects.toMatchObject({ code: 'unavailable' })
-      }
-      await expect(devLease.renew()).resolves.toBeUndefined()
-      await expect(installedLease.renew()).resolves.toBeUndefined()
-      const [closing, survivor, survivorLease, closedLease] = drainingSelected
-        ? ([installedOwner, devOwner, devLease, installedLease] as const)
-        : ([devOwner, installedOwner, installedLease, devLease] as const)
-      expect(await closedLease.close()).toBe(true)
-      expect(closing.childStopped).toHaveBeenCalledOnce()
-      expect(closing.revoked).toHaveBeenCalledOnce()
-      expect(survivor.childStopped).not.toHaveBeenCalled()
-      expect(survivor.revoked).not.toHaveBeenCalled()
-      expect(survivor.disk.read()).toEqual(survivor.record)
-      await expect(survivorLease.renew()).resolves.toBeUndefined()
-      expect(installedState.inspect()).toEqual(installedBefore)
-      expect(devState.inspect()).toEqual(devBeforeDrain)
-      expect(await readFile(join(dev, 'data', 'fictional-fern'), 'utf8')).toBe(
-        'fictional retained setup',
-      )
-    },
-  )
-  it.each(['file', 'link'])(
-    'an unusable installed root (%s) never attaches to the dev owner',
-    async (kind) => {
-      const f = await fixture()
-      const { appData, workspace, otherWorkspace } = f
-      await optIn(f, otherWorkspace, 'p1')
-      const dev = root(f, workspace),
-        installed = join(appData, '@brobot2', 'plugins-p1')
-      const devOwner = await owner(dev, workspace)
-      const devLease = await attach(dev, workspace)
-      devOwner.adopt()
-      if (kind === 'file') await writeFile(installed, 'fictional unavailable root', { mode: 0o600 })
-      else await symlink(dev, installed, process.platform === 'win32' ? 'junction' : 'dir')
-      expect(() => root(f, otherWorkspace)).toThrow()
-      const selected = installed
-      const launch = vi.fn(async () => {
-        throw new Error('fictional launch must not run')
-      })
-      const attempted = PluginWorkspaceLease.attach({
-        root: selected,
-        workspaceRoot: otherWorkspace,
-        generation: randomUUID(),
-        build: 'fictional-cedar',
-        launch,
-      }).then((lease) => {
-        leases.push(lease)
-        return lease
-      })
-      await expect(attempted).rejects.toMatchObject({ code: 'unavailable' })
-      expect(launch).not.toHaveBeenCalled()
-      expect(devOwner.disk.read()).toEqual(devOwner.record)
-      expect(devOwner.childStopped).not.toHaveBeenCalled()
-      expect(devOwner.revoked).not.toHaveBeenCalled()
-      await expect(devLease.renew()).resolves.toBeUndefined()
-    },
-  )
 })

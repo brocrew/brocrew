@@ -1,6 +1,4 @@
-import type { KeyObject } from 'node:crypto'
-import type { PluginCard } from '../../../shared/plugin-settings'
-import type { PluginReleasePin } from '../package-verifier'
+import type { PluginStartupDiagnostic } from '../../../shared/plugin-settings'
 import type { PluginRelease, PluginTarget } from '../package-schema'
 import type { GlobalPluginState } from '../state/store'
 import type { ProjectionReceipt, Installation } from '../state/format'
@@ -8,6 +6,7 @@ import type { PluginNodeReady, PluginNodeStart } from '../node-host'
 
 export interface LifecycleRun {
   readonly runId: string
+  startupDiagnostic?(): PluginStartupDiagnostic | undefined
   ready(): Promise<PluginNodeReady>
   readonly exited: Promise<void>
   /** Resolves only after positive exit proof for this exact run; unknown rejects. */
@@ -23,11 +22,12 @@ export interface LifecycleRuntime {
 }
 export interface WorkspaceProjection {
   readonly workspaceId: string
-  /** Acknowledges applying the projection; persistence belongs exclusively to GlobalPluginState. */
-  applied(pluginId: string, receipt: ProjectionReceipt | null): Promise<void>
   /** Revoke running consumers/UI; false or rejection is not proof of quiescence. */
   revoke(pluginId: string, installId: string): Promise<boolean>
-  /** Clear stale tool/UI bindings before acknowledging fresh live-owner metadata. No skills. */
+}
+/** The app's side of a workspace: it still answers an older owner's applied/reconcile notices. */
+export interface PersonProjection extends WorkspaceProjection {
+  applied(pluginId: string, receipt: ProjectionReceipt | null): Promise<void>
   reconcile(change: {
     pluginId: string
     before: ProjectionReceipt | null
@@ -37,19 +37,18 @@ export interface WorkspaceProjection {
 export interface LifecycleOptions {
   root: string
   state: GlobalPluginState
-  pinnedPublicKey: KeyObject | null
-  /** App-admitted repo-list digest authority only; exclusive with the dormant signing key. */
+  /** App-admitted repo-list source digest. */
   repoCatalogueSha256?: string
   /** Raw list bound by trusted app launch input, used to derive older minimum-version views. */
   repoList?: { bytes: Uint8Array; sha256: string; appVersion: string }
   legacyRepoList?: { bytes: Uint8Array; sha256: string; appVersion: string }
   target: PluginTarget
-  catalogue: { bytes: Uint8Array; signature: Uint8Array }
+  catalogue: { bytes: Uint8Array }
   /** Reviewed host-owned display names, never remote unreviewed text. */
   names: Readonly<Record<string, string>>
   /** Re-read only the source fixed by trusted app launch code. */
   refreshCatalogue?: () => Promise<{
-    catalogue: { bytes: Uint8Array; signature: Uint8Array }
+    catalogue: { bytes: Uint8Array }
     repoCatalogueSha256?: string
     repoList?: { bytes: Uint8Array; sha256: string; appVersion: string }
     legacyRepoList?: { bytes: Uint8Array; sha256: string; appVersion: string }
@@ -64,17 +63,13 @@ export interface LifecycleOptions {
   now?: () => number
   /** Live host-broker reachability, separate from the plugin process lifecycle. */
   toolsUnavailable?: (pluginId: string) => boolean
+  /** Fixed-vocabulary `stage: cause` behind unavailable tools, when known. */
+  toolsCause?: (pluginId: string) => string | undefined
   /** Inert fault controls only; never a production launch option. */
-  fault?: (
-    point: 'prepared' | 'staged' | 'ready' | 'activated' | 'receipted' | 'update-fenced',
-  ) => void
+  fault?: (point: 'prepared' | 'staged' | 'ready' | 'activated' | 'update-fenced') => void
 }
 declare const workspaceBrand: unique symbol
 export interface LifecycleWorkspace {
   readonly [workspaceBrand]: true
 }
-export interface LifecycleStatus {
-  readonly cards: readonly PluginCard[]
-  readonly cleanupPending: readonly string[]
-}
-export type { ProjectionReceipt, Installation, PluginReleasePin, PluginRelease }
+export type { Installation }

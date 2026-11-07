@@ -1,8 +1,11 @@
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import type { LedgerWalk } from '../src/shared/question-contracts'
+import type { HandedPath } from '../src/shared/attachment-contracts'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, reactive, ref } from 'vue'
 import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
 import type { AgentToolset, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
@@ -10,7 +13,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore as createLedger, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import type { ToolName } from '../src/main/runtime/agent-tools'
@@ -21,9 +23,8 @@ import { createDraftBook, draftKey, sweepDrafts } from '../src/renderer/src/lib/
 import { stalledWorkView } from '../src/renderer/src/lib/persons-queue'
 import { OPEN_THE_CONVERSATION } from '../src/renderer/src/lib/taking-over'
 import type { StalledWork } from '../src/shared/stalled-work'
-import type { LedgerWalk } from '../src/shared/questions'
+
 import type {
-  HandedPath,
   ResumableSessionInfo,
   RuntimeBridge,
   RuntimeChangeMessage,
@@ -142,6 +143,7 @@ class AWindow {
     const bridge: Partial<RuntimeBridge> = {
       createSession: (input) => run({ kind: 'createSession', ...input }),
       resume: (input) => run({ kind: 'resume', ...input }),
+      claim: (input) => run({ kind: 'claim', ...input }),
       // ⚑ **737 · the first message's one door** (`735` §3) — ⚑ D-017b: every message from a
       // recorded view.
       startAndSend: (input) => run({ kind: 'startAndSend', ...input }),
@@ -225,12 +227,15 @@ describe('§1 · 701 · `692` F-a, D-017b — through a real host, a real ledger
   const stops: (() => void)[] = []
   const tick = (): number => clock++
 
+  let holdReaderClose: (() => Promise<void>) | undefined
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store: ledger,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      memoryKnowledge:
+        holdReaderClose === undefined
+          ? undefined
+          : ({ close: holdReaderClose, busy: () => false, held: () => false } as never),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new CountingRuntime(provider, launched, handed, issued),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
@@ -246,13 +251,7 @@ describe('§1 · 701 · `692` F-a, D-017b — through a real host, a real ledger
         announced.push(change)
         for (const one of windows) one.announce(change)
       },
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built
@@ -266,6 +265,7 @@ describe('§1 · 701 · `692` F-a, D-017b — through a real host, a real ledger
     clock = 7_000_000
     ledger = createLedger(db, tick)
     counter = 0
+    holdReaderClose = undefined
     hosts = []
     launched = []
     handed = []
@@ -281,6 +281,25 @@ describe('§1 · 701 · `692` F-a, D-017b — through a real host, a real ledger
     for (const built of hosts) await built.closeAll()
     db.close()
     for (const dir of [userData, root]) rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('records open conversations before a quit waits for background work', async () => {
+    let release!: () => void
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    holdReaderClose = () => held
+    host = buildHost()
+    const created = await host.createSession({ provider: 'claude', cwd: root }, win.sink)
+    const kept = vi.spyOn(ledger, 'closedByTheQuit')
+    const closing = host.closeAll()
+    try {
+      expect(kept).toHaveBeenCalledWith([created.sessionId], expect.any(Number))
+    } finally {
+      release()
+      await closing
+      kept.mockRestore()
+    }
   })
 
   /** ⚑ A renderer store in the current window — disposed with the window. */
@@ -599,6 +618,13 @@ describe('§1 · 701 · `692` F-a, D-017b — through a real host, a real ledger
     const afterItStarted = launched.length
     // ⚑ The premise: this window still draws it from its ledger.
     expect(store.get(child)?.phase).toBe('recorded')
+
+    const wordsBeforeClaim = ledger.events(child).filter(({ event }) => event.type === 'user_turn')
+    expect(await store.claim(child)).toBe(true)
+    expect(launched.length, 'claim starts no provider').toBe(afterItStarted)
+    expect(ledger.events(child).filter(({ event }) => event.type === 'user_turn')).toEqual(
+      wordsBeforeClaim,
+    )
 
     const came = await continueIt(child, 'words for the child', [])
 

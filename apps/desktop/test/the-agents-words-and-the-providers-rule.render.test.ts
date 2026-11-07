@@ -1,3 +1,5 @@
+import type { LedgerWalk, PersonsDecision } from '../src/shared/question-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -29,12 +31,7 @@ import {
   type TranscriptItem,
   type UserInputItem,
 } from '../src/renderer/src/lib/transcript'
-import {
-  decisionReading,
-  readingSentence,
-  type LedgerWalk,
-  type PersonsDecision,
-} from '../src/shared/questions'
+import { decisionReading, readingSentence } from '../src/shared/questions'
 import {
   agentName,
   providerName,
@@ -42,7 +39,6 @@ import {
   type CreatedSession,
   type Provider,
   type RuntimeEventMessage,
-  type TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 
 /**
@@ -225,6 +221,14 @@ const textsOf = (markup: string, cy: string): string[] =>
     ...shown(markup).matchAll(new RegExp(`data-cy="${escapeRegExp(cy)}"[^>]*>([\\s\\S]*?)</`, 'g')),
   ].map((one) => decode(one[1]!.trim()))
 
+/** The prompt's complete rendered paragraph, including the shared renderer's block boundary. */
+const promptMarkup = (markup: string): string[] =>
+  [
+    ...shown(markup).matchAll(
+      /data-cy="user-input-prompt"[^>]*><div class="md-chat"[^>]*>([\s\S]*?)<\/div>/g,
+    ),
+  ].map((one) => decode(one[1]!.trim()))
+
 /** ⚑ Where an element starts in the markup, or `-1` — for asking what is drawn before what. */
 const at = (markup: string, cy: string): number => shown(markup).indexOf(`data-cy="${cy}"`)
 
@@ -333,7 +337,7 @@ describe('§2 · R44 — a grant card draws the model’s words as its agent’s
       inTheAgentsWords('Ada', THE_MODELS_WORDS),
     ])
     // ⚑ The headline stays this app's own sentence.
-    expect(textsOf(html, 'user-input-prompt')).toEqual([THE_AGENT_ASKS_FOR_ACCESS])
+    expect(promptMarkup(html)).toEqual([`<p>${THE_AGENT_ASKS_FOR_ACCESS}</p>`])
     // ⛔ **Never a scope line** (`permission.ts`): read once, and that once is above the block.
     expect(times(html, THE_MODELS_WORDS)).toBe(1)
     expect(at(html, 'user-input-prompt')).toBeLessThan(at(html, 'user-input-agent-reason'))
@@ -345,7 +349,7 @@ describe('§2 · R44 — a grant card draws the model’s words as its agent’s
     const html = await card(aLegacyGrant(), { ownAgent: 'Ada' })
     expect(at(html, 'user-input-agent-reason')).toBe(-1)
     expect(decode(shown(html))).not.toContain(' says: “')
-    expect(textsOf(html, 'user-input-prompt')).toEqual([THE_MODELS_WORDS])
+    expect(promptMarkup(html)).toEqual([`<p>${THE_MODELS_WORDS}</p>`])
     expect(firstGrantLine(html)).toBe(THE_MODELS_WORDS)
     expect(times(html, THE_MODELS_WORDS)).toBe(2)
   })

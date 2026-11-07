@@ -1669,7 +1669,7 @@ const receiptBase = {
    * The app's calendar as it kept the receipt: which one, and the version of its zone data. A
    * job's time is placed only on the calendar it was created under.
    */
-  stamp: z.object({ calendar: scheduleText, version: scheduleText }).optional(),
+  stamp: z.object({ calendar: scheduleText, version: z.string().min(1).max(16_384) }).optional(),
 }
 
 /**

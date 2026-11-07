@@ -1,3 +1,4 @@
+import { neutralHostDeps } from '../lib/host-fixture'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -19,7 +20,6 @@ import { openDatabase } from '../../src/main/db/connection'
 import { applyMigrations } from '../../src/main/db/migrate'
 import { createSessionStore } from '../../src/main/db/session-store'
 import { archivedConversationsIn } from '../../src/main/archived-file'
-import { NO_DISCOVERY } from '../../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../../src/main/runtime/scratch-cwd'
 import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
@@ -45,7 +45,7 @@ export function deferred() {
   return { promise, release }
 }
 
-export async function mcpRequestServer(tools = ['read_notes'], fail = false) {
+async function mcpRequestServer(tools = ['read_notes'], fail = false) {
   let connections = 0
   let requests = 0
   let responseWait: Promise<void> | null = null
@@ -198,9 +198,7 @@ export function mcpRequestWorld() {
       const host = new RuntimeHost({
         store,
         archived: archivedConversationsIn(folder),
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(folder, 'exports'),
+        ...neutralHostDeps(() => folder),
         createRuntime: (provider: Provider) => new RecordingRuntime(provider, { sessions: issued }),
         prepareProviderHome: (provider, profile = 'default') => {
           const home = join(folder, 'provider-homes', profile, provider)

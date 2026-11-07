@@ -3,16 +3,16 @@ import { validateTheme } from '../../src/shared/themes/validate'
 import { contextFor, DEFINED, png, SAMPLES, woff2 } from './fixtures'
 
 const base = { format: 1, id: 'mine', name: 'Mine', extends: 'defined' }
-const valid = (file: Record<string, unknown>, assets = {}, pictures = {}) =>
-  validateTheme(file, contextFor(assets, pictures))
-const problems = (file: Record<string, unknown>, assets = {}, pictures = {}) => {
-  const r = valid(file, assets, pictures)
+const valid = (file: Record<string, unknown>, assets = {}) =>
+  validateTheme(file, contextFor(assets))
+const problems = (file: Record<string, unknown>, assets = {}) => {
+  const r = valid(file, assets)
   return r.ok ? [] : r.problems
 }
 
 describe('every live theme, written as settings, is accepted', () => {
   it.each(Object.entries(SAMPLES))('%s', (_, sample) => {
-    const r = validateTheme(sample.file, contextFor(sample.assets, sample.pictures))
+    const r = validateTheme(sample.file, contextFor(sample.assets))
     expect(r.ok ? [] : r.problems).toEqual([])
   })
 
@@ -247,30 +247,22 @@ describe('what is refused, and the sentence that says so', () => {
 
 describe('files are held to the limits', () => {
   const withPicture = { ...base, rail: { background: { layers: [{ image: 'assets/a.png' }] } } }
-  const sampled = {
-    'assets/a.png': {
-      darkest: { r: 0, g: 0, b: 0, a: 1 },
-      lightest: { r: 40, g: 40, b: 40, a: 1 },
-    },
-  }
 
   it('a picture over 4 MB', () => {
     expect(
-      problems(withPicture, { 'assets/a.png': png(100, 100, 5 * 1024 * 1024) }, sampled).map(
-        (p) => p.says,
-      ),
+      problems(withPicture, { 'assets/a.png': png(100, 100, 5 * 1024 * 1024) }).map((p) => p.says),
     ).toEqual(['assets/a.png is 5 MB; a picture can be up to 4 MB.'])
   })
 
   it('a picture over 4096 pixels a side', () => {
-    expect(
-      problems(withPicture, { 'assets/a.png': png(5000, 100) }, sampled).map((p) => p.says),
-    ).toEqual(['assets/a.png is 5000×100 pixels; a picture can be up to 4096 pixels a side.'])
+    expect(problems(withPicture, { 'assets/a.png': png(5000, 100) }).map((p) => p.says)).toEqual([
+      'assets/a.png is 5000×100 pixels; a picture can be up to 4096 pixels a side.',
+    ])
   })
 
   it('an animated picture', () => {
     const facts = { ...png(100, 100), animated: true }
-    expect(problems(withPicture, { 'assets/a.png': facts }, sampled)[0]?.says).toMatch(
+    expect(problems(withPicture, { 'assets/a.png': facts })[0]?.says).toMatch(
       /is animated\. Pictures must be still/,
     )
   })

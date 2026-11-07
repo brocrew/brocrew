@@ -3,7 +3,6 @@ import { createHash, randomBytes } from 'node:crypto'
 import {
   type BigIntStats,
   type Stats,
-  chmodSync,
   closeSync,
   constants as fsConstants,
   existsSync,
@@ -584,15 +583,6 @@ export function credentialFingerprint(token: string): string {
 }
 
 /**
- * A tag for the sign-in a session launched on, from the fingerprint it already holds of it
- * ({@link SessionHandle.signInTag}). Digested once more and cut short, so what is kept on disk
- * beside a usage reading is not the fingerprint a sign-in is compared by.
- */
-export function signInTagOf(launchFingerprint: string): string {
-  return credentialFingerprint(`sign-in-tag:${launchFingerprint}`).slice(0, 32)
-}
-
-/**
  * Claude auth-health: ok iff the provider currently yields a token (login present + unexpired).
  *
  * ## What a Claude profile switch does to this app — measured, 098
@@ -1104,9 +1094,6 @@ async function provisionCodexAuthLocked(
         closeSync(fd)
         rmSync(tmp, { force: true }) // dest keeps the inode alive
       }
-      chmodSync(dest, 0o600) // pin 0600 regardless of umask
-      // On Windows a mode is only a read-only flag: there the file is kept to its owner by the
-      // access list it inherits from the person's own profile folder.
     },
     { verify: ancestry?.verify },
   )
@@ -1199,7 +1186,7 @@ export async function replaceARefusedCodexCopy(
           } finally {
             closeSync(fd)
           }
-          chmodSync(tmp, 0o600)
+
           renameSync(tmp, dest)
         } catch (error) {
           rmSync(tmp, { force: true })
@@ -1317,9 +1304,7 @@ export async function reprovisionCodexAuth(
       } finally {
         closeSync(fd) // closed on the throwing path too — no descriptor outlives this block
       }
-      chmodSync(tmp, 0o600) // pin the mode BEFORE it becomes the destination, regardless of umask
-      // On Windows a mode is only a read-only flag: there the file is kept to its owner by the
-      // access list it inherits from the person's own profile folder.
+
       renameSync(tmp, dest) // atomic REPLACE — the one difference from the copy-once path
     } catch (error) {
       rmSync(tmp, { force: true }) // a failed install leaves no half-written credential behind
@@ -1340,28 +1325,14 @@ function readOrNull(path: string): Buffer | null {
 
 /**
  * Codex auth-health: ok iff a managed `auth.json` exists and is a regular file, or a link the person
- * made to one. A file others may read is made 0600 again rather than refused, where a file has a
- * mode: Windows reports every writable file as `0666` whatever its access list says (F072).
+ * made to one. Ordinary filesystem permissions do not change this health result.
  */
-export function codexAuthHealth(
-  providerHome: string,
-  platform: NodeJS.Platform = process.platform,
-): AuthHealth {
+export function codexAuthHealth(providerHome: string): AuthHealth {
   const dest = join(providerHome, CODEX_AUTH_FILE)
   const stat = statOrNull(dest)
   if (!stat) return { ok: false, reason: `no managed Codex auth.json in ${providerHome}` }
   if (!stat.isFile())
     return { ok: false, reason: `Codex auth.json is not a regular file (e.g. a directory)` }
-  const mode = stat.mode & 0o777
-  if (platform !== 'win32' && mode !== 0o600) {
-    try {
-      chmodSync(dest, 0o600)
-    } catch (error) {
-      console.warn(
-        `BroCrew could not make ${dest} 0600, and used it anyway: ${error instanceof Error ? error.message : String(error)}`,
-      )
-    }
-  }
   return { ok: true }
 }
 

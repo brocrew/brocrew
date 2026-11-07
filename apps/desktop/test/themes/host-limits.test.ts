@@ -6,14 +6,7 @@ import { THEME_FOLDER_LIMIT } from '../../src/main/themes/load'
 import { themePictureSampler } from '../../src/main/themes/picture-samples'
 import { themeProblem, themeFileSizeProblem, themeSizeProblem } from '../../src/main/themes/words'
 import { LIMITS, sniffAsset } from '../../src/shared/themes/assets'
-import {
-  childTheme,
-  createHostFixture,
-  putTheme,
-  RED_PNG,
-  RED_SAMPLES,
-  type HostFixture,
-} from './host-fixtures'
+import { childTheme, createHostFixture, putTheme, RED_PNG, type HostFixture } from './host-fixtures'
 
 let fixture: HostFixture
 beforeEach(async () => {
@@ -178,7 +171,7 @@ describe('theme intake limits and decoder formats', () => {
     bytes.write('RIFF', 0)
     bytes.writeUInt32LE(22, 4)
     bytes.write('WEBPVP8X', 8)
-    const sample = vi.fn(() => RED_SAMPLES)
+    const sample = vi.fn(() => true)
     const store = fixture.store({ problem: themeProblem, loader: { sample } })
     await store.start()
     expect(
@@ -201,7 +194,7 @@ describe('theme intake limits and decoder formats', () => {
         throw new Error('decoder must not run')
       }),
     }
-    if (sniffed.ok) expect(themePictureSampler(images)(bytes, sniffed.facts)).toBeNull()
+    if (sniffed.ok) expect(themePictureSampler(images)(bytes, sniffed.facts)).toBe(false)
     expect(images.createFromBuffer).not.toHaveBeenCalled()
     expect(
       await store.save({
@@ -231,7 +224,7 @@ describe('theme intake limits and decoder formats', () => {
     const store = fixture.store({
       problem: themeProblem,
       loader: {
-        sample: () => RED_SAMPLES,
+        sample: () => true,
         readDirectory: async (path) => {
           if (path.startsWith(assets)) visited.push(path)
           return (await readdir(path, { withFileTypes: true })).sort((a, b) =>

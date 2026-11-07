@@ -2,36 +2,6 @@
 import type { LaunchRefusal } from '../../../shared/runtime-ipc'
 
 /**
- * Whether a launch attempt that just ended should hand the message back (015, re-keyed by 019).
- *
- * Exported and pure because it is the whole of a rule that is otherwise invisible: it fires on a
- * falling edge, only on failure, and only when there was something to give back. A watcher is not
- * reachable from a node/SSR test, so the decision lives here where it can be pinned — the same
- * seam the composer's send decision uses.
- */
-export function shouldRestoreDraft(input: {
-  busy: boolean
-  wasBusy: boolean
-  error: string | null
-  lastTried: string
-  /** What is in the box right now. Handing text back must never overwrite newer text. */
-  current: string
-}): boolean {
-  return (
-    input.wasBusy &&
-    !input.busy &&
-    input.error !== null &&
-    input.lastTried !== '' &&
-    // Never over the top of what is being typed NOW. This clause was written because the launch
-    // flag and the launch error were both SHARED with reopening a conversation, and this surface
-    // stays mounted through one — 100 gave the error its own ref and 102 made `busy` per gesture,
-    // so that particular door is closed; the rule stands on its own merit either way, and a
-    // hand-back that overwrote live typing would be 019's bug whatever opened it.
-    input.current === ''
-  )
-}
-
-/**
  * 🔴 **725 · `716` F-1 — whether the automatic sign-in check could say anything the refusal did not.**
  *
  * ⚑ **Main's own table, read as it is written** (`LAUNCH_REFUSALS`, `runtime-ipc.ts`): for a
@@ -45,8 +15,9 @@ export function shouldRestoreDraft(input: {
  * boxes — the refusal's sentence, and *"Could not check this profile’s sign-in"* with the same
  * shortage as its reason. One fact, said twice.
  *
- * ⚑ Exported and pure for {@link shouldRestoreDraft}'s reason: a watcher is not reachable from a
- * node test, and a seventh word added to main's table must be answered here, not guessed.
+ * ⚑ Exported and pure for `shouldRestoreDraft`'s reason (`lib/drafts.ts`): a watcher is not
+ * reachable from a node test, and a seventh word added to main's table must be answered here, not
+ * guessed.
  */
 export function theCheckCanSayMore(refusedAs: LaunchRefusal | null | undefined): boolean {
   return refusedAs == null || refusedAs === 'sign-in'
@@ -76,13 +47,12 @@ export function blockingGroupShows(input: {
 </script>
 
 <script setup lang="ts">
+import type { HandedPath } from '../../../shared/attachment-contracts'
 import { defaultModel } from '../lib/provider-models'
 import { computed, nextTick, onMounted, ref, useId, watch } from 'vue'
 import type {
-  AuthState,
   CapabilityStatus,
   CreateSessionInput,
-  HandedPath,
   Provider,
   ProviderCapabilityMap,
   ProviderProgram,
@@ -95,9 +65,10 @@ import type { LaunchChoices } from '../lib/launch-choices'
 import { theFormSends, type ModelLists, type PickedModel } from '../lib/model-lists'
 import { useModelLists } from '../composables/useModelLists'
 import { CHANGEABLE_LIVE_IN } from '../lib/front-door-words'
-import type { DraftHanding } from '../lib/drafts'
+import { joiningTheBox, shouldRestoreDraft, type DraftHanding } from '../lib/drafts'
 import type { SendBlock } from '../lib/composer-notice'
-import { readableError } from '../lib/session-record'
+import { createSignInGesture } from '../lib/sign-in-gesture'
+import { signInFact } from '../composables/useProfileSignIn'
 import type { SendIntent } from '../lib/session-store'
 import PromptComposer from './PromptComposer.vue'
 import SessionHeader from './SessionHeader.vue'
@@ -356,7 +327,7 @@ const emit = defineEmits<{
  * a `<select>`, every question below — which home to check, which sign-in to cancel, whether the
  * answer that just arrived still describes the screen — had two possible answers and needed a
  * stamp to tell them apart. There is one answer now, so the stamp is gone with the menu that made
- * it necessary; see {@link withAuthGesture}.
+ * it necessary; see {@link signInHere}.
  *
  * ⚑ **The imported constant rather than a local alias for it**, so the census that pins this
  * surface to one identity is pinning the shared name every other reader uses rather than a
@@ -391,33 +362,6 @@ const recentConversations = computed(() => {
     .slice(0, 6)
 })
 
-const authState = ref<AuthState | null>(null)
-const authBusy = ref<'idle' | 'checking' | 'copying' | 'signing-in'>('idle')
-const authNotice = ref<string | null>(null)
-/**
- * 🔴 **The stamp — removed at `417`, put back at `423`, and the reason is the whole story.**
- *
- * `167` had it because *"every one of these calls is asynchronous and the provider select is right
- * there. A sign-in can stay pending for minutes, and without this stamp its answer would land in
- * the shared `authState` long after the user had switched to the other provider."* ⛔ **`417`
- * deleted it on a stated premise**: *"`props.defaultProvider` and `DEFAULT_PROFILE_ID` are both
- * fixed for the life of this surface, so every answer describes the only question it could have
- * been asked."*
- *
- * ⚠️ **`423` falsified the premise and owes the guard.** The prop's source is now
- * `RuntimeScreen.frontDoorProvider`, *BroBot's identity's provider or the app frame's constant* —
- * and `NewAgent` is an OVERLAY, a sibling of `<main>`, so a person can create `default` with a
- * provider while this surface stays mounted behind the sheet. `AgentStore.create` awaits its
- * re-read, so the prop moves under a pending gesture. ⛔ **`DEFAULT_PROFILE_ID` is still fixed**;
- * only the provider can move, and that is what this holds.
- *
- * ⚑ **A plain `let`, not a `ref`, and that is `361` §1's defect kept fixed.** The old stamp WAS a
- * `ref`, so `cancelProviderSignIn` was handed a Vue reactive `Proxy` and every cancel of a running
- * sign-in threw at the bridge. Nothing renders this, so it needs no reactivity — and every wire
- * call below builds a fresh literal from its fields rather than sending this object.
- */
-let askedFor: { readonly provider: Provider; readonly profileId: string } | null = null
-
 /**
  * ⛔ **Whether the answer that just landed still describes the screen** (423, and `167`'s rule).
  *
@@ -427,6 +371,35 @@ let askedFor: { readonly provider: Provider; readonly profileId: string } | null
  */
 const stillAsking = (asked: { readonly provider: Provider }): boolean =>
   asked.provider === props.defaultProvider
+
+/**
+ * This surface's own sign-in gestures. Their busy phase and notice are the launcher's alone, never
+ * the title bar's or an agent card's; what a check or a sign-in learns goes into the profile's shared
+ * sign-in fact too, so those surfaces agree with it.
+ *
+ * ⚠️ **A minutes-long sign-in is stamped with the pair it started for** (`running`): the provider
+ * can move under it (`NewAgent` is an overlay, so `default` can be created on another provider while
+ * this stays mounted), so an answer is drawn only while {@link stillAsking}, and Cancel names the
+ * pair that is running rather than the one on screen. ⚑ The stamp is a plain object, never a
+ * reactive one: a proxy cannot cross the bridge, and a cancel that sent one did nothing.
+ */
+const signInHere = createSignInGesture({
+  pair: () => ({ provider: props.defaultProvider, profileId: DEFAULT_PROFILE_ID }),
+  bridge: () => window.api.runtime,
+  fact: signInFact,
+  words: {
+    signedIn: (pair) => `Signed in to ${PROVIDER_NAME[pair.provider]}.`,
+    unchanged:
+      'Your machine sign-in is identical to the one already here, so nothing changed — it is expired on both.',
+  },
+  stillAsking,
+  checkWhileBusy: 'drop',
+  // ⛔ **Announced whether it succeeded or not** (257 §2): from here we cannot tell whether a
+  // credential landed — a flow can fail after writing one, and a timeout reports no outcome at all.
+  settled: (phase, asked) => {
+    if (phase !== 'checking') emit('auth-changed', asked.profileId)
+  },
+})
 
 /**
  * ⛔ **A settled credential answer is about a PROVIDER, so it goes when the provider does** (423).
@@ -439,20 +412,19 @@ watch(
   () => props.defaultProvider,
   () => {
     // ⛔ **NOT while a gesture is in flight, and that is not a detail.** `SignInPanel` renders at
-    // all only when `authState` is non-null, and the CANCEL for a pending browser flow lives
+    // all only when there is an answer to draw, and the CANCEL for a pending browser flow lives
     // inside it — so clearing here would take the only way to stop a running sign-in off the
     // screen. ⚑ The stale answer is already refused by {@link stillAsking}; what is left for this
-    // to do is drop a SETTLED answer, and {@link withAuthGesture} drops the other one when the
-    // gesture it belonged to finishes.
-    if (authBusy.value !== 'idle') return
-    authState.value = null
-    authNotice.value = null
+    // to do is drop a SETTLED answer, and the gesture drops the other one when it finishes.
+    if (signInHere.busy !== 'idle') return
+    signInHere.auth = null
+    signInHere.notice = null
   },
 )
 
 /** Whether the foot's blocking group has anything in it — see {@link blockingGroupShows}. */
 const blockingShowing = computed(() =>
-  blockingGroupShows({ error: props.error, authState: authState.value }),
+  blockingGroupShows({ error: props.error, authState: signInHere.auth }),
 )
 
 /**
@@ -499,7 +471,7 @@ const reprovisionCapability = computed<CapabilityStatus>(
  * this surface believes about a credential.
  *
  * ⚠️ **`busy`/`error` WERE shared with reopening a recorded conversation** (098 review finding 7) —
- * `shouldRestoreDraft` at the top of this file exists for the same reason. A failed reopen of a
+ * `shouldRestoreDraft` (`lib/drafts.ts`) exists for the same reason. A failed reopen of a
  * conversation on the OTHER provider would otherwise make this probe the launcher's selected one and
  * accuse it of a credential problem it does not have. ⚠️ **The stamp that used to make the answer
  * belong to a provider is gone** (417) — there is one provider here now — so this guard is the
@@ -530,12 +502,12 @@ watch(
     //    at the spawn never reached); for Claude, whose sign-in is asked before any child, a refusal
     //    past the spawn means it passed — either way the provider's own answer keeps or clears it;
     //  - *usable* draws nothing, so nothing is asked (review, round three).
-    if (authBusy.value !== 'idle') return
-    if (authState.value?.state === 'unknown') {
-      authState.value = null
+    if (signInHere.busy !== 'idle') return
+    if (signInHere.auth?.state === 'unknown') {
+      signInHere.auth = null
       return
     }
-    if (authState.value !== null && authState.value.state !== 'usable') void checkAuth(true)
+    if (signInHere.auth !== null && signInHere.auth.state !== 'usable') void checkAuth(true)
   },
 )
 
@@ -554,53 +526,6 @@ watch(
 )
 
 /**
- * Run a credential gesture.
- *
- * 🔴 **The stamp is back, and only half of it** (423). `417` removed it because *"this surface has
- * one provider and one profile, both constants, so `stillCurrent` could only ever return `true`
- * and a guard no input can fail is not carrying a rule"* — which was exactly right then and is
- * false now: {@link askedFor} says why. ⛔ **The profile half stays gone**, because
- * `DEFAULT_PROFILE_ID` really is a constant here and a comparison where both sides always agree
- * measures nothing. ⚠️ **What survives unchanged is the `authBusy` gate**, which is what actually
- * stops two gestures overlapping.
- *
- * ⚠️ **The fail-closed clause went the same way.** It refused a gesture for a profile still being
- * typed, because *"every one of these gestures resolves a home and PROVISIONS it to answer"* and a
- * question must not create a profile as a side effect (167 §1.2, 257 §2). There is no name being
- * typed here now; the only profile this surface can name is one the app seeds itself.
- */
-async function withAuthGesture(
-  phase: 'checking' | 'copying' | 'signing-in',
-  run: (asked: { provider: Provider; profileId: string }) => Promise<void>,
-): Promise<void> {
-  if (authBusy.value !== 'idle') return
-  const asked = { provider: props.defaultProvider, profileId: DEFAULT_PROFILE_ID }
-  askedFor = asked
-  authBusy.value = phase
-  try {
-    await run(asked)
-  } finally {
-    // Cleared either way: the flag must not stick after the gesture it belonged to has finished.
-    authBusy.value = 'idle'
-    askedFor = null
-    // ⛔ **And if the provider moved while this ran, what is on screen is about the old one.** The
-    // watch above deliberately does not fire during a gesture — it would take the Cancel away from
-    // a running sign-in — so this is where that clear happens instead, once the panel is no longer
-    // the only way to stop anything.
-    if (!stillAsking(asked)) {
-      authState.value = null
-      authNotice.value = null
-    }
-    // ⛔ **Announced whether it succeeded or not** (257 §2), for the reason the host invalidates
-    // unconditionally: from here we cannot tell whether a credential landed — a flow can fail after
-    // writing one, and a timeout reports no outcome at all. The cost of being wrong is one
-    // short-lived provider child; the cost of the other direction is a menu describing an account
-    // this profile no longer uses.
-    if (phase !== 'checking') emit('auth-changed', asked.profileId)
-  }
-}
-
-/**
  * 🔴 **725 · whether the LATEST failure from here said why** (`716` F-1) — set by the watch above on
  * every one. ⚑ An automatic check that answers *could not check* while it is `true` draws nothing
  * and clears what was up (review): under a refusal that already said why, that box is `710` F-7's
@@ -610,18 +535,9 @@ async function withAuthGesture(
 let lastSaidWhy = false
 
 async function checkAuth(automatic = false): Promise<void> {
-  const drawn = (said: AuthState): AuthState | null =>
-    automatic && lastSaidWhy && said.state === 'unknown' ? null : said
-  await withAuthGesture('checking', async (asked) => {
-    try {
-      const said = await window.api.runtime.checkProviderAuth(asked)
-      if (stillAsking(asked)) authState.value = drawn(said)
-    } catch (error) {
-      if (stillAsking(asked)) {
-        authState.value = drawn({ state: 'unknown', reason: readableError(error) })
-      }
-    }
-  })
+  await signInHere.check((said) =>
+    automatic && lastSaidWhy && said.state === 'unknown' ? null : said,
+  )
 }
 
 /**
@@ -629,20 +545,7 @@ async function checkAuth(automatic = false): Promise<void> {
  * button that says "copied" over identical bytes teaches the user that it does nothing.
  */
 async function reprovisionAuth(): Promise<void> {
-  await withAuthGesture('copying', async (asked) => {
-    authNotice.value = null
-    try {
-      const outcome = await window.api.runtime.reprovisionProviderAuth(asked)
-      if (stillAsking(asked)) {
-        authNotice.value =
-          outcome === 'replaced'
-            ? 'Copied your machine sign-in into this profile.'
-            : 'Your machine sign-in is identical to the one already here, so nothing changed — it is expired on both.'
-      }
-    } catch (error) {
-      if (stillAsking(asked)) authNotice.value = readableError(error)
-    }
-  })
+  await signInHere.copyMachineSignIn()
   // Re-ask rather than assume the copy fixed it. It may not have: if the machine credential is the
   // same expired one, the copy is a no-op and the honest thing is to keep saying so.
   await checkAuth()
@@ -650,51 +553,15 @@ async function reprovisionAuth(): Promise<void> {
 
 /**
  * Sign this profile in. The promise stays pending for as long as the browser flow takes, which is
- * why `authBusy` drives a Cancel button beside it rather than a spinner alone.
+ * why the busy phase drives a Cancel button beside it rather than a spinner alone.
  */
 async function signIn(): Promise<void> {
-  await withAuthGesture('signing-in', async (asked) => {
-    authNotice.value = 'Finish signing in in your browser, then come back.'
-    try {
-      const result = await window.api.runtime.signInProvider(asked)
-      if (stillAsking(asked)) {
-        authState.value = result.state
-        authNotice.value = result.success
-          ? `Signed in to ${PROVIDER_NAME[asked.provider]}.`
-          : (result.detail ?? 'The sign-in did not complete.')
-      }
-    } catch (error) {
-      if (stillAsking(asked)) authNotice.value = readableError(error)
-    }
-  })
+  await signInHere.signIn()
 }
 
+/** A cancel that could not be delivered says so, or the sign-in it did not stop looks cancelled. */
 async function cancelSignIn(): Promise<void> {
-  // 🔴 **A plain object literal, and that is the defect `361` was dispatched to find** (361 §1).
-  // This used to read a `ref` holding the in-flight stamp, so `authFor.value` was a Vue reactive
-  // `Proxy` — and `ipcRenderer.invoke` structured-clones its payload and refuses a proxy by name.
-  // ⛔ **Every cancel of a sign-in that was actually running threw at the bridge and the button did
-  // nothing.** ⚑ The stamp is back at `423` (see {@link askedFor}) and the fix is kept: it is a
-  // plain `let`, and the literal below is rebuilt from its FIELDS rather than being the object
-  // itself, so nothing reactive can ever reach the wire through this call again.
-  //
-  // ⛔ **It cancels the pair that is RUNNING, not the pair on screen** — the host keys a sign-in
-  // `provider:profileId`, and after `423` those two can differ: the provider can move while a
-  // browser flow is pending, and a cancel naming the new one would miss the key and leave the old
-  // flow running under a button that reported it stopped.
-  const running = askedFor ?? { provider: props.defaultProvider, profileId: DEFAULT_PROFILE_ID }
-  try {
-    await window.api.runtime.cancelProviderSignIn({
-      provider: running.provider,
-      profileId: running.profileId,
-    })
-  } catch (error) {
-    // ⚠️ **Where the other four gestures put their failures.** This was the one gesture in the panel
-    // whose rejection had nowhere to land: it became an unhandled rejection, so the wire's refusal
-    // above was invisible for as long as it existed. A cancel that could not be delivered has to
-    // say so, or the sign-in it did not stop goes on looking cancelled.
-    authNotice.value = readableError(error)
-  }
+  await signInHere.cancel()
 }
 
 /* ------------------------------------------------------------------ the three choices (435) */
@@ -958,17 +825,14 @@ watch(
   () => props.busy,
   (busy, wasBusy) => {
     const settled = wasBusy && !busy
-    if (
-      shouldRestoreDraft({ busy, wasBusy, error: props.error, lastTried, current: props.draft })
-    ) {
-      emit('update:draft', lastTried)
+    if (shouldRestoreDraft({ busy, wasBusy, error: props.error, lastTried })) {
+      emit('update:draft', joiningTheBox(props.draft, lastTried))
     }
     // ⛔ **The paths are handed back on their OWN condition** (found in review). Nested inside
     // `shouldRestoreDraft` they inherited its `lastTried !== ''` clause — so the one send shape
     // where the paths ARE the whole message, which `216` deliberately allows and this dispatch
-    // tests, was the one shape whose attachment was silently dropped. ⚑ The text clause exists to
-    // avoid overwriting newer typing; the attachment book guards itself the same way, so it does
-    // not need the same gate.
+    // tests, was the one shape whose attachment was silently dropped. ⚑ The attachment book merges
+    // what comes back with what is staged, so it needs no text clause.
     if (settled && props.error !== null && lastTriedPaths.length > 0) {
       props.handing.stage(lastTriedPaths)
     }
@@ -1047,11 +911,11 @@ watch(
               </div>
               <SignInPanel
                 :provider="props.defaultProvider"
-                :state="authState"
+                :state="signInHere.auth"
                 :sign-in="signInCapability"
                 :reprovision="reprovisionCapability"
-                :busy="authBusy"
-                :notice="authNotice"
+                :busy="signInHere.busy"
+                :notice="signInHere.notice"
                 offer-providers
                 @open-providers="emit('open-providers')"
                 @check="checkAuth()"

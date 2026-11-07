@@ -4,7 +4,7 @@ import { lstat, readFile, readdir, readlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { expect, vi } from 'vitest'
 import { fixture, projection } from './plugin-lifecycle-fixtures'
-import { packageFixture, signed } from './plugin-package-fixtures'
+import { packageFixture, catalogueBytes } from './plugin-package-fixtures'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { sharedLifecycleWorkspaces } from '../src/main/plugins/lifecycle/workspaces'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
@@ -17,7 +17,7 @@ export interface ReviewConsent {
   preparation: string
   displayedDetailsHash?: string
 }
-export interface DisclosureDetails {
+interface DisclosureDetails {
   version: string
   digest: string
   manifestSha256: string
@@ -124,17 +124,17 @@ export async function disclosureFixture(
       },
     })
     const release = { ...pkg.release, authors }
-    return { ...pkg, release, ...signed({ format: 2, entries: [release] }) }
+    return { ...pkg, release, ...catalogueBytes({ format: 2, entries: [release] }) }
   }
   const first = options.legacyInstalled ? f.pkg : modern('1.0.1')
   let next = modern('1.0.2', options.nextAuthors, options.changePermissions)
   let offered = first
   const ownerOptions = {
     ...f.opts,
-    catalogue: { bytes: first.bytes, signature: first.signature },
+    catalogue: { bytes: first.bytes },
     download: vi.fn(async () => offered.archive),
     refreshCatalogue: async () => ({
-      catalogue: { bytes: next.bytes, signature: next.signature },
+      catalogue: { bytes: next.bytes },
       names: f.opts.names,
     }),
   }
@@ -159,7 +159,7 @@ export async function disclosureFixture(
     expect(seeded.guards[0]?.release.version).toBe(first.release.version)
   }
   offered = next
-  ownerOptions.catalogue = { bytes: next.bytes, signature: next.signature }
+  ownerOptions.catalogue = { bytes: next.bytes }
   const controller = await PluginLifecycleController.open(ownerOptions),
     key = randomBytes(32).toString('hex')
   const bridge = await servePersonPluginControl({
@@ -175,7 +175,6 @@ export async function disclosureFixture(
       root: f.root,
       path: bridge.path,
       personKey: key,
-      pinnedPublicKey: f.opts.pinnedPublicKey,
       target: f.opts.target,
       catalogue: ownerOptions.catalogue,
       projection: projection().sink,

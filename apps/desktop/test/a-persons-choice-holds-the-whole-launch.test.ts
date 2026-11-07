@@ -1,3 +1,5 @@
+import { MODEL_CHOICE_RAILS } from '../src/shared/model-choice-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -23,15 +25,15 @@ import {
   createSessionStore,
   type SessionStore,
 } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, THE_APP_ITSELF, type RuntimeEventSink } from './helpers/giver-notice-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
-import { MODEL_CHOICE_RAILS, aChoiceIsInForce } from '../src/shared/model-choice'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import { aChoiceIsInForce } from '../src/shared/model-choice'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # 🔴 682 · A person's choice holds the whole launch — PM ruling `R31`, four parts
@@ -201,9 +203,7 @@ describe('682 · a person’s choice holds the whole launch', () => {
     const gate = anOpenGate()
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new HomeListDouble(provider, handles, issued, gate, world),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
@@ -226,16 +226,11 @@ describe('682 · a person’s choice holds the whole launch', () => {
         'brobot',
         ...(existsSync(homes()) ? readdirSync(homes()).filter((one) => one !== 'brobot') : []),
       ],
-      announce: ({ what }) => announced.push(what),
+      // `persons` comes from the store's record of each commit, and is pinned in its own file.
+      announce: ({ what }) => void (what !== 'persons' && announced.push(what)),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 

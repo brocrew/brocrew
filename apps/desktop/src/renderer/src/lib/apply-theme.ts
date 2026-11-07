@@ -1,9 +1,3 @@
-/**
- * Puts a validated theme on the window, or takes it off: one `<style id="brobot-theme">` holds its
- * stylesheet, `data-theme` names it on the root, and its keyword settings become attributes beside
- * it. Calling it again switches live; nothing reloads. If a theme can't be written as CSS, the
- * theme already on stays on.
- */
 import { THEME_ATTRIBUTES, themeAttributes, themeCss } from '../../../shared/themes/css'
 import type { Theme } from '../../../shared/themes/theme'
 import { readableError } from './session-record'

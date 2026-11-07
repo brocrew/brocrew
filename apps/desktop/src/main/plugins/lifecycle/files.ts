@@ -4,12 +4,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { privateChild } from '../node-host-files'
-import {
-  createFileNotThroughALink,
-  isPrivateEntry,
-  openFileNotThroughALink,
-  pinDirectory,
-} from '../private-files'
+import { createFileNotThroughALink, openFileNotThroughALink, pinDirectory } from '../private-files'
 import { encodeState, decodeState } from '../state/format'
 import { PluginSupervisorError } from '../supervisor/protocol'
 
@@ -42,8 +37,7 @@ export class LifecycleEffects {
         constants.O_RDONLY | constants.O_NONBLOCK,
       )
       const stat = await handle.stat()
-      if (!stat.isFile() || stat.nlink !== 1 || !isPrivateEntry(stat) || stat.size > 128 * 1024)
-        return refuse()
+      if (!stat.isFile() || stat.nlink !== 1 || stat.size > 128 * 1024) return refuse()
       return decodeState(await handle.readFile(), Effect)
     } catch (error) {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null
@@ -61,7 +55,6 @@ export class LifecycleEffects {
       if (
         !now.isDirectory() ||
         now.isSymbolicLink() ||
-        !isPrivateEntry(now) ||
         now.dev !== before.dev ||
         now.ino !== before.ino
       )

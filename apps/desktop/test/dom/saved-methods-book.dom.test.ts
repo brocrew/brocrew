@@ -32,7 +32,6 @@ const item = (fields: Partial<MethodLibraryItem> = {}): MethodLibraryItem => ({
   name: 'review.md',
   kind: 'method',
   references: [{ title: 'Review a patch', when: 'Before handing it back', verified: '2026-10-20' }],
-  fingerprint: 'file-a',
   bytes: 19,
   canDelete: true,
   ...fields,
@@ -44,7 +43,6 @@ const inventory = (fields: Partial<MethodLibrary> = {}): MethodLibrary => ({
   offset: 0,
   nextOffset: null,
   indexState: 'ok',
-  indexFingerprint: 'index-a',
   malformedLines: 0,
   truncated: false,
   readAt: 1_700_000_000_000,
@@ -63,14 +61,9 @@ const change = (fields: Partial<MethodChangeSummary> = {}): MethodChangeSummary 
   canUndo: true,
   ...fields,
 })
-const methodBody = (
-  key = 'method:review.md',
-  fingerprint = 'file-a',
-  text = '# Review\nRead the diff.',
-): MethodBody => ({
+const methodBody = (key = 'method:review.md', text = '# Review\nRead the diff.'): MethodBody => ({
   ok: true,
   key,
-  fingerprint,
   text,
   bytes: text.length,
 })
@@ -157,14 +150,13 @@ describe('saved methods in the book', () => {
             name: 'gone.md',
             kind: 'missing-reference',
             problem: 'missing',
-            fingerprint: null,
             bytes: null,
           }),
         ],
       }),
     )
     const text = '<img src=x onerror="alert(1)">\n' + 'Long method line\n'.repeat(90)
-    parts.bridge.agentMethodBody.mockResolvedValue(methodBody('method:review.md', 'file-a', text))
+    parts.bridge.agentMethodBody.mockResolvedValue(methodBody('method:review.md', text))
     const { view } = await open(parts)
     expect(view.q('methods-items').textContent).toContain('Index file')
     expect(view.q('methods-items').textContent).toContain('Indexed method')
@@ -182,7 +174,7 @@ describe('saved methods in the book', () => {
     expect(view.q('saved-methods').scrollWidth).toBeLessThanOrEqual(view.host.clientWidth)
   })
 
-  it('writes only after confirmation and sends exactly the item and index fingerprints displayed', async () => {
+  it('writes only after confirmation and sends the selected item key', async () => {
     const { view, bridge } = await open()
     await previewDelete(view)
     expect(bridge.removeAgentMethod).not.toHaveBeenCalled()
@@ -200,9 +192,6 @@ describe('saved methods in the book', () => {
         selection: {
           confirmed: true,
           key: 'method:review.md',
-          fingerprint: 'file-a',
-          indexState: 'ok',
-          indexFingerprint: 'index-a',
         },
       }),
     )
@@ -214,7 +203,7 @@ describe('saved methods in the book', () => {
     const parts = fixture()
     const { view, bridge } = await open(parts)
     await previewDelete(view)
-    parts.list(inventory({ indexFingerprint: 'index-b', items: [item({ fingerprint: 'file-b' })] }))
+    parts.list(inventory({ items: [item({})] }))
     view.q('methods-refresh').click()
     await vi.waitFor(() => expect(bridge.agentMethods).toHaveBeenCalledTimes(2))
     bridge.removeAgentMethod.mockResolvedValue({ ok: false, reason: 'changed-or-unreadable' })
@@ -223,9 +212,6 @@ describe('saved methods in the book', () => {
     expect(bridge.removeAgentMethod.mock.calls[0]![0].selection).toEqual({
       confirmed: true,
       key: 'method:review.md',
-      fingerprint: 'file-a',
-      indexState: 'ok',
-      indexFingerprint: 'index-a',
     })
     expect(view.q('method-confirmation').textContent).toContain('# Review\nRead the diff.')
     expect((view.q('method-confirm') as HTMLButtonElement).disabled).toBe(true)
@@ -244,14 +230,13 @@ describe('saved methods in the book', () => {
             key: 'index',
             name: 'index.md',
             kind: 'index',
-            fingerprint: 'index-a',
             references: [],
           }),
         ],
       }),
     )
     parts.bridge.agentMethodBody.mockResolvedValue(
-      methodBody('index', 'index-a', '- Review | Before handback | 2026-10-20 | review.md'),
+      methodBody('index', '- Review | Before handback | 2026-10-20 | review.md'),
     )
     const { view, bridge } = await open(parts)
     await previewDelete(view)
@@ -265,9 +250,7 @@ describe('saved methods in the book', () => {
     const parts = fixture()
     parts.list(
       inventory({
-        items: [
-          item({ kind: 'missing-reference', fingerprint: null, bytes: null, problem: 'missing' }),
-        ],
+        items: [item({ kind: 'missing-reference', bytes: null, problem: 'missing' })],
       }),
     )
     const { view, bridge } = await open(parts)
@@ -278,30 +261,9 @@ describe('saved methods in the book', () => {
     )
     view.q('method-confirm').click()
     await vi.waitFor(() => expect(bridge.removeAgentMethod).toHaveBeenCalledTimes(1))
-    expect(bridge.removeAgentMethod.mock.calls[0]![0].selection.fingerprint).toBeNull()
   })
 
-  it('refuses a stale body fingerprint until a new inventory and body have been read', async () => {
-    const parts = fixture()
-    parts.bridge.agentMethodBody.mockResolvedValue(
-      methodBody('method:review.md', 'file-b', 'Changed text'),
-    )
-    const { view, bridge } = await open(parts)
-    await select(view)
-    await vi.waitFor(() => expect(view.q('method-stale').textContent).toContain('file changed'))
-    expect((view.q('method-delete') as HTMLButtonElement).disabled).toBe(true)
-    view.q('method-delete').click()
-    expect(bridge.removeAgentMethod).not.toHaveBeenCalled()
-    parts.list(inventory({ items: [item({ fingerprint: 'file-b' })] }))
-    view.q('methods-refresh').click()
-    await vi.waitFor(() => expect(view.all('methods-loading')).toHaveLength(0))
-    await select(view)
-    await vi.waitFor(() =>
-      expect((view.q('method-delete') as HTMLButtonElement).disabled).toBe(false),
-    )
-  })
-
-  it('refuses a body returned for a different app key even if its fingerprint matches', async () => {
+  it('refuses a body returned for a different app key', async () => {
     const parts = fixture()
     parts.bridge.agentMethodBody.mockResolvedValue(methodBody('method:other.md'))
     const { view, bridge } = await open(parts)
@@ -315,7 +277,7 @@ describe('saved methods in the book', () => {
     'keeps a %s entry read-only',
     async (problem) => {
       const parts = fixture()
-      parts.list(inventory({ items: [item({ problem, canDelete: false, fingerprint: null })] }))
+      parts.list(inventory({ items: [item({ problem, canDelete: false })] }))
       const { view, bridge } = await open(parts)
       await select(view)
       expect(view.all('method-delete')).toHaveLength(0)
@@ -359,7 +321,7 @@ describe('saved methods in the book', () => {
     parts.list(inventory({ state: 'unavailable', items: [], total: 0, problem: 'unreadable' }))
     view.q('methods-refresh').click()
     await vi.waitFor(() => expect(view.all('methods-unavailable')).toHaveLength(1))
-    parts.list(inventory({ items: [], total: 0, indexState: 'absent', indexFingerprint: null }))
+    parts.list(inventory({ items: [], total: 0, indexState: 'absent' }))
     view.q('methods-refresh').click()
     await vi.waitFor(() => expect(view.all('methods-empty')).toHaveLength(1))
     expect(view.q('methods-index-absent').textContent).toContain('no index file')
@@ -459,7 +421,7 @@ describe('saved methods in the book', () => {
         parts.bridge.undoAgentMethod.mockResolvedValue({ ok: false, reason: 'not-latest-change' })
       else
         parts.bridge.checkInterruptedAgentMethods.mockRejectedValue(
-          new Error('fixture transport failure'),
+          new Error(`SQLITE_IOERR: '/fictional/method-history.sqlite' checking methods`),
         )
       const { view } = await open(parts)
       view.q(kind === 'undo' ? 'method-undo' : 'methods-check').click()
@@ -475,6 +437,10 @@ describe('saved methods in the book', () => {
       expect(view.q('methods-message').textContent).toContain(
         kind === 'undo' ? 'newer change prevents this Undo' : "couldn't confirm the result",
       )
+      if (kind === 'check')
+        expect(view.q('methods-message').textContent).toContain(
+          `SQLITE_IOERR: '/fictional/method-history.sqlite' checking methods`,
+        )
       await vi.waitFor(() => expect(parts.bridge.agentMethods).toHaveBeenCalledTimes(2))
       expect(parts.bridge.agentMethodChanges).toHaveBeenCalledTimes(2)
     },
@@ -515,7 +481,7 @@ describe('saved methods in the book', () => {
     await select(view)
     await select(view, 1)
     await vi.waitFor(() => expect(view.q('method-reading').textContent).toContain('notes.md'))
-    old.resolve(methodBody('method:review.md', 'file-a', 'OLD BODY'))
+    old.resolve(methodBody('method:review.md', 'OLD BODY'))
     await nextTick()
     await nextTick()
     expect(view.q('method-reading').textContent).not.toContain('OLD BODY')

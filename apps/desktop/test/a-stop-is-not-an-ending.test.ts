@@ -1,3 +1,5 @@
+import { waitFor } from './lib/f093-host'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -8,14 +10,12 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
-import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
+import { fixtureProviderConfig, RecordingSink, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 🔴 **D-017 · a stop is not an ending — two lives the landed suite does not yet pin.**
@@ -34,17 +34,6 @@ import type { TranscriptEvent } from '../src/shared/runtime-ipc'
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 describe('D-017 · a stop is not an ending', () => {
   describe('§1 · a resumed conversation writes its own launched row', () => {
     let userData: string
@@ -62,9 +51,7 @@ describe('D-017 · a stop is not an ending', () => {
     const buildHost = (): RuntimeHost => {
       const built = new RuntimeHost({
         store,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(userData, 'exports'),
+        ...neutralHostDeps(() => userData),
         createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions: issued }),
         prepareProviderHome: (provider: Provider, profileId?: string) => {
           const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
@@ -75,13 +62,7 @@ describe('D-017 · a stop is not an ending', () => {
         resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
         newSessionId: () => `sess_${++counter}`,
         now: tick,
-        readProviderConfig: (_provider, home) => ({
-          home,
-          homeEnv: 'CLAUDE_CONFIG_DIR',
-          model: 'm',
-          authNote: null,
-          files: [],
-        }),
+        readProviderConfig: fixtureProviderConfig,
       })
       hosts.push(built)
       return built
@@ -217,9 +198,7 @@ describe('D-017 · a stop is not an ending', () => {
     const buildHost = (): RuntimeHost =>
       new RuntimeHost({
         store,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(userData, 'exports'),
+        ...neutralHostDeps(() => userData),
         createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions: issued }),
         prepareProviderHome: (provider: Provider, profileId?: string) => {
           const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
@@ -230,13 +209,7 @@ describe('D-017 · a stop is not an ending', () => {
         resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
         newSessionId: () => `sess_${++counter}`,
         now: tick,
-        readProviderConfig: (_provider, home) => ({
-          home,
-          homeEnv: 'CLAUDE_CONFIG_DIR',
-          model: 'm',
-          authNote: null,
-          files: [],
-        }),
+        readProviderConfig: fixtureProviderConfig,
       })
 
     beforeEach(() => {
@@ -267,14 +240,6 @@ describe('D-017 · a stop is not an ending', () => {
       const tool = agentToolsFor(host, sessionId).tools.find((one) => one.name === name)
       if (tool === undefined) throw new Error(`no such tool: ${name}`)
       return (await tool.call(args)).structured as Record<string, unknown>
-    }
-
-    const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-      for (let attempt = 0; attempt < 400; attempt++) {
-        if (predicate()) return
-        await new Promise((resolve) => setTimeout(resolve, 10))
-      }
-      throw new Error(`timed out waiting for ${what}`)
     }
 
     const eventsOf = (sessionId: string): TranscriptEvent[] =>

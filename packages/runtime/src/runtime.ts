@@ -531,6 +531,8 @@ export function isAutoApprove(context: { approvalMode?: ApprovalMode }): boolean
 
 /** Options for starting a fresh session. */
 export interface StartOptions extends ProviderRuntimeContext {
+  /** Retain ownership of an allocated fresh handle even if its handshake fails. */
+  onSessionCreated?: (handle: SessionHandle) => void
   /** Working directory the session runs in; becomes part of its `SessionRef`. */
   cwd: string
   /**
@@ -648,6 +650,8 @@ export interface ResumeOptions extends ProviderRuntimeContext {
  */
 export interface AgentRuntime {
   readonly provider: Provider
+  /** Immutable adapter support for recreating an unused missing session, subject to ownership checks. */
+  readonly canRecreateMissingUnusedSession?: boolean
 
   /**
    * Start a new session.
@@ -811,6 +815,12 @@ export interface SessionHandle {
     servers: readonly ManagedPluginMcpServer[],
     reconnect?: readonly string[],
   ): Promise<void>
+  /**
+   * The configured managed servers a turn may wait on: those the latest reply served. A server
+   * kept only while its plugin is starting stays configured and is not awaited. Absent means the
+   * provider never waits before a turn.
+   */
+  awaitManagedPlugins?(names: readonly string[]): void
   /** Fresh failed managed-server names; empty means ready, undefined means unknown. */
   managedPluginHealth?(
     servers: readonly ManagedPluginMcpServer[],

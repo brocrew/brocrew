@@ -1,9 +1,31 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { spawn } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  AuthUnavailableError,
+  ClaudeRuntime,
+  CodexRuntime,
+  FakeProviderSessions,
+  createSpawnTransportFactory,
+  spawnNoWaitClearsOf,
+  transientSetupFailureOf,
+} from '@brobot2/runtime'
+import type { FakeSessionHandle } from '@brobot2/runtime'
+import type { Provider } from '@brobot2/shared'
+import { type AppDatabase, openDatabase } from '../src/main/db/connection'
+import { applyMigrations } from '../src/main/db/migrate'
+import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
+import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
+import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
+import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
+import { aSpawnRefusedAfterItsPipes } from '../../../packages/runtime/test/fixtures/a-spawn-that-failed'
+import { RecordingSink, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 
 /**
  * ⚑ **Codex's transport spawns through `node:child_process` with no seam**, so the ONE spawn a test
@@ -22,30 +44,6 @@ vi.mock('node:child_process', async (importOriginal) => {
     },
   }
 })
-
-import {
-  AuthUnavailableError,
-  ClaudeRuntime,
-  CodexRuntime,
-  FakeProviderSessions,
-  createSpawnTransportFactory,
-  spawnNoWaitClearsOf,
-  transientSetupFailureOf,
-} from '@brobot2/runtime'
-import type { FakeSessionHandle } from '@brobot2/runtime'
-import type { Provider } from '@brobot2/shared'
-import { type AppDatabase, openDatabase } from '../src/main/db/connection'
-import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
-import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
-import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
-import { aSpawnRefusedAfterItsPipes } from '../../../packages/runtime/test/fixtures/a-spawn-that-failed'
 
 /**
  * # 🔴 710 · R51 — a spawn a person must fix has a permanent word of its own
@@ -84,17 +82,6 @@ const SHORTAGE = 'agent-could-not-start-just-now'
 const thrownAtOnce = (code: string): Error =>
   Object.assign(new Error(`spawn ${code}`), { code, syscall: 'spawn' })
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 describe('710 · R51 — a spawn a person must fix', () => {
   let userData: string
   let root: string
@@ -126,9 +113,7 @@ describe('710 · R51 — a spawn a person must fix', () => {
     armed.next = null
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued, gate),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
         if (homeFails !== undefined) throw homeFails()
@@ -140,13 +125,7 @@ describe('710 · R51 — a spawn a person must fix', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:1')
   })

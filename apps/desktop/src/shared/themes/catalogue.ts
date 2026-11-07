@@ -1,8 +1,3 @@
-/**
- * The catalogue an agent reads before writing a theme: every setting with its type, bounds and
- * purpose, the background grammar, the effects and the limits. It is generated from the same
- * schema the validator reads, so it can't describe a setting the validator refuses.
- */
 import { LIMITS } from './assets'
 import {
   EFFECT_PARAMS,

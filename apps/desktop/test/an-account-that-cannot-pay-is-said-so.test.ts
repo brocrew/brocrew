@@ -1,4 +1,7 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { waitFor } from './lib/f093-host'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
+import type { PieceRow } from '../src/shared/task-contracts'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -16,9 +19,8 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { ApiKeys, aLoginRunsWithoutAKey, type KeyCipher } from '../src/main/runtime/api-keys'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { theStallAndItsAsk } from '../src/main/runtime/reply-rails'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
@@ -27,15 +29,15 @@ import {
   createTranscript,
   type NoticeItem,
 } from '../src/renderer/src/lib/transcript'
-import type {
-  ApiKeyCheck,
-  PersistedEventInfo,
-  ProvidersChangedMessage,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
-import { UNDRIVEN_SENTENCES, derivePieces, type PieceRow } from '../src/shared/tasks'
+import { type ApiKeyCheck, type ProvidersChangedMessage } from '../src/shared/runtime-ipc'
+import { UNDRIVEN_SENTENCES, derivePieces } from '../src/shared/tasks'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * # An account its provider would not bill is said so, with the key and the ways out
@@ -227,25 +229,6 @@ describe('§3 · the giver is told why, and that a person has to fix it', () => 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** The machine behind each handle, so a test ends its turns by hand, and what each was sent. */
 const controls = new Map<FakeSessionHandle, { machine: SessionMachine; sent: string[] }>()
 
@@ -353,25 +336,13 @@ describe('§4 · Providers stops calling the key ready, until a turn or a check 
         checksStarted++
         return checkSays
       },
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     window = new RecordingSink('webContents:1')
     expect(await keys.set('claude', 'sk-ant-fake-not-a-key')).toBeNull()

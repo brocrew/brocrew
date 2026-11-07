@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { navigationReply } from './helpers/navigation-reply'
 import { conversationLink, agentLink, pieceLink } from '../src/shared/links'
 import { createHash } from 'node:crypto'
@@ -26,16 +27,19 @@ import { WorkSearchPageBudget, workSearchMaterialization } from '../src/main/db/
 import type { WorkSearchReader } from '../src/main/db/work-search-reader'
 import type { WorkSearchPage } from '../src/shared/work-search'
 import { workSearchQuery, clippedWorkText } from '../src/shared/work-search'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { keepResource, resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { CAPABILITY_FIELDS, MAX_CAPABILITY_COUNT } from '../src/shared/capabilities'
 import { MAX_RESOURCES_PER_REPLY, RESOURCE_ROLES } from '../src/shared/documents'
 import { PIECE_EVENT_TYPES } from '../src/shared/tasks'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  fixtureProviderConfig,
+  neutralHostDeps,
+} from './lib/host-fixture'
 
 /**
  * D-016b · a reply keeps the files it was handed exactly as they were, and the tables that hold
@@ -75,17 +79,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 /** An INDEPENDENT hash: never the app's own, so a writer and its reader cannot agree on a mistake. */
 const shaOf = (bytes: Buffer): string => createHash('sha256').update(bytes).digest('hex')
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 describe('D-016b · a reply keeps the files it was handed exactly as they were', () => {
   let userData: string
   let root: string
@@ -104,27 +97,15 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
     const built = new RuntimeHost({
       store,
       workSearchReader,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new FakeRuntime(provider, { sessions: issued }),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built
@@ -948,7 +929,7 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
       }
     })
 
-    it('uses the existing document reader for cross-profile hit ids and still refuses missing or changed bytes', async () => {
+    it('reads cross-profile hit ids and local edits while refusing missing resources', async () => {
       const producer = await workWasGiven('searchable resource')
       const landed = await reply(producer.worker, {
         piece: producer.task,
@@ -976,9 +957,11 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
         const row = store.resource(resource)!
         writeFileSync(join(resourcesRoot(userData), row.sha256, row.name), '# Changed bytes')
         expect(await callOn(toolsOf(caller), 'read_document', { resource })).toMatchObject({
-          outcome: 'refused',
-          rail: 'resource-bytes-changed',
+          outcome: 'ok',
+          content: { as: 'markdown' },
         })
+        const reader = toolsOf(caller).tools.find((tool) => tool.name === 'read_document')!
+        expect((await reader.call({ resource })).text).toBe('# Changed bytes')
       } finally {
         engine.close()
       }

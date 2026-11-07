@@ -423,9 +423,6 @@ const bin = binWord(platformHere())
       <p v-if="chosen?.state === 'missing'" class="missing" data-cy="workspace-missing">
         {{ chosen.name }} · Not found — {{ chosen.path }}
       </p>
-      <p v-if="chosen?.readers" class="said warn readers" data-cy="workspace-readers">
-        {{ chosen.readers }}
-      </p>
 
       <div
         v-if="deleting"
@@ -750,11 +747,6 @@ const bin = binWord(platformHere())
 
 .said.warn {
   color: var(--danger-text-notice);
-}
-
-.readers {
-  padding: 0 var(--space-3);
-  overflow-wrap: anywhere;
 }
 
 .acts,

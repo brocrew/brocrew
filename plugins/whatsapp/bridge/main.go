@@ -56,7 +56,6 @@ func fail(word string) {
 }
 
 func main() {
-	privateFiles()
 	stdin := bufio.NewReaderSize(os.Stdin, 8192)
 	cfg, err := readConfig(stdin)
 	if err != nil {

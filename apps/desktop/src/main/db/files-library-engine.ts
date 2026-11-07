@@ -254,13 +254,11 @@ export class FilesLibraryEngine {
     return this.db.pragma('data_version', { simple: true }) as number
   }
   private transaction<T>(build: () => T): T {
-    const before = this.version()
     this.db.exec('BEGIN')
     this.db.prepare("SELECT rootpage FROM sqlite_schema WHERE name = 'work_resource'").get()
     const result = build()
     this.check()
     this.db.exec('COMMIT')
-    if (before !== this.version()) throw new Failed('changed')
     return result
   }
   private base(context: LibraryReadContext): Snapshot {

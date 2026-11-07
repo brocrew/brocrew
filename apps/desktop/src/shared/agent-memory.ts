@@ -1,3 +1,4 @@
+import type { InjectedInstruction, RefusedInstruction } from './instruction-contracts'
 /**
  * 🔴 **What an agent has written down, read WITHOUT a conversation — and what a person did to it**
  * (625, `EXT-015` §1 · §3).
@@ -47,7 +48,6 @@ import type { ActedBy } from './who-did-it'
 // that file exactly, and for its reason. ⛔ It is a TYPE and never a value: the cycle exists only
 // in the checker and is erased at build time, and this module must stay reachable from a renderer
 // without pulling `runtime-ipc.ts` in as a value.
-import type { InjectedInstruction, RefusedInstruction } from './runtime-ipc'
 
 /**
  * 🔴 **What this app can say about one provider's memory store for one agent — a CLOSED
@@ -269,8 +269,10 @@ export interface AgentMemoryStore {
  */
 /** Recovery metadata is absent on legacy completed records; absence is never an observation. */
 export interface MemoryObservation {
-  readonly fingerprint: string | null
+  /** Undefined on legacy digest-only observations; null records absence. */
+  readonly text?: string | null
   readonly unreadable?: true
+  readonly cause?: string
 }
 export type MemoryOutcome = 'pending' | 'done' | 'partial' | 'unchanged'
 export interface MemorySettlement {
@@ -395,6 +397,7 @@ export type AgentMemoryAmended =
   | {
       readonly done: false
       readonly refused: AmendmentRefused
+      readonly cause?: string
       readonly reading: AgentMemoryReading
     }
 
@@ -406,8 +409,6 @@ export type AgentMemoryAmended =
  * name: the census question *who BUILT this* has one answer when the type has one declaration.
  */
 export interface MemoryAmendmentAsked {
-  /** A hash of the full text the person saw, checked again before changing the entry. */
-  readonly fingerprint: string
   readonly confirmed: boolean
   readonly profileId: string
   readonly provider: Provider
@@ -441,6 +442,7 @@ export type MemoryChecked =
   | {
       readonly done: false
       readonly refused: AmendmentRefused
+      readonly cause?: string
       readonly reading: AgentMemoryReading
     }
 

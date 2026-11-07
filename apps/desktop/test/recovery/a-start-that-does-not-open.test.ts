@@ -113,16 +113,14 @@ describe('the open path', () => {
     expect(count).toBeGreaterThan(init.indexOf('db = database'))
     expect(init.match(/recordSuccessfulStart\(/g)).toHaveLength(1)
     expect(CODE.match(/recordSuccessfulStart\(/g)).toHaveLength(1)
-    expect(init).toContain("theOneAppAnswer?.held() ?? 'unknown'")
+    expect(init).toContain('theOneAppAnswer')
     expect(CODE).toContain('withRecoveryCopies(async () => {')
     expect(CODE).not.toContain('armRecoveryExpiry')
     expect(CODE).not.toContain('scheduleRecoveryExpiry')
   })
 
   it('lets old copies go only for the sole app, as the one-app check last answered', () => {
-    expect(functionIn(CODE, 'async function letGoOfOldCopies(')).toContain(
-      "theOneAppAnswer?.held() ?? 'unknown',",
-    )
+    expect(functionIn(CODE, 'async function letGoOfOldCopies(')).toContain('theOneAppAnswer,')
   })
 
   it('says, on a hidden launch, that it opened the data for work, once the open and migrations passed', () => {
@@ -154,7 +152,7 @@ function stopsBeforeTheData(code: string): boolean {
   const awaited = code.indexOf('const verdict = await theVerdictBeforeTheData(ownership)')
   const zone = code.indexOf('keepTheSystemZone(', awaited)
   if (awaited < 0 || zone < 0) return false
-  return /^const verdict = await theVerdictBeforeTheData\(ownership\)\s+if \(closedWhileCheckingSaid\) return\s+if \(verdict\.kind !== 'open'\) \{\s+endInRecovery\(verdict\)\s+return\s+\}\s+const startBegan = performance\.now\(\)\s+const localZone = $/.test(
+  return /^const verdict = await theVerdictBeforeTheData\(ownership\)\s+finishStartupPhase\(verdict\.kind === 'open' \? undefined : verdict\.kind\)\s+if \(closedWhileCheckingSaid\) return\s+if \(verdict\.kind !== 'open'\) \{\s+endInRecovery\(verdict\)\s+return\s+\}\s+const startBegan = performance\.now\(\)\s+const localZone = $/.test(
     code.slice(awaited, zone),
   )
 }
@@ -190,7 +188,7 @@ describe('the check stands between the start and its data', () => {
     expect(supervisorWaitsForTheData(CODE)).toBe(true)
     expect(CODE.match(/pluginController\.start\(/g)).toHaveLength(1)
     const block = CODE.match(
-      / {6}try \{\s+const root = pluginSupervisorRoot\(\{[\s\S]*?\n {6}\} catch \{[\s\S]*?\n {6}\}/,
+      / {6}try \{\s+const root = pluginSupervisorRoot\(\{[\s\S]*?\n {6}\} catch \(error\) \{[\s\S]*?\n {6}\}/,
     )?.[0]
     expect(block).toBeDefined()
     if (!block) throw new Error('the supervisor startup block is missing')
@@ -286,22 +284,22 @@ describe('a start that never opened its data', () => {
     )
     // The check is what that flag spans.
     expect(functionIn(CODE, 'async function theVerdictBeforeTheData(')).toMatch(
-      /checkingTheData = true\s+try \{\s+const verdict = await service\.inspect\(\)[\s\S]*\} finally \{\s+checkingTheData = false/,
+      /checkingTheData = true\s+try \{\s+const verdict = await withRecoveryWork\(\(\) => service\.inspect\(\)\)[\s\S]*\} finally \{\s+checkingTheData = false/,
     )
   })
 
   it('ends a quit through the teardown with code 1, unless the data opened and the start held', () => {
     expect(CODE).toContain(
-      'quit: () => (theDataOpened && !startFailed ? app.quit() : app.exit(1)),',
+      'quitAfterShutdown: () => (theDataOpened && !startFailed ? app.quit() : app.exit(1)),',
     )
   })
 
   it('never leaves its exit code to a quit: a failed start ends by app.exit(1)', () => {
     expect(CODE).not.toContain('process.exitCode')
-    // At once when it opened nothing; else the teardown closes what it opened, and its last step
+    // After recovery work releases its copies when it opened nothing; else teardown closes what it opened, and its last step
     // (above) is app.exit(1) for a start that failed.
     expect(functionIn(CODE, 'function endTheProcess(')).toMatch(
-      /if \(host === null && db === null\) \{\s+app\.exit\(code\)\s+return\s+\}\s+app\.quit\(\)/,
+      /if \(host === null && db === null\) \{\s+void stopRecoveryWork\(\)\s+\.then\(\(\) => app\.exit\(code\)\)[\s\S]*?\s+return\s+\}\s+app\.quit\(\)/,
     )
     // A relaunch from the recovery window leaves through the same door, so a host that started is
     // closed in its order before the new start.
@@ -326,7 +324,7 @@ describe('a start that never opened its data', () => {
       CODE.indexOf('\nconst lifetime = createAppLifetime('),
     )
     expect(caught).toMatch(
-      /^\.catch\(\(error: unknown\) => \{\s+void endAFailedStart\(error, ownership\)\s+\}\)\s+\}/,
+      /^\.catch\(\(error: unknown\) => \{\s+pluginStartupTrace\.failure\('app-startup', error\)\s+void endAFailedStart\(error, ownership\)\s+\}\)\s+\}/,
     )
     expect(functionIn(CODE, 'async function endAFailedStart(')).toMatch(
       /theDataOpened = false\s+try \{\s+const endsOn = whatAFailedStartEndsOn\(error, ownership\)\s+void stopWhatTheStartStarted\(\)\s+endInRecovery\(await endsOn\)\s+\} catch \(failure\) \{[\s\S]*endTheProcess\(1\)/,
@@ -362,7 +360,7 @@ describe('a start that never opened its data', () => {
       ),
     ).toBe(false)
     const drainsArchiveWork =
-      /drainArchiveWork: async \(\) => \{\s+await stopProviderSetup\?\.\(\)\s+await updates\?\.drain\(\)\s+await transcriptRetention\?\.stop\(\)\s+await \(stoppingTheStart \?\? host\?\.drainArchiveWork\(\) \?\? Promise\.resolve\(\)\)\s+await themes\?\.close\(\)\s+\}/
+      /drainArchiveWork: async \(\) => \{\s+await stopRecoveryWork\(\)\s+await stopProviderSetup\?\.\(\)\s+await updates\?\.drain\(\)\s+await transcriptRetention\?\.stop\(\)\s+await \(stoppingTheStart \?\? host\?\.drainArchiveWork\(\) \?\? Promise\.resolve\(\)\)\s+await themes\?\.close\(\)\s+await theStallSink\?\.close\(500\)\s+\}/
     expect(CODE).toMatch(drainsArchiveWork)
     for (const replacement of ['', 'void stopProviderSetup?.()']) {
       expect(
@@ -436,12 +434,10 @@ describe('a test keeping the recovery window on a hidden launch', () => {
 })
 
 describe('the one-app answer the check asks for', () => {
-  it('is the launch’s own, asked again on a retry while it is unknown', () => {
+  it('is the OS-lock answer, reused without a socket question', () => {
     const service = functionIn(CODE, 'function theRecoveryService(')
-    expect(service).toContain(
-      'const asker = ownershipFrom(launchOwnership, () => claimSoleHost(userData))',
-    )
-    expect(service).toContain('ownership: asker.ask,')
+    expect(service).toContain('theOneAppAnswer = launchOwnership')
+    expect(service).toContain('ownership: () => Promise.resolve(launchOwnership),')
   })
 })
 

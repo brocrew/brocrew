@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -22,7 +23,6 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 
 const AVAILABLE: PluginInstructionEntry = {
   id: 'fictional-atlas',
@@ -32,6 +32,77 @@ const AVAILABLE: PluginInstructionEntry = {
   tools: 'none',
   service: null,
 }
+it.each(['all agents', 'none', 'unknown'] as const)(
+  'keeps configured access %s separate from a failed running service',
+  (tools) => {
+    const entry = {
+      ...AVAILABLE,
+      state: 'Running' as const,
+      tools,
+      toolHealth: 'unavailable' as const,
+      service: 'fictional-service',
+    }
+    const read = readPluginInstructions({ instructionCatalogue: () => [entry] })
+    expect(read).not.toBeNull()
+    const text = pluginInstructionSection(read)!
+    expect(text).toContain(`tools: ${tools === 'none' ? 'none' : 'unavailable'}`)
+    if (tools !== 'none') expect(text).not.toContain('tools: none')
+    if (tools === 'none') expect(text).not.toContain('tools: all agents')
+  },
+)
+it('names the known stage and cause when access is on and tools are unavailable', () => {
+  const entry = {
+    ...AVAILABLE,
+    state: 'Running' as const,
+    tools: 'all agents' as const,
+    toolHealth: 'unavailable' as const,
+    toolsCause: 'route-binding: io-denied',
+    service: 'fictional-service',
+  }
+  const text = pluginInstructionSection(
+    readPluginInstructions({ instructionCatalogue: () => [entry] }),
+  )!
+  expect(text).toContain('tools: unavailable: route-binding: io-denied;')
+  // Only fixed words reach agent text; an error body is not a cause.
+  expect(
+    readPluginInstructions({
+      instructionCatalogue: () => [{ ...entry, toolsCause: 'Error: http://fictional.invalid' }],
+    }),
+  ).toBeNull()
+})
+it('an installed plugin that failed to start reads as unavailable with its cause, never none', () => {
+  // As production.ts builds it from an Installed card carrying the start failure.
+  const text = pluginInstructionSection(
+    readPluginInstructions({
+      instructionCatalogue: () => [
+        {
+          ...AVAILABLE,
+          state: 'Installed' as const,
+          tools: 'unknown' as const,
+          toolHealth: 'unavailable' as const,
+          toolsCause: 'start: ready',
+          service: null,
+        },
+      ],
+    }),
+  )!
+  expect(text).toContain('— Installed; tools: unavailable: start: ready; service: none.')
+  expect(text).not.toContain('tools: none')
+})
+it('does not turn healthy broker state into a configured access grant', () => {
+  const entry = {
+    ...AVAILABLE,
+    state: 'Running' as const,
+    tools: 'unknown' as const,
+    toolHealth: 'ready' as const,
+    service: 'fictional-service',
+  }
+  const text = pluginInstructionSection(
+    readPluginInstructions({ instructionCatalogue: () => [entry] }),
+  )!
+  expect(text).toContain('tools: unknown')
+  expect(text).not.toContain('tools: all agents')
+})
 function context(plugins: readonly PluginInstructionEntry[] | null): InstructionContext {
   return {
     profileSlug: 'fictional-writer',
@@ -204,9 +275,7 @@ for (const provider of ['claude', 'codex'] as const) {
       newSessionId: () => `sess_fictional_${++serial}`,
       now: () => Date.now(),
       plugins: controller,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(root, 'exports'),
+      ...neutralHostDeps(() => root),
       resolveCwd: (_session, requested) => requested ?? root,
       createRuntime: (kind: Provider) => new ObservedRuntime(kind, { sessions }),
       prepareProviderHome: (kind, profile) => {

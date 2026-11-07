@@ -44,9 +44,8 @@ describe.skipIf(process.platform === 'win32')('unpackaged local plugin source', 
       })
       const controller = await PluginLifecycleController.open({
         ...f.opts,
-        pinnedPublicKey: null,
         repoCatalogueSha256: loaded.sha256,
-        catalogue: { bytes: loaded.bytes, signature: Buffer.alloc(0) },
+        catalogue: { bytes: loaded.bytes },
         download: (release) => devPluginArchive(devSource!, release),
       })
       const handle = await controller.attach(projection().sink)
@@ -161,38 +160,34 @@ describe.skipIf(process.platform === 'win32')('unpackaged local plugin source', 
       }
     },
   )
-  it.each([
-    'tampered archive',
-    'wrong manifest',
-    'missing asset',
-    'root permission change',
-    'linked asset',
-  ])('refuses %s without a run or network fallback', async (fault) => {
-    const { f, archive, directory, list, fetch, load } = await setup()
-    if (fault === 'wrong manifest') {
-      list.entries[0]!.targets[0]!.manifestSha256 = '0'.repeat(64)
-      await writeFile(join(directory, 'catalogue.json'), JSON.stringify(list))
-    }
-    const { controller, handle } = await load()
-    if (fault === 'tampered archive') {
-      const bytes = Buffer.from(f.pkg.archive)
-      bytes[0] = bytes[0]! ^ 1
-      await writeFile(archive, bytes)
-    }
-    if (fault === 'missing asset') await unlink(archive)
-    if (fault === 'root permission change') await chmod(directory, 0o755)
-    if (fault === 'linked asset') {
-      await rename(archive, archive + '.kept')
-      await symlink(archive + '.kept', archive)
-    }
-    await expect(controller.install(handle, 'chrome')).rejects.toThrow(
-      'Plugin unavailable. Try again.',
-    )
-    expect(f.starts()).toBe(0)
-    expect(f.state.exportActivation().entries).toHaveLength(0)
-    expect(f.state.inspect().pending).toBeNull()
-    expect(fetch).not.toHaveBeenCalled()
-  })
+  it.each(['tampered archive', 'wrong manifest', 'missing asset', 'linked asset'])(
+    'refuses %s without a run or network fallback',
+    async (fault) => {
+      const { f, archive, directory, list, fetch, load } = await setup()
+      if (fault === 'wrong manifest') {
+        list.entries[0]!.targets[0]!.manifestSha256 = '0'.repeat(64)
+        await writeFile(join(directory, 'catalogue.json'), JSON.stringify(list))
+      }
+      const { controller, handle } = await load()
+      if (fault === 'tampered archive') {
+        const bytes = Buffer.from(f.pkg.archive)
+        bytes[0] = bytes[0]! ^ 1
+        await writeFile(archive, bytes)
+      }
+      if (fault === 'missing asset') await unlink(archive)
+      if (fault === 'linked asset') {
+        await rename(archive, archive + '.kept')
+        await symlink(archive + '.kept', archive)
+      }
+      await expect(controller.install(handle, 'chrome')).rejects.toThrow(
+        'Plugin unavailable. Try again.',
+      )
+      expect(f.starts()).toBe(0)
+      expect(f.state.exportActivation().entries).toHaveLength(0)
+      expect(f.state.inspect().pending).toBeNull()
+      expect(fetch).not.toHaveBeenCalled()
+    },
+  )
   it('ignores even unsafe local input in packaged builds and reads only the fixed network list', async () => {
     const { f, directory, appData, list } = await setup()
     await chmod(directory, 0o777)
@@ -214,12 +209,18 @@ describe.skipIf(process.platform === 'win32')('unpackaged local plugin source', 
     expect(fetch).toHaveBeenCalledOnce()
     expect(String(fetch.mock.calls[0]?.[0])).toBe(PLUGIN_LIST_URL)
   })
+  it('loads an OS-readable shared dev folder without changing its permissions', async () => {
+    const { directory, appData, fetch } = await setup()
+    await chmod(directory, 0o755)
+    expect(await devPluginSource({ isPackaged: false, appData })).toBeDefined()
+    expect(fetch).not.toHaveBeenCalled()
+  })
   it('keeps the existing source when the dev folder is absent', async () => {
     const { directory, appData } = await setup()
     await rename(directory, directory + '-absent')
     expect(await devPluginSource({ isPackaged: false, appData })).toBeUndefined()
   })
-  it.each(['symlink', 'shared mode', 'canonical alias'])(
+  it.each(['symlink', 'canonical alias'])(
     'refuses an existing %s source before any fetch',
     async (fault) => {
       const { directory, appData, fetch } = await setup()
@@ -227,8 +228,7 @@ describe.skipIf(process.platform === 'win32')('unpackaged local plugin source', 
       if (fault === 'symlink') {
         await rename(directory, directory + '-kept')
         await symlink(directory + '-kept', directory)
-      } else if (fault === 'shared mode') await chmod(directory, 0o755)
-      else {
+      } else {
         path = appData + '-alias'
         await symlink(appData, path)
       }

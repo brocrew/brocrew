@@ -13,7 +13,7 @@ import {
 import type { PluginRelease } from '../package-schema'
 import { proposalFor } from './proposals'
 import { pluginAdapter } from './adapters'
-import { randomUUID, type KeyObject } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import type { PluginSettingsController } from '../settings'
 import type { PluginUiHostOptions } from '../ui/host'
@@ -21,14 +21,24 @@ import type { PluginUiBinding } from '../ui/rpc'
 import type { PluginTarget } from '../package-schema'
 import { PluginPackageVault } from './vault'
 import { ConsumerCommand, connectPersonPluginControl } from './person-control'
-import type { WorkspaceProjection } from './types'
+import type { PersonProjection } from './types'
 import { Installation } from '../state/format'
-import { PLUGIN_STATES, pluginRemovalOutcome } from '../../../shared/plugin-settings'
+import {
+  PLUGIN_STATES,
+  PLUGIN_UNAVAILABLE_REASONS,
+  PluginStartupDiagnosticSchema,
+  pluginRemovalOutcome,
+} from '../../../shared/plugin-settings'
 import { createRepoAwarePluginVerifier } from '../package-verifier'
 import { pluginSha256, verifyPluginDigest, PLUGIN_LIMITS } from '../package-digests'
 import { strictPluginJson } from '../strict-json'
 import type { PluginMutationBlocked, PluginMutationConsent } from '../../../shared/plugin-settings'
 import { PluginSupervisorError } from '../supervisor/protocol'
+import {
+  PluginStartupError,
+  pluginStartupReason,
+  type PluginOwnerCheckStage,
+} from '../startup-failure'
 
 const Cards = z
   .array(
@@ -39,37 +49,44 @@ const Cards = z
       installed: z.boolean(),
       priorityClamped: z.boolean().nullable().optional(),
       toolsUnavailable: z.literal(true).optional(),
+      unavailableReason: z.enum(PLUGIN_UNAVAILABLE_REASONS).optional(),
+      startupDiagnostic: PluginStartupDiagnosticSchema.optional(),
+      toolsCause: z
+        .string()
+        .regex(/^[a-z][a-z0-9-]{0,63}(?:: [a-z][a-z0-9-]{0,63})?$/)
+        .optional(),
       installedVersion: z.string().min(1).max(80).optional(),
       updateVersion: z.string().min(1).max(80).optional(),
       uninstallDeletesData: z.boolean().optional(),
     }),
   )
   .max(200)
-/** Electron-main adapter for the exact app-admitted repo list, or the dormant signed test path. */
+/** Electron-main adapter for the exact app-admitted repo list. */
 export async function connectPluginSettings(options: {
   path: string
   personKey: string
   root: string
-  pinnedPublicKey: KeyObject | null
   repoCatalogueSha256?: string
   target: PluginTarget
-  catalogue: { bytes: Uint8Array; signature: Uint8Array }
-  projection: WorkspaceProjection
+  catalogue: { bytes: Uint8Array }
+  projection: PersonProjection
   propose(publicProposal: unknown, revision: number): void
   lost?(): void
   signal?: AbortSignal
   /** Inert unit-test transport; production uses the bounded admitted archive transport. */
   download?(release: Readonly<PluginRelease>, signal: AbortSignal): Promise<Uint8Array>
 }): Promise<PluginSettingsController & { close(): Promise<void> }> {
+  if (
+    options.repoCatalogueSha256 !== undefined &&
+    pluginSha256(options.catalogue.bytes) !== options.repoCatalogueSha256
+  )
+    throw new PluginSupervisorError('unavailable')
   let catalogueProof = {
     bytes: Buffer.from(options.catalogue.bytes),
-    signature: Buffer.from(options.catalogue.signature),
   }
   let admitted = createRepoAwarePluginVerifier({
-    pinnedPublicKey: options.pinnedPublicKey,
-    repoCatalogueSha256: options.repoCatalogueSha256,
     target: options.target,
-  }).verifyCatalogue(catalogueProof.bytes, catalogueProof.signature)
+  }).verifyCatalogue(catalogueProof.bytes)
   let sourceFormat = (
     strictPluginJson(catalogueProof.bytes, PLUGIN_LIMITS.catalogueBytes) as { format: 1 | 2 }
   ).format
@@ -91,12 +108,7 @@ export async function connectPluginSettings(options: {
       .regex(/^[a-f0-9]{64}$/)
       .optional(),
   })
-  const vault = new PluginPackageVault(
-    options.root,
-    options.pinnedPublicKey,
-    options.target,
-    options.repoCatalogueSha256,
-  )
+  const vault = new PluginPackageVault(options.root, options.target)
   const screens = new Map<
     string,
     { install: string; live: boolean; revokers: Set<() => void | Promise<void>> }
@@ -222,10 +234,15 @@ export async function connectPluginSettings(options: {
         ? 'owner-incompatible'
         : null
   }
-  async function readFeatures(ticket: number) {
+  async function readFeatures(ticket: number, noteStage?: (stage: PluginOwnerCheckStage) => void) {
     if (!modern || !featureReadable) return
+    noteStage?.('owner-features')
     const reply = await channel.call({ kind: 'features' })
-    if (!alive || generation !== ticket) return failPolicy()
+    if (!alive || generation !== ticket) {
+      noteStage?.('owner-generation')
+      return failPolicy()
+    }
+    noteStage?.('owner-response')
     const next = z
       .strictObject({ features: z.array(z.string().regex(/^[a-z][a-z0-9-]{0,63}$/)).max(32) })
       .parse(reply).features
@@ -263,11 +280,12 @@ export async function connectPluginSettings(options: {
           : 'owner-incompatible'
     }
   }
-  async function checkOwner() {
+  async function checkOwner(noteStage?: (stage: PluginOwnerCheckStage) => void) {
+    noteStage?.('owner-local-state')
     if (!alive) throw new PluginSupervisorError('unavailable')
     if (switching) return failPolicy()
     const ticket = generation
-    await readFeatures(ticket)
+    await readFeatures(ticket, noteStage)
     if (badSource) {
       blocked = 'source-mismatch'
       return
@@ -288,12 +306,20 @@ export async function connectPluginSettings(options: {
     }
     try {
       const digest = pluginSha256(catalogueProof.bytes)
+      noteStage?.('owner-mutation-status')
       const reply = await channel.call({ kind: 'mutation-status', catalogueDigest: digest })
-      if (!alive || generation !== ticket) return failPolicy()
+      if (!alive || generation !== ticket) {
+        noteStage?.('owner-generation')
+        return failPolicy()
+      }
+      noteStage?.('owner-response')
       z.strictObject({ format: z.literal(1), catalogueDigest: z.literal(digest) }).parse(reply)
       blocked = null
     } catch (error) {
-      if (generation !== ticket) return failPolicy()
+      if (generation !== ticket) {
+        noteStage?.('owner-generation')
+        return failPolicy()
+      }
       invalidateConsent()
       if (error instanceof PluginSupervisorError && error.code === 'source-mismatch')
         blocked = 'source-mismatch'
@@ -485,22 +511,48 @@ export async function connectPluginSettings(options: {
       for (;;) {
         while (switching) await catalogueRefresh
         const ticket = generation
+        let detail: PluginOwnerCheckStage = 'owner-local-state'
         try {
-          await checkOwner()
+          await checkOwner((stage) => {
+            detail = stage
+          })
           break
         } catch (error) {
-          if (!switching && generation === ticket) throw error
+          if (!switching && generation === ticket)
+            throw new PluginStartupError(
+              pluginStartupReason(error, 'catalogue-response'),
+              error,
+              'owner-check',
+              detail,
+            )
         }
       }
-      const cards = Cards.parse(
-        await channel.call({
+      let reply: unknown
+      try {
+        reply = await channel.call({
           kind: modern
-            ? features.includes('tool-health-v1')
-              ? 'list-tool-health'
-              : 'list-v2'
+            ? features.includes('startup-diagnostic-v1')
+              ? 'list-startup-diagnostic'
+              : features.includes('tool-cause-v1')
+                ? 'list-tool-cause'
+                : features.includes('tool-health-v1')
+                  ? 'list-tool-health'
+                  : 'list-v2'
             : 'list',
-        }),
-      )
+        })
+      } catch (error) {
+        throw new PluginStartupError(pluginStartupReason(error, 'catalogue-response'), error, 'rpc')
+      }
+      let cards: z.infer<typeof Cards>
+      try {
+        cards = Cards.parse(reply)
+      } catch (error) {
+        throw new PluginStartupError(
+          pluginStartupReason(error, 'catalogue-response'),
+          error,
+          'schema',
+        )
+      }
       // Project reviewed local adapter capabilities without expanding the legacy owner wire.
       return cards.map((card) => ({
         ...card,
@@ -529,14 +581,10 @@ export async function connectPluginSettings(options: {
       : {}),
     ...(modern
       ? {
-          async refreshCatalogue(
-            catalogueDigest: string,
-            source?: { bytes: Uint8Array; signature: Uint8Array },
-          ) {
+          async refreshCatalogue(catalogueDigest: string, source?: { bytes: Uint8Array }) {
             if (source)
               source = {
                 bytes: Buffer.from(source.bytes),
-                signature: Buffer.from(source.signature),
               }
             pendingCatalogueRefreshes++
             invalidateConsent()
@@ -552,12 +600,8 @@ export async function connectPluginSettings(options: {
                     try {
                       if (pluginSha256(source.bytes) !== catalogueDigest) return failPolicy()
                       const verified = createRepoAwarePluginVerifier({
-                        pinnedPublicKey: options.pinnedPublicKey,
-                        repoCatalogueSha256:
-                          options.pinnedPublicKey === null ? catalogueDigest : undefined,
                         target: options.target,
-                        knownReleases: admitted.pins,
-                      }).verifyCatalogue(source.bytes, source.signature)
+                      }).verifyCatalogue(source.bytes)
                       const format = (
                         strictPluginJson(source.bytes, PLUGIN_LIMITS.catalogueBytes) as {
                           format: 1 | 2
@@ -566,7 +610,6 @@ export async function connectPluginSettings(options: {
                       if (sourceFormat === 2 && format !== 2) return failPolicy()
                       catalogueProof = {
                         bytes: Buffer.from(source.bytes),
-                        signature: Buffer.from(source.signature),
                       }
                       admitted = verified
                       sourceFormat = format
@@ -637,15 +680,12 @@ export async function connectPluginSettings(options: {
       const installed = Installation.parse(await channel.call({ kind: 'screen', pluginId }))
       if (installed.pluginId !== pluginId || installed.phase !== 'active')
         throw new PluginSupervisorError('unavailable')
-      const checked = await vault.load(
-        {
-          id: pluginId,
-          version: installed.release.version,
-          manifestSha256: installed.release.manifestSha256,
-          archive: { sha256: installed.release.archiveSha256 },
-        },
-        [],
-      )
+      const checked = await vault.load({
+        id: pluginId,
+        version: installed.release.version,
+        manifestSha256: installed.release.manifestSha256,
+        archive: { sha256: installed.release.archiveSha256 },
+      })
       if (!alive || (generations.get(pluginId) ?? 0) !== generation)
         throw new PluginSupervisorError('unavailable')
       const state = {

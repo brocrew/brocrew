@@ -326,7 +326,6 @@ export function productionPluginController() {
                 path: join(options.root, 'person-control/person.sock'),
                 personKey,
                 root: options.root,
-                pinnedPublicKey: null,
                 repoCatalogueSha256: catalogueEntries.sha256,
                 target: options.target ?? {
                   os: process.platform as 'darwin' | 'linux',
@@ -334,7 +333,6 @@ export function productionPluginController() {
                 },
                 catalogue: {
                   bytes: catalogueEntries.bytes,
-                  signature: Buffer.alloc(0),
                 },
                 projection: {
                   workspaceId: pluginWorkspaceIdentity(options.workspaceRoot),

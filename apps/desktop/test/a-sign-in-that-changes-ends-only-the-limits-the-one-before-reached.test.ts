@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -10,18 +11,13 @@ import { TheCliAnswersInOrder } from '../../../packages/runtime/test/the-cli-ans
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { resourcesRoot } from '../src/main/resources/resources'
 import type { ProviderAuthOps } from '../src/main/runtime/provider-homes'
-import {
-  RuntimeHost,
-  THE_APP_ITSELF,
-  type RuntimeEventSink,
-} from '../src/main/runtime/runtime-host'
+import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
+import { fixtureProviderConfig, RecordingSink, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # 🔴 13a0ab52 — a Claude sign-in that changes ends the limits the sign-in before reached, and ONLY those
@@ -58,17 +54,6 @@ const codexWall = (resetsAt: number): string =>
   `codex is rate-limited (rate_limit_reached) — the turn may stall until it resets; resets ${new Date(resetsAt).toISOString()}`
 
 /** ⚑ A window: the one surface a person's words come through. */
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** ⛔ Bounded: four seconds, then a named failure — never a hang. */
 const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
   const deadline = Date.now() + 4_000
@@ -277,9 +262,7 @@ describe('13a0ab52 · a sign-in that changes ends only the limits the sign-in be
       }
       host = new RuntimeHost({
         store,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(userData, 'exports'),
+        ...neutralHostDeps(() => userData),
         resourcesRoot: () => resourcesRoot(userData),
         createRuntime: (provider: Provider) =>
           new ProviderDouble(provider, handles, issued, anOpenGate()),
@@ -294,13 +277,7 @@ describe('13a0ab52 · a sign-in that changes ends only the limits the sign-in be
         commandListWaitMs: 200,
         afterALimitResetsMs: 20,
         now: () => pinned ?? Date.now(),
-        readProviderConfig: (_provider, home) => ({
-          home,
-          homeEnv: 'CLAUDE_CONFIG_DIR',
-          model: 'm',
-          authNote: null,
-          files: [],
-        }),
+        readProviderConfig: fixtureProviderConfig,
         providerAuth,
         // 🔒 A key store that keeps no key: `read` answers none, so every launch stays on the
         // (fake) login, and nothing here is a credential.
@@ -506,9 +483,7 @@ describe('13a0ab52 · a sign-in that changes ends only the limits the sign-in be
       let counter = 0
       host = new RuntimeHost({
         store: ledger,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(dir, 'exports'),
+        ...neutralHostDeps(() => dir),
         createRuntime: () =>
           new ClaudeRuntime(
             (params) => {
@@ -529,13 +504,7 @@ describe('13a0ab52 · a sign-in that changes ends only the limits the sign-in be
         providerHomePath: (which) => join(dir, 'homes', which),
         resolveCwd: () => cwd,
         newSessionId: () => `sess_door_${String(++counter)}`,
-        readProviderConfig: (_which, home) => ({
-          home,
-          homeEnv: 'CLAUDE_CONFIG_DIR',
-          model: 'm',
-          authNote: null,
-          files: [],
-        }),
+        readProviderConfig: fixtureProviderConfig,
       })
     })
 

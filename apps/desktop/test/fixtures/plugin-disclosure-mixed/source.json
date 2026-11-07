@@ -12,8 +12,8 @@
       "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol",
       "../../../src/main/plugins/lifecycle/transport": "./transport",
       "./authors-controller": "./controller",
-      "../../../src/main/plugins/lifecycle/types": "./types",
-      "../../../src/main/plugins/state/format": "../state/format"
+      "../../../src/main/plugins/state/format": "../state/format",
+      "../plugin-delete-parent/types": "./types"
     }
   },
   {
@@ -34,10 +34,11 @@
       "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol",
       "../../../src/main/plugins/lifecycle/download": "./download",
       "../../../src/main/plugins/lifecycle/files": "./files",
-      "../../../src/main/plugins/lifecycle/types": "./types",
       "../../../src/shared/plugin-settings": "../../../shared/plugin-settings",
-      "./authors-vault": "./vault"
-    }
+      "./authors-vault": "./vault",
+      "../plugin-delete-parent/types": "./types"
+    },
+    "unsignedApiSha256": "23dc64be3fe283ebb508a91f084b89be73737f0cdf1dd3ceffcde067ce26187c"
   },
   {
     "commit": "394772c43265041dbcaea3902d21438ff0162f5b",
@@ -57,6 +58,7 @@
       "../../../src/main/plugins/package-digests": "../package-digests",
       "../../../src/main/plugins/node-host-files": "../node-host-files",
       "../../../src/main/plugins/supervisor/protocol": "../supervisor/protocol"
-    }
+    },
+    "unsignedApiSha256": "58abc91b2bd41cad459ed24ddbc65d92d65b344578795c06db5608e693f39742"
   }
 ]

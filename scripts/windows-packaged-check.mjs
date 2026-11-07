@@ -14,22 +14,19 @@
 // Check the default data folder only on an empty GitHub-hosted runner. Stop only the test process
 // and its verified children. Node built-ins and the hidden-launch switch only.
 import { spawn, spawnSync } from 'node:child_process'
-import {
-  closeSync,
-  existsSync,
-  mkdtempSync,
-  openSync,
-  readdirSync,
-  readFileSync,
-  readSync,
-  rmSync,
-  statSync,
-} from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  entriesUnder,
+  asarEntries,
+  claudeCodeIn,
+  versionOrder,
+} from './lib/packaged-app-inventory.mjs'
 import { HIDDEN_LAUNCH_ARG } from './lib/hidden-launch.mjs'
+import { checkPackagedPluginService } from './packaged-plugin-service-check.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const FAKE_KEY = 'sk-ant-api03-windows-build-check-not-a-real-key'
@@ -57,68 +54,6 @@ const fail = (line) => {
 }
 // ⚑ A finding that does not stop the build: said loudly, and the installer is still published.
 const warn = (line) => console.log(`[windows-check] ⚠ WARNING (not a failure): ${line}`)
-
-/** Every file and folder under `dir`: its path relative to `dir`, spelled with `/`. */
-function entriesUnder(dir) {
-  let entries
-  try {
-    entries = readdirSync(dir, { withFileTypes: true, recursive: true })
-  } catch {
-    return []
-  }
-  return entries.map((entry) => ({
-    path: relative(dir, join(entry.parentPath, entry.name)).split(sep).join('/'),
-    isFile: entry.isFile(),
-  }))
-}
-
-/** Every file and folder packed in an asar archive, read from its header — nothing is unpacked. */
-function asarEntries(archive) {
-  const fd = openSync(archive, 'r')
-  try {
-    const head = Buffer.alloc(16)
-    readSync(fd, head, 0, 16, 0)
-    const length = head.readUInt32LE(12)
-    const json = Buffer.alloc(length)
-    readSync(fd, json, 0, length, 16)
-    const entries = []
-    const walk = (node, at) => {
-      for (const [name, child] of Object.entries(node.files ?? {})) {
-        const path = at === '' ? name : `${at}/${name}`
-        entries.push({ path, isFile: child.files === undefined })
-        walk(child, path)
-      }
-    }
-    walk(JSON.parse(json.toString('utf8')), '')
-    return entries
-  } finally {
-    closeSync(fd)
-  }
-}
-
-/** What of Claude Code `entries` hold: each `claude` program, and each Agent SDK platform package once. */
-function claudeCodeIn(entries) {
-  const found = new Set()
-  for (const { path, isFile } of entries) {
-    const parts = path.split('/')
-    const at = parts.findIndex(
-      (part, index) => parts[index - 1] === '@anthropic-ai' && part.startsWith('claude-agent-sdk-'),
-    )
-    if (at !== -1) found.add(parts.slice(0, at + 1).join('/'))
-    else if (isFile && /^claude(\.exe)?$/i.test(parts.at(-1))) found.add(path)
-  }
-  return [...found]
-}
-
-/** `-1`, `0` or `1` as `a` is older than, the same as or newer than `b`, part by part. */
-function versionOrder(a, b) {
-  const parts = (text) => text.split(/[.+-]/, 3).map((part) => Number.parseInt(part, 10) || 0)
-  const [x, y] = [parts(a), parts(b)]
-  for (let at = 0; at < 3; at += 1) {
-    if (x[at] !== y[at]) return Math.sign(x[at] - y[at])
-  }
-  return 0
-}
 
 function pinned() {
   const desktop = JSON.parse(readFileSync(join(ROOT, 'apps/desktop/package.json'), 'utf8'))
@@ -583,6 +518,13 @@ async function theDataStaysWhereItWas() {
   else fail(`the app ran ${DATA_WAIT_MS / 1000} s and made no database in ${folder}`)
 }
 await theDataStaysWhereItWas()
+
+try {
+  await checkPackagedPluginService(resources)
+  say('✓ the shipped plugin service starts, answers and exits after release')
+} catch (error) {
+  fail(error.message)
+}
 
 say(failures.length === 0 ? 'every check held' : `${failures.length} check(s) failed`)
 process.exit(failures.length === 0 ? 0 : 1)

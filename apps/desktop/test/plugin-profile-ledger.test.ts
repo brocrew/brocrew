@@ -20,7 +20,6 @@ import {
   connectPersonPluginControl,
 } from '../src/main/plugins/lifecycle/person-control'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
-import { fictionalPublicKey } from './plugin-package-fixtures'
 const closers: (() => Promise<unknown>)[] = []
 afterEach(async () => {
   for (const close of closers.splice(0).reverse()) await close()
@@ -109,7 +108,6 @@ describe.skipIf(process.platform === 'win32')(
         path: bridge.path,
         personKey: 'e'.repeat(64),
         root: f.root,
-        pinnedPublicKey: fictionalPublicKey,
         target: f.opts.target,
         catalogue: f.opts.catalogue,
         projection: projection().sink,
@@ -258,7 +256,6 @@ describe.skipIf(process.platform === 'win32')(
         path: bridge.path,
         personKey: 'e'.repeat(64),
         root: f.root,
-        pinnedPublicKey: fictionalPublicKey,
         target: f.opts.target,
         catalogue: f.opts.catalogue,
         projection: projection().sink,

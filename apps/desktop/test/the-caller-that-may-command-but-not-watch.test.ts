@@ -1,3 +1,5 @@
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -9,7 +11,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import {
   RuntimeHost,
@@ -21,7 +22,7 @@ import {
   type RuntimeEventSink,
 } from '../src/main/runtime/runtime-host'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -139,9 +140,7 @@ describe('340 · a session an agent may drive and may not decide for', () => {
   const buildHost = (): RuntimeHost =>
     new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => {
         const held = runtimes.get(provider) ?? new CapturingRuntime(provider)
         runtimes.set(provider, held)
@@ -155,13 +154,7 @@ describe('340 · a session an agent may drive and may not decide for', () => {
       providerHomePath: (provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
       newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
 
   beforeEach(() => {
@@ -627,8 +620,9 @@ describe('340 · a session an agent may drive and may not decide for', () => {
         () => providerEchoed(sessionId, 'AFTER THE RELEASE'),
         'the turn after the release',
       )
-      // ⛔ …while the window that let go is a stranger again, which is the axis that DOES move.
-      expect(await refusalOf(() => host.send(sessionId, 'not yours', one))).toBe(HELD_BY_NOBODY)
+      // A person command never claims the released stream.
+      await host.send(sessionId, 'PERSON AFTER RELEASE', two)
+      expect(host.unclaimedSessions().map((entry) => entry.sessionId)).toEqual([sessionId])
     })
 
     it('⛔ a second window may take it over, and that still does not make anyone else a commander', async () => {

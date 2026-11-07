@@ -10,10 +10,10 @@
     <main>
       <header class="screen-heading">
         <h1>Chrome</h1>
-        <p id="status" role="status">Needs setup</p>
+        <p id="status" role="status" aria-busy="true">Loading…</p>
       </header>
-      <section aria-label="Profiles" id="profiles"></section>
-      <form id="create">
+      <section aria-label="Profiles" id="profiles" data-settings-content hidden></section>
+      <form id="create" data-settings-content hidden>
         <label
           >Profile name
           <input
@@ -25,6 +25,7 @@
         ><button>Create profile</button>
       </form>
     </main>
+    <script src="settings-load-state.js"></script>
     <script type="module" src="app.js"></script>
   </body>
 </html>

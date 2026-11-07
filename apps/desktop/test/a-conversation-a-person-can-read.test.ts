@@ -1,3 +1,4 @@
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -22,8 +23,6 @@ import {
   READING_NOTE,
   READING_SUFFIX,
   type HistoryWindow,
-  type PersistedEventInfo,
-  type TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 
 /**

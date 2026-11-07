@@ -1,4 +1,4 @@
-import { requireCI } from './contract.mjs'
+import { requireCI } from './fixture-guards.mjs'
 // Builder owns packaging and signing, as in the normal hosted Mac job.
 export function directoryPackageArguments() {
   return [

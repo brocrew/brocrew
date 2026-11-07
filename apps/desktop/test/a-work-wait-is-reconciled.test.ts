@@ -1,3 +1,15 @@
+import { neutralHostDeps } from './lib/host-fixture'
+import { waitFor } from './lib/f093-host'
+import {
+  countSqlReads,
+  settle,
+  registerPersistedWaitRevisionCase,
+} from './helpers/persisted-wait-revision-cases'
+import type {
+  ReconciliationReceipt,
+  WorkReconciliationEvent,
+} from '../src/shared/reconciliation-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -21,7 +33,6 @@ import {
 } from '../src/main/db/window-read-protocol'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeHostDeps } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
@@ -33,61 +44,12 @@ import {
   type CutRecord,
 } from '../src/main/turns-the-app-cut-file'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type {
-  ReconciliationReceipt,
-  WorkReconciliationEvent,
-} from '../src/shared/work-reconciliation'
+
 import type { ReconciliationPiece } from '../src/main/runtime/work-reconciliation'
-import {
-  DEFAULT_PROFILE_ID,
-  type RuntimeEventMessage,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-/** Count executed read statements, including those prepared before a control begins. */
-function countSqlReads(database: AppDatabase, read: (sql: string) => void): AppDatabase {
-  return new Proxy(database, {
-    get(target, property) {
-      if (property === 'prepare')
-        return (sql: string) => {
-          const statement = target.prepare(sql)
-          const wrapped: typeof statement = new Proxy(statement, {
-            get(prepared, method) {
-              const value = Reflect.get(prepared, method, prepared) as unknown
-              if (typeof value !== 'function') return value
-              return (...args: unknown[]) => {
-                if (method === 'get' || method === 'all' || method === 'iterate') read(sql)
-                const result = Reflect.apply(value, prepared, args)
-                return result === prepared ? wrapped : result
-              }
-            },
-          })
-          return wrapped
-        }
-      const value = Reflect.get(target, property, target) as unknown
-      return typeof value === 'function' ? value.bind(target) : value
-    },
-  })
-}
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
-
-/** Long enough for every pump and every flush a row arms to have run. */
-async function settle(): Promise<void> {
-  for (let round = 0; round < 2; round++) {
-    for (let turn = 0; turn < 5; turn++) await new Promise((resolve) => setImmediate(resolve))
-    await new Promise((resolve) => setTimeout(resolve, 30))
-  }
-}
 
 /** The provider double: it keeps the handles it gives out, so a test can report background work. */
 class ProviderDouble extends FakeRuntime {
@@ -256,9 +218,7 @@ describe('a work wait is reconciled without a window', () => {
         store,
         limitsWriterStamp: () => (stampsAvailable ? contentStamp() : null),
         windowWriterStamp: (query) => (stampsAvailable ? windowStamp(query) : null),
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(userData, 'exports'),
+        ...neutralHostDeps(() => userData),
         resourcesRoot: () => resourcesRoot(userData),
         createRuntime: (provider: Provider) => new Runtime(provider, handles, issued),
         prepareProviderHome: (provider, profileId) => {
@@ -286,6 +246,20 @@ describe('a work wait is reconciled without a window', () => {
     vi.restoreAllMocks()
     db.close()
     for (const folder of [userData, root]) rmSync(folder, { recursive: true, force: true })
+  })
+
+  registerPersistedWaitRevisionCase({
+    host: () => host,
+    replaceHost: (value) => {
+      host = value
+    },
+    freezeClock: () => {
+      freezeClock = true
+    },
+    create,
+    waiting,
+    store: () => store,
+    build: () => build(),
   })
 
   it('a quiet pass reads no names and several notices share one narrow names read', async () => {

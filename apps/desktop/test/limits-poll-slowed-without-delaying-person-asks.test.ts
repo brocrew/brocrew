@@ -1,3 +1,4 @@
+import type { LedgerWalk } from '../src/shared/question-contracts'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
@@ -9,7 +10,7 @@ import {
 } from '../src/renderer/src/lib/persons-queue'
 import { limitsDisplayLane, type LimitsDisplayState } from '../src/renderer/src/lib/limits-display'
 import { readProviderLimit, type ProviderLimitSeen } from '../src/shared/provider-limit'
-import type { LedgerWalk } from '../src/shared/questions'
+import { oneReadAtATime } from '../src/renderer/src/lib/one-read-at-a-time'
 
 const screen = readFileSync(
   fileURLToPath(new URL('../src/renderer/src/components/RuntimeScreen.vue', import.meta.url)),
@@ -119,12 +120,15 @@ function fixture() {
           }
     },
   }
+  // The look's entry, its round of reads, and the one-at-a-time read every ask goes through.
+  const coalesced = 'const lookAtTheQueue = oneReadAtATime(lookAtTheQueueOnce)'
+  expect(screen).toContain(coalesced)
   const look = runInNewContext(
-    `${functionSource('refreshLimitsDisplay').replace(': Promise<void>', '')}; ${body.replace(': Promise<void>', '')}; lookForWhatIsYours`,
+    `${functionSource('refreshLimitsDisplay').replace(': Promise<void>', '')}; ${body.replace(': Promise<void>', '')}; ${functionSource('lookAtTheQueueOnce').replace(': Promise<void>', '')}; ${coalesced}; lookForWhatIsYours`,
     {
       store: runtimeStore,
       limitsLane,
-      actionableReadSequence: 0,
+      oneReadAtATime,
       actionableReadsClosed: false,
       lookAtLimits: limitsReadCadence(),
       ...state,

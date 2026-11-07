@@ -1,3 +1,9 @@
+import {
+  pluginStartupDiagnostic,
+  pluginFailureCause,
+  pluginStartupStderr,
+} from '../startup-failure'
+import type { PluginStartupDiagnostic } from '../../../shared/plugin-settings'
 import { PluginVerificationError } from '../verification-error'
 import { PluginDownloadError, downloadPluginBytes } from '../catalogue/download'
 import { PluginListError } from '../catalogue/list-error'
@@ -22,9 +28,7 @@ import type {
   LifecycleRun,
   LifecycleWorkspace,
   WorkspaceProjection,
-  ProjectionReceipt,
   Installation,
-  PluginReleasePin,
 } from './types'
 import type { PluginCard, PluginRemovalOutcome } from '../../../shared/plugin-settings'
 
@@ -34,7 +38,8 @@ const refuse = (): never => {
 const pending = (): never => {
   throw new PluginSupervisorError('cleanup-pending')
 }
-async function bounded<T>(work: () => Promise<T>, ms = 20000): Promise<T> {
+/** A consumer step's time limit: past it the step refuses cleanup-pending, and its work goes on. */
+export async function bounded<T>(work: () => Promise<T>, ms = 20000): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     return await Promise.race([
@@ -48,11 +53,17 @@ async function bounded<T>(work: () => Promise<T>, ms = 20000): Promise<T> {
   }
 }
 const idSchema = z.string().regex(/^[a-z][a-z0-9-]{0,63}$/)
+/** A cause the launch line may name: fixed-vocabulary words, never an error body. */
+const TOOLS_CAUSE = /^[a-z][a-z0-9-]{0,63}(?:: [a-z][a-z0-9-]{0,63})?$/
+const toolsCause = (value: unknown): value is string =>
+  typeof value === 'string' && TOOLS_CAUSE.test(value)
 interface Workspace {
   sink: WorkspaceProjection
-  receipts: Map<string, ProjectionReceipt>
+  /** The installs this workspace was given, so its consumers hear of a detach, update or removal. */
+  installs: Map<string, string>
   live: boolean
 }
+type WorkspaceAdmission = ReturnType<LifecycleOptions['state']['readWorkspaceAdmission']>
 /** The journal's pending operation, which a list under the state lock sees only once it is stuck. */
 interface Unfinished {
   install: Installation
@@ -83,12 +94,19 @@ export class PluginLifecycleController {
   private readonly workspaces = new Map<LifecycleWorkspace, Workspace>()
   private readonly blocks = new Map<string, symbol>()
   private readonly runs = new Map<string, Running>()
+  private readonly attachmentChecks = new WeakMap<
+    object,
+    (workspaceId: string, read: WorkspaceAdmission) => boolean
+  >()
   private chromeToolRestart?: { runId: string | undefined; work: Promise<void> }
   private chromeToolRestartBlock?: symbol
   private readonly attempted = new Set<string>()
   private readonly localOperations = new Set<string>()
   private readonly admittedCatalogues = new Map<string, readonly string[]>()
   private readonly cleanup = new Set<string>()
+  /** Why an installed plugin could not start at attach, as `stage: cause`, until it next starts. */
+  private readonly startFailures = new Map<string, string>()
+  private readonly startDiagnostics = new Map<string, PluginStartupDiagnostic>()
   private preparedMutationPolicy?: Readonly<{ revision: number; required: boolean }>
   private get catalogueRevision(): number {
     return this.preparedMutationPolicy?.revision ?? 0
@@ -112,12 +130,7 @@ export class PluginLifecycleController {
       const controller = new PluginLifecycleController(
         options,
         await LifecycleEffects.open(options.root, state.guards.length === 0),
-        new PluginPackageVault(
-          options.root,
-          options.pinnedPublicKey,
-          options.target,
-          options.repoCatalogueSha256,
-        ),
+        new PluginPackageVault(options.root, options.target),
       )
       const catalogue = controller.catalogue() // Complete verification before retaining provenance.
       controller.preparedMutationPolicy = Object.freeze({
@@ -137,21 +150,6 @@ export class PluginLifecycleController {
       return refuse()
     }
   }
-  private pins(): PluginReleasePin[] {
-    return this.options.state.inspect().operations.flatMap(({ operation }) => {
-      const consent = operation.request.consent
-      return consent.pluginId && consent.release
-        ? [
-            {
-              id: consent.pluginId,
-              version: consent.release.version,
-              archiveSha256: consent.release.archiveSha256,
-              manifestSha256: consent.release.manifestSha256,
-            },
-          ]
-        : []
-    })
-  }
   catalogueIdentity(): string {
     return pluginSha256(this.options.catalogue.bytes)
   }
@@ -164,12 +162,7 @@ export class PluginLifecycleController {
   }
   private retainRepoList(source: LifecycleOptions['repoList'], expected: string | undefined): void {
     if (!source) return
-    if (
-      this.options.pinnedPublicKey !== null ||
-      !expected ||
-      pluginSha256(source.bytes) !== source.sha256
-    )
-      return refuse()
+    if (!expected || pluginSha256(source.bytes) !== source.sha256) return refuse()
     const parsed = parseRepoPluginList(source.bytes, this.options.target, source.appVersion)
     if (parsed.sha256 !== expected) return refuse()
     const fresh = parsed.legacyCatalogues.filter((one) => !this.admittedCatalogues.has(one.sha256))
@@ -183,8 +176,7 @@ export class PluginLifecycleController {
   }
   private retainLegacyRepoList(source: LifecycleOptions['legacyRepoList']): void {
     if (!source) return
-    if (this.options.pinnedPublicKey !== null || pluginSha256(source.bytes) !== source.sha256)
-      return refuse()
+    if (pluginSha256(source.bytes) !== source.sha256) return refuse()
     const parsed = parseRepoPluginList(source.bytes, this.options.target, source.appVersion)
     if (parsed.format !== 1) return refuse()
     const fresh = parsed.legacyCatalogues.filter(
@@ -208,12 +200,14 @@ export class PluginLifecycleController {
     if (!/^[a-f0-9]{64}$/.test(expectedDigest) || !this.options.refreshCatalogue) return refuse()
     await this.mutationFence(async () => {
       const next = await this.options.refreshCatalogue!()
+      if (
+        next.repoCatalogueSha256 !== undefined &&
+        pluginSha256(next.catalogue.bytes) !== next.repoCatalogueSha256
+      )
+        return refuse()
       const verified = createRepoAwarePluginVerifier({
-        pinnedPublicKey: this.options.pinnedPublicKey,
-        repoCatalogueSha256: next.repoCatalogueSha256,
         target: this.options.target,
-        knownReleases: this.pins(),
-      }).verifyCatalogue(next.catalogue.bytes, next.catalogue.signature)
+      }).verifyCatalogue(next.catalogue.bytes)
       if (pluginSha256(next.catalogue.bytes) !== expectedDigest) {
         if (this.requiresPreparedMutations()) throw new PluginSupervisorError('source-mismatch')
         return refuse()
@@ -237,12 +231,14 @@ export class PluginLifecycleController {
     })
   }
   private catalogue() {
+    if (
+      this.options.repoCatalogueSha256 !== undefined &&
+      pluginSha256(this.options.catalogue.bytes) !== this.options.repoCatalogueSha256
+    )
+      return refuse()
     return createRepoAwarePluginVerifier({
-      pinnedPublicKey: this.options.pinnedPublicKey,
-      repoCatalogueSha256: this.options.repoCatalogueSha256,
       target: this.options.target,
-      knownReleases: this.pins(),
-    }).verifyCatalogue(this.options.catalogue.bytes, this.options.catalogue.signature)
+    }).verifyCatalogue(this.options.catalogue.bytes)
   }
   /** Verify author identity before revoking or changing any installation authority. */
   private async mutationPackage(id: string) {
@@ -252,7 +248,7 @@ export class PluginLifecycleController {
     if (!release?.authors) throw new PluginSupervisorError('policy-refused')
     let bytes: Uint8Array | undefined
     const checked = await this.vault
-      .load(release, this.pins(), catalogue)
+      .load(release, catalogue)
       .catch(async () => {
         bytes = await (
           this.options.download ??
@@ -412,6 +408,7 @@ export class PluginLifecycleController {
     this.profileCalls.get(id)?.abort()
     const token = Symbol()
     this.blocks.set(id, token)
+    this.agentScopeChanged()
     try {
       this.options.deny(id)
     } catch {
@@ -424,26 +421,34 @@ export class PluginLifecycleController {
     if (!workspace?.live) return refuse()
     return workspace
   }
+  /** Another plugin's pending operation leaves this one as committed. */
   private current(id: string): Installation | undefined {
-    const state = this.options.state.inspect()
-    if (state.pending) return undefined
-    return this.options.state.exportActivation().entries.find((one) => one.pluginId === id)
+    return this.options.state.committedActivation().entries.find((one) => one.pluginId === id)
   }
   admitted(handle: LifecycleWorkspace, id: string, installId: string): boolean {
     try {
-      const workspace = this.workspace(handle),
-        active = this.current(id),
-        run = this.runs.get(id)
-      return (
-        !this.blocks.has(id) &&
-        active?.installId === installId &&
-        run?.installId === installId &&
-        !run.ended &&
-        this.options.state.matchesProjection(workspace.receipts.get(id), workspace.sink.workspaceId)
-      )
+      const workspace = this.workspace(handle)
+      return this.admittedIn(workspace, id, installId, this.options.state.readWorkspaceAdmission())
     } catch {
       return false
     }
+  }
+  private admittedIn(
+    workspace: Workspace,
+    id: string,
+    installId: string,
+    read: WorkspaceAdmission,
+  ) {
+    const active = read.installations.find((one) => one.pluginId === id),
+      run = this.runs.get(id)
+    // The committed installations already leave out a plugin whose operation is pending.
+    return (
+      workspace.live &&
+      !this.blocks.has(id) &&
+      active?.installId === installId &&
+      run?.installId === installId &&
+      !run.ended
+    )
   }
   async status(): Promise<{ cards: PluginCard[]; cleanupPending: string[] }> {
     let unfinished: Unfinished | undefined
@@ -452,7 +457,7 @@ export class PluginLifecycleController {
       const state = this.options.state.inspect()
       if (state.pending?.next)
         unfinished = { install: state.pending.next, operationId: state.pending.request.operationId }
-      const activations = state.pending ? [] : this.options.state.exportActivation().entries
+      const activations = this.options.state.committedActivation().entries
       const names = new Set([
         ...releases.map((one) => one.id),
         ...state.guards.map((one) => one.pluginId),
@@ -490,14 +495,37 @@ export class PluginLifecycleController {
             this.runs.has(id) &&
             !this.runs.get(id)!.ended &&
             this.options.toolsUnavailable?.(id)
-              ? { toolsUnavailable: true as const }
+              ? {
+                  toolsUnavailable: true as const,
+                  ...(toolsCause(this.options.toolsCause?.(id))
+                    ? { toolsCause: this.options.toolsCause!(id) }
+                    : {}),
+                }
               : {}),
+            // An installed plugin that failed to start says why on the agents' plugin line.
+            ...(active &&
+            !this.runs.has(id) &&
+            !this.cleanup.has(id) &&
+            !this.blocks.has(id) &&
+            this.startFailures.has(id)
+              ? { toolsCause: this.startFailures.get(id)! }
+              : {}),
+            ...(state.pending?.next?.pluginId === id
+              ? { unavailableReason: 'operation-pending' }
+              : this.startFailures.has(id) || this.startDiagnostics.has(id)
+                ? {
+                    unavailableReason: 'plugin-start',
+                    startupDiagnostic: this.startDiagnostics.get(id),
+                  }
+                : this.cleanup.has(id) || this.blocks.has(id)
+                  ? { unavailableReason: 'cleanup-pending' }
+                  : {}),
             installed:
               !!active ||
               (['uninstall', 'update'].includes(state.pending?.request.consent.action ?? '') &&
                 state.pending?.next?.pluginId === id),
             state:
-              this.cleanup.has(id) || this.blocks.has(id)
+              this.cleanup.has(id) || this.blocks.has(id) || this.startFailures.has(id)
                 ? 'Unavailable'
                 : active
                   ? this.runs.has(id) && !this.runs.get(id)!.ended
@@ -558,65 +586,51 @@ export class PluginLifecycleController {
     )
       return refuse()
     const handle = Object.freeze({}) as LifecycleWorkspace
-    const workspace: Workspace = { sink, receipts: new Map(), live: true }
+    const workspace: Workspace = { sink, installs: new Map(), live: true }
     this.workspaces.set(handle, workspace)
-    const touched = new Map<string, { before: ProjectionReceipt | null; ids: Set<string> }>()
     try {
+      // Access comes from the current activation and its run. Attaching writes nothing, and a
+      // plugin whose operation is pending is not in the committed set, so its old release is
+      // never started mid-update.
       await this.options.state.withExclusive(async () => {
-        const before = this.options.state.projections(sink.workspaceId)
-        const active = this.options.state.exportActivation().entries
-        const guards = this.options.state.inspect().guards
-        const ids = new Set([
-          ...before.map((one) => one.pluginId),
-          ...guards.map((one) => one.pluginId),
-        ])
-        for (const id of ids) {
-          const old = before.find((one) => one.pluginId === id) ?? null
-          const guard = guards.find((one) => one.pluginId === id)
-          if (old) workspace.receipts.set(id, old)
-          const identities = new Set(
-            [old?.installId, guard?.installId].filter((one): one is string => !!one),
-          )
-          touched.set(id, { before: old, ids: identities })
-          // A restored workspace row is never proof. Clear old consumers/UI for every known
-          // identity, including tombstoned plugins with no remaining workspace receipt.
-          for (const installId of identities) {
-            if ((await bounded(() => sink.revoke(id, installId))) !== true) return pending()
-          }
-          await sink.reconcile({ pluginId: id, before: old, receipt: null })
-          await sink.applied(id, null)
-          this.options.state.recordProjection(sink.workspaceId, id, null)
-          workspace.receipts.delete(id)
-          const installed = active.find((one) => one.pluginId === id)
-          if (installed) {
-            const checked = await this.vault.load(this.descriptor(installed), this.pins())
+        for (const installed of this.options.state.committedActivation().entries) {
+          workspace.installs.set(installed.pluginId, installed.installId)
+          let stage = 'vault-load'
+          try {
+            const checked = await this.vault.load(this.descriptor(installed))
+            stage = 'start'
             await this.ensureRunning(installed, checked)
-            // Only authenticated current owner state, readiness and a fresh consumer ack can rebind.
-            await this.project(workspace, installed)
+            this.startFailures.delete(installed.pluginId)
+            this.startDiagnostics.delete(installed.pluginId)
+          } catch (error) {
+            // One plugin that cannot start never hides the others. Its stage and cause reach
+            // the agents' plugin line; the real message goes to the person's log.
+            const code = (error as { code?: unknown } | null)?.code
+            const cause =
+              typeof code === 'string' && /^[a-z][a-z0-9-]{0,63}$/.test(code) ? code : 'unknown'
+            this.startFailures.set(installed.pluginId, `${stage}: ${cause}`)
+            this.startDiagnostics.set(
+              installed.pluginId,
+              pluginStartupDiagnostic(error) ??
+                this.runs.get(installed.pluginId)?.run.startupDiagnostic?.() ??
+                this.startDiagnostics.get(installed.pluginId) ?? {
+                  exitCode: null,
+                  signal: null,
+                  stderr: pluginStartupStderr(pluginFailureCause(error)),
+                },
+            )
+            console.error(
+              `[plugins] attach could not start ${installed.pluginId} (${stage})`,
+              error,
+            )
           }
         }
       })
+      this.agentScopeChanged()
       return handle
     } catch {
       workspace.live = false
-      const proofs = await Promise.allSettled(
-        [...touched].map(([id, entry]) =>
-          bounded(async () => {
-            for (const installId of entry.ids)
-              if ((await sink.revoke(id, installId)) !== true) return pending()
-            await sink.reconcile({ pluginId: id, before: entry.before, receipt: null })
-            await sink.applied(id, null)
-          }),
-        ),
-      )
       this.workspaces.delete(handle)
-      if (proofs.some((one) => one.status !== 'fulfilled')) {
-        for (const id of touched.keys()) {
-          this.block(id)
-          this.cleanup.add(id)
-        }
-        return pending()
-      }
       return refuse()
     }
   }
@@ -624,13 +638,21 @@ export class PluginLifecycleController {
     const workspace = this.workspace(handle)
     workspace.live = false
     this.registrations.detach(workspace.sink.workspaceId)
+    // The leaving workspace is told; its answers are a notice and never refuse the detach.
     const results = await Promise.allSettled(
-      [...workspace.receipts.values()].map((receipt) =>
-        bounded(() => workspace.sink.revoke(receipt.pluginId, receipt.installId)),
+      [...workspace.installs].map(([pluginId, installId]) =>
+        bounded(() => workspace.sink.revoke(pluginId, installId)),
       ),
     )
     this.workspaces.delete(handle)
-    if (results.some((one) => one.status !== 'fulfilled' || one.value !== true)) return pending()
+    const ids = [...workspace.installs.keys()]
+    results.forEach((one, index) => {
+      if (one.status !== 'fulfilled' || one.value !== true)
+        console.warn(
+          `[plugins] ${ids[index]}: workspace ${workspace.sink.workspaceId} was still winding down at detach`,
+          one.status === 'rejected' ? one.reason : '',
+        )
+    })
   }
   private async ensureRunning(
     install: Installation,
@@ -650,11 +672,14 @@ export class PluginLifecycleController {
     })
     const running: Running = { run, installId: install.installId, package: checked, ended: false }
     this.runs.set(install.pluginId, running)
+    this.agentScopeChanged()
     const ended = (proven: boolean) => {
       if (this.runs.get(install.pluginId) !== running) return
       if (proven) running.exitProven = true
       if (running.ended) return
       running.ended = true
+      const diagnostic = run.startupDiagnostic?.()
+      if (diagnostic) this.startDiagnostics.set(install.pluginId, diagnostic)
       // Intentional exits belong to the drain; unexpected exits must also revoke consumers.
       if (this.draining && proven) return
       const repairable =
@@ -670,6 +695,7 @@ export class PluginLifecycleController {
           /* Wakeup is not authority. */
         }
       }
+      // Consumers are told; only the run's proven exit ends the cleanup, never their answers.
       running.revocation = this.revoke(install).then(() => {
         if (
           proven &&
@@ -755,9 +781,9 @@ export class PluginLifecycleController {
           )
             return refuse()
           if (!installed || installed.installId !== prior.operation.next?.installId) return refuse()
-          const checked = await this.vault.load(this.descriptor(installed), this.pins())
+          const checked = await this.vault.load(this.descriptor(installed))
           await this.ensureRunning(installed, checked)
-          await this.project(workspace, installed)
+          this.given(installed)
           const effect = await this.effects.read(operationId)
           if (!effect || effect.phase === 'aborted') return refuse()
           if (effect.phase === 'prepared')
@@ -797,9 +823,7 @@ export class PluginLifecycleController {
         )
           return refuse()
         if (!workspace.live) return refuse()
-        const cohort = [...this.workspaces.values()].filter((one) => one.live)
         const operation = this.options.state.prepare({
-          workspaces: cohort.map((one) => one.sink.workspaceId).sort(),
           operationId,
           snapshot: null,
           consent: {
@@ -832,54 +856,22 @@ export class PluginLifecycleController {
           await this.effects.write(effect)
           this.options.fault?.('prepared')
           const staged = bytes
-            ? await this.vault.stage(release, bytes, this.options.catalogue, this.pins())
+            ? await this.vault.stage(release, bytes, this.options.catalogue)
             : checked
           this.options.fault?.('staged')
           await this.ensureRunning(install, staged)
           this.options.fault?.('ready')
-          // Every required ack happens behind the pending barrier. The reserved completion
-          // publishes activation and these exact workspace receipts in one journal record.
-          const receipts = new Map<Workspace, ProjectionReceipt>()
-          const projections = await Promise.allSettled(
-            cohort.map(async (one) => {
-              if (!one.live || !workspace.live) return refuse()
-              const receipt = this.options.state.previewProjection(
-                operationId,
-                one.sink.workspaceId,
-              )
-              await one.sink.reconcile({
-                pluginId: id,
-                before: one.receipts.get(id) ?? null,
-                receipt,
-              })
-              await one.sink.applied(id, receipt)
-              if (!one.live || !workspace.live) return refuse()
-              receipts.set(one, receipt)
-            }),
-          )
-          if (projections.some((one) => one.status !== 'fulfilled')) return refuse()
-          this.options.fault?.('receipted')
+          // Staged code and a ready run complete the install; no window or consumer acknowledges it.
           await this.effects.write({ ...effect, phase: 'committed' })
-          if (!workspace.live || cohort.some((one) => !one.live)) return refuse()
           this.options.state.complete(operationId)
-          for (const [one, receipt] of receipts) one.receipts.set(id, receipt)
+          this.given(install)
           this.options.fault?.('activated')
         } catch {
           const committed = this.options.state
             .inspect()
             .operations.find((one) => one.operation.request.operationId === operationId)
-          if (
-            committed?.status === 'completed' &&
-            committed.operation.request.workspaces !== undefined
-          ) {
-            for (const one of cohort)
-              if (one.live) {
-                const receipt = this.options.state
-                  .projections(one.sink.workspaceId)
-                  .find((value) => value.pluginId === id && value.installId === install.installId)
-                if (!receipt) return pending()
-                one.receipts.set(id, receipt)
-              }
+          if (committed?.status === 'completed') {
+            this.given(install)
             return
           }
           await this.unwind(effect)
@@ -887,6 +879,7 @@ export class PluginLifecycleController {
         }
       })
       if (this.blocks.get(id) === token) this.blocks.delete(id)
+      this.agentScopeChanged()
     } catch (error) {
       if (
         error instanceof PluginSupervisorError &&
@@ -895,6 +888,7 @@ export class PluginLifecycleController {
         throw error
       if (!this.cleanup.has(id) && !this.options.state.inspect().pending) {
         if (this.blocks.get(id) === token) this.blocks.delete(id)
+        this.agentScopeChanged()
       }
       return refuse()
     }
@@ -987,7 +981,7 @@ export class PluginLifecycleController {
         )
           return refuse()
         // Cache the verified replacement durably before reserving an update. Recovery needs no download.
-        if (bytes) await this.vault.stage(release, bytes, this.options.catalogue, this.pins())
+        if (bytes) await this.vault.stage(release, bytes, this.options.catalogue)
         this.options.fault?.('staged')
         if (!workspace.live) return refuse()
         this.options.state.requireUpdateReader()
@@ -996,10 +990,6 @@ export class PluginLifecycleController {
         const operation = this.options.state.prepare({
           operationId,
           snapshot: null,
-          workspaces: [...this.workspaces.values()]
-            .filter((one) => one.live)
-            .map((one) => one.sink.workspaceId)
-            .sort(),
           consent: {
             action: 'update',
             pluginId: id,
@@ -1030,6 +1020,7 @@ export class PluginLifecycleController {
         await this.finishUpdate(effect, operation.next!)
       })
       if (this.blocks.get(id) === token) this.blocks.delete(id)
+      this.agentScopeChanged()
     } catch (error) {
       if (
         error instanceof PluginSupervisorError &&
@@ -1038,11 +1029,12 @@ export class PluginLifecycleController {
         throw error
       if (!this.options.state.inspect().pending && this.blocks.get(id) === token)
         this.blocks.delete(id)
+      this.agentScopeChanged()
       return refuse()
     }
   }
   private async finishUpdate(effect: Effect, install: Installation): Promise<void> {
-    const checked = await this.vault.load(this.descriptor(install), this.pins())
+    const checked = await this.vault.load(this.descriptor(install))
     // Revoke consumers and prove the old run stopped before starting the replacement. No logout or data removal.
     const stopped = await Promise.allSettled([
       this.stop(install.pluginId, effect.operationId),
@@ -1051,46 +1043,19 @@ export class PluginLifecycleController {
     if (stopped.some((one) => one.status !== 'fulfilled')) return pending()
     await this.ensureRunning(install, checked)
     this.options.fault?.('ready')
-    const cohort = [...this.workspaces.values()].filter((one) => one.live)
-    const receipts = new Map<Workspace, ProjectionReceipt>()
-    const applied = await Promise.allSettled(
-      cohort.map(async (one) => {
-        const receipt = this.options.state.previewProjection(
-          effect.operationId,
-          one.sink.workspaceId,
-        )
-        await one.sink.reconcile({ pluginId: install.pluginId, before: null, receipt })
-        await one.sink.applied(install.pluginId, receipt)
-        if (!one.live) return refuse()
-        receipts.set(one, receipt)
-      }),
-    )
-    if (applied.some((one) => one.status !== 'fulfilled')) return pending()
-    this.options.fault?.('receipted')
     await this.effects.write({ ...effect, phase: 'committed' })
     this.options.state.complete(effect.operationId)
-    for (const [one, receipt] of receipts) one.receipts.set(install.pluginId, receipt)
+    this.given(install)
     this.cleanup.delete(install.pluginId)
     this.options.fault?.('activated')
   }
-  private async project(workspace: Workspace, install: Installation): Promise<void> {
-    if (!workspace.live) return refuse()
-    const before = workspace.receipts.get(install.pluginId) ?? null
-    const next = this.options.state.reconcileProjection(
-      before,
-      workspace.sink.workspaceId,
-      install.pluginId,
-    )
-    await workspace.sink.reconcile({
-      pluginId: install.pluginId,
-      before,
-      receipt: next.receipt,
-    })
-    await workspace.sink.applied(install.pluginId, next.receipt)
-    this.options.state.recordProjection(workspace.sink.workspaceId, install.pluginId, next.receipt)
-    if (!workspace.live) return refuse()
-    if (!next.receipt) return refuse()
-    workspace.receipts.set(install.pluginId, next.receipt)
+  /** Every live workspace now has this install; its consumers hear of a later detach or removal. */
+  private given(install: Installation): void {
+    this.startFailures.delete(install.pluginId)
+    this.startDiagnostics.delete(install.pluginId)
+    for (const one of this.workspaces.values())
+      if (one.live) one.installs.set(install.pluginId, install.installId)
+    this.agentScopeChanged()
   }
   /** Supervisor-only Chrome repair. It does not mutate installations, profiles or other leases.
    * The callback belongs to the retained broker for runId; it runs only after exact physical exit. */
@@ -1152,16 +1117,14 @@ export class PluginLifecycleController {
         if (this.draining || this.runs.get(id) !== running || this.blocks.get(id) !== token)
           return pending()
         this.runs.delete(id)
+        this.agentScopeChanged()
         this.attempted.delete(id)
         await this.ensureRunning(install, running.package)
         if (this.draining || this.blocks.get(id) !== token) return pending()
-        await Promise.all(
-          [...this.workspaces.values()]
-            .filter((one) => one.live)
-            .map((one) => this.project(one, install)),
-        )
+        this.given(install)
         this.cleanup.delete(id)
         if (this.blocks.get(id) === token) this.blocks.delete(id)
+        this.agentScopeChanged()
         if (this.chromeToolRestartBlock === token) this.chromeToolRestartBlock = undefined
       })
       .finally(() => {
@@ -1178,6 +1141,7 @@ export class PluginLifecycleController {
       // A later Install may have started its own run meanwhile.
       if (this.runs.get(id) === run) {
         this.runs.delete(id)
+        this.agentScopeChanged()
         this.attempted.delete(id)
       }
       return
@@ -1186,30 +1150,38 @@ export class PluginLifecycleController {
     if (this.localOperations.has(operationId)) return
     if ((await this.options.runtime.previousOwnerClean()) !== true) return pending()
   }
+  /**
+   * Tells every live workspace that this install is gone. It is a notice: a consumer that says
+   * it is still winding down, or never answers, is logged and never holds anything up. Only the
+   * run's proven exit (stop() or a proven crash) decides cleanup.
+   */
   private async revoke(install: Installation): Promise<void> {
-    const results = await Promise.allSettled(
+    await Promise.all(
       [...this.workspaces.values()]
         .filter((one) => one.live)
         .map(async (workspace) => {
-          workspace.receipts.delete(install.pluginId)
-          if (
-            (await bounded(() => workspace.sink.revoke(install.pluginId, install.installId))) !==
-            true
-          )
-            return pending()
-          await workspace.sink.reconcile({
-            pluginId: install.pluginId,
-            before: null,
-            receipt: null,
-          })
-          await workspace.sink.applied(install.pluginId, null)
+          workspace.installs.delete(install.pluginId)
+          this.agentScopeChanged()
+          try {
+            const answer = await bounded(() =>
+              workspace.sink.revoke(install.pluginId, install.installId),
+            )
+            if (answer !== true)
+              console.warn(
+                `[plugins] ${install.pluginId}: workspace ${workspace.sink.workspaceId} is still winding down after revoke`,
+              )
+          } catch (error) {
+            console.warn(
+              `[plugins] ${install.pluginId}: workspace ${workspace.sink.workspaceId} did not answer revoke`,
+              error,
+            )
+          }
         }),
     )
-    if (results.some((one) => one.status !== 'fulfilled')) return pending()
   }
   private async removeFiles(install: Installation, operationId: string): Promise<void> {
     await this.options.runtime.removeCode(install.pluginId, install.release.archiveSha256)
-    await this.vault.remove(this.descriptor(install), this.pins(), {
+    await this.vault.remove(this.descriptor(install), {
       operationId,
       installId: install.installId,
     })
@@ -1268,9 +1240,9 @@ export class PluginLifecycleController {
         if (completed?.status !== 'completed') return pending()
       }
     }
-    // Cohort receipts clear in the reserved completion. Any older/offline receipt is only a
-    // cleanup obligation: the tombstone already invalidates it, never authority to reactivate.
     this.cleanup.delete(install.pluginId)
+    this.startFailures.delete(install.pluginId)
+    this.startDiagnostics.delete(install.pluginId)
     return logout
   }
   private async remove(
@@ -1283,10 +1255,6 @@ export class PluginLifecycleController {
     if (!before) return refuse()
     const operation = this.options.state.prepare({
       operationId,
-      workspaces: [...this.workspaces.values()]
-        .filter((one) => one.live)
-        .map((one) => one.sink.workspaceId)
-        .sort(),
       snapshot: null,
       consent: {
         action: 'uninstall',
@@ -1354,10 +1322,12 @@ export class PluginLifecycleController {
         logout = await this.remove(id, operationId, null)
       })
       if (this.blocks.get(id) === token) this.blocks.delete(id)
+      this.agentScopeChanged()
       if (pluginAdapter(id)?.uninstall) return { data: 'deleted', logout }
     } catch {
       if (absent) {
         if (!this.cleanup.has(id) && this.blocks.get(id) === token) this.blocks.delete(id)
+        this.agentScopeChanged()
         return refuse()
       }
       this.cleanup.add(id)
@@ -1428,6 +1398,7 @@ export class PluginLifecycleController {
         this.blocks.get(next.pluginId) === token
       )
         this.blocks.delete(next.pluginId)
+      this.agentScopeChanged()
     }
   }
   /** Page revision is this per-install intent ledger, separate from package configRevision. */
@@ -1499,16 +1470,35 @@ export class PluginLifecycleController {
             Promise.resolve().then(() => running.run.stop()),
             running.run.exited,
           ])
-          if (exit.status !== 'fulfilled') return pending()
+          if (exit.status !== 'fulfilled')
+            throw new PluginSupervisorError('cleanup-pending', {
+              cause: new Error(`${running.package.manifest.id}: its exit was not proven`, {
+                cause: exit.reason,
+              }),
+            })
           await running.revocation
         }),
       )
-      if (results.some((one) => one.status !== 'fulfilled')) return pending()
+      const failed = results.filter((one) => one.status === 'rejected')
+      if (failed.length)
+        throw new PluginSupervisorError('cleanup-pending', {
+          cause:
+            failed.length === 1
+              ? failed[0]!.reason
+              : new AggregateError(
+                  failed.map((one) => one.reason),
+                  'plugin runs did not stop',
+                ),
+        })
       // Once nothing holds the state, a removal or install left unfinished stays in the journal.
       await this.options.state.withExclusive(async () => {
         this.drained = true
       })
-      if (!this.cleanForShutdown()) return pending()
+      const blockers = this.shutdownBlockers()
+      if (blockers.length)
+        throw new PluginSupervisorError('cleanup-pending', {
+          cause: new Error(`plugins can't shut down cleanly: ${blockers.join('; ')}`),
+        })
     })()
     return this.drainWork
   }
@@ -1521,60 +1511,126 @@ export class PluginLifecycleController {
    * cleanup still refuses.
    */
   cleanForShutdown(): boolean {
+    return this.shutdownBlockers().length === 0
+  }
+  /** What stops a clean shutdown, in plain words, so a refused drain names its cause. */
+  shutdownBlockers(): string[] {
     const pending = this.options.state.inspect().pending
     const leftover = this.drained ? pending?.next?.pluginId : undefined
-    return (
-      (pending === null || leftover !== undefined) &&
-      [...this.cleanup].every((id) => id === leftover) &&
-      (!this.draining || [...this.runs.values()].every((run) => run.ended))
-    )
+    const blockers: string[] = []
+    if (pending !== null && leftover === undefined) {
+      const { action, pluginId } = pending.request.consent
+      blockers.push(`an unfinished ${action} of ${pluginId ?? 'plugins'}`)
+    }
+    for (const id of this.cleanup)
+      if (id !== leftover) blockers.push(`${id} has not proven its cleanup`)
+    if (this.draining)
+      for (const [id, run] of this.runs) if (!run.ended) blockers.push(`${id} is still running`)
+    return blockers
   }
-  /** A second consumer must clear stale bindings before sharing an admitted projection. */
-  async reconcileConsumer(handle: LifecycleWorkspace, sink: WorkspaceProjection): Promise<void> {
-    const workspace = this.workspace(handle)
-    if (sink.workspaceId !== workspace.sink.workspaceId) return refuse()
-    await this.options.state.withExclusive(async () => {
-      const guards = this.options.state.inspect().guards
-      const ids = new Set([...guards.map((one) => one.pluginId), ...workspace.receipts.keys()])
-      try {
-        for (const id of ids) {
-          const before = workspace.receipts.get(id) ?? null
-          const guard = guards.find((one) => one.pluginId === id)
-          for (const installId of new Set(
-            [before?.installId, guard?.installId].filter((one): one is string => !!one),
-          ))
-            if ((await bounded(() => sink.revoke(id, installId))) !== true) return pending()
-          const receipt = before && this.admitted(handle, id, before.installId) ? before : null
-          await sink.reconcile({ pluginId: id, before: null, receipt })
-          await sink.applied(id, receipt)
-        }
-      } catch {
-        for (const id of ids) {
-          this.block(id)
-          this.cleanup.add(id)
-        }
-        return pending()
-      }
-    })
-  }
-
-  /** Cleanup follows retained consumer bindings even after their exact plugin run has exited. */
-  consumerReceipts(handle: LifecycleWorkspace) {
-    return [...this.workspace(handle).receipts.values()].map(({ pluginId, installId }) => ({
+  /** The installs a consumer of this workspace may hold, for its detach notice. */
+  consumerInstalls(handle: LifecycleWorkspace) {
+    return [...this.workspace(handle).installs].map(([pluginId, installId]) => ({
       pluginId,
       installId,
     }))
   }
 
-  /** Private supervisor view of already reconciled workspace consumers. No person authority. */
+  private readonly agentListeners = new Set<(workspaceId: string) => void>()
+  onHostChanged(listener: (workspaceId: string) => void): () => void {
+    this.agentListeners.add(listener)
+    return () => {
+      this.agentListeners.delete(listener)
+    }
+  }
+  private agentScopeChanged(): void {
+    for (const workspace of this.workspaces.values())
+      if (workspace.live)
+        for (const listener of this.agentListeners) {
+          try {
+            listener(workspace.sink.workspaceId)
+          } catch {
+            /* Wakeups grant no authority. */
+          }
+        }
+  }
+  /** Committed absence is distinct from a run still starting or an unreadable state. */
+  agentScope(workspaceId: string): { entries: readonly AgentScopeEntry[] } {
+    if (this.draining) return pending()
+    return this.withAgentScope(workspaceId, (scope) => scope)
+  }
+  /** Internal synchronous route planning. The checker is revoked before this operation returns. */
+  withAgentScope<T>(
+    workspaceId: string,
+    decide: (
+      scope: { entries: readonly AgentScopeEntry[] },
+      current: (view: AgentAttachmentView) => boolean,
+    ) => T extends PromiseLike<unknown> ? never : T,
+  ): T {
+    if (this.draining) return pending()
+    return this.options.state.withWorkspaceAdmission((state) => {
+      // A global restore changes every plugin; one plugin's operation leaves the others readable.
+      if (state.pendingPlugin === '*') return pending()
+      const active = state.installations
+      const consumers = [...this.workspaces.values()].filter(
+        (one) => one.live && one.sink.workspaceId === workspaceId,
+      )
+      if (!consumers.length) return refuse()
+      const views = this.attachmentViews(workspaceId, state)
+      const ids = new Set([
+        ...(this.admittedCatalogues.get(this.catalogueIdentity()) ?? []),
+        ...state.guardIds,
+        ...this.runs.keys(),
+        ...consumers.flatMap((one) => [...one.installs.keys()]),
+      ])
+      const entries = [...ids].sort().map((pluginId): AgentScopeEntry => {
+        const installed = active.find((one) => one.pluginId === pluginId)
+        const run = this.runs.get(pluginId)
+        if (this.blocks.has(pluginId) || pluginId === state.pendingPlugin)
+          return { pluginId, is: 'pending' }
+        if (!installed) return { pluginId, is: 'off' }
+        // A plugin that failed to start is not starting: agents don't wait for it.
+        if (!run && this.startFailures.has(pluginId)) return { pluginId, is: 'off' }
+        if (
+          run?.installId === installed.installId &&
+          (!run.package.manifest.server || !pluginContributions(run.package).tools)
+        )
+          return { pluginId, is: 'off' }
+        const view = views.find((one) => one.installation.pluginId === pluginId)
+        return view ? { pluginId, is: 'admitted', view } : { pluginId, is: 'pending' }
+      })
+      let live = true
+      const current = (view: AgentAttachmentView) =>
+        live && !this.draining && this.attachmentChecks.get(view)?.(workspaceId, state) === true
+      try {
+        return decide({ entries }, current)
+      } finally {
+        live = false
+      }
+    })
+  }
+  /** Private supervisor view of this workspace's admitted plugin runs. No person authority. */
   agentAttachments(workspaceId: string) {
+    if (
+      ![...this.workspaces.values()].some((one) => one.live && one.sink.workspaceId === workspaceId)
+    )
+      return []
+    try {
+      return this.options.state.withWorkspaceAdmission((read) =>
+        this.attachmentViews(workspaceId, read),
+      )
+    } catch {
+      return []
+    }
+  }
+  private attachmentViews(workspaceId: string, read: WorkspaceAdmission) {
     const handle = [...this.workspaces].find(
       ([, value]) => value.live && value.sink.workspaceId === workspaceId,
     )?.[0]
     if (!handle) return []
     return [...this.runs.keys()].sort().flatMap((id) => {
       try {
-        const view = this.screen(handle, id)
+        const view = this.screenIn(handle, id, read)
         if (
           !view.package.manifest.server ||
           !view.package.compatibility.tools ||
@@ -1582,15 +1638,23 @@ export class PluginLifecycleController {
         )
           return []
         const run = this.runs.get(id)!
-        return [
-          {
-            ...view,
-            runId: run.run.runId,
-            exited: run.run.exited,
-            current: () =>
-              this.runs.get(id) === run && this.admitted(handle, id, view.installation.installId),
-          },
-        ]
+        const attachment = {
+          ...view,
+          runId: run.run.runId,
+          exited: run.run.exited,
+          current: () =>
+            this.runs.get(id) === run && this.admitted(handle, id, view.installation.installId),
+        }
+        this.attachmentChecks.set(attachment, (workspaceId, read) => {
+          const workspace = this.workspaces.get(handle)
+          return (
+            workspace?.live === true &&
+            workspace.sink.workspaceId === workspaceId &&
+            this.runs.get(id) === run &&
+            this.admittedIn(workspace, id, view.installation.installId, read)
+          )
+        })
+        return [attachment]
       } catch {
         return []
       }
@@ -1619,10 +1683,13 @@ export class PluginLifecycleController {
     )
   }
   screen(handle: LifecycleWorkspace, id: string) {
+    return this.screenIn(handle, id, this.options.state.readWorkspaceAdmission())
+  }
+  private screenIn(handle: LifecycleWorkspace, id: string, read: WorkspaceAdmission) {
     const workspace = this.workspace(handle),
-      active = this.current(id),
+      active = read.installations.find((one) => one.pluginId === id),
       run = this.runs.get(id)
-    if (!active || !run || !this.admitted(handle, id, active.installId)) return refuse()
+    if (!active || !run || !this.admittedIn(workspace, id, active.installId, read)) return refuse()
     return {
       package: run.package,
       connection: run.run.ready(),
@@ -1631,3 +1698,8 @@ export class PluginLifecycleController {
     }
   }
 }
+
+export type AgentAttachmentView = ReturnType<PluginLifecycleController['agentAttachments']>[number]
+export type AgentScopeEntry =
+  | { readonly pluginId: string; readonly is: 'admitted'; readonly view: AgentAttachmentView }
+  | { readonly pluginId: string; readonly is: 'pending' | 'off' }

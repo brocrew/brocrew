@@ -9,6 +9,11 @@ title = "brobot"
 useDefault = true
 
 [[allowlists]]
+# False positive: the SHA-256 of storage-round-trip-auth.mjs in the historical harness manifest.
+description = "historical storage harness file hash false positive"
+commits = ["94d1c92a0c4a0c5ef2baacc7f1f7ad6c6bdb06c9"]
+
+[[allowlists]]
 description = "a probe's own made-up nonce, recorded in a wire fixture"
 regexTarget = "match"
 regexes = ['''WIRE327_\d+_\d+''']
@@ -17,4 +22,12 @@ regexes = ['''WIRE327_\d+_\d+''']
 # The BroCrew helper extension's manifest "key" is its RSA public key, which fixes the extension's
 # id in Chrome. It is public by design, so this exact value is allowed and nothing else.
 description = "the BroCrew helper extension's public key"
-regexes = ['''^MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA466bEHM5rAETamaul3J5xxMxYGTdXGIRkz7EtQu9MNzzKJkvPTdmKu352ikP6fW9JUO/Q3iBYkQQrXRIgjH74ObWajlvmuBGRjYv4mFOxrU\+eZ4eKF4n75Uq9g\+8ctFzNJKxDeh1ZWk\+Ev6q1Vp5pbvQ0RVFBnWS\+Hma8P96bnH3cn1swn6Y3rc5UX81lGCMuAgWuJ6bh7JnSj6jX776lu/BxR6xdZ/tRn3lF1Urf6mihB8nwVBPYAvdtKi\+rFz37vsal\+0Vvap6QKeCK5oAZ4bmr1HH/JCHMY1W0bXNR5StY6Mt6yDk21EEoz8lbpZvYPXmyy\+hobWbXqQbzcBwLQIDAQAB$''']
+regexes = ['''^MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA466bEHM5rAETamaul3J5xxMxYGTdXGIRkz7EtQu9MNzzKJkvPTdmKu352ikP6fW9JUO/Q3iBYkQQrXRIgjH74ObWajlvmuBGRjYv4mFOxrU\+eZ4eKF4n75Uq9g\+8ctFzNJKxDeh1ZWk\+Ev6q1Vp5pbvQ0RVFBnWS\+Hma8P96bnH3cn1swn6Y3rc5UX81lGCMuAgWuJ6bh7JnSj6jX776lu/BxR6xdZ/tRn3lF1Urf6mihB8nwVBPYAvdtKi\+rFz37vsal\+0Vvap6QKeCK5oAZ4bmr1HH/JCHMY1W0bXNR5StY6Mt6yDk21EEoz8lbpZvYPXmyy\+hobWbXqQbzcBwLQIDAQAB$''',
+# SHA-256 of committed historical fixture sources
+  '''^23dc64be3fe283ebb508a91f084b89be73737f0cdf1dd3ceffcde067ce26187c$''',
+  '''^34c22499eda87343dd0277bee484270e75d930db0b53e776c0812f890482fa0d$''',
+  '''^58abc91b2bd41cad459ed24ddbc65d92d65b344578795c06db5608e693f39742$''',
+  '''^b1789d61f08a8f276241045207549c69eb33604751874352e42862155cdec32b$''',
+  '''^d64a54e7b38da24a378020b33a2d8cfeba3dfaebc7eafd78acae77552de15ee6$''',
+  '''^da855ca6543c50362446ae3e4bfab7db1639b9688308727b88dffc706cf11386$''',
+  '''^e0aeb06aa25f0c48a3d4a8d4c932e2f2da0af31ab5ee8b64d2f098e15b929d47$''']

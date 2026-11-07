@@ -1,4 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { waitFor } from './lib/f093-host'
+import type { AgentState } from '../src/shared/agent-state-contracts'
+import type { PieceRow } from '../src/shared/task-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -16,20 +20,17 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { giverStallNotices, RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { AgentState } from '../src/shared/agent-state'
-import type { PieceRow } from '../src/shared/tasks'
+import { DEFAULT_PROFILE_ID, type RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 import {
-  DEFAULT_PROFILE_ID,
-  type RuntimeEventMessage,
-  type RuntimeStatesMessage,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * # a032e58f · feat(work): a piece waits on the person who wrote to its holder
@@ -54,14 +55,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 /** A delay no other timer in the host uses, and no test waits out: nothing is stopped for idling. */
 const IDLE = 7_654_321
 const WROTE = 'waiting-on-the-person-who-wrote'
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 /** Long enough for every pump and every flush a row arms to have run. */
 async function settle(): Promise<void> {
@@ -120,17 +113,6 @@ class ProviderDouble extends FakeRuntime {
   }
 }
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** A tool call left running while the test goes on, settled either way so nothing is unhandled. */
 type Settled = { readonly answer: Record<string, unknown> } | { readonly error: unknown }
 
@@ -163,28 +145,16 @@ describe('F097 · a person owes the agent that answered them — more cases', ()
     const issued = new FakeProviderSessions()
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) =>
         new ProviderDouble(provider, handles, issued, turnEnds),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       statesMoved: (message) => {
         pushed.push(message)
       },

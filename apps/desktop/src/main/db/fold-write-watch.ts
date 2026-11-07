@@ -10,16 +10,6 @@ export function foldWatchTriggers(written: object): readonly string[] {
   return name === undefined ? [] : [`${name}_insert`, `${name}_delete`, `${name}_update`]
 }
 
-/**
- * Temp triggers on one connection that call `written` for every insert, update or delete of a
- * fold row on it, whoever makes it: a store, another store, or plain SQL. `written` is told the
- * row's conversation, generation and ordinal, and whether it was an insert; an update calls it for
- * the row before and after. Each watch has triggers and a function of its own, so several stores on
- * one connection each hear every write. Another connection's writes are not heard here.
- *
- * Its triggers are put in place whole or not at all, and asked again for one `written` after a
- * failure; returns false where the connection cannot hold them. Asked outside a transaction.
- */
 export function watchFoldWrites(
   db: Database.Database,
   written: (session: unknown, generation: unknown, ordinal: unknown, inserted: boolean) => void,

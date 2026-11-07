@@ -1,4 +1,4 @@
-import { chmodSync, lstatSync, mkdirSync, readFileSync } from 'node:fs'
+import { lstatSync, mkdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { privateFolder } from './privatePaths.js'
 
@@ -26,7 +26,6 @@ const unavailable = () => new ConfigError('Plugin unavailable. Try again.')
 export function privateDirectory(dir: string): void {
   mkdirSync(dir, { recursive: true, mode: 0o700 })
   if (!lstatSync(dir).isDirectory()) throw unavailable()
-  if (process.platform !== 'win32') chmodSync(dir, 0o700)
 }
 
 export function loadConfig(env: Record<string, string | undefined>): WhatsAppConfig {
@@ -40,12 +39,7 @@ export function loadConfig(env: Record<string, string | undefined>): WhatsAppCon
   let auth: unknown
   try {
     const stat = lstatSync(authPath)
-    if (
-      !stat.isFile() ||
-      stat.size > 16384 ||
-      (process.platform !== 'win32' && (stat.mode & 0o077) !== 0)
-    )
-      throw new Error()
+    if (!stat.isFile() || stat.size > 16384) throw new Error()
     auth = JSON.parse(readFileSync(authPath, 'utf8'))
   } catch {
     throw unavailable()

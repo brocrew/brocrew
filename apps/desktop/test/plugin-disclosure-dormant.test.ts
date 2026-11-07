@@ -23,7 +23,7 @@ it('v2 HTTP404 leaves the real v1 Settings install, update, Configure and UI rep
   f.opts.download = async (entry) =>
     entry.version === next.release.version ? next.archive : f.pkg.archive
   f.opts.refreshCatalogue = async () => ({
-    catalogue: { bytes: next.bytes, signature: next.signature },
+    catalogue: { bytes: next.bytes },
     names: f.opts.names,
   })
   const key = randomBytes(32).toString('hex'),
@@ -38,7 +38,6 @@ it('v2 HTTP404 leaves the real v1 Settings install, update, Configure and UI rep
       root: f.root,
       path: bridge.path,
       personKey: key,
-      pinnedPublicKey: f.opts.pinnedPublicKey,
       target: f.opts.target,
       catalogue: f.opts.catalogue,
       projection: projection().sink,

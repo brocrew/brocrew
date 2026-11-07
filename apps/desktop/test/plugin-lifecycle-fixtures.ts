@@ -2,59 +2,43 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { writeFileSync } from 'node:fs'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
-import type {
-  LifecycleOptions,
-  WorkspaceProjection,
-  ProjectionReceipt,
-} from '../src/main/plugins/lifecycle/types'
-import { packageFixture, manifestFor, fictionalPublicKey } from './plugin-package-fixtures'
-import { keepPluginRootPrivate, realPath } from '../src/main/plugins/private-files'
-import { keepToThisUser } from '../src/main/recovery/windows-privacy'
+import type { LifecycleOptions, PersonProjection } from '../src/main/plugins/lifecycle/types'
+import { packageFixture, manifestFor } from './plugin-package-fixtures'
+import { realPath } from '../src/main/plugins/private-files'
+import {
+  encodeState,
+  installationProjection,
+  type JournalRecord,
+} from '../src/main/plugins/state/format'
+import { foldRecord, type LifecycleState } from '../src/main/plugins/state/machine'
+import { pluginSha256 } from '../src/main/plugins/package-digests'
 const homes: string[] = [],
   stores: GlobalPluginState[] = []
 
 export function deferred<T>() {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>((yes) => {
+  let reject!: (error: Error) => void
+  const promise = new Promise<T>((yes, no) => {
     resolve = yes
+    reject = no
   })
-  return { promise, resolve }
+  return { promise, resolve, reject }
 }
 export function projection(events: string[] = []) {
-  const rows = new Map<string, ProjectionReceipt>()
-  let writeFails = false,
-    revokeFails = false
-  const sink: WorkspaceProjection = {
+  // The app's side of a workspace; a current owner sends it only revoke.
+  const sink: PersonProjection = {
     workspaceId: randomUUID(),
-    async applied(id, receipt) {
-      events.push('receipt')
-      if (writeFails) {
-        writeFails = false
-        throw new Error('fictional write')
-      }
-      if (receipt) rows.set(id, receipt)
-      else rows.delete(id)
-    },
+    async applied() {},
     async revoke() {
       events.push('revoke')
-      return !revokeFails
+      return true
     },
-    async reconcile(change) {
-      events.push(change.receipt ? 'bind' : 'clear')
-    },
+    async reconcile() {},
   }
-  return {
-    sink,
-    rows,
-    failWrite: () => {
-      writeFails = true
-    },
-    failRevoke: () => {
-      revokeFails = true
-    },
-  }
+  return { sink }
 }
 export async function fixture(
   change: Partial<LifecycleOptions> = {},
@@ -65,12 +49,12 @@ export async function fixture(
   const temp = process.platform === 'win32' ? tmpdir() : '/tmp'
   const parent = realPath(await mkdtemp(join(temp, 'fictional-lifecycle-')))
   homes.push(parent)
-  await keepToThisUser(parent)
+
   const root = join(parent, 'global'),
     workspace = join(parent, 'workspace')
   await mkdir(root, { mode: 0o700 })
   await mkdir(workspace, { mode: 0o700 })
-  await keepPluginRootPrivate(root)
+
   const state = GlobalPluginState.create({ root: join(root, 'state'), workspaceRoots: [workspace] })
   stores.push(state)
   const manifest = manifestFor()
@@ -88,9 +72,8 @@ export async function fixture(
   const opts: LifecycleOptions = {
     root,
     state,
-    pinnedPublicKey: fictionalPublicKey,
     target: manifest.platforms[0]!,
-    catalogue: { bytes: pkg.bytes, signature: pkg.signature },
+    catalogue: { bytes: pkg.bytes },
     names: { chrome: 'Chrome', whatsapp: 'WhatsApp' },
     deny() {
       events.push('deny')
@@ -171,4 +154,43 @@ export function reopenLifecycleFixture(f: Awaited<ReturnType<typeof fixture>>) {
   })
   stores.push(reopened)
   return reopened
+}
+
+export function appendProjectionHistory(
+  root: string,
+  head: LifecycleState,
+  workspaceId: string,
+  history: number,
+) {
+  const receipt = installationProjection(
+    head.rootId,
+    head.epoch,
+    workspaceId,
+    head.admitted.get('chrome')!,
+  )
+  for (let i = 0; i < history; i++) {
+    const record: JournalRecord = {
+      sequence: head.sequence + 1,
+      previous: head.head,
+      publicationId: randomUUID(),
+      event: {
+        kind: 'projected',
+        workspaceId,
+        pluginId: 'chrome',
+        receipt: i % 2 ? null : receipt,
+      },
+    }
+    const bytes = encodeState(record),
+      checksum = pluginSha256(bytes)
+    foldRecord(head, record, checksum)
+    const name = String(record.sequence).padStart(8, '0')
+    writeFileSync(join(root, 'state/lifecycle-guard', name + '.json'), bytes, {
+      mode: 0o600,
+      flag: 'wx',
+    })
+    writeFileSync(join(root, 'state/lifecycle-guard', `${name}-${checksum}.seal`), '', {
+      mode: 0o600,
+      flag: 'wx',
+    })
+  }
 }

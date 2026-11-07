@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -8,7 +9,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { PS_ARGS, parseProcessTable, psArgsFor, residentSizesIn } from '../src/main/process-tree'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { NOT_LISTED_JUST_NOW } from '../src/main/runtime/process-listing'
@@ -174,9 +174,7 @@ function buildRig(reader: Reader | null): Rig {
   let nextGate: Promise<void> | null = null
   const host = new RuntimeHost({
     store: ledger,
-    discoverSessions: NO_DISCOVERY,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => join(userData, 'exports'),
+    ...neutralHostDeps(() => userData),
     createRuntime: (provider: Provider) => {
       const runtime = new FakeRuntime(provider, { sessions })
       const start = runtime.start.bind(runtime)
@@ -675,10 +673,14 @@ describe('§4 · where the read is made, asked for and drawn', () => {
     expect(reading).toContain('await store.processMemory()')
     expect(reading).toContain('cast.processMemory.value = new Map(')
     expect(reading).toContain('held?.conversations ?? []')
-    // … and a refusal draws nothing: an early return would keep the last figures, and a kept
-    // figure could belong to a process that has since stopped.
-    expect(reading).not.toMatch(/\breturn\b/)
-    expect(reading).not.toMatch(/\bif\s*\(/)
+    // … and a refusal draws nothing: an early return on the answer would keep the last figures,
+    // and a kept figure could belong to a process that has since stopped. The one guard compares
+    // tickets only: an ask a newer one replaced, or one the screen retired as it went, writes nothing.
+    const newest = 'if (mine !== memoryRead) return'
+    expect(reading).toContain(newest)
+    const drawn = reading.replace(newest, '')
+    expect(drawn).not.toMatch(/\breturn\b/)
+    expect(drawn).not.toMatch(/\bif\s*\(/)
 
     // The figures go when the screen goes: the reset is in an `onUnmounted` callback.
     const reset = 'cast.processMemory.value = new Map()'

@@ -3,15 +3,14 @@ import { gzipSync } from 'node:zlib'
 import { parsePluginCatalogue, parsePluginManifest } from '../src/main/plugins/package-schema'
 import { readPluginArchive } from '../src/main/plugins/package-archive'
 import { pluginSha256, PLUGIN_LIMITS } from '../src/main/plugins/package-digests'
-import { createPluginVerifier } from '../src/main/plugins/package-verifier'
+import { createRepoAwarePluginVerifier } from '../src/main/plugins/package-verifier'
 import { PluginVerificationError } from '../src/main/plugins/verification-error'
 import {
-  fictionalPublicKey,
   inventory,
   manifestFor,
   packageFixture,
   payload,
-  signed,
+  catalogueBytes,
   tar,
   tarChecksum,
   verified,
@@ -19,7 +18,7 @@ import {
 } from './plugin-package-fixtures'
 
 const json = (value: unknown) => Buffer.from(JSON.stringify(value))
-describe('signed catalogue and immutable releases', () => {
+describe('unsigned catalogue and package integrity', () => {
   it.each(['tar', 'tar.gz'] as const)(
     'verifies an inert %s package, including the server, skill, service and UI inventory',
     (compression) => {
@@ -34,47 +33,48 @@ describe('signed catalogue and immutable releases', () => {
       expect(result.readFile('missing')).toBeUndefined()
     },
   )
-  it('accepts an older correctly signed catalogue but refuses different bytes for a pinned release', () => {
+  it('keeps each unsigned catalogue snapshot bound to its own archive digest', () => {
     const fixture = packageFixture()
     const verify = verifier()
-    const first = verify.verifyCatalogue(fixture.bytes, fixture.signature)
-    const empty = signed({ format: 1, entries: [] })
-    expect(verify.verifyCatalogue(empty.bytes, empty.signature).entries).toEqual([])
-    expect(() => verify.verifyCatalogue(fixture.bytes, fixture.signature)).not.toThrow()
-    const changed = signed({
+    const first = verify.verifyCatalogue(fixture.bytes)
+    const empty = catalogueBytes({ format: 1, entries: [] })
+    expect(verify.verifyCatalogue(empty.bytes).entries).toEqual([])
+    const changed = catalogueBytes({
       format: 1,
       entries: [
         { ...fixture.release, archive: { ...fixture.release.archive, sha256: 'b'.repeat(64) } },
       ],
     })
-    expect(() => verify.verifyCatalogue(changed.bytes, changed.signature)).toThrow(
-      expect.objectContaining({ code: 'immutable-release' }),
-    )
-    const restarted = createPluginVerifier({
-      pinnedPublicKey: fictionalPublicKey,
-      target: { os: 'linux', cpu: 'x64' },
-      knownReleases: first.pins,
-    })
-    expect(() => restarted.verifyCatalogue(changed.bytes, changed.signature)).toThrow(
-      PluginVerificationError,
-    )
+    const next = verify.verifyCatalogue(changed.bytes)
+    expect(next.entries[0]!.archive.sha256).toBe('b'.repeat(64))
+    expect(() =>
+      next.verifyPackage(fixture.release.id, fixture.release.version, fixture.archive),
+    ).toThrow(expect.objectContaining({ code: 'digest' }))
+    const restarted = createRepoAwarePluginVerifier({ target: { os: 'linux', cpu: 'x64' } })
+    expect(restarted.verifyCatalogue(changed.bytes).entries).toEqual(next.entries)
+    const prior = first.verifyPackage(fixture.release.id, fixture.release.version, fixture.archive)
+    expect(prior.manifest.id).toBe(fixture.release.id)
+    expect(verify.verifyCatalogue(fixture.bytes).entries).toEqual(first.entries)
   })
-  it('rejects a changed manifest digest for the same release and does not poison pins on a refused catalogue', () => {
+  it('rejects a changed manifest digest when verifying its package and preserves the prior snapshot', () => {
     const fixture = packageFixture()
     const verify = verifier()
-    verify.verifyCatalogue(fixture.bytes, fixture.signature)
-    const changed = signed({
+    const first = verify.verifyCatalogue(fixture.bytes)
+    const changed = catalogueBytes({
       format: 1,
       entries: [{ ...fixture.release, manifestSha256: 'b'.repeat(64) }],
     })
-    expect(() => verify.verifyCatalogue(changed.bytes, changed.signature)).toThrow(
-      PluginVerificationError,
-    )
-    expect(() => verify.verifyCatalogue(fixture.bytes, fixture.signature)).not.toThrow()
+    const next = verify.verifyCatalogue(changed.bytes)
+    expect(() =>
+      next.verifyPackage(fixture.release.id, fixture.release.version, fixture.archive),
+    ).toThrow(expect.objectContaining({ code: 'digest' }))
+    const prior = first.verifyPackage(fixture.release.id, fixture.release.version, fixture.archive)
+    expect(prior.manifest.id).toBe(fixture.release.id)
+    expect(verify.verifyCatalogue(fixture.bytes).entries).toEqual(first.entries)
   })
   it('does not expose mutable trusted descriptors or verified bytes', () => {
     const fixture = packageFixture()
-    const catalogue = verifier().verifyCatalogue(fixture.bytes, fixture.signature)
+    const catalogue = verifier().verifyCatalogue(fixture.bytes)
     expect(() => {
       catalogue.entries[0]!.archive.sha256 = 'b'.repeat(64)
     }).toThrow(TypeError)
@@ -96,30 +96,27 @@ describe('signed catalogue and immutable releases', () => {
     fixture.archive[0] = 0
     expect(() => verified(fixture)).toThrow(expect.objectContaining({ code: 'digest' }))
   })
-  it('refuses a signed descriptor for another OS/CPU without decoding its archive', () => {
+  it('refuses a selected descriptor for another OS/CPU without decoding its archive', () => {
     const fixture = packageFixture()
-    const catalogue = createPluginVerifier({
-      pinnedPublicKey: fictionalPublicKey,
+    const catalogue = createRepoAwarePluginVerifier({
       target: { os: 'darwin', cpu: 'x64' },
-    }).verifyCatalogue(fixture.bytes, fixture.signature)
+    }).verifyCatalogue(fixture.bytes)
     expect(() =>
       catalogue.verifyPackage(fixture.release.id, fixture.release.version, fixture.archive),
     ).toThrow(expect.objectContaining({ code: 'target' }))
   })
-  it('refuses a package without a signed release descriptor', () => {
+  it('refuses a package without a selected release descriptor', () => {
     const fixture = packageFixture()
     expect(() =>
-      verifier()
-        .verifyCatalogue(fixture.bytes, fixture.signature)
-        .verifyPackage('different', '1.0', fixture.archive),
+      verifier().verifyCatalogue(fixture.bytes).verifyPackage('different', '1.0', fixture.archive),
     ).toThrow(PluginVerificationError)
   })
-  it('checks manifest identity against the signed descriptor', () => {
+  it('checks manifest identity against the selected descriptor', () => {
     const fixture = packageFixture()
-    const wrong = signed({ format: 1, entries: [{ ...fixture.release, id: 'different' }] })
+    const wrong = catalogueBytes({ format: 1, entries: [{ ...fixture.release, id: 'different' }] })
     expect(() =>
       verifier()
-        .verifyCatalogue(wrong.bytes, wrong.signature)
+        .verifyCatalogue(wrong.bytes)
         .verifyPackage('different', fixture.release.version, fixture.archive),
     ).toThrow(PluginVerificationError)
   })
@@ -455,13 +452,13 @@ describe('bounded archive extraction without filesystem effects', () => {
 describe('payload inventory, install hooks and existing skill rules', () => {
   it('checks the manifest digest even when the archive digest is valid', () => {
     const fixture = packageFixture()
-    const catalogue = signed({
+    const catalogue = catalogueBytes({
       format: 1,
       entries: [{ ...fixture.release, manifestSha256: 'a'.repeat(64) }],
     })
     expect(() =>
       verifier()
-        .verifyCatalogue(catalogue.bytes, catalogue.signature)
+        .verifyCatalogue(catalogue.bytes)
         .verifyPackage(fixture.release.id, fixture.release.version, fixture.archive),
     ).toThrow(expect.objectContaining({ code: 'digest' }))
   })
@@ -529,7 +526,7 @@ describe('payload inventory, install hooks and existing skill rules', () => {
       expect(() => verified(packageFixture({ files }))).toThrow(PluginVerificationError)
     }
   })
-  it('checks each file digest independently of an otherwise valid signed package', () => {
+  it('checks each file digest independently of an otherwise valid package', () => {
     const files = payload()
     const manifest = manifestFor(files)
     manifest.files = inventory(files)
@@ -541,23 +538,22 @@ describe('payload inventory, install hooks and existing skill rules', () => {
   })
 })
 
-describe('signed one-line catalogue descriptions', () => {
-  it('keeps old catalogues valid and authenticates an optional purpose at its 240-character bound', () => {
+describe('one-line catalogue descriptions', () => {
+  it('keeps old catalogues valid and reads an optional purpose at its 240-character bound', () => {
     const fixture = packageFixture()
-    expect(
-      verifier().verifyCatalogue(fixture.bytes, fixture.signature).entries[0]?.description,
-    ).toBeUndefined()
+    expect(verifier().verifyCatalogue(fixture.bytes).entries[0]?.description).toBeUndefined()
     const purpose = 'x'.repeat(240)
-    const described = signed({ format: 1, entries: [{ ...fixture.release, description: purpose }] })
-    expect(
-      verifier().verifyCatalogue(described.bytes, described.signature).entries[0]?.description,
-    ).toBe(purpose)
-    const tampered = json({
+    const described = catalogueBytes({
+      format: 1,
+      entries: [{ ...fixture.release, description: purpose }],
+    })
+    expect(verifier().verifyCatalogue(described.bytes).entries[0]?.description).toBe(purpose)
+    const revised = json({
       format: 1,
       entries: [{ ...fixture.release, description: 'Different fictional purpose.' }],
     })
-    expect(() => verifier().verifyCatalogue(tampered, described.signature)).toThrow(
-      PluginVerificationError,
+    expect(verifier().verifyCatalogue(revised).entries[0]?.description).toBe(
+      'Different fictional purpose.',
     )
   })
   it.each([
@@ -573,9 +569,7 @@ describe('signed one-line catalogue descriptions', () => {
     4,
   ])('refuses an invalid description %#', (description) => {
     const fixture = packageFixture()
-    const catalogue = signed({ format: 1, entries: [{ ...fixture.release, description }] })
-    expect(() => verifier().verifyCatalogue(catalogue.bytes, catalogue.signature)).toThrow(
-      PluginVerificationError,
-    )
+    const catalogue = catalogueBytes({ format: 1, entries: [{ ...fixture.release, description }] })
+    expect(() => verifier().verifyCatalogue(catalogue.bytes)).toThrow(PluginVerificationError)
   })
 })

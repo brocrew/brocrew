@@ -26,26 +26,10 @@ import { PIECE_TITLE_CHARS } from '../../shared/piece-called'
 import { filesystemSpelling } from '../runtime/scratch-cwd'
 
 /**
- * 🔴 **D-016 · where this app keeps a piece's resources, and the only code that touches their
- * bytes** — a file a conversation hands over for a piece: its giver's inputs (`give_work`,
- * `update_work`) or what its owner made (`update_work`, `reply_to_parent`), copied byte for byte
- * and never changed.
- *
- * ⚑ **One place per content**: `<userData>/resources/<sha256>/<name>`. The hash is of the bytes as
- * they were read, and the name is the file's own; the `work_resource` row names both, so the file is
- * found from its row and checked against it on every read.
- *
- * ⛔ **No canonical form and no ingest state machine.** The bytes are kept as they arrived — a hash
- * is the identity of THOSE bytes — and the file is written to a temporary name and renamed into
- * place before its row is written. A crash between the two leaves a file with no row, which nothing
- * reads and which costs nothing; the reverse, a row with no file, cannot be produced by this order.
- *
- * ⚑ **Lifted from the document registry this replaced** (380, 517, 521, 635): the allow-list of
- * forms, the per-form size bound, the `O_NOFOLLOW | O_NONBLOCK` reads and the placement of a row's
- * file inside the tree it is kept in are theirs, unchanged in what they refuse.
- *
- * ⚑ **D-026 · and the title a kept file is given** ({@link resourceTitle}), read off the same
- * bytes as they are kept.
+ * Keeps a piece's input and result files at `<userData>/resources/<sha256>/<name>`.
+ * Save-time hashes name and deduplicate content. Files are written to a temporary name and
+ * renamed before their rows are recorded, so the kept name holds a complete file.
+ * Reads return the current local bytes within the resources tree and size bounds.
  */
 
 /** The directory under Electron's `userData` that holds every resource. */
@@ -393,11 +377,10 @@ function closeQuietly(fd: number): void {
 }
 
 /** What was at a path this app itself wrote. */
-type OwnFileRead =
-  { readonly ok: true; readonly bytes: Buffer; readonly sha256: string } | { readonly ok: false }
+type OwnFileRead = { readonly ok: true; readonly bytes: Buffer } | { readonly ok: false }
 
 /**
- * 🔴 **Read a file this app put there, and hash it.** ⛔ Every "no" is the same answer — absent, a
+ * Read a file this app put there. Every "no" is the same answer — absent, a
  * symlink, a directory, a FIFO, unreadable, or bigger than any resource may be — and the caller
  * decides what it means; the same three flags as {@link readOfferedResource}, for its reasons.
  */
@@ -412,7 +395,7 @@ function readOwnFile(path: string): OwnFileRead {
     const stat = fstatSync(fd)
     if (!stat.isFile() || stat.size > MOST_BYTES_OF_ANY_FORM) return { ok: false }
     const read = readBounded(fd, stat.size)
-    return { ok: true, bytes: read, sha256: sha256Hex(read) }
+    return { ok: true, bytes: read }
   } catch {
     return { ok: false }
   } finally {
@@ -490,7 +473,7 @@ export function keepResource(
       return { ok: false, problem: 'something-else-is-at-that-name' }
     }
     const already = readOwnFile(kept)
-    if (already.ok && already.sha256 === offered.sha256) return { ok: true }
+    if (already.ok && sha256Hex(already.bytes) === offered.sha256) return { ok: true }
     if (somethingStandsAt(kept)) return { ok: false, problem: 'something-else-is-at-that-name' }
     writeOwn(temporary, offered.bytes)
     renameSync(temporary, kept)
@@ -539,20 +522,9 @@ export type ResourceBytesResult =
   | { readonly ok: false; readonly refusal: ResourceRefusal }
 
 /**
- * 🔴 **The bytes of a kept resource — placed inside the root, then read, then re-hashed** — the one
- * reader both doors go through: an agent's `read_document` and a person's window (517's rule, one
- * boundary in one place).
- *
- * ⚑ **Placed first.** The row's hash and name are checked to be what this app writes, and the path
- * they make is asked two ways: lexically, with no syscall, and on its real spelling, which is what
- * catches a symlink pointing out. Then:
- *
- *  1. it does not resolve ⇒ `resource-bytes-missing` — absent, and only absent;
- *  2. it resolves outside the tree, or what is there cannot be read ⇒ `resource-bytes-unreadable`;
- *  3. it reads and the hash disagrees ⇒ `resource-bytes-changed`.
- *
- * ⛔ **The detail carries the resource id and nothing else**: a resource is reached by its id, and a
- * refusal that quoted the path would hand the tree's spelling over.
+ * Reads current local bytes for both an agent and a person's window.
+ * The row's hash directory and filename must place the file within the resources tree.
+ * Missing files and unreadable files keep their own refusals, carrying only the resource id.
  */
 export function resourceBytes(root: string, row: KeptResource): ResourceBytesResult {
   const refused = (rail: ResourceRail): ResourceBytesResult => ({
@@ -576,16 +548,6 @@ export function resourceBytes(root: string, row: KeptResource): ResourceBytesRes
   }
   const read = readOwnFile(lexicalPath)
   if (!read.ok) return refused('resource-bytes-unreadable')
-  if (read.sha256 !== row.sha256) {
-    return {
-      ok: false,
-      refusal: refuseResource('resource-bytes-changed', {
-        resource: row.resource,
-        kept: row.sha256,
-        found: read.sha256,
-      }),
-    }
-  }
   // ⛔ **The form is read off the kept name and never off a column** — a name this build has no word
   // for is a file it cannot say anything about, which is what `resource-bytes-unreadable` means.
   const form = formOfName(row.name)
@@ -737,11 +699,8 @@ function opensAsAnSvg(text: string): boolean {
 }
 
 /**
- * 🔴 **D-032 · a kept picture or PDF, for a window to draw** — or why not. ⚑ Through
- * {@link resourceBytes}, the one reader every door goes through: placed inside the tree, read, and
- * re-hashed against what was kept. ⚑ Then the type a window draws them as is read off the bytes
- * ({@link drawnAsOfBytes}) and set HERE, never by a name a window reads. ⛔ A Markdown file or a page
- * is not drawn this way — the text read is its door.
+ * A kept picture or PDF for a window to draw, read through {@link resourceBytes}.
+ * Its current bytes determine the drawing type through {@link drawnAsOfBytes}.
  */
 export type KeptPicture =
   | { readonly ok: true; readonly drawnAs: DrawnAs; readonly bytes: Uint8Array<ArrayBuffer> }
@@ -768,10 +727,7 @@ export function keptPictureOrPdf(
   const read = resourceBytes(root, row)
   // ⚠️ Gone and unreadable are one word, as the text read's: both end with a person going to look.
   if (!read.ok) {
-    return {
-      ok: false,
-      reason: read.refusal.rail === 'resource-bytes-changed' ? 'changed' : 'unreadable',
-    }
+    return { ok: false, reason: 'unreadable' }
   }
   const drawnAs = drawnAsOfBytes(form, read.bytes)
   if (drawnAs === null) return { ok: false, reason: 'not-what-its-name-says' }
@@ -790,14 +746,8 @@ export function keptPictureOrPdf(
 }
 
 /**
- * 🔴 **D-032 · where a kept file is, for Finder** — `<root>/<sha256>/<name>`, as {@link keepResource}
- * wrote it — or why it is not shown.
- *
- * ⛔ **Through {@link resourceBytes} first**, which holds the row's file inside the tree: a row naming
- * anywhere else, a link, something that is not a plain file, or one bigger than any kept file may be
- * is `unreadable`, and nothing absent is shown (`gone`). ⚠️ **A file whose bytes changed IS shown,
- * and says so** — it is where this app kept it, and a person restoring it needs to find it. ⛔ The
- * path goes to the OS and never to a window.
+ * Gives Finder the kept file's path after {@link resourceBytes} checks it is readable in the tree.
+ * The path goes to the OS; the existing result shape no longer reports content changes.
  */
 export function keptFileToShow(
   root: string,
@@ -809,18 +759,15 @@ export function keptFileToShow(
   if (!read.ok && read.refusal.rail === 'resource-bytes-missing') {
     return { ok: false, reason: 'gone' }
   }
-  if (!read.ok && read.refusal.rail !== 'resource-bytes-changed') {
+  if (!read.ok) {
     return { ok: false, reason: 'unreadable' }
   }
   // ⚑ The path {@link resourceBytes} has just placed, spelled as it spells it.
-  return { ok: true, path: join(resolve(root), row.sha256, row.name), changed: !read.ok }
+  return { ok: true, path: join(resolve(root), row.sha256, row.name), changed: false }
 }
 
 /**
- * ⚑ **What a model is handed, from the form and the bytes** (635, `HO-097` §1.2) — exhaustive over
- * {@link DocumentForm} through {@link CONTENT_OF_FORM}, so a new form does not compile until somebody
- * says what a model gets for it. ⚠️ The text was decoded fatally on the way in and the hash has just
- * been re-checked, so this decode is of the same bytes and cannot substitute a character.
+ * Builds model content from the current bytes and the file's form.
  */
 function contentOf(form: DocumentForm, bytes: Buffer): DocumentContent {
   switch (CONTENT_OF_FORM[form]) {

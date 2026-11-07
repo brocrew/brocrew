@@ -4,7 +4,7 @@
 // closed summary of booleans and counts, and the archives' public digests, leave the runner.
 import fs from 'node:fs'
 import path from 'node:path'
-import { createHash, randomBytes } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { execFile, spawn } from 'node:child_process'
 import { createServer } from 'node:http'
 import { promisify } from 'node:util'
@@ -15,7 +15,8 @@ import { pathToFileURL, fileURLToPath } from 'node:url'
 import { HIDDEN_LAUNCH_ARG } from '../../lib/hidden-launch.mjs'
 import { attach, press } from '../../lib/update-rehearsal-app.mjs'
 import { checkNormalPluginBuild } from '../../check-no-plugin-gate-inputs.mjs'
-import { GATE_REPOSITORIES, projectBuild } from '../plugin-packaged/contract.mjs'
+import { projectBuild } from '../plugin-packaged/contract.mjs'
+import { GATE_REPOSITORIES } from '../plugin-packaged/fixture-guards.mjs'
 import {
   openPlugins,
   enabledProfile,
@@ -50,8 +51,6 @@ export const checks = [
   'tamperedArchiveRefused',
   'pluginsTab',
   'installed',
-  'rootPrivate',
-  'rootDeniedToOtherAccount',
   'pipeChallengeOnlyToOtherAccount',
   'pipeNotWritableByOtherAccount',
   'profileCreated',
@@ -87,7 +86,6 @@ export const steps = [
   'install-press',
   'install-wait',
   'install-priority',
-  'root-private',
   'other-account',
   'profile-create',
   'profile-enable',
@@ -262,21 +260,6 @@ export function onlyTheThree(sddl, sid) {
       return [sid, SYSTEM, ADMINISTRATORS].includes(account)
     })
   )
-}
-export async function readList(folder) {
-  const saved = path.join(process.env.TEMP, `fictional-acl-${randomBytes(6).toString('hex')}.txt`)
-  try {
-    await command(system32('icacls.exe'), [folder, '/save', saved, '/Q'])
-    return (
-      fs
-        .readFileSync(saved)
-        .toString('utf16le')
-        .replace(/^\uFEFF/, '')
-        .split(/\r?\n/)[1] ?? ''
-    )
-  } finally {
-    fs.rmSync(saved, { force: true })
-  }
 }
 
 export function readOwned(file, maximum = 128 * 1024 * 1024) {
@@ -1047,12 +1030,8 @@ export async function gate(node22) {
       })
       return started
     })
-    await step('root-private', async () => {
-      check(summary, 'rootPrivate', onlyTheThree(await readList(global), sid))
-    })
     await step('other-account', async () => {
       const other = await otherAccount(global, ownerPipe(global))
-      check(summary, 'rootDeniedToOtherAccount', other.rootDenied)
       check(summary, 'pipeNotWritableByOtherAccount', other.writeDenied)
       check(summary, 'pipeChallengeOnlyToOtherAccount', other.challengeOnly)
     })

@@ -14,22 +14,8 @@ import { STORAGE_CHANNELS } from '../src/shared/storage'
 /**
  * # 🔴 The bridge that clones nothing (361)
  *
- * `355`'s review found a capability grant crossing the wire as a Vue reactive `Proxy`. Two of its
- * four fields would have thrown at the bridge in the shipped app and two would have saved fine.
- * ⛔ **The sentence this file is about is the one after the dash:** *"and no test in this repo could
- * see it, because every one of them injects an in-process bridge that clones nothing."*
- *
- * ## ⚠️ It is the fourth, not the first
- *
- * | dispatch | the call | what a person saw |
- * |---|---|---|
- * | `121` | `listLibrary({ filters: filters.value })` | every filter press showed a read error |
- * | `218` | `send({ attachments })` off a `reactive(new Map())` | *"An object could not be cloned."*, no turn |
- * | `355` | `setCapabilities({ grant })` | two fields save, two throw |
- * | `361` | `cancelProviderSignIn(authFor.value)` | Cancel does nothing, silently |
- *
- * ⛔ **Four sites, three fixes, no guard.** Each was repaired where it was found, and the repair
- * taught the next site nothing — which is what `§2` means by *a convention nothing enforces decays*.
+ * Reactive payloads crossed the bridge in library filters, attachments, capability grants
+ * and provider sign-in cancellation. Every renderer-to-main verb is checked below.
  *
  * ## ⚑ What is asserted here, and what is asserted where it can be
  *
@@ -287,6 +273,10 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
   stalledWorkForAPerson: { how: 'nothing' },
   // Work whose holder stopped with it: `{ kind: 'stoppedWorkForAPerson' }` carries no payload either.
   stoppedWorkForAPerson: { how: 'nothing' },
+  // This run's publisher and the stamped queue: `{ kind }` alone, no payload either.
+  currentEpoch: { how: 'nothing' },
+  personsQueue: { how: 'nothing' },
+  listConversations: { how: 'nothing' },
   // Open work no other list shows: `{ kind: 'workIncidentsForAPerson' }` carries no payload either.
   workIncidentsForAPerson: { how: 'nothing' },
   // ⛔ **F097 · its sixth sibling, and the same answer**: the preload writes
@@ -425,11 +415,12 @@ const HOW_EACH_VERB_IS_BUILT: Record<RuntimeCommandKind, VerbRow> = {
       '🔴 THE DEFECT. `authFor` is a `ref` holding an object, so `authFor.value` is a Proxy and ' +
       'every cancel of a sign-in that was really running threw at the bridge. The `?? { provider }' +
       '` fallback is a literal, so cancelling with nothing in flight worked — which is why it ' +
-      'never looked like a bridge fault. Fixed in `NewConversation.cancelSignIn`.',
+      'never looked like a bridge fault. Fixed in the shared sign-in gesture: every payload it sends ' +
+      'is rebuilt field by field by its `literal`, the running pair included.',
     producers: [
       {
-        at: 'src/renderer/src/components/NewConversation.vue',
-        builds: 'provider: running.provider,\n      profileId: running.profileId,',
+        at: 'src/renderer/src/lib/sign-in-gesture.ts',
+        builds: 'provider: pair.provider,\n    profileId: pair.profileId,',
       },
     ],
   },
@@ -755,7 +746,9 @@ describe('§2 · every renderer→main verb is accounted for (361 §1)', () => {
     // Link resolution, both typed-wait verbs and recent activity are present in the same bridge.
     // ⚑ And `closeWork`, a person's close of stopped work: 137 → 138.
     // The connection list and all-agent sign-in copy each add one verb.
-    expect(Object.keys(HOW_EACH_VERB_IS_BUILT)).toHaveLength(142)
+    // ⚑ And `currentEpoch` and `personsQueue`, the stamped queue: 142 → 144.
+    // ⚑ And `listConversations`, the stamped listing: 144 → 145.
+    expect(Object.keys(HOW_EACH_VERB_IS_BUILT)).toHaveLength(145)
     // ⚑ 8 → 10 at `744`: `savedDrafts`, `saveDrafts`. 10 → 9 at D-016: `getDemoSeed` out.
     // ⚑ 9 → 10 at D-031: `localZone`.
     expect(Object.keys(THE_APP_CHANNELS)).toHaveLength(10)
@@ -967,7 +960,9 @@ describe('§2 · every renderer→main verb is accounted for (361 §1)', () => {
       // Recent activity adds one plain packet, built from two numeric window bounds.
       // ⚑ `closeWork` moves the FIRST number by one (`{ kind, piece }` written by the preload); the
       // sentences quoting it are corrected with it.
-      106, 28, 8,
+      // ⚑ `currentEpoch` and `personsQueue` move the MIDDLE number by two: no payload.
+      // ⚑ `listConversations` moves the MIDDLE number by one: no payload.
+      106, 31, 8,
     ])
   })
 
@@ -1437,7 +1432,7 @@ describe('§5 · a bridge double refuses what the wire refuses (361 §2)', () =>
 const BUILDS_A_RENDERER_STORE =
   /import \{[^}]*\bcreate(?:Session|Project)Store\b[^}]*\} from '(?:\.\.?\/)+src\/renderer\/src\/lib\/(?:session|project)-store'/
 
-const IMPORTS_THE_WIRE = /from '(?:\.\.?\/)*lib\/the-wire'/
+const IMPORTS_THE_WIRE = /from '(?:\.\.?\/)*(?:lib\/)?the-wire'/
 
 /**
  * ⛔ **And CALLS it, which is the half the import alone cannot say.** Measured while verifying this
@@ -1542,9 +1537,13 @@ describe('§6 · every double the renderer store runs on is a wire (361 §2)', (
   it('🔴 and each of them clones its payload the way `ipcRenderer.invoke` does', () => {
     for (const name of storeBuilders) {
       const code = readFileSync(join(HERE, name), 'utf8')
+      // Demo stores get their bridge from the shared window double.
+      const bridgeCode = /from '\.\/lib\/demo-runtime-window'/.test(code)
+        ? readFileSync(join(HERE, 'lib/demo-runtime-window.ts'), 'utf8')
+        : code
       const why = `${name} builds a renderer store over a double that clones nothing`
-      expect(IMPORTS_THE_WIRE.test(code), why).toBe(true)
-      expect(RUNS_THE_WIRE.test(code), why).toBe(true)
+      expect(IMPORTS_THE_WIRE.test(bridgeCode), why).toBe(true)
+      expect(RUNS_THE_WIRE.test(bridgeCode), why).toBe(true)
     }
   })
 

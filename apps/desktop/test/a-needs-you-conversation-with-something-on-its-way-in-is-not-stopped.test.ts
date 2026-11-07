@@ -1,4 +1,7 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import type { AgentState } from '../src/shared/agent-state-contracts'
+import type { PieceRow } from '../src/shared/task-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,21 +18,21 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { AgentState } from '../src/shared/agent-state'
-import type { PieceRow } from '../src/shared/tasks'
-import type {
-  ResumableSessionInfo,
-  RuntimeEventMessage,
-  RuntimeStatesMessage,
-  TranscriptEvent,
-  UnresumableSessionInfo,
+import {
+  type ResumableSessionInfo,
+  type RuntimeStatesMessage,
+  type UnresumableSessionInfo,
 } from '../src/shared/runtime-ipc'
+import {
+  fixtureProviderConfig,
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+} from './lib/host-fixture'
 
 /**
  * # The idle stop · a start or a delivery on its way in keeps a *needs you* conversation running
@@ -72,17 +75,6 @@ async function settle(): Promise<void> {
   }
 }
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** The provider double: collects every handle it issues and the toolset each launch was handed. */
 class ProviderDouble extends FakeRuntime {
   constructor(
@@ -115,7 +107,7 @@ interface Countdown {
 
 /** The host's private parts this file reaches. */
 interface HostInsides {
-  idleCountdowns: Map<string, unknown>
+  conversationIdle: { idleCountdowns: Map<string, unknown> }
   arrivals: Map<string, Promise<void>>
   startsInFlight: Map<string, Promise<string>>
   stateMayHaveMoved: (conversation: string) => void
@@ -161,28 +153,16 @@ describe('the idle stop and what is on its way into a conversation that needs yo
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, handed, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       interruptWaitMs: 40,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       // The dep that arms the countdown at all.
       statesMoved: (message) => {
         pushed.push(message)
@@ -229,7 +209,7 @@ describe('the idle stop and what is on its way into a conversation that needs yo
 
   /** The countdown the host holds for this one conversation. */
   const countdownOf = (id: string): Countdown => {
-    const timer = insides().idleCountdowns.get(id)
+    const timer = insides().conversationIdle.idleCountdowns.get(id)
     const found = live().find((one) => one.timer === timer)
     if (found === undefined) throw new Error(`${id} holds no live countdown`)
     return found

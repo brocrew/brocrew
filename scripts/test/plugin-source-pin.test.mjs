@@ -77,6 +77,13 @@ it.each(['changed', 'missing', 'extra ignored'])(
     expect(() => verifyPluginSource(options)).toThrow(/differs? from the canonical tree/)
   },
 )
+it('refuses a stray dependency folder inside the shared UI source', () => {
+  const options = fixture()
+  const stray = path.join(options.root, 'plugins/shared/ui/node_modules/stray.js')
+  fs.mkdirSync(path.dirname(stray), { recursive: true })
+  fs.writeFileSync(stray, 'fictional stray bytes')
+  expect(() => verifyPluginSource(options)).toThrow(/differs? from the canonical tree/)
+})
 it('retains the canonical source pin and records the export revision separately', () => {
   const options = fixture()
   const proof = verifyPluginSource(options)

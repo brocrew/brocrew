@@ -1,3 +1,13 @@
+import { neutralHostDeps } from './lib/host-fixture'
+import {
+  registerPersistedCutIdentityCases,
+  registerLegacyCutIdentityCase,
+  registerFrozenCutAccountCases,
+  type Held,
+  type Gate,
+  type Stops,
+} from './helpers/cut-account-cases'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, sep } from 'node:path'
@@ -12,7 +22,6 @@ import {
 import type { CodexTransport } from '@brobot2/runtime'
 import type { ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
@@ -23,6 +32,12 @@ import {
 } from '../src/main/profile-execution-file'
 import { RuntimeHost, THE_APP_ITSELF, aTurnTheAppCutText } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
+import {
+  readKeptAccounts,
+  writeKeptAccounts,
+  providerAccountsFile,
+} from '../src/main/provider-accounts-file'
+import { readKeptUsage, writeKeptUsage, providerUsageFile } from '../src/main/provider-usage-file'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
@@ -33,7 +48,7 @@ import {
   type CutState,
   type NotContinuedBecause,
 } from '../src/main/turns-the-app-cut-file'
-import type { RuntimeEventMessage, TranscriptEvent } from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * **A turn this app's quit, or a crash, cut is continued once, on the account it ran on, at the
@@ -87,10 +102,6 @@ class RecordingSink implements RuntimeEventSink {
   sendLiveness(): void {}
 }
 
-interface Held {
-  readonly promise: Promise<void>
-  readonly end: () => void
-}
 function held(why: string): Held {
   let end = (): void => {}
   const promise = new Promise<void>((_resolve, reject) => {
@@ -100,51 +111,12 @@ function held(why: string): Held {
   return { promise, end }
 }
 
-interface Gate {
-  readonly promise: Promise<void>
-  readonly open: () => void
-}
 function aGate(): Gate {
   let open = (): void => {}
   const promise = new Promise<void>((resolve) => {
     open = resolve
   })
   return { promise, open }
-}
-
-/** How a life's provider behaves. */
-interface Stops {
-  provider?: Provider
-  savedKeyRevision?: number
-  /** Its sign-in check waits for this gate: the last wait before held words are handed over. */
-  signInGate?: Gate
-  /** The account its provider names: a fictional one, none, or no answer at all. */
-  account?: 'ada' | 'bea' | 'none' | 'never'
-  organization?: string
-  /** The tag its runtime makes of the credential it launched on, as a saved key's would be. */
-  tag?: string
-  /** Its provider names the account only this long after the life starts, ms; at once if unset. */
-  accountAfterMs?: number
-  /** Its turns stay running: nothing ends them but a stop, a close or a crash. */
-  turnsStayOpen?: boolean
-  /** The provider never comes up. */
-  beforeTheProviderIsUp?: Held
-  /** The provider never takes words handed to it. */
-  beforeTheWordsAreTaken?: Held
-  /** The cut-turns file cannot be written. */
-  cutsCannotBeKept?: boolean
-  /** No window listens to this life, so its launch continues nothing. */
-  nobodyListens?: boolean
-  /** Services run in this life, as the services list in its data folder says which agents are. */
-  services?: boolean
-  /** Every start of this agent's conversations fails. */
-  startsFailFor?: string
-  /** A usage limit's reset is looked at again this often, ms, and nothing is added after it. */
-  limitLookMs?: number
-  /** How long after its program stopped a conversation is started again, ms. */
-  programWaitMs?: number
-  /** Its provider's close waits for this gate: a life's teardown held. */
-  closeWaitsFor?: Gate
 }
 
 interface Life {
@@ -276,9 +248,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       startedAt,
       host: new RuntimeHost({
         store,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(folder, 'exports'),
+        ...neutralHostDeps(() => folder),
         resourcesRoot: () => resourcesRoot(folder),
         createRuntime: (provider: Provider) =>
           new ProviderOfALife(provider, stops, asked, startedAt),
@@ -314,6 +284,18 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
           write: (kept) => {
             if (stops.cutsCannotBeKept === true) throw new Error('the disk is full')
             writeKeptCuts(turnsTheAppCutFile(folder), kept)
+          },
+        },
+        usageKept: {
+          read: () => readKeptUsage(providerUsageFile(folder)),
+          write: (kept) => writeKeptUsage(providerUsageFile(folder), kept),
+        },
+        accountsKept: {
+          read: () => readKeptAccounts(providerAccountsFile(folder)),
+          write: (kept) => {
+            if (stops.accountsCannotBeKept)
+              throw new Error(`EACCES: cannot write '${providerAccountsFile(folder)}'`)
+            writeKeptAccounts(providerAccountsFile(folder), kept)
           },
         },
         accountWaitMs: ACCOUNT_WAIT,
@@ -433,32 +415,25 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
     return sessionId
   }
 
-  describe('a quit that cut a running turn', () => {
-    it('keeps the account digest bytes for a known salt, email and organization', async () => {
-      const salt = 'a7'.repeat(32)
-      writeKeptCuts(turnsTheAppCutFile(userData), { salt, lives: {}, cuts: {} })
-      const id = await aTurnRunsIn({ account: 'ada', organization: 'Fictional Organisation' })
-      const kept = readKeptCuts(turnsTheAppCutFile(userData))
-      expect(kept.salt).toBe(salt)
-      expect(kept.lives[id]?.identity).toBe('claude:264583baffc72b21a1e42c8a0005e4a3')
-    })
+  const accountCases = {
+    life: () => now,
+    folder: () => userData,
+    root: () => root,
+    handles: () => handles,
+    window: () => window,
+    aTurnRunsIn,
+    starts,
+    stateOf,
+    continuations,
+    waitFor,
+    settle,
+    EMAIL,
+    CUT,
+    SOON,
+  }
 
-    it.each([
-      ['account', { provider: 'claude', account: 'ada' }, /^claude:[0-9a-f]{32}$/],
-      [
-        'launch tag',
-        { provider: 'claude', account: 'none', tag: 'fictional-key' },
-        'claude-launch:fictional-key',
-      ],
-      ['provider tag', { provider: 'codex', tag: 'fictional-login' }, 'codex:fictional-login'],
-    ] as const)('keeps the persisted identity format for an %s', async (_kind, stops, expected) => {
-      const id = await aTurnRunsIn(stops)
-      const kept = readKeptCuts(turnsTheAppCutFile(userData))
-      const identity = kept.lives[id]?.identity
-      if (typeof expected === 'string') expect(identity).toBe(expected)
-      else expect(identity).toMatch(expected)
-      expect(identity).not.toContain(EMAIL.ada)
-    })
+  describe('a quit that cut a running turn', () => {
+    registerPersistedCutIdentityCases(accountCases)
 
     it('the next launch continues it once, on the same account, saying when the app restarted', async () => {
       const a = await aTurnRunsIn()
@@ -516,6 +491,8 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
       expect(stateOf(a)).toEqual({ ended: 'not-same-account' })
       expect(running(now, a)).toBe(false)
     })
+
+    registerLegacyCutIdentityCase(accountCases)
 
     it('⛔ with an account that does not answer in time, it is not continued and not tried again', async () => {
       const a = await aTurnRunsIn()
@@ -594,6 +571,8 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
   })
 
   describe('the account, frozen to the life', () => {
+    registerFrozenCutAccountCases(accountCases)
+
     it('a life on a key: the same key is the same account; another key is not', async () => {
       const a = await aTurnRunsIn({ account: 'none', tag: 'key-a' })
       await now.host.closeAll()

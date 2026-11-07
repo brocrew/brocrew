@@ -1,7 +1,17 @@
-import { MOVE_WORDS, type MoveRequestAck } from '../../../shared/move-request'
+import type { MoveRequestAck } from '../../../shared/move-contracts'
+import type {
+  LedgerWalk,
+  PersonsDecision,
+  PersonsQuestion,
+} from '../../../shared/question-contracts'
+import type { McpServerRequestForAPerson } from '../../../shared/conversation-events'
+import type { WhatEachConversationIsWaitingOn, WorkGivenOut } from '../../../shared/task-contracts'
+import type { WhatAPickBecame } from '../../../shared/model-choice-contracts'
+import type { HandedPath } from '../../../shared/attachment-contracts'
+import { MOVE_WORDS } from '../../../shared/move-request'
 import { computed, reactive, ref, type ComputedRef, type Ref } from 'vue'
 import { hasSomethingToSend } from '../../../shared/runtime-ipc'
-import type { LedgerWalk, PersonsDecision, PersonsQuestion } from '../../../shared/questions'
+
 import type { WhoCalledWhom } from '../../../shared/who-called-whom'
 import type { ProviderLimitSeen } from '../../../shared/provider-limit'
 import type { LimitsDisplayAnswer } from '../../../shared/limits-display'
@@ -10,13 +20,14 @@ import type { StoppedWorkForAPerson } from '../../../shared/stopped-work'
 import type { WorkIncident } from '../../../shared/work-incidents'
 import type { WaitingOnWhoWrote } from '../../../shared/waiting-on-who-wrote'
 import type { InstructionAskWaiting } from '../../../shared/own-instructions'
-import type { McpServerRequestForAPerson } from '../../../shared/runtime-ipc'
+
 import type { RecentActivityReading } from '../../../shared/recent-activity'
 import type { WorkspaceReading } from '../../../shared/workspace-reading'
 import { activityOf, type WhatIsBeingDone } from '../../../shared/what-is-being-done'
-import type { WhatEachConversationIsWaitingOn, WorkGivenOut } from '../../../shared/tasks'
+
 import type { TheWholeForest } from '../../../shared/the-whole-forest'
 import type {
+  AnswerAck,
   ProviderAnswerAck,
   CreateSessionInput,
   PermissionDecision,
@@ -34,13 +45,11 @@ import type {
   ResourceDrawing,
   ResourceReading,
   ResourceReveal,
-  WhatAPickBecame,
   WorkflowOutputResult,
   InstructionSourceResult,
   RevealResult,
   ConfigFileResult,
   SessionPathTarget,
-  HandedPath,
   LaunchRefusal,
   FirstMessageNotSent,
   ProcessMemory,
@@ -65,21 +74,10 @@ import {
 } from './session-record'
 
 /**
- * Every session this window has open, and nothing about which one you are looking at.
- *
- * The host has been multi-session since 046; the renderer was not, and that mismatch was the
- * whole bug — resuming a session that was already open threw `session is already open`, and a
- * session left running behind a switched view was invisible. One store holding N records fixes
- * that by construction: switching is a change of which record is rendered, and never a call to
- * the host at all.
- *
- * **The active session is a view concern and is deliberately absent from here.** A store that
- * knew about "the current one" would be a single-session assumption wearing a different hat, and
- * the next slice's cross-session views would have to work around it.
- *
- * The bridge is injected rather than reached for, so the whole store — routing, buffering,
- * ordinal continuity, the lot — is driven directly in tests with no window, no DOM and no
- * provider.
+ * Open sessions for this window; the active selection belongs to the view.
+ * Switching views changes the rendered record without calling the host.
+ * The injected bridge lets tests cover routing, buffering and ordinal continuity
+ * without a window, DOM or provider.
  */
 
 /**
@@ -564,6 +562,18 @@ export interface SessionStore {
     requestId: string,
     response: UserInputResponse,
   ): Promise<string | null>
+  /**
+   * A person's answer to a to-do: done, or can't, with an optional note. Answers the host's ack and
+   * rejects as the bridge does. A refusal that leaves the to-do closed settles its card here, on both
+   * folds, in the host's words; a taken answer, a refusal that leaves it open and a thrown call leave
+   * the card as it is. The host is asked even when this window holds no record of the conversation.
+   */
+  answerAction(
+    sessionId: string,
+    requestId: string,
+    done: boolean,
+    note: string,
+  ): Promise<AnswerAck>
   interrupt(sessionId: string): Promise<void>
   /**
    * Stop ONE piece of background work, leaving the conversation running (248).
@@ -1061,7 +1071,11 @@ export function createSessionStore(bridge: RuntimeBridge): SessionStore {
    */
   function settleHeld(record: SessionRecord, mayLookAgain = true): void {
     if (record.phase !== 'recorded') {
+      const wasOpen = record.phase === 'open'
       foldHeldEvents(record)
+      if (wasOpen && phaseOf(record) === 'recorded' && mayLookAgain) {
+        void store.look(record.sessionId, 'again')
+      }
       return
     }
     record.earlyEvents = mayLookAgain
@@ -2171,6 +2185,22 @@ export function createSessionStore(bridge: RuntimeBridge): SessionStore {
       noteAnswer(sessionId, requestId, ok, value)
       if (!ok) return answerNeverLeftThisWindow(sessions.get(sessionId)?.error ?? null)
       return value === undefined ? null : whatAnAnswerAckSays(value)
+    },
+
+    async answerAction(sessionId, requestId, done, note) {
+      const ack = await bridge.answerAction({
+        sessionId,
+        request: requestId,
+        done,
+        ...(note === '' ? {} : { note }),
+      })
+      const record = sessions.get(sessionId)
+      if (ack.outcome === 'refused' && !ack.stillOpen && record) {
+        markRequestFailed(record.transcript, requestId, ack.reason)
+        if (record.control !== record.transcript)
+          markRequestFailed(record.control, requestId, ack.reason)
+      }
+      return ack
     },
 
     async interrupt(sessionId) {

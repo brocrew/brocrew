@@ -1,3 +1,4 @@
+import type { ModelList } from '../src/shared/model-choice-contracts'
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -16,12 +17,11 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { ModelList, RuntimeBridge, RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import type { RuntimeBridge, RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { aChoiceIsInForce, whatAModelChoiceReaches } from '../src/shared/model-choice'
 import {
   createAgentStore,
@@ -40,6 +40,7 @@ import { providerTakesEffectNextTime } from '../src/renderer/src/lib/front-door-
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { everythingOverTheWire } from './lib/the-wire'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # 🔴 696 · the model control reads R31 — `688` §1b, `688` L1's neighbour F-b, over the real doors
@@ -160,9 +161,7 @@ describe('696 §1–§5 · what a person reads about a model choice under R31', 
     folders = new Set(['brobot'])
     host = new RuntimeHost({
       store: sessions,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new CatalogueDouble(provider),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
         const home = join(userData, 'provider-homes', profileId ?? 'brobot', provider)
@@ -173,13 +172,7 @@ describe('696 §1–§5 · what a person reads about a model choice under R31', 
       resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
       listProfiles: () => [...folders],
       newSessionId: () => `sess_${Math.random().toString(36).slice(2)}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     const run = async <T>(kind: string, input: Record<string, unknown> = {}): Promise<T> =>
       (await executeRuntimeCommand(host, window, { kind, ...input } as Parameters<
@@ -489,9 +482,7 @@ describe('696 §6 · D-042 — a default a stand-in’s list admitted is what it
     const lists = { 'brobot/codex': [WIDE, NARROW], 'brobot/claude': [WIDE, NARROW], '*': [NARROW] }
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new HomeListDouble(provider, handles, issued, gate, lists, started),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
@@ -506,13 +497,7 @@ describe('696 §6 · D-042 — a default a stand-in’s list admitted is what it
         ...(existsSync(homes()) ? readdirSync(homes()).filter((one) => one !== 'brobot') : []),
       ],
       newSessionId: () => `sess_${++counter}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 

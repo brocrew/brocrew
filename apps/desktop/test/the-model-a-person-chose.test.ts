@@ -1,3 +1,5 @@
+import { MODEL_CHOICE_RAILS } from '../src/shared/model-choice-contracts'
+import type { AgentModelChoice } from '../src/shared/model-choice-contracts'
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, sep } from 'node:path'
@@ -20,7 +22,6 @@ import {
   parseModelChoice,
   type SessionStore,
 } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   RuntimeHost,
   type CallerIdentity,
@@ -37,14 +38,13 @@ import {
 } from '../src/main/runtime/spawn-rails'
 import { judgeAnAgentsChoice } from '../src/main/runtime/model-rails'
 import {
-  MODEL_CHOICE_RAILS,
   MODEL_CHOICE_SAID,
   judgeAgainstTheList,
   theList,
   whatAModelChoiceReaches,
-  type AgentModelChoice,
 } from '../src/shared/model-choice'
 import { agentCallerId, whatItRunsOnSaid } from '../src/main/runtime/agent-tools'
+import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # 🔴 677 · `R25` — each agent runs on the model and effort a PERSON chose — 🔴 D-042: on its DEFAULT
@@ -517,9 +517,7 @@ describe('677 §4 · the door — `setAgentModelAndEffort`, against the provider
     launched = []
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) =>
         new CatalogueDouble(
           provider,
@@ -540,15 +538,10 @@ describe('677 §4 · the door — `setAgentModelAndEffort`, against the provider
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
       listProfiles: () => [...folders],
-      announce: ({ what }) => announced.push(what),
+      // `persons` comes from the store's record of each commit, and is pinned in its own file.
+      announce: ({ what }) => void (what !== 'persons' && announced.push(what)),
       newSessionId: () => `sess_${Math.random().toString(36).slice(2)}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 

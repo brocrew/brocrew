@@ -1,3 +1,7 @@
+import { fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/host-fixture'
+import { waitFor } from './lib/f093-host'
+import type { RoutedRequest } from '../src/shared/question-contracts'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -15,9 +19,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -28,12 +30,13 @@ import {
   deriveRoutedRequests,
   escalationChain,
 } from '../src/shared/questions'
-import type { RoutedRequest } from '../src/shared/questions'
-import type {
-  PersistedEventInfo,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+
+import {
+  codeOnly,
+  sourceOf,
+  expectTypeImports,
+  expectNoDeadlineDeps,
+} from './helpers/source-contracts'
 
 /**
  * 🔴 **398 · the two clocks, and 612 removed the second** — HO-007 criterion **11**, and the record
@@ -98,25 +101,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
 const sharedRoot = join(here, '../src/shared')
 
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** `394`'s double, with the handles kept — a test has to BE the provider to ask like one. */
 class ProviderDouble extends FakeRuntime {
   constructor(
@@ -176,9 +160,7 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
   ): RuntimeHost => {
     const built = new RuntimeHost({
       store: over,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
@@ -190,13 +172,7 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built
@@ -335,10 +311,6 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
     return { pm, pmProfile, worker: given.agent as string, pmTools, workerHandle: latestHandle() }
   }
 
-  const sourceOf = (dir: string, file: string): string => readFileSync(join(dir, file), 'utf8')
-  const codeOnly = (source: string): string =>
-    source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
-
   const filesUnder = (dir: string): { path: string; text: string }[] => {
     const out: { path: string; text: string }[] = []
     const walk = (at: string, prefix: string): void => {
@@ -451,6 +423,7 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       // half-applied. ⚑ **Two withdrawals, one file, and this is now the whole of both.**
       expect(store_).not.toContain('work_quiet')
       expect(host_).not.toContain('work_quiet')
+      expectNoDeadlineDeps(mainRoot, 'quiet-work')
     })
   })
 
@@ -891,6 +864,7 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       expect(host_).not.toContain('positiveWindow')
       expect(host_).not.toContain('escalationWindowMs')
       expect(host_).not.toContain('proposalBoundMs')
+      expectNoDeadlineDeps(mainRoot, 'answer-windows')
       // ⚑ **THE POSITIVE CONTROL, and it is the distinction rather than a spare string.** ⚠️ This
       // class still resolves three injected numbers — the drain, the interrupt wait and the
       // launch timeout — and none of them is a deadline on somebody ANSWERING; they bound this
@@ -927,6 +901,8 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       // ⚑ **The control that plants TWO**: the routing's own literal really is in more than one
       // file, so the two empties above are measurements rather than a walk that reads nothing.
       expect(writers("'request_routed'")).toEqual([
+        // The commit record carries a routed question's parent and destination; it decides nothing.
+        'db/committed-changes.ts',
         // A delete reads it to find who asked a helper in the tree from outside.
         'db/conversation-tree.ts',
         // ⚑ F071 · the fold index's types name it — the routed-request fold reads through it.
@@ -991,27 +967,25 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       for (const file of [
         'tasks.ts',
         'questions.ts',
+        'task-contracts.ts',
+        'question-contracts.ts',
         'how-work-stopped.ts',
         'who-did-it.ts',
         'a-persons-own-words.ts',
       ]) {
         const text = sourceOf(sharedRoot, file)
-        const imports = [...text.matchAll(/^import .*$/gm)].map((match) => match[0])
         // ⚑ **The value imports are NAMED**, so another one is a red test rather than a widening
         // nobody reviewed — `tasks.ts` reaching the derivation, that module reaching the caller
         // vocabulary its second producer states an actor in, and (F097) `tasks.ts` reading whose
         // words opened a turn the way the host reads it.
         const allowed = [
+          "import { AGENT_MESSAGE_KINDS, TASK_STATES } from './task-contracts'",
+          "import { PASS_UP_RECIPIENTS } from './question-contracts'",
           "import { whoCancelledIt, type AskToStop } from './how-work-stopped'",
           "import { WHO_DID_IT, WHO_DID_IT_SAYS, type ActedBy, type WhoDidIt } from './who-did-it'",
           "import { aPersonsOwnWords } from './a-persons-own-words'",
         ]
-        for (const line of imports) {
-          expect(
-            line.startsWith('import type ') || allowed.includes(line),
-            `${file}: ${line}`,
-          ).toBe(true)
-        }
+        expectTypeImports(text, allowed, file)
         const code = codeOnly(text)
         expect(code, file).not.toContain('Date.now')
         expect(code, file).not.toContain('setTimeout')

@@ -1,3 +1,5 @@
+import { neutralHostDeps } from './lib/host-fixture'
+import type { HandedPath } from '../src/shared/attachment-contracts'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -8,7 +10,6 @@ import { FakeRuntime, type AgentRuntime } from '@brobot2/runtime'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore as createLedger, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { createSessionStore } from '../src/renderer/src/lib/session-store'
@@ -20,7 +21,6 @@ import {
   type DraftSweep,
 } from '../src/renderer/src/lib/drafts'
 import type {
-  HandedPath,
   RuntimeBridge,
   RuntimeCommand,
   RuntimeEventMessage,
@@ -114,9 +114,7 @@ describe('678 · R26 · a reopen keeps the draft', () => {
     let counter = 0
     host = new RuntimeHost({
       store: ledger,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(dir, 'exports'),
+      ...neutralHostDeps(() => dir),
       createRuntime: (provider): AgentRuntime => {
         const real = runtimes.get(provider) ?? new FakeRuntime(provider)
         runtimes.set(provider, real)

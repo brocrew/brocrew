@@ -109,7 +109,7 @@ const ABOUT_THE_INSTRUCTION_LAYER =
  * *"the approval profile depends on these instructions"* and *"replacing the prompt strips the
  * approval behaviour"*. §1.1 plants one sentence per member and requires each to fire.
  */
-export const THE_WITHDRAWN_FRAMING: Readonly<Record<string, RegExp>> = {
+const THE_WITHDRAWN_FRAMING: Readonly<Record<string, RegExp>> = {
   /** ⛔ `HO-023` §7's own noun, in every inflection. */
   'it is a safety property': /\bsafety propert\w+/i,
   /** ⚠️ The status claim as a dependency — the shape four shipped sentences used. */
@@ -441,7 +441,7 @@ describe('§3 · where this tree states the guarantee, it states the limit besid
 
   it('⚠️ the wire type that shows a person the composed string says what it can and cannot see', () => {
     const span = spanCarrying(
-      'apps/desktop/src/shared/runtime-ipc.ts',
+      'apps/desktop/src/shared/instruction-contracts.ts',
       'The SAME value that was sent',
     )
     // ⛔ It used to end *"the string in the prompt cannot disagree"*; the hand-off is the last step.

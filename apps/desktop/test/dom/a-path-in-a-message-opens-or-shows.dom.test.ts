@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { page, userEvent } from 'vitest/browser'
 import { defineComponent, h, nextTick, ref, shallowRef } from 'vue'
@@ -15,7 +16,6 @@ import type {
   MessagePathTarget,
   OpenMessagePathResult,
   RevealResult,
-  TranscriptEvent,
 } from '../../src/shared/runtime-ipc'
 import type { HistoryEvent } from '../../src/shared/recovery'
 import { mount, paneProps, permission, record, unmountAll, type Mounted } from './harness'
@@ -154,7 +154,9 @@ const controlFor = (view: Mounted, text: string): HTMLButtonElement | undefined 
   controls(view).find((button) => button.dataset.messagePath === text)
 /** The drawn path beside an Open control: plain text, never a control itself. */
 const textOf = (control: HTMLElement): HTMLElement =>
-  control.closest('.message-path')!.querySelector<HTMLElement>('.message-path-text')!
+  control
+    .closest('.message-path')!
+    .querySelector<HTMLElement>('.message-path-text, .message-path-label')!
 const textFor = (view: Mounted, text: string): HTMLElement | undefined => {
   const control = controlFor(view, text)
   return control ? textOf(control) : undefined
@@ -602,7 +604,7 @@ describe('a link to a file on this computer offers the same controls as a path i
       expect(main.asks.flatMap((ask) => ask.texts)).toContain(path)
       const control = controlFor(view, path)
       expect(control, 'the link drew no control').toBeDefined()
-      expect(textOf(control!).textContent).toBe(path)
+      expect(textOf(control!).textContent).toBe('The app, version 1.2.3')
       expect(textOf(control!).title).toBe(path)
       expect(control!.getAttribute('data-opens')).toBe('false')
       expect(view.q('assistant-markdown').textContent).toContain('The app, version 1.2.3')
@@ -634,7 +636,7 @@ describe('a link to a file on this computer offers the same controls as a path i
       const path = 'C:\\Users\\fictional\\My Files\\a\\_b\\notes.md'
       installMain({ existing: [path] })
       const { view } = await transcript([said(link('notes', `<${path}>`))])
-      expect(textFor(view, path)?.textContent).toBe(path)
+      expect(textFor(view, path)?.textContent).toBe('notes')
       expect(textFor(view, path)?.title).toBe(path)
       expect(controlFor(view, path)?.getAttribute('aria-label')).toBe('Open file')
     })
@@ -645,7 +647,7 @@ describe('a link to a file on this computer offers the same controls as a path i
       const absolute = 'C:\\Users\\fictional\\out\\report.md'
       const main = installMain({ existing: [path], resolved: { [path]: absolute } })
       const { view } = await transcript([said(link('the report', path))])
-      expect(textFor(view, path)?.textContent).toBe(absolute)
+      expect(textFor(view, path)?.textContent).toBe('the report')
       expect(textFor(view, path)?.title).toBe(absolute)
       controlFor(view, path)!.click()
       await settle()
@@ -665,8 +667,8 @@ describe('a link to a file on this computer offers the same controls as a path i
         const share = view.q('message-path-network')
         const text = share
           .closest('.message-path')!
-          .querySelector<HTMLElement>('.message-path-text')!
-        expect(text.textContent).toBe(path)
+          .querySelector<HTMLElement>('.message-path-text, .message-path-label')!
+        expect(text.textContent).toBe('the report')
         expect(text.title).toBe(path)
         expect(share.getAttribute('aria-disabled')).toBe('true')
         expect(share.title).toBe("Network paths can't be opened here.")
@@ -693,7 +695,7 @@ describe('a link to a file on this computer offers the same controls as a path i
     const main = installMain({ existing: [path] })
     const { view } = await transcript([said(link('the report', path))])
     await capture(view, 'mac')
-    expect(textFor(view, path)?.textContent).toBe(path)
+    expect(textFor(view, path)?.textContent).toBe('the report')
     expect(textFor(view, path)?.title).toBe(path)
     expect(controlFor(view, path)?.getAttribute('aria-label')).toBe('Open file')
     controlFor(view, path)!.click()
@@ -716,7 +718,7 @@ describe('a link to a file on this computer offers the same controls as a path i
     const { view } = await transcript([said(link(label!, written))])
     expect(main.asks.flatMap((ask) => ask.texts)).toEqual([path])
     const control = controlFor(view, path)!
-    expect(textOf(control).textContent).toBe(path)
+    expect(textOf(control).textContent).toBe(label)
     expect(view.q('assistant-markdown').textContent).not.toContain('%20')
     if (label !== path) expect(view.q('assistant-markdown').textContent).toContain(label)
     copyFor(view, path).click()
@@ -740,13 +742,13 @@ describe('a link to a file on this computer offers the same controls as a path i
     ['reports/x.md', `${HERE}/reports/x.md`],
     ['./x', `${HERE}/x`],
     ['../x', '/Users/someone/x'],
-  ])('shows main’s resolved destination for the relative link %s', async (path, absolute) => {
+  ])('keeps the label with main’s resolved destination on hover for %s', async (path, absolute) => {
     onPlatform('MacIntel')
     const main = installMain({ existing: [path!], resolved: { [path!]: absolute! } })
     const { view } = await transcript([said(link('report.pdf', path!))])
     expect(main.asks.flatMap((ask) => ask.texts)).toEqual([path])
     const control = controlFor(view, path!)!
-    expect(textOf(control).textContent).toBe(absolute)
+    expect(textOf(control).textContent).toBe('report.pdf')
     expect(textOf(control).title).toBe(absolute)
     expect(view.q('assistant-markdown').textContent).toContain('report.pdf')
     control.click()
@@ -759,7 +761,7 @@ describe('a link to a file on this computer offers the same controls as a path i
     const main = installMain({ existing: [path] })
     const { view } = await transcript([said(link('notes', `<${path}>`))])
     expect(main.asks.flatMap((ask) => ask.texts)).toEqual([path])
-    expect(textFor(view, path)?.textContent).toBe(path)
+    expect(textFor(view, path)?.textContent).toBe('notes')
     expect(textFor(view, path)?.title).toBe(path)
   })
 
@@ -770,7 +772,7 @@ describe('a link to a file on this computer offers the same controls as a path i
       const main = installMain({ existing: [path], resolved: { [path]: absolute } })
       const { view } = await transcript([said(link('the report', path))])
       expect(main.asks.flatMap((ask) => ask.texts)).toEqual([path])
-      expect(textFor(view, path)?.textContent).toBe(absolute)
+      expect(textFor(view, path)?.textContent).toBe('the report')
       expect(textFor(view, path)?.title).toBe(absolute)
       controlFor(view, path)!.click()
       await settle()
@@ -779,14 +781,14 @@ describe('a link to a file on this computer offers the same controls as a path i
   )
 
   it.each(['report.md', 'x'])(
-    'keeps the missing basename %s as plain destination text',
+    'keeps the missing basename %s behind its plain label',
     async (path) => {
       const main = installMain({ missing: [path] })
       const { view } = await transcript([said(link('the report', path))])
       expect(main.asks.flatMap((ask) => ask.texts)).toEqual([path])
       expect(controls(view)).toHaveLength(0)
       expect(anchors(view)).toHaveLength(0)
-      expect(view.q('assistant-markdown').textContent?.trim()).toBe(`See the report ${path}.`)
+      expect(view.q('assistant-markdown').textContent?.trim()).toBe('See the report.')
     },
   )
 
@@ -855,9 +857,7 @@ describe('a link to a file on this computer offers the same controls as a path i
     expect(body.querySelector('img')).toBeNull()
     expect(body.querySelector('.message-path-label .refused-image')?.tagName).toBe('SPAN')
     expect(body.querySelector('button button, a button, button a')).toBeNull()
-    expect(body.textContent?.trim()).toBe(
-      `Before badge — https://example.com/badge.png ${path} after.`,
-    )
+    expect(body.textContent?.trim()).toBe('Before badge — https://example.com/badge.png after.')
     controlFor(view, path)!.click()
     await settle()
     expect(main.opens).toEqual([{ sessionId: 'sess_1', text: path }])
@@ -871,12 +871,10 @@ describe('a link to a file on this computer offers the same controls as a path i
       const { view } = await transcript([said(`Before [document](<${path}>) after.`)])
       const control = controlFor(view, path)
       expect(control).toBeDefined()
-      expect(textOf(control!).textContent).toBe(path)
+      expect(textOf(control!).textContent).toBe('document')
       expect(textOf(control!).title).toBe(path)
       expect(anchors(view)).toHaveLength(0)
-      expect(view.q('assistant-markdown').textContent?.trim()).toBe(
-        `Before document ${path} after.`,
-      )
+      expect(view.q('assistant-markdown').textContent?.trim()).toBe('Before document after.')
       control!.click()
       await settle()
       expect(main.opens).toEqual([{ sessionId: 'sess_1', text: path }])
@@ -891,11 +889,9 @@ describe('a link to a file on this computer offers the same controls as a path i
       const label = `document ${token}`
       const sourceLabel = label.replaceAll('`', '\\`')
       const { view } = await transcript([said(`Before [${sourceLabel}](<${path}>) after.`)])
-      expect(view.q('assistant-markdown').textContent?.trim()).toBe(
-        `Before ${label} ${path} after.`,
-      )
+      expect(view.q('assistant-markdown').textContent?.trim()).toBe(`Before ${label} after.`)
       expect(anchors(view)).toHaveLength(0)
-      expect(textFor(view, path)?.textContent).toBe(path)
+      expect(textFor(view, path)?.textContent).toBe(label)
       controlFor(view, path)!.click()
       await settle()
       expect(main.opens).toEqual([{ sessionId: 'sess_1', text: path }])
@@ -906,7 +902,7 @@ describe('a link to a file on this computer offers the same controls as a path i
     const path = '/Users/fictional/$&.md'
     const main = installMain({ missing: [path] })
     const { view } = await transcript([said(`Before [document](<${path}>) after.`)])
-    expect(view.q('assistant-markdown').textContent?.trim()).toBe(`Before document ${path} after.`)
+    expect(view.q('assistant-markdown').textContent?.trim()).toBe('Before document after.')
     expect(controls(view)).toHaveLength(0)
     expect(anchors(view)).toHaveLength(0)
     expect(main.opens).toEqual([])
@@ -920,14 +916,16 @@ describe('a link to a file on this computer offers the same controls as a path i
       existing: [path],
       held: new Promise<void>((done) => (release = done)),
     })
-    const { view } = await transcript([said(`See [${path}](${path}).`)])
+    const { view } = await transcript([said(`See [the report](${path}).`)])
     expect(main.asks.flatMap((ask) => ask.texts)).toEqual([path])
     const body = view.q('assistant-markdown')
     expect(body.querySelector('a')).toBeNull()
-    const pending = view.q('message-path-text')
-    expect(pending.textContent).toBe(path)
+    const pending = body.querySelector<HTMLElement>('.message-path-label')!
+    expect(pending.textContent).toBe('the report')
+    expect(pending.title).toBe(path)
+    expect(pending.getAttribute('aria-label')).toBe(path)
     expect(pending.closest('a, button')).toBeNull()
-    expect(getComputedStyle(pending).color).not.toBe(getComputedStyle(body).color)
+    expect(getComputedStyle(pending).color).toBe(getComputedStyle(body).color)
     expect(view.all('message-path-copy')).toHaveLength(0)
     expect(controls(view)).toHaveLength(0)
     pending.click()
@@ -936,7 +934,7 @@ describe('a link to a file on this computer offers the same controls as a path i
     release()
     await settle()
     expect(body.querySelector('a')).toBeNull()
-    expect(textFor(view, path)?.textContent).toBe(path)
+    expect(textFor(view, path)?.textContent).toBe('the report')
     expect(copyFor(view, path)).toBeDefined()
     controlFor(view, path)!.click()
     await settle()
@@ -951,10 +949,10 @@ describe('a link to a file on this computer offers the same controls as a path i
     expect(main.asks.flatMap((ask) => ask.texts)).toEqual([path])
     expect(body.querySelector('img')).toBeNull()
     expect(body.querySelector('a[href]')).toBeNull()
-    expect(textFor(view, path)?.textContent).toBe(path)
+    expect(textFor(view, path)?.textContent).toBe('screenshot')
     expect(textFor(view, path)?.closest('a, button')).toBeNull()
     expect(copyFor(view, path)).toBeDefined()
-    expect(body.textContent?.trim()).toBe(`See screenshot ${path}.`)
+    expect(body.textContent?.trim()).toBe('See screenshot.')
     controlFor(view, path)!.click()
     await settle()
     expect(main.opens).toEqual([{ sessionId: 'sess_1', text: path }])
@@ -965,7 +963,7 @@ describe('a link to a file on this computer offers the same controls as a path i
     const main = installMain({ existing: [path] })
     const { view } = await transcript([said(`See [report.pdf](${path} "report.pdf").`)])
     const control = controlFor(view, path)!
-    expect(textOf(control).textContent).toBe(path)
+    expect(textOf(control).textContent).toBe('report.pdf')
     expect(textOf(control).title).toBe(path)
     expect(controlFor(view, 'report.pdf')).toBeUndefined()
     control.click()
@@ -979,7 +977,7 @@ describe('a link to a file on this computer offers the same controls as a path i
     const { view } = await transcript([said(link('the report', path))])
     expect(controls(view)).toHaveLength(0)
     expect(anchors(view)).toHaveLength(0)
-    expect(view.q('assistant-markdown').textContent).toContain(path)
+    expect(view.q('assistant-markdown').textContent?.trim()).toBe('See the report.')
     expect(view.q('assistant-markdown').querySelector('span[title]')?.getAttribute('title')).toBe(
       path,
     )

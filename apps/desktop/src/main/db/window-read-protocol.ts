@@ -1,7 +1,8 @@
 import { z } from 'zod'
 import { MAX_DIGEST_SPAN_MS } from '../../shared/digest'
 import { RECENT_ACTIVITY_LINES, type RecentActivityReading } from '../../shared/recent-activity'
-import type { SessionStore, SkipNote, ThreadLeadRow } from './session-store'
+import type { SessionStore, ThreadLeadRow } from './session-store'
+import type { SkipNote } from './rows-unread'
 
 export const WINDOW_READ_BOUNDS = {
   sessions: 2_000,
@@ -55,17 +56,17 @@ export interface WindowRoutes {
   readonly questions: ReturnType<SessionStore['questionsAPersonMustAnswer']>
   readonly decisions: ReturnType<SessionStore['decisionsAwaitingAPerson']>
 }
-export interface WindowLeads {
+interface WindowLeads {
   readonly kind: 'leads'
   readonly rows: readonly ThreadLeadRow[]
 }
-export interface WindowFiles {
+interface WindowFiles {
   readonly kind: 'files'
   readonly tree: ReturnType<SessionStore['filesKept']>
   readonly added: ReturnType<SessionStore['filesKept']>
   readonly roster: ReturnType<SessionStore['agentIdentities']>
 }
-export interface WindowActivity extends RecentActivityReading {
+interface WindowActivity extends RecentActivityReading {
   readonly kind: 'activity'
 }
 export interface IncidentReading {
@@ -202,12 +203,14 @@ export class WindowReadUnavailable extends Error {
   constructor(
     readonly why: 'unavailable' | 'failed' | 'restart' | 'busy' = 'unavailable',
     readonly reason?: WindowReadFailure,
+    readonly readCause?: string,
   ) {
     super(
-      why === 'restart'
+      (why === 'restart'
         ? 'The window’s record could not be read. Restart BroCrew to try again.'
-        : 'The window’s record could not be read. Please try again.' +
-            (reason === undefined ? '' : ` (${reason})`),
+        : 'The window’s record could not be read. Please try again.') +
+        (reason === undefined ? '' : ` (${reason})`) +
+        (readCause === undefined ? '' : ` Cause: ${readCause}`),
     )
   }
 }

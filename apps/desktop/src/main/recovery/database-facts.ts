@@ -15,23 +15,6 @@ import {
 } from './files'
 import { COPY_FILE, DATABASE_FILE, isSafeName, recoveryDir, scratchDir } from './layout'
 
-/**
- * Facts about a database file, read without changing it or creating anything beside it.
- *
- * A read-only SQLite connection is not enough for that. On a database in WAL mode (the app's live
- * database always is) it creates `-wal` and `-shm` beside the file even when neither was there,
- * and leaves them; with a `-journal` beside the file it cannot roll a half-written transaction
- * back. So only a rollback-mode file with no sidecars, such as a checkpoint's copy, is opened in
- * place. Any other file is read through a private folder of its own under the data folder's
- * `recovery/scratch/`, never the system's temporary folder, so what is made there stays as private
- * as the data and goes when the workspace goes:
- * - when no `-wal` or `-journal` beside the file holds data, as after every clean exit, a hard link
- *   to the file, which costs nothing and is opened read-only;
- * - otherwise, or on a disk that makes no hard links, a copy of the file and of each sidecar
- *   holding data, which SQLite may then recover freely: a clone where the disk can make one, which
- *   takes no room, else a full copy, which is not begun when the disk says it lacks the room.
- */
-
 /** What a database file records about its migrations. */
 export type MigrationsOnDisk =
   | { readonly kind: 'absent' }
@@ -41,49 +24,20 @@ export type MigrationsOnDisk =
   /** Each applied migration as the migrator recorded it, oldest first. */
   | { readonly kind: 'recorded'; readonly migrations: readonly Migration[] }
 
-/**
- * What {@link migrationsOf} found in a file: {@link MigrationsOnDisk}, or that the file could only
- * be read through a copy and the disk has no room for one. Bytes are counted on the disk holding
- * the data folder.
- */
 export type MigrationsRead =
   MigrationsOnDisk | { readonly kind: 'no-room'; readonly needed: number; readonly free: number }
 
 /** One migration this build carries. */
 export interface BuildMigration extends Migration {
-  /**
-   * Every hash a database may record for it: drizzle's hash of the file as this build holds it, and
-   * of the same text with its line endings written the other way, as a checkout on another system
-   * converts them. Any other hash is a different migration.
-   */
   readonly recordedAs: readonly string[]
 }
 
-/**
- * How a database's applied migrations stand against this build's. The start-up check and the
- * database's open both decide by this one rule.
- */
 export type LineageFit =
   /** This build's first migrations, some or all: this build opens it, applying any left. */
-  | 'fits'
-  /**
-   * A latest migration later than this build's newest: a newer build migrated it. The migrator's
-   * own measure, by which it would apply nothing to it and run on a schema this build does not know.
-   */
-  | 'newer'
-  /**
-   * Anything else: a migration this build does not carry, or one whose file changed since, and none
-   * later than this build's newest. The migrator would apply this build's later ones over it.
-   */
-  | 'foreign'
+  'fits' | 'newer' | 'foreign'
 
 export interface MigrationsOfOptions {
   readonly fs?: RecoveryFs
-  /**
-   * The data folder `file` belongs to; a read through a copy makes it under this folder's
-   * `recovery/scratch/`. When not given, the live database's own folder. Any other file that can
-   * only be read through a copy is then unreadable.
-   */
   readonly userData?: string
   /** Bytes free on the disk holding a path, or null when that cannot be told. */
   readonly freeBytes?: (path: string) => number | null
@@ -98,12 +52,6 @@ const SHA256_HEX = /^[0-9a-f]{64}$/
 /** Room a read through a copy keeps free for the files SQLite makes beside the copy. */
 const SCRATCH_HEADROOM_BYTES = 64 * 1024 * 1024
 
-/**
- * The migrations this build carries, oldest first: each entry of its migrations folder's
- * `meta/_journal.json`, with the `when` the migrator records as `created_at` and the sha256 of its
- * `<tag>.sql` text, which the migrator records as `hash`. Throws when the folder cannot be read,
- * since a build without it cannot open any database.
- */
 export async function buildLineage(
   migrationsFolder: string,
   fs: RecoveryFs = nodeFs,
@@ -148,10 +96,6 @@ export function isTheBuildsMigration(
   )
 }
 
-/**
- * Whether a database that applied `applied` is one `lineage` can open: the same migrations, by time
- * and by hash, in the same order, as the build's first ones. A database with none applied is too.
- */
 export function isLineagePrefix(
   applied: readonly Migration[],
   lineage: readonly BuildMigration[],
@@ -175,10 +119,6 @@ function latestOf(migrations: readonly Migration[]): number {
   return migrations.at(-1)?.createdAt ?? Number.NEGATIVE_INFINITY
 }
 
-/**
- * Whether the build has migrations to apply to a database that applied `applied`, by the migrator's
- * own measure: it applies every migration later than the latest one recorded.
- */
 export function hasPendingMigrations(
   applied: readonly Migration[],
   lineage: readonly BuildMigration[],
@@ -236,17 +176,11 @@ export async function migrationsOf(
   }
 }
 
-/**
- * The migrations an open database records: the rule {@link migrationsOf} reads a file by, for a
- * connection already open on it. Never throws.
- */
 export function migrationsRecordedIn(db: Database.Database): MigrationsOnDisk {
   try {
     const table = db
       .prepare(`SELECT 1 AS found FROM sqlite_master WHERE type = 'table' AND name = ?`)
       .get('__drizzle_migrations')
-    // Only a database with no tables of its own is a new workspace. One with tables and no
-    // migration record was not made by the migrator, and migrating it would write into it.
     const others = db
       .prepare(
         `SELECT 1 AS found FROM sqlite_master WHERE type = 'table' AND name <> ? AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'`,
@@ -336,11 +270,6 @@ interface ToRead {
   readonly holding: readonly { readonly suffix: string; readonly bytes: number }[]
 }
 
-/**
- * Reads a database through a folder of its own in `recovery/scratch/`, named by a random UUID (the
- * start-up sweep removes such folders when a read was cut short), and removes the folder after,
- * with `recovery/scratch/` and `recovery/` when they are left empty.
- */
 async function throughScratch(
   toRead: ToRead,
   fs: RecoveryFs,
@@ -354,10 +283,8 @@ async function throughScratch(
     await privateDir(recoveryDir(userData), fs)
     await privateDir(scratchDir(userData), fs)
     await fs.mkdir(folder, { mode: 0o700 })
-    await fs.chmod(folder, 0o700)
+
     const copy = join(folder, COPY_FILE)
-    // A link shares the file's bytes, so the connection on it stays read-only. A database that is
-    // itself a link is copied, since a hard link would not follow it on every system.
     if (holding.length === 0 && !(await fs.lstat(file)).isSymbolicLink()) {
       const linked = await fs.link(file, copy).then(
         () => true,
@@ -387,20 +314,11 @@ async function throughScratch(
   }
 }
 
-/**
- * What a read through a copy can take on its disk: the copied bytes, the sidecars' bytes again,
- * since SQLite folds a `-wal` into the copy's main file or rolls a `-journal` back into it, and
- * room for the files SQLite keeps beside it.
- */
 function spaceToReadThroughACopy({ bytes, holding }: ToRead): number {
   const sidecars = holding.reduce((sum, sidecar) => sum + sidecar.bytes, 0)
   return bytes + 2 * sidecars + SCRATCH_HEADROOM_BYTES
 }
 
-/**
- * Whether every file was cloned, which shares the source's blocks until either side is written
- * and so takes no space. False as soon as one cannot be, on a disk or a system that clones nothing.
- */
 async function clonedAll(
   pairs: readonly (readonly [string, string])[],
   fs: RecoveryFs,

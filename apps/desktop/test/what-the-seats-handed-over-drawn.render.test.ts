@@ -1,3 +1,6 @@
+import { ToolWatchingResumeRuntime } from './lib/provider-double'
+import type { AgentModelChoice } from '../src/shared/model-choice-contracts'
+import type { InstructionProposedEvent, TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -11,15 +14,11 @@ import {
   type AgentToolset,
   type ModelChoice,
   type ProviderRuntimeContext,
-  type ResumeOptions,
-  type SessionRef,
-  type StartOptions,
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { type ToolName } from '../src/main/runtime/agent-tools'
@@ -44,19 +43,18 @@ import { absenceUnreadSays } from '../src/renderer/src/lib/rows-unread'
 import { readableError } from '../src/renderer/src/lib/session-record'
 import { applyEvent, createTranscript, type NoticeItem } from '../src/renderer/src/lib/transcript'
 import { HOLDING_SAYS, type AgentRemoved } from '../src/shared/agent-roster'
-import { aChoiceInWords, type AgentModelChoice } from '../src/shared/model-choice'
+import { aChoiceInWords } from '../src/shared/model-choice'
 import {
   DEFAULT_PROFILE_ID,
   PROVIDER_NAME,
   type AgentIdentities,
   type AgentIdentity,
-  type InstructionProposedEvent,
   type RuntimeBridge,
   type RuntimeEventMessage,
-  type TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 import { stalledWorkKey, type StalledWork } from '../src/shared/stalled-work'
 import { everythingOverTheWire } from './lib/the-wire'
+import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * # 🔴 712 · what the seats handed over, drawn — the node half, over real doors where there are any
@@ -177,26 +175,9 @@ const render = (component: unknown, props: Record<string, unknown>): Promise<str
  * object — and a person's Close. ⚑ The provider
  * double keeps every toolset the host handed out, so the lead's own doors are the ones pressed.
  */
-class ToolsetKeeper extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handed: AgentToolset[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-    const handle = await super.start(options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
-  }
-  override async resume(
-    ref: SessionRef,
-    options: ResumeOptions,
-  ): ReturnType<FakeRuntime['resume']> {
-    const handle = await super.resume(ref, options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
+class ToolsetKeeper extends ToolWatchingResumeRuntime {
+  constructor(provider: Provider, handed: AgentToolset[], sessions: FakeProviderSessions) {
+    super(provider, handed, sessions)
   }
 }
 
@@ -224,26 +205,14 @@ describe('§2 · draw 2 (`702` GAP-3) — a giver told nothing is named so on th
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ToolsetKeeper(provider, handed, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built
@@ -478,9 +447,7 @@ describe('§4 · draw 4 (R56, `696` L2) — the provider control says what its p
     folders = new Set([DEFAULT_PROFILE_ID])
     host = new RuntimeHost({
       store: sessions,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new CatalogueOnly(provider),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
         const home = join(userData, 'provider-homes', profileId ?? DEFAULT_PROFILE_ID, provider)
@@ -491,13 +458,7 @@ describe('§4 · draw 4 (R56, `696` L2) — the provider control says what its p
       resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
       listProfiles: () => [...folders],
       newSessionId: () => `sess_${Math.random().toString(36).slice(2)}`,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     const seat = new Seat('webContents:1')
     const run = async <T>(kind: string, input: Record<string, unknown> = {}): Promise<T> =>
@@ -819,9 +780,7 @@ describe('§6 · draw 8 (`707` GAP-5, R41) — every identity a person reads is 
       applyMigrations(db, migrationsFolder)
       host = new RuntimeHost({
         store: createSessionStore(db),
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(userData, 'exports'),
+        ...neutralHostDeps(() => userData),
         createRuntime: (provider: Provider) => new CatalogueOnly(provider),
         prepareProviderHome: (provider: Provider, profileId?: string) => {
           const home = join(userData, 'provider-homes', profileId ?? DEFAULT_PROFILE_ID, provider)
@@ -832,13 +791,7 @@ describe('§6 · draw 8 (`707` GAP-5, R41) — every identity a person reads is 
         resolveCwd: (sessionId, requested) => requested ?? join(userData, 'scratch', sessionId),
         listProfiles: () => [DEFAULT_PROFILE_ID],
         newSessionId: () => `sess_${Math.random().toString(36).slice(2)}`,
-        readProviderConfig: (_provider, home) => ({
-          home,
-          homeEnv: 'CLAUDE_CONFIG_DIR',
-          model: 'm',
-          authNote: null,
-          files: [],
-        }),
+        readProviderConfig: fixtureProviderConfig,
       })
     })
 

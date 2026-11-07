@@ -1,9 +1,11 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
+import type { WorkSentEvent } from '../../src/shared/task-contracts'
 import { expandAgentCards } from './harness'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { useWhoCalledWhom } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import { BODY_WAS_CUT, NEW_BRIEF_MARK } from '../../src/renderer/src/lib/outgoing-card'
-import type { TranscriptEvent, WorkSentEvent } from '../../src/shared/runtime-ipc'
+
 import { drawnReady } from './drawn'
 import { mount, paneProps, record, unmountAll, visible } from './harness'
 

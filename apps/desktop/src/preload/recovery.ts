@@ -15,12 +15,6 @@ import type {
   StartupVerdict,
 } from '../shared/recovery'
 
-/**
- * The recovery window's preload: `window.recovery`, and nothing else. It is sandboxed, so it loads
- * no module but `electron`: everything it takes from elsewhere is a type, and the channel names are
- * written out here, held to the shared ones by their type.
- */
-
 const CHANNELS = {
   verdict: 'recovery:verdict',
   restore: 'recovery:restore',

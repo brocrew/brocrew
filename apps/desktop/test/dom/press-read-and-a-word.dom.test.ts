@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
@@ -6,7 +7,7 @@ import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
 import { DROPPED_OFF_THE_SCALE, DROPPED_TEXT } from '../../src/renderer/src/lib/drawer-tab-roles'
 import { DRAWER_TABS, DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { ROLE_ORDER, ROLE_SIZE, type TextRole } from '../../src/renderer/src/lib/text-roles'
-import type { ContextReading, CreatedSession, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { ContextReading, CreatedSession } from '../../src/shared/runtime-ipc'
 import { CAPABILITY_FIXTURE } from '../provider-capability-fixture'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 import {

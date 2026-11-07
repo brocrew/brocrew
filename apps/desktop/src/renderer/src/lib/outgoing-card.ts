@@ -1,6 +1,7 @@
+import type { AgentMessageKind } from '../../../shared/task-contracts'
 import { agentName, type AgentIdentity } from '../../../shared/runtime-ipc'
 import type { RefusalTold } from '../../../shared/refusals'
-import type { AgentMessageKind } from '../../../shared/tasks'
+
 import type {
   OutgoingGive,
   OutgoingRebrief,
@@ -66,7 +67,7 @@ export function withoutHandles(text: string): string {
 }
 
 /** ⚑ What the card is, beside its heading — the `RELAYED_MARK` position. */
-export const REPLY_MARK = 'reply'
+const REPLY_MARK = 'reply'
 
 /** ⚑ A piece of work this conversation gave, beside its heading. */
 export const GIVE_MARK = 'work'

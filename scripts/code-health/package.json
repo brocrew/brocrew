@@ -1,0 +1,16 @@
+{
+  "name": "brocrew-code-health-tools",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "scan:clones": "jscpd"
+  },
+  "dependencies": {
+    "@vue/compiler-sfc": "3.5.40",
+    "dependency-cruiser": "17.3.8",
+    "jscpd": "5.4.2",
+    "knip": "6.44.1",
+    "typescript": "5.9.3"
+  }
+}

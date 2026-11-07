@@ -14,6 +14,7 @@ export type ThemeFileRead =
       readonly failure: Exclude<ThemeFileFailure, 'too-large'>
       /** Set when the system refused the read, so the file may be readable later. */
       readonly refused?: unknown
+      readonly cause?: unknown
     }
   | {
       readonly ok: false
@@ -28,10 +29,6 @@ export interface ThemeReadFiles {
   open(path: string, flags: number): Promise<FileHandle>
 }
 
-/**
- * Whether `error` is the system refusing a read (a file held, a permission, an I/O fault) rather
- * than saying the file is not there. A refused read says nothing about what the file holds.
- */
 export function readRefused(error: unknown): boolean {
   const code = errorCode(error)
   return code !== 'ENOENT' && code !== 'ENOTDIR'
@@ -40,8 +37,8 @@ export function readRefused(error: unknown): boolean {
 /** An unreadable answer, keeping the error when the system refused the read. */
 export const unreadable = (error: unknown): ThemeFileRead =>
   readRefused(error)
-    ? { ok: false, failure: 'unreadable', refused: error }
-    : { ok: false, failure: 'unreadable' }
+    ? { ok: false, failure: 'unreadable', refused: error, cause: error }
+    : { ok: false, failure: 'unreadable', cause: error }
 
 export const THEME_READ_FILES: ThemeReadFiles = {
   lstat: (path) => lstat(path, { bigint: true }),
@@ -53,7 +50,7 @@ const sameFile = (a: BigIntStats, b: BigIntStats): boolean => a.dev === b.dev &&
 const unchanged = (a: BigIntStats, b: BigIntStats): boolean =>
   sameFile(a, b) && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs
 
-export function insideThemeFolder(root: string, path: string): boolean {
+function insideThemeFolder(root: string, path: string): boolean {
   const rest = relative(root, path)
   return rest !== '' && rest !== '..' && !rest.startsWith(`..${sep}`) && !isAbsolute(rest)
 }

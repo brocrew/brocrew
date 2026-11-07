@@ -1,3 +1,4 @@
+import type { UserTurnEvent, UserTurnPart } from './human-answer-contracts'
 /**
  * # 🔴 D-012 · a conversation's last exchange, and the words a giver can read (proposal §6.2, §6.5)
  *
@@ -24,7 +25,7 @@
  * for this app's own. A message cannot make itself look like a person's by what it says.
  */
 
-import { theMessagesOf, type UserTurnEvent, type UserTurnPart } from './runtime-ipc'
+import { theMessagesOf } from './runtime-ipc'
 
 /** ⚑ **Who sent the message a conversation received.** */
 export type WhoSentIt =

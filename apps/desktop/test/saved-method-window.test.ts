@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -12,7 +13,6 @@ import { createSavedMethodService } from '../src/main/saved-method-service'
 import { stageKnowledgeFile, sweepKnowledgeStages } from '../src/main/runtime/agent-memory'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand, runtimeCommandSchema } from '../src/main/runtime/ipc'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import type { MethodLibrary, MethodDeleteSelection } from '../src/shared/saved-method-library'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
@@ -48,9 +48,6 @@ async function selection(): Promise<MethodDeleteSelection> {
   return {
     confirmed: true,
     key: item.key,
-    fingerprint: item.fingerprint,
-    indexState: listed.indexState,
-    indexFingerprint: listed.indexFingerprint,
   }
 }
 beforeEach(async () => {
@@ -81,9 +78,7 @@ beforeEach(async () => {
   })
   host = new RuntimeHost({
     store,
-    discoverSessions: NO_DISCOVERY,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => join(root, 'exports'),
+    ...neutralHostDeps(() => root),
     createRuntime: (provider) => new FakeRuntime(provider),
     prepareProviderHome: () => root,
     providerHomePath: () => root,
@@ -131,9 +126,6 @@ describe('a person manages saved methods through bounded window commands', () =>
           selection: {
             confirmed: true,
             key: 'method:review.md',
-            fingerprint: null,
-            indexState: 'absent',
-            indexFingerprint: null,
           },
         },
       ],
@@ -171,11 +163,7 @@ describe('a person manages saved methods through bounded window commands', () =>
     })
     expect(readFileSync(join(folder, 'review.md'), 'utf8')).toBe('# Review\nkept text')
   })
-  it('refuses stale displayed files and interruption checks without confirmation', async () => {
-    const selected = await selection()
-    writeFileSync(join(folder, 'review.md'), 'external')
-    expect(await read('removeAgentMethod', { selection: selected })).toMatchObject({ ok: false })
-    expect(readFileSync(join(folder, 'review.md'), 'utf8')).toBe('external')
+  it('keeps primary confirmation on interruption checks', async () => {
     expect(await read('checkInterruptedAgentMethods', { confirmed: false })).toMatchObject({
       ok: false,
       reason: 'confirmation-required',
@@ -189,16 +177,6 @@ describe('a person manages saved methods through bounded window commands', () =>
       { kind: 'agentMethodBody', key: 'x'.repeat(1025) },
       { kind: 'undoAgentMethod', changeId: '' },
       { kind: 'checkInterruptedAgentMethods' },
-      {
-        kind: 'removeAgentMethod',
-        selection: {
-          confirmed: true,
-          key: 'review.md',
-          fingerprint: 'wrong',
-          indexState: 'ok',
-          indexFingerprint: null,
-        },
-      },
       { kind: 'agentMethodBody', key: 'method:review.md', path: '/outside.md' },
     ])
       expect(

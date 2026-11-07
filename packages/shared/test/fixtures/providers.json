@@ -232,7 +232,7 @@
       },
       "homeCredential": {
         "state": "available",
-        "note": "This profile keeps a sign-in of its own — or, while an OpenAI API key is saved under “API key” on the Codex card in Providers, that key instead. Where your machine’s Codex CLI has one, it starts as a copy of that; where it has none, as a copy of BroBot’s own. The copy is made once, is readable only by you, and is never replaced on its own."
+        "note": "This profile keeps a sign-in of its own — or, while an OpenAI API key is saved under “API key” on the Codex card in Providers, that key instead. Where your machine’s Codex CLI has one, it starts as a copy of that; where it has none, as a copy of BroBot’s own. The copy is made once and is never replaced on its own."
       },
       "ultracode": {
         "state": "absent",
@@ -313,7 +313,7 @@
       "files": [
         {
           "name": "auth.json",
-          "note": "the credential this profile runs on, at 0600 — copied from ~/.codex, or minted here by \"Sign in for this agent\""
+          "note": "the credential this profile runs on — copied from ~/.codex, or minted here by \"Sign in for this agent\""
         },
         {
           "name": "config.toml",

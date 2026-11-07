@@ -1,3 +1,4 @@
+import { neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -8,7 +9,6 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   RuntimeHost,
   type RuntimeEventSink,
@@ -92,9 +92,7 @@ describe('D-020 · a field nobody declared is refused by name', () => {
 
   const depsOver = (): RuntimeHostDeps => ({
     store,
-    discoverSessions: NO_DISCOVERY,
-    nativeTranscriptPath: () => null,
-    exportDirectory: () => join(userData, 'exports'),
+    ...neutralHostDeps(() => userData),
     createRuntime: (provider: Provider) => new FakeRuntime(provider),
     listProfiles: () => folders,
     prepareProviderHome: (provider, profileId) => {
@@ -106,13 +104,7 @@ describe('D-020 · a field nobody declared is refused by name', () => {
     resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
     newSessionId: () => `sess_${++counter}`,
     now: tick,
-    readProviderConfig: (provider, home) => ({
-      home,
-      homeEnv: 'CLAUDE_CONFIG_DIR',
-      model: 'm',
-      authNote: null,
-      files: [],
-    }),
+    readProviderConfig: fixtureProviderConfig,
   })
 
   beforeEach(() => {

@@ -1,7 +1,8 @@
+import type { RefusedInstruction } from '../../../shared/instruction-contracts'
 import { claudeAutoMemoryDir, claudeAutoMemoryIndex, isClaudeMemoryTopic } from '@brobot2/runtime'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import type { RefusedInstruction } from '../../../shared/runtime-ipc'
+
 import type { AgentMemoryStoreRead } from '../instruction-types'
 import { AGENT_MEMORY_NOTES_SHOWN } from '../instruction-limits'
 import { readMemoryStore, realPath, memoryDirNames } from '../instruction-io'
@@ -87,7 +88,7 @@ export function readClaudeAgentMemory(providerHome: string): ClaudeMemoryRead {
   }
 }
 
-export function claudeMemoryTopics(dir: string): {
+function claudeMemoryTopics(dir: string): {
   names: string[]
   refused: RefusedInstruction | null
 } {

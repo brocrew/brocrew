@@ -1,3 +1,4 @@
+import { RecordingSink, neutralHostDeps, fixtureProviderConfig } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -14,14 +15,12 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   RuntimeHost,
   THE_APP_ITSELF,
   type RuntimeEventSink,
 } from '../src/main/runtime/runtime-host'
 import { BeingDoneTracker } from '../src/main/runtime/being-done'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import {
   ACTIVITY_PHASES,
   NOTHING_WAS_SAID,
@@ -74,17 +73,6 @@ const withoutComments = (source: string): string =>
 
 /** ⚑ **A conversation nobody is watching** — the population this feature is mostly about. */
 const NOBODY_IS_WATCHING = null
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
 
 class CapturingRuntime extends FakeRuntime {
   readonly issued: Awaited<ReturnType<FakeRuntime['start']>>[] = []
@@ -211,9 +199,7 @@ describe('575 · what each agent is doing', () => {
     }) as SessionStore
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => {
         const held = runtimes.get(provider) ?? new CapturingRuntime(provider)
         runtimes.set(provider, held)
@@ -229,13 +215,7 @@ describe('575 · what each agent is doing', () => {
       newSessionId: () => `sess_${++counter}`,
       // ⚠️ A stream nobody ever ends must not charge this suite the default drain (`509`'s note).
       closeDrainTimeoutMs: 40,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
   })
 

@@ -99,6 +99,10 @@ for (const [plugin, exportPlugin] of [
     expect(
       dryRun.match(/git status --porcelain --untracked-files=all --ignored=matching/g),
     ).toHaveLength(2)
+    const sourceGuards = dryRun
+      .split('\n')
+      .filter((line) => line.includes('git status --porcelain'))
+    for (const guard of sourceGuards) expect(guard).toContain('plugins/shared/ui')
     for (const source of [
       'src',
       'ui',

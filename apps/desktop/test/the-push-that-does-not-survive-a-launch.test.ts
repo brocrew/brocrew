@@ -1,4 +1,10 @@
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
+import { waitFor } from './lib/f093-host'
+import { TASK_STATES } from '../src/shared/task-contracts'
+import type { PieceRow, TaskState, WorkStallTold } from '../src/shared/task-contracts'
+import { REQUEST_STATES } from '../src/shared/question-contracts'
+import { MAILBOX_KINDS } from '../src/shared/conversation-events'
+import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversation-events'
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,14 +21,17 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { TASK_IS_OPEN, TASK_STATES, undrivenSentence } from '../src/shared/tasks'
-import type { PieceRow, TaskState } from '../src/shared/tasks'
+import { TASK_IS_OPEN, undrivenSentence } from '../src/shared/tasks'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **648 · `message_never_sent`'s sentence, RENDERED rather than restated.**
@@ -36,14 +45,6 @@ import type { PieceRow, TaskState } from '../src/shared/tasks'
  * was sent* and named one of its four producers. See `TaskStallCause.message_never_sent`.
  */
 const THE_MESSAGE_NEVER_WENT = undrivenSentence('message_never_sent')
-import { REQUEST_STATES } from '../src/shared/questions'
-import { MAILBOX_KINDS } from '../src/shared/runtime-ipc'
-import type {
-  PersistedEventInfo,
-  RuntimeEventMessage,
-  TranscriptEvent,
-  WorkStallTold,
-} from '../src/shared/runtime-ipc'
 
 /**
  * 🔴 **404 · the push that does not survive a launch** — `402`'s F6, and the seam `400` left.
@@ -90,25 +91,6 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 const mainRoot = join(here, '../src/main')
 const sharedRoot = join(here, '../src/shared')
 
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** `394`'s double, with the handles kept — a test has to BE the provider to ask like one. */
 class ProviderDouble extends FakeRuntime {
   constructor(
@@ -149,27 +131,15 @@ describe('404 · the push that does not survive a launch', () => {
   const buildHost = (over: SessionStore = store): RuntimeHost => {
     const built = new RuntimeHost({
       store: over,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built
@@ -1026,7 +996,7 @@ describe('404 · the push that does not survive a launch', () => {
       // rule being kept. ⚑ Non-vacuous: the string is still in the file, one line below.
       // ⚑ **D-016 · the receipt's word is `work_stall_told`** (it was `work_reported`).
       const fold = codeOnly(sourceOf(sharedRoot, 'tasks.ts'))
-      expect(sourceOf(sharedRoot, 'tasks.ts')).toContain('work_stall_told')
+      expect(sourceOf(sharedRoot, 'task-contracts.ts')).toContain('work_stall_told')
       expect(fold).not.toContain('work_stall_told')
       // ⛔ **The store's narrow task read does not select it either**, which is the other half: a
       // type the fold ignores but the reader fetches is a row somebody will eventually fold.

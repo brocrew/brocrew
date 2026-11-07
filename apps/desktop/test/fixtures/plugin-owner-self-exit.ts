@@ -1,32 +1,30 @@
 // Fictional, retained-process fixture only. It never opens a default/live plugin root.
 import { spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
+import { closeSync, openSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { PluginSupervisor } from '../../src/main/plugins/supervisor/owner'
-import { keepPluginRootPrivate } from '../../src/main/plugins/private-files'
 import { SupervisorStorage } from '../../src/main/plugins/supervisor/storage'
 import { recordDrainTrace } from '../../src/main/plugins/supervisor/drain-trace'
 
 const [root, workspace, mode, fault] = process.argv.slice(2) as [string, string, string, string?]
-let refusedWrites =
-  fault === 'blocked-write-held'
-    ? Infinity
-    : fault === 'blocked-write-once'
-      ? 1
-      : fault === 'blocked-write-twice'
-        ? 2
-        : 0
 const write = SupervisorStorage.prototype.write
 SupervisorStorage.prototype.write = function (value) {
-  if (value.phase === 'blocked' && refusedWrites > 0) {
-    refusedWrites--
+  if (value.phase === 'blocked' && fault === 'blocked-write-held')
     throw Object.assign(new Error('Bearer fictional-secret /fictional/private-owner-path'), {
       code: 'EPERM',
     })
+  const reader =
+    fault === 'terminal-record-held' && ['stopped', 'blocked'].includes(value.phase)
+      ? openSync(this.record, 'r')
+      : undefined
+  try {
+    return write.call(this, value)
+  } finally {
+    if (reader !== undefined) closeSync(reader)
   }
-  return write.call(this, value)
 }
 let releaseRevocations!: () => void
 const revocations = new Promise<void>((resolve) => {
@@ -34,7 +32,7 @@ const revocations = new Promise<void>((resolve) => {
 })
 let rejectStart: ((error: Error) => void) | undefined
 let starting: Promise<unknown> | undefined
-await keepPluginRootPrivate(root)
+
 const owner = await PluginSupervisor.start({
   root,
   workspaceRoots: [workspace],
@@ -51,7 +49,6 @@ const owner = await PluginSupervisor.start({
 void owner.closed.then(() => process.exit(0))
 let physical: ChildProcess | undefined
 process.on('message', (message) => {
-  if (message === 'allow-blocked-write') refusedWrites = 0
   if (message === 'fail-start') {
     rejectStart?.(new Error('fictional start may have left an unknown descendant'))
     void starting

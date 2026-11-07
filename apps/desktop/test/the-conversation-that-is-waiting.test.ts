@@ -1,3 +1,6 @@
+import { waitFor } from './lib/f093-host'
+import type { PieceRow, WhatAConversationIsWaitingOn } from '../src/shared/task-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -15,9 +18,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
@@ -26,14 +27,14 @@ import {
   composeWhatEachPieceIsWaitingOn,
   theWaitAConversationIsIn,
   whereTheWorkItHoldsStands,
-  type PieceRow,
-  type WhatAConversationIsWaitingOn,
 } from '../src/shared/tasks'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import {
-  DEFAULT_PROFILE_ID,
-  type RuntimeEventMessage,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+  fixtureProviderConfig,
+  syntheticProviderHome,
+  neutralHostDeps,
+  RecordingSink,
+} from './lib/host-fixture'
 
 /**
  * 🔴 **621 · the conversation that is waiting, with no task to say so** — `EXT-014` §5 and
@@ -114,17 +115,6 @@ function holdingItsClose(handle: SessionHandle, gate: Promise<void>): SessionHan
 }
 
 describe('621 · the conversation that is waiting', () => {
-  class RecordingSink implements RuntimeEventSink {
-    readonly aPersonIsBehindIt = true
-    readonly messages: RuntimeEventMessage[] = []
-    alive = true
-    constructor(readonly ownerId: string) {}
-    send(message: RuntimeEventMessage): void {
-      this.messages.push(message)
-    }
-    sendLiveness(): void {}
-  }
-
   class ToolWatchingRuntime extends FakeRuntime {
     constructor(
       provider: Provider,
@@ -168,26 +158,14 @@ describe('621 · the conversation that is waiting', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built
@@ -241,14 +219,6 @@ describe('621 · the conversation that is waiting', () => {
 
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
-
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
 
   /**
    * ⛔ **Answer the card the Fake parks every turn on.** ⚠️ Without it every conversation below
@@ -669,9 +639,7 @@ describe('621 · the conversation that is waiting', () => {
       }) as SessionStore
       const counted = new RuntimeHost({
         store: counting,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(userData, 'exports'),
+        ...neutralHostDeps(() => userData),
         createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
         prepareProviderHome: (provider: Provider, profileId?: string) => {
           const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
@@ -682,13 +650,7 @@ describe('621 · the conversation that is waiting', () => {
         resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
         newSessionId: () => `sess_c${++counter}`,
         now: tick,
-        readProviderConfig: (provider, home) => ({
-          home,
-          homeEnv: 'CLAUDE_CONFIG_DIR',
-          model: 'm',
-          authNote: null,
-          files: [],
-        }),
+        readProviderConfig: fixtureProviderConfig,
       })
       hosts.push(counted)
       const living: string[] = []

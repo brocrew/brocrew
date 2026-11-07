@@ -96,7 +96,7 @@ interface Entry {
   path: string
   stat: Stats
 }
-const same = (a: Stats, b: Stats) => a.dev === b.dev && a.ino === b.ino && a.mode === b.mode
+const same = (a: Stats, b: Stats) => a.dev === b.dev && a.ino === b.ino
 
 function* removeView(managedRoot: string, root: string, rootStat: Stats): Generator<void> {
   const entries: Entry[] = []

@@ -1,26 +1,45 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
+import { closeSync, openSync } from 'node:fs'
 import { createHash, randomUUID } from 'node:crypto'
-import { lstat, mkdir, mkdtemp, readFile, realpath, rm, unlink, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  unlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
 import { PluginWorkspaceLease, supervisorRequest } from '../src/main/plugins/supervisor/client'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
+import type { DrainTrace } from '../src/main/plugins/supervisor/drain-trace'
 import { previousRunsProvenStopped } from '../src/main/plugins/supervisor/recovery-proof'
-import { keepPluginRootPrivate } from '../src/main/plugins/private-files'
 import { pluginUnavailableNotice } from '../src/shared/plugin-settings'
-import { pluginStartupReason } from '../src/main/plugins/startup-failure'
-import { PluginStartupError } from '../src/main/plugins/startup-failure'
-import { PluginSupervisorError } from '../src/main/plugins/supervisor/protocol'
+import { PluginStartupError, pluginStartupReason } from '../src/main/plugins/startup-failure'
+import { groupIdentity } from '../resources/plugin-host/process-groups.mjs'
+import {
+  APP_HELD_CONNECTION,
+  OWNER_WIRE,
+  PluginSupervisorError,
+  type WireVersion,
+} from '../src/main/plugins/supervisor/protocol'
 
 const windowsStopWithin = process.platform === 'win32' ? 10_000 : undefined
 
-// These exercise the real SQLite fence and local socket. They do not qualify legacy Windows
-// process retirement or the standalone production lifecycle.
+// Fixture SQLite/socket proof only; no legacy Windows retirement or standalone qualification.
 describe('plugin owner recovery after the caller stops waiting', () => {
   let parent = ''
+  const trace: DrainTrace[] = []
+  const readers: number[] = []
+  const readOwner = async () =>
+    JSON.parse(await readFile(join(parent, 'plugins/supervisor/owner.json'), 'utf8'))
   let owner: PluginSupervisor | undefined
   let lease: PluginWorkspaceLease | undefined
   let child: ChildProcess | undefined
@@ -28,6 +47,7 @@ describe('plugin owner recovery after the caller stops waiting', () => {
   afterEach(async () => {
     try {
       releaseWitness?.()
+      for (const fd of readers.splice(0)) closeSync(fd)
       if (child && child.exitCode === null && child.signalCode === null) {
         const exited = once(child, 'exit')
         child.kill()
@@ -36,21 +56,16 @@ describe('plugin owner recovery after the caller stops waiting', () => {
       await lease?.close()
       if (owner) {
         await owner.shutdown()
-        let timer: ReturnType<typeof setTimeout> | undefined
-        try {
-          await Promise.race([
-            owner.closed,
-            new Promise<never>((_, reject) => {
-              timer = setTimeout(
-                () =>
-                  reject(new Error(`Plugin owner did not close; fixture retained at ${parent}`)),
-                10_000,
-              )
-            }),
-          ])
-        } finally {
-          clearTimeout(timer)
-        }
+        await new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(
+            () => reject(new Error(`Plugin owner did not close; fixture retained at ${parent}`)),
+            10_000,
+          )
+          void owner!.closed.then(() => {
+            clearTimeout(timer)
+            resolve()
+          })
+        })
       }
       if (parent) await rm(parent, { recursive: true, force: true })
     } finally {
@@ -60,22 +75,24 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     lease = undefined
     child = undefined
     releaseWitness = undefined
+    trace.length = 0
   }, 30_000)
-  async function fixture(now?: () => number) {
+  async function fixture(now?: () => number, wire?: WireVersion) {
     parent = await realpath(
       await mkdtemp(
         join(process.platform === 'win32' ? tmpdir() : '/tmp', 'fictional-owner-recovery-'),
       ),
     )
     const root = join(parent, 'plugins')
-    await keepPluginRootPrivate(root)
+
     const workspaceRoot = join(parent, 'workspace')
     await mkdir(workspaceRoot, { mode: 0o700 })
-    const options = { root, workspaceRoot, build: 'fictional', generation: randomUUID() }
+    const options = { root, workspaceRoot, build: 'fictional', generation: randomUUID(), wire }
     owner = await PluginSupervisor.start({
       root,
       workspaceRoots: [workspaceRoot],
       drainWithin: 30,
+      traceDrain: (event) => trace.push(event),
       now,
     })
     lease = await PluginWorkspaceLease.attach(options)
@@ -139,9 +156,14 @@ describe('plugin owner recovery after the caller stops waiting', () => {
       releaseWitness!()
     }
   })
-  it('measures existing sixty-second orphan expiry while another workspace retains the same owner', async () => {
+  it("measures an older copy's sixty-second orphan expiry while another workspace retains the same owner", async () => {
     let now = 0
-    const { root, options } = await fixture(() => now)
+    // An older app copy has no held connection; its abandoned lease waits for the expiry.
+    // A current copy's lease ends when its connection closes (plugin-owner-held-connection).
+    const { root, options } = await fixture(() => now, {
+      ...OWNER_WIRE,
+      features: OWNER_WIRE.features.filter((one) => one !== APP_HELD_CONNECTION),
+    })
     const epoch = lease!.epoch
     const fence = await lstat(join(root, 'supervisor/owner-lock.sqlite'), { bigint: true })
     const otherWorkspace = join(parent, 'other-workspace')
@@ -166,79 +188,71 @@ describe('plugin owner recovery after the caller stops waiting', () => {
       await other.close()
     }
   })
-  it('publishes stopped after a delayed real child exit witness, even after shutdown returned false', async () => {
-    const { root } = await fixture()
+  it.each([
+    ['finishes after a delayed real child exit witness', true, 1500],
+    ['refuses overlap until the pending witness resolves', false, 1000],
+  ] as const)('%s', async (_name, physical, within) => {
+    const { root, options } = await fixture()
     const sentinel = join(root, 'profile-sentinel')
-    await writeFile(sentinel, 'fictional-profile-and-installation', { mode: 0o600 })
-    child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
-      stdio: 'ignore',
-      windowsHide: true,
-    })
-    await once(child, 'spawn')
-    const realExit = once(child, 'exit')
+    let realExit: Promise<unknown> = Promise.resolve()
+    if (physical) {
+      await writeFile(sentinel, 'fictional-profile-and-installation', { mode: 0o600 })
+      child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+        stdio: 'ignore',
+        windowsHide: true,
+      })
+      await once(child, 'spawn')
+      realExit = once(child, 'exit')
+    }
     const delivery = new Promise<void>((resolve) => {
       releaseWitness = resolve
     })
     owner!.adopt({
       stop() {
-        child!.kill()
+        child?.kill()
       },
       exited: realExit.then(() => delivery),
       async descendantsGone() {
         await realExit
-        return child!.exitCode !== null || child!.signalCode !== null
+        return !physical || child!.exitCode !== null || child!.signalCode !== null
       },
     })
     expect(await owner!.shutdown()).toBe(false)
     await realExit
-    const phase = async () =>
-      JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase
+    const phase = async () => (await readOwner()).phase
     expect(await phase()).not.toBe('stopped')
-    releaseWitness!()
-    await expect.poll(phase, { timeout: windowsStopWithin ?? 1500 }).toBe('stopped')
-    expect(await readFile(sentinel, 'utf8')).toBe('fictional-profile-and-installation')
-  })
-  it('does not turn a still-pending witness into a clean stop or overlap a successor', async () => {
-    const { root, options } = await fixture()
-    const delivery = new Promise<void>((resolve) => {
-      releaseWitness = resolve
-    })
-    owner!.adopt({
-      stop() {},
-      exited: delivery,
-      async descendantsGone() {
-        return true
-      },
-    })
-    expect(await owner!.shutdown()).toBe(false)
-    await expect(
-      PluginSupervisor.start({ root, workspaceRoots: [options.workspaceRoot] }),
-    ).rejects.toMatchObject({ code: 'busy' })
-    const record = JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8'))
-    expect(record.phase).not.toBe('stopped')
-    const launch = vi.fn()
-    await expect(
-      PluginWorkspaceLease.attach({
-        ...options,
-        generation: randomUUID(),
-        launch,
-      }),
-    ).rejects.toMatchObject({
-      code: 'busy',
-      diagnostic: {
-        phase: 'draining',
-        stage: 'attach-record',
-        probe: 'live',
-      },
-    })
-    expect(launch).not.toHaveBeenCalled()
-    releaseWitness!()
-    await expect
-      .poll(
-        async () => JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase,
-        { timeout: windowsStopWithin ?? 1000 },
-      )
-      .toBe('stopped')
+    if (!physical) {
+      await expect(
+        PluginSupervisor.start({ root, workspaceRoots: [options.workspaceRoot] }),
+      ).rejects.toMatchObject({ code: 'busy' })
+      const launch = vi.fn()
+      await expect(
+        PluginWorkspaceLease.attach({ ...options, generation: randomUUID(), launch }),
+      ).rejects.toMatchObject({
+        code: 'busy',
+        diagnostic: { phase: 'draining', stage: 'attach-record', probe: 'live' },
+      })
+      expect(launch).not.toHaveBeenCalled()
+    }
+    // Windows replacement refuses this real destination reader; it is not exit authority.
+    const reader =
+      process.platform === 'win32' ? openSync(join(root, 'supervisor/owner.json'), 'r') : undefined
+    try {
+      releaseWitness!()
+      await expect
+        .poll(() => trace.at(-1)?.stage, { timeout: windowsStopWithin ?? within })
+        .toBe('closed')
+      await owner!.closed
+    } finally {
+      if (reader !== undefined) closeSync(reader)
+    }
+    expect(await phase()).toBe(process.platform === 'win32' ? 'draining' : 'stopped')
+    if (process.platform === 'win32')
+      expect(
+        trace.filter((event) => event.stage === 'stopped-write' && event.state === 'failed'),
+      ).toMatchObject([{ attempt: 1, errno: 'EPERM' }])
+    if (physical)
+      expect(await readFile(sentinel, 'utf8')).toBe('fictional-profile-and-installation')
   })
   it('refuses an ambiguous accepting legacy busy without launching or revoking its lease', async () => {
     const { root, options } = await fixture()
@@ -267,9 +281,7 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     })
     expect(launch).not.toHaveBeenCalled()
     await expect(lease.renew()).resolves.toBeUndefined()
-    expect(JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase).toBe(
-      'accepting',
-    )
+    expect((await readOwner()).phase).toBe('accepting')
   })
   it.each(['blocked', 'draining'] as const)(
     'does not infer reboot advice from a %s pipe timeout and failed runtime launch',
@@ -374,9 +386,10 @@ describe('plugin owner recovery after the caller stops waiting', () => {
       const record = storage.read()!
       storage.write({ ...record, phase, wire: { ...record.wire, features: [] } })
       storage.close()
-      const runId = randomUUID()
-      const run = join(root, 'host/runs', runId)
-      await mkdir(run, { recursive: true, mode: 0o700 })
+      // Its recorded group's number now belongs to another process, so only a receipt proves it.
+      const { spawned } = await orphan()
+      const run = await recordedRun(root, [[spawned.pid!, '0:a birth this number no longer has']])
+      const runId = run.split(/[\\/]/).at(-1)!
       const proof = {
         format: 1,
         runId,
@@ -406,11 +419,152 @@ describe('plugin owner recovery after the caller stops waiting', () => {
         },
       })
       expect(await readFile(join(run, 'exit.json'), 'utf8')).toBe(JSON.stringify(proof))
-      expect(
-        JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).epoch,
-      ).not.toBe(record.epoch)
+      expect((await readOwner()).epoch).not.toBe(record.epoch)
     },
   )
+  // A guardian whose exit receipt could not be written (a held file, a full disk) left only its
+  // process record. The successor proves that run stopped the way the guardian does, by pid and
+  // birth, and continues with no reboot advice. Windows records only the server, so it is out.
+  async function recordedRun(root: string, groups: [number, string][]) {
+    const runId = randomUUID()
+    const run = join(root, 'host/runs', runId)
+    await mkdir(run, { recursive: true, mode: 0o700 })
+    await writeFile(
+      join(run, 'process.json'),
+      JSON.stringify({
+        format: 1,
+        runId,
+        pluginId: 'fictional',
+        releaseDigest: 'f'.repeat(64),
+        guardianPid: 404941,
+        groups,
+      }),
+      { mode: 0o600 },
+    )
+    return run
+  }
+  async function orphan() {
+    const spawned = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {
+      detached: true,
+      stdio: 'ignore',
+    })
+    await once(spawned, 'spawn')
+    child = spawned
+    return { spawned }
+  }
+  const birthOf = (one: ChildProcess) => {
+    const birth = groupIdentity(one.pid!)
+    expect(birth).toBeTruthy()
+    return birth!
+  }
+  const gone = (one: ChildProcess) => one.exitCode !== null || one.signalCode !== null
+  async function deadOwner(root: string, workspaceRoot: string) {
+    await lease!.close()
+    lease = undefined
+    await owner!.shutdown()
+    await owner!.closed
+    owner = undefined
+    const storage = new SupervisorStorage(root, [workspaceRoot], false)
+    storage.write({ ...storage.read()!, phase: 'draining' })
+    storage.close()
+  }
+  describe.skipIf(process.platform === 'win32')('a run with no exit receipt', () => {
+    it.each(['exited', 'live', 'receipt-held'] as const)(
+      'is proven by its recorded group (%s), and the successor continues with no reboot advice',
+      async (kind) => {
+        const { root, options } = await fixture()
+        const { spawned } = await orphan()
+        const birth = birthOf(spawned)
+        if (kind !== 'live') {
+          const exit = once(spawned, 'exit')
+          spawned.kill('SIGKILL')
+          await exit
+        }
+        const run = await recordedRun(root, [[spawned.pid!, birth]])
+        await deadOwner(root, options.workspaceRoot)
+        if (kind === 'receipt-held') await chmod(run, 0o500)
+        const advice = vi.fn()
+        try {
+          owner = await PluginSupervisor.start({
+            root,
+            workspaceRoots: [options.workspaceRoot],
+            recoverPrevious: (previous) =>
+              previousRunsProvenStopped(root, { previous, onRebootRequired: advice }),
+          })
+        } finally {
+          await chmod(run, 0o700)
+        }
+        expect(advice).not.toHaveBeenCalled()
+        await expect.poll(() => gone(spawned)).toBe(true)
+        if (kind === 'receipt-held') {
+          await expect(lstat(join(run, 'exit.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+        } else {
+          expect(JSON.parse(await readFile(join(run, 'exit.json'), 'utf8'))).toMatchObject({
+            runId: run.split('/').at(-1),
+            groups: [[spawned.pid, birth]],
+            exited: true,
+          })
+        }
+      },
+    )
+    it.each(['birth-mismatch', 'EPERM'] as const)(
+      'stays unresolved when its recorded group cannot be proven (%s)',
+      async (kind) => {
+        const { root, options } = await fixture()
+        const { spawned } = await orphan()
+        const birth = birthOf(spawned)
+        const run = await recordedRun(root, [
+          [spawned.pid!, kind === 'birth-mismatch' ? '0:Thu Jan  1 00:00:00 1970' : birth],
+        ])
+        await deadOwner(root, options.workspaceRoot)
+        if (kind === 'EPERM') {
+          const kill = process.kill.bind(process)
+          vi.spyOn(process, 'kill').mockImplementation((pid, signal) => {
+            if (pid === -spawned.pid!)
+              throw Object.assign(new Error('fictional refusal'), { code: 'EPERM' })
+            return kill(pid, signal)
+          })
+        }
+        await expect(
+          PluginSupervisor.start({
+            root,
+            workspaceRoots: [options.workspaceRoot],
+            recoverPrevious: (previous) => previousRunsProvenStopped(root, { previous }),
+          }),
+        ).rejects.toMatchObject({ code: 'cleanup-pending' })
+        await expect(lstat(join(run, 'exit.json'))).rejects.toMatchObject({ code: 'ENOENT' })
+        expect(gone(spawned)).toBe(false)
+      },
+    )
+  })
+  it('proves a run that never wrote a process record, even with its guardian receipt saying not exited', async () => {
+    // Its server was never admitted, so no plugin code ran; see recovery-proof's proveRunStopped.
+    const { root, options } = await fixture()
+    const runId = randomUUID()
+    const run = join(root, 'host/runs', runId)
+    await mkdir(run, { recursive: true, mode: 0o700 })
+    const receipt = JSON.stringify({
+      format: 1,
+      runId,
+      pluginId: 'fictional',
+      releaseDigest: 'f'.repeat(64),
+      guardianPid: 404941,
+      groups: [],
+      exited: false,
+    })
+    await writeFile(join(run, 'exit.json'), receipt, { mode: 0o600 })
+    await deadOwner(root, options.workspaceRoot)
+    const advice = vi.fn()
+    owner = await PluginSupervisor.start({
+      root,
+      workspaceRoots: [options.workspaceRoot],
+      recoverPrevious: (previous) =>
+        previousRunsProvenStopped(root, { previous, onRebootRequired: advice }),
+    })
+    expect(advice).not.toHaveBeenCalled()
+    // The guardian's own receipt is left as it wrote it.
+    expect(await readFile(join(run, 'exit.json'), 'utf8')).toBe(receipt)
+  })
   it('recovers a missing owner record with no historical runs while retaining the original lock inode', async () => {
     const { root, options } = await fixture()
     await lease!.close()
@@ -433,31 +587,45 @@ describe('plugin owner recovery after the caller stops waiting', () => {
     const after = await lstat(join(root, 'supervisor/owner-lock.sqlite'), { bigint: true })
     expect({ dev: after.dev, ino: after.ino }).toEqual({ dev: before.dev, ino: before.ino })
   })
-  it('retains the fence and retries a failed clean-stop publication', async () => {
+  it('a refused stopped record still releases the fence, and the next start recovers', async () => {
     const { root, options } = await fixture()
+    const previous = owner!
     const original = SupervisorStorage.prototype.write
-    let failed = false
+    let held = true
     vi.spyOn(SupervisorStorage.prototype, 'write').mockImplementation(function (
       this: SupervisorStorage,
       value,
     ) {
-      if (value.phase === 'stopped' && !failed) {
-        failed = true
-        throw new Error('fictional rename denial')
+      if (value.phase === 'stopped' && held) {
+        if (process.platform === 'win32') {
+          if (!readers.length) readers.push(openSync(this.record, 'r'))
+        } else throw Object.assign(new Error('fictional rename denial'), { code: 'EPERM' })
       }
       return original.call(this, value)
     })
-    expect(await owner!.shutdown()).toBe(false)
-    expect(failed).toBe(true)
-    await expect(
-      PluginSupervisor.start({ root, workspaceRoots: [options.workspaceRoot] }),
-    ).rejects.toMatchObject({ code: 'busy' })
-    await expect
-      .poll(
-        async () => JSON.parse(await readFile(join(root, 'supervisor/owner.json'), 'utf8')).phase,
-        { timeout: windowsStopWithin ?? 2000 },
-      )
-      .toBe('stopped')
+    await lease!.close()
+    lease = undefined
+    await previous.shutdown()
+    // closed resolves only after the fence is released.
+    await previous.closed
+    owner = undefined
+    expect((await readOwner()).phase).not.toBe('stopped')
+    const start = () =>
+      PluginSupervisor.start({
+        root,
+        workspaceRoots: [options.workspaceRoot],
+        recoverPrevious: (record) => previousRunsProvenStopped(root, { previous: record }),
+      })
+    // The successor's own stopped write meets the same held file: it says so and starts later.
+    const refused = await start().catch((error: unknown) => error)
+    expect(refused).toMatchObject({ code: 'cleanup-pending' })
+    expect(String((refused as Error).cause)).toContain(
+      "couldn't record the previous plugin service as stopped (EPERM)",
+    )
+    held = false
+    for (const fd of readers.splice(0)) closeSync(fd)
+    owner = await start()
+    expect((await readOwner()).phase).toBe('accepting')
   })
   it('makes a transient record read retryable and emits closed phase diagnostics', async () => {
     const { options } = await fixture()

@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { serialize } from 'node:v8'
-import { rowsUnreadOnce, type RowsUnread, type SessionStore } from './session-store'
+import type { SessionStore } from './session-store'
+import { rowsUnreadOnce, type RowsUnread } from './rows-unread'
 import type { LimitsWriterStamp } from './fresh-limits-snapshot'
 import type { WindowWriterStamp } from './window-writer-stamp'
 import { sameWindowWriter } from './window-routing-reads'

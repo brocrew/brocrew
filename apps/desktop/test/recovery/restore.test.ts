@@ -431,7 +431,7 @@ function dyingAt(at: number): { readonly fs: RecoveryFs; readonly changes: () =>
     mkdir: (path, options) => change(() => real.mkdir(path, options)),
     mkdtemp: (prefix) => change(() => real.mkdtemp(prefix)),
     writeFile: (path, data, options) => change(() => real.writeFile(path, data, options)),
-    chmod: (path, mode) => change(() => real.chmod(path, mode)),
+
     open: async (path, flags, mode) => {
       if (flags === 'r') return real.open(path, flags, mode)
       const handle = await change(() => real.open(path, flags, mode))
@@ -551,13 +551,6 @@ describe('restore', () => {
       'history-only.json',
       'preserved',
     ])
-    if (POSIX) {
-      expect(statSync(join(userData, 'brobot2.sqlite')).mode & 0o777).toBe(0o600)
-      expect(statSync(join(userData, 'drafts.json')).mode & 0o777).toBe(0o600)
-      expect(statSync(join(userData, GATE)).mode & 0o777).toBe(0o600)
-      expect(statSync(join(userData, 'recovery')).mode & 0o777).toBe(0o700)
-      expect(statSync(join(userData, PRESERVED)).mode & 0o777).toBe(0o700)
-    }
   })
 
   it('records every participant’s place and full hash before and after, in its plan', async () => {

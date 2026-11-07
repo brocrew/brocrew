@@ -1,21 +1,20 @@
+import { ToolWatchingResumeRuntime } from './lib/provider-double'
+import { fixtureProviderConfig, neutralHostDeps, RecordingSink } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime'
-import type { AgentToolset, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime'
+import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { resourcesRoot } from '../src/main/resources/resources'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 /**
  * # 676 M13 — the plates' own wait read must count a row no OTHER reader meets
@@ -58,35 +57,10 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 /** A row the ledger cannot parse — the whole of what "torn" means here. */
 const TORN = '{not json'
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** ⚑ `the-rest-of-r18…`'s own double: a test has to BE the provider to answer its tool calls. */
-class ProviderDouble extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handed: AgentToolset[],
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): Promise<FakeSessionHandle> {
-    const handle = await super.start(options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
-  }
-  override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
-    const handle = await super.resume(ref, options)
-    if (options.agentTools) this.handed.push(options.agentTools)
-    return handle
+class ProviderDouble extends ToolWatchingResumeRuntime {
+  constructor(provider: Provider, handed: AgentToolset[], sessions: FakeProviderSessions) {
+    super(provider, handed, sessions)
   }
 }
 
@@ -107,9 +81,7 @@ describe('676 M13 · a closed child’s torn assignment is missed by the plates 
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handed, issued),
       prepareProviderHome: (provider: Provider, profileId?: string) => {
@@ -120,13 +92,7 @@ describe('676 M13 · a closed child’s torn assignment is missed by the plates 
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
-      readProviderConfig: (_provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
     })
     hosts.push(built)
     return built

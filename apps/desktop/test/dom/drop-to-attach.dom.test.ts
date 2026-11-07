@@ -1,8 +1,9 @@
+import type { HandedPath } from '../../src/shared/attachment-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
 import PromptComposer from '../../src/renderer/src/components/PromptComposer.vue'
 import { createAttachmentBook } from '../../src/renderer/src/lib/drafts'
-import type { ChosenAttachment, DroppedPathVerdict, HandedPath } from '../../src/shared/runtime-ipc'
+import type { ChosenAttachment, DroppedPathVerdict } from '../../src/shared/runtime-ipc'
 import { channelGap, mount, paintedBackground, unmountAll, visible, type Mounted } from './harness'
 
 /**

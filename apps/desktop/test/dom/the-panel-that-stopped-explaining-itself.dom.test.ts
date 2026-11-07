@@ -1,3 +1,4 @@
+import type { SessionInstructions } from '../../src/shared/instruction-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { fileManagerWord } from '../../src/renderer/src/lib/message-paths'
 import { defineComponent, h, nextTick, ref } from 'vue'
@@ -8,7 +9,6 @@ import type {
   InstructionSourceResult,
   ProviderConfigInfo,
   RevealResult,
-  SessionInstructions,
   SessionPathTarget,
 } from '../../src/shared/runtime-ipc'
 import { drawerProps, META, mount, unmountAll, type Mounted, toldProps } from './harness'

@@ -1,9 +1,10 @@
+import type { HandedPath } from '../../src/shared/attachment-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
 // ⚠️ The MODULE, not the barrel — `@brobot2/runtime`'s index pulls in `node:fs` and the whole file
 // fails to import in the browser project.
 import { allProviderCapabilities } from '../../../../packages/runtime/src/capabilities'
-import { nothingToSendYet, type HandedPath } from '../../src/shared/runtime-ipc'
+import { nothingToSendYet } from '../../src/shared/runtime-ipc'
 import { CLOSING_BLOCK } from '../../src/renderer/src/lib/send-refusals'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import NewConversation from '../../src/renderer/src/components/NewConversation.vue'

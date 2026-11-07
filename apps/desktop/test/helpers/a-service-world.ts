@@ -1,3 +1,5 @@
+import { neutralHostDeps } from '../lib/host-fixture'
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { RuntimeHost as GiverNoticeHost } from './giver-notice-host'
 import { makeWorkerPieceFolder } from '../../src/main/worker-piece-folder'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -14,7 +16,6 @@ import type {
   StartOptions,
 } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import { NO_DISCOVERY } from '../../src/main/adopt/discover-sessions'
 import { openDatabase, type AppDatabase } from '../../src/main/db/connection'
 import { applyMigrations } from '../../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../../src/main/db/session-store'
@@ -33,7 +34,7 @@ import {
 } from '../../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../../src/main/resources/resources'
 import { resolveSessionCwd } from '../../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 
 /**
  * A data folder with a database and a services list, and hosts over it, for the tests of service
@@ -58,7 +59,7 @@ export class RecordingSink implements RuntimeEventSink {
 }
 
 /** Which writes of the services list fail: none, every one, or those holding this field. */
-export type WritesFail = 'none' | 'all' | keyof ProfileExecution
+type WritesFail = 'none' | 'all' | keyof ProfileExecution
 
 export interface AServiceWorld {
   readonly folder: string
@@ -161,9 +162,12 @@ export interface AServiceWorld {
     deliveryWaitMs?: number
     endingWaitMs?: number
     windowWriterStamp?: ConstructorParameters<typeof RuntimeHost>[0]['windowWriterStamp']
+    windowReader?: ConstructorParameters<typeof RuntimeHost>[0]['windowReader']
     limitsWriterStamp?: ConstructorParameters<typeof RuntimeHost>[0]['limitsWriterStamp']
     listProfiles?: (provider?: Provider) => string[]
     readInstructions?: ConstructorParameters<typeof RuntimeHost>[0]['readInstructions']
+    announce?: ConstructorParameters<typeof RuntimeHost>[0]['announce']
+    statesMoved?: ConstructorParameters<typeof RuntimeHost>[0]['statesMoved']
   }): RuntimeHost
   /** An agent made now, on Claude unless `provider` says otherwise, kept as a service unless `kind` does. */
   anAgent(
@@ -346,9 +350,7 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
       const Host = fixture.holderReminders === 'declined' ? GiverNoticeHost : RuntimeHost
       const host = new Host({
         store: opts.store ?? world.store,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(folder, 'exports'),
+        ...neutralHostDeps(() => folder),
         resourcesRoot: () => resourcesRoot(folder),
         createRuntime: (provider: Provider) =>
           new ProviderOfThisWorld(provider, { sessions: issued }),
@@ -367,6 +369,7 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
         ...(opts.windowWriterStamp === undefined
           ? {}
           : { windowWriterStamp: opts.windowWriterStamp }),
+        ...(opts.windowReader === undefined ? {} : { windowReader: opts.windowReader }),
         ...(opts.limitsWriterStamp === undefined
           ? {}
           : { limitsWriterStamp: opts.limitsWriterStamp }),
@@ -391,6 +394,8 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
           },
           owned: opts.owned ?? true,
         },
+        ...(opts.announce === undefined ? {} : { announce: opts.announce }),
+        ...(opts.statesMoved === undefined ? {} : { statesMoved: opts.statesMoved }),
         ...(opts.interruptWaitMs === undefined ? {} : { interruptWaitMs: opts.interruptWaitMs }),
         ...(opts.deliveryWaitMs === undefined ? {} : { deliveryWaitMs: opts.deliveryWaitMs }),
         ...(opts.endingWaitMs === undefined ? {} : { endingWaitMs: opts.endingWaitMs }),

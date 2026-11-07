@@ -32,7 +32,7 @@ import { MAX_READING_BYTES } from '../../shared/runtime-ipc'
  * bound is the streaming**, and it is named on the wire where it bites rather than here where it
  * would be a second copy of the same number.
  */
-export interface ReadingWritten {
+interface ReadingWritten {
   readonly path: string
   readonly bytes: number
 }

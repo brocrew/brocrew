@@ -86,12 +86,12 @@ use SQLite's ordinary file format, rollback/DELETE journal, zero busy timeout an
 transaction; WAL is never enabled. The bundled Node 24.22.0 opens SQLite without a flag.
 The native proof checks mutual exclusion in both directions against the Electron-side backend.
 
-A trusted controller can supply a signed startup plan to the launcher. Its app-pinned public
-key and bounded catalogue/archive paths live only in the private launch descriptor; they never
-come from lease IPC or package metadata. The entry independently verifies the signature and
+The app supplies a repo-list lifecycle plan to the launcher. Its admitted catalogue digest
+and bounded catalogue/source paths live in the private launch descriptor; they never come
+from lease IPC or package metadata. The entry independently checks the catalogue digest and
 package, waits for a lease, and uses the same in-process `createSupervisedPluginHost` seam.
-It writes only credential-free run identities for reconciliation. The current app supplies no
-plan; the later installer/controller owns that policy. Endpoint capabilities stay in the entry.
+It writes only credential-free run identities for reconciliation. Endpoint capabilities stay
+in the entry.
 The offline check seeds fictional stored profiles and runs the real Chrome package with an
 inert fake browser, never installed Chrome or a provider. No manual setup is required from the
 person. Any unavailable runtime, entry or host leaves ordinary agents and the app running.

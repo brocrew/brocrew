@@ -3,7 +3,7 @@ import { lutimesSync, readFileSync, realpathSync } from 'node:fs'
 import { readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { isPastedImage } from '../shared/runtime-ipc'
-import { conversationOfSlot, type SavedDrafts } from '../shared/saved-drafts'
+import { conversationOfSlot, type SavedDraft, type SavedDrafts } from '../shared/saved-drafts'
 import { pastedImagesRoot } from './runtime/pasted-image'
 import { savedDraftsFrom } from './saved-drafts'
 
@@ -29,13 +29,16 @@ export const SAVED_DRAFTS_FILE = 'drafts.json'
 /** The private name one save is written to before it is renamed into place. */
 export const DRAFTS_PART = /^drafts\.json\.[0-9a-f]{12}\.part$/
 
-/** The shape this build writes, and the only one it reads. */
+/**
+ * The version this build writes, which earlier builds still check. This build's read ignores it and
+ * keeps whatever drafts it recognises, so switching builds never stops drafts being restored or saved.
+ */
 export const DRAFTS_FILE_VERSION = 1
 
 /**
  * ⚑ **How long a quit waits for each window's LAST save** — the one it hands over when main asks,
  * after the conversations are closed (`app:last-draft-save`). Bounded: a window too wedged to answer
- * must not hold the quit; one that does not answer costs what changed since its last save.
+ * must not hold the quit. A save that comes or finishes later is still written while the app lives.
  */
 export const QUIT_SAVE_WITHIN_MS = 1_000
 
@@ -48,7 +51,7 @@ export function savedDraftsPath(userData: string): string {
 export type DraftsFile =
   | { kind: 'book'; raw: unknown }
   | { kind: 'none' }
-  /** ⛔ There, and not readable by this build — so nothing is restored AND nothing saved over it. */
+  /** ⛔ There, and its bytes could not be read — so nothing is restored AND nothing saved over it. */
   | { kind: 'unreadable'; why: string }
 
 /**
@@ -57,10 +60,12 @@ export type DraftsFile =
  * ⚑ **None** when there is no file, or when it is not JSON — which a rename-written file cannot be
  * halfway to, so nothing of this app's is lost by writing over it.
  *
- * ⚠️ **Unreadable when it is there and could not be read (`EACCES`, `EIO`, a directory), or when a
- * DIFFERENT build wrote it** (another `version`): that is not an empty book, and a window told it
- * was would save its own empty book over drafts it never saw. ⚑ The renderer is then answered
- * *not read*, restores nothing, and saves nothing this run; the file is left for a build that can.
+ * ⚑ **A book whichever build wrote it**: `savedDraftsFrom` keeps the drafts it recognises, and every
+ * save writes the rest back unchanged ({@link bookToWrite}).
+ *
+ * ⚠️ **Unreadable when it is there and could not be read (`EACCES`, `EIO`, a directory)**: that is
+ * not an empty book, and a window told it was would save its own empty book over drafts it never
+ * saw. ⚑ The renderer is then answered *not read*, restores nothing, and saves nothing this run.
  */
 export async function readDraftsFile(userData: string): Promise<DraftsFile> {
   let text: string
@@ -75,14 +80,6 @@ export async function readDraftsFile(userData: string): Promise<DraftsFile> {
     raw = JSON.parse(text)
   } catch {
     return { kind: 'none' }
-  }
-  const version =
-    typeof raw === 'object' && raw !== null ? (raw as { version?: unknown }).version : undefined
-  if (version !== DRAFTS_FILE_VERSION) {
-    return {
-      kind: 'unreadable',
-      why: `written as version ${String(version)}, not ${String(DRAFTS_FILE_VERSION)}`,
-    }
   }
   return { kind: 'book', raw }
 }
@@ -103,9 +100,44 @@ export interface DraftWriter {
   /**
    * ⚑ **Resolve once that many `last` books have arrived and nothing is being written**, or after
    * `withinMs` — `saved`, `failed` (the last write did not reach the disk) or `unanswered`, so the
-   * quit can say which.
+   * quit can say which. Saves still on their way after that are written all the same.
    */
   quitSaves(withinMs: number): Promise<'saved' | 'failed' | 'unanswered'>
+}
+
+/**
+ * ⚑ **The file to write: this build's drafts, and everything else the file held left as it was.**
+ * Another build may keep fields and entries this one does not read; a save here never drops them.
+ * An entry of a slot this build reads is replaced by this build's draft (keeping that entry's other
+ * fields) or, when the slot holds none any more, removed. Every other entry is written back unchanged.
+ */
+function bookToWrite(found: unknown, drafts: readonly SavedDraft[]): Record<string, unknown> {
+  const file =
+    typeof found === 'object' && found !== null && !Array.isArray(found)
+      ? (found as Record<string, unknown>)
+      : {}
+  const listed: unknown[] = Array.isArray(file.drafts) ? file.drafts : []
+  const slotOf = (entry: unknown): unknown =>
+    typeof entry === 'object' && entry !== null
+      ? (entry as Record<string, unknown>).slot
+      : undefined
+  const read = new Set(savedDraftsFrom(found).drafts.map((draft) => draft.slot))
+  const written = new Set(drafts.map((draft) => draft.slot))
+  const entryOf = new Map<unknown, object>()
+  for (const entry of listed) {
+    if (read.has(slotOf(entry) as string) && !entryOf.has(slotOf(entry))) {
+      entryOf.set(slotOf(entry), entry as object)
+    }
+  }
+  const untouched = listed.filter((entry) => {
+    const slot = slotOf(entry) as string
+    return !read.has(slot) && !written.has(slot)
+  })
+  return {
+    ...file,
+    version: DRAFTS_FILE_VERSION,
+    drafts: [...drafts.map((draft) => ({ ...entryOf.get(draft.slot), ...draft })), ...untouched],
+  }
 }
 
 /**
@@ -115,7 +147,7 @@ export interface DraftWriter {
  *
  * Saves arriving during a write are merged by slot, with the newest value winning. Only an
  * explicit removal clears a slot; a missing slot in an incomplete handover loses nothing.
- * Quit snapshots cannot clear slots, and snapshots arriving past the quit deadline are ignored.
+ * Quit snapshots cannot clear slots.
  *
  * ⚑ **A part file an earlier run left — a kill inside a write — is removed before the first write of
  * this one**: it holds somebody's words, and nothing else would ever look at it.
@@ -123,9 +155,9 @@ export interface DraftWriter {
 export function createDraftWriter(userData: string): DraftWriter {
   let pending: SavedDrafts | null = null
   let kept: SavedDrafts = { drafts: [] }
-  let expired = false
+  // What the file held at start, so what this build does not read is written back with every save.
+  let found: unknown = null
   let quitting = false
-  let quitDeadline = Infinity
   let writing: Promise<void> | null = null
   let expected = 0
   let arrived = 0
@@ -158,17 +190,9 @@ export function createDraftWriter(userData: string): DraftWriter {
     const path = savedDraftsPath(userData)
     const part = `${path}.${randomBytes(6).toString('hex')}.part`
     try {
-      await writeFile(
-        part,
-        JSON.stringify({ version: DRAFTS_FILE_VERSION, drafts: saved.drafts }),
-        {
-          mode: 0o600,
-        },
-      )
-      if (expired || performance.now() >= quitDeadline) {
-        await rm(part, { force: true })
-        return false
-      }
+      await writeFile(part, JSON.stringify(bookToWrite(found, saved.drafts)), {
+        mode: 0o600,
+      })
       await rename(part, path)
       return true
     } catch (error) {
@@ -180,13 +204,7 @@ export function createDraftWriter(userData: string): DraftWriter {
 
   return {
     write(raw) {
-      if (
-        expired ||
-        performance.now() >= quitDeadline ||
-        typeof raw !== 'object' ||
-        raw === null ||
-        !Array.isArray((raw as SavedDrafts).drafts)
-      )
+      if (typeof raw !== 'object' || raw === null || !Array.isArray((raw as SavedDrafts).drafts))
         return Promise.resolve()
       accepted += 1
       const packet = raw as SavedDrafts
@@ -216,10 +234,11 @@ export function createDraftWriter(userData: string): DraftWriter {
               return
             }
             if (!loaded) {
-              kept = savedDraftsFrom(file.kind === 'book' ? file.raw : null)
+              found = file.kind === 'book' ? file.raw : null
+              kept = savedDraftsFrom(found)
               loaded = true
             }
-            while (pending !== null && !expired) {
+            while (pending !== null) {
               const slots = new Map(kept.drafts.map((draft) => [draft.slot, draft]))
               const packet = pending
               pending = null
@@ -247,7 +266,6 @@ export function createDraftWriter(userData: string): DraftWriter {
               saved += 1
               lastSavedAt = Date.now()
             }
-            if (expired) pending = null
           } finally {
             writing = null
             tell()
@@ -285,7 +303,6 @@ export function createDraftWriter(userData: string): DraftWriter {
     },
 
     quitSaves(withinMs) {
-      quitDeadline = performance.now() + withinMs
       const done = (): boolean => arrived >= expected && writing === null
       if (done()) return Promise.resolve(lastFailed ? 'failed' : 'saved')
       return new Promise((resolve) => {
@@ -295,10 +312,6 @@ export function createDraftWriter(userData: string): DraftWriter {
         }
         const timer = setTimeout(() => finish('unanswered'), withinMs)
         function finish(outcome: 'saved' | 'failed' | 'unanswered'): void {
-          if (outcome === 'unanswered') {
-            expired = true
-            pending = null
-          }
           clearTimeout(timer)
           listeners.delete(check)
           resolve(outcome)

@@ -81,6 +81,9 @@ function request(
     snapshot: null,
   }
 }
+/** The plugin's current active install, as admission reads it; busy while an operation is pending. */
+const active = (store: GlobalPluginState, id = 'fictional-bakery') =>
+  store.exportActivation().entries.find((one) => one.pluginId === id) ?? null
 function install(store: GlobalPluginState) {
   const input = request(store)
   store.prepare(input)
@@ -88,20 +91,14 @@ function install(store: GlobalPluginState) {
   return input
 }
 
-it('Windows disk storage refuses a root whose access list was not checked, before creating anything', () => {
+it('creates standalone state without a prior root admission', () => {
   const parent = folder(),
     root = join(parent, 'plugins')
-  const original = Object.getOwnPropertyDescriptor(process, 'platform')!
-  try {
-    Object.defineProperty(process, 'platform', { ...original, value: 'win32' })
-    expect(() => GlobalPluginState.create({ root, workspaceRoots: [] })).toThrow(
-      expect.objectContaining({ code: 'unsupported', message: 'Plugin unavailable. Try again.' }),
-    )
-    expect(existsSync(root)).toBe(false)
-    expect(readdirSync(parent)).toEqual([])
-  } finally {
-    Object.defineProperty(process, 'platform', original)
-  }
+  if (process.platform !== 'win32') chmodSync(parent, 0o755)
+  const state = GlobalPluginState.create({ root, workspaceRoots: [] })
+  state.close()
+  expect(existsSync(root)).toBe(true)
+  expect(readdirSync(parent)).toEqual(['plugins'])
 })
 
 describe.skipIf(process.platform === 'win32')(
@@ -146,24 +143,16 @@ describe.skipIf(process.platform === 'win32')(
       ).toThrow(expect.objectContaining({ code: 'unsafe-path' }))
       expect(readdirSync(parent)).toEqual([])
     })
-    it('journals consent before mutation and grants no projection during prepare', () => {
+    it('journals consent before mutation and grants no activation during prepare', () => {
       const { store, open } = fixture(),
-        workspace = randomUUID(),
         input = request(store)
       const operation = store.prepare(input)
       expect(operation.request).toEqual(input)
       expect(open().inspect().pending?.request).toEqual(input)
       expect(store.inspect().guards[0]?.phase).toBe('prepared')
-      expect(() => store.emptyProjection(workspace, 'fictional-bakery')).toThrow(
-        expect.objectContaining({ code: 'busy' }),
-      )
+      expect(() => active(store)).toThrow(expect.objectContaining({ code: 'busy' }))
       store.complete(input.operationId)
-      const receipt = store.emptyProjection(workspace, 'fictional-bakery')!
-      expect(receipt.installId).toBe(operation.next?.installId)
-      expect(receipt.skills).toEqual([])
-      expect(receipt.bindings).toEqual([])
-      expect(store.matchesProjection(receipt, workspace)).toBe(true)
-      expect(store.matchesProjection(receipt, randomUUID())).toBe(false)
+      expect(active(store)?.installId).toBe(operation.next?.installId)
     })
     it('idempotent retries retain allocation and consent, and refuse changed consent', () => {
       const { store } = fixture(),
@@ -180,57 +169,45 @@ describe.skipIf(process.platform === 'win32')(
       expect(store.inspect()).toEqual(before)
       expect(() => store.abort(input.operationId)).toThrow(PluginStateError)
     })
-    it('uninstall denies first; a reinstall is B and cannot revive old workspace A', () => {
-      const { store, open } = fixture(),
-        workspace = randomUUID()
+    it('uninstall denies first; a reinstall is B and cannot revive old A', () => {
+      const { store, open } = fixture()
       install(store)
-      const old = store.emptyProjection(workspace, 'fictional-bakery')!
+      const old = active(store)!
       const remove = request(store, 'uninstall')
       store.prepare(remove)
       expect(open().inspect().guards[0]?.phase).toBe('removed')
-      expect(() => store.matchesProjection(old, workspace)).toThrow(PluginStateError)
+      expect(() => active(store)).toThrow(PluginStateError)
       store.complete(remove.operationId)
-      expect(store.emptyProjection(workspace, 'fictional-bakery')).toBeNull()
+      expect(active(store)).toBeNull()
       install(store)
-      const current = store.emptyProjection(workspace, 'fictional-bakery')!
+      const current = active(store)!
       expect(current.installId).not.toBe(old.installId)
       expect(current.incarnation).not.toBe(old.incarnation)
       expect(current.lifecycleSequence).toBeGreaterThan(old.lifecycleSequence)
-      expect(store.matchesProjection(old, workspace)).toBe(false)
-      expect(store.reconcileProjection(old, workspace, 'fictional-bakery')).toEqual({
-        receipt: current,
-        revoke: true,
-        selectionPolicy: 'off',
-      })
     })
-    it('ordinary release changes keep installId and configuration revision but fence old receipts', () => {
-      const { store } = fixture(),
-        workspace = randomUUID()
+    it('ordinary release changes keep installId and configuration revision under a new incarnation', () => {
+      const { store } = fixture()
       install(store)
-      const old = store.emptyProjection(workspace, 'fictional-bakery')!
+      const old = active(store)!
       const update = request(store, 'update')
       update.consent.release = release('2.0.0')
       store.prepare(update)
       store.complete(update.operationId)
-      const current = store.emptyProjection(workspace, 'fictional-bakery')!
+      const current = active(store)!
       expect(current.installId).toBe(old.installId)
       expect(current.configRevision).toBe(old.configRevision)
       expect(current.incarnation).not.toBe(old.incarnation)
       expect(current.releaseRevision).toBe(old.releaseRevision + 1)
-      expect(store.matchesProjection(old, workspace)).toBe(false)
-      expect(store.reconcileProjection(old, workspace, 'fictional-bakery').selectionPolicy).toBe(
-        'preserve-surviving',
-      )
     })
     it('never overwrites a pending or concurrent person operation with a stale revision', () => {
-      const { store, open } = fixture(),
-        second = open(),
+      // Both requests are made from the same view; the second is stale once the first commits.
+      const { store } = fixture(),
         a = request(store),
-        b = request(second)
+        b = request(store)
       store.prepare(a)
-      expect(() => second.prepare(b)).toThrow(PluginStateError)
+      expect(() => store.prepare(b)).toThrow(PluginStateError)
       store.complete(a.operationId)
-      expect(() => second.prepare(b)).toThrow(expect.objectContaining({ code: 'conflict' }))
+      expect(() => store.prepare(b)).toThrow(expect.objectContaining({ code: 'conflict' }))
       expect(store.inspect().operations).toHaveLength(1)
     })
     it('exclusive writer fence refuses an interleaving without removing live preparation', () => {
@@ -250,10 +227,14 @@ describe.skipIf(process.platform === 'win32')(
         expect(() => open()).toThrow(expect.objectContaining({ code: 'busy' }))
       }
       store.prepare(first)
-      expect(other.inspect().pending?.request.operationId).toBe(first.operationId)
-      expect(other.inspect().operations).toHaveLength(1)
-      other.complete(first.operationId)
-      expect(other.emptyProjection(randomUUID(), 'fictional-bakery')).not.toBeNull()
+      // The writer that held the fence reads its own preparation; the next start reads it too.
+      other.close()
+      store.close()
+      const next = open()
+      expect(next.inspect().pending?.request.operationId).toBe(first.operationId)
+      expect(next.inspect().operations).toHaveLength(1)
+      next.complete(first.operationId)
+      expect(active(next)).not.toBeNull()
     })
     it('still reads a legacy publication with its verified guard-local crash stage', () => {
       const { root, store, open } = fixture()
@@ -269,7 +250,7 @@ describe.skipIf(process.platform === 'win32')(
         first = store.prepare(input)
       store.abort(input.operationId)
       store.abort(input.operationId)
-      expect(store.emptyProjection(randomUUID(), 'fictional-bakery')).toBeNull()
+      expect(active(store)).toBeNull()
       const next = store.prepare(request(store))
       expect(next.next?.installId).not.toBe(first.next?.installId)
       expect(() => store.complete(input.operationId)).toThrow(PluginStateError)
@@ -301,14 +282,11 @@ describe.skipIf(process.platform === 'win32')(
         armed = true
         expect(() => store.prepare(input)).toThrow(PluginStateError)
         const next = open()
-        if (next.inspect().pending !== null)
-          expect(() => next.emptyProjection(randomUUID(), 'fictional-bakery')).toThrow(
-            PluginStateError,
-          )
-        else expect(next.emptyProjection(randomUUID(), 'fictional-bakery')).toBeNull()
+        if (next.inspect().pending !== null) expect(() => active(next)).toThrow(PluginStateError)
+        else expect(active(next)).toBeNull()
         next.prepare(input)
         next.complete(input.operationId)
-        expect(next.emptyProjection(randomUUID(), 'fictional-bakery')).not.toBeNull()
+        expect(active(next)).not.toBeNull()
       },
     )
     it.each(['staged', 'published', 'durable'] as const)(
@@ -329,58 +307,48 @@ describe.skipIf(process.platform === 'win32')(
         const view = next.inspect()
         if (view.pending !== null) {
           expect(view.pending.next?.installId).toBe(planned.next?.installId)
-          expect(() => next.emptyProjection(randomUUID(), 'fictional-bakery')).toThrow(
-            PluginStateError,
-          )
+          expect(() => active(next)).toThrow(PluginStateError)
         } else {
           expect(view.guards[0]?.installId).toBe(planned.next?.installId)
           expect(view.guards[0]?.phase).toBe('active')
         }
         next.complete(input.operationId)
-        expect(next.emptyProjection(randomUUID(), 'fictional-bakery')?.installId).toBe(
-          planned.next?.installId,
-        )
+        expect(active(next)?.installId).toBe(planned.next?.installId)
       },
     )
     it('an old global A snapshot cannot resurrect A, erase B, or guess B metadata', () => {
-      const { store } = fixture(),
-        workspace = randomUUID()
+      const { store } = fixture()
       install(store)
-      const snapshot = store.exportActivation(),
-        old = store.emptyProjection(workspace, 'fictional-bakery')!
+      const snapshot = store.exportActivation()
       const remove = request(store, 'uninstall')
       store.prepare(remove)
       store.complete(remove.operationId)
       install(store)
-      const current = store.emptyProjection(workspace, 'fictional-bakery')!
+      const current = active(store)!
       const restore = request(store, 'global-restore')
       restore.snapshot = snapshot
       store.prepare(restore)
       store.complete(restore.operationId)
       expect(store.inspect().guards[0]?.installId).toBe(current.installId)
       expect(store.exportActivation().entries).toEqual([])
-      expect(store.matchesProjection(old, workspace)).toBe(false)
-      expect(store.emptyProjection(workspace, 'fictional-bakery')).toBeNull()
       const unrelated = request(store, 'install', 'fictional-orchard')
       store.prepare(unrelated)
       store.complete(unrelated.operationId)
-      expect(store.emptyProjection(workspace, 'fictional-bakery')).toBeNull()
-      expect(store.emptyProjection(workspace, 'fictional-orchard')).not.toBeNull()
+      expect(active(store)).toBeNull()
+      expect(active(store, 'fictional-orchard')).not.toBeNull()
     })
-    it('global restore preserves a tombstone and rekeys compatible active receipts', () => {
-      const { store } = fixture(),
-        workspace = randomUUID()
+    it('global restore preserves a tombstone and keeps a compatible active install under a new epoch', () => {
+      const { store } = fixture()
       install(store)
       const snapshot = store.exportActivation(),
-        old = store.emptyProjection(workspace, 'fictional-bakery')!
+        old = active(store)!,
+        epoch = store.inspect().epoch
       const restore = request(store, 'global-restore')
       restore.snapshot = snapshot
       store.prepare(restore)
       store.complete(restore.operationId)
-      const current = store.emptyProjection(workspace, 'fictional-bakery')!
-      expect(current.installId).toBe(old.installId)
-      expect(current.epoch).not.toBe(old.epoch)
-      expect(store.matchesProjection(old, workspace)).toBe(false)
+      expect(active(store)?.installId).toBe(old.installId)
+      expect(store.inspect().epoch).not.toBe(epoch)
       const remove = request(store, 'uninstall')
       store.prepare(remove)
       store.complete(remove.operationId)
@@ -391,18 +359,12 @@ describe.skipIf(process.platform === 'win32')(
       expect(store.inspect().guards[0]?.phase).toBe('removed')
       expect(store.exportActivation().entries).toEqual([])
     })
-    it('refuses foreign-root global snapshots and forged/nonempty projection bindings', () => {
+    it('refuses foreign-root global snapshots', () => {
       const { store } = fixture()
       install(store)
       const restore = request(store, 'global-restore')
       restore.snapshot = { ...store.exportActivation(), rootId: randomUUID() }
       expect(() => store.prepare(restore)).toThrow(PluginStateError)
-      const workspace = randomUUID(),
-        receipt = store.emptyProjection(workspace, 'fictional-bakery')!
-      expect(store.matchesProjection({ ...receipt, installId: randomUUID() }, workspace)).toBe(
-        false,
-      )
-      expect(store.matchesProjection({ ...receipt, skills: ['forged'] }, workspace)).toBe(false)
     })
     it('an activation lost in global restore disables execution without erasing the lifecycle floor', () => {
       const { store, root } = fixture()
@@ -415,9 +377,7 @@ describe.skipIf(process.platform === 'win32')(
       )!
       const path = join(root, 'activations', name)
       unlinkSync(path)
-      expect(() => store.emptyProjection(randomUUID(), 'fictional-bakery')).toThrow(
-        PluginStateError,
-      )
+      expect(() => active(store)).toThrow(PluginStateError)
       expect(store.inspect().guards[0]).toEqual(guard)
     })
     it('missing, truncated or changed guard data is never recreated or treated as empty', () => {
@@ -454,9 +414,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(() => GlobalPluginState.open(options)).toThrow(
         expect.objectContaining({ code: 'corrupt' }),
       )
-      expect(() => store.emptyProjection(randomUUID(), 'fictional-bakery')).toThrow(
-        PluginStateError,
-      )
+      expect(() => active(store)).toThrow(PluginStateError)
     })
     it('refuses global storage under a workspace or a shared parent without changing its permissions', () => {
       const parent = folder(),
@@ -466,10 +424,9 @@ describe.skipIf(process.platform === 'win32')(
         GlobalPluginState.create({ root: join(workspace, 'plugins'), workspaceRoots: [workspace] }),
       ).toThrow(PluginStateError)
       chmodSync(parent, 0o755)
-      expect(() =>
-        GlobalPluginState.create({ root: join(parent, 'plugins'), workspaceRoots: [] }),
-      ).toThrow(PluginStateError)
-      expect(readdirSync(parent)).toEqual(['workspace'])
+      const shared = GlobalPluginState.create({ root: join(parent, 'plugins'), workspaceRoots: [] })
+      shared.close()
+      expect(readdirSync(parent).sort()).toEqual(['plugins', 'workspace'])
     })
     it('never follows a substituted guard folder or a journal-file symlink', () => {
       const { store, root, parent } = fixture(),

@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -11,7 +12,6 @@ import {
   type StartOptions,
   type StartPhase,
 } from '@brobot2/runtime'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
@@ -120,9 +120,7 @@ describe('a launch says where it waited', () => {
     buildHost = (bounds = { launchTimeoutMs: 80 }) =>
       new RuntimeHost({
         store,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(folder, 'exports'),
+        ...neutralHostDeps(() => folder),
         createRuntime: () => runtime,
         prepareProviderHome: (provider) => join(folder, 'provider-homes', provider),
         providerHomePath: (provider) => join(folder, 'provider-homes', provider),
@@ -464,9 +462,7 @@ describe('a launch says where it waited', () => {
     await host.closeAll()
     host = new RuntimeHost({
       store: createSessionStore(db, () => Date.now()),
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(folder, 'exports'),
+      ...neutralHostDeps(() => folder),
       createRuntime: () => runtime,
       prepareProviderHome: (provider) => join(folder, 'provider-homes', provider),
       providerHomePath: (provider) => join(folder, 'provider-homes', provider),
@@ -531,9 +527,7 @@ describe('a launch never waits for its timing to reach the disk', () => {
     let counter = 0
     return new RuntimeHost({
       store: createSessionStore(db, () => Date.now()),
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(folder, 'exports'),
+      ...neutralHostDeps(() => folder),
       createRuntime: () => runtime,
       prepareProviderHome: (provider) => join(folder, 'provider-homes', provider),
       providerHomePath: (provider) => join(folder, 'provider-homes', provider),

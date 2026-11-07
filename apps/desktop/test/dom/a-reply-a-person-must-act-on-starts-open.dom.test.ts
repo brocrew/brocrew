@@ -1,7 +1,8 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
+import type { WorkReport } from '../../src/shared/task-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import type { TranscriptEvent } from '../../src/shared/runtime-ipc'
-import type { WorkReport } from '../../src/shared/tasks'
+
 import { mount, paneProps, record, unmountAll, visible } from './harness'
 
 /**

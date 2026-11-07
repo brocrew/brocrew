@@ -1,16 +1,23 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { waitFor } from './lib/f093-host'
+import { PASS_UP_RECIPIENTS } from '../src/shared/question-contracts'
+import type {
+  RequestRoutedEvent,
+  RoutedRequest,
+  WhereARequestWent,
+} from '../src/shared/question-contracts'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime'
 import { CHANNEL_REFUSALS } from '@brobot2/runtime'
-import type { AgentToolset, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
+import { type AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { TOOL_INPUT_ENUMS, TOOL_NAMES, type ToolName } from '../src/main/runtime/agent-tools'
@@ -20,7 +27,6 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
 import {
   QUESTION_RECIPIENTS,
-  PASS_UP_RECIPIENTS,
   RECIPIENT_MEANS,
   REQUEST_IS_OPEN,
   WENT_STANDS_FOR,
@@ -30,14 +36,10 @@ import {
   permissionShaped,
   theChannelRefusalIn,
   whereItWent,
-  type RoutedRequest,
-  type WhereARequestWent,
 } from '../src/shared/questions'
-import type {
-  RequestRoutedEvent,
-  RuntimeEventMessage,
-  TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { ToolWatchingResumeRuntime as ToolWatchingRuntime } from './lib/provider-double'
+import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
 
 /**
  * 🔴 **611 · a question names who it is for** — `HO-088` §2, §3 and §4.1, and `HO-090` §4.
@@ -107,29 +109,6 @@ describe('611 · a question names who it is for', () => {
     sendLiveness(): void {}
   }
 
-  class ToolWatchingRuntime extends FakeRuntime {
-    constructor(
-      provider: Provider,
-      private readonly handed: AgentToolset[],
-      sessions: FakeProviderSessions,
-    ) {
-      super(provider, { sessions })
-    }
-    override async start(options: StartOptions): ReturnType<FakeRuntime['start']> {
-      const handle = await super.start(options)
-      if (options.agentTools) this.handed.push(options.agentTools)
-      return handle
-    }
-    override async resume(
-      ref: SessionRef,
-      options: ResumeOptions,
-    ): ReturnType<FakeRuntime['resume']> {
-      const handle = await super.resume(ref, options)
-      if (options.agentTools) this.handed.push(options.agentTools)
-      return handle
-    }
-  }
-
   let userData: string
   let root: string
   let db: AppDatabase
@@ -146,15 +125,9 @@ describe('611 · a question names who it is for', () => {
   const buildHost = (): RuntimeHost => {
     const built = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
@@ -228,14 +201,6 @@ describe('611 · a question names who it is for', () => {
 
   const ledger = (sessionId: string): TranscriptEvent[] =>
     store.events(sessionId).map((entry) => entry.event)
-
-  const waitFor = async (predicate: () => boolean, what: string): Promise<void> => {
-    for (let attempt = 0; attempt < 400; attempt++) {
-      if (predicate()) return
-      await new Promise((resolve) => setTimeout(resolve, 10))
-    }
-    throw new Error(`timed out waiting for ${what}`)
-  }
 
   /** ⛔ Every way words can reach a conversation, read as ONE population (591's reader). */
   const wordsIn = (sessionId: string): readonly string[] =>
@@ -1131,8 +1096,8 @@ describe('611 · a question names who it is for', () => {
     })
 
     it('⚠️ and the docblock that ruled the invariant is REPLACED rather than left standing', () => {
-      const questions = proseOf('shared/questions.ts')
-      const ipc = proseOf('shared/runtime-ipc.ts')
+      const questions = proseOf('shared/question-contracts.ts')
+      const ipc = proseOf('shared/question-contracts.ts')
       // ⛔ **`619`'s hazard** — `a-description-hardens-into-a-ruling-in-the-docblock-it-leaves`. The
       // old sentence is QUOTED as history in both places and is not stated as a rule.
       expect(questions).toContain('if and only if')

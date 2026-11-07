@@ -26,9 +26,8 @@ import { describe, expect, it } from 'vitest'
  * ## ⚠️ Why the smoke keeps a hand-typed copy at all
  *
  * `ui-live-smoke.mjs` imports nothing but node builtins and `scripts/lib/*.mjs` — the same
- * constraint `step-census.test.mjs` records for `DEGRADED_LABEL_PREFIX`, and the same answer: the
- * constant reaches the smoke as text and a `ci` test binds it to its source. What is derived here is
- * not the list but the AGREEMENT.
+ * constraint that requires a copy of the vocabulary here. This test checks that the copy agrees
+ * with the runtime and app event types.
  *
  * ## ⛔ The vocabulary has two halves and only one of them has a runtime list
  *
@@ -42,7 +41,7 @@ import { describe, expect, it } from 'vitest'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SMOKE = join(HERE, '../ui-live-smoke.mjs')
 const EVENTS = join(HERE, '../../packages/runtime/src/events.ts')
-const IPC = join(HERE, '../../apps/desktop/src/shared/runtime-ipc.ts')
+const IPC = join(HERE, '../../apps/desktop/src/shared/conversation-events.ts')
 
 /**
  * Read one match out of a source file, or say which file stopped being readable.

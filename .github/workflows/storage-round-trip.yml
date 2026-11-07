@@ -1,0 +1,105 @@
+name: Storage literal binary roundtrip
+
+on:
+  push:
+    branches: ['gate/storage-roundtrip-*']
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  roundtrip:
+    if: >-
+      github.repository == 'brocrew/brocrew' &&
+      startsWith(github.ref, 'refs/heads/gate/storage-roundtrip-')
+    runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
+    timeout-minutes: 90
+    concurrency:
+      group: storage-roundtrip-${{ github.ref }}
+      cancel-in-progress: false
+    env:
+      MANIFEST: scripts/storage-round-trip.manifest.json
+    steps:
+      - name: Name the run's scratch folder
+        run: echo "WORK=$RUNNER_TEMP/storage-round-trip-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.11.0
+          run_install: false
+
+      - name: Fetch the released 0.2.2 disk image and check its pins
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const crypto = require('node:crypto');
+            const {execFileSync} = require('node:child_process');
+            const must = (ok, message) => { if (!ok) throw new Error(message); };
+            const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
+            const config = JSON.parse(fs.readFileSync(process.env.MANIFEST, 'utf8'));
+            for (const label of ['old', 'f13']) {
+              const pin = config[label];
+              must(execFileSync('git', ['rev-parse', pin.source + '^{tree}'], {encoding: 'utf8'}).trim() === pin.tree,
+                label + ' source is not the pinned tree');
+            }
+            const pin = config.old;
+            const {data: run} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: Number(pin.runId)});
+            must(run.status === 'completed' && run.conclusion === 'success' && run.head_sha === pin.source,
+              'The 0.2.2 build run is not the pinned one');
+            const {data: artifact} = await github.rest.actions.getArtifact({...context.repo, artifact_id: Number(pin.artifactId)});
+            must(!artifact.expired && artifact.workflow_run?.id === Number(pin.runId) &&
+              artifact.digest === 'sha256:' + pin.archiveSha256, 'The 0.2.2 artifact is not the pinned one');
+            const downloaded = await github.rest.actions.downloadArtifact({...context.repo, artifact_id: Number(pin.artifactId), archive_format: 'zip'});
+            const bytes = Buffer.from(downloaded.data);
+            must(sha(bytes) === pin.archiveSha256, 'The downloaded 0.2.2 archive has other bytes');
+            const inputs = path.join(process.env.WORK, 'inputs');
+            fs.mkdirSync(inputs, {recursive: true});
+            const archive = path.join(inputs, 'old.zip');
+            fs.writeFileSync(archive, bytes);
+            const dmgs = execFileSync('/usr/bin/unzip', ['-Z1', archive], {encoding: 'utf8'}).trim().split('\n').filter(n => n.endsWith('.dmg'));
+            must(dmgs.length === 1, 'The 0.2.2 archive does not hold exactly one disk image');
+            const out = fs.openSync(path.join(inputs, 'old.dmg'), 'w');
+            try { execFileSync('/usr/bin/unzip', ['-p', archive, dmgs[0]], {stdio: ['ignore', out, 'inherit']}); }
+            finally { fs.closeSync(out); }
+            must(sha(fs.readFileSync(path.join(inputs, 'old.dmg'))) === pin.dmgSha256, 'The 0.2.2 disk image has other bytes');
+            fs.unlinkSync(archive);
+            fs.writeFileSync(path.join(inputs, 'old-artifact.json'), JSON.stringify({run, artifact}, null, 2));
+
+      - name: Build the pinned F13 source in a clean clone
+        run: |
+          node scripts/storage-round-trip-build.mjs --manifest "$MANIFEST" \
+            --root "$WORK/build" --inputs "$WORK/inputs" --pnpm "$(command -v pnpm)"
+
+      - name: Round trip 0.2.2 → F13 → 0.2.2 → F13 on one scratch workspace
+        run: |
+          node scripts/storage-round-trip.mjs --manifest "$MANIFEST" \
+            --old-dmg "$WORK/inputs/old.dmg" \
+            --old-artifact "$WORK/inputs/old-artifact.json" \
+            --f13-app "$WORK/build/f13/apps/desktop/dist/mac-arm64/BroCrew.app" \
+            --f13-build "$WORK/inputs/f13-build.json" \
+            --scratch "$WORK/scratch" \
+            --evidence "$WORK/evidence"
+
+      - name: Keep the evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: storage-round-trip-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ env.WORK }}/evidence
+            ${{ env.WORK }}/inputs/*.json
+            ${{ env.WORK }}/inputs/*.log
+          if-no-files-found: error
+          retention-days: 14

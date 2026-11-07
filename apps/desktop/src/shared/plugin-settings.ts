@@ -137,6 +137,7 @@ export const PLUGIN_UNAVAILABLE_REASONS = [
   'catalogue',
   'runtime',
   'service-start',
+  'plugin-start',
   'service-version',
   'connection',
   'connection-lost',
@@ -157,6 +158,8 @@ export function pluginUnavailableNotice(reason?: PluginUnavailableReason): strin
       return "BroCrew couldn't load or verify the plugin catalogue. Check your connection and try again."
     case 'runtime':
       return "BroCrew couldn't prepare its bundled plugin runtime. Restart BroCrew or reinstall the app if retrying fails."
+    case 'plugin-start':
+      return 'The plugin could not start or stopped unexpectedly.'
     case 'service-start':
       return "BroCrew couldn't start the plugin service. Try again."
     case 'service-version':
@@ -212,6 +215,8 @@ export interface PluginCard {
   priorityClamped?: boolean | null
   /** A living process does not imply that its agent tools are reachable. */
   toolsUnavailable?: true
+  /** Fixed-vocabulary `stage: cause` behind unavailable tools, when known. */
+  toolsCause?: string
   /** Negotiated person-only Chrome recovery; absent for older supervisors. */
   canRestart?: true
   installedVersion?: string
@@ -300,7 +305,19 @@ export type PluginSettingsReply =
       removal?: PluginRemovalOutcome
     }
   | { ok: false; listState: 'not-published' | 'fetch-error'; reason?: PluginListFailureReason }
-  | { ok: false; error: 'Plugin unavailable. Try again.'; mutationFailure?: PluginMutationFailure }
+  | {
+      ok: false
+      error: 'Plugin unavailable. Try again.'
+      mutationFailure?: PluginMutationFailure
+      /** The caught error's own message. */
+      detail?: string
+      /** Its stack, with every nested cause. */
+      stack?: string
+      /** Each typed code on its cause chain, outermost first. */
+      codes?: string[]
+      stage?: string
+      cause?: string
+    }
 export interface PluginsClient {
   request(input: PluginSettingsRequest): Promise<PluginSettingsReply>
   onReviewInvalidated?(listener: () => void): () => void

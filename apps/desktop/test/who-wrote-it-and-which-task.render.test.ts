@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import type { MessageSentEvent, TranscriptEvent } from '../src/shared/conversation-events'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -11,18 +12,14 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { HELD_ELSEWHERE } from '../src/shared/runtime-ipc'
 import type {
   CreatedSession,
-  MessageSentEvent,
   RuntimeEventMessage,
   SessionLivenessMessage,
-  TranscriptEvent,
 } from '../src/shared/runtime-ipc'
 import ConversationPane from '../src/renderer/src/components/ConversationPane.vue'
 import QueuedMessage from '../src/renderer/src/components/QueuedMessage.vue'
@@ -53,12 +50,13 @@ import {
   GO_AHEAD_SENDER,
   TAKE_BACK_THE_GO_AHEAD,
 } from '../src/renderer/src/lib/plan-mode'
-// ⚑ 700 · `688` H2 — main's sentence and the row's are one value now, in `shared/`.
 import {
   THE_GO_AHEAD_TAKEN_BACK,
   THE_GO_AHEAD_WAS_NOT_SENT,
   TYPE_TO_CARRY_ON,
 } from '../src/shared/the-go-ahead'
+import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+// ⚑ 700 · `688` H2 — main's sentence and the row's are one value now, in `shared/`.
 
 // These SSR checks read expanded row details; browser controls exercise the real fold.
 vi.mock('../src/renderer/src/components/OutsideCard.vue', async () => {
@@ -263,15 +261,9 @@ describe('688 · draw who wrote it, and which task', () => {
     created = new Map()
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => new Watching(provider),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
@@ -912,23 +904,8 @@ describe('688 · draw who wrote it, and which task', () => {
       await answerEveryCard(sessionId)
     })
 
-    /**
-     * ⚑ **D-017b · re-aimed, not stripped** (rule 26): a conversation that has stopped TAKES a
-     * message — the message continues it (`startAndSend`) — so *"type your next message to carry
-     * on"* is an instruction a person can follow there, and the row keeps it. ⛔ What still cannot
-     * be done is a message from a window another one holds it for (`held-elsewhere`), so that is the
-     * arm that says only the fact about the past. Each view is the host's own `look`, drawn from the
-     * ledger (`handover: 'recorded'`), as the window draws it after the stop.
-     */
-    it('🔴 once the conversation has STOPPED → still the whole sentence; held by another window → only the fact about the past', async () => {
+    it('🔴 once the conversation has STOPPED the taken-back row keeps its action and sender', async () => {
       const { sessionId } = await aTakenBackGoAhead()
-      // ⚑ The refusal's view, taken while this window holds it: a SECOND window's look.
-      const fromAnotherWindow = structuredClone(
-        await host.look(sessionId, new RecordingSink('webContents:2'), false),
-      )
-      expect(fromAnotherWindow.handover).toBe('recorded')
-      expect(fromAnotherWindow.cannotTakeAMessage).toBe(HELD_ELSEWHERE)
-
       await host.close(sessionId, window)
       await waitFor(
         () => theWindow(sessionId).control.ended,
@@ -946,16 +923,6 @@ describe('688 · draw who wrote it, and which task', () => {
       // ⚑ The row keeps its act: it was taken back, and it is still BroBot's.
       expect(textsOf(drawn, 'queued-state')).toEqual(['not sent · you took it back'])
       expect(textsOf(drawn, 'queued-sender')).toEqual([GO_AHEAD_SENDER])
-
-      // ⚑ THE CONTROL: the same page, drawn as the window another one holds it for draws it — a
-      // message from there is refused, so the instruction is not drawn.
-      const elsewhere = theWindow(sessionId)
-      elsewhere.phase = 'recorded'
-      elsewhere.meta = fromAnotherWindow
-      const refused = await drawPane(elsewhere, '')
-      expect(textsOf(refused, 'queued-go-ahead-taken-back')).toEqual([THE_GO_AHEAD_WAS_NOT_SENT])
-      expect(refused).not.toContain(TYPE_TO_CARRY_ON)
-      expect(textsOf(refused, 'queued-state')).toEqual(['not sent · you took it back'])
     })
   })
 

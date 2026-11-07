@@ -41,14 +41,11 @@ import {
   type QuestionPart,
   type QuestionState,
 } from '../lib/question-card'
-import { escaped } from '../lib/named-in-a-reply'
-import { usePathsIn, type PathsHere } from '../composables/useMessagePaths'
-import PathsInText from './PathsInText.vue'
+import { runtimePathCalls, useMessagePaths, type PathsHere } from '../composables/useMessagePaths'
 import MarkdownWords from './MarkdownWords.vue'
 
 const props = defineProps<{
   reading: QuestionCardReading
-  markdown?: boolean
   /** The outer exchange heading already names the recipient. */
   withoutRecipient?: boolean
   /**
@@ -58,17 +55,15 @@ const props = defineProps<{
   draft?: RequestDraft
   /** ⚑ **Fold the words after a few lines, with *more*** — the queue, where rows sit side by side. */
   fold?: boolean
-  /** The asking conversation's paths. Absent: a path in the question stays plain text. */
+  /** The conversation's path context, when supplied by its frame. */
   paths?: PathsHere | null
+  /** Queue cards resolve paths in their asking conversation. */
+  pathSessionId?: string
 }>()
 
-/** The question's words and each part's prompt; an option's words sit inside its button. */
-const paths = usePathsIn(
-  () => props.paths,
-  () =>
-    [props.reading.words ?? '', ...props.reading.parts.map((part) => part.prompt ?? '')].map(
-      escaped,
-    ),
+const queuePaths = useMessagePaths(
+  () => props.pathSessionId ?? null,
+  () => (!props.paths && props.pathSessionId ? runtimePathCalls() : null),
 )
 
 const emit = defineEmits<{
@@ -181,8 +176,8 @@ const foldable = computed(
     props.fold === true && (unfolded.value || overflows.value || props.reading.context !== null),
 )
 function measure(): void {
-  const el = wordsEl.value
-  if (!folded.value || el === null) return
+  const el = wordsEl.value?.querySelector<HTMLElement>('.md-chat')
+  if (!folded.value || !el) return
   overflows.value = el.scrollHeight > el.clientHeight + 1
 }
 function toggle(): void {
@@ -220,7 +215,6 @@ watch(
     data-cy="question-card"
     :data-state="state"
     :data-request-id="props.reading.requestId ?? undefined"
-    @click="paths.clicked"
   >
     <header class="question-head" data-cy="question-head">
       <svg class="icon" aria-hidden="true"><use href="#i-question" /></svg>
@@ -262,31 +256,18 @@ watch(
       data-cy="question-words"
       :data-folded="String(folded)"
     >
-      <MarkdownWords v-if="markdown" :text="props.reading.words" :found="paths" />
-      <PathsInText v-else :text="props.reading.words" :found="paths" />
+      <MarkdownWords :text="props.reading.words" :paths="props.paths ?? queuePaths" />
     </div>
-    <p
-      v-if="paths.failure.value"
-      class="message-path-failure"
-      role="status"
-      data-cy="message-path-failure"
-    >
-      {{ paths.failure.value }}
-    </p>
     <!-- ⛔ A cut body SAYS it was cut, in words and outside the words' box (`678`). -->
     <p v-if="props.reading.wordsAreCut" class="aside" data-cy="question-cut">{{ BODY_WAS_CUT }}</p>
     <!-- ⚑ What the conversation that passed it up added — beside the words, never instead. -->
-    <component
-      :is="markdown ? 'div' : 'p'"
-      v-if="props.reading.context && !folded"
-      class="aside"
-      data-cy="question-context"
-    >
-      <span class="lead">{{ ADDED_BESIDE }}</span
-      >{{ ' ' }}
-      <MarkdownWords v-if="markdown" :text="props.reading.context" />
-      <template v-else>{{ props.reading.context }}</template>
-    </component>
+    <div v-if="props.reading.context && !folded" class="aside" data-cy="question-context">
+      <MarkdownWords
+        :text="props.reading.context"
+        :lead="ADDED_BESIDE"
+        :paths="props.paths ?? queuePaths"
+      />
+    </div>
     <button
       v-if="foldable"
       class="more"
@@ -330,13 +311,15 @@ watch(
         class="part"
         :data-cy="`question-part-${part.id}`"
       >
-        <component :is="markdown ? 'div' : 'p'" v-if="asks(part)" :id="askId(index)" class="ask">
+        <div v-if="asks(part)" :id="askId(index)" class="ask">
           <span v-if="part.header" class="header">{{ part.header }}</span
           >{{ ' '
-          }}<MarkdownWords v-if="markdown && part.prompt" :text="part.prompt" :found="paths" />
-          <PathsInText v-else :text="part.prompt ?? ''" :found="paths" />{{ ' '
-          }}<span v-if="live && part.multiSelect" class="mode">{{ PICK_SEVERAL }}</span>
-        </component>
+          }}<MarkdownWords
+            v-if="part.prompt"
+            :text="part.prompt"
+            :paths="props.paths ?? queuePaths"
+          />{{ ' ' }}<span v-if="live && part.multiSelect" class="mode">{{ PICK_SEVERAL }}</span>
+        </div>
         <div
           v-if="live && part.options.length > 0"
           class="options"
@@ -510,7 +493,7 @@ watch(
   overflow-wrap: anywhere;
 }
 
-.lead {
+:deep(.md-lead) {
   font-weight: var(--fw-bold);
 }
 
@@ -523,7 +506,7 @@ watch(
   white-space: pre-wrap;
 }
 
-.words.folded {
+.words.folded :deep(.md-chat) {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
@@ -563,7 +546,7 @@ watch(
   margin: 0;
   color: var(--text-soft);
   font-size: var(--type-small);
-  white-space: pre-wrap;
+  white-space: normal;
 }
 
 .header {
@@ -740,7 +723,7 @@ watch(
   white-space: pre-wrap;
 }
 
-.queue-question [data-cy='question-context'] .lead {
+.queue-question [data-cy='question-context'] :deep(.md-lead) {
   display: block;
   margin-bottom: var(--space-2);
   color: var(--text-soft);

@@ -1,9 +1,8 @@
 <script setup lang="ts">
+import type { WorkInHand } from '../../../shared/question-contracts'
+
 import { computed, ref, useId } from 'vue'
-// 🔴 **`KIND_WORDS` and `sinceWords` were declared HERE until `452 relay 1`** — *one derivation,
-// wherever it lives* is `persons-queue.ts`' rule: two sentences for one `kind` are free to
-// disagree about who else might still pick a row up. See `KIND_WORDS` there, and note that
-// `403 M23`'s anchor moved with `SINCE_PHRASE`'s lines.
+// Shared kind and time wording is read by both queue and conversation cards.
 import {
   DID_WORDS,
   KIND_WORDS,
@@ -11,7 +10,6 @@ import {
   actionLinesOf,
   broaderLinesOf,
   isAPrimaryAnswer,
-  sinceWords,
   usePersonsQueue,
   namesakeSays,
   namesakesIn,
@@ -19,13 +17,14 @@ import {
   type PersonsQueueRow,
   type StalledWorkRow,
 } from '../lib/persons-queue'
+import { sinceWords } from '../lib/queue-time'
 import {
   BROADER_THAN_SHOWN,
   charactersNotShown,
   OPEN_IT_BEFORE_YOU_ALLOW_IT,
   type AttentionDecision,
 } from '../lib/attention'
-import type { WorkInHand } from '../../../shared/questions'
+
 import {
   LIMIT_WORDS,
   WHAT_COMES_AFTER_IS_NOT_OURS,
@@ -41,6 +40,7 @@ import McpServerRequests from './McpServerRequests.vue'
 import WorkWaits from './WorkWaits.vue'
 import CloseWorkButton from './CloseWorkButton.vue'
 import QuestionCard from './QuestionCard.vue'
+import MarkdownWords from './MarkdownWords.vue'
 import WaitingOnWhoWrote from './WaitingOnWhoWrote.vue'
 
 /** ⚑ D-046 · what a provider's question part takes, beside its choices — drawn, not answered here. */
@@ -612,6 +612,7 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
           <QuestionCard
             v-if="row.question"
             :reading="questionOnTheQueue(row, row.question, queue.presses.get(row.key))"
+            :path-session-id="row.sessionId"
             fold
             @answer="(response) => answer(row, response)"
             @move="(decision) => queue.move(row, decision)"
@@ -682,12 +683,18 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
                its asker's conversation answers it; the row's own answers and its press below are
                unchanged. -->
           <div v-if="row.words" class="pq-asked" :data-cy="`persons-queue-asked-${row.key}`">
-            <p v-if="row.words.prompt.trim() !== ''" class="pq-asked-words">
-              {{ row.words.prompt }}
-            </p>
-            <p v-if="row.words.context" class="pq-asked-context">
-              {{ ADDED_BESIDE }} {{ row.words.context }}
-            </p>
+            <MarkdownWords
+              v-if="row.words.prompt.trim() !== ''"
+              class="pq-asked-words"
+              :text="row.words.prompt"
+              :session-id="row.sessionId"
+            />
+            <MarkdownWords
+              v-if="row.words.context"
+              class="pq-asked-context"
+              :text="row.words.context"
+              :lead="ADDED_BESIDE"
+            />
             <div
               v-for="(part, index) in row.words.parts"
               :key="part.id || index"
@@ -697,7 +704,12 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
               <p v-if="part.header" class="pq-asked-prompt">
                 <strong>{{ part.header }}</strong>
               </p>
-              <p v-if="part.prompt" class="pq-asked-prompt">{{ part.prompt }}</p>
+              <MarkdownWords
+                v-if="part.prompt"
+                class="pq-asked-prompt"
+                :text="part.prompt"
+                :session-id="row.sessionId"
+              />
               <!-- ⚑ Not where the row's own answers draw the same labels as presses below. -->
               <ul
                 v-if="part.options.length > 0 && row.answers.length === 0"
@@ -719,7 +731,7 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
                shortened; what a broader answer would install is drawn under more options. -->
           <div v-if="row.disclosed" class="pq-asked" :data-cy="`persons-queue-request-${row.key}`">
             <div class="pq-request-what">
-              <p class="pq-asked-words">{{ row.disclosed.asked }}</p>
+              <MarkdownWords class="pq-asked-words" :text="row.disclosed.asked" />
               <div
                 v-if="actionLinesOf(row.disclosed).length > 0"
                 class="pq-request-line"

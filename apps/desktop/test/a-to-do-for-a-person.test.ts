@@ -1,4 +1,6 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { waitFor } from './lib/f093-host'
+import type { PieceRow } from '../src/shared/task-contracts'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,15 +17,18 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
-import type { PieceRow } from '../src/shared/tasks'
-import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
+import {
+  RecordingSink,
+  syntheticProviderHome,
+  neutralHostDeps,
+  fixtureProviderConfig,
+} from './lib/host-fixture'
 
 /**
  * A to-do for a person.
@@ -39,14 +44,6 @@ import { DEFAULT_PROFILE_ID, type RuntimeEventMessage } from '../src/shared/runt
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 400; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
 
 /** Long enough for every pump and every flush a row arms to have run. */
 async function settle(): Promise<void> {
@@ -84,17 +81,6 @@ class ProviderDouble extends FakeRuntime {
   }
 }
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 describe('a to-do for a person', () => {
   let userData: string
   let root: string
@@ -119,28 +105,16 @@ describe('a to-do for a person', () => {
     const issued = new FakeProviderSessions()
     host = new RuntimeHost({
       store,
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(userData, 'exports'),
+      ...neutralHostDeps(() => userData),
       resourcesRoot: () => resourcesRoot(userData),
       createRuntime: (provider: Provider) => new ProviderDouble(provider, handles, issued),
-      prepareProviderHome: (provider: Provider, profileId?: string) => {
-        const home = join(userData, 'provider-homes', profileId ?? 'default', provider)
-        mkdirSync(home, { recursive: true })
-        return home
-      },
+      prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${++counter}`,
       now: tick,
       endingWaitMs: 1_000,
-      readProviderConfig: (provider, home) => ({
-        home,
-        homeEnv: 'CLAUDE_CONFIG_DIR',
-        model: 'm',
-        authNote: null,
-        files: [],
-      }),
+      readProviderConfig: fixtureProviderConfig,
       statesMoved: () => undefined,
     })
     window = new RecordingSink('webContents:1')
@@ -800,10 +774,10 @@ describe('a to-do for a person', () => {
         // so what was read of it before is read again.
         const row = db
           .prepare(
-            `SELECT id, payload FROM events WHERE session_id = ? AND type = 'question_asked'
+            `SELECT id, ordinal, payload FROM events WHERE session_id = ? AND type = 'question_asked'
                AND json_extract(payload, '$.requestId') = ?`,
           )
-          .get(ada, copy) as { id: string; payload: string }
+          .get(ada, copy) as { id: string; ordinal: number; payload: string }
         const aNote = async (): Promise<void> => {
           await ok(agentToolsFor(host, brobot), 'message_agent', {
             agent: ada,
@@ -820,7 +794,7 @@ describe('a to-do for a person', () => {
           outcome: 'refused',
           rail: 'its-questions-could-not-all-be-read',
           retryable: true,
-          reason: `${label} wasn't ${how}: its questions couldn't all be read. Try again; if it fails again, ask a person.`,
+          reason: `${label} wasn't ${how}: question records for conversation ${ada}, row ${String(row.ordinal)}: is not a well-formed question. Check that record, then retry this call.`,
         })
         await settle()
         expect(
@@ -852,13 +826,18 @@ describe('a to-do for a person', () => {
       ada: string,
       brobot: string,
       copy: string,
-    ): { readonly id: string; readonly payload: string; readonly reread: () => Promise<void> } => {
+    ): {
+      readonly id: string
+      readonly ordinal: number
+      readonly payload: string
+      readonly reread: () => Promise<void>
+    } => {
       const row = db
         .prepare(
-          `SELECT id, payload FROM events WHERE session_id = ? AND type = 'request_routed'
+          `SELECT id, ordinal, payload FROM events WHERE session_id = ? AND type = 'request_routed'
              AND json_extract(payload, '$.requestId') = ?`,
         )
-        .get(ada, copy) as { id: string; payload: string }
+        .get(ada, copy) as { id: string; ordinal: number; payload: string }
       return {
         ...row,
         reread: async () => {
@@ -891,7 +870,7 @@ describe('a to-do for a person', () => {
           outcome: 'refused',
           rail: 'its-questions-could-not-all-be-read',
           retryable: true,
-          reason: `${label} wasn't ${how}: its questions couldn't all be read. Try again; if it fails again, ask a person.`,
+          reason: `${label} wasn't ${how}: question records for conversation ${ada}, row ${String(routing.ordinal)}: is not a well-formed routing. Check that record, then retry this call.`,
         })
         await settle()
         expect(
@@ -1105,7 +1084,7 @@ describe('a to-do for a person', () => {
       ).toMatchObject({
         outcome: 'refused',
         rail: 'its-questions-could-not-all-be-read',
-        reason: `${label} wasn't handed back: its questions couldn't all be read. Try again; if it fails again, ask a person.`,
+        reason: `${label} wasn't handed back: question records for conversation ${brobot}, row 0: the question record could not be decoded. Check that record, then retry this call.`,
       })
       store.questionsRaisedIn = raised
       expect([stateOf(bea, original), stateOf(ada, copy), stateOf(brobot, copyOfTheCopy)]).toEqual([
@@ -1133,7 +1112,7 @@ describe('a to-do for a person', () => {
             rail: 'its-questions-could-not-all-be-read',
             retryable: true,
             remedy: 'make-the-same-call-when-this-settles',
-            reason: `${label} wasn't ${how}: its questions couldn't all be read. Try again; if it fails again, ask a person.`,
+            reason: `${label} wasn't ${how}: question records for conversation ${chain[passer]}: the disk could not be read. Check that record, then retry this call.`,
           })
           store.questionsRaisedIn = raised
           await settle()

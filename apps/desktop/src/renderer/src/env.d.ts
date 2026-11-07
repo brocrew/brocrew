@@ -1,3 +1,4 @@
+import type { HandedPath } from '../../shared/attachment-contracts'
 import type { ProviderSetupBridge } from '../../shared/provider-setup'
 import type { RecoveryRetentionClient } from '../../shared/recovery-retention'
 import type { PluginsClient } from '../../shared/plugin-settings'
@@ -10,7 +11,6 @@ import type {
   ChosenAttachment,
   ChosenCwd,
   DroppedPathVerdict,
-  HandedPath,
   RuntimeBridge,
 } from '../../shared/runtime-ipc'
 import type { PagePerformanceReport, PageReportAnswer } from '../../shared/page-performance'

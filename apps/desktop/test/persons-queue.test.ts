@@ -1,3 +1,16 @@
+import type {
+  AboutWork,
+  EscalationChain,
+  HowItWasRaised,
+  LedgerWalk,
+  LedgerWalkKind,
+  OfferedAnswer,
+  PersonsDecision,
+  PersonsQuestion,
+  RequestOnlyAPersonCanSettle,
+  RoutedRequest,
+  WorkInHand,
+} from '../src/shared/question-contracts'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -10,17 +23,6 @@ import {
   decisionReading,
   escalationChain,
   readingSentence,
-  type EscalationChain,
-  type PersonsDecision,
-  type AboutWork,
-  type HowItWasRaised,
-  type PersonsQuestion,
-  type LedgerWalk,
-  type LedgerWalkKind,
-  type OfferedAnswer,
-  type RequestOnlyAPersonCanSettle,
-  type RoutedRequest,
-  type WorkInHand,
   aPersonsSince,
 } from '../src/shared/questions'
 import { ACTIVITY_READ_EVERY_MS } from '../src/renderer/src/lib/recent-activity'
@@ -946,7 +948,8 @@ describe('§7 · a read that did not answer is not an all-clear', () => {
      * `partial` is false for ever, because the value is not `null`.
      */
     it('🔴 the look records a refusal per population, and keeps the rows either way', () => {
-      const body = bodyOf('lookForWhatIsYours')
+      // ⚑ The reads and their writes are one round of the look, which every ask goes through.
+      const body = bodyOf('lookAtTheQueueOnce')
       expect(body).toContain('if (questions !== null) escalated.value = questions')
       expect(body).toContain('if (decisions !== null) decided.value = decisions')
       // ⛔ **Per population, from the answer itself** — a single boolean over all of them would say
@@ -1095,7 +1098,7 @@ describe('§7 · a read that did not answer is not an all-clear', () => {
      * make a dropped IPC call delete half of somebody's queue.
      */
     it('⛔ the look never writes a refusal into either population', () => {
-      const body = bodyOf('lookForWhatIsYours')
+      const body = bodyOf('lookAtTheQueueOnce')
       expect(body).toContain('if (questions !== null) escalated.value = questions')
       expect(body).toContain('if (decisions !== null) decided.value = decisions')
       // ⛔ **And they go out together**, so the count and the list it is over cannot straddle an
@@ -2005,9 +2008,7 @@ describe('§9.4 · a read that has STOPPED answering, which `partial` could not 
  * | the card, the rail, the live overview | the answer is awaited and the record's fold closes the item — no poll | one round trip |
  * | **this queue** | the next look | **up to {@link LOOK_EVERY_MS} plus one read** |
  *
- * ⚑ **The read's own cost is measured** rather than assumed — `scripts/waiting-set-probe.mjs`:
- * 3.9 ms at a 20k-event ledger, 214 ms at 2M events. ⛔ So the worst case a person sees is
- * `LOOK_EVERY_MS + one read`, and on the biggest ledger measured that is about 5.2 s.
+ * The visible lag includes the next look and the time that read takes.
  */
 describe('§9.5 · the lag is bounded by the look, and the bound is stated', () => {
   it('🔴 nothing in this module shortens the poll, and the bound is LOOK_EVERY_MS', () => {

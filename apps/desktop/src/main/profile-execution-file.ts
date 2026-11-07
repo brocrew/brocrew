@@ -1,7 +1,6 @@
 import {
   closeSync,
   fsyncSync,
-  fstatSync,
   mkdirSync,
   openSync,
   readSync,
@@ -260,22 +259,25 @@ function normalWorkerPools(said: unknown): readonly NormalWorkerPool[] | null {
  * why.
  */
 export function readProfileExecution(file: string): ProfileExecutionRead {
+  const unreadable = (why: string): ProfileExecutionRead => ({
+    readable: false,
+    why: `${file}: ${why}`,
+  })
   let text: string
   try {
     const fd = openSync(file, 'r')
     try {
-      const size = fstatSync(fd).size
-      if (size > MAX_PROFILE_EXECUTION_BYTES) return { readable: false, why: 'it is too large' }
-      // The extra byte detects a concurrent growth without an unbounded read/allocation.
-      const bytes = Buffer.alloc(size + 1)
+      const chunks: Buffer[] = []
       let length = 0
-      while (length < bytes.length) {
-        const read = readSync(fd, bytes, length, bytes.length - length, null)
-        if (read === 0) break
-        length += read
+      for (;;) {
+        const bytes = Buffer.alloc(Math.min(64 * 1024, MAX_PROFILE_EXECUTION_BYTES + 1 - length))
+        const count = readSync(fd, bytes, 0, bytes.length, null)
+        if (count === 0) break
+        chunks.push(bytes.subarray(0, count))
+        length += count
+        if (length > MAX_PROFILE_EXECUTION_BYTES) return unreadable('it is too large')
       }
-      if (length > size) return { readable: false, why: 'it grew while being read' }
-      text = bytes.subarray(0, length).toString('utf8')
+      text = Buffer.concat(chunks, length).toString('utf8')
     } finally {
       closeSync(fd)
     }
@@ -283,43 +285,38 @@ export function readProfileExecution(file: string): ProfileExecutionRead {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       return { readable: true, kept: NO_PROFILE_EXECUTION, absent: true }
     }
-    return { readable: false, why: `it could not be read (${(error as Error).message})` }
+    return unreadable(`it could not be read (${(error as Error).message})`)
   }
   let said: unknown
   try {
     said = JSON.parse(text)
-  } catch {
-    return { readable: false, why: 'it is not JSON' }
+  } catch (error) {
+    return unreadable(`it is not JSON (${(error as Error).message})`)
   }
   const whole = aRecord(said)
-  if (whole === null) return { readable: false, why: 'it holds no object' }
+  if (whole === null) return unreadable('it holds no object')
   const version = whole['version']
   if (version !== 1 && version !== PROFILE_EXECUTION_VERSION) {
-    return { readable: false, why: `it is not version ${String(PROFILE_EXECUTION_VERSION)}` }
+    return unreadable(`it is not version ${String(PROFILE_EXECUTION_VERSION)}`)
   }
   const rows = aRecord(whole['profiles'])
-  if (rows === null) return { readable: false, why: 'it holds no profiles' }
+  if (rows === null) return unreadable('it holds no profiles')
   // ⚑ `false` reads as on, as a missing switch does.
   const servicesOff = whole['servicesOff']
   if (servicesOff !== undefined && typeof servicesOff !== 'boolean') {
-    return { readable: false, why: 'its services switch is not one this app writes' }
+    return unreadable('its services switch is not one this app writes')
   }
   const entries = Object.entries(rows)
-  if (entries.length > MAX_PROFILES_KEPT)
-    return { readable: false, why: 'it holds too many profiles' }
+  if (entries.length > MAX_PROFILES_KEPT) return unreadable('it holds too many profiles')
   const profiles: Record<string, ProfileExecution> = {}
   let workersKept = 0
   for (const [id, row] of entries) {
     const entry = anEntry(row, version)
     if (!anId(id) || entry === null) {
-      return {
-        readable: false,
-        why: `its entry for ${anId(id) ? id : 'a profile'} is not one this app writes`,
-      }
+      return unreadable(`its entry for ${anId(id) ? id : 'a profile'} is not one this app writes`)
     }
     for (const pool of entry.workerPools ?? []) workersKept += pool.workers.length
-    if (workersKept > MAX_NORMAL_WORKERS_KEPT)
-      return { readable: false, why: 'it holds too many workers' }
+    if (workersKept > MAX_NORMAL_WORKERS_KEPT) return unreadable('it holds too many workers')
     profiles[id] = entry
   }
   return {

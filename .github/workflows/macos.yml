@@ -40,6 +40,10 @@ on:
         description: Rehearse the guided update privately instead of the ordinary Mac build
         type: boolean
         default: false
+      package_version:
+        description: Version stamped into the artifact-only Mac build
+        type: string
+        default: '0.1.8'
 
 permissions:
   contents: read
@@ -143,7 +147,9 @@ jobs:
       # With no identity at all it would sign nothing, and a download of that app reads as damaged.
       # ⚑ Only here: a person's own `pnpm run package` keeps signing with whatever identity they have.
       - name: Build and package (dmg, arm64, signed ad hoc)
-        run: pnpm --filter @brobot2/desktop package:mac-beta -c.extraMetadata.version=0.1.8
+        env:
+          PACKAGE_VERSION: ${{ inputs.package_version || '0.1.8' }}
+        run: pnpm --filter @brobot2/desktop package:mac-beta "-c.extraMetadata.version=$PACKAGE_VERSION" --publish never
 
       - name: Find the disk image
         id: dmg
@@ -219,8 +225,9 @@ jobs:
       - name: Publish a prerelease on the pushed tag
         # ⚑ Only on a tag that names this platform: a hand-run on another tag publishes nothing.
         if: >-
-          startsWith(github.ref, 'refs/tags/mac-beta-') ||
-          startsWith(github.ref, 'refs/tags/beta-')
+          github.event_name == 'push' &&
+          (startsWith(github.ref, 'refs/tags/mac-beta-') ||
+          startsWith(github.ref, 'refs/tags/beta-'))
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           IMAGE: ${{ steps.image.outputs.path }}
@@ -298,7 +305,7 @@ jobs:
       - name: Plugin qualification source controls
         timeout-minutes: 2
         run: node --test --test-reporter=tap --test-concurrency=1 scripts/gates/plugin-v2/controls.test.mjs scripts/gates/plugin-v2/native-dependency.test.mjs scripts/gates/plugin-v2/reload-controls.test.mjs scripts/gates/plugin-v2/source-binding.test.mjs
-      - name: Stage the observed ref-selected source plan
+      - name: Stage the tested source SHA
         if: ${{ !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-') }}
         id: stage
         shell: bash
@@ -306,7 +313,7 @@ jobs:
           test "$RUNNER_ENVIRONMENT" = github-hosted
           control=$(node scripts/gates/plugin-v2/owner.mjs stage "${{ matrix.app_version }}")
           echo "control=$control" >> "$GITHUB_OUTPUT"
-      - name: Install the frozen app source dependencies in scratch
+      - name: Install the selected app dependencies in scratch
         if: ${{ !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-') }}
         shell: bash
         env:
@@ -319,7 +326,7 @@ jobs:
         env:
           REVIEW_CONTROL: ${{ steps.stage.outputs.control }}
         run: node scripts/gates/plugin-v2/owner.mjs run "$REVIEW_CONTROL"
-      - name: Keep the closed required evidence
+      - name: Keep the product check summary
         if: ${{ (always() && steps.stage.outputs.control != '') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-sdk-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-sdk-') }}
         uses: actions/upload-artifact@v4
         with:

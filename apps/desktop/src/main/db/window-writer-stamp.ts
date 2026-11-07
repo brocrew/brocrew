@@ -54,7 +54,7 @@ export function windowWriterSampler(
     const at = now()
     if (Number.isFinite(at) && (shared.warnedAt === undefined || at - shared.warnedAt >= 60_000)) {
       shared.warnedAt = at
-      console.warn('window writer tracking could not be reinstalled; the next sample will retry')
+      console.warn('window writer tracking could not be installed; the next sample will retry')
     }
   }
   let installed = false
@@ -112,7 +112,6 @@ export function windowWriterSampler(
         'ordinal',
         'created_at',
       ])
-      // One event dispatch; ordinary content never enters either counter update.
       db.exec(`CREATE TEMP TRIGGER IF NOT EXISTS window_read_event_${operation}
         AFTER ${operation} ON main.events
         WHEN (${routesChanged} AND (${rows.map(relevant).join(' OR ')}))
@@ -139,26 +138,38 @@ export function windowWriterSampler(
     }
     installed = true
   }
-  // Install before the host can write. A failed installation never returns a usable stamp.
-  if (shared.suspended > 0) return () => null
-  try {
-    install()
-  } catch {
-    return () => null
+  if (shared.suspended > 0) failedReinstall()
+  else {
+    try {
+      install()
+      shared.failed = false
+    } catch {
+      failedReinstall()
+    }
   }
-  const sample = db
-    .prepare(
-      `SELECT revision, data_version AS version,
+  // Prepared once the counter exists, so a writer whose first install failed can still sample.
+  let statements:
+    | {
+        sample: Database.Statement
+        add: Database.Statement
+        remove: Database.Statement
+      }
+    | undefined
+  const prepared = () =>
+    (statements ??= {
+      sample: db
+        .prepare(
+          `SELECT revision, data_version AS version,
       recursive_triggers AS recursive,
       ${installedTriggers} AS triggers
     FROM temp.window_read_revision, pragma_data_version, pragma_recursive_triggers
     WHERE id = ?`,
-    )
-    .safeIntegers(true)
-  const add = db.prepare(`INSERT INTO temp.window_read_revision
-    (id, kind, session, before_ordinal) VALUES (?, 'leads', ?, ?)`)
-  const remove = db.prepare('DELETE FROM temp.window_read_revision WHERE id = ?')
-  shared.failed = false
+        )
+        .safeIntegers(true),
+      add: db.prepare(`INSERT INTO temp.window_read_revision
+    (id, kind, session, before_ordinal) VALUES (?, 'leads', ?, ?)`),
+      remove: db.prepare('DELETE FROM temp.window_read_revision WHERE id = ?'),
+    })
   setWindowWriteFence(db, <T>(write: () => T): T => {
     if (shared.suspended > 0) return write()
     shared.suspended++
@@ -194,6 +205,7 @@ export function windowWriterSampler(
           return null
         }
       }
+      const { sample, add, remove } = prepared()
       let watcher = 0
       if (query.kind === 'leads') {
         const key = JSON.stringify([query.sessionId, query.before])

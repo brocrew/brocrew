@@ -29,7 +29,7 @@ import { readTextFile, realPathOf } from './read-text-file'
  * `.claude.json` is state the SDK keeps growing. A cut is reported, never hidden — the panel says
  * the paper was cut at the size limit, and the result carries the file's real size.
  */
-export const MAX_CONFIG_BYTES = 1024 * 1024
+const MAX_CONFIG_BYTES = 1024 * 1024
 
 /**
  * Read the file named `name` off `files`, or say why not.

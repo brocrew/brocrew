@@ -110,7 +110,7 @@ export interface PanelAsset {
 }
 
 /** The checklist, while it still has something left to do. */
-export interface PanelTodo {
+interface PanelTodo {
   itemId: string
   steps: PlanItem['steps']
   /** How many are finished — the header line, so the panel says progress without a second walk. */

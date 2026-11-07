@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 import { page } from 'vitest/browser'
@@ -6,7 +7,7 @@ import SubAgentEntry from '../../src/renderer/src/components/SubAgentEntry.vue'
 import ToolEntry from '../../src/renderer/src/components/ToolEntry.vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { META, mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
-import type { ToolAnswer, TranscriptEvent } from '../../src/shared/runtime-ipc'
+import type { ToolAnswer } from '../../src/shared/runtime-ipc'
 
 /**
  * 🔴 **462 · what a person can actually READ, measured in a real Chromium.**

@@ -1,6 +1,9 @@
 <script setup lang="ts">
+import { TASK_STATES } from '../../../shared/task-contracts'
+import type { TaskState } from '../../../shared/task-contracts'
+
 import { onBeforeUnmount, ref, watch } from 'vue'
-import { TASK_STATES, type TaskState } from '../../../shared/tasks'
+
 import { WORK_STATE_WORD } from '../../../shared/work-state-words'
 import type {
   WorkSearchHit,

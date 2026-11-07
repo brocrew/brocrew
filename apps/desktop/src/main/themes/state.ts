@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Stats } from 'node:fs'
-import { lstat, mkdir, open, realpath, rename, rm } from 'node:fs/promises'
+import { lstat, open, realpath, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { errorCode, retrying } from '../recovery/files'
 import {
@@ -53,11 +53,6 @@ export type ThemeFolderState =
   /** The system would not say, even after waiting out a brief hold. */
   | { readonly kind: 'unresolved' }
 
-/**
- * Whether a folder the themes live in is there, looked at through `look` and waiting out a file
- * held for a moment. Only the system saying it does not exist, or something other than a real
- * folder standing there, counts as absent.
- */
 export async function themeFolderState(
   path: string,
   look: (path: string) => Promise<Stats> = lstat,
@@ -80,10 +75,6 @@ export type ThemeChoice =
   /** The choice file is there but the system would not let it be read. */
   | { readonly kind: 'unresolved' }
 
-/**
- * The workspace's theme choice. No file, or one that holds no valid choice, is no choice; a file
- * the system won't let the app read, even after waiting out a brief hold, is an unknown choice.
- */
 export async function readThemeChoice(
   userData: string,
   readFiles: ThemeReadFiles = THEME_READ_FILES,
@@ -137,12 +128,6 @@ export async function writeActiveTheme(
   await writeWorkspaceFile(userData, ACTIVE_THEME_FILE, `${JSON.stringify({ theme: id })}\n`, files)
 }
 
-/**
- * Writes one small state file in a workspace's data folder: to an exclusive, unique temporary
- * file beside it (`<name>.<pid>.<uuid>.tmp`, mode 0600, never through a link), synced, then renamed
- * into place while the folder is still the one it was. A rename a file held for a moment refuses
- * is tried again.
- */
 export async function writeWorkspaceFile(
   userData: string,
   name: string,
@@ -183,28 +168,6 @@ export async function writeWorkspaceFile(
       remaining.ino === temporaryIdentity.ino
     ) {
       await rm(temporary, { force: true }).catch(() => undefined)
-    }
-  }
-}
-
-// A failed or killed writer leaves a lock for inspection rather than guessing that it is stale.
-export async function themeWriteLock(
-  root: string,
-  id: string,
-): Promise<(() => Promise<void>) | null> {
-  const path = join(root, `.theme-${id}.lock`)
-  try {
-    await mkdir(path)
-  } catch {
-    return null
-  }
-  const owned = await lstat(path)
-  return async () => {
-    const now = await lstat(path).catch(() => null)
-    if (now && !now.isSymbolicLink() && now.dev === owned.dev && now.ino === owned.ino) {
-      // A lock left behind would refuse every later save of this theme, so a brief hold is
-      // waited out.
-      await retrying(() => rm(path, { recursive: true, force: true }))
     }
   }
 }

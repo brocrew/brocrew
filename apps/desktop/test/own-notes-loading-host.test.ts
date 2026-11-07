@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -14,7 +15,6 @@ import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   RuntimeHost,
   type RuntimeHostDeps,
@@ -106,9 +106,7 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
       new RuntimeHost({
         store,
         prepareBuiltInSkills: skillPreparation,
-        discoverSessions: NO_DISCOVERY,
-        nativeTranscriptPath: () => null,
-        exportDirectory: () => join(root, 'exports'),
+        ...neutralHostDeps(() => root),
         createRuntime: (provider) => new Runtime(provider, { sessions }),
         prepareProviderHome: (provider, profile) => {
           const value = home(provider, profile)
@@ -161,10 +159,10 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
   // Finish the fake turn without a permission card; these cases test loading and lead retention.
   const start = async (provider: Provider, profileId = 'lark') =>
     (await host.createSession({ provider, profileId, cwd, approvalMode: 'auto' }, window)).sessionId
-  const save = (profile: string, text: string, expectedVersion = 0, currentText = '') => {
+  const save = (profile: string, text: string, expectedVersion = 0) => {
     const result = host.saveOwnNotes(
       profile,
-      { text, expectedVersion, currentText, why: 'Keep this standing wish.' },
+      { text, expectedVersion, why: 'Keep this standing wish.' },
       window,
     )
     expect(result).not.toBeNull()
@@ -255,7 +253,7 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
           initiallySent!.indexOf('## Your own notes'),
         )
       else expect(options.at(-1)?.systemHint).toBeUndefined()
-      save('lark', 'Second page.', 1, 'First page.')
+      save('lark', 'Second page.', 1)
       expect(first.context).toMatchObject({ ownNotes: { version: 1, text: 'First page.' } })
       await host.send(me, 'Read your standing context.', window)
       await vi.waitFor(() => expect(turns(me)).toHaveLength(1))
@@ -284,7 +282,7 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
       await vi.waitFor(() =>
         expect(store.events(me).filter(({ event }) => event.type === 'turn')).toHaveLength(2),
       )
-      save('lark', '', 2, 'Second page.')
+      save('lark', '', 2)
       await host.close(me, window)
       await host.resumeSession(me, window)
       const clear = reads.at(-1)!
@@ -311,7 +309,7 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
       save('lark', 'Read before the race.')
       atLaunch = () => {
         atLaunch = undefined
-        save('lark', 'Written during launch.', 1, 'Read before the race.')
+        save('lark', 'Written during launch.', 1)
       }
       const me = await start(provider)
       expect(store.currentOwnNotesOf('lark')?.current?.version).toBe(2)

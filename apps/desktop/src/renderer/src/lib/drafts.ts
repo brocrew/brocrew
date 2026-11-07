@@ -1,10 +1,10 @@
+import type { HandedPath } from '../../../shared/attachment-contracts'
 import { reactive, shallowReactive, watch, type WatchStopHandle } from 'vue'
 import {
   MAX_HANDED_PATHS,
   alreadyStagedAs,
   sameFileDifferentCase,
   type DroppedPathVerdict,
-  type HandedPath,
 } from '../../../shared/runtime-ipc'
 
 /**
@@ -319,7 +319,8 @@ export interface DraftBook {
    */
   readonly paths: AttachmentBook
   /**
-   * ⛔ **Put a REFUSED message back — the words and the paths together** (216).
+   * ⛔ **Put a message back — the words and the paths together** (216): a saved draft at start, and
+   * the paths of a refused send through {@link handRefusedBack}, whose words join live typing.
    *
    * ⚠️ **Each book guards ITSELF, and that is the whole content of this method.** Written out at
    * the call site it guarded the text against clobbering live typing and wrote the paths
@@ -332,8 +333,8 @@ export interface DraftBook {
    * `216`'s table). A rule the table cannot reach is a rule nobody is checking; moved into the
    * book, it is ordinary code with an ordinary test.
    *
-   * ⛔ **The two guards are NOT the same guard, and 236 §5 split them** (from `227` LOW 3). The
-   * words genuinely have to choose — one box, and live typing wins. The paths do not: a list can
+   * ⛔ **The two guards are NOT the same guard, and 236 §5 split them** (from `227` LOW 3). Here the
+   * words choose — one box, and live typing wins. The paths do not: a list can
    * hold both, so *"send A, stage B while A is in flight, A is refused"* keeps B where it is and
    * takes A's files back as well. It used to keep B and drop A's entirely, in silence.
    *
@@ -524,8 +525,9 @@ export function createDraftBook(): DraftBook {
     keys: () => [...drafts.keys()],
 
     restore: (key, text, attachments) => {
-      // Only if the box is still empty: the user may have started typing the next message while
-      // the send was in flight, and overwriting live typing is the bug 019 exists to prevent.
+      // Only if the box is still empty: the person may have started typing before a saved draft
+      // came back, and overwriting live typing is the bug 019 exists to prevent. A refused send
+      // goes through {@link handRefusedBack}, whose words join the typing instead.
       if ((drafts.get(key) ?? '') === '') {
         if (text !== '') drafts.set(key, text)
       }
@@ -567,6 +569,46 @@ export function createDraftBook(): DraftBook {
 export function puttingItBack(draft: string, text: string): string {
   if (text === '') return draft
   return draft.trim() === '' ? text : `${draft.replace(/\s+$/, '')}\n\n${text}`
+}
+
+/**
+ * A refused message's words, handed back into a box: they join what is there
+ * ({@link puttingItBack}), unless the box already holds that whole message.
+ */
+export function joiningTheBox(draft: string, text: string): string {
+  const message = text.trim()
+  if (message !== '' && `\n\n${draft.trim()}\n\n`.includes(`\n\n${message}\n\n`)) return draft
+  return puttingItBack(draft, text)
+}
+
+/**
+ * Whether a launch attempt that just ended should hand the message back to the box.
+ *
+ * Only on the falling edge of a failed launch, and only when something was tried. The words join
+ * any text typed since ({@link joiningTheBox}). The launcher and the start-as-agent sheet both
+ * follow this one rule, so it lives here rather than in either component.
+ */
+export function shouldRestoreDraft(input: {
+  busy: boolean
+  wasBusy: boolean
+  error: string | null
+  lastTried: string
+}): boolean {
+  return input.wasBusy && !input.busy && input.error !== null && input.lastTried !== ''
+}
+
+/**
+ * Hand a refused message back to its slot: its words join what was typed since
+ * ({@link joiningTheBox}), and its paths join what is staged. Returns how many paths did not fit.
+ */
+export function handRefusedBack(
+  book: DraftBook,
+  key: string,
+  text: string,
+  attachments: readonly HandedPath[],
+): number {
+  book.write(key, joiningTheBox(book.read(key), text))
+  return book.restore(key, '', attachments)
 }
 
 /**

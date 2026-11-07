@@ -1,3 +1,4 @@
+import type { ListedModel, ModelAndEffort, ModelList } from '../../shared/model-choice-contracts'
 import { refusalReason } from '../../shared/refusals'
 import type { Provider } from '@brobot2/shared'
 import {
@@ -6,10 +7,8 @@ import {
   theEffortsOf,
   theListedRow,
   theListsSpelling,
-  type ListedModel,
-  type ModelAndEffort,
 } from '../../shared/model-choice'
-import { PROVIDER_NAME, type ModelList } from '../../shared/runtime-ipc'
+import { PROVIDER_NAME } from '../../shared/runtime-ipc'
 import type { RailPermanence, RefusalRemedy } from '../../shared/refusals'
 
 /**
@@ -200,7 +199,7 @@ export function refuseModel(rail: ModelRail, detail: ModelRefusalDetail = {}): M
 export type ListsAsLastRead = Partial<Record<Provider, readonly ListedModel[]>>
 
 /** How many of one provider's models a tool's description names before it leaves the rest to a refusal. */
-export const MODELS_A_DESCRIPTION_NAMES = 8
+const MODELS_A_DESCRIPTION_NAMES = 8
 
 /**
  * The models a description names for one provider: the whole list when it is short, else the

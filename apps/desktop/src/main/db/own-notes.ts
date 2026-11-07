@@ -88,10 +88,7 @@ export function createOwnNotesStore(db: AppDatabase): OwnNotesStore {
   const baselineMatches = (row: Row | undefined, baseline: OwnNotesBaseline) =>
     Number.isSafeInteger(baseline.expectedVersion) &&
     baseline.expectedVersion >= 0 &&
-    typeof baseline.currentText === 'string' &&
-    ownNotesTextFits(baseline.currentText) &&
-    baseline.expectedVersion === (row?.version ?? 0) &&
-    baseline.currentText === (row?.text ?? '')
+    baseline.expectedVersion === (row?.version ?? 0)
 
   const atomic = <T>(run: () => T): T | null => {
     try {

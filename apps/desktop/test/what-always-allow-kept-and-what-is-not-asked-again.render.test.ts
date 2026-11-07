@@ -1,3 +1,4 @@
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -14,11 +15,7 @@ import {
   type SessionRecord,
 } from '../src/renderer/src/lib/session-record'
 import { markAnswerRefused } from '../src/renderer/src/lib/transcript'
-import {
-  DEFAULT_PROFILE_ID,
-  type CreatedSession,
-  type TranscriptEvent,
-} from '../src/shared/runtime-ipc'
+import { DEFAULT_PROFILE_ID, type CreatedSession } from '../src/shared/runtime-ipc'
 
 /**
  * # 🔴 739 · Draw 1 (the disclosure half) — what *Always allow* KEPT, and what is only *not asked again*

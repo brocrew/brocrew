@@ -1,3 +1,4 @@
+import { neutralHostDeps } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -12,7 +13,6 @@ import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { createSessionStore } from '../src/main/db/session-store'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   deriveProviderHome,
   listProfileIds,
@@ -104,9 +104,7 @@ describe('copying this install’s provider sign-ins', () => {
     const runtime = new FakeRuntime('codex')
     host = new RuntimeHost({
       store: createSessionStore(db),
-      discoverSessions: NO_DISCOVERY,
-      nativeTranscriptPath: () => null,
-      exportDirectory: () => join(root, 'exports'),
+      ...neutralHostDeps(() => root),
       connectionFor: (provider, connectionId) =>
         resolveProviderConnection(db, { provider, connectionId }).id,
       connectionRevision: () => connectionRevision,

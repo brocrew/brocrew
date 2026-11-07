@@ -1,7 +1,7 @@
+import type { PersistedEventInfo } from '../../../shared/conversation-events'
 import type {
   CreatedSession,
   HistoryWindow,
-  PersistedEventInfo,
   RuntimeEventMessage,
   SessionLiveness,
 } from '../../../shared/runtime-ipc'

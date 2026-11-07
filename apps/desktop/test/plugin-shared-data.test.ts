@@ -2,10 +2,9 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, realpath, symlink, stat } from
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, expect, it } from 'vitest'
 import { manifestFor, packageFixture, verified } from './plugin-package-fixtures'
-import { createPluginVerifier } from '../src/main/plugins/package-verifier'
-import { fictionalPublicKey } from './plugin-package-fixtures'
+import { createRepoAwarePluginVerifier } from '../src/main/plugins/package-verifier'
 import { parsePluginManifest } from '../src/main/plugins/package-schema'
 import {
   sharedDataEnvironment,
@@ -29,30 +28,8 @@ import {
 import { OWNER_WIRE } from '../src/main/plugins/supervisor/protocol'
 import { LaunchConfig } from '../src/main/plugins/supervisor/launch-format'
 
-// Exercise the Windows admitted-root rule on every host; filesystem kind checks remain real.
-const windowsAdmission = vi.hoisted(() => ({ enabled: false, roots: [] as string[] }))
-vi.mock('../src/main/plugins/private-files', async (original) => {
-  const actual = await original<typeof import('../src/main/plugins/private-files')>()
-  const { win32 } = await import('node:path')
-  const windowsPath = (value: string) => win32.resolve('C:\\', value.replaceAll('/', '\\'))
-  return {
-    ...actual,
-    async keepPluginRootPrivate(root: string) {
-      await actual.keepPluginRootPrivate(root)
-      if (windowsAdmission.enabled) windowsAdmission.roots.push(root)
-    },
-    isInsideCheckedRoot(candidate: string) {
-      if (!windowsAdmission.enabled) return actual.isInsideCheckedRoot(candidate)
-      return windowsAdmission.roots.some((root) =>
-        actual.isWithinOrSame(windowsPath(root), windowsPath(candidate), 'win32'),
-      )
-    },
-  }
-})
 const folders: string[] = []
 afterEach(async () => {
-  windowsAdmission.enabled = false
-  windowsAdmission.roots = []
   for (const folder of folders.splice(0)) await rm(folder, { recursive: true, force: true })
 })
 function fixturePackage(id = 'chrome', sharedData: boolean | undefined = true) {
@@ -123,12 +100,11 @@ it('keeps old manifests valid and refuses new capability on a host without its f
   expect(parsePluginManifest(old.manifestBytes).sharedData).toBeUndefined()
   const f = fixturePackage()
   const defaultApi = { major: 1, minor: 0, features: [] }
-  const checked = createPluginVerifier({
-    pinnedPublicKey: fictionalPublicKey,
+  const checked = createRepoAwarePluginVerifier({
     target: { os: 'linux', cpu: 'x64' },
     apiSupport: { host: defaultApi, tools: defaultApi, ui: defaultApi },
   })
-    .verifyCatalogue(f.bytes, f.signature)
+    .verifyCatalogue(f.bytes)
     .verifyPackage(f.manifest.id, f.manifest.version, f.archive)
   expect(checked.compatibility.host).toBe(false)
   expect(verified(f).compatibility.host).toBe(true)
@@ -386,16 +362,10 @@ it('adds host-owned shared access to visible consent and marks an update as chan
   )
 })
 
-it('admits only the verified shared sibling root before the Windows private-root guard', async () => {
+it('creates the shared sibling without process-local root admission', async () => {
   const f = await ownerFixture()
-  windowsAdmission.enabled = true
   const result = await sharedDataEnvironment(verified(fixturePackage()), f.hostRoot, f.owner)
-  const expected = join(f.appData, '@brobot2', 'shared')
-  expect(windowsAdmission.roots).toEqual([expected])
-  expect(result.BROCREW_CHROME_SHARED).toBe(join(expected, 'chrome'))
-  const { isInsideCheckedRoot } = await import('../src/main/plugins/private-files')
-  expect(isInsideCheckedRoot(join(expected, 'chrome'))).toBe(true)
-  expect(isInsideCheckedRoot(f.appData)).toBe(false)
-  expect(isInsideCheckedRoot(f.workspaceRoot)).toBe(false)
-  expect(isInsideCheckedRoot(join(f.appData, '@brobot2', 'shared-other'))).toBe(false)
+  const expected = join(f.appData, '@brobot2', 'shared', 'chrome')
+  expect(result.BROCREW_CHROME_SHARED).toBe(expected)
+  expect((await stat(expected)).isDirectory()).toBe(true)
 })

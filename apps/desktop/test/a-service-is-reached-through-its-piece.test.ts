@@ -1,3 +1,9 @@
+import {
+  noteFromGiver,
+  registerUnreadableQuestionCases,
+} from './helpers/service-unreadable-question-cases'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
+import type { PieceRow } from '../src/shared/task-contracts'
 import { writeFileSync } from 'node:fs'
 import { TurnInProgress } from '@brobot2/runtime'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -10,8 +16,7 @@ import {
 } from '../src/main/runtime/runtime-host'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { pieceLine } from '../src/shared/piece-called'
-import type { TranscriptEvent } from '../src/shared/runtime-ipc'
-import type { PieceRow } from '../src/shared/tasks'
+
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
 /**
@@ -2230,44 +2235,13 @@ describe('a service is reached through the piece it is on', () => {
     const stateIn = (askedBy: string, requestId: string): string | undefined =>
       world.store.routedRequestsOf(askedBy).find((one) => one.requestId === requestId)?.state
 
-    it('passed up twice, keep a piece a person takes back open while a copy in between is no well-formed question; restored, it ends with all three', async () => {
-      const { host, boss, caller, service, one, original, copy, outer } =
-        await aQuestionPassedUpTwice({})
-      // The caller's copy loses its prompt; its row is still JSON. A note from its giver grows its
-      // record, so what was read of it before is read again.
-      const row = world.db
-        .prepare(
-          `SELECT id, payload FROM events WHERE session_id = ? AND type = 'question_asked'
-             AND json_extract(payload, '$.requestId') = ?`,
-        )
-        .get(caller, copy) as { id: string; payload: string }
-      const aNote = async (): Promise<void> => {
-        const noted = await call(host, boss, 'message_agent', {
-          agent: caller,
-          kind: 'note',
-          text: 'A note.',
-        })
-        expect(noted.structured).toMatchObject({ outcome: 'ok' })
-      }
-      world.db
-        .prepare(`UPDATE events SET payload = json_remove(payload, '$.prompt') WHERE id = ?`)
-        .run(row.id)
-      await aNote()
-      expect(await host.takeBackForAPerson(one.label, world.window)).toEqual({
-        ok: false,
-        rail: 'its-questions-could-not-all-be-read',
-      })
-      expect(stateOf(service, one.piece)).not.toBe('withdrawn')
-      expect(rows(service, 'work_taken_back')).toEqual([])
-      expect([stateIn(service, original), stateIn(boss, outer)]).toEqual(['open', 'open'])
-      world.db.prepare('UPDATE events SET payload = ? WHERE id = ?').run(row.payload, row.id)
-      await aNote()
-      expect(await host.takeBackForAPerson(one.label, world.window)).toMatchObject({ ok: true })
-      expect([stateIn(service, original), stateIn(caller, copy), stateIn(boss, outer)]).toEqual([
-        'work-withdrawn',
-        'work-withdrawn',
-        'work-withdrawn',
-      ])
+    registerUnreadableQuestionCases({
+      world: () => world,
+      aQuestionPassedUpTwice,
+      call,
+      rows,
+      stateIn,
+      stateOf,
     })
 
     it('passed up twice, keep a piece a person takes back open while the routing of the copy in between names nobody it went to; restored, it ends with all three', async () => {
@@ -2281,14 +2255,7 @@ describe('a service is reached through the piece it is on', () => {
              AND json_extract(payload, '$.requestId') = ?`,
         )
         .get(caller, copy) as { id: string; payload: string }
-      const aNote = async (): Promise<void> => {
-        const noted = await call(host, boss, 'message_agent', {
-          agent: caller,
-          kind: 'note',
-          text: 'A note.',
-        })
-        expect(noted.structured).toMatchObject({ outcome: 'ok' })
-      }
+      const aNote = () => noteFromGiver(call, host, boss, caller)
       world.db
         .prepare(`UPDATE events SET payload = json_remove(payload, '$.parent') WHERE id = ?`)
         .run(row.id)

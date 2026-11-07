@@ -16,8 +16,7 @@ import type {
   WorkspaceProjection,
   ProjectionReceipt,
   Installation,
-  PluginReleasePin,
-} from '../../../src/main/plugins/lifecycle/types'
+} from '../plugin-delete-parent/types'
 import type { PluginCard } from '../../../src/shared/plugin-settings'
 
 const refuse = (): never => {
@@ -86,43 +85,26 @@ export class PluginLifecycleController {
         await LifecycleEffects.open(options.root, state.guards.length === 0),
         new PluginPackageVault(
           options.root,
-          options.pinnedPublicKey,
           options.target,
-          options.repoCatalogueSha256,
         ),
       )
-      controller.catalogue() // Signature, complete schema and all persistent release pins first.
+      controller.catalogue() // Complete schema verification before recovery.
       await options.state.withExclusive(() => controller.recover())
       return controller
     } catch {
       return refuse()
     }
   }
-  private pins(): PluginReleasePin[] {
-    return this.options.state.inspect().operations.flatMap(({ operation }) => {
-      const consent = operation.request.consent
-      return consent.pluginId && consent.release
-        ? [
-            {
-              id: consent.pluginId,
-              version: consent.release.version,
-              archiveSha256: consent.release.archiveSha256,
-              manifestSha256: consent.release.manifestSha256,
-            },
-          ]
-        : []
-    })
-  }
   catalogueIdentity(): string {
     return pluginSha256(this.options.catalogue.bytes)
   }
   private catalogue() {
+    if (this.options.repoCatalogueSha256 !== undefined &&
+        pluginSha256(this.options.catalogue.bytes) !== this.options.repoCatalogueSha256)
+      return refuse()
     return createRepoAwarePluginVerifier({
-      pinnedPublicKey: this.options.pinnedPublicKey,
-      repoCatalogueSha256: this.options.repoCatalogueSha256,
       target: this.options.target,
-      knownReleases: this.pins(),
-    }).verifyCatalogue(this.options.catalogue.bytes, this.options.catalogue.signature)
+    }).verifyCatalogue(this.options.catalogue.bytes)
   }
   private descriptor(install: Installation) {
     return {
@@ -296,7 +278,7 @@ export class PluginLifecycleController {
           workspace.receipts.delete(id)
           const installed = active.find((one) => one.pluginId === id)
           if (installed) {
-            const checked = await this.vault.load(this.descriptor(installed), this.pins())
+            const checked = await this.vault.load(this.descriptor(installed))
             await this.ensureRunning(installed, checked)
             // Only authenticated current owner state, readiness and a fresh consumer ack can rebind.
             await this.project(workspace, installed)
@@ -399,7 +381,7 @@ export class PluginLifecycleController {
             return refuse()
           const installed = this.current(id)
           if (!installed || installed.installId !== prior.operation.next?.installId) return refuse()
-          const checked = await this.vault.load(this.descriptor(installed), this.pins())
+          const checked = await this.vault.load(this.descriptor(installed))
           await this.ensureRunning(installed, checked)
           await this.project(workspace, installed)
           const effect = await this.effects.read(operationId)
@@ -466,7 +448,7 @@ export class PluginLifecycleController {
         try {
           await this.effects.write(effect)
           this.options.fault?.('prepared')
-          const staged = await this.vault.stage(release, bytes, this.options.catalogue, this.pins())
+          const staged = await this.vault.stage(release, bytes, this.options.catalogue)
           this.options.fault?.('staged')
           await this.ensureRunning(install, staged)
           this.options.fault?.('ready')
@@ -585,7 +567,7 @@ export class PluginLifecycleController {
   }
   private async removeFiles(install: Installation, operationId: string): Promise<void> {
     await this.options.runtime.removeCode(install.pluginId, install.release.archiveSha256)
-    await this.vault.remove(this.descriptor(install), this.pins(), {
+    await this.vault.remove(this.descriptor(install), {
       operationId,
       installId: install.installId,
     })
