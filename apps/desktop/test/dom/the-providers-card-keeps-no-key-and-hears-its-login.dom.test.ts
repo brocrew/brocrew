@@ -187,7 +187,14 @@ function theCard(
           loginMoved: moved.value,
           lists,
           open: over.foldKey
-            ? { login: true, key: false, version: true, usage: true, resources: true, models: true }
+            ? {
+                login: true,
+                key: false,
+                version: true,
+                usage: true,
+                resources: true,
+                models: true,
+              }
             : undefined,
           onReveal: (part: string) => revealed.push(part),
           onAuthChanged: (profileId: string) => authChanged.push(profileId),
@@ -221,13 +228,16 @@ describe('saved-key read progress', () => {
     let notice: Parameters<RuntimeBridge['onProvidersChanged']>[0] = () => {}
     const stopped = vi.fn()
     let status: ApiKeyStatus = { ...A_KEY }
-    const { m, runtime, authChanged, revealed } = theCard({
-      apiKeyStatus: async () => status,
-      onProvidersChanged: (listener) => {
-        notice = listener
-        return stopped
+    const { m, runtime, authChanged, revealed } = theCard(
+      {
+        apiKeyStatus: async () => status,
+        onProvidersChanged: (listener) => {
+          notice = listener
+          return stopped
+        },
       },
-    }, { foldKey: true })
+      { foldKey: true },
+    )
     await settled()
     revealed.length = 0
     const before = runtime.apiKeyStatus.mock.calls.length
