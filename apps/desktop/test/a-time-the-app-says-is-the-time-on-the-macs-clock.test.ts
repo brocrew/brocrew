@@ -23,7 +23,6 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { keepTheSystemZone } from '../src/main/system-zone'
 import { sinceWords } from '../src/renderer/src/lib/recent-activity'
 import { createWindow, openAt, type WindowState } from '../src/renderer/src/lib/transcript-window'
-import { hostCalendar } from '../src/main/runtime/schedule-evidence'
 import { agentStateWords } from '../src/shared/agent-state'
 import { clockTime, clockTimeFrom } from '../src/shared/clock'
 import {

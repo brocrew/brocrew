@@ -58,5 +58,4 @@ export function registerCalendarRevisionCases(Z_UTC: LocalZone, Z_NP: LocalZone)
     expect(hostCalendar({ ...zone, before: 1 }).version).not.toBe(version)
     expect(JSON.parse(version)[1]).toHaveLength(400)
   })
-
 }

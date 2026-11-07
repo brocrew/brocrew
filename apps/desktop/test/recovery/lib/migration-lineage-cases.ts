@@ -2,9 +2,18 @@ import Database from 'better-sqlite3'
 import { expect, it } from 'vitest'
 import { inspect, type CoordinatorDeps } from '../../../src/main/recovery/coordinator'
 import { databaseFile } from '../../../src/main/recovery/layout'
-import { BUILD_LINEAGE, THIS_BUILD, THIS_VERSION, type RecoveryFixtureOptions } from './recovery-fixture'
+import {
+  BUILD_LINEAGE,
+  THIS_BUILD,
+  THIS_VERSION,
+  type RecoveryFixtureOptions,
+} from './recovery-fixture'
 
-export function registerMigrationLineageCases({ aWorkspace, checkOf, treeOf }: {
+export function registerMigrationLineageCases({
+  aWorkspace,
+  checkOf,
+  treeOf,
+}: {
   aWorkspace(options: RecoveryFixtureOptions): Promise<string>
   checkOf(userData: string, over?: Partial<CoordinatorDeps>): { readonly deps: CoordinatorDeps }
   treeOf(dir: string): Promise<Record<string, string>>
@@ -46,5 +55,4 @@ export function registerMigrationLineageCases({ aWorkspace, checkOf, treeOf }: {
       expect(await treeOf(userData)).toEqual(before)
     },
   )
-
 }

@@ -3,9 +3,18 @@ import { expect, it } from 'vitest'
 import type { FakeSessionHandle } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import type { RuntimeHost, RuntimeEventSink } from './giver-notice-host'
-import { readKeptAccounts, writeKeptAccounts, providerAccountsFile } from '../../src/main/provider-accounts-file'
+import {
+  readKeptAccounts,
+  writeKeptAccounts,
+  providerAccountsFile,
+} from '../../src/main/provider-accounts-file'
 import { readKeptUsage, providerUsageFile } from '../../src/main/provider-usage-file'
-import { readKeptCuts, writeKeptCuts, turnsTheAppCutFile, type CutState } from '../../src/main/turns-the-app-cut-file'
+import {
+  readKeptCuts,
+  writeKeptCuts,
+  turnsTheAppCutFile,
+  type CutState,
+} from '../../src/main/turns-the-app-cut-file'
 
 export interface Held {
   readonly promise: Promise<void>
@@ -68,165 +77,196 @@ interface CutAccountContext {
   SOON: number
 }
 
-export function registerPersistedCutIdentityCases({ folder, aTurnRunsIn, EMAIL }: CutAccountContext): void {
-    it('persists the account record before first usage and drops old salt authority', async () => {
-      writeFileSync(
-        turnsTheAppCutFile(folder()),
-        JSON.stringify({ salt: 'a7'.repeat(32), lives: {}, cuts: {} }),
-      )
-      const id = await aTurnRunsIn({ account: 'ada', organization: 'Fictional Organisation' })
-      const kept = readKeptCuts(turnsTheAppCutFile(folder()))
-      const account = readKeptAccounts(providerAccountsFile(folder())).claude!
-      expect(account).toMatchObject({ email: EMAIL.ada, organization: 'Fictional Organisation' })
-      expect(kept.lives[id]?.identity).toBe(`claude:account:${account.id}`)
-      expect(kept).not.toHaveProperty('salt')
-    })
+export function registerPersistedCutIdentityCases({
+  folder,
+  aTurnRunsIn,
+  EMAIL,
+}: CutAccountContext): void {
+  it('persists the account record before first usage and drops old salt authority', async () => {
+    writeFileSync(
+      turnsTheAppCutFile(folder()),
+      JSON.stringify({ salt: 'a7'.repeat(32), lives: {}, cuts: {} }),
+    )
+    const id = await aTurnRunsIn({ account: 'ada', organization: 'Fictional Organisation' })
+    const kept = readKeptCuts(turnsTheAppCutFile(folder()))
+    const account = readKeptAccounts(providerAccountsFile(folder())).claude!
+    expect(account).toMatchObject({ email: EMAIL.ada, organization: 'Fictional Organisation' })
+    expect(kept.lives[id]?.identity).toBe(`claude:account:${account.id}`)
+    expect(kept).not.toHaveProperty('salt')
+  })
 
-    it.each([
-      ['account', { provider: 'claude', account: 'ada' }, /^claude:account:[0-9a-f]{32}$/],
-      [
-        'launch tag',
-        { provider: 'claude', account: 'none', tag: 'fictional-key' },
-        'claude:launch-credential:fictional-key',
-      ],
-      [
-        'provider tag',
-        { provider: 'codex', tag: 'fictional-login' },
-        'codex:sign-in:fictional-login',
-      ],
-    ] as const)('keeps the persisted identity format for an %s', async (_kind, stops, expected) => {
-      const id = await aTurnRunsIn(stops)
-      const kept = readKeptCuts(turnsTheAppCutFile(folder()))
-      const identity = kept.lives[id]?.identity
-      if (typeof expected === 'string') expect(identity).toBe(expected)
-      else expect(identity).toMatch(expected)
-      expect(identity).not.toContain(EMAIL.ada)
-    })
-
+  it.each([
+    ['account', { provider: 'claude', account: 'ada' }, /^claude:account:[0-9a-f]{32}$/],
+    [
+      'launch tag',
+      { provider: 'claude', account: 'none', tag: 'fictional-key' },
+      'claude:launch-credential:fictional-key',
+    ],
+    [
+      'provider tag',
+      { provider: 'codex', tag: 'fictional-login' },
+      'codex:sign-in:fictional-login',
+    ],
+  ] as const)('keeps the persisted identity format for an %s', async (_kind, stops, expected) => {
+    const id = await aTurnRunsIn(stops)
+    const kept = readKeptCuts(turnsTheAppCutFile(folder()))
+    const identity = kept.lives[id]?.identity
+    if (typeof expected === 'string') expect(identity).toBe(expected)
+    else expect(identity).toMatch(expected)
+    expect(identity).not.toContain(EMAIL.ada)
+  })
 }
 
-export function registerLegacyCutIdentityCase({ life, folder, aTurnRunsIn, starts, stateOf, continuations, waitFor, SOON }: CutAccountContext): void {
-    it('keeps an unresolvable legacy digest unknown instead of using the latest account', async () => {
-      const id = await aTurnRunsIn()
-      await life().host.closeAll()
-      const kept = readKeptCuts(turnsTheAppCutFile(folder()))
-      writeKeptCuts(turnsTheAppCutFile(folder()), {
-        ...kept,
-        cuts: { ...kept.cuts, [id]: { ...kept.cuts[id]!, expected: `claude:${'a'.repeat(32)}` } },
-      })
-      expect(readKeptCuts(turnsTheAppCutFile(folder())).cuts[id]!.expected).toBeNull()
-      starts(SOON)
-      await waitFor(() => typeof stateOf(id) === 'object', 'the legacy cut to be left unknown')
-      expect(continuations(id)).toEqual([])
-      expect(stateOf(id)).toEqual({ ended: 'account-not-known' })
+export function registerLegacyCutIdentityCase({
+  life,
+  folder,
+  aTurnRunsIn,
+  starts,
+  stateOf,
+  continuations,
+  waitFor,
+  SOON,
+}: CutAccountContext): void {
+  it('keeps an unresolvable legacy digest unknown instead of using the latest account', async () => {
+    const id = await aTurnRunsIn()
+    await life().host.closeAll()
+    const kept = readKeptCuts(turnsTheAppCutFile(folder()))
+    writeKeptCuts(turnsTheAppCutFile(folder()), {
+      ...kept,
+      cuts: { ...kept.cuts, [id]: { ...kept.cuts[id]!, expected: `claude:${'a'.repeat(32)}` } },
     })
-
+    expect(readKeptCuts(turnsTheAppCutFile(folder())).cuts[id]!.expected).toBeNull()
+    starts(SOON)
+    await waitFor(() => typeof stateOf(id) === 'object', 'the legacy cut to be left unknown')
+    expect(continuations(id)).toEqual([])
+    expect(stateOf(id)).toEqual({ ended: 'account-not-known' })
+  })
 }
 
-export function registerFrozenCutAccountCases({ life, folder, root, handles, window, aTurnRunsIn, starts, stateOf, continuations, waitFor, settle, EMAIL, CUT, SOON }: CutAccountContext): void {
-    it.each([
-      { account: 'bea' as const },
-      { account: 'ada' as const, organization: 'Another organization' },
-    ])('keeps A’s cut identity across an intervening account and restart: %j', async (other) => {
-      const id = await aTurnRunsIn({ account: 'ada' })
-      await life().host.closeAll()
-      const before = readKeptAccounts(providerAccountsFile(folder())).claude!
-      starts(CUT + 1000, { ...other, nobodyListens: true })
-      await life().host.createSession(
-        { provider: 'claude', profileId: 'agent-a', approvalMode: 'auto', cwd: root() },
-        window(),
-      )
-      await settle()
-      const intervening = readKeptAccounts(providerAccountsFile(folder())).claude!
-      expect(intervening.id).not.toBe(before.id)
-      await life().host.closeAll()
-      starts(SOON, { account: 'ada' })
-      await waitFor(() => stateOf(id) === 'sent', 'A’s cut continuation after switching back')
-      expect(readKeptAccounts(providerAccountsFile(folder())).claude!.id).toBe(before.id)
-      expect(continuations(id)).toHaveLength(1)
-    })
+export function registerFrozenCutAccountCases({
+  life,
+  folder,
+  root,
+  handles,
+  window,
+  aTurnRunsIn,
+  starts,
+  stateOf,
+  continuations,
+  waitFor,
+  settle,
+  EMAIL,
+  CUT,
+  SOON,
+}: CutAccountContext): void {
+  it.each([
+    { account: 'bea' as const },
+    { account: 'ada' as const, organization: 'Another organization' },
+  ])('keeps A’s cut identity across an intervening account and restart: %j', async (other) => {
+    const id = await aTurnRunsIn({ account: 'ada' })
+    await life().host.closeAll()
+    const before = readKeptAccounts(providerAccountsFile(folder())).claude!
+    starts(CUT + 1000, { ...other, nobodyListens: true })
+    await life().host.createSession(
+      { provider: 'claude', profileId: 'agent-a', approvalMode: 'auto', cwd: root() },
+      window(),
+    )
+    await settle()
+    const intervening = readKeptAccounts(providerAccountsFile(folder())).claude!
+    expect(intervening.id).not.toBe(before.id)
+    await life().host.closeAll()
+    starts(SOON, { account: 'ada' })
+    await waitFor(() => stateOf(id) === 'sent', 'A’s cut continuation after switching back')
+    expect(readKeptAccounts(providerAccountsFile(folder())).claude!.id).toBe(before.id)
+    expect(continuations(id)).toHaveLength(1)
+  })
 
-    it('attributes late account usage to the existing history without relabeling an unknown life', async () => {
-      const a = { id: 'a'.repeat(32), email: EMAIL.ada }
-      const b = { id: 'b'.repeat(32), email: EMAIL.bea }
-      writeKeptAccounts(providerAccountsFile(folder()), { claude: b, claudeAccounts: [a, b] })
-      const id = await aTurnRunsIn({ account: 'never' })
-      const handle = handles().at(-1)!
-      await life().host.createSession(
-        { provider: 'claude', profileId: 'agent-b', approvalMode: 'auto', cwd: root() },
-        window(),
-      )
-      const otherHandle = handles().at(-1)!
-      await settle()
-      ;(otherHandle as unknown as { account: () => unknown }).account = () => ({ email: EMAIL.bea })
-      otherHandle.simulateProviderUsage([{ window: 'five_hour', usedPercent: 9, resetsAt: null }])
-      await waitFor(
-        () => life().host.providerUsage().claude.some((one) => one.usedPercent === 9),
-        'overlapping B usage',
-      )
-      expect(readKeptUsage(providerUsageFile(folder())).readings.claude).toEqual([
-        expect.objectContaining({ account: b.id, usedPercent: 9 }),
-      ])
-      ;(handle as unknown as { account: () => unknown }).account = () => ({ email: EMAIL.ada })
-      handle.simulateProviderUsage([{ window: 'five_hour', usedPercent: 12, resetsAt: null }])
-      await waitFor(
-        () => life().host.providerUsage().claude.some((one) => one.usedPercent === 12),
-        'late usage',
-      )
-      await life().host.closeAll()
-      const kept = readKeptAccounts(providerAccountsFile(folder()))
-      expect(kept.claudeAccounts).toEqual([a, b])
-      expect(readKeptUsage(providerUsageFile(folder())).readings.claude).toEqual([
-        expect.objectContaining({ window: 'five_hour', account: a.id, usedPercent: 12 }),
-      ])
-      expect(readKeptCuts(turnsTheAppCutFile(folder())).cuts[id]!.expected).toBeNull()
-      starts(SOON, { account: 'ada' })
-      await waitFor(() => typeof stateOf(id) === 'object', 'unknown cut decision')
-      expect(stateOf(id)).toEqual({ ended: 'account-not-known' })
-      expect(continuations(id)).toEqual([])
-      await life().host.createSession(
-        { provider: 'claude', profileId: 'agent-a', approvalMode: 'auto', cwd: root() },
-        window(),
-      )
-      await settle()
-      expect(readKeptAccounts(providerAccountsFile(folder())).claude!.id).toBe(a.id)
-      expect(readKeptAccounts(providerAccountsFile(folder())).claudeAccounts).toEqual([a, b])
-    })
+  it('attributes late account usage to the existing history without relabeling an unknown life', async () => {
+    const a = { id: 'a'.repeat(32), email: EMAIL.ada }
+    const b = { id: 'b'.repeat(32), email: EMAIL.bea }
+    writeKeptAccounts(providerAccountsFile(folder()), { claude: b, claudeAccounts: [a, b] })
+    const id = await aTurnRunsIn({ account: 'never' })
+    const handle = handles().at(-1)!
+    await life().host.createSession(
+      { provider: 'claude', profileId: 'agent-b', approvalMode: 'auto', cwd: root() },
+      window(),
+    )
+    const otherHandle = handles().at(-1)!
+    await settle()
+    ;(otherHandle as unknown as { account: () => unknown }).account = () => ({ email: EMAIL.bea })
+    otherHandle.simulateProviderUsage([{ window: 'five_hour', usedPercent: 9, resetsAt: null }])
+    await waitFor(
+      () =>
+        life()
+          .host.providerUsage()
+          .claude.some((one) => one.usedPercent === 9),
+      'overlapping B usage',
+    )
+    expect(readKeptUsage(providerUsageFile(folder())).readings.claude).toEqual([
+      expect.objectContaining({ account: b.id, usedPercent: 9 }),
+    ])
+    ;(handle as unknown as { account: () => unknown }).account = () => ({ email: EMAIL.ada })
+    handle.simulateProviderUsage([{ window: 'five_hour', usedPercent: 12, resetsAt: null }])
+    await waitFor(
+      () =>
+        life()
+          .host.providerUsage()
+          .claude.some((one) => one.usedPercent === 12),
+      'late usage',
+    )
+    await life().host.closeAll()
+    const kept = readKeptAccounts(providerAccountsFile(folder()))
+    expect(kept.claudeAccounts).toEqual([a, b])
+    expect(readKeptUsage(providerUsageFile(folder())).readings.claude).toEqual([
+      expect.objectContaining({ window: 'five_hour', account: a.id, usedPercent: 12 }),
+    ])
+    expect(readKeptCuts(turnsTheAppCutFile(folder())).cuts[id]!.expected).toBeNull()
+    starts(SOON, { account: 'ada' })
+    await waitFor(() => typeof stateOf(id) === 'object', 'unknown cut decision')
+    expect(stateOf(id)).toEqual({ ended: 'account-not-known' })
+    expect(continuations(id)).toEqual([])
+    await life().host.createSession(
+      { provider: 'claude', profileId: 'agent-a', approvalMode: 'auto', cwd: root() },
+      window(),
+    )
+    await settle()
+    expect(readKeptAccounts(providerAccountsFile(folder())).claude!.id).toBe(a.id)
+    expect(readKeptAccounts(providerAccountsFile(folder())).claudeAccounts).toEqual([a, b])
+  })
 
-    it('keeps conflicting ordinary account records unknown instead of choosing or minting another ID', async () => {
-      const a = { id: 'a'.repeat(32), email: EMAIL.ada }
-      const conflicting = { ...a, id: 'c'.repeat(32) }
-      writeKeptAccounts(providerAccountsFile(folder()), {
-        claude: a,
-        claudeAccounts: [a, conflicting],
-      })
-      const id = await aTurnRunsIn({ account: 'ada' })
-      handles()
-        .at(-1)!
-        .simulateProviderUsage([{ window: 'five_hour', usedPercent: 12, resetsAt: null }])
-      await settle()
-      await life().host.closeAll()
-      expect(readKeptCuts(turnsTheAppCutFile(folder())).cuts[id]!.expected).toBeNull()
-      expect(readKeptAccounts(providerAccountsFile(folder())).claudeAccounts).toEqual([
-        a,
-        conflicting,
-      ])
-      expect(
-        readKeptUsage(providerUsageFile(folder())).readings.claude.every(
-          (one) => one.account === undefined,
-        ),
-      ).toBe(true)
+  it('keeps conflicting ordinary account records unknown instead of choosing or minting another ID', async () => {
+    const a = { id: 'a'.repeat(32), email: EMAIL.ada }
+    const conflicting = { ...a, id: 'c'.repeat(32) }
+    writeKeptAccounts(providerAccountsFile(folder()), {
+      claude: a,
+      claudeAccounts: [a, conflicting],
     })
+    const id = await aTurnRunsIn({ account: 'ada' })
+    handles()
+      .at(-1)!
+      .simulateProviderUsage([{ window: 'five_hour', usedPercent: 12, resetsAt: null }])
+    await settle()
+    await life().host.closeAll()
+    expect(readKeptCuts(turnsTheAppCutFile(folder())).cuts[id]!.expected).toBeNull()
+    expect(readKeptAccounts(providerAccountsFile(folder())).claudeAccounts).toEqual([
+      a,
+      conflicting,
+    ])
+    expect(
+      readKeptUsage(providerUsageFile(folder())).readings.claude.every(
+        (one) => one.account === undefined,
+      ),
+    ).toBe(true)
+  })
 
-    it('does not claim a durable account identity when its ordinary account file cannot be saved', async () => {
-      const id = await aTurnRunsIn({ accountsCannotBeKept: true })
-      await life().host.closeAll()
-      expect(readKeptAccounts(providerAccountsFile(folder()))).toEqual({})
-      expect(readKeptCuts(turnsTheAppCutFile(folder())).cuts[id]!.expected).toBeNull()
-      starts(SOON)
-      await waitFor(() => typeof stateOf(id) === 'object', 'unknown account cut')
-      expect(continuations(id)).toEqual([])
-      expect(stateOf(id)).toEqual({ ended: 'account-not-known' })
-    })
-
+  it('does not claim a durable account identity when its ordinary account file cannot be saved', async () => {
+    const id = await aTurnRunsIn({ accountsCannotBeKept: true })
+    await life().host.closeAll()
+    expect(readKeptAccounts(providerAccountsFile(folder()))).toEqual({})
+    expect(readKeptCuts(turnsTheAppCutFile(folder())).cuts[id]!.expected).toBeNull()
+    starts(SOON)
+    await waitFor(() => typeof stateOf(id) === 'object', 'unknown account cut')
+    expect(continuations(id)).toEqual([])
+    expect(stateOf(id)).toEqual({ ended: 'account-not-known' })
+  })
 }

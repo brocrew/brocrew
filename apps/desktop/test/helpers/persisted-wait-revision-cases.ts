@@ -48,7 +48,15 @@ interface WaitRevisionContext {
   build(): RuntimeHost
 }
 
-export function registerPersistedWaitRevisionCase({ host, replaceHost, freezeClock, create, waiting, store, build }: WaitRevisionContext): void {
+export function registerPersistedWaitRevisionCase({
+  host,
+  replaceHost,
+  freezeClock,
+  create,
+  waiting,
+  store,
+  build,
+}: WaitRevisionContext): void {
   it('uses the persisted wait event revision across restart and distinguishes waits at the same time', async () => {
     type Reading = {
       reconcileWork(): void
@@ -76,5 +84,4 @@ export function registerPersistedWaitRevisionCase({ host, replaceHost, freezeClo
     expect(key()).toBeDefined()
     expect(key()).not.toBe(first)
   })
-
 }
