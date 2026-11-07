@@ -74,6 +74,8 @@
       ]
     },
     "scripts/code-health": {
+      // loaded at runtime by dependency-cruiser to parse .vue files; knip cannot see it
+      "ignoreDependencies": ["@vue/compiler-sfc"],
       "project": ["**/*.{mjs,cjs}"],
       "entry": ["gate.mjs", "gate.test.mjs"]
     },
