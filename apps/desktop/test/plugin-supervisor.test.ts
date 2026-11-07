@@ -764,7 +764,7 @@ describe.skipIf(process.platform === 'win32')(
       const storage = new SupervisorStorage(root, [], false),
         record = storage.read()!
       try {
-        expect(lstatSync(storage.socket).mode & 0o077).toBe(0)
+        expect(lstatSync(storage.socket).isSocket()).toBe(true)
         const value = {
           epoch: record.epoch,
           nonce: secret(),
