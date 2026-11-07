@@ -105,7 +105,6 @@ const codex = (id: string, days: number) =>
     days,
   )
 const unused = () => false
-const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 const activityWindowAnswer = () => ({
   kind: 'activity',
   window: { from: NOW - DAY, to: NOW },
