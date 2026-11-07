@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, ref } from 'vue'
-import { page } from 'vitest/browser'
+import { page, userEvent } from 'vitest/browser'
 import SheetShell from '../../src/renderer/src/components/SheetShell.vue'
 import AllFilesDialog from '../../src/renderer/src/components/AllFilesDialog.vue'
 import AllTasksDialog from '../../src/renderer/src/components/AllTasksDialog.vue'
@@ -60,7 +60,7 @@ describe('Shared dialog and system-entry frames', () => {
     expect(m.q('all-tasks-empty').textContent).toContain('No task matches')
   })
 
-  it('sheet attrs and keydown reach the section and Close emits once', () => {
+  it('sheet attrs and keydown reach the section and Close emits once', async () => {
     const close = vi.fn()
     const key = vi.fn()
     const click = vi.fn()
@@ -94,7 +94,7 @@ describe('Shared dialog and system-entry frames', () => {
       new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }),
     )
     expect(key).toHaveBeenCalledTimes(1)
-    m.q('close-overlay').click()
+    await userEvent.click(m.q('close-overlay'))
     expect(close).toHaveBeenCalledTimes(1)
     expect(click).toHaveBeenCalledTimes(1)
   })
