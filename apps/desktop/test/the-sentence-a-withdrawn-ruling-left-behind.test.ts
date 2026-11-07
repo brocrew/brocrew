@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { proseSpans, proseText, type ProseSpan } from './lib/prose-spans'
 
-
 const here = dirname(fileURLToPath(import.meta.url))
 const REPO = join(here, '../../..')
 
@@ -59,7 +58,6 @@ function statingTheWithdrawnFraming(): string[] {
   }
   return found
 }
-
 
 describe('§0 · the prose reader, and a census is only as good as it', () => {
   const spansOf = (source: string, name = 'x.ts'): ProseSpan[] => proseSpans(name, source)
@@ -187,11 +185,21 @@ describe('§0 · the prose reader, and a census is only as good as it', () => {
         expect(planted.slice(block.length + 1)).toBe(source)
       }
       const spans = proseSpans(path, planted)
-      expect(spans, path).toContainEqual({ file: path, line: blockLine, text: block, kind: 'block' })
-      expect(spans.filter((span) => span.text === block), path).toHaveLength(1)
-      expect(spans.filter((span) => span.text !== block && span.text !== html).map(({ text, kind }) => ({ text, kind }))).toEqual(
-        proseSpans(path, source).map(({ text, kind }) => ({ text, kind })),
-      )
+      expect(spans, path).toContainEqual({
+        file: path,
+        line: blockLine,
+        text: block,
+        kind: 'block',
+      })
+      expect(
+        spans.filter((span) => span.text === block),
+        path,
+      ).toHaveLength(1)
+      expect(
+        spans
+          .filter((span) => span.text !== block && span.text !== html)
+          .map(({ text, kind }) => ({ text, kind })),
+      ).toEqual(proseSpans(path, source).map(({ text, kind }) => ({ text, kind })))
     }
   })
 
@@ -205,7 +213,6 @@ describe('§0 · the prose reader, and a census is only as good as it', () => {
     expect(withProse / files.length).toBeGreaterThan(0.8)
   })
 })
-
 
 describe('§1 · the withdrawn framing, and a census nobody has made fail is a census nobody has measured', () => {
   it('🔴 every member FIRES on the way that claim actually gets written', () => {
@@ -264,13 +271,11 @@ describe('§1 · the withdrawn framing, and a census nobody has made fail is a c
   })
 })
 
-
 describe('§2 · nothing in this tree rests a rail on the instruction text without citing HO-062', () => {
   it('🔴 no committed span states the withdrawn framing about this layer, uncited', () => {
     expect(statingTheWithdrawnFraming()).toEqual([])
   })
 })
-
 
 describe('the live instruction hand-off and reader mapping', () => {
   it('Claude appends to its preset and Codex uses developerInstructions without replacing the base', () => {

@@ -31,7 +31,6 @@ import { WHOSE_WORDS } from '../src/shared/whose-text'
 import { NOTHING_OF_YOURS_YET } from '../src/renderer/src/lib/whose-groups'
 import { visibleCopy, type VisibleString } from './lib/visible-copy'
 
-
 const here = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(here, '../src')
 const RUNTIME = join(here, '../../../packages/runtime/src')
@@ -61,7 +60,6 @@ function methodAround(source: string, needle: string): string[] {
   })
   return found
 }
-
 
 describe('§1 · a resume reads today’s files', () => {
   it('🔴 the instruction reader is reached from exactly two launch paths — one create, one resume — and one look', () => {
@@ -97,9 +95,7 @@ describe('§1 · a resume reads today’s files', () => {
       'sessionId',
     ])
     const source = code(read(join(ROOT, 'main/runtime/instructions.ts')))
-    expect(source).toContain(
-      'return providerKnowledge[inputs.provider].instructions.read(inputs)',
-    )
+    expect(source).toContain('return providerKnowledge[inputs.provider].instructions.read(inputs)')
   })
 
   it('🔴 so the surface says what this identity is told NOW — and the sentence is one string, spelled once', () => {
@@ -125,9 +121,7 @@ describe('§1 · a resume reads today’s files', () => {
       const decoy = source.replace(opening, `${opening}\n// liveFrom comment control\n`)
       expect(decoy).not.toBe(source)
       expect(decoy).toContain('// liveFrom comment control')
-      expect(code(decoy).replace(/\s+/g, ' ').trim()).toBe(
-        code(source).replace(/\s+/g, ' ').trim(),
-      )
+      expect(code(decoy).replace(/\s+/g, ' ').trim()).toBe(code(source).replace(/\s+/g, ' ').trim())
       expect(code(decoy), `${file} comment is not a derivation`).not.toContain('liveFrom')
       const changed = source.replace(
         opening,
@@ -144,7 +138,6 @@ describe('§1 · a resume reads today’s files', () => {
     }
   })
 })
-
 
 describe('§2 · every layer carries its register, and there is no way to build one without', () => {
   it('🔴 the three constructors are the only ones, and each fixes what the others may not carry', () => {
@@ -204,7 +197,6 @@ describe('§2 · every layer carries its register, and there is no way to build 
     expect(drawableLayers([good]).withheld).toBe(0)
   })
 })
-
 
 const NOTHING: SessionInstructions = {
   injected: [],
@@ -408,7 +400,6 @@ describe('§3 · the layers, in the order this app can establish', () => {
   })
 })
 
-
 describe('§4 · composed, as sent', () => {
   let root = ''
   let home = ''
@@ -470,7 +461,6 @@ describe('§4 · composed, as sent', () => {
 function read2(path: string): string {
   return readFileSync(path, 'utf8')
 }
-
 
 describe('§5 · this app adds to the provider’s prompt and never replaces it', () => {
   const CLAUDE = join(RUNTIME, 'claude/claude-runtime.ts')

@@ -15,7 +15,6 @@ import {
   type SdkOptionClaim,
 } from '../src/main/runtime/provider-config'
 
-
 const HERE = fileURLToPath(new URL('.', import.meta.url))
 const REPO = join(HERE, '../../..')
 const read = (relative: string): string => readFileSync(join(REPO, relative), 'utf8')
@@ -105,9 +104,10 @@ describe('the provider disclosure answers to the adapter (308)', () => {
     const start = source.indexOf('  private optionsFor(')
     expect(start).toBeGreaterThan(-1)
     expect(source.indexOf('  private optionsFor(', start + 1)).toBe(-1)
-    const literal = /const options: (?:Options|Omit<Options, 'settings'> & \{ settings: Settings \}) = \{/.exec(
-      source.slice(start),
-    )
+    const literal =
+      /const options: (?:Options|Omit<Options, 'settings'> & \{ settings: Settings \}) = \{/.exec(
+        source.slice(start),
+      )
     expect(literal).not.toBeNull()
     if (!literal) throw new Error('optionsFor has no Options literal')
     const insertion = start + literal.index + literal[0].length
@@ -119,9 +119,7 @@ describe('the provider disclosure answers to the adapter (308)', () => {
     expect([...optionsPassedBy(decoy)].sort()).toEqual([...PASSED].sort())
     expect(optionsPassedBy(decoy).has('forwardSubagentText')).toBe(false)
     const changed = plant('forwardSubagentText: true,')
-    expect([...optionsPassedBy(changed)].sort()).toEqual(
-      [...PASSED, 'forwardSubagentText'].sort(),
-    )
+    expect([...optionsPassedBy(changed)].sort()).toEqual([...PASSED, 'forwardSubagentText'].sort())
     expect(PASSED.has('forwardSubagentText')).toBe(false)
     expect(PASSED.has('effort')).toBe(false)
   })
