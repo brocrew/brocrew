@@ -6,7 +6,11 @@ import { join } from 'node:path'
 import Database from 'better-sqlite3'
 import { PluginFence } from '../src/main/plugins/state/fence'
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
-import { PluginWorkspaceLease } from '../src/main/plugins/supervisor/client'
+import {
+  PluginWorkspaceLease,
+  pluginWorkspaceIdentity,
+} from '../src/main/plugins/supervisor/client'
+import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { createPluginSupervisorLauncher } from '../src/main/plugins/supervisor/launcher'
 import {
   PLUGIN_HOST_SCRIPTS,
@@ -16,7 +20,8 @@ import {
 import { privateChild } from '../src/main/plugins/node-host-files'
 import { liveGroupMembers } from '../resources/plugin-host/process-groups.mjs'
 import { verifyChromeUiArchive } from './chrome-ui-archive'
-import { fictionalPublicKey, signed } from '../test/plugin-package-fixtures'
+import { catalogueBytes } from '../test/plugin-package-fixtures'
+import { pluginSha256 } from '../src/main/plugins/package-digests'
 
 async function wait<T>(read: () => Promise<T>): Promise<T> {
   for (let i = 0; i < 300; i++) {
@@ -53,7 +58,7 @@ export async function proof(config: { root: string; resources: string; archive: 
   const browser = join(global, 'fake-browser')
   await writeFile(
     browser,
-    `#!${node}\nimport fs from 'node:fs';import path from 'node:path';import {spawn} from 'node:child_process';\nconst child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});\nfs.writeFileSync(path.join(process.env.BROCREW_CHROME_DATA,'fake-browser.json'),JSON.stringify({pid:process.pid,child:child.pid}));\nprocess.on('SIGTERM',()=>{});setInterval(()=>{},1000);\n`,
+    `#!${node}\nimport fs from 'node:fs';import path from 'node:path';import {spawn} from 'node:child_process';\nconst child=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'});\nfs.writeFileSync(path.join(process.env.BROCREW_CHROME_DATA,'fake-browser.json'),JSON.stringify({pid:process.pid,child:child.pid,serverPid:process.ppid}));\nprocess.on('SIGTERM',()=>{});setInterval(()=>{},1000);\n`,
     { mode: 0o700 },
   )
   const home = await privateChild(global, 'host/data/chrome')
@@ -72,23 +77,29 @@ export async function proof(config: { root: string; resources: string; archive: 
     { mode: 0o600 },
   )
   const checked = verifyChromeUiArchive(await readFile(config.archive))
-  const catalogue = signed({ format: 1, entries: [checked.release] })
-  const cataloguePath = join(global, 'fictional-catalogue.json'),
-    signaturePath = join(global, 'fictional-catalogue.sig')
+  const catalogue = catalogueBytes({ format: 1, entries: [checked.release] })
+  const cataloguePath = join(global, 'fictional-catalogue.json')
   await writeFile(cataloguePath, catalogue.bytes, { mode: 0o600 })
-  await writeFile(signaturePath, catalogue.signature, { mode: 0o600 })
+  const fixtureSource = await privateChild(global, 'fixture-release')
+  const archives = await privateChild(fixtureSource, 'archives')
+  await writeFile(
+    join(archives, checked.release.archive.sha256 + '.tar'),
+    await readFile(config.archive),
+    { mode: 0o600 },
+  )
+  const personKey = 'd'.repeat(64)
   const launch = createPluginSupervisorLauncher({
     root: global,
     workspaceRoots: [workspace],
     resourcesRoot: resources,
     browserExecutable: browser,
-    startup: {
-      publicKey: fictionalPublicKey.export({ format: 'der', type: 'spki' }).toString('base64'),
+    lifecycle: {
+      source: 'repo-list',
       catalogue: cataloguePath,
-      signature: signaturePath,
-      packages: [
-        { id: 'chrome', version: checked.verified.manifest.version, archive: config.archive },
-      ],
+      catalogueSha256: pluginSha256(catalogue.bytes),
+      fixtureSource,
+      names: { chrome: 'Chrome' },
+      personKey,
     },
   })
   const lock = join(global, 'supervisor/owner-lock.sqlite')
@@ -102,6 +113,7 @@ export async function proof(config: { root: string; resources: string; archive: 
   }
   let lease: PluginWorkspaceLease | undefined,
     secondLease: PluginWorkspaceLease | undefined,
+    client: Awaited<ReturnType<typeof connectPluginSettings>> | undefined,
     servicePid: number | undefined
   try {
     lease = await PluginWorkspaceLease.attach({
@@ -118,20 +130,40 @@ export async function proof(config: { root: string; resources: string; archive: 
     const directories = (await readdir(join(global, 'supervisor-launches'))).map((name) =>
       join(global, 'supervisor-launches', name),
     )
-    const info = await wait(async () => {
+    const service = await wait(async () => {
       for (const path of directories) {
         try {
           const service = JSON.parse(await readFile(join(path, 'service.json'), 'utf8'))
-          const runs = JSON.parse(await readFile(join(path, 'runs.json'), 'utf8')).runs
-          return { service, run: runs[0] }
+          assert.equal(JSON.parse(await readFile(join(path, 'lifecycle.json'), 'utf8')).ready, true)
+          return service
         } catch {
           /* Only a started entry supplies these private receipts. */
         }
       }
       throw new Error('not-ready')
     })
-    servicePid = info.service.pid
+    servicePid = service.pid
     assert.notEqual(servicePid, process.pid)
+    client = await connectPluginSettings({
+      path: join(global, 'person-control/person.sock'),
+      personKey,
+      root: global,
+      target: { os: process.platform as 'darwin' | 'linux', cpu: process.arch as 'arm64' | 'x64' },
+      catalogue,
+      projection: {
+        workspaceId: pluginWorkspaceIdentity(workspace),
+        applied: async () => {},
+        revoke: async () => true,
+        reconcile: async () => {},
+      },
+      propose() {
+        throw new Error('no Apply in this supervisor proof')
+      },
+      download: async () => {
+        throw new Error('Unexpected network download in fictional supervisor proof')
+      },
+    })
+    await client.install('chrome')
     const contender = PluginFence.acquire(lock)
     try {
       assert.throws(
@@ -150,9 +182,16 @@ export async function proof(config: { root: string; resources: string; archive: 
         JSON.parse(await readFile(join(home, 'fake-browser.json'), 'utf8')) as {
           pid: number
           child: number
+          serverPid: number
         },
     )
-    const members = await liveGroupMembers(info.run.serverPid)
+    const serverPid = ids.serverPid
+    assert.ok(Number.isSafeInteger(serverPid) && serverPid > 1)
+    const runNames = await readdir(join(global, 'host/runs'))
+    assert.equal(runNames.length, 1)
+    const runId = runNames[0]!
+    const receiptPath = join(global, 'host/runs', runId, 'exit.json')
+    const members = await liveGroupMembers(serverPid)
     assert.ok(members.includes(ids.pid))
     assert.ok(members.includes(ids.child))
     const secondWorkspace = await privateChild(config.root, 'second-workspace')
@@ -170,14 +209,16 @@ export async function proof(config: { root: string; resources: string; archive: 
     assert.equal(relaunched, false)
     assert.equal(await lease.close(), true)
     await secondLease.renew()
-    assert.ok((await liveGroupMembers(info.run.serverPid)).includes(ids.pid))
+    assert.ok((await liveGroupMembers(serverPid)).includes(ids.pid))
+    await client.close()
+    client = undefined
     assert.equal(await secondLease.close(), true)
-    const receipt = JSON.parse(await readFile(info.run.receiptPath, 'utf8'))
+    const receipt = JSON.parse(await readFile(receiptPath, 'utf8'))
     assert.equal(receipt.exited, true)
-    assert.equal(receipt.runId, info.run.runId)
+    assert.equal(receipt.runId, runId)
     assert.equal(receipt.pluginId, 'chrome')
     assert.equal(receipt.releaseDigest, checked.release.archive.sha256)
-    assert.deepEqual(await liveGroupMembers(info.run.serverPid), [])
+    assert.deepEqual(await liveGroupMembers(serverPid), [])
     assert.equal(
       JSON.parse(await readFile(join(global, 'supervisor/owner.json'), 'utf8')).phase,
       'stopped',
@@ -195,10 +236,12 @@ export async function proof(config: { root: string; resources: string; archive: 
     })
     return {
       passed: true,
-      assertions: 20,
+      assertions: 23,
       realPackage: true,
       fakeBrowser: true,
       durableEntry: true,
+      unsignedLifecycle: true,
+      settingsInstall: true,
       appReplaced: true,
       sqliteMutualExclusion: true,
       incumbentReused: true,
@@ -210,6 +253,7 @@ export async function proof(config: { root: string; resources: string; archive: 
       supervisorExited: true,
     }
   } finally {
+    await client?.close().catch(() => undefined)
     await lease?.close()
     await secondLease?.close()
   }

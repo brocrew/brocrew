@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { lstat, readFile, readdir, readlink } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fixture, projection, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
-import { packageFixture, signed } from './plugin-package-fixtures'
+import { packageFixture, catalogueBytes } from './plugin-package-fixtures'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { sharedLifecycleWorkspaces } from '../src/main/plugins/lifecycle/workspaces'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
@@ -63,17 +63,17 @@ async function setup(installed: boolean) {
       },
     })
     const release = { ...pkg.release, authors: ['fern-makers'] }
-    return { ...pkg, release, ...signed({ format: 2, entries: [release] }) }
+    return { ...pkg, release, ...catalogueBytes({ format: 2, entries: [release] }) }
   }
   const first = modern('1.0.1'),
     next = modern('1.0.2')
   let offer = first
   const options = {
     ...f.opts,
-    catalogue: { bytes: first.bytes, signature: first.signature },
+    catalogue: { bytes: first.bytes },
     download: vi.fn(async () => offer.archive),
     refreshCatalogue: async () => ({
-      catalogue: { bytes: offer.bytes, signature: offer.signature },
+      catalogue: { bytes: offer.bytes },
       names: f.opts.names,
     }),
   }
@@ -95,7 +95,7 @@ async function setup(installed: boolean) {
     expect(seeded.guards[0]?.release.version).toBe(first.release.version)
   }
   offer = next
-  options.catalogue = { bytes: next.bytes, signature: next.signature }
+  options.catalogue = { bytes: next.bytes }
   const controller = await PluginLifecycleController.open(options),
     key = randomBytes(32).toString('hex')
   const bridge = await servePersonPluginControl({
@@ -111,7 +111,6 @@ async function setup(installed: boolean) {
       path: bridge.path,
       personKey: key,
       catalogue: options.catalogue,
-      pinnedPublicKey: f.opts.pinnedPublicKey,
       target: f.opts.target,
       projection: projection().sink,
       propose() {},

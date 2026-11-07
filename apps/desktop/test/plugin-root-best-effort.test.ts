@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SupervisorStorage } from '../src/main/plugins/supervisor/storage'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
-import { manifestFor, packageFixture, fictionalPublicKey } from './plugin-package-fixtures'
+import { manifestFor, packageFixture } from './plugin-package-fixtures'
 import { projection } from './plugin-lifecycle-fixtures'
 
 const roots: string[] = []
@@ -55,9 +55,8 @@ describe.runIf(process.platform === 'win32')(
           const controller = await PluginLifecycleController.open({
             root,
             state,
-            pinnedPublicKey: fictionalPublicKey,
             target: manifest.platforms[0]!,
-            catalogue: { bytes: pkg.bytes, signature: pkg.signature },
+            catalogue: { bytes: pkg.bytes },
             names: { chrome: 'Chrome' },
             deny() {},
             download: async () => pkg.archive,

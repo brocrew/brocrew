@@ -17,8 +17,8 @@ import {
   runtimeFiles,
 } from '../../../apps/desktop/src/main/plugins/node-runtime'
 import { liveGroupMembers } from '../../../apps/desktop/resources/plugin-host/process-groups.mjs'
-import { createPluginVerifier } from '../../../apps/desktop/src/main/plugins/package-verifier'
-import { fictionalPublicKey, signed } from '../../../apps/desktop/test/plugin-package-fixtures'
+import { createRepoAwarePluginVerifier } from '../../../apps/desktop/src/main/plugins/package-verifier'
+import { catalogueBytes } from '../../../apps/desktop/test/plugin-package-fixtures'
 const artifact = process.env.BROCREW_CHROME_TEST_ARTIFACT
 const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
 async function builtInventory(
@@ -33,12 +33,11 @@ async function builtInventory(
   expect(artifact, 'Build a fresh artifact and set BROCREW_CHROME_TEST_ARTIFACT').toBeTruthy()
   const archive = fs.readFileSync(path.join(artifact!, 'chrome.tar'))
   const release = JSON.parse(fs.readFileSync(path.join(artifact!, 'fixture-release.json'), 'utf8'))
-  const catalogue = signed({ format: 2, entries: [release] })
-  const pkg = createPluginVerifier({
-    pinnedPublicKey: fictionalPublicKey,
+  const catalogue = catalogueBytes({ format: 2, entries: [release] })
+  const pkg = createRepoAwarePluginVerifier({
     target: { os: 'darwin', cpu: 'arm64' },
   })
-    .verifyCatalogue(catalogue.bytes, catalogue.signature)
+    .verifyCatalogue(catalogue.bytes)
     .verifyPackage('chrome', release.version, archive)
   const built = await import(pathToFileURL(path.join(artifact!, 'package/server.mjs')).href)
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'fictional-built-inventory-'))
@@ -205,12 +204,11 @@ describe('Chrome release fixture', () => {
         const release = JSON.parse(
           fs.readFileSync(path.join(artifact!, 'fixture-release.json'), 'utf8'),
         )
-        const catalogue = signed({ format: 2, entries: [release] })
-        const checked = createPluginVerifier({
-          pinnedPublicKey: fictionalPublicKey,
+        const catalogue = catalogueBytes({ format: 2, entries: [release] })
+        const checked = createRepoAwarePluginVerifier({
           target: { os: 'darwin', cpu: 'arm64' },
         })
-          .verifyCatalogue(catalogue.bytes, catalogue.signature)
+          .verifyCatalogue(catalogue.bytes)
           .verifyPackage('chrome', release.version, archive)
         host = createPluginNodeHost({
           root: path.join(root, 'host'),
@@ -410,18 +408,17 @@ describe('Chrome release fixture', () => {
       'proposeConfig',
     ])
   })
-  it('verifies the real USTAR with the app verifier and an in-memory fictional key, then refuses tampering', async () => {
+  it('verifies the real USTAR with the app verifier, then refuses changed archive bytes', async () => {
     expect(artifact, 'Build a fresh artifact and set BROCREW_CHROME_TEST_ARTIFACT').toBeTruthy()
     const root = artifact!
     const archive = fs.readFileSync(path.join(root, 'chrome.tar'))
     const release = JSON.parse(fs.readFileSync(path.join(root, 'fixture-release.json'), 'utf8'))
     expect(release.archive.sha256).toBe(hash(archive))
-    const catalogue = signed({ format: 2, entries: [release] })
-    const verifier = createPluginVerifier({
-      pinnedPublicKey: fictionalPublicKey,
+    const catalogue = catalogueBytes({ format: 2, entries: [release] })
+    const verifier = createRepoAwarePluginVerifier({
       target: { os: 'darwin', cpu: 'arm64' },
     })
-    const trusted = verifier.verifyCatalogue(catalogue.bytes, catalogue.signature)
+    const trusted = verifier.verifyCatalogue(catalogue.bytes)
     const checked = trusted.verifyPackage(
       'chrome',
       JSON.parse(fs.readFileSync('plugins/chrome/manifest-template.json', 'utf8')).version,
@@ -450,9 +447,6 @@ describe('Chrome release fixture', () => {
         changed,
       ),
     ).toThrow()
-    const wrong = Buffer.from(catalogue.signature)
-    wrong[0] ^= 1
-    expect(() => verifier.verifyCatalogue(catalogue.bytes, wrong)).toThrow()
     const built = await import(pathToFileURL(path.join(root, 'package/server.mjs')).href)
     expect(typeof built.startAgentChrome).toBe('function')
     expect(typeof built.createProfileStore).toBe('function')

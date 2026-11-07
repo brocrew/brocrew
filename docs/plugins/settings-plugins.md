@@ -26,8 +26,8 @@ reply decoder changes to the reviewed host's `ok/data` and `ok:false/error` shap
 The later screen-look correction keeps the approved words and RPC/actions, groups tabs within their profile card using text nodes, and adds a neutral light/dark palette with BroCrew’s font stack, rounded controls and cards. No theme bridge is added; the isolated page follows the OS colour scheme. `plugins/chrome/UI-PROVENANCE.json` pins the
 source/destination digests. The offline smoke helper rebuilds the reviewed
 archive, preserves its server/runtime bytes, updates file digests and manifest,
-and verifies it using an in-memory fictional catalogue key. It publishes neither
-a catalogue nor a production signature. The handback records the final archive
+and verifies it using an in-memory fictional catalogue and package digests. It publishes
+no catalogue. The handback records the final archive
 SHA256 and source commit; no binary is added to the repository.
 
 The fixture uses birch/fir profiles and fictional example.invalid tabs. Browser

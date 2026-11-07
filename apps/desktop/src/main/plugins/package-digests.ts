@@ -1,4 +1,4 @@
-import { createHash, verify, type KeyObject } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { refusePlugin } from './verification-error'
 
 export const PLUGIN_LIMITS = {
@@ -13,24 +13,6 @@ export const PLUGIN_LIMITS = {
 
 export const pluginSha256 = (bytes: Uint8Array): string =>
   createHash('sha256').update(bytes).digest('hex')
-
-/** The app supplies this one public key; untrusted catalogues never select a key. */
-export function pluginCatalogueSignatures(pinnedPublicKey: KeyObject) {
-  if (pinnedPublicKey.type !== 'public' || pinnedPublicKey.asymmetricKeyType !== 'ed25519') {
-    refusePlugin('signature')
-  }
-  return (bytes: Uint8Array, signature: Uint8Array): void => {
-    if (bytes.byteLength > PLUGIN_LIMITS.catalogueBytes) refusePlugin('limit')
-    if (signature.byteLength !== 64) refusePlugin('signature')
-    let valid: boolean
-    try {
-      valid = verify(null, bytes, pinnedPublicKey, signature)
-    } catch {
-      return refusePlugin('signature')
-    }
-    if (!valid) refusePlugin('signature')
-  }
-}
 
 export function verifyPluginDigest(
   bytes: Uint8Array,

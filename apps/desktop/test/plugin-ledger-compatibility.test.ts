@@ -11,7 +11,6 @@ import {
   servePersonPluginControl,
 } from '../src/main/plugins/lifecycle/person-control'
 import { cleanupLifecycleFixtures, fixture, projection } from './plugin-lifecycle-fixtures'
-import { fictionalPublicKey } from './plugin-package-fixtures'
 
 const closers: Array<() => Promise<unknown>> = []
 afterEach(async () => {
@@ -64,7 +63,6 @@ async function connected(plugin = 'chrome') {
     path: bridge.path,
     personKey: 'e'.repeat(64),
     root: f.root,
-    pinnedPublicKey: fictionalPublicKey,
     target: f.opts.target,
     catalogue: f.opts.catalogue,
     projection: projection().sink,
@@ -185,7 +183,6 @@ describe.skipIf(process.platform === 'win32')('ledger reader and wire', () => {
         path: bridge.path,
         personKey: 'e'.repeat(64),
         root: f.root,
-        pinnedPublicKey: fictionalPublicKey,
         target: f.opts.target,
         catalogue: f.opts.catalogue,
         projection: projection().sink,

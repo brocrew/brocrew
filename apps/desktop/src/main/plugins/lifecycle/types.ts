@@ -1,5 +1,3 @@
-import type { KeyObject } from 'node:crypto'
-import type { PluginReleasePin } from '../package-verifier'
 import type { PluginRelease, PluginTarget } from '../package-schema'
 import type { GlobalPluginState } from '../state/store'
 import type { ProjectionReceipt, Installation } from '../state/format'
@@ -37,19 +35,18 @@ export interface PersonProjection extends WorkspaceProjection {
 export interface LifecycleOptions {
   root: string
   state: GlobalPluginState
-  pinnedPublicKey: KeyObject | null
-  /** App-admitted repo-list digest authority only; exclusive with the dormant signing key. */
+  /** App-admitted repo-list source digest. */
   repoCatalogueSha256?: string
   /** Raw list bound by trusted app launch input, used to derive older minimum-version views. */
   repoList?: { bytes: Uint8Array; sha256: string; appVersion: string }
   legacyRepoList?: { bytes: Uint8Array; sha256: string; appVersion: string }
   target: PluginTarget
-  catalogue: { bytes: Uint8Array; signature: Uint8Array }
+  catalogue: { bytes: Uint8Array }
   /** Reviewed host-owned display names, never remote unreviewed text. */
   names: Readonly<Record<string, string>>
   /** Re-read only the source fixed by trusted app launch code. */
   refreshCatalogue?: () => Promise<{
-    catalogue: { bytes: Uint8Array; signature: Uint8Array }
+    catalogue: { bytes: Uint8Array }
     repoCatalogueSha256?: string
     repoList?: { bytes: Uint8Array; sha256: string; appVersion: string }
     legacyRepoList?: { bytes: Uint8Array; sha256: string; appVersion: string }
@@ -73,4 +70,4 @@ declare const workspaceBrand: unique symbol
 export interface LifecycleWorkspace {
   readonly [workspaceBrand]: true
 }
-export type { Installation, PluginReleasePin }
+export type { Installation }

@@ -1,6 +1,6 @@
 import { proposalFor } from '../../../src/main/plugins/lifecycle/proposals'
 import { pluginSha256 } from '../../../src/main/plugins/package-digests'
-import { randomUUID, type KeyObject } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import type { PluginSettingsController } from '../../../src/main/plugins/settings'
 import type { PluginUiHostOptions } from '../../../src/main/plugins/ui/host'
@@ -25,31 +25,29 @@ const Cards = z
     }),
   )
   .max(200)
-/** Electron-main adapter for the exact app-admitted repo list, or the dormant signed test path. */
+/** Electron-main adapter for the exact app-admitted repo list. */
 export async function connectPluginSettings(options: {
   path: string
   personKey: string
   root: string
-  pinnedPublicKey: KeyObject | null
   repoCatalogueSha256?: string
   target: PluginTarget
-  catalogue: { bytes: Uint8Array; signature: Uint8Array }
+  catalogue: { bytes: Uint8Array }
   projection: WorkspaceProjection
   propose(publicProposal: unknown, revision: number): void
   lost?(): void
   signal?: AbortSignal
 }): Promise<PluginSettingsController & { close(): Promise<void> }> {
+  if (options.repoCatalogueSha256 !== undefined &&
+      pluginSha256(options.catalogue.bytes) !== options.repoCatalogueSha256)
+    throw new PluginSupervisorError('unavailable')
   const admittedCatalogue = createRepoAwarePluginVerifier({
-    pinnedPublicKey: options.pinnedPublicKey,
-    repoCatalogueSha256: options.repoCatalogueSha256,
     target: options.target,
-  }).verifyCatalogue(options.catalogue.bytes, options.catalogue.signature)
+  }).verifyCatalogue(options.catalogue.bytes)
   if (!admittedCatalogue.entries.length) throw new PluginSupervisorError('unavailable')
   const vault = new PluginPackageVault(
     options.root,
-    options.pinnedPublicKey,
     options.target,
-    options.repoCatalogueSha256,
   )
   const screens = new Map<
     string,
@@ -136,7 +134,6 @@ export async function connectPluginSettings(options: {
           manifestSha256: installed.release.manifestSha256,
           archive: { sha256: installed.release.archiveSha256 },
         },
-        [],
       )
       if (!alive || (generations.get(pluginId) ?? 0) !== generation)
         throw new PluginSupervisorError('unavailable')

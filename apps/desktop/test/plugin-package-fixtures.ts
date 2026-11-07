@@ -1,23 +1,11 @@
-import { createPrivateKey, createPublicKey, sign } from 'node:crypto'
 import { gzipSync } from 'node:zlib'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
 import type { PluginManifest, PluginRelease } from '../src/main/plugins/package-schema'
-import { createPluginVerifier } from '../src/main/plugins/package-verifier'
+import { createRepoAwarePluginVerifier } from '../src/main/plugins/package-verifier'
 
-// Public deterministic test material, never a production key and never written to disk.
-const key = createPrivateKey({
-  key: Buffer.concat([
-    Buffer.from('302e020100300506032b657004220420', 'hex'),
-    Buffer.alloc(32, 0x42),
-  ]),
-  format: 'der',
-  type: 'pkcs8',
+export const catalogueBytes = (value: unknown) => ({
+  bytes: Buffer.from(JSON.stringify(value)),
 })
-export const fictionalPublicKey = createPublicKey(key)
-export const signed = (value: unknown) => {
-  const bytes = Buffer.from(JSON.stringify(value))
-  return { bytes, signature: sign(null, bytes, key) }
-}
 const initialApi = () => ({ major: 1, minMinor: 0, maxMinor: 0, requiredFeatures: [] })
 export const payload = (): Map<string, Buffer> =>
   new Map([
@@ -177,13 +165,12 @@ export function packageFixture(
     manifestSha256: pluginSha256(manifestBytes),
   }
   const catalogue = { format: manifest.format, entries: [release] }
-  const signature = signed(catalogue)
-  return { files, manifest, manifestBytes, archive, release, catalogue, ...signature }
+  const source = catalogueBytes(catalogue)
+  return { files, manifest, manifestBytes, archive, release, catalogue, ...source }
 }
-export const verifier = () =>
-  createPluginVerifier({ pinnedPublicKey: fictionalPublicKey, target: { os: 'linux', cpu: 'x64' } })
+export const verifier = () => createRepoAwarePluginVerifier({ target: { os: 'linux', cpu: 'x64' } })
 export function verified(fixture = packageFixture()) {
   return verifier()
-    .verifyCatalogue(fixture.bytes, fixture.signature)
+    .verifyCatalogue(fixture.bytes)
     .verifyPackage(fixture.release.id, fixture.release.version, fixture.archive)
 }

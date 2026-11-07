@@ -61,7 +61,8 @@
         "../../../src/main/plugins/lifecycle/./vault": "./vault",
         "../../../src/main/plugins/lifecycle/../../../shared/plugin-settings": "../../../shared/plugin-settings",
         "./types": "./types"
-      }
+      },
+      "unsignedApiSha256": "b1789d61f08a8f276241045207549c69eb33604751874352e42862155cdec32b"
     },
     {
       "path": "apps/desktop/src/main/plugins/state/store.ts",
@@ -84,7 +85,8 @@
         "./store": "../state/store",
         "../../../src/main/plugins/state/format": "../state/format",
         "../../../src/main/plugins/node-host": "../node-host"
-      }
+      },
+      "unsignedApiSha256": "d64a54e7b38da24a378020b33a2d8cfeba3dfaebc7eafd78acae77552de15ee6"
     }
   ]
 }

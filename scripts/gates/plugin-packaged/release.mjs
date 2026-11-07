@@ -83,7 +83,7 @@ export async function buildFixtureRelease(root, node22) {
     mode: 0o600,
     flag: 'wx',
   })
-  // The exact installed-candidate parser/verifier, without signed-catalogue fixtures or a key.
+  // The exact installed-candidate catalogue parser and package verifier.
   const { build } = await phaseStep(root, 'release-verifier-load', () => releaseBundler(exported))
   const proof = path.join(privateFolder(path.join(root, 'proof')), 'verify.cjs')
   await phaseStep(root, 'release-verifier-bundle', () =>
@@ -94,7 +94,7 @@ import fs from 'node:fs';
 import {parseRepoPluginList} from ${JSON.stringify(path.join(repository, 'apps/desktop/src/main/plugins/catalogue/repo-list.ts'))};
 import {createRepoAwarePluginVerifier} from ${JSON.stringify(path.join(repository, 'apps/desktop/src/main/plugins/package-verifier.ts'))};
 const parsed=parseRepoPluginList(fs.readFileSync(${JSON.stringify(path.join(artifact, 'catalogue.json'))}),{os:'darwin',cpu:'arm64'},'999.0.0');
-const trusted=createRepoAwarePluginVerifier({pinnedPublicKey:null,repoCatalogueSha256:parsed.sha256,target:{os:'darwin',cpu:'arm64'}}).verifyCatalogue(parsed.bytes,Buffer.alloc(0));
+const trusted=createRepoAwarePluginVerifier({target:{os:'darwin',cpu:'arm64'}}).verifyCatalogue(parsed.bytes);
 trusted.verifyPackage('chrome',${JSON.stringify(entry.version)},fs.readFileSync(${JSON.stringify(path.join(artifact, 'chrome-darwin-arm64.tar.gz'))}));
 `,
         resolveDir: repository,

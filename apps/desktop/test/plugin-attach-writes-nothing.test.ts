@@ -4,7 +4,7 @@ import type { PluginStateDisk } from '../src/main/plugins/state/disk'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
-import { fictionalPublicKey, manifestFor, packageFixture, signed } from './plugin-package-fixtures'
+import { manifestFor, packageFixture, catalogueBytes } from './plugin-package-fixtures'
 import { PluginHostError } from '../src/main/plugins/node-host-files'
 import {
   appendProjectionHistory,
@@ -70,7 +70,7 @@ it('one plugin that cannot start does not hide the others from a new agent', asy
   const other = packageFixture({ manifest })
   const opts = {
     ...f.opts,
-    catalogue: signed({ format: 1, entries: [f.pkg.release, other.release] }),
+    catalogue: catalogueBytes({ format: 1, entries: [f.pkg.release, other.release] }),
     download: async (release: { id: string }) =>
       release.id === 'chrome' ? f.pkg.archive : other.archive,
   }
@@ -129,7 +129,6 @@ it('uninstall through the Settings connection takes the plugin away from an atta
     path: bridge.path,
     personKey: key,
     root: f.root,
-    pinnedPublicKey: fictionalPublicKey,
     target: f.opts.target,
     catalogue: f.opts.catalogue,
     projection: projection().sink,

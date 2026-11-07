@@ -34,8 +34,8 @@ import {
   pluginServerLaunch,
   readPriorityClamped,
 } from '../resources/plugin-host/process-groups.mjs'
-import { createPluginVerifier } from '../src/main/plugins/package-verifier'
-import { manifestFor, packageFixture, fictionalPublicKey } from './plugin-package-fixtures'
+import { createRepoAwarePluginVerifier } from '../src/main/plugins/package-verifier'
+import { manifestFor, packageFixture } from './plugin-package-fixtures'
 import { sharedDataOwner } from '../src/main/plugins/shared-data'
 import { SHARED_DATA_FEATURE } from '../src/main/plugins/shared-data-contract'
 
@@ -226,10 +226,9 @@ function fixture(body = source, mcpPath = '/mcp', sharedData = false) {
       hostApi: { ...manifest.hostApi, requiredFeatures: [SHARED_DATA_FEATURE] },
     })
   const value = packageFixture({ files, manifest })
-  const catalogue = createPluginVerifier({
-    pinnedPublicKey: fictionalPublicKey,
+  const catalogue = createRepoAwarePluginVerifier({
     target: manifest.platforms[0]!,
-  }).verifyCatalogue(value.bytes, value.signature)
+  }).verifyCatalogue(value.bytes)
   return {
     package: catalogue.verifyPackage('chrome', manifest.version, value.archive),
     releaseDigest: value.release.archive.sha256,
@@ -348,11 +347,10 @@ process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
       ],
     }
     const value = packageFixture({ files, manifest: manifest as ReturnType<typeof manifestFor> })
-    const checked = createPluginVerifier({
-      pinnedPublicKey: fictionalPublicKey,
+    const checked = createRepoAwarePluginVerifier({
       target: { os: process.platform as 'darwin' | 'linux', cpu: process.arch as 'arm64' | 'x64' },
     })
-      .verifyCatalogue(value.bytes, value.signature)
+      .verifyCatalogue(value.bytes)
       .verifyPackage(value.manifest.id, value.manifest.version, value.archive)
     const handle = await host.start({
       package: checked,

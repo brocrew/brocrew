@@ -37,7 +37,7 @@ After authenticated readiness, the host snapshots only its owned server PID’s 
 
 `runId` and `receiptPath` identify private credential-free process/exit receipts, bound to plugin/release/run identities. Auth and launch files are removed after teardown. These receipts are evidence to reconcile, not authorization to signal a reused PID: the supervisor must still establish the recorded owner's death and check the recorded groups. Loss of both guardian and host without a final receipt is an unknown state, never automatic takeover. The supervisor supplies exclusive global ownership; this host does not create a competing ownership lock.
 
-This is not an OS sandbox for hostile signed code. The approved package runs with the person's OS authority; native code deliberately escaping the tracked process groups is outside this adapter's trust contract.
+This is not an OS sandbox for hostile plugin code. The approved package runs with the person's OS authority; native code deliberately escaping the tracked process groups is outside this adapter's trust contract.
 
 ## Checks
 

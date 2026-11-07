@@ -9,7 +9,7 @@ import {
   cleanupLifecycleFixtures,
   reopenLifecycleFixture,
 } from './plugin-lifecycle-fixtures'
-import { packageFixture, signed } from './plugin-package-fixtures'
+import { packageFixture, catalogueBytes } from './plugin-package-fixtures'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
@@ -40,7 +40,7 @@ afterEach(async () => {
 })
 const snapshotRoot = fileURLToPath(new URL('./fixtures/plugin-update-parent/', import.meta.url))
 it.each(parentSources.files)(
-  'uses the actual pinned parent $path, changing only import locations',
+  'pins the parent $path with import and unsigned API adaptation',
   async (source) => {
     const adapted = await readFile(join(snapshotRoot, source.file), 'utf8')
     const imports = new Map<string, string | undefined>(Object.entries(source.imports))
@@ -49,7 +49,9 @@ it.each(parentSources.files)(
       expect(originalImport).toBeDefined()
       return `from '${originalImport}'`
     })
-    expect(createHash('sha256').update(original).digest('hex')).toBe(source.sourceSha256)
+    expect(createHash('sha256').update(original).digest('hex')).toBe(
+      'unsignedApiSha256' in source ? source.unsignedApiSha256 : source.sourceSha256,
+    )
   },
 )
 function exitable(f: Awaited<ReturnType<typeof fixture>>) {
@@ -77,7 +79,7 @@ async function prepared() {
   f.opts.download = async (release) =>
     release.version === next.release.version ? next.archive : f.pkg.archive
   f.opts.refreshCatalogue = async () => ({
-    catalogue: { bytes: next.bytes, signature: next.signature },
+    catalogue: { bytes: next.bytes },
     names: f.opts.names,
   })
   await f.controller.install(f.handle, 'whatsapp')
@@ -91,9 +93,8 @@ const clientOptions = (f: Awaited<ReturnType<typeof fixture>>, path: string) => 
   path,
   personKey: 'a'.repeat(64),
   root: f.root,
-  pinnedPublicKey: f.opts.pinnedPublicKey,
   target: f.opts.target,
-  catalogue: { bytes: f.pkg.bytes, signature: f.pkg.signature },
+  catalogue: { bytes: f.pkg.bytes },
   projection: projection().sink,
   propose() {},
 })
@@ -125,7 +126,7 @@ describe.skipIf(process.platform === 'win32')(
         const historical = await ParentController.open({
           ...f.opts,
           state: older,
-          catalogue: signed({ format: 2, entries: [{ ...f.pkg.release, legacy: true }] }),
+          catalogue: catalogueBytes({ format: 2, entries: [{ ...f.pkg.release, legacy: true }] }),
         } as never)
         await historical.install(await historical.attach(projection().sink), 'chrome')
         await historical.drain()
@@ -136,7 +137,7 @@ describe.skipIf(process.platform === 'win32')(
         const controller = await PluginLifecycleController.open({
           ...f.opts,
           state,
-          catalogue: signed({ format: 2, entries: [{ ...next.release, legacy: true }] }),
+          catalogue: catalogueBytes({ format: 2, entries: [{ ...next.release, legacy: true }] }),
           download,
         })
         try {
@@ -213,7 +214,7 @@ describe.skipIf(process.platform === 'win32')(
       const next = packageFixture({ manifest: { ...f.pkg.manifest, version: '1.0.3' } })
       const client = await connectPluginSettings({
         ...clientOptions(f, bridge.path),
-        catalogue: { bytes: next.bytes, signature: next.signature },
+        catalogue: { bytes: next.bytes },
       })
       try {
         expect(client.refreshCatalogue).toBeUndefined()
@@ -288,7 +289,7 @@ describe.skipIf(process.platform === 'win32')(
             const parent = await ParentController.open({
               ...f.opts,
               state,
-              catalogue: { bytes: f.pkg.bytes, signature: f.pkg.signature },
+              catalogue: { bytes: f.pkg.bytes },
               runtime: { ...f.opts.runtime, start, removeData, removeCode },
             } as never)
             await parent.attach(projection().sink)

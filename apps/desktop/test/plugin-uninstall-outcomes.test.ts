@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto'
 import { logOutBeforeUninstall } from '../src/main/plugins/lifecycle/whatsapp-apply'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
-import { fictionalPublicKey } from './plugin-package-fixtures'
 import {
   cleanupLifecycleFixtures,
   deferred,
@@ -105,7 +104,6 @@ describe.skipIf(process.platform === 'win32')('uninstall results over inert peer
         path: bridge.path,
         personKey: key,
         root: f.root,
-        pinnedPublicKey: fictionalPublicKey,
         target: f.opts.target,
         catalogue: f.opts.catalogue,
         projection: projection().sink,

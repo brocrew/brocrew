@@ -46,27 +46,32 @@ afterEach(async () => {
   }
 })
 const snapshot = fileURLToPath(new URL('./fixtures/plugin-delete-parent/', import.meta.url))
-it.each(source.files)('pins the actual pre-delete reader source $path', async (file) => {
-  const adapted = await readFile(join(snapshot, file.file), 'utf8')
-  const imports = new Map<string, string>(Object.entries(file.imports))
-  let original = adapted.replace(/from '(\.[^']+)'/g, (_, spec: string) => {
-    expect(imports.has(spec)).toBe(true)
-    return `from '${imports.get(spec)}'`
-  })
-  // This executable fixture omits retired privacy predicates. Restore those exact clauses
-  // only in the historical source view, keeping the original commit's byte pin intact.
-  if (file.file === 'profile-ledger.ts')
-    original = original
-      .replace(
-        '  openFileNotThroughALink,',
-        '  isImmutableFile,\n  isPrivateEntry,\n  openFileNotThroughALink,',
-      )
-      .replace(
-        '          stat.size > 2048',
-        '          !isPrivateEntry(stat, 0) ||\n          !isImmutableFile(stat) ||\n          stat.size > 2048',
-      )
-  expect(createHash('sha256').update(original).digest('hex')).toBe(file.sourceSha256)
-})
+it.each(source.files)(
+  'pins the pre-delete reader source with unsigned API adaptation $path',
+  async (file) => {
+    const adapted = await readFile(join(snapshot, file.file), 'utf8')
+    const imports = new Map<string, string>(Object.entries(file.imports))
+    let original = adapted.replace(/from '(\.[^']+)'/g, (_, spec: string) => {
+      expect(imports.has(spec)).toBe(true)
+      return `from '${imports.get(spec)}'`
+    })
+    // This executable fixture omits retired privacy predicates. Restore those exact clauses
+    // only in the historical source view, keeping the original commit's byte pin intact.
+    if (file.file === 'profile-ledger.ts')
+      original = original
+        .replace(
+          '  openFileNotThroughALink,',
+          '  isImmutableFile,\n  isPrivateEntry,\n  openFileNotThroughALink,',
+        )
+        .replace(
+          '          stat.size > 2048',
+          '          !isPrivateEntry(stat, 0) ||\n          !isImmutableFile(stat) ||\n          stat.size > 2048',
+        )
+    expect(createHash('sha256').update(original).digest('hex')).toBe(
+      'unsignedApiSha256' in file ? file.unsignedApiSha256 : file.sourceSha256,
+    )
+  },
+)
 it('the shared ledger refuses a destructive proposal if adapter projection is bypassed', async () => {
   const f = await fixture()
   const ledger = new PluginProfileLedger(f.root)

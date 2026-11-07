@@ -6,7 +6,7 @@ import { writeFileSync } from 'node:fs'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import type { LifecycleOptions, PersonProjection } from '../src/main/plugins/lifecycle/types'
-import { packageFixture, manifestFor, fictionalPublicKey } from './plugin-package-fixtures'
+import { packageFixture, manifestFor } from './plugin-package-fixtures'
 import { realPath } from '../src/main/plugins/private-files'
 import {
   encodeState,
@@ -72,9 +72,8 @@ export async function fixture(
   const opts: LifecycleOptions = {
     root,
     state,
-    pinnedPublicKey: fictionalPublicKey,
     target: manifest.platforms[0]!,
-    catalogue: { bytes: pkg.bytes, signature: pkg.signature },
+    catalogue: { bytes: pkg.bytes },
     names: { chrome: 'Chrome', whatsapp: 'WhatsApp' },
     deny() {
       events.push('deny')

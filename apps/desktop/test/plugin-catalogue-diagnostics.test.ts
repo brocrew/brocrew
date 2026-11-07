@@ -28,7 +28,6 @@ it.each(['owner-check', 'rpc', 'schema'] as const)(
       path: bridge.path,
       personKey: key,
       root: f.root,
-      pinnedPublicKey: f.opts.pinnedPublicKey,
       target: f.opts.target,
       catalogue: f.opts.catalogue,
       projection: projection().sink,
