@@ -1,14 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { randomUUID } from 'node:crypto'
-import { writeFileSync } from 'node:fs'
-import { join } from 'node:path'
-import {
-  encodeState,
-  installationProjection,
-  type JournalRecord,
-} from '../src/main/plugins/state/format'
-import { foldRecord } from '../src/main/plugins/state/machine'
-import { pluginSha256 } from '../src/main/plugins/package-digests'
 import type { PluginStateDisk } from '../src/main/plugins/state/disk'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
@@ -16,6 +7,7 @@ import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-cl
 import { fictionalPublicKey, manifestFor, packageFixture, signed } from './plugin-package-fixtures'
 import { PluginHostError } from '../src/main/plugins/node-host-files'
 import {
+  appendProjectionHistory,
   cleanupLifecycleFixtures,
   fixture,
   projection,
@@ -36,36 +28,10 @@ async function withHistory(history: number) {
   await f.controller.install(f.handle, 'chrome')
   const disk = (f.state as unknown as { disk: PluginStateDisk }).disk
   const head = disk.load()
-  const installed = head.admitted.get('chrome')!
   const workspaceId = randomUUID()
-  const receipt = installationProjection(head.rootId, head.epoch, workspaceId, installed)
   f.state.close()
   // Earlier copies wrote these on every attach; seed them directly, as their journals hold them.
-  for (let i = 0; i < history; i++) {
-    const record: JournalRecord = {
-      sequence: head.sequence + 1,
-      previous: head.head,
-      publicationId: randomUUID(),
-      event: {
-        kind: 'projected',
-        workspaceId,
-        pluginId: 'chrome',
-        receipt: i % 2 ? null : receipt,
-      },
-    }
-    const bytes = encodeState(record),
-      checksum = pluginSha256(bytes)
-    foldRecord(head, record, checksum)
-    const name = String(record.sequence).padStart(8, '0')
-    writeFileSync(join(f.root, 'state/lifecycle-guard', name + '.json'), bytes, {
-      mode: 0o600,
-      flag: 'wx',
-    })
-    writeFileSync(join(f.root, 'state/lifecycle-guard', `${name}-${checksum}.seal`), '', {
-      mode: 0o600,
-      flag: 'wx',
-    })
-  }
+  appendProjectionHistory(f.root, head, workspaceId, history)
   const state = reopenLifecycleFixture(f)
   const controller = await PluginLifecycleController.open({ ...f.opts, state })
   state.inspect()

@@ -2,12 +2,20 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { writeFileSync } from 'node:fs'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import type { LifecycleOptions, PersonProjection } from '../src/main/plugins/lifecycle/types'
 import { packageFixture, manifestFor, fictionalPublicKey } from './plugin-package-fixtures'
 import { keepPluginRootPrivate, realPath } from '../src/main/plugins/private-files'
 import { keepToThisUser } from '../src/main/recovery/windows-privacy'
+import {
+  encodeState,
+  installationProjection,
+  type JournalRecord,
+} from '../src/main/plugins/state/format'
+import { foldRecord, type LifecycleState } from '../src/main/plugins/state/machine'
+import { pluginSha256 } from '../src/main/plugins/package-digests'
 const homes: string[] = [],
   stores: GlobalPluginState[] = []
 
@@ -148,4 +156,43 @@ export function reopenLifecycleFixture(f: Awaited<ReturnType<typeof fixture>>) {
   })
   stores.push(reopened)
   return reopened
+}
+
+export function appendProjectionHistory(
+  root: string,
+  head: LifecycleState,
+  workspaceId: string,
+  history: number,
+) {
+  const receipt = installationProjection(
+    head.rootId,
+    head.epoch,
+    workspaceId,
+    head.admitted.get('chrome')!,
+  )
+  for (let i = 0; i < history; i++) {
+    const record: JournalRecord = {
+      sequence: head.sequence + 1,
+      previous: head.head,
+      publicationId: randomUUID(),
+      event: {
+        kind: 'projected',
+        workspaceId,
+        pluginId: 'chrome',
+        receipt: i % 2 ? null : receipt,
+      },
+    }
+    const bytes = encodeState(record),
+      checksum = pluginSha256(bytes)
+    foldRecord(head, record, checksum)
+    const name = String(record.sequence).padStart(8, '0')
+    writeFileSync(join(root, 'state/lifecycle-guard', name + '.json'), bytes, {
+      mode: 0o600,
+      flag: 'wx',
+    })
+    writeFileSync(join(root, 'state/lifecycle-guard', `${name}-${checksum}.seal`), '', {
+      mode: 0o600,
+      flag: 'wx',
+    })
+  }
 }
