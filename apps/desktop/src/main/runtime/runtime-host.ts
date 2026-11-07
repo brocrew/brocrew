@@ -224,12 +224,7 @@ import type {
 } from '../profile-execution-file'
 import { RUNTIME_CHANGE_SUBJECTS, TURN_ATTRIBUTION_KEYS } from '../../shared/runtime-ipc'
 import { moveRequestDigest, originalMoveRequest, recordMovedRequest } from './move-request'
-import {
-  DO_IT_HERE,
-  MOVE_IT,
-  MOVE_WORDS,
-  movedHereLine,
-} from '../../shared/move-request'
+import { DO_IT_HERE, MOVE_IT, MOVE_WORDS, movedHereLine } from '../../shared/move-request'
 import type {
   MoveOffer,
   MoveOrigin,
@@ -1128,11 +1123,7 @@ import { memoryChangeRefusal } from '../../shared/agent-memory'
 // ⛔ **625 · the ONE module in this feature that touches the filesystem**, which is why the host
 // imports its two functions rather than learning to walk a store — `no-byte-authority.test.ts`
 // pins this file at zero `node:fs` imports.
-import {
-  readAgentMemory,
-  readAgentMemoryPaged,
-  type AgentMemoryInputs,
-} from './agent-memory'
+import { readAgentMemory, readAgentMemoryPaged, type AgentMemoryInputs } from './agent-memory'
 import {
   aLaunchRecordIn,
   oneMessageAsTheModelGotIt,

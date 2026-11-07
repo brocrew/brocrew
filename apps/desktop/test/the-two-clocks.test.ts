@@ -32,6 +32,12 @@ import {
 } from '../src/shared/questions'
 
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import {
+  codeOnly,
+  sourceOf,
+  expectTypeImports,
+  expectNoDeadlineDeps,
+} from './helpers/source-contracts'
 
 /**
  * 🔴 **398 · the two clocks, and 612 removed the second** — HO-007 criterion **11**, and the record
@@ -333,10 +339,6 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
     return { pm, pmProfile, worker: given.agent as string, pmTools, workerHandle: latestHandle() }
   }
 
-  const sourceOf = (dir: string, file: string): string => readFileSync(join(dir, file), 'utf8')
-  const codeOnly = (source: string): string =>
-    source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
-
   const filesUnder = (dir: string): { path: string; text: string }[] => {
     const out: { path: string; text: string }[] = []
     const walk = (at: string, prefix: string): void => {
@@ -449,17 +451,7 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       // half-applied. ⚑ **Two withdrawals, one file, and this is now the whole of both.**
       expect(store_).not.toContain('work_quiet')
       expect(host_).not.toContain('work_quiet')
-      const dependencies = codeOnly(sourceOf(join(mainRoot, 'runtime'), 'host-dependencies.ts'))
-      expect(dependencies).toContain('export interface RuntimeHostDeps {')
-      for (const gone of [
-        'watchForEscalation',
-        'armEscalationLook',
-        'writeWhatIsDue',
-        'escalationWindowMs',
-        'work_quiet',
-      ]) {
-        expect(dependencies, gone).not.toContain(gone)
-      }
+      expectNoDeadlineDeps(mainRoot, 'quiet-work')
     })
   })
 
@@ -900,11 +892,7 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
       expect(host_).not.toContain('positiveWindow')
       expect(host_).not.toContain('escalationWindowMs')
       expect(host_).not.toContain('proposalBoundMs')
-      const dependencies = codeOnly(sourceOf(join(mainRoot, 'runtime'), 'host-dependencies.ts'))
-      expect(dependencies).toContain('export interface RuntimeHostDeps {')
-      for (const gone of ['positiveWindow', 'escalationWindowMs', 'proposalBoundMs']) {
-        expect(dependencies, gone).not.toContain(gone)
-      }
+      expectNoDeadlineDeps(mainRoot, 'answer-windows')
       // ⚑ **THE POSITIVE CONTROL, and it is the distinction rather than a spare string.** ⚠️ This
       // class still resolves three injected numbers — the drain, the interrupt wait and the
       // launch timeout — and none of them is a deadline on somebody ANSWERING; they bound this
@@ -1014,7 +1002,6 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
         'a-persons-own-words.ts',
       ]) {
         const text = sourceOf(sharedRoot, file)
-        const imports = [...text.matchAll(/^import .*$/gm)].map((match) => match[0])
         // ⚑ **The value imports are NAMED**, so another one is a red test rather than a widening
         // nobody reviewed — `tasks.ts` reaching the derivation, that module reaching the caller
         // vocabulary its second producer states an actor in, and (F097) `tasks.ts` reading whose
@@ -1026,12 +1013,7 @@ describe('398 · 612 · the two clocks this app had, and the nothing that replac
           "import { WHO_DID_IT, WHO_DID_IT_SAYS, type ActedBy, type WhoDidIt } from './who-did-it'",
           "import { aPersonsOwnWords } from './a-persons-own-words'",
         ]
-        for (const line of imports) {
-          expect(
-            line.startsWith('import type ') || allowed.includes(line),
-            `${file}: ${line}`,
-          ).toBe(true)
-        }
+        expectTypeImports(text, allowed, file)
         const code = codeOnly(text)
         expect(code, file).not.toContain('Date.now')
         expect(code, file).not.toContain('setTimeout')

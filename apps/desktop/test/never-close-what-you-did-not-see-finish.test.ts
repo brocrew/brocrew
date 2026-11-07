@@ -37,6 +37,7 @@ import { pieceLine } from '../src/shared/piece-called'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
 
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { codeOnly, sourceOf, expectTypeImports } from './helpers/source-contracts'
 
 /**
  * 🔴 **400 · never close what you did not see finish** — HO-018's three amendments, under one
@@ -422,10 +423,6 @@ describe('400 · never close what you did not see finish', () => {
    * elsewhere and leave it exactly as it is — which is the paired negative, not the case.
    */
   const relaunchAfterACrash = (): RuntimeHost => buildHost(createSessionStore(db, tick))
-
-  const sourceOf = (dir: string, file: string): string => readFileSync(join(dir, file), 'utf8')
-  const codeOnly = (source: string): string =>
-    source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
   const filesUnder = (dir: string): { path: string; text: string }[] => {
     const out: { path: string; text: string }[] = []
@@ -1350,14 +1347,8 @@ describe('400 · never close what you did not see finish', () => {
         "import { whoCancelledIt, type AskToStop } from './how-work-stopped'",
         "import { aPersonsOwnWords } from './a-persons-own-words'",
       ])
-      for (const line of [
-        ...sourceOf(sharedRoot, 'a-persons-own-words.ts').matchAll(/^import .*$/gm),
-      ]) {
-        expect(line[0].startsWith('import type '), line[0]).toBe(true)
-      }
-      for (const line of sourceOf(sharedRoot, 'task-contracts.ts').matchAll(/^import .*$/gm)) {
-        expect(line[0].startsWith('import type '), line[0]).toBe(true)
-      }
+      expectTypeImports(sourceOf(sharedRoot, 'a-persons-own-words.ts'))
+      expectTypeImports(sourceOf(sharedRoot, 'task-contracts.ts'))
       const reached = sourceOf(sharedRoot, 'how-work-stopped.ts')
       for (const line of [...reached.matchAll(/^import .*$/gm)].map((match) => match[0])) {
         expect(line.startsWith('import type ') || line.includes('./who-did-it'), line).toBe(true)

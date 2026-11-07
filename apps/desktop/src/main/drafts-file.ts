@@ -111,7 +111,7 @@ export interface DraftWriter {
  * An entry of a slot this build reads is replaced by this build's draft (keeping that entry's other
  * fields) or, when the slot holds none any more, removed. Every other entry is written back unchanged.
  */
-export function bookToWrite(
+function bookToWrite(
   found: unknown,
   drafts: readonly SavedDraft[],
 ): Record<string, unknown> {

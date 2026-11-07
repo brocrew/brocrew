@@ -1,9 +1,7 @@
 import type { Provider } from '@brobot2/shared'
 import type { AgentState } from '../../shared/agent-state-contracts'
 import type { AppNotice } from '../../shared/app-notice'
-import type {
-  QueueOutcome,
-} from '../../shared/runtime-ipc'
+import type { QueueOutcome } from '../../shared/runtime-ipc'
 import type { AnsweredQuestion } from '../../shared/human-answer-contracts'
 import type { HandedPath } from '../../shared/attachment-contracts'
 import type { TheQuestionItAsks } from '../../shared/conversation-events'

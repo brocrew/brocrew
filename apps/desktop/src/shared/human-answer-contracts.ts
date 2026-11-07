@@ -1,7 +1,7 @@
 import type { AppNotice } from './app-notice'
 import type { HandedPath } from './attachment-contracts'
 import type { MoveOrigin } from './move-contracts'
-import type { AgentMessageKind, WorkReport } from './task-contracts'
+import type { AgentMessageKind, WorkReport } from './work-report-contracts'
 
 export interface HumanFinalContext {
   promptOrdinal: number

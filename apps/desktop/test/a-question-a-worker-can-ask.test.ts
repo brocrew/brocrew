@@ -22,6 +22,7 @@ import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { stillHeld } from '../src/shared/mailbox'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { bodyOf, sourceOf, expectNoDeadlineDeps } from './helpers/source-contracts'
 
 /**
  * 🔴 **437 · the question a worker can ask its parent** — criterion 29, HO-019 §1.
@@ -251,17 +252,6 @@ describe('437 · a question a worker can ask its parent', () => {
    */
   const cardOn = async (sessionId: string, before: number): Promise<void> => {
     await waitFor(() => cardsOn(sessionId) > before, 'the card the turn parks on')
-  }
-
-  const sourceOf = (dir: string, file: string): string => readFileSync(join(dir, file), 'utf8')
-
-  /** ⚠️ **A function BODY, so an absence is about that function and not about the file.** */
-  const bodyOf = (source: string, signature: string, closes = '\n  }'): string => {
-    const from = source.indexOf(signature)
-    if (from === -1) throw new Error(`no such declaration: ${signature}`)
-    const to = source.indexOf(closes, from)
-    if (to === -1) throw new Error(`unterminated declaration: ${signature}`)
-    return source.slice(from, to)
   }
 
   const heldBy = (sessionId: string): readonly { kind: string }[] =>
@@ -1097,14 +1087,7 @@ describe('437 · a question a worker can ask its parent', () => {
       // are gone from this class together, so a deadline cannot come back without its rule.
       expect(hostCode).not.toContain('proposalBoundMs')
       expect(hostCode).not.toContain('positiveWindow')
-      const dependencies = readFileSync(join(mainRoot, 'runtime/host-dependencies.ts'), 'utf8')
-      const dependenciesCode = dependencies
-        .replace(/\/\*[\s\S]*?\*\//g, ' ')
-        .replace(/^[ \t]*\/\/.*$/gm, ' ')
-      expect(dependenciesCode).toContain('export interface RuntimeHostDeps {')
-      for (const gone of ['askBoundMs', 'escalationWindowMs', 'proposalBoundMs', 'positiveWindow']) {
-        expect(dependenciesCode, gone).not.toContain(gone)
-      }
+      expectNoDeadlineDeps(mainRoot, 'worker-question')
       // ⚑ **THE POSITIVE CONTROL, and it is a distinction rather than a spare string**: this class
       // still resolves three injected numbers — they bound THIS APP's own teardown and launch, not
       // how long somebody has to answer — so *no deadline window is resolved here* is a

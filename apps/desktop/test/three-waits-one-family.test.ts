@@ -35,6 +35,7 @@ import {
 import { WORK_STATE_WORD } from '../src/renderer/src/lib/work-report'
 import { aPersonOwesAnAnswerIn } from '../src/shared/questions'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { spacedCode, expectNoDeadlineDeps } from './helpers/source-contracts'
 
 /**
  * 🔴 **609 · three waits, one family** — `HO-088` §5, straight after B1 (`608`).
@@ -78,10 +79,7 @@ const srcRoot = join(here, '../src')
  * ⛔ **CODE only** — `a-source-census-must-strip-prose-before-it-asserts`. ⚠️ Every negative in §7
  * is about what the app DOES, and this file's own history sections quote the words they replaced.
  */
-const codeOf = (file: string): string =>
-  readFileSync(join(srcRoot, file), 'utf8')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/^[ \t]*\/\/.*$/gm, ' ')
+const codeOf = (file: string): string => spacedCode(readFileSync(join(srcRoot, file), 'utf8'))
 
 describe('609 · three waits, one family', () => {
   class RecordingSink implements RuntimeEventSink {
@@ -967,10 +965,7 @@ describe('609 · three waits, one family', () => {
       // control cannot be another member of it.
       expect(codeOf('shared/questions.ts')).not.toContain('ESCALATION_WINDOW_MS')
       expect(codeOf('main/runtime/runtime-host.ts')).not.toContain('escalationWindowMs')
-      const dependencies = codeOf('main/runtime/host-dependencies.ts')
-      expect(dependencies).toContain('export interface RuntimeHostDeps {')
-      expect(dependencies).not.toContain('proposalBoundMs')
-      expect(dependencies).not.toContain('escalationWindowMs')
+      expectNoDeadlineDeps(join(srcRoot, 'main'), 'three-waits')
       // ⚑ **THE POSITIVE CONTROL for four negatives, and it carries the DISTINCTION** (standing
       // rule 34.2): the vocabulary these numbers belonged to is still here and still readable,
       // and this class still resolves numbers — they bound this app's own teardown rather than

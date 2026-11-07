@@ -27,6 +27,7 @@ import { TASK_IS_OPEN, derivePieces } from '../src/shared/tasks'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { expectQueueFactsExcludeBriefs } from './helpers/queue-facts-source'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -515,19 +516,7 @@ describe('429 · taking work back', () => {
       const tools = sourceOf(join(mainRoot, 'runtime'), 'agent-tools.ts')
       const host_ = sourceOf(join(mainRoot, 'runtime'), 'runtime-host.ts')
       const records = sourceOf(join(mainRoot, 'runtime'), 'message-records.ts')
-      expect(records).toContain(
-        [
-          "type FactsAQueueCarries = Omit<TurnFacts, 'giving' | 'rebriefing'> & {",
-          '  readonly giving?: never',
-          '  readonly rebriefing?: never',
-          '}',
-        ].join('\n'),
-      )
-      // ⛔ **`queueMessage`'s own parameter, scoped BY NAME** — `send` takes the same type, and a
-      // file-wide match would be satisfied by that neighbour.
-      expect(
-        /\n {2}queueMessage\(([\s\S]*?)\n {2}\): Promise<QueueOutcome>/.exec(host_)?.[1] ?? '',
-      ).toContain('facts: FactsAQueueCarries = {},')
+      expectQueueFactsExcludeBriefs(records, host_)
       // ⛔ **The tool never spells it in CODE**, so the value a caller supplied cannot travel on the
       // turn. ⚠️ **Comments stripped first** — this file's own docblock names the field to say it is
       // unreachable, and a raw `toContain` would be the census reading its own prose

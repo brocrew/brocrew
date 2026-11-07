@@ -46,7 +46,7 @@ import { isAWorkReport } from '../src/shared/tasks'
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsDir = join(here, '../src/main/db/migrations')
 const STORE_SRC = join(here, '../src/main/db/session-store.ts')
-const TASKS_SRC = join(here, '../src/shared/task-contracts.ts')
+const TASKS_SRC = join(here, '../src/shared/work-report-contracts.ts')
 const WIRE_SRC = [
   join(here, '../src/shared/human-answer-contracts.ts'),
   join(here, '../src/shared/conversation-events.ts'),

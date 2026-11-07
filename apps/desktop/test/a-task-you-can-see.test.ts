@@ -25,6 +25,7 @@ import { agentCallerId, type AgentToolHost, type ToolName } from '../src/main/ru
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { TASK_IS_OPEN, derivePieces } from '../src/shared/tasks'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { expectQueueFactsExcludeBriefs } from './helpers/queue-facts-source'
 
 /**
  * 🔴 **379 · a task you can see** — Slice 4 S1, HO-006 §4.1, HO-007 S1 + criterion 2.
@@ -1674,19 +1675,7 @@ describe('379 · a task you can see', () => {
       // (`rebriefing`, `update_work`'s alone) out beside the give.
       expect(codeOnly(host_).split('{ giving }')).toHaveLength(2)
       const records = sourceOf(join(mainRoot, 'runtime'), 'message-records.ts')
-      expect(records).toContain(
-        [
-          "type FactsAQueueCarries = Omit<TurnFacts, 'giving' | 'rebriefing'> & {",
-          '  readonly giving?: never',
-          '  readonly rebriefing?: never',
-          '}',
-        ].join('\n'),
-      )
-      // ⛔ **`queueMessage`'s own parameter, scoped BY NAME** — `send` takes the same type, and a
-      // file-wide match would be satisfied by that neighbour.
-      expect(
-        /\n {2}queueMessage\(([\s\S]*?)\n {2}\): Promise<QueueOutcome>/.exec(host_)?.[1] ?? '',
-      ).toContain('facts: FactsAQueueCarries = {},')
+      expectQueueFactsExcludeBriefs(records, host_)
       // 🔴 **The reply's delivery is the app's, not the agent's**, pinned by its bytes. ⛔ If it ever
       // passed the CALLER through instead, the app's words would arrive as the child's — its declared
       // kind, its receipt, its reach asked (`a-reply-and-its-absence.test.ts` §5 measures all three).
