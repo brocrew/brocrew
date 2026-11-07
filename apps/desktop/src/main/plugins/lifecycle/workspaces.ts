@@ -1,4 +1,4 @@
-import type { PluginLifecycleController } from './controller'
+import { bounded, type PluginLifecycleController } from './controller'
 import type { LifecycleWorkspace, WorkspaceProjection } from './types'
 
 /** Person UI and agent consumers share one lifecycle projection, with independent lifetimes. */
@@ -53,13 +53,22 @@ export function sharedLifecycleWorkspaces(
           if (!client) return
           const installs = target.consumerInstalls(client.actual)
           clients.delete(handle)
-          const proofs = await Promise.allSettled(
-            installs.map((one) => client.sink.revoke(one.pluginId, one.installId)),
+          // A notice to the leaving consumer, bounded; its answer never keeps it attached.
+          await Promise.all(
+            installs.map(async (one) => {
+              try {
+                if ((await bounded(() => client.sink.revoke(one.pluginId, one.installId))) !== true)
+                  console.warn(
+                    `[plugins] ${one.pluginId}: workspace ${client.sink.workspaceId} was still winding down at detach`,
+                  )
+              } catch (error) {
+                console.warn(
+                  `[plugins] ${one.pluginId}: workspace ${client.sink.workspaceId} did not answer its detach notice`,
+                  error,
+                )
+              }
+            }),
           )
-          if (proofs.some((one) => one.status !== 'fulfilled' || one.value !== true)) {
-            clients.set(handle, client) // Its consumer may detach again, as when its channel closes.
-            throw new Error('unavailable')
-          }
           const group = groups.get(client.sink.workspaceId)
           group?.sinks.delete(client.sink)
           if (group && group.sinks.size === 0) {

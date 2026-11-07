@@ -33,7 +33,8 @@ const refuse = (): never => {
 const pending = (): never => {
   throw new PluginSupervisorError('cleanup-pending')
 }
-async function bounded<T>(work: () => Promise<T>, ms = 20000): Promise<T> {
+/** A consumer step's time limit: past it the step refuses cleanup-pending, and its work goes on. */
+export async function bounded<T>(work: () => Promise<T>, ms = 20000): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     return await Promise.race([
@@ -633,13 +634,21 @@ export class PluginLifecycleController {
     const workspace = this.workspace(handle)
     workspace.live = false
     this.registrations.detach(workspace.sink.workspaceId)
+    // The leaving workspace is told; its answers are a notice and never refuse the detach.
     const results = await Promise.allSettled(
       [...workspace.installs].map(([pluginId, installId]) =>
         bounded(() => workspace.sink.revoke(pluginId, installId)),
       ),
     )
     this.workspaces.delete(handle)
-    if (results.some((one) => one.status !== 'fulfilled' || one.value !== true)) return pending()
+    const ids = [...workspace.installs.keys()]
+    results.forEach((one, index) => {
+      if (one.status !== 'fulfilled' || one.value !== true)
+        console.warn(
+          `[plugins] ${ids[index]}: workspace ${workspace.sink.workspaceId} was still winding down at detach`,
+          one.status === 'rejected' ? one.reason : '',
+        )
+    })
   }
   private async ensureRunning(
     install: Installation,
@@ -680,6 +689,7 @@ export class PluginLifecycleController {
           /* Wakeup is not authority. */
         }
       }
+      // Consumers are told; only the run's proven exit ends the cleanup, never their answers.
       running.revocation = this.revoke(install).then(() => {
         if (
           proven &&
@@ -1133,21 +1143,34 @@ export class PluginLifecycleController {
     if (this.localOperations.has(operationId)) return
     if ((await this.options.runtime.previousOwnerClean()) !== true) return pending()
   }
+  /**
+   * Tells every live workspace that this install is gone. It is a notice: a consumer that says
+   * it is still winding down, or never answers, is logged and never holds anything up. Only the
+   * run's proven exit (stop() or a proven crash) decides cleanup.
+   */
   private async revoke(install: Installation): Promise<void> {
-    const results = await Promise.allSettled(
+    await Promise.all(
       [...this.workspaces.values()]
         .filter((one) => one.live)
         .map(async (workspace) => {
           workspace.installs.delete(install.pluginId)
           this.agentScopeChanged()
-          if (
-            (await bounded(() => workspace.sink.revoke(install.pluginId, install.installId))) !==
-            true
-          )
-            return pending()
+          try {
+            const answer = await bounded(() =>
+              workspace.sink.revoke(install.pluginId, install.installId),
+            )
+            if (answer !== true)
+              console.warn(
+                `[plugins] ${install.pluginId}: workspace ${workspace.sink.workspaceId} is still winding down after revoke`,
+              )
+          } catch (error) {
+            console.warn(
+              `[plugins] ${install.pluginId}: workspace ${workspace.sink.workspaceId} did not answer revoke`,
+              error,
+            )
+          }
         }),
     )
-    if (results.some((one) => one.status !== 'fulfilled')) return pending()
   }
   private async removeFiles(install: Installation, operationId: string): Promise<void> {
     await this.options.runtime.removeCode(install.pluginId, install.release.archiveSha256)

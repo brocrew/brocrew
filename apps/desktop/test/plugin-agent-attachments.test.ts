@@ -497,6 +497,38 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       log.mockRestore()
     }
   })
+  it('uninstall during a call that is still being cancelled completes, and the call ends with a plain refusal', async () => {
+    const f = await live()
+    const original = await f.binding()
+    // A call whose server never answers and never proves it has gone quiet.
+    f.binding.mockResolvedValueOnce({
+      ...original,
+      server: {
+        ...original.server,
+        tool() {
+          f.call()
+          return { result: new Promise<never>(() => {}), quiescent: new Promise<void>(() => {}), cancel() {} }
+        },
+      },
+    })
+    const owner = lease(),
+      req = request(f.local.sink.workspaceId)
+    const [route] = await f.bridge.routes(owner, req)
+    const client = await connected(route!)
+    const pending = client.callTool({ name: 'echo', arguments: {} }).then(
+      (value) => ({ value }),
+      (error: unknown) => ({ error }),
+    )
+    await vi.waitFor(() => expect(f.call).toHaveBeenCalledOnce())
+    // The bridge is still winding that call down; its revoke answer is a notice, not a gate.
+    await f.controller.uninstall(f.person, 'chrome')
+    expect(f.controller.agentAttachments(f.local.sink.workspaceId)).toEqual([])
+    const outcome = await pending
+    // Never a success, never a hang: either a refused call or an error result.
+    if ('value' in outcome) expect(outcome.value).toMatchObject({ isError: true })
+    else expect(outcome.error).toBeInstanceOf(Error)
+    expect(await f.bridge.routes(owner, request(f.local.sink.workspaceId))).toEqual([])
+  })
   it('reports an unavailable broker on the Running card, withholds dead routes and never overlaps a failed proof', async () => {
     const f = await live()
     const original = await f.binding()

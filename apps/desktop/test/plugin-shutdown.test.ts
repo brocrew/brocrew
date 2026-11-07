@@ -275,17 +275,43 @@ describe.skipIf(process.platform === 'win32')(
         await draining.catch(() => undefined)
       }
     })
-    it('a proven exit retains an unacknowledged revoke cleanup', async () => {
+    it('a proven crash ends its cleanup even when a consumer is still winding down', async () => {
+      // The old rule waited for every consumer's revoke answer; that left a dead plugin
+      // Unavailable for good and refused the service's shutdown (0.2.5, 22:02).
       const exit = deferred<void>()
       const f = await fixture({ runtime: exitingRuntime(exit.promise) })
       await f.controller.install(f.handle, 'chrome')
       const revoke = vi.spyOn(f.local.sink, 'revoke').mockResolvedValue(false)
       exit.resolve()
       await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
+      await vi.waitFor(async () =>
+        expect((await f.controller.status()).cleanupPending).toEqual([]),
+      )
+      expect((await f.controller.status()).cards[0]?.state).toBe('Installed')
+      expect(f.controller.cleanForShutdown()).toBe(true)
+      await expect(f.controller.drain()).resolves.toBeUndefined()
+    })
+    it('a crash whose exit is not proven keeps its cleanup, whatever consumers answer', async () => {
+      // Unchanged behaviour: the missing proof, not a consumer's answer, keeps the cleanup.
+      const exit = deferred<void>()
+      const f = await fixture({ runtime: exitingRuntime(exit.promise) })
+      await f.controller.install(f.handle, 'chrome')
+      const revoke = vi.spyOn(f.local.sink, 'revoke')
+      exit.reject(new Error('fictional exit witness lost'))
+      await vi.waitFor(() => expect(revoke).toHaveBeenCalled())
       expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
+      expect((await f.controller.status()).cards[0]?.state).toBe('Unavailable')
       expect(f.controller.cleanForShutdown()).toBe(false)
-      await expect(f.controller.drain()).rejects.toMatchObject({ code: 'cleanup-pending' })
-      expect((await f.controller.status()).cleanupPending).toEqual(['chrome'])
+    })
+    it('uninstall completes when a consumer refuses or never answers its revoke', async () => {
+      const f = await fixture()
+      await f.controller.install(f.handle, 'chrome')
+      vi.spyOn(f.local.sink, 'revoke').mockRejectedValue(new Error('fictional consumer gone'))
+      await f.controller.uninstall(f.handle, 'chrome')
+      expect(f.state.exportActivation().entries).toEqual([])
+      expect(f.state.inspect().pending).toBeNull()
+      expect(f.events).toContain('remove-code')
+      expect((await f.controller.status()).cleanupPending).toEqual([])
     })
     it('a proven crash drains the shared owner and its successor starts while another plugin stays running', async () => {
       const f = await fixture()
