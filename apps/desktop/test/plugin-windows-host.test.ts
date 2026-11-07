@@ -137,7 +137,7 @@ describe('the plugin host on Windows, by its platform seams', () => {
   })
 })
 
-/** A fresh folder that lets in this user, SYSTEM and Administrators alone, by its long name. */
+/** A fresh ordinary folder, by its long name. */
 async function privateParent(): Promise<string> {
   const parent = realpathSync.native(mkdtempSync(join(tmpdir(), 'fictional-plugins-')))
 
@@ -377,6 +377,7 @@ describe.runIf(process.platform === 'win32')('the plugin host on Windows', () =>
     setPriority(0)
     parent = await privateParent()
     roots.push(parent)
+    await mkdir(join(parent, 'plugins'))
 
     const resources = join(parent, 'bundle')
     await mkdir(join(resources, 'plugin-node'), { recursive: true })

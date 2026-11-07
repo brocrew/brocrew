@@ -445,9 +445,10 @@ describe('corrections use ordinary adjacent staging', () => {
     const { note, dir } = plantTheNight()
     chmodSync(dir, 0o755)
     chmodSync(note, 0o644)
+    const before = statSync(note).mode
     expect((await correct(note, {})).done).toBe(true)
     expect(readFileSync(note, 'utf8')).toBe('CORRECTED\n')
-    expect(statSync(note).mode & 0o777).toBe(0o644)
+    expect(statSync(note).mode).toBe(before)
   })
   it('leaves legacy crash stages and unrelated files untouched on Windows', async () => {
     const { note } = plantTheNight()

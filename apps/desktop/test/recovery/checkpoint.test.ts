@@ -312,7 +312,7 @@ describe('makeCheckpoint', () => {
     expect(lines).toEqual([CHECKPOINT_LINE])
   })
 
-  it('leaves the copy as one rollback-mode file with no sidecars, private to this user', async () => {
+  it('leaves the copy as one readable rollback-mode file with no sidecars', async () => {
     const userData = aDataFolder()
     aLiveDatabase(userData)
     writeFileSync(join(userData, 'drafts.json'), '{}\n', { mode: 0o644 })
@@ -327,15 +327,7 @@ describe('makeCheckpoint', () => {
     expect(rows(copy)).toBe(FILLER_ROWS)
     expect(readdirSync(folder).sort()).toEqual(['database.sqlite', 'drafts.json', 'manifest.json'])
 
-    if (POSIX) {
-      const mode = (path: string): number => statSync(path).mode & 0o777
-      expect(mode(join(userData, 'backups'))).toBe(0o700)
-      expect(mode(folder)).toBe(0o700)
-      expect(mode(copy)).toBe(0o600)
-      expect(mode(join(folder, 'drafts.json'))).toBe(0o600)
-      expect(mode(join(folder, 'manifest.json'))).toBe(0o600)
-      expect(mode(join(userData, 'backups', 'workspace-id'))).toBe(0o600)
-    }
+    expect(readFileSync(join(folder, 'drafts.json'), 'utf8')).toBe('{}\n')
   })
 
   it('leaves the live database and its folder as they were', async () => {

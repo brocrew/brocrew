@@ -50,7 +50,6 @@ import {
 
 const NOW = Date.parse('2026-10-10T09:00:00.000Z')
 const ONE_NEWER_LINEAGE = [...BUILD_LINEAGE, NEWER_MIGRATION.createdAt]
-const POSIX = process.platform !== 'win32'
 
 const roots: string[] = []
 afterEach(() => {
@@ -67,7 +66,6 @@ function aPlace(): { userData: string; scratch: string } {
 }
 
 const text = (path: string): string => readFileSync(path, 'utf8')
-const mode = (path: string): number => statSync(path).mode & 0o777
 
 async function applied(file: string, scratch: string): Promise<readonly number[] | string> {
   const facts = await migrationsOf(file, { userData: scratch })
@@ -165,15 +163,16 @@ describe('a workspace on this build’s schema, and its checkpoints', () => {
       expect(checkpoint.conversations).toEqual(fixture.conversations.slice(0, index + 1))
     }
 
-    if (POSIX) {
-      const [first] = fixture.checkpoints
-      if (first === undefined) throw new Error('no checkpoint')
-      expect(mode(backupsDir(userData))).toBe(0o700)
-      expect(mode(first.dir)).toBe(0o700)
-      expect(mode(first.database)).toBe(0o600)
-      expect(mode(manifestFile(userData, first.id))).toBe(0o600)
-      expect(mode(workspaceIdFile(userData))).toBe(0o600)
-    }
+    const [first] = fixture.checkpoints
+    if (first === undefined) throw new Error('no checkpoint')
+    expect(statSync(backupsDir(userData)).isDirectory()).toBe(true)
+    expect(statSync(first.dir).isDirectory()).toBe(true)
+    for (const file of [
+      first.database,
+      manifestFile(userData, first.id),
+      workspaceIdFile(userData),
+    ])
+      expect(statSync(file).isFile()).toBe(true)
   })
 
   it('is a database alone when no checkpoint was made', async () => {

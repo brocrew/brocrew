@@ -551,13 +551,6 @@ describe('restore', () => {
       'history-only.json',
       'preserved',
     ])
-    if (POSIX) {
-      expect(statSync(join(userData, 'brobot2.sqlite')).mode & 0o777).toBe(0o600)
-      expect(statSync(join(userData, 'drafts.json')).mode & 0o777).toBe(0o600)
-      expect(statSync(join(userData, GATE)).mode & 0o777).toBe(0o600)
-      expect(statSync(join(userData, 'recovery')).mode & 0o777).toBe(0o700)
-      expect(statSync(join(userData, PRESERVED)).mode & 0o777).toBe(0o700)
-    }
   })
 
   it('records every participant’s place and full hash before and after, in its plan', async () => {

@@ -1,4 +1,14 @@
-import { chmod, link, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  link,
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -103,17 +113,19 @@ it('does not append through a hardlinked drain log to an outside fictional senti
   recordDrainTrace(root, { stage: 'stopped-write', state: 'complete' })
   expect(await readFile(sentinel, 'utf8')).toBe('fictional unchanged bytes')
 })
-it.skipIf(process.platform === 'win32')(
-  'does not append to a publicly writable existing drain log',
-  async () => {
-    parent = await realpath(await mkdtemp(join('/tmp', 'fictional-drain-permission-')))
-    const path = join(parent, 'plugin-drain.log')
-    await writeFile(path, 'fictional unchanged bytes', { mode: 0o600 })
-    await chmod(path, 0o666)
-    recordDrainTrace(parent, { stage: 'closed', state: 'complete' })
-    expect(await readFile(path, 'utf8')).toBe('fictional unchanged bytes')
-  },
-)
+it('appends to an OS-writable drain log without changing earlier bytes or its mode', async () => {
+  parent = await realpath(await mkdtemp(join(tmpdir(), 'fictional-drain-permission-')))
+  const path = join(parent, 'plugin-drain.log')
+  await writeFile(path, 'fictional unchanged bytes')
+  await chmod(path, 0o666)
+  const before = (await stat(path)).mode
+  recordDrainTrace(parent, { stage: 'closed', state: 'complete' })
+  const text = await readFile(path, 'utf8')
+  expect(text).toMatch(
+    /^fictional unchanged bytes\d{4}-\d{2}-\d{2}T[\d:.]+Z \[plugins\] drain stage=closed state=complete\n$/,
+  )
+  expect((await stat(path)).mode).toBe(before)
+})
 
 it.each(['released', 'lease-expired', 'shutdown', 'drain'] as const)(
   'records %s epoch and invalidation before child teardown and retains swallowed stop causes',
