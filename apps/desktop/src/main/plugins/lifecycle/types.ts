@@ -1,3 +1,4 @@
+import type { PluginStartupDiagnostic } from '../../../shared/plugin-settings'
 import type { PluginRelease, PluginTarget } from '../package-schema'
 import type { GlobalPluginState } from '../state/store'
 import type { ProjectionReceipt, Installation } from '../state/format'
@@ -5,6 +6,7 @@ import type { PluginNodeReady, PluginNodeStart } from '../node-host'
 
 export interface LifecycleRun {
   readonly runId: string
+  startupDiagnostic?(): PluginStartupDiagnostic | undefined
   ready(): Promise<PluginNodeReady>
   readonly exited: Promise<void>
   /** Resolves only after positive exit proof for this exact run; unknown rejects. */

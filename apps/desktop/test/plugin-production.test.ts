@@ -1665,7 +1665,7 @@ it.skipIf(process.platform === 'win32')(
         id: 'whatsapp',
         installed: true,
         state: 'Unavailable',
-        unavailableReason: 'operation-pending',
+        unavailableReason: undefined,
       },
     ])
   },
@@ -1941,3 +1941,49 @@ it('catalogue diagnostics retain existing busy classification', async () => {
   expect(await f.controller.catalogue()).toMatchObject([{ unavailableReason: 'cleanup-pending' }])
   await vi.waitFor(() => expect(JSON.stringify(warn.mock.calls)).toContain('stage=rpc'))
 })
+
+it.skipIf(process.platform === 'win32')(
+  'keeps a plugin server failure on its Settings card',
+  async () => {
+    const f = await setup()
+    f.controller.start(f.options)
+    expect(await f.controller.ready!()).toBe(true)
+    const diagnostic = {
+      exitCode: 23,
+      signal: null,
+      stderr: 'Error: rejected /fictional/plugin/auth.json',
+    }
+    f.peer.catalogue.mockResolvedValue([
+      {
+        id: f.pkg.release.id,
+        name: f.pkg.release.id,
+        installed: true,
+        state: 'Unavailable',
+        unavailableReason: 'plugin-start',
+        startupDiagnostic: diagnostic,
+      },
+    ])
+    expect(await f.controller.catalogue(true)).toMatchObject([
+      { id: f.pkg.release.id, unavailableReason: 'plugin-start', startupDiagnostic: diagnostic },
+    ])
+  },
+)
+
+it.skipIf(process.platform === 'win32')(
+  'reports operation pending only when local pending evidence names that plugin',
+  async () => {
+    const f = await setup()
+    f.controller.start(f.options)
+    expect(await f.controller.ready!()).toBe(true)
+    vi.spyOn(GlobalPluginState, 'observeInstallations').mockReturnValue({
+      installed: [f.pkg.release.id],
+      pending: f.pkg.release.id,
+    })
+    f.peer.catalogue.mockResolvedValue([
+      { id: f.pkg.release.id, name: f.pkg.release.id, installed: true, state: 'Unavailable' },
+    ])
+    expect(await f.controller.catalogue(true)).toMatchObject([
+      { id: f.pkg.release.id, unavailableReason: 'operation-pending' },
+    ])
+  },
+)

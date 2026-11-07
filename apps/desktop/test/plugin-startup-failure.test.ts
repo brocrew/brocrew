@@ -205,7 +205,7 @@ it('redacts a capability split by terminal escapes before display normalization'
   const escaped = capability.match(/.{16}/g)!.join('\u001b[0m')
   expect(pluginStartupStderr(`Error: ${escaped}`, [capability])).toBe('Error: [redacted]')
   const bounded = pluginStartupStderr('x'.repeat(511) + '😀')!
-  expect(bounded).toBe('x'.repeat(511))
+  expect(bounded).toBe('x'.repeat(511) + '…')
   expect(PluginStartupDiagnosticSchema.shape.stderr.safeParse(bounded).success).toBe(true)
 })
 it('drains stderr after exit before retaining the failure, within the original launch deadline', async () => {

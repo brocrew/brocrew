@@ -39,7 +39,18 @@ export function pluginStartupStderr(text: string, secrets: readonly string[] = [
     if (bounded.length + character.length > 512) break
     bounded += character
   }
+  if (bounded.length < line.length)
+    bounded = bounded.slice(0, 511).replace(/[\uD800-\uDBFF]$/, '') + '…'
   return PluginStartupDiagnosticSchema.shape.stderr.safeParse(bounded).success ? bounded : null
+}
+
+export function pluginStartupOutput(text: string, secrets: readonly string[]): string {
+  return redactPluginStartupText(text, secrets)
+    .replace(/[\p{Cc}\p{Cs}\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu, (one) =>
+      one === '\n' ? '\n' : ' ',
+    )
+    .slice(-16 * 1024)
+    .trim()
 }
 
 /** One bounded cause chain for local diagnostic logs: each error's real message, plus its stage. */
@@ -166,12 +177,7 @@ export function observePluginSupervisorLaunch(child: ChildProcess, secrets: read
         stderr: pluginStartupStderr(errorLine ?? firstLine ?? stderr, secrets),
       },
       undefined,
-      redactPluginStartupText(stderr, secrets)
-        .replace(/[\p{Cc}\p{Cs}\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu, (one) =>
-          one === '\n' ? '\n' : ' ',
-        )
-        .slice(-16 * 1024)
-        .trim(),
+      pluginStartupOutput(stderr, secrets),
     )
   return Object.assign(snapshot, {
     async drainUntil(deadline: number): Promise<void> {
