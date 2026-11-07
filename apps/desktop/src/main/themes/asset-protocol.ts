@@ -1,7 +1,12 @@
-import { createHash } from 'node:crypto'
+import { join } from 'node:path'
 import type { Protocol } from 'electron'
 import type { AssetFacts, AssetType } from '../../shared/themes/assets'
-import { assetPathProblem } from '../../shared/themes/assets'
+import {
+  assetPathProblem,
+  assetLimitProblems,
+  LIMITS,
+  sniffAsset,
+} from '../../shared/themes/assets'
 import { THEME_SCHEME } from '../../shared/themes/css'
 import { readThemeFile } from './files'
 
@@ -19,7 +24,6 @@ const MIME: Readonly<Partial<Record<AssetType, string>>> = {
 export interface AdmittedThemeAsset {
   readonly root: string
   readonly path: string
-  readonly digest: string
   readonly version: string
   readonly facts: AssetFacts
 }
@@ -57,11 +61,28 @@ export async function themeAssetResponse(
     admitted.facts.type !== 'woff2'
   )
     return null
-  const contentType = MIME[admitted.facts.type]
+  const path = join(admitted.root, admitted.path)
+  const file = await read(
+    admitted.root,
+    admitted.path,
+    admitted.facts.type === 'woff2' ? LIMITS.fontBytes : LIMITS.pictureBytes,
+  )
+  if (!file.ok) {
+    console.warn(`Could not read theme asset ${path}:`, 'cause' in file ? file.cause : file.failure)
+    return null
+  }
+  const current = sniffAsset(file.bytes)
+  if (!current.ok) {
+    console.warn(`Could not use theme asset ${path}: ${current.says}`)
+    return null
+  }
+  const problems = assetLimitProblems(admitted.path, current.facts)
+  if (problems.length) {
+    console.warn(`Could not use theme asset ${path}: ${problems.join(' ')}`)
+    return null
+  }
+  const contentType = MIME[current.facts.type]
   if (!contentType) return null
-  const file = await read(admitted.root, admitted.path, admitted.facts.bytes)
-  if (!file.ok || file.bytes.length !== admitted.facts.bytes) return null
-  if (createHash('sha256').update(file.bytes).digest('hex') !== admitted.digest) return null
   return { bytes: file.bytes, contentType }
 }
 

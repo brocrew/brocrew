@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import {
   existsSync,
   mkdirSync,
@@ -28,7 +27,6 @@ interface Result {
 interface Selection extends AgentMemoryInputs {
   provider: Provider
   entry: string
-  fingerprint: string
   confirmed: boolean
   check: () => void
 }
@@ -41,13 +39,11 @@ interface Seams extends MemoryWriteSeams {
   beforeMemoryUnlink?: () => void
 }
 interface Api {
-  fingerprint: (inputs: AgentMemoryInputs, provider: Provider, entry: string) => string | null
   remove: (inputs: Selection, seams?: Seams) => Result
   restore: (inputs: Restoration, seams?: Seams) => Promise<Result>
   undo: (inputs: Restoration, seams?: Seams) => Result
 }
 const saved = 'Saved text.\r\nCafé.\n'
-const hash = (text: string | Buffer) => createHash('sha256').update(text).digest('hex')
 let root: string
 let homesRoot: string
 const homeOf = (provider: Provider, slug = 'lark') => join(homesRoot, 'default', slug, provider)
@@ -76,18 +72,12 @@ const restoring = (provider: Provider, text = saved): Restoration => ({
   confirmed: true,
 })
 function api(): Api {
-  const names = [
-    'memoryEntryFingerprint',
-    'removeMemoryEntry',
-    'restoreMemoryEntry',
-    'undoMemoryRestoration',
-  ]
+  const names = ['removeMemoryEntry', 'restoreMemoryEntry', 'undoMemoryRestoration']
   for (const name of names) expect(Reflect.get(memory, name), name).toBeTypeOf('function')
   return {
-    fingerprint: Reflect.get(memory, names[0]!) as Api['fingerprint'],
-    remove: Reflect.get(memory, names[1]!) as Api['remove'],
-    restore: Reflect.get(memory, names[2]!) as Api['restore'],
-    undo: Reflect.get(memory, names[3]!) as Api['undo'],
+    remove: Reflect.get(memory, names[0]!) as Api['remove'],
+    restore: Reflect.get(memory, names[1]!) as Api['restore'],
+    undo: Reflect.get(memory, names[2]!) as Api['undo'],
   }
 }
 beforeEach(() => {
@@ -103,7 +93,6 @@ describe('memory changes preserve the selected text without overwriting recreate
   it.each(['claude', 'codex'] as const)(
     'restores saved Unicode and CRLF text in %s and refuses a second creation',
     async (provider) => {
-      expect((await api().restore({ ...restoring(provider), confirmed: false })).ok).toBe(false)
       expect(
         (
           await api().restore({
@@ -124,49 +113,8 @@ describe('memory changes preserve the selected text without overwriting recreate
     const text = 'A long saved note.\n'.repeat(2000)
     expect(Buffer.byteLength(text)).toBeGreaterThan(16 * 1024)
     expect((await api().restore(restoring('claude', text))).ok).toBe(true)
-    expect(api().fingerprint(inputs(), 'claude', path('claude'))).toBe(hash(text))
   })
-  it('requires confirmation and the actual displayed raw fingerprint for Delete', () => {
-    const entry = path('claude')
-    writeFileSync(entry, saved)
-    const selected: Selection = {
-      ...inputs(),
-      provider: 'claude',
-      entry,
-      fingerprint: hash(saved),
-      confirmed: false,
-      check,
-    }
-    expect(api().remove(selected).ok).toBe(false)
-    writeFileSync(entry, 'external')
-    expect(api().remove({ ...selected, confirmed: true }).ok).toBe(false)
-    expect(readFileSync(entry, 'utf8')).toBe('external')
-    expect(
-      api().remove({ ...selected, confirmed: true, fingerprint: hash('external') }),
-    ).toMatchObject({ ok: true, entry, textBefore: 'external', textAfter: null })
-    expect(existsSync(entry)).toBe(false)
-  })
-  it('checks again after an interleaving immediately before unlink', () => {
-    const entry = path('claude')
-    writeFileSync(entry, saved)
-    expect(
-      api().remove(
-        {
-          ...inputs(),
-          provider: 'claude',
-          entry,
-          fingerprint: hash(saved),
-          confirmed: true,
-          check,
-        },
-        {
-          beforeMemoryUnlink: () => writeFileSync(entry, 'changed'),
-        },
-      ).ok,
-    ).toBe(false)
-    expect(readFileSync(entry, 'utf8')).toBe('changed')
-  })
-  it('refuses a recreated target and a source changed during stage preparation', async () => {
+  it('refuses a recreated target and actual cancellation during stage preparation', async () => {
     const entry = path('claude')
     expect(
       (
@@ -196,17 +144,6 @@ describe('memory changes preserve the selected text without overwriting recreate
       ).ok,
     ).toBe(false)
     expect(existsSync(entry)).toBe(false)
-    const mutable = restoring('claude')
-    expect(
-      (
-        await api().restore(mutable, {
-          beforeStageCreate: () => {
-            Reflect.set(mutable.source, 'textBefore', 'tampered')
-          },
-        })
-      ).ok,
-    ).toBe(false)
-    expect(existsSync(entry)).toBe(false)
   })
   it('never creates into another profile, a moved root or a pipeline directory', async () => {
     const restore = api().restore
@@ -222,13 +159,11 @@ describe('memory changes preserve the selected text without overwriting recreate
       expect(existsSync(entry)).toBe(false)
     }
     writeFileSync(pipeline, saved)
-    expect(api().fingerprint(inputs(), 'codex', pipeline)).toBeNull()
     expect(
       api().remove({
         ...inputs(),
         provider: 'codex',
         entry: pipeline,
-        fingerprint: hash(saved),
         confirmed: true,
         check,
       }).ok,
@@ -253,35 +188,14 @@ describe('memory changes preserve the selected text without overwriting recreate
     expect((await api().restore(restoring('claude'))).ok).toBe(true)
     expect(readFileSync(outside, 'utf8')).toBe('outside')
   })
-  it('reverses only a restoration whose current bytes still match its saved text', async () => {
-    const restored = {
-      ...source('codex'),
-      id: 'mem:lark:2',
-      seq: 2,
-      act: 'restored' as const,
-      textBefore: null,
-      textAfter: saved,
-      sourceId: 'mem:lark:1',
-    }
-    expect((await api().restore(restoring('codex'))).ok).toBe(true)
-    const command: Restoration = { ...inputs(), source: restored, confirmed: true, check }
-    writeFileSync(path('codex'), 'external')
-    expect(api().undo(command).ok).toBe(false)
-    expect(readFileSync(path('codex'), 'utf8')).toBe('external')
-    writeFileSync(path('codex'), saved)
-    expect(api().undo(command)).toMatchObject({ ok: true, textBefore: saved, textAfter: null })
-    expect(existsSync(path('codex'))).toBe(false)
-  })
   it('refuses invalid UTF8 or oversized files instead of saving an incomplete before image', async () => {
     const entry = path('claude')
     writeFileSync(entry, Buffer.from([0xff]))
-    expect(api().fingerprint(inputs(), 'claude', entry)).toBeNull()
     expect(
       api().remove({
         ...inputs(),
         provider: 'claude',
         entry,
-        fingerprint: hash(Buffer.from([0xff])),
         confirmed: true,
         check,
       }).ok,

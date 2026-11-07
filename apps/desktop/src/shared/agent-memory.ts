@@ -269,8 +269,10 @@ export interface AgentMemoryStore {
  */
 /** Recovery metadata is absent on legacy completed records; absence is never an observation. */
 export interface MemoryObservation {
-  readonly fingerprint: string | null
+  /** Undefined on legacy digest-only observations; null records absence. */
+  readonly text?: string | null
   readonly unreadable?: true
+  readonly cause?: string
 }
 export type MemoryOutcome = 'pending' | 'done' | 'partial' | 'unchanged'
 export interface MemorySettlement {
@@ -395,6 +397,7 @@ export type AgentMemoryAmended =
   | {
       readonly done: false
       readonly refused: AmendmentRefused
+      readonly cause?: string
       readonly reading: AgentMemoryReading
     }
 
@@ -406,8 +409,6 @@ export type AgentMemoryAmended =
  * name: the census question *who BUILT this* has one answer when the type has one declaration.
  */
 export interface MemoryAmendmentAsked {
-  /** A hash of the full text the person saw, checked again before changing the entry. */
-  readonly fingerprint: string
   readonly confirmed: boolean
   readonly profileId: string
   readonly provider: Provider
@@ -441,6 +442,7 @@ export type MemoryChecked =
   | {
       readonly done: false
       readonly refused: AmendmentRefused
+      readonly cause?: string
       readonly reading: AgentMemoryReading
     }
 

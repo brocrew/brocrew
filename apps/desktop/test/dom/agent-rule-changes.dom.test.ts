@@ -201,7 +201,6 @@ describe('standing rule changes in the book', () => {
       undefined,
       {
         expectedVersion: 2,
-        currentText: 'Current rules',
       },
     ])
   })
@@ -217,7 +216,6 @@ describe('standing rule changes in the book', () => {
       undefined,
       {
         expectedVersion: 0,
-        currentText: '',
       },
     ])
   })
@@ -239,12 +237,7 @@ describe('standing rule changes in the book', () => {
     expect(view.q('own-instructions-clear-preview').textContent).toContain('Current rules')
     view.q('own-instructions-clear-confirm').click()
     await vi.waitFor(() => expect(writes).toHaveLength(1))
-    expect(writes[0]).toEqual([
-      'quill',
-      '',
-      undefined,
-      { expectedVersion: 2, currentText: 'Current rules' },
-    ])
+    expect(writes[0]).toEqual(['quill', '', undefined, { expectedVersion: 2 }])
   })
 
   it('shows the before and after before restoring an older version', async () => {
@@ -256,12 +249,7 @@ describe('standing rule changes in the book', () => {
     expect(view.q('own-instructions-restore-preview').textContent).toContain('Previous rules')
     view.q('own-instructions-restore-confirm').click()
     await vi.waitFor(() => expect(writes).toHaveLength(1))
-    expect(writes[0]).toEqual([
-      'quill',
-      'Previous rules',
-      1,
-      { expectedVersion: 2, currentText: 'Current rules' },
-    ])
+    expect(writes[0]).toEqual(['quill', 'Previous rules', 1, { expectedVersion: 2 }])
   })
 
   it('acknowledges only the direct change whose author, reason and diff were opened', async () => {

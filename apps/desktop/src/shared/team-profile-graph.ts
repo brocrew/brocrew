@@ -210,8 +210,6 @@ export const teamProfileGraphResult = z.discriminatedUnion('type', [
 ])
 export const graphReadContext = z
   .strictObject({
-    workspaceNonce: id,
-    ownerNonce: id,
     hostRevision: token,
     readAt: graphEpoch,
     todaySince: graphEpoch,

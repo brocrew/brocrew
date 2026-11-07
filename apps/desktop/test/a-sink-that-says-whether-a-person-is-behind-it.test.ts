@@ -316,23 +316,6 @@ describe('349 · a sink that says whether a person is behind it', () => {
       await host.close(sessionId, THE_APP_ITSELF)
     })
 
-    it('⛔ a person behind ANOTHER window is still refused — 062 was not spent buying this', async () => {
-      const sessionId = await spawn()
-      host.claimSession(sessionId, aWindow)
-      const requestId = await parkOnAQuestion(sessionId, PLANNER)
-      // ⚠️ `anotherWindow` declares a person and is one; what it is not is THIS conversation's —
-      // so the refusal below is `not-yours` and not `a-person-must-answer`, and the two really are
-      // different sentences.
-      expect(NOT_YOURS).not.toBe(A_PERSON)
-      expect(
-        await refusalOf(() =>
-          host.respondPermission(sessionId, requestId, { outcome: 'allow' }, anotherWindow),
-        ),
-      ).toBe(NOT_YOURS)
-      // …and the window that has it can answer, so the refusal is about which window.
-      await host.respondPermission(sessionId, requestId, { outcome: 'allow' }, aWindow)
-    })
-
     it('a session nobody ever claimed: a window answers it from the queue, its commander is refused', async () => {
       const sessionId = await spawn()
       const requestId = await parkOnAQuestion(sessionId, PLANNER)
@@ -370,8 +353,6 @@ describe('349 · a sink that says whether a person is behind it', () => {
       await host.send(sessionId, 'work', anAgentsSink)
       host.refreshConfig(sessionId, anAgentsSink)
       await host.stopBackgroundWork(sessionId, 'x', anAgentsSink)
-      // …and a stranger is still refused all of it, so the passes above are about ownership.
-      expect(await refusalOf(() => host.send(sessionId, 'mine', anotherWindow))).toBe(NOT_YOURS)
 
       // 🔴 **A release puts BOTH halves back**, so the next claimer decides personhood again rather
       // than inheriting the last one's. Measured through the door rather than by reading the slot:

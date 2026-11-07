@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import type { ActedBy } from '../../shared/who-did-it'
 import type { SessionStore, PersistedEvent } from '../db/session-store'
 import { REQUEST_IS_OPEN, aPersonsSince } from '../../shared/questions'
@@ -17,35 +16,24 @@ import {
   type QueuedMessageEvent,
 } from '../../shared/runtime-ipc'
 
-export function moveRequestDigest(row: PersistedEvent & { event: UserTurnEvent }): string {
-  return createHash('sha256')
-    .update(
-      JSON.stringify({
-        at: row.at,
-        text: row.event.text,
-        attachments: row.event.attachments ?? [],
-        movedFrom: row.event.movedFrom ?? null,
-      }),
-    )
-    .digest('hex')
-}
-
 export function originalMoveRequest(
   store: SessionStore,
   sessionId: string,
-  ordinal?: number,
+  turn?: string | number,
 ): (PersistedEvent & { event: UserTurnEvent }) | null {
   const conversation = store.recordedOne(sessionId)
   if (conversation === null || conversation.foundInUserHome || conversation.restoredFromBundle)
     return null
   const row =
-    ordinal === undefined
-      ? (store.newestOfType?.(sessionId, 'user_turn') ?? null)
-      : (store.eventsFrom(sessionId, ordinal, 1)[0] ?? null)
+    typeof turn === 'string'
+      ? store.recordedTurnMessage(sessionId, turn)
+      : turn === undefined
+        ? (store.newestOfType?.(sessionId, 'user_turn') ?? null)
+        : (store.eventsFrom(sessionId, turn, 1)[0] ?? null)
   if (
     row === null ||
     row.event.type !== 'user_turn' ||
-    (ordinal !== undefined && row.ordinal !== ordinal)
+    (typeof turn === 'number' && row.ordinal !== turn)
   )
     return null
   const event = row.event
@@ -77,8 +65,7 @@ export function recordMovedRequest(
       bound === undefined ||
       bound.destination !== offer.destination ||
       bound.sourceOrdinal !== offer.sourceOrdinal ||
-      bound.sourceGeneration !== offer.sourceGeneration ||
-      bound.sourceDigest !== offer.sourceDigest ||
+      bound.sourceTurnId !== offer.sourceTurnId ||
       source === offer.destination
     )
       throw new Error(MOVE_WORDS.ended)
@@ -92,13 +79,8 @@ export function recordMovedRequest(
       aPersonsSince(question) === null
     )
       throw new Error(MOVE_WORDS.ended)
-    const original = originalMoveRequest(store, source, offer.sourceOrdinal)
-    if (
-      original === null ||
-      store.generationOf?.(source) !== offer.sourceGeneration ||
-      moveRequestDigest(original) !== offer.sourceDigest
-    )
-      throw new Error(MOVE_WORDS.noOriginal)
+    const original = originalMoveRequest(store, source, offer.sourceTurnId ?? offer.sourceOrdinal)
+    if (original === null) throw new Error(MOVE_WORDS.noOriginal)
     const messageId = `move-${source}-${requestId}`
     const destinationLink = conversationLink(offer.destination, destinationTitle)
     const receipt = {

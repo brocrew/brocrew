@@ -7283,11 +7283,11 @@ export interface FirstMessageNotSent {
     /** ⚑ `716`'s word for a refused start — `null` on every other row, and for a start it cannot name. */
     readonly launch: LaunchRefusal | null
     /**
-     * ⚑ **The conversation, when it is running in THIS window** — only on `after-the-start`, when it
-     * was not stopped (another message had reached it first, a running conversation that gave it
-     * work had been told the start, or stopping it failed), or when this act attached or took one
-     * already running. The window adopts it as it adopts a reopen, and the words go back into ITS
-     * composer. `null` everywhere else.
+     * The conversation after an `after-the-start` refusal, if one is handed back.
+     * `handover` distinguishes live adoption from recorded information. A recorded
+     * snapshot neither attaches nor claims its stream; non-null `running` or live
+     * liveness alone does not mean this window owns it. A live handover is adopted
+     * as a reopen; a recorded snapshot keeps the view recorded. `null` otherwise.
      */
     readonly running: ResumedSession | null
   }

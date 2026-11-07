@@ -101,6 +101,15 @@ export function checkedSkillDraft(input: SkillDraft): SkillDraft {
   return draft
 }
 
+/** Read ordinary saved text; stored digests and byte counts are descriptive, not seals. */
+export function readSkillDraft(input: SkillDraft): SkillDraft {
+  return checkedSkillDraft({
+    ...input,
+    bytes: Buffer.byteLength(input.body, 'utf8'),
+    sha256: hash(input.body),
+  })
+}
+
 function documentOf(value: Omit<SkillDraft, 'body'>, body: string): SkillDraft {
   return {
     name: value.name,
@@ -166,37 +175,11 @@ export class SqliteSkillCatalogue implements SkillCatalogue {
       .get(...(versionId === undefined ? [id] : [versionId, id])) as Row | undefined
   }
   private summary(row: Row): SkillSummary {
-    let value: unknown
-    try {
-      value = JSON.parse(row.metadata)
-    } catch {
-      return refuse('corrupt')
-    }
-    const parsed = metadata.safeParse(value)
-    if (!parsed.success) return refuse('corrupt')
-    const m = parsed.data
+    const m = metadata.parse(JSON.parse(row.metadata))
+    SkillDraft.shape.name.parse(row.alias)
     const sourcePackage =
       row.plugin_id === null ? null : { version: row.package_version!, sha256: row.package_sha256! }
-    if (
-      row.id !== row.skill_id ||
-      row.id !== keyFor(m.origin, m.name) ||
-      row.alias !== m.alias ||
-      m.alias !== skillAlias(m.origin, m.name) ||
-      m.path !== `${m.name}/SKILL.md` ||
-      m.sha256 !== row.sha256 ||
-      m.bytes !== row.bytes ||
-      m.requirement !== skillRequirement(m.origin, m.name) ||
-      (m.origin.kind === 'plugin'
-        ? row.plugin_id !== m.origin.pluginId ||
-          !sourcePackage ||
-          !SkillRelease.shape.version.safeParse(sourcePackage.version).success ||
-          !/^[a-f0-9]{64}$/.test(sourcePackage.sha256) ||
-          !/^[a-f0-9]{64}$/.test(row.package_manifest_sha256 ?? '')
-        : row.plugin_id !== null || row.package_version !== null || row.package_sha256 !== null) ||
-      row.version_key !== (sourcePackage ? `${sourcePackage.version}/${m.version}` : m.version) ||
-      row.version_id !== `${row.id}@${hash(row.version_key)}`
-    )
-      return refuse('corrupt')
+    const text = row.body === undefined ? undefined : readSkillDraft(documentOf(m, row.body))
     return {
       id: row.id,
       origin: m.origin,
@@ -206,12 +189,20 @@ export class SqliteSkillCatalogue implements SkillCatalogue {
       versionId: row.version_id,
       description: m.description,
       reminder: m.reminder,
-      bytes: m.bytes,
-      sha256: m.sha256,
+      bytes: text?.bytes ?? m.bytes,
+      sha256: text?.sha256 ?? m.sha256,
       package: sourcePackage,
-      requirement: m.requirement,
+      requirement: skillRequirement(m.origin, m.name),
       active: row.active === 1,
       defaultEnabled: m.origin.kind === 'built-in',
+    }
+  }
+  private readable<T>(row: Row, read: () => T): T | null {
+    try {
+      return read()
+    } catch (error) {
+      console.warn(`Skill catalogue row ${row.id} could not be read: ${String(error)}`)
+      return null
     }
   }
   list(offset: number = 0, limit: number = SKILL_LIMITS.page): SkillPage {
@@ -233,52 +224,60 @@ export class SqliteSkillCatalogue implements SkillCatalogue {
           `SELECT ${columns} FROM skill_current h JOIN skill_version v ON v.id = h.current_version AND v.skill_id = h.id ORDER BY h.id LIMIT ? OFFSET ?`,
         )
         .all(limit, offset) as Row[]
-      return { revision: this.revision(), total, items: rows.map((row) => this.summary(row)) }
+      return {
+        revision: this.revision(),
+        total,
+        items: rows.flatMap((row) => {
+          const summary = this.readable(row, () => this.summary(row))
+          return summary === null ? [] : [summary]
+        }),
+      }
     })()
   }
   detail(id: string, versionId?: string): SkillDetail | null {
     const row = this.row(id, versionId)
     if (row === undefined) return null
-    const summary = this.summary(row)
-    if (row.body === undefined) return refuse('corrupt')
-    const m = metadata.parse(JSON.parse(row.metadata))
-    try {
-      checkedSkillDraft(documentOf(m, row.body))
-    } catch {
-      return refuse('corrupt')
-    }
-    return { ...summary, path: m.path, body: row.body, createdAt: row.created_at }
+    return this.readable(row, () => {
+      const summary = this.summary(row)
+      if (row.body === undefined) throw new Error('Missing skill body')
+      const m = metadata.parse(JSON.parse(row.metadata))
+      return { ...summary, path: m.path, body: row.body, createdAt: row.created_at }
+    })
   }
+
   resolve(identityId: string, grants: SkillGrants): SkillResolution {
     return this.db.transaction(() => {
       this.identity(identityId)
       const rows = this.db
         .prepare(
-          `SELECT ${columns}, coalesce(s.choice, 'default') AS choice FROM skill_current h
+          `SELECT ${columns}, v.body, coalesce(s.choice, 'default') AS choice FROM skill_current h
         JOIN skill_version v ON v.id = h.current_version AND v.skill_id = h.id
         LEFT JOIN skill_selection s ON s.skill_id = h.id AND s.identity_id = ? ORDER BY h.id LIMIT ?`,
         )
         .all(identityId, SKILL_LIMITS.skills + 1) as (Row & { choice: string })[]
       if (rows.length > SKILL_LIMITS.skills) return refuse('limit')
-      const choices: SkillChoice[] = rows.map((row) => {
-        const skill = this.summary(row)
-        const parsed = SkillSelection.safeParse(row.choice)
-        if (!parsed.success) return refuse('corrupt')
-        const selection = parsed.data
-        const selected = selection === 'on' || (selection === 'default' && skill.defaultEnabled)
-        const eligible =
-          skill.active &&
-          (skill.requirement === null ||
-            grants.canCreateAgents ||
-            (skill.requirement === 'create-agents-or-coordinator' && grants.isCoordinator))
-        return {
-          skill,
-          selection,
-          selected,
-          eligible,
-          ready: selected && eligible,
-          reason: !skill.active ? 'source-unavailable' : !eligible ? 'create-agents' : null,
-        }
+      const choices: SkillChoice[] = rows.flatMap((row) => {
+        const choice = this.readable(row, (): SkillChoice => {
+          const skill = this.summary(row)
+          const parsed = SkillSelection.safeParse(row.choice)
+          if (!parsed.success) throw new Error('Invalid saved skill selection')
+          const selection = parsed.data
+          const selected = selection === 'on' || (selection === 'default' && skill.defaultEnabled)
+          const eligible =
+            skill.active &&
+            (skill.requirement === null ||
+              grants.canCreateAgents ||
+              (skill.requirement === 'create-agents-or-coordinator' && grants.isCoordinator))
+          return {
+            skill,
+            selection,
+            selected,
+            eligible,
+            ready: selected && eligible,
+            reason: !skill.active ? 'source-unavailable' : !eligible ? 'create-agents' : null,
+          }
+        })
+        return choice === null ? [] : [choice]
       })
       const ready = choices.filter((choice) => choice.ready)
       if (
@@ -365,7 +364,6 @@ export class SqliteSkillCatalogue implements SkillCatalogue {
   }
   seedBuiltins(bundle: VerifiedBuiltInSkills): number {
     const verified = verifyBuiltInSkills(bundle.catalogue, bundle.bodies)
-    if (verified.digest !== bundle.digest) return refuse('hash')
     return this.change(undefined, () => {
       const currentIds = verified.catalogue.skills.map((item) => `built-in/${item.name}`)
       const omitted = this.db
@@ -376,6 +374,16 @@ export class SqliteSkillCatalogue implements SkillCatalogue {
       let changed = omitted.changes > 0
       for (const item of verified.catalogue.skills) {
         if (this.row(`person/${item.name}`)) return refuse('duplicate-name')
+        const existing = this.row(`built-in/${item.name}`)
+        const summary = existing ? this.readable(existing, () => this.summary(existing)) : null
+        if (existing && summary === null) continue
+        if (existing && summary?.version === verified.catalogue.version) {
+          changed =
+            this.db
+              .prepare('UPDATE skill_current SET active=1 WHERE id=? AND active<>1')
+              .run(existing.id).changes > 0 || changed
+          continue
+        }
         changed =
           this.put(
             { kind: 'built-in' },

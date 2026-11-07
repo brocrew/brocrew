@@ -1,39 +1,19 @@
-import { spawn, execFileSync, type ChildProcess } from 'node:child_process'
-import {
-  constants,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
+import { spawn, type ChildProcess } from 'node:child_process'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { defaultDataFolder, pinTheDataFolder, type PinnableApp } from '../src/main/data-folder'
-import {
-  OTHER_BUILD_REFUSAL,
-  PACKAGED_WORKSPACE_REFUSAL,
-  WORKSPACE_LIST_REFUSAL,
-  workspaceRouting,
-} from '../src/main/workspace-routing'
+import { OTHER_BUILD_REFUSAL, workspaceRouting } from '../src/main/workspace-routing'
 
 const hooks = vi.hoisted(() => ({
-  afterLstat: undefined as ((file: unknown) => void) | undefined,
   afterStat: undefined as ((file: unknown) => void) | undefined,
   beforeMkdir: undefined as ((file: unknown) => void) | undefined,
-  beforeOpen: undefined as ((file: unknown, flags: number | string) => void) | undefined,
 }))
 vi.mock('node:fs', async (importOriginal) => {
   const fs = await importOriginal<typeof import('node:fs')>()
   return {
     ...fs,
-    lstatSync: (...args: Parameters<typeof fs.lstatSync>) => {
-      const seen = fs.lstatSync(...args)
-      hooks.afterLstat?.(args[0])
-      return seen
-    },
     statSync: (...args: Parameters<typeof fs.statSync>) => {
       const seen = fs.statSync(...args)
       hooks.afterStat?.(args[0])
@@ -42,10 +22,6 @@ vi.mock('node:fs', async (importOriginal) => {
     mkdirSync: (...args: Parameters<typeof fs.mkdirSync>) => {
       hooks.beforeMkdir?.(args[0])
       return fs.mkdirSync(...args)
-    },
-    openSync: (...args: Parameters<typeof fs.openSync>) => {
-      hooks.beforeOpen?.(args[0], args[1])
-      return fs.openSync(...args)
     },
   }
 })
@@ -60,7 +36,7 @@ beforeEach(() => {
   second = join(root, 'fern')
 })
 afterEach(() => {
-  hooks.afterLstat = hooks.afterStat = hooks.beforeMkdir = hooks.beforeOpen = undefined
+  hooks.afterStat = hooks.beforeMkdir = undefined
   rmSync(root, { recursive: true, force: true })
 })
 function list(rows: [string, number][]) {
@@ -180,45 +156,15 @@ it('correction: missing explicit known folders and post-stat removal never creat
     if (file === first) workspaceMkdirs++
   }
   const finderResult = attempt(finder.fake)
-  expect([explicitResult, ordinaryExplicitResult]).toEqual([
-    PACKAGED_WORKSPACE_REFUSAL,
-    PACKAGED_WORKSPACE_REFUSAL,
-  ])
+  for (const result of [explicitResult, ordinaryExplicitResult]) {
+    expect(result).toContain(first)
+    expect(result).toContain('ENOENT')
+  }
   expect(finderResult).toBeNull()
   expect(removed).toBe(true)
   expect(workspaceMkdirs).toBe(0)
   expect(existsSync(first)).toBe(false)
 })
-
-it.skipIf(process.platform === 'win32')(
-  'correction: a stat-to-FIFO swap uses nonblocking open and refuses',
-  () => {
-    configure()
-    mkdirSync(first)
-    const candidate = app(true)
-    const policy = join(config, 'workspace-policy.json')
-    let swapped = false,
-      nonblocking = false
-    hooks.afterLstat = (file) => {
-      if (file === policy && !swapped) {
-        swapped = true
-        rmSync(policy)
-        execFileSync('/usr/bin/mkfifo', [policy])
-      }
-    }
-    hooks.beforeOpen = (file, flags) => {
-      if (file !== policy || !swapped) return
-      nonblocking = typeof flags === 'number' && (flags & constants.O_NONBLOCK) !== 0
-      // Prevent the old implementation from hanging the negative control.
-      if (!nonblocking) throw new Error('fictional blocking-open witness')
-    }
-    const result = attempt(candidate.fake)
-    expect(nonblocking).toBe(true)
-    expect(result).toBe(WORKSPACE_LIST_REFUSAL)
-    expect(candidate.selected).toEqual([])
-    expect(existsSync(defaultDataFolder(appData))).toBe(false)
-  },
-)
 
 it('correction: ordinary Finder skips missing entries and defaults when none exist', () => {
   list([

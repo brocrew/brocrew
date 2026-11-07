@@ -441,9 +441,11 @@ describe('a usage reading belongs to the account it was read on', () => {
     it('⚑ the id is not made from the email: the same account, named afresh, gets another id', async () => {
       await reading(await openOn(ONE, ACCOUNT_A), weekly(82))
       const first = readKeptAccounts(providerAccountsFile(userData)).claude?.id
+      await host.closeAll()
       rmSync(providerAccountsFile(userData))
       rmSync(providerUsageFile(userData))
-      await restart()
+      clock += 25 * 60_000
+      host = hostOn()
       await reading(await openOn(ONE, ACCOUNT_A), weekly(82))
       const second = readKeptAccounts(providerAccountsFile(userData)).claude?.id
       expect(second).toMatch(AN_ACCOUNT_ID)

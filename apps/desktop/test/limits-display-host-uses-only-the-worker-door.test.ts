@@ -113,7 +113,7 @@ describe('the window display door is independent of current and admission facts'
     expect(reader.calls.at(-1)?.accountLives).toContainEqual({
       sessionId,
       since: expect.any(Number),
-      account: 'codex:fern-account',
+      account: 'codex:sign-in:fern-account',
     })
     reader.finish()
     expect(await answer).toMatchObject({ is: 'read' })

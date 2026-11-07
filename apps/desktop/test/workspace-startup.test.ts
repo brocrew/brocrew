@@ -1,20 +1,12 @@
 import { fileURLToPath } from 'node:url'
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runInNewContext } from 'node:vm'
 import ts from 'typescript'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { pinTheDataFolder, workspaceStartup, type PinnableApp } from '../src/main/data-folder'
-import { PACKAGED_WORKSPACE_REFUSAL, workspaceLaunchMessage } from '../src/main/workspace-routing'
+import { workspaceLaunchMessage } from '../src/main/workspace-routing'
 import { ExistingWorkspace, WorkspaceUnavailable } from '../src/main/workspace-startup'
 import { createRecoveryService, inspect } from '../src/main/recovery/coordinator'
 import { nodeFs as recoveryFiles } from '../src/main/recovery/files'
@@ -230,7 +222,7 @@ it('configured startup: removal after the pin stat exits before recovery, themes
     }
   }
   expect(await startup(fake)).toEqual({
-    lines: [PACKAGED_WORKSPACE_REFUSAL],
+    lines: [expect.stringContaining(join(workspace, 'brobot2.sqlite'))],
     exits: [1],
     databaseStarts: 0,
     exists: false,
@@ -242,7 +234,7 @@ it('configured startup: removal after recovery also refuses before themes can re
   const fake = app()
   pinTheDataFolder(fake)
   expect(await startup(fake, () => rmSync(workspace, { recursive: true }))).toEqual({
-    lines: [PACKAGED_WORKSPACE_REFUSAL],
+    lines: [expect.stringContaining(join(workspace, 'brobot2.sqlite'))],
     exits: [1],
     databaseStarts: 0,
     exists: false,
@@ -255,7 +247,7 @@ it('configured startup: removal at the theme mkdir never recreates its parent', 
     if (file === join(workspace, 'themes')) rmSync(workspace, { recursive: true })
   }
   expect(await startup(fake)).toEqual({
-    lines: [PACKAGED_WORKSPACE_REFUSAL],
+    lines: [expect.stringContaining(join(workspace, 'brobot2.sqlite'))],
     exits: [1],
     databaseStarts: 0,
     exists: false,
@@ -265,7 +257,7 @@ it('configured startup: removal at the theme mkdir never recreates its parent', 
 it('configured startup refuses an absent database before creating the hidden theme library', async () => {
   rmSync(join(workspace, 'brobot2.sqlite'))
   expect(await startup(app())).toEqual({
-    lines: [PACKAGED_WORKSPACE_REFUSAL],
+    lines: [expect.stringContaining(join(workspace, 'brobot2.sqlite'))],
     exits: [1],
     databaseStarts: 0,
     exists: true,
@@ -274,7 +266,7 @@ it('configured startup refuses an absent database before creating the hidden the
   expect(existsSync(join(workspace, 'brobot2.sqlite'))).toBe(false)
 })
 
-it('configured recovery refuses a missing database with the fixed line, ordinary new workspaces still open', async () => {
+it('configured recovery names a missing database, ordinary new workspaces still open', async () => {
   rmSync(join(workspace, 'brobot2.sqlite'))
   const deps = {
     userData: workspace,
@@ -287,7 +279,7 @@ it('configured recovery refuses a missing database with the fixed line, ordinary
   }
   expect(await inspect({ ...deps, requireExistingDatabase: true })).toMatchObject({
     kind: 'failed',
-    detail: PACKAGED_WORKSPACE_REFUSAL,
+    detail: expect.stringContaining(join(workspace, 'brobot2.sqlite')),
     canRetry: false,
   })
   expect(await inspect(deps)).toMatchObject({ kind: 'open' })
@@ -295,7 +287,7 @@ it('configured recovery refuses a missing database with the fixed line, ordinary
 })
 
 it('recovery folder creation cannot recreate its workspace root, even with recursive requested', async () => {
-  const existing = new ExistingWorkspace(workspace, statSync(workspace))
+  const existing = new ExistingWorkspace(workspace)
   await existing.mkdir(join(workspace, 'backups', 'fictional'), { recursive: true, mode: 0o700 })
   expect(existsSync(join(workspace, 'backups', 'fictional'))).toBe(true)
   await expect(existing.mkdir(join(workspace, 'backups', 'fictional'))).rejects.toMatchObject({
@@ -305,10 +297,17 @@ it('recovery folder creation cannot recreate its workspace root, even with recur
     code: 'ENOENT',
   })
   expect(existsSync(join(workspace, 'absent-parent'))).toBe(false)
+  const blocked = join(workspace, 'not-a-folder')
+  writeFileSync(blocked, 'keep this file')
+  await expect(existing.mkdir(join(blocked, 'child'), { recursive: true })).rejects.toMatchObject({
+    message: `${blocked}: not a directory`,
+    cause: { code: 'EEXIST', path: blocked },
+  })
+  expect(readFileSync(blocked, 'utf8')).toBe('keep this file')
   rmSync(workspace, { recursive: true })
   await expect(
     existing.mkdir(join(workspace, 'recovery', 'staged'), { recursive: true }),
-  ).rejects.toThrow(PACKAGED_WORKSPACE_REFUSAL)
+  ).rejects.toMatchObject({ code: 'ENOENT' })
   expect(existsSync(workspace)).toBe(false)
 })
 
@@ -350,14 +349,14 @@ it('main passes the must-exist option into SQLite when the database disappears a
         }).outputText,
         context,
       ),
-    ).toThrow(PACKAGED_WORKSPACE_REFUSAL)
+    ).toThrow(join(workspace, 'brobot2.sqlite'))
     expect(existsSync(join(workspace, 'brobot2.sqlite'))).toBe(false)
   } finally {
     for (const db of connections) db.close()
   }
 })
 
-it('configured startup on existing data reaches the database without changing the approved refusal wording', async () => {
+it('configured startup on existing data reaches the database', async () => {
   const fake = app()
   pinTheDataFolder(fake)
   expect(await startup(fake)).toEqual({ lines: [], exits: [], databaseStarts: 1, exists: true })

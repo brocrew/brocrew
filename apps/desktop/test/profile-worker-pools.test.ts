@@ -102,7 +102,7 @@ describe('bounded versioned normal pools', () => {
     for (const workerPools of [[], [pool()]]) {
       expect(holding({ [IDENTITY]: { ...entry(), workerPools } }, 1).readable).toBe(false)
     }
-    expect(holding({}, 3)).toEqual({ readable: false, why: 'it is not version 2' })
+    expect(holding({}, 3)).toEqual({ readable: false, why: `${file}: it is not version 2` })
   })
 
   it('[P03] round trips multiple giver primaries and stable gaps without renumbering', () => {
@@ -214,7 +214,10 @@ describe('bounded versioned normal pools', () => {
     writeProfileExecution(file, input)
     expect(readProfileExecution(file)).toEqual({ readable: true, kept: input })
     const tooMany = { profiles: { ...input.profiles, 'aid:other': entry([pool([primary])]) } }
-    expect(holding(tooMany.profiles)).toEqual({ readable: false, why: 'it holds too many workers' })
+    expect(holding(tooMany.profiles)).toEqual({
+      readable: false,
+      why: `${file}: it holds too many workers`,
+    })
     expect(() => writeProfileExecution(file, tooMany)).toThrow('too many workers')
   })
 
@@ -223,7 +226,7 @@ describe('bounded versioned normal pools', () => {
     writeFileSync(file, text + ' '.repeat(MAX_PROFILE_EXECUTION_BYTES - Buffer.byteLength(text)))
     expect(readProfileExecution(file)).toEqual({ readable: true, kept: NO_PROFILE_EXECUTION })
     appendFileSync(file, ' ')
-    expect(readProfileExecution(file)).toEqual({ readable: false, why: 'it is too large' })
+    expect(readProfileExecution(file)).toEqual({ readable: false, why: `${file}: it is too large` })
     writeProfileExecution(file, kept())
     const previous = readFileSync(file, 'utf8')
     const tooLarge = {

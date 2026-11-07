@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Stats } from 'node:fs'
-import { lstat, mkdir, open, realpath, rename, rm } from 'node:fs/promises'
+import { lstat, open, realpath, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { errorCode, retrying } from '../recovery/files'
 import {
@@ -183,28 +183,6 @@ export async function writeWorkspaceFile(
       remaining.ino === temporaryIdentity.ino
     ) {
       await rm(temporary, { force: true }).catch(() => undefined)
-    }
-  }
-}
-
-// A failed or killed writer leaves a lock for inspection rather than guessing that it is stale.
-export async function themeWriteLock(
-  root: string,
-  id: string,
-): Promise<(() => Promise<void>) | null> {
-  const path = join(root, `.theme-${id}.lock`)
-  try {
-    await mkdir(path)
-  } catch {
-    return null
-  }
-  const owned = await lstat(path)
-  return async () => {
-    const now = await lstat(path).catch(() => null)
-    if (now && !now.isSymbolicLink() && now.dev === owned.dev && now.ino === owned.ino) {
-      // A lock left behind would refuse every later save of this theme, so a brief hold is
-      // waited out.
-      await retrying(() => rm(path, { recursive: true, force: true }))
     }
   }
 }

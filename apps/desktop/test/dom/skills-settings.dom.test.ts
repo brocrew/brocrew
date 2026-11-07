@@ -35,7 +35,7 @@ it('a failed initial read is never presented as an empty folder', async () => {
   const { m } = await ready(async () => {
     throw new Error('fictional read failure')
   })
-  expect(m.q('skills-status').textContent).toBe('Skills could not be read.')
+  expect(m.q('skills-status').textContent).toBe('Skills could not be read: fictional read failure')
   expect(m.all('skills-empty')).toHaveLength(0)
 })
 it('lists built-in and shared text without versions, agent choices or an editor', async () => {
@@ -75,14 +75,22 @@ it('keeps the last list and readable text while reading and after a failed read'
   expect(m.all('skills-loading')).toHaveLength(1)
   state.failRead = true
   release()
-  await vi.waitFor(() => expect(m.q('skills-status').textContent).toBe('Skills could not be read.'))
+  await vi.waitFor(() =>
+    expect(m.q('skills-status').textContent).toBe(
+      'Skills could not be read: fictional read failure',
+    ),
+  )
   expect(m.all('skill-row')).toHaveLength(2)
 })
 it('a refused move keeps the previous state and text', async () => {
   const { m, state } = await ready()
   state.failSave = true
   m.q('skill-toggle').click()
-  await vi.waitFor(() => expect(m.q('skills-status').textContent).toBe('The skill was not saved.'))
+  await vi.waitFor(() =>
+    expect(m.q('skills-status').textContent).toBe(
+      'The skill was not saved: fictional save failure',
+    ),
+  )
   expect(m.q('skill-toggle').textContent).toBe('Turn off')
   expect(m.all('skill-source')[1]!.textContent).toContain('Check the flour')
 })
@@ -109,3 +117,17 @@ it('reaches the simplified page through the real Settings tab', async () => {
   await vi.waitFor(() => expect(m.all('skill-row')).toHaveLength(2))
   expect(m.all('skill-toggle')).toHaveLength(1)
 })
+
+it.each(['shared-list', 'shared-toggle'] as const)(
+  'shows the actual rejected %s file and cause',
+  async (operation) => {
+    const fixture = fictionalSkills()
+    const cause = `EACCES: permission denied, open '/fictional/skills/recipe-check/SKILL.md'`
+    const bridge: SkillsWindow = (request) =>
+      request.operation === operation ? Promise.reject(new Error(cause)) : fixture.bridge(request)
+    const { m } = await ready(bridge, fixture)
+    if (operation === 'shared-toggle') m.q('skill-toggle').click()
+    await vi.waitFor(() => expect(m.q('skills-status').textContent).toContain(cause))
+    expect(m.all('skills-empty')).toHaveLength(0)
+  },
+)

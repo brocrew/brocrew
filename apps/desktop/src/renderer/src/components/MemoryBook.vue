@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { readableError } from '../lib/session-record'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { Provider } from '@brobot2/shared'
 import { providerName, type RuntimeBridge } from '../../../shared/runtime-ipc'
@@ -152,26 +153,19 @@ async function confirm() {
   const bridge = api.value
   if (!chosen || !bridge || busy.value || chosen.profile !== props.profileSlug) return
   const generation = epoch
-  // Capture the displayed draft before the asynchronous digest; never substitute a later reading.
+  // Keep the confirmed draft while the command is outstanding.
   const after = replacement.value
   busy.value = true
   error.value = null
   try {
     let result: AgentMemoryAmended | MemoryChecked | null
     if (chosen.kind === 'removed' || chosen.kind === 'corrected') {
-      const bytes = new TextEncoder().encode(chosen.before)
-      const digest = await crypto.subtle.digest('SHA-256', bytes)
-      if (generation !== epoch || preview.value !== chosen) return
-      const fingerprint = [...new Uint8Array(digest)]
-        .map((byte) => byte.toString(16).padStart(2, '0'))
-        .join('')
       result = await bridge.amendAgentMemory({
         profileId: chosen.profile,
         provider: chosen.provider,
         entry: chosen.entry,
         act: chosen.kind,
         text: chosen.kind === 'removed' ? '' : after,
-        fingerprint,
         confirmed: true,
       })
     } else if (chosen.kind === 'undo') {
@@ -189,11 +183,12 @@ async function confirm() {
       return
     }
     accept(result.reading)
-    if (!result.done) error.value = REFUSAL_MEANS[result.refused]
-  } catch {
+    if (!result.done)
+      error.value = [REFUSAL_MEANS[result.refused], result.cause].filter(Boolean).join(' ')
+  } catch (cause) {
     if (generation === epoch) {
       preview.value = null
-      error.value = REFUSAL_MEANS['change-incomplete']
+      error.value = `${REFUSAL_MEANS['change-incomplete']} ${readableError(cause)}`
     }
   } finally {
     if (generation === epoch) busy.value = false

@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { providerSchema, type Provider } from '@brobot2/shared'
@@ -20,8 +20,8 @@ import { MAX_INSTANT } from '../shared/clock'
  * before the cut turn, so that very life opened it. A cut's own `expected` never changes after it is
  * written.
  *
- * ⛔ No email or credential is kept: a Claude account is named by a digest keyed with `salt`, made
- * here once, and anything else by a tag the provider's runtime already makes.
+ * No email or credential is kept: accounts use existing account record IDs and runtimes supply
+ * opaque sign-in or launch-only credential revisions. Old digest identities cannot prove a match.
  *
  * ⚑ Written beside it and renamed, so a reader never sees half a file. ⚑ A file that is missing or
  * cannot be read authorizes nothing: no cut is continued from it.
@@ -113,14 +113,12 @@ export interface LifeRecord {
 }
 
 export interface KeptCuts {
-  /** The key Claude account digests are made with; `null` until the first is needed. */
-  readonly salt: string | null
   readonly lives: Readonly<Record<string, LifeRecord>>
   readonly cuts: Readonly<Record<string, CutRecord>>
 }
 
 /** Nothing kept. */
-export const NO_CUTS_KEPT: KeptCuts = { salt: null, lives: {}, cuts: {} }
+export const NO_CUTS_KEPT: KeptCuts = { lives: {}, cuts: {} }
 
 /** The most conversations each part holds; past it, the ones changed longest ago go. */
 export const MAX_CUT_CONVERSATIONS = 500
@@ -136,13 +134,14 @@ export function turnsTheAppCutFile(userData: string): string {
 /** A new id for the words a cut's continuation is held under: a held message's own shape. */
 export const newNoticeId = (): string => `msg_${randomUUID()}`
 
-/** A new key for Claude account digests. */
-export const newSalt = (): string => randomBytes(32).toString('hex')
-
 /** Whether a cut has ended, sent or not. */
 export function isFinal(state: CutState): boolean {
   return typeof state !== 'string' || state === 'sent'
 }
+
+/** Old keyed/double-digest tags supply no evidence of the account now launching. */
+const legacyIdentity = (identity: string): boolean =>
+  /^[a-z]+(?:-launch)?:[0-9a-f]{32}$/.test(identity)
 
 const CUT_KINDS: readonly CutKind[] = ['quit', 'crash', 'program', 'limit']
 
@@ -178,7 +177,6 @@ export function readKeptCuts(file: string): KeptCuts {
     return NO_CUTS_KEPT
   }
   const whole = aRecord(said)
-  const salt = whole['salt']
   const lives: Record<string, LifeRecord> = {}
   for (const [id, row] of Object.entries(aRecord(whole['lives']))) {
     const { since, identity, generation, launched } = aRecord(row)
@@ -186,6 +184,7 @@ export function readKeptCuts(file: string): KeptCuts {
       someText(id, 200) &&
       aTime(since) &&
       someText(identity, 200) &&
+      !legacyIdentity(identity) &&
       aCount(generation) &&
       aCount(launched)
     ) {
@@ -224,7 +223,8 @@ export function readKeptCuts(file: string): KeptCuts {
       ...(aCount(r['inARow']) ? { inARow: r['inARow'] } : {}),
       provider: provider.data,
       profile: r['profile'],
-      expected: r['expected'],
+      expected:
+        typeof r['expected'] === 'string' && legacyIdentity(r['expected']) ? null : r['expected'],
       noticeId: r['noticeId'],
       aPersonStartedIt: r['aPersonStartedIt'],
       state,
@@ -232,7 +232,6 @@ export function readKeptCuts(file: string): KeptCuts {
     }
   }
   return {
-    salt: typeof salt === 'string' && /^[0-9a-f]{64}$/.test(salt) ? salt : null,
     lives: newest(lives, (one) => one.since),
     cuts: newest(cuts, (one) => one.at),
   }
@@ -263,7 +262,6 @@ export function writeKeptCuts(file: string, kept: KeptCuts): void {
   const temporary = `${file}.${String(process.pid)}.tmp`
   try {
     const whole = {
-      salt: kept.salt,
       lives: newest(kept.lives, (one) => one.since),
       cuts: newest(kept.cuts, (one) => one.at),
     }

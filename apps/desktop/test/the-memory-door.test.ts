@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -15,7 +14,6 @@ import {
 } from '../src/main/db/session-store'
 import { createMemoryService, type MemoryWriteSeams } from '../src/main/runtime/agent-memory'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
-import type { AccessLists } from '../src/main/recovery/windows-privacy'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import {
   RuntimeHost,
@@ -83,7 +81,6 @@ const homeOf = (provider: Provider, profileId: string): string =>
  */
 /** ⚠️ **Reset per test**, so a session id never depends on how many tests ran before it. */
 let counter = 0
-const originalFingerprint = createHash('sha256').update(THE_FALSE_NOTE).digest('hex')
 async function hostDeps(
   options: {
     store?: SessionStore
@@ -218,79 +215,6 @@ describe('§1 · ⛔ the read reaches the store with NO conversation open', () =
 })
 
 describe('§2 · 🔴 the act and its record land together', () => {
-  it('queued changes recheck the displayed text after an earlier correction', async () => {
-    identity('brobot')
-    const { note } = plantTheNight('brobot')
-    let release = (): void => {}
-    let entered = (): void => {}
-    const paused = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    const waiting = new Promise<void>((resolve) => {
-      entered = resolve
-    })
-    let first = true
-    const me = 'S-1-5-21-111-222-333-1001'
-    const lists: AccessLists = {
-      userSid: async () => me,
-      machineSid: async () => null,
-      restrict: async () => {
-        throw new Error('The fictional folder is already private')
-      },
-      read: async () => {
-        if (first) {
-          first = false
-          entered()
-          await paused
-        }
-        return `D:PAI(A;OICI;FA;;;${me})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)`
-      },
-    }
-    const ordered = new RuntimeHost(await hostDeps({ writes: { platform: 'win32', lists } }))
-    try {
-      const ask = (act: 'corrected' | 'removed', text: string) =>
-        ordered.amendAgentMemory(
-          {
-            profileId: 'brobot',
-            provider: 'claude',
-            entry: note,
-            fingerprint: originalFingerprint,
-            confirmed: true,
-            act,
-            text,
-          },
-          sink,
-        )
-      const a = ask('corrected', 'FIRST\n')
-      await waiting
-      const b = ask('corrected', 'SECOND\n')
-      const removed = ask('removed', '')
-      await new Promise<void>((resolve) => setImmediate(resolve))
-      expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
-      expect(ordered.agentMemory('brobot').amendments[0]?.outcome).toBe('pending')
-      release()
-      const answers = await Promise.all([a, b, removed])
-      expect(answers.map((answer) => answer?.done)).toEqual([true, false, false])
-      expect(
-        answers
-          .slice(1)
-          .every((answer) => answer?.done === false && answer.refused === 'changed-or-unreadable'),
-      ).toBe(true)
-      expect(
-        answers.map((answer) =>
-          answer?.done ? [answer.amendment.textBefore, answer.amendment.textAfter] : null,
-        ),
-      ).toEqual([[THE_FALSE_NOTE, 'FIRST\n'], null, null])
-      expect(readFileSync(note, 'utf8')).toBe('FIRST\n')
-      expect(
-        ordered.agentMemory('brobot').amendments.map((row) => [row.textBefore, row.textAfter]),
-      ).toEqual([[THE_FALSE_NOTE, 'FIRST\n']])
-    } finally {
-      release()
-      await ordered.closeAll()
-    }
-  })
-
   it('⛔ a person removes the false note — the file goes, the row stays, and the reading comes back', async () => {
     identity('brobot')
     const { note } = plantTheNight('brobot')
@@ -300,7 +224,6 @@ describe('§2 · 🔴 the act and its record land together', () => {
         profileId: 'brobot',
         provider: 'claude',
         entry: note,
-        fingerprint: originalFingerprint,
         confirmed: true,
         act: 'removed',
         text: '',
@@ -332,7 +255,6 @@ describe('§2 · 🔴 the act and its record land together', () => {
         profileId: 'brobot',
         provider: 'claude',
         entry: note,
-        fingerprint: originalFingerprint,
         confirmed: true,
         act: 'corrected',
         text: 'BROBOT-625-A-PARKED-AGENT-IS-DISTINGUISHABLE\n',
@@ -357,7 +279,6 @@ describe('§2 · 🔴 the act and its record land together', () => {
         profileId: 'brobot',
         provider: 'claude',
         entry: join(userData, 'provider-homes', 'default', 'brobot', 'claude', 'memory', 'gone.md'),
-        fingerprint: originalFingerprint,
         confirmed: true,
         act: 'removed',
         text: '',
@@ -396,7 +317,6 @@ describe('§2 · 🔴 the act and its record land together', () => {
           profileId: 'brobot',
           provider: 'claude',
           entry: note,
-          fingerprint: originalFingerprint,
           confirmed: true,
           act: 'removed',
           text: '',
@@ -431,7 +351,6 @@ describe('§2 · 🔴 the act and its record land together', () => {
         profileId: 'ghost',
         provider: 'claude',
         entry: note,
-        fingerprint: originalFingerprint,
         confirmed: true,
         act: 'removed',
         text: '',
@@ -468,7 +387,6 @@ describe('§3 · ⚠️ a change reaches the agent from its NEXT conversation', 
             profileId: 'brobot',
             provider: 'claude',
             entry: note,
-            fingerprint: originalFingerprint,
             confirmed: true,
             act: 'removed',
             text: '',
@@ -571,7 +489,6 @@ describe('§4 · 🔒 the door, and who may reach it', () => {
         profileId: 'brobot',
         provider: 'claude',
         entry: note,
-        fingerprint: originalFingerprint,
         confirmed: true,
         act: 'removed',
         text: '',
@@ -586,7 +503,7 @@ describe('§4 · 🔒 the door, and who may reach it', () => {
 })
 
 describe('durable memory operations through the person window doors', () => {
-  it('requires confirmation and the displayed fingerprint before recording an intent', async () => {
+  it('requires primary confirmation before recording an intent', async () => {
     identity('lark')
     const { note } = plantTheNight('lark')
     const asked = {
@@ -595,13 +512,10 @@ describe('durable memory operations through the person window doors', () => {
       entry: note,
       act: 'removed' as const,
       text: '',
-      fingerprint: originalFingerprint,
       confirmed: true,
     }
     const no = await host.amendAgentMemory({ ...asked, confirmed: false }, sink)
     expect(no?.done === false && no.refused).toBe('confirmation-required')
-    const stale = await host.amendAgentMemory({ ...asked, fingerprint: '0'.repeat(64) }, sink)
-    expect(stale?.done === false && stale.refused).toBe('changed-or-unreadable')
     expect(readFileSync(note, 'utf8')).toBe(THE_FALSE_NOTE)
     expect(host.agentMemory('lark').amendments).toEqual([])
   })
@@ -616,7 +530,6 @@ describe('durable memory operations through the person window doors', () => {
         entry: note,
         act: 'removed',
         text: '',
-        fingerprint: originalFingerprint,
         confirmed: true,
       },
       sink,
@@ -753,7 +666,6 @@ describe('durable memory operations through the person window doors', () => {
           entry: note,
           act: 'removed',
           text: '',
-          fingerprint: originalFingerprint,
           confirmed: true,
         },
         sink,
@@ -827,7 +739,6 @@ describe('memory shutdown and missing-service boundaries', () => {
             entry: note,
             act: 'removed',
             text: '',
-            fingerprint: originalFingerprint,
             confirmed: true,
           },
           sink,

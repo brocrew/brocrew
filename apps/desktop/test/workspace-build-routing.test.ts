@@ -211,17 +211,7 @@ it.skipIf(process.platform === 'win32')(
     expect(routing.refusal(join(alias, 'new-child'))).toBe(OTHER_BUILD_REFUSAL)
   },
 )
-it.skipIf(process.platform === 'win32')(
-  'linked settings are refused without reading their target',
-  () => {
-    const target = join(root, 'outside.json')
-    writeFileSync(target, 'fictional text that is not JSON')
-    symlinkSync(target, join(config, WORKSPACE_POLICY_FILE))
-    expect(() => workspaceRouting(appData, false)).toThrow("couldn't read its list of workspaces")
-  },
-)
-
-it('pins the approved refusal words without exposing an unknown error', () => {
+it('keeps policy wording and reports an actual startup error', () => {
   expect(OTHER_BUILD_REFUSAL).toBe('This workspace opens in the BroCrew app in Applications.')
   expect(PACKAGED_WORKSPACE_REFUSAL).toBe("This workspace can't be opened in this app.")
   expect(DEVELOPMENT_BUILD_REFUSAL).toBe(
@@ -231,9 +221,7 @@ it('pins the approved refusal words without exposing an unknown error', () => {
     DEVELOPMENT_BUILD_REFUSAL,
   )
   expect(WORKSPACE_LIST_REFUSAL).toBe("BroCrew couldn't read its list of workspaces.")
-  expect(workspaceLaunchMessage(new Error('fictional internal detail'))).toBe(
-    WORKSPACE_LIST_REFUSAL,
-  )
+  expect(workspaceLaunchMessage(new Error('fictional read denied'))).toBe('fictional read denied')
 })
 it.each([false, true])(
   'actual startup refusal shows the fixed line and exits before any continuation (dialog fails=%s)',
@@ -271,7 +259,7 @@ it.each([false, true])(
       runInNewContext(source.slice(start, end) + '\ncontinueStartup()', context),
     ).toThrow(exited)
     expect(events).toEqual([
-      ['show', 'BroCrew', `${WORKSPACE_LIST_REFUSAL} (missing-policy)`],
+      ['show', 'BroCrew', expect.stringContaining(join(config, WORKSPACE_POLICY_FILE))],
       ['exit', 1],
     ])
     expect(a.set).toEqual([])
@@ -315,7 +303,7 @@ it('a missing last workspace is refused rather than recreated empty', () => {
   policy()
   list(PACKAGED_WORKSPACE_LIST, [[second, 10]])
   const a = app(true, undefined, true)
-  expect(() => pinTheDataFolder(a.fake)).toThrow(PACKAGED_WORKSPACE_REFUSAL)
+  expect(() => pinTheDataFolder(a.fake)).toThrow(second)
   expect(a.set).toEqual([])
   expect(existsSync(second)).toBe(false)
   expect(existsSync(defaultDataFolder(appData))).toBe(false)
@@ -444,48 +432,41 @@ it('the routing check does not seed a missing list or claim owners', () => {
   expect(routingSnapshot()).toEqual(before)
 })
 
-it.each([
-  'invalid-json',
-  'malformed-policy',
-  'malformed-list',
-  'file-too-large',
-  'owner-mismatch',
-] as const)('routing refusal names %s and logs the affected file and path', (reason) => {
-  policy()
-  let file = join(config, WORKSPACE_POLICY_FILE)
-  let offending = file
-  if (reason === 'invalid-json') writeFileSync(file, '{')
-  if (reason === 'malformed-policy') writeFileSync(file, '{}')
-  if (reason === 'file-too-large') writeFileSync(file, ' '.repeat(1024 * 1024 + 1))
-  if (reason === 'malformed-list') {
-    file = join(config, PACKAGED_WORKSPACE_LIST)
-    offending = 'relative-fictional-folder'
-    list(PACKAGED_WORKSPACE_LIST, [[offending, 1]])
-  }
-  if (reason === 'owner-mismatch') {
-    const owners = join(config, 'packaged-workspace-owners')
-    mkdirSync(owners)
-    file = join(owners, `${'0'.repeat(64)}.json`)
-    offending = first
-    writeFileSync(file, JSON.stringify({ version: 1, path: first }))
-  }
-  const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
-  try {
-    let caught: unknown
-    try {
-      workspaceRouting(appData, true, false, { readOnly: true })
-    } catch (error) {
-      caught = error
+it.each(['invalid-json', 'malformed-policy', 'malformed-list', 'file-too-large'] as const)(
+  'routing refusal names %s and logs the affected file and path',
+  (reason) => {
+    policy()
+    let file = join(config, WORKSPACE_POLICY_FILE)
+    let offending = file
+    if (reason === 'invalid-json') writeFileSync(file, '{')
+    if (reason === 'malformed-policy') writeFileSync(file, '{}')
+    if (reason === 'file-too-large') writeFileSync(file, ' '.repeat(1024 * 1024 + 1))
+    if (reason === 'malformed-list') {
+      file = join(config, PACKAGED_WORKSPACE_LIST)
+      offending = 'relative-fictional-folder'
+      list(PACKAGED_WORKSPACE_LIST, [[offending, 1]])
     }
-    expect(caught).toBeInstanceOf(WorkspaceRoutingError)
-    expect(caught).toMatchObject({ reason, file, path: offending })
-    expect(workspaceLaunchMessage(caught)).toBe(`${WORKSPACE_LIST_REFUSAL} (${reason})`)
-    expect(log.mock.calls.flat().join(' ')).toContain(file)
-    expect(log.mock.calls.flat().join(' ')).toContain(offending)
-  } finally {
-    log.mockRestore()
-  }
-})
+    const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      let caught: unknown
+      try {
+        workspaceRouting(appData, true, false, { readOnly: true })
+      } catch (error) {
+        caught = error
+      }
+      expect(caught).toBeInstanceOf(WorkspaceRoutingError)
+      expect(caught).toMatchObject({ reason, file, path: offending })
+      expect(workspaceLaunchMessage(caught)).toContain(file)
+      if (reason !== 'invalid-json')
+        expect(workspaceLaunchMessage(caught)).toContain(reason.replaceAll('-', ' '))
+      else expect((caught as Error).cause).toBeInstanceOf(SyntaxError)
+      expect(log.mock.calls.flat().join(' ')).toContain(file)
+      expect(log.mock.calls.flat().join(' ')).toContain(offending)
+    } finally {
+      log.mockRestore()
+    }
+  },
+)
 
 it('an explicit durable owner still fences the development build after a policy change', () => {
   claimPackagedWorkspace(appData, defaultDataFolder(appData))

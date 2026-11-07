@@ -74,9 +74,7 @@ describe('one writable shared skills tree', () => {
     const library = new SharedSkillLibrary(root)
     await expect(library.convert(async () => [])).resolves.toBeUndefined()
     if (process.platform === 'win32')
-      await new SharedSkillLibrary(root, nodeFs, Date.now, 'win32', 'next-app').convert(
-        async () => [],
-      )
+      await new SharedSkillLibrary(root, nodeFs, Date.now, 'win32').convert(async () => [])
     const names = await folders(library.active)
     expect(names).toHaveLength(2)
     expect(names[0]).toBe('recipe-check')
@@ -149,7 +147,7 @@ describe('one writable shared skills tree', () => {
     const library = new SharedSkillLibrary(root)
     await library.convert(personal)
     if (process.platform === 'win32')
-      await new SharedSkillLibrary(root, nodeFs, Date.now, 'win32', 'next-app').convert(personal)
+      await new SharedSkillLibrary(root, nodeFs, Date.now, 'win32').convert(personal)
     const names = await folders(library.active)
     expect(names).toHaveLength(2)
     await library.save('recipe-check/SKILL.md', body('Edited in the shared folder.'))
@@ -232,57 +230,51 @@ describe('one writable shared skills tree', () => {
     expect(await readdir(join(root, 'skills-off/.imports'))).toEqual([])
   })
   it.each(['codex', 'skills'] as const)(
-    'refuses a pre-existing managed %s directory link before reading any skill',
+    'reads a linked managed %s source normally',
     async (linked) => {
       const profile = join(root, 'provider-homes/default/cora')
       const outside = join(root, 'fictional-outside')
       const target =
         linked === 'codex' ? join(outside, 'skills/recipe-check') : join(outside, 'recipe-check')
       await mkdir(target, { recursive: true })
-      await writeFile(join(target, 'SKILL.md'), body('Outside the managed source.'))
+      await writeFile(join(target, 'SKILL.md'), body('Linked source.'))
       await mkdir(linked === 'codex' ? profile : join(profile, 'codex'), { recursive: true })
       await symlink(
         outside,
         join(profile, linked === 'codex' ? 'codex' : 'codex/skills'),
         process.platform === 'win32' ? 'junction' : 'dir',
       )
-      const opened: string[] = []
-      const fs: RecoveryFs = {
-        ...nodeFs,
-        open: async (...args) => {
-          opened.push(args[0])
-          return nodeFs.open(...args)
-        },
-      }
-      const library = new SharedSkillLibrary(root, fs)
-      await expect(library.convert(async () => [])).rejects.toThrow('Skills could not be read.')
-      expect(opened.filter((one) => one.endsWith('SKILL.md'))).toEqual([])
-      expect(await folders(library.active)).toEqual([])
-      expect(await readFile(join(target, 'SKILL.md'), 'utf8')).toBe(
-        body('Outside the managed source.'),
+      const library = new SharedSkillLibrary(root)
+      await library.convert(async () => [])
+      expect(await readFile(join(library.active, 'recipe-check/SKILL.md'), 'utf8')).toBe(
+        body('Linked source.'),
       )
     },
   )
-  it.skipIf(process.platform === 'win32')(
-    'never follows a managed skill link to read outside its folder',
-    async () => {
-      const home = await source('cora')
-      const outside = join(root, 'fictional-outside.txt')
-      await writeFile(outside, 'fictional outside bytes')
-      await symlink(outside, join(home, 'linked.txt'))
-      const opened: string[] = []
-      const fs: RecoveryFs = {
-        ...nodeFs,
-        open: async (...args) => {
-          opened.push(args[0])
-          return nodeFs.open(...args)
-        },
-      }
-      await expect(new SharedSkillLibrary(root, fs).convert(async () => [])).rejects.toThrow()
-      expect(opened).not.toContain(outside)
-      expect(opened).not.toContain(join(home, 'linked.txt'))
-    },
-  )
+
+  it('follows linked skill resources and reports genuine read failures by file and cause', async () => {
+    const home = await source('cora')
+    const outside = join(root, 'fictional-outside.txt')
+    await writeFile(outside, 'fictional linked bytes')
+    await symlink(outside, join(home, 'linked.txt'))
+    const library = new SharedSkillLibrary(root)
+    await library.convert(async () => [])
+    expect(await readFile(join(library.active, 'recipe-check/linked.txt'), 'utf8')).toBe(
+      'fictional linked bytes',
+    )
+    await source('other', body('Another skill.'))
+    const failed = join(root, 'provider-homes/default/other/codex/skills/recipe-check/SKILL.md')
+    const fs: RecoveryFs = {
+      ...nodeFs,
+      open: async (...args) => {
+        if (args[0] === failed)
+          throw Object.assign(new Error('fictional EACCES'), { code: 'EACCES' })
+        return nodeFs.open(...args)
+      },
+    }
+    await expect(new SharedSkillLibrary(root, fs).convert(async () => [])).rejects.toThrow(failed)
+    await expect(new SharedSkillLibrary(root, fs).convert(async () => [])).rejects.toThrow('EACCES')
+  })
   it('flushes a prepared personal import directory before recording the pending publication', async () => {
     const imports = join(root, 'skills-off/.imports')
     let flushed = false
@@ -330,18 +322,10 @@ describe('one writable shared skills tree', () => {
               },
             }
           : nodeFs
-      const library = new SharedSkillLibrary(root, fs, Date.now, platform, 'first-app')
+      const library = new SharedSkillLibrary(root, fs, Date.now, platform)
       const moved = async (path: string) => {
-        if (platform === 'win32') {
-          expect((await lstat(path)).isDirectory()).toBe(true)
-          await new SharedSkillLibrary(root, fs, Date.now, platform, 'first-app').convert(
-            async () => [],
-          )
-          expect((await lstat(path)).isDirectory()).toBe(true)
-          await new SharedSkillLibrary(root, fs, Date.now, platform, 'next-app').convert(
-            async () => [],
-          )
-        }
+        if (platform === 'win32')
+          await new SharedSkillLibrary(root, fs, Date.now, platform).convert(async () => [])
         await expect(lstat(path)).rejects.toMatchObject({ code: 'ENOENT' })
       }
       const original = await source('cora')
@@ -402,9 +386,7 @@ describe('one writable shared skills tree', () => {
     const library = new SharedSkillLibrary(root, cross)
     await library.convert(async () => [])
     if (process.platform === 'win32')
-      await new SharedSkillLibrary(root, cross, Date.now, 'win32', 'next-app').convert(
-        async () => [],
-      )
+      await new SharedSkillLibrary(root, cross, Date.now, 'win32').convert(async () => [])
     await expect(lstat(home)).rejects.toMatchObject({ code: 'ENOENT' })
     expect(verifiedBeforeRemoval).toBe(true)
     expect((await readSkillTree(join(library.active, 'recipe-check'))).sha256).toBe(original.sha256)
@@ -520,7 +502,7 @@ describe('one writable shared skills tree', () => {
       await expect(lstat(home)).rejects.toMatchObject({ code: 'ENOENT' })
     },
   )
-  it('flushes Windows handles but retains the source until a later start confirms the matching destination', async () => {
+  it('flushes Windows files and retires once when directory sync is unsupported', async () => {
     const home = await source('cora')
     const target = join(root, 'skills/recipe-check')
     let fileFlushed = false
@@ -548,66 +530,17 @@ describe('one writable shared skills tree', () => {
         await nodeFs.rm(path, options)
       },
     }
-    await new SharedSkillLibrary(root, fs, Date.now, 'win32', 'first-app').convert(async () => [])
+    await new SharedSkillLibrary(root, fs, Date.now, 'win32').convert(async () => [])
     expect(fileFlushed).toBe(true)
-    await expect(lstat(home)).resolves.toBeDefined()
-    expect(await readFile(join(home, 'SKILL.md'), 'utf8')).toBe(body())
+    await expect(lstat(home)).rejects.toMatchObject({ code: 'ENOENT' })
     expect(await readFile(join(target, 'SKILL.md'), 'utf8')).toBe(body())
-    fileFlushed = false
-    await new SharedSkillLibrary(root, fs, Date.now, 'win32', 'first-app').convert(async () => [])
-    await expect(lstat(home)).resolves.toBeDefined()
-    await new SharedSkillLibrary(root, fs, Date.now, 'win32', 'second-app').convert(async () => [])
-    expect(fileFlushed).toBe(true)
-    await expect(lstat(home)).rejects.toMatchObject({ code: 'ENOENT' })
-  })
-  it('never removes a Windows source on an old receipt when the published bytes no longer match', async () => {
-    const home = await source('cora')
-    const target = join(root, 'skills/recipe-check')
-    const fs: RecoveryFs = {
-      ...nodeFs,
-      open: async (...args) => {
-        if (
-          (args[0] === join(root, 'skills') || args[0].startsWith(join(root, 'skills') + '/')) &&
-          (await nodeFs.lstat(args[0])).isDirectory()
-        )
-          throw Object.assign(new Error('fictional Windows directory'), { code: 'EISDIR' })
-        return nodeFs.open(...args)
-      },
-    }
     await new SharedSkillLibrary(root, fs, Date.now, 'win32').convert(async () => [])
-    await writeFile(join(target, 'SKILL.md'), body('Changed in shared.'))
+    await source('cora', body('A later source.'))
     await new SharedSkillLibrary(root, fs, Date.now, 'win32').convert(async () => [])
-    expect(await readFile(join(home, 'SKILL.md'), 'utf8')).toBe(body())
-    expect(await readFile(join(root, 'skills/recipe-check-2/SKILL.md'), 'utf8')).toBe(body())
-  })
-  it('does not use an old Windows receipt to remove newly replaced but matching source and destination bytes', async () => {
-    const home = await source('cora')
-    const target = join(root, 'skills/recipe-check')
-    const fs: RecoveryFs = {
-      ...nodeFs,
-      open: async (...args) => {
-        if (
-          args[0] === dirname(target) ||
-          args[0] === target ||
-          args[0] === join(target, 'assets') ||
-          args[0] === join(target, 'empty')
-        )
-          throw Object.assign(new Error('fictional Windows directory'), { code: 'EISDIR' })
-        return nodeFs.open(...args)
-      },
-    }
-    await new SharedSkillLibrary(root, fs, Date.now, 'win32', 'first-app').convert(async () => [])
-    await writeFile(join(home, 'SKILL.md'), body('New matching bytes.'))
-    await writeFile(join(target, 'SKILL.md'), body('New matching bytes.'))
-    await new SharedSkillLibrary(root, fs, Date.now, 'win32', 'second-app').convert(async () => [])
-    await expect(lstat(home)).resolves.toBeDefined()
-    expect(await readFile(join(home, 'SKILL.md'), 'utf8')).toBe(body('New matching bytes.'))
-    await new SharedSkillLibrary(root, fs, Date.now, 'win32', 'third-app').convert(async () => [])
+    expect(await readFile(join(root, 'skills/recipe-check-2/SKILL.md'), 'utf8')).toBe(
+      body('A later source.'),
+    )
     await expect(lstat(home)).rejects.toMatchObject({ code: 'ENOENT' })
-    await source('cora')
-    await writeFile(join(target, 'SKILL.md'), body())
-    await new SharedSkillLibrary(root, fs, Date.now, 'win32', 'third-app').convert(async () => [])
-    await expect(lstat(home)).resolves.toBeDefined()
   })
   it('keeps a Windows source when a published file handle cannot flush', async () => {
     const home = await source('cora')

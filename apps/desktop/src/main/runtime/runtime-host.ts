@@ -76,7 +76,7 @@ import type {
   WorkerBorn,
 } from '../profile-execution-file'
 import { RUNTIME_CHANGE_SUBJECTS, TURN_ATTRIBUTION_KEYS } from '../../shared/runtime-ipc'
-import { moveRequestDigest, originalMoveRequest, recordMovedRequest } from './move-request'
+import { originalMoveRequest, recordMovedRequest } from './move-request'
 import {
   DO_IT_HERE,
   MOVE_IT,
@@ -91,7 +91,7 @@ import {
   BUILT_IN_SKILLS_FAILURE,
   permittedInstalledSkillReminders,
 } from '../../shared/built-in-skills'
-import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 import { returnedDocumentIndex } from '../resources/returned-document-index'
 import type { ThemeStore } from '../themes/store'
 import type { AnsweredQuestion, ConversationProviderBlock } from '../../shared/runtime-ipc'
@@ -303,7 +303,6 @@ import {
   doneConditionSchema,
   workBriefSchema,
   theProviderAStartRunsOn,
-  wasAdmitted,
 } from './spawn-rails'
 import {
   judgeAnAgentsChoice,
@@ -1248,7 +1247,6 @@ import {
 import {
   isFinal,
   newNoticeId,
-  newSalt,
   NO_CUTS_KEPT,
   withoutOldCuts,
   type CutKind,
@@ -3494,7 +3492,7 @@ interface HostedSession {
    */
   aPersonsWordsOpenedIt: boolean
   /** The exact committed pure person turn; absent during a provider handoff. */
-  moveRequestTurn: { ordinal: number; generation: number; digest: string } | null
+  moveRequestTurn: { id: string } | null
   moveRequestRowPending: boolean
   moveRequestHandoff: object | null
   /**
@@ -8257,6 +8255,7 @@ export class RuntimeHost implements LiveHost {
   private readonly usage = new Map<Provider, Map<string, KeptReading>>()
   /** The Claude account this computer was last seen on, and the id its readings carry. */
   private knownAccount: KnownAccount | null = null
+  private knownAccounts: readonly KnownAccount[] = []
   /**
    * The sign-in each provider's latest reading was read on, as the conversation that reported it
    * tagged it ({@link SessionHandle.signInTag}), and when the latest life that reported on that
@@ -9426,7 +9425,7 @@ export class RuntimeHost implements LiveHost {
       if (record === undefined || record.noticeId !== noticeId || isFinal(record.state)) return
       // ⚑ Only ids of one kind are compared: a Claude account named by its email is not told apart
       // from one named by its launch credential, whose account read may only have failed.
-      const idKind = (id: string): string => id.slice(0, id.indexOf(':'))
+      const idKind = (id: string): string => id.slice(0, id.lastIndexOf(':'))
       const comparable =
         record.expected !== null &&
         identity !== null &&
@@ -10149,9 +10148,8 @@ export class RuntimeHost implements LiveHost {
 
   /**
    * 🔴 **The account a life runs on, as an id compared and never shown** — from what that life was
-   * launched on, so it never changes for that life: a Claude account by a digest of the email and
-   * organisation its provider names, keyed with this app's own salt; else the tag the life's runtime
-   * makes of the credential or the account it launched on. ⚑ Kept for its conversation once known,
+   * launched on, so it never changes for that life: the existing persisted account record,
+   * or the runtime's opaque credential/account revision with its own namespace. ⚑ Kept for its conversation once known,
    * for the next launch to read if a crash cuts this life. ⚑ `null` when it cannot be told within
    * {@link accountWaitMs}. ⛔ It never rejects.
    */
@@ -10182,22 +10180,49 @@ export class RuntimeHost implements LiveHost {
   /** Identity encodings already kept on disk remain the host's responsibility. */
   private identityFromFacts(provider: Provider, fact: IdentityFact | undefined): string | null {
     if (fact == null) return null
-    return fact.kind === 'account'
-      ? `${provider}:${this.digestOfAnAccount(fact.account.email, fact.account.organization)}`
-      : `${provider}${fact.launchOnly === true ? '-launch' : ''}:${fact.tag}`
+    if (fact.kind === 'account') {
+      const known = this.accountRecordFor(fact.account)
+      return known === null ? null : `${provider}:account:${known.id}`
+    }
+    return `${provider}:${fact.launchOnly === true ? 'launch-credential' : 'sign-in'}:${fact.tag}`
   }
 
-  /** ⚑ A Claude account's id: a digest keyed with this app's own salt. No email is kept. */
-  private digestOfAnAccount(email: string, organization: string | undefined): string {
-    let salt = this.cutsKept.salt
-    if (salt === null) {
-      salt = newSalt()
-      if (!this.keepTheCuts({ ...this.cutsKept, salt })) this.cutsKept = { ...this.cutsKept, salt }
+  /** An exact recorded account, absent, or ambiguous; never infer it from the latest launch. */
+  private recordedAccountFor(said: {
+    email: string
+    organization?: string
+  }): KnownAccount | null | undefined {
+    const matches = this.knownAccounts.filter(
+      (one) => one.email === said.email && one.organization === said.organization,
+    )
+    if (new Set(matches.map((one) => one.id)).size > 1) return null
+    const known = matches[0]
+    if (
+      known !== undefined &&
+      this.knownAccounts.some(
+        (one) =>
+          one.id === known.id &&
+          (one.email !== known.email || one.organization !== known.organization),
+      )
+    )
+      return null
+    return known
+  }
+
+  /** Reuse the existing account record before any launch identity or usage is frozen. */
+  private accountRecordFor(said: { email: string; organization?: string }): KnownAccount | null {
+    const known = this.recordedAccountFor(said)
+    if (known === null) return null
+    if (known !== undefined) {
+      this.keepTheAccount(known)
+      return known
     }
-    return createHmac('sha256', salt)
-      .update(`${email}\n${organization ?? ''}`)
-      .digest('hex')
-      .slice(0, 32)
+    const learned: KnownAccount = {
+      id: randomBytes(16).toString('hex'),
+      email: said.email,
+      ...(said.organization === undefined ? {} : { organization: said.organization }),
+    }
+    return this.keepTheAccount(learned) ? learned : null
   }
 
   /** ⚑ What was kept of deleted conversations' cuts and lives, let go. ⛔ It never throws. */
@@ -11381,7 +11406,7 @@ export class RuntimeHost implements LiveHost {
   private theServiceAgent(
     profile: string,
   ):
-    | { readonly is: 'normal' | 'unknown' }
+    | { readonly is: 'normal' | 'unknown'; readonly why?: string }
     | { readonly is: 'service'; readonly identity: string; readonly conversation: string | null } {
     const folded = foldProfileName(profile)
     const identity = this.deps.store.agentIdentities().find((one) => one.slug === folded)
@@ -11389,7 +11414,7 @@ export class RuntimeHost implements LiveHost {
     const born = (): boolean =>
       this.deps.store.servicesBorn().some((one) => one.identity === identity.id)
     const read = this.profileExecution
-    if (!read.readable) return { is: born() ? 'unknown' : 'normal' }
+    if (!read.readable) return { is: born() ? 'unknown' : 'normal', why: read.why }
     const kind = kindOf(read, this.profileExecutionConflicts, identity.id, identity.createdAt)
     if (kind === 'unknown') return { is: born() ? 'unknown' : 'normal' }
     if (kind === 'normal') return { is: 'normal' }
@@ -14152,21 +14177,8 @@ export class RuntimeHost implements LiveHost {
     if (this.isAServicesAgent(input.profileId ?? DEFAULT_PROFILE_ID)) {
       throw new Error(NOT_STARTED_A_SERVICE)
     }
-    // ⚠️ **This pair is asked FIRST of the two, so BOTH guards are reachable.** With the token
-    // check above it, a call that made both mistakes could only ever report one of them and this
-    // line would be one no mutation can kill.
     if (spawn !== null && commandedBy !== null) {
       throw new Error('a spawn carries its own commanding caller; do not pass a second one')
-    }
-    // ⛔ **The forged-token check, and it is the reason `wasAdmitted` exists** (341 §2, applied to
-    // this door). `as unknown as AdmittedSpawn` type-checks, and a tool written in a hurry is
-    // exactly where such a cast appears. Nothing is reserved above this line, so a refusal here
-    // leaves no session, no home and no profile — which is criterion 10's *"and no idle session
-    // created"* holding for the case that got past the schema entirely.
-    if (spawn !== null && !wasAdmitted(spawn)) {
-      throw new Error(
-        'a spawn must be admitted by the rails before a session can be created for it',
-      )
     }
     // One source for the answer, never two — see the parameter above.
     const commander = spawn === null ? commandedBy : spawn.commandedBy
@@ -17997,13 +18009,8 @@ export class RuntimeHost implements LiveHost {
     const original = this.deps.store.atomically(() => {
       const current = session.moveRequestTurn
       if (current === null) return null
-      const message = originalMoveRequest(this.deps.store, session.id, current.ordinal)
-      const generation = this.deps.store.generationOf?.(session.id)
-      return message === null ||
-        generation !== current.generation ||
-        moveRequestDigest(message) !== current.digest
-        ? null
-        : { message, generation, digest: current.digest }
+      const message = originalMoveRequest(this.deps.store, session.id, current.id)
+      return message === null ? null : { message, id: current.id }
     })
     const destination = this.theConversationAddressed(moveTo, by, session.id, 'messaging')
     if (original === null || destination === session.id) {
@@ -18026,9 +18033,7 @@ export class RuntimeHost implements LiveHost {
       move: {
         destination,
         destinationName: this.nameByItsWork(destination),
-        sourceOrdinal: original.message.ordinal,
-        sourceGeneration: original.generation,
-        sourceDigest: original.digest,
+        sourceTurnId: original.id,
       },
     }
   }
@@ -20912,12 +20917,10 @@ export class RuntimeHost implements LiveHost {
               since: folded.stalledAt,
             }
           }
-          if (issue !== null && line?.waiting === true)
+          if (issue !== null && line?.waiting === true && line.revision !== undefined)
             issue = {
               ...issue,
-              waitKey: createHash('sha256')
-                .update(JSON.stringify({ on: line.on ?? null, at: line.at }))
-                .digest('hex'),
+              waitKey: `${owner}:${this.deps.store.theActiveGeneration(owner)}:${line.revision}`,
             }
           const recovery = this.recoveryForPiece(work, driven, logins)
           const recovering = recovery?.kind === 'recovery-pending'
@@ -24974,13 +24977,25 @@ export class RuntimeHost implements LiveHost {
         selected,
       )
     } catch (cause) {
-      throw new Error(BUILT_IN_SKILLS_FAILURE, { cause })
+      throw new Error(`${BUILT_IN_SKILLS_FAILURE} ${String(cause)}`, { cause })
     }
-    const isCurrent = () =>
-      this.whyNotOurs(slot) === null &&
-      !slot.launch.signal.aborted &&
-      (selection?.isCurrent() ?? true) &&
-      JSON.stringify(permissions()) === JSON.stringify(selected)
+    const isCurrent = () => {
+      const current = permissions()
+      const grantsRemain = selection
+        ? selection.skills.every(
+            (skill) =>
+              skill.requirement === null ||
+              current.canCreateAgents ||
+              (skill.requirement === 'create-agents-or-coordinator' && current.isCoordinator),
+          )
+        : !selected.canCreateAgents || current.canCreateAgents
+      return (
+        this.whyNotOurs(slot) === null &&
+        !slot.launch.signal.aborted &&
+        grantsRemain &&
+        (selection?.isCurrent() ?? true)
+      )
+    }
     const installed = await this.deps.prepareBuiltInSkills({
       provider,
       providerHome,
@@ -24991,7 +25006,7 @@ export class RuntimeHost implements LiveHost {
       ...(pack ? { pack } : {}),
     })
     if (!isCurrent())
-      throw new Error('Built-in skills could not be prepared. Nothing was overwritten.')
+      throw new Error('The skill launch was cancelled or its profile is no longer available.')
     return sharedRoot ? { ...installed, sharedRoot } : installed
   }
 
@@ -27715,21 +27730,17 @@ export class RuntimeHost implements LiveHost {
     if (moveHandoff !== undefined && session.moveRequestHandoff === moveHandoff) {
       session.moveRequestTurn = null
       session.moveRequestRowPending = false
-      const generation = this.deps.store.generationOf?.(session.id)
+      const turn = this.deps.store.theOpenTurn(session.id)
       if (
         committedTurn.type === 'user_turn' &&
         session.recordingFailure === null &&
-        generation !== undefined &&
+        turn !== null &&
         committedTurn.parts === undefined &&
         TURN_ATTRIBUTION_KEYS.every(
           (key) => key === 'movedFrom' || committedTurn[key] === undefined,
         )
       ) {
-        session.moveRequestTurn = {
-          ordinal: written.ordinal,
-          generation,
-          digest: moveRequestDigest({ ...written, event: committedTurn }),
-        }
+        session.moveRequestTurn = { id: turn.id }
       }
     }
     this.emitOurs(session, written)
@@ -27989,7 +28000,6 @@ export class RuntimeHost implements LiveHost {
     if (!this.runsNow(sessionId) && theSurfaceAsking(by) !== null) {
       return this.send(sessionId, text, by, attachments)
     }
-    this.aPersonsWindowTakesIt(sessionId, theSurfaceAsking(by))
     const session = this.requireToCommand(sessionId, by)
     // ⛔ **The message capability, because this verb delivers words** (374). The interrupt half
     // needs no grant: `requireToCommand` above made this caller the conversation's commander, and
@@ -28347,8 +28357,6 @@ export class RuntimeHost implements LiveHost {
     let heldForServices: boolean
     try {
       now = this.takesADeliveryNow(sessionId)
-      // ⚑ **R5** — a person writing to a conversation nobody spawned that runs with no window takes it.
-      if (now) this.aPersonsWindowTakesIt(sessionId, theSurfaceAsking(by))
       heldForServices = !now && this.servicesHoldItBack(sessionId, by)
     } catch (error) {
       return Promise.reject(error)
@@ -34180,8 +34188,6 @@ export class RuntimeHost implements LiveHost {
     decision: PermissionDecision,
     by: Caller,
   ): Promise<ProviderAnswerAck> {
-    // ⚑ **D-017 · R5** — a person answering a card in a conversation nobody spawned takes it.
-    this.aPersonsWindowTakesIt(sessionId, theSurfaceAsking(by))
     const over = this.aPersonsAnswerComesTooLate(sessionId, requestId, by)
     if (over !== null) return over
     const session = this.requireToAnswer(sessionId, by, requestId)
@@ -34404,13 +34410,12 @@ export class RuntimeHost implements LiveHost {
       )
     )
       return { outcome: 'refused', reason: MOVE_WORDS.unavailable }
-    const original = originalMoveRequest(this.deps.store, input.sessionId, offer.sourceOrdinal)
-    if (
-      original === null ||
-      this.deps.store.generationOf?.(input.sessionId) !== offer.sourceGeneration ||
-      moveRequestDigest(original) !== offer.sourceDigest
+    const original = originalMoveRequest(
+      this.deps.store,
+      input.sessionId,
+      offer.sourceTurnId ?? offer.sourceOrdinal,
     )
-      return { outcome: 'refused', reason: MOVE_WORDS.noOriginal }
+    if (original === null) return { outcome: 'refused', reason: MOVE_WORDS.noOriginal }
     if (this.runsNow(offer.destination)) {
       try {
         this.aPersonsWindowTakesIt(offer.destination, theSurfaceAsking(by))
@@ -34532,8 +34537,6 @@ export class RuntimeHost implements LiveHost {
         by,
       )
     }
-    // ⚑ **D-017 · R5** — a person answering a card in a conversation nobody spawned takes it.
-    this.aPersonsWindowTakesIt(sessionId, theSurfaceAsking(by))
     const over = this.aPersonsAnswerComesTooLate(sessionId, requestId, by)
     if (over !== null) return over
     const session = this.requireToAnswer(sessionId, by, requestId)
@@ -34577,7 +34580,10 @@ export class RuntimeHost implements LiveHost {
     }
     const slot = this.slots.get(askedBy)
     const aPersons = aPersonsSince(request) !== null
-    const inTheirWindow = slot !== undefined && mayAnswerAsAHuman(slot, by)
+    const inTheirWindow =
+      slot !== undefined &&
+      ((aPersonTypedIt(by) && (by as RuntimeEventSink).aPersonIsBehindIt === true) ||
+        mayAnswerAsAHuman(slot, by))
     if (!aPersonIsAsking(by) || (!aPersons && !inTheirWindow)) {
       return {
         outcome: 'refused',
@@ -35434,7 +35440,7 @@ export class RuntimeHost implements LiveHost {
     // defect with a different actor. ⚑ What the ledger does hold for a commanded turn is the turn
     // itself; naming the agent that asked for it needs an event that says so, and inventing one here
     // would be this dispatch writing the tools dispatch's vocabulary.
-    if (slot && !mayControl(slot, by)) return
+    if (slot && !aPersonTypedIt(by) && !mayControl(slot, by)) return
     const session = slot?.session
     if (!session) return
     this.publishOurs(session, { type: 'user_command', command, ...(target ? { target } : {}) })
@@ -35909,11 +35915,13 @@ export class RuntimeHost implements LiveHost {
     const fact = providerAuthPolicies[session.provider].identity.limit(session.handle)
     if (fact === null) return null
     if (fact.kind === 'tag') return { id: fact.tag }
+    const frozen = this.identityKnown.get(session)
+    const prefix = `${session.provider}:account:`
+    if (frozen?.startsWith(prefix)) return { id: frozen.slice(prefix.length) }
     const said = fact.account
-    const known = this.knownAccount
-    if (known !== null && known.email === said.email && known.organization === said.organization) {
-      return { id: known.id }
-    }
+    const known = this.recordedAccountFor(said)
+    if (known === null) return null
+    if (known !== undefined) return { id: known.id, learned: known }
     const learned: KnownAccount = {
       id: randomBytes(16).toString('hex'),
       email: said.email,
@@ -35934,7 +35942,9 @@ export class RuntimeHost implements LiveHost {
     const kept = this.deps.accountsKept
     if (kept === undefined) return
     try {
-      this.knownAccount = legacyAccountRecordFormat.accountIn(kept.read())
+      const record = kept.read()
+      this.knownAccount = legacyAccountRecordFormat.accountIn(record)
+      this.knownAccounts = legacyAccountRecordFormat.accountsIn(record)
     } catch (error) {
       console.warn(
         `runtime host could not read the account usage was read on: ${errorMessage(error)}`,
@@ -35946,14 +35956,18 @@ export class RuntimeHost implements LiveHost {
    * Hold `account` as the one this computer is on now, and keep it. ⛔ A write that fails is said
    * in the log without a word of what was written, and changes nothing in this run.
    */
-  private keepTheAccount(account: KnownAccount): void {
-    this.knownAccount = account
+  private keepTheAccount(account: KnownAccount): boolean {
     try {
-      this.deps.accountsKept?.write(legacyAccountRecordFormat.forAccount(account))
+      const record = legacyAccountRecordFormat.forAccount(account, this.knownAccounts)
+      // In-memory hosts can attribute usage; they cannot claim a durable cut identity.
+      if (this.deps.accountsKept === undefined) return false
+      this.deps.accountsKept.write(record)
+      this.knownAccount = account
+      this.knownAccounts = legacyAccountRecordFormat.accountsIn(record)
+      return true
     } catch (error) {
-      console.warn(
-        `runtime host could not keep the account usage was read on: ${errorMessage(error)}`,
-      )
+      console.warn(`runtime host could not keep the account record: ${errorMessage(error)}`)
+      return false
     }
   }
 
@@ -40249,11 +40263,7 @@ export class RuntimeHost implements LiveHost {
         detail: { problems: [OWN_NOTES_BASELINE_PROBLEM] },
       }
     const page = this.deps.store.currentOwnNotesOf(author.profile)
-    if (
-      page === null ||
-      (page.current?.version ?? 0) !== said.expectedVersion ||
-      (page.current?.text ?? '') !== said.currentText
-    )
+    if (page === null || (page.current?.version ?? 0) !== said.expectedVersion)
       return {
         ok: false,
         rail: 'malformed-request',
@@ -40297,12 +40307,7 @@ export class RuntimeHost implements LiveHost {
     const actor = whoDidIt(by)
     if (actor.who !== 'a-person' || !ownNotesWriteFits(said)) return null
     const page = this.deps.store.currentOwnNotesOf(profile)
-    if (
-      page === null ||
-      (page.current?.version ?? 0) !== said.expectedVersion ||
-      (page.current?.text ?? '') !== said.currentText
-    )
-      return null
+    if (page === null || (page.current?.version ?? 0) !== said.expectedVersion) return null
     const written = this.deps.store.writeOwnNotes(profile, said, actor, this.now())
     if (written === null) return null
     this.theWorldMoved('agents')
@@ -40315,12 +40320,7 @@ export class RuntimeHost implements LiveHost {
       return null
     const current = this.deps.store.currentOwnNotesOf(profile)?.current
     if (current == null || current.version !== expectedVersion) return null
-    const written = this.deps.store.undoOwnNotes(
-      profile,
-      { expectedVersion, currentText: current.text },
-      actor,
-      this.now(),
-    )
+    const written = this.deps.store.undoOwnNotes(profile, { expectedVersion }, actor, this.now())
     if (written === null) return null
     this.theWorldMoved('agents')
     return this.agentOwnNotes(profile)
@@ -40468,7 +40468,6 @@ export class RuntimeHost implements LiveHost {
     if (
       !Number.isSafeInteger(said.expectedVersion) ||
       said.expectedVersion < 0 ||
-      typeof said.currentText !== 'string' ||
       typeof said.text !== 'string' ||
       said.text.length > OWN_INSTRUCTIONS_CHARS ||
       typeof said.why !== 'string' ||
@@ -40480,15 +40479,12 @@ export class RuntimeHost implements LiveHost {
         rail: 'malformed-request',
         detail: {
           problems: [
-            'read the current rules, provide their version and full text, and say why within the size limit',
+            'read the current rules, provide their version, and say why within the size limit',
           ],
         },
       }
     const previous = this.deps.store.ownInstructionsOf(profile).versions[0]
-    if (
-      (previous?.version ?? 0) !== said.expectedVersion ||
-      (previous?.text ?? '') !== said.currentText
-    )
+    if ((previous?.version ?? 0) !== said.expectedVersion)
       return {
         ok: false,
         rail: 'malformed-request',
@@ -40505,7 +40501,6 @@ export class RuntimeHost implements LiveHost {
         said: said.why.trim(),
         broughtBack: null,
         expectedVersion: said.expectedVersion,
-        currentText: said.currentText,
       },
       this.now(),
     )
@@ -42765,7 +42760,6 @@ export class RuntimeHost implements LiveHost {
         entry: command.entry,
         act: command.act,
         text: command.text,
-        fingerprint: command.fingerprint,
         confirmed: command.confirmed,
       },
       whoDidIt(by),
@@ -42777,6 +42771,7 @@ export class RuntimeHost implements LiveHost {
       : {
           done: false,
           refused: memoryChangeRefusal(result?.ok === false ? result.reason : undefined),
+          ...(result?.ok === false && result.cause ? { cause: result.cause } : {}),
           reading,
         }
   }
@@ -42798,6 +42793,7 @@ export class RuntimeHost implements LiveHost {
       : {
           done: false,
           refused: memoryChangeRefusal(result?.ok === false ? result.reason : undefined),
+          ...(result?.ok === false && result.cause ? { cause: result.cause } : {}),
           reading,
         }
   }
@@ -42821,6 +42817,7 @@ export class RuntimeHost implements LiveHost {
       : {
           done: false,
           refused: memoryChangeRefusal(result?.ok === false ? result.reason : undefined),
+          ...(result?.ok === false && result.cause ? { cause: result.cause } : {}),
           reading,
         }
   }
@@ -42857,14 +42854,12 @@ export class RuntimeHost implements LiveHost {
     const current = this.deps.store.ownInstructionsOf(profileSlug).versions[0]
     const expected = baseline ?? {
       expectedVersion: current?.version ?? 0,
-      currentText: current?.text ?? '',
     }
     const written = this.deps.store.writeOwnInstructions(
       {
         profileSlug,
         text,
         expectedVersion: expected.expectedVersion,
-        currentText: expected.currentText,
         // ⛔ **`a-person` because the DOOR proved it** — `requireAPerson` stands in front of this
         // verb on the wire, so no other value is reachable here. ⚑ The relay and the approval have
         // their own entry points and write their own words.
@@ -43819,38 +43814,9 @@ export class RuntimeHost implements LiveHost {
     return { sessionId: id }
   }
 
-  /**
-   * ⚑ **D-017b · a person's message from a conversation's full view, and the start it causes, in
-   * ONE act** — every conversation opens in one view whether or not anything runs it, and what a
-   * person sends there continues it (D-017 · R1, R5, R10).
-   *
-   * ⚑ **The order, and why each step is where it is:**
-   *  1. **One such message at a time** ({@link firstMessagesInFlight}): a second while the first is
-   *     on its way in is answered `already-starting`, and nothing is asked twice.
-   *  2. **Every refusal that is a fact about the MESSAGE, before anything starts** — the words, and
-   *     what is attached against the disk ({@link recheckHandedPaths}, the send's own check). ⛔ And
-   *     whether another window has it open, asked before the disk is read and AGAIN after (735 M4),
-   *     so a window that opened it during that read is refused on its own, never queued behind the
-   *     arrivals to be told the same.
-   *  3. **Where the words go, asked inside the conversation's arrivals entry**
-   *     ({@link afterWhatArrivedFirst}), so a delivery that arrives meanwhile waits behind them:
-   *     - another window has it open → `held-elsewhere`, and nothing is started;
-   *     - this window already holds it running (a start an answer or a send of its own caused, or
-   *       the one that took the place of a conversation that could never be reopened) → it is
-   *       attached, and the words go;
-   *     - it runs with no window → it is taken for this window ({@link mayClaim}, the press a
-   *       person makes in its view), and the words go;
-   *     - otherwise the person's own start ({@link reopenForAPerson}): a stop still settling is
-   *       waited out, a conversation that could never be reopened is replaced (R10), and the
-   *       window owns what starts.
-   *  4. **The send is the person's own send** ({@link sendAs}) — a lost race is held, as any send's is.
-   *  5. ⛔ **A refusal only the started conversation could make** stops what THIS act started
-   *     ({@link undoAStartNoMessageReached}); one it attached or took ran before the message, and
-   *     is handed over running.
-   *
-   * ⚑ **Answered, never rejected, for every refusal this door makes** ({@link FirstMessageAnswer}),
-   * and each is logged whole. ⛔ The wire's own refusals — a malformed command, the quit's door —
-   * still reject, before this.
+  /** Send in arrival order, starting a stopped conversation when necessary.
+   * A running conversation keeps its stream owner; a recorded view receives an updated record.
+   * Only a provider started by this act may be undone when its first send fails.
    */
   async startAndSend(
     sessionId: string,
@@ -43889,23 +43855,48 @@ export class RuntimeHost implements LiveHost {
       if (!hasSomethingToSend(text, attachments.length)) {
         return notSent('before-the-start', NOTHING_TO_SEND)
       }
-      if (this.heldByAnotherWindow(at, sink)) return notSent('held-elsewhere', HELD_ELSEWHERE)
       const cwd = this.slots.get(at)?.session?.cwd ?? this.deps.store.recordedOne(at)?.cwd ?? null
       if (cwd !== null) {
         const handed = await recheckHandedPaths(attachments, cwd)
         if ('refusal' in handed) return notSent('before-the-start', handed.refusal)
       }
-      // ⛔ **Asked AGAIN after the disk read** (735 M4): a window that opened it during that read is
-      // seen here, so these words are refused on their own — never queued behind whatever the
-      // conversation's arrivals already carry, only to be told the same thing when that finishes.
-      if (this.heldByAnotherWindow(at, sink)) return notSent('held-elsewhere', HELD_ELSEWHERE)
       // ⚑ **D-017 · R1 — the start and this message are ONE entry in the conversation's arrivals**
       // ({@link afterWhatArrivedFirst}): a delivery that arrives while it starts waits behind this
       // message, so the message that caused the start goes first. ⛔ Hence {@link sendAs} and not
       // {@link send} below: `send` would join the chain behind this very entry and wait on it.
       return await this.afterWhatArrivedFirst(at, async (): Promise<FirstMessageAnswer> => {
-        // ⚑ **Asked once more**: a delivery that arrived first may have started it meanwhile.
-        if (this.heldByAnotherWindow(at, sink)) return notSent('held-elsewhere', HELD_ELSEWHERE)
+        const inFlight = this.startsInFlight.get(at)
+        if (inFlight !== undefined) {
+          try {
+            await inFlight
+          } catch {
+            // The ordinary reopen below reports the launch failure.
+          }
+        }
+        const slot = this.slots.get(at)
+        if (slot?.session != null && !onItsWayOut(slot) && !mayControl(slot, sink)) {
+          const session = slot.session
+          try {
+            await this.sendAs(at, text, sink, attachments, {
+              facts: {},
+              ifItLosesTheRace: 'hold-it',
+            })
+            return { sent: this.recordedHandover(at, sink) }
+          } catch (error) {
+            // The refusal describes the same life that was asked to send, if it still runs.
+            const current = this.slots.get(at)
+            const stillHere =
+              current === slot &&
+              current.session === session &&
+              !onItsWayOut(current) &&
+              session.handle.status() !== 'ended'
+            return notSent('after-the-start', aSentence(errorMessage(error)), error, {
+              running: stillHere
+                ? { ...this.recordedHandover(at, sink), liveness: livenessFor(session) }
+                : null,
+            })
+          }
+        }
         const running =
           this.attachHeldSession(at, sink, 'attach') ?? this.attachHeldSession(at, sink, 'claim')
         let resumed: ResumedSession
@@ -43932,22 +43923,6 @@ export class RuntimeHost implements LiveHost {
     } finally {
       this.firstMessagesInFlight.delete(sessionId)
     }
-  }
-
-  /**
-   * ⚑ **D-017b · another window has this conversation open**: running, owned, and not by this one —
-   * the one place a person's message from a conversation's view is refused before anything starts.
-   * ⚠️ A slot still starting or on its way out is not: the person's start joins or waits it out.
-   */
-  private heldByAnotherWindow(sessionId: string, sink: RuntimeEventSink): boolean {
-    const slot = this.slots.get(sessionId)
-    return (
-      slot !== undefined &&
-      slot.session !== null &&
-      !onItsWayOut(slot) &&
-      slot.ownerId !== null &&
-      !mayControl(slot, sink)
-    )
   }
 
   /**
@@ -45352,13 +45327,14 @@ export class RuntimeHost implements LiveHost {
       hasACommander: parent !== null,
       startedWithoutAWindow: parent !== null,
       mayHandItBack: false,
-      cannotTakeAMessage: heldElsewhere
-        ? HELD_ELSEWHERE
-        : aMessageContinuesIt(row, this.theServiceOf(sessionId) !== null)
-          ? null
-          : describeUnavailable('cannot-be-reopened', {
-              refusal: row.unresumableReason ?? undefined,
-            }),
+      cannotTakeAMessage:
+        heldElsewhere && !sink.aPersonIsBehindIt
+          ? HELD_ELSEWHERE
+          : aMessageContinuesIt(row, this.theServiceOf(sessionId) !== null)
+            ? null
+            : describeUnavailable('cannot-be-reopened', {
+                refusal: row.unresumableReason ?? undefined,
+              }),
       settingsFixed:
         slot !== undefined ||
         whyNoSettingForItsNextStart(row, this.replacedBy, this.theServiceOf(sessionId) !== null) !==
@@ -45541,11 +45517,15 @@ export class RuntimeHost implements LiveHost {
         'hand a conversation back',
       )
     }
-    // ⚑ **Borrowed whole, and the borrow is exact** — the same refusal `send`, `close` and every
-    // other strict-owner gesture reads, so a stranger is told one thing whether it tried to drive
-    // this conversation or to give it away. ⚠️ It is also what makes the `null` owner arm right:
-    // a conversation nobody holds is `held-by-nobody`, which is TRUE of a hand-back asked twice.
-    this.assertMayControl(slot, by)
+    // Handing a stream back belongs to its owner, even when another person window may send.
+    if (!mayControl(slot, by))
+      throw this.refusalTranslated(
+        new SessionUnavailable(
+          slot.ownerId === null ? 'held-by-nobody' : 'not-yours',
+          `session ${slot.id} is held for ${ownerName(slot.ownerId)}, and ${callerName(by)} asked to hand it back`,
+        ),
+        'act on a session',
+      )
     if (!mayHandBack(slot, by)) {
       throw this.refusalTranslated(
         new SessionUnavailable(
@@ -46671,39 +46651,17 @@ export class RuntimeHost implements LiveHost {
     return slot.session
   }
 
-  /**
-   * Refuse a gesture from a surface this conversation was not given to (203).
-   *
-   * The diagnostic names both owners because that is what a log is for; the SENTENCE is keyed by
-   * the reason alone and carries no id — 100's split, on the class 195 found.
-   */
+  /** Person windows can command any conversation without changing its stream owner. */
   private assertMayControl(slot: SessionSlot, by: Caller): void {
-    if (mayControl(slot, by)) return
+    if (
+      (aPersonTypedIt(by) && (by as RuntimeEventSink).aPersonIsBehindIt === true) ||
+      mayControl(slot, by)
+    )
+      return
     throw this.refusalTranslated(
       new SessionUnavailable(
-        // 🔴 **The same absent window, in the gesture a person reaches for when the other two
-        // fail** (421, HO-023 §2.3). `not-yours` says the conversation *"belongs to another window …
-        // switch to that window to answer it, send to it, or close it"*, and for `ownerId === null`
-        // there is no other window and no window at all: 062's loser is being told to go somewhere
-        // that does not exist. ⚠️ **One `throw`, two reasons, and deliberately not two throws** —
-        // `send-refusals.ts`'s census counts the throws on the send path, and what changed here is
-        // which sentence one refusal reads, not how many refusals there are.
-        //
-        // ⛔ **The policy this encodes, and 421 §2.1 asked for it out loud: a person takes the
-        // conversation over and THEN closes it.** Widening `mayControl` for a null owner was the
-        // one-line alternative and it is the wrong line: this predicate answers *"whose stream is
-        // this"* and *"whose departure ends it"* as well as *"who may drive it"* (340), so admitting
-        // every window to an unowned conversation would hand a stranger the send, the approval and
-        // the interrupt on a conversation an agent is commanding — and its explicit `close` with
-        // them. ⚠️ **The third clause here used to read *"and would make a window's reload end
-        // it"*, and `523` found it false as a mechanism**: {@link closeSessionsForOwner} selects on
-        // `slot.ownerId !== ownerId` and never asks this predicate, so an unowned slot is walked
-        // past whatever `mayControl` answers. ⛔ The argument stands on the two clauses that are
-        // true. The claim is one press away, on the row `421` fixed — and since `523` the way back
-        // out is {@link releaseSession}.
         slot.ownerId === null ? 'held-by-nobody' : 'not-yours',
-        `session ${slot.id} is held for ${ownerName(slot.ownerId)}, and ${callerName(by)} asked ` +
-          'to control it',
+        `session ${slot.id} is held for ${ownerName(slot.ownerId)}, and ${callerName(by)} asked to control it`,
       ),
       'act on a session',
     )
@@ -46764,7 +46722,11 @@ export class RuntimeHost implements LiveHost {
    * refused here for exactly that reason.
    */
   private assertMayAnswer(slot: SessionSlot, by: Caller, requestId: string): void {
-    if (this.aPersonAnswersWhereNobodyHolds(slot, requestId, by)) return
+    if (
+      (aPersonTypedIt(by) && (by as RuntimeEventSink).aPersonIsBehindIt === true) ||
+      this.aPersonAnswersWhereNobodyHolds(slot, requestId, by)
+    )
+      return
     if (mayAnswerAsAHuman(slot, by)) return
     if (!mayCommand(this.commandedNow(slot), by)) this.assertMayControl(slot, by)
     throw this.refusalTranslated(

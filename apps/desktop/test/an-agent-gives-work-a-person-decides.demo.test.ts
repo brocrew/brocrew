@@ -135,8 +135,8 @@ describe('340 §5 · an agent gives the work, a person decides what it may do', 
     windowB = new DemoWindow(2)
     windowC = new DemoWindow(3)
     storeA = createRendererStore(windowA.bridge(host))
-    agent = windowB.bridge(host)
-    outsider = windowC.bridge(host)
+    agent = windowB.bridge(host, false)
+    outsider = windowC.bridge(host, false)
   })
 
   afterEach(async () => {
@@ -172,7 +172,7 @@ describe('340 §5 · an agent gives the work, a person decides what it may do', 
     const spawned = await host.createSession(
       { provider: 'claude', cwd: userData, approvalMode: 'ask' },
       null,
-      { ownerId: 'webContents:2' },
+      { ownerId: 'mcp:fixture-2' },
     )
     // Nobody's, and both windows' rails say so. Without this reading, step 5's rail is unfalsifiable.
     expect(host.unclaimedSessions().map((entry) => entry.sessionId)).toEqual([spawned.sessionId])
@@ -280,7 +280,7 @@ describe('340 §5 · an agent gives the work, a person decides what it may do', 
 
     // ── the control ──────────────────────────────────────────────────────────────────────────
     //
-    // ⛔ **A third window has been listening the whole time and was given nothing**, which is what
+    // ⛔ **A separate non-person caller has been listening the whole time and was given nothing**, which is what
     // makes every "it arrived" above a statement about the two entitlements rather than about this
     // session being reachable by anybody who asks.
     expect(
@@ -295,7 +295,7 @@ describe('340 §5 · an agent gives the work, a person decides what it may do', 
     const spawned = await host.createSession(
       { provider: 'claude', cwd: userData, approvalMode: 'ask' },
       null,
-      { ownerId: 'webContents:2' },
+      { ownerId: 'mcp:fixture-2' },
     )
     // ⛔ **The control that makes every allowed gesture in this file about the commander.** The
     // SAME `agent.send`, on a session spawned without that third argument, is refused — so what

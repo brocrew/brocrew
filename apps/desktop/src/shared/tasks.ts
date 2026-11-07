@@ -1367,6 +1367,8 @@ export const TASK_IS_OPEN: Readonly<Record<TaskState, boolean>> = {
  * 🔴 **D-016 · one status line about a piece, and who set it when** — {@link PieceRow.statusLine}.
  */
 export interface StatusLine {
+  /** Source event ordinal in the conversation ledger. */
+  readonly revision?: number
   readonly text: string
   /** The conversation that set it — its owner for a reply's summary. */
   readonly by: string
@@ -3804,6 +3806,7 @@ export function derivePieces(
                   text: event.line,
                   by: event.by,
                   at: entry.at,
+                  revision: entry.ordinal,
                   ...theWaitItMarks(event),
                 },
               }

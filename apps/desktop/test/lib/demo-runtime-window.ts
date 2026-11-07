@@ -54,8 +54,12 @@ export class DemoWindow {
   }
 
   /** The renderer end: a `RuntimeBridge` built by the SAME rule the preload builds one by. */
-  bridge(host: RuntimeHost): RuntimeBridge {
-    const sink = webContentsSink(this as unknown as WebContents)
+  bridge(host: RuntimeHost, aPersonIsBehindIt = true): RuntimeBridge {
+    const sink = {
+      ...webContentsSink(this as unknown as WebContents),
+      ...(!aPersonIsBehindIt ? { ownerId: `mcp:fixture-${this.id}` } : {}),
+      aPersonIsBehindIt,
+    }
     const subscriptions = {
       onEvent: (fn: (message: RuntimeEventMessage) => void) => {
         this.onEvent.push(fn)

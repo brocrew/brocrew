@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto'
 import { localClockReading } from '../../shared/local-time'
 import {
   TEAM_PROFILE_GRAPH_BOUNDS as B,
@@ -10,7 +9,6 @@ import {
 type Window = {
   serial: number
   reader: TeamProfileGraphReader
-  nonce: string
   closing?: Promise<void>
   expiry?: ReturnType<typeof setTimeout>
 }
@@ -22,7 +20,6 @@ type Pending = {
 }
 /** Workspace admission and native permits remain owned until actual worker exit. */
 export class TeamProfileGraphWindows {
-  private readonly workspaceNonce = randomUUID()
   private readonly windows = new Map<string, Window>()
   private readonly admissions = new Map<string, number>()
   private readonly queue: Pending[] = []
@@ -103,7 +100,7 @@ export class TeamProfileGraphWindows {
           this.queue.push(pending)
         })
       }
-      window = { serial: 0, reader: this.start(this.retry, this.failure), nonce: randomUUID() }
+      window = { serial: 0, reader: this.start(this.retry, this.failure) }
       this.windows.set(owner, window)
     }
     const owned = window
@@ -121,8 +118,6 @@ export class TeamProfileGraphWindows {
     let result: TeamProfileGraphResult
     try {
       result = await owned.reader.read(request, {
-        workspaceNonce: this.workspaceNonce,
-        ownerNonce: owned.nonce,
         hostRevision: revision,
         ...this.clock(),
       })

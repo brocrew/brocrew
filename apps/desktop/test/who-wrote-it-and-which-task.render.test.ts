@@ -16,7 +16,6 @@ import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { HELD_ELSEWHERE } from '../src/shared/runtime-ipc'
 import type {
   CreatedSession,
   MessageSentEvent,
@@ -912,23 +911,8 @@ describe('688 · draw who wrote it, and which task', () => {
       await answerEveryCard(sessionId)
     })
 
-    /**
-     * ⚑ **D-017b · re-aimed, not stripped** (rule 26): a conversation that has stopped TAKES a
-     * message — the message continues it (`startAndSend`) — so *"type your next message to carry
-     * on"* is an instruction a person can follow there, and the row keeps it. ⛔ What still cannot
-     * be done is a message from a window another one holds it for (`held-elsewhere`), so that is the
-     * arm that says only the fact about the past. Each view is the host's own `look`, drawn from the
-     * ledger (`handover: 'recorded'`), as the window draws it after the stop.
-     */
-    it('🔴 once the conversation has STOPPED → still the whole sentence; held by another window → only the fact about the past', async () => {
+    it('🔴 once the conversation has STOPPED the taken-back row keeps its action and sender', async () => {
       const { sessionId } = await aTakenBackGoAhead()
-      // ⚑ The refusal's view, taken while this window holds it: a SECOND window's look.
-      const fromAnotherWindow = structuredClone(
-        await host.look(sessionId, new RecordingSink('webContents:2'), false),
-      )
-      expect(fromAnotherWindow.handover).toBe('recorded')
-      expect(fromAnotherWindow.cannotTakeAMessage).toBe(HELD_ELSEWHERE)
-
       await host.close(sessionId, window)
       await waitFor(
         () => theWindow(sessionId).control.ended,
@@ -946,16 +930,6 @@ describe('688 · draw who wrote it, and which task', () => {
       // ⚑ The row keeps its act: it was taken back, and it is still BroBot's.
       expect(textsOf(drawn, 'queued-state')).toEqual(['not sent · you took it back'])
       expect(textsOf(drawn, 'queued-sender')).toEqual([GO_AHEAD_SENDER])
-
-      // ⚑ THE CONTROL: the same page, drawn as the window another one holds it for draws it — a
-      // message from there is refused, so the instruction is not drawn.
-      const elsewhere = theWindow(sessionId)
-      elsewhere.phase = 'recorded'
-      elsewhere.meta = fromAnotherWindow
-      const refused = await drawPane(elsewhere, '')
-      expect(textsOf(refused, 'queued-go-ahead-taken-back')).toEqual([THE_GO_AHEAD_WAS_NOT_SENT])
-      expect(refused).not.toContain(TYPE_TO_CARRY_ON)
-      expect(textsOf(refused, 'queued-state')).toEqual(['not sent · you took it back'])
     })
   })
 

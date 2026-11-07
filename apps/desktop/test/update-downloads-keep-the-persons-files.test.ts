@@ -77,14 +77,14 @@ describe('an update download keeps the person’s files', () => {
     expect(readdirSync(folder)).toHaveLength(2)
   })
 
-  it('keeps a link at the final name even when its target happens to match the checksum', async () => {
+  it('reuses an ordinary linked download whose bytes match the release checksum', async () => {
     const target = join(folder, 'other-image.dmg')
     writeFileSync(target, IMAGE)
     symlinkSync(target, destination)
     const fetch = vi.fn(async () => response())
     const path = await download({ fetch })
-    expect(path).not.toBe(destination)
-    expect(fetch).toHaveBeenCalledOnce()
+    expect(path).toBe(destination)
+    expect(fetch).not.toHaveBeenCalled()
     expect(lstatSync(destination).isSymbolicLink()).toBe(true)
     expect(readFileSync(target)).toEqual(IMAGE)
     expect(await sha512Of(path)).toBe(SHA)

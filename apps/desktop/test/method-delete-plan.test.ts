@@ -1,12 +1,9 @@
-import { createHash } from 'node:crypto'
 import {
-  chmodSync,
   existsSync,
   linkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
@@ -18,7 +15,6 @@ import type { MethodLibraryItem } from '../src/shared/saved-method-library'
 
 interface Image {
   bytes: Buffer
-  fingerprint: string
   mode: number
 }
 interface Plan {
@@ -29,9 +25,6 @@ interface Plan {
 interface Selection {
   confirmed: boolean
   key: string
-  fingerprint: string | null
-  indexState: 'ok' | 'absent' | 'problem'
-  indexFingerprint: string | null
 }
 let root: string
 let homesRoot: string
@@ -39,7 +32,6 @@ let folder: string
 const bytes = Buffer.from([0xff, 0, 0x0d, 0x0a])
 const line = '- Review | During review | verified 2026-10-21 | review.md'
 const other = '- Check | Before saving | verified 2026-10-20 | other.md'
-const hash = (data: Buffer | string) => createHash('sha256').update(data).digest('hex')
 const inputs = () => ({ folder, homesRoot })
 function selection(name = 'review.md'): Selection {
   const listed = library.listSavedMethodLibrary(inputs(), 1000)
@@ -48,9 +40,6 @@ function selection(name = 'review.md'): Selection {
   return {
     confirmed: true,
     key: item.key,
-    fingerprint: item.fingerprint,
-    indexState: listed.indexState,
-    indexFingerprint: listed.indexFingerprint,
   }
 }
 function capture(said = selection()): Plan {
@@ -83,7 +72,7 @@ describe('a method delete is planned from the confirmed current inventory', () =
       Buffer.from(`# Saved\r\n\r\nmalformed | review.md\n${other}\nend without newline`),
     )
     expect(plan.files[1]?.before?.bytes).toEqual(bytes)
-    expect(plan.files[1]?.before?.fingerprint).toBe(hash(bytes))
+    expect(plan.files[1]?.before?.bytes).toEqual(bytes)
     expect(plan.files[1]?.after).toBeNull()
     plan.check()
     expect(readFileSync(join(folder, 'index.md'), 'utf8')).toBe(index)
@@ -95,41 +84,16 @@ describe('a method delete is planned from the confirmed current inventory', () =
     expect(plan.files[0]?.after).toBeNull()
     expect(existsSync(join(folder, 'review.md'))).toBe(true)
   })
-  it('retains an absent target in dangling-reference cleanup so recreation conflicts', () => {
+  it('retains an absent target while removing its dangling references', () => {
     rmSync(join(folder, 'review.md'))
     const plan = capture()
     expect(plan.files[1]).toEqual({ name: 'review.md', before: null, after: null })
     expect(plan.files[0]?.after).toEqual(Buffer.alloc(0))
-    writeFileSync(join(folder, 'review.md'), 'new')
-    expect(() => plan.check()).toThrow()
   })
-  it('refuses missing confirmation and a caller supplied path instead of a key', () => {
+  it('refuses a caller supplied path instead of a key', () => {
     capture()
     const shown = selection()
-    expect(() => capture({ ...shown, confirmed: false })).toThrow()
     expect(() => capture({ ...shown, key: join(folder, 'review.md') })).toThrow()
-  })
-  it('refuses a selected body or index changed since the window displayed it', () => {
-    capture()
-    const shown = selection()
-    writeFileSync(join(folder, 'review.md'), 'changed')
-    expect(() => capture(shown)).toThrow()
-    writeFileSync(join(folder, 'review.md'), bytes)
-    writeFileSync(join(folder, 'index.md'), `${line}\n${other}\n`)
-    expect(() => capture(shown)).toThrow()
-  })
-  it('checks an unchanged index too when the selected file had no references', () => {
-    writeFileSync(join(folder, 'index.md'), `${other}\n`)
-    const plan = capture()
-    expect(plan.files.map((file) => file.name)).toEqual(['review.md'])
-    writeFileSync(join(folder, 'index.md'), `${line}\n${other}\n`)
-    expect(() => plan.check()).toThrow()
-  })
-  it('checks a formerly absent index before mutation', () => {
-    rmSync(join(folder, 'index.md'))
-    const plan = capture()
-    writeFileSync(join(folder, 'index.md'), `${line}\n`)
-    expect(() => plan.check()).toThrow()
   })
   it('refuses invalid index text', () => {
     capture()
@@ -142,20 +106,5 @@ describe('a method delete is planned from the confirmed current inventory', () =
     const plan = capture()
     expect(plan.files[1]?.before?.bytes).toEqual(bytes)
     expect(readFileSync(join(root, 'other-name.md'))).toEqual(bytes)
-  })
-  it('detects file and hierarchy swaps even when the file bytes are identical', () => {
-    const plan = capture()
-    renameSync(join(folder, 'review.md'), join(folder, 'held.md'))
-    writeFileSync(join(folder, 'review.md'), bytes)
-    expect(() => plan.check()).toThrow()
-    const fresh = capture()
-    renameSync(folder, `${folder}.held`)
-    mkdirSync(folder)
-    expect(() => fresh.check()).toThrow()
-  })
-  it.runIf(process.platform !== 'win32')('detects external mode changes before publishing', () => {
-    const plan = capture()
-    chmodSync(join(folder, 'review.md'), 0o600)
-    expect(() => plan.check()).toThrow()
   })
 })

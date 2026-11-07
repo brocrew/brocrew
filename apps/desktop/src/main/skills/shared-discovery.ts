@@ -1,6 +1,6 @@
 import { assertSkillPathsAreReal } from './skill-paths'
 import { watch, type FSWatcher } from 'node:fs'
-import { lstat, mkdir, open, readdir } from 'node:fs/promises'
+import { stat, mkdir, open, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { constants } from 'node:fs'
 import type { ProfileSkillMetadata, SharedSkill, SkillsWindow } from '../../shared/skills-window'
@@ -89,7 +89,8 @@ export class SharedSkillDiscovery {
   }
   async root(): Promise<string> {
     await this.ready
-    if (this.closed) throw new Error('Skills could not be read.')
+    if (this.closed)
+      throw new Error(`${this.library.active}: shared skill discovery is closed or unavailable`)
     const root = this.library.active
     if (!this.manifestReady) {
       await assertSkillPathsAreReal(
@@ -105,7 +106,8 @@ export class SharedSkillDiscovery {
       )
       this.manifestReady = true
     }
-    if (this.closed) throw new Error('Skills could not be read.')
+    if (this.closed)
+      throw new Error(`${this.library.active}: shared skill discovery is closed or unavailable`)
     if (!this.watcher) this.watchTree()
     if (!this.parentWatcher) {
       this.parentWatcher = watch(this.userData, (event, name) => {
@@ -178,17 +180,17 @@ export class SharedSkillDiscovery {
       for (const folder of (await readdir(root, { withFileTypes: true })).sort((a, b) =>
         a.name.localeCompare(b.name),
       )) {
-        if (folder.name.startsWith('.') || !folder.isDirectory() || folder.isSymbolicLink())
-          continue
+        if (folder.name.startsWith('.')) continue
         let file
         try {
+          if (!(await stat(join(root, folder.name))).isDirectory()) continue
           file = await open(
             join(root, folder.name, 'SKILL.md'),
-            constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
+            constants.O_RDONLY | (constants.O_NONBLOCK ?? 0),
           )
-          const stat = await file.stat()
-          if (!stat.isFile()) continue
-          if (stat.size > 1024 * 1024) {
+          const fileInfo = await file.stat()
+          if (!fileInfo.isFile()) continue
+          if (fileInfo.size > 1024 * 1024) {
             skills.push({
               folder: folder.name,
               name: folder.name,
@@ -199,7 +201,7 @@ export class SharedSkillDiscovery {
             })
             continue
           }
-          const bytes = Buffer.alloc(Math.min(stat.size, 1024 * 1024))
+          const bytes = Buffer.alloc(Math.min(fileInfo.size, 1024 * 1024))
           let count = 0
           while (count < bytes.length) {
             const next = await file.read(bytes, count, bytes.length - count, null)
@@ -216,8 +218,7 @@ export class SharedSkillDiscovery {
             enabled,
           })
         } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
-            console.warn(`BroCrew skipped the shared skill ${folder.name}: ${String(error)}`)
+          console.warn(`BroCrew skipped ${join(root, folder.name, 'SKILL.md')}: ${String(error)}`)
         } finally {
           await file?.close()
         }
@@ -232,7 +233,8 @@ export class SharedSkillDiscovery {
     access: ProfileSkillAccess,
   ): Promise<readonly ProfileSkillMetadata[]> {
     await this.ready
-    if (this.closed) throw new Error('Skills could not be read.')
+    if (this.closed)
+      throw new Error(`${this.library.active}: shared skill discovery is closed or unavailable`)
     const bundle = this.shipped()
     const selected = new Set(
       creationAllowedSkills(bundle.catalogue, access.canCreateAgents, access.isCoordinator).map(
@@ -256,28 +258,19 @@ export class SharedSkillDiscovery {
         a.name.localeCompare(b.name),
       )) {
         if (folder.name.startsWith('.')) continue
-        // One skill that cannot be read is left out, with a line saying so; the rest are listed.
-        if (folder.isSymbolicLink()) {
-          console.warn(`BroCrew skipped the shared skill ${folder.name}: it is a link`)
-          continue
-        }
-        if (!folder.isDirectory()) continue
         const path = join(root, folder.name, 'SKILL.md')
         let file
         try {
+          if (!(await stat(join(root, folder.name))).isDirectory()) continue
           await assertSkillPathsAreReal(this.userData, [path], nodeFs)
-          file = await open(
-            path,
-            constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
-          )
+          file = await open(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0))
         } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
-            console.warn(`BroCrew skipped the shared skill ${folder.name}: ${String(error)}`)
+          console.warn(`BroCrew skipped ${join(root, folder.name, 'SKILL.md')}: ${String(error)}`)
           continue
         }
         try {
           const stat = await file.stat()
-          if (!stat.isFile()) throw new Error('Skills could not be read.')
+          if (!stat.isFile()) throw new Error(`${path}: not a regular skill file`)
           const bytes = Buffer.alloc(Math.min(stat.size, 16 * 1024))
           let count = 0
           while (count < bytes.length) {
@@ -285,18 +278,6 @@ export class SharedSkillDiscovery {
             if (next.bytesRead === 0) break
             count += next.bytesRead
           }
-          await assertSkillPathsAreReal(this.userData, [path], nodeFs)
-          const atPath = await lstat(path)
-          const after = await file.stat()
-          if (
-            !atPath.isFile() ||
-            atPath.isSymbolicLink() ||
-            atPath.dev !== stat.dev ||
-            atPath.ino !== stat.ino ||
-            after.size !== stat.size ||
-            after.mtimeMs !== stat.mtimeMs
-          )
-            throw new Error('Skills could not be read.')
           const header = bytes.subarray(0, count).toString('utf8')
           skills.push({
             folder: folder.name,
@@ -307,7 +288,7 @@ export class SharedSkillDiscovery {
             given: enabled,
           })
         } catch (error) {
-          console.warn(`BroCrew skipped the shared skill ${folder.name}: ${String(error)}`)
+          console.warn(`BroCrew skipped ${join(root, folder.name, 'SKILL.md')}: ${String(error)}`)
         } finally {
           await file.close()
         }

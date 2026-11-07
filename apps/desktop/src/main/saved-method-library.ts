@@ -7,12 +7,10 @@ import {
   openSync,
   opendirSync,
   readSync,
-  realpathSync,
   statSync,
   type BigIntStats,
 } from 'node:fs'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
-import { isStillTheFileOpened } from '@brobot2/runtime'
 import { SAVED_METHODS_MOST_METHOD_BYTES } from '../shared/saved-methods'
 import type {
   MethodBody,
@@ -42,15 +40,16 @@ export interface MethodReadSeams {
 
 export interface MethodFileCapture {
   readonly bytes: Buffer
-  readonly fingerprint: string
   readonly mode: number
-  readonly identity: BigIntStats
 }
 type FileImage = MethodFileCapture
 
 class Refused extends Error {
-  constructor(readonly problem: MethodProblem) {
-    super(problem)
+  constructor(
+    readonly problem: MethodProblem,
+    path?: string,
+  ) {
+    super(path === undefined ? problem : `${path}: ${problem}`)
   }
 }
 
@@ -75,26 +74,17 @@ function folderAt(inputs: MethodLibraryInputs): BigIntStats {
   const root = resolve(inputs.homesRoot)
   const folder = resolve(inputs.folder)
   if (!within(root, folder)) throw new Refused('link')
-  const rootStat = at(root)
-  if (rootStat === null) throw new Refused('missing')
-  if (rootStat.isSymbolicLink()) throw new Refused('link')
-  if (!rootStat.isDirectory()) throw new Refused('not-a-file')
-  let path = root
-  let stat = rootStat
-  for (const segment of relative(root, folder).split(sep)) {
-    path = join(path, segment)
-    const entry = at(path)
-    if (entry === null) throw new Refused('missing')
-    if (entry.isSymbolicLink()) throw new Refused('link')
-    if (!entry.isDirectory()) throw new Refused('not-a-file')
-    stat = entry
+  try {
+    const directory = statSync(folder, { bigint: true })
+    if (!directory.isDirectory()) throw new Refused('not-a-file', folder)
+    return directory
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+      throw new Refused('missing', `${folder}: ${String(error)}`)
+    throw error
   }
-  return stat
 }
 
-function sameFile(a: BigIntStats, b: BigIntStats): boolean {
-  return a.dev === b.dev && a.ino === b.ino
-}
 function hash(bytes: Buffer | string): string {
   return createHash('sha256').update(bytes).digest('hex')
 }
@@ -109,51 +99,25 @@ function image(
   limit: number,
   seams: MethodReadSeams,
 ): FileImage | null {
-  const folder = folderAt(inputs)
-  const spelled = join(inputs.folder, name)
-  const before = at(spelled)
-  // A method file the person linked is read where it is.
-  const path = before === null ? spelled : realpathSync(spelled)
-  if (before === null) return null
-  if (before.isSymbolicLink()) throw new Refused('link')
-  if (!before.isFile()) throw new Refused('not-a-file')
-  if (before.size > BigInt(limit)) throw new Refused('too-large')
+  folderAt(inputs)
+  const path = join(inputs.folder, name)
+  if (at(path) === null) return null
   seams.beforeOpen?.(name)
-  const fd = openSync(
-    path,
-    constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
-  )
+  const fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK)
   try {
     seams.afterOpen?.(name)
-    if ((seams.platform ?? process.platform) === 'win32' && !isStillTheFileOpened(path, fd))
-      throw new Refused('link')
     const opened = fstatSync(fd, { bigint: true })
-    if (!opened.isFile() || !sameFile(before, opened)) throw new Refused('link')
-    if (!sameFile(folder, folderAt(inputs))) throw new Refused('link')
+    if (!opened.isFile()) throw new Refused('not-a-file', path)
     const buffer = Buffer.alloc(limit + 1)
     let count = 0
     while (count < buffer.length) {
-      const read = readSync(fd, buffer, count, buffer.length - count, count)
-      if (read === 0) break
-      count += read
+      const got = readSync(fd, buffer, count, buffer.length - count, null)
+      if (got === 0) break
+      count += got
     }
-    if (count > limit) throw new Refused('too-large')
-    const after = fstatSync(fd, { bigint: true })
-    const named = at(path)
-    if (
-      named === null ||
-      named.isSymbolicLink() ||
-      !sameFile(opened, named) ||
-      opened.size !== after.size ||
-      opened.mode !== after.mode ||
-      opened.mode !== named.mode ||
-      opened.mtimeNs !== after.mtimeNs ||
-      opened.ctimeNs !== after.ctimeNs ||
-      !sameFile(folder, folderAt(inputs))
-    )
-      throw new Refused('unreadable')
+    if (count > limit) throw new Refused('too-large', path)
     const bytes = buffer.subarray(0, count)
-    return { bytes, fingerprint: hash(bytes), mode: Number(opened.mode & 0o777n), identity: after }
+    return { bytes, mode: Number(opened.mode & 0o777n) }
   } finally {
     closeSync(fd)
   }
@@ -165,6 +129,7 @@ interface Catalog {
   readonly indexName: string
   readonly index: FileImage | null
   readonly indexProblem?: MethodProblem
+  readonly indexCause?: string
   readonly malformedLines: number
   readonly truncated: boolean
 }
@@ -183,7 +148,7 @@ function actualName(inputs: MethodLibraryInputs, found: ReadonlySet<string>, nam
     if (candidate.toLowerCase() !== name.toLowerCase()) continue
     try {
       const actual = at(join(inputs.folder, candidate))
-      if (actual !== null && sameFile(expected, actual)) return candidate
+      if (actual !== null) return candidate
     } catch {
       /* One unrelated unreadable entry does not hide the rest of the catalog. */
     }
@@ -192,7 +157,7 @@ function actualName(inputs: MethodLibraryInputs, found: ReadonlySet<string>, nam
 }
 
 function catalog(inputs: MethodLibraryInputs, seams: MethodReadSeams): Catalog {
-  const expectedFolder = folderAt(inputs)
+  folderAt(inputs)
   const found = new Set<string>()
   let scanned = 0
   let truncated = false
@@ -210,14 +175,15 @@ function catalog(inputs: MethodLibraryInputs, seams: MethodReadSeams): Catalog {
   } finally {
     directory.closeSync()
   }
-  if (!sameFile(expectedFolder, folderAt(inputs))) throw new Refused('link')
   const indexName = actualName(inputs, found, SAVED_METHODS_INDEX)
   let index: FileImage | null = null
   let indexProblem: MethodProblem | undefined
+  let indexCause: string | undefined
   try {
     index = image(inputs, indexName, INDEX_BYTES, seams)
   } catch (error) {
     indexProblem = error instanceof Refused ? error.problem : 'unreadable'
+    indexCause = String(error)
   }
   if (index !== null) {
     found.add(indexName)
@@ -252,6 +218,7 @@ function catalog(inputs: MethodLibraryInputs, seams: MethodReadSeams): Catalog {
     indexName,
     index,
     ...(indexProblem === undefined ? {} : { indexProblem }),
+    ...(indexCause === undefined ? {} : { indexCause }),
     malformedLines,
     truncated,
   }
@@ -282,7 +249,6 @@ function item(
     name,
     kind: name === read.indexName ? 'index' : dangling ? 'missing-reference' : 'method',
     references,
-    fingerprint: bytes?.fingerprint ?? null,
     bytes: bytes?.bytes.length ?? null,
     canDelete:
       !read.truncated && read.indexProblem === undefined && (problem === undefined || dangling),
@@ -303,7 +269,6 @@ export function listSavedMethodLibrary(
     offset,
     nextOffset: null,
     indexState: 'absent',
-    indexFingerprint: null,
     malformedLines: 0,
     truncated: false,
     readAt: now,
@@ -335,7 +300,6 @@ export function listSavedMethodLibrary(
       indexState:
         read.indexProblem !== undefined ? 'problem' : read.index === null ? 'absent' : 'ok',
       ...(read.indexProblem === undefined ? {} : { indexProblem: read.indexProblem }),
-      indexFingerprint: read.index?.fingerprint ?? null,
       malformedLines: read.malformedLines,
       truncated: read.truncated,
       readAt: now,
@@ -369,7 +333,6 @@ export function readSavedMethodBody(
       key,
       text: found.bytes.toString('utf8'),
       bytes: found.bytes.length,
-      fingerprint: found.fingerprint,
     }
   } catch (error) {
     return { ok: false, problem: error instanceof Refused ? error.problem : 'unreadable' }
@@ -394,19 +357,15 @@ export function captureSavedMethodDeletion(
   selection: MethodDeleteSelection,
   seams: MethodReadSeams = {},
 ): MethodDeletionPlan {
-  if (selection.confirmed !== true) throw new Refused('unreadable')
-  const expectedFolder = folderAt(inputs)
+  folderAt(inputs)
   const read = catalog(inputs, seams)
   const name = read.names.find((one) => keyOf(one, read.indexName) === selection.key)
   if (name === undefined) throw new Refused('missing')
-  const selected = item(inputs, read, name, seams)
-  if (
-    !selected.canDelete ||
-    selected.fingerprint !== selection.fingerprint ||
-    selection.indexState !== (read.index === null ? 'absent' : 'ok') ||
-    selection.indexFingerprint !== (read.index?.fingerprint ?? null)
-  )
-    throw new Refused('unreadable')
+  if (read.indexProblem !== undefined)
+    throw new Error(
+      `${join(inputs.folder, read.indexName)}: ${read.indexCause ?? read.indexProblem}`,
+    )
+  if (read.truncated) throw new Error(`${inputs.folder}: method listing exceeded its read bound`)
   const captured = (file: string) =>
     image(
       inputs,
@@ -415,7 +374,6 @@ export function captureSavedMethodDeletion(
       seams,
     )
   const before = name === read.indexName ? read.index : captured(name)
-  if ((before?.fingerprint ?? null) !== selection.fingerprint) throw new Refused('unreadable')
   const files: { name: string; before: FileImage | null; after: Buffer | null }[] = []
   if (name !== read.indexName && read.index !== null) {
     const kept: Buffer[] = []
@@ -438,37 +396,13 @@ export function captureSavedMethodDeletion(
   files.push({ name, before, after: null })
   if (!files.some((file) => file.before !== null || file.after !== null))
     throw new Refused('missing')
-  const watched = files.some((file) => file.name === read.indexName)
-    ? files
-    : [...files, { name: read.indexName, before: read.index, after: null }]
-  const identities = watched.map((file) => file.before?.identity ?? null)
-  const directories = captureDirectories(inputs)
-  const check = () => {
-    if (!sameFile(expectedFolder, folderAt(inputs))) throw new Refused('link')
-    for (const directory of directories) {
-      const current = at(directory.path)
-      if (
-        current === null ||
-        current.isSymbolicLink() ||
-        !current.isDirectory() ||
-        !sameFile(directory.stat, current)
-      )
-        throw new Refused('link')
-    }
-    for (const [i, file] of watched.entries()) {
-      const current = captured(file.name)
-      const named = at(join(inputs.folder, file.name))
-      const expected = identities[i] ?? null
-      if (
-        (current?.fingerprint ?? null) !== (file.before?.fingerprint ?? null) ||
-        (current?.mode ?? null) !== (file.before?.mode ?? null) ||
-        (expected === null ? named !== null : named === null || !sameFile(expected, named))
-      )
-        throw new Refused('unreadable')
-    }
+  return {
+    target: name,
+    files,
+    check: () => {
+      folderAt(inputs)
+    },
   }
-  check()
-  return { target: name, files, check }
 }
 
 /** Strict flat names also exclude Windows device names and alternate data streams. */
@@ -479,23 +413,6 @@ export function safeMethodFileName(name: string): boolean {
     !/[\p{Cc}/\\:<>"|?*]/u.test(name) &&
     !/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(name)
   )
-}
-
-function captureDirectories(
-  inputs: MethodLibraryInputs,
-): readonly { path: string; stat: BigIntStats }[] {
-  folderAt(inputs)
-  const directories: { path: string; stat: BigIntStats }[] = []
-  let cursor = resolve(inputs.homesRoot)
-  const segments = relative(cursor, resolve(inputs.folder)).split(sep)
-  for (const segment of ['', ...segments]) {
-    if (segment !== '') cursor = join(cursor, segment)
-    const stat = at(cursor)
-    if (stat === null) throw new Refused('missing')
-    if (stat.isSymbolicLink() || !stat.isDirectory() || stat.ino === 0n) throw new Refused('link')
-    directories.push({ path: cursor, stat })
-  }
-  return directories
 }
 
 /** Main-only exact image read; no caller-supplied relative path is ever joined. */
@@ -523,18 +440,7 @@ export function readKnowledgeFileCapture(
 
 /** Pin the namespace once, then let a locked operation track only its own completed phases. */
 export function captureMethodFileGuard(inputs: MethodLibraryInputs): () => void {
-  const directories = captureDirectories(inputs)
   return () => {
     folderAt(inputs)
-    for (const directory of directories) {
-      const current = at(directory.path)
-      if (
-        current === null ||
-        !current.isDirectory() ||
-        current.isSymbolicLink() ||
-        !sameFile(current, directory.stat)
-      )
-        throw new Refused('link')
-    }
   }
 }
