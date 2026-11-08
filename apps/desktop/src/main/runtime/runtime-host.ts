@@ -321,6 +321,7 @@ import {
   type ProviderConnection,
   type SessionStatus,
 } from '@brobot2/shared'
+import { signInKey, signInHeldBy } from '../providers/sign-in-reservation-facts'
 import { assetUrl } from '../../shared/asset-url'
 import { archivedInMemory, type ArchivedConversations } from '../archived-file'
 import {
@@ -628,35 +629,6 @@ function pendingSignIn(withdraw: () => void): ProviderSignIn {
 }
 
 /**
- * **Which reservation a sign-in takes, and why the two providers do not agree** (257 §1, from 256 H2).
- *
- * 🔴 **Codex's is PROVIDER-wide, because the thing it protects is.** `256` started two real
- * `startCodexLogin` calls against two fresh, different profile homes: both were admitted, both
- * spawned an app-server, and **both advertised `http://localhost:1455`**. A live socket check found
- * only the second listening; a second later the first had settled `Login server error: Login
- * cancelled` while the second was still pending. So the guard was scoped one level BELOW the resource
- * it protects — correct for two clicks on one profile, blind to two profiles — which is
- * `a-filter-can-blind-the-instrument-that-justifies-it` in a different costume. The redirect port is
- * the contended thing and it belongs to the machine, so the reservation is per provider.
- *
- * ⚠️ **Claude's stays per profile, and the reason is that nothing establishes otherwise.** Claude has
- * no browser flow in this build at all — `createProviderAuthOps.signIn` refuses it, because the
- * credential is the machine Keychain's and there is nothing per-profile to sign in — so widening its
- * key would be a claim about a contended resource nobody has found. A reservation is a statement that
- * two gestures cannot run together; making that statement without a resource to point at is how a
- * guard outlives its reason.
- *
- * ⛔ **What this does NOT cover, said out loud.** The port is the machine's; this map is one app's. A
- * second BroBot, or a `codex login` typed into a terminal, collides exactly as before and nothing here
- * can see it. `256` measured the within-app case; this guards the within-app case.
- */
-function signInKey(provider: Provider, profileId: string): string {
-  return providerDescriptor(provider).signIn.portScope === 'machine'
-    ? provider
-    : `${provider}:${profileId}`
-}
-
-/**
  * The two keys the process-wide registry knows, spelled in one place (293 §2).
  *
  * ⚠️ **Namespaced, because one flat map now holds both** — a credential home is an absolute path and
@@ -684,22 +656,6 @@ function profileSignInKey(provider: Provider, profileId: string): string {
  */
 const CONTEXT_LOOKBACK_ROWS = 2_000
 
-/**
- * The refusal a second sign-in gets — **and it names the profile that holds the gesture** (257 §1).
- *
- * ⛔ *"a sign-in is already in progress for this profile"* was actively wrong the moment the key
- * widened: the holder is usually a DIFFERENT profile, and that sentence is what a person reads while
- * the browser tab they are already staring at dies. It is the whole user-visible half of the defect.
- */
-function signInHeldBy(provider: Provider, holder: string, asked: string): Error {
-  if (holder === asked)
-    return new Error(`a ${provider} sign-in is already in progress for this profile`)
-  return new Error(
-    `a ${provider} sign-in is already in progress for the profile "${holder}" — only one can run ` +
-      `at a time, because ${provider} sends its browser redirect to one fixed port on this machine. ` +
-      `Finish or cancel that one, then try again.`,
-  )
-}
 import type { UserHomeDiscovery } from '../adopt/user-homes'
 import {
   libraryChild,
