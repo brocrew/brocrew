@@ -1,4 +1,9 @@
 import { createHash } from 'node:crypto'
+import { spawn, execFile } from 'node:child_process'
+import { createReadStream } from 'node:fs'
+import { access, readdir, lstat, readFile } from 'node:fs/promises'
+import { DatabaseSync } from 'node:sqlite'
+import { promisify } from 'node:util'
 import { closeSync, lstatSync, openSync, readSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
@@ -11,7 +16,7 @@ import {
 import { SANDBOX_FEED, STATE_FILES, VERSION_A, VERSION_B } from './update-rehearsal.mjs'
 import { rehearsalStateKept } from './update-rehearsal-state.mjs'
 import { aConversation } from './update-rehearsal-data.mjs'
-import { SCRIPTED_MODEL } from './update-rehearsal-app.mjs'
+import { SCRIPTED_MODEL, until } from './update-rehearsal-app.mjs'
 import { readStateEntry, SKILL_TREE_NAMES, skillTreeStateDigest } from './skill-tree-state.mjs'
 
 export const FEED_URL = 'http://127.0.0.1:47123/'
@@ -481,4 +486,317 @@ export async function localModelTurnFacts(cdp, sessionId, responseId) {
       hasError:events.some(one=>one.type === 'error'),
     }
   `)
+}
+
+export const exists = async (path) =>
+  access(path).then(
+    () => true,
+    (error) => {
+      if (error.code === 'ENOENT') return false
+      throw error
+    },
+  )
+export async function digest(path, algorithm = 'sha256', encoding = 'hex') {
+  const sum = createHash(algorithm)
+  for await (const chunk of createReadStream(path)) sum.update(chunk)
+  return sum.digest(encoding)
+}
+export async function waitFor(check, description, budget = 180_000) {
+  const value = await until(check, budget, 250)
+  if (!value) throw new Error(`Timed out: ${description}`)
+  return value
+}
+
+export function macCommands(record) {
+  const exec = promisify(execFile)
+  async function run(program, args, options = {}) {
+    const result = await exec(program, args, {
+      encoding: 'utf8',
+      timeout: 120_000,
+      maxBuffer: 16 * 1024 * 1024,
+      ...options,
+    })
+    record?.({ program, args, stdout: result.stdout, stderr: result.stderr })
+    return result.stdout
+  }
+  async function plist(program, args) {
+    const xml = await run(program, args)
+    return await new Promise((done, failed) => {
+      const child = spawn('/usr/bin/plutil', ['-convert', 'json', '-o', '-', '-'], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+      let out = '',
+        error = ''
+      child.stdout.on('data', (part) => {
+        out += part
+      })
+      child.stderr.on('data', (part) => {
+        error += part
+      })
+      child.once('error', failed)
+      child.once('exit', (code) => {
+        if (code !== 0) return failed(new Error(`plutil failed (${code}): ${error}`))
+        try {
+          done(JSON.parse(out))
+        } catch (problem) {
+          failed(problem)
+        }
+      })
+      child.stdin.end(xml)
+    })
+  }
+  async function processInfo(pid) {
+    try {
+      const command = (await run('/bin/ps', ['-p', String(pid), '-o', 'command='])).trim()
+      const started = (await run('/bin/ps', ['-p', String(pid), '-o', 'lstart='])).trim()
+      return command && started ? { pid, command, started } : null
+    } catch (error) {
+      if (error.code === 1) return null
+      throw error
+    }
+  }
+  return { run, plist, processInfo }
+}
+export function databaseSnapshot(file, { credentials = false } = {}) {
+  const db = new DatabaseSync(file, { readOnly: true })
+  try {
+    requireEvidence(
+      db.prepare('PRAGMA quick_check').get().quick_check === 'ok',
+      'SQLite quick_check failed.',
+    )
+    requireEvidence(
+      db.prepare('PRAGMA foreign_key_check').all().length === 0,
+      'SQLite foreign-key check failed.',
+    )
+    db.exec('BEGIN')
+    const snapshot = Object.fromEntries(
+      ['provider_session', 'events'].map((table) => [
+        table,
+        db.prepare(`SELECT * FROM ${table} ORDER BY id`).all(),
+      ]),
+    )
+    if (credentials)
+      snapshot.provider_api_key = db
+        .prepare('SELECT * FROM provider_api_key ORDER BY provider')
+        .all()
+    snapshot.migrations = db.prepare('SELECT * FROM __drizzle_migrations ORDER BY id').all()
+    db.exec('COMMIT')
+    return snapshot
+  } finally {
+    db.close()
+  }
+}
+export async function nativeFiles(folder, data) {
+  const files = {}
+  if (!(await exists(folder))) return files
+  requireEvidence(!(await lstat(folder)).isSymbolicLink(), 'Native transcript folder is a symlink.')
+  for (const entry of await readdir(folder, { withFileTypes: true })) {
+    const path = join(folder, entry.name)
+    requireEvidence(!entry.isSymbolicLink(), `Native transcript tree contains a symlink: ${path}`)
+    if (entry.isDirectory()) Object.assign(files, await nativeFiles(path, data))
+    else if (entry.isFile() && entry.name.endsWith('.jsonl')) {
+      const bytes = await readFile(path)
+      files[path.slice(data.length + 1)] = {
+        bytes: bytes.length,
+        sha256: hash(bytes),
+      }
+    }
+  }
+  return files
+}
+export async function checkpointIds(data) {
+  const folder = join(data, 'backups')
+  if (!(await exists(folder))) return []
+  const found = []
+  for (const entry of await readdir(folder, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      const path = join(folder, entry.name, 'manifest.json')
+      requireEvidence(await exists(path), 'Unfinished or unmanifested recovery copy.')
+      found.push(entry.name)
+    }
+  }
+  return found.sort()
+}
+export async function checkNativePrefixes(natives, data) {
+  for (const [name, original] of Object.entries(natives)) {
+    requireEvidence(original.bytes > 0, 'Native transcript baseline is empty.')
+    const sum = createHash('sha256')
+    for await (const chunk of createReadStream(join(data, name), {
+      start: 0,
+      end: original.bytes - 1,
+    }))
+      sum.update(chunk)
+    requireEvidence(
+      sum.digest('hex') === original.sha256,
+      `Native transcript lost original bytes: ${name}`,
+    )
+  }
+}
+
+export async function observeMacWindow({
+  app,
+  port,
+  stage,
+  log,
+  expected,
+  run,
+  processInfo,
+  connect,
+  attempts,
+  onChild,
+  verifyBundle,
+}) {
+  const root = `http://127.0.0.1:${port}`
+  const discovery = await waitFor(async () => {
+    try {
+      const response = await fetch(`${root}/json/version`, { signal: AbortSignal.timeout(1000) })
+      return response.ok ? await response.json() : null
+    } catch (error) {
+      if (error instanceof TypeError || error.name === 'TimeoutError') return null
+      throw error
+    }
+  }, `${stage} DevTools endpoint`)
+  const browser = await connect(discovery.webSocketDebuggerUrl)
+  const processes = await browser.send('SystemInfo.getProcessInfo')
+  const pid = processes.processInfo.find((one) => one.type === 'browser')?.id
+  requireEvidence(Number.isInteger(pid) && pid > 0, 'Browser PID evidence is missing.')
+  const identity = await processInfo(pid)
+  assertOwnedProcess(identity, identity, app, port)
+  const child = { ...identity, port, browser, log }
+  await onChild(child)
+  const attempt = { stage, ...identity, port, log: basename(log), phase: 'cdp-binding' }
+  attempts.push(attempt)
+  const bound = await run('/usr/sbin/lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN'])
+  requireEvidence(
+    bound.includes(`127.0.0.1:${port}`) && !bound.includes(`*:${port}`),
+    'CDP is not bound exclusively to loopback.',
+  )
+  const page = await waitFor(async () => {
+    const targets = await (await fetch(`${root}/json/list`)).json()
+    return targets.find(
+      (one) => one.type === 'page' && one.url.endsWith('/index.html') && one.webSocketDebuggerUrl,
+    )
+  }, `${stage} ordinary window`)
+  const cdp = await connect(page.webSocketDebuggerUrl)
+  attempt.page = { id: page.id, url: page.url }
+  child.cdp = cdp
+  child.stage = stage
+  await cdp.send('Page.enable')
+  await cdp.send('Runtime.enable')
+  attempt.phase = 'ordinary-bridge'
+  await waitFor(
+    () => cdp.evaluate('return Boolean(window.api?.updates && window.api?.runtime)'),
+    `${stage} ordinary bridge`,
+  )
+  attempt.phase = 'ready-line'
+  await waitFor(async () => {
+    const lines = (await readFile(log, 'utf8')).split(/\r?\n/)
+    requireEvidence(!lines.includes(FAIL_LINE), 'App reported a failed start.')
+    return lines.includes(READY_LINE)
+  }, `${stage} READY line`)
+  attempt.phase = 'app-info'
+  const info = await cdp.evaluate('return await window.api.getAppInfo()')
+  requireEvidence(
+    info.version === expected.version &&
+      info.build.commit === expected.source &&
+      (!expected.clean || info.build.dirty === false),
+    'Running version/source/clean build stamp does not match the frozen build.',
+  )
+  requireEvidence(
+    info.workspace.path === expected.data && info.workspace.isDefault === expected.isDefault,
+    'Running app uses a different data folder.',
+  )
+  attempt.phase = 'visible-window'
+  await waitFor(
+    () =>
+      cdp.evaluate(
+        'return document.visibilityState === "visible" && document.querySelector("[data-cy=rail-workspace]") !== null',
+      ),
+    `${stage} ordinary visible window after rendering`,
+  )
+  const targets = await (await fetch(`${root}/json/list`)).json()
+  requireEvidence(
+    !targets.some((one) => one.url.endsWith('/recovery.html')),
+    'A recovery choice window remains open.',
+  )
+  requireEvidence(
+    info.db.providerSessionCount === expected.conversations,
+    'Unexpected data folder or conversation count.',
+  )
+  const packaged = await verifyBundle()
+  attempt.phase = 'verified'
+  const record = {
+    stage,
+    pid: child.pid,
+    command: child.command,
+    started: child.started,
+    cdpBinding: bound.trim(),
+    log: basename(log),
+    appInfo: info,
+    package: packaged,
+  }
+  return { child, attempt, cdp, record }
+}
+export async function quitMacChild(child, app, processInfo, report) {
+  if (child === null) return null
+  const current = await processInfo(child.pid)
+  assertOwnedProcess(child, current, app, child.port)
+  process.kill(child.pid, 'SIGTERM')
+  await waitFor(
+    async () => !(await processInfo(child.pid)),
+    'verified test child graceful quit',
+    60_000,
+  )
+  child.browser.close()
+  report('verified-child-quit', { pid: child.pid, signal: 'SIGTERM' })
+  return null
+}
+
+export async function checkedMacBundle(bundle, version, marker, run) {
+  requireEvidence(!(await lstat(bundle)).isSymbolicLink(), 'App bundle must not be a symlink.')
+  const info = packageOfAsar(`${bundle}/Contents/Resources/app.asar`)
+  requireEvidence(
+    info.version === version && info.rehearsalMarker === marker,
+    'Installed package version/marker differs.',
+  )
+  const id = (
+    await run('/usr/bin/plutil', [
+      '-extract',
+      'CFBundleIdentifier',
+      'raw',
+      '-o',
+      '-',
+      `${bundle}/Contents/Info.plist`,
+    ])
+  ).trim()
+  requireEvidence(id === 'com.brobot2.desktop', 'Wrong installed bundle identity.')
+  await run('/usr/bin/codesign', ['--verify', '--deep', '--strict', bundle])
+  return {
+    version: info.version,
+    marker: info.rehearsalMarker,
+    bundleId: id,
+    asarSha256: await digest(`${bundle}/Contents/Resources/app.asar`),
+  }
+}
+
+export function launchServicesArguments(
+  app,
+  evidence,
+  stage,
+  port,
+  { appArguments = [], environment = [] } = {},
+) {
+  return [
+    '-n',
+    '--stdout',
+    join(evidence, `${stage}.stdout.log`),
+    '--stderr',
+    join(evidence, `${stage}.log`),
+    ...environment.flatMap(([name, value]) => ['--env', `${name}=${value}`]),
+    app,
+    '--args',
+    '--remote-debugging-address=127.0.0.1',
+    `--remote-debugging-port=${port}`,
+    ...appArguments,
+  ]
 }

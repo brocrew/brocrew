@@ -4,6 +4,8 @@ import {
   aScriptedModel,
   closeExpectedLaunchSetup,
   devToolsCalls,
+  connectDevTools,
+  press,
   saveRehearsalCodexKey,
 } from '../lib/update-rehearsal-app.mjs'
 
@@ -237,4 +239,40 @@ describe('devToolsCalls', () => {
     await expect(send('Runtime.evaluate')).rejects.toThrow('connection closed')
     expect(socket.sent).toHaveLength(2)
   })
+})
+
+describe('shared rehearsal pointer and connection guards', () => {
+  it('refuses a non-loopback DevTools endpoint before opening any connection', async () => {
+    await expect(connectDevTools('ws://example.invalid/page')).rejects.toThrow('loopback')
+  })
+  for (const mode of ['visible', 'hidden', 'disabled'])
+    it(`keeps actual pointer input bound to a ${mode} control`, async () => {
+      const sent = []
+      const one = {
+        disabled: mode === 'disabled',
+        scrollIntoView() {},
+        getBoundingClientRect: () => ({
+          x: 10,
+          y: 20,
+          width: mode === 'hidden' ? 0 : 100,
+          height: 40,
+        }),
+      }
+      const cdp = {
+        evaluate: (body) => new AsyncFunction('document', body)({ querySelector: () => one }),
+        send: async (method, value) => sent.push({ method, value }),
+      }
+      if (mode !== 'visible') {
+        await expect(press(cdp, '[data-cy=fixture]', { wait: 0 })).rejects.toThrow()
+        expect(sent).toEqual([])
+      } else {
+        await press(cdp, '[data-cy=fixture]', { wait: 0 })
+        expect(sent.map((one) => one.value.type)).toEqual([
+          'mouseMoved',
+          'mousePressed',
+          'mouseReleased',
+        ])
+        expect(sent.every((one) => one.value.x === 60 && one.value.y === 40)).toBe(true)
+      }
+    })
 })

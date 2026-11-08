@@ -99,33 +99,23 @@ export function devToolsCalls(socket, { answerWithin = 120_000 } = {}) {
     })
 }
 
-/**
- * One window over the DevTools protocol: `evaluate` runs an async function body in the page, and
- * `send` any protocol method, each answered within `answerWithin` ms or failed. Waits for the
- * window to offer `window.api`.
- */
-export async function attach(port, { wait = 180_000, answerWithin = 120_000 } = {}) {
-  const target = await until(async () => {
-    try {
-      const pages = await (await fetch(`http://127.0.0.1:${String(port)}/json/list`)).json()
-      return pages.find((one) => one.type === 'page' && one.webSocketDebuggerUrl)
-    } catch {
-      return null
-    }
-  }, wait)
-  if (target === null) throw new Error(`no window on DevTools port ${String(port)}`)
-  const socket = new WebSocket(target.webSocketDebuggerUrl)
+export async function connectDevTools(
+  url,
+  { answerWithin = 120_000, connectWithin = answerWithin } = {},
+) {
+  if (new URL(url).hostname !== '127.0.0.1') throw new Error('DevTools must remain on loopback')
+  const socket = new WebSocket(url)
   await new Promise((done, failed) => {
     const timer = setTimeout(
-      () => failed(new Error(`the window on DevTools port ${String(port)} accepted no connection`)),
-      answerWithin,
+      () => failed(new Error('DevTools accepted no connection')),
+      connectWithin,
     )
     socket.addEventListener('open', () => done(clearTimeout(timer)), { once: true })
     socket.addEventListener(
       'error',
       () => {
         clearTimeout(timer)
-        failed(new Error(`the window on DevTools port ${String(port)} refused the connection`))
+        failed(new Error('DevTools refused the connection'))
       },
       { once: true },
     )
@@ -142,6 +132,26 @@ export async function attach(port, { wait = 180_000, answerWithin = 120_000 } = 
     }
     return result.result?.value
   }
+  return { send, evaluate, close: () => socket.close() }
+}
+
+/**
+ * One window over the DevTools protocol: `evaluate` runs an async function body in the page, and
+ * `send` any protocol method, each answered within `answerWithin` ms or failed. Waits for the
+ * window to offer `window.api`.
+ */
+export async function attach(port, { wait = 180_000, answerWithin = 120_000 } = {}) {
+  const target = await until(async () => {
+    try {
+      const pages = await (await fetch(`http://127.0.0.1:${String(port)}/json/list`)).json()
+      return pages.find((one) => one.type === 'page' && one.webSocketDebuggerUrl)
+    } catch {
+      return null
+    }
+  }, wait)
+  if (target === null) throw new Error(`no window on DevTools port ${String(port)}`)
+  const connection = await connectDevTools(target.webSocketDebuggerUrl, { answerWithin })
+  const { evaluate } = connection
   const ready = await until(async () => {
     try {
       return await evaluate('return Boolean(window.api?.updates && window.api?.runtime)')
@@ -152,7 +162,7 @@ export async function attach(port, { wait = 180_000, answerWithin = 120_000 } = 
   if (!ready) throw new Error('the window never offered window.api')
   /** Every window and page this app has open, as the DevTools endpoint lists them. */
   const targets = async () => (await fetch(`http://127.0.0.1:${String(port)}/json/list`)).json()
-  return { evaluate, send, targets, close: () => socket.close() }
+  return { ...connection, targets }
 }
 
 /**
@@ -160,12 +170,12 @@ export async function attach(port, { wait = 180_000, answerWithin = 120_000 } = 
  * goes down and up there. ⚑ Real input events, so a disabled or covered button is not pressed. A
  * window draws its controls a moment after it opens: the button has 30 s to be drawn and enabled.
  */
-export async function press(cdp, selector, { beforePress = async () => {} } = {}) {
+export async function press(cdp, selector, { beforePress = async () => {}, wait = 30_000 } = {}) {
   const where = async () => {
     await beforePress()
     return cdp.evaluate(`
     const one = document.querySelector(${JSON.stringify(selector)})
-    if (one === null) return null
+    if (one === null || one.getBoundingClientRect().width <= 0) return null
     one.scrollIntoView({ block: 'center' })
     const box = one.getBoundingClientRect()
     return { x: box.x + box.width / 2, y: box.y + box.height / 2, disabled: one.disabled === true }`)
@@ -175,7 +185,7 @@ export async function press(cdp, selector, { beforePress = async () => {} } = {}
       const found = await where()
       return found !== null && !found.disabled ? found : null
     },
-    30_000,
+    wait,
     250,
   )
   if (box === null) {
@@ -198,6 +208,24 @@ export async function press(cdp, selector, { beforePress = async () => {} } = {}
     button: 'left',
     clickCount: 1,
   })
+}
+
+export async function openUpdates(cdp) {
+  const opened = await cdp.evaluate(
+    'return document.querySelector("[data-cy=rail-workspace]")?.getAttribute("aria-expanded") === "true"',
+  )
+  if (!opened) await press(cdp, '[data-cy=rail-workspace]', { wait: 180_000 })
+  if (
+    !(await until(
+      () =>
+        cdp.evaluate(
+          'return Boolean(document.querySelector("[data-cy=updates-menu]")?.getBoundingClientRect().width)',
+        ),
+      180_000,
+      250,
+    ))
+  )
+    throw new Error('Timed out: ordinary updates menu is visible')
 }
 
 /** Let the launch provider decision finish before navigating away from its initial surface. */

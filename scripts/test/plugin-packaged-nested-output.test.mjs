@@ -4,10 +4,6 @@ import { spawn as spawnChild } from 'node:child_process'
 import { afterEach, expect, it, vi } from 'vitest'
 import { observeApp } from '../gates/plugin-packaged/probe.mjs'
 
-// The packaged journey keeps the nested app's own stdout and stderr, byte for byte and with no
-// classification, in its stderr; the owner echoes that into the uploaded fixture-output.log.
-// This drives the actual startApp source with an actual child, using the stdio the journey asks for.
-
 afterEach(() => vi.restoreAllMocks())
 
 function journeyStartApp(spawn) {
@@ -55,8 +51,12 @@ it('keeps every nested stdout and stderr byte, including bytes written just befo
   const script = `
     const out = Buffer.concat([Buffer.from('nested-stdout:'), Buffer.alloc(300000, 0xa1), Buffer.from([0xff, 0xfe])])
     const err = Buffer.concat([Buffer.from('nested-stderr:'), Buffer.alloc(300000, 0xb2), Buffer.from('Error: fictional\\n    at x (/fictional.js:1:1)')])
-    process.stderr.write(err)
-    process.stdout.write(out, () => process.exit(0))
+    let pending = 2
+    const written = () => {
+      if (--pending === 0) process.exit(0)
+    }
+    process.stderr.write(err, written)
+    process.stdout.write(out, written)
   `
   const captured = []
   const write = process.stderr.write.bind(process.stderr)

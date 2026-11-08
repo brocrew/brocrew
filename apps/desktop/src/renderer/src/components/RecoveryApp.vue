@@ -234,7 +234,7 @@ const messagePaths = useMessagePaths(
 <template>
   <MessageLinks :resolve="resolveSavedLink" :open="openSavedLink">
     <main
-      class="recovery"
+      class="recovery bb-conversation-ground"
       data-chat-theme="light"
       data-cy="recovery"
       :data-verdict="verdict?.kind ?? null"
@@ -464,17 +464,6 @@ const messagePaths = useMessagePaths(
   min-height: 0;
   flex-direction: column;
   overflow: auto;
-  background-color: var(--conversation-bg-color, var(--chat-bg));
-  background-image: var(--conversation-bg-image, var(--paper-wash));
-  background-position: var(--conversation-bg-position, 0% 0%);
-  background-repeat: var(--conversation-bg-repeat, repeat);
-  background-size: var(--conversation-bg-size, auto);
-  image-rendering: var(--conversation-bg-rendering, auto);
-  color: var(--text);
-}
-
-.recovery > * {
-  image-rendering: auto;
 }
 
 /* The refusal and failure screens: one card in the middle of the paper. */

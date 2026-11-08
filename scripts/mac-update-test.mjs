@@ -1,13 +1,22 @@
-import { spawn, execFile } from 'node:child_process'
-import { promisify, parseArgs, isDeepStrictEqual } from 'node:util'
+import { parseArgs, isDeepStrictEqual } from 'node:util'
 import { createServer } from 'node:http'
 import { createReadStream } from 'node:fs'
-import { access, mkdir, readFile, writeFile, readdir, lstat, realpath, rm } from 'node:fs/promises'
+import { mkdir, readFile, writeFile, readdir, lstat, realpath, rm } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { basename, join, resolve } from 'node:path'
-import { createHash } from 'node:crypto'
-import { DatabaseSync } from 'node:sqlite'
+import { join, resolve } from 'node:path'
 import {
+  checkedMacBundle,
+  launchServicesArguments,
+  exists,
+  digest,
+  waitFor,
+  macCommands,
+  observeMacWindow,
+  quitMacChild,
+  databaseSnapshot,
+  nativeFiles,
+  checkpointIds,
+  checkNativePrefixes,
   assertHostedMac,
   assertOwnedProcess,
   dataPreserved,
@@ -28,8 +37,6 @@ import {
   withMacKeychainRecovery,
   stateBytes,
   stateSummary,
-  READY_LINE,
-  FAIL_LINE,
   VERSION_A,
   VERSION_B,
 } from './lib/mac-update-test.mjs'
@@ -47,6 +54,10 @@ import {
   saveRehearsalCodexKey,
   closeExpectedLaunchSetup,
   codexConfigFor,
+  connectDevTools,
+  press,
+  screenshot as captureScreenshot,
+  openUpdates,
 } from './lib/update-rehearsal-app.mjs'
 
 // Installation, launches and process signals are confined to a fresh hosted runner.
@@ -93,7 +104,6 @@ const registry = packagedRegistryFile(dataRoot)
 const codexHome = join(data, 'provider-homes', 'default', 'brobot', 'codex')
 const nativeRoot = join(codexHome, 'sessions')
 const downloads = join(homedir(), 'Downloads')
-const exec = promisify(execFile)
 const summary = {
   runId: process.env.GITHUB_RUN_ID,
   source: values['source-sha'],
@@ -111,181 +121,27 @@ let active = null,
   model = null,
   mountedA = null
 const channels = []
-const exists = async (path) =>
-  access(path).then(
-    () => true,
-    (error) => {
-      if (error.code === 'ENOENT') return false
-      throw error
-    },
-  )
-async function run(program, args, options = {}) {
-  const result = await exec(program, args, {
-    encoding: 'utf8',
-    timeout: 120_000,
-    maxBuffer: 16 * 1024 * 1024,
-    ...options,
-  })
-  return result.stdout
+const { run, plist, processInfo } = macCommands()
+const click = (cdp, selector) => press(cdp, selector, { wait: 180_000 })
+async function connect(url) {
+  const connection = await connectDevTools(url, { answerWithin: 60_000, connectWithin: 30_000 })
+  channels.push(connection)
+  return connection
 }
-async function waitFor(check, description, budget = 180_000) {
-  const deadline = Date.now() + budget
-  while (Date.now() < deadline) {
-    const value = await check()
-    if (value) return value
-    await new Promise((done) => setTimeout(done, 250))
-  }
-  throw new Error(`Timed out: ${description}`)
-}
+const screenshot = (cdp, name) => captureScreenshot(cdp, join(evidence, name))
+
 function passed(name, facts = true) {
   summary.assertions.push({ name, passed: true, facts })
   console.log(`PASS ${name}`)
-}
-async function digest(path, algorithm = 'sha256', encoding = 'hex') {
-  const sum = createHash(algorithm)
-  for await (const chunk of createReadStream(path)) sum.update(chunk)
-  return sum.digest(encoding)
-}
-async function plist(program, args) {
-  const xml = await run(program, args)
-  return await new Promise((done, failed) => {
-    const child = spawn('/usr/bin/plutil', ['-convert', 'json', '-o', '-', '-'], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
-    let out = '',
-      error = ''
-    child.stdout.on('data', (part) => {
-      out += part
-    })
-    child.stderr.on('data', (part) => {
-      error += part
-    })
-    child.once('error', failed)
-    child.once('exit', (code) => {
-      if (code !== 0) return failed(new Error(`plutil failed (${code}): ${error}`))
-      try {
-        done(JSON.parse(out))
-      } catch (problem) {
-        failed(problem)
-      }
-    })
-    child.stdin.end(xml)
-  })
 }
 async function quarantine(path, stage) {
   const attributes = await run('/usr/bin/xattr', ['-l', path])
   summary.quarantine.push({ stage, path, attributes, observedAt: new Date().toISOString() })
 }
-async function packageInfo(bundle) {
-  return packageOfAsar(`${bundle}/Contents/Resources/app.asar`)
-}
 async function bundleChecked(bundle, version, marker) {
-  requireEvidence(!(await lstat(bundle)).isSymbolicLink(), 'App bundle must not be a symlink.')
-  const info = await packageInfo(bundle)
-  requireEvidence(
-    info.version === version && info.rehearsalMarker === marker,
-    'Installed package version/marker differs.',
-  )
-  const id = (
-    await run('/usr/bin/plutil', [
-      '-extract',
-      'CFBundleIdentifier',
-      'raw',
-      '-o',
-      '-',
-      `${bundle}/Contents/Info.plist`,
-    ])
-  ).trim()
-  requireEvidence(id === 'com.brobot2.desktop', 'Wrong installed bundle identity.')
-  await run('/usr/bin/codesign', ['--verify', '--deep', '--strict', bundle])
-  return {
-    version: info.version,
-    marker: info.rehearsalMarker,
-    bundleId: id,
-    asarSha256: await digest(`${bundle}/Contents/Resources/app.asar`),
-  }
+  return checkedMacBundle(bundle, version, marker, run)
 }
-async function processInfo(pid) {
-  try {
-    const command = (await run('/bin/ps', ['-p', String(pid), '-o', 'command='])).trim()
-    const started = (await run('/bin/ps', ['-p', String(pid), '-o', 'lstart='])).trim()
-    return command && started ? { pid, command, started } : null
-  } catch (error) {
-    if (error.code === 1) return null
-    throw error
-  }
-}
-async function connect(url) {
-  requireEvidence(new URL(url).hostname === '127.0.0.1', 'DevTools must remain on loopback.')
-  const socket = new WebSocket(url),
-    pending = new Map()
-  await new Promise((done, failed) => {
-    const timer = setTimeout(() => failed(new Error('DevTools connection timed out')), 30_000)
-    socket.addEventListener(
-      'open',
-      () => {
-        clearTimeout(timer)
-        done()
-      },
-      { once: true },
-    )
-    socket.addEventListener(
-      'error',
-      () => {
-        clearTimeout(timer)
-        failed(new Error('DevTools connection failed'))
-      },
-      { once: true },
-    )
-  })
-  let id = 0
-  socket.addEventListener('message', ({ data }) => {
-    const message = JSON.parse(data),
-      receipt = pending.get(message.id)
-    if (receipt) {
-      clearTimeout(receipt.timer)
-      pending.delete(message.id)
-      if (message.error) receipt.reject(new Error(message.error.message))
-      else receipt.resolve(message.result)
-    }
-  })
-  socket.addEventListener('close', () => {
-    for (const receipt of pending.values()) {
-      clearTimeout(receipt.timer)
-      receipt.reject(new Error('DevTools closed'))
-    }
-    pending.clear()
-  })
-  const call = (method, params = {}) =>
-    new Promise((resolve, reject) => {
-      const current = ++id
-      const timer = setTimeout(() => {
-        pending.delete(current)
-        reject(new Error(`DevTools timed out: ${method}`))
-      }, 60_000)
-      pending.set(current, { resolve, reject, timer })
-      socket.send(JSON.stringify({ id: current, method, params }))
-    })
-  const evaluate = async (body) => {
-    const result = await call('Runtime.evaluate', {
-      expression: `(async () => { ${body} })()`,
-      awaitPromise: true,
-      returnByValue: true,
-    }).catch((error) => {
-      throw new Error(`Renderer evaluation failed (${body.slice(0, 160)}): ${error.message}`, {
-        cause: error,
-      })
-    })
-    requireEvidence(
-      !result.exceptionDetails,
-      result.exceptionDetails?.exception?.description ?? 'Renderer evaluation failed.',
-    )
-    return result.result?.value
-  }
-  const result = { call, evaluate, close: () => socket.close() }
-  channels.push(result)
-  return result
-}
+
 async function launch(
   stage,
   port,
@@ -294,158 +150,43 @@ async function launch(
   { expectedConversations = stage === 'a' ? 0 : 2 } = {},
 ) {
   const log = join(evidence, `${stage}.log`)
-  await run('/usr/bin/open', [
-    '-n',
-    '--stdout',
-    join(evidence, `${stage}.stdout.log`),
-    '--stderr',
-    log,
-    // ⚑ LaunchServices gives the app none of this process's environment: a private feed's token
-    // reaches the app here, and nowhere else.
-    ...(feedReadToken === null ? [] : ['--env', `GH_TOKEN=${feedReadToken}`]),
-    app,
-    '--args',
-    '--remote-debugging-address=127.0.0.1',
-    `--remote-debugging-port=${port}`,
-  ]).catch((error) => {
+  await run(
+    '/usr/bin/open',
+    launchServicesArguments(app, evidence, stage, port, {
+      environment: feedReadToken === null ? [] : [['GH_TOKEN', feedReadToken]],
+    }),
+  ).catch((error) => {
     // ⛔ A failed command is said with its arguments: never with the feed's token.
     const said = String(error.message)
     throw new Error(feedReadToken === null ? said : said.split(feedReadToken).join('<token>'))
   })
-  const root = `http://127.0.0.1:${port}`
-  const discovery = await waitFor(async () => {
-    try {
-      const response = await fetch(`${root}/json/version`, { signal: AbortSignal.timeout(1000) })
-      return response.ok ? await response.json() : null
-    } catch (error) {
-      if (error instanceof TypeError || error.name === 'TimeoutError') return null
-      throw error
-    }
-  }, `${stage} DevTools endpoint`)
-  const browser = await connect(discovery.webSocketDebuggerUrl)
-  const processes = await browser.call('SystemInfo.getProcessInfo')
-  const pid = processes.processInfo.find((one) => one.type === 'browser')?.id
-  requireEvidence(Number.isInteger(pid) && pid > 0, 'Browser PID evidence is missing.')
-  const identity = await processInfo(pid)
-  assertOwnedProcess(identity, identity, app, port)
-  active = { ...identity, port, browser, log }
-  const attempt = { stage, ...identity, port, log: basename(log), phase: 'cdp-binding' }
-  summary.launchAttempts.push(attempt)
-  const bound = await run('/usr/sbin/lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN'])
-  requireEvidence(
-    bound.includes(`127.0.0.1:${port}`) && !bound.includes(`*:${port}`),
-    'CDP is not bound exclusively to loopback.',
-  )
-  const page = await waitFor(async () => {
-    const targets = await (await fetch(`${root}/json/list`)).json()
-    return targets.find(
-      (one) => one.type === 'page' && one.url.endsWith('/index.html') && one.webSocketDebuggerUrl,
-    )
-  }, `${stage} ordinary window`)
-  const cdp = await connect(page.webSocketDebuggerUrl)
-  attempt.page = { id: page.id, url: page.url }
-  active.cdp = cdp
-  active.stage = stage
-  await cdp.call('Page.enable')
-  await cdp.call('Runtime.enable')
-  attempt.phase = 'ordinary-bridge'
-  await waitFor(
-    () => cdp.evaluate('return Boolean(window.api?.updates && window.api?.runtime)'),
-    `${stage} ordinary bridge`,
-  )
-  attempt.phase = 'ready-line'
-  await waitFor(async () => {
-    const lines = (await readFile(log, 'utf8')).split(/\r?\n/)
-    requireEvidence(!lines.includes(FAIL_LINE), 'App reported a failed start.')
-    return lines.includes(READY_LINE)
-  }, `${stage} READY line`)
-  attempt.phase = 'app-info'
-  const info = await cdp.evaluate('return await window.api.getAppInfo()')
-  requireEvidence(
-    info.version === version && info.build.commit === values['source-sha'],
-    'Running version/source does not match the frozen build.',
-  )
-  requireEvidence(
-    info.workspace.path === data && info.workspace.isDefault === true,
-    'Running app uses a different data folder.',
-  )
-  attempt.phase = 'visible-window'
-  await waitFor(
-    () =>
-      cdp.evaluate(
-        'return document.visibilityState === "visible" && document.querySelector("[data-cy=rail-workspace]") !== null',
-      ),
-    `${stage} ordinary visible window after rendering`,
-  )
-  const targets = await (await fetch(`${root}/json/list`)).json()
-  requireEvidence(
-    !targets.some((one) => one.url.endsWith('/recovery.html')),
-    'A recovery choice window remains open.',
-  )
-  requireEvidence(
-    info.db.providerSessionCount === expectedConversations,
-    'Unexpected data folder or conversation count.',
-  )
-  const packaged = await bundleChecked(app, version, marker)
-  attempt.phase = 'verified'
-  summary.launches.push({
+  const { cdp, record } = await observeMacWindow({
+    app,
+    port,
     stage,
-    ...identity,
-    cdpBinding: bound.trim(),
-    log: basename(log),
-    appInfo: info,
-    package: packaged,
+    log,
+    expected: {
+      version,
+      source: values['source-sha'],
+      data,
+      isDefault: true,
+      conversations: expectedConversations,
+    },
+    run,
+    processInfo,
+    connect,
+    attempts: summary.launchAttempts,
+    verifyBundle: () => bundleChecked(app, version, marker),
+    onChild: (child) => {
+      active = child
+    },
   })
-  await cdp.call('Page.enable')
+  summary.launches.push(record)
   await screenshot(cdp, `${stage}-window.png`)
   return cdp
 }
-async function screenshot(cdp, name) {
-  const result = await cdp.call('Page.captureScreenshot', { format: 'png' })
-  requireEvidence(result.data, 'Screenshot evidence is missing.')
-  await writeFile(join(evidence, name), Buffer.from(result.data, 'base64'))
-}
-// Press what `selector` names as a person does: the pointer goes to its middle, and the left button
-// down and up there, so a button that is covered or disabled is not pressed.
-async function click(cdp, selector) {
-  const at = await waitFor(
-    () =>
-      cdp.evaluate(
-        `const button = document.querySelector(${JSON.stringify(selector)}); if (!button || button.disabled) return null; button.scrollIntoView({ block: 'center' }); const box = button.getBoundingClientRect(); return box.width > 0 ? { x: box.x + box.width / 2, y: box.y + box.height / 2 } : null`,
-      ),
-    `visible enabled ${selector}`,
-  )
-  await cdp.call('Input.dispatchMouseEvent', { type: 'mouseMoved', ...at })
-  for (const type of ['mousePressed', 'mouseReleased'])
-    await cdp.call('Input.dispatchMouseEvent', { type, ...at, button: 'left', clickCount: 1 })
-}
-async function openUpdates(cdp) {
-  const opened = await cdp.evaluate(
-    'return document.querySelector("[data-cy=rail-workspace]")?.getAttribute("aria-expanded") === "true"',
-  )
-  if (!opened) await click(cdp, '[data-cy=rail-workspace]')
-  await waitFor(
-    () =>
-      cdp.evaluate(
-        'return Boolean(document.querySelector("[data-cy=updates-menu]")?.getBoundingClientRect().width)',
-      ),
-    'ordinary updates menu is visible',
-  )
-}
 async function quit() {
-  if (active === null) return
-  const child = active
-  const current = await processInfo(child.pid)
-  assertOwnedProcess(child, current, app, child.port)
-  process.kill(child.pid, 'SIGTERM')
-  await waitFor(
-    async () => !(await processInfo(child.pid)),
-    'verified test child graceful quit',
-    60_000,
-  )
-  child.browser.close()
-  active = null
-  passed('verified-child-quit', { pid: child.pid, signal: 'SIGTERM' })
+  active = await quitMacChild(active, app, processInfo, passed)
 }
 /** On this fresh hosted runner, forget only this packaged app's sealing entry, never its password. */
 async function forgetHostedSealingEntry() {
@@ -486,7 +227,7 @@ async function fixtureWithKeyRecovery(attempt, { getPage, setPage, stage, versio
       summary.fixture.recoveries.push({ stage, key: status })
     },
     stop: async () => {
-      copiesBeforeFresh = await checkpointIds()
+      copiesBeforeFresh = await checkpointIds(data)
       const page = getPage()
       await quit()
       page.close()
@@ -504,7 +245,7 @@ async function fixtureWithKeyRecovery(attempt, { getPage, setPage, stage, versio
         }),
       )
       requireEvidence(
-        JSON.stringify(await checkpointIds()) === JSON.stringify(copiesBeforeFresh),
+        JSON.stringify(await checkpointIds(data)) === JSON.stringify(copiesBeforeFresh),
         'A fresh-key restart made an extra recovery copy.',
       )
       recoveryOrder(await readFile(join(evidence, `${freshStage}.log`), 'utf8'), {
@@ -522,77 +263,6 @@ async function fixtureWithKeyRecovery(attempt, { getPage, setPage, stage, versio
   })
 }
 
-function databaseSnapshot(file) {
-  const db = new DatabaseSync(file, { readOnly: true })
-  try {
-    requireEvidence(
-      db.prepare('PRAGMA quick_check').get().quick_check === 'ok',
-      'SQLite quick_check failed.',
-    )
-    requireEvidence(
-      db.prepare('PRAGMA foreign_key_check').all().length === 0,
-      'SQLite foreign-key check failed.',
-    )
-    db.exec('BEGIN')
-    const snapshot = Object.fromEntries(
-      ['provider_session', 'events'].map((table) => [
-        table,
-        db.prepare(`SELECT * FROM ${table} ORDER BY id`).all(),
-      ]),
-    )
-    snapshot.migrations = db.prepare('SELECT * FROM __drizzle_migrations ORDER BY id').all()
-    db.exec('COMMIT')
-    return snapshot
-  } finally {
-    db.close()
-  }
-}
-async function nativeFiles(folder) {
-  const files = {}
-  if (!(await exists(folder))) return files
-  requireEvidence(!(await lstat(folder)).isSymbolicLink(), 'Native transcript folder is a symlink.')
-  for (const entry of await readdir(folder, { withFileTypes: true })) {
-    const path = join(folder, entry.name)
-    requireEvidence(!entry.isSymbolicLink(), `Native transcript tree contains a symlink: ${path}`)
-    if (entry.isDirectory()) Object.assign(files, await nativeFiles(path))
-    else if (entry.isFile() && entry.name.endsWith('.jsonl')) {
-      const bytes = await readFile(path)
-      files[path.slice(data.length + 1)] = {
-        bytes: bytes.length,
-        sha256: hash(bytes),
-      }
-    }
-  }
-  return files
-}
-async function checkpointIds() {
-  const folder = join(data, 'backups')
-  if (!(await exists(folder))) return []
-  const found = []
-  for (const entry of await readdir(folder, { withFileTypes: true })) {
-    if (entry.isDirectory()) {
-      const path = join(folder, entry.name, 'manifest.json')
-      requireEvidence(await exists(path), 'Unfinished or unmanifested recovery copy.')
-      found.push(entry.name)
-    }
-  }
-  return found.sort()
-}
-async function checkNativePrefixes(natives) {
-  for (const [name, original] of Object.entries(natives)) {
-    requireEvidence(original.bytes > 0, 'Native transcript baseline is empty.')
-    const sum = createHash('sha256')
-    for await (const chunk of createReadStream(join(data, name), {
-      start: 0,
-      end: original.bytes - 1,
-    }))
-      sum.update(chunk)
-    requireEvidence(
-      sum.digest('hex') === original.sha256,
-      `Native transcript lost original bytes: ${name}`,
-    )
-  }
-}
 async function checkRetention(before, state, natives, settingsBefore, registryBefore) {
   const after = databaseSnapshot(join(data, 'brobot2.sqlite'))
   const comparison = dataPreserved(before, after)
@@ -603,7 +273,7 @@ async function checkRetention(before, state, natives, settingsBefore, registryBe
     'Computer update settings changed.',
   )
   requireEvidence(
-    isDeepStrictEqual(await nativeFiles(nativeRoot), natives),
+    isDeepStrictEqual(await nativeFiles(nativeRoot, data), natives),
     'Native transcript bytes changed before any resume.',
   )
   return { comparison, after }
@@ -791,7 +461,7 @@ try {
   await openUpdates(cdpA)
   // The draft is typed as a person types it: a press on the message box, then the words.
   await click(cdpA, '[data-cy=prompt-input]')
-  await cdpA.call('Input.insertText', { text: 'Unsent fictional draft: café ☕' })
+  await cdpA.send('Input.insertText', { text: 'Unsent fictional draft: café ☕' })
   await waitFor(
     () =>
       cdpA.evaluate(
@@ -819,7 +489,7 @@ try {
     stateBeforeButtons['provider-usage.json'] !== undefined,
     'A settling quit did not preserve provider usage state.',
   )
-  const nativeBeforeButtons = await nativeFiles(nativeRoot)
+  const nativeBeforeButtons = await nativeFiles(nativeRoot, data)
   const settingsBeforeButtons = await readFile(settings)
   requireEvidence(
     Object.keys(nativeBeforeButtons).length >= 2,
@@ -928,12 +598,12 @@ try {
   cdpA.close()
   const before = databaseSnapshot(join(data, 'brobot2.sqlite')),
     state = stateBytes(data)
-  const natives = await nativeFiles(nativeRoot),
+  const natives = await nativeFiles(nativeRoot, data),
     settingsBefore = await readFile(settings)
   const registryBefore = JSON.parse(await readFile(registry, 'utf8'))
   const beforeReplacement = dataPreserved(beforeButtons, before, { allowAppended: true })
   statePreserved(stateBeforeButtons, state)
-  await checkNativePrefixes(nativeBeforeButtons)
+  await checkNativePrefixes(nativeBeforeButtons, data)
   requireEvidence(
     settingsBefore.equals(settingsBeforeButtons),
     'Download/quit changed computer settings.',
@@ -942,7 +612,7 @@ try {
   passed('check-download-and-quit-preserve-original-data-and-state', beforeReplacement)
   requireEvidence(Object.keys(natives).length >= 2, 'Native transcript evidence is missing.')
   nativeTranscriptsPresent(before, natives)
-  const copiesBefore = await checkpointIds()
+  const copiesBefore = await checkpointIds(data)
   await writeFile(
     join(evidence, 'a-data-baseline.json'),
     JSON.stringify(
@@ -964,7 +634,7 @@ try {
   const order = recoveryOrder(await readFile(join(evidence, 'b-first.log'), 'utf8'), {
     checkpoint: true,
   })
-  const copies = await checkpointIds(),
+  const copies = await checkpointIds(data),
     added = copies.filter((one) => !copiesBefore.includes(one))
   requireEvidence(added.length === 1, 'B must make exactly one new checked recovery copy.')
   const checkpoint = join(data, 'backups', added[0]),
@@ -993,11 +663,11 @@ try {
   passed('b-preserves-every-conversation-event-raw-byte-draft-and-state', kept.comparison)
   await quit()
   cdpB.close()
-  const copiesAfterFirst = await checkpointIds()
+  const copiesAfterFirst = await checkpointIds(data)
   let cdpSecond = await launch('b-second', 9341, VERSION_B, values['marker-b'])
   recoveryOrder(await readFile(join(evidence, 'b-second.log'), 'utf8'), { checkpoint: false })
   requireEvidence(
-    JSON.stringify(await checkpointIds()) === JSON.stringify(copiesAfterFirst),
+    JSON.stringify(await checkpointIds(data)) === JSON.stringify(copiesAfterFirst),
     'Second B start made a new recovery copy.',
   )
   const secondKept = await checkRetention(before, state, natives, settingsBefore, registryBefore)
@@ -1052,7 +722,7 @@ try {
   await quit()
   cdpSecond.close()
   dataPreserved(before, databaseSnapshot(join(data, 'brobot2.sqlite')), { allowAppended: true })
-  await checkNativePrefixes(natives)
+  await checkNativePrefixes(natives, data)
   summary.success = true
 } catch (error) {
   summary.success = false

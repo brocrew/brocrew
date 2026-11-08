@@ -1,8 +1,8 @@
-# BroCrew's releases (W4.109): a pushed version tag builds Windows and the Mac, checks both, and
-# publishes ONE GitHub release with the files BroCrew's updater reads.
+# Candidate tags build once. Qualification seals the tested selection. Publication on the
+# identical stable-tag SHA downloads that selection and never rebuilds or replaces asset bytes.
 #
 #   - `vX.Y.Z`        → a full release: what every BroCrew that checks for updates is offered;
-#   - `vX.Y.Z-beta.N` → a prerelease: offered only to a BroCrew whose person chose beta updates.
+#   - `vX.Y.Z-candidate.N` builds version X.Y.Z without publishing.
 #
 # ⚑ The version comes from the tag (`-c.extraMetadata.version`), so a release needs no commit that
 # bumps a number. ⛔ Only the version: the app's name — the package's `name`, which places its data
@@ -19,26 +19,41 @@
 # `scripts/macos-packaged-check.mjs`) and `scripts/release-check.mjs` — the update file names this
 # version and every file it names is there, with the size and sha512 it says; the app looks at this
 # repository. Each build also checks recovery through its packaged app's real entry. Only when
-# both builds and their checks pass does the `publish` job, in the
-# `release` environment (where a reviewer can be required), attest the files (on a public
-# repository) and publish them as one release.
+# both builds and their checks pass does the candidate job attest and retain the files.
+# A later stable-tag dispatch publishes only the qualified bytes through the protected
+# release environment, with its existing required reviewer and no-admin-bypass controls.
 #
 # Windows signs with DEVERP when the windows-signing environment has all four eSigner secrets.
-# Majid restricts that environment to v* tags. Other workflows cannot read its secrets; their
-# Windows builds stay unsigned. Mac builds remain signed ad hoc and not notarized.
+# That environment is restricted to v* tags. Other workflows cannot read its secrets; their
+# Windows builds stay unsigned. Mac releases are signed and notarized.
 name: Release
 
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Qualify a candidate or publish its exact tested files from the stable tag
+        type: choice
+        required: true
+        options: [qualify, publish]
+      selection_json:
+        description: Pinned build and native proof inventory (qualify only)
+        type: string
+      selection_artifact_id:
+        description: Immutable tested-selection artifact ID (publish only)
+        type: string
+      selection_sha256:
+        description: SHA256 of tested-selection.json (publish only)
+        type: string
 
 permissions:
   contents: read
 
-env:
-  ELECTRON_CACHE: ${{ github.workspace }}/.cache/electron
-  electron_config_cache: ${{ github.workspace }}/.cache/electron
-  ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   plan:
@@ -47,35 +62,37 @@ jobs:
     timeout-minutes: 5
     outputs:
       version: ${{ steps.plan.outputs.version }}
-      beta: ${{ steps.plan.outputs.beta }}
       repo: ${{ steps.plan.outputs.repo }}
       owner: ${{ steps.plan.outputs.owner }}
       name: ${{ steps.plan.outputs.name }}
+      build: ${{ steps.plan.outputs.build }}
+      qualify: ${{ steps.plan.outputs.qualify }}
+      publish: ${{ steps.plan.outputs.publish }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - &node-only
+        uses: ./.github/actions/setup-desktop
+        with:
+          install: 'false'
       - id: plan
         shell: bash
         env:
           RELEASE_REPO: ${{ vars.RELEASE_REPO || github.repository }}
+          RELEASE_MODE: ${{ inputs.mode }}
         run: |
           set -euo pipefail
-          if [[ ! "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)(-beta\.[0-9]+)?$ ]]; then
-            echo "$GITHUB_REF_NAME is not a version tag (vX.Y.Z or vX.Y.Z-beta.N): nothing is released"
-            exit 1
-          fi
-          version="${GITHUB_REF_NAME#v}"
-          beta=false; [ -n "${BASH_REMATCH[2]}" ] && beta=true
+          node scripts/release-artifacts.mjs plan >> "$GITHUB_OUTPUT"
           if [ "$RELEASE_REPO" != "$GITHUB_REPOSITORY" ]; then
             echo "RELEASE_REPO is $RELEASE_REPO, but this workflow can publish only to $GITHUB_REPOSITORY"
             exit 1
           fi
           {
-            echo "version=$version"
-            echo "beta=$beta"
             echo "repo=$RELEASE_REPO"
             echo "owner=${RELEASE_REPO%%/*}"
             echo "name=${RELEASE_REPO#*/}"
           } >> "$GITHUB_OUTPUT"
-          echo "Releasing BroCrew $version (beta: $beta) to $RELEASE_REPO"
 
   # A release carries no name the repo must not carry, in its files or their names. The patterns
   # come from the repository secret; a release run without them fails rather than skip.
@@ -83,13 +100,12 @@ jobs:
     name: No name the repo must not carry
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    needs: plan
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: '.nvmrc'
+      - *node-only
       - name: The leak guard, patterns required
         env:
           BROBOT_LEAK_PATTERNS: ${{ secrets.BROBOT_LEAK_PATTERNS }}
@@ -98,27 +114,20 @@ jobs:
   windows:
     name: Build for Windows (NSIS, x64)
     needs: [plan, leak]
+    if: needs.plan.outputs.build == 'true'
     # ⚑ `windows-2022`: pnpm's node-gyp does not know the Visual Studio of `windows-latest` (`windows.yml`).
     runs-on: windows-2022
     environment: windows-signing
     timeout-minutes: 45
     outputs:
       signed: ${{ steps.signing.outputs.enabled }}
+      artifact_id: ${{ steps.assets.outputs.artifact-id }}
+      artifact_digest: ${{ steps.assets.outputs.artifact-digest }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: '.nvmrc'
-          cache: pnpm
-      - uses: actions/cache@v4
-        with:
-          path: .cache
-          key: ${{ runner.os }}-electron-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-electron-
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-desktop
       # The installer carries `THIRD-PARTY-NOTICES.md`; its list of npm packages must be the one
       # this lockfile installs.
       - name: The third-party notices are up to date
@@ -196,7 +205,8 @@ jobs:
           path: ${{ runner.temp }}/recovery-evidence
           if-no-files-found: warn
           retention-days: 14
-      - uses: actions/upload-artifact@v4
+      - id: assets
+        uses: actions/upload-artifact@v4
         with:
           name: release-windows
           path: |
@@ -204,140 +214,157 @@ jobs:
             apps/desktop/dist/BroCrew-Setup-${{ needs.plan.outputs.version }}-x64.exe.blockmap
             apps/desktop/dist/latest.yml
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
 
   macos:
-    name: Build for the Mac (dmg and zip, Apple silicon, signed ad hoc)
+    name: Build for the Mac (Developer ID, notarized, Apple silicon)
     needs: [plan, leak]
+    if: needs.plan.outputs.build == 'true'
     runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
-    timeout-minutes: 45
+    environment: mac-signing
+    timeout-minutes: 100
+    outputs:
+      artifact_id: ${{ steps.build.outputs.artifact_id }}
+      artifact_digest: ${{ steps.build.outputs.artifact_digest }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - id: build
+        uses: ./.github/actions/signed-mac
         with:
-          node-version-file: '.nvmrc'
-          cache: pnpm
-      - uses: actions/cache@v4
-        with:
-          path: .cache
-          key: ${{ runner.os }}-electron-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: ${{ runner.os }}-electron-
-      - run: pnpm install --frozen-lockfile
-      - name: The third-party notices are up to date
-        run: node scripts/third-party-notices.mjs --check
-      # ⚑ `zip` beside the `dmg`: the updater's Mac file (`latest-mac.yml` names both). `dir` keeps the
-      # unpacked app for the check. `-c.mac.identity=-` signs ad hoc, as `package:mac-beta` does.
-      - name: Build and package (dmg and zip, arm64, signed ad hoc)
-        run: |
-          set -euo pipefail
-          pnpm --filter @brobot2/desktop run build
-          pnpm --filter @brobot2/desktop exec electron-builder --mac dmg zip dir --arm64 --config electron-builder.yml \
-            -c.mac.identity=- \
-            -c.extraMetadata.version=${{ needs.plan.outputs.version }} \
-            -c.publish.provider=github -c.publish.owner=${{ needs.plan.outputs.owner }} -c.publish.repo=${{ needs.plan.outputs.name }} \
-            --publish never
-      # The app carries no Claude Code: the check runs the newest tested one, installed with npm
-      # outside the app, as `macos.yml` does.
-      - name: Install Claude Code (the newest tested version) outside the app
-        id: claude
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="$(node -p "require('./apps/desktop/src/main/providers/claude/claude-code-tested.json').newest")"
-          prefix="$RUNNER_TEMP/claude-code"
-          npm install --prefix "$prefix" --no-audit --no-fund "@anthropic-ai/claude-code@$version"
-          program="$prefix/node_modules/@anthropic-ai/claude-code/bin/claude.exe"
-          [ -f "$program" ] || { echo "npm installed Claude Code $version, and there is no $program"; exit 1; }
-          echo "program=$program" >> "$GITHUB_OUTPUT"
-          echo "Claude Code $version: $program"
-      - name: Check the build (no Claude Code inside, the ad hoc signature, Codex and Claude Code run, the database module, the disk image, the data folder)
+          version: ${{ needs.plan.outputs.version }}
+          owner: ${{ needs.plan.outputs.owner }}
+          repo: ${{ needs.plan.outputs.name }}
+          artifact_name: release-macos
         env:
-          BROBOT_CHECK_CLAUDE: ${{ steps.claude.outputs.program }}
-        run: node scripts/macos-packaged-check.mjs apps/desktop/dist/mac-arm64/BroCrew.app apps/desktop/dist/BroCrew-${{ needs.plan.outputs.version }}-arm64.dmg
-      - name: Check the update files (version, sizes, sha512, where the app looks)
-        run: node scripts/release-check.mjs apps/desktop/dist ${{ needs.plan.outputs.version }} ${{ needs.plan.outputs.repo }} apps/desktop/dist/mac-arm64/BroCrew.app/Contents/Resources/app-update.yml
-      - name: Recovery real-entry check
-        env:
-          BROBOT_RECOVERY_EVIDENCE: ${{ runner.temp }}/recovery-evidence
-        run: node scripts/recovery-real-entry-check.mjs --packaged apps/desktop/dist/mac-arm64/BroCrew.app/Contents/MacOS/BroCrew
-      - name: Keep what the recovery check saw
-        if: always()
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: recovery-evidence-macos
-          path: ${{ runner.temp }}/recovery-evidence
-          if-no-files-found: warn
-          retention-days: 14
-      - uses: actions/upload-artifact@v4
-        with:
-          name: release-macos
-          path: |
-            apps/desktop/dist/BroCrew-${{ needs.plan.outputs.version }}-arm64.dmg
-            apps/desktop/dist/BroCrew-${{ needs.plan.outputs.version }}-arm64.dmg.blockmap
-            apps/desktop/dist/BroCrew-${{ needs.plan.outputs.version }}-arm64-mac.zip
-            apps/desktop/dist/BroCrew-${{ needs.plan.outputs.version }}-arm64-mac.zip.blockmap
-            apps/desktop/dist/latest-mac.yml
-          if-no-files-found: error
-          retention-days: 7
+          MAC_EXPECTED_TEAM_ID: ${{ vars.MAC_EXPECTED_TEAM_ID }}
+          MAC_EXPECTED_SIGNING_AUTHORITY: ${{ vars.MAC_EXPECTED_SIGNING_AUTHORITY }}
+          MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          MAC_CERT_P12_PASSWORD: ${{ secrets.MAC_CERT_P12_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
 
-  publish:
-    name: Publish the release
+  candidate:
+    name: Seal the candidate build origins and eight assets
     needs: [plan, windows, macos]
+    if: needs.plan.outputs.build == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    # ⚑ Where a required reviewer can hold the release until it is approved (a setting of the repository).
-    environment: release
     permissions:
-      contents: write
+      contents: read
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v7
+      - &checked-source
+        uses: actions/checkout@v7
         with:
+          fetch-depth: 0
           persist-credentials: false
-      # ⚑ Only the builds' files: the recovery checks keep their evidence as artifacts of this run
-      # too, and none of it belongs in a release.
+      - *node-only
       - uses: actions/download-artifact@v4
         with:
-          pattern: release-*
-          path: release
+          artifact-ids: ${{ needs.windows.outputs.artifact_id }}
           merge-multiple: true
-      # ⚑ Who built each file, checkable by anyone (`gh attestation verify`). ⚠️ GitHub attests only
-      # on a public repository on its ordinary plans, so a private one skips it.
-      - name: Attest the files
-        if: ${{ !github.event.repository.private }}
+          path: staging/windows
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ needs.macos.outputs.artifact_id }}
+          merge-multiple: true
+          path: staging/macos
+      - name: Record exact build origins and final file hashes
+        env:
+          RELEASE_REPO: ${{ needs.plan.outputs.repo }}
+          MAC_ARTIFACT_ID: ${{ needs.macos.outputs.artifact_id }}
+          MAC_ARTIFACT_DIGEST: sha256:${{ needs.macos.outputs.artifact_digest }}
+          WINDOWS_ARTIFACT_ID: ${{ needs.windows.outputs.artifact_id }}
+          WINDOWS_ARTIFACT_DIGEST: sha256:${{ needs.windows.outputs.artifact_digest }}
+          WINDOWS_SIGNED: ${{ needs.windows.outputs.signed }}
+        run: |
+          set -euo pipefail
+          export SOURCE_TREE="$(git rev-parse HEAD^{tree})"
+          export CANDIDATE_TAG_OBJECT="$(git rev-parse refs/tags/$GITHUB_REF_NAME)"
+          mkdir -p candidate/assets
+          node scripts/release-artifacts.mjs collect staging candidate/assets
+      - name: Attest the final files and their build manifest
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: release/*
-      # ⚑ A draft first, with every file, then published: nobody's updater ever reads a release whose
-      # files are still arriving. `--verify-tag` publishes on the pushed tag and creates no ref.
-      - name: Publish one release with every file
+          subject-path: |
+            candidate/assets/*
+            candidate/build-manifest.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: candidate-release-${{ github.run_attempt }}
+          path: candidate
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-signed-candidate-receipt
+          path: mac-signed-candidate.json
+          if-no-files-found: error
+          retention-days: 30
+
+  qualify:
+    name: Seal a mechanically verified tested selection
+    needs: [plan, leak]
+    if: needs.plan.outputs.qualify == 'true'
+    runs-on: ubuntu-latest
+    environment: mac-signing
+    permissions:
+      contents: read
+      actions: read
+      attestations: read
+    steps:
+      - *checked-source
+      - *node-only
+      - name: Verify source, candidate bytes, native proof origins and sealed receipts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TESTED_SELECTION_JSON: ${{ inputs.selection_json }}
+          MAC_EXPECTED_TEAM_ID: ${{ vars.MAC_EXPECTED_TEAM_ID }}
+          MAC_EXPECTED_SIGNING_AUTHORITY: ${{ vars.MAC_EXPECTED_SIGNING_AUTHORITY }}
+        run: |
+          node scripts/lib/mac-signing-identity.mjs mask
+          node scripts/release-selection.mjs qualify qualification
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tested-selection-${{ github.run_attempt }}
+          path: qualification/tested-selection.json
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish only the exact tested files
+    needs: [plan, leak]
+    if: needs.plan.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The repository's required reviewer and no-admin-bypass settings remain mandatory.
+    environment: release
+    permissions:
+      contents: write
+      actions: read
+      attestations: read
+    steps:
+      - *checked-source
+      - *node-only
+      - name: Verify the tested selection, publish a complete draft, and read every file back
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ needs.plan.outputs.repo }}
-          BETA: ${{ needs.plan.outputs.beta }}
-          BROCREW_WINDOWS_SIGNED: ${{ needs.windows.outputs.signed }}
-        shell: bash
+          TESTED_SELECTION_ARTIFACT_ID: ${{ inputs.selection_artifact_id }}
+          TESTED_SELECTION_SHA256: ${{ inputs.selection_sha256 }}
+          MAC_EXPECTED_TEAM_ID: ${{ vars.MAC_EXPECTED_TEAM_ID }}
+          MAC_EXPECTED_SIGNING_AUTHORITY: ${{ vars.MAC_EXPECTED_SIGNING_AUTHORITY }}
         run: |
-          set -euo pipefail
-          title="$(node scripts/beta-release.mjs title "$GITHUB_REF_NAME")"
-          notes="$(node scripts/beta-release.mjs notes "$GITHUB_REF_NAME" "${GITHUB_SHA::7}")"
-          [ -n "$title" ] && [ -n "$notes" ] || { echo "No title or notes for $GITHUB_REF_NAME"; exit 1; }
-          if gh release view "$GITHUB_REF_NAME" --repo "$REPO" > /dev/null 2>&1; then
-            echo "The release is already there (a re-run): replacing its files."
-            gh release upload "$GITHUB_REF_NAME" release/* --repo "$REPO" --clobber
-            exit 0
-          fi
-          gh release create "$GITHUB_REF_NAME" release/* --repo "$REPO" --verify-tag --draft \
-            --title "$title" --notes "$notes"
-          if [ "$BETA" = true ]; then
-            gh release edit "$GITHUB_REF_NAME" --repo "$REPO" --draft=false --prerelease --latest=false
-          else
-            gh release edit "$GITHUB_REF_NAME" --repo "$REPO" --draft=false --latest
-          fi
-          gh release view "$GITHUB_REF_NAME" --repo "$REPO" --json name,isPrerelease,isDraft,assets \
-            --jq '"\(.name): prerelease \(.isPrerelease), draft \(.isDraft), \(.assets | length) files"'
+          node scripts/lib/mac-signing-identity.mjs mask
+          node scripts/release-selection.mjs publish publication
+      - name: Keep the publication readback
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: publication-readback-${{ github.run_attempt }}
+          path: publication/publication-readback.json
+          if-no-files-found: warn
+          retention-days: 30

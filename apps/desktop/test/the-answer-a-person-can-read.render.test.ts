@@ -308,7 +308,9 @@ describe('§4 · the row offers the door, or draws the gap where the door would 
 /* ------------------------------------------------------------------------- §5 · a source census */
 
 describe('§5 · what this surface deliberately does not have', () => {
-  it('⛔ the panel does not mount `DocumentBody`, and says why in the file that does not', () => {
+  it('⛔ the panel does not mount `DocumentBody`, and says why in the file that does not', async () => {
+    const html = await panel()
+    expect(html).toContain('Six projects, and you may send work into all of them.')
     const source = readFileSync(VIEWER, 'utf8')
     expect(source).not.toContain("from './DocumentBody.vue'")
     // ⚑ The positive control: the reason is written down rather than left as an omission, and the
@@ -328,7 +330,9 @@ describe('§5 · what this surface deliberately does not have', () => {
     expect(source).toContain('export function answerAbsence')
   })
 
-  it('⚠️ nothing in the panel branches on which PROVIDER this is (039)', () => {
+  it('⚠️ nothing in the panel branches on which PROVIDER this is (039)', async () => {
+    const html = await panel()
+    expect(html).toContain('Six projects, and you may send work into all of them.')
     const source = readFileSync(VIEWER, 'utf8')
     for (const word of ["'claude'", "'codex'"]) expect(source, word).not.toContain(word)
     // The positive: the file does talk about providers — in a comment saying why it must not decide

@@ -283,7 +283,7 @@ const when = computed(() => fullTime(props.entry.updatedAt))
 
 <template>
   <section
-    class="reading-pane"
+    class="reading-pane bb-conversation-ground"
     data-cy="reading-pane"
     data-read-only="true"
     data-chat-theme="light"
@@ -385,19 +385,6 @@ const when = computed(() => fullTime(props.entry.updatedAt))
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  background-color: var(--conversation-bg-color, var(--chat-bg));
-  /* ⚑ **384 §1.3** — the ground, not a fill. `--chat-bg` stays a COLOUR (`chat-theme.test.ts`
-     resolves it as the page for every contrast pair); the wash is the image on top of it. */
-  background-image: var(--conversation-bg-image, var(--paper-wash));
-  background-position: var(--conversation-bg-position, 0% 0%);
-  background-repeat: var(--conversation-bg-repeat, repeat);
-  background-size: var(--conversation-bg-size, auto);
-  image-rendering: var(--conversation-bg-rendering, auto);
-  color: var(--text);
-}
-
-.reading-pane > * {
-  image-rendering: auto;
 }
 
 .reading-header {

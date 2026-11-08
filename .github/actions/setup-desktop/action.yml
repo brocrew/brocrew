@@ -1,0 +1,30 @@
+name: Set up desktop build tools
+description: Use the repository Node/pnpm pins and shared Electron dependency cache
+inputs:
+  install:
+    description: Install dependencies and enable the build caches; false uses Node only
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v6
+      if: inputs.install == 'true'
+    - uses: actions/setup-node@v7
+      with:
+        node-version-file: '.nvmrc'
+        cache: ${{ inputs.install == 'true' && 'pnpm' || '' }}
+    - uses: actions/cache@v4
+      if: inputs.install == 'true'
+      with:
+        path: .cache
+        key: ${{ runner.os }}-electron-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: ${{ runner.os }}-electron-
+    - shell: bash
+      if: inputs.install == 'true'
+      run: |
+        {
+          echo "ELECTRON_CACHE=$GITHUB_WORKSPACE/.cache/electron"
+          echo "electron_config_cache=$GITHUB_WORKSPACE/.cache/electron"
+          echo "ELECTRON_BUILDER_CACHE=$GITHUB_WORKSPACE/.cache/electron-builder"
+        } >> "$GITHUB_ENV"
+        pnpm install --frozen-lockfile

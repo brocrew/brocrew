@@ -52,7 +52,7 @@ const someClaimed = computed(() => props.reading?.lines.some((line) => line.regi
 
 <template>
   <section
-    class="activity-surface"
+    class="activity-surface bb-conversation-ground"
     data-wired="true"
     data-cy="recent-activity"
     data-chat-theme="light"
@@ -191,17 +191,6 @@ const someClaimed = computed(() => props.reading?.lines.some((line) => line.regi
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  background-color: var(--conversation-bg-color, var(--chat-bg));
-  background-image: var(--conversation-bg-image, var(--paper-wash));
-  background-position: var(--conversation-bg-position, 0% 0%);
-  background-repeat: var(--conversation-bg-repeat, repeat);
-  background-size: var(--conversation-bg-size, auto);
-  image-rendering: var(--conversation-bg-rendering, auto);
-  color: var(--text);
-}
-
-.activity-surface > * {
-  image-rendering: auto;
 }
 
 .page-head {

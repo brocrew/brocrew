@@ -1,0 +1,57 @@
+name: Actual signed Mac upgrade proof
+
+on:
+  workflow_dispatch:
+    inputs:
+      request:
+        description: 'JSON: mode guided, to build pins includes runId/artifactId/artifactSha256/source/tree/version/releaseId'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: actual-mac-signed-upgrade
+  cancel-in-progress: false
+
+jobs:
+  upgrade:
+    if: github.repository == 'brocrew/brocrew'
+    environment: mac-signing
+    env:
+      MAC_EXPECTED_TEAM_ID: ${{ vars.MAC_EXPECTED_TEAM_ID }}
+      MAC_EXPECTED_SIGNING_AUTHORITY: ${{ vars.MAC_EXPECTED_SIGNING_AUTHORITY }}
+    runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+      - name: Require and mask independent signing metadata
+        run: node scripts/lib/mac-signing-identity.mjs mask
+      - name: Download and independently bind actual release inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPGRADE_REQUEST: ${{ inputs.request }}
+        run: node scripts/mac-signed-upgrade-inputs.mjs --output signed-upgrade-inputs --request "$UPGRADE_REQUEST"
+      - name: Exercise real updater with controlled draft GitHub transport
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/mac-signed-upgrade.mjs --inputs signed-upgrade-inputs/inputs.json --evidence signed-upgrade-evidence
+      - name: Keep evidence for every terminal outcome
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: actual-signed-mac-upgrade-evidence
+          path: |
+            signed-upgrade-inputs/*.json
+            signed-upgrade-inputs/baseline/*.json
+            signed-upgrade-inputs/candidate/*.json
+            signed-upgrade-evidence
+          if-no-files-found: error
+          retention-days: 30

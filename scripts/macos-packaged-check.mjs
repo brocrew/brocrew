@@ -24,6 +24,7 @@ import {
 } from './lib/packaged-app-inventory.mjs'
 import { HIDDEN_LAUNCH_ARG } from './lib/hidden-launch.mjs'
 import { checkPackagedPluginService } from './packaged-plugin-service-check.mjs'
+import { verifySignedApp } from './mac-release-signing.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
 const APP_ID = 'com.brobot2.desktop'
@@ -42,6 +43,7 @@ const onCi = process.env.CI === 'true'
 
 const app = resolve(process.argv[2] ?? 'apps/desktop/dist/mac-arm64/BroCrew.app')
 const dmg = process.argv[3] === undefined ? null : resolve(process.argv[3])
+const distribution = process.argv.includes('--developer-id')
 const resources = join(app, 'Contents', 'Resources')
 const failures = []
 const scratch = []
@@ -157,6 +159,27 @@ function signedAdHoc(what, path, deep) {
   else if (!seen.adHoc) fail(`${what} is signed, but not ad hoc`)
   else say(`✓ ${what} is signed ad hoc, and the signature holds`)
 }
+async function checkedSignature(what, path) {
+  if (!distribution) return signedAdHoc(what, path, true)
+  try {
+    await verifySignedApp(path)
+    for (const args of [['stapler', 'validate', path]]) {
+      const result = spawnSync('xcrun', args, { encoding: 'utf8' })
+      if (result.status !== 0) throw new Error(`${result.stdout}${result.stderr}`)
+    }
+    const gatekeeper = spawnSync(
+      '/usr/sbin/spctl',
+      ['--assess', '--type', 'execute', '--verbose=4', path],
+      {
+        encoding: 'utf8',
+      },
+    )
+    if (gatekeeper.status !== 0) throw new Error(`${gatekeeper.stdout}${gatekeeper.stderr}`)
+    say(`✓ ${what}: Developer ID, notarized, stapled; Gatekeeper accepted`)
+  } catch (error) {
+    fail(`${what}: ${error.message}`)
+  }
+}
 /** ⚑ An agent's binary: its signature must hold — ad hoc once the app is signed, or its maker's. */
 function signatureHolds(what, path) {
   if (!existsSync(path)) return
@@ -164,7 +187,7 @@ function signatureHolds(what, path) {
   if (!seen.holds) fail(`${what}'s signature does not hold: ${seen.why}`)
   else say(`✓ ${what}'s signature holds (${seen.adHoc ? 'ad hoc' : 'its maker’s'})`)
 }
-signedAdHoc('the app', app, true)
+await checkedSignature('the app', app)
 signatureHolds('the bundled Codex', codex)
 
 // ── 3 · the agents run, on throwaway folders ────────────────────────────────────────────────────
@@ -265,12 +288,43 @@ if (dmg === null) {
     try {
       const inside = join(mount, 'BroCrew.app')
       if (!existsSync(inside)) fail(`the disk image holds no BroCrew.app: ${readdirSync(mount)}`)
-      else signedAdHoc('the app in the disk image', inside, true)
+      else await checkedSignature('the app in the disk image', inside)
       if (existsSync(join(mount, 'Applications'))) say('✓ the disk image links to Applications')
       else fail('the disk image has no link to Applications to drag the app to')
     } finally {
       spawnSync('hdiutil', ['detach', mount, '-force'], { encoding: 'utf8', timeout: 60_000 })
     }
+  }
+}
+
+if (distribution) {
+  const zip = process.argv[process.argv.indexOf('--developer-id') + 1]
+  if (!dmg || !zip) fail('Developer ID distribution check requires both the DMG and updater ZIP')
+  else {
+    for (const [program, args] of [
+      ['xcrun', ['stapler', 'validate', dmg]],
+      [
+        '/usr/sbin/spctl',
+        [
+          '--assess',
+          '--type',
+          'open',
+          '--context',
+          'context:primary-signature',
+          '--verbose=4',
+          dmg,
+        ],
+      ],
+    ]) {
+      const result = spawnSync(program, args, { encoding: 'utf8' })
+      if (result.status !== 0) fail(`the disk image: ${result.stdout}${result.stderr}`)
+    }
+    const extracted = aFolder('update-zip')
+    const result = spawnSync('/usr/bin/ditto', ['-x', '-k', resolve(zip), extracted], {
+      encoding: 'utf8',
+    })
+    if (result.status !== 0) fail(`the updater ZIP: ${result.stdout}${result.stderr}`)
+    else await checkedSignature('the app in the updater ZIP', join(extracted, 'BroCrew.app'))
   }
 }
 

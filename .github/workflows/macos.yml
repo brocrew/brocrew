@@ -166,15 +166,7 @@ jobs:
       - name: Install Claude Code (the newest tested version) outside the app
         id: claude
         shell: bash
-        run: |
-          set -euo pipefail
-          version="$(node -p "require('./apps/desktop/src/main/providers/claude/claude-code-tested.json').newest")"
-          prefix="$RUNNER_TEMP/claude-code"
-          npm install --prefix "$prefix" --no-audit --no-fund "@anthropic-ai/claude-code@$version"
-          program="$prefix/node_modules/@anthropic-ai/claude-code/bin/claude.exe"
-          [ -f "$program" ] || { echo "npm installed Claude Code $version, and there is no $program"; exit 1; }
-          echo "program=$program" >> "$GITHUB_OUTPUT"
-          echo "Claude Code $version: $program"
+        run: node scripts/install-tested-claude.mjs
 
       - name: Check the build (name and id, no Claude Code inside, the ad hoc signature, Codex and Claude Code run, the database module, the disk image, the app's start and its data folder)
         env:

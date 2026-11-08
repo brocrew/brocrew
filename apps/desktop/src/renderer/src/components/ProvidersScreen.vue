@@ -374,11 +374,11 @@ const runningOf = (provider: Provider) => {
   <!-- ⚑ Light paper, like every body surface inside `<main>`. -->
   <section
     ref="surface"
-    class="providers-surface"
+    class="providers-surface bb-conversation-ground bb-register-surface"
     data-cy="providers-screen"
     data-chat-theme="light"
   >
-    <div class="page">
+    <div class="page bb-register-page">
       <header class="page-head">
         <span v-if="!embedded" class="page-icon" aria-hidden="true"
           ><svg class="icon"><use href="#i-sliders" /></svg
@@ -516,30 +516,10 @@ const runningOf = (provider: Provider) => {
 <style scoped>
 .providers-surface {
   position: relative;
-  display: flex;
-  min-width: 0;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  background-color: var(--conversation-bg-color, var(--chat-bg));
-  background-image: var(--conversation-bg-image, var(--paper-wash));
-  background-position: var(--conversation-bg-position, 0% 0%);
-  background-repeat: var(--conversation-bg-repeat, repeat);
-  background-size: var(--conversation-bg-size, auto);
-  image-rendering: var(--conversation-bg-rendering, auto);
-  color: var(--text);
 }
 
-.providers-surface > * {
-  image-rendering: auto;
-}
 .page {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
   padding: var(--space-8) var(--space-24);
-  overflow-y: auto;
   gap: var(--space-10);
 }
 /* Never shrunk below its words when the page is taller than the window. */

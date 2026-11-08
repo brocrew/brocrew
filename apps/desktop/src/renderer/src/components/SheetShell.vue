@@ -10,7 +10,7 @@ defineEmits<{ close: [] }>()
       <div class="sheet-header-copy"><slot name="header" /></div>
       <span class="spacer"></span>
       <button
-        class="icon-button"
+        class="icon-button bb-knowledge-close"
         type="button"
         aria-label="Close"
         data-cy="close-overlay"
@@ -84,18 +84,6 @@ defineEmits<{ close: [] }>()
 .sheet-header .spacer,
 .sheet-actions :deep(.spacer) {
   flex: 1;
-}
-
-.icon-button {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-md);
-  background: var(--wash-2);
-  color: var(--muted);
-  place-items: center;
 }
 
 .sheet-body {

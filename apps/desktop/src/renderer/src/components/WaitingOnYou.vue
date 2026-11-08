@@ -268,7 +268,7 @@ const showConversations = computed(() => attention.value.live > 0 || onlyYou.val
   <!-- ⚑ **Light paper, unconditionally** — the attribute every body surface inside `<main>` carries
        (344), and `chat-theme.test.ts` asserts the set of them by name. -->
   <section
-    class="waiting-surface"
+    class="waiting-surface bb-conversation-ground"
     data-wired="true"
     data-cy="waiting-on-you"
     data-chat-theme="light"
@@ -511,17 +511,6 @@ const showConversations = computed(() => attention.value.live > 0 || onlyYou.val
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  background-color: var(--conversation-bg-color, var(--chat-bg));
-  background-image: var(--conversation-bg-image, var(--paper-wash));
-  background-position: var(--conversation-bg-position, 0% 0%);
-  background-repeat: var(--conversation-bg-repeat, repeat);
-  background-size: var(--conversation-bg-size, auto);
-  image-rendering: var(--conversation-bg-rendering, auto);
-  color: var(--text);
-}
-
-.waiting-surface > * {
-  image-rendering: auto;
 }
 
 .page-head {

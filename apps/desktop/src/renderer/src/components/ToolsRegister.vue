@@ -108,8 +108,12 @@ const settledHere = computed(() => queue.serverRequestsSettled.value.length)
 </script>
 
 <template>
-  <section class="tools-surface" data-cy="tools-register" data-chat-theme="light">
-    <div class="page">
+  <section
+    class="tools-surface bb-conversation-ground bb-register-surface"
+    data-cy="tools-register"
+    data-chat-theme="light"
+  >
+    <div class="page bb-register-page">
       <header class="page-head">
         <div class="head-copy">
           <h1 v-if="!embedded" class="bb-page-title">Tools</h1>
@@ -240,33 +244,9 @@ const settledHere = computed(() => queue.serverRequestsSettled.value.length)
 </template>
 
 <style scoped>
-.tools-surface {
-  display: flex;
-  min-width: 0;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  background-color: var(--conversation-bg-color, var(--chat-bg));
-  background-image: var(--conversation-bg-image, var(--paper-wash));
-  background-position: var(--conversation-bg-position, 0% 0%);
-  background-repeat: var(--conversation-bg-repeat, repeat);
-  background-size: var(--conversation-bg-size, auto);
-  image-rendering: var(--conversation-bg-rendering, auto);
-  color: var(--text);
-}
-
-.tools-surface > * {
-  image-rendering: auto;
-}
-
 .page {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
   padding: var(--space-12);
   container-type: inline-size;
-  overflow-y: auto;
   gap: var(--space-12);
 }
 

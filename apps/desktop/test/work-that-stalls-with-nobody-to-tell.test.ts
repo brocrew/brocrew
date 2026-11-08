@@ -1,3 +1,4 @@
+import ts from 'typescript'
 import { waitFor } from './lib/f093-host'
 import { LEDGER_WALK_KINDS } from '../src/shared/question-contracts'
 import type { PieceRow, WorkStallTold } from '../src/shared/task-contracts'
@@ -37,57 +38,11 @@ import {
   fixtureProviderConfig,
 } from './lib/host-fixture'
 
-/**
- * 🔴 **557 · work that stalls with nobody left to tell** — HO-018 §2.1's criterion 4, whose
- * property had lost its subject.
- *
- * ## ⛔ The hole, as `555` §3.1 measured it rather than as this file restates it
- *
- * ⚠️ **HO-062 §2's degradation table promises that a dropped instruction fails loudly**: *the task
- * stalls and the parent is told*. ⛔ `555` was asked to verify each row and could not defeat the
- * STALL half — it is a pure fold over a `turn` row the app already writes, permanent and named.
- * 🔴 **The TELLING half is conditional:**
- *
- * > `tellIfNobodyHasYet` returns unless the giver is LIVE in this host right now, **HO-018 §2.2
- * > removed the timeout so there is no sweep and no deadline**, and `persons-queue.ts` had no
- * > stalled-work lane — **so a giver never relaunched was told by nothing, ever.**
- *
- * Check the unattended case: a giver assigns work, the person closes the app, and returns the
- * next morning. Stalled work must still be reported.
- *
- * ## 🔴 The property this file is the assertion for, both clauses
- *
- * > ⚑ **Work that has stalled reaches somebody who can act on it** — ⛔ **and *somebody* is the
- * > person when no agent can be told.**
- *
- * ## ⚠️ Standing rule 12 — it plants TWO, and the control is the half that already worked
- *
- * ⛔ **A stall whose giver is LIVE** — the control, and it is the one `400` and `404` built: the
- * push lands, a receipt is written, and a person is told NOTHING about it. ⛔ **A stall whose giver
- * was never relaunched** — the defect, and before this dispatch every surface in this app was
- * silent about it.
- *
- * ⚑ **Both are planted in ONE database and read by ONE call**, which is what makes the silence
- * about the first a decision rather than a channel that was shut.
- *
- * ## ⛔ What §3 pins, and it is the assertion that fails on `main` for a BEHAVIOURAL reason
- *
- * ⚠️ **A new reader is trivially absent from an older tree, and *the symbol does not exist* is weak
- * evidence.** ⛔ So §3 states the property over a roster it DERIVES from the wire — every
- * `RuntimeCommandKind` ending `ForAPerson` — and asks whether ANY of them names the stalled work.
- * ⚑ On `main` that roster has four members and none of them does; the assertion is red because the
- * property is false there, and it cannot be satisfied by adding a name.
- *
- * ⚑ **Real host, real SQLite, real migrations, real tools, real filesystem.** The only double is
- * the provider — `404`'s harness, which this file borrows rather than re-invents.
- */
-
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 const hostSource = readFileSync(join(here, '../src/main/runtime/runtime-host.ts'), 'utf8')
 const storeSource = readFileSync(join(here, '../src/main/db/session-store.ts'), 'utf8')
 
-/** `394`'s double, with the handles kept — a test has to BE the provider to ask like one. */
 class ProviderDouble extends FakeRuntime {
   constructor(
     provider: Provider,
@@ -194,17 +149,8 @@ describe('557 · work that stalls with nobody left to tell', () => {
     return (await tool.call(args)).structured as Record<string, unknown>
   }
 
-  /**
-   * ⚑ **The second paragraph of every brief given here** — so the brief and the piece's one-line
-   * TITLE differ, and a surface that drew the brief where it should draw the title is caught.
-   */
   const A_SECOND_PARAGRAPH = 'and a second paragraph nobody should read on the band'
 
-  /**
-   * `393`'s helper: a giver in a window with one child of its own, given work through the real
-   * door. ⚑ **D-016 · the give IS the work** — `give_work` starts the child, titled `title`, and the
-   * brief is the child's first turn, which the FakeRuntime parks on a card.
-   */
   const aGiverAndItsWorker = async (
     title: string,
   ): Promise<{
@@ -243,7 +189,6 @@ describe('557 · work that stalls with nobody left to tell', () => {
     return asked.id
   }
 
-  /** Cancelled provider cards keep the immediate legacy notice; quiet turns use the ladder. */
   const interruptTheTurn = async (sessionId: string): Promise<void> => {
     const before = events(sessionId).filter((event) => event.type === 'turn').length
     const id = await cardOn(sessionId)
@@ -268,7 +213,6 @@ describe('557 · work that stalls with nobody left to tell', () => {
     return row
   }
 
-  /** The durable receipts in a conversation's own ledger — {@link WorkStallTold}. */
   const receiptsTo = (parent: string): string[] =>
     events(parent)
       .filter((event): event is WorkStallTold => event.type === 'work_stall_told')
@@ -280,17 +224,6 @@ describe('557 · work that stalls with nobody left to tell', () => {
   const idsNamedToAPerson = (on: RuntimeHost = host): string[] =>
     namedToAPerson(on).map((work) => work.piece)
 
-  /**
-   * 🔴 **The two cases the brief asked for, in ONE database and read by ONE call** (§4.3).
-   *
-   * ⛔ **`told` — a stall whose giver is LIVE.** The push `400` and `404` built lands, the receipt
-   * is written, and this is the control that proves nothing that worked was broken.
-   *
-   * For `nobody`, the giver closes before its worker’s turn ends, leaving no live slot or
-   * sweep. An in-run stall normally restarts a stopped giver and notifies it; this fixture
-   * makes that giver unstartable because the provider no longer has it. §2 checks the
-   * overnight launch, which starts nobody.
-   */
   const aStallEachWay = async (): Promise<{
     told: { pm: string; worker: string; task: string }
     nobody: { pm: string; worker: string; task: string }
@@ -301,13 +234,7 @@ describe('557 · work that stalls with nobody left to tell', () => {
     await cardOn(gone.worker)
     const toldTask = pieceOf(live.worker).piece
     const nobodyTask = pieceOf(gone.worker).piece
-    // ⛔ **The giver goes away BEFORE its worker's turn ends**, which is the whole difference
-    // between the two arms: the stall is folded identically and only the recipient differs.
     await host.close(gone.pm, window)
-    // ⚑ **D-017 · R1 — and it cannot come back.** A giver that has merely STOPPED is started by
-    // its worker's stall and told, so *nobody left to tell* is now a giver whose start fails: here
-    // its provider no longer has it. ⚠️ `forgetAll` forgets every record, and nothing below starts
-    // any conversation but this giver — every other one is still running.
     issued.forgetAll()
     await interruptTheTurn(gone.worker)
     await interruptTheTurn(live.worker)
@@ -317,10 +244,6 @@ describe('557 · work that stalls with nobody left to tell', () => {
       nobody: { pm: gone.pm, worker: gone.worker, task: nobodyTask },
     }
   }
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §1 · the property, with the control beside it
-  // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§1 · a stall with nobody to tell reaches a person, and one with a live giver does not', () => {
     it('ordinary ending pairs with the interrupted band: a failed reminder tells the giver once', async () => {
@@ -362,8 +285,6 @@ describe('557 · work that stalls with nobody left to tell', () => {
     it('🔴 the headline: both stalls are folded the same way, and only one of them is a person’s', async () => {
       const { told, nobody } = await aStallEachWay()
 
-      // ⚑ **The premise, asserted before any verdict**: the two tasks are in the SAME state for the
-      // SAME reason, so nothing below can be explained by one of them not having stalled.
       for (const [holder, task] of [
         [told.worker, told.task],
         [nobody.worker, nobody.task],
@@ -374,11 +295,8 @@ describe('557 · work that stalls with nobody left to tell', () => {
         expect(stalledWithACause(row as PieceRow)).toBe(true)
       }
 
-      // 🔴 **The defect, closed.** Before this dispatch nothing in this app named the second one.
       expect(idsNamedToAPerson()).toEqual([nobody.task])
 
-      // ⛔ **And the control is a DECISION rather than a channel that was shut**: the first one is
-      // absent from a person's list because an agent was told about it, and the receipt says so.
       expect(receiptsTo(told.pm)).toEqual([told.task])
       expect(receiptsTo(nobody.pm)).toEqual([])
     })
@@ -387,37 +305,19 @@ describe('557 · work that stalls with nobody left to tell', () => {
       const { nobody } = await aStallEachWay()
       const work = namedToAPerson()[0] as StalledWork
 
-      // ⛔ **The conversation HOLDING the work is where a person goes**, and the one that gave it
-      // out is what the sentence is about — two different ids, and a row that confused them would
-      // send a person to the conversation that is not stuck.
-      // ⚑ **D-016** — `owner` and `giver` (they were `assignedTo` and `assignedBy`), and the piece's
-      // one-line title where the task carried its text.
       expect(work.owner).toBe(nobody.worker)
       expect(work.giver).toBe(nobody.pm)
       expect(work.title).toBe('the work whose giver went away')
       expect(work.because).toBe('turn_interrupted')
       expect(work.stalledAt).toBeGreaterThan(0)
-      // The cancellation records the person who asked the turn to stop.
       expect(work.askedToStop).toEqual({ by: 'a-person', asker: null, askerName: null })
-      // ⚑ **Named main-side**, because a renderer cannot turn a `sess_<uuid>` into a word — and
-      // the name is really a NAME rather than the id handed back, which is what a fallback that
-      // had swallowed the naming would look like.
       expect(work.ownerName).not.toBe(work.owner)
       expect(work.giverName).not.toBe(work.giver)
 
-      // ⛔ **One table for the observation and not a second vocabulary** — the words a person reads
-      // here are the words the parent's own notice is built from.
       expect(stalledWorkSaid(work).toLowerCase()).toContain(
         UNDRIVEN_SENTENCES.turn_interrupted.replace(/\.$/, ''),
       )
-      // ⛔ **The clauses BY NAME** (standing rule 5), and not only the two names: this fixture's
-      // giver and holder share a working directory, so until `732` they shared a word (the folder) —
-      // asserting *both names appear* was `a-comparison-tested-where-both-sides-agree`, and it is what
-      // let a mutation that deleted the giver clause survive. ⚑ Since `732` they are named by
-      // identity (`729` F-1, R41), and the two words differ.
       expect(work.ownerName).not.toBe(work.giverName)
-      // ⚑ 697 · `672` H2: the line a person reads is the renderer's `stalledWorkLead` — the shared
-      // `stalledWorkSays` had no product caller and is gone, so these pins moved to the live one.
       expect(stalledWorkLead(work)).toContain('is not being worked on')
       expect(stalledWorkLead(work)).toContain('which gave it out')
       expect(stalledWorkLead(work)).toContain('has not been told')
@@ -425,16 +325,10 @@ describe('557 · work that stalls with nobody left to tell', () => {
     })
 
     it('🔴 729 · `725` draw 9 — a PERSON asked the turn to stop: the row says so, and names no conversation', async () => {
-      // ⚑ The band's own rig, one gesture over: the giver goes away, and then a person presses Stop
-      // on the worker mid-turn. ⛔ RED on `main`: the row carried no ask at all. ⚑ `asker` and its
-      // name are `null` — a person's ask names no conversation (the agent's arm, with its identity
-      // name, is `state-a-supervisor-can-trust`'s `729` test).
       const { pm, worker } = await aGiverAndItsWorker('the work a person stops')
       await cardOn(worker)
       const task = pieceOf(worker).piece
       await host.close(pm, window)
-      // ⚑ **D-017 · R1 — a giver that cannot be started**, as `aStallEachWay`'s: one that has only
-      // stopped is started by the stall and told, and the row would leave the band.
       issued.forgetAll()
       host.claimSession(worker, window)
       await host.interrupt(worker, window)
@@ -444,8 +338,6 @@ describe('557 · work that stalls with nobody left to tell', () => {
     })
 
     it('⛔ the sentence names BOTH conversations, measured where the two words differ', () => {
-      // ⚑ **A pure value rather than a planted world**, because what this asserts is a fact about
-      // the SENTENCE: the holder and the giver are two different things and the line says both.
       const made: StalledWork = {
         piece: 'work_x',
         label: 'W1.3',
@@ -461,20 +353,12 @@ describe('557 · work that stalls with nobody left to tell', () => {
       const said = stalledWorkLead(made)
       expect(said).toContain('the-worker')
       expect(said).toContain('the-boss')
-      // ⚑ The card's spelling — `672`'s one name, not the retired *"Work #3"*, and (D-016) the
-      // piece's label where *"Task #3"* was, with no *"in <project>"* after it.
       expect(said).toContain('W1.3 ')
       expect(said).not.toContain('W1.3 in ')
-      // ⛔ **And the two words really are different**, or the assertions above are one assertion
-      // twice — `a-positive-assertion-must-differ-from-the-default`.
       expect(made.ownerName).not.toBe(made.giverName)
     })
 
     it('🔴 the RECEIPT is the discriminator, and it is the same row the push de-duplicates on', async () => {
-      // ⛔ **The brief's §3.4 answered as an assertion rather than as a sentence.** The two arms are
-      // complements of one durable fact: `work_stall_told` (D-016's `work_reported`) in the GIVER's
-      // own ledger. ⚠️ Asserted as
-      // a pair over ONE database, so *told* and *not told* are read the same way.
       const { told, nobody } = await aStallEachWay()
       const walked = store.stalledWorkNobodyWasToldAbout()
       expect(walked.rows.map((row) => row.piece)).toEqual([nobody.task])
@@ -483,16 +367,6 @@ describe('557 · work that stalls with nobody left to tell', () => {
     })
 
     it('⛔ a giver that is LIVE and has NOT been told is a person’s — the failure path, planted', async () => {
-      // 🔴 **The clause this reader deliberately does NOT have.** A liveness test would read *a live
-      // giver will be told*, and {@link RuntimeHost.tellOneParent} writes no receipt when a delivery
-      // throws — so the silent case would be exactly *a live giver that was never told*.
-      //
-      // ⚠️ **Planted rather than provoked**: a stall folded for a conversation this host is not
-      // running, whose giver IS registered and holds no receipt. ⛔ `tellWhoeverGaveTheWork` hangs
-      // off the holder's own pump, and nothing is pumping it.
-      // ⚑ **D-016** — a piece is planted through the store's own writer (`recordGive`: the `work`
-      // row and its `work_given`, in one transaction), under the giver's root, because the walk's
-      // candidates are the `work` table's owners.
       const giver = await personOpens('a-live-giver')
       const holder = 'sess_never_run'
       store.create({
@@ -533,15 +407,10 @@ describe('557 · work that stalls with nobody left to tell', () => {
       )
       store.append(holder, 1, { type: 'turn', state: 'interrupted' }, clock++)
 
-      // ⚑ **The premise**: the giver really is running in this host, and really holds no receipt.
-      // ⚠️ **D-017 · R12 — the list proves it EXISTS, and no longer that it runs**: one list names
-      // running and stopped alike. ⚑ It runs because `personOpens` started it and nothing here
-      // stopped it — which is the half this reader must not ask, so it is not re-measured here.
       expect(
         host.agentsVisibleTo({ ownerId: `agent:${giver}` }, giver).agents.map((one) => one.agent),
       ).toContain(giver)
       expect(store.workReportedTo(giver).size).toBe(0)
-      // 🔴 **And a person is told**, which a liveness clause would have refused.
       expect(idsNamedToAPerson()).toEqual(['work_planted'])
       expect(await host.closeForAPerson('work_planted', window)).toMatchObject({
         ok: true,
@@ -554,9 +423,6 @@ describe('557 · work that stalls with nobody left to tell', () => {
     })
 
     it('⛔ work a person gave out mints no piece row, so no row of this walk can be one', async () => {
-      // ⚠️ **Stated in the reader's docblock and measured here**, because a sentence with no test
-      // is a comment (standing rule 5). ⚑ **D-016** — a person's work is the conversation's ROOT,
-      // which is never a folded piece (R1): never stalled, and never a row.
       const alone = await personOpens('lonely')
       await host.send(alone, 'do something', window)
       await cardOn(alone)
@@ -566,40 +432,27 @@ describe('557 · work that stalls with nobody left to tell', () => {
     })
   })
 
-  // §2 · unattended overnight work and the gesture that clears a row
-
   describe('§2 · he closes the app, comes back, and the work is still stopped', () => {
     it('🔴 a person is told across a relaunch, and OPENING THE GIVER hands it back to the agent path', async () => {
       const { pm, worker } = await aGiverAndItsWorker('the work he stopped watching')
       await cardOn(worker)
       const task = pieceOf(worker).piece
-      // ⛔ **The app dies holding the work** — `404`'s own helper shape: the giver's conversation is
-      // closed first because a test process keeps the first host alive, and what is measured is
-      // unchanged.
       await host.close(pm, window)
       window.alive = false
 
-      // ⚠️ **A second `SessionStore` OBJECT is what makes the next launch see it** — `live-hosts.ts`
-      // identifies a ledger by object.
       const next = buildHost(createSessionStore(db, tick))
       const restarted = store.piecesOwnedBy(worker)[0]
       expect(restarted).toMatchObject({ state: 'stalled', stalledBecause: 'app_restarted' })
 
-      // 🔴 **Nothing is running, nobody has been told, and the person's read names it.** This is the
-      // state that was silent before this dispatch.
       expect(receiptsTo(pm)).toEqual([])
       expect(idsNamedToAPerson(next)).toEqual([task])
 
-      // ⚑ **The clearing gesture, and it is the one that REPAIRS the defect**: the giver comes back,
-      // `tellAboutWorkItGaveOut` pushes, the receipt lands, and the row goes.
       await next.resumeSession(pm, window)
       await waitFor(() => receiptsTo(pm).includes(task), 'the giver to be told at its next launch')
       expect(idsNamedToAPerson(next)).toEqual([])
     })
 
     it('⛔ a piece that was ANSWERED is named to nobody — the paired negative, in one gesture', async () => {
-      // ⚑ **D-016** — the first piece is answered before the second is given, as `415`'s one-slot
-      // rule made it; that rule went, and the order is kept so the answered one is answered first.
       const { pm, worker, pmTools, workerProfile } = await aGiverAndItsWorker('the finished one')
       await cardOn(worker)
       const finished = store.piecesOwnedBy(worker)[0]?.piece ?? ''
@@ -609,7 +462,6 @@ describe('557 · work that stalls with nobody left to tell', () => {
         summary: 'it is done',
       })
       expect(answered.outcome, JSON.stringify(answered)).toBe('ok')
-      // ⚑ A second give from the same giver reaches the SAME conversation.
       const second = await callOn(pmTools, 'give_work', {
         definition_of_done: 'The requested result and its checks are recorded.',
         profile: workerProfile,
@@ -623,28 +475,11 @@ describe('557 · work that stalls with nobody left to tell', () => {
       window.alive = false
       const next = buildHost(createSessionStore(db, tick))
 
-      // ⛔ **One conversation, two pieces, one read** — the silence about the answered one is a
-      // decision rather than a conversation this walk never opened.
       expect(idsNamedToAPerson(next)).toEqual([unfinished])
     })
   })
 
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §3 · the property over the wire's OWN roster — this is what goes red on `main`
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
   describe('§3 · SOMETHING a person can read names the work, and the roster is derived', () => {
-    /**
-     * 🔴 **Every `RuntimeCommandKind` ending `ForAPerson`, read off the zod union that governs the
-     * wire** — `everything-a-person-must-answer-is-in-the-queue.test.ts`' own device, borrowed
-     * rather than re-invented.
-     *
-     * ⛔ **This is the assertion that is red on `main` for a reason that is not *the symbol is
-     * missing*.** There the roster has four members, a stall with no live giver is named by none of
-     * them, and the property *work that has stalled reaches somebody who can act on it* is false.
-     * ⚑ A dispatch that added a fifth reader with a different name would still have to make this
-     * pass, because what it asks about is the ANSWER and not the name.
-     */
     const readersForAPerson = (): string[] => {
       type Node = {
         def: {
@@ -664,7 +499,6 @@ describe('557 · work that stalls with nobody left to tell', () => {
       )
     }
 
-    /** What every one of those readers answers, as one string a task id can be looked for in. */
     const everythingAPersonCanRead = (on: RuntimeHost, kinds: readonly string[]): string =>
       kinds
         .map((kind) => {
@@ -676,19 +510,11 @@ describe('557 · work that stalls with nobody left to tell', () => {
 
     it('🔴 work that stalled with nobody to tell is NAMED by one of the readers a window polls', async () => {
       const kinds = readersForAPerson()
-      // ⛔ **A positive floor first**: a roster that found nothing would pass every assertion below
-      // vacuously, which is the shape `316` was measured going wrong.
       expect(kinds.length).toBeGreaterThanOrEqual(4)
       const { told, nobody } = await aStallEachWay()
       const answers = everythingAPersonCanRead(host, kinds)
 
-      // 🔴 **The property, stated over what a person can actually read.** On `main` this is false:
-      // four readers answer, and none of them has ever heard of a task.
       expect(answers, 'no reader a window polls names the stalled work').toContain(nobody.task)
-      // ⛔ **And the control is in the same string**: the stall an agent WAS told about is named by
-      // none of them, so this is not a reader that lists every task it can find. ⚑ Save one: work
-      // whose holder stopped with it, which a person may look at or hand back (F131), names only
-      // stalls its giver was told about, so the two never share a piece.
       const theOthers = everythingAPersonCanRead(
         host,
         kinds.filter((kind) => kind !== 'stoppedWorkForAPerson'),
@@ -707,28 +533,18 @@ describe('557 · work that stalls with nobody left to tell', () => {
       const naming = kinds.filter((kind) =>
         everythingAPersonCanRead(host, [kind]).includes(nobody.task),
       )
-      // ⛔ **One, and not *at least one***: two readers naming one row is two populations a person
-      // has to reconcile, which is the defect `452` §5.1 is about wearing a different hat.
       expect(naming).toEqual(['stalledWorkForAPerson'])
     })
   })
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §4 · the walk says what it read, and the register has a word for it
-  // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§4 · the read discloses its own scope', () => {
     it('⛔ the walk names its candidate set, counts the ledgers it opened and has a sentence', async () => {
       await aStallEachWay()
       const walked = host.stalledWorkForAPerson()
       expect(walked.walk).toBe('every-conversation-that-was-given-work')
-      // ⚑ **Two ledgers opened, ONE row found** — `453`'s two different facts, and `rows.length`
-      // answers the wrong one.
       expect(walked.ledgers).toBe(2)
       expect(walked.rows).toHaveLength(1)
       expect(walked.rowsUnread).toBe(0)
-      // ⛔ **The word is in the register and carries a sentence a person reads** — a walk kind with
-      // no `WALK_COVERS` entry is a count nobody can interpret.
       expect(LEDGER_WALK_KINDS).toContain('every-conversation-that-was-given-work')
       expect(WALK_COVERS['every-conversation-that-was-given-work'].length).toBeGreaterThan(80)
     })
@@ -738,29 +554,18 @@ describe('557 · work that stalls with nobody left to tell', () => {
       await host.send(quiet, 'hello', window)
       const walked = host.stalledWorkForAPerson()
       expect(walked.rows).toEqual([])
-      // 🔴 **The discriminant.** Without this the `ledgers` above could be `rows.length` and both
-      // assertions would pass — `a-comparison-tested-where-both-sides-agree`.
       expect(walked.ledgers).toBe(0)
       expect(walked.walk).toBe('every-conversation-that-was-given-work')
     })
   })
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §5 · HO-018 §2.2 — no timer was reintroduced, and that is measured rather than promised
-  // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§5 · it is a READ, and the PO’s withdrawn timeout stays withdrawn', () => {
     it('🔴 the answer does not move with the clock — nothing here expires and nothing fires', async () => {
       const { nobody } = await aStallEachWay()
       const first = idsNamedToAPerson()
       expect(first).toEqual([nobody.task])
-      // ⛔ **A whole week of the host's own clock**, which is far past any threshold anybody could
-      // have named. ⚑ HO-018 §2.2: *"an idle timeout on a working child is the guess, and the
-      // measurement says we cannot pick the number honestly"* — so this read may not have one.
       clock += 7 * 24 * 60 * 60 * 1000
       expect(idsNamedToAPerson()).toEqual(first)
-      // ⚠️ **And the task is still OPEN**: a deadline that had closed it would make the list shrink
-      // for the wrong reason, which is the irreversible close the PO refused.
       const row = store.piecesOwnedBy(nobody.worker).find((one) => one.piece === nobody.task)
       expect(row?.state).toBe('stalled')
       expect(row?.endedAt).toBeNull()
@@ -786,104 +591,137 @@ describe('557 · work that stalls with nobody left to tell', () => {
           expect(body, `${name} reaches for ${forbidden}`).not.toContain(forbidden)
         }
       }
-      // ⚑ **The control for the extractor** (standing rule 12): it really did cut a body out, and a
-      // strip that removed everything would pass the loop above over nothing.
       expect(reader).toContain('stalledWorkNobodyWasToldAbout')
-      // ⚑ **D-016** — the candidate query reads the `work` table's owners now: since commit 6, only
-      // the owners of pieces a conversation gave, the only pieces the band can draw.
       expect(walk).toContain('selectOwnersOfPiecesAConversationGave')
-      // ⛔ **And prose about a timer is not a timer** — the same strip the other censuses use.
       expect(
         codeOf('x() {\n  // setTimeout would be the obvious answer\n  return 1\n  }\n', 'x() {'),
       ).not.toContain('setTimeout')
     })
   })
 
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §6 · the shape decision — a band beside the rows, not a fourth population
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
   describe('§6 · it is carried BESIDE a person’s queue and never as a row in it', () => {
     it('⛔ the queue’s vocabulary is unchanged, and the band draws from its own read', async () => {
       const { nobody } = await aStallEachWay()
-      // 🔴 **The vocabulary read off an exhaustive `Record<PersonsQueueKind, …>`** — `KIND_WORDS` —
-      // so this roster is the compiler's rather than a list typed here.
       expect([...Object.keys(KIND_WORDS)].sort()).toEqual(['a-decision', 'a-question'])
       const band = stalledWorkView(host.stalledWorkForAPerson(), true, clock, new Set())
       expect(band?.rows).toHaveLength(1)
       const row = band?.rows[0]
       expect(row?.key).toBe(nobody.task)
-      // ⛔ **The destination is the conversation HOLDING the work**, which is the one place this
-      // band's door differs from what its sentence is about.
       expect(row?.sessionId).toBe(nobody.worker)
       expect(row?.what).toBe('the work whose giver went away')
-      // ⛔ **The band draws the one LINE and never the whole brief**, measured where the two
-      // readings diverge: the brief here has a second paragraph, which is how a mutation that put
-      // the whole thing on the band would be seen. ⚑ **D-016** — the line is the piece's TITLE,
-      // which is one line by construction, where the task's text was cut at its first line.
       expect(pieceOf(nobody.worker).brief).toContain(A_SECOND_PARAGRAPH)
       expect(row?.what).not.toContain(A_SECOND_PARAGRAPH)
       expect(row?.since).not.toBeNull()
-      // ⚑ **`106`: a control that can name no gesture is a control that cannot act.**
       expect(row?.action).not.toBe('')
     })
 
     it('🔴 `null` is *nobody has looked*, and a refused look is DRAWN rather than dropped', () => {
-      // ⛔ **`086`'s rule on the read where the wrong default is a false all-clear.** An empty band
-      // says *every piece of work that stopped has reached somebody*, which is the claim `555` §3.1
-      // measured this app making silently.
       expect(stalledWorkView(null, true, clock, new Set())).toBeNull()
       expect(stalledWorkView(null, false, clock, new Set())).toEqual({ rows: [], unread: true })
     })
 
     it('⚠️ a band with ROWS still discloses that the last look stopped answering', async () => {
-      // ⛔ **The case the `null` arm above cannot reach.** A read that answered once and has since
-      // stopped keeps its last good rows — `434`'s rule — so `unread` is the ONLY thing saying the
-      // list may be short, and a band that hard-coded it would look up to date for ever.
       await aStallEachWay()
       const walked = host.stalledWorkForAPerson()
       expect(stalledWorkView(walked, true, clock, new Set())?.unread).toBe(false)
       const stale = stalledWorkView(walked, false, clock, new Set())
       expect(stale?.unread).toBe(true)
-      // ⚑ **And the rows are still there**, which is what makes `unread` a disclosure rather than
-      // an empty list wearing a flag.
       expect(stale?.rows).toHaveLength(1)
     })
 
     it('⛔ the band and the rows are supplied in ONE call, so the card cannot come from two looks', () => {
-      // 🔴 **`PersonsQueue.supply`'s own rule** — *one supply, one moment* — as a census over the
-      // one call site, because a caller that named no stalls means *nobody has looked* and would
-      // draw a permanently empty band while the read beside it answered perfectly.
       const screen = readFileSync(
         join(here, '../src/renderer/src/components/RuntimeScreen.vue'),
         'utf8',
       )
-      const at = screen.indexOf('persons.supply(')
-      expect(at, 'the one supply call has moved or gone').toBeGreaterThan(-1)
-      const call = screen.slice(at, screen.indexOf('\n  )\n', at))
-      // ⛔ **Both bands in the same call**, which is what makes *one moment* a property of the code
-      // rather than a sentence in a docblock.
+      const supplyFrom = (source: string): string | null => {
+        const tag = '<script setup lang="ts">'
+        const begin = source.indexOf(tag)
+        if (begin < 0 || source.indexOf(tag, begin + tag.length) !== -1) return null
+        const finish = source.indexOf('</script>', begin + tag.length)
+        if (finish <= begin + tag.length) return null
+        const script = source.slice(begin + tag.length, finish)
+        const sf = ts.createSourceFile('RuntimeScreen.ts', script, ts.ScriptTarget.Latest, true)
+        if (
+          (sf as ts.SourceFile & { parseDiagnostics: readonly ts.Diagnostic[] }).parseDiagnostics
+            .length > 0
+        )
+          return null
+        const calls: ts.CallExpression[] = []
+        const visit = (node: ts.Node): void => {
+          if (ts.isCallExpression(node) && node.expression.getText(sf) === 'persons.supply')
+            calls.push(node)
+          ts.forEachChild(node, visit)
+        }
+        visit(sf)
+        if (calls.length !== 1 || calls[0]!.arguments.length !== 11) return null
+        const one = calls[0]!
+        const argumentsAt = one.arguments.map((argument) =>
+          argument.getText(sf).replace(/\s+/g, ' ').trim(),
+        )
+        const positions = [
+          'escalated.value',
+          'decided.value',
+          '{ held:',
+          '{ travel:',
+          '{ walked: limitsDisplay.value.reading?.walked',
+          '{ walked: stalledWork.value',
+          '{ walked: instructionAsks.value',
+          '{ walked: waitingOnWhoWrote.value',
+          '{ walked: mcpServerRequests.value',
+          '{ walked: stoppedWork.value',
+          '{ incidents: workIncidents.value?.rows',
+        ]
+        if (argumentsAt.some((argument, index) => !argument.startsWith(positions[index]!)))
+          return null
+        const start = one.getStart(sf)
+        const end = one.getEnd()
+        if (start < 0 || end <= start || script.slice(end - 1, end) !== ')') return null
+        const next = sf.statements.find(
+          (statement) => ts.isFunctionDeclaration(statement) && statement.getStart(sf) > end,
+        )
+        if (!next || !ts.isFunctionDeclaration(next) || next.name?.text !== 'settleFromTheQueue')
+          return null
+        if (script.slice(end, next.getFullStart()).trim() !== '})') return null
+        return script.slice(start, end)
+      }
+      const found = supplyFrom(screen)
+      expect(found, 'the unique complete supply call is missing').not.toBeNull()
+      const call = found ?? ''
+      expect(call.length).toBeGreaterThan(0)
+      expect(call.startsWith('persons.supply(')).toBe(true)
+      expect(
+        supplyFrom(screen.replace('  persons.supply(', '  persons.supply()\n  persons.supply(')),
+      ).toBeNull()
+      expect(supplyFrom('')).toBeNull()
+      expect(supplyFrom(screen.replace('persons.supply(', 'persons.notSupply('))).toBeNull()
+      expect(
+        supplyFrom(screen.replace('function settleFromTheQueue', 'function differentTail')),
+      ).toBeNull()
+      const malformed = screen.replace(call, call.slice(0, -1) + ']')
+      expect(malformed).not.toBe(screen)
+      expect(supplyFrom(malformed)).toBeNull()
+      const missingBand = screen.replace(
+        '    { walked: stalledWork.value, lastLookAnswered: lastStallLookAnswered.value },\n',
+        '',
+      )
+      expect(missingBand).not.toBe(screen)
+      expect(supplyFrom(missingBand)).toBeNull()
+      expect(supplyFrom(screen + '\nconst unrelatedTail = "tail-decoy"')).toBe(call)
+      expect(call).not.toContain('function settleFromTheQueue(')
+      expect(call).toContain('settle: (row, decision) => settleFromTheQueue(row, decision)')
+      expect(call).not.toContain('tail-decoy')
       expect(call).toContain('walked: limitsDisplay.value.reading?.walked ?? null')
       expect(call).toContain("lastLookAnswered: limitsDisplay.value.status === 'ready'")
       expect(call).toContain('display: limitsDisplay.value')
       expect(call).toContain('stalledWork.value')
       expect(call).toContain('lastStallLookAnswered.value')
-      // ⚑ **D-017 · R19 — and the instruction asks, the sixth read, in that same call.**
       expect(call).toContain('instructionAsks.value')
-      // ⚑ **The control for the slice** (standing rule 12): it really did cut the call out, and a
-      // slice that ran to the end of the file would contain every one of those strings anyway.
-      // The whole supply call, including typed-wait incidents, fits in 5,000 characters.
-      // This bounds the extracted call, so accidentally taking the file tail cannot pass.
       expect(call.length).toBeLessThan(5_000)
-      expect(screen.length).toBeGreaterThan(30 * 3_500)
+      expect(call.endsWith(')')).toBe(true)
       expect(call).toContain('escalated.value')
     })
 
-    // ⚑ **D-017b · re-aimed, not stripped** (rule 26): there were two gestures — open one this
-    // window holds, take over one nobody holds — and now there is ONE press everywhere (*Open the
-    // conversation*), which opens it in its full view whatever holds it (the host's `look` claims one
-    // nobody holds, on the press). ⛔ So the button says the one press's words, before it is pressed,
-    // whoever holds the conversation — and the band still carries WHO holds it, one fact over.
     it('⚠️ the button says the one press it performs, before it is pressed, whoever holds it', async () => {
       const { nobody } = await aStallEachWay()
       const walked = host.stalledWorkForAPerson()
@@ -896,10 +734,6 @@ describe('557 · work that stalls with nobody left to tell', () => {
     })
   })
 
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §7 · the order, and where a row with no stamp goes
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
   describe('§7 · oldest first, and an unknown age is not an old age', () => {
     it('⛔ two stalls come back oldest-first, by the moment the engine observed each one', async () => {
       const first = await aGiverAndItsWorker('the older work')
@@ -908,8 +742,6 @@ describe('557 · work that stalls with nobody left to tell', () => {
       const second = await aGiverAndItsWorker('the newer work')
       await cardOn(second.worker)
       await host.close(second.pm, window)
-      // ⚑ **D-017 · R1 — givers that cannot be started**, as `aStallEachWay`'s: ones that have only
-      // stopped are started by their workers' stalls and told, and nothing would be a person's.
       issued.forgetAll()
       const older = pieceOf(first.worker).piece
       const newer = pieceOf(second.worker).piece
@@ -918,8 +750,6 @@ describe('557 · work that stalls with nobody left to tell', () => {
 
       const rows = namedToAPerson()
       expect(rows.map((row) => row.piece)).toEqual([older, newer])
-      // ⚑ **Non-vacuity**: the two stamps really do differ, or the order above is an accident of
-      // insertion — `a-positive-assertion-must-differ-from-the-default`.
       expect(rows[0]?.stalledAt).toBeLessThan(rows[1]?.stalledAt ?? 0)
     })
   })

@@ -79,17 +79,12 @@ const emit = defineEmits<{ close: [] }>()
 </script>
 
 <template>
-  <!-- ⛔ **`data-subject="agent"` on the element that HEADS the sheet**, which is the rail
-       `HO-050` §1.1 states: *"what must not happen is one sheet headed with a fact from each."*
-       ⚑ The heading below says whose these are and what that MEANS, in the same words the index
-       teaches it with — one string, in `what-survives-the-conversation.ts`, so the sheet and the
-       index cannot come to disagree. -->
-  <section class="agent-sheet" data-cy="agent-sheet" data-subject="agent">
-    <div class="sheet-header">
-      <div class="sheet-glyph">
+  <section class="agent-sheet bb-knowledge-sheet" data-cy="agent-sheet" data-subject="agent">
+    <div class="sheet-header bb-knowledge-header">
+      <div class="sheet-glyph bb-knowledge-glyph">
         <svg class="icon glyph-icon"><use href="#i-info" /></svg>
       </div>
-      <div class="sheet-header-copy">
+      <div class="sheet-header-copy bb-knowledge-copy">
         <strong data-cy="agent-sheet-title">What this agent was told</strong>
         <!-- ⚠️ **The lifetime, said on the surface and not only in the index.** A person can arrive
              here from the index entry and read nothing else; the one sentence that makes the split
@@ -98,7 +93,7 @@ const emit = defineEmits<{ close: [] }>()
       </div>
       <span class="spacer"></span>
       <button
-        class="icon-button"
+        class="icon-button bb-knowledge-close"
         type="button"
         aria-label="Close"
         data-cy="close-overlay"
@@ -133,37 +128,7 @@ const emit = defineEmits<{ close: [] }>()
    than the cap, the gutter must win, because the thing on the other side of it is the emergency
    stop `OverlayHost` draws on this layer (`390`). */
 .agent-sheet {
-  display: flex;
   width: min(780px, calc(100% - 2 * var(--lane-clear)));
-  max-height: 88vh;
-  flex-direction: column;
-  overflow: hidden;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-  box-shadow: var(--shadow);
-}
-
-.sheet-header {
-  display: flex;
-  min-height: var(--surface-header-h);
-  flex: 0 0 auto;
-  align-items: center;
-  padding: var(--space-5) var(--space-7) var(--space-5) var(--space-9);
-  border-bottom: var(--border-width) solid var(--line);
-  gap: var(--space-5);
-}
-
-.sheet-glyph {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 auto;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-md);
-  background: var(--panel-2);
-  color: var(--muted);
-  place-items: center;
 }
 
 .glyph-icon {
@@ -171,37 +136,13 @@ const emit = defineEmits<{ close: [] }>()
   height: 16px;
 }
 
-.sheet-header-copy {
-  min-width: 0;
-}
-
-.sheet-header-copy strong {
-  display: block;
-  color: var(--text);
-  font-size: var(--type-body);
-  font-weight: var(--fw-bold);
-}
-
 .sheet-header-copy small {
-  display: block;
   color: var(--muted);
   font-size: var(--type-small);
 }
 
 .spacer {
   flex: 1;
-}
-
-.icon-button {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-md);
-  background: var(--wash-2);
-  color: var(--muted);
-  place-items: center;
 }
 
 .icon-button:hover {

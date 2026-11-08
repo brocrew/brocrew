@@ -3,25 +3,15 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { FILL_LONGHANDS } from '../../src/shared/themes/css'
 
-/**
- * A theme's background is written as longhands, and the window paints it with longhands: each
- * place that paints a background slot sets `background-color`, `-image`, `-position`, `-repeat` and
- * `-size` and `image-rendering` from the slot's own custom properties, never the `background`
- * shorthand, which a picture over a colour would make invalid. With no theme, each falls back to
- * what the app painted before.
- */
-
 const RENDERER = join(__dirname, '../../src/renderer/src')
 const TOKENS = readFileSync(join(RENDERER, 'assets/tokens.css'), 'utf8')
 
-/** Every component's source, by file name. */
 const COMPONENTS = new Map(
   readdirSync(join(RENDERER, 'components'))
     .filter((n) => n.endsWith('.vue'))
     .map((n) => [n, readFileSync(join(RENDERER, 'components', n), 'utf8')]),
 )
 
-/** The background slots the window paints, and where. */
 const SLOTS: Record<string, string[]> = {
   'window-bg': ['RuntimeScreen.vue'],
   'rail-bg': ['SideRail.vue', 'ThemesSection.vue'],
@@ -46,16 +36,8 @@ const SLOTS: Record<string, string[]> = {
   'drawer-tabs-bg': ['SessionDrawer.vue'],
 }
 
-/**
- * Where a slot's colour is only the opaque base under another surface, read as a background layer
- * and never painted: the floating right-hand panel stands on the conversation's colour.
- */
 const BASES: Record<string, string[]> = { 'conversation-bg': ['SessionDrawer.vue'] }
 
-/**
- * Where a slot is painted a second time, as layers over an opaque base: the floating right-hand
- * panel, whose theme colour may let what is under it through.
- */
 const LAYERED: Record<string, Record<string, number>> = {
   'drawer-panel-bg': { 'SessionDrawer.vue': 1 },
 }
@@ -69,25 +51,198 @@ const PROPERTY: Record<(typeof FILL_LONGHANDS)[number], string> = {
   rendering: 'image-rendering',
 }
 
-/** The body of every rule in `css` that reads `--<slot>-color`. */
-function rulesReading(css: string, slot: string): string[] {
-  const out: string[] = []
-  for (const m of css.matchAll(/\{([^{}]*)\}/g)) {
-    if (m[1]!.includes(`var(--${slot}-color,`)) out.push(m[1]!)
+function rulesReading(css: string, slot?: string): { selectors: string[]; body: string }[] {
+  return [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+    .filter((rule) => slot === undefined || rule[2]!.includes(`var(--${slot}-color,`))
+    .map((rule) => ({ selectors: rule[1]!.split(',').map((part) => part.trim()), body: rule[2]! }))
+}
+
+const CLASSES = readFileSync(join(RENDERER, 'assets/classes.css'), 'utf8')
+const SHARED_GROUNDS: Record<string, string> = {
+  'ConversationPane.vue': 'conversation-pane',
+  'NewConversation.vue': 'conversation-pane',
+  'ProvidersScreen.vue': 'providers-surface',
+  'ReadingPane.vue': 'reading-pane',
+  'RecentActivity.vue': 'activity-surface',
+  'RecoveryApp.vue': 'recovery',
+  'SessionLibrary.vue': 'library',
+  'ToolsRegister.vue': 'tools-surface',
+  'WaitingOnYou.vue': 'waiting-surface',
+}
+const STYLE_IMPORTS = {
+  main: readFileSync(join(RENDERER, 'main.ts'), 'utf8'),
+  recovery: readFileSync(join(RENDERER, 'recovery.ts'), 'utf8'),
+  base: readFileSync(join(RENDERER, 'assets/base.css'), 'utf8'),
+}
+function effectiveSource(
+  name: string,
+  source: string,
+  shared = CLASSES,
+  imports = STYLE_IMPORTS,
+): string {
+  const root = SHARED_GROUNDS[name]
+  if (!root) {
+    const template = /<template>([\s\S]*?)<\/template>/.exec(source)?.[1] ?? ''
+    const optedIn = [...template.matchAll(/\bclass="([^"]*)"/g)].some((attribute) =>
+      attribute[1]!.split(/\s+/).includes('bb-conversation-ground'),
+    )
+    expect(optedIn, `${name} is an unlisted shared-ground consumer`).toBe(false)
+    return source
   }
-  return out
+  const compound = `.${root}.bb-conversation-ground`
+  for (const entry of [imports.main, imports.recovery])
+    expect(entry).toContain("import './assets/base.css'")
+  expect(imports.base).toContain("@import './classes.css';")
+  const tokensAt = imports.base.indexOf("@import './tokens.css';")
+  const classesAt = imports.base.indexOf("@import './classes.css';")
+  expect(tokensAt).toBeGreaterThan(-1)
+  expect(classesAt).toBeGreaterThan(tokensAt)
+  const rules = rulesReading(shared)
+  const matching = (selector: string): string[] =>
+    rules.filter((rule) => rule.selectors.includes(selector)).map((rule) => rule.body)
+  const template = /<template>([\s\S]*?)<\/template>/.exec(source)?.[1] ?? ''
+  const hooks: Record<string, string> = {
+    'ConversationPane.vue': 'conversation-pane',
+    'NewConversation.vue': 'new-conversation-surface',
+    'ProvidersScreen.vue': 'providers-screen',
+    'ReadingPane.vue': 'reading-pane',
+    'RecentActivity.vue': 'recent-activity',
+    'RecoveryApp.vue': 'recovery',
+    'SessionLibrary.vue': 'session-library',
+    'ToolsRegister.vue': 'tools-register',
+    'WaitingOnYou.vue': 'waiting-on-you',
+  }
+  const optsIn = [...template.matchAll(/<(?:main|section)\b[^>]*>/g)].some((element) => {
+    const names = /\bclass="([^"]*)"/.exec(element[0])?.[1]?.split(/\s+/) ?? []
+    return (
+      names.includes(root) &&
+      names.includes('bb-conversation-ground') &&
+      element[0].includes(`data-cy="${hooks[name]}"`)
+    )
+  })
+  expect(optsIn, `${name} opts its ground root into ${compound}`).toBe(true)
+  const grounds = matching(compound)
+  expect(grounds, `${name} has one shared ground rule`).toHaveLength(1)
+  const resets = matching(`${compound} > *`)
+  expect(resets, `${name} resets direct children`).toHaveLength(1)
+  expect(resets[0]).toMatch(/image-rendering:\s*auto;/)
+  const fallbacks: Record<string, string> = {
+    color: 'var(--chat-bg)',
+    image: 'var(--paper-wash)',
+    position: '0% 0%',
+    repeat: 'repeat',
+    size: 'auto',
+    rendering: 'auto',
+  }
+  for (const longhand of FILL_LONGHANDS) {
+    expect(grounds[0], `${name} preserves ${longhand} fallback`).toContain(
+      `${PROPERTY[longhand]}: var(--conversation-bg-${longhand}, ${fallbacks[longhand]});`,
+    )
+  }
+  expect(grounds[0]).toContain('color: var(--text);')
+  return source + `\n${compound} {${grounds[0]}}`
 }
 
 describe('the window paints a theme’s backgrounds with longhands', () => {
   it.each(Object.entries(SLOTS))('--%s', (slot, files) => {
     const bases = BASES[slot] ?? []
-    const found = [...COMPONENTS].filter(([, src]) => src.includes(`var(--${slot}-color,`))
+    const sources = [...COMPONENTS].map(
+      ([name, source]) => [name, effectiveSource(name, source)] as const,
+    )
+    const found = sources.filter(([, src]) => src.includes(`var(--${slot}-color,`))
+    if (slot === 'conversation-bg') {
+      expect(Object.keys(SHARED_GROUNDS)).toHaveLength(9)
+      expect(files).toHaveLength(11)
+      expect(bases).toEqual(['SessionDrawer.vue'])
+      for (const entry of ['main.ts', 'recovery.ts']) {
+        expect(readFileSync(join(RENDERER, entry), 'utf8')).toContain("import './assets/base.css'")
+      }
+      expect(readFileSync(join(RENDERER, 'assets/base.css'), 'utf8')).toContain(
+        "@import './classes.css';",
+      )
+      const original = COMPONENTS.get('NewConversation.vue')!
+      expect(() => effectiveSource('UnlistedGround.vue', original)).toThrow()
+      expect(() =>
+        effectiveSource(
+          'NewConversation.vue',
+          original,
+          CLASSES.replaceAll(
+            '.conversation-pane.bb-conversation-ground',
+            '.missing-ground.bb-conversation-ground',
+          ),
+        ),
+      ).toThrow()
+      expect(() =>
+        effectiveSource(
+          'NewConversation.vue',
+          original,
+          CLASSES.replace(
+            'var(--conversation-bg-color, var(--chat-bg))',
+            'var(--conversation-bg-color, transparent)',
+          ),
+        ),
+      ).toThrow()
+      expect(() =>
+        effectiveSource(
+          'NewConversation.vue',
+          original,
+          CLASSES.replace(
+            '.waiting-surface.bb-conversation-ground > * {\n  image-rendering: auto;',
+            '.waiting-surface.bb-conversation-ground > * {\n  image-rendering: pixelated;',
+          ),
+        ),
+      ).toThrow()
+      for (const key of ['main', 'recovery'] as const) {
+        expect(() =>
+          effectiveSource('NewConversation.vue', original, CLASSES, {
+            ...STYLE_IMPORTS,
+            [key]: STYLE_IMPORTS[key].replace("import './assets/base.css'", ''),
+          }),
+        ).toThrow()
+      }
+      expect(() =>
+        effectiveSource('NewConversation.vue', original, CLASSES, {
+          ...STYLE_IMPORTS,
+          base: STYLE_IMPORTS.base.replace("@import './classes.css';", ''),
+        }),
+      ).toThrow()
+      expect(original).toContain('conversation-pane bb-conversation-ground')
+      expect(() =>
+        effectiveSource('NewConversation.vue', original.replace('bb-conversation-ground', '')),
+      ).toThrow()
+      expect(() =>
+        effectiveSource(
+          'NewConversation.vue',
+          original,
+          CLASSES.replace('background-image: var(--conversation-bg-image, var(--paper-wash));', ''),
+        ),
+      ).toThrow()
+      expect(() =>
+        effectiveSource(
+          'NewConversation.vue',
+          original,
+          CLASSES.replace(
+            'background-color: var(--conversation-bg-color, var(--chat-bg));',
+            'background-color: var(--wrong-slot-color, var(--chat-bg));',
+          ),
+        ),
+      ).toThrow()
+      expect(() =>
+        effectiveSource(
+          'NewConversation.vue',
+          original,
+          CLASSES.replace(
+            'background-color: var(--conversation-bg-color, var(--chat-bg));',
+            'background: var(--conversation-bg-color, var(--chat-bg));',
+          ),
+        ),
+      ).toThrow()
+    }
     expect(found.map(([n]) => n).sort()).toEqual([...files, ...bases].sort())
     for (const [name, src] of found) {
-      const rules = rulesReading(src, slot)
+      const rules = rulesReading(src, slot).map((rule) => rule.body)
       expect(rules.length, name).toBeGreaterThan(0)
       if (bases.includes(name)) {
-        // A base: the slot's colour as one layer, its picture never read.
         expect(src, name).not.toContain(`var(--${slot}-image,`)
         for (const rule of rules)
           expect(rule, name).toMatch(
@@ -95,7 +250,6 @@ describe('the window paints a theme’s backgrounds with longhands', () => {
           )
         continue
       }
-      // The rule that paints the slot reads every longhand, and has no shorthand to undo them.
       const painting = rules.filter((r) => r.includes(`var(--${slot}-image,`))
       const own = painting.filter((r) => r.includes(`background-color: var(--${slot}-color,`))
       expect(own, `${name} paints --${slot} in one rule`).toHaveLength(1)
@@ -104,9 +258,26 @@ describe('the window paints a theme’s backgrounds with longhands', () => {
           new RegExp(`${PROPERTY[longhand]}: var\\(--${slot}-${longhand},`),
         )
       }
+      if (
+        slot === 'conversation-bg' &&
+        ['SettingsScreen.vue', 'ThemesSection.vue'].includes(name)
+      ) {
+        const localFallbacks: Record<string, string> = {
+          color:
+            name === 'ThemesSection.vue' ? 'var(--preview-page, var(--chat-bg))' : 'var(--chat-bg)',
+          image: name === 'ThemesSection.vue' ? 'none' : 'var(--paper-wash)',
+          position: '0% 0%',
+          repeat: 'repeat',
+          size: 'auto',
+          rendering: 'auto',
+        }
+        for (const longhand of FILL_LONGHANDS) {
+          expect(own[0], `${name} local ${longhand} fallback`).toContain(
+            `${PROPERTY[longhand]}: var(--conversation-bg-${longhand}, ${localFallbacks[longhand]});`,
+          )
+        }
+      }
       expect(own[0], name).not.toMatch(/(^|[\s;])background:/)
-      // A rule that lays the slot over a base: its picture first, its colour as the layer under
-      // it, each other longhand's first value from the slot, and still no shorthand.
       const layered = painting.filter((r) => !own.includes(r))
       expect(layered.length, `${name} lays --${slot} over a base`).toBe(LAYERED[slot]?.[name] ?? 0)
       for (const rule of layered) {

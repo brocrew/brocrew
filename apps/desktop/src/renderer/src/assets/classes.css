@@ -559,3 +559,109 @@
     padding-block: var(--space-7);
   }
 }
+
+.conversation-pane.bb-conversation-ground,
+.providers-surface.bb-conversation-ground,
+.activity-surface.bb-conversation-ground,
+.recovery.bb-conversation-ground,
+.reading-pane.bb-conversation-ground,
+.library.bb-conversation-ground,
+.tools-surface.bb-conversation-ground,
+.waiting-surface.bb-conversation-ground {
+  background-color: var(--conversation-bg-color, var(--chat-bg));
+  background-image: var(--conversation-bg-image, var(--paper-wash));
+  background-position: var(--conversation-bg-position, 0% 0%);
+  background-repeat: var(--conversation-bg-repeat, repeat);
+  background-size: var(--conversation-bg-size, auto);
+  image-rendering: var(--conversation-bg-rendering, auto);
+  color: var(--text);
+}
+
+.conversation-pane.bb-conversation-ground > *,
+.providers-surface.bb-conversation-ground > *,
+.activity-surface.bb-conversation-ground > *,
+.recovery.bb-conversation-ground > *,
+.reading-pane.bb-conversation-ground > *,
+.library.bb-conversation-ground > *,
+.tools-surface.bb-conversation-ground > *,
+.waiting-surface.bb-conversation-ground > * {
+  image-rendering: auto;
+}
+
+.agent-sheet.bb-knowledge-sheet,
+.tools-sheet.bb-knowledge-sheet {
+  display: flex;
+  flex-direction: column;
+  max-height: 88vh;
+  overflow: hidden;
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.sheet-header.bb-knowledge-header {
+  display: flex;
+  min-height: var(--surface-header-h);
+  flex: 0 0 auto;
+  align-items: center;
+  padding: var(--space-5) var(--space-7) var(--space-5) var(--space-9);
+  border-bottom: var(--border-width) solid var(--line);
+  gap: var(--space-5);
+}
+
+.sheet-glyph.bb-knowledge-glyph {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--panel-2);
+  color: var(--muted);
+  place-items: center;
+}
+
+.sheet-header-copy.bb-knowledge-copy {
+  min-width: 0;
+}
+
+.sheet-header-copy.bb-knowledge-copy strong {
+  display: block;
+  color: var(--text);
+  font-size: var(--type-body);
+  font-weight: var(--fw-bold);
+}
+
+.sheet-header-copy.bb-knowledge-copy small {
+  display: block;
+}
+
+.icon-button.bb-knowledge-close {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--wash-2);
+  color: var(--muted);
+  place-items: center;
+}
+
+.providers-surface.bb-register-surface,
+.tools-surface.bb-register-surface {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.page.bb-register-page {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow-y: auto;
+}

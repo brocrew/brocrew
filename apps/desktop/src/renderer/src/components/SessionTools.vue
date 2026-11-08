@@ -351,12 +351,12 @@ const emptiness = computed<string | null>(() => {
 </script>
 
 <template>
-  <section class="tools-sheet" data-cy="session-tools">
-    <div class="sheet-header">
-      <div class="sheet-glyph">
+  <section class="tools-sheet bb-knowledge-sheet" data-cy="session-tools">
+    <div class="sheet-header bb-knowledge-header">
+      <div class="sheet-glyph bb-knowledge-glyph">
         <svg class="icon glyph-icon"><use href="#i-tool" /></svg>
       </div>
-      <div class="sheet-header-copy">
+      <div class="sheet-header-copy bb-knowledge-copy">
         <strong data-cy="tools-title">Inventory workbench</strong>
         <!-- ⛔ Counted off the inventory, never off the filtered view — see `inventorySummary`, and
              the count line beside the list, which is the one that describes the filter. -->
@@ -370,7 +370,7 @@ const emptiness = computed<string | null>(() => {
       }}</span>
       <span class="read-only" data-cy="tools-read-only">read-only</span>
       <button
-        class="icon-button"
+        class="icon-button bb-knowledge-close"
         type="button"
         aria-label="Close"
         data-cy="close-overlay"
@@ -776,37 +776,7 @@ const emptiness = computed<string | null>(() => {
    width today — `--app-min-w` is 1180px — so this is the dom runner's geometry and a future
    smaller window's, not one a person is in. */
 .tools-sheet {
-  display: flex;
   width: min(940px, calc(100% - 2 * var(--lane-clear)));
-  max-height: 88vh;
-  flex-direction: column;
-  overflow: hidden;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-  box-shadow: var(--shadow);
-}
-
-.sheet-header {
-  display: flex;
-  min-height: var(--surface-header-h);
-  flex: 0 0 auto;
-  align-items: center;
-  padding: var(--space-5) var(--space-7) var(--space-5) var(--space-9);
-  border-bottom: var(--border-width) solid var(--line);
-  gap: var(--space-5);
-}
-
-.sheet-glyph {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 auto;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-md);
-  background: var(--panel-2);
-  color: var(--muted);
-  place-items: center;
 }
 
 .glyph-icon {
@@ -814,19 +784,7 @@ const emptiness = computed<string | null>(() => {
   height: 16px;
 }
 
-.sheet-header-copy {
-  min-width: 0;
-}
-
-.sheet-header-copy strong {
-  display: block;
-  color: var(--text);
-  font-size: var(--type-body);
-  font-weight: var(--fw-bold);
-}
-
 .sheet-header-copy small {
-  display: block;
   margin-top: var(--space-2);
   color: var(--muted);
   font-size: var(--type-caption);
@@ -857,18 +815,6 @@ const emptiness = computed<string | null>(() => {
   font-size: var(--type-caption);
   letter-spacing: 0.6px;
   text-transform: uppercase;
-}
-
-.icon-button {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: var(--border-width) solid var(--line-strong);
-  border-radius: var(--radius-md);
-  background: var(--wash-2);
-  color: var(--muted);
-  place-items: center;
 }
 
 .icon {

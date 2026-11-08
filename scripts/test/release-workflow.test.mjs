@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
+import builderTools from '../../apps/desktop/build/builder-tools.mjs'
 import { notesOf, platformsOf, titleOf, versionOf } from '../beta-release.mjs'
 import { problemsWith, readUpdateFile, sha512Of } from '../release-check.mjs'
 
@@ -141,90 +142,72 @@ describe('§2 · release-check.mjs', () => {
   })
 })
 
-describe('§3 · release.yml', () => {
+describe('§3 · release workflow route', () => {
   const workflow = readFileSync(join(here, '../../.github/workflows/release.yml'), 'utf8')
-  /** One job's block: its line, to the next job's. */
-  const job = (name) => {
-    const lines = workflow.split('\n')
-    const at = lines.indexOf(`  ${name}:`)
-    expect(at, `no job ${name}`).toBeGreaterThan(-1)
-    const end = lines.findIndex((line, index) => index > at && /^ {2}[a-z][a-z-]*:$/.test(line))
-    return lines.slice(at, end === -1 ? undefined : end).join('\n')
-  }
-
-  it('🔴 only a version tag starts it, and the tag decides the version', () => {
-    expect(workflow).toMatch(
-      /^on:\n {2}push:\n {4}tags: \['v\*'\]\n\npermissions:\n {2}contents: read$/m,
-    )
-    expect(job('plan')).toContain('=~ ^v([0-9]+\\.[0-9]+\\.[0-9]+)(-beta\\.[0-9]+)?$ ]]')
-    for (const build of ['windows', 'macos']) {
-      expect(job(build)).toContain('-c.extraMetadata.version=${{ needs.plan.outputs.version }}')
-      expect(job(build)).toContain('--publish never')
-      expect(job(build)).toContain('-c.publish.provider=github')
+  const mac = readFileSync(join(here, '../../.github/actions/signed-mac/action.yml'), 'utf8')
+  it('uses valid YAML and passes version/repository inputs to every composite shell step', () => {
+    const load = builderTools.loadYaml
+    const action = load(mac)
+    const parsed = load(workflow)
+    expect(parsed.jobs.macos.environment).toBe('mac-signing')
+    expect(parsed.jobs.qualify.environment).toBe('mac-signing')
+    expect(parsed.jobs.publish.environment).toBe('release')
+    expect(parsed.jobs.publish.needs).not.toContain('macos')
+    for (const job of ['qualify', 'publish']) {
+      expect(parsed.jobs[job].steps[0]).toEqual({
+        uses: 'actions/checkout@v7',
+        with: { 'fetch-depth': 0, 'persist-credentials': false },
+      })
+      expect(parsed.jobs[job].steps[1]).toEqual({
+        uses: './.github/actions/setup-desktop',
+        with: { install: 'false' },
+      })
     }
-  })
-
-  it('🔴 one setting names the repository, and it can only be the one this runs in', () => {
-    expect(job('plan')).toContain('RELEASE_REPO: ${{ vars.RELEASE_REPO || github.repository }}')
-    expect(job('plan')).toContain('if [ "$RELEASE_REPO" != "$GITHUB_REPOSITORY" ]; then')
-  })
-
-  it('🔴 each build is checked — the platform, then its update files — before anything is published', () => {
-    expect(job('windows')).toContain(
-      'run: node scripts/windows-packaged-check.mjs apps/desktop/dist/win-unpacked',
+    const setup = load(
+      readFileSync(join(here, '../../.github/actions/setup-desktop/action.yml'), 'utf8'),
     )
-    expect(job('windows')).toContain('run: node scripts/release-check.mjs apps/desktop/dist')
-    expect(job('macos')).toContain('--mac dmg zip dir --arm64')
-    expect(job('macos')).toContain('-c.mac.identity=-')
-    expect(job('macos')).toContain(
-      'run: node scripts/macos-packaged-check.mjs apps/desktop/dist/mac-arm64/BroCrew.app',
-    )
-    expect(job('macos')).toContain('run: node scripts/release-check.mjs apps/desktop/dist')
-    expect(job('publish')).toContain('needs: [plan, windows, macos]')
-  })
+    expect(setup.inputs.install.default).toBe('true')
+    const installation = setup.runs.steps.find((step) => step.run)
+    expect(installation.if).toBe("inputs.install == 'true'")
+    expect(installation.run).toContain('pnpm install --frozen-lockfile')
 
-  it('🔴 nothing is published unless the recovery window passed its real-entry check on both systems, in this run', () => {
-    // Their evidence is an artifact of this run, and only the builds' files reach the release.
-    expect(job('publish')).toMatch(/pattern: release-\*\n {10}path: release\n/)
-    expect(workflow).not.toMatch(/^ {2}recovery-(?:windows|macos):/m)
-    for (const [name, program] of [
-      ['windows', 'apps/desktop/dist/win-unpacked/BroCrew.exe'],
-      ['macos', 'apps/desktop/dist/mac-arm64/BroCrew.app/Contents/MacOS/BroCrew'],
-    ]) {
-      const block = job(name)
-      expect(block).toContain('timeout-minutes: 45')
-      expect(block.match(/recovery-real-entry-check\.mjs/g)).toHaveLength(1)
-      const step = block.slice(block.indexOf('      - name: Recovery real-entry check\n'))
-      const own = step.slice(0, step.indexOf('\n      - ', 1))
-      expect(own).toContain(`run: node scripts/recovery-real-entry-check.mjs --packaged ${program}`)
-      expect(own).not.toMatch(/continue-on-error|\n {8}if:/)
-      expect(block.indexOf('electron-builder')).toBeLessThan(
-        block.indexOf('recovery-real-entry-check.mjs'),
-      )
-      expect(block).toContain('BROBOT_RECOVERY_EVIDENCE: ${{ runner.temp }}/recovery-evidence')
-      expect(block).toMatch(/- name: Keep what the recovery check saw\n {8}if: always\(\)/)
-      expect(block).toContain(`name: recovery-evidence-${name}`)
+    for (const step of action.runs.steps) if (step.run) expect(step.shell).toBe('bash')
+    expect(mac).not.toMatch(/\$\{\{\s*(needs|secrets)\./)
+  })
+  it('supplies runtime expected metadata without exposing signing secrets to the proof', () => {
+    const proof = readFileSync(join(here, '../../.github/workflows/mac-signed-upgrade.yml'), 'utf8')
+    expect(proof).toContain('environment: mac-signing')
+    for (const name of ['MAC_EXPECTED_TEAM_ID', 'MAC_EXPECTED_SIGNING_AUTHORITY']) {
+      expect(proof).toContain(`vars.${name}`)
+      expect(workflow).toContain(`vars.${name}`)
     }
+    expect(proof).not.toMatch(/secrets\.(MAC_CERT|APPLE_API)/)
+    expect(mac).toContain('node scripts/lib/mac-signing-identity.mjs mask')
   })
-
-  it('⛔ a release reads its feed anonymously: no build names a private feed or a token', () => {
-    for (const name of ['windows', 'macos']) {
-      expect(job(name)).toContain('-c.publish.provider=github')
-      expect(job(name)).not.toMatch(/publish\.(private|token)/)
-    }
-  })
-
-  it('🔴 only the publish job may write, in the release environment, and it publishes one release whole', () => {
+  it('restricts builds to candidates and publication to an explicit stable-tag dispatch', () => {
+    expect(workflow).toContain("if: needs.plan.outputs.build == 'true'")
+    expect(workflow).toContain("if: needs.plan.outputs.publish == 'true'")
+    const publish = workflow.slice(workflow.indexOf('\n  publish:'))
+    expect(publish).not.toMatch(/electron-builder|pnpm install|--clobber/)
+    expect(publish).toContain('environment: release')
+    expect(publish).toContain('selection_artifact_id')
+    expect(publish).toContain('selection_sha256')
     expect(workflow.match(/contents: write/g)).toHaveLength(1)
-    const publish = job('publish')
-    expect(publish).toContain('    environment: release')
-    expect(publish).toMatch(
-      /permissions:\n {6}contents: write\n {6}id-token: write\n {6}attestations: write/,
-    )
-    expect(publish).toContain('--verify-tag --draft')
-    expect(publish).toContain('--draft=false --prerelease --latest=false')
-    expect(publish).toContain('--draft=false --latest')
-    expect(publish).toContain('if: ${{ !github.event.repository.private }}')
-    expect(publish).toContain('uses: actions/attest-build-provenance@v2')
+  })
+  it('retains packaged/recovery/update checks and signs the Mac distribution', () => {
+    expect(mac).toContain('--mac dmg zip dir --arm64')
+    expect(mac).toContain('-c.mac.hardenedRuntime=true')
+    expect(mac).toContain('-c.mac.timestamp=')
+    expect(mac).not.toContain('-c.mac.identity=-')
+    expect(mac).toContain('mac-after-sign.cjs')
+    expect(mac).toContain('scripts/mac-release-signing.mjs')
+    expect(mac).toContain('scripts/macos-packaged-check.mjs')
+    expect(mac).toContain('scripts/release-check.mjs')
+    expect(mac).toContain('scripts/recovery-real-entry-check.mjs')
+    expect(workflow).toContain('artifact_name: release-macos')
+    expect(workflow).not.toContain('macos-update-test')
+    expect(mac).not.toContain('macUpdateInstall')
+    expect(workflow).toContain('environment: mac-signing')
+    expect(workflow).toContain('actions/attest-build-provenance@v2')
   })
 })

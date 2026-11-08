@@ -847,7 +847,11 @@ watch(
 </script>
 
 <template>
-  <section class="conversation-pane" data-cy="new-conversation-surface" data-chat-theme="light">
+  <section
+    class="conversation-pane bb-conversation-ground"
+    data-cy="new-conversation-surface"
+    data-chat-theme="light"
+  >
     <SessionHeader
       :session="null"
       :status="null"
@@ -1045,17 +1049,6 @@ watch(
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  background-color: var(--conversation-bg-color, var(--chat-bg));
-  background-image: var(--conversation-bg-image, var(--paper-wash));
-  background-position: var(--conversation-bg-position, 0% 0%);
-  background-repeat: var(--conversation-bg-repeat, repeat);
-  background-size: var(--conversation-bg-size, auto);
-  image-rendering: var(--conversation-bg-rendering, auto);
-  color: var(--text);
-}
-
-.conversation-pane > * {
-  image-rendering: auto;
 }
 
 .empty-stage {
