@@ -1,7 +1,7 @@
-name: Chrome 0.1.10 native birth unpublished build and equality
+name: WhatsApp 0.1.5 sealed unpublished build
 on:
   push:
-    branches: [diagnostic/chrome-010-native-unpublished]
+    branches: [diagnostic/whatsapp-015-native-unpublished]
 permissions:
   contents: read
 jobs:
@@ -9,7 +9,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 20
     env:
-      BROCREW_PLUGIN_SOURCE_COMMIT: b5828f35340d396f9840bb7f6b8d48fa74bd69fe
+      BROCREW_PLUGIN_SOURCE_COMMIT: 0a7df0c105c461219bce7968f756b8444dcb3d98
       GOTOOLCHAIN: local
       CGO_ENABLED: '0'
     steps:
@@ -18,7 +18,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v7
         with:
-          ref: b5828f35340d396f9840bb7f6b8d48fa74bd69fe
+          ref: 0a7df0c105c461219bce7968f756b8444dcb3d98
           path: native-source
           persist-credentials: false
       - uses: actions/setup-node@v7
@@ -38,30 +38,19 @@ jobs:
           if ((go env GOVERSION) -ne 'go1.27.2' -or $LASTEXITCODE -ne 0) { throw 'Wrong Go compiler' }
           "BROCREW_GO=$((Get-Command go).Source)" >> $env:GITHUB_ENV
           "BROCREW_MONOREPO_ROOT=$source" >> $env:GITHUB_ENV
-          "NATIVE_INPUTS=$env:RUNNER_TEMP/chrome-010-native-inputs" >> $env:GITHUB_ENV
-          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/chrome-010-native-inputs" | Out-Null
-          $goFiles = Get-ChildItem "$source/plugins/chrome/native/process-birth/*.go" | ForEach-Object FullName
+          "NATIVE_INPUTS=$env:RUNNER_TEMP/whatsapp-015-native-inputs" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/whatsapp-015-native-inputs" | Out-Null
+          $goFiles = Get-ChildItem "$source/plugins/whatsapp/bridge/*.go" | ForEach-Object FullName
           $unformatted = gofmt -l @goFiles
           if ($LASTEXITCODE -ne 0 -or $unformatted) { throw "Unformatted Go files: $unformatted" }
       - name: Install declared package build dependencies
         working-directory: native-source
-        run: npm ci --prefix plugins/chrome --no-audit --no-fund
+        run: npm ci --prefix plugins/whatsapp --no-audit --no-fund
       - name: Build both normal unpublished release archives
         working-directory: native-source
         shell: pwsh
         run: |
-          node scripts/build-plugin-release.mjs chrome "$env:RUNNER_TEMP/chrome-010-native-release"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: First helper launch in restricted host environment then actual PS5.1 equality
-        shell: pwsh
-        run: |
-          node windows-native-birth-equality.mjs "$env:RUNNER_TEMP/chrome-010-native-release/chrome-win32-x64/package/bin/chrome-process-birth.exe" "$env:NATIVE_INPUTS/evidence"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Native self and foreign API tests with exact integer vectors
-        working-directory: native-source/plugins/chrome/native/process-birth
-        shell: pwsh
-        run: |
-          go test -mod=readonly -count=1 -v -timeout=90s ./... 2>&1 | Tee-Object -FilePath "$env:NATIVE_INPUTS/evidence/go-test.log"
+          node scripts/build-plugin-release.mjs whatsapp "$env:RUNNER_TEMP/whatsapp-015-native-release"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Retain exact normal archive and catalogue input receipts
         working-directory: native-source
@@ -73,34 +62,47 @@ jobs:
           import assert from 'node:assert/strict';
           import {createHash} from 'node:crypto';
           import {execFileSync} from 'node:child_process';
-          const built = path.join(process.env.RUNNER_TEMP, 'chrome-010-native-release');
+          const built = path.join(process.env.RUNNER_TEMP, 'whatsapp-015-native-release');
           const out = process.env.NATIVE_INPUTS;
           const sha = bytes => createHash('sha256').update(bytes).digest('hex');
           const entry = JSON.parse(fs.readFileSync(path.join(built, 'plugin-list-entry.json')));
           assert.equal(entry.sourceCommit, process.env.BROCREW_PLUGIN_SOURCE_COMMIT);
-          assert.equal(entry.version, '0.1.10');
-          const archiveFilename = 'chrome-win32-x64.tar.gz';
+          assert.equal(entry.version, '0.1.5');
+          const archiveFilename = 'whatsapp-win32-x64.tar.gz';
           const archive = fs.readFileSync(path.join(built, archiveFilename));
-          const manifest = fs.readFileSync(path.join(built, 'chrome-win32-x64/package/plugin.json'));
-          const parsed = JSON.parse(manifest);
-          for (const file of parsed.files) {
-            const bytes = fs.readFileSync(path.join(built, 'chrome-win32-x64/package', file.path));
-            assert.equal(bytes.length, file.size); assert.equal(sha(bytes), file.sha256);
-          }
-          const exe = fs.readFileSync(path.join(built, 'chrome-win32-x64/package/bin/chrome-process-birth.exe'));
+          const manifest = fs.readFileSync(path.join(built, 'whatsapp-win32-x64/package/plugin.json'));
+          assert.equal(entry.id, 'whatsapp');
+          assert.deepEqual(entry.targets.map(target => `${target.os}-${target.cpu}`).sort(), ['darwin-arm64','win32-x64']);
+          const targetReceipts = entry.targets.map(target => {
+            const name = `whatsapp-${target.os}-${target.cpu}`;
+            const archiveBytes = fs.readFileSync(path.join(built, name + '.tar.gz'));
+            const manifestBytes = fs.readFileSync(path.join(built, name, 'package/plugin.json'));
+            const parsed = JSON.parse(manifestBytes);
+            assert.equal(parsed.id, 'whatsapp'); assert.equal(parsed.version, entry.version);
+            assert.equal(parsed.sourceCommit, entry.sourceCommit);
+            assert.equal(archiveBytes.length, target.bytes); assert.equal(sha(archiveBytes), target.sha256);
+            assert.equal(sha(manifestBytes), target.manifestSha256);
+            for (const file of parsed.files) {
+              const bytes = fs.readFileSync(path.join(built, name, 'package', file.path));
+              assert.equal(bytes.length, file.size); assert.equal(sha(bytes), file.sha256);
+            }
+            fs.writeFileSync(path.join(out, name + '.plugin.json'), manifestBytes);
+            return {os:target.os,cpu:target.cpu,archiveBytes:archiveBytes.length,
+              archiveSha256:sha(archiveBytes),manifestSha256:sha(manifestBytes)};
+          });
+          const exe = fs.readFileSync(path.join(built, 'whatsapp-win32-x64/package/bin/whatsapp-bridge.exe'));
           assert.equal(exe.toString('ascii', 0, 2), 'MZ');
           const pe = exe.readUInt32LE(0x3c);
           assert.equal(exe.readUInt32LE(pe), 0x4550); assert.equal(exe.readUInt16LE(pe + 4), 0x8664);
-          const mac = JSON.parse(fs.readFileSync(path.join(built, 'chrome-darwin-arm64/package/plugin.json')));
-          assert.ok(!mac.files.some(file => file.path === 'bin/chrome-process-birth.exe'));
-          const manifestFilename = 'chrome-win32-x64.plugin.json';
-          const receipt = {format: 1, plugins: [{id:'chrome',version:entry.version,sourceCommit:entry.sourceCommit,
+          const mac = fs.readFileSync(path.join(built, 'whatsapp-darwin-arm64/package/bin/whatsapp-bridge'));
+          assert.equal(mac.readUInt32LE(0), 0xfeedfacf); assert.equal(mac.readUInt32LE(4), 0x100000c);
+          const manifestFilename = 'whatsapp-win32-x64.plugin.json';
+          const receipt = {format: 1, plugins: [{id:'whatsapp',version:entry.version,sourceCommit:entry.sourceCommit,
             archiveFilename,archiveBytes:archive.length,archiveSha256:sha(archive),manifestFilename,
-            manifestSha256:sha(manifest),catalogueEntry:entry}],
+            manifestSha256:sha(manifest),catalogueEntry:entry,targetReceipts}],
             sourceTree:execFileSync('git',['rev-parse','HEAD^{tree}'],{encoding:'utf8'}).trim()};
-          for (const name of [archiveFilename,'chrome-darwin-arm64.tar.gz','plugin-list-entry.json','source-receipt.json'])
+          for (const name of [archiveFilename,'whatsapp-darwin-arm64.tar.gz','plugin-list-entry.json','source-receipt.json'])
             fs.copyFileSync(path.join(built,name),path.join(out,name));
-          fs.writeFileSync(path.join(out,manifestFilename),manifest);
           const json=JSON.stringify(receipt,null,2)+'\n';
           fs.writeFileSync(path.join(out,'plugin-inputs.json'),json);
           fs.writeFileSync(path.join(out,'plugin-inputs.sha256'),sha(json)+' *plugin-inputs.json\n');
@@ -111,7 +113,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: chrome-010-native-unpublished-inputs
-          path: ${{ runner.temp }}/chrome-010-native-inputs
+          name: whatsapp-015-native-unpublished-inputs
+          path: ${{ runner.temp }}/whatsapp-015-native-inputs
           if-no-files-found: error
           retention-days: 7
