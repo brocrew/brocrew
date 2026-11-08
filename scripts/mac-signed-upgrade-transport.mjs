@@ -112,9 +112,9 @@ export async function startControlledTransport({ folder, initial }) {
         let bytes = 0
         record.name = seal.name
         record.upstream = 'sealed original Release artifact'
+        // End the HTTP body only after the complete file stream and hashes are verified.
         response.writeHead(200, {
           'content-type': 'application/octet-stream',
-          'content-length': seal.size,
           'cache-control': 'no-store',
         })
         for await (const chunk of createReadStream(file)) {
