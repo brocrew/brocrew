@@ -210,17 +210,29 @@ export async function press(cdp, selector, { beforePress = async () => {}, wait 
   })
 }
 
+const visibleUpdatesMenu = `
+  const visible = (one) => {
+    if (!one) return false
+    const box = one.getBoundingClientRect(), style = getComputedStyle(one)
+    return box.width > 0 && box.height > 0 && style.display !== 'none' &&
+      style.visibility !== 'hidden' && style.opacity !== '0'
+  }
+  const menus = [...document.querySelectorAll('[data-cy=updates-menu]')]
+  const dialogs = [...document.querySelectorAll('[role=dialog], dialog[open], [aria-modal=true]')].filter(visible)
+  return menus.length === 1 && visible(menus[0]) && dialogs.length === 1 &&
+    dialogs[0] === menus[0] && menus[0].getAttribute('role') === 'dialog' &&
+    menus[0].getAttribute('aria-label') === 'BroCrew updates'
+`
+
 export async function openUpdates(cdp) {
+  if (await cdp.evaluate(visibleUpdatesMenu)) return
   const opened = await cdp.evaluate(
-    'return document.querySelector("[data-cy=rail-workspace]")?.getAttribute("aria-expanded") === "true"',
+    'return document.querySelector("[data-cy=rail-version]")?.getAttribute("aria-expanded") === "true"',
   )
-  if (!opened) await press(cdp, '[data-cy=rail-workspace]', { wait: 180_000 })
+  if (!opened) await press(cdp, '[data-cy=rail-version]', { wait: 180_000 })
   if (
     !(await until(
-      () =>
-        cdp.evaluate(
-          'return Boolean(document.querySelector("[data-cy=updates-menu]")?.getBoundingClientRect().width)',
-        ),
+      () => cdp.evaluate(visibleUpdatesMenu),
       180_000,
       250,
     ))
@@ -310,14 +322,14 @@ export async function closeExpectedLaunchSetup(cdp, { wait = 60_000 } = {}) {
   return { expected: 'Set up Claude', provider: 'claude', closed: true, remembered: true }
 }
 
-/** The updates menu, opened from the rail's workspace button if it is not open already. */
+/** The updates menu, opened from the rail's version button if it is not open already. */
 export async function openTheUpdatesMenu(cdp) {
-  if ((await shown(cdp, '[data-cy="updates-menu"]')) !== null) return
-  await press(cdp, '[data-cy="rail-workspace"]')
+  if (await cdp.evaluate(visibleUpdatesMenu)) return
+  await press(cdp, '[data-cy="rail-version"]')
   if (
-    !(await until(async () => (await shown(cdp, '[data-cy="updates-menu"]')) !== null, 10_000, 250))
+    !(await until(() => cdp.evaluate(visibleUpdatesMenu), 10_000, 250))
   ) {
-    throw new Error('the rail’s workspace button did not open the updates menu')
+    throw new Error('the rail’s version button did not open the updates menu')
   }
 }
 

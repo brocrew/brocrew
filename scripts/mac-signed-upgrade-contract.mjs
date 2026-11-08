@@ -69,6 +69,31 @@ export function initialProvidersSurface(facts) {
   return facts
 }
 
+export function candidateOfferAction(facts, version) {
+  const state = facts?.snapshot?.state
+  if (state?.kind === 'error') throw new Error(state.message)
+  requireEvidence(
+    ['idle', 'checking', 'available'].includes(state?.kind),
+    `The baseline update state cannot offer the candidate: ${state?.kind ?? 'missing'}.`,
+  )
+  requireEvidence(
+    facts.menuCount === 1 && facts.menuVisible === true && facts.dialogCount === 1 &&
+      facts.menuRole === 'dialog' && facts.menuLabel === 'BroCrew updates' &&
+      ['idle', 'checking', 'available'].includes(facts.menuKind),
+    'The ordinary Updates dialog is missing, hidden, obstructed or unresolved.',
+  )
+  if (state.kind === 'available')
+    requireEvidence(state.version === version, 'The baseline offered a different candidate version.')
+  if (facts.menuKind !== state.kind || state.kind === 'checking') return 'wait'
+  const buttons = state.kind === 'idle' ? facts.check : facts.download
+  requireEvidence(
+    buttons?.count === 1 && buttons.visible === true,
+    'The ordinary update action is missing, hidden or duplicated.',
+  )
+  if (buttons.enabled !== true) return 'wait'
+  return state.kind === 'idle' ? 'check' : 'download'
+}
+
 export function candidateNames(version) {
   return [
     `BroCrew-${version}-arm64.dmg`,

@@ -430,3 +430,62 @@ test('expired all-app observation has no new wait and process-read failures prop
     /process observation failed/,
   )
 })
+
+function candidateOfferFacts(kind = 'available') {
+  return {
+    snapshot: { state: kind === 'available' ? { kind, version: '0.2.12' } : { kind } },
+    menuCount: 1,
+    menuVisible: true,
+    dialogCount: 1,
+    menuRole: 'dialog',
+    menuLabel: 'BroCrew updates',
+    menuKind: kind,
+    check: { count: kind === 'idle' ? 1 : 0, visible: kind === 'idle', enabled: true },
+    download: { count: kind === 'available' ? 1 : 0, visible: kind === 'available', enabled: true },
+  }
+}
+
+test('an exact available candidate uses its visible Download without requiring an idle Check button', () => {
+  assert.equal(typeof upgradeContract.candidateOfferAction, 'function')
+  const facts = candidateOfferFacts()
+  assert.equal(facts.check.count, 0)
+  assert.equal(upgradeContract.candidateOfferAction(facts, '0.2.12'), 'download')
+})
+
+test('idle and checking observations wait for the exact candidate through ordinary controls', () => {
+  assert.equal(upgradeContract.candidateOfferAction(candidateOfferFacts('idle'), '0.2.12'), 'check')
+  assert.equal(upgradeContract.candidateOfferAction(candidateOfferFacts('checking'), '0.2.12'), 'wait')
+  const changing = candidateOfferFacts()
+  changing.menuKind = 'checking'
+  assert.equal(upgradeContract.candidateOfferAction(changing, '0.2.12'), 'wait')
+  for (const kind of ['idle', 'available']) {
+    const disabled = candidateOfferFacts(kind)
+    disabled[kind === 'idle' ? 'check' : 'download'].enabled = false
+    assert.equal(upgradeContract.candidateOfferAction(disabled, '0.2.12'), 'wait')
+  }
+})
+
+test('a wrong offer, error, blank, hidden or obstructed dialog cannot authorize Download', () => {
+  for (const changed of [
+    { snapshot: null },
+    { snapshot: { state: { kind: 'available', version: '0.2.13' } } },
+    { snapshot: { state: { kind: 'not-here' } } },
+    { snapshot: { state: { kind: 'ready', version: '0.2.12' } } },
+    { snapshot: { state: { kind: 'unexpected' } } },
+    { menuCount: 0 },
+    { menuCount: 2 },
+    { menuVisible: false },
+    { dialogCount: 2 },
+    { menuRole: 'menu' },
+    { menuLabel: 'Workspaces' },
+    { menuKind: null },
+    { menuKind: 'unexpected' },
+    { download: { count: 0, visible: false, enabled: false } },
+    { download: { count: 2, visible: true, enabled: true } },
+    { download: { count: 1, visible: false, enabled: true } },
+  ])
+    assert.throws(() => upgradeContract.candidateOfferAction({ ...candidateOfferFacts(), ...changed }, '0.2.12'))
+  assert.throws(() => upgradeContract.candidateOfferAction({
+    ...candidateOfferFacts(), snapshot: { state: { kind: 'error', message: 'Actual update error' } },
+  }, '0.2.12'), /Actual update error/)
+})

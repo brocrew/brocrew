@@ -52,6 +52,7 @@ import {
   registriesKept,
   assertThreeWorkspaceStates,
   initialProvidersSurface,
+  candidateOfferAction,
   awaitInstalledAppExit,
 } from './mac-signed-upgrade-contract.mjs'
 import {
@@ -532,11 +533,42 @@ async function guidedDownload(workspace, published) {
   selectWorkspace(workspace)
   const cdp = workspace.cdp
   await openUpdates(cdp)
-  await click(cdp, '[data-cy=updates-check]')
+  let checked = false
+  workspace.result.updateOfferObservations = []
   await waitFor(async () => {
-    const state = (await cdp.evaluate('return await window.api.updates.read()')).state
-    if (state.kind === 'error') throw new Error(state.message)
-    return state.kind === 'available' && state.version === VERSION_B
+    const facts = await cdp.evaluate(`
+      const visible = (one) => {
+        if (!one) return false
+        const box = one.getBoundingClientRect(), style = getComputedStyle(one)
+        return box.width > 0 && box.height > 0 && style.display !== 'none' &&
+          style.visibility !== 'hidden' && style.opacity !== '0'
+      }
+      const menus = [...document.querySelectorAll('[data-cy=updates-menu]')]
+      const menu = menus[0]
+      const action = (selector) => {
+        const buttons = menu ? [...menu.querySelectorAll(selector)] : []
+        return { count: buttons.length, visible: buttons.length === 1 && visible(buttons[0]),
+          enabled: buttons.length === 1 && buttons[0].disabled === false }
+      }
+      return {
+        snapshot: await window.api.updates.read(),
+        menuCount: menus.length, menuVisible: visible(menu),
+        dialogCount: [...document.querySelectorAll('[role=dialog], dialog[open], [aria-modal=true]')].filter(visible).length,
+        menuRole: menu?.getAttribute('role') ?? null,
+        menuLabel: menu?.getAttribute('aria-label') ?? null,
+        menuKind: menu?.querySelector('[data-cy=updates-state]')?.getAttribute('data-state') ?? null,
+        check: action('[data-cy=updates-check]'), download: action('[data-cy=updates-download]'),
+      }
+    `)
+    const observed = { at: Date.now(), ...facts }
+    workspace.result.updateOfferObservations.push(observed)
+    const action = candidateOfferAction(facts, VERSION_B)
+    observed.action = action
+    if (action === 'check' && !checked) {
+      checked = true
+      await click(cdp, '[data-cy=updates-check]')
+    }
+    return action === 'download'
   }, 'actual011 offers the signed candidate')
   await screenshot(cdp, 'a-offers-candidate.png')
   await click(cdp, '[data-cy=updates-download]')

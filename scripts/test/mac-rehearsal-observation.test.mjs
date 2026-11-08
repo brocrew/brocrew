@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import ts from 'typescript'
+import { openUpdates, openTheUpdatesMenu } from '../lib/update-rehearsal-app.mjs'
 import {
   databaseSnapshot,
   nativeFiles,
@@ -428,4 +429,119 @@ describe('entrypoint native-prefix bindings', () => {
       writeFileSync(file, 'changed native bytes\n')
       for (const call of calls) await expect(execute(call)).rejects.toThrow('lost original bytes')
     })
+})
+
+function updatesWindow({ workspacesOpen = false, updatesOpen = false, mode = 'ordinary' } = {}) {
+  const clicked = []
+  const node = (attributes, y) => ({
+    disabled: false,
+    style: { display: 'block', visibility: 'visible', opacity: '1' },
+    getAttribute: (name) => attributes[name] ?? null,
+    scrollIntoView() {},
+    getBoundingClientRect: () => ({ x: 0, y, width: 20, height: 20 }),
+  })
+  const version = node({}, 60), workspace = node({}, 20)
+  version.getAttribute = (name) => name === 'aria-expanded' ? String(updatesOpen) : null
+  workspace.getAttribute = (name) => name === 'aria-expanded' ? String(workspacesOpen) : null
+  version.disabled = mode === 'disabled'
+  const menu = node({ role: 'dialog', 'aria-label': 'BroCrew updates' }, 100)
+  const workspaceMenu = node({ role: 'dialog', 'aria-label': 'Workspaces' }, 100)
+  if (mode === 'hidden') menu.style.visibility = 'hidden'
+  if (mode === 'wrong-label') menu.getAttribute = (name) => name === 'role' ? 'dialog' : 'Workspaces'
+  const document = {
+    querySelector(selector) {
+      if (selector.includes('rail-version')) return mode === 'missing' ? null : version
+      if (selector.includes('rail-workspace')) return workspace
+      if (selector.includes('updates-menu')) return updatesOpen ? menu : null
+      throw new Error(`Unexpected test selector: ${selector}`)
+    },
+    querySelectorAll(selector) {
+      if (selector === '[data-cy=updates-menu]')
+        return updatesOpen ? (mode === 'duplicate' ? [menu, menu] : [menu]) : []
+      if (selector === '[role=dialog], dialog[open], [aria-modal=true]')
+        return [
+          ...(updatesOpen ? [menu] : []),
+          ...(workspacesOpen || mode === 'other-dialog' ? [workspaceMenu] : []),
+        ]
+      throw new Error(`Unexpected test selector: ${selector}`)
+    },
+  }
+  const cdp = {
+    evaluate: vi.fn(async (body) => new Function('document', 'getComputedStyle', body)(
+      document, (one) => one.style,
+    )),
+    send: vi.fn(async (method, event) => {
+      if (method !== 'Input.dispatchMouseEvent' || event.type !== 'mouseReleased') return
+      if (event.y === 70) {
+        clicked.push('rail-version')
+        updatesOpen = mode !== 'wrong-popup' && !updatesOpen
+        workspacesOpen = mode === 'wrong-popup'
+      } else if (event.y === 30) {
+        clicked.push('rail-workspace')
+        workspacesOpen = !workspacesOpen
+        updatesOpen = false
+      } else throw new Error(`Unexpected test input: ${JSON.stringify(event)}`)
+    }),
+  }
+  return { cdp, clicked }
+}
+
+describe('ordinary Updates navigation', () => {
+  it('ordinary update navigation presses the version control instead of Workspaces', async () => {
+    vi.useFakeTimers()
+    for (const open of [openUpdates, openTheUpdatesMenu]) {
+      for (const workspacesOpen of [false, true]) {
+        const f = updatesWindow({ workspacesOpen })
+        const result = open(f.cdp).then(() => ({ opened: true }), (error) => ({ error: error.message }))
+        await vi.advanceTimersByTimeAsync(180_000)
+        expect(await result).toEqual({ opened: true })
+        expect(f.clicked).toEqual(['rail-version'])
+        expect(f.cdp.send.mock.calls.map(([, event]) => event.type)).toEqual([
+          'mouseMoved', 'mousePressed', 'mouseReleased',
+        ])
+      }
+    }
+  })
+
+  it('an already visible unique ordinary Updates dialog is left open without a second press', async () => {
+    for (const open of [openUpdates, openTheUpdatesMenu]) {
+      const f = updatesWindow({ updatesOpen: true })
+      await open(f.cdp)
+      expect(f.clicked).toEqual([])
+      expect(f.cdp.send).not.toHaveBeenCalled()
+    }
+  })
+
+  it('wrong, hidden, duplicate or obstructed dialogs cannot satisfy the original menu budgets', async () => {
+    vi.useFakeTimers()
+    for (const [open, budget] of [[openUpdates, 180_000], [openTheUpdatesMenu, 10_000]]) {
+      for (const mode of ['wrong-popup', 'hidden', 'duplicate', 'other-dialog', 'wrong-label']) {
+        vi.setSystemTime(0)
+        const f = updatesWindow({ mode })
+        const result = open(f.cdp).then(() => ({ opened: true }), (error) => ({ error, at: Date.now() }))
+        await vi.advanceTimersByTimeAsync(180_000)
+        const failed = await result
+        expect(failed.error).toBeInstanceOf(Error)
+        expect(failed.at).toBe(budget)
+        expect(f.clicked).toEqual(['rail-version'])
+      }
+    }
+  })
+
+  it('missing or disabled version controls cannot fall back to Workspaces and CDP errors propagate', async () => {
+    vi.useFakeTimers()
+    for (const open of [openUpdates, openTheUpdatesMenu]) {
+      for (const mode of ['missing', 'disabled']) {
+        const f = updatesWindow({ mode })
+        const result = open(f.cdp).then(() => ({ opened: true }), (error) => ({ error }))
+        await vi.advanceTimersByTimeAsync(180_000)
+        expect((await result).error).toBeInstanceOf(Error)
+        expect(f.clicked).toEqual([])
+      }
+      const f = updatesWindow()
+      f.cdp.evaluate.mockRejectedValue(new Error('CDP read failed'))
+      await expect(open(f.cdp)).rejects.toThrow('CDP read failed')
+      expect(f.cdp.send).not.toHaveBeenCalled()
+    }
+  })
 })
