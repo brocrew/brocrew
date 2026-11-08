@@ -17,7 +17,8 @@
     "shutdown",
     "pluginPins",
     "baseline",
-    "residualState"
+    "residualState",
+    "publicCatalogue"
   ],
   "properties": {
     "format": {
@@ -129,7 +130,9 @@
         "clean-install",
         "app-upgrade-compat",
         "public-019-clean",
-        "public-019-upgrade"
+        "public-019-upgrade",
+        "public-live-clean",
+        "public-live-upgrade"
       ]
     },
     "proofStage": {
@@ -287,6 +290,16 @@
           ]
         }
       }
+    },
+    "publicCatalogue": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/definitions/publicCatalogueCapture"
+        }
+      ]
     }
   },
   "allOf": [
@@ -489,6 +502,129 @@
           }
         }
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "testPath": {
+            "enum": [
+              "public-live-clean",
+              "public-live-upgrade"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "publicCatalogue": {
+            "$ref": "#/definitions/publicCatalogueCapture"
+          }
+        }
+      }
     }
-  ]
+  ],
+  "definitions": {
+    "publicCatalogueCapture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "format",
+        "url",
+        "sha256",
+        "bytes",
+        "capturedAt",
+        "origin",
+        "selected"
+      ],
+      "properties": {
+        "url": {
+          "const": "https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue-v2.json"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "capturedAt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "origin": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "runId",
+            "runAttempt",
+            "carrierSha"
+          ],
+          "properties": {
+            "runId": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "runAttempt": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*$"
+            },
+            "carrierSha": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{40}$"
+            }
+          }
+        },
+        "format": {
+          "const": "brocrew.public-plugin-catalogue.v1"
+        },
+        "selected": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "chrome",
+            "whatsapp"
+          ],
+          "properties": {
+            "chrome": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "entrySha256",
+                "targetSha256"
+              ],
+              "properties": {
+                "entrySha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "targetSha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                }
+              }
+            },
+            "whatsapp": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "entrySha256",
+                "targetSha256"
+              ],
+              "properties": {
+                "entrySha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "targetSha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }

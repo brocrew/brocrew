@@ -10,6 +10,7 @@ import { createRequire } from 'node:module'
 import { parseArgs } from 'node:util'
 import { chromeCompatibilityResult, appCompatibilityVerdict, freshClosedChromeRuns } from './chrome-compatibility-result.mjs'
 import { public019Profile } from './public-019-profile.mjs'
+import { livePublicPaths, publicCatalogueProfile, verifyCatalogueCapture } from './public-catalogue-profile.mjs'
 import { candidateProfile, assertCandidateBuild, assertProductVersion, observeCandidateExit } from './windows-candidate-profile.mjs'
 import { verifyIntake, nativeReceipt } from './windows-proof-receipt.mjs'
 import { readCustomPluginInputs, manifestTarExecutable } from './custom-plugin-inputs.mjs'
@@ -18,7 +19,7 @@ import { transportLabel, readTransportFixture, assertUnusedInspectorPort, coldMa
 const { values: args } = parseArgs({ options: {
   execute: { type: 'boolean', default: false }, 'test-path': { type: 'string', default: 'failed-beta-recovery' }, 'source-root': { type: 'string' },
   'candidate-dir': { type: 'string' }, 'candidate-sha': { type: 'string' },
-  'candidate-version': { type: 'string', default: '0.2.11' }, 'intake': { type: 'string' }, 'plugin-inputs': {type:'string'}, 'plugin-receipt-sha256': {type:'string'}, 'plugin-run-id': {type:'string'}, 'plugin-artifact': {type:'string'}, inputs: { type: 'string' }, evidence: { type: 'string' },
+  'candidate-version': { type: 'string', default: '0.2.11' }, 'catalogue': { type: 'string' }, 'catalogue-capture': { type: 'string' }, 'intake': { type: 'string' }, 'plugin-inputs': {type:'string'}, 'plugin-receipt-sha256': {type:'string'}, 'plugin-run-id': {type:'string'}, 'plugin-artifact': {type:'string'}, inputs: { type: 'string' }, evidence: { type: 'string' },
 } })
 const candidateProfileInput = candidateProfile(args['candidate-version'])
 const candidateVersion = candidateProfileInput.version
@@ -26,15 +27,18 @@ const publishedExpected = {
   chrome: { version: '0.1.8', bytes: 3608965, sha256: 'd05363044da6b65cacfccee0149772b97c1a7e5dca83c8262bf91e70de84c8a0', manifest: 'b8432edfc43657715a695dcca57164c7ba0e9229fd98570d4159afeb9be8f7d3', repo: 'brocrew-plugin-chrome' },
   whatsapp: { version: '0.1.4', bytes: 8228798, sha256: '49497b4c15adffefdbc63f8490da542ebae78016975a72c6b55e4476aa3dc769', manifest: 'fe6f04050ac0ec9cc0b577de9d57dc249987d7d3a43cc7e16a9350e68ca83c8d', repo: 'brocrew-plugin-whatsapp' },
 }
+const livePublic = livePublicPaths.includes(args['test-path'])
+const liveProfile = livePublic ? publicCatalogueProfile(readFileSync(resolve(args.catalogue)), Boolean(args['plugin-inputs'] || args['plugin-receipt-sha256'] || args['plugin-run-id'] || args['plugin-artifact'])) : null
 const public019=public019Profile(args['test-path'],Boolean(args['plugin-inputs']))
-let expected=public019?{...structuredClone(publishedExpected),chrome:public019.chrome}:structuredClone(publishedExpected)
+const currentPublic = livePublic || Boolean(public019)
+let expected=liveProfile ? liveProfile.expected : public019?{...structuredClone(publishedExpected),chrome:public019.chrome}:structuredClone(publishedExpected)
 assert.equal(Boolean(args['plugin-inputs']),Boolean(args['plugin-receipt-sha256']),'custom plugin directory and receipt hash required together')
-assert(['failed-beta-recovery','clean-install','app-upgrade-compat','public-019-clean','public-019-upgrade'].includes(args['test-path']))
-const cleanInstall=args['test-path']==='clean-install'||args['test-path']==='public-019-clean'
+assert(['failed-beta-recovery','clean-install','app-upgrade-compat','public-019-clean','public-019-upgrade',...livePublicPaths].includes(args['test-path']))
+const cleanInstall=args['test-path']==='clean-install'||args['test-path']==='public-019-clean'||args['test-path']==='public-live-clean'
 const appCompat=args['test-path']==='app-upgrade-compat'
 assert(!appCompat||!args['plugin-inputs'],'app compatibility mode uses exact published018/014, not custom archive instrumentation')
-const plan = cleanInstall ? ['verify exact candidate installer and published win32/x64 plugin pins', 'install candidate NSIS on a clean runner without installing or launching beta', 'install both published plugins through candidate Settings', 'call Chrome list_browser_profiles and WhatsApp tools/list through installed service', 'verify normal candidate shutdown and cleanup'] : ['verify public beta installer, exact candidate bytes and published win32/x64 plugin pins', 'install actual 0.1.36 NSIS', public019?'attempt beta Settings current019 and retain actual success or failure':'record beta Settings Chrome installation failure as the expected baseline', public019?'stop beta and retain its actual current019 state without seeding or repair':'stop beta and retain its real residual plugin state without seeding or repair', `install exact ${candidateVersion} candidate NSIS over beta`, 'install or retry the two published plugins through candidate Settings', 'attach observer to candidate-owned service; Chrome list_browser_profiles and WhatsApp tools/list over HTTP', 'detach observer, quit app, verify owner/host exits and process cleanup']
-if(public019)plan.unshift('POST-RELEASE CURRENT-USER PUBLIC ROUTE: exact native Chrome019; beta attempts current catalogue with actual success/failure retained; both candidate plugins mandatory, no Chrome exception')
+const plan = cleanInstall ? ['verify exact candidate installer and published win32/x64 plugin pins', 'install candidate NSIS on a clean runner without installing or launching beta', 'install both published plugins through candidate Settings', 'call Chrome list_browser_profiles and WhatsApp tools/list through installed service', 'verify normal candidate shutdown and cleanup'] : ['verify public beta installer, exact candidate bytes and published win32/x64 plugin pins', 'install actual 0.1.36 NSIS', currentPublic?'attempt beta Settings current public catalogue and retain actual success or failure':'record beta Settings Chrome installation failure as the expected baseline', currentPublic?'stop beta and retain its actual current public catalogue state without seeding or repair':'stop beta and retain its real residual plugin state without seeding or repair', `install exact ${candidateVersion} candidate NSIS over beta`, 'install or retry the two published plugins through candidate Settings', 'attach observer to candidate-owned service; Chrome list_browser_profiles and WhatsApp tools/list over HTTP', 'detach observer, quit app, verify owner/host exits and process cleanup']
+if(currentPublic)plan.unshift('POST-RELEASE CURRENT-USER PUBLIC ROUTE: exact captured native plugins; beta attempts current catalogue with actual success/failure retained; both candidate plugins mandatory, no Chrome exception')
 if(appCompat)plan.unshift('APP COMPATIBILITY ONLY: known Chrome018 identity failure may be non-blocking; WhatsApp/service/upgrade/normal cleanup remain mandatory')
 if(args['plugin-inputs'])plan.unshift(transportLabel)
 if (!args.execute) { console.log(JSON.stringify({ execute: false, candidate: candidateProfileInput, plan, expected }, null, 2)); process.exit(0) }
@@ -45,6 +49,7 @@ assert.equal(process.env.RUNNER_ENVIRONMENT, 'github-hosted')
 assert.equal(process.env.GITHUB_REPOSITORY, 'brocrew/brocrew')
 for (const name of ['source-root', 'candidate-dir', 'candidate-sha', 'candidate-version', 'intake', 'inputs', 'evidence']) assert(args[name], `--${name} is required`)
 assert.match(args['candidate-sha'], /^[a-f0-9]{40}$/)
+if(livePublic)for(const name of ['catalogue','catalogue-capture'])assert(args[name],`--${name} is required for live public proof`)
 const source = resolve(args['source-root']), inputs = resolve(args.inputs), evidence = join(resolve(args.evidence),'driver')
 assert(!existsSync(evidence), 'evidence directory must be new')
 mkdirSync(evidence, { recursive: true })
@@ -390,14 +395,32 @@ try {
     const esbuild=viteRequire('esbuild')
     esbuild.buildSync({entryPoints:[join(evidence,'observer.ts')],bundle:true,platform:'node',format:'cjs',target:'node24',outfile:join(evidence,'observer.cjs'),absWorkingDir:source})
     summary.inputs={beta:installer(join(inputs,'BroCrew-Setup-0.1.36-x64.exe'),betaMetadata[0],'0.1.36','856b87c2fd1306745a881f7e5e97591888695dbf9a15d784b477a85f8f35578f'),candidate:{path:candidatePath,sha256:digest(candidateBytes),bytes:candidateBytes.length,sourceSha:args['candidate-sha'],provenance:'exact-source build or operator-pinned artifact; see workflow intake'},sourceSha:args['candidate-sha'],driverSha256:digest(readFileSync(new URL(import.meta.url))),helperSha256:digest(readFileSync(join(evidence,'observer.cjs')))}
-    const catalogue=await publicJson('https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue-v2.json','public-catalogue-v2.json')
-    for(const [id,wanted]of Object.entries(public019?expected:publishedExpected)) {
+    let catalogue
+    if(livePublic) {
+      const catalogueBytes=readFileSync(resolve(args.catalogue)),capture=readJson(resolve(args['catalogue-capture']))
+      const verified=verifyCatalogueCapture(catalogueBytes,capture,{runId:process.env.GITHUB_RUN_ID,runAttempt:process.env.GITHUB_RUN_ATTEMPT,carrierSha:summary.intake.carrierSha})
+      assert.deepEqual(verified.expected,expected)
+      assert(Date.parse(capture.capturedAt)<=Date.parse(summary.started),'catalogue capture must precede native driver invocation')
+      summary.publicCatalogue=capture
+      keep('public-catalogue-v2.json',catalogueBytes)
+      keep('public-catalogue-capture.json',capture)
+      catalogue=verified.catalogue
+    } else catalogue=await publicJson('https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue-v2.json','public-catalogue-v2.json')
+    for(const [id,wanted]of Object.entries(currentPublic?expected:publishedExpected)) {
       const entry=catalogue.entries.find(e=>e.id===id);assert.equal(entry?.version,wanted.version);if(wanted.sourceCommit)assert.equal(entry.sourceCommit,wanted.sourceCommit)
       const target=entry.targets.find(t=>t.os==='win32'&&t.cpu==='x64');assert.equal(target?.sha256,wanted.sha256);assert.equal(target?.manifestSha256,wanted.manifest);assert.equal(target?.bytes,wanted.bytes)
       const release=await publicJson(`https://api.github.com/repos/brocrew/${wanted.repo}/releases/tags/v${wanted.version}`,`public-${id}-release.json`)
       assert.equal(release.draft,false);assert.equal(release.tag_name,`v${wanted.version}`)
+      if(livePublic)assert.equal(release.assets.filter(a=>a.name===`${id}-win32-x64.tar.gz`).length,1)
       const asset=release.assets.find(a=>a.name===`${id}-win32-x64.tar.gz`);assert.equal(asset?.digest,`sha256:${wanted.sha256}`);assert.equal(asset?.size,wanted.bytes);assert.equal(asset?.browser_download_url,target.url)
       const inputArchive=readFileSync(join(inputs,asset.name));assert.equal(inputArchive.length,wanted.bytes);assert.equal(digest(inputArchive),wanted.sha256)
+      if(livePublic) {
+        const tar=manifestTarExecutable(),result=spawnSync(tar,['-xOzf','-','plugin.json'],{input:inputArchive,encoding:null,timeout:30000,maxBuffer:1048576})
+        keep(`input-${id}-manifest-extraction.json`,{executable:tar,executableSha256:digest(readFileSync(tar)),executableVersion:run(tar,['--version']),argv:['-xOzf','-','plugin.json'],stdinBytes:inputArchive.length,stdinSha256:digest(inputArchive),status:result.status,signal:result.signal,errorCode:result.error?.code,stderr:result.stderr?.subarray(0,16384).toString('utf8'),stdoutBytes:result.stdout?.length??0,stdoutSha256:result.stdout?digest(result.stdout):null})
+        assert.ifError(result.error);assert.equal(result.status,0);assert.equal(digest(result.stdout),wanted.manifest)
+        const manifest=JSON.parse(result.stdout);assert.equal(manifest.id,id);assert.equal(manifest.version,wanted.version);assert.equal(manifest.sourceCommit,wanted.sourceCommit);assert(manifest.platforms.some(p=>p.os==='win32'&&p.cpu==='x64'))
+        keep(`input-${id}-plugin.json`,result.stdout)
+      }
     }
     if(args['plugin-inputs']) {
       const custom=readCustomPluginInputs(resolve(args['plugin-inputs']),args['plugin-receipt-sha256'],catalogue,{runId:args['plugin-run-id'],artifact:args['plugin-artifact']})
@@ -426,24 +449,24 @@ try {
   let beta
   if(!cleanInstall) {
   beta=await phase('actual beta NSIS install',()=>install(summary.inputs.beta,'0.1.36'))
-  await phase(public019?'beta current-catalogue Chrome attempt':'beta Chrome installation failure baseline',async()=>{
+  await phase(currentPublic?'beta current-catalogue Chrome attempt':'beta Chrome installation failure baseline',async()=>{
     await launch(beta,'0.1.36',9345)
     assert.equal((await request({kind:'availability'},'beta-availability')).available,true)
     const listed=await request({kind:'list'},'beta-list');assert.equal(listed.ok,true)
-    for(const [id,wanted]of [['chrome',public019?expected.chrome:publishedExpected.chrome]]) {
+    for(const [id,wanted]of [['chrome',currentPublic?expected.chrome:publishedExpected.chrome]]) {
       const card=listed.cards.find(c=>c.id===id);assert(card);assert.equal(card.installed,false)
       let consent
       if(card.preparationRequired) {const prepared=await request({kind:'prepare',id,action:'install'},`beta-${id}-review`);assert.equal(prepared.ok,true);assert.equal(prepared.review.details.version,wanted.version);assert.equal(prepared.review.details.manifestSha256,wanted.manifest);assert.equal(prepared.review.details.digest,wanted.sha256);consent=prepared.review.consent}
       const installed=await request({kind:'install',id,...(consent?{consent}:{})},`beta-${id}-install`)
       assert.equal(typeof installed.ok,'boolean','beta install must return a concrete outcome')
-      summary.baseline={expectedFailure:!public019,journey:public019?'post-release current-user path, not a 0.1.8 reproduction':'historical failed018 recovery',version:wanted.version,reply:installed,cause:installed.ok?'not applicable':'unknown',hostReceipts:hostReceipts()}
-      keep(public019?'beta-current-catalogue-baseline.json':'beta-failure-baseline.json',summary.baseline)
-      if(!public019)assert.equal(installed.ok,false,'this journey requires the observed failing beta installation baseline')
+      summary.baseline={expectedFailure:!currentPublic,journey:currentPublic?'post-release current-user path, not a 0.1.8 reproduction':'historical failed018 recovery',version:wanted.version,reply:installed,cause:installed.ok?'not applicable':'unknown',hostReceipts:hostReceipts()}
+      keep(currentPublic?'beta-current-catalogue-baseline.json':'beta-failure-baseline.json',summary.baseline)
+      if(!currentPublic)assert.equal(installed.ok,false,'this journey requires the observed failing beta installation baseline')
     }
-    await screenshot(public019?'beta-current-catalogue-attempt.png':'beta-failed-install.png')
+    await screenshot(currentPublic?'beta-current-catalogue-attempt.png':'beta-failed-install.png')
     try{await quit('beta');summary.baseline.normalShutdown=true}
     catch(error){summary.baseline.normalShutdown=false;summary.baseline.quitFailure=error.stack??String(error);summary.baseline.cleanup=await cleanup('baseline-cleanup',true);running=null}
-    keep(public019?'beta-current-catalogue-baseline.json':'beta-failure-baseline.json',summary.baseline)
+    keep(currentPublic?'beta-current-catalogue-baseline.json':'beta-failure-baseline.json',summary.baseline)
     summary.residualPreUpgrade=residualState('baseline-residual-state')
     keep('pre-upgrade-host-receipts.json',hostReceipts())
   })

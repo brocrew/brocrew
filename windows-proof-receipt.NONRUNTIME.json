@@ -44,5 +44,6 @@
   "residualState": {
     "beforeUpgrade": null,
     "afterInstaller": null
-  }
+  },
+  "publicCatalogue": null
 }

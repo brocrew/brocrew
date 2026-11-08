@@ -51,6 +51,7 @@ export function nativeReceipt(summary) {
       passed: (summary.observerResult ?? summary.observer)?.passed ?? null, nativeWitness: summary.nativeWitness ?? null },
     shutdown: { quitCode: summary.candidateExit?.code ?? null, forced: summary.cleanup?.forced ?? null,
       ownerPhase: summary.cleanup?.owner?.phase ?? null, remainingProcesses: summary.cleanup?.processes ?? null },
+    publicCatalogue: summary.publicCatalogue ?? null,
     pluginPins: summary.expected, baseline: summary.baseline ?? null,
     residualState: { beforeUpgrade: summary.residualPreUpgrade ?? null, afterInstaller: summary.residualAfterInstaller ?? null },
   }

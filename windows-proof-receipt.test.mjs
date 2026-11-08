@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { verifyIntake, nativeReceipt } from './windows-proof-receipt.mjs'
+import { publicCatalogueProfile } from './public-catalogue-profile.mjs'
 
 const require = createRequire(import.meta.url)
 const eslintRequire = createRequire(require.resolve('eslint/package.json'))
@@ -96,3 +97,14 @@ try {
 } finally { rmSync(fixture, { recursive: true, force: true }) }
 console.log(JSON.stringify({ originRejections, nonruntimePassRejected: true, falsePassRejections: 8, failedOutcomePreserved: true,
   artifactOriginRejections, scope: 'synthetic receipt/schema controls; no native receipt or runtime proof' }))
+
+const capturedBytes = readFileSync(new URL('./public-catalogue-profile.fixture.json', import.meta.url))
+const capturedProfile = publicCatalogueProfile(capturedBytes)
+const publicCatalogue = { format: 'brocrew.public-plugin-catalogue.v1', ...capturedProfile.seal, capturedAt: '2026-11-08T17:13:15.000Z',
+  origin: { runId: '123', runAttempt: '1', carrierSha: intake.carrierSha }, selected: capturedProfile.selected }
+const liveReceipt = nativeReceipt({ ...summary, testPath: 'public-live-clean', publicCatalogue, expected: capturedProfile.expected })
+assert(validate(liveReceipt), JSON.stringify(validate.errors))
+assert.deepEqual(liveReceipt.publicCatalogue, publicCatalogue)
+assert.deepEqual(liveReceipt.pluginPins, capturedProfile.expected)
+assert(!validate({ ...liveReceipt, publicCatalogue: null }), 'live receipt cannot omit its capture')
+console.log(JSON.stringify({ liveCaptureReceiptSchema: true, scope: 'NONRUNTIME synthetic receipt projection only' }))

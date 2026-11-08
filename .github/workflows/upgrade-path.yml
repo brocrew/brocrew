@@ -37,7 +37,7 @@ on:
       test_path:
         description: Failed beta recovery or independent clean-install control
         type: choice
-        options: [failed-beta-recovery, clean-install, app-upgrade-compat, public-019-clean, public-019-upgrade]
+        options: [failed-beta-recovery, clean-install, app-upgrade-compat, public-019-clean, public-019-upgrade, public-live-clean, public-live-upgrade]
         default: failed-beta-recovery
       proof_stage:
         description: Early recipe check or final candidate proof
@@ -100,6 +100,9 @@ jobs:
             test -n "$PLUGIN_ARTIFACT"
             [[ "$PLUGIN_RECEIPT_SHA256" =~ ^[0-9a-f]{64}$ ]]
           fi
+          if [[ "$TEST_PATH" == public-live-* ]]; then
+            test -z "$PLUGIN_RUN_ID$PLUGIN_ARTIFACT$PLUGIN_RECEIPT_SHA256"
+          fi
           mkdir -p evidence inputs
           git -C carrier rev-parse HEAD > evidence/carrier-sha.txt
           printf '%s\n' "$CANDIDATE_SHA" > evidence/candidate-sha.txt
@@ -122,6 +125,11 @@ jobs:
           cache: pnpm
           cache-dependency-path: candidate/pnpm-lock.yaml
 
+      - name: Capture the live public catalogue once for this invocation
+        if: startsWith(inputs.test_path, 'public-live-')
+        shell: bash
+        run: node carrier/capture-public-catalogue.mjs evidence
+
       - name: Fetch the public installer and published Windows plugins
         shell: bash
         env:
@@ -130,22 +138,30 @@ jobs:
           set -euo pipefail
           gh api repos/brocrew/brocrew/releases/tags/v0.1.36 > evidence/beta-release.json
           cp evidence/beta-release.json inputs/beta-release.json
+          whatsapp_version=0.1.4
+          whatsapp_sha=49497b4c15adffefdbc63f8490da542ebae78016975a72c6b55e4476aa3dc769
           chrome_version=0.1.8
           chrome_sha=d05363044da6b65cacfccee0149772b97c1a7e5dca83c8262bf91e70de84c8a0
           if [[ "$TEST_PATH" == public-019-* ]]; then
             chrome_version=0.1.9
             chrome_sha=9f763685263abfde06f91aa1c26ae93a726a53b568719368650251874c84e57b
           fi
+          if [[ "$TEST_PATH" == public-live-* ]]; then
+            chrome_version=$(node -p "require('./evidence/public-plugin-inputs.json').chrome.version")
+            chrome_sha=$(node -p "require('./evidence/public-plugin-inputs.json').chrome.sha256")
+            whatsapp_version=$(node -p "require('./evidence/public-plugin-inputs.json').whatsapp.version")
+            whatsapp_sha=$(node -p "require('./evidence/public-plugin-inputs.json').whatsapp.sha256")
+          fi
           gh api "repos/brocrew/brocrew-plugin-chrome/releases/tags/v$chrome_version" > evidence/chrome-release.json
-          gh api repos/brocrew/brocrew-plugin-whatsapp/releases/tags/v0.1.4 > evidence/whatsapp-release.json
+          gh api "repos/brocrew/brocrew-plugin-whatsapp/releases/tags/v$whatsapp_version" > evidence/whatsapp-release.json
           gh release download v0.1.36 --repo brocrew/brocrew --pattern BroCrew-Setup-0.1.36-x64.exe --dir inputs
           gh release download "v$chrome_version" --repo brocrew/brocrew-plugin-chrome --pattern chrome-win32-x64.tar.gz --dir inputs
-          gh release download v0.1.4 --repo brocrew/brocrew-plugin-whatsapp --pattern whatsapp-win32-x64.tar.gz --dir inputs
+          gh release download "v$whatsapp_version" --repo brocrew/brocrew-plugin-whatsapp --pattern whatsapp-win32-x64.tar.gz --dir inputs
           cd inputs
           printf '%s\n' \
             '856b87c2fd1306745a881f7e5e97591888695dbf9a15d784b477a85f8f35578f *BroCrew-Setup-0.1.36-x64.exe' \
             "$chrome_sha *chrome-win32-x64.tar.gz" \
-            '49497b4c15adffefdbc63f8490da542ebae78016975a72c6b55e4476aa3dc769 *whatsapp-win32-x64.tar.gz' > ../evidence/published-sha256.txt
+            "$whatsapp_sha *whatsapp-win32-x64.tar.gz" > ../evidence/published-sha256.txt
           sha256sum --check ../evidence/published-sha256.txt
 
       - name: Fetch exact unpublished plugin inputs
@@ -213,11 +229,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          catalogue_args=()
+          if [[ "$TEST_PATH" == public-live-* ]]; then
+            catalogue_args=(--catalogue evidence/public-catalogue-v2.json --catalogue-capture evidence/public-catalogue-capture.json)
+          fi
           plugin_args=()
           if [[ -n "$PLUGIN_RUN_ID" ]]; then
             plugin_args=(--plugin-inputs plugin-inputs --plugin-receipt-sha256 "$PLUGIN_RECEIPT_SHA256" --plugin-run-id "$PLUGIN_RUN_ID" --plugin-artifact "$PLUGIN_ARTIFACT")
           fi
-          node carrier/windows-plugin-upgrade.mjs --execute "${plugin_args[@]}" --test-path "$TEST_PATH" \
+          node carrier/windows-plugin-upgrade.mjs --execute "${catalogue_args[@]}" "${plugin_args[@]}" --test-path "$TEST_PATH" \
             --source-root candidate --candidate-dir "$CANDIDATE_DIR" \
             --candidate-sha "$CANDIDATE_SHA" --candidate-version "$CANDIDATE_VERSION" \
             --inputs inputs --evidence evidence --intake evidence/intake.json
