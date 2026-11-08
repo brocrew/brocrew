@@ -368,7 +368,9 @@ test('both exact visible provider rows must have settled unconfigured standings 
     freshProvidersSurface().rows.slice(1),
     Array(2).fill(freshProvidersSurface().rows[0]),
   ])
-    assert.throws(() => upgradeContract.initialProvidersSurface({ ...freshProvidersSurface(), rows }))
+    assert.throws(() =>
+      upgradeContract.initialProvidersSurface({ ...freshProvidersSurface(), rows }),
+    )
 })
 
 test('natural all-app absence spends only the original close deadline after parent work', async () => {

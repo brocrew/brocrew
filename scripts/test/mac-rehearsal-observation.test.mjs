@@ -269,7 +269,10 @@ describe('shared owned Mac shutdown deadline', () => {
     await vi.advanceTimersByTimeAsync(60_000)
     await closed
     expect(observations).toEqual([25_000, 40_000, 55_000])
-    expect(kill.mock.calls).toEqual([[42, 'SIGTERM'], [43, 'SIGTERM']])
+    expect(kill.mock.calls).toEqual([
+      [42, 'SIGTERM'],
+      [43, 'SIGTERM'],
+    ])
     expect(first.report).toHaveBeenCalledOnce()
     expect(second.report).toHaveBeenCalledOnce()
   })
@@ -298,7 +301,10 @@ describe('shared owned Mac shutdown deadline', () => {
     expect(failed.error.message).toBe('Timed out: verified test child graceful quit')
     expect(second.child.browser.close).not.toHaveBeenCalled()
     expect(second.report).not.toHaveBeenCalled()
-    expect(kill.mock.calls).toEqual([[42, 'SIGTERM'], [43, 'SIGTERM']])
+    expect(kill.mock.calls).toEqual([
+      [42, 'SIGTERM'],
+      [43, 'SIGTERM'],
+    ])
   })
 
   it('does not renew an exhausted deadline or report a surviving child as quit', async () => {
