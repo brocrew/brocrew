@@ -499,7 +499,10 @@ describe('ordinary Updates navigation', () => {
           (error) => ({ error: error.message }),
         )
         await vi.advanceTimersByTimeAsync(180_000)
-        expect(await result).toEqual({ opened: true })
+        const outcome = await result
+        const diagnostic = `opened=true requires no captured error: ${JSON.stringify(outcome.error)}`
+        expect(outcome.error, diagnostic).toBeUndefined()
+        expect(outcome).toEqual({ opened: true })
         expect(f.clicked).toEqual(['rail-version'])
         expect(f.cdp.send.mock.calls.map(([, event]) => event.type)).toEqual([
           'mouseMoved',
