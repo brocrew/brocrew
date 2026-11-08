@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
-import { candidateProfile, assertCandidateBuild, assertProductVersion } from './windows-candidate-profile.mjs'
+import { spawnSync, spawn } from 'node:child_process'
+import { candidateProfile, assertCandidateBuild, assertProductVersion, observeCandidateExit } from './windows-candidate-profile.mjs'
 
 const sourceSha = 'a'.repeat(40)
 let plans = 0, mismatches = 0
@@ -36,4 +36,9 @@ for (const [actual, wanted] of [['0.2.11', '0.2.12'], ['0.2.12', '0.2.11']]) {
 }
 assert.throws(() => assertCandidateBuild({ version: '0.2.12', build: { commit: 'b'.repeat(40), dirty: false } }, '0.2.12', sourceSha))
 assert.throws(() => assertCandidateBuild({ version: '0.2.12', build: { commit: sourceSha, dirty: true } }, '0.2.12', sourceSha))
-console.log(JSON.stringify({ plans, versionMismatchesRejected: mismatches, wrongCommitAndDirtyRejected: 2, scope: 'SOURCE controls only; no Windows execution' }))
+for (const code of [0, 7]) {
+  const record = { code: null, signal: null, observed: false }
+  const child = spawn(process.execPath, ['-e', `process.exit(${code})`], { stdio: 'ignore' })
+  assert.deepEqual(await observeCandidateExit(child, record), { code, signal: null, observed: true })
+}
+console.log(JSON.stringify({ actualChildExitControls: 2, plans, versionMismatchesRejected: mismatches, wrongCommitAndDirtyRejected: 2, scope: 'SOURCE controls only; no Windows execution' }))

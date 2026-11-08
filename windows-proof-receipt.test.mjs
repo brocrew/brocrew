@@ -33,7 +33,7 @@ for (const [key, value] of Object.entries({ version: '0.2.11', sourceSha: 'f'.re
 const phases = Array.from({ length: 5 }, (_, i) => ({ name: `synthetic-${i}`, started: 'fixture', finished: 'fixture', passed: true }))
 const summary = { intake, passed: true, testPath: 'public-019-upgrade', phases, failures: [],
   observerExit: { exitCode: 0, signal: null }, observer: { passed: true }, nativeWitness: { passed: true },
-  candidateQuitCode: 0, cleanup: { forced: false, owner: { phase: 'stopped' }, processes: [] },
+  candidateExit: { code: 0, signal: null, observed: true }, cleanup: { forced: false, owner: { phase: 'stopped' }, processes: [] },
   expected: example.pluginPins, baseline: { reply: { ok: true } }, residualPreUpgrade: [], residualAfterInstaller: [] }
 const receipt = nativeReceipt(summary)
 assert(validate(receipt), JSON.stringify(validate.errors))
@@ -41,12 +41,12 @@ assert.equal(receipt.candidate.installer.artifactId, '2')
 assert.deepEqual(receipt.baseline, summary.baseline)
 for (const change of [
   { observerExit: { exitCode: 1, signal: null } }, { observerExit: { exitCode: null, signal: 'SIGTERM' } },
-  { observer: { passed: false } }, { nativeWitness: { passed: false } }, { candidateQuitCode: 1 },
+  { observer: { passed: false } }, { nativeWitness: { passed: false } }, { candidateExit: { code: 7, signal: null, observed: true } },
   { cleanup: { ...summary.cleanup, forced: true } }, { cleanup: { ...summary.cleanup, owner: { phase: 'accepting' } } },
   { cleanup: { ...summary.cleanup, processes: [{ ProcessId: 1 }] } },
 ]) assert.throws(() => nativeReceipt({ ...summary, ...change }))
 const failed = nativeReceipt({ ...summary, passed: false, failures: ['synthetic failure'], observerExit: { exitCode: 1, signal: null },
-  observer: undefined, nativeWitness: undefined, candidateQuitCode: undefined, cleanup: { forced: true, processes: [] } })
+  observer: undefined, nativeWitness: undefined, candidateExit: undefined, cleanup: { forced: true, processes: [] } })
 assert(validate(failed), JSON.stringify(validate.errors))
 assert.equal(failed.passed, false)
 assert.equal(failed.shutdown.forced, true)
@@ -65,7 +65,7 @@ try {
   const artifact = { id: 456, name: 'release-windows', expired: false, workflow_run: { id: 123, head_sha: sourceSha } }
   const execute = (runRecord, artifactRecord) => {
     writeFileSync(join(fixture, 'evidence', 'candidate-build-run.json'), JSON.stringify(runRecord))
-    writeFileSync(join(fixture, 'evidence', 'candidate-build-artifacts.json'), JSON.stringify([{ artifacts: [artifactRecord] }]))
+    writeFileSync(join(fixture, 'evidence', 'candidate-build-artifacts.json'), JSON.stringify([{ artifacts: Array.isArray(artifactRecord)?artifactRecord:[artifactRecord] }]))
     return spawnSync(process.execPath, [join(root, 'windows-proof-receipt.mjs'), 'evidence', root, root], {
       cwd: fixture, encoding: 'utf8', env: { ...process.env, CANDIDATE_VERSION: '0.2.12', CANDIDATE_SHA: sourceSha,
         INSTALLER_RUN_ID: '123', INSTALLER_ARTIFACT: 'release-windows', PROOF_STAGE: 'final-candidate',
@@ -78,6 +78,10 @@ try {
   assert.equal(sealed.candidate.installer.artifactId, '456')
   assert.equal(sealed.candidate.sourceSha, sourceSha)
   for (const [label, runRecord, artifactRecord] of [
+    ['wrong run ID', { ...build, id: 999 }, artifact],
+    ['wrong artifact run', build, { ...artifact, workflow_run: { id: 999, head_sha: sourceSha } }],
+    ['wrong artifact name', build, { ...artifact, name: 'other-artifact' }],
+    ['duplicate artifact', build, [artifact, { ...artifact, id: 789 }]],
     ['wrong run source', { ...build, head_sha: 'f'.repeat(40) }, artifact],
     ['wrong repository', { ...build, repository: { full_name: 'other/repo' } }, artifact],
     ['wrong artifact source', build, { ...artifact, workflow_run: { id: 123, head_sha: 'f'.repeat(40) } }],

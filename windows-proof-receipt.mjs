@@ -36,7 +36,8 @@ export function nativeReceipt(summary) {
     assert.equal(summary.observerExit?.signal, null)
     assert.equal((summary.observerResult ?? summary.observer)?.passed, true)
     assert.equal(summary.nativeWitness?.passed, true)
-    assert.equal(summary.candidateQuitCode, 0)
+    assert.equal(summary.candidateExit?.observed, true)
+    assert.equal(summary.candidateExit?.code, 0)
     assert.equal(summary.cleanup?.forced, false)
     assert.equal(summary.cleanup?.owner?.phase, 'stopped')
     assert.deepEqual(summary.cleanup?.processes, [])
@@ -48,7 +49,7 @@ export function nativeReceipt(summary) {
     phases: summary.phases, failures: summary.failures,
     observer: { exitCode: summary.observerExit?.exitCode ?? null, signal: summary.observerExit?.signal ?? null,
       passed: (summary.observerResult ?? summary.observer)?.passed ?? null, nativeWitness: summary.nativeWitness ?? null },
-    shutdown: { quitCode: summary.candidateQuitCode ?? null, forced: summary.cleanup?.forced ?? null,
+    shutdown: { quitCode: summary.candidateExit?.code ?? null, forced: summary.cleanup?.forced ?? null,
       ownerPhase: summary.cleanup?.owner?.phase ?? null, remainingProcesses: summary.cleanup?.processes ?? null },
     pluginPins: summary.expected, baseline: summary.baseline ?? null,
     residualState: { beforeUpgrade: summary.residualPreUpgrade ?? null, afterInstaller: summary.residualAfterInstaller ?? null },

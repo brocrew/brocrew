@@ -14,3 +14,10 @@ export function assertCandidateBuild(app, version, sourceSha) {
   assert.equal(app.build.commit, sourceSha, 'installed candidate must carry exact approved source commit')
   assert.equal(app.build.dirty, false)
 }
+
+export function observeCandidateExit(child, record) {
+  return new Promise(resolve => child.once('exit', (code, signal) => {
+    Object.assign(record, { code, signal, observed: true })
+    resolve(record)
+  }))
+}

@@ -10,7 +10,7 @@ import { createRequire } from 'node:module'
 import { parseArgs } from 'node:util'
 import { chromeCompatibilityResult, appCompatibilityVerdict, freshClosedChromeRuns } from './chrome-compatibility-result.mjs'
 import { public019Profile } from './public-019-profile.mjs'
-import { candidateProfile, assertCandidateBuild, assertProductVersion } from './windows-candidate-profile.mjs'
+import { candidateProfile, assertCandidateBuild, assertProductVersion, observeCandidateExit } from './windows-candidate-profile.mjs'
 import { verifyIntake, nativeReceipt } from './windows-proof-receipt.mjs'
 import { readCustomPluginInputs, manifestTarExecutable } from './custom-plugin-inputs.mjs'
 import { transportLabel, readTransportFixture, assertUnusedInspectorPort, coldMainArgument, attachColdMain, attachSupervisor } from './instrumented-plugin-transport.mjs'
@@ -173,7 +173,10 @@ async function launch(installed, version, port) {
   const inspectorArgs=instrumented?[coldMainArgument(9356)]:[]
   const child = spawn(installed.exe, [...inspectorArgs,'--remote-debugging-address=127.0.0.1', `--remote-debugging-port=${port}`], { stdio:['ignore',fd,fd], env:appEnvironment }); closeSync(fd)
   let spawnFailure; child.on('error', error => {spawnFailure = error})
-  running = {child, version, port, started}
+  const exitRecord={code:null,signal:null,observed:false}
+  const exited=observeCandidateExit(child,exitRecord)
+  if(version===candidateVersion)summary.candidateExit=exitRecord
+  running = {child, version, port, started, exited}
   if(instrumented) {
     const row=await until(()=>ownProcesses().find(p=>p.ProcessId===child.pid),30000,'cold main native process')
     assert(samePath(row.ExecutablePath,installed.exe))
@@ -281,8 +284,9 @@ async function quit(label) {
   const pid=running.child.pid
   const close = spawnSync('taskkill',['/PID',String(pid)],{windowsHide:true,encoding:'utf8',timeout:10000})
   keep(`${label}-quit-request.json`,{pid,status:close.status,stdout:close.stdout,stderr:close.stderr})
-  if(label==='candidate')summary.candidateQuitCode=close.status
   await until(()=>ownProcesses().length===0,90000,`${label} app/service/host process exit`)
+  const exited=await running.exited
+  keep(`${label}-process-exit.json`,exited)
   const owner=ownerRecord(); assert.equal(owner?.phase,'stopped','installed service must certify stopped')
   keep(`${label}-owner-stopped.json`,publicOwner(owner))
   running.browser?.close();running.cdp?.close();running=null
@@ -509,6 +513,8 @@ finally {
   if(transportFixture)try{for(const port of [9356,9229])await assertUnusedInspectorPort(port);keep('transport-ports-after-exit.json',{ports:[9356,9229],unused:true})}catch(error){summary.failures.push(`inspector port cleanup: ${error.stack??error}`)}
   // Preserve only synthetic fixture metadata and native receipts; never upload capabilities or plugin data.
   for(const name of ['plugin-startup.log'])if(ownsFixture&&existsSync(join(pluginRoot,name)))copyFileSync(join(pluginRoot,name),join(evidence,name))
+  if(summary.candidateExit?.observed)keep('candidate-process-exit.json',summary.candidateExit)
+  if(summary.candidateExit?.observed&&summary.candidateExit.code!==0)summary.failures.push(`candidate process exited with code ${summary.candidateExit.code}, signal ${summary.candidateExit.signal}`)
   summary.finished=new Date().toISOString();const complete=summary.failures.length===0&&summary.phases.length===(cleanInstall?3:5)&&summary.phases.every(p=>p.passed)
   summary.verdict=appCompatibilityVerdict(complete,summary.chromeCompatibility?.status)
   summary.passed=complete&&summary.verdict!=='PARTIAL'
