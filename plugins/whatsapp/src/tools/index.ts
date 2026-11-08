@@ -440,6 +440,19 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
               ...(attached ? { file: attached.name } : {}),
             })
           const { code, refusal } = refusalIn(SEND_REFUSALS, reply.body)
+          if (code === 'caption_failed') {
+            const partial = reply.body as { cause: string }
+            return {
+              isError: true,
+              ...json({
+                audioSent: true,
+                captionSent: false,
+                error: partial.cause,
+                group: group.name,
+                ...(attached ? { file: attached.name } : {}),
+              }),
+            }
+          }
           // A send that failed on the way may still have gone out, so it keeps counting.
           if (code !== 'send_failed') reservation.release()
           if (refusal) throw refusals.refuse(tool, refusal)

@@ -12,6 +12,7 @@ export interface ToolDefinition {
   }
 }
 export type ToolResult = {
+  isError?: boolean
   content: Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }>
 }
 export interface ToolHandler {
