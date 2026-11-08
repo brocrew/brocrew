@@ -161,7 +161,7 @@ it('keeps a handler refusal distinct from HTTP 401 after the same request passed
   const routeId = scope({}).fresh('route')
   const trace = scope({ route: routeId })
   const fresh = vi.spyOn(trace, 'fresh')
-  const current = vi.fn((_observer?: AdmissionObserver) => true)
+  const current = vi.fn<(observer?: AdmissionObserver) => boolean>(() => true)
   const route = await openManagedPluginRoute(f.broker, original.agent, current, undefined, trace)
   cleanup.push(() => route.close())
   const client = new Client({ name: 'fictional-handler-refusal', version: '1' })
