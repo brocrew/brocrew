@@ -167,21 +167,37 @@ it('keeps a handler refusal distinct from HTTP 401 after the same request passed
   const client = new Client({ name: 'fictional-handler-refusal', version: '1' })
   cleanup.push(() => client.close())
   client.onerror = () => undefined
-  await client.connect(new StreamableHTTPClientTransport(new URL(route.server.url), {
-    requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
-  }))
+  const wire: { method: string; status: number }[] = []
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(route.server.url), {
+      requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
+      fetch: async (url, init) => {
+        const response = await fetch(url, init)
+        wire.push({ method: typeof init?.body === 'string' ? JSON.parse(init.body).method : init?.method ?? 'GET', status: response.status })
+        return response
+      },
+    }),
+  ).catch(() => { throw new Error(JSON.stringify({ phase: 'connect', wire, events, calls: current.mock.results.map((one) => one.value) })) })
   fresh.mockClear()
-  current.mockReset().mockReturnValueOnce(true).mockImplementation((observer) => {
-    observeAdmission(observer, { condition: 'lease-invalid' })
-    return false
+  current
+    .mockReset()
+    .mockReturnValueOnce(true)
+    .mockImplementation((observer) => {
+      observeAdmission(observer, { condition: 'lease-invalid' })
+      return false
+    })
+  const reply = await client.callTool({ name: 'echo', arguments: {} }).catch(() => { throw new Error(JSON.stringify({ phase: 'tool', wire, events, calls: current.mock.results.map((one) => one.value) })) })
+  expect(reply).toMatchObject({
+    isError: true,
+    content: [{ type: 'text', text: 'Plugin unavailable. Try again.' }],
   })
-  const reply = await client.callTool({ name: 'echo', arguments: {} })
-  expect(reply).toMatchObject({ isError: true, content: [{ type: 'text', text: 'Plugin unavailable. Try again.' }] })
   expect(current).toHaveBeenCalledTimes(2)
   expect(fresh).toHaveBeenCalledTimes(1)
   expect(events).toHaveLength(1)
   expect(events[0]).toMatchObject({
-    event: 'tool-current-refused', condition: 'lease-invalid', route: routeId,
+    event: 'tool-current-refused',
+    condition: 'lease-invalid',
+    route: routeId,
     request: fresh.mock.results[0]!.value,
   })
   expect(events[0]!.request).toMatch(/^[a-f0-9]{32}$/)
