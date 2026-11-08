@@ -24,6 +24,11 @@ for (const version of ['0.2.11', '0.2.12']) {
   assertCandidateBuild({ version, build: { commit: sourceSha, dirty: false } }, version, sourceSha)
 }
 assert.equal(candidateProfile().version, '0.2.11')
+const defaultPlan = spawnSync(process.execPath, ['windows-plugin-upgrade.mjs'], { encoding: 'utf8' })
+const explicit011 = spawnSync(process.execPath, ['windows-plugin-upgrade.mjs', '--candidate-version', '0.2.11'], { encoding: 'utf8' })
+assert.equal(defaultPlan.status, 0, defaultPlan.stderr)
+assert.equal(explicit011.status, 0, explicit011.stderr)
+assert.deepEqual(JSON.parse(defaultPlan.stdout), JSON.parse(explicit011.stdout))
 for (const [actual, wanted] of [['0.2.11', '0.2.12'], ['0.2.12', '0.2.11']]) {
   assert.throws(() => assertProductVersion(actual, wanted)); mismatches++
   assert.throws(() => assertProductVersion(`${actual}.0`, wanted)); mismatches++

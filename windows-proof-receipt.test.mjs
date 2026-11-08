@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { verifyIntake, nativeReceipt } from './windows-proof-receipt.mjs'
 
 const require = createRequire(import.meta.url)
@@ -47,5 +52,43 @@ assert.equal(failed.passed, false)
 assert.equal(failed.shutdown.forced, true)
 assert.equal(failed.observer.exitCode, 1)
 assert.equal(failed.observer.passed, null)
+
+const fixture = mkdtempSync(join(tmpdir(), 'windows-proof-intake-'))
+let artifactOriginRejections = 0
+try {
+  const root = fileURLToPath(new URL('.', import.meta.url))
+  const sourceSha = execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+  mkdirSync(join(fixture, 'evidence')); mkdirSync(join(fixture, 'candidate-normalized'))
+  const bytes = Buffer.from('synthetic installer bytes; never executable')
+  writeFileSync(join(fixture, 'candidate-normalized', 'BroCrew-Setup-0.2.12-x64.exe'), bytes)
+  const build = { id: 123, repository: { full_name: 'brocrew/brocrew' }, head_sha: sourceSha }
+  const artifact = { id: 456, name: 'release-windows', expired: false, workflow_run: { id: 123, head_sha: sourceSha } }
+  const execute = (runRecord, artifactRecord) => {
+    writeFileSync(join(fixture, 'evidence', 'candidate-build-run.json'), JSON.stringify(runRecord))
+    writeFileSync(join(fixture, 'evidence', 'candidate-build-artifacts.json'), JSON.stringify([{ artifacts: [artifactRecord] }]))
+    return spawnSync(process.execPath, [join(root, 'windows-proof-receipt.mjs'), 'evidence', root, root], {
+      cwd: fixture, encoding: 'utf8', env: { ...process.env, CANDIDATE_VERSION: '0.2.12', CANDIDATE_SHA: sourceSha,
+        INSTALLER_RUN_ID: '123', INSTALLER_ARTIFACT: 'release-windows', PROOF_STAGE: 'final-candidate',
+        EXPECTED_INSTALLER_SHA256: createHash('sha256').update(bytes).digest('hex') },
+    })
+  }
+  const valid = execute(build, artifact)
+  assert.equal(valid.status, 0, valid.stderr)
+  const sealed = JSON.parse(readFileSync(join(fixture, 'evidence', 'intake.json')))
+  assert.equal(sealed.candidate.installer.artifactId, '456')
+  assert.equal(sealed.candidate.sourceSha, sourceSha)
+  for (const [label, runRecord, artifactRecord] of [
+    ['wrong run source', { ...build, head_sha: 'f'.repeat(40) }, artifact],
+    ['wrong repository', { ...build, repository: { full_name: 'other/repo' } }, artifact],
+    ['wrong artifact source', build, { ...artifact, workflow_run: { id: 123, head_sha: 'f'.repeat(40) } }],
+    ['expired artifact', build, { ...artifact, expired: true }],
+  ]) {
+    const result = execute(runRecord, artifactRecord)
+    assert.equal(result.status, 1, result.stderr)
+    assert.match(result.stderr, /AssertionError/)
+    console.log(JSON.stringify({ control: label, exitCode: result.status, stderr: result.stderr }))
+    artifactOriginRejections++
+  }
+} finally { rmSync(fixture, { recursive: true, force: true }) }
 console.log(JSON.stringify({ originRejections, nonruntimePassRejected: true, falsePassRejections: 8, failedOutcomePreserved: true,
-  scope: 'synthetic receipt/schema controls; no native receipt or runtime proof' }))
+  artifactOriginRejections, scope: 'synthetic receipt/schema controls; no native receipt or runtime proof' }))
