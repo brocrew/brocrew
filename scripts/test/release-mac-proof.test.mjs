@@ -12,7 +12,7 @@ afterEach(() => {
   vi.unstubAllEnvs()
   for (const folder of roots.splice(0)) rmSync(folder, { recursive: true, force: true })
 })
-function fixture() {
+function fixture(external = false) {
   for (const [name, value] of Object.entries(FICTIONAL_SIGNING_ENV)) vi.stubEnv(name, value)
   const folder = mkdtempSync(join(tmpdir(), 'fictional-guided-proof-'))
   roots.push(folder)
@@ -21,6 +21,7 @@ function fixture() {
     source: 'a'.repeat(40),
     tree: 'b'.repeat(40),
     runId: 11,
+    runAttempt: 1,
     origins: { macos: { artifactId: 41, digest: 'sha256:' + 'c'.repeat(64) } },
     assets: [
       'BroCrew-0.2.12-arm64.dmg',
@@ -36,7 +37,7 @@ function fixture() {
     })),
   }
   const reference = { runId: 20, runAttempt: 1 }
-  const summary = macProofFixture(folder, manifest, reference)
+  const summary = macProofFixture(folder, manifest, reference, external)
   return { folder, manifest, reference, summary }
 }
 describe('three-workspace guided Mac proof binding', () => {
@@ -168,5 +169,94 @@ describe('three-workspace guided Mac proof binding', () => {
         writeFileSync(path, JSON.stringify(after))
       }
       expect(() => verifyMacProof(f.folder, f.reference, f.manifest)).toThrow()
+    })
+})
+
+describe('original-artifact Mac proof with honest external harness source', () => {
+  it('accepts the pinned carrier while retaining original candidate source and sealed download', () => {
+    const f = fixture(true)
+    expect(verifyMacProof(f.folder, f.reference, f.manifest, true).success).toBe(true)
+    expect(f.summary.harnessSource).not.toBe(f.summary.source)
+  })
+  for (const [reason, change] of [
+    [
+      'candidate impersonating the carrier',
+      (x) => {
+        x.harnessSource = x.source
+      },
+    ],
+    [
+      'different carrier',
+      (x) => {
+        x.harnessSource = '0'.repeat(40)
+      },
+    ],
+    [
+      'draft transport',
+      (x) => {
+        x.transport = 'controlled-draft-github'
+      },
+    ],
+    [
+      'draft release input',
+      (x) => {
+        x.to.releaseId = 101
+      },
+    ],
+    [
+      'different build attempt',
+      (x) => {
+        x.to.runAttempt = 2
+      },
+    ],
+    [
+      'missing original input attempt',
+      (x) => {
+        delete x.candidate.input.runAttempt
+      },
+    ],
+    [
+      'draft asset identifier',
+      (x) => {
+        x.candidate.files[0].assetId = 101
+      },
+    ],
+    [
+      'no sealed DMG download',
+      (x) => {
+        x.controlledTransport.requests = []
+      },
+    ],
+    [
+      'wrong original upstream',
+      (x) => {
+        x.controlledTransport.requests[0].upstream = 'draft'
+      },
+    ],
+    [
+      'unfinished download',
+      (x) => {
+        x.controlledTransport.requests[0].completed = false
+      },
+    ],
+    [
+      'wrong delivered bytes',
+      (x) => {
+        x.controlledTransport.requests[0].bytes++
+      },
+    ],
+    [
+      'wrong delivered hash',
+      (x) => {
+        x.controlledTransport.requests[0].sha256 = '0'.repeat(64)
+      },
+    ],
+  ])
+    it(`rejects ${reason} despite success=true`, () => {
+      const f = fixture(true)
+      const changed = structuredClone(f.summary)
+      change(changed)
+      writeFileSync(join(f.folder, 'summary.json'), JSON.stringify(changed))
+      expect(() => verifyMacProof(f.folder, f.reference, f.manifest, true)).toThrow()
     })
 })

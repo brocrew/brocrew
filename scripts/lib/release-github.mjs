@@ -1,10 +1,24 @@
 import { execFileSync } from 'node:child_process'
 import { closeSync, mkdirSync, openSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { fileSeal } from '../release-artifacts.mjs'
+import { fileSeal, PROOF_PUBLICATION } from '../release-artifacts.mjs'
 
 const SOURCE_BASE = 'be6055a86ab2243d5aa379b7587979e68da78c7f'
 const canonical = ['BroCrew', '343827643+brocrew@users.noreply.github.com']
+const PUBLICATION_PATHS = new Set([
+  '.github/workflows/release.yml',
+  'scripts/release-artifacts.mjs',
+  'scripts/release-selection.mjs',
+  'scripts/lib/release-github.mjs',
+  'scripts/lib/release-proofs.mjs',
+  'scripts/lib/release-mac-proof.mjs',
+  'scripts/test/release-selection.test.mjs',
+  'scripts/test/release-proofs.test.mjs',
+  'scripts/test/release-mac-proof.test.mjs',
+  'scripts/test/release-workflow.test.mjs',
+  'scripts/test/fixtures/release-proof.mjs',
+  'scripts/test/fixtures/release-mac-proof.mjs',
+])
 
 export function github(repo, root) {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) throw new Error('Invalid repository')
@@ -18,7 +32,7 @@ export function github(repo, root) {
       throw error
     }
   }
-  return {
+  const client = {
     api,
     run,
     async download(id, dest, digest) {
@@ -88,8 +102,27 @@ export function github(repo, root) {
         execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim()
       if (!/^[0-9a-f]{40}$/.test(source) || !/^[0-9a-f]{40}$/.test(tree))
         throw new Error('Invalid source pin')
-      if (git('rev-parse', 'HEAD') !== source || git('rev-parse', `${source}^{tree}`) !== tree)
-        throw new Error('Workflow source/tree differs from tested source')
+      const head = git('rev-parse', 'HEAD')
+      const headTree = git('rev-parse', 'HEAD^{tree}')
+      const external = process.env.GITHUB_REF === `refs/tags/${PROOF_PUBLICATION.executionTag}`
+      if (git('rev-parse', `${source}^{tree}`) !== tree)
+        throw new Error('Tested source tree differs')
+      if (external) {
+        if (
+          repo !== PROOF_PUBLICATION.repository ||
+          source !== PROOF_PUBLICATION.source ||
+          tree !== PROOF_PUBLICATION.tree ||
+          process.env.GITHUB_EVENT_NAME !== 'workflow_dispatch' ||
+          process.env.GITHUB_SHA !== head ||
+          head === source ||
+          git('show', '-s', '--format=%P', head) !== source ||
+          git('status', '--porcelain', '--untracked-files=no')
+        )
+          throw new Error('The reviewed publication carrier source differs')
+        const paths = git('diff', '--name-only', '-z', source, head).split('\0').filter(Boolean)
+        if (!paths.length || paths.some((path) => !PUBLICATION_PATHS.has(path)))
+          throw new Error('Publication carrier changes files outside its reviewed scope')
+      } else if (head !== source) throw new Error('Workflow source/tree differs from tested source')
       git('merge-base', '--is-ancestor', SOURCE_BASE, source)
       for (const commit of git('rev-list', `${SOURCE_BASE}..${source}`)
         .split('\n')
@@ -100,8 +133,23 @@ export function github(repo, root) {
         )
           throw new Error('Noncanonical source author or committer')
       }
+      if (external) {
+        if (
+          git('show', '-s', '--format=%an%n%ae%n%cn%n%ce', head) !==
+          [...canonical, ...canonical].join('\n')
+        )
+          throw new Error('Noncanonical publication carrier author or committer')
+        return {
+          source: head,
+          tree: headTree,
+          tag: PROOF_PUBLICATION.executionTag,
+          tagObject: checkedPublisherTag(client, head),
+        }
+      }
+      return null
     },
   }
+  return client
 }
 
 export function checkedRun(client, id, attempt, source, workflow) {
@@ -142,6 +190,14 @@ export function checkedArtifact(client, reference, runId, source) {
 
 export function checkedTag(client, name, source, object = null) {
   if (!/^v\d+\.\d+\.\d+(-candidate\.[1-9]\d*)?$/.test(name)) throw new Error('Invalid tag')
+  return checkedTagTarget(client, name, source, object)
+}
+
+export function checkedPublisherTag(client, source, object = null) {
+  return checkedTagTarget(client, PROOF_PUBLICATION.executionTag, source, object)
+}
+
+function checkedTagTarget(client, name, source, object) {
   const ref = client.api(`git/ref/tags/${name}`)
   if (ref.object.type !== 'tag' || (object && ref.object.sha !== object))
     throw new Error('An unchanged annotated tag is required')
