@@ -52,6 +52,7 @@ import {
   registriesKept,
   assertThreeWorkspaceStates,
   initialProvidersSurface,
+  awaitInstalledAppExit,
 } from './mac-signed-upgrade-contract.mjs'
 import {
   SCRIPTED_MODEL,
@@ -231,10 +232,8 @@ async function bundleChecked(bundle, version) {
     )
   return { version: base.version, bundleId: base.bundleId, signature: identity, ...installed }
 }
-async function requireNoInstalledProcesses() {
-  const listing = await run('/bin/ps', ['-axo', 'pid=,command='])
-  const processes = listing.split('\n').filter((line) => line.includes(`${app}/Contents/`))
-  requireEvidence(processes.length === 0, `Installed app processes remain: ${processes.join('; ')}`)
+async function requireNoInstalledProcesses(deadline = Date.now()) {
+  return awaitInstalledAppExit(app, deadline, () => run('/bin/ps', ['-axo', 'pid=,command=']))
 }
 async function launch(
   stage,
@@ -293,8 +292,8 @@ async function launch(
   await screenshot(cdp, `${stage}-window.png`)
   return cdp
 }
-async function quit() {
-  active = await quitMacChild(active, app, processInfo, passed)
+async function quit(deadline = Date.now() + 60_000) {
+  active = await quitMacChild(active, app, processInfo, passed, { deadline })
 }
 async function checkRetention(before, state, natives, settingsBefore, registryBefore) {
   const after = databaseSnapshot(join(data, 'brobot2.sqlite'), { credentials: true })
@@ -491,10 +490,14 @@ async function allRunning(version, phase) {
 }
 
 async function quitAll(stage) {
+  const startedAt = Date.now()
+  const close = { stage, startedAt, deadline: startedAt + 60_000 }
+  summary.closeSequences ??= []
+  summary.closeSequences.push(close)
   for (const workspace of workspaces) {
     selectWorkspace(workspace)
     const child = active
-    await quit()
+    await quit(close.deadline)
     workspace.active = null
     workspace.cdp?.close()
     if (child) {
@@ -522,7 +525,7 @@ async function quitAll(stage) {
       })
     }
   }
-  await requireNoInstalledProcesses()
+  Object.assign(close, await requireNoInstalledProcesses(close.deadline))
 }
 
 async function guidedDownload(workspace, published) {
@@ -925,12 +928,16 @@ try {
     }
   }
 } finally {
+  const startedAt = Date.now()
+  const cleanupClose = { stage: 'final-cleanup', startedAt, deadline: startedAt + 60_000 }
+  summary.closeSequences ??= []
+  summary.closeSequences.push(cleanupClose)
   if (currentWorkspace) currentWorkspace.active = active
   for (const workspace of workspaces) {
     selectWorkspace(workspace)
     if (active) {
       try {
-        await quit()
+        await quit(cleanupClose.deadline)
         workspace.active = null
       } catch (error) {
         summary.cleanupFailure = String(error)
@@ -952,7 +959,7 @@ try {
     }
   if (installedByHarness) {
     try {
-      await requireNoInstalledProcesses()
+      Object.assign(cleanupClose, await requireNoInstalledProcesses(cleanupClose.deadline))
       await rm(app, { recursive: true })
       summary.cleanup = {
         appRemoved: !(await exists(app)),

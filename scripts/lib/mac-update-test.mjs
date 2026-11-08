@@ -737,15 +737,17 @@ export async function observeMacWindow({
   }
   return { child, attempt, cdp, record }
 }
-export async function quitMacChild(child, app, processInfo, report) {
+export async function quitMacChild(child, app, processInfo, report, { deadline } = {}) {
   if (child === null) return null
   const current = await processInfo(child.pid)
   assertOwnedProcess(child, current, app, child.port)
+  if (deadline !== undefined)
+    requireEvidence(Number.isFinite(deadline), 'Graceful quit deadline must be finite.')
   process.kill(child.pid, 'SIGTERM')
   await waitFor(
     async () => !(await processInfo(child.pid)),
     'verified test child graceful quit',
-    60_000,
+    deadline === undefined ? 60_000 : Math.max(0, Math.min(60_000, deadline - Date.now())),
   )
   child.browser.close()
   report('verified-child-quit', { pid: child.pid, signal: 'SIGTERM' })

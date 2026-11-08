@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { createReadStream, lstatSync, readdirSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
+import { until } from './lib/update-rehearsal-app.mjs'
 import {
   expectedSigningIdentity,
   requireDistributionSignature,
@@ -24,6 +25,21 @@ export const BASELINE = Object.freeze({
 })
 const oid = /^[a-f0-9]{40}$/
 const sha256 = /^[a-f0-9]{64}$/
+
+export async function awaitInstalledAppExit(app, deadline, readProcesses) {
+  let processes = []
+  const absent = await until(
+    async () => {
+      const listing = await readProcesses()
+      processes = listing.split('\n').filter((line) => line.includes(`${app}/Contents/`))
+      return processes.length === 0
+    },
+    Math.max(0, deadline - Date.now()),
+    250,
+  )
+  requireEvidence(absent, `Installed app processes remain: ${processes.join('; ')}`)
+  return { deadline, observedAt: Date.now(), allAbsent: true }
+}
 
 export function initialProvidersSurface(facts) {
   requireEvidence(

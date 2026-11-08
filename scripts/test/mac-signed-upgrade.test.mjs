@@ -3,7 +3,10 @@ import { FICTIONAL_IDENTITY, FICTIONAL_SIGNING_ENV } from './fixtures/mac-signin
 beforeEach(() => {
   for (const [name, value] of Object.entries(FICTIONAL_SIGNING_ENV)) vi.stubEnv(name, value)
 })
-afterEach(() => vi.unstubAllEnvs())
+afterEach(() => {
+  vi.unstubAllEnvs()
+  vi.useRealTimers()
+})
 import assert from 'node:assert/strict'
 import * as upgradeContract from '../mac-signed-upgrade-contract.mjs'
 import { createHash } from 'node:crypto'
@@ -366,4 +369,62 @@ test('both exact visible provider rows must have settled unconfigured standings 
     Array(2).fill(freshProvidersSurface().rows[0]),
   ])
     assert.throws(() => upgradeContract.initialProvidersSurface({ ...freshProvidersSurface(), rows }))
+})
+
+test('natural all-app absence spends only the original close deadline after parent work', async () => {
+  assert.equal(typeof upgradeContract.awaitInstalledAppExit, 'function')
+  vi.useFakeTimers()
+  vi.setSystemTime(40_000)
+  const times = []
+  const observed = upgradeContract.awaitInstalledAppExit(
+    '/Applications/BroCrew.app',
+    60_000,
+    async () => {
+      times.push(Date.now())
+      return Date.now() < 55_000
+        ? '43 /Applications/BroCrew.app/Contents/MacOS/BroCrew -e guardian'
+        : '44 /Applications/Other.app/Contents/MacOS/Other'
+    },
+  )
+  await vi.advanceTimersByTimeAsync(20_000)
+  assert.deepEqual(await observed, { deadline: 60_000, observedAt: 55_000, allAbsent: true })
+  assert.equal(times[0], 40_000)
+  assert.equal(times.at(-1), 55_000)
+})
+
+test('a surviving app-path process fails at the shared deadline without a role exception', async () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(59_000)
+  const guardian = '43 /Applications/BroCrew.app/Contents/MacOS/BroCrew -e guardian'
+  const outcome = upgradeContract
+    .awaitInstalledAppExit('/Applications/BroCrew.app', 60_000, async () => guardian)
+    .then(
+      () => ({ success: true }),
+      (error) => ({ error, at: Date.now() }),
+    )
+  await vi.advanceTimersByTimeAsync(60_000)
+  const failed = await outcome
+  assert.equal(failed.at, 60_000)
+  assert.equal(failed.error.message, `Installed app processes remain: ${guardian}`)
+})
+
+test('expired all-app observation has no new wait and process-read failures propagate', async () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(60_000)
+  let reads = 0
+  await assert.rejects(
+    upgradeContract.awaitInstalledAppExit('/Applications/BroCrew.app', 60_000, async () => {
+      reads++
+      return '43 /Applications/BroCrew.app/Contents/MacOS/BroCrew'
+    }),
+    /Installed app processes remain/,
+  )
+  assert.equal(reads, 1)
+  assert.equal(Date.now(), 60_000)
+  await assert.rejects(
+    upgradeContract.awaitInstalledAppExit('/Applications/BroCrew.app', 60_000, async () => {
+      throw new Error('process observation failed')
+    }),
+    /process observation failed/,
+  )
 })
