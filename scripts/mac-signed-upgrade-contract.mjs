@@ -25,6 +25,34 @@ export const BASELINE = Object.freeze({
 const oid = /^[a-f0-9]{40}$/
 const sha256 = /^[a-f0-9]{64}$/
 
+export function initialProvidersSurface(facts) {
+  requireEvidence(
+    facts?.settingsVisible === true &&
+      facts.selectedTab === 'providers' &&
+      facts.selectedTabVisible === true &&
+      facts.panelVisible === true &&
+      facts.providersVisible === true &&
+      facts.overlays === 0 &&
+      facts.alerts === 0,
+    'The baseline did not show its unobstructed Providers settings surface.',
+  )
+  requireEvidence(
+    Array.isArray(facts.rows) &&
+      facts.rows.length === 2 &&
+      isDeepStrictEqual(facts.rows.map((row) => row.provider).sort(), ['claude', 'codex']) &&
+      facts.rows.every(
+        (row) =>
+          row.visible === true &&
+          row.label === `${row.provider === 'claude' ? 'Claude' : 'Codex'} provider` &&
+          row.standing === 'Needs setup' &&
+          row.standingVisible === true &&
+          row.detailVisible === true,
+      ),
+    'The baseline Providers rows are missing, unresolved or differ from the fresh fixture.',
+  )
+  return facts
+}
+
 export function candidateNames(version) {
   return [
     `BroCrew-${version}-arm64.dmg`,

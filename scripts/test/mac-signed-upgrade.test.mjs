@@ -5,6 +5,7 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllEnvs())
 import assert from 'node:assert/strict'
+import * as upgradeContract from '../mac-signed-upgrade-contract.mjs'
 import { createHash } from 'node:crypto'
 import { mkdtempSync, writeFileSync, mkdirSync, chmodSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -299,4 +300,68 @@ test('pre-existing native transcript permissions must survive even when content 
   } finally {
     rmSync(folder, { recursive: true })
   }
+})
+
+function freshProvidersSurface() {
+  return {
+    settingsVisible: true,
+    selectedTab: 'providers',
+    selectedTabVisible: true,
+    panelVisible: true,
+    providersVisible: true,
+    overlays: 0,
+    alerts: 0,
+    rows: ['claude', 'codex'].map((provider) => ({
+      provider,
+      label: `${provider === 'claude' ? 'Claude' : 'Codex'} provider`,
+      visible: true,
+      standing: 'Needs setup',
+      standingVisible: true,
+      detailVisible: true,
+    })),
+  }
+}
+
+test('the exact baseline Providers landing is positively observed without a synthetic setup dialog', () => {
+  const facts = freshProvidersSurface()
+  assert.equal(typeof upgradeContract.initialProvidersSurface, 'function')
+  assert.equal(upgradeContract.initialProvidersSurface(facts), facts)
+})
+
+test('a blank, hidden, wrong-tab or obstructed landing cannot replace initial setup evidence', () => {
+  for (const changed of [
+    { settingsVisible: false },
+    { selectedTab: null },
+    { selectedTab: 'plugins' },
+    { selectedTabVisible: false },
+    { panelVisible: false },
+    { providersVisible: false },
+    { overlays: 1 },
+    { alerts: 1 },
+  ])
+    assert.throws(() => upgradeContract.initialProvidersSurface({ ...freshProvidersSurface(), ...changed }))
+  assert.throws(() => upgradeContract.initialProvidersSurface(null))
+})
+
+test('both exact visible provider rows must have settled unconfigured standings and details', () => {
+  for (const changed of [
+    { provider: 'other' },
+    { label: 'Wrong provider' },
+    { visible: false },
+    { standing: null },
+    { standing: "Couldn't check" },
+    { standing: 'Ready' },
+    { standingVisible: false },
+    { detailVisible: false },
+  ]) {
+    const facts = freshProvidersSurface()
+    facts.rows[0] = { ...facts.rows[0], ...changed }
+    assert.throws(() => upgradeContract.initialProvidersSurface(facts))
+  }
+  for (const rows of [
+    [],
+    freshProvidersSurface().rows.slice(1),
+    Array(2).fill(freshProvidersSurface().rows[0]),
+  ])
+    assert.throws(() => upgradeContract.initialProvidersSurface({ ...freshProvidersSurface(), rows }))
 })

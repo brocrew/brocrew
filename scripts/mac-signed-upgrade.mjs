@@ -51,12 +51,12 @@ import {
   credentialPreserved,
   registriesKept,
   assertThreeWorkspaceStates,
+  initialProvidersSurface,
 } from './mac-signed-upgrade-contract.mjs'
 import {
   SCRIPTED_MODEL,
   aScriptedModel,
   saveRehearsalCodexKey,
-  closeExpectedLaunchSetup,
   codexConfigFor,
   theAppsEnvironment,
   connectDevTools,
@@ -337,7 +337,42 @@ async function seedWorkspace(workspace) {
   await mkdir(codexHome, { recursive: true })
   await writeFile(join(codexHome, 'config.toml'), codexConfigFor(model.port))
   let cdp = await launch('a', workspace.port, VERSION_A)
-  workspace.result.setup = await closeExpectedLaunchSetup(cdp)
+  workspace.result.setup = await waitFor(
+    async () => {
+      const facts = await cdp.evaluate(`
+        const visible = (one) => Boolean(one && one.getClientRects().length &&
+          getComputedStyle(one).visibility !== 'hidden' && getComputedStyle(one).display !== 'none')
+        const oneVisible = (selector) => {
+          const found = [...document.querySelectorAll(selector)]
+          return found.length === 1 && visible(found[0])
+        }
+        return {
+          settingsVisible: oneVisible('[data-cy="settings-screen"]'),
+          selectedTab: document.querySelector('[data-cy="settings-tab-providers"][aria-selected="true"]') ? 'providers' : null,
+          selectedTabVisible: oneVisible('[data-cy="settings-tab-providers"][aria-selected="true"]'),
+          panelVisible: oneVisible('#settings-panel-providers'),
+          providersVisible: oneVisible('[data-cy="providers-screen"]'),
+          overlays: [...document.querySelectorAll('dialog[open], [role=dialog], [role=alertdialog], [aria-modal=true]')].filter(visible).length,
+          alerts: [...document.querySelectorAll('[role=alert]')].filter(visible).length,
+          rows: [...document.querySelectorAll('#settings-panel-providers [data-cy="provider-row"]')].map((row) => ({
+            provider: row.getAttribute('data-provider'),
+            label: row.getAttribute('aria-label'),
+            visible: visible(row),
+            standing: row.querySelector('[data-cy="provider-standing"]')?.textContent?.replace(/\\s+/g, ' ').trim() ?? null,
+            standingVisible: visible(row.querySelector('[data-cy="provider-standing"]')),
+            detailVisible: visible(row.querySelector('.provider-detail')) && Boolean(row.querySelector('.provider-detail')?.textContent?.trim()),
+          })),
+        }`)
+      workspace.result.setup = facts
+      try {
+        return initialProvidersSurface(facts)
+      } catch {
+        return null
+      }
+    },
+    'the exact baseline Providers settings surface and two unconfigured provider rows',
+    60_000,
+  )
   await cdp.evaluate(
     'return await window.api.updates.set({checkAutomatically:true,channel:"stable"})',
   )
