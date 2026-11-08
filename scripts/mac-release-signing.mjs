@@ -1,3 +1,4 @@
+// 695-visible: this signature inspector names the app executable but never launches it.
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { open, readFile, readdir, mkdir, writeFile, rm, mkdtemp } from 'node:fs/promises'

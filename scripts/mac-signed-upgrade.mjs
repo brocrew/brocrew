@@ -1,3 +1,5 @@
+// 695-visible: the hosted guided journey observes real windows and the mounted DMG; hiding them
+// would bypass the installed-app journey being checked.
 import { spawn, execFile } from 'node:child_process'
 import { promisify, parseArgs, isDeepStrictEqual } from 'node:util'
 import { mkdir, readFile, writeFile, lstat, realpath, rm } from 'node:fs/promises'

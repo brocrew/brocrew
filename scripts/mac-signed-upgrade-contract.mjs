@@ -1,3 +1,4 @@
+// 695-visible: these receipts bind the visible rehearsal process; this module never launches it.
 import { createHash } from 'node:crypto'
 import { createReadStream, lstatSync, readdirSync } from 'node:fs'
 import { basename, join } from 'node:path'

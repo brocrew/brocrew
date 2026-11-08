@@ -299,6 +299,7 @@ describe('420 §5 · the live scripts address hooks the renderer still draws', (
       // half and the move made it stronger**: a fresh install has no identity row, and
       // `New agent` is drawn on the page's header whether or not the identities read has landed.
       'lane-geometry-probe.mjs',
+      'mac-signed-upgrade.mjs',
       // The update rehearsal's Mac lane: the menu's Check and Download, and the launcher's draft.
       'mac-update-test.mjs',
       'packaged-smoke.mjs',

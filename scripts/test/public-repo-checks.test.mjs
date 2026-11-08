@@ -486,8 +486,19 @@ describe('the workflows · run on a public repository, whatever it is named, and
     expect(checks).not.toMatch(/gitleaks git [^\n]*--verbose/)
     const release = read('.github/workflows/release.yml')
     expect(release).toContain('run: node scripts/leak-check.mjs --require-patterns\n')
-    // ⚑ No build starts until the guard has passed.
-    expect(release.match(/^ {4}needs: \[plan, leak\]$/gm)).toHaveLength(2)
+    // Builds, qualification and publication wait for the guard; collection waits for both builds.
+    const jobs = release.slice(release.indexOf('\njobs:\n')).split(/^ {2}([\w-]+):\n/m)
+    for (const [job, needs] of [
+      ['windows', '[plan, leak]'],
+      ['macos', '[plan, leak]'],
+      ['qualify', '[plan, leak]'],
+      ['publish', '[plan, leak]'],
+      ['candidate', '[plan, windows, macos]'],
+    ]) {
+      const at = jobs.indexOf(job)
+      expect(at, `${job} must exist`).toBeGreaterThan(0)
+      expect(jobs[at + 1], job).toContain(`    needs: ${needs}\n`)
+    }
     for (const beta of ['windows', 'macos']) {
       expect(read(`.github/workflows/${beta}.yml`)).toContain(
         'run: node scripts/leak-check.mjs --require-patterns\n',

@@ -154,6 +154,9 @@ describe('695 §1 · every Electron launcher under scripts/', () => {
     expect(by('visible')).toEqual([
       'lane-geometry-probe.mjs',
       'lib/mac-update-test.mjs',
+      'mac-release-signing.mjs',
+      'mac-signed-upgrade-contract.mjs',
+      'mac-signed-upgrade.mjs',
       'upgrade-path.mjs',
       'window-controls-probe.mjs',
     ])
