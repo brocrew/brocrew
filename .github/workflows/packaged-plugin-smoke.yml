@@ -1,4 +1,4 @@
-name: Sealed native Chrome 010 packaged archive smoke
+name: Sealed native Chrome 011 packaged archive smoke
 on:
   workflow_dispatch:
 permissions:
@@ -41,12 +41,12 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           github-token: ${{ github.token }}
-          run-id: 42439104384
-          name: chrome-010-native-unpublished-inputs
-          path: ${{ runner.temp }}/native-010-inputs
+          run-id: 42452252438
+          name: chrome-011-native-unpublished-inputs
+          path: ${{ runner.temp }}/native-011-inputs
       - name: Prepare exact sealed archives without rebuilding plugins
         env:
-          NATIVE_INPUTS: ${{ runner.temp }}/native-010-inputs
+          NATIVE_INPUTS: ${{ runner.temp }}/native-011-inputs
           SMOKE_PACKAGES: ${{ runner.temp }}/smoke-plugins
           SMOKE_EVIDENCE: ${{ runner.temp }}/archive-smoke-evidence
         run: |
@@ -58,11 +58,11 @@ jobs:
           import {createHash} from 'node:crypto';
           const sha = bytes => createHash('sha256').update(bytes).digest('hex');
           const receiptBytes = fs.readFileSync(path.join(process.env.NATIVE_INPUTS, 'plugin-inputs.json'));
-          assert.equal(sha(receiptBytes), 'dea774e7164370f9b7c14cd59b83500ad5e6e6ce49d22f55e08d4f8a16b071aa');
+          assert.equal(sha(receiptBytes), '2a8b601789085021c5ab8325b99e8e7d2f2fae36586acd07f083febdab306275');
           const input = JSON.parse(receiptBytes);
           const chrome = input.plugins.find(plugin => plugin.id === 'chrome');
-          assert.equal(chrome.sourceCommit, 'b5828f35340d396f9840bb7f6b8d48fa74bd69fe');
-          assert.equal(chrome.version, '0.1.10');
+          assert.equal(chrome.sourceCommit, 'f0a3561d11880d4961652b2d0364dc5a6a84c401');
+          assert.equal(chrome.version, '0.1.11');
           async function download(url) {
             const response = await fetch(url, {signal: AbortSignal.timeout(120000)});
             assert.ok(response.ok, `Download failed: ${response.status}`);
@@ -108,7 +108,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: sealed-native-010-smoke-${{ matrix.target }}
+          name: sealed-native-011-smoke-${{ matrix.target }}
           path: ${{ runner.temp }}/archive-smoke-evidence
           if-no-files-found: error
           retention-days: 7
