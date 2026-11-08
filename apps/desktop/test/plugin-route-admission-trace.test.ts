@@ -168,7 +168,9 @@ it('keeps a handler refusal distinct from HTTP 401 after the same request passed
   cleanup.push(() => client.close())
   client.onerror = () => undefined
   let finishSse!: (status: number) => void
-  const initialSse = new Promise<number>((resolve) => { finishSse = resolve })
+  const initialSse = new Promise<number>((resolve) => {
+    finishSse = resolve
+  })
   await client.connect(
     new StreamableHTTPClientTransport(new URL(route.server.url), {
       requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
