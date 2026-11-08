@@ -95,6 +95,7 @@ export function candidateReceipt(receipt, expected, identity = expectedSigningId
 export function artifactBinding(run, artifact, expected) {
   requireEvidence(
     run.id === expected.runId &&
+      run.run_attempt === expected.runAttempt &&
       run.head_sha === expected.source &&
       run.status === 'completed' &&
       run.conclusion === 'success',
@@ -106,6 +107,7 @@ export function artifactBinding(run, artifact, expected) {
   )
   requireEvidence(
     artifact.id === expected.artifactId &&
+      artifact.name === 'release-macos' &&
       artifact.workflow_run?.id === run.id &&
       artifact.workflow_run?.head_sha === expected.source &&
       !artifact.expired,
@@ -245,7 +247,8 @@ export function upgradeRequest(request) {
       'Upgrade build identity is incomplete.',
     )
     requireEvidence(sha256.test(build.artifactSha256), 'Upgrade artifact SHA-256 is missing.')
-    for (const key of ['runId', 'artifactId', 'releaseId'])
+    requireEvidence(build.releaseId === undefined, 'Draft release inputs are not supported.')
+    for (const key of ['runId', 'runAttempt', 'artifactId'])
       requireEvidence(
         Number.isSafeInteger(build[key]) && build[key] > 0,
         `Upgrade ${key} is missing.`,

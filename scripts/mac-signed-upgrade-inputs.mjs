@@ -35,7 +35,7 @@ async function acquire(expected, name) {
   const candidateDir = join(output, name)
   await mkdir(candidateDir)
   const [run, artifact] = await Promise.all([
-    api(`actions/runs/${expected.runId}`),
+    api(`actions/runs/${expected.runId}/attempts/${expected.runAttempt}`),
     api(`actions/artifacts/${expected.artifactId}`),
   ])
   await writeFile(join(candidateDir, 'build-run.json'), JSON.stringify(run, null, 2))
@@ -75,24 +75,8 @@ async function acquire(expected, name) {
   const receiptPath = join(candidateDir, 'mac-signed-candidate.json')
   const receipt = candidateReceipt(JSON.parse(await readFile(receiptPath, 'utf8')), expected)
   for (const file of receipt.files) await sealedFile(join(candidateDir, file.name), file)
-  const release = await api(`releases/${expected.releaseId}`)
-  requireEvidence(
-    release.draft === true,
-    'Controlled prepublication input must be a draft GitHub release.',
-  )
-  await writeFile(join(candidateDir, 'draft-release.json'), JSON.stringify(release, null, 2))
-  const files = receipt.files.map((file) => {
-    if (file.name === 'latest-mac.yml') return file
-    const asset = release.assets.find((asset) => asset.name === file.name)
-    requireEvidence(
-      asset && asset.size === file.size && asset.digest === `sha256:${file.sha256}`,
-      `Draft release asset does not match sealed ${file.name}.`,
-    )
-    return { ...file, assetId: asset.id }
-  })
   return {
     ...receipt,
-    files,
     directory: candidateDir,
     input: expected,
     manifest: await readFile(join(candidateDir, 'latest-mac.yml'), 'utf8'),
@@ -137,7 +121,7 @@ try {
     JSON.stringify(
       {
         mode: request.mode,
-        transport: 'controlled-draft-github',
+        transport: 'controlled-original-artifact',
         candidate,
         baseline,
         publicFeedAvailability: 'not proved',

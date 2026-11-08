@@ -73,8 +73,8 @@ const { values } = parseArgs({
 requireEvidence(values.inputs && values.evidence, 'Both --inputs and --evidence are required.')
 const inputs = JSON.parse(await readFile(values.inputs, 'utf8'))
 requireEvidence(
-  inputs.transport === 'controlled-draft-github',
-  'The proof requires the declared controlled draft transport.',
+  inputs.transport === 'controlled-original-artifact',
+  'The proof requires the declared original-artifact transport.',
 )
 const BASELINE = inputs.baseline,
   receipt = inputs.candidate
@@ -793,7 +793,6 @@ try {
   transport = await startControlledTransport({
     folder: fixtureRoot,
     initial: BASELINE,
-    token: process.env.GH_TOKEN,
   })
   summary.controlledTransport = {
     address: transport.address,

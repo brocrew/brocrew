@@ -35,6 +35,7 @@ const expected = {
   tree,
   version: '0.2.12',
   runId: 42,
+  runAttempt: 1,
   artifactId: 43,
   artifactSha256: 'c'.repeat(64),
 }
@@ -83,6 +84,7 @@ test('candidate receipt cannot omit, duplicate or redirect sealed assets', () =>
 test('failed, substituted and expired candidate artifacts cannot supply runtime inputs', () => {
   const run = {
     id: 42,
+    run_attempt: 1,
     repository: { full_name: 'brocrew/brocrew' },
     head_sha: source,
     status: 'completed',
@@ -90,6 +92,7 @@ test('failed, substituted and expired candidate artifacts cannot supply runtime 
   }
   const artifact = {
     id: 43,
+    name: 'release-macos',
     workflow_run: { id: 42, head_sha: source },
     digest: `sha256:${expected.artifactSha256}`,
     expired: false,
@@ -97,6 +100,7 @@ test('failed, substituted and expired candidate artifacts cannot supply runtime 
   artifactBinding(run, artifact, expected)
   for (const changed of [
     { conclusion: 'failure' },
+    { run_attempt: 2 },
     { status: 'in_progress' },
     { head_sha: tree },
     { id: 99 },
@@ -106,6 +110,7 @@ test('failed, substituted and expired candidate artifacts cannot supply runtime 
   for (const changed of [
     { id: 99 },
     { expired: true },
+    { name: 'substitute-macos' },
     { digest: `sha256:${'d'.repeat(64)}` },
     { workflow_run: { id: 99, head_sha: source } },
   ])
@@ -189,13 +194,14 @@ test('persistent fixture permissions include nested skill files and ignore trans
   }
 })
 
-test('guided input requires immutable candidate pins and rejects automatic prototypes', () => {
-  const build = { ...expected, releaseId: 44 }
+test('guided input requires the original artifact attempt without draft inputs or automatic prototypes', () => {
+  const build = { ...expected }
   upgradeRequest({ mode: 'guided', to: build })
   for (const request of [
     { mode: 'automatic', from: build, to: { ...build, version: '0.2.13' } },
     { mode: 'guided', from: build, to: build },
-    { mode: 'guided', to: { ...build, releaseId: undefined } },
+    { mode: 'guided', to: { ...build, runAttempt: undefined } },
+    { mode: 'guided', to: { ...build, releaseId: 44 } },
     { mode: 'guided', to: { ...build, artifactSha256: undefined } },
     { mode: 'guided', to: { ...build, version: '0.2.11' } },
   ])

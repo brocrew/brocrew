@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       request:
-        description: 'JSON: mode guided, to build pins includes runId/artifactId/artifactSha256/source/tree/version/releaseId'
+        description: 'JSON: mode guided, to build pins includes runId/runAttempt/artifactId/artifactSha256/source/tree/version'
         required: true
         type: string
 
@@ -39,9 +39,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           UPGRADE_REQUEST: ${{ inputs.request }}
         run: node scripts/mac-signed-upgrade-inputs.mjs --output signed-upgrade-inputs --request "$UPGRADE_REQUEST"
-      - name: Exercise real updater with controlled draft GitHub transport
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Exercise real updater with sealed original artifact bytes
         run: node scripts/mac-signed-upgrade.mjs --inputs signed-upgrade-inputs/inputs.json --evidence signed-upgrade-evidence
       - name: Keep evidence for every terminal outcome
         if: always()
