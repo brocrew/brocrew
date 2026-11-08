@@ -42,20 +42,7 @@ import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 import { agentCallerId } from '../src/main/runtime/agent-tools'
 import { neutralHostDeps } from './lib/host-fixture'
 
-/**
- * # A copy of a Codex sign-in that Codex refused is replaced once, by the one refreshed last
- *
- * A helper's copy of a Codex sign-in can be dead: copies of one sign-in spend each other's renewal,
- * and a sign-in renewed on this computer leaves every copy refused. When Codex refuses a copy, at a
- * start or in a turn, it is replaced by a fresh copy of the same account, from this computer's own
- * sign-in or BroBot's own, whichever Codex refreshed last, and only when that is later than the
- * copy. The start is then made once more; a turn's conversation is reopened. A copy Codex accepts
- * is never replaced, nor one on another account, nor one as new as its sources.
- *
- * ⚑ A scratch data folder, fictional sign-in files (fictional accounts, tokens and dates), and a
- * stand-in Codex that accepts only the sign-ins a test names. A sign-in is compared by a digest of
- * its bytes, so a failure prints digests and never what a file holds.
- */
+// Fictional sign-ins are compared by digest so failures never print their contents.
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
@@ -80,7 +67,6 @@ class Sink implements RuntimeEventSink {
   readonly ownerId = 'owner:1'
   readonly alive = true
   readonly errors: TranscriptEvent[] = []
-  /** How many times this conversation was said to be working. */
   working = 0
   send(message: RuntimeEventMessage): void {
     if (message.event.type === 'error') this.errors.push(message.event)
@@ -89,15 +75,10 @@ class Sink implements RuntimeEventSink {
   sendLiveness(): void {}
 }
 
-/** The provider's own error, as an adapter hands it to the host. */
 const says = (handle: FakeSessionHandle, error: RuntimeEvent): void =>
   (handle as unknown as { push(event: RuntimeEvent): void }).push(error)
 const REFUSED = { type: 'error', message: 'refused', fatal: false, cause: 'auth' } as const
 
-/**
- * A stand-in Codex that refuses a start or a reopen unless its home holds a sign-in the test
- * accepts. Its sessions say their sign-in is still the same account's, as Codex's do.
- */
 class StandInCodex extends FakeRuntime {
   readonly handles: FakeSessionHandle[] = []
   constructor(
@@ -106,52 +87,35 @@ class StandInCodex extends FakeRuntime {
   ) {
     super('codex')
   }
-  /** Set by a test: the next start fails for a reason that is not its sign-in. */
   failsOtherwise = false
-  /** Set by a test: the next start is refused for its sign-in before Codex is asked at all. */
   refusesBeforeCodexIsAsked = false
-  /** Set by a test: runs as Codex refuses a copy, before the refusal is thrown. */
   asItRefuses: () => void = () => {}
-  /** Whether a session's sign-in moved to another account; a test may hold the answer back. */
   checksItsSignIn: () => Promise<boolean> = async () => false
-  /** How each next turn of words goes, in order; one with none set is answered. */
   readonly turnModes: TurnMode[] = []
-  /** The words of every turn handed to it, in order. */
   readonly sent: string[] = []
   /** The thread retains its input across a reopen; carrying on adds no message to it. */
   private readonly retained = new Map<string, string>()
   readonly answeredInputs: string[] = []
-  /** How many turns with nothing new it was asked to start. */
   carriedOn = 0
-  /** A control can move the fictional profile again as the retained turn begins. */
   asItCarriesOn: () => void = () => {}
-  /** Set by a test: a turn with nothing new is left open, for the test to refuse. */
   carryOnIsHeldOpen = false
-  /** Set by a test: a turn with nothing new is refused before the call that started it returns. */
   carryOnIsRefusedAtOnce = false
-  /** Set by a test: a stop of a turn left open ends it refused on its sign-in, as the two can meet. */
   aStopMeetsTheRefusal = false
-  /** Set by a test: its sessions cannot start a turn with nothing new. */
   cannotCarryOn = false
-  /** Set by a test: runs as a start or a reopen goes through. */
   asItStarts: () => void = () => {}
-  /** Fictional startup frames, queued before the host begins pumping the resumed handle. */
   asItResumes: (handle: FakeSessionHandle) => void = () => {}
   private openTurn: { refuse: (loginRefused?: boolean) => void; answer: () => void } | null = null
-  /** Ends a turn left open by `held-open`, refused on its sign-in. */
   refuseTheOpenTurn(loginRefused = true): void {
     const end = this.openTurn
     this.openTurn = null
     end?.refuse(loginRefused)
   }
-  /** Ends a turn left open by `held-open`, answered. */
   answerTheOpenTurn(): void {
     const end = this.openTurn
     this.openTurn = null
     end?.answer()
   }
   private taken(providerHome: string): CodexCopyIdentity | null {
-    // As Codex's adapter does: the copy this launch begins on, before anything is started.
     const beganOn = codexCopyIdentityIn(providerHome)
     const held = signInAt(join(providerHome, 'auth.json'))
     this.starts.push(held)
@@ -161,7 +125,6 @@ class StandInCodex extends FakeRuntime {
     }
     if (!this.accepts().has(held)) {
       this.asItRefuses()
-      // As Codex's adapter throws it: Codex's own answer, with the copy it refused.
       throw new CodexRefusedItsSignInError('Your Codex sign-in has expired.', beganOn)
     }
     this.asItStarts()
@@ -250,10 +213,8 @@ class StandInCodex extends FakeRuntime {
   }
 }
 
-/** How a turn of words handed to the stand-in Codex goes. */
 type TurnMode = 'refused' | 'refused-after-a-word' | 'held-open' | 'stopped-on-a-limit' | 'answered'
 
-/** A stand-in Claude that keeps the sessions it started. */
 class AClaude extends FakeRuntime {
   constructor(private readonly kept: FakeSessionHandle[]) {
     super('claude')
@@ -276,9 +237,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
   let starts: string[]
   let pluginAttachments: RuntimeHostDeps['pluginAttachments']
   let claudes: FakeSessionHandle[]
-  /** How often the host reached the writer that replaces a copy, and how often it has answered. */
   let writer: { reached: number; answered: number }
-  /** A sign-in on the Codex card, as a test stages it: never a program. */
   let aSignIn: () => Promise<CodexSignIn>
 
   const helperHome = () => deriveProviderHome(userData, { profileId: 'farah', provider: 'codex' })
@@ -299,13 +258,11 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
     claudes = []
     codex = new StandInCodex(() => accepted, starts)
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    // BroBot's own profile, signed in on the Codex card, before this computer's was renewed.
     mkdirSync(ownHome(), { recursive: true, mode: 0o700 })
     writeFileSync(join(ownHome(), 'auth.json'), BROBOTS_OWN_BEFORE, { mode: 0o600 })
     let counter = 0
     const seams = {
       machineCodexAuthPath: () => machine,
-      // A Claude conversation starts too, for one control: its login is not what is tested here.
       claudeAuthHealth: async () => ({ ok: true }),
     }
     const ops = createProviderAuthOps(userData, {
@@ -332,7 +289,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         ),
       providerHomePath: (provider, profileId) =>
         deriveProviderHome(userData, { profileId, provider }),
-      // The real operations, with the writer's calls counted as they are made and as they end.
       providerAuth: {
         ...ops,
         signIn: () => aSignIn(),
@@ -361,7 +317,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
     rmSync(dirname(machine), { recursive: true, force: true })
   })
 
-  /** Farah, a helper that has run before, holding a copy of the sign-in. */
   function aHelperHolding(copy: string): void {
     mkdirSync(helperHome(), { recursive: true, mode: 0o700 })
     writeFileSync(join(helperHome(), 'auth.json'), copy, { mode: 0o600 })
@@ -373,7 +328,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
     watching = new Sink()
     return host.createSession({ provider: 'codex', profileId: 'farah' }, watching)
   }
-  /** A turn of the stand-in's, begun and ended by the test so that something can happen between. */
   const itsTurn = (handle: FakeSessionHandle) => {
     const machine = (
       handle as unknown as {
@@ -396,30 +350,35 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
     }
   }
 
+  function withPluginSources() {
+    const sources: { closed: boolean; reads: number; closes: number }[] = []
+    const agent = vi.fn(() => {
+      const source = { closed: false, reads: 0, closes: 0 }
+      sources.push(source)
+      const route = {
+        name: 'plugin-fern',
+        url: 'http://127.0.0.1:8123/mcp',
+        capability: String(sources.length).repeat(64),
+      }
+      return {
+        async read() {
+          source.reads++
+          if (source.closed) throw new Error('fictional released source')
+          return { revision: String(sources.length), servers: [route] }
+        },
+        async close() {
+          source.closed = true
+          source.closes++
+        },
+      }
+    })
+    pluginAttachments = { agent }
+    return { sources, agent }
+  }
+
   it.each(['start', 'resume'] as const)(
     'repeated %s gets a new plugin source after the refused launch releases its source',
     async (mode) => {
-      const sources: { closed: boolean; reads: number; closes: number }[] = []
-      const agent = vi.fn(() => {
-        const source = { closed: false, reads: 0, closes: 0 }
-        sources.push(source)
-        const route = {
-          name: 'plugin-fern',
-          url: 'http://127.0.0.1:8123/mcp',
-          capability: String(sources.length).repeat(64),
-        }
-        return {
-          async read() {
-            source.reads++
-            if (source.closed) throw new Error('fictional released source')
-            return { revision: String(sources.length), servers: [route] }
-          },
-          async close() {
-            source.closed = true
-            source.closes++
-          },
-        }
-      })
       aHelperHolding(DEAD)
       let sessionId: string | undefined
       if (mode === 'resume') {
@@ -428,7 +387,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         await host.close(sessionId, watching)
         accepted.clear()
       }
-      pluginAttachments = { agent }
+      const { sources, agent } = withPluginSources()
       const fresh = vi.spyOn(codex, 'start'),
         resumed = vi.spyOn(codex, 'resume')
       writeFileSync(machine, THE_COMPUTERS)
@@ -456,22 +415,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
   it.each(['ordinary', 'both-refused', 'no-replacement', 'other-error', 'cancelled'] as const)(
     'plugin source cleanup preserves the %s launch outcome',
     async (mode) => {
-      const sources: { closes: number; reads: number }[] = []
-      pluginAttachments = {
-        agent: () => {
-          const source = { closes: 0, reads: 0 }
-          sources.push(source)
-          return {
-            async read() {
-              source.reads++
-              return { revision: 'one', servers: [] }
-            },
-            async close() {
-              source.closes++
-            },
-          }
-        },
-      }
+      const { sources } = withPluginSources()
       aHelperHolding(DEAD)
       if (mode === 'ordinary') accept(DEAD)
       if (mode === 'both-refused' || mode === 'other-error' || mode === 'cancelled')
@@ -524,7 +468,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       writeFileSync(machine, THE_COMPUTERS)
       await expect(start()).rejects.toThrow()
       expect(starts).toEqual(digests(DEAD, THE_COMPUTERS))
-      // ⚑ And again: the copy is now as new as its sources, so nothing replaces it.
       await expect(start()).rejects.toThrow()
       expect(starts).toEqual(digests(DEAD, THE_COMPUTERS, THE_COMPUTERS))
       expect(held()).toBe(digestOf(THE_COMPUTERS))
@@ -580,12 +523,10 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       aHelperHolding(DEAD)
       writeFileSync(machine, THE_COMPUTERS)
       accept(THE_COMPUTERS)
-      // The app is closing as Codex refuses the copy.
       codex.asItRefuses = () => void host.closeAll()
       await expect(start()).rejects.toThrow()
       expect(starts).toEqual(digests(DEAD))
       expect(held()).toBe(digestOf(DEAD))
-      // ⚑ Asked before the writer is called: it was never reached.
       expect(writer.reached).toBe(0)
     })
 
@@ -616,7 +557,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       const noKey = createProviderAuthOps(userData, seams)
       expect(await noKey.replaceARefusedCopy('claude', 'farah', refused, wanted)).toBe('not-tried')
       expect(held()).toBe(digestOf(DEAD))
-      // ⚑ The same folder, with no key saved: replaced.
       expect(await noKey.replaceARefusedCopy('codex', 'farah', refused, wanted)).toBe(
         'the-computers',
       )
@@ -649,7 +589,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       says(codex.handles[0]!, REFUSED)
       await vi.waitFor(() => expect(sink.errors).toHaveLength(1))
       expect(sink.errors[0]).toMatchObject({ cause: 'auth', replacesRefusedSignIn: true })
-      // ⚑ Before any fresher copy is looked for: none exists here, and it is said all the same.
       expect(held()).toBe(digestOf(DEAD))
       expect(stored()).toEqual([expect.objectContaining({ replacesRefusedSignIn: true })])
     })
@@ -659,8 +598,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       accept(DEAD)
       const sink = new Sink()
       await host.createSession({ provider: 'codex', profileId: 'farah' }, sink)
-      // Another copy is put there after its Codex was started: nothing is replaced from inside
-      // this conversation, so the error does not say it is.
       aHelperHolding(signIn('acct-fictional-a', 'PUT-THERE-SINCE', '2026-10-08T23:00:00Z'))
       says(codex.handles[0]!, REFUSED)
       await vi.waitFor(() => expect(sink.errors).toHaveLength(1))
@@ -688,7 +625,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
   })
 
   describe('in a turn', () => {
-    /** Farah running on a copy Codex took at her start, and this computer's sign-in renewed since. */
     async function runningOnACopyThatDiesInATurn(): Promise<void> {
       aHelperHolding(DEAD)
       accept(DEAD)
@@ -707,7 +643,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
 
     it('⛔ once: the fresh copy refused at the reopen, nothing more is copied and the refusal stands', async () => {
       await runningOnACopyThatDiesInATurn()
-      // Codex takes neither copy now.
       accepted.clear()
       await codex.handles[0]!.runTurnRefusedOnItsLogin()
       await vi.waitFor(() => expect(starts).toEqual(digests(DEAD, THE_COMPUTERS)))
@@ -716,7 +651,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       expect(held()).toBe(digestOf(THE_COMPUTERS))
     })
 
-    /** Holds back the answer to "did its sign-in move to another account", until a test lets it go. */
     function theCheckHeldBack(): { asked: () => boolean; answer: () => void } {
       let answer: (() => void) | null = null
       codex.checksItsSignIn = () => new Promise((resolve) => (answer = () => resolve(false)))
@@ -728,13 +662,11 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       const check = theCheckHeldBack()
       await codex.handles[0]!.runTurnRefusedOnItsLogin()
       await vi.waitFor(() => expect(check.asked()).toBe(true))
-      // The conversation ends while the check is out.
       await host.closeAll()
       check.answer()
       await new Promise((resolve) => setTimeout(resolve, 100))
       expect(starts).toEqual(digests(DEAD))
       expect(held()).toBe(digestOf(DEAD))
-      // ⚑ Asked before the writer is called: it was never reached.
       expect(writer.reached).toBe(0)
     })
 
@@ -743,7 +675,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       const check = theCheckHeldBack()
       await codex.handles[0]!.runTurnRefusedOnItsLogin()
       await vi.waitFor(() => expect(check.asked()).toBe(true))
-      // Codex renews this copy in place while the check is out: older than this computer's still.
       const renewed = signIn('acct-fictional-a', 'RENEWED-MEANWHILE', '2026-10-08T23:00:00Z')
       aHelperHolding(renewed)
       check.answer()
@@ -779,8 +710,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
 
     it('⛔ a copy put there after this conversation’s Codex was started is not repaired from inside it, even unchanged across a whole turn', async () => {
       await runningOnACopyThatDiesInATurn()
-      // Before the turn begins: a re-copy, a sign-in or Codex's own renewal. Older than this
-      // computer's, so only where it came from keeps it from being replaced.
       const another = signIn(
         'acct-fictional-a',
         'PUT-THERE-BEFORE-THE-TURN',
@@ -803,14 +732,12 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         () => new Promise<void>((resolve) => (letGo = resolve)),
       )
       await codex.handles[0]!.runTurnRefusedOnItsLogin()
-      // The writer has been called, while this was still the live conversation, and waits for the lock.
       await vi.waitFor(() => expect(writer.reached).toBe(1))
       expect(writer.answered).toBe(0)
       const closing = host.closeAll()
       await new Promise((resolve) => setTimeout(resolve, 50))
       letGo()
       await holding
-      // ⚑ Looked at only once the writer has had the lock and answered.
       await vi.waitFor(() => expect(writer.answered).toBe(1))
       await closing
       expect(starts).toEqual(digests(DEAD))
@@ -846,7 +773,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
     const endingsOf = (id: string): string[] =>
       rowsOf(id).flatMap((row) => (row.type === 'turn' ? [row.state] : []))
 
-    /** Farah, on a copy Codex took at her start; this computer's sign-in renewed since; a message. */
     async function aMessageRefused(
       mode: TurnMode,
       beforeTheMessage: () => void = () => {},
@@ -863,7 +789,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       return sessionId
     }
     const settled = () => new Promise((resolve) => setTimeout(resolve, 150))
-    /** The message each turn of words handed to Codex carried, without the app's frame around it. */
     const handedOver = (): string[] =>
       codex.sent.map((text) =>
         text.includes(MESSAGE)
@@ -878,7 +803,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       await vi.waitFor(() => expect(codex.carriedOn).toBe(1))
       await vi.waitFor(() => expect(endingsOf(id)).toEqual(['failed', 'completed']))
       expect(starts).toEqual(digests(DEAD, THE_COMPUTERS))
-      // ⚑ The message reached the agent once: the turn that carried on handed over nothing.
       expect(handedOver()).toEqual([MESSAGE])
       expect(turnsOf(id).map((turn) => [turn.text, turn.carriesOn ?? false])).toEqual([
         [MESSAGE, false],
@@ -886,7 +810,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       ])
       expect(turnsOf(id)[1]).toMatchObject({ attribution: 'app_authored' })
       expect(turnsOf(id)[1]).not.toHaveProperty('carriedOnAfterAccountChange')
-      // ⚑ The reopen says it was on a replaced copy, which is what a window folds the rows on.
       expect(rowsOf(id).filter((row) => row.type === 'reopened')).toEqual([
         { type: 'reopened', because: 'the-sign-in-was-renewed', itsCopyWasReplaced: true },
       ])
@@ -896,7 +819,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       codex.carryOnIsHeldOpen = true
       const id = await aMessageRefused('refused')
       await vi.waitFor(() => expect(codex.carriedOn).toBe(1))
-      // A later sign-in of the same account is on this computer by then: the copy is replaced again.
       brobotsOwnIs(BROBOTS_OWN)
       accept(BROBOTS_OWN)
       codex.refuseTheOpenTurn()
@@ -951,8 +873,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       expect(codex.carriedOn).toBe(0)
       expect(handedOver()).toEqual([MESSAGE])
       expect(turnsOf(id)).toHaveLength(1)
-      // ⚑ The reopen still says the copy was replaced: with no turn carrying on after it, a window
-      // asks for the message again.
       expect(rowsOf(id).filter((row) => row.type === 'reopened')).toEqual([
         { type: 'reopened', because: 'the-sign-in-was-renewed', itsCopyWasReplaced: true },
       ])
@@ -972,7 +892,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
     })
 
     it('⛔ its sign-in moved to another account by the time it would carry on: nothing is carried on', async () => {
-      // From the reopen on, the profile's sign-in names another account.
       await aMessageRefused('refused', () => {
         codex.asItStarts = () => {
           codex.asItStarts = () => {}
@@ -991,8 +910,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       const { sessionId: id } = await start()
       codex.turnModes.push('held-open')
       await host.send(id, MESSAGE, watching)
-      // Before its refusal, Farah's profile comes to hold another account's sign-in: no copy of hers
-      // is replaced, and her conversation reopens because its account moved.
       aHelperHolding(ANOTHER_ACCOUNT)
       Object.assign(codex.handles[0]!, { checkSignIn: async () => true })
       codex.refuseTheOpenTurn()
@@ -1001,7 +918,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       expect(held()).toBe(digestOf(ANOTHER_ACCOUNT))
       expect(codex.carriedOn).toBe(0)
       expect(handedOver()).toEqual([MESSAGE])
-      // ⚑ A reopen that names no replaced copy is drawn as the line that asks for the message again.
       expect(rowsOf(id).filter((row) => row.type === 'reopened')).toEqual([
         { type: 'reopened', because: 'the-sign-in-was-renewed' },
       ])
@@ -1009,7 +925,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
     })
 
     it('⛔ its provider’s usage limit holds what this app would start: nothing is carried on', async () => {
-      // The account stopped on its usage limit, an hour from its reset, as the ledger reads it.
       const read = store.providerLimitsSeen.bind(store)
       vi.spyOn(store, 'providerLimitsSeen').mockImplementation((now, since) => ({
         ...read(now, since),
@@ -1024,7 +939,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
           },
         ],
       }))
-      // A person's own message goes at the limit; the turn this app would start waits.
       await aMessageRefused('refused')
       await vi.waitFor(() => expect(starts).toEqual(digests(DEAD, THE_COMPUTERS)))
       await settled()
@@ -1042,18 +956,13 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       expect(handedOver().filter((text) => text === MESSAGE)).toHaveLength(1)
     })
 
-    /**
-     * Farah's message refused and her copy replaced; `meanwhile` runs while the carrying-on turn's own
-     * check of her sign-in, the first after the reopen, waits for it. Returns once that check has
-     * answered and the carry-on has been decided.
-     */
+    // Hold the post-reopen sign-in check while queued work changes.
     async function refusedAndCarryingOnWhile(
       meanwhile: (id: string) => Promise<void>,
     ): Promise<string> {
       let id = ''
       let reopened = false
       let checked = false
-      // The reopen is the start on the copy that replaced the refused one.
       codex.asItStarts = () => (reopened = starts.at(-1) === digestOf(THE_COMPUTERS))
       codex.checksItsSignIn = async () => {
         if (!reopened) return false
@@ -1073,7 +982,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
     it('⛔ a person’s Stop and send while the carrying-on turn checks its sign-in goes instead: nothing is carried on', async () => {
       const theirs: { go?: () => void; sent?: Promise<unknown> } = {}
       await refusedAndCarryingOnWhile(async (id) => {
-        // Its own check waits: it holds the queue, with nothing held, on its way or written yet.
         codex.checksItsSignIn = () => new Promise((resolve) => (theirs.go = () => resolve(false)))
         theirs.sent = host.sendInterrupting(id, 'A newer message.', watching)
         await vi.waitFor(() => expect(theirs.go).toBeDefined())
@@ -1088,7 +996,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
     })
 
     it('⛔ the app quitting while the carrying-on turn checks its sign-in carries nothing on', async () => {
-      // A sign-in on the Codex card, whose cancel the quit waits on before it closes any conversation.
       const card: { asked: boolean; cancelled: boolean; done?: () => void } = {
         asked: false,
         cancelled: false,
@@ -1120,7 +1027,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         await new Promise((resolve) => setTimeout(resolve, 0))
         quitting = host.closeAll()
         await vi.waitFor(() => expect(card.cancelled).toBe(true))
-        // ⚑ Admission is closed, and the reopened conversation still runs: the quit has not reached it.
         expect(runsNow(id)).toBe(true)
       })
       expect(codex.carriedOn).toBe(0)
@@ -1129,11 +1035,9 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
     })
 
     describe('what the ledger cannot say is not "nothing"', () => {
-      /** Farah's message refused, its reopen held back until the test has done `meanwhile`. */
       async function refusedWhile(meanwhile: (id: string) => void): Promise<string> {
         let answer: (() => void) | null = null
         const id = await aMessageRefused('refused')
-        // The check of the sign-in its refusal asks waits for the test; every later one answers.
         codex.checksItsSignIn = () =>
           new Promise((resolve) => {
             codex.checksItsSignIn = async () => false
@@ -1193,13 +1097,12 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
 
       it('⛔ work done after the refusal went unrecorded: nothing is carried on', async () => {
         const id = await refusedWhile(() => {
-          // A full disk fails the next row, and from then on the refused life's rows are not kept.
+          // Failed recording must remain distinguishable from an empty ledger.
           vi.spyOn(store, 'append').mockImplementationOnce(() => {
             throw new Error('the disk is full')
           })
           says(codex.handles[0]!, { type: 'assistant_message', text: 'a late word' })
         })
-        // The ledger shows nothing of it, so only the failed recording can say it happened.
         expect(rowsOf(id).map((row) => row.type)).not.toContain('assistant_message')
         expect(codex.carriedOn).toBe(0)
       })
@@ -1804,7 +1707,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
     })
 
     describe('its giver', () => {
-      /** Work given to Farah by an agent of BroBot's own, whose brief Codex refused. */
       async function aBriefRefused(): Promise<{ giver: string; helper: string }> {
         aHelperHolding(DEAD)
         accept(DEAD)
@@ -1829,7 +1731,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         if (!given.ok) throw new Error(`refused: ${given.refusal.rail}`)
         return { giver, helper: given.owner }
       }
-      /** Every message held for or handed to the giver that reports on work it gave out. */
       const toldOfItsWork = (giver: string): number =>
         rowsOf(giver).filter(
           (row) => (row.type === 'user_turn' || row.type === 'message_queued') && 'work' in row,
@@ -1844,11 +1745,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       })
 
       const SECOND = 'A second brief.'
-      /**
-       * Farah's brief refused and her copy replaced; as the reopened conversation is about to carry on,
-       * its giver gives her a second brief, whose `held`-th check of her sign-in (1, as it is queued;
-       * 2, as it is handed over) waits until `letItGo` is called.
-       */
+      // Hold the chosen brief check to distinguish queued work from work already handed over.
       async function aSecondBriefAsItCarriesOn(
         held: 1 | 2,
       ): Promise<{ helper: string; letItGo: () => Promise<void> }> {
@@ -1856,13 +1753,11 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         let reopened = false
         let briefsCheck: (() => void) | null = null
         let second: Promise<unknown> | null = null
-        // The reopen is the start on the copy that replaced the refused one.
         codex.asItStarts = () => (reopened = starts.at(-1) === digestOf(THE_COMPUTERS))
         codex.checksItsSignIn = async () => {
           if (!reopened) return false
           reopened = false
           expect(giver).not.toBe('')
-          // The carrying-on turn's own check, the first after the reopen: the second brief sets off.
           let asked = 0
           codex.checksItsSignIn = () =>
             (asked += 1) === held
@@ -1898,7 +1793,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
       }
 
       it('⛔ a second brief already on its way when its helper would carry on: nothing is carried on, the brief goes', async () => {
-        // Past its own decision, so it is on its way, with nothing held and no row written yet.
         const { letItGo } = await aSecondBriefAsItCarriesOn(2)
         expect(codex.carriedOn).toBe(0)
         await letItGo()
@@ -1928,7 +1822,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         )
         writeFileSync(machine, THE_COMPUTERS)
         accept(THE_COMPUTERS)
-        // The older brief's turn runs, and the second brief waits behind it.
         codex.turnModes.push('held-open', 'refused')
         const older = await host.giveWork(
           {
@@ -1951,8 +1844,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         )
         if (!refused.ok) throw new Error(`refused: ${refused.refusal.rail}`)
         expect(refused.owner).toBe(older.owner)
-        // The older turn ends without a reply, so its piece stalls; the second brief's turn is then
-        // refused on a copy this computer's newer sign-in replaces, and carries on, left open.
         codex.carryOnIsHeldOpen = true
         codex.answerTheOpenTurn()
         await vi.waitFor(() => expect(codex.carriedOn).toBe(1))
@@ -1961,8 +1852,6 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
           derivePieces(older.owner, store.events(older.owner), { provider: 'codex' }).find(
             (row) => row.title === title,
           )
-        // ⚑ Read while the carrying-on turn runs. The older piece's stall is one its owner running
-        // again would drive, so only the carrying-on row's own piece keeps it stalled.
         const theOlder = pieceCalled('The release notes')
         expect(theOlder?.state).toBe('stalled')
         expect(ITS_OWNER_RUNNING_AGAIN_DRIVES_IT[theOlder!.stalledBecause!]).toBe(true)
