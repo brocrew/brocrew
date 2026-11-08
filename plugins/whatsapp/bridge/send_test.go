@@ -60,7 +60,7 @@ func TestAudioCaptionSendOutcome(t *testing.T) {
 				if !strings.Contains(err.Error(), "audio sent") {
 					t.Fatalf("confirmed audio send lost: %v", err)
 				}
-			if response.Code != http.StatusBadGateway || body["error"] != "caption_failed" || body["audioSent"] != true || body["captionSent"] != false || body["cause"] != cause.Error() {
+				if response.Code != http.StatusBadGateway || body["error"] != "caption_failed" || body["audioSent"] != true || body["captionSent"] != false || body["cause"] != cause.Error() {
 					t.Fatalf("partial outcome lost at HTTP: %d %s", response.Code, response.Body.String())
 				}
 			case 1:
