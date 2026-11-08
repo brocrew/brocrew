@@ -125,15 +125,22 @@ it('skips current after close starts even for an already accepted request callba
   const original = await f.route('fictional-caller')
   const events: RouteAdmissionEvent[] = []
   const trace = createRouteAdmissionTrace((event) => events.push(event))({})
-  const current = vi.fn(() => { throw new Error('current must be skipped') })
+  const current = vi.fn(() => {
+    throw new Error('current must be skipped')
+  })
   const route = await openManagedPluginRoute(f.broker, original.agent, current, undefined, trace)
   const listener = accepted.listener!
   const closed = route.close()
   const response = { writeHead: vi.fn(), end: vi.fn() }
-  listener({ headers: { authorization: `Bearer ${route.server.capability}` } } as IncomingMessage, response as unknown as ServerResponse)
+  listener(
+    { headers: { authorization: `Bearer ${route.server.capability}` } } as IncomingMessage,
+    response as unknown as ServerResponse,
+  )
   expect(response.writeHead).toHaveBeenCalledWith(401)
   expect(current).not.toHaveBeenCalled()
-  expect(events.find((event) => event.event === 'http-current-refused')).toMatchObject({ condition: 'accepting' })
+  expect(events.find((event) => event.event === 'http-current-refused')).toMatchObject({
+    condition: 'accepting',
+  })
   await closed
   expect(events.at(-1)?.event).toBe('route-close-complete')
 })
