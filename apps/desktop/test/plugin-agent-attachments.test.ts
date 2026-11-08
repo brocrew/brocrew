@@ -184,8 +184,8 @@ it('traces a refused HTTP admission with opaque lifecycle correlation and the or
   const events: unknown[] = []
   const f = await live({ routeTrace: (event) => events.push(event) })
   const one = lease()
-  const ask = request('fictional-private-workspace')
-  const [route] = await f.bridge.routes(one, ask)
+  const ask = request(f.local.sink.workspaceId)
+  const route = (await f.bridge.routes(one, ask))[0]!
   expect(route).toBeDefined()
   // The original state read refuses. Diagnostics must not read it again.
   const original = f.opts.state.readWorkspaceAdmission.bind(f.opts.state)
