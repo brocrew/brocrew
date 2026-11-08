@@ -31,6 +31,7 @@ describe('native setup completion reaches existing runtime readiness notificatio
   let revision: number, signedIn: boolean, installed: boolean
   let holdNext: Promise<void> | null
   let releaseHeld: (() => void) | null
+  let modelListingStarted: (() => void) | null
   const listed: { provider: Provider; home: string }[] = []
   const moved = vi.fn(),
     kept = vi.fn()
@@ -50,6 +51,7 @@ describe('native setup completion reaches existing runtime readiness notificatio
     installed = true
     holdNext = null
     releaseHeld = null
+    modelListingStarted = null
     listed.length = 0
     moved.mockClear()
     kept.mockClear()
@@ -61,6 +63,7 @@ describe('native setup completion reaches existing runtime readiness notificatio
         const answerRevision = revision
         const held = holdNext
         holdNext = null
+        modelListingStarted?.()
         if (held) await held
         if (!signedIn && this.provider === 'claude') throw new Error('fictional sign-in missing')
         return (await super.listModels(context)).map((model) => ({
@@ -218,9 +221,11 @@ describe('native setup completion reaches existing runtime readiness notificatio
       release = resolve
       releaseHeld = resolve
     })
+    const started = new Promise<void>((resolve) => {
+      modelListingStarted = resolve
+    })
     const before = host.providerModels('cedar', 'claude')
-    await Promise.resolve()
-    await Promise.resolve()
+    await started
     expect(listed).toHaveLength(1)
     service.signIn()
     revision = 1
