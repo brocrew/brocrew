@@ -49,12 +49,33 @@ runs:
         echo "::add-mask::$keychain_password"
         printf '%s' "$MAC_CERT_P12_BASE64" | base64 --decode > "$signing_dir/certificate.p12"
         printf '%s' "$APPLE_API_KEY_P8" > "$signing_dir/notary.p8"
+        export SIGNING_DIR="$signing_dir"
+        node <<'NODE'
+        const { execFileSync } = require('node:child_process')
+        const { writeFileSync } = require('node:fs')
+        const { join } = require('node:path')
+        const original = execFileSync('security', ['list-keychains', '-d', 'user'], { encoding: 'utf8' })
+          .split('\n').filter((line) => line.trim()).map((line) => {
+            const match = /^\s*"(.*)"\s*$/.exec(line)
+            if (!match) throw new Error('Cannot preserve the user keychain search list')
+            return match[1]
+          })
+        writeFileSync(join(process.env.SIGNING_DIR, 'keychain-search-list.json'), JSON.stringify(original), { flag: 'wx', mode: 0o600 })
+        NODE
         security create-keychain -p "$keychain_password" "$keychain"
         security set-keychain-settings -lut 7200 "$keychain"
         security unlock-keychain -p "$keychain_password" "$keychain"
         security import "$signing_dir/certificate.p12" -k "$keychain" -P "$MAC_CERT_P12_PASSWORD" -T /usr/bin/codesign
         rm "$signing_dir/certificate.p12"
         security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
+        node <<'NODE'
+        const { execFileSync } = require('node:child_process')
+        const { readFileSync } = require('node:fs')
+        const { join } = require('node:path')
+        const keychain = join(process.env.SIGNING_DIR, 'release.keychain-db')
+        const original = JSON.parse(readFileSync(join(process.env.SIGNING_DIR, 'keychain-search-list.json'), 'utf8'))
+        execFileSync('security', ['list-keychains', '-d', 'user', '-s', keychain, ...original.filter((entry) => entry !== keychain)])
+        NODE
         identity="$(security find-identity -v -p codesigning "$keychain" | node scripts/lib/mac-signing-identity.mjs)"
         [[ "$identity" =~ ^[A-F0-9]{40}$ ]] || { echo 'Exactly one Developer ID identity for the release team is required'; exit 1; }
         {
@@ -120,9 +141,24 @@ runs:
       if: always()
       shell: bash
       run: |
+        set -euo pipefail
         signing_dir="$RUNNER_TEMP/mac-signing-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-        security delete-keychain "$signing_dir/release.keychain-db" || true
-        rm -rf "$signing_dir"
+        export SIGNING_DIR="$signing_dir"
+        status=0
+        if [ -f "$signing_dir/keychain-search-list.json" ]; then
+          node <<'NODE' || status=$?
+        const { execFileSync } = require('node:child_process')
+        const { readFileSync } = require('node:fs')
+        const { join } = require('node:path')
+        const original = JSON.parse(readFileSync(join(process.env.SIGNING_DIR, 'keychain-search-list.json'), 'utf8'))
+        execFileSync('security', ['list-keychains', '-d', 'user', '-s', ...original])
+        NODE
+        fi
+        if [ -e "$signing_dir/release.keychain-db" ]; then
+          security delete-keychain "$signing_dir/release.keychain-db" || status=$?
+        fi
+        rm -rf "$signing_dir" || status=$?
+        exit "$status"
     - name: Record the final candidate file inventory
       shell: bash
       run: |

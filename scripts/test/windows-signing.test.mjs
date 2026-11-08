@@ -228,6 +228,36 @@ describe('Windows release signing', () => {
     expect(run).toHaveBeenCalledTimes(2)
   })
 
+  it.each(['refs/tags/v0.2.12-candidate.1', 'refs/tags/v0.2.12-candidate.27'])(
+    'signs a planned candidate through the existing hook: %s',
+    async (ref) => {
+      const run = vi.fn(() => ({ status: 0 }))
+      vi.spyOn(console, 'info').mockImplementation(() => {})
+      const sign = createSigner({ env: { ...fakeEnv(), GITHUB_REF: ref }, run, platform: 'win32' })
+      await sign(task(), packager())
+      expect(run).toHaveBeenCalledTimes(2)
+      expect(run.mock.calls[0][1]).toContain('sign')
+      expect(run.mock.calls[1][0]).toBe('powershell.exe')
+    },
+  )
+
+  it.each([
+    'refs/tags/v0.2.12-candidate.0',
+    'refs/tags/v0.2.12-candidate.01',
+    'refs/tags/v0.2.12-candidate.-1',
+    'refs/tags/v0.2.12-candidate.1.extra',
+    'refs/tags/v0.2.12-mac-signing-check.1',
+  ])('refuses an unplanned candidate signing ref: %s', async (ref) => {
+    const run = vi.fn()
+    await expect(
+      createSigner({ env: { ...fakeEnv(), GITHUB_REF: ref }, run, platform: 'win32' })(
+        task(),
+        packager(),
+      ),
+    ).rejects.toThrow(/restricted/)
+    expect(run).not.toHaveBeenCalled()
+  })
+
   it('refuses partial secrets, non-release refs, other repos, non-Windows and dual signing', async () => {
     const run = vi.fn()
     for (const env of [

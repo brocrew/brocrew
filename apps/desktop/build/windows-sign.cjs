@@ -31,7 +31,10 @@ function createSigner({ env = process.env, run = spawnSync, platform = process.p
       platform !== 'win32' ||
       env.GITHUB_ACTIONS !== 'true' ||
       env.GITHUB_REPOSITORY !== 'brocrew/brocrew' ||
-      (!recordDir && !/^refs\/tags\/v\d+\.\d+\.\d+(-beta\.\d+)?$/.test(env.GITHUB_REF || ''))
+      (!recordDir &&
+        !/^refs\/tags\/v\d+\.\d+\.\d+(-beta\.\d+|-candidate\.[1-9]\d*)?$/.test(
+          env.GITHUB_REF || '',
+        ))
     ) {
       throw new Error('Windows signing is restricted to BroCrew release tags on Windows CI')
     }

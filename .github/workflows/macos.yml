@@ -44,6 +44,13 @@ on:
         description: Version stamped into the artifact-only Mac build
         type: string
         default: '0.1.8'
+      signed_release_validation:
+        description: Validate Developer ID signing privately on a reserved validation tag
+        type: boolean
+        default: false
+      accepted_source_sha:
+        description: Reviewed full source SHA required by signed release validation
+        type: string
 
 permissions:
   contents: read
@@ -64,6 +71,8 @@ jobs:
     timeout-minutes: 5
     outputs:
       mac: ${{ steps.flags.outputs.mac }}
+      signing_version: ${{ steps.signing.outputs.version }}
+      signing_source: ${{ steps.signing.outputs.source }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -80,11 +89,79 @@ jobs:
           fi
           echo "mac=$mac" >> "$GITHUB_OUTPUT"
           echo "The head commit asks for a Mac build (+ci / +ci:mac): $mac"
+      - id: signing
+        name: Validate the accepted signed-release tag and source
+        if: github.event_name == 'workflow_dispatch' && inputs.signed_release_validation == true
+        shell: bash
+        env:
+          PACKAGE_VERSION: ${{ inputs.package_version }}
+          ACCEPTED_SOURCE_SHA: ${{ inputs.accepted_source_sha }}
+          GUIDED_UPDATE_REHEARSAL: ${{ inputs.guided_update_rehearsal }}
+        run: |
+          node <<'NODE'
+          const { execFileSync } = require('node:child_process')
+          const { appendFileSync } = require('node:fs')
+          const env = process.env
+          const match = /^refs\/tags\/v(\d+\.\d+\.\d+)-mac-signing-check\.([1-9]\d*)$/.exec(env.GITHUB_REF || '')
+          if (env.GITHUB_REPOSITORY !== 'brocrew/brocrew' || env.GITHUB_EVENT_NAME !== 'workflow_dispatch' ||
+              env.GITHUB_REF_TYPE !== 'tag' || !match || env.PACKAGE_VERSION !== match[1] ||
+              env.GUIDED_UPDATE_REHEARSAL === 'true' || !/^[a-f0-9]{40}$/.test(env.ACCEPTED_SOURCE_SHA || '') ||
+              env.ACCEPTED_SOURCE_SHA !== env.GITHUB_SHA ||
+              execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim() !== env.ACCEPTED_SOURCE_SHA)
+            throw new Error('Signed validation requires its reviewed source, matching version and reserved tag')
+          appendFileSync(env.GITHUB_OUTPUT, `version=${match[1]}\nsource=${env.ACCEPTED_SOURCE_SHA}\n`)
+          NODE
+      - name: The signed-validation leak guard, patterns required
+        if: github.event_name == 'workflow_dispatch' && inputs.signed_release_validation == true
+        shell: bash
+        env:
+          BROBOT_LEAK_PATTERNS: ${{ secrets.BROBOT_LEAK_PATTERNS }}
+        run: node scripts/leak-check.mjs --require-patterns
+
+  signed-release-validation:
+    name: Validate the Mac release signature (no publication)
+    needs: flags
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref_type == 'tag' && inputs.signed_release_validation == true &&
+      needs.flags.outputs.signing_version != '' && needs.flags.outputs.signing_source != ''
+    runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
+    environment: mac-signing
+    timeout-minutes: 100
+    permissions:
+      contents: read
+    concurrency:
+      group: mac-signing-check-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Confirm the accepted checkout before signing
+        shell: bash
+        env:
+          ACCEPTED_SOURCE_SHA: ${{ needs.flags.outputs.signing_source }}
+        run: test "$(git rev-parse HEAD)" = "$ACCEPTED_SOURCE_SHA"
+      - uses: ./.github/actions/signed-mac
+        with:
+          version: ${{ needs.flags.outputs.signing_version }}
+          owner: brocrew
+          repo: brocrew
+          artifact_name: mac-signing-validation-${{ github.run_id }}-${{ github.run_attempt }}
+        env:
+          MAC_EXPECTED_TEAM_ID: ${{ vars.MAC_EXPECTED_TEAM_ID }}
+          MAC_EXPECTED_SIGNING_AUTHORITY: ${{ vars.MAC_EXPECTED_SIGNING_AUTHORITY }}
+          MAC_CERT_P12_BASE64: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          MAC_CERT_P12_PASSWORD: ${{ secrets.MAC_CERT_P12_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
 
   macos:
     name: Build the Mac app (dmg, Apple silicon, signed ad hoc)
     needs: flags
     if: >-
+      inputs.signed_release_validation != true &&
       !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-') &&
       (
         (github.event_name == 'workflow_dispatch' && inputs.guided_update_rehearsal != true) ||
@@ -241,6 +318,7 @@ jobs:
   guided-update-rehearsal:
     name: Opt-in guided update rehearsal
     if: >-
+      inputs.signed_release_validation != true &&
       !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-') &&
       (
         github.event_name == 'workflow_dispatch' && inputs.guided_update_rehearsal == true
@@ -256,6 +334,7 @@ jobs:
     name: Recovery real-entry check (macOS)
     needs: flags
     if: >-
+      inputs.signed_release_validation != true &&
       !startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-') && !startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-') &&
       (
         github.event_name == 'workflow_dispatch' ||
