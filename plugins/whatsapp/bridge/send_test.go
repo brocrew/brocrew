@@ -15,9 +15,9 @@ import (
 func TestAudioCaptionSendOutcome(t *testing.T) {
 	cause := errors.New("caption transport disconnected")
 	for _, scenario := range []struct {
-		name string
+		name   string
 		failAt int
-		calls int
+		calls  int
 	}{
 		{"caption fails after audio", 2, 2},
 		{"audio fails", 1, 1},
@@ -60,7 +60,7 @@ func TestAudioCaptionSendOutcome(t *testing.T) {
 				if !strings.Contains(err.Error(), "audio sent") {
 					t.Fatalf("confirmed audio send lost: %v", err)
 				}
-				if response.Code != http.StatusBadGateway || body["error"] != "caption_failed" || body["audioSent"] != true || body["captionSent"] != false || body["cause"] != cause.Error() {
+			if response.Code != http.StatusBadGateway || body["error"] != "caption_failed" || body["audioSent"] != true || body["captionSent"] != false || body["cause"] != cause.Error() {
 					t.Fatalf("partial outcome lost at HTTP: %d %s", response.Code, response.Body.String())
 				}
 			case 1:

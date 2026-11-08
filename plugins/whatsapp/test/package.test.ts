@@ -524,10 +524,8 @@ describe('sending', () => {
     })
     expect(sendCalls).toBe(1)
     expect(refusals()).toEqual([])
-    expect(
-      (await call('send_to_group', { group: ROWING.jid, text: 'Meet at six', file })).content[0]
-        .text,
-    ).toBe(refused(REFUSALS.duplicate))
+    const repeated = await call('send_to_group', { group: ROWING.jid, text: 'Meet at six', file })
+    expect(repeated.content[0].text).toBe(refused(REFUSALS.duplicate))
     expect(sendCalls).toBe(1)
   })
 
