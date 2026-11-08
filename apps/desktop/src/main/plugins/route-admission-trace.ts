@@ -3,30 +3,69 @@ import { closeSync, fstatSync, ftruncateSync, openSync, writeSync } from 'node:f
 import { join } from 'node:path'
 
 const conditions = [
-  'bearer', 'accepting', 'current', 'bridge-closed', 'lease-invalid', 'view-invalid',
-  'incarnation-retired', 'entry-replaced', 'run-replaced', 'workspace-ended',
-  'plugin-blocked', 'installation-replaced', 'run-installation-replaced', 'run-ended',
-  'admission-error', 'broker-discovery',
+  'bearer',
+  'accepting',
+  'current',
+  'bridge-closed',
+  'lease-invalid',
+  'view-invalid',
+  'incarnation-retired',
+  'entry-replaced',
+  'run-replaced',
+  'workspace-ended',
+  'plugin-blocked',
+  'installation-replaced',
+  'run-installation-replaced',
+  'run-ended',
+  'admission-error',
+  'broker-discovery',
 ] as const
 const errors = [
-  'unknown', 'state-corrupt', 'state-conflict', 'state-busy', 'state-unsafe-path',
-  'state-limit', 'state-missing-guard', 'state-unsupported', 'supervisor-unavailable',
-  'broker-invalid', 'broker-unauthorized', 'broker-unavailable', 'broker-denied',
-  'broker-busy', 'broker-cancelled', 'broker-deadline', 'broker-downstream',
+  'unknown',
+  'state-corrupt',
+  'state-conflict',
+  'state-busy',
+  'state-unsafe-path',
+  'state-limit',
+  'state-missing-guard',
+  'state-unsupported',
+  'supervisor-unavailable',
+  'broker-invalid',
+  'broker-unauthorized',
+  'broker-unavailable',
+  'broker-denied',
+  'broker-busy',
+  'broker-cancelled',
+  'broker-deadline',
+  'broker-downstream',
 ] as const
 export interface AdmissionFailure {
   condition: (typeof conditions)[number]
   error?: (typeof errors)[number]
 }
 export type AdmissionObserver = (failure: AdmissionFailure) => void
-export function observeAdmission(observer: AdmissionObserver | undefined, failure: AdmissionFailure) {
-  try { observer?.(failure) } catch { /* An observer grants no authority. */ }
+export function observeAdmission(
+  observer: AdmissionObserver | undefined,
+  failure: AdmissionFailure,
+) {
+  try {
+    observer?.(failure)
+  } catch {
+    /* An observer grants no authority. */
+  }
 }
 
 const events = [
-  'source-refresh', 'release-received', 'source-retired', 'route-issued', 'route-reused',
-  'route-close-start', 'route-close-complete', 'http-bearer-refused',
-  'http-current-refused', 'http-broker-refused', 'tool-current-refused',
+  'source-refresh',
+  'release-received',
+  'source-retired',
+  'route-issued',
+  'route-close-start',
+  'route-close-complete',
+  'http-bearer-refused',
+  'http-current-refused',
+  'http-broker-refused',
+  'tool-current-refused',
 ] as const
 const identities = ['workspace', 'source', 'lease', 'epoch', 'route', 'hostRun', 'request'] as const
 type Identity = (typeof identities)[number]
@@ -48,27 +87,46 @@ export interface RouteAdmissionTrace {
 
 /** One supervisor-local namespace, no alias registry and no credential-derived identifiers. */
 export function createRouteAdmissionTrace(sink?: RouteAdmissionSink) {
-  let key: Buffer | undefined, process: string | undefined, sequence = 0
+  let key: Buffer | undefined,
+    process: string | undefined,
+    sequence = 0
   try {
     key = randomBytes(32)
     process = randomBytes(16).toString('hex')
-  } catch { /* Missing diagnostics cannot prevent startup. */ }
+  } catch {
+    /* Missing diagnostics cannot prevent startup. */
+  }
   const alias = (kind: Identity, value: string) => {
     try {
-      if (key) return createHmac('sha256', key).update(kind).update('\0').update(value).digest('hex').slice(0, 32)
-    } catch { /* Identity observation only. */ }
+      if (key)
+        return createHmac('sha256', key)
+          .update(kind)
+          .update('\0')
+          .update(value)
+          .digest('hex')
+          .slice(0, 32)
+    } catch {
+      /* Identity observation only. */
+    }
     return undefined
   }
   return (aliases: Aliases): RouteAdmissionTrace => ({
     aliases,
     alias,
     fresh(kind) {
-      try { return alias(kind, randomBytes(16).toString('hex')) } catch { return undefined }
+      try {
+        return alias(kind, randomBytes(16).toString('hex'))
+      } catch {
+        return undefined
+      }
     },
     emit(event, detail, request) {
       try {
-        if (process) sink?.({ ...aliases, process, sequence: ++sequence, event, ...detail, request })
-      } catch { /* Includes observer serialization and file cleanup failures. */ }
+        if (process)
+          sink?.({ ...aliases, process, sequence: ++sequence, event, ...detail, request })
+      } catch {
+        /* Includes observer serialization and file cleanup failures. */
+      }
     },
   })
 }
@@ -91,7 +149,9 @@ export function recordRouteAdmissionTrace(root: string, event: RouteAdmissionEve
     }
     const line = JSON.stringify(row) + '\n'
     const path = join(root, 'plugin-route-admission.log')
-    try { fd = openSync(path, 'r+') } catch (error) {
+    try {
+      fd = openSync(path, 'r+')
+    } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
       fd = openSync(path, 'wx', 0o600)
     }
@@ -99,8 +159,13 @@ export function recordRouteAdmissionTrace(root: string, event: RouteAdmissionEve
     const full = stat.size + Buffer.byteLength(line) > 1024 * 1024
     if (full) ftruncateSync(fd, 0)
     writeSync(fd, line, full ? 0 : stat.size)
-  } catch { /* Diagnostics never change admission. */ }
-  finally {
-    try { if (fd !== undefined) closeSync(fd) } catch { /* Cleanup is observational too. */ }
+  } catch {
+    /* Diagnostics never change admission. */
+  } finally {
+    try {
+      if (fd !== undefined) closeSync(fd)
+    } catch {
+      /* Cleanup is observational too. */
+    }
   }
 }

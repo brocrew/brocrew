@@ -1,6 +1,10 @@
 import { reportPluginToolFailure, type PluginToolDiagnostic } from './tool-diagnostics'
 import { PluginBrokerError } from './tool-broker'
-import { type AdmissionFailure, type AdmissionObserver, type RouteAdmissionTrace } from './route-admission-trace'
+import {
+  type AdmissionFailure,
+  type AdmissionObserver,
+  type RouteAdmissionTrace,
+} from './route-admission-trace'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { createServer, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -258,7 +262,9 @@ export async function openManagedPluginRoute(
         let admitted = false
         if (accepting) {
           failure = { condition: 'current' }
-          admitted = current((one) => { failure = one })
+          admitted = current((one) => {
+            failure = one
+          })
         }
         if (!admitted) {
           trace?.emit('http-current-refused', failure, request)
@@ -284,10 +290,14 @@ export async function openManagedPluginRoute(
         try {
           broker.agent.discover(agent)
         } catch (error) {
-          trace?.emit('http-broker-refused', {
-            condition: 'broker-discovery',
-            error: error instanceof PluginBrokerError ? `broker-${error.code}` : 'unknown',
-          }, request)
+          trace?.emit(
+            'http-broker-refused',
+            {
+              condition: 'broker-discovery',
+              error: error instanceof PluginBrokerError ? `broker-${error.code}` : 'unknown',
+            },
+            request,
+          )
           report('route-unavailable')
           res.writeHead(401)
           res.end()
@@ -365,7 +375,11 @@ export async function openManagedPluginRoute(
         }))
         mcp.setRequestHandler(CallToolRequestSchema, async (call) => {
           let failure: AdmissionFailure = { condition: 'current' }
-          if (!current((one) => { failure = one })) {
+          if (
+            !current((one) => {
+              failure = one
+            })
+          ) {
             trace?.emit('tool-current-refused', failure, request)
             report('route-stale')
             return textReply()

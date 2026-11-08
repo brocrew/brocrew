@@ -1,4 +1,8 @@
-import { observeAdmission, type AdmissionObserver, type AdmissionFailure } from '../route-admission-trace'
+import {
+  observeAdmission,
+  type AdmissionObserver,
+  type AdmissionFailure,
+} from '../route-admission-trace'
 import { PluginStateError } from '../state/format'
 import {
   pluginStartupDiagnostic,
@@ -427,15 +431,30 @@ export class PluginLifecycleController {
   private current(id: string): Installation | undefined {
     return this.options.state.committedActivation().entries.find((one) => one.pluginId === id)
   }
-  admitted(handle: LifecycleWorkspace, id: string, installId: string, observer?: AdmissionObserver): boolean {
+  admitted(
+    handle: LifecycleWorkspace,
+    id: string,
+    installId: string,
+    observer?: AdmissionObserver,
+  ): boolean {
     try {
       const workspace = this.workspace(handle)
-      return this.admittedIn(workspace, id, installId, this.options.state.readWorkspaceAdmission(), observer)
+      return this.admittedIn(
+        workspace,
+        id,
+        installId,
+        this.options.state.readWorkspaceAdmission(),
+        observer,
+      )
     } catch (error) {
       const code = error instanceof PluginStateError ? error.code : undefined
       observeAdmission(observer, {
         condition: 'admission-error',
-        error: code ? `state-${code}` : error instanceof PluginSupervisorError && error.code === 'unavailable' ? 'supervisor-unavailable' : 'unknown',
+        error: code
+          ? `state-${code}`
+          : error instanceof PluginSupervisorError && error.code === 'unavailable'
+            ? 'supervisor-unavailable'
+            : 'unknown',
       })
       return false
     }
