@@ -21418,7 +21418,6 @@ export class RuntimeHost implements LiveHost {
       connectionId === undefined
         ? this.deps.createRuntime(input.provider)
         : this.deps.createRuntime(input.provider, connectionId)
-    const runtime = this.runtimeWithPlugins(rawRuntime, input.provider, profileId)
     // 🔴 **D-042 · R1 — every start names its model and effort** (024's effort, 038's model): what
     // the caller named, else this agent's default, else the last pair a person picked on this
     // provider, else the provider's own default BY NAME — {@link theSelectedModel}, after the home is
@@ -21496,6 +21495,7 @@ export class RuntimeHost implements LiveHost {
       (startPhases) => {
         if (builtInSkills && !builtInSkills.isCurrent()) throw new Error(BUILT_IN_SKILLS_FAILURE)
         this.assertConnectionUnchanged(input.provider, connectionRevision)
+        const runtime = this.runtimeWithPlugins(rawRuntime, input.provider, profileId)
         return runtime.start({
           startPhases,
           cwd,
@@ -40190,7 +40190,6 @@ export class RuntimeHost implements LiveHost {
       connectionId === undefined
         ? this.deps.createRuntime(row.provider)
         : this.deps.createRuntime(row.provider, connectionId)
-    const runtime = this.runtimeWithPlugins(rawRuntime, row.provider, row.profileId)
     const selected = await this.theSelectedModel(row.provider, row.profileId, profileId, {
       ...(recordedModel === undefined ? {} : { model: recordedModel }),
       ...(recordedEffort === undefined ? {} : { effort: recordedEffort }),
@@ -40283,6 +40282,7 @@ export class RuntimeHost implements LiveHost {
         }
         if (builtInSkills && !builtInSkills.isCurrent()) throw new Error(BUILT_IN_SKILLS_FAILURE)
         this.assertConnectionUnchanged(row.provider, connectionRevision)
+        const runtime = this.runtimeWithPlugins(rawRuntime, row.provider, row.profileId)
         return runtime.resume(row.ref, {
           startPhases,
           providerHome,
