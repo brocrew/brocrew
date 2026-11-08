@@ -1,4 +1,4 @@
-name: Sealed native Chrome 010 packaged archive smoke
+name: Sealed WhatsApp 015 external archive smoke on host 90c
 on:
   workflow_dispatch:
 permissions:
@@ -27,26 +27,22 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-          ref: cfe64af3add0e9104cd5f4f940c23c9a758ca4b0
+          ref: 90c4db564be21eb4fa22b7fba95c5d861ac95b29
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: pnpm
-      - uses: actions/setup-go@v6
-        with:
-          go-version: '1.27.2'
-          cache-dependency-path: plugins/whatsapp/bridge/go.sum
       - run: pnpm install --frozen-lockfile
       - uses: actions/download-artifact@v4
         with:
           github-token: ${{ github.token }}
-          run-id: 42439104384
-          name: chrome-010-native-unpublished-inputs
-          path: ${{ runner.temp }}/native-010-inputs
+          run-id: 42507970993
+          name: whatsapp-015-native-unpublished-inputs
+          path: ${{ runner.temp }}/native-wa015-inputs
       - name: Prepare exact sealed archives without rebuilding plugins
         env:
-          NATIVE_INPUTS: ${{ runner.temp }}/native-010-inputs
+          NATIVE_INPUTS: ${{ runner.temp }}/native-wa015-inputs
           SMOKE_PACKAGES: ${{ runner.temp }}/smoke-plugins
           SMOKE_EVIDENCE: ${{ runner.temp }}/archive-smoke-evidence
         run: |
@@ -56,13 +52,25 @@ jobs:
           import path from 'node:path';
           import assert from 'node:assert/strict';
           import {createHash} from 'node:crypto';
+          import {execFileSync} from 'node:child_process';
           const sha = bytes => createHash('sha256').update(bytes).digest('hex');
+          const host = execFileSync('git', ['rev-parse', 'HEAD'], {encoding:'utf8'}).trim();
+          const hostTree = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], {encoding:'utf8'}).trim();
+          assert.equal(host, '90c4db564be21eb4fa22b7fba95c5d861ac95b29');
+          assert.equal(hostTree, 'cf373e75a8fb2336fd92799fb003270257bb6c38');
           const receiptBytes = fs.readFileSync(path.join(process.env.NATIVE_INPUTS, 'plugin-inputs.json'));
-          assert.equal(sha(receiptBytes), 'dea774e7164370f9b7c14cd59b83500ad5e6e6ce49d22f55e08d4f8a16b071aa');
+          assert.equal(sha(receiptBytes), '0e190e67a005216d3e45c8a9207a927603f28ef4f14cb1e3d7c37ac1fa7999d0');
           const input = JSON.parse(receiptBytes);
-          const chrome = input.plugins.find(plugin => plugin.id === 'chrome');
-          assert.equal(chrome.sourceCommit, 'b5828f35340d396f9840bb7f6b8d48fa74bd69fe');
-          assert.equal(chrome.version, '0.1.10');
+          assert.equal(input.sourceTree, 'c62e2d1f976aaa0cbfd7c55c6efa3490ad9356b8');
+          const wa = input.plugins.find(plugin => plugin.id === 'whatsapp');
+          assert.equal(wa.sourceCommit, 'ca64de2dd71c766574fe1d815a5b069c0d2949c7');
+          assert.equal(wa.version, '0.1.5');
+          const entryBytes = fs.readFileSync(path.join(process.env.NATIVE_INPUTS, 'plugin-list-entry.json'));
+          assert.equal(sha(entryBytes), '5e2e56bd489d42b45e42ee43603157d758e76f606f2b8772d0c5f1221e3e03d2');
+          assert.deepEqual(wa.catalogueEntry, JSON.parse(entryBytes));
+          const chrome = JSON.parse(fs.readFileSync('plugins/catalogue-v2.json')).entries.find(entry => entry.id === 'chrome');
+          assert.equal(chrome.version, '0.1.11');
+          assert.equal(chrome.sourceCommit, 'f0a3561d11880d4961652b2d0364dc5a6a84c401');
           async function download(url) {
             const response = await fetch(url, {signal: AbortSignal.timeout(120000)});
             assert.ok(response.ok, `Download failed: ${response.status}`);
@@ -70,20 +78,20 @@ jobs:
             assert.ok(bytes.length <= 32 * 1024 * 1024);
             return bytes;
           }
-          const waBytes = await download('https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v0.1.4/plugin-list-entry.json');
-          assert.equal(sha(waBytes), 'acba38aea06fa5cae78c585adb709dfef68a6fd3c0d4c4168a4f382013aec86f');
-          const wa = JSON.parse(waBytes);
-          assert.equal(wa.id, 'whatsapp'); assert.equal(wa.version, '0.1.4');
           const records = [];
           fs.mkdirSync(process.env.SMOKE_PACKAGES);
           fs.mkdirSync(process.env.SMOKE_EVIDENCE);
-          for (const entry of [chrome.catalogueEntry, wa]) {
+          for (const entry of [chrome, wa.catalogueEntry]) {
             const target = entry.targets.find(target => target.os === process.platform && target.cpu === process.arch);
             assert.ok(target); assert.equal(target.compression, 'tar.gz');
-            const archive = entry.id === 'chrome'
-              ? fs.readFileSync(path.join(process.env.NATIVE_INPUTS, `chrome-${target.os}-${target.cpu}.tar.gz`))
+            const archive = entry.id === 'whatsapp'
+              ? fs.readFileSync(path.join(process.env.NATIVE_INPUTS, `whatsapp-${target.os}-${target.cpu}.tar.gz`))
               : await download(target.url);
             assert.equal(archive.length, target.bytes); assert.equal(sha(archive), target.sha256);
+            if (entry.id === 'whatsapp') {
+              const manifest = fs.readFileSync(path.join(process.env.NATIVE_INPUTS, `whatsapp-${target.os}-${target.cpu}.plugin.json`));
+              assert.equal(sha(manifest), target.manifestSha256);
+            }
             const fixture = {id: entry.id, authors: entry.authors, version: entry.version,
               sourceCommit: entry.sourceCommit, platforms: [{os: target.os, cpu: target.cpu}],
               archive: {url: target.url, size: target.bytes, sha256: target.sha256, compression: 'tar.gz'},
@@ -96,19 +104,24 @@ jobs:
             records.push(fixture);
           }
           fs.writeFileSync(path.join(process.env.SMOKE_EVIDENCE, 'archive-inputs.json'), JSON.stringify(records, null, 2) + '\n');
+          fs.writeFileSync(path.join(process.env.SMOKE_EVIDENCE, 'build-inputs.json'), JSON.stringify({
+            host, hostTree, buildRun:42507970993, buildArtifact:13628292031,
+            builder:'cba2eaf3d9d6ab0cf2d32eef1db583d6ce6e5ecd',
+            source:wa.sourceCommit, receiptSha256:sha(receiptBytes),
+          }, null, 2) + '\n');
           console.log(JSON.stringify(records));
           JS
           git rev-parse HEAD
       - name: Build the app directory
-        run: pnpm --filter @brobot2/desktop ${{ matrix.script }} --dir -c.extraMetadata.version=0.2.9 --publish never
-      - name: Call Chrome and describe WhatsApp through the built service
+        run: pnpm --filter @brobot2/desktop ${{ matrix.script }} --dir -c.extraMetadata.version=0.2.12 --publish never
+      - name: Call Chrome and list WhatsApp tools through the built service
         run: |
           set -euo pipefail
           node scripts/packaged-plugin-service-check.mjs "${{ matrix.resources }}" "$RUNNER_TEMP/smoke-plugins" 2>&1 | tee "$RUNNER_TEMP/archive-smoke-evidence/service-check.log"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: sealed-native-010-smoke-${{ matrix.target }}
+          name: sealed-wa015-smoke-${{ matrix.target }}
           path: ${{ runner.temp }}/archive-smoke-evidence
           if-no-files-found: error
           retention-days: 7
