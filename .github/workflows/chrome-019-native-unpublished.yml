@@ -49,6 +49,8 @@ jobs:
       - name: Build both normal unpublished release archives
         working-directory: native-source
         shell: pwsh
+        env:
+          GOCACHE: ${{ runner.temp }}/whatsapp-015-go-cache
         run: |
           node scripts/build-plugin-release.mjs whatsapp "$env:RUNNER_TEMP/whatsapp-015-native-release"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
