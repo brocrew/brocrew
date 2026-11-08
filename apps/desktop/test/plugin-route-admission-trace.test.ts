@@ -1,4 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -7,7 +9,9 @@ import { pluginProviderFixture } from './fixtures/plugin-provider-fixture'
 import { openManagedPluginRoute } from '../src/main/plugins/managed-transport'
 import {
   createRouteAdmissionTrace,
+  observeAdmission,
   recordRouteAdmissionTrace,
+  type AdmissionObserver,
   type RouteAdmissionEvent,
 } from '../src/main/plugins/route-admission-trace'
 
@@ -143,4 +147,43 @@ it('skips current after close starts even for an already accepted request callba
   })
   await closed
   expect(events.at(-1)?.event).toBe('route-close-complete')
+})
+
+it('keeps a handler refusal distinct from HTTP 401 after the same request passed admission', async () => {
+  const f = await pluginProviderFixture()
+  cleanup.push(() => f.close())
+  const original = await f.route('fictional-caller')
+  const events: RouteAdmissionEvent[] = []
+  const scope = createRouteAdmissionTrace((event) => {
+    events.push(event)
+    throw new Error('fictional observer failure')
+  })
+  const routeId = scope({}).fresh('route')
+  const trace = scope({ route: routeId })
+  const fresh = vi.spyOn(trace, 'fresh')
+  const current = vi.fn((_observer?: AdmissionObserver) => true)
+  const route = await openManagedPluginRoute(f.broker, original.agent, current, undefined, trace)
+  cleanup.push(() => route.close())
+  const client = new Client({ name: 'fictional-handler-refusal', version: '1' })
+  cleanup.push(() => client.close())
+  client.onerror = () => undefined
+  await client.connect(new StreamableHTTPClientTransport(new URL(route.server.url), {
+    requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
+  }))
+  fresh.mockClear()
+  current.mockReset().mockReturnValueOnce(true).mockImplementation((observer) => {
+    observeAdmission(observer, { condition: 'lease-invalid' })
+    return false
+  })
+  const reply = await client.callTool({ name: 'echo', arguments: {} })
+  expect(reply).toMatchObject({ isError: true, content: [{ type: 'text', text: 'Plugin unavailable. Try again.' }] })
+  expect(current).toHaveBeenCalledTimes(2)
+  expect(fresh).toHaveBeenCalledTimes(1)
+  expect(events).toHaveLength(1)
+  expect(events[0]).toMatchObject({
+    event: 'tool-current-refused', condition: 'lease-invalid', route: routeId,
+    request: fresh.mock.results[0]!.value,
+  })
+  expect(events[0]!.request).toMatch(/^[a-f0-9]{32}$/)
+  expect(f.seen).toEqual([])
 })
