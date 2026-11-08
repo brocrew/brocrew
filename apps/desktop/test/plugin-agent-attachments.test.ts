@@ -81,6 +81,7 @@ async function connected(route: ManagedPluginMcpServer) {
 }
 async function live(
   change: {
+    routeTrace?: (event: unknown) => void
     firstExit?: Promise<void>
     firstStop?: () => Promise<void>
     now?: () => number
@@ -178,6 +179,55 @@ async function live(
     },
   }
 }
+
+it('traces a refused HTTP admission with opaque lifecycle correlation and the original typed cause', async () => {
+  const events: unknown[] = []
+  const f = await live({ routeTrace: (event) => events.push(event) })
+  const one = lease()
+  const ask = request('fictional-private-workspace')
+  const [route] = await f.bridge.routes(one, ask)
+  expect(route).toBeDefined()
+  // The original state read refuses. Diagnostics must not read it again.
+  const original = f.opts.state.readWorkspaceAdmission.bind(f.opts.state)
+  const read = vi.spyOn(f.opts.state, 'readWorkspaceAdmission')
+  const { PluginStateError } = await import('../src/main/plugins/state/format')
+  const error = new PluginStateError('busy')
+  error.message = 'fictional-private-error-body'
+  read.mockImplementation(() => { throw error })
+  try {
+    const response = await fetch(route.url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${route.capability}` },
+    })
+    expect(response.status).toBe(401)
+    expect(read).toHaveBeenCalledTimes(1)
+    const refused = events.find((event) => (event as { event: string }).event === 'http-current-refused')
+    expect(refused).toMatchObject({
+      event: 'http-current-refused',
+      condition: 'admission-error',
+      error: 'state-busy',
+      request: expect.stringMatching(/^[a-f0-9]{32}$/),
+      route: expect.stringMatching(/^[a-f0-9]{32}$/),
+      source: expect.stringMatching(/^[a-f0-9]{32}$/),
+      workspace: expect.stringMatching(/^[a-f0-9]{32}$/),
+      lease: expect.stringMatching(/^[a-f0-9]{32}$/),
+      epoch: expect.stringMatching(/^[a-f0-9]{32}$/),
+      hostRun: expect.stringMatching(/^[a-f0-9]{32}$/),
+    })
+    const serialized = JSON.stringify(events)
+    for (const secret of [route.capability, route.url, ask.workspaceId, ask.incarnation, one.id, one.epoch, error.message])
+      expect(serialized).not.toContain(secret)
+  } finally {
+    read.mockImplementation(original)
+  }
+  await f.bridge.routes(one, ask)
+  await f.bridge.routes(one, { ...ask, release: true })
+  const labels = events.map((event) => (event as { event: string }).event)
+  expect(labels).toEqual(expect.arrayContaining(['route-issued', 'source-refresh', 'release-received', 'source-retired', 'route-close-start', 'route-close-complete']))
+  const rows = events as { sequence: number; process: string }[]
+  expect(rows.every((row, index) => index === 0 || row.sequence > rows[index - 1]!.sequence)).toBe(true)
+  expect(new Set(rows.map((row) => row.process)).size).toBe(1)
+})
 async function holdToolCall(
   f: Awaited<ReturnType<typeof live>>,
   quiescent: Promise<void> = new Promise(() => {}),
