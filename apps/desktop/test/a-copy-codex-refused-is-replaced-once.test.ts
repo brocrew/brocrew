@@ -1,3 +1,4 @@
+import type { RuntimeHostDeps } from '../src/main/runtime/host-dependencies'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
 import { createHash } from 'node:crypto'
@@ -273,6 +274,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
   let codex: StandInCodex
   let accepted: Set<string>
   let starts: string[]
+  let pluginAttachments: RuntimeHostDeps['pluginAttachments']
   let claudes: FakeSessionHandle[]
   /** How often the host reached the writer that replaces a copy, and how often it has answered. */
   let writer: { reached: number; answered: number }
@@ -291,6 +293,7 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
     machine = join(mkdtempSync(join(tmpdir(), 'brobot2-machine-')), 'auth.json')
     db = openDatabase(join(userData, 'brobot2.sqlite'))
     applyMigrations(db, migrations)
+    pluginAttachments = undefined
     accepted = new Set()
     starts = []
     claudes = []
@@ -313,6 +316,12 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
     aSignIn = () => Promise.reject(new Error('no sign-in is staged'))
     host = new RuntimeHost({
       store: (store = createSessionStore(db)),
+      pluginAttachments: {
+        agent(occupied) {
+          if (!pluginAttachments) throw new Error('fictional attachments disabled')
+          return pluginAttachments.agent(occupied)
+        },
+      },
       ...neutralHostDeps(() => userData),
       createRuntime: (provider: Provider) => (provider === 'codex' ? codex : new AClaude(claudes)),
       prepareProviderHome: (provider, profileId) =>
@@ -386,6 +395,109 @@ describe('a copy of a Codex sign-in that Codex refused is replaced once, by the 
         }),
     }
   }
+
+  it.each(['start', 'resume'] as const)(
+    'repeated %s gets a new plugin source after the refused launch releases its source',
+    async (mode) => {
+      const sources: { closed: boolean; reads: number; closes: number }[] = []
+      const agent = vi.fn(() => {
+        const source = { closed: false, reads: 0, closes: 0 }
+        sources.push(source)
+        const route = {
+          name: 'plugin-fern',
+          url: 'http://127.0.0.1:8123/mcp',
+          capability: String(sources.length).repeat(64),
+        }
+        return {
+          async read() {
+            source.reads++
+            if (source.closed) throw new Error('fictional released source')
+            return { revision: String(sources.length), servers: [route] }
+          },
+          async close() {
+            source.closed = true
+            source.closes++
+          },
+        }
+      })
+      aHelperHolding(DEAD)
+      let sessionId: string | undefined
+      if (mode === 'resume') {
+        accept(DEAD)
+        sessionId = (await start()).sessionId
+        await host.close(sessionId, watching)
+        accepted.clear()
+      }
+      pluginAttachments = { agent }
+      const fresh = vi.spyOn(codex, 'start'),
+        resumed = vi.spyOn(codex, 'resume')
+      writeFileSync(machine, THE_COMPUTERS)
+      accept(THE_COMPUTERS)
+      const opened =
+        mode === 'start' ? await start() : await host.resumeSession(sessionId!, watching)
+      expect(starts).toEqual(
+        mode === 'start' ? digests(DEAD, THE_COMPUTERS) : digests(DEAD, DEAD, THE_COMPUTERS),
+      )
+      const counts =
+        mode === 'start'
+          ? fresh.mock.calls.map(([options]) => options.managedPluginMcp?.length)
+          : resumed.mock.calls.map(([, options]) => options.managedPluginMcp?.length)
+      expect(counts[0]).toBe(1)
+      expect(sources[0]!.reads).toBeGreaterThan(0)
+      expect(counts).toEqual([1, 1])
+      expect(agent).toHaveBeenCalledTimes(2)
+      expect(sources.map((one) => one.closed)).toEqual([true, false])
+      expect(sources.map((one) => one.closes)).toEqual([1, 0])
+      await host.close(opened.sessionId, watching)
+      expect(sources.map((one) => one.closes)).toEqual([1, 1])
+    },
+  )
+
+  it.each(['ordinary', 'both-refused', 'no-replacement', 'other-error', 'cancelled'] as const)(
+    'plugin source cleanup preserves the %s launch outcome',
+    async (mode) => {
+      const sources: { closes: number; reads: number }[] = []
+      pluginAttachments = {
+        agent: () => {
+          const source = { closes: 0, reads: 0 }
+          sources.push(source)
+          return {
+            async read() {
+              source.reads++
+              return { revision: 'one', servers: [] }
+            },
+            async close() {
+              source.closes++
+            },
+          }
+        },
+      }
+      aHelperHolding(DEAD)
+      if (mode === 'ordinary') accept(DEAD)
+      if (mode === 'both-refused' || mode === 'other-error' || mode === 'cancelled')
+        writeFileSync(machine, THE_COMPUTERS)
+      if (mode === 'other-error') codex.failsOtherwise = true
+      if (mode === 'cancelled')
+        codex.asItRefuses = () => {
+          void host.closeAll()
+        }
+      if (mode === 'ordinary') {
+        const opened = await start()
+        expect(sources.map((one) => one.closes)).toEqual([0])
+        await host.close(opened.sessionId, watching)
+      } else if (mode === 'other-error') {
+        await expect(start()).rejects.toThrow('the program did not start')
+      } else if (mode === 'cancelled') {
+        await expect(start()).rejects.toThrow()
+      } else {
+        await expect(start()).rejects.toBeInstanceOf(CodexRefusedItsSignInError)
+      }
+      const attempts = mode === 'both-refused' ? 2 : 1
+      expect(starts).toHaveLength(attempts)
+      expect(sources).toHaveLength(attempts)
+      expect(sources.every((one) => one.reads === 1 && one.closes === 1)).toBe(true)
+    },
+  )
 
   describe('at a start', () => {
     it('🔴 a dead copy is replaced by this computer’s, refreshed later, and the start goes through', async () => {
