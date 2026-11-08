@@ -386,6 +386,7 @@ function aPipeReadLater(path: string, kind: 'log' | 'console', afterMs: number) 
     const chunks = []
     const buffer = Buffer.alloc(65536)
     for (;;) {
+      const stopping = Atomics.load(stop, 0) === 1
       let read = 0
       try {
         read = fs.readSync(ends.read, buffer, 0, buffer.length, null)
@@ -393,7 +394,7 @@ function aPipeReadLater(path: string, kind: 'log' | 'console', afterMs: number) 
         if (error.code !== 'EAGAIN') throw error
       }
       if (read > 0) { chunks.push(Buffer.from(buffer.subarray(0, read))); continue }
-      if (Atomics.load(stop, 0) === 1) break
+      if (stopping) break
       sleep(5)
     }
     fs.closeSync(ends.keep)
