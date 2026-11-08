@@ -571,7 +571,10 @@ test('duplicate, malformed or incorrect mounted volumes still fail strictly', ()
     { images: [empty, empty] },
     { images: [empty, mounted] },
     { images: [mounted, mounted] },
-    candidateMountInfo([{ 'mount-point': '/Volumes/BroCrew' }, { 'mount-point': '/Volumes/Other' }]),
+    candidateMountInfo([
+      { 'mount-point': '/Volumes/BroCrew' },
+      { 'mount-point': '/Volumes/Other' },
+    ]),
     candidateMountInfo([{ 'mount-point': '/private/Volumes/BroCrew' }]),
     candidateMountInfo([{ 'mount-point': 42 }]),
     candidateMountInfo([{}]),
