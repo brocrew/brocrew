@@ -1,7 +1,7 @@
-name: Chrome 0.1.10 native birth unpublished build and equality
+name: Chrome 0.1.11 native birth unpublished build and equality
 on:
   push:
-    branches: [diagnostic/chrome-010-native-unpublished]
+    branches: [diagnostic/chrome-011-native-unpublished]
 permissions:
   contents: read
 jobs:
@@ -9,7 +9,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 20
     env:
-      BROCREW_PLUGIN_SOURCE_COMMIT: b5828f35340d396f9840bb7f6b8d48fa74bd69fe
+      BROCREW_PLUGIN_SOURCE_COMMIT: f0a3561d11880d4961652b2d0364dc5a6a84c401
       GOTOOLCHAIN: local
       CGO_ENABLED: '0'
     steps:
@@ -18,7 +18,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v7
         with:
-          ref: b5828f35340d396f9840bb7f6b8d48fa74bd69fe
+          ref: f0a3561d11880d4961652b2d0364dc5a6a84c401
           path: native-source
           persist-credentials: false
       - uses: actions/setup-node@v7
@@ -38,8 +38,8 @@ jobs:
           if ((go env GOVERSION) -ne 'go1.27.2' -or $LASTEXITCODE -ne 0) { throw 'Wrong Go compiler' }
           "BROCREW_GO=$((Get-Command go).Source)" >> $env:GITHUB_ENV
           "BROCREW_MONOREPO_ROOT=$source" >> $env:GITHUB_ENV
-          "NATIVE_INPUTS=$env:RUNNER_TEMP/chrome-010-native-inputs" >> $env:GITHUB_ENV
-          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/chrome-010-native-inputs" | Out-Null
+          "NATIVE_INPUTS=$env:RUNNER_TEMP/chrome-011-native-inputs" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory -Path "$env:RUNNER_TEMP/chrome-011-native-inputs" | Out-Null
           $goFiles = Get-ChildItem "$source/plugins/chrome/native/process-birth/*.go" | ForEach-Object FullName
           $unformatted = gofmt -l @goFiles
           if ($LASTEXITCODE -ne 0 -or $unformatted) { throw "Unformatted Go files: $unformatted" }
@@ -50,12 +50,12 @@ jobs:
         working-directory: native-source
         shell: pwsh
         run: |
-          node scripts/build-plugin-release.mjs chrome "$env:RUNNER_TEMP/chrome-010-native-release"
+          node scripts/build-plugin-release.mjs chrome "$env:RUNNER_TEMP/chrome-011-native-release"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: First helper launch in restricted host environment then actual PS5.1 equality
         shell: pwsh
         run: |
-          node windows-native-birth-equality.mjs "$env:RUNNER_TEMP/chrome-010-native-release/chrome-win32-x64/package/bin/chrome-process-birth.exe" "$env:NATIVE_INPUTS/evidence"
+          node windows-native-birth-equality.mjs "$env:RUNNER_TEMP/chrome-011-native-release/chrome-win32-x64/package/bin/chrome-process-birth.exe" "$env:NATIVE_INPUTS/evidence"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Native self and foreign API tests with exact integer vectors
         working-directory: native-source/plugins/chrome/native/process-birth
@@ -73,12 +73,12 @@ jobs:
           import assert from 'node:assert/strict';
           import {createHash} from 'node:crypto';
           import {execFileSync} from 'node:child_process';
-          const built = path.join(process.env.RUNNER_TEMP, 'chrome-010-native-release');
+          const built = path.join(process.env.RUNNER_TEMP, 'chrome-011-native-release');
           const out = process.env.NATIVE_INPUTS;
           const sha = bytes => createHash('sha256').update(bytes).digest('hex');
           const entry = JSON.parse(fs.readFileSync(path.join(built, 'plugin-list-entry.json')));
           assert.equal(entry.sourceCommit, process.env.BROCREW_PLUGIN_SOURCE_COMMIT);
-          assert.equal(entry.version, '0.1.10');
+          assert.equal(entry.version, '0.1.11');
           const archiveFilename = 'chrome-win32-x64.tar.gz';
           const archive = fs.readFileSync(path.join(built, archiveFilename));
           const manifest = fs.readFileSync(path.join(built, 'chrome-win32-x64/package/plugin.json'));
@@ -111,7 +111,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: chrome-010-native-unpublished-inputs
-          path: ${{ runner.temp }}/chrome-010-native-inputs
+          name: chrome-011-native-unpublished-inputs
+          path: ${{ runner.temp }}/chrome-011-native-inputs
           if-no-files-found: error
           retention-days: 7
