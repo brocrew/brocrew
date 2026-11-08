@@ -9,7 +9,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 20
     env:
-      BROCREW_PLUGIN_SOURCE_COMMIT: c8268c78b501c9614fd08073bf55916420ec7326
+      BROCREW_PLUGIN_SOURCE_COMMIT: ca64de2dd71c766574fe1d815a5b069c0d2949c7
       GOTOOLCHAIN: local
       CGO_ENABLED: '0'
     steps:
@@ -18,7 +18,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v7
         with:
-          ref: c8268c78b501c9614fd08073bf55916420ec7326
+          ref: ca64de2dd71c766574fe1d815a5b069c0d2949c7
           path: native-source
           persist-credentials: false
       - uses: actions/setup-node@v7
