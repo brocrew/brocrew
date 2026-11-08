@@ -1,4 +1,6 @@
 import { reportPluginToolFailure, type PluginToolDiagnostic } from './tool-diagnostics'
+import { PluginBrokerError } from './tool-broker'
+import { type AdmissionFailure, type AdmissionObserver, type RouteAdmissionTrace } from './route-admission-trace'
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { createServer, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -224,8 +226,9 @@ export interface ManagedPluginRoute {
 export async function openManagedPluginRoute(
   broker: PluginToolBroker,
   agent: BrokerAgent,
-  current: () => boolean = () => true,
+  current: (observer?: AdmissionObserver) => boolean = () => true,
   diagnostic?: PluginToolDiagnostic,
+  trace?: RouteAdmissionTrace,
 ): Promise<ManagedPluginRoute> {
   const report = (reason: Parameters<PluginToolDiagnostic>[0]) =>
     reportPluginToolFailure(diagnostic, reason)
@@ -243,13 +246,22 @@ export async function openManagedPluginRoute(
     { maxHeaderSize: 8192, requestTimeout: 15_000, headersTimeout: 10_000 },
     (req, res) => {
       void (async () => {
+        const request = trace?.fresh('request')
         const supplied = Buffer.from(req.headers.authorization ?? '')
         if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
+          trace?.emit('http-bearer-refused', { condition: 'bearer' }, request)
           res.writeHead(401)
           res.end()
           return
         }
-        if (!accepting || !current()) {
+        let failure: AdmissionFailure = { condition: 'accepting' }
+        let admitted = false
+        if (accepting) {
+          failure = { condition: 'current' }
+          admitted = current((one) => { failure = one })
+        }
+        if (!admitted) {
+          trace?.emit('http-current-refused', failure, request)
           report('route-stale')
           res.writeHead(401)
           res.end()
@@ -271,7 +283,11 @@ export async function openManagedPluginRoute(
         }
         try {
           broker.agent.discover(agent)
-        } catch {
+        } catch (error) {
+          trace?.emit('http-broker-refused', {
+            condition: 'broker-discovery',
+            error: error instanceof PluginBrokerError ? `broker-${error.code}` : 'unknown',
+          }, request)
           report('route-unavailable')
           res.writeHead(401)
           res.end()
@@ -348,7 +364,9 @@ export async function openManagedPluginRoute(
           })),
         }))
         mcp.setRequestHandler(CallToolRequestSchema, async (call) => {
-          if (!current()) {
+          let failure: AdmissionFailure = { condition: 'current' }
+          if (!current((one) => { failure = one })) {
+            trace?.emit('tool-current-refused', failure, request)
             report('route-stale')
             return textReply()
           }
@@ -399,6 +417,7 @@ export async function openManagedPluginRoute(
     close() {
       return (closing ??= (async () => {
         accepting = false
+        trace?.emit('route-close-start')
         const closed = new Promise<void>((resolve) => http.close(() => resolve()))
         broker.owner.revoke(agent)
         // Revocation answers the old caller immediately. Let that fixed failure
@@ -420,6 +439,7 @@ export async function openManagedPluginRoute(
         await Promise.allSettled([...exchanges].map((transport) => transport.close()))
         http.closeAllConnections()
         await closed
+        trace?.emit('route-close-complete')
       })())
     },
   }

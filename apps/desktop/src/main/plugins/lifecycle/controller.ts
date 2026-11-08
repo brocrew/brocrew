@@ -1,3 +1,5 @@
+import { observeAdmission, type AdmissionObserver, type AdmissionFailure } from '../route-admission-trace'
+import { PluginStateError } from '../state/format'
 import {
   pluginStartupDiagnostic,
   pluginFailureCause,
@@ -425,11 +427,16 @@ export class PluginLifecycleController {
   private current(id: string): Installation | undefined {
     return this.options.state.committedActivation().entries.find((one) => one.pluginId === id)
   }
-  admitted(handle: LifecycleWorkspace, id: string, installId: string): boolean {
+  admitted(handle: LifecycleWorkspace, id: string, installId: string, observer?: AdmissionObserver): boolean {
     try {
       const workspace = this.workspace(handle)
-      return this.admittedIn(workspace, id, installId, this.options.state.readWorkspaceAdmission())
-    } catch {
+      return this.admittedIn(workspace, id, installId, this.options.state.readWorkspaceAdmission(), observer)
+    } catch (error) {
+      const code = error instanceof PluginStateError ? error.code : undefined
+      observeAdmission(observer, {
+        condition: 'admission-error',
+        error: code ? `state-${code}` : error instanceof PluginSupervisorError && error.code === 'unavailable' ? 'supervisor-unavailable' : 'unknown',
+      })
       return false
     }
   }
@@ -438,17 +445,19 @@ export class PluginLifecycleController {
     id: string,
     installId: string,
     read: WorkspaceAdmission,
+    observer?: AdmissionObserver,
   ) {
     const active = read.installations.find((one) => one.pluginId === id),
       run = this.runs.get(id)
     // The committed installations already leave out a plugin whose operation is pending.
-    return (
-      workspace.live &&
-      !this.blocks.has(id) &&
-      active?.installId === installId &&
-      run?.installId === installId &&
-      !run.ended
-    )
+    let condition: AdmissionFailure['condition'] | undefined
+    if (!workspace.live) condition = 'workspace-ended'
+    else if (this.blocks.has(id)) condition = 'plugin-blocked'
+    else if (active?.installId !== installId) condition = 'installation-replaced'
+    else if (run?.installId !== installId) condition = 'run-installation-replaced'
+    else if (run.ended) condition = 'run-ended'
+    if (condition) observeAdmission(observer, { condition })
+    return condition === undefined
   }
   async status(): Promise<{ cards: PluginCard[]; cleanupPending: string[] }> {
     let unfinished: Unfinished | undefined
@@ -1642,8 +1651,13 @@ export class PluginLifecycleController {
           ...view,
           runId: run.run.runId,
           exited: run.run.exited,
-          current: () =>
-            this.runs.get(id) === run && this.admitted(handle, id, view.installation.installId),
+          current: (observer?: AdmissionObserver) => {
+            if (this.runs.get(id) !== run) {
+              observeAdmission(observer, { condition: 'run-replaced' })
+              return false
+            }
+            return this.admitted(handle, id, view.installation.installId, observer)
+          },
         }
         this.attachmentChecks.set(attachment, (workspaceId, read) => {
           const workspace = this.workspaces.get(handle)

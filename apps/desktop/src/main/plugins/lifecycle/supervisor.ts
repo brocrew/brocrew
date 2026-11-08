@@ -1,4 +1,5 @@
 import { recordPluginToolFailure } from '../tool-diagnostics'
+import { recordRouteAdmissionTrace } from '../route-admission-trace'
 import { sharedLifecycleWorkspaces } from './workspaces'
 import { createLifecycleAgentBridge } from './agent-bridge'
 import { pluginToolRefusalLog } from './chrome-broker'
@@ -43,6 +44,7 @@ export async function createSupervisorLifecycle(options: {
   const refused = pluginToolRefusalLog(options.lifecycle.root)
   const agents = createLifecycleAgentBridge({
     owner: options.owner,
+    routeTrace: (event) => recordRouteAdmissionTrace(options.lifecycle.root, event),
     controller,
     binding: (view, diagnostic) =>
       requirePluginAdapter(view.installation.pluginId).broker(view, refused, diagnostic),

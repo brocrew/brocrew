@@ -1,3 +1,4 @@
+import { createRouteAdmissionTrace, observeAdmission, type RouteAdmissionSink } from '../route-admission-trace'
 import {
   reportPluginToolFailure,
   type PluginToolDiagnostic,
@@ -35,6 +36,7 @@ interface Route {
   pluginId: string
   identity: string
   route: ManagedPluginRoute
+  trace?: ReturnType<ReturnType<typeof createRouteAdmissionTrace>>
   current: (check?: (view: View) => boolean) => boolean
 }
 /** Lives only in the supervisor. Workspace callers receive scoped routes, never private ports. */
@@ -45,6 +47,7 @@ export function createLifecycleAgentBridge(options: {
     'agentAttachments' | 'agentScope' | 'withAgentScope' | 'onHostChanged' | 'attach' | 'detach'
   >
   refused?: () => void | Promise<void>
+  routeTrace?: RouteAdmissionSink
   diagnostic?: (
     pluginId: string,
     reason: Parameters<PluginToolDiagnostic>[0],
@@ -71,6 +74,14 @@ export function createLifecycleAgentBridge(options: {
     >
   >
 }) {
+  const traceFor = createRouteAdmissionTrace(options.routeTrace)
+  const identityTrace = traceFor({})
+  const sourceTrace = (lease: Readonly<WorkspaceLease>, request: Request) => traceFor({
+    workspace: identityTrace.alias('workspace', request.workspaceId),
+    source: identityTrace.alias('source', request.incarnation),
+    lease: identityTrace.alias('lease', lease.id),
+    epoch: identityTrace.alias('epoch', lease.epoch),
+  })
   const answerWithin = options.answerWithinMs ?? 1000
   const openRoute = options.openRoute ?? openManagedPluginRoute
   type Warmup = {
@@ -438,12 +449,27 @@ export function createLifecycleAgentBridge(options: {
           workspace,
           `${request.incarnation}:${randomUUID()}`,
         )
+        const source = sourceTrace(lease, request)
+        const trace = traceFor({
+          ...source.aliases,
+          route: source.fresh('route'),
+          hostRun: source.alias('hostRun', view.runId),
+        })
         const route = await openRoute(
           entry.broker,
           agent,
-          () => valid(lease) && view.current() && !retired.has(caller) && entries.get(id) === work,
+          (observer) => {
+            if (closed) { observeAdmission(observer, { condition: 'bridge-closed' }); return false }
+            if (!options.owner.valid(lease.id, lease.epoch)) { observeAdmission(observer, { condition: 'lease-invalid' }); return false }
+            if (!view.current(observer)) return false
+            if (retired.has(caller)) { observeAdmission(observer, { condition: 'incarnation-retired' }); return false }
+            if (entries.get(id) !== work) { observeAdmission(observer, { condition: 'entry-replaced' }); return false }
+            return true
+          },
           diagnostic(id),
+          trace,
         )
+        trace.emit('route-issued')
         track(route)
         if (!live() || !entry.broker.status().available) {
           await closeRoute(route)
@@ -456,6 +482,7 @@ export function createLifecycleAgentBridge(options: {
           pluginId: id,
           identity,
           route,
+          trace,
           current: (check = (one) => one.current()) =>
             valid(lease) &&
             check(view) &&
@@ -559,8 +586,10 @@ export function createLifecycleAgentBridge(options: {
           !request.occupied.some(
             (name) => name.toLowerCase() === item.route.server.name.toLowerCase(),
           )
-        )
+        ) {
+          item.trace?.emit('route-reused')
           servers.push({ ...item.route.server, pluginId: item.pluginId })
+        }
     servers.sort((a, b) => a.pluginId.localeCompare(b.pluginId))
     const served = new Set(servers.map((one) => one.pluginId))
     return {
@@ -773,9 +802,11 @@ export function createLifecycleAgentBridge(options: {
   }
   function answered(lease: Readonly<WorkspaceLease>, request: Request): Promise<Answer> {
     const caller = `${lease.id}:${request.incarnation}`
+    sourceTrace(lease, request).emit(request.release ? 'release-received' : 'source-refresh')
     if (request.release && valid(lease)) {
       // Release ends authority when requested, even behind a read or cleanup already in flight.
       retired.add(caller)
+      sourceTrace(lease, request).emit('source-retired')
       cancelWarmups((one) => one.caller === caller)
     }
     if (!request.release && (waiting >= 64 || retired.size >= 4096)) {
