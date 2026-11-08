@@ -36,30 +36,30 @@
       "id": "whatsapp",
       "name": "WhatsApp",
       "description": "Lets agents read your WhatsApp chats when you allow it, and send to the groups you choose.",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "authors": [
         "brocrew"
       ],
       "minAppVersion": "0.1.7",
-      "sourceCommit": "768121657b84d003e76d73b963390134d7d1124b",
+      "sourceCommit": "ca64de2dd71c766574fe1d815a5b069c0d2949c7",
       "targets": [
         {
           "os": "darwin",
           "cpu": "arm64",
-          "url": "https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v0.1.4/whatsapp-darwin-arm64.tar.gz",
-          "sha256": "3d9b57834508666f5e45b19aaabb547750896826ce978b4b9f305ec606f5c0f6",
-          "bytes": 7840723,
+          "url": "https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v0.1.5/whatsapp-darwin-arm64.tar.gz",
+          "sha256": "92ce7dbc2be463c79ef2618b3c93e4aa21e2f9523788d5dac7644508f3e7a065",
+          "bytes": 7842390,
           "compression": "tar.gz",
-          "manifestSha256": "0e8f4e01322a95e5be25dae286806dcec24ba89c337a8e2ce4ae65c99b99ca59"
+          "manifestSha256": "8dfac5d3b601f6eedf5afa8e5e4af9921143f568124f040ebd08bd1d52ada465"
         },
         {
           "os": "win32",
           "cpu": "x64",
-          "url": "https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v0.1.4/whatsapp-win32-x64.tar.gz",
-          "sha256": "49497b4c15adffefdbc63f8490da542ebae78016975a72c6b55e4476aa3dc769",
-          "bytes": 8228798,
+          "url": "https://github.com/brocrew/brocrew-plugin-whatsapp/releases/download/v0.1.5/whatsapp-win32-x64.tar.gz",
+          "sha256": "fb457dbc19cba748cf49e6dea59eaf9899c927e94c633689f889d41ba8d67641",
+          "bytes": 8229597,
           "compression": "tar.gz",
-          "manifestSha256": "fe6f04050ac0ec9cc0b577de9d57dc249987d7d3a43cc7e16a9350e68ca83c8d"
+          "manifestSha256": "cacbcf35f6cf96361d9b0948ca154683823449117a3f92feb5e0430ab3aedb67"
         }
       ]
     }
