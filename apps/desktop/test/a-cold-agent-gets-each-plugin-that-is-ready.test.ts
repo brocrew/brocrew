@@ -6,9 +6,9 @@ type AgentAttachmentView = ReturnType<PluginLifecycleController['agentAttachment
 type Binding = Awaited<ReturnType<Parameters<typeof createLifecycleAgentBridge>[0]['binding']>>
 import type { LifecycleWorkspace } from '../src/main/plugins/lifecycle/types'
 import { openManagedPluginRoute } from '../src/main/plugins/managed-transport'
-import type { WorkspaceLease } from '../src/main/plugins/supervisor/owner'
 import type { Command } from '../src/main/plugins/supervisor/protocol'
 import type { BrokerInput } from '../src/main/plugins/tool-broker'
+import { lease } from './helpers/plugin-agent-bridge'
 
 const cleanup: (() => Promise<unknown>)[] = []
 afterEach(async () => {
@@ -25,16 +25,6 @@ const request = (workspaceId = 'fictional-workspace', incarnation = randomUUID()
   lease: 'b'.repeat(64),
   occupied: ['brobot'],
   release: false,
-})
-const lease = (): WorkspaceLease => ({
-  id: randomUUID(),
-  workspace: 'a'.repeat(64),
-  generation: randomUUID(),
-  epoch: randomUUID(),
-  counter: 0,
-  renewedAt: 0,
-  minor: 0,
-  features: [],
 })
 function deferred<T>() {
   let resolve!: (value: T) => void

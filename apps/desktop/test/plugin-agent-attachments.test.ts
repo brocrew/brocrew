@@ -4,11 +4,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { createLifecycleAgentBridge } from '../src/main/plugins/lifecycle/agent-bridge'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
-import { sharedLifecycleWorkspaces } from '../src/main/plugins/lifecycle/workspaces'
 import { WorkspacePluginAttachments } from '../src/main/plugins/attachments'
 import { fixture, cleanupLifecycleFixtures, deferred } from './plugin-lifecycle-fixtures'
-import type { WorkspaceLease } from '../src/main/plugins/supervisor/owner'
-import type { Command } from '../src/main/plugins/supervisor/protocol'
 import type { BrokerInput, BrokerClock } from '../src/main/plugins/tool-broker'
 import {
   FakeRuntime,
@@ -17,7 +14,7 @@ import {
   type SessionHandle,
 } from '@brobot2/runtime'
 
-const closes: (() => Promise<unknown>)[] = []
+import { closes, live, request, lease } from './helpers/plugin-agent-bridge'
 function brokerClock() {
   let now = 0,
     sequence = 0
@@ -45,29 +42,6 @@ afterEach(async () => {
   for (const close of closes.splice(0).reverse()) await close()
   await cleanupLifecycleFixtures()
 })
-const request = (
-  workspaceId: string,
-  incarnation = randomUUID(),
-): Extract<Command, { kind: 'agent-routes' }> => ({
-  kind: 'agent-routes',
-  workspaceId,
-  incarnation,
-  workspace: 'a'.repeat(64),
-  generation: randomUUID(),
-  lease: 'b'.repeat(64),
-  occupied: ['brobot'],
-  release: false,
-})
-const lease = (): WorkspaceLease => ({
-  id: randomUUID(),
-  workspace: 'a'.repeat(64),
-  generation: randomUUID(),
-  epoch: randomUUID(),
-  counter: 0,
-  renewedAt: 0,
-  minor: 0,
-  features: [],
-})
 async function connected(route: ManagedPluginMcpServer) {
   const client = new Client({ name: 'fictional-willow', version: '1' })
   client.onerror = () => {}
@@ -78,105 +52,6 @@ async function connected(route: ManagedPluginMcpServer) {
     }),
   )
   return client
-}
-async function live(
-  change: {
-    firstExit?: Promise<void>
-    firstStop?: () => Promise<void>
-    now?: () => number
-    recoverChromeHost?: (
-      view: ReturnType<ReturnType<typeof sharedLifecycleWorkspaces>['agentAttachments']>[number],
-      stopped: () => void,
-    ) => Promise<void>
-  } = {},
-) {
-  const { firstExit, firstStop, ...bridgeChange } = change
-  const consumer: { bridge?: ReturnType<typeof createLifecycleAgentBridge> } = {}
-  const f = await fixture({
-    deny: (id) => consumer.bridge?.deny(id),
-    toolsUnavailable: (id) => consumer.bridge?.toolsUnavailable?.(id) ?? false,
-    toolsCause: (id) => consumer.bridge?.toolsCause?.(id),
-    onChromeHostExit: (runId) => consumer.bridge?.hostExited?.(runId),
-  })
-  if (firstExit || firstStop) {
-    const start = f.opts.runtime.start.bind(f.opts.runtime)
-    let first = true
-    f.opts.runtime.start = async (spec) => {
-      const run = await start(spec)
-      if (!first) return run
-      first = false
-      return { ...run, exited: firstExit ?? run.exited, stop: firstStop ?? run.stop }
-    }
-  }
-  await f.controller.detach(f.handle)
-  const controller = sharedLifecycleWorkspaces(f.controller)
-  const person = await controller.attach(f.local.sink)
-  await controller.install(person, 'chrome')
-  let valid = true,
-    allowed = true
-  const revoked = new Set<string>()
-  const call = vi.fn()
-  const binding = vi.fn(async () => ({
-    tools: [
-      {
-        name: 'echo',
-        description: 'Fictional echo',
-        inputSchema: { type: 'object' },
-        prepare: (input: BrokerInput) => ({
-          input,
-          resources: [{ resource: 'profiles', key: 'fern', mode: 'read' as const }],
-        }),
-      },
-    ],
-    resources: [{ id: 'profiles', read: true, write: false }],
-    adminOperations: [],
-    isAllowed: () => allowed,
-    server: {
-      tool() {
-        call()
-        return {
-          result: Promise.resolve({
-            ok: true as const,
-            value: { content: [{ type: 'text', text: 'fictional fern' }] },
-          }),
-          quiescent: Promise.resolve(),
-          cancel() {},
-        }
-      },
-      admin() {
-        throw new Error('person surface must stay private')
-      },
-    },
-  }))
-  const diagnostic = vi.fn()
-  const bridge = createLifecycleAgentBridge({
-    controller,
-    owner: { valid: (id) => valid && !revoked.has(id) },
-    binding,
-    diagnostic,
-    ...bridgeChange,
-  })
-  consumer.bridge = bridge
-  closes.push(() => bridge.close())
-  return {
-    ...f,
-    controller,
-    person,
-    bridge,
-    binding,
-    call,
-    diagnostic,
-    revokeLease: (one: WorkspaceLease) => {
-      revoked.add(one.id)
-      bridge.revoke(one)
-    },
-    setValid: (v: boolean) => {
-      valid = v
-    },
-    allow: (v: boolean) => {
-      allowed = v
-    },
-  }
 }
 async function holdToolCall(
   f: Awaited<ReturnType<typeof live>>,
