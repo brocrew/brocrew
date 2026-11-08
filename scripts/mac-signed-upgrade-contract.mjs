@@ -1,7 +1,7 @@
 // 695-visible: these receipts bind the visible rehearsal process; this module never launches it.
 import { createHash } from 'node:crypto'
 import { createReadStream, lstatSync, readdirSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { basename, join, resolve } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { until } from './lib/update-rehearsal-app.mjs'
 import {
@@ -10,6 +10,7 @@ import {
 } from './lib/mac-signing-identity.mjs'
 import {
   diskImageFrom,
+  mountedImageOf,
   requireEvidence,
   verifyCheckpoint,
   STATE_FILES,
@@ -98,6 +99,19 @@ export function candidateOfferAction(facts, version) {
   )
   if (buttons.enabled !== true) return 'wait'
   return state.kind === 'idle' ? 'check' : 'download'
+}
+
+export function candidateMountedImage(info, image) {
+  const matches = (info.images ?? []).filter(
+    (one) => typeof one['image-path'] === 'string' && resolve(one['image-path']) === resolve(image),
+  )
+  if (
+    matches.length === 1 &&
+    Array.isArray(matches[0]['system-entities']) &&
+    matches[0]['system-entities'].length === 0
+  )
+    return null
+  return mountedImageOf(info, image)
 }
 
 export function candidateNames(version) {

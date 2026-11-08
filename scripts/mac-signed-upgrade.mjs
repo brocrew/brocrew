@@ -25,7 +25,6 @@ import {
   dataPreserved,
   downloadedImagePath,
   hash,
-  mountedImageOf,
   packagedRegistryFile,
   nativeTranscriptsPresent,
   recoveryOrder,
@@ -53,6 +52,7 @@ import {
   assertThreeWorkspaceStates,
   initialProvidersSurface,
   candidateOfferAction,
+  candidateMountedImage,
   awaitInstalledAppExit,
 } from './mac-signed-upgrade-contract.mjs'
 import {
@@ -590,8 +590,14 @@ async function guidedDownload(workspace, published) {
     image,
     receipt.files.find((file) => file.name === published.url),
   )
+  workspace.result.mountObservations = []
+  const observeMount = async (stage) => {
+    const info = await plist('/usr/bin/hdiutil', ['info', '-plist'])
+    workspace.result.mountObservations.push({ stage, at: Date.now(), requestedImage: image, info })
+    return candidateMountedImage(info, image)
+  }
   let mounted = await waitFor(
-    async () => mountedImageOf(await plist('/usr/bin/hdiutil', ['info', '-plist']), image),
+    () => observeMount('initial-open'),
     'the app actually opens and mounts its downloaded DMG',
   )
   mountedCandidate = mounted.mount
@@ -607,7 +613,7 @@ async function guidedDownload(workspace, published) {
   mountedCandidate = null
   await click(cdp, '[data-cy=updates-open-again]')
   mounted = await waitFor(
-    async () => mountedImageOf(await plist('/usr/bin/hdiutil', ['info', '-plist']), image),
+    () => observeMount('quarantined-reopen'),
     'real app reopens its quarantined image',
   )
   mountedCandidate = mounted.mount

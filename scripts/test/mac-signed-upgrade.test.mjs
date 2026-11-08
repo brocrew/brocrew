@@ -13,6 +13,7 @@ import { createHash } from 'node:crypto'
 import { mkdtempSync, writeFileSync, mkdirSync, chmodSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { mountedImageOf, waitFor } from '../lib/mac-update-test.mjs'
 import {
   BASELINE,
   candidateReceipt,
@@ -501,4 +502,109 @@ test('a wrong offer, error, blank, hidden or obstructed dialog cannot authorize 
       ),
     /Actual update error/,
   )
+})
+
+const candidateDownload = '/Users/runner/Downloads/BroCrew-0.2.12-arm64.dmg'
+function candidateMountInfo(entities, image = candidateDownload) {
+  return { images: [{ 'image-path': image, 'system-entities': entities }] }
+}
+
+test('a partial candidate mount waits for the unique correct volume', async () => {
+  assert.equal(typeof upgradeContract.candidateMountedImage, 'function')
+  vi.useFakeTimers()
+  vi.setSystemTime(0)
+  const mount = '/Volumes/BroCrew 0.2.12-arm64'
+  const samples = [
+    { images: [] },
+    candidateMountInfo([]),
+    candidateMountInfo([{ 'mount-point': mount }]),
+  ]
+  const times = []
+  const observed = waitFor(async () => {
+    times.push(Date.now())
+    return upgradeContract.candidateMountedImage(samples[times.length - 1], candidateDownload)
+  }, 'the app actually opens and mounts its downloaded DMG')
+  await vi.advanceTimersByTimeAsync(500)
+  assert.deepEqual(await observed, { image: candidateDownload, mount })
+  assert.deepEqual(times, [0, 250, 500])
+  assert.equal(
+    upgradeContract.candidateMountedImage(
+      candidateMountInfo([], '/Users/runner/Downloads/./BroCrew-0.2.12-arm64.dmg'),
+      candidateDownload,
+    ),
+    null,
+  )
+  assert.throws(() => mountedImageOf(candidateMountInfo([]), candidateDownload))
+})
+
+test('permanent partial, absent or unrelated mounts expire within the original poll budget', async () => {
+  vi.useFakeTimers()
+  for (const info of [
+    candidateMountInfo([]),
+    { images: [] },
+    candidateMountInfo([{ 'mount-point': '/Volumes/Other' }], '/tmp/other.dmg'),
+  ]) {
+    vi.setSystemTime(0)
+    const times = []
+    const observed = waitFor(async () => {
+      times.push(Date.now())
+      return upgradeContract.candidateMountedImage(info, candidateDownload)
+    }, 'real app reopens its quarantined image').then(
+      () => ({ success: true }),
+      (error) => ({ message: error.message, at: Date.now() }),
+    )
+    await vi.advanceTimersByTimeAsync(180_000)
+    assert.deepEqual(await observed, {
+      message: 'Timed out: real app reopens its quarantined image',
+      at: 180_000,
+    })
+    assert.equal(times[0], 0)
+    assert.equal(times.at(-1), 180_000)
+    assert.equal(times.length, 721)
+  }
+})
+
+test('duplicate, malformed or incorrect mounted volumes still fail strictly', () => {
+  const empty = candidateMountInfo([]).images[0]
+  const mounted = candidateMountInfo([{ 'mount-point': '/Volumes/BroCrew 0.2.12-arm64' }]).images[0]
+  for (const info of [
+    { images: [empty, empty] },
+    { images: [empty, mounted] },
+    { images: [mounted, mounted] },
+    candidateMountInfo([{ 'mount-point': '/Volumes/BroCrew' }, { 'mount-point': '/Volumes/Other' }]),
+    candidateMountInfo([{ 'mount-point': '/private/Volumes/BroCrew' }]),
+    candidateMountInfo([{ 'mount-point': 42 }]),
+    candidateMountInfo([{}]),
+    { images: [{ 'image-path': candidateDownload }] },
+    candidateMountInfo({}),
+    candidateMountInfo('not entities'),
+  ])
+    assert.throws(() => upgradeContract.candidateMountedImage(info, candidateDownload))
+})
+
+test('mount command and strict parser errors propagate without another poll', async () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(0)
+  let reads = 0
+  const failure = new Error('actual plist observation failed')
+  await assert.rejects(
+    waitFor(async () => {
+      reads++
+      throw failure
+    }, 'the app actually opens and mounts its downloaded DMG'),
+    (error) => error === failure,
+  )
+  assert.equal(reads, 1)
+  await assert.rejects(
+    waitFor(async () => {
+      reads++
+      return upgradeContract.candidateMountedImage(
+        candidateMountInfo([{ 'mount-point': '/tmp/not-a-volume' }]),
+        candidateDownload,
+      )
+    }, 'real app reopens its quarantined image'),
+    /Downloaded image must have exactly one mounted volume/,
+  )
+  assert.equal(reads, 2)
+  assert.equal(Date.now(), 0)
 })
