@@ -339,7 +339,9 @@ test('a blank, hidden, wrong-tab or obstructed landing cannot replace initial se
     { overlays: 1 },
     { alerts: 1 },
   ])
-    assert.throws(() => upgradeContract.initialProvidersSurface({ ...freshProvidersSurface(), ...changed }))
+    assert.throws(() =>
+      upgradeContract.initialProvidersSurface({ ...freshProvidersSurface(), ...changed }),
+    )
   assert.throws(() => upgradeContract.initialProvidersSurface(null))
 })
 
