@@ -179,7 +179,7 @@ test('persistent fixture permissions include nested skill files and ignore trans
     const before = fixturePermissions(folder)
     writeFileSync(join(folder, 'brobot2.sqlite-wal'), 'transient')
     permissionsKept(before, fixturePermissions(folder))
-    chmodSync(join(folder, 'skills', 'run.sh'), 0o600)
+    chmodSync(join(folder, 'skills', 'run.sh'), 0o400)
     assert.throws(
       () => permissionsKept(before, fixturePermissions(folder)),
       /permissions changed: skills\/run.sh/,
@@ -288,7 +288,7 @@ test('pre-existing native transcript permissions must survive even when content 
     const before = fixturePermissions(folder, names)
     writeFileSync(join(folder, names[0]), 'fictional native bytes plus a new turn')
     permissionsKept(before, fixturePermissions(folder, names))
-    chmodSync(join(folder, names[0]), 0o644)
+    chmodSync(join(folder, names[0]), 0o400)
     assert.throws(() => permissionsKept(before, fixturePermissions(folder, names)))
   } finally {
     rmSync(folder, { recursive: true })

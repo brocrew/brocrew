@@ -9,7 +9,7 @@ import {
 } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { assetNames, fileSeal, releasePlan, verifyAssets } from '../release-artifacts.mjs'
 import { checkedArtifact, checkedRun, checkedTag } from '../lib/release-github.mjs'
@@ -176,7 +176,7 @@ function publicationFixture() {
         }
       else if (command === 'upload')
         for (const file of args.slice(3, args.indexOf('--repo')))
-          state.release.assets.push(asset(file.split('/').at(-1)))
+          state.release.assets.push(asset(basename(file)))
       else if (command === 'download') {
         const name = args[args.indexOf('--pattern') + 1],
           dest = args[args.indexOf('--dir') + 1]

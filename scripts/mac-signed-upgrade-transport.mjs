@@ -101,7 +101,8 @@ export async function startControlledTransport({
   const exec = promisify(execFile)
   const keyPath = join(folder, 'transport.key'),
     certPath = join(folder, 'transport.crt')
-  await exec('/usr/bin/openssl', [
+  const openssl = process.platform === 'win32' ? 'openssl.exe' : '/usr/bin/openssl'
+  await exec(openssl, [
     'req',
     '-x509',
     '-newkey',
