@@ -77,13 +77,19 @@ export function candidateOfferAction(facts, version) {
     `The baseline update state cannot offer the candidate: ${state?.kind ?? 'missing'}.`,
   )
   requireEvidence(
-    facts.menuCount === 1 && facts.menuVisible === true && facts.dialogCount === 1 &&
-      facts.menuRole === 'dialog' && facts.menuLabel === 'BroCrew updates' &&
+    facts.menuCount === 1 &&
+      facts.menuVisible === true &&
+      facts.dialogCount === 1 &&
+      facts.menuRole === 'dialog' &&
+      facts.menuLabel === 'BroCrew updates' &&
       ['idle', 'checking', 'available'].includes(facts.menuKind),
     'The ordinary Updates dialog is missing, hidden, obstructed or unresolved.',
   )
   if (state.kind === 'available')
-    requireEvidence(state.version === version, 'The baseline offered a different candidate version.')
+    requireEvidence(
+      state.version === version,
+      'The baseline offered a different candidate version.',
+    )
   if (facts.menuKind !== state.kind || state.kind === 'checking') return 'wait'
   const buttons = state.kind === 'idle' ? facts.check : facts.download
   requireEvidence(

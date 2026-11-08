@@ -230,13 +230,7 @@ export async function openUpdates(cdp) {
     'return document.querySelector("[data-cy=rail-version]")?.getAttribute("aria-expanded") === "true"',
   )
   if (!opened) await press(cdp, '[data-cy=rail-version]', { wait: 180_000 })
-  if (
-    !(await until(
-      () => cdp.evaluate(visibleUpdatesMenu),
-      180_000,
-      250,
-    ))
-  )
+  if (!(await until(() => cdp.evaluate(visibleUpdatesMenu), 180_000, 250)))
     throw new Error('Timed out: ordinary updates menu is visible')
 }
 
@@ -326,9 +320,7 @@ export async function closeExpectedLaunchSetup(cdp, { wait = 60_000 } = {}) {
 export async function openTheUpdatesMenu(cdp) {
   if (await cdp.evaluate(visibleUpdatesMenu)) return
   await press(cdp, '[data-cy="rail-version"]')
-  if (
-    !(await until(() => cdp.evaluate(visibleUpdatesMenu), 10_000, 250))
-  ) {
+  if (!(await until(() => cdp.evaluate(visibleUpdatesMenu), 10_000, 250))) {
     throw new Error('the rail’s version button did not open the updates menu')
   }
 }

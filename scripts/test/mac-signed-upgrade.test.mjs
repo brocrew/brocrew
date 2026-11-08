@@ -454,7 +454,10 @@ test('an exact available candidate uses its visible Download without requiring a
 
 test('idle and checking observations wait for the exact candidate through ordinary controls', () => {
   assert.equal(upgradeContract.candidateOfferAction(candidateOfferFacts('idle'), '0.2.12'), 'check')
-  assert.equal(upgradeContract.candidateOfferAction(candidateOfferFacts('checking'), '0.2.12'), 'wait')
+  assert.equal(
+    upgradeContract.candidateOfferAction(candidateOfferFacts('checking'), '0.2.12'),
+    'wait',
+  )
   const changing = candidateOfferFacts()
   changing.menuKind = 'checking'
   assert.equal(upgradeContract.candidateOfferAction(changing, '0.2.12'), 'wait')
@@ -484,8 +487,18 @@ test('a wrong offer, error, blank, hidden or obstructed dialog cannot authorize 
     { download: { count: 2, visible: true, enabled: true } },
     { download: { count: 1, visible: false, enabled: true } },
   ])
-    assert.throws(() => upgradeContract.candidateOfferAction({ ...candidateOfferFacts(), ...changed }, '0.2.12'))
-  assert.throws(() => upgradeContract.candidateOfferAction({
-    ...candidateOfferFacts(), snapshot: { state: { kind: 'error', message: 'Actual update error' } },
-  }, '0.2.12'), /Actual update error/)
+    assert.throws(() =>
+      upgradeContract.candidateOfferAction({ ...candidateOfferFacts(), ...changed }, '0.2.12'),
+    )
+  assert.throws(
+    () =>
+      upgradeContract.candidateOfferAction(
+        {
+          ...candidateOfferFacts(),
+          snapshot: { state: { kind: 'error', message: 'Actual update error' } },
+        },
+        '0.2.12',
+      ),
+    /Actual update error/,
+  )
 })

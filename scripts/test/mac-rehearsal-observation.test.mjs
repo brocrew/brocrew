@@ -440,14 +440,16 @@ function updatesWindow({ workspacesOpen = false, updatesOpen = false, mode = 'or
     scrollIntoView() {},
     getBoundingClientRect: () => ({ x: 0, y, width: 20, height: 20 }),
   })
-  const version = node({}, 60), workspace = node({}, 20)
-  version.getAttribute = (name) => name === 'aria-expanded' ? String(updatesOpen) : null
-  workspace.getAttribute = (name) => name === 'aria-expanded' ? String(workspacesOpen) : null
+  const version = node({}, 60),
+    workspace = node({}, 20)
+  version.getAttribute = (name) => (name === 'aria-expanded' ? String(updatesOpen) : null)
+  workspace.getAttribute = (name) => (name === 'aria-expanded' ? String(workspacesOpen) : null)
   version.disabled = mode === 'disabled'
   const menu = node({ role: 'dialog', 'aria-label': 'BroCrew updates' }, 100)
   const workspaceMenu = node({ role: 'dialog', 'aria-label': 'Workspaces' }, 100)
   if (mode === 'hidden') menu.style.visibility = 'hidden'
-  if (mode === 'wrong-label') menu.getAttribute = (name) => name === 'role' ? 'dialog' : 'Workspaces'
+  if (mode === 'wrong-label')
+    menu.getAttribute = (name) => (name === 'role' ? 'dialog' : 'Workspaces')
   const document = {
     querySelector(selector) {
       if (selector.includes('rail-version')) return mode === 'missing' ? null : version
@@ -467,9 +469,9 @@ function updatesWindow({ workspacesOpen = false, updatesOpen = false, mode = 'or
     },
   }
   const cdp = {
-    evaluate: vi.fn(async (body) => new Function('document', 'getComputedStyle', body)(
-      document, (one) => one.style,
-    )),
+    evaluate: vi.fn(async (body) =>
+      new Function('document', 'getComputedStyle', body)(document, (one) => one.style),
+    ),
     send: vi.fn(async (method, event) => {
       if (method !== 'Input.dispatchMouseEvent' || event.type !== 'mouseReleased') return
       if (event.y === 70) {
@@ -492,12 +494,17 @@ describe('ordinary Updates navigation', () => {
     for (const open of [openUpdates, openTheUpdatesMenu]) {
       for (const workspacesOpen of [false, true]) {
         const f = updatesWindow({ workspacesOpen })
-        const result = open(f.cdp).then(() => ({ opened: true }), (error) => ({ error: error.message }))
+        const result = open(f.cdp).then(
+          () => ({ opened: true }),
+          (error) => ({ error: error.message }),
+        )
         await vi.advanceTimersByTimeAsync(180_000)
         expect(await result).toEqual({ opened: true })
         expect(f.clicked).toEqual(['rail-version'])
         expect(f.cdp.send.mock.calls.map(([, event]) => event.type)).toEqual([
-          'mouseMoved', 'mousePressed', 'mouseReleased',
+          'mouseMoved',
+          'mousePressed',
+          'mouseReleased',
         ])
       }
     }
@@ -514,11 +521,17 @@ describe('ordinary Updates navigation', () => {
 
   it('wrong, hidden, duplicate or obstructed dialogs cannot satisfy the original menu budgets', async () => {
     vi.useFakeTimers()
-    for (const [open, budget] of [[openUpdates, 180_000], [openTheUpdatesMenu, 10_000]]) {
+    for (const [open, budget] of [
+      [openUpdates, 180_000],
+      [openTheUpdatesMenu, 10_000],
+    ]) {
       for (const mode of ['wrong-popup', 'hidden', 'duplicate', 'other-dialog', 'wrong-label']) {
         vi.setSystemTime(0)
         const f = updatesWindow({ mode })
-        const result = open(f.cdp).then(() => ({ opened: true }), (error) => ({ error, at: Date.now() }))
+        const result = open(f.cdp).then(
+          () => ({ opened: true }),
+          (error) => ({ error, at: Date.now() }),
+        )
         await vi.advanceTimersByTimeAsync(180_000)
         const failed = await result
         expect(failed.error).toBeInstanceOf(Error)
@@ -533,7 +546,10 @@ describe('ordinary Updates navigation', () => {
     for (const open of [openUpdates, openTheUpdatesMenu]) {
       for (const mode of ['missing', 'disabled']) {
         const f = updatesWindow({ mode })
-        const result = open(f.cdp).then(() => ({ opened: true }), (error) => ({ error }))
+        const result = open(f.cdp).then(
+          () => ({ opened: true }),
+          (error) => ({ error }),
+        )
         await vi.advanceTimersByTimeAsync(180_000)
         expect((await result).error).toBeInstanceOf(Error)
         expect(f.clicked).toEqual([])
