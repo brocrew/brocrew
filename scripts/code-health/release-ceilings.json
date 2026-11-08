@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "release": {
+    "id": 437895124,
+    "tag": "v0.2.11",
+    "source": "cfe64af3add0e9104cd5f4f940c23c9a758ca4b0",
+    "tree": "898d38281013a5a33f205b47cea753fb147c7a87"
+  },
+  "metrics": {
+    "AUTO-A02": {
+      "definition": "byte-lf-over-2000-v1",
+      "selector": "selected-product-v1",
+      "profileSha256": "51f56131c48ebf2560fb28e4765eb3accc8ce387abff0338b215940bc38d401b",
+      "count": 23,
+      "inventorySha256": "6fe8de379786505bf3b7314dfc5ce14cbf922bfdb789762e56423bf1005bc113",
+      "receiptSha256": "cea1accab2ea94960640a2c6c2f91532c8b7f1f122fc066e59855234f62d388e"
+    }
+  },
+  "provenance": {
+    "measuringSource": "346f3f5952eb8def744ca1ff0d29b94824719e38",
+    "evidenceReport": "projects/brobot-selfdev/reports/section6-a02/cfe-derivation-v2-terminal.md",
+    "evidenceResource": "res_1f8fcfcadb514a04a3ea9c22c33ecfa9"
+  }
+}
