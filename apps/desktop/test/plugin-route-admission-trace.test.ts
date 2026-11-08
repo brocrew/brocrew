@@ -167,17 +167,19 @@ it('keeps a handler refusal distinct from HTTP 401 after the same request passed
   const client = new Client({ name: 'fictional-handler-refusal', version: '1' })
   cleanup.push(() => client.close())
   client.onerror = () => undefined
-  const wire: { method: string; status: number }[] = []
+  let finishSse!: (status: number) => void
+  const initialSse = new Promise<number>((resolve) => { finishSse = resolve })
   await client.connect(
     new StreamableHTTPClientTransport(new URL(route.server.url), {
       requestInit: { headers: { Authorization: `Bearer ${route.server.capability}` } },
       fetch: async (url, init) => {
         const response = await fetch(url, init)
-        wire.push({ method: typeof init?.body === 'string' ? JSON.parse(init.body).method : init?.method ?? 'GET', status: response.status })
+        if ((init?.method ?? 'GET') === 'GET') finishSse(response.status)
         return response
       },
     }),
-  ).catch(() => { throw new Error(JSON.stringify({ phase: 'connect', wire, events, calls: current.mock.results.map((one) => one.value) })) })
+  )
+  expect(await initialSse).toBe(405)
   fresh.mockClear()
   current
     .mockReset()
@@ -186,7 +188,7 @@ it('keeps a handler refusal distinct from HTTP 401 after the same request passed
       observeAdmission(observer, { condition: 'lease-invalid' })
       return false
     })
-  const reply = await client.callTool({ name: 'echo', arguments: {} }).catch(() => { throw new Error(JSON.stringify({ phase: 'tool', wire, events, calls: current.mock.results.map((one) => one.value) })) })
+  const reply = await client.callTool({ name: 'echo', arguments: {} })
   expect(reply).toMatchObject({
     isError: true,
     content: [{ type: 'text', text: 'Plugin unavailable. Try again.' }],
