@@ -101,6 +101,7 @@ async function publicJson(url, name) {
 function install(input, version) {
   assert.equal(digest(readFileSync(input.path)),input.sha256,'installer bytes changed after intake')
   const native = spawnSync(input.path, ['/S'], { timeout: 300000, windowsHide: true, encoding: 'utf8' })
+  if(native.pid)summary.nativeExecuted=true
   const entries = appsEntries(); keep(`install-${version}.json`, { input, status: native.status, signal: native.signal, error: native.error?.message, stdout: native.stdout, stderr: native.stderr, entries })
   if(entries.length===1&&typeof entries[0].InstallLocation==='string')installDirs.add(entries[0].InstallLocation)
   assert.ifError(native.error); assert.equal(native.status, 0); assert.equal(entries.length, 1); assert.equal(entries[0].DisplayVersion, version)
@@ -511,5 +512,5 @@ finally {
   summary.finished=new Date().toISOString();const complete=summary.failures.length===0&&summary.phases.length===(cleanInstall?3:5)&&summary.phases.every(p=>p.passed)
   summary.verdict=appCompatibilityVerdict(complete,summary.chromeCompatibility?.status)
   summary.passed=complete&&summary.verdict!=='PARTIAL'
-  keep('summary.json',summary);if(summary.intake)keep('native-receipt.json',nativeReceipt(summary));console.log(JSON.stringify({passed:summary.passed,transport:summary.transport,verdict:summary.verdict,chrome:summary.chromeCompatibility,failures:summary.failures,evidence}));process.exitCode=summary.passed?0:summary.verdict==='PARTIAL'?2:1
+  keep('summary.json',summary);if(summary.intake&&summary.nativeExecuted)keep('native-receipt.json',nativeReceipt(summary));console.log(JSON.stringify({passed:summary.passed,transport:summary.transport,verdict:summary.verdict,chrome:summary.chromeCompatibility,failures:summary.failures,evidence}));process.exitCode=summary.passed?0:summary.verdict==='PARTIAL'?2:1
 }
