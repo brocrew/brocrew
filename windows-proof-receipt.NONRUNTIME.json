@@ -1,0 +1,48 @@
+{
+  "format": "brocrew.windows-installed-plugin-proof.v1",
+  "carrierSha": null,
+  "driverSha": null,
+  "candidate": {
+    "version": "0.2.12",
+    "sourceSha": null,
+    "sourceTree": null,
+    "installer": null
+  },
+  "testPath": "public-019-upgrade",
+  "proofStage": "NONRUNTIME",
+  "passed": false,
+  "phases": [],
+  "failures": [],
+  "observer": {
+    "exitCode": null,
+    "signal": null,
+    "passed": null,
+    "nativeWitness": null
+  },
+  "shutdown": {
+    "quitCode": null,
+    "forced": null,
+    "ownerPhase": null,
+    "remainingProcesses": null
+  },
+  "pluginPins": {
+    "chrome": {
+      "version": "0.1.9",
+      "bytes": 4373190,
+      "sha256": "9f763685263abfde06f91aa1c26ae93a726a53b568719368650251874c84e57b",
+      "manifest": "0f13c23a672133fd5f6334230e8c5029f167e57320a6b29bd6a67585b2d8f20a",
+      "sourceCommit": "a3acd9f105e666f71d49d1eb967dfe0b790fa762"
+    },
+    "whatsapp": {
+      "version": "0.1.4",
+      "bytes": 8228798,
+      "sha256": "49497b4c15adffefdbc63f8490da542ebae78016975a72c6b55e4476aa3dc769",
+      "manifest": "fe6f04050ac0ec9cc0b577de9d57dc249987d7d3a43cc7e16a9350e68ca83c8d"
+    }
+  },
+  "baseline": null,
+  "residualState": {
+    "beforeUpgrade": null,
+    "afterInstaller": null
+  }
+}

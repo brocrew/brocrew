@@ -1,0 +1,494 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:brocrew:windows-installed-plugin-proof:v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "format",
+    "carrierSha",
+    "driverSha",
+    "candidate",
+    "testPath",
+    "proofStage",
+    "passed",
+    "phases",
+    "failures",
+    "observer",
+    "shutdown",
+    "pluginPins",
+    "baseline",
+    "residualState"
+  ],
+  "properties": {
+    "format": {
+      "const": "brocrew.windows-installed-plugin-proof.v1"
+    },
+    "carrierSha": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "driverSha": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "sourceSha",
+        "sourceTree",
+        "installer"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+        },
+        "sourceSha": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{40}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sourceTree": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{40}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "installer": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "sha256",
+                "bytes",
+                "buildRunId",
+                "artifactName",
+                "artifactId"
+              ],
+              "properties": {
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "bytes": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "buildRunId": {
+                  "type": "string",
+                  "pattern": "^[0-9]+$"
+                },
+                "artifactName": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "artifactId": {
+                  "type": "string",
+                  "pattern": "^[0-9]+$"
+                }
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "testPath": {
+      "enum": [
+        "failed-beta-recovery",
+        "clean-install",
+        "app-upgrade-compat",
+        "public-019-clean",
+        "public-019-upgrade"
+      ]
+    },
+    "proofStage": {
+      "enum": [
+        "NONRUNTIME",
+        "early-recipe",
+        "final-candidate"
+      ]
+    },
+    "passed": {
+      "type": "boolean"
+    },
+    "phases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "name",
+          "started",
+          "finished",
+          "passed"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "started": {
+            "type": "string"
+          },
+          "finished": {
+            "type": "string"
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "failure": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "observer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "exitCode",
+        "signal",
+        "passed",
+        "nativeWitness"
+      ],
+      "properties": {
+        "exitCode": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "signal": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "passed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "nativeWitness": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      }
+    },
+    "shutdown": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "quitCode",
+        "forced",
+        "ownerPhase",
+        "remainingProcesses"
+      ],
+      "properties": {
+        "quitCode": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "forced": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "ownerPhase": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "remainingProcesses": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "pluginPins": {
+      "type": "object",
+      "required": [
+        "chrome",
+        "whatsapp"
+      ]
+    },
+    "baseline": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "residualState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "beforeUpgrade",
+        "afterInstaller"
+      ],
+      "properties": {
+        "beforeUpgrade": {
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "afterInstaller": {
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "proofStage": {
+            "const": "NONRUNTIME"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "passed": {
+            "const": false
+          },
+          "carrierSha": {
+            "type": "null"
+          },
+          "driverSha": {
+            "type": "null"
+          },
+          "candidate": {
+            "properties": {
+              "sourceSha": {
+                "type": "null"
+              },
+              "sourceTree": {
+                "type": "null"
+              },
+              "installer": {
+                "type": "null"
+              }
+            }
+          },
+          "phases": {
+            "maxItems": 0
+          },
+          "observer": {
+            "properties": {
+              "exitCode": {
+                "type": "null"
+              },
+              "signal": {
+                "type": "null"
+              },
+              "passed": {
+                "type": "null"
+              },
+              "nativeWitness": {
+                "type": "null"
+              }
+            }
+          },
+          "shutdown": {
+            "properties": {
+              "quitCode": {
+                "type": "null"
+              },
+              "forced": {
+                "type": "null"
+              },
+              "ownerPhase": {
+                "type": "null"
+              },
+              "remainingProcesses": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "carrierSha": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{40}$"
+          },
+          "driverSha": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "candidate": {
+            "properties": {
+              "sourceSha": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{40}$"
+              },
+              "sourceTree": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{40}$"
+              },
+              "installer": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "sha256",
+                  "bytes",
+                  "buildRunId",
+                  "artifactName",
+                  "artifactId"
+                ],
+                "properties": {
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[a-f0-9]{64}$"
+                  },
+                  "bytes": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "buildRunId": {
+                    "type": "string",
+                    "pattern": "^[0-9]+$"
+                  },
+                  "artifactName": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "artifactId": {
+                    "type": "string",
+                    "pattern": "^[0-9]+$"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "passed": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "proofStage": {
+            "enum": [
+              "early-recipe",
+              "final-candidate"
+            ]
+          },
+          "phases": {
+            "minItems": 3,
+            "items": {
+              "properties": {
+                "passed": {
+                  "const": true
+                }
+              }
+            }
+          },
+          "failures": {
+            "maxItems": 0
+          },
+          "observer": {
+            "properties": {
+              "exitCode": {
+                "const": 0
+              },
+              "signal": {
+                "type": "null"
+              },
+              "passed": {
+                "const": true
+              },
+              "nativeWitness": {
+                "type": "object",
+                "required": [
+                  "passed"
+                ],
+                "properties": {
+                  "passed": {
+                    "const": true
+                  }
+                }
+              }
+            }
+          },
+          "shutdown": {
+            "properties": {
+              "quitCode": {
+                "const": 0
+              },
+              "forced": {
+                "const": false
+              },
+              "ownerPhase": {
+                "const": "stopped"
+              },
+              "remainingProcesses": {
+                "type": "array",
+                "maxItems": 0
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

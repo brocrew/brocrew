@@ -5,9 +5,14 @@ on:
   workflow_dispatch:
     inputs:
       candidate_sha:
-        description: Exact 0.2.11 source commit supplied by Dara
+        description: Exact candidate source commit supplied by Dara
         required: true
         type: string
+      candidate_version:
+        description: Candidate application version (0.2.11 regression default; select 0.2.12 explicitly)
+        required: true
+        type: string
+        default: '0.2.11'
       installer_run_id:
         description: Dara's Windows installer run
         required: true
@@ -51,7 +56,7 @@ jobs:
     timeout-minutes: 90
     env:
       CANDIDATE_SHA: ${{ inputs.candidate_sha }}
-      CANDIDATE_VERSION: '0.2.11'
+      CANDIDATE_VERSION: ${{ inputs.candidate_version }}
       INSTALLER_RUN_ID: ${{ inputs.installer_run_id }}
       INSTALLER_ARTIFACT: ${{ inputs.installer_artifact }}
       EXPECTED_INSTALLER_SHA256: ${{ inputs.installer_sha256 }}
@@ -85,6 +90,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          [[ "$CANDIDATE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           [[ "$CANDIDATE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$INSTALLER_RUN_ID" =~ ^[0-9]+$ ]]
           test -n "$INSTALLER_ARTIFACT"
@@ -179,6 +185,8 @@ jobs:
 
       - name: Bind existing installer bytes to the supplied receipt
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           [[ "$EXPECTED_INSTALLER_SHA256" =~ ^[0-9a-f]{64}$ ]]
@@ -189,11 +197,17 @@ jobs:
           printf '%s\n' "${installers[0]}" > evidence/candidate-installer-original-path.txt
           wc -c < "${installers[0]}" > evidence/candidate-installer-bytes.txt
           printf '%s\n' "$INSTALLER_RUN_ID" "$INSTALLER_ARTIFACT" > evidence/candidate-artifact.txt
+          gh api "repos/brocrew/brocrew/actions/runs/$INSTALLER_RUN_ID" > evidence/candidate-build-run.json
+          gh api --paginate --slurp "repos/brocrew/brocrew/actions/runs/$INSTALLER_RUN_ID/artifacts?per_page=100" > evidence/candidate-build-artifacts.json
           mkdir candidate-normalized
-          cp -- "${installers[0]}" candidate-normalized/BroCrew-Setup-0.2.11-x64.exe
-          printf '%s *%s\n' "$EXPECTED_INSTALLER_SHA256" 'candidate-normalized/BroCrew-Setup-0.2.11-x64.exe' > evidence/candidate-installer-normalized-sha256.txt
+          cp -- "${installers[0]}" "candidate-normalized/BroCrew-Setup-$CANDIDATE_VERSION-x64.exe"
+          printf '%s *%s\n' "$EXPECTED_INSTALLER_SHA256" "candidate-normalized/BroCrew-Setup-$CANDIDATE_VERSION-x64.exe" > evidence/candidate-installer-normalized-sha256.txt
           sha256sum --check evidence/candidate-installer-normalized-sha256.txt
           printf 'CANDIDATE_DIR=candidate-normalized\n' >> "$GITHUB_ENV"
+
+      - name: Seal candidate and carrier intake
+        shell: bash
+        run: node carrier/windows-proof-receipt.mjs evidence candidate carrier
 
       - name: Run the selected installed-plugin test path
         shell: bash
@@ -206,7 +220,7 @@ jobs:
           node carrier/windows-plugin-upgrade.mjs --execute "${plugin_args[@]}" --test-path "$TEST_PATH" \
             --source-root candidate --candidate-dir "$CANDIDATE_DIR" \
             --candidate-sha "$CANDIDATE_SHA" --candidate-version "$CANDIDATE_VERSION" \
-            --inputs inputs --evidence evidence
+            --inputs inputs --evidence evidence --intake evidence/intake.json
 
       - name: Keep plain evidence after success or failure
         if: always()

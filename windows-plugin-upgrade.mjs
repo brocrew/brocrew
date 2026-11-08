@@ -10,14 +10,18 @@ import { createRequire } from 'node:module'
 import { parseArgs } from 'node:util'
 import { chromeCompatibilityResult, appCompatibilityVerdict, freshClosedChromeRuns } from './chrome-compatibility-result.mjs'
 import { public019Profile } from './public-019-profile.mjs'
+import { candidateProfile, assertCandidateBuild, assertProductVersion } from './windows-candidate-profile.mjs'
+import { verifyIntake, nativeReceipt } from './windows-proof-receipt.mjs'
 import { readCustomPluginInputs, manifestTarExecutable } from './custom-plugin-inputs.mjs'
 import { transportLabel, readTransportFixture, assertUnusedInspectorPort, coldMainArgument, attachColdMain, attachSupervisor } from './instrumented-plugin-transport.mjs'
 
 const { values: args } = parseArgs({ options: {
   execute: { type: 'boolean', default: false }, 'test-path': { type: 'string', default: 'failed-beta-recovery' }, 'source-root': { type: 'string' },
   'candidate-dir': { type: 'string' }, 'candidate-sha': { type: 'string' },
-  'candidate-version': { type: 'string' }, 'plugin-inputs': {type:'string'}, 'plugin-receipt-sha256': {type:'string'}, 'plugin-run-id': {type:'string'}, 'plugin-artifact': {type:'string'}, inputs: { type: 'string' }, evidence: { type: 'string' },
+  'candidate-version': { type: 'string', default: '0.2.11' }, 'intake': { type: 'string' }, 'plugin-inputs': {type:'string'}, 'plugin-receipt-sha256': {type:'string'}, 'plugin-run-id': {type:'string'}, 'plugin-artifact': {type:'string'}, inputs: { type: 'string' }, evidence: { type: 'string' },
 } })
+const candidateProfileInput = candidateProfile(args['candidate-version'])
+const candidateVersion = candidateProfileInput.version
 const publishedExpected = {
   chrome: { version: '0.1.8', bytes: 3608965, sha256: 'd05363044da6b65cacfccee0149772b97c1a7e5dca83c8262bf91e70de84c8a0', manifest: 'b8432edfc43657715a695dcca57164c7ba0e9229fd98570d4159afeb9be8f7d3', repo: 'brocrew-plugin-chrome' },
   whatsapp: { version: '0.1.4', bytes: 8228798, sha256: '49497b4c15adffefdbc63f8490da542ebae78016975a72c6b55e4476aa3dc769', manifest: 'fe6f04050ac0ec9cc0b577de9d57dc249987d7d3a43cc7e16a9350e68ca83c8d', repo: 'brocrew-plugin-whatsapp' },
@@ -29,19 +33,18 @@ assert(['failed-beta-recovery','clean-install','app-upgrade-compat','public-019-
 const cleanInstall=args['test-path']==='clean-install'||args['test-path']==='public-019-clean'
 const appCompat=args['test-path']==='app-upgrade-compat'
 assert(!appCompat||!args['plugin-inputs'],'app compatibility mode uses exact published018/014, not custom archive instrumentation')
-const plan = cleanInstall ? ['verify exact candidate installer and published win32/x64 plugin pins', 'install candidate NSIS on a clean runner without installing or launching beta', 'install both published plugins through candidate Settings', 'call Chrome list_browser_profiles and WhatsApp tools/list through installed service', 'verify normal candidate shutdown and cleanup'] : ['verify public beta installer, exact candidate bytes and published win32/x64 plugin pins', 'install actual 0.1.36 NSIS', public019?'attempt beta Settings current019 and retain actual success or failure':'record beta Settings Chrome installation failure as the expected baseline', public019?'stop beta and retain its actual current019 state without seeding or repair':'stop beta and retain its real residual plugin state without seeding or repair', 'install exact 0.2.11 candidate NSIS over beta', 'install or retry the two published plugins through candidate Settings', 'attach observer to candidate-owned service; Chrome list_browser_profiles and WhatsApp tools/list over HTTP', 'detach observer, quit app, verify owner/host exits and process cleanup']
+const plan = cleanInstall ? ['verify exact candidate installer and published win32/x64 plugin pins', 'install candidate NSIS on a clean runner without installing or launching beta', 'install both published plugins through candidate Settings', 'call Chrome list_browser_profiles and WhatsApp tools/list through installed service', 'verify normal candidate shutdown and cleanup'] : ['verify public beta installer, exact candidate bytes and published win32/x64 plugin pins', 'install actual 0.1.36 NSIS', public019?'attempt beta Settings current019 and retain actual success or failure':'record beta Settings Chrome installation failure as the expected baseline', public019?'stop beta and retain its actual current019 state without seeding or repair':'stop beta and retain its real residual plugin state without seeding or repair', `install exact ${candidateVersion} candidate NSIS over beta`, 'install or retry the two published plugins through candidate Settings', 'attach observer to candidate-owned service; Chrome list_browser_profiles and WhatsApp tools/list over HTTP', 'detach observer, quit app, verify owner/host exits and process cleanup']
 if(public019)plan.unshift('POST-RELEASE CURRENT-USER PUBLIC ROUTE: exact native Chrome019; beta attempts current catalogue with actual success/failure retained; both candidate plugins mandatory, no Chrome exception')
 if(appCompat)plan.unshift('APP COMPATIBILITY ONLY: known Chrome018 identity failure may be non-blocking; WhatsApp/service/upgrade/normal cleanup remain mandatory')
 if(args['plugin-inputs'])plan.unshift(transportLabel)
-if (!args.execute) { console.log(JSON.stringify({ execute: false, plan, expected }, null, 2)); process.exit(0) }
+if (!args.execute) { console.log(JSON.stringify({ execute: false, candidate: candidateProfileInput, plan, expected }, null, 2)); process.exit(0) }
 assert.equal(process.platform, 'win32', 'execution is Windows only')
 assert.equal(process.arch, 'x64')
 assert.equal(process.env.GITHUB_ACTIONS, 'true')
 assert.equal(process.env.RUNNER_ENVIRONMENT, 'github-hosted')
 assert.equal(process.env.GITHUB_REPOSITORY, 'brocrew/brocrew')
-for (const name of ['source-root', 'candidate-dir', 'candidate-sha', 'candidate-version', 'inputs', 'evidence']) assert(args[name], `--${name} is required`)
+for (const name of ['source-root', 'candidate-dir', 'candidate-sha', 'candidate-version', 'intake', 'inputs', 'evidence']) assert(args[name], `--${name} is required`)
 assert.match(args['candidate-sha'], /^[a-f0-9]{40}$/)
-assert.equal(args['candidate-version'],'0.2.11')
 const source = resolve(args['source-root']), inputs = resolve(args.inputs), evidence = join(resolve(args.evidence),'driver')
 assert(!existsSync(evidence), 'evidence directory must be new')
 mkdirSync(evidence, { recursive: true })
@@ -107,7 +110,7 @@ function install(input, version) {
   const exe = join(folder, programs[0]); assert(lstatSync(exe).isFile())
   const identity = JSON.parse(powershell(`(Get-Item -LiteralPath ${psQuote(exe)}).VersionInfo | Select-Object ProductVersion,FileVersion,OriginalFilename | ConvertTo-Json -Compress`))
   keep(`version-resource-${version}.json`, identity)
-  assert(identity.ProductVersion === version || identity.ProductVersion === `${version}.0`, 'unexpected installed Windows ProductVersion')
+  assertProductVersion(identity.ProductVersion, version)
   const result = { exe, folder, identity, executableSha256: digest(readFileSync(exe)), asarSha256: digest(readFileSync(join(folder, 'resources', 'app.asar'))), entries }
   keep(`installed-${version}.json`, result)
   const unexpected = ownProcesses(); assert.equal(unexpected.length, 0, 'installer unexpectedly launched app; preserved as failure')
@@ -164,7 +167,7 @@ async function finishTransport(requireHits=false) {
 async function launch(installed, version, port) {
   const started=Date.now()
   const fd = openSync(join(evidence, `app-${version}.log`), 'wx')
-  const instrumented=version==='0.2.11'&&Boolean(transportFixture)
+  const instrumented=version===candidateVersion&&Boolean(transportFixture)
   if(instrumented){await assertUnusedInspectorPort(9356);keep('transport-main-port-preflight.json',{port:9356,unused:true})}
   const inspectorArgs=instrumented?[coldMainArgument(9356)]:[]
   const child = spawn(installed.exe, [...inspectorArgs,'--remote-debugging-address=127.0.0.1', `--remote-debugging-port=${port}`], { stdio:['ignore',fd,fd], env:appEnvironment }); closeSync(fd)
@@ -186,7 +189,7 @@ async function launch(installed, version, port) {
   running.cdp = await connect(page.webSocketDebuggerUrl)
   const app = await until(async()=> {try{return await running.cdp.evaluate('return await window.api.getAppInfo()',10000)}catch{return null}},60000,`${version} app API`)
   assert.equal(app.version, version)
-  if(version==='0.2.11') {assert.equal(app.build.commit, args['candidate-sha'], 'installed candidate must carry exact approved source commit');assert.equal(app.build.dirty,false)}
+  if(version===candidateVersion) assertCandidateBuild(app, candidateVersion, args['candidate-sha'])
   keep(`running-${version}.json`,{app,process:processRow,devtools:info})
   return app
 }
@@ -277,6 +280,7 @@ async function quit(label) {
   const pid=running.child.pid
   const close = spawnSync('taskkill',['/PID',String(pid)],{windowsHide:true,encoding:'utf8',timeout:10000})
   keep(`${label}-quit-request.json`,{pid,status:close.status,stdout:close.stdout,stderr:close.stderr})
+  if(label==='candidate')summary.candidateQuitCode=close.status
   await until(()=>ownProcesses().length===0,90000,`${label} app/service/host process exit`)
   const owner=ownerRecord(); assert.equal(owner?.phase,'stopped','installed service must certify stopped')
   keep(`${label}-owner-stopped.json`,publicOwner(owner))
@@ -332,6 +336,7 @@ async function helper(service) {
   const timer=setTimeout(()=>{result.kill();},240000)
   const status=await new Promise(resolve=>result.on('close',(code,signal)=>resolve({code,signal})));clearTimeout(timer)
   keep('observer.stdout.log',Buffer.concat(chunks));keep('observer.stderr.log',Buffer.concat(errors));keep('observer-exit.json',{...status,error:error?.message})
+  summary.observerExit={exitCode:status.code,signal:status.signal};summary.nativeWitness=existsSync(join(evidence,'observer-native-witness.json'))?readJson(join(evidence,'observer-native-witness.json')):null;summary.observerResult=existsSync(join(evidence,'observer-result.json'))?readJson(join(evidence,'observer-result.json')):null
   assert.ifError(error);assert.ifError(witnessError);assert(witnessStarted,'observer never reached tool witness boundary');assert.deepEqual(status,{code:0,signal:null});const receipt=readJson(join(evidence,'observer-result.json'));assert.equal(receipt.passed,true);return receipt
 }
 async function cleanup(label='cleanup', baseline=false) {
@@ -346,6 +351,7 @@ async function cleanup(label='cleanup', baseline=false) {
   }
   running?.browser?.close();running?.cdp?.close()
   const after=ownProcesses();const receipt={forced:before.length>0,processes:after,...diagnostics()};keep(`${label}.json`,receipt)
+  if(!baseline)summary.cleanup=receipt
   assert.equal(after.length,0,'owned processes remain')
   return receipt
 }
@@ -369,7 +375,8 @@ try {
     assert.equal(allProcesses().filter(p=>products.has(p.Name)).length,0,'runner has existing app processes')
     assert.equal(run('git',['-C',source,'rev-parse','HEAD']).trim(),args['candidate-sha'])
     const betaMetadata=readdirSync(inputs).filter(n=>n.endsWith('.json')).map(n=>join(inputs,n)).filter(p=>{try{return readJson(p).tag_name==='v0.1.36'}catch{return false}});assert.equal(betaMetadata.length,1,'exactly one beta release JSON in inputs')
-    const candidatePath=join(resolve(args['candidate-dir']),'BroCrew-Setup-0.2.11-x64.exe'),candidateBytes=readFileSync(candidatePath)
+    const candidatePath=join(resolve(args['candidate-dir']),candidateProfileInput.installerName),candidateBytes=readFileSync(candidatePath)
+    summary.intake=verifyIntake(readJson(resolve(args.intake)),{version:candidateVersion,sourceSha:args['candidate-sha'],sourceTree:run('git',['-C',source,'rev-parse','HEAD^{tree}']).trim(),carrierSha:run('git',['-C',dirname(fileURLToPath(import.meta.url)),'rev-parse','HEAD']).trim(),driverSha:digest(readFileSync(new URL(import.meta.url))),installerSha256:digest(candidateBytes),installerBytes:candidateBytes.length})
     const observerSource=readFileSync(join(dirname(fileURLToPath(import.meta.url)),'windows-plugin-upgrade-driver.ts'),'utf8').replaceAll('@SOURCE@',source.replaceAll('\\','/'))
     keep('observer.ts',observerSource)
     // Bundle observer/control clients only. No product build or native runtime is launched here.
@@ -439,13 +446,14 @@ try {
     keep('clean-install-control.json',{testPath:args['test-path'],betaInstalled:false,betaLaunched:false})
     keep('pre-upgrade-host-receipts.json',[])
   }
-  const candidate=await phase(cleanInstall?'actual candidate clean NSIS install':'actual candidate NSIS upgrade',()=>install(summary.inputs.candidate,'0.2.11'))
+  const candidate=await phase(cleanInstall?'actual candidate clean NSIS install':'actual candidate NSIS upgrade',()=>install(summary.inputs.candidate,candidateVersion))
   if(!cleanInstall) {
   assert(samePath(candidate.folder,beta.folder),'candidate replaced the registered beta install location')
-  assert.deepEqual(residualState('after-installer-residual-state'),summary.residualPreUpgrade,'NSIS upgrade changed the retained beta plugin state before candidate launch')
+  summary.residualAfterInstaller=residualState('after-installer-residual-state')
+  assert.deepEqual(summary.residualAfterInstaller,summary.residualPreUpgrade,'NSIS upgrade changed the retained beta plugin state before candidate launch')
   }
   await phase('installed candidate plugin tools',async()=>{
-    await launch(candidate,'0.2.11',9346)
+    await launch(candidate,candidateVersion,9346)
     assert.equal((await request({kind:'availability'},'candidate-availability')).available,true)
     if(transportFixture) {
       const service=installedService(candidate,'pre-install-transport'),expectedProcess=transportExpected(service.process)
@@ -496,12 +504,12 @@ try {
 } catch(error) {if(error.transportCleanup)keep('transport-partial-attach-cleanup.json',error.transportCleanup);summary.failures.push(error.stack??String(error));await screenshot('failure.png')}
 finally {
   if(transportHandles.size)try{await finishTransport()}catch(error){summary.failures.push(`transport cleanup: ${error.stack??error}`)}
-  try{await cleanup()}catch(error){summary.failures.push(`cleanup: ${error.stack??error}`)}
+  try{summary.cleanup=await cleanup()}catch(error){summary.failures.push(`cleanup: ${error.stack??error}`)}
   if(transportFixture)try{for(const port of [9356,9229])await assertUnusedInspectorPort(port);keep('transport-ports-after-exit.json',{ports:[9356,9229],unused:true})}catch(error){summary.failures.push(`inspector port cleanup: ${error.stack??error}`)}
   // Preserve only synthetic fixture metadata and native receipts; never upload capabilities or plugin data.
   for(const name of ['plugin-startup.log'])if(ownsFixture&&existsSync(join(pluginRoot,name)))copyFileSync(join(pluginRoot,name),join(evidence,name))
   summary.finished=new Date().toISOString();const complete=summary.failures.length===0&&summary.phases.length===(cleanInstall?3:5)&&summary.phases.every(p=>p.passed)
   summary.verdict=appCompatibilityVerdict(complete,summary.chromeCompatibility?.status)
   summary.passed=complete&&summary.verdict!=='PARTIAL'
-  keep('summary.json',summary);console.log(JSON.stringify({passed:summary.passed,transport:summary.transport,verdict:summary.verdict,chrome:summary.chromeCompatibility,failures:summary.failures,evidence}));process.exitCode=summary.passed?0:summary.verdict==='PARTIAL'?2:1
+  keep('summary.json',summary);if(summary.intake)keep('native-receipt.json',nativeReceipt(summary));console.log(JSON.stringify({passed:summary.passed,transport:summary.transport,verdict:summary.verdict,chrome:summary.chromeCompatibility,failures:summary.failures,evidence}));process.exitCode=summary.passed?0:summary.verdict==='PARTIAL'?2:1
 }
