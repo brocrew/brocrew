@@ -161,32 +161,49 @@ for (const available of [true, false]) {
         saved = null
         return selected
       })
-      const change = vi.fn(async (_home: string, _change: CodexKeyChange) => ({ ok: true as const, authMethod: 'apikey' }))
+      const change = vi.fn(async (_home: string, _change: CodexKeyChange) => ({
+        ok: true as const,
+        authMethod: 'apikey',
+      }))
       const copy = vi.fn()
-      const module = createCodexModule({
-        managedRoot: root,
-        defaultProfile: 'fern',
-        homeOf: () => home,
-        profiles: () => ['fern'],
-        assertMayOpen: () => {},
-      }, {
-        runtime: { command: () => '/fictional/codex' },
-        home: {
-          provisionHome: (_root, target) => { mkdirSync(target, { recursive: true }) },
-          provisionCodexAuth: copy,
-          key: { current, change },
+      const module = createCodexModule(
+        {
+          managedRoot: root,
+          defaultProfile: 'fern',
+          homeOf: () => home,
+          profiles: () => ['fern'],
+          assertMayOpen: () => {},
         },
-        auth: { command: () => '/fictional/codex' },
-      })
+        {
+          runtime: { command: () => '/fictional/codex' },
+          home: {
+            provisionHome: (_root, target) => {
+              mkdirSync(target, { recursive: true })
+            },
+            provisionCodexAuth: copy,
+            key: { current, change },
+          },
+          auth: { command: () => '/fictional/codex' },
+        },
+      )
       const pending = module.prepareLaunch('fern', {
-        id: 'codex:api-key', provider: 'codex', name: 'API key', authMethod: 'api-key',
-        credentialSource: 'provider-api-key', baseUrl: null, enabled: true, contractVersion: 1,
+        id: 'codex:api-key',
+        provider: 'codex',
+        name: 'API key',
+        authMethod: 'api-key',
+        credentialSource: 'provider-api-key',
+        baseUrl: null,
+        enabled: true,
+        contractVersion: 1,
       })
       if (available) {
         const prepared = await pending
         expect(prepared.home).toBe(home)
         expect(prepared.runtime.provider).toBe('codex')
-        expect(change).toHaveBeenCalledExactlyOnceWith(home, { to: 'the-key', apiKey: 'fictional-fern-key' })
+        expect(change).toHaveBeenCalledExactlyOnceWith(home, {
+          to: 'the-key',
+          apiKey: 'fictional-fern-key',
+        })
       } else {
         await expect(pending).rejects.toThrow('The selected API key is unavailable')
         expect(change).not.toHaveBeenCalled()

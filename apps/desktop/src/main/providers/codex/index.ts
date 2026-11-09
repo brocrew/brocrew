@@ -322,7 +322,7 @@ export function createCodexModule(
       const reader = seams.home.key
       let current: Awaited<ReturnType<CodexKeySeam['current']>>
       try {
-        current = connection?.authMethod === 'sign-in' ? null : (await reader?.current()) ?? null
+        current = connection?.authMethod === 'sign-in' ? null : ((await reader?.current()) ?? null)
         if (connection?.authMethod === 'api-key' && current === null)
           throw new AuthUnavailableError('codex', 'The selected API key is unavailable')
       } catch (error) {

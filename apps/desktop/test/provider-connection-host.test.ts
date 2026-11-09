@@ -46,13 +46,13 @@ function fixture() {
   } = { revision: 0 }
   const rawRuntimes: FakeRuntime[] = []
   let number = 0
-  const prepare = vi.fn<
-    (provider: Provider, profile: string) => string | Promise<string>
-  >((provider, profile) => {
-    const home = join(dir, profile, provider)
-    mkdirSync(home, { recursive: true })
-    return home
-  })
+  const prepare = vi.fn<(provider: Provider, profile: string) => string | Promise<string>>(
+    (provider, profile) => {
+      const home = join(dir, profile, provider)
+      mkdirSync(home, { recursive: true })
+      return home
+    },
+  )
   const resolve = (provider: Provider, id?: string | null) =>
     resolveProviderConnection(db, { provider, connectionId: id })
   const connectionFor = vi.fn(resolve)
@@ -122,25 +122,29 @@ it('Codex home preparation uses the once-selected method instead of a newly save
         profiles: () => ['fern'],
         assertMayOpen: () => {},
       },
-      { runtime: { command: () => '/fictional/codex' }, home: {
-        provisionHome: (_root, home) => {
-          mkdirSync(home, { recursive: true })
-        },
-        provisionCodexAuth: copied,
-        key: {
-          isSaved: () => keys.status('codex').set,
-          current: async () => {
-            await keys.set('codex', 'fictional-willow-key')
-            const key = await keys.current('codex')
-            keys.remove('codex')
-            return key
+      {
+        runtime: { command: () => '/fictional/codex' },
+        home: {
+          provisionHome: (_root, home) => {
+            mkdirSync(home, { recursive: true })
           },
-          change: async (_home, change) => {
-            applied = change.to
-            return { ok: true, authMethod: 'apikey' }
+          provisionCodexAuth: copied,
+          key: {
+            isSaved: () => keys.status('codex').set,
+            current: async () => {
+              await keys.set('codex', 'fictional-willow-key')
+              const key = await keys.current('codex')
+              keys.remove('codex')
+              return key
+            },
+            change: async (_home, change) => {
+              applied = change.to
+              return { ok: true, authMethod: 'apikey' }
+            },
           },
         },
-      }, auth: { command: () => '/fictional/codex' } },
+        auth: { command: () => '/fictional/codex' },
+      },
     )
     const prepared = await module.prepareLaunch(profile, connection)
     return { home: prepared.home, runtime: f.create(provider) }

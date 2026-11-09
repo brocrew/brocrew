@@ -82,21 +82,26 @@ afterEach(async () => {
 })
 
 function moduleOn(key: () => string | null | Promise<string | null>) {
-  return createClaudeModule({
-    managedRoot: dir,
-    defaultProfile: 'fictional-profile',
-    homeOf: () => join(dir, 'claude'),
-    profiles: () => ['fictional-profile'],
-    assertMayOpen: () => {},
-  }, {
-    runtime: { program: () => '/fictional/claude', key },
-    home: {
-      key,
-      login: async () => native.login(),
-      provisionHome: (_root, home) => { mkdirSync(home, { recursive: true }) },
+  return createClaudeModule(
+    {
+      managedRoot: dir,
+      defaultProfile: 'fictional-profile',
+      homeOf: () => join(dir, 'claude'),
+      profiles: () => ['fictional-profile'],
+      assertMayOpen: () => {},
     },
-    auth: {},
-  })
+    {
+      runtime: { program: () => '/fictional/claude', key },
+      home: {
+        key,
+        login: async () => native.login(),
+        provisionHome: (_root, home) => {
+          mkdirSync(home, { recursive: true })
+        },
+      },
+      auth: {},
+    },
+  )
 }
 
 for (const operation of ['start', 'resume', 'models'] as const) {
@@ -160,7 +165,10 @@ for (const operation of ['start', 'resume', 'models'] as const) {
     keys.remove('claude')
     const home = join(dir, 'claude')
     mkdirSync(home)
-    const pending = moduleOn(() => keys.read('claude')).prepareLaunch('fictional-profile', connection)
+    const pending = moduleOn(() => keys.read('claude')).prepareLaunch(
+      'fictional-profile',
+      connection,
+    )
     await expect(pending).rejects.toThrow('The selected API key is unavailable')
     expect(native.queryFactory).not.toHaveBeenCalled()
     expect(native.login).not.toHaveBeenCalled()

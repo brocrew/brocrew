@@ -233,7 +233,8 @@ export interface ClaudeModuleSeams {
 export const claudeModuleFactory = {
   runtime:
     (seams: ClaudeRuntimeSeams): (() => AgentRuntime) =>
-    () => claudeRuntime(seams),
+    () =>
+      claudeRuntime(seams),
   home: (paths: ProviderHomePaths, seams: ClaudeHomeSeams): ProviderHomeStrategy => ({
     prepare: (profileId) => prepareClaudeHome(paths, profileId, seams),
   }),
@@ -259,7 +260,7 @@ export function createClaudeModule(
       let key: string | null
       try {
         const readKey = seams.runtime.key ?? seams.home.key
-        key = connection?.authMethod === 'sign-in' ? null : (await readKey?.()) ?? null
+        key = connection?.authMethod === 'sign-in' ? null : ((await readKey?.()) ?? null)
         if (connection?.authMethod === 'api-key' && !key)
           throw new AuthUnavailableError('claude', 'The selected API key is unavailable')
       } catch (error) {
