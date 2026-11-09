@@ -26,10 +26,10 @@ import WhatTheModelGot from './WhatTheModelGot.vue'
 /**
  * "What this agent receives": Overview, then one tab per position in the provider's request, in
  * the order the agent got it. Each tab is one reader whose parts fold in place, each with who
- * wrote it and where its text came from (`lib/request-order.ts`). ⛔ A part the app does not record
+ * wrote it and where its text came from (`lib/request-order.ts`). A part the app does not record
  * yet is shown, saying so — never filled in.
  *
- * ⚑ One read, `whatThisAgentWasGiven`, made when it opens and on "Read again", never on a timer;
+ * One read, `whatThisAgentWasGiven`, made when it opens and on "Read again", never on a timer;
  * the messages come from this window's transcript.
  */
 const props = defineProps<{
@@ -64,7 +64,7 @@ function onTabKey(event: KeyboardEvent): void {
   event.preventDefault()
   const strip = event.currentTarget as HTMLElement
   tab.value = next
-  // ⚑ After the tabs re-render, so the strip scrolls to the tab that is now selected and focused.
+  // After the tabs re-render, so the strip scrolls to the tab that is now selected and focused.
   void nextTick(() => {
     const chosen = strip.querySelector<HTMLElement>(`[data-cy="input-tab-${String(next)}"]`)
     chosen?.focus()
@@ -75,7 +75,7 @@ function onTabKey(event: KeyboardEvent): void {
 /* the read */
 const given = ref<WhatThisAgentWasGiven | null>(null)
 const givenWhy = ref<string | null>('Reading…')
-/** ⚑ The press made last wins, not the read that answers last. */
+/** The press made last wins, not the read that answers last. */
 let asked = 0
 async function read(): Promise<void> {
   const runtime = (window as Partial<Window>).api?.runtime
@@ -163,7 +163,7 @@ const versionLine = computed(() => {
 </script>
 
 <template>
-  <!-- ⚑ The host is the dialog (`OverlayHost`'s `role="dialog"`); this is a labelled region in it. -->
+  <!-- The host is the dialog (`OverlayHost`'s `role="dialog"`); this is a labelled region in it. -->
   <section class="input-popup" aria-labelledby="input-popup-title" data-cy="input-popup">
     <header class="popup-head">
       <div class="popup-title">
@@ -249,7 +249,7 @@ const versionLine = computed(() => {
             <strong>≈{{ groupTokens(given.size.otherFiles.tokens) }}</strong
             ><span>Other files</span>
           </div>
-          <!-- ⚑ W4.184 · the tools as the total counts them; their whole definitions beside. -->
+          <!-- W4.184 · the tools as the total counts them; their whole definitions beside. -->
           <div class="bb-card total" data-cy="input-total-tools">
             <strong>≈{{ groupTokens(given.size.toolsInEveryRequest.tokens) }}</strong
             ><span>BroCrew’s tools</span>
@@ -347,7 +347,7 @@ const versionLine = computed(() => {
                   : 'Its launch kept no record, so what was there then is not known.'
               }}</span>
               <span v-else
-                >The launch keeps each file by name and size, not its words: those are the agent’s.
+                >Kept with its launch:
                 <span v-for="one in given.memory.atLaunch" :key="one.path" class="launch-memory"
                   ><span class="bb-mono">{{ one.path }}</span>
                   <span class="bb-muted">{{ groupTokens(one.bytes) }} bytes</span></span
@@ -656,13 +656,13 @@ const versionLine = computed(() => {
 <style scoped>
 .input-popup {
   display: flex;
-  /* ⚑ Clear of the stop lane, which sits in the left corner only (`OverlayHost`'s
+  /* Clear of the stop lane, which sits in the left corner only (`OverlayHost`'s
      `.overlay-corner`): the left margin keeps it clear and the reader takes the rest of the width,
      centred in what is left. */
   width: min(var(--dialog-w), calc(100% - var(--lane-clear) - var(--space-5)));
   margin-right: var(--space-5);
   margin-left: var(--lane-clear);
-  /* ⚑ Never taller than the window: the body scrolls, the head, tabs and foot stay. */
+  /* Never taller than the window: the body scrolls, the head, tabs and foot stay. */
   max-height: min(var(--dialog-max-h), calc(100dvh - var(--dialog-gutter) * 2));
   flex-direction: column;
   overflow: hidden;
@@ -744,7 +744,7 @@ const versionLine = computed(() => {
   gap: var(--space-4);
   align-content: start;
   font-size: var(--type-body);
-  /* ⚑ F100 · each row as tall as its content, however many there are: the body scrolls instead. */
+  /* F100 · each row as tall as its content, however many there are: the body scrolls instead. */
   grid-auto-rows: max-content;
 }
 
@@ -1044,7 +1044,7 @@ const versionLine = computed(() => {
   vertical-align: top;
 }
 
-/* ⚑ After the base rules it narrows: same specificity, so the later rule wins. */
+/* After the base rules it narrows: same specificity, so the later rule wins. */
 @container agent-input (max-width: 640px) {
   .setting {
     grid-template-columns: minmax(0, 1fr);

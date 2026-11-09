@@ -843,7 +843,11 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     }
   }
 
-  it('§4 · the saved-methods index reaches the model on a start and a reopen, and no row keeps its lines', async () => {
+  /** The ledger's rows beside the launch records, which keep the index as it was sent. */
+  const rowsBesideTheLaunches = (app: App, id: string) =>
+    JSON.stringify(app.store.events(id).filter((one) => one.event.type !== 'launched'))
+
+  it('§4 · the saved-methods index reaches the model on a start and a reopen, and only the launch record keeps its lines', async () => {
     // The app-server reflects each turn's input back, as it does, so its echo is recorded too.
     script.echoInput = true
     const app = anApp(withSavedMethods)
@@ -893,7 +897,8 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     ).toBe(true)
     const [first] = messagesAfter(app, id, -1)
     expect(first?.event.sent).toContain('The 1 saved method listed here is not kept in this record')
-    expect(JSON.stringify(app.store.events(id))).not.toContain(TITLE)
+    expect(rowsBesideTheLaunches(app, id)).not.toContain(TITLE)
+    expect(JSON.stringify(newestLaunch(app, id))).toContain(TITLE)
     // The row's lead is the kept text, at its kept length, so a later life reads it back whole.
     const block = wholeLeadOf(newestLaunch(app, id))
     expect(first?.event.sent?.startsWith(`${block}\n\n`)).toBe(true)
@@ -914,7 +919,7 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     // What it owes is read from the records, which keep no lines; the model is sent them.
     expect(sentTo(atReopen)).toContain(SECOND)
     // Two methods: the lines hold a newline, so the echo's JSON copy holds them escaped.
-    const ledgerNow = JSON.stringify(app.store.events(id))
+    const ledgerNow = rowsBesideTheLaunches(app, id)
     expect(ledgerNow).not.toContain(TITLE)
     expect(ledgerNow).not.toContain(SECOND)
     expect(ledgerNow).toContain('The 2 saved methods listed here are not kept in this record')
@@ -975,7 +980,7 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     expect(two?.event.lead).toEqual({ is: 'whole', chars: block.length })
   })
 
-  it('§5 · with saved methods and a leads read that never answers, the model gets the lines and no row keeps them', async () => {
+  it('§5 · with saved methods and a leads read that never answers, the model gets the lines and only the launch record keeps them', async () => {
     script.echoInput = true
     const app = anApp(withSavedMethods, 'never')
     const folder = join(app.userData, 'provider-homes', 'ali', 'runbooks')
@@ -1006,6 +1011,6 @@ describe('adc4232b · the lead a Codex thread holds, over the host', () => {
     expect(two?.event.lead?.is).toBe('whole')
     // …and every row keeps the marker in their place.
     expect(two?.event.sent).toContain('The 1 saved method listed here is not kept in this record')
-    expect(JSON.stringify(app.store.events(c1))).not.toContain(TITLE)
+    expect(rowsBesideTheLaunches(app, c1)).not.toContain(TITLE)
   })
 })

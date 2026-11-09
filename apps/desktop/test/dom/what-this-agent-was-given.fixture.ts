@@ -9,8 +9,8 @@ import type { ProviderSnapshot } from '../../src/shared/provider-snapshots'
 import type { WhoseText } from '../../src/shared/whose-text'
 
 /**
- * ⚑ **A fake answer to `whatThisAgentWasGiven`** (F093), for the popup's DOM tests and its look
- * scenes. ⛔ Fake data only: no provider home, no real memory.
+ * **A fake answer to `whatThisAgentWasGiven`**, for the popup's DOM tests and its look
+ * scenes. Fake data only: no provider home, no real memory.
  */
 const PARTS: { whose: WhoseText; heading: string | null; body: string }[] = [
   { whose: 'factory', heading: null, body: '# Your instructions' },
@@ -119,7 +119,7 @@ export function givenAnswer(over: Partial<WhatThisAgentWasGiven> = {}): WhatThis
     },
     size: sizeOf('Give an agent a piece of work, with a title and a self-contained brief.'),
   }
-  // ⚑ Summed as the backend sums it (`main/runtime/what-this-agent-was-given.ts`): BroBot's words,
+  // Summed as the backend sums it (`main/runtime/what-this-agent-was-given.ts`): BroBot's words,
   // the other files, the tools as they reach every request (names only, since Claude loads each
   // definition on request), the memory in every request, and the provider's own parts.
   const memory = sizeOf('- [Warm colours](warm-colours.md)')
@@ -129,7 +129,7 @@ export function givenAnswer(over: Partial<WhatThisAgentWasGiven> = {}): WhatThis
     words: SNAPSHOT.words,
     tokens: SNAPSHOT.approxTokens,
   }
-  // ⚑ W4.184 · the person's other servers' tools, by name, as Claude's tool search hands them over.
+  // W4.184 · the person's other servers' tools, by name, as Claude's tool search hands them over.
   const otherTools = sizeOf(['mcp__gmail__search_emails', 'mcp__gmail__read_email'].join('\n'))
   const total = sizesAdded([brobot, other, toolNames, otherTools, memory, providerSize])
   return {
@@ -236,7 +236,7 @@ export function givenAnswer(over: Partial<WhatThisAgentWasGiven> = {}): WhatThis
           path: `${MEMORY_DIR}/MEMORY.md`,
           kind: 'agent-memory',
           bytes: 58,
-          sha256: 'a'.repeat(64),
+          text: '- [Style](style.md) — short sentences, no jargon.\n',
         },
       ],
     },
@@ -263,7 +263,7 @@ export function givenAnswer(over: Partial<WhatThisAgentWasGiven> = {}): WhatThis
   }
 }
 
-/** ⚑ A fake answer to `whatTheModelGot`: one relayed message as the model got it. */
+/** A fake answer to `whatTheModelGot`: one relayed message as the model got it. */
 export function modelGotAnswer(over: Partial<WhatTheModelGot> = {}): WhatTheModelGot {
   const sent =
     'From Pat (pm), who reads your reply. This is about W1.2 · Landing page header.\n\nMake the header warmer, and keep the logo where it is.'
@@ -295,7 +295,7 @@ export function modelGotAnswer(over: Partial<WhatTheModelGot> = {}): WhatTheMode
         origin: 'a-repository',
         path: '/Users/someone/work/bakery/CONTRIBUTING.md',
         text: null,
-        why: 'Kept by fingerprint only: it has changed since, so the text the model got is not known.',
+        why: 'This app kept no copy of this file at its launch.',
         size: null,
       },
       {

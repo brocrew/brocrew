@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, type Stats } from 'node:fs'
 import { join } from 'node:path'
 import { isStillTheFileOpened } from '@brobot2/runtime'
@@ -44,8 +43,6 @@ export type SavedMethodsReading =
       readonly leftOut: number
       /** The index as it is sent: one line per method. */
       readonly index: string
-      /** {@link index}'s SHA-256, which is all a record keeps of it. */
-      readonly sha256: string
     }
   | {
       readonly kind: 'refused'
@@ -123,7 +120,6 @@ export function readSavedMethods(
         methods: [],
         leftOut: 0,
         index: '',
-        sha256: fingerprintOf(''),
       }
     }
     if (index.isSymbolicLink()) throw new Refused({ kind: 'a-link', what: 'the-index' })
@@ -163,7 +159,6 @@ export function readSavedMethods(
       methods,
       leftOut,
       index: sent,
-      sha256: fingerprintOf(sent),
     }
   } catch (error) {
     const refusal = error instanceof Refused ? error.refusal : { kind: 'unreadable' as const }
@@ -171,12 +166,7 @@ export function readSavedMethods(
   }
 }
 
-/** An index's fingerprint: what a record keeps in place of its lines. */
-export function fingerprintOf(index: string): string {
-  return createHash('sha256').update(index, 'utf8').digest('hex')
-}
-
-/** What a launch kept of its reading: its folder, counts, size, fingerprint and time, no text. */
+/** What a launch kept of its reading. */
 export function savedMethodsUseOf(reading: SavedMethodsReading): SavedMethodsUse {
   switch (reading.kind) {
     case 'none':
@@ -188,7 +178,7 @@ export function savedMethodsUseOf(reading: SavedMethodsReading): SavedMethodsUse
         methods: reading.methods.length,
         leftOut: reading.leftOut,
         bytes: Buffer.byteLength(reading.index, 'utf8'),
-        sha256: reading.sha256,
+        index: reading.index,
         readAt: reading.readAt,
       }
     case 'refused':
@@ -211,7 +201,7 @@ export interface SavedMethodsLines {
   readonly kept: string
 }
 
-/** An index's lines and what a record keeps in their place: their count, size and fingerprint. */
+/** An index's lines and what a record keeps in their place: their count and size. */
 function linesOf(index: string, count: number): SavedMethodsLines {
   const which =
     count === 1
@@ -219,7 +209,7 @@ function linesOf(index: string, count: number): SavedMethodsLines {
       : `The ${String(count)} saved methods listed here are`
   return {
     sent: index,
-    kept: `(${which} not kept in this record: ${Buffer.byteLength(index, 'utf8').toLocaleString('en-US')} bytes, sha256 ${fingerprintOf(index).slice(0, 12)}.)`,
+    kept: `(${which} not kept in this record: ${Buffer.byteLength(index, 'utf8').toLocaleString('en-US')} bytes.)`,
   }
 }
 

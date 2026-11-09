@@ -14,15 +14,15 @@ import {
 } from '../src/shared/what-this-agent-was-given'
 
 /**
- * # 🔴 F093 · C9 d — one message as the model got it: where each part sat, and why one is missing
+ * # one message as the model got it: where each part sat, and why one is missing
  *
- * ⚑ **The read with no host** (`oneMessageAsTheModelGotIt`), handed what the host reads off the
+ * **The read with no host** (`oneMessageAsTheModelGotIt`), handed what the host reads off the
  * ledger, so every case the host test cannot reach cheaply is read here: a turn of several messages,
  * a message with files, a message whose text was not kept, a Codex `/compact`, a launch brought in
  * from elsewhere or unreadable, BroBot's file refused at launch, and every place Codex's lead can
  * have ridden — or not yet.
  *
- * ⛔ A negative is read beside a positive from the same reader; a presence before an order or a text.
+ * A negative is read beside a positive from the same reader; a presence before an order or a text.
  */
 
 const PROFILE_TEXT = '# Profile\n\n## How you work\nCarefully.'
@@ -64,7 +64,7 @@ const handed = (over: Partial<WhatTheMessageReadIsHanded> = {}): WhatTheMessageR
   ...over,
 })
 
-/** ⚑ An earlier-messages walk that refuses to be walked: a read that needs none never calls it. */
+/** An earlier-messages walk that refuses to be walked: a read that needs none never calls it. */
 const neverWalked = (): Iterable<AnEarlierMessage> => {
   throw new Error('the launch’s earlier messages were walked')
 }
@@ -77,7 +77,7 @@ const theMessage = (parts: readonly ModelGotPart[]): ModelGotPart => {
 }
 
 describe('§1 · a turn of several messages, and a message with files', () => {
-  it('🔴 a held turn: its words one per message, oldest first; the text as handed over is the whole of it', () => {
+  it('a held turn: its words one per message, oldest first; the text as handed over is the whole of it', () => {
     const sent = '2 messages were held for you…\n\nMessage 1 of 2.\n\np1\n\nMessage 2 of 2.\n\np2'
     const parts: UserTurnPart[] = [{ text: 'p1' }, { text: 'p2' }]
     const got = oneMessageAsTheModelGotIt(
@@ -95,7 +95,7 @@ describe('§1 · a turn of several messages, and a message with files', () => {
     })
   })
 
-  it('🔴 whose words: one sender for every message is that sender; any two different is unknown', () => {
+  it('whose words: one sender for every message is that sender; any two different is unknown', () => {
     const origin = (parts: UserTurnPart[] | undefined, top: Partial<UserTurnEvent> = {}) =>
       theMessage(
         oneMessageAsTheModelGotIt(
@@ -108,7 +108,7 @@ describe('§1 · a turn of several messages, and a message with files', () => {
           }),
         ).parts,
       ).origin
-    // ⚑ All the same: that one.
+    // All the same: that one.
     expect(origin([{ text: 'a' }, { text: 'b' }])).toBe('a-person')
     expect(
       origin([
@@ -122,19 +122,19 @@ describe('§1 · a turn of several messages, and a message with files', () => {
         { text: 'b', attribution: 'app_authored' },
       ]),
     ).toBe('brobot')
-    // ⛔ Mixed — the FIRST a person's — is no one's in particular.
+    // Mixed — the FIRST a person's — is no one's in particular.
     expect(origin([{ text: 'a' }, { text: 'n', attribution: 'app_authored' }])).toBe('unknown')
     expect(origin([{ text: 'a' }, { text: 'r', relayedFrom: 'sess_1' }])).toBe('unknown')
-    // ⛔ Parts that do not read: no message, so no sender.
+    // Parts that do not read: no message, so no sender.
     expect(origin([{ junk: true } as unknown as UserTurnPart])).toBe('unknown')
-    // ⚑ A turn of one is its own top level.
+    // A turn of one is its own top level.
     expect(origin(undefined)).toBe('a-person')
     expect(origin(undefined, { attribution: 'app_authored' })).toBe('brobot')
     expect(origin(undefined, { relayedFrom: 'sess_1' })).toBe('an-agent')
     expect(origin(undefined, { attribution: 'provider_transcript' })).toBe('unknown')
   })
 
-  it('⚑ a message with files: the words are the person’s alone, the text handed over carries the files', () => {
+  it('a message with files: the words are the person’s alone, the text handed over carries the files', () => {
     const sent =
       'Sent by a person, typed into this app.\n\nlook at this\n\nAttached:\n- /work/project/notes.md'
     const got = oneMessageAsTheModelGotIt(
@@ -182,7 +182,7 @@ describe('§2 · a message whose text was not kept', () => {
   const FROM_THE_PROVIDER =
     'This message was read from the provider’s own record: this app did not hand it over.'
 
-  it('⛔ no copy kept: said so, with no text and no size', () => {
+  it('no copy kept: said so, with no text and no size', () => {
     for (const provider of ['claude', 'codex'] as const) {
       expect(missing(provider, aTurn({ sent: undefined })), provider).toMatchObject({
         text: null,
@@ -192,12 +192,12 @@ describe('§2 · a message whose text was not kept', () => {
     }
   })
 
-  it('🔴 Codex’s `/compact` alone, as typed or padded: no words reached the model — on Claude, no copy', () => {
+  it('Codex’s `/compact` alone, as typed or padded: no words reached the model — on Claude, no copy', () => {
     for (const typed of ['/compact', '  /compact\n']) {
       expect(missing('codex', aTurn({ text: typed, sent: undefined })).why, typed).toBe(COMPACTION)
     }
     expect(missing('claude', aTurn({ text: '/compact', sent: undefined })).why).toBe(NO_COPY)
-    // ⛔ Among other messages, or with words after it, it is not the compaction command.
+    // Among other messages, or with words after it, it is not the compaction command.
     expect(
       missing(
         'codex',
@@ -207,17 +207,17 @@ describe('§2 · a message whose text was not kept', () => {
           sent: undefined,
         }),
       ).why,
-      // ⚑ W4.177 — a turn of several went over as one text, and is said as a turn.
+      // a turn of several went over as one text, and is said as a turn.
     ).toBe('This app kept no copy of the text it handed over for this turn.')
     expect(missing('codex', aTurn({ text: '/compact now', sent: undefined })).why).toBe(NO_COPY)
-    // ⚑ …and a `/compact` whose text WAS kept is shown as it went.
+    // …and a `/compact` whose text WAS kept is shown as it went.
     expect(missing('codex', aTurn({ text: '/compact', sent: '/compact' }))).toMatchObject({
       text: '/compact',
       why: null,
     })
   })
 
-  it('⛔ a message read from the provider’s own record: this app did not hand it over — before any other why', () => {
+  it('a message read from the provider’s own record: this app did not hand it over — before any other why', () => {
     expect(
       missing('claude', aTurn({ attribution: 'provider_transcript', sent: undefined })).why,
     ).toBe(FROM_THE_PROVIDER)
@@ -229,7 +229,7 @@ describe('§2 · a message whose text was not kept', () => {
     ).toBe(FROM_THE_PROVIDER)
   })
 
-  it('⛔ a text kept that is not words is no copy', () => {
+  it('a text kept that is not words is no copy', () => {
     const odd = aTurn({ sent: 42 as unknown as string })
     expect(missing('claude', odd)).toMatchObject({ text: null, why: NO_COPY })
   })
@@ -243,7 +243,7 @@ describe('§3 · the launch the message went in', () => {
   const NONE =
     'This message’s launch kept no record of what it gave: it was made before this app kept one, or keeping it failed.'
 
-  it('⛔ each way a launch is not described says its own why, on both of BroBot’s parts it cannot give', () => {
+  it('each way a launch is not described says its own why, on both of BroBot’s parts it cannot give', () => {
     const cases = [
       { launch: null, why: NO_LAUNCH },
       {
@@ -275,14 +275,14 @@ describe('§3 · the launch the message went in', () => {
     }
   })
 
-  it('⛔ a conversation brought in from elsewhere: a record handed with it is not taken — none of its files or words', () => {
+  it('a conversation brought in from elsewhere: a record handed with it is not taken — none of its files or words', () => {
     const record = aRecord({
       files: [
         {
           path: '/repo/CLAUDE.md',
           kind: 'repository-conventions',
           bytes: 1,
-          sha256: 'x',
+          text: 'x',
           truncated: false,
         },
       ],
@@ -293,7 +293,7 @@ describe('§3 · the launch the message went in', () => {
     const recorded = oneMessageAsTheModelGotIt(
       handed({ launch: { ordinal: 3, at: 300, kept: 'recorded', record } }),
     )
-    // ⚑ The control: the same record, recorded, gives its profile, its file and its words.
+    // The control: the same record, recorded, gives its profile, its file and its words.
     expect(kinds(recorded.parts)).toEqual([
       'profile-instructions',
       'repository-conventions',
@@ -310,7 +310,7 @@ describe('§3 · the launch the message went in', () => {
     expect(imported.parts.map((one) => one.text).join('')).not.toContain('How you work')
   })
 
-  it('⚑ on Codex the parts it cannot give are named where Codex reads them: the first message', () => {
+  it('on Codex the parts it cannot give are named where Codex reads them: the first message', () => {
     const got = oneMessageAsTheModelGotIt(
       handed({
         provider: 'codex',
@@ -324,7 +324,7 @@ describe('§3 · the launch the message went in', () => {
     ])
   })
 
-  it('⚑ the answer carries the message’s place and time, the launch’s, and R1’s slot as handed', () => {
+  it('the answer carries the message’s place and time, the launch’s, and R1’s slot as handed', () => {
     const got = oneMessageAsTheModelGotIt(handed({ firstOfItsLaunch: false }))
     expect(got).toMatchObject({
       sessionId: 'sess_7',
@@ -339,7 +339,7 @@ describe('§3 · the launch the message went in', () => {
 })
 
 describe('§4 · BroBot’s file and the other files the launch kept', () => {
-  it('⛔ BroBot’s file refused at launch: no text, its path, and why — by the reader’s reason', () => {
+  it('BroBot’s file refused at launch: no text, its path, and why — by the reader’s reason', () => {
     const said = (refused: string): ModelGotPart | undefined => {
       const record = aRecord({
         profileFile: {
@@ -366,19 +366,18 @@ describe('§4 · BroBot’s file and the other files the launch kept', () => {
     expect(said('something-else')?.why).toBe(
       'It did not reach the model: this app’s reader did not send it.',
     )
-    // ⚑ The control: not refused, it is there in full.
+    // The control: not refused, it is there in full.
     const sent = oneMessageAsTheModelGotIt(handed()).parts[0]
     expect(sent).toMatchObject({ kind: 'profile-instructions', text: PROFILE_TEXT, why: null })
     expect(sent?.size).toEqual(sizeOf(PROFILE_TEXT))
   })
 
-  it('⚑ no profile file composed: no part for it; the files follow in the reader’s order, each by whose it is', () => {
+  it('no profile file composed: no part for it; the files follow in the reader’s order, each by whose it is', () => {
     const files: GivenRecordFile[] = [
       {
         path: '/ws/CLAUDE.md',
         kind: 'workspace-instructions',
         bytes: 9,
-        sha256: 'a',
         truncated: false,
         text: '# BroCrew workspace',
       },
@@ -386,14 +385,14 @@ describe('§4 · BroBot’s file and the other files the launch kept', () => {
         path: '/repo/sub/CLAUDE.md',
         kind: 'repository-conventions',
         bytes: 9,
-        sha256: 'b',
+        text: 'Repository rule.',
         truncated: false,
       },
       {
         path: '/homes/lead/claude/CLAUDE.md',
         kind: 'profile-memory',
         bytes: 9,
-        sha256: 'c',
+        text: null,
         truncated: false,
       },
     ]
@@ -422,22 +421,19 @@ describe('§4 · BroBot’s file and the other files the launch kept', () => {
       text: '# BroCrew workspace',
       why: null,
     })
-    // ⚑ W4.177 — a file kept by its fingerprint is read now, to give the text the model got when it
-    // is still the same; these paths are a fixture's, so nothing is there to read.
-    const BY_FINGERPRINT =
-      'This app keeps this file by its fingerprint only, since BroCrew did not write it, and the file cannot be read now: what the model got cannot be shown.'
+    // A file is shown with the text its launch kept; one whose launch kept none says so.
     expect(repository).toMatchObject({
       title: 'CLAUDE.md, this folder’s own file',
       origin: 'a-repository',
       path: '/repo/sub/CLAUDE.md',
-      text: null,
-      size: null,
-      why: BY_FINGERPRINT,
+      text: 'Repository rule.',
+      size: sizeOf('Repository rule.'),
+      why: null,
     })
     expect(memory).toMatchObject({
       title: 'This profile’s own CLAUDE.md',
       text: null,
-      why: BY_FINGERPRINT,
+      why: 'This app kept no copy of this file at its launch.',
     })
     expect(got.parts.slice(0, 4).every((one) => one.where === 'system-prompt')).toBe(true)
   })
@@ -460,7 +456,7 @@ describe('§5 · this conversation’s lead', () => {
   const leadOf = (parts: readonly ModelGotPart[]): ModelGotPart | undefined =>
     parts.find((one) => one.kind === 'this-conversation')
 
-  it('🔴 Claude: in the system prompt, whole — and a message that starts as the lead does is never split', () => {
+  it('Claude: in the system prompt, whole — and a message that starts as the lead does is never split', () => {
     const sent = `${BLOCK}\n\nplease plan`
     const got = oneMessageAsTheModelGotIt(
       handed({
@@ -472,7 +468,7 @@ describe('§5 · this conversation’s lead', () => {
     expect(theMessage(got.parts).text).toBe(sent)
   })
 
-  it('🔴 Codex: split off the front of the message it rode, exactly — the launch’s other messages unread', () => {
+  it('Codex: split off the front of the message it rode, exactly — the launch’s other messages unread', () => {
     const got = onCodex(`${BLOCK}\n\nplease plan`, neverWalked)
     expect(leadOf(got.parts)).toMatchObject({
       where: 'this-message',
@@ -484,7 +480,7 @@ describe('§5 · this conversation’s lead', () => {
     expect(kinds(got.parts).slice(-2)).toEqual(['this-conversation', 'the-message'])
   })
 
-  it('⛔ Codex: the lead with no blank line after it, or alone, did not ride in front of this message', () => {
+  it('Codex: the lead with no blank line after it, or alone, did not ride in front of this message', () => {
     for (const sent of [`${BLOCK}please plan`, BLOCK, `x${BLOCK}\n\nplease plan`]) {
       const got = onCodex(sent, [])
       expect(leadOf(got.parts)?.where, sent).not.toBe('this-message')
@@ -492,7 +488,7 @@ describe('§5 · this conversation’s lead', () => {
     }
   })
 
-  it('🔴 Codex: named where it LAST rode — the newest earlier message that carried it, and the walk stops there', () => {
+  it('Codex: named where it LAST rode — the newest earlier message that carried it, and the walk stops there', () => {
     let pulled = 0
     const earlier: AnEarlierMessage[] = [
       { ordinal: 30, sent: 'plain', first: false },
@@ -514,7 +510,7 @@ describe('§5 · this conversation’s lead', () => {
     expect(pulled).toBe(2)
     expect(theMessage(got.parts).text).toBe('and one more')
 
-    // ⚑ The control: only the first carried it — named there.
+    // The control: only the first carried it — named there.
     const onlyFirst = onCodex('and one more', [earlier[0], earlier[2]] as AnEarlierMessage[])
     expect(leadOf(onlyFirst.parts)).toMatchObject({
       where: 'first-message',
@@ -523,7 +519,7 @@ describe('§5 · this conversation’s lead', () => {
     })
   })
 
-  it('⛔ Codex: no message so far carried it — not reached yet; and when a text was not kept, not known', () => {
+  it('Codex: no message so far carried it — not reached yet; and when a text was not kept, not known', () => {
     const NOT_YET =
       'It had not reached the model by this message: it rides in front of the next message that carries words.'
     const UNKNOWN =
@@ -536,12 +532,12 @@ describe('§5 · this conversation’s lead', () => {
       why: NOT_YET,
     })
     expect(leadOf(onCodex('b', []).parts)?.why).toBe(NOT_YET)
-    // ⛔ An earlier text not kept, or this one not kept: where it rode cannot be said.
+    // An earlier text not kept, or this one not kept: where it rode cannot be said.
     expect(leadOf(onCodex('b', [{ ordinal: 20, sent: undefined, first: true }]).parts)?.why).toBe(
       UNKNOWN,
     )
     expect(leadOf(onCodex(undefined, plain).parts)?.why).toBe(UNKNOWN)
-    // ⚑ …but a carrier newer than the text not kept still names where it rode.
+    // …but a carrier newer than the text not kept still names where it rode.
     expect(
       leadOf(
         onCodex('b', [
@@ -552,7 +548,7 @@ describe('§5 · this conversation’s lead', () => {
     ).toBe('an-earlier-message')
   })
 
-  it('⚑ Codex: a launch that composed no conversation text has no lead part at all', () => {
+  it('Codex: a launch that composed no conversation text has no lead part at all', () => {
     const got = onCodex(
       'b',
       neverWalked,

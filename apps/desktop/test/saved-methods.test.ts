@@ -21,7 +21,6 @@ import {
   type SavedMethodsRefusal,
 } from '../src/shared/saved-methods'
 import {
-  fingerprintOf,
   readSavedMethods,
   SAVED_METHODS_INDEX,
   savedMethodsLinesOf,
@@ -41,7 +40,7 @@ import {
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { readSessionInstructions } from '../src/main/runtime/instructions'
 import { sectionsOf, theLeadOwed } from '../src/main/runtime/codex-lead'
-import { aLaunchRecordIn, savedMethodsNowFor } from '../src/main/runtime/what-this-agent-was-given'
+import { aLaunchRecordIn } from '../src/main/runtime/what-this-agent-was-given'
 import { savedMethodsFolder } from '../src/main/runtime/provider-homes'
 import { requestTabs, type ReaderRow } from '../src/renderer/src/lib/request-order'
 import { givenAnswer } from './dom/what-this-agent-was-given.fixture'
@@ -259,7 +258,7 @@ describe('the index a launch reads', () => {
     })
   })
 
-  it('keeps its folder, counts, size, fingerprint and time for the launch’s record, and no text', () => {
+  it('keeps its folder, counts, size, index and time for the launch’s record', () => {
     const folder = aStore({ 'rotate-log.md': METHOD })
     indexOf(folder, [LINE, '- broken'])
     const reading = read(folder)
@@ -271,10 +270,10 @@ describe('the index a launch reads', () => {
       methods: 1,
       leftOut: 1,
       bytes: Buffer.byteLength(reading.index),
-      sha256: fingerprintOf(reading.index),
+      index: reading.index,
       readAt: NOW,
     })
-    expect(JSON.stringify(use)).not.toContain('Rotate')
+    expect(reading.index).toContain('Rotate')
   })
 })
 
@@ -309,11 +308,11 @@ describe('the "Saved methods" section', () => {
     expect(said).toContain(
       'Index read at 2026-10-14 05:30 UTC, when this conversation was opened or reopened; earlier turns may have seen a different list.',
     )
-    // As every record keeps it: the lines' place, size and fingerprint, never the lines.
+    // As every record keeps it: the lines' place and size, never the lines.
     const lines = savedMethodsLinesOf(reading)
     if (reading.kind !== 'read' || lines === null) throw new Error('no lines')
     expect(said).toContain(
-      `(The 1 saved method listed here is not kept in this record: ${String(Buffer.byteLength(reading.index))} bytes, sha256 ${reading.sha256.slice(0, 12)}.)`,
+      `(The 1 saved method listed here is not kept in this record: ${String(Buffer.byteLength(reading.index))} bytes.)`,
     )
     expect(said).not.toContain('Rotate a fictional log')
     // …and as the model is sent it.
@@ -397,7 +396,6 @@ describe('the "Saved methods" section', () => {
       methods: [],
       leftOut: 0,
       index: '',
-      sha256: fingerprintOf(''),
     })
     expect(empty[1]).toBe(NONE_SAID)
     expect(empty[0]).not.toContain('Index read at')
@@ -540,15 +538,17 @@ describe('what the popup says it was given', () => {
       methods: 2,
       leftOut: 0,
       bytes: 300,
-      sha256: fingerprintOf('x'),
+      index: '- x',
       readAt: NOW,
     }
     expect(
       aLaunchRecordIn({ placement: 'first-message', savedMethods: index })?.savedMethods,
     ).toEqual(index)
     expect(
-      aLaunchRecordIn({ placement: 'first-message', savedMethods: { ...index, sha256: 'short' } })
-        ?.savedMethods,
+      aLaunchRecordIn({
+        placement: 'first-message',
+        savedMethods: { ...index, index: 'x'.repeat(5000) },
+      })?.savedMethods,
     ).toBeUndefined()
     expect(
       aLaunchRecordIn({ placement: 'first-message', savedMethods: { ...use, text: 'x' } })
@@ -597,7 +597,7 @@ describe('what the popup says it was given', () => {
           methods: 3,
           leftOut: 2,
           bytes: 1812,
-          sha256: fingerprintOf('x'),
+          index: '- x',
           readAt: NOW,
         },
         at,
@@ -625,7 +625,7 @@ describe('what the popup says it was given', () => {
           methods: 0,
           leftOut: 1,
           bytes: 40,
-          sha256: fingerprintOf('x'),
+          index: '- x',
           readAt: NOW,
         },
         at,
@@ -660,7 +660,7 @@ describe('what the popup says it was given', () => {
   })
 })
 
-describe('the index as the folder holds it now, since no record keeps its lines', () => {
+describe('the index as its launch was sent it', () => {
   const at = (time: number) => new Date(time).toISOString().slice(11, 16)
   const useOf = (folder: string) => {
     const reading = read(folder)
@@ -668,33 +668,19 @@ describe('the index as the folder holds it now, since no record keeps its lines'
     return { reading, use: savedMethodsUseOf(reading) }
   }
 
-  it('is the same as sent, changed since, gone, or unreadable', () => {
-    const folder = aStore({ 'rotate-log.md': METHOD })
-    indexOf(folder, [LINE])
-    const { reading, use } = useOf(folder)
-    expect(savedMethodsNowFor(use, NOW)).toEqual({
-      savedMethodsNow: { is: 'same', index: reading.index },
-    })
-    indexOf(folder, [LINE.replace('1 GB', '2 GB')])
-    expect(savedMethodsNowFor(use, NOW).savedMethodsNow).toMatchObject({ is: 'changed' })
-    rmSync(join(folder, SAVED_METHODS_INDEX))
-    symlinkSync(join(folder, 'rotate-log.md'), join(folder, SAVED_METHODS_INDEX))
-    expect(savedMethodsNowFor(use, NOW).savedMethodsNow).toMatchObject({
-      is: 'refused',
-      refusal: { kind: 'a-link', what: 'the-index' },
-    })
-    // An index.md with no method in the saved-method form lists none: changed, with nothing.
-    rmSync(join(folder, SAVED_METHODS_INDEX))
-    indexOf(folder, ['# Saved methods', '', 'Nothing yet.'])
-    expect(savedMethodsNowFor(use, NOW)).toEqual({ savedMethodsNow: { is: 'changed', index: '' } })
-    // No index.md in a folder that is still there: gone, not changed.
-    rmSync(join(folder, SAVED_METHODS_INDEX))
-    expect(savedMethodsNowFor(use, NOW)).toEqual({ savedMethodsNow: { is: 'gone' } })
-    // No folder at all: gone.
-    rmSync(folder, { recursive: true })
-    expect(savedMethodsNowFor(use, NOW)).toEqual({ savedMethodsNow: { is: 'gone' } })
-    // Nothing to compare when nothing was sent.
-    expect(savedMethodsNowFor({ given: 'none' }, NOW)).toEqual({})
+  it('an older record that kept only a fingerprint of the index still opens, without the index', () => {
+    const older = {
+      given: 'index',
+      folder: '/fictional/runbooks',
+      methods: 1,
+      leftOut: 0,
+      bytes: 40,
+      sha256: 'a'.repeat(64),
+      readAt: NOW,
+    }
+    const record = aLaunchRecordIn({ placement: 'first-message', savedMethods: older })
+    expect(record).not.toBeNull()
+    expect(record?.savedMethods).toBeUndefined()
   })
 
   /** A Codex launch's record in the instructions layout, with this conversation's text. */
@@ -730,21 +716,17 @@ describe('the index as the folder holds it now, since no record keeps its lines'
         (piece.kind === 'text' && piece.text.includes('rotate-log.md')),
     )
 
-  it('codex: the lead row says what it was sent, and shows the index as it is now', () => {
+  it('codex: the lead row says what it was sent, and shows the index as sent', () => {
     const folder = aStore({ 'rotate-log.md': METHOD })
     indexOf(folder, [LINE])
     const { reading, use } = useOf(folder)
-    const row = leadRow(aCodexGiven({ savedMethods: use, ...savedMethodsNowFor(use, NOW) }))
+    rmSync(folder, { recursive: true })
+    const row = leadRow(aCodexGiven({ savedMethods: use }))
     expect(savedPieces(row)).toEqual([
       {
         kind: 'notice',
         cy: 'input-saved-methods',
         text: `Saved methods: 1, ${String(use.given === 'index' ? use.bytes : 0)} bytes, read at 05:30.`,
-      },
-      {
-        kind: 'notice',
-        cy: 'input-saved-methods-now',
-        text: 'Not kept with this record. The index as the folder holds it now, the same as sent:',
       },
       { kind: 'text', text: reading.index },
     ])
@@ -774,7 +756,7 @@ describe('the index as the folder holds it now, since no record keeps its lines'
   })
 })
 
-describe('what each row of the popup draws for the index as it is now', () => {
+describe('what each row of the popup draws for the index as sent', () => {
   const at = (time: number) => new Date(time).toISOString().slice(11, 16)
   const SENT = `- Rotate a fictional log — when the log passes 1 GB — verified 2026-10-12 — /fictional/runbooks/rotate-log.md`
   const use = {
@@ -783,7 +765,7 @@ describe('what each row of the popup draws for the index as it is now', () => {
     methods: 1,
     leftOut: 0,
     bytes: Buffer.byteLength(SENT),
-    sha256: fingerprintOf(SENT),
+    index: SENT,
     readAt: NOW,
   }
   const text = '## Saved methods\n\n(The 1 saved method listed here is not kept in this record.)\n'
@@ -813,74 +795,30 @@ describe('what each row of the popup draws for the index as it is now', () => {
     expect(found?.kind).toBe('row')
     return found as ReaderRow
   }
-  const nowPieces = (row: ReaderRow) => {
+  const indexPieces = (row: ReaderRow) => {
     const from = row.pieces.findIndex(
-      (piece) => piece.kind === 'notice' && piece.cy === 'input-saved-methods-now',
+      (piece) => piece.kind === 'notice' && piece.cy === 'input-saved-methods',
     )
-    return from === -1 ? [] : row.pieces.slice(from)
+    return from === -1 ? [] : row.pieces.slice(from + 1)
   }
 
   for (const layout of ['claude', 'codex'] as const) {
-    it(`${layout}: changed since, with the index as it is now under the agent's name`, () => {
-      const now = SENT.replace('1 GB', '2 GB')
-      expect(
-        nowPieces(
-          rowOf(layout, { savedMethods: use, savedMethodsNow: { is: 'changed', index: now } }),
-        ),
-      ).toEqual([
-        {
-          kind: 'notice',
-          cy: 'input-saved-methods-now',
-          text: 'Not kept with this record. The index as the folder holds it now, changed since this launch:',
-        },
-        { kind: 'label', author: 'Agent', trust: 'Read now' },
-        { kind: 'text', text: now },
+    it(`${layout}: the index as sent, under the agent's name, recorded at launch`, () => {
+      expect(indexPieces(rowOf(layout, { savedMethods: use }))).toEqual([
+        { kind: 'label', author: 'Agent', trust: 'Recorded at launch' },
+        { kind: 'text', text: SENT },
       ])
     })
 
-    it(`${layout}: an index that lists no methods now, and one that is gone, show no text`, () => {
+    it(`${layout}: an index that listed no methods shows no text`, () => {
       expect(
-        nowPieces(
-          rowOf(layout, { savedMethods: use, savedMethodsNow: { is: 'changed', index: '' } }),
-        ),
-      ).toEqual([
-        {
-          kind: 'notice',
-          cy: 'input-saved-methods-now',
-          text: 'Not kept with this record. The folder’s index lists no methods now.',
-        },
-      ])
-      expect(
-        nowPieces(rowOf(layout, { savedMethods: use, savedMethodsNow: { is: 'gone' } })),
-      ).toEqual([
-        {
-          kind: 'notice',
-          cy: 'input-saved-methods-now',
-          text: 'Not kept with this record, and the folder holds no index now.',
-        },
-      ])
-    })
-
-    it(`${layout}: an index that cannot be read now says why, and shows no text`, () => {
-      expect(
-        nowPieces(
-          rowOf(layout, {
-            savedMethods: use,
-            savedMethodsNow: { is: 'refused', refusal: { kind: 'a-link', what: 'the-index' } },
-          }),
-        ),
-      ).toEqual([
-        {
-          kind: 'notice',
-          cy: 'input-saved-methods-now',
-          text: 'Not kept with this record, and the index cannot be read now: index.md is a link, which this app does not follow.',
-        },
-      ])
+        indexPieces(rowOf(layout, { savedMethods: { ...use, methods: 0, bytes: 0, index: '' } })),
+      ).toEqual([])
     })
   }
 
   it('an older record that kept the lines themselves is shown as it was kept, and is not read again', () => {
-    // Such a record has no folder or fingerprint, so its use is not read back and nothing is
+    // Such a record has no folder or index, so its use is not read back and nothing is
     // compared or claimed about it; its text, lines included, is what the record holds.
     const older = { given: 'index', methods: 1, leftOut: 0, bytes: SENT.length, readAt: NOW }
     expect(

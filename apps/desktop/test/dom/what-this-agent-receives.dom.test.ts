@@ -22,7 +22,7 @@ import { mount, record, unmountAll, type Mounted, openWorkReports } from './harn
 import { givenAnswer, modelGotAnswer } from './what-this-agent-was-given.fixture'
 
 /**
- * 🔴 **F093 · "Instructions, memory and tools"** — each tab draws the one read, and a part the app does
+ * **"Instructions, memory and tools"** — each tab draws the one read, and a part the app does
  * not record yet says so rather than drawing nothing or a guess.
  */
 
@@ -80,7 +80,7 @@ async function openPart(m: Mounted, key: string): Promise<HTMLDetailsElement> {
 const labelOf = (part: Element, cy: string): string =>
   part.querySelector(`summary [data-cy="${cy}"]`)?.textContent?.trim() ?? ''
 
-describe('F093 · the overview', () => {
+describe('the overview', () => {
   it('says which launch it describes, the provider version, and the sizes', async () => {
     const m = popup()
     await settle()
@@ -116,7 +116,7 @@ describe('F093 · the overview', () => {
   })
 })
 
-describe('F093 · instructions', () => {
+describe('instructions', () => {
   it('shows BroBot’s file by section, with who wrote its own instructions and when', async () => {
     const m = popup()
     await settle()
@@ -148,15 +148,15 @@ describe('F093 · instructions', () => {
   })
 })
 
-describe('F093 · memory', () => {
-  it('lists what its launch saw, by name and size', async () => {
+describe('memory', () => {
+  it('lists what its launch kept, by name and size', async () => {
     const m = popup()
     await settle()
     expect(m.q('input-memory-at-launch').textContent).toContain('MEMORY.md')
   })
 })
 
-describe('F093 · tools and the provider', () => {
+describe('tools and the provider', () => {
   it('shows each tool in full with its arguments, and how the provider hands them over', async () => {
     const m = popup()
     await settle()
@@ -179,7 +179,7 @@ describe('F093 · tools and the provider', () => {
     const prompt = await openPart(m, 'part:claude.prompt')
     expect(labelOf(prompt, 'input-part-author')).toBe('Provider')
     expect(labelOf(prompt, 'input-part-trust')).toBe('Provider copy · 2.1.287')
-    // ⚑ W4.186 · a part that differs by agent says so; one that doesn't says nothing.
+    // W4.186 · a part that differs by agent says so; one that doesn't says nothing.
     expect(prompt.querySelectorAll('[data-cy="input-provider-varies"]')).toHaveLength(0)
     await press(m, 'input-tab-2')
     expect(m.q('input-provider-varies').textContent).toContain(
@@ -204,7 +204,7 @@ describe('F093 · tools and the provider', () => {
   })
 })
 
-describe('F093 · with each message', () => {
+describe('with each message', () => {
   it('shows the whole text a turn handed the provider', async () => {
     const m = popup(givenAnswer(), [
       {
@@ -271,7 +271,7 @@ describe('F144 · every row the model received opens with what the model got', (
     },
   ] as unknown as TranscriptEvent[]
 
-  it('🔴 each is listed in delivery order, and opens to the whole text it was sent in', async () => {
+  it('each is listed in delivery order, and opens to the whole text it was sent in', async () => {
     const m = popup(givenAnswer(), ROWS)
     await settle()
     const messages = (): HTMLElement[] =>
@@ -304,7 +304,7 @@ describe('F144 · every row the model received opens with what the model got', (
       const sent = (ROWS[index + 1] as unknown as { sent: string }).sent
       expect(one.querySelector('[data-cy="what-the-model-got-sent"]')!.textContent).toBe(sent)
     }
-    // ⛔ A window that has not loaded the conversation's start does not call its first loaded
+    // A window that has not loaded the conversation's start does not call its first loaded
     // message the first: it says so, and every loaded message is a later one.
     unmountAll()
     const partial = popup(givenAnswer(), ROWS, false)
@@ -319,7 +319,7 @@ describe('F144 · every row the model received opens with what the model got', (
     ).toHaveLength(3)
   })
 
-  it('🔴 the words around them count in the totals', async () => {
+  it('the words around them count in the totals', async () => {
     const m = popup(givenAnswer(), ROWS)
     await settle()
     const around = ROWS.reduce((sum, row) => {
@@ -330,7 +330,7 @@ describe('F144 · every row the model received opens with what the model got', (
     expect(m.q('input-total-wrappers').textContent).toContain('This app’s words in messages')
   })
 
-  it('🔴 the switch sits under an app notice, a reply and the go-ahead in the conversation', async () => {
+  it('the switch sits under an app notice, a reply and the go-ahead in the conversation', async () => {
     const item = { at: 1, ordinal: 4, sent: 'This app says:\nIt was taken back.' }
     const notice = mount(
       AppNoticeEntry as never,
@@ -396,13 +396,13 @@ describe('F144 · the words around messages are counted once per turn', () => {
     ...over,
   })
 
-  it('🔴 two identical turns each count their own words', () => {
+  it('two identical turns each count their own words', () => {
     expect(
       wrappersOf([message({ itemId: 'a', ordinal: 1 }), message({ itemId: 'b', ordinal: 2 })]),
     ).toBe(2)
   })
 
-  it('🔴 one turn of two messages counts its words once', () => {
+  it('one turn of two messages counts its words once', () => {
     const sent = 'From two:\nx\ny'
     expect(
       wrappersOf([
@@ -412,14 +412,14 @@ describe('F144 · the words around messages are counted once per turn', () => {
     ).toBe(sent.length - 2)
   })
 
-  it('⛔ with no ordinal: alone is its own turn; handed over with others is left out', () => {
+  it('with no ordinal: alone is its own turn; handed over with others is left out', () => {
     expect(wrappersOf([message({ itemId: 'a' }), message({ itemId: 'b' })])).toBe(2)
     expect(wrappersOf([message({ itemId: 'a', together: true })])).toBe(0)
   })
 })
 
 describe('F144 · the tools’ namespace line', () => {
-  it('🔴 shown at the head of BroBot’s tools, as sent with them, where the provider was handed one', async () => {
+  it('shown at the head of BroBot’s tools, as sent with them, where the provider was handed one', async () => {
     const answer = givenAnswer()
     const line = 'Tools that reach the app you are running inside.'
     const m = popup({
@@ -446,7 +446,7 @@ describe('F144 · the tools’ namespace line', () => {
     )
   })
 
-  it('🔴 this build’s words, not the launch’s, are said to be so, even on a recorded launch', async () => {
+  it('this build’s words, not the launch’s, are said to be so, even on a recorded launch', async () => {
     const answer = givenAnswer()
     const m = popup({
       ...answer,
@@ -468,7 +468,7 @@ describe('F144 · the tools’ namespace line', () => {
     expect(about.textContent).not.toContain('Recorded at launch')
   })
 
-  it('⛔ absent where none was sent', async () => {
+  it('absent where none was sent', async () => {
     const m = popup()
     await settle()
     await press(m, 'input-tab-2')
@@ -477,7 +477,7 @@ describe('F144 · the tools’ namespace line', () => {
   })
 })
 
-describe('F093 · when the read fails', () => {
+describe('when the read fails', () => {
   it('says what to do', async () => {
     ;(window as { api?: unknown }).api = {
       runtime: { whatThisAgentWasGiven: vi.fn(async () => Promise.reject(new Error('gone'))) },
@@ -499,7 +499,7 @@ describe('F093 · when the read fails', () => {
   })
 })
 
-describe('F093 · a whole turn as the model got it', () => {
+describe('a whole turn as the model got it', () => {
   function switchWith(read: (ordinal: number) => Promise<WhatTheModelGot>): Mounted {
     const Host = defineComponent({
       setup() {
@@ -516,14 +516,14 @@ describe('F093 · a whole turn as the model got it', () => {
     await press(m, 'model-got-switch')
     expect(read).toHaveBeenCalledWith(42)
     expect(m.all('what-the-model-got-part')).toHaveLength(3)
-    expect(m.all('what-the-model-got-part')[1]!.textContent).toContain('Kept by fingerprint only')
+    expect(m.all('what-the-model-got-part')[1]!.textContent).toContain('kept no copy of this file')
     expect(m.q('what-the-model-got-record').textContent).toContain('same text BroCrew handed over')
     expect(m.all('what-the-model-got-record-part')[0]!.textContent).toContain(
       'Added by the provider',
     )
   })
 
-  it('🔴 says what the provider’s record leaves out, in its own name', async () => {
+  it('says what the provider’s record leaves out, in its own name', async () => {
     const answer = modelGotAnswer()
     const m = switchWith(async () => answer)
     await press(m, 'model-got-switch')
@@ -561,12 +561,12 @@ describe('F093 · a whole turn as the model got it', () => {
   })
 })
 
-describe('F093 · the review’s must-fixes', () => {
+describe('the review’s must-fixes', () => {
   it('says the total counts only the tool names where the provider loads them on request', async () => {
     const m = popup()
     await settle()
     expect(m.q('input-total-tools-note').textContent).toContain('Their names only')
-    // ⚑ W4.184 · and the other servers' tools have a card of their own, as the total counts them.
+    // W4.184 · and the other servers' tools have a card of their own, as the total counts them.
     expect(m.q('input-total-other-tools').textContent).toContain('Other servers’ tools')
   })
 
@@ -661,7 +661,7 @@ describe('F100 · a long list of rows in the popup keeps each row whole', () => 
 })
 
 describe('F144 · the approved labels', () => {
-  it('🔴 the tools tab says it lists this build’s tools', async () => {
+  it('the tools tab says it lists this build’s tools', async () => {
     const m = popup()
     await settle()
     await press(m, 'input-tab-2')
@@ -669,7 +669,7 @@ describe('F144 · the approved labels', () => {
     expect(labelOf(tools, 'input-part-trust')).toBe('This build')
   })
 
-  it('🔴 a go-ahead that went out with the closing block says so; one sent as written says that', async () => {
+  it('a go-ahead that went out with the closing block says so; one sent as written says that', async () => {
     const closing = mount(
       ModelGotSwitch as never,
       { words: 'Go ahead.', sent: 'Go ahead.\n(the closing block)', goAhead: true },
@@ -691,7 +691,7 @@ describe('F144 · the approved labels', () => {
     expect(plain.all('what-the-model-got-as-typed')).toHaveLength(1)
   })
 
-  it('⛔ a person’s message whose turn added lines is not called the closing block', async () => {
+  it('a person’s message whose turn added lines is not called the closing block', async () => {
     const m = mount(
       ModelGotSwitch as never,
       { words: 'Ship it.', sent: 'From Pat:\nShip it.' },

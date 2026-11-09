@@ -895,9 +895,8 @@ export interface RestoredFromTheArchiveEvent {
 export interface LaunchedEvent {
   type: 'launched'
   /**
-   * 🔴 **F093 · R2 — what this launch gave its agent** — BroBot's own words in full, every other
-   * file and the memory by fingerprint ({@link WhatALaunchGave}). ⚠️ Absent on rows written before
-   * F093, and on a launch with no instruction reader.
+   * What this launch gave its agent, every text in full ({@link WhatALaunchGave}). Absent on older
+   * rows, and on a launch with no instruction reader.
    */
   given?: WhatALaunchGave
   /**

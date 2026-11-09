@@ -9,7 +9,7 @@ import type {
   WhatThisAgentWasGiven,
 } from '../../../shared/what-this-agent-was-given'
 import { WHOSE_WORDS } from '../../../shared/whose-text'
-import { savedMethodsNowSaid, savedMethodsUseSaid } from '../../../shared/saved-methods'
+import { savedMethodsUseSaid } from '../../../shared/saved-methods'
 import { textPackRefusedSaid, textPackSourceSaid } from '../../../shared/text-pack'
 import { AUTHOR, MADE_WORDS, type InputMessage } from './agent-inputs'
 import { refusalWords } from './refusal-words'
@@ -206,7 +206,7 @@ function packOf(given: WhatThisAgentWasGiven): string | null {
 const PACK_SECTION = 'How you work'
 
 /**
- * A file's own sections, each with who wrote it, or its whole text where it has none. ⚑ The section
+ * A file's own sections, each with who wrote it, or its whole text where it has none. The section
  * a text pack gave names the pack's folder rather than this build.
  */
 function bodyOf(
@@ -283,7 +283,7 @@ function fileRow(
     pieces.push({
       kind: 'notice',
       cy: 'input-file-changed',
-      text: 'This file has changed since the agent got it: this is how it reads now.',
+      text: 'This file has changed since the agent got it.',
     })
   if (file.truncated)
     pieces.push({
@@ -307,33 +307,24 @@ function fileRow(
 
 /**
  * What a launch was given from its profile's saved methods, under the text it rode in: the count
- * and size or why none was sent, then the index as the folder holds it now, since no record keeps
- * its lines. The same pieces under this conversation's text and under a Codex lead.
+ * and size or why none was sent, then the index as it was sent. The same pieces under this
+ * conversation's text and under a Codex lead.
  */
 function savedMethodsPieces(given: WhatThisAgentWasGiven, when: (at: number) => string): Piece[] {
-  if (given.savedMethods === undefined) return []
-  const now = given.savedMethodsNow
+  const use = given.savedMethods
+  if (use === undefined) return []
   return [
-    ...savedMethodsUseSaid(given.savedMethods, when).map((said): Piece => ({
+    ...savedMethodsUseSaid(use, when).map((said): Piece => ({
       kind: 'notice',
       cy: 'input-saved-methods',
       text: said,
     })),
-    ...(now === undefined
-      ? []
-      : [
-          {
-            kind: 'notice',
-            cy: 'input-saved-methods-now',
-            text: savedMethodsNowSaid(now),
-          } as const,
-          ...((now.is === 'same' || now.is === 'changed') && now.index !== ''
-            ? [
-                { kind: 'label', author: AUTHOR.agent, trust: TRUST.readNow } as const,
-                { kind: 'text', text: now.index } as const,
-              ]
-            : []),
-        ]),
+    ...(use.given === 'index' && use.index !== ''
+      ? [
+          { kind: 'label', author: AUTHOR.agent, trust: TRUST.atLaunch } as const,
+          { kind: 'text', text: use.index } as const,
+        ]
+      : []),
   ]
 }
 
@@ -382,8 +373,14 @@ function brobotText(
     conversationRow(stream, given.thisConversation, when, savedMethodsPieces(given, when))
 }
 
-/** The memory file a provider puts in front of the model, read now: the one its copy marks. */
+/** The memory file a provider puts in front of the model: the one its copy marks. */
 function memoryIndex(given: WhatThisAgentWasGiven): Piece[] {
+  const launched = given.memory.atLaunch.find((one) => one.kind === 'agent-memory')
+  if (launched?.text != null)
+    return [
+      { kind: 'label', author: AUTHOR.memory, trust: TRUST.atLaunch },
+      { kind: 'text', text: launched.text },
+    ]
   const index = given.memory.stores
     .find((store) => store.provider === given.provider)
     ?.entries.find((one) => one.kind === 'agent-memory')
@@ -647,7 +644,7 @@ function systemPromptTabs(ctx: Context, messages: readonly InputMessage[]): Read
   const inSystem = ctx.given.placement === 'system-prompt'
   let joined = false
   for (const part of partsAt(ctx, 'system-prompt')) {
-    // ⚑ A copy captured since the join was recorded marks where this app's text joined; the text
+    // A copy captured since the join was recorded marks where this app's text joined; the text
     // after the mark is the provider's again, and stays after it.
     const mark = matchingMark(part.text, JOIN_MARK)
     const at = part.text.indexOf(mark)
@@ -687,7 +684,7 @@ function systemPromptTabs(ctx: Context, messages: readonly InputMessage[]): Read
     first.mark('join', SELF_WORDS.joinsFirstMessage)
     brobotText(first, ctx.given, ctx.when)
   }
-  // ⚠️ Only a window holding the conversation's start has its first message; otherwise every
+  // Only a window holding the conversation's start has its first message; otherwise every
   // loaded message is a later one.
   const firstTurn = ctx.startLoaded ? firstTurnOf(messages) : []
   const rest = messages.slice(firstTurn.length)
@@ -703,7 +700,7 @@ function systemPromptTabs(ctx: Context, messages: readonly InputMessage[]): Read
     )
     for (const part of context) providerRow(first, ctx, part)
   }
-  // ⚠️ With no copy, or a copy with no mark for it, the paragraph is still known: it stays in the
+  // With no copy, or a copy with no mark for it, the paragraph is still known: it stays in the
   // first message, as its own part, rather than disappearing.
   if (!ctx.placed.has('tools-paragraph')) {
     first.row({
@@ -882,7 +879,7 @@ function leadRow(stream: Stream, ctx: Context): void {
 }
 
 /**
- * The skills the provider listed for this agent, after its copy's own skills text. ⚠️ A provider
+ * The skills the provider listed for this agent, after its copy's own skills text. A provider
  * that loads no skill file says so with `no-skill-files`, and nothing is added: its built-in skills
  * are already in its copy.
  */
@@ -927,7 +924,7 @@ function instructionsTabs(ctx: Context, messages: readonly InputMessage[]): Read
   const instructions = new Stream(2)
   for (const part of partsAt(ctx, 'instructions', 'developer-message'))
     providerRow(instructions, ctx, part, false, part.id.endsWith('.skills') ? skillsOf(ctx) : [])
-  // ⚠️ With no copy, or a copy with no skills part, the skills are still known: they stay in this
+  // With no copy, or a copy with no skills part, the skills are still known: they stay in this
   // tab as a reference, unnumbered, rather than disappearing.
   if (!ctx.placed.has('skills')) {
     const pieces = skillsOf(ctx)
@@ -970,7 +967,7 @@ function instructionsTabs(ctx: Context, messages: readonly InputMessage[]): Read
     files.mark('join', SELF_WORDS.profileFileStarts)
     for (const file of remaining.filter((one) => one.kind === 'profile-instructions'))
       fileRow(files, file, ctx.when, packOf(ctx.given))
-    // ⚑ A copy whose wrapper holds the profile's file alone: the rest of it is its closing, and the
+    // A copy whose wrapper holds the profile's file alone: the rest of it is its closing, and the
     // other files come after every part of the copy rather than stand in for one it did not hold.
     if (!afterProfile.includes(workspaceMark)) {
       wrapper('closing', 'Closing of the instruction wrapper', afterProfile)
@@ -1042,7 +1039,7 @@ function instructionsTabs(ctx: Context, messages: readonly InputMessage[]): Read
 
 /**
  * How the provider's request is laid out, read off its stored copy: as messages behind a system
- * prompt, or as instructions and developer messages. ⚠️ With no copy for the model, BroBot's own
+ * prompt, or as instructions and developer messages. With no copy for the model, BroBot's own
  * placement is the only fact left: text in the system prompt means a system prompt, and text in the
  * first message is the instructions layout's (the shared type's `placement`).
  */

@@ -62,8 +62,7 @@ import {
 } from '../../shared/what-this-agent-was-given'
 import { WHOSE_TEXT, type InstructionSpan } from '../../shared/whose-text'
 import { BUILT_IN_SKILL_NAMES } from '../../shared/built-in-skills'
-import type { SavedMethodsNow, SavedMethodsUse } from '../../shared/saved-methods'
-import { readSavedMethods } from '../saved-methods'
+import { SAVED_METHODS_MOST_INDEX_BYTES, type SavedMethodsUse } from '../../shared/saved-methods'
 import type { TextPackUse } from '../../shared/text-pack'
 import { realPathOf } from '../read-text-file'
 import { type TheBuildRunning } from './factory-text'
@@ -78,42 +77,27 @@ import { workspaceInstructionFiles } from './workspace'
 import type { ALeadCarried } from './codex-lead'
 
 /**
- * 🔴 **F093 · what a launch gives its agent, kept (R2) and read back (the popup's one read).**
- *
- * ⚑ **Two halves, one module.** {@link whatThisLaunchGave} builds the record a `launched` row keeps:
- * BroBot's own words in full, every other file and the memory by fingerprint. {@link whatItWasGiven}
- * reads it back for the window, with the files and memory read now beside it, the tools in full and
- * every size.
- *
- * ⛔ **The window never names a path.** Every file read here is one a launch named: a path its record
- * keeps, or a file the provider reported it read — and a record is trusted only off a launch this
- * app made (the host ignores one an imported ledger carries).
+ * What a launch gives its agent: {@link whatThisLaunchGave} builds the record a `launched` row keeps,
+ * and {@link whatItWasGiven} reads it back for the window, with the files and memory read now beside
+ * it, the tools in full and every size. Every file read here is one a launch named.
  */
 
-/** ⚑ sha256 of a text, as hex. */
-export function fingerprintOf(text: string): string {
-  return createHash('sha256').update(text, 'utf8').digest('hex')
-}
-
-/** ⚑ The JSON Schema of a tool's arguments, as BroBot declares it (the Codex adapter's derivation). */
+/** The JSON Schema of a tool's arguments, as BroBot declares it (the Codex adapter's derivation). */
 function parametersOf(tool: AgentToolset['tools'][number]): unknown {
   return z.toJSONSchema(z.looseObject(tool.input))
 }
 
-/** ⚑ A toolset's definitions, as one fingerprint: name, description and arguments of each. */
+/** A toolset's definitions, as one fingerprint: name, description and arguments of each. */
 export function toolsetFingerprint(toolset: AgentToolset): string {
-  return fingerprintOf(
-    JSON.stringify(
-      toolset.tools.map((tool) => ({
-        name: tool.name,
-        description: tool.description,
-        parameters: parametersOf(tool),
-      })),
-    ),
-  )
+  const definitions = toolset.tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    parameters: parametersOf(tool),
+  }))
+  return createHash('sha256').update(JSON.stringify(definitions), 'utf8').digest('hex')
 }
 
-/** ⚑ BroBot's profile file for one launch: its text, its sections, and whether it was published. */
+/** BroBot's profile file for one launch: its text, its sections, and whether it was published. */
 export interface LaunchProfileFile {
   readonly path: string
   readonly text: string
@@ -122,44 +106,36 @@ export interface LaunchProfileFile {
   readonly refused: string | null
 }
 
-/** ⚑ The workspace's own files, as BroBot renders them: text BroBot wrote. */
+/** The workspace's own files, as BroBot renders them: text BroBot wrote. */
 function isBroBotsWorkspaceText(text: string): boolean {
   return workspaceInstructionFiles().some((file) => file.content === text)
 }
 
 /**
- * ⚑ **The repository files Codex's own discovery would read in `cwd`, now** — one per folder, an
+ * **The repository files Codex's own discovery would read in `cwd`, now** — one per folder, an
  * override before `AGENTS.md`, from the repository's root down to the folder ({@link codexConventionChain}).
- * ⚑ For a conversation whose launch reported none (one with no launch record); a live Codex
+ * For a conversation whose launch reported none (one with no launch record); a live Codex
  * conversation's are the ones it reported.
  */
 export { filesCodexWouldRead } from '../providers/knowledge-definitions'
 
-/** ⚑ A file read now: its text and fingerprint. */
 interface ReadNow {
   readonly text: string
   readonly bytes: number
   readonly truncated: boolean
-  readonly sha256: string
 }
 
 /**
- * ⚑ **Read a file a launch named, now — with the launch's own reader and cap**
- * ({@link readInstructionFile}: links followed, 64 KiB, a strict decode), so an unchanged file
- * fingerprints as it did at launch. `null` when it cannot be read.
+ * A file a launch named, read now with the launch's own reader and cap, so an unchanged file reads
+ * as it did at launch. `null` when it cannot be read.
  */
 export function readNow(path: string): ReadNow | null {
   const read = readInstructionFile(path, INSTRUCTION_FILE_CAP)
   if (!read.ok) return null
-  return {
-    text: read.text,
-    bytes: read.bytes,
-    truncated: read.truncated,
-    sha256: fingerprintOf(read.text),
-  }
+  return { text: read.text, bytes: read.bytes, truncated: read.truncated }
 }
 
-/** ⚑ Two spellings of one file — compared where they really are, when both can be resolved. */
+/** Two spellings of one file — compared where they really are, when both can be resolved. */
 function theSameFile(one: string, other: string): boolean {
   if (one === other) return true
   const a = realPathOf(one)
@@ -188,51 +164,41 @@ export interface WhatALaunchWasHanded {
   readonly launchSettings?: readonly LaunchSetting[]
 }
 
-/**
- * 🔴 **F093 · R2 — the record one launch keeps** ({@link WhatALaunchGave}).
- *
- * ⛔ **BroBot's own words in full; nobody else's.** The profile file, the per-conversation text and
- * the workspace's file are BroBot's and kept whole; a repository's files and the agent's memory are
- * kept by path and fingerprint.
- */
+/** The record one launch keeps ({@link WhatALaunchGave}): every text it gave, in full. */
 export function whatThisLaunchGave(handed: WhatALaunchWasHanded): WhatALaunchGave {
   const { instructions } = handed
   const profileFile = theProfileFile(handed)
   const files: GivenRecordFile[] = []
   for (const item of instructions.injected) {
     if (item.kind === 'profile-instructions') continue
-    const brobots = item.kind === 'workspace-instructions'
     files.push({
       path: item.path,
       kind: item.kind,
       bytes: item.bytes,
-      sha256: fingerprintOf(item.text),
+      text: item.text,
       truncated: item.truncated,
-      ...(brobots ? { text: item.text } : {}),
     })
   }
   for (const path of handed.reportedByTheProvider) {
     if (profileFile !== null && theSameFile(path, profileFile.path)) continue
     if (files.some((one) => theSameFile(one.path, path))) continue
     const read = readNow(path)
-    const brobots = read !== null && isBroBotsWorkspaceText(read.text)
     files.push({
       path,
       kind: 'read-by-codex',
       bytes: read?.bytes ?? 0,
-      sha256: read?.sha256 ?? null,
+      text: read?.text ?? null,
       truncated: read?.truncated ?? false,
-      ...(brobots && read !== null ? { text: read.text } : {}),
     })
   }
   const memory: GivenRecordMemory[] = instructions.agentMemory.map((item) => ({
     path: item.path,
     kind: item.kind,
     bytes: item.bytes,
-    sha256: fingerprintOf(item.text),
+    text: item.text,
   }))
   const conversation = instructions.thisConversation
-  // ⚑ On Claude, the line the model read above each file BroBot sent, as this launch sent it.
+  // On Claude, the line the model read above each file BroBot sent, as this launch sent it.
   const headings =
     providerDescriptor(handed.provider).contextPlacement === 'system-prompt'
       ? headingsAsSentFor(
@@ -297,7 +263,7 @@ export function whatThisLaunchGave(handed: WhatALaunchWasHanded): WhatALaunchGav
   }
 }
 
-/** ⚑ The profile file the reader composed — or, on Claude, the one it appended. */
+/** The profile file the reader composed — or, on Claude, the one it appended. */
 function theProfileFile(handed: WhatALaunchWasHanded): LaunchProfileFile | null {
   if (handed.profileFile !== null) return handed.profileFile
   const appended = handed.instructions.injected.find((item) => item.kind === 'profile-instructions')
@@ -307,7 +273,7 @@ function theProfileFile(handed: WhatALaunchWasHanded): LaunchProfileFile | null 
 
 // ── reading a record back ─────────────────────────────────────────────────────────────────────────
 
-/** ⚑ Every file kind a record may name — anything else is dropped on the way back in. */
+/** Every file kind a record may name — anything else is dropped on the way back in. */
 const KNOWN_KINDS: ReadonlySet<string> = new Set<GivenFileKind>([
   'profile-instructions',
   'profile-memory',
@@ -319,7 +285,7 @@ const KNOWN_KINDS: ReadonlySet<string> = new Set<GivenFileKind>([
   'agent-memory-topic',
   'read-by-codex',
 ])
-/** ⚑ What a record read back keeps at most: far above any launch this app makes. */
+/** What a record read back keeps at most: far above any launch this app makes. */
 const BuiltInSkillsRecord = z
   .object({
     version: z.string().min(1).max(80),
@@ -416,7 +382,7 @@ const TextPackUseRecord: z.ZodType<TextPackUse> = z
   })
   .strict()
 
-/** {@link SavedMethodsUse} as a launch's row keeps it: counts, sizes and times only. */
+/** {@link SavedMethodsUse} as a launch's row keeps it. */
 const SavedMethodsUseRecord: z.ZodType<SavedMethodsUse> = z.discriminatedUnion('given', [
   z.object({ given: z.literal('none') }).strict(),
   z
@@ -426,7 +392,7 @@ const SavedMethodsUseRecord: z.ZodType<SavedMethodsUse> = z.discriminatedUnion('
       methods: z.number().int().nonnegative(),
       leftOut: z.number().int().nonnegative(),
       bytes: z.number().int().nonnegative(),
-      sha256: z.string().regex(/^[0-9a-f]{64}$/),
+      index: z.string().max(SAVED_METHODS_MOST_INDEX_BYTES),
       readAt: z.number().int().nonnegative(),
     })
     .strict(),
@@ -486,14 +452,14 @@ const isKnownKind = (value: unknown): value is GivenFileKind =>
   isString(value) && KNOWN_KINDS.has(value)
 const WHOSE: ReadonlySet<string> = new Set(WHOSE_TEXT)
 
-/** ⚑ A stored setting's value, kept only when it is one this module writes. */
+/** A stored setting's value, kept only when it is one this module writes. */
 function aSettingValue(value: unknown): LaunchSettingValue | undefined {
   if (value === null || typeof value === 'boolean' || isText(value)) return value
   if (!Array.isArray(value) || value.length > MOST_SETTING_ITEMS_KEPT) return undefined
   return value.every(isText) ? value : undefined
 }
 
-/** ⚑ Stored settings, each kept only when it is one. */
+/** Stored settings, each kept only when it is one. */
 function settingsIn(value: unknown): LaunchSetting[] {
   if (!Array.isArray(value)) return []
   return value.slice(0, MOST_SETTINGS_KEPT).flatMap((one: unknown): LaunchSetting[] => {
@@ -503,7 +469,7 @@ function settingsIn(value: unknown): LaunchSetting[] {
   })
 }
 
-/** ⚑ A stored span, kept only when it is one. */
+/** A stored span, kept only when it is one. */
 function spansIn(value: unknown): InstructionSpan[] {
   if (!Array.isArray(value)) return []
   return value.slice(0, MOST_SECTIONS_KEPT).flatMap((one: unknown): InstructionSpan[] => {
@@ -517,7 +483,7 @@ function spansIn(value: unknown): InstructionSpan[] {
 }
 
 /**
- * ⛔ **A stored record, read back defensively** — a ledger can be edited by hand, or written by a
+ * **A stored record, read back defensively** — a ledger can be edited by hand, or written by a
  * newer build, so a field that is not what this module writes is dropped rather than trusted, and
  * every list and text is bounded. `null` when the record is not one.
  */
@@ -558,9 +524,8 @@ export function aLaunchRecordIn(stored: unknown): WhatALaunchGave | null {
             path: one['path'],
             kind: one['kind'],
             bytes: typeof one['bytes'] === 'number' ? one['bytes'] : 0,
-            sha256: isString(one['sha256']) ? one['sha256'] : null,
+            text: isText(one['text']) ? one['text'] : null,
             truncated: one['truncated'] === true,
-            ...(isText(one['text']) ? { text: one['text'] } : {}),
             ...(isText(one['heading']) ? { heading: one['heading'] } : {}),
           },
         ]
@@ -568,16 +533,13 @@ export function aLaunchRecordIn(stored: unknown): WhatALaunchGave | null {
     : []
   const memory = Array.isArray(stored['memory'])
     ? stored['memory'].slice(0, MOST_MEMORY_KEPT).flatMap((one: unknown): GivenRecordMemory[] =>
-        isRecord(one) &&
-        isString(one['path']) &&
-        isKnownKind(one['kind']) &&
-        isString(one['sha256'])
+        isRecord(one) && isString(one['path']) && isKnownKind(one['kind'])
           ? [
               {
                 path: one['path'],
                 kind: one['kind'] as InjectedInstructionKind,
                 bytes: typeof one['bytes'] === 'number' ? one['bytes'] : 0,
-                sha256: one['sha256'],
+                text: isText(one['text']) ? one['text'] : null,
               },
             ]
           : [],
@@ -623,16 +585,16 @@ export function aLaunchRecordIn(stored: unknown): WhatALaunchGave | null {
 // ── the popup's one read ──────────────────────────────────────────────────────────────────────────
 
 /**
- * ⚑ The mode every provider snapshot's conversation runs in: the capture opens each asking first and
+ * The mode every provider snapshot's conversation runs in: the capture opens each asking first and
  * not planning (`provider-snapshots.smoke.ts`).
  */
 const SNAPSHOTS_ARE_CAPTURED_IN = { approval: 'ask', planning: false } as const
 
-/** ⚑ Who makes each kind of file, and the plain sentence the window draws for it. */
+/** Who makes each kind of file, and the plain sentence the window draws for it. */
 function originOf(
   kind: GivenFileKind,
   provider: Provider,
-  /** ⚑ The file's text is the workspace's own, as BroBot renders it. */
+  /** The file's text is the workspace's own, as BroBot renders it. */
   brobots: boolean,
 ): { origin: GivenOrigin; madeAutomatically: boolean; says: string } {
   const theWorkspaces = {
@@ -677,7 +639,7 @@ function originOf(
   }
 }
 
-/** ⚑ The own-instructions version, in the read's words. */
+/** The own-instructions version, in the read's words. */
 function versionOf(one: OwnInstructionsVersion): GivenVersion {
   return {
     version: one.version,
@@ -690,7 +652,7 @@ function versionOf(one: OwnInstructionsVersion): GivenVersion {
   }
 }
 
-/** ⚑ The sections of one of BroBot's texts, each with how it was made. */
+/** The sections of one of BroBot's texts, each with how it was made. */
 function sectionsOf(
   text: string,
   spans: readonly InstructionSpan[],
@@ -719,7 +681,7 @@ function sectionsOf(
   })
 }
 
-/** ⚑ How a provider hands a set of server tools to its model. */
+/** How a provider hands a set of server tools to its model. */
 function deferralOf(provider: Provider, published: readonly string[] | null): GivenDeferral {
   return providerKnowledge[provider].instructions.given.deferral(published)
 }
@@ -769,8 +731,8 @@ export interface WhatTheReadIsHanded {
   } | null
   /**
    * The sentence the provider's thread was started with, off its tool list's
-   * `declared.instructions`, or `null` where no start says it whole. ⚠️ Never a resume's: that
-   * states this build's sentence, and the thread keeps the one it started with. ⚠️ Never one at the
+   * `declared.instructions`, or `null` where no start says it whole. Never a resume's: that
+   * states this build's sentence, and the thread keeps the one it started with. Never one at the
    * list's text cap, which may have been cut.
    */
   readonly declaredWith: string | null
@@ -792,7 +754,7 @@ export interface WhatTheReadIsHanded {
   }
 }
 
-/** ⚑ A file BroBot wrote, as launched, with whether it is still the same on disk. */
+/** A file as its launch gave it, with whether it is still the same on disk. */
 function aFileAsLaunched(
   provider: Provider,
   path: string,
@@ -803,7 +765,7 @@ function aFileAsLaunched(
   truncated: boolean,
   refused: string | null,
 ): GivenFile {
-  const origin = originOf(kind, provider, true)
+  const origin = originOf(kind, provider, isBroBotsWorkspaceText(text))
   const now = textIs === 'as-launched' ? readNow(path) : null
   return {
     path,
@@ -822,7 +784,7 @@ function aFileAsLaunched(
   }
 }
 
-/** ⚑ A file somebody else wrote, read now, against the fingerprint its launch kept. */
+/** A file whose launch kept no text, read now. */
 function aFileReadNow(provider: Provider, file: GivenRecordFile, recorded: boolean): GivenFile {
   const now = readNow(file.path)
   const brobots = now !== null && isBroBotsWorkspaceText(now.text)
@@ -836,9 +798,7 @@ function aFileReadNow(provider: Provider, file: GivenRecordFile, recorded: boole
     reach: 'in-every-request',
     text: now?.text ?? null,
     textIs: now === null ? 'unreadable' : recorded ? 'read-now' : 'composed-now',
-    changedSinceLaunch:
-      recorded && now !== null && file.sha256 !== null ? now.sha256 !== file.sha256 : null,
-    // ⚑ What the model was given was cut where the launch cut it.
+    changedSinceLaunch: null,
     truncated: recorded ? file.truncated : (now?.truncated ?? false),
     sections: [],
     size: sizeOf(now?.text ?? ''),
@@ -847,9 +807,9 @@ function aFileReadNow(provider: Provider, file: GivenRecordFile, recorded: boole
 }
 
 /**
- * ⚑ **W4.177 — the line the model read above each file BroBot sent** ({@link headingAsSent}): on
- * Claude, in the order the model read them, the preamble in front of the first. ⛔ None on a file it
- * did not send. ⚑ For the launch, which keeps them, and for a read of a launch that kept none.
+ * The line the model read above each file BroBot sent ({@link headingAsSent}): on
+ * Claude, in the order the model read them, the preamble in front of the first. None on a file it
+ * did not send. For the launch, which keeps them, and for a read of a launch that kept none.
  */
 function headingsAsSentFor(
   files: readonly {
@@ -869,7 +829,7 @@ function headingsAsSentFor(
 }
 
 /**
- * ⚑ Each file with the line the model read above it: the one its launch kept, else this build's
+ * Each file with the line the model read above it: the one its launch kept, else this build's
  * ({@link headingsAsSentFor}), and which.
  */
 function withTheirHeadings(
@@ -886,7 +846,7 @@ function withTheirHeadings(
   })
 }
 
-/** ⚑ One memory entry, read now — compared with the launch's by its name in the store. */
+/** One memory entry, read now, compared with the launch's by its name in the store. */
 function aMemoryEntry(
   provider: Provider,
   item: InjectedInstruction & { readonly amendable: boolean },
@@ -904,19 +864,16 @@ function aMemoryEntry(
     text: item.text,
     truncated: item.truncated,
     changedSinceLaunch:
-      recorded && kept !== undefined ? fingerprintOf(item.text) !== kept.sha256 : null,
-    textIs:
-      recorded && kept !== undefined && fingerprintOf(item.text) === kept.sha256
-        ? 'as-launched'
-        : 'read-now',
+      recorded && kept !== undefined && kept.text !== null ? kept.text !== item.text : null,
+    textIs: recorded && kept?.text === item.text ? 'as-launched' : 'read-now',
     amendable: item.amendable,
     size: sizeOf(item.text),
   }
 }
 
 /**
- * ⚑ The provider's own parts — the snapshot this build carries for the conversation's model, or why
- * there is none. ⚠️ A snapshot is of the provider version this build bundles, so it says so when the
+ * The provider's own parts — the snapshot this build carries for the conversation's model, or why
+ * there is none. A snapshot is of the provider version this build bundles, so it says so when the
  * app runs another, or when another build of this app made the launch.
  */
 function providerPartsOf(
@@ -951,35 +908,10 @@ function providerPartsOf(
 }
 
 /**
- * The saved-methods index as the profile's folder holds it now, against the one this launch was
- * sent: its record keeps only the fingerprint, so the popup reads the folder again.
- */
-export function savedMethodsNowFor(
-  use: SavedMethodsUse,
-  now: number,
-): { readonly savedMethodsNow?: SavedMethodsNow } {
-  if (use.given !== 'index' || use.methods === 0) return {}
-  const read = readSavedMethods(use.folder, now)
-  // No folder, or a folder with no index.md: either way the folder holds no index now.
-  if (read.kind === 'none' || (read.kind === 'read' && !read.hasIndex)) {
-    return { savedMethodsNow: { is: 'gone' } }
-  }
-  if (read.kind === 'refused') return { savedMethodsNow: { is: 'refused', refusal: read.refusal } }
-  return {
-    savedMethodsNow: {
-      is: fingerprintOf(read.index) === use.sha256 ? 'same' : 'changed',
-      index: read.index,
-    },
-  }
-}
-
-/**
- * 🔴 **F093 · the agent-input popup's one read** ({@link WhatThisAgentWasGiven}).
- *
- * ⚑ **BroBot's words as the launch kept them; everything else read now**, with whether it changed
- * since that launch beside it. ⛔ **Sizes are characters, words, and characters ÷ 4 as tokens** —
- * an estimate, which the window draws with "≈". ⚠️ A file that did not reach the model (refused)
- * is listed but not counted.
+ * The agent-input popup's one read ({@link WhatThisAgentWasGiven}): each text as its launch kept
+ * it, with whether it changed since, and memory read now. Sizes are characters, words, and
+ * characters ÷ 4 as tokens, an estimate. A file that did not reach the model is listed but not
+ * counted.
  */
 export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiven {
   const { record, provider } = handed
@@ -1013,7 +945,7 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
   }
   for (const file of record.files) {
     files.push(
-      file.text !== undefined
+      file.text !== null
         ? aFileAsLaunched(
             provider,
             file.path,
@@ -1028,7 +960,7 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
     )
   }
 
-  // ⚑ W4.177 — on Claude, the line the model read above each file BroBot sent. ⛔ Only a record a
+  // On Claude, the line the model read above each file BroBot sent. Only a record a
   // launch kept says what the launch sent: one composed for this read is this build's.
   const headed =
     providerDescriptor(provider).contextPlacement === 'system-prompt'
@@ -1074,10 +1006,10 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
     }
   })
   const deferral = deferralOf(provider, handed.published)
-  // ⚑ The paragraph its launch kept, else this build's.
+  // The paragraph its launch kept, else this build's.
   const instructionsKept = recorded ? record.tools.instructions : undefined
   const instructionsText = instructionsKept ?? handed.toolset.instructions ?? ''
-  // ⚑ Codex declares the tools under a namespace with a sentence of its own; Claude has none.
+  // Codex declares the tools under a namespace with a sentence of its own; Claude has none.
   const namespaceText = providerKnowledge[provider].instructions.given.namespaceText(
     handed.declaredWith,
     list.length,
@@ -1158,7 +1090,7 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
     ...reaching.filter((one) => one.origin === 'brobot').map((one) => one.size),
     ...(thisConversation === null ? [] : [thisConversation.size]),
     ...(record.builtInSkills ? [sizeOf(record.builtInSkills.reminder)] : []),
-    // ⚑ On Codex the paragraph is already in this conversation's text ("The brobot tools").
+    // On Codex the paragraph is already in this conversation's text ("The brobot tools").
     ...(providerDescriptor(provider).contextPlacement === 'system-prompt'
       ? [tools.instructions.size]
       : []),
@@ -1166,7 +1098,7 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
   const otherFiles = sizesAdded(
     reaching.filter((one) => one.origin !== 'brobot').map((one) => one.size),
   )
-  // ⚑ The definitions in full, with the sentence they are declared under where one is sent.
+  // The definitions in full, with the sentence they are declared under where one is sent.
   const toolsInFull = sizesAdded([
     tools.size,
     ...(tools.namespace === undefined ? [] : [tools.namespace.size]),
@@ -1188,7 +1120,7 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
       .filter((entry) => entry.reach === 'in-every-request')
       .map((entry) => entry.size),
   )
-  // ⚑ The snapshot's own total: what is in front of the model before it asks for anything.
+  // The snapshot's own total: what is in front of the model before it asks for anything.
   const shot = providerParts.snapshot
   const providerSize: PartSize | null =
     shot === null ? null : { characters: shot.chars, words: shot.words, tokens: shot.approxTokens }
@@ -1266,12 +1198,7 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
     skills,
     ...(record.builtInSkills ? { builtInSkills: record.builtInSkills } : {}),
     ...(record.textPack ? { textPack: record.textPack } : {}),
-    ...(record.savedMethods
-      ? {
-          savedMethods: record.savedMethods,
-          ...savedMethodsNowFor(record.savedMethods, handed.now),
-        }
-      : {}),
+    ...(record.savedMethods ? { savedMethods: record.savedMethods } : {}),
     size: {
       brobot,
       otherFiles,
@@ -1301,9 +1228,9 @@ export function whatItWasGiven(handed: WhatTheReadIsHanded): WhatThisAgentWasGiv
  */
 export const NO_SIZE_SINCE_A_COMPACTION = 'Size unavailable.'
 
-// ── one message as the model got it (C9 d) ───────────────────────────────────────────────────────
+// ── one message as the model got it ───────────────────────────────────────────────────────
 
-/** ⚑ An earlier message of the same launch, newest first: its place, what was handed over with it,
+/** An earlier message of the same launch, newest first: its place, what was handed over with it,
  * and whether it was the launch's first. */
 export interface AnEarlierMessage {
   readonly ordinal: number
@@ -1311,7 +1238,7 @@ export interface AnEarlierMessage {
   readonly first: boolean
 }
 
-/** ⚑ What the per-message read is handed: the message's row, its launch's, and R1's answer. */
+/** What the per-message read is handed: the message's row, its launch's, and the provider's record of it. */
 export interface WhatTheMessageReadIsHanded {
   readonly sessionId: string
   readonly provider: Provider
@@ -1330,51 +1257,18 @@ export interface WhatTheMessageReadIsHanded {
   /** The launch's messages before this one, newest first — walked only to find where a lead rode. */
   readonly earlierInThisLaunch: () => Iterable<AnEarlierMessage>
   /**
-   * ⚑ **W4.179 — on Codex, each lead its thread was handed and still holds, up to and including this
+   * **On Codex, each lead its thread was handed and still holds, up to and including this
    * message**, oldest first (`codex-lead.ts`): a reopen sends only what the thread does not hold, so
    * the lead the model has may have ridden an earlier launch. `null` or absent: the record cannot say.
    */
   readonly leadsInThisThread?: readonly ALeadCarried[] | null
-  /** R1 · the provider's own record of the turn, as `turnAsSent` read it. */
+  /** The provider's own record of the turn, as `turnAsSent` read it. */
   readonly providersRecord: TurnAsSent
 }
 
-/** ⚑ Why a file's text is not in BroBot's record of a launch. */
-const KEPT_BY_FINGERPRINT =
-  'This app keeps this file by its fingerprint only, since BroCrew did not write it. The agent’s popup reads it now.'
+const NOT_KEPT = 'This app kept no copy of this file at its launch.'
 
-/** ⚑ W4.177 — why, for a file kept by its fingerprint that has changed since its launch. */
-const CHANGED_SINCE_ITS_LAUNCH =
-  'This app keeps this file by its fingerprint only, since BroCrew did not write it, and the file has changed since this message’s launch: what the model got is not kept. The agent’s popup shows the file as it is now.'
-
-/** ⚑ W4.177 — why, for a file kept by its fingerprint that cannot be read now. */
-const UNREADABLE_SINCE_ITS_LAUNCH =
-  'This app keeps this file by its fingerprint only, since BroCrew did not write it, and the file cannot be read now: what the model got cannot be shown.'
-
-/**
- * ⚑ **W4.177 — what Codex reads of a folder's AGENTS files, in all**: its packaged
- * `project_doc_max_bytes`, one budget for the whole chain, root first; a file past it is cut or left
- * out of what Codex sends.
- */
-/**
- * ⚑ **W4.177 — a file the launch kept by its fingerprint, as the model got it when it can tell**: read
- * now with the launch's own reader and cap ({@link readNow}), and its text given only when its
- * fingerprint is still the one the launch kept — the same text the model got. ⛔ Otherwise none, and
- * why: it changed since, or it cannot be read now.
- */
-function theTextItWasSent(file: GivenRecordFile): {
-  readonly text: string | null
-  readonly why: string
-} {
-  if (file.sha256 === null) return { text: null, why: KEPT_BY_FINGERPRINT }
-  const now = readNow(file.path)
-  if (now === null) return { text: null, why: UNREADABLE_SINCE_ITS_LAUNCH }
-  return now.sha256 === file.sha256
-    ? { text: now.text, why: KEPT_BY_FINGERPRINT }
-    : { text: null, why: CHANGED_SINCE_ITS_LAUNCH }
-}
-
-/** ⚑ Why BroBot's profile file did not reach the model, by the reader's reason for it. */
+/** Why BroBot's profile file did not reach the model, by the reader's reason for it. */
 function whyItWasNotSent(reason: string): string {
   if (reason === 'unmanaged-override') {
     return 'It did not reach the model: someone else’s file is at the name BroCrew publishes it under, and BroCrew left that file alone.'
@@ -1385,7 +1279,7 @@ function whyItWasNotSent(reason: string): string {
   return 'It did not reach the model: this app’s reader did not send it.'
 }
 
-/** ⚑ A file's title, in plain words. */
+/** A file's title, in plain words. */
 function titleOfFile(kind: GivenFileKind, path: string, brobots: boolean): string {
   if (kind === 'profile-instructions') return 'BroCrew’s instructions for this agent'
   if (kind === 'workspace-instructions' || brobots) return 'BroCrew’s workspace file'
@@ -1394,8 +1288,8 @@ function titleOfFile(kind: GivenFileKind, path: string, brobots: boolean): strin
 }
 
 /**
- * ⚑ Whose words a message carried, when every message of the turn says the same: an agent's,
- * BroBot's own, a person's. ⛔ Otherwise unknown — and so is a turn whose messages cannot be read, or
+ * Whose words a message carried, when every message of the turn says the same: an agent's,
+ * BroBot's own, a person's. Otherwise unknown — and so is a turn whose messages cannot be read, or
  * a row rebuilt from a provider's own transcript.
  */
 function whoseWords(event: UserTurnEvent): GivenOrigin {
@@ -1410,20 +1304,18 @@ function whoseWords(event: UserTurnEvent): GivenOrigin {
 }
 
 /**
- * 🔴 **F093 · C9 d — one message as the model got it** ({@link WhatTheModelGot}), from BroBot's own
+ * One message as the model got it ({@link WhatTheModelGot}), from BroBot's own
  * records: the launch's (`launched.given`) for what sat in the system prompt or the first message,
  * and the message's (`user_turn.sent`) for what was handed over with it.
  *
- * ⚑ **Where each part sat.** On Claude, BroBot's instructions, the files it sent and this
+ * **Where each part sat.** On Claude, BroBot's instructions, the files it sent and this
  * conversation's text are in the system prompt of every request. On Codex, Codex reads its files
  * into the first message, and this conversation's lead rides in front of a message — the first of
  * each launch that carries words, and again after a compaction or a turn Codex never began. It is
  * split off the front of the message it rode, named where it last rode before it otherwise, and
  * said not to have reached the model yet when no message so far carried it.
  *
- * ⛔ **Nothing is composed here.** ⚑ A file kept by fingerprint only is read now, and its text given
- * when it is still the text the launch sent (W4.177, {@link theTextItWasSent}); else it is named,
- * with why, and the popup reads it now. ⛔ Only a file a launch this app made named is read.
+ * Nothing is read from disk here.
  */
 export function oneMessageAsTheModelGotIt(handed: WhatTheMessageReadIsHanded): WhatTheModelGot {
   const { provider, message, launch } = handed
@@ -1497,26 +1389,23 @@ export function oneMessageAsTheModelGotIt(handed: WhatTheMessageReadIsHanded): W
         profile.refused === null ? headingOf(profile.path) : undefined,
       )
     }
-    // ⚑ Codex's one budget for the AGENTS files it reads, spent in the order it read them.
+    // Codex's one budget for the AGENTS files it reads, spent in the order it read them.
     let codexRead = 0
     for (const file of record.files) {
-      const brobots = file.text !== undefined
+      const brobots = file.text !== null && isBroBotsWorkspaceText(file.text)
       if (file.kind === 'read-by-codex') codexRead += file.bytes
       const pastTheBudget =
-        file.kind === 'read-by-codex' && recordedNativeRead.mayBeCut(codexRead, file.truncated)
-      const sent = brobots
-        ? null
-        : pastTheBudget
-          ? { text: null, why: recordedNativeRead.why }
-          : theTextItWasSent(file)
+        !brobots &&
+        file.kind === 'read-by-codex' &&
+        recordedNativeRead.mayBeCut(codexRead, file.truncated)
       add(
         instructionsSit,
         file.kind,
         titleOfFile(file.kind, file.path, brobots),
         originOf(file.kind, provider, brobots).origin,
         file.path,
-        file.text ?? sent?.text ?? null,
-        sent?.why ?? KEPT_BY_FINGERPRINT,
+        pastTheBudget ? null : file.text,
+        pastTheBudget ? recordedNativeRead.why : NOT_KEPT,
         file.kind === 'read-by-codex' ? undefined : headingOf(file.path),
       )
     }
@@ -1528,10 +1417,10 @@ export function oneMessageAsTheModelGotIt(handed: WhatTheMessageReadIsHanded): W
   const sent = typeof stored === 'string' ? stored : null
   const conversation = record?.thisConversation ?? null
   const block = conversation === null ? null : conversationBlock(conversation.text)
-  /** ⚑ Whether a text handed over carried this conversation's lead in front. */
+  /** Whether a text handed over carried this conversation's lead in front. */
   const carries = (text: unknown): boolean =>
     block !== null && typeof text === 'string' && text.startsWith(`${block}\n\n`)
-  // ⚑ On Codex, the lead in front of this message: as the thread's record says (W4.179), else when
+  // On Codex, the lead in front of this message: as the thread's record says, else when
   // the text handed over starts with this launch's whole block.
   const leadsHeld = handed.leadsInThisThread ?? null
   const carriedHere = leadsHeld?.find((one) => one.ordinal === message.ordinal)
@@ -1542,7 +1431,7 @@ export function oneMessageAsTheModelGotIt(handed: WhatTheMessageReadIsHanded): W
   } else if (block !== null) {
     if (inSystem) add('system-prompt', 'this-conversation', aboutIt, 'brobot', null, block)
     else if (leadsHeld !== null && leadsHeld.length > 0) {
-      // ⚑ **W4.179 — what the thread holds**: the newest whole lead it was handed, and each change
+      // What the thread holds: the newest whole lead it was handed, and each change
       // sent after it, each where it rode — this message, this launch, or an earlier launch.
       const carried = leadsHeld
       const fromWhole = carried.map((one) => one.is).lastIndexOf('whole')
@@ -1582,7 +1471,7 @@ export function oneMessageAsTheModelGotIt(handed: WhatTheMessageReadIsHanded): W
         lead,
       )
     } else {
-      // ⚑ Where it last rode before this message — walked back through the launch.
+      // Where it last rode before this message — walked back through the launch.
       let rode: AnEarlierMessage | null = null
       let unknown = sent === null
       for (const one of handed.earlierInThisLaunch()) {
@@ -1626,7 +1515,7 @@ export function oneMessageAsTheModelGotIt(handed: WhatTheMessageReadIsHanded): W
   add(
     'this-message',
     'the-message',
-    // ⚑ A turn of several held messages went over as one text, every message in it.
+    // A turn of several held messages went over as one text, every message in it.
     words.length > 1
       ? `The ${String(words.length)} messages as BroCrew handed them over, together in one turn`
       : 'The message as BroCrew handed it over',
@@ -1653,7 +1542,7 @@ export function oneMessageAsTheModelGotIt(handed: WhatTheMessageReadIsHanded): W
     firstOfItsLaunch: handed.firstOfItsLaunch,
     parts,
     providersRecord: handed.providersRecord,
-    // ⚑ Not known for a message that carried a file: each provider keeps those in its own way.
+    // Not known for a message that carried a file: each provider keeps those in its own way.
     providerKeptTheSameText:
       handed.providersRecord.found &&
       sent !== null &&

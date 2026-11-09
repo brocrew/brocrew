@@ -1,5 +1,6 @@
 import type { LaunchedEvent, TranscriptEvent } from '../src/shared/conversation-events'
 import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
+import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -26,7 +27,6 @@ import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { agentToolsFor, toolsToldInTextFor } from '../src/main/runtime/agent-tools'
 import { conversationBlock, readSessionInstructions } from '../src/main/runtime/instructions'
 import {
-  fingerprintOf,
   toolsetFingerprint,
   oneMessageAsTheModelGotIt,
 } from '../src/main/runtime/what-this-agent-was-given'
@@ -62,13 +62,12 @@ import { howYouWork } from './lib/the-core'
 import { fixtureProviderConfig } from './lib/host-fixture'
 
 /**
- * # F093 · what an agent was given — recorded with each launch and each turn (R2), read in one go
+ * # what an agent was given — recorded with each launch and each turn, read in one go
  *
- * ⚑ **A real host on the fake runtime, with `main/index.ts`'s own instruction wiring**, on throwaway
- * folders: a `launched` row keeps what its launch gave (BroBot's own words in full, everything else
- * by fingerprint), a `user_turn` keeps the whole text its provider was handed, and
- * `whatThisAgentWasGiven` reads both back with the files and the memory read now, the tools in full
- * and every size.
+ * **A real host on the fake runtime, with `main/index.ts`'s own instruction wiring**, on throwaway
+ * folders: a `launched` row keeps every text its launch gave, a `user_turn` keeps the whole text its
+ * provider was handed, and `whatThisAgentWasGiven` reads both back with the files and the memory
+ * read now, the tools in full and every size.
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -102,7 +101,7 @@ class NobodysSink extends RecordingSink {
   override readonly aPersonIsBehindIt: boolean = false
 }
 
-describe('F093 · what an agent was given', () => {
+describe('what an agent was given', () => {
   let userData: string
   let project: string
   let db: AppDatabase
@@ -111,14 +110,14 @@ describe('F093 · what an agent was given', () => {
   let runtimes: CapturingRuntime[]
   let counter: number
   let window: RecordingSink
-  /** ⚑ The provider's own record of a conversation, as the archive would name it — or none. */
+  /** The provider's own record of a conversation, as the archive would name it — or none. */
   let nativeFile: string | null
 
   const homeOf = (provider: Provider, profileId: string): string =>
     join(userData, 'provider-homes', profileId, provider)
 
   const buildHost = (withInstructions = true): RuntimeHost => {
-    // ⚑ One fake per provider, so a conversation closed here can be resumed by the runtime that
+    // One fake per provider, so a conversation closed here can be resumed by the runtime that
     // issued it.
     const byProvider = new Map<Provider, CapturingRuntime>()
     const built = new RuntimeHost({
@@ -145,9 +144,9 @@ describe('F093 · what an agent was given', () => {
       newSessionId: () => `sess_${++counter}`,
       readProviderConfig: fixtureProviderConfig,
       whichBuild: () => ({ id: 'abc1234', commit: 'abc1234def', dirty: false, schema: 7 }),
-      // ⚑ `main/index.ts`'s own wiring: the snapshots this build carries.
+      // `main/index.ts`'s own wiring: the snapshots this build carries.
       providerSnapshot: (provider, model) => snapshotFor(provider, model),
-      // ⚑ `main/index.ts`'s own wiring, copied: compile, publish, read.
+      // `main/index.ts`'s own wiring, copied: compile, publish, read.
       ...(withInstructions
         ? {
             readInstructions: (provider, cwd, providerHome, context) => {
@@ -227,7 +226,7 @@ describe('F093 · what an agent was given', () => {
   }
 
   /**
-   * ⚑ In the throwaway project folder — or, `inTheWorkspace`, in BroBot's own workspace — on the
+   * In the throwaway project folder — or, `inTheWorkspace`, in BroBot's own workspace — on the
    * model named, else the one the host names.
    */
   const open = async (
@@ -272,15 +271,17 @@ describe('F093 · what an agent was given', () => {
         )
         // Provider model lists can arrive after the first launch; compare actual definitions,
         // rather than pretending the factory's empty-list default was handed to the model.
-        const now = fingerprintOf(
-          JSON.stringify(
-            live.tools.list.map(({ name, description, parameters }) => ({
-              name,
-              description,
-              parameters,
-            })),
-          ),
-        )
+        const now = createHash('sha256')
+          .update(
+            JSON.stringify(
+              live.tools.list.map(({ name, description, parameters }) => ({
+                name,
+                description,
+                parameters,
+              })),
+            ),
+          )
+          .digest('hex')
         expect(live.tools.changedSinceLaunch).toBe(now !== given?.tools.sha256)
         await host.close(id, window)
         const stopped = await host.whatThisAgentWasGiven(id)
@@ -353,7 +354,7 @@ describe('F093 · what an agent was given', () => {
     await expect(host.whatThisAgentWasGiven('missing')).rejects.toThrow()
   })
 
-  it('⚑ a Claude launch keeps BroBot’s own words in full and the rest by fingerprint, and a turn keeps the whole text it was handed', async () => {
+  it('a Claude launch keeps every text it gave in full, and a turn keeps the whole text it was handed', async () => {
     seedClaudeMemory('lead', 2)
     const host = buildHost()
     const lead = await open(host, 'claude', 'lead', true)
@@ -376,7 +377,7 @@ describe('F093 · what an agent was given', () => {
       'This folder persists: files you leave here are still here in later conversations.',
     )
     expect(given.memory.map((one) => basename(one.path))).toContain('MEMORY.md')
-    expect(JSON.stringify(given.memory)).not.toContain('one line per change')
+    expect(JSON.stringify(given.memory)).toContain('one line per change')
     expect(given.tools.count).toBe(agentToolsFor(host, lead).tools.length)
 
     const [turn] = turnsOf(lead)
@@ -388,7 +389,7 @@ describe('F093 · what an agent was given', () => {
     )
   })
 
-  it('⚑ the one read: files with origin and sections, tools in full, memory read now, the provider’s own parts for its model, and sizes', async () => {
+  it('the one read: files with origin and sections, tools in full, memory read now, the provider’s own parts for its model, and sizes', async () => {
     seedClaudeMemory('lead', 2)
     const host = buildHost()
     const lead = await open(host, 'claude', 'lead', true, 'opus')
@@ -411,7 +412,7 @@ describe('F093 · what an agent was given', () => {
       true,
     )
 
-    // ⛔ Every tool in full — never cut at 500.
+    // Every tool in full — never cut at 500.
     const toolset = agentToolsFor(host, lead)
     expect(read.tools.list.map((one) => one.name)).toEqual(toolset.tools.map((one) => one.name))
     const giveWork = read.tools.list.find((one) => one.name === 'give_work')
@@ -425,7 +426,7 @@ describe('F093 · what an agent was given', () => {
     expect(index?.changedSinceLaunch).toBe(false)
     expect(claude?.total).toBe(3)
 
-    // ⚑ R3 · the provider's own parts, from the snapshot this build carries for the model it runs.
+    // R3 · the provider's own parts, from the snapshot this build carries for the model it runs.
     const snapshot = read.providerParts.snapshot
     expect(read.providerParts.model).toBe('opus')
     expect(snapshot?.label).toBe(SNAPSHOT_FILES.claude.label)
@@ -436,7 +437,7 @@ describe('F093 · what an agent was given', () => {
       words: snapshot?.words,
       tokens: snapshot?.approxTokens,
     })
-    // ⚑ The total holds BroBot's words, the other files, the memory in every request and the
+    // The total holds BroBot's words, the other files, the memory in every request and the
     // provider's own parts.
     expect(read.size.total.characters).toBeGreaterThan(
       read.size.brobot.characters +
@@ -449,7 +450,7 @@ describe('F093 · what an agent was given', () => {
     expect(read.size.contextWindow).toBeNull()
     expect(read.size.contextWindowWhy).toMatch(/No context reading/)
 
-    // ⛔ A model this build did not capture: no other model's parts in its place, and why.
+    // A model this build did not capture: no other model's parts in its place, and why.
     const other = await host.whatThisAgentWasGiven(
       await open(host, 'claude', 'lead', true, 'claude-nonesuch-1'),
     )
@@ -460,7 +461,7 @@ describe('F093 · what an agent was given', () => {
     expect(other.size.provider).toBeNull()
   })
 
-  it('⚑ the own instructions say which version a launch used, who wrote it and when — and that a newer one waits for the next start', async () => {
+  it('the own instructions say which version a launch used, who wrote it and when — and that a newer one waits for the next start', async () => {
     const host = buildHost()
     await host.close(await open(host, 'claude', 'worker'), window)
     expect(host.instructAgent('worker', 'Keep each note to one line.', undefined, window)).not.toBe(
@@ -481,7 +482,7 @@ describe('F093 · what an agent was given', () => {
     expect(later.ownInstructions.changedSinceLaunch).toBe(true)
   })
 
-  it('⚑ Codex: the first turn is handed with this conversation’s lead in front, and the profile file’s text comes with the launch', async () => {
+  it('Codex: the first turn is handed with this conversation’s lead in front, and the profile file’s text comes with the launch', async () => {
     const host = buildHost()
     const lead = await open(host, 'codex', 'lead')
     await host.send(lead, 'please plan the next release', window)
@@ -500,7 +501,7 @@ describe('F093 · what an agent was given', () => {
     expect(read.tools.deferral.kind).toBe('in-every-request')
   })
 
-  /** ⚑ A Codex tool list as its adapter states it: through the one bounding rule, with no tools. */
+  /** A Codex tool list as its adapter states it: through the one bounding rule, with no tools. */
   const codexToolList = (lead: string, source: string, instructions: string): void => {
     const bounded = boundInventory({
       naming: CODEX_TOOL_NAMING,
@@ -521,7 +522,7 @@ describe('F093 · what an agent was given', () => {
     )
   }
 
-  it('⚑ Codex’s tools come with the sentence they are declared under: the one its thread started with where the ledger says, this build’s where it does not; Claude has none', async () => {
+  it('Codex’s tools come with the sentence they are declared under: the one its thread started with where the ledger says, this build’s where it does not; Claude has none', async () => {
     const host = buildHost()
     const lead = await open(host, 'codex', 'lead')
     // No start on the ledger: this build's sentence, and the read says so.
@@ -531,13 +532,13 @@ describe('F093 · what an agent was given', () => {
       textIs: 'composed-now',
       size: expect.objectContaining({ characters: CODEX_TOOLS_DESCRIPTION.length }),
     })
-    // ⚑ It goes in every request on Codex, so it counts there, and with the tools in full.
+    // It goes in every request on Codex, so it counts there, and with the tools in full.
     expect(now.size.toolsInEveryRequest.characters).toBe(
       now.tools.size.characters + CODEX_TOOLS_DESCRIPTION.length,
     )
     expect(now.size.tools).toEqual(now.size.toolsInEveryRequest)
 
-    // ⚑ The thread started with other words; a later resume states this build's, which the thread
+    // The thread started with other words; a later resume states this build's, which the thread
     // never took: the start's words are the ones shown.
     codexToolList(lead, 'thread/start', 'Older words the tools were declared with.')
     codexToolList(lead, 'thread/resume', CODEX_TOOLS_DESCRIPTION)
@@ -545,12 +546,12 @@ describe('F093 · what an agent was given', () => {
     expect(launched.tools.namespace?.text).toBe('Older words the tools were declared with.')
     expect(launched.tools.namespace?.textIs).toBe('as-launched')
 
-    // ⛔ Claude declares no namespace.
+    // Claude declares no namespace.
     const claude = await open(host, 'claude', 'other')
     expect((await host.whatThisAgentWasGiven(claude)).tools.namespace).toBeUndefined()
   })
 
-  it('⚑ a Codex conversation whose ledger holds only resumes shows this build’s sentence, and says so', async () => {
+  it('a Codex conversation whose ledger holds only resumes shows this build’s sentence, and says so', async () => {
     const host = buildHost()
     const lead = await open(host, 'codex', 'lead')
     codexToolList(lead, 'thread/resume', CODEX_TOOLS_DESCRIPTION)
@@ -558,10 +559,10 @@ describe('F093 · what an agent was given', () => {
     expect(read.tools.namespace?.textIs).toBe('composed-now')
   })
 
-  it('⛔ a start sentence the tool list may have cut is never shown as the thread’s: this build’s is, and says so', async () => {
+  it('a start sentence the tool list may have cut is never shown as the thread’s: this build’s is, and says so', async () => {
     const host = buildHost()
     const lead = await open(host, 'codex', 'lead')
-    // ⚑ Longer than the list keeps, and within the 1024 a thread could start with.
+    // Longer than the list keeps, and within the 1024 a thread could start with.
     const long = 'The tools this app gives you, and what each is for. '.repeat(15)
     expect(long.length).toBeGreaterThan(MAX_TOOL_TEXT)
     expect(long.length).toBeLessThanOrEqual(1024)
@@ -581,7 +582,7 @@ describe('F093 · what an agent was given', () => {
     })
   })
 
-  it('⚑ a closed conversation reads its last launch off the ledger; one launched before the record is composed now, and says so', async () => {
+  it('a closed conversation reads its last launch off the ledger; one launched before the record is composed now, and says so', async () => {
     const host = buildHost()
     const lead = await open(host, 'claude', 'lead')
     await host.close(lead, window)
@@ -589,7 +590,7 @@ describe('F093 · what an agent was given', () => {
     expect(closed.launch).toMatchObject({ recorded: true, running: false })
     expect(closed.files[0]?.textIs).toBe('as-launched')
 
-    // ⚑ A launch with no instruction reader keeps no record — as every launch did before F093.
+    // A launch with no instruction reader keeps no record — as every launch did before F093.
     const bare = buildHost(false)
     const old = await open(bare, 'claude', 'elder')
     await bare.close(old, window)
@@ -599,7 +600,7 @@ describe('F093 · what an agent was given', () => {
     expect(now.files[0]?.textIs).toBe('composed-now')
   })
 
-  it('⛔ a launch this app holds no record of: the read composes one now, and every line and the paragraph in it say they are this build’s, on both providers', async () => {
+  it('a launch this app holds no record of: the read composes one now, and every line and the paragraph in it say they are this build’s, on both providers', async () => {
     const host = buildHost()
     const bare = buildHost(false)
     for (const provider of ['claude', 'codex'] as const) {
@@ -619,7 +620,7 @@ describe('F093 · what an agent was given', () => {
     }
   })
 
-  it('⚑ each line BroBot composed says where it came from: its launch’s, where the launch kept it, else this build’s; memory is the launch’s until it changes', async () => {
+  it('each line BroBot composed says where it came from: its launch’s, where the launch kept it, else this build’s; memory is the launch’s until it changes', async () => {
     seedClaudeMemory('lead', 1)
     const host = buildHost()
     const lead = await open(host, 'claude', 'lead', true)
@@ -627,7 +628,7 @@ describe('F093 · what an agent was given', () => {
     const given = launched?.given
     if (given === undefined) throw new Error('the launch kept no record')
 
-    // ⚑ The launch kept them: the read gives them back, and says so.
+    // The launch kept them: the read gives them back, and says so.
     const read = await host.whatThisAgentWasGiven(lead)
     const sent = read.files.filter((one) => one.heading !== undefined)
     expect(sent).toHaveLength(1)
@@ -647,7 +648,7 @@ describe('F093 · what an agent was given', () => {
         ?.entries.find((one) => one.path.endsWith('MEMORY.md'))
     expect(index(read)?.textIs).toBe('as-launched')
 
-    // ⚑ A launch that kept none of them: this build's, and the read says so.
+    // A launch that kept none of them: this build's, and the read says so.
     await host.close(lead, window)
     const without = <T extends object>(one: T, key: string): T =>
       Object.fromEntries(Object.entries(one).filter(([name]) => name !== key)) as T
@@ -680,7 +681,7 @@ describe('F093 · what an agent was given', () => {
     expect(olderFiles).toHaveLength(1)
     expect(olderFiles.every((part) => part.heading === undefined)).toBe(true)
 
-    // ⛔ A paragraph its launch kept is shown over this build's, never the other way round.
+    // A paragraph its launch kept is shown over this build's, never the other way round.
     store.append(
       lead,
       store.nextOrdinal(lead),
@@ -697,7 +698,7 @@ describe('F093 · what an agent was given', () => {
       size: expect.objectContaining({ characters: 'An older paragraph.'.length }),
     })
 
-    // ⚑ The memory changed since: read now, and said so.
+    // The memory changed since: read now, and said so.
     writeFileSync(
       join(homeOf('claude', 'lead'), 'memory', 'MEMORY.md'),
       '- [Style](style.md) — changed\n',
@@ -706,7 +707,7 @@ describe('F093 · what an agent was given', () => {
     expect(index(changed)).toMatchObject({ textIs: 'read-now', changedSinceLaunch: true })
   })
 
-  it('⚑ the launch keeps the settings its adapter launched with, and the read gives them beside where the conversation stands now; the copy says the mode it was captured in', async () => {
+  it('the launch keeps the settings its adapter launched with, and the read gives them beside where the conversation stands now; the copy says the mode it was captured in', async () => {
     const host = buildHost()
     const lead = await open(host, 'claude', 'lead')
     const handle = runtimes.find((one) => one.provider === 'claude')?.issued.at(-1)
@@ -722,13 +723,13 @@ describe('F093 · what an agent was given', () => {
     })
     expect(read.providerParts.capturedIn).toEqual({ approval: 'ask', planning: false })
 
-    // ⚑ Changed since: the launch's value stays, beside the new one.
+    // Changed since: the launch's value stays, beside the new one.
     await host.setApprovalMode(lead, 'ask', window)
     expect((await host.whatThisAgentWasGiven(lead)).launchSettings?.settings).toEqual([
       { key: 'approval', atLaunch: 'auto', now: 'ask' },
     ])
 
-    // ⛔ A launch that kept none: nothing said for it, and where the conversation stands now.
+    // A launch that kept none: nothing said for it, and where the conversation stands now.
     await host.close(lead, window)
     const given = launched?.given
     if (given === undefined) throw new Error('the launch kept no record')
@@ -745,7 +746,7 @@ describe('F093 · what an agent was given', () => {
       ],
     })
 
-    // ⛔ What the launch row holds is read back only where it is a setting this app writes.
+    // What the launch row holds is read back only where it is a setting this app writes.
     store.append(
       lead,
       store.nextOrdinal(lead),
@@ -763,14 +764,14 @@ describe('F093 · what an agent was given', () => {
       } as unknown as TranscriptEvent,
       Date.now(),
     )
-    // ⚑ …and the provider's own tools that launch turned off, as it kept them.
+    // …and the provider's own tools that launch turned off, as it kept them.
     expect((await host.whatThisAgentWasGiven(lead)).launchSettings?.settings).toEqual([
       { key: 'approval', atLaunch: 'auto', now: 'ask' },
       { key: 'tools-off', atLaunch: ['AskUserQuestion'] },
     ])
   })
 
-  it('⚑ an agent’s skills as its provider listed them since its launch: Codex’s with their files, none yet, none at all, a cut description; Claude loads no skill files', async () => {
+  it('an agent’s skills as its provider listed them since its launch: Codex’s with their files, none yet, none at all, a cut description; Claude loads no skill files', async () => {
     const host = buildHost()
     const lead = await open(host, 'codex', 'lead')
     const list = (commands: unknown[]): void =>
@@ -792,7 +793,7 @@ describe('F093 · what an agent was given', () => {
       why: 'not-listed-yet',
     })
 
-    // ⚑ A fictional skill, with its file, and one whose description reached the cap.
+    // A fictional skill, with its file, and one whose description reached the cap.
     const long = `${'x'.repeat(MAX_COMMAND_TEXT - 1)}…`
     expect(long.length).toBe(MAX_COMMAND_TEXT)
     list([
@@ -837,11 +838,11 @@ describe('F093 · what an agent was given', () => {
       why: null,
     })
 
-    // ⚑ The provider listed none: an empty list, which is not "not listed".
+    // The provider listed none: an empty list, which is not "not listed".
     list([])
     expect((await host.whatThisAgentWasGiven(lead)).skills?.listed).toEqual([])
 
-    // ⛔ A list past the cap, through the real bound: what it could not carry is counted.
+    // A list past the cap, through the real bound: what it could not carry is counted.
     const many = Array.from({ length: MAX_PROVIDER_COMMANDS + 7 }, (_, at) => ({
       name: `skill-${String(at)}`,
       description: 'Fictional.',
@@ -861,11 +862,11 @@ describe('F093 · what an agent was given', () => {
     expect(capped?.dropped).toBe(7)
     expect(capped?.listed?.[0]?.path).toBe('/fictional/skills/skill-0/SKILL.md')
 
-    // ⛔ A list from before the newest launch is not this launch's.
+    // A list from before the newest launch is not this launch's.
     store.append(lead, store.nextOrdinal(lead), { type: 'launched' }, Date.now())
     expect((await host.whatThisAgentWasGiven(lead)).skills?.why).toBe('not-listed-yet')
 
-    // ⛔ Claude: no settings sources, so no skill files; its own skills are in the first message.
+    // Claude: no settings sources, so no skill files; its own skills are in the first message.
     const claude = await open(host, 'claude', 'other')
     expect((await host.whatThisAgentWasGiven(claude)).skills).toEqual({
       listed: null,
@@ -875,7 +876,7 @@ describe('F093 · what an agent was given', () => {
     })
   })
 
-  it('⚑ BroBot’s tool names as the provider itself listed them, and when; none on Codex', async () => {
+  it('BroBot’s tool names as the provider itself listed them, and when; none on Codex', async () => {
     const host = buildHost()
     const lead = await open(host, 'claude', 'lead')
     expect((await host.whatThisAgentWasGiven(lead)).tools.listedByTheProvider).toBeNull()
@@ -897,35 +898,33 @@ describe('F093 · what an agent was given', () => {
     expect((await host.whatThisAgentWasGiven(worker)).tools.listedByTheProvider).toBeNull()
   })
 
-  it('⛔ a repository’s own file is kept by fingerprint only, read now, and said to have changed when it has', async () => {
+  it('a repository’s own file is kept with its text, and still shown as launched after it changes', async () => {
     writeFileSync(join(project, 'CLAUDE.md'), 'Repository rule: tabs, never spaces.\n')
     const host = buildHost()
     const lead = await open(host, 'claude', 'lead')
     const given = launchesOf(lead)[0]?.given
     const kept = given?.files.find((one) => one.path === join(project, 'CLAUDE.md'))
-    expect(kept?.sha256).toMatch(/^[0-9a-f]{64}$/)
-    expect(kept?.text).toBeUndefined()
-    expect(JSON.stringify(given)).not.toContain('Repository rule')
+    expect(kept?.text).toBe('Repository rule: tabs, never spaces.\n')
 
     const before = await host.whatThisAgentWasGiven(lead)
     const file = before.files.find((one) => one.path === join(project, 'CLAUDE.md'))
     expect(file).toMatchObject({
       origin: 'a-repository',
       madeAutomatically: false,
-      textIs: 'read-now',
+      textIs: 'as-launched',
       changedSinceLaunch: false,
     })
-    expect(file?.text).toContain('Repository rule')
 
     writeFileSync(join(project, 'CLAUDE.md'), 'Repository rule: spaces now.\n')
-    const after = await host.whatThisAgentWasGiven(lead)
-    expect(
-      after.files.find((one) => one.path === join(project, 'CLAUDE.md'))?.changedSinceLaunch,
-    ).toBe(true)
+    const after = (await host.whatThisAgentWasGiven(lead)).files.find(
+      (one) => one.path === join(project, 'CLAUDE.md'),
+    )
+    expect(after).toMatchObject({ textIs: 'as-launched', changedSinceLaunch: true })
+    expect(after?.text).toBe('Repository rule: tabs, never spaces.\n')
   })
 
-  it('🔴 a repository that fills the instruction budget gives way: BroBot’s own rules still reach a Claude agent, and the read says they were sent, from BroBot', async () => {
-    // ⚑ Forty nested folders, each with both `CLAUDE.md` spellings, about 290 KB against the
+  it('a repository that fills the instruction budget gives way: BroBot’s own rules still reach a Claude agent, and the read says they were sent, from BroBot', async () => {
+    // Forty nested folders, each with both `CLAUDE.md` spellings, about 290 KB against the
     // 256 KiB budget — in pieces small enough that whatever the chain leaves is smaller than
     // BroBot's own rules file, so a budget spent on the chain first would cut that file.
     const level = `${'Repository rule. '.repeat(212)}\n`
@@ -942,11 +941,11 @@ describe('F093 · what an agent was given', () => {
       window,
     )
 
-    // ⛔ BroBot's rules were sent, whole.
+    // BroBot's rules were sent, whole.
     const given = launchesOf(lead)[0]?.given
     expect(given?.profileFile?.refused).toBeNull()
     expect(given?.profileFile?.text).toContain('## How you work')
-    // ⚑ The premise: the chain really did not fit — some of its files were left out, and the
+    // The premise: the chain really did not fit — some of its files were left out, and the
     // nearest are among those sent.
     const sent = new Set(given?.files.map((one) => one.path))
     expect(sent.size).toBeGreaterThan(0)
@@ -954,7 +953,7 @@ describe('F093 · what an agent was given', () => {
     expect(sent.has(join(deep, 'CLAUDE.md'))).toBe(true)
     expect(sent.has(join(project, 'd0', 'CLAUDE.md'))).toBe(false)
 
-    // ⚑ The read says where they come from and how they were made, unchanged: BroBot's file, made
+    // The read says where they come from and how they were made, unchanged: BroBot's file, made
     // automatically, as launched, sent, with its sections.
     const read = await host.whatThisAgentWasGiven(lead)
     const [profile] = read.files
@@ -969,8 +968,8 @@ describe('F093 · what an agent was given', () => {
     expect(read.size.brobot.characters).toBeGreaterThan(profile?.size.characters ?? 0)
   })
 
-  it('⚑ what every request carries adds up to the total: on Claude with its tool search, BroBot’s tools and other servers’ by name; on Codex, BroBot’s in full', async () => {
-    /** ⚑ The parts the total is the sum of — each known one, exactly once. */
+  it('what every request carries adds up to the total: on Claude with its tool search, BroBot’s tools and other servers’ by name; on Codex, BroBot’s in full', async () => {
+    /** The parts the total is the sum of — each known one, exactly once. */
     const theParts = (size: WhatThisAgentWasGiven['size']): PartSize[] =>
       [
         size.brobot,
@@ -983,12 +982,12 @@ describe('F093 · what an agent was given', () => {
     const host = buildHost()
     const lead = await open(host, 'claude', 'lead')
 
-    // ⚑ Before Claude has said how it hands the tools over, they are counted in full.
+    // Before Claude has said how it hands the tools over, they are counted in full.
     const before = (await host.whatThisAgentWasGiven(lead)).size
     expect(before.toolsInEveryRequest).toEqual(before.tools)
     expect(sizesAdded(theParts(before))).toEqual(before.total)
 
-    // ⚑ Claude publishes its tool search, BroBot's tools and two other servers' tools.
+    // Claude publishes its tool search, BroBot's tools and two other servers' tools.
     const others = [
       'mcp__gmail__send_email',
       'mcp__gmail__search_emails',
@@ -1014,18 +1013,18 @@ describe('F093 · what an agent was given', () => {
     await waitFor(() => ledger(lead).some((event) => event.type === 'tool_inventory'), 'the list')
     const claude = await host.whatThisAgentWasGiven(lead)
     expect(claude.tools.deferral.kind).toBe('names-until-loaded')
-    // ⛔ BroBot's tools by name, as every request carries them — never their full definitions.
+    // BroBot's tools by name, as every request carries them — never their full definitions.
     expect(claude.size.toolsInEveryRequest).toEqual(
       sizeOf(claude.tools.list.map((one) => `mcp__${claude.tools.server}__${one.name}`).join('\n')),
     )
     expect(claude.size.toolsInEveryRequest?.characters).toBeLessThan(claude.size.tools.characters)
-    // ⚑ Other servers' tools by name, apart from BroBot's.
+    // Other servers' tools by name, apart from BroBot's.
     expect(claude.size.otherServersToolsInEveryRequest).toEqual(sizeOf(others.join('\n')))
     expect(claude.size.otherServersToolsWhy).toBeNull()
     expect(claude.size.provider, 'the premise: the snapshot is counted too').not.toBeNull()
     expect(sizesAdded(theParts(claude.size))).toEqual(claude.size.total)
 
-    // ⚑ Codex: BroBot's tools in full in every request; other servers' tools found by search.
+    // Codex: BroBot's tools in full in every request; other servers' tools found by search.
     const worker = await open(host, 'codex', 'worker')
     const codex = await host.whatThisAgentWasGiven(worker)
     expect(codex.tools.deferral.kind).toBe('in-every-request')
@@ -1034,12 +1033,12 @@ describe('F093 · what an agent was given', () => {
     expect(sizesAdded(theParts(codex.size))).toEqual(codex.size.total)
   })
 
-  it('⛔ a conversation this app holds no record of is refused, and nothing is read', async () => {
+  it('a conversation this app holds no record of is refused, and nothing is read', async () => {
     const host = buildHost()
     await expect(host.whatThisAgentWasGiven('sess_nobody')).rejects.toThrow(/no record/)
   })
 
-  it('⚑ memory pages past the twenty a launch lists, with the total and where the next page starts', async () => {
+  it('memory pages past the twenty a launch lists, with the total and where the next page starts', async () => {
     seedClaudeMemory('lead', 25)
     const host = buildHost()
     const first = host.agentMemoryPage('lead', 0, 20)
@@ -1062,7 +1061,7 @@ describe('F093 · what an agent was given', () => {
     expect(rest?.entries.every((one) => one.amendable)).toBe(true)
   })
 
-  it('⚑ the latest context reading rides on what is being done, and gives the read its share of the window', async () => {
+  it('the latest context reading rides on what is being done, and gives the read its share of the window', async () => {
     const host = buildHost()
     const lead = await open(host, 'codex', 'lead')
     const atWork = host.whatIsBeingDone().conversations.find((one) => one.conversation === lead)
@@ -1093,13 +1092,13 @@ describe('F093 · what an agent was given', () => {
       .filter((entry) => entry.event.type === 'user_turn')
       .map((entry) => entry.ordinal)
 
-  /** ⚑ R1's own answer when the provider's file is gone and the app kept no copy of it. */
+  /** R1's own answer when the provider's file is gone and the app kept no copy of it. */
   const R1_GONE = {
     found: false,
     why: 'The provider’s own record of this message is gone, and the app kept no copy of it.',
   }
 
-  it('⚑ C9 d · a Claude message as the model got it: BroBot’s instructions, files and this conversation in the system prompt, then the message as handed over', async () => {
+  it('C9 d · a Claude message as the model got it: BroBot’s instructions, files and this conversation in the system prompt, then the message as handed over', async () => {
     const host = buildHost()
     const lead = await open(host, 'claude', 'lead', true)
     await host.send(lead, 'please plan the next release', window)
@@ -1118,7 +1117,7 @@ describe('F093 · what an agent was given', () => {
       providerKeptTheSameText: null,
     })
     expect(got.launch?.recorded).toBe(true)
-    // ⚑ Everything BroBot appends sits in the system prompt, in front of the message.
+    // Everything BroBot appends sits in the system prompt, in front of the message.
     const wheres = got.parts.map((one) => one.where)
     expect(wheres.at(-1)).toBe('this-message')
     expect(wheres.slice(0, -1).every((one) => one === 'system-prompt')).toBe(true)
@@ -1129,13 +1128,13 @@ describe('F093 · what an agent was given', () => {
     const given = launchesOf(lead)[0]?.given
     const conversation = got.parts.find((one) => one.kind === 'this-conversation')
     expect(conversation?.text).toBe(conversationBlock(given?.thisConversation?.text ?? ''))
-    // ⛔ The message exactly as handed over — every frame line, then the words.
+    // The message exactly as handed over — every frame line, then the words.
     const message = got.parts.at(-1)
     const sent = turnsOf(lead)[0]?.sent
     expect(message).toMatchObject({ kind: 'the-message', origin: 'a-person', text: sent })
     expect(message?.size?.characters).toBe(sent?.length)
 
-    // ⚑ The next message is not the first of its launch; any later row answers for the message
+    // The next message is not the first of its launch; any later row answers for the message
     // handed over at or before it.
     await host.send(lead, 'and the one after it', window)
     await waitFor(() => turnsOf(lead).length > 1, 'the second turn')
@@ -1146,20 +1145,20 @@ describe('F093 · what an agent was given', () => {
     expect((await host.whatTheModelGot(lead, last)).ordinal).toBe(second)
   })
 
-  it('⚑ C9 d · joined with the provider’s own record (R1): the turn as Claude Code kept it, read from a recorded transcript', async () => {
-    // ⚑ The words the F093 map's scratch probe sent, so its recorded transcript holds this turn.
+  it('C9 d · joined with the provider’s own record: the turn as Claude Code kept it, read from a recorded transcript', async () => {
+    // The words the F093 map's scratch probe sent, so its recorded transcript holds this turn.
     const first = 'W4157-PERSON Please plan the next release.'
     const host = buildHost()
     const lead = await open(host, 'claude', 'lead')
     await host.send(lead, first, window)
     await waitFor(() => ledger(lead).some((event) => event.type === 'turn'), 'the turn to end')
-    // ⚑ The probe's transcript, as this conversation's own record, in its own provider home.
+    // The probe's transcript, as this conversation's own record, in its own provider home.
     const recorded = readFileSync(
       join(here, 'fixtures', 'turn-as-sent', 'claude-transcript.jsonl'),
       'utf8',
     )
     const theirs = /"sessionId":"([^"]+)"/.exec(recorded)?.[1] ?? '\u0000'
-    // ⚑ The probe's turn was recorded before this app added a block at a turn's end: the record
+    // The probe's turn was recorded before this app added a block at a turn's end: the record
     // is given the block this turn carried, as Claude Code would have kept it.
     const handed =
       ledger(lead).flatMap((event) => (event.type === 'user_turn' ? [event.sent ?? ''] : []))[0] ??
@@ -1180,13 +1179,13 @@ describe('F093 · what an agent was given', () => {
     const record = got.providersRecord
     if (!record.found) throw new Error(`R1 found no turn: ${record.why}`)
     expect(withoutWhatThisAppAdds(record.message).endsWith(first)).toBe(true)
-    // ⚑ What Claude Code added beside the message, in the order the model got it.
+    // What Claude Code added beside the message, in the order the model got it.
     expect(record.parts.some((one) => one.author === 'the-provider')).toBe(true)
     expect(record.parts.some((one) => one.author === 'the-message')).toBe(true)
-    // ⚑ The provider kept exactly the text BroBot kept as handed over, and the answer says so.
+    // The provider kept exactly the text BroBot kept as handed over, and the answer says so.
     expect(got.parts.at(-1)?.text).toBe(turnsOf(lead)[0]?.sent)
     expect(got.providerKeptTheSameText).toBe(true)
-    // ⚑ Asked at the reply's place, the read answers for the message, and R1 reads that message.
+    // Asked at the reply's place, the read answers for the message, and R1 reads that message.
     const reply = store.events(lead).find((entry) => entry.event.type === 'turn')?.ordinal
     if (reply === undefined) throw new Error('no turn row was recorded')
     const atTheReply = await host.whatTheModelGot(lead, reply)
@@ -1196,7 +1195,7 @@ describe('F093 · what an agent was given', () => {
     )
   })
 
-  it('⚑ C9 d · whether the provider kept the same text as BroBot handed over: yes, no, or not known', () => {
+  it('C9 d · whether the provider kept the same text as BroBot handed over: yes, no, or not known', () => {
     const sent = 'Sent by a person, typed into this app.\n\nhello'
     const event: UserTurnEvent = { type: 'user_turn', text: 'hello', sent }
     const kept = (message: string): TurnAsSent => ({
@@ -1224,7 +1223,7 @@ describe('F093 · what an agent was given', () => {
     expect(sameText(kept(sent))).toBe(true)
     expect(sameText(kept(`${sent}.`))).toBe(false)
     expect(sameText({ found: false, why: 'The provider’s own record is gone.' })).toBeNull()
-    // ⚑ Not known: no text kept, or a message that carried a file.
+    // Not known: no text kept, or a message that carried a file.
     expect(sameText(kept(sent), { type: 'user_turn', text: 'hello' })).toBeNull()
     expect(
       sameText(kept(sent), {
@@ -1234,7 +1233,7 @@ describe('F093 · what an agent was given', () => {
     ).toBeNull()
   })
 
-  it('⚑ C9 d · Codex: its files in the first message, and this conversation’s lead split off the message it rode', async () => {
+  it('C9 d · Codex: its files in the first message, and this conversation’s lead split off the message it rode', async () => {
     const host = buildHost()
     const lead = await open(host, 'codex', 'lead')
     await host.send(lead, 'please plan the next release', window)
@@ -1249,7 +1248,7 @@ describe('F093 · what an agent was given', () => {
     const [lead1, message1] = got.parts.slice(-2)
     expect(lead1).toMatchObject({ where: 'this-message', kind: 'this-conversation', text: block })
     expect(message1).toMatchObject({ where: 'this-message', kind: 'the-message' })
-    // ⛔ Split exactly: the lead, a blank line, the message — the whole text handed over.
+    // Split exactly: the lead, a blank line, the message — the whole text handed over.
     expect(`${lead1?.text ?? ''}\n\n${message1?.text ?? ''}`).toBe(turnsOf(lead)[0]?.sent)
 
     await host.send(lead, 'and the one after it', window)
@@ -1257,14 +1256,14 @@ describe('F093 · what an agent was given', () => {
     const second = messagesAt(lead)[1]
     if (second === undefined) throw new Error('no second message was recorded')
     const next = await host.whatTheModelGot(lead, second)
-    // ⚑ Past the first message, the lead is named where it rode: in front of the launch's first.
+    // Past the first message, the lead is named where it rode: in front of the launch's first.
     expect(next.parts.find((one) => one.kind === 'this-conversation')).toMatchObject({
       where: 'first-message',
       text: block,
     })
     expect(next.parts.at(-1)?.text).toBe(turnsOf(lead)[1]?.sent)
 
-    // ⚑ A compaction owes the lead again: it rides the next message, and the one after names it
+    // A compaction owes the lead again: it rides the next message, and the one after names it
     // where it last rode — an earlier message of this launch, not its first.
     const handle = runtimes.at(-1)?.issued.at(-1)
     if (handle === undefined) throw new Error('no handle was issued')
@@ -1290,7 +1289,7 @@ describe('F093 · what an agent was given', () => {
     ).toMatchObject({ where: 'an-earlier-message', text: block })
   })
 
-  it('⚑ C9 d · a message names the launch it was handed over in: across a close and a reopen, the thread holds the first lead and the reopen sends only what changed', async () => {
+  it('C9 d · a message names the launch it was handed over in: across a close and a reopen, the thread holds the first lead and the reopen sends only what changed', async () => {
     const host = buildHost()
     const lead = await open(host, 'codex', 'lead')
     await host.send(lead, 'in the first life', window)
@@ -1319,7 +1318,7 @@ describe('F093 · what an agent was given', () => {
         title: 'What is true of this conversation, in front of this message',
       },
     ])
-    // ⚑ **W4.179 — the thread already holds the first life's lead**: the second message shows it where
+    // **the thread already holds the first life's lead**: the second message shows it where
     // it rode, and — when the reopen's text changed — the sections it sent again, in front of itself.
     const whole = about(first)[0]?.text
     const secondRow = store.events(lead).find((entry) => entry.ordinal === inTheSecond)?.event
@@ -1340,7 +1339,7 @@ describe('F093 · what an agent was given', () => {
     }
   })
 
-  it('⚑ C9 d · the store’s newest row of a type, before a place: a launch, a message, a tool list', async () => {
+  it('C9 d · the store’s newest row of a type, before a place: a launch, a message, a tool list', async () => {
     const host = buildHost()
     const lead = await open(host, 'claude', 'lead')
     await host.send(lead, 'one', window)
@@ -1368,8 +1367,8 @@ describe('F093 · what an agent was given', () => {
     expect(store.newestOfType?.(lead, 'launched', launched)).toBeNull()
   })
 
-  it('⚑ C9 d · a launch that kept no record says so for each part it cannot give', async () => {
-    // ⚑ A launch with no instruction reader keeps no record — as every launch did before F093.
+  it('C9 d · a launch that kept no record says so for each part it cannot give', async () => {
+    // A launch with no instruction reader keeps no record — as every launch did before F093.
     const bare = buildHost(false)
     const elder = await open(bare, 'claude', 'elder')
     await bare.send(elder, 'an older message', window)
@@ -1387,7 +1386,7 @@ describe('F093 · what an agent was given', () => {
     expect(got.parts.at(-1)?.text).toBe(turnsOf(elder)[0]?.sent)
   })
 
-  it('⛔ C9 d · both reads are a person’s doors: refused on a channel with no person behind it, answered on a window', async () => {
+  it('C9 d · both reads are a person’s doors: refused on a channel with no person behind it, answered on a window', async () => {
     const host = buildHost()
     const lead = await open(host, 'claude', 'lead')
     await host.send(lead, 'please plan the next release', window)
@@ -1409,7 +1408,7 @@ describe('F093 · what an agent was given', () => {
     }
   })
 
-  it('⛔ C9 d · refused, in plain words: a conversation not held, a place with no row, and a place before any message', async () => {
+  it('C9 d · refused, in plain words: a conversation not held, a place with no row, and a place before any message', async () => {
     const host = buildHost()
     await expect(host.whatTheModelGot('sess_nobody', 0)).rejects.toThrow(/no record/)
     const lead = await open(host, 'claude', 'lead')
