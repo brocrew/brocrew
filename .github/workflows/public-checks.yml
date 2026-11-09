@@ -66,6 +66,17 @@ jobs:
           BROBOT_COMMIT_PATTERNS: ${{ secrets.BROBOT_COMMIT_PATTERNS }}
         run: node scripts/leak-check.mjs "$REVISIONS"
 
+      - name: Commits are by BroCrew and carry no agent signature
+        env:
+          REVISIONS: ${{ steps.commits.outputs.revisions }}
+        run: |
+          id='BroCrew <343827643+brocrew@users.noreply.github.com>'
+          other=$(git log --format="%h %an <%ae> %cn <%ce>" "$REVISIONS" | awk -v want="$id $id" '{ rest = substr($0, index($0, " ") + 1) } rest != want')
+          signed=$(git log --format=%h -i -E --grep='^co-authored-by:' --grep='generated with \[claude code\]' "$REVISIONS")
+          [ -z "$other" ] || { echo "Not authored and committed by BroCrew:"; echo "$other"; }
+          [ -z "$signed" ] || { echo "Agent signature in:"; echo "$signed"; }
+          [ -z "$other$signed" ]
+
   secrets:
     name: secret scan
     if: ${{ !github.event.repository.private }}
