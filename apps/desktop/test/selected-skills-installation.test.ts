@@ -494,9 +494,12 @@ it.each(['claude', 'codex'] as const)(
       selection: { revision: 1, skills },
       isCurrent: () => true,
     })
+    const layout = provider === 'claude'
+      ? { prefix: 'brobot:', directory: 'skills' }
+      : { prefix: '', directory: '' }
     expect(prepared.context.skills).toHaveLength(64)
     expect(prepared.versions).toHaveLength(64)
-    expect(() => validateBuiltInSkills(prepared.context, provider)).not.toThrow()
+    expect(() => validateBuiltInSkills(prepared.context, layout)).not.toThrow()
     const extra = {
       name: `${provider === 'claude' ? 'brobot:' : ''}personal-extra`,
       description: 'A fictional extra skill.',
@@ -510,7 +513,7 @@ it.each(['claude', 'codex'] as const)(
     expect(() =>
       validateBuiltInSkills(
         { ...prepared.context, skills: [...prepared.context.skills, extra] },
-        provider,
+        layout,
       ),
     ).toThrow()
     const before = readdirSync(home)

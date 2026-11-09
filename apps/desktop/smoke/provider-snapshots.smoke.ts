@@ -1,3 +1,4 @@
+import { CLAUDE_INSTRUCTIONS_FILE } from '../src/main/providers/claude/layout.mjs'
 import {
   chmodSync,
   existsSync,
@@ -42,7 +43,6 @@ import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   brobotWorkspace,
-  CLAUDE_INSTRUCTIONS_FILE,
   ensureWorkspace,
   workspaceOwnFilesIn,
 } from '../src/main/runtime/workspace'

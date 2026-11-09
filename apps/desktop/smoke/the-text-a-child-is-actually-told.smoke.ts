@@ -1,3 +1,4 @@
+import { CLAUDE_INSTRUCTIONS_FILE } from '../src/main/providers/claude/layout.mjs'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -29,7 +30,6 @@ import {
 import { BUNDLE_LEAF, publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import {
   brobotWorkspace,
-  CLAUDE_INSTRUCTIONS_FILE,
   ensureWorkspace,
   workspaceOwnFilesIn,
 } from '../src/main/runtime/workspace'

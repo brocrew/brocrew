@@ -206,7 +206,7 @@ for (const method of ['sign-in', 'api-key'] as const) {
     )
     const prepared = await module.prepareLaunch!('fictional-profile', connection)
     native.queryFactory.mockReturnValue(new Query())
-    expect(await prepared.runtime.listModels({ providerHome: prepared.home, cwd: dir })).toEqual([])
+    expect(await prepared.runtime.listModels({ providerHome: prepared.home })).toEqual([])
     expect(readKey).toHaveBeenCalledTimes(method === 'api-key' ? 1 : 0)
     expect(readLogin).toHaveBeenCalledTimes(method === 'sign-in' ? 1 : 0)
     expect(native.queryFactory).toHaveBeenCalledTimes(1)
