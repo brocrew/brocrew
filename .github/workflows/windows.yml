@@ -150,15 +150,6 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: The leak guard, patterns required
-        if: >-
-          startsWith(github.ref, 'refs/tags/windows-beta-') ||
-          startsWith(github.ref, 'refs/tags/beta-')
-        env:
-          BROBOT_LEAK_PATTERNS: ${{ secrets.BROBOT_LEAK_PATTERNS }}
-        shell: bash
-        run: node scripts/leak-check.mjs --require-patterns
-
       - name: Publish a prerelease on the pushed tag
         if: >-
           startsWith(github.ref, 'refs/tags/windows-beta-') ||

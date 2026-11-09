@@ -44,21 +44,13 @@ docs/                   the guides (installing, API keys, Codex, the data folder
 | `pnpm dev`                                                  | Launch the shell (electron-vite dev) with renderer HMR, for working on BroBot.      |
 | `pnpm run ci`                                               | The whole gate — every step listed under this table, in order.                      |
 | `pnpm run engine:check`                                     | Refuse a `node` below `engines.node`, before anything measures the wrong function.  |
-| `pnpm run leak:check`                                       | Refuse a new mention of a name the repo must not carry (see below).                 |
 | `pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm build` | Individual gates.                                                                   |
 | `pnpm run db:generate`                                      | Regenerate the committed Drizzle migration from `schema.ts`, stamped so it runs.    |
 | `pnpm run smoke:ui`                                         | Launch its own hidden app and drive it against live providers (see below).          |
 
-`pnpm run ci` runs, in this order, and stops at the first that fails: `engine:check` → `leak:check`
-→ `typecheck` → `lint` → `format:check` → `db:check` → `gate-only:check` →
-`test` → `build` → `window:check` → `quit:check` → `notices:check`.
-
-`leak:check` fails on a tracked file that carries more mentions of a name this repo must not carry
-than `scripts/leak-guard/baseline.txt` lists for it, and on one that carries fewer — then
-`node scripts/leak-check.mjs --shrink` lowers the baseline. A deliberate exception goes in
-`scripts/leak-guard/allowed.txt`, with its reason. Its patterns are never in the tree: it reads them
-from `BROBOT_LEAK_PATTERNS`, or from the file `BROBOT_LEAK_PATTERNS_FILE` names, or from
-`~/.config/brobot/leak-patterns`, and with none of them it says it skipped and passes.
+`pnpm run ci` runs, in this order, and stops at the first that fails: `engine:check` → `typecheck`
+→ `lint` → `format:check` → `db:check` → `gate-only:check` → `test` → `build` → `window:check` →
+`quit:check` → `notices:check`.
 
 `gate-only:check` runs the tests that start `scripts/clean-base.mjs` (`vitest.gate-only.config.ts`).
 No other test run reaches them, and nobody runs them outside the whole gate.

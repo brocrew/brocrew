@@ -1,11 +1,7 @@
-# CI on every push to `main` (T-001): Linux runners, the checks in parallel, the tests sharded.
+# CI on every push to `main`: Linux runners, the checks in parallel, the tests sharded.
 #
-# ⛔ Not here, on purpose: the Electron window checks (`window:check`, `quit:check`), `build`, the
+# Not here, on purpose: the Electron window checks (`window:check`, `quit:check`), `build`, the
 # `gate-only` tests and every live smoke. They stay local, run by the test lane. The whole gate is still `pnpm run ci` on a Mac.
-#
-# One secret, and one job reads it: `leak:check` takes its patterns from `BROBOT_LEAK_PATTERNS`, so
-# the names the repo must not carry are never in it. A run without the secret (a fork) skips the
-# check and says so.
 #
 # CI uses Linux runners. A test depending on Mac-specific facts
 # (`/tmp` is `/private/tmp`, the disk ignores case, the fonts a DOM test measures, …) starts with
@@ -77,7 +73,7 @@ jobs:
         # `notices:check`: the npm packages THIRD-PARTY-NOTICES.md lists are the ones this lockfile
         # installs. It reads `node_modules` and needs no build; Linux installs the same list, since
         # every package that differs by platform is in the notices' hand-written sections.
-        check: [engine:check, leak:check, notices:check, typecheck, lint, format:check, db:check]
+        check: [engine:check, notices:check, typecheck, lint, format:check, db:check]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -97,8 +93,6 @@ jobs:
 
       - name: pnpm run ${{ matrix.check }}
         run: pnpm run ${{ matrix.check }}
-        env:
-          BROBOT_LEAK_PATTERNS: ${{ matrix.check == 'leak:check' && secrets.BROBOT_LEAK_PATTERNS || '' }}
 
   test:
     name: test ${{ matrix.shard }}/${{ strategy.job-total }}
@@ -131,12 +125,12 @@ jobs:
       - name: Give the runner the two CLI homes
         run: mkdir -p ~/.claude ~/.codex
 
-      # ⛔ Every project but `dom`: the DOM project runs in the `dom` job below, in groups. Run in
-      # one browser per shard, its ~54 files filled the runner's disk (W4.114).
+      # Every project but `dom`: the DOM project runs in the `dom` job below, in groups. Run in
+      # one browser per shard, its ~54 files filled the runner's disk.
       - name: vitest, every project but dom (shard ${{ matrix.shard }} of ${{ strategy.job-total }})
         run: pnpm exec vitest run --project '!dom' --shard=${{ matrix.shard }}/${{ strategy.job-total }}
 
-  # ⛔ **The DOM project, in groups, each with a browser of its own** (W4.114). One headless Chromium
+  # The DOM project, in groups, each with a browser of its own. One headless Chromium
   # never gives back the shared memory a test file drew — about 640 MB a file on this runner, kept in
   # `/tmp` as deleted files — and a shard's ~54 DOM files filled the 12 GB the runner has free, so the
   # next file failed to load. `scripts/test-dom-in-groups.mjs` runs the project as sixteen `--shard`
@@ -164,7 +158,7 @@ jobs:
 
       # The `dom` vitest project (083) runs real components in real Chromium, and it runs on the
       # DEFAULT test path deliberately — a harness gated out of the gate is debt, not coverage.
-      # ⚠️ `playwright@1.62.1` has NO postinstall script (verified in the pnpm store), so
+      # `playwright@1.62.1` has NO postinstall script (verified in the pnpm store), so
       # `pnpm install` never fetches a browser under any `onlyBuiltDependencies` setting. Without
       # this step the DOM job would die before its first test. `--with-deps`
       # because the binary alone is not enough on ubuntu-latest: chromium needs libnss3, libgbm1

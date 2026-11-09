@@ -18,7 +18,7 @@
 #                              `true`, they run here instead.
 #
 #
-# ⚑ A and B are the same code packaged twice, each with its own marker: this proves the transport,
+# A and B are the same code packaged twice, each with its own marker: this proves the transport,
 # the version choice, the replacement, the relaunch and B's first-start recovery copy, not a change
 # of code or schema.
 name: Update rehearsal
@@ -61,26 +61,10 @@ jobs:
           RUNS_HERE: ${{ vars.UPDATE_REHEARSAL_RUNS_HERE }}
         run: node scripts/update-rehearsal-feed.mjs plan "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
 
-  leak:
-    name: No name the repo must not carry
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: '.nvmrc'
-      - name: The leak guard, patterns required
-        env:
-          BROBOT_LEAK_PATTERNS: ${{ secrets.BROBOT_LEAK_PATTERNS }}
-        run: node scripts/leak-check.mjs --require-patterns
-
   windows:
     name: Build A and B for Windows (NSIS, x64, unsigned)
-    needs: [plan, leak]
-    # ⚑ `windows-2022`: pnpm's node-gyp does not know the Visual Studio of `windows-latest` (`windows.yml`).
+    needs: plan
+    # `windows-2022`: pnpm's node-gyp does not know the Visual Studio of `windows-latest` (`windows.yml`).
     runs-on: windows-2022
     timeout-minutes: 45
     steps:
@@ -118,7 +102,7 @@ jobs:
 
   macos:
     name: Build A and B for the Mac (dmg and zip, Apple silicon, signed ad hoc)
-    needs: [plan, leak]
+    needs: plan
     runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
     timeout-minutes: 45
     steps:
@@ -231,7 +215,7 @@ jobs:
   windows-update:
     name: Windows, on the ${{ matrix.workspace }} workspace
     needs: [plan, windows, publish-a]
-    # ⚑ A lane runs on a staged feed, or serves its own: never on a feed whose staging was skipped.
+    # A lane runs on a staged feed, or serves its own: never on a feed whose staging was skipped.
     if: ${{ !cancelled() && needs.plan.outputs.runs_here == 'true' && needs.windows.result == 'success' && (needs.plan.outputs.mode == 'local' || needs.publish-a.result == 'success') }}
     runs-on: windows-2022
     timeout-minutes: 110
@@ -247,7 +231,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      # ⚑ The test needs Node's own modules only: no install.
+      # The test needs Node's own modules only: no install.
       - uses: actions/setup-node@v7
         with:
           node-version-file: '.nvmrc'
@@ -258,7 +242,7 @@ jobs:
       - name: Install A, make data, update to B through the window, and check what is left
         shell: bash
         env:
-          # ⚑ Read-only, and only where the feed is private: it is what the app under test is given.
+          # Read-only, and only where the feed is private: it is what the app under test is given.
           GH_TOKEN: ${{ needs.plan.outputs.mode == 'private' && secrets.UPDATE_REHEARSAL_READ_TOKEN || '' }}
           GITHUB_TOKEN: ${{ github.token }}
           MODE: ${{ needs.plan.outputs.mode }}

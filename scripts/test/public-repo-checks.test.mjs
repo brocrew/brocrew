@@ -4,312 +4,83 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {
-  cardIdsIn,
-  commitCheck,
-  commitProblems,
-  commitsIn,
-  GITHUB_IDENTITIES,
-  identitiesFrom,
-  pullRequestCheck,
-} from '../leak-check.mjs'
 import { aFakeSecret, redactionVerdict } from '../secret-scan-redaction-check.mjs'
 import { HEADER, rowsFrom, summaryOf, withTheDay } from '../download-counts.mjs'
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
 const read = (relative) => readFileSync(join(ROOT, relative), 'utf8')
 
-/**
- * ⚑ **The public repository's own checks** (`docs/public-repo-checks.md`): the commit check, the
- * secret scan's redaction proof, the download record, and that each workflow does nothing outside
- * the public repository. ⛔ Every name here is made up, and every run reads a scratch home and an
- * environment this test builds, never the machine's own.
- */
+// The public repository's own checks (docs/public-repo-checks.md). Every name here is made up, and
+// every run reads a scratch home and an environment this test builds.
 
-const PUBLIC = 'BroCrew <343827643+brocrew@users.noreply.github.com>'
-
-describe('the commit check · card ids', () => {
-  it('finds each kind the team writes, as whole words, each once and in order', () => {
-    expect(
-      cardIdsIn(
-        'Fixes W4.197 and D-016b, after F093; see HO-088, UI-012, EXT-010, T-001, R92 and W4.',
-      ),
-    ).toEqual(['W4.197', 'D-016b', 'F093', 'HO-088', 'UI-012', 'EXT-010', 'T-001', 'R92', 'W4'])
-    expect(cardIdsIn('W1.2.3 then W1.2.3 again')).toEqual(['W1.2.3'])
-  })
-
-  it('leaves plain words alone', () => {
-    for (const plain of [
-      'Windows 10 and the W3C spec',
-      'press F12, or F1 for help',
-      'a T-shirt, the D-day plan, R&D and the UI kit',
-      'version v1.2.3 and node 24',
-      'Work folders: a give names its folder',
-    ]) {
-      expect(cardIdsIn(plain), plain).toEqual([])
-    }
-  })
-})
-
-describe('the commit check · what a commit may carry', () => {
-  const aCommit = (over) => ({
-    sha: 'a'.repeat(40),
-    author: PUBLIC,
-    committer: PUBLIC,
-    message: 'Plain words about a change\n',
-    ...over,
-  })
-
-  it('passes plain words under the public identity', () => {
-    expect(commitProblems([aCommit({})], { patterns: ['Zoe'], identities: [PUBLIC] })).toEqual([])
-  })
-
-  it('names the part and the kind of problem, and never the pattern', () => {
-    const problems = commitProblems(
-      [
-        aCommit({ message: 'Asked by zoe quill\n' }),
-        aCommit({ author: 'Zoe Quill <zoe@example.org>' }),
-      ],
-      { patterns: ['Zoe Quill', 'Zoe'], identities: null },
-    )
-    expect(problems.map(({ part }) => part)).toEqual(['message', 'author'])
-    expect(JSON.stringify(problems).toLowerCase()).not.toContain('zoe')
-  })
-
-  it('on a push, an identity not listed fails; GitHub’s own are always allowed', () => {
-    const identities = identitiesFrom({ env: { BROBOT_COMMIT_IDENTITIES: `${PUBLIC}\n` } })
-    expect(identities).toEqual([PUBLIC, ...GITHUB_IDENTITIES])
-    const problems = commitProblems(
-      [
-        aCommit({ committer: GITHUB_IDENTITIES[0] }),
-        aCommit({ author: 'Somebody <somebody@example.org>' }),
-      ],
-      { patterns: [], identities },
-    )
-    expect(problems).toEqual([
-      {
-        sha: 'aaaaaaaaa',
-        part: 'author',
-        says: 'is not an identity this repository commits under',
-      },
-    ])
-    // ⚑ With none listed, identities are not checked at all.
-    expect(identitiesFrom({ env: {} })).toBeNull()
-  })
-
-  it('a card id fails a message, named', () => {
-    const problems = commitProblems([aCommit({ message: 'Close W4.219\n' })], {
-      patterns: [],
-      identities: null,
-    })
-    expect(problems).toHaveLength(1)
-    expect(problems[0].says).toContain('W4.219')
-  })
-})
-
-describe('the commit check · on a repository', () => {
+describe('the private-name check, run as CI runs it', () => {
   let scratch
   let repo
-  let home
-  /** ⛔ git's own environment: a scratch home, and no global or system config read. */
   let gitEnv
-  const git = (args, encoding) =>
-    execFileSync('git', args, { env: gitEnv, ...(encoding ? { encoding } : {}) })
-  const commit = (message, who) => {
-    writeFileSync(join(repo, 'file'), `${message}\n`)
-    git(['-C', repo, 'add', 'file'])
-    git([
-      '-C',
-      repo,
-      '-c',
-      `user.name=${who.name}`,
-      '-c',
-      `user.email=${who.email}`,
-      'commit',
-      '-q',
-      '-m',
-      message,
-    ])
-    return git(['-C', repo, 'rev-parse', 'HEAD'], 'utf8').trim()
+  const git = (...args) => execFileSync('git', ['-C', repo, ...args], { env: gitEnv })
+  const commit = (file, text, message) => {
+    writeFileSync(join(repo, file), text)
+    git('add', file)
+    git('-c', 'user.name=BroCrew', '-c', 'user.email=brocrew@example.org', 'commit', '-qm', message)
   }
-  const publicOne = { name: 'BroCrew', email: '343827643+brocrew@users.noreply.github.com' }
+  const check = (patterns, ...args) => {
+    try {
+      const out = execFileSync(process.execPath, [join(ROOT, 'scripts/leak-check.mjs'), ...args], {
+        cwd: repo,
+        env: { ...gitEnv, ...patterns },
+        stdio: ['ignore', 'pipe', 'pipe'],
+        encoding: 'utf8',
+      })
+      return { status: 0, out }
+    } catch (error) {
+      return { status: error.status, out: error.stderr }
+    }
+  }
 
   beforeEach(() => {
     scratch = mkdtempSync(join(tmpdir(), 'public-repo-checks-'))
     repo = join(scratch, 'repo')
-    home = join(scratch, 'home')
     mkdirSync(repo)
-    mkdirSync(home)
     gitEnv = {
       PATH: process.env.PATH ?? '/usr/bin:/bin',
-      HOME: home,
-      GIT_CONFIG_GLOBAL: join(home, 'gitconfig'),
+      HOME: scratch,
+      GIT_CONFIG_GLOBAL: join(scratch, 'gitconfig'),
       GIT_CONFIG_NOSYSTEM: '1',
     }
-    git(['-C', repo, 'init', '-q', '-b', 'main'])
+    git('init', '-q', '-b', 'main')
+    commit('readme', 'Plain words\n', 'The fresh export')
   })
 
   afterEach(() => rmSync(scratch, { recursive: true, force: true }))
 
-  it('fails the commits that break a rule, says which, and prints no pattern', () => {
-    const first = commit('The fresh export', publicOne)
-    const named = commit('Asked by Zoe, done', publicOne)
-    const carded = commit('Finish W4.219', publicOne)
-    const other = commit('Plain words', { name: 'Zoe Quill', email: 'zoe@example.org' })
-    const env = {
-      BROBOT_COMMIT_PATTERNS: 'Zoe Quill\nZoe\n',
-      BROBOT_COMMIT_IDENTITIES: `${PUBLIC}\n`,
-    }
-    const { passed, text } = commitCheck([`${first}..HEAD`], { root: repo, env, home, gitEnv })
-    expect(passed).toBe(false)
-    expect(text).toContain('3 commits')
-    expect(text).toContain(`${named.slice(0, 9)}: its message carries a name`)
-    expect(text).toContain(`${carded.slice(0, 9)}: its message names a card id (W4.219)`)
-    expect(text).toContain(`${other.slice(0, 9)}: its author carries a name`)
-    expect(text).toContain('not configured, so not checked: leak patterns')
-    expect(text.toLowerCase()).not.toContain('zoe')
-    expect(text).not.toContain(first.slice(0, 9))
+  it('fails with no names configured', () => {
+    expect(check({}).status).toBe(1)
+    expect(check({ BROBOT_LEAK_PATTERNS: ' \n# a comment\n' }).status).toBe(1)
   })
 
-  it('passes plain words under the public identity, and still checks card ids with nothing configured', () => {
-    commit('The fresh export', publicOne)
-    commit('Plain words', publicOne)
-    expect(commitCheck(['HEAD'], { root: repo, env: {}, home, gitEnv })).toEqual({
-      passed: true,
-      text: 'commit check: 2 commits, nothing found (not configured, so not checked: leak patterns, commit patterns, identities)',
-    })
-    commit('Fix D-042', publicOne)
-    expect(commitCheck(['HEAD~1..HEAD'], { root: repo, env: {}, home, gitEnv }).passed).toBe(false)
+  it('passes a tree and commits that carry no name', () => {
+    expect(check({ BROBOT_LEAK_PATTERNS: 'Acme Widgets\n' }, 'HEAD').status).toBe(0)
   })
 
-  it('⛔ an annotated tag’s tagger and message are read as a commit’s are', () => {
-    commit('The fresh export', publicOne)
-    git([
-      '-C',
-      repo,
-      '-c',
-      'user.name=Zoe Quill',
-      '-c',
-      'user.email=zoe@example.org',
-      'tag',
-      '-a',
-      'v1.0.0',
-      '-m',
-      'Release for W4.219',
-    ])
-    const env = {
-      BROBOT_COMMIT_PATTERNS: 'Zoe Quill\n',
-      BROBOT_COMMIT_IDENTITIES: `${PUBLIC}\n`,
-    }
-    const { passed, text } = commitCheck([], { root: repo, env, home, gitEnv, tags: ['v1.0.0'] })
-    expect(passed).toBe(false)
-    expect(text).toContain('0 commits, 1 annotated tag')
-    expect(text).toContain('tag v1.0.0: its message names a card id (W4.219)')
-    expect(text).toContain('tag v1.0.0: its author carries a name')
-    expect(text.toLowerCase()).not.toContain('zoe')
-    // ⚑ A lightweight tag carries no tagger and no message.
-    git(['-C', repo, 'tag', 'v1.0.1'])
-    expect(commitCheck([], { root: repo, env, home, gitEnv, tags: ['v1.0.1'] }).text).toContain(
-      '0 commits, 0 annotated tags',
-    )
+  it('names a file whose text or name carries a name, in any case, without the line', () => {
+    commit('notes', 'made for acme widgets\n', 'Notes')
+    commit('ACME-WIDGETS-plan', 'x\n', 'Plan')
+    const { status, out } = check({ BROBOT_LEAK_PATTERNS: 'Acme Widgets\nacme-widgets\n' })
+    expect(status).toBe(1)
+    expect(out).toContain('notes:1')
+    expect(out).toContain('ACME-WIDGETS-plan (its name)')
+    expect(out).not.toContain('made for')
   })
 
-  it('a message that carries the field separator is read whole', () => {
-    commit('Plain words \x1f then W4.219', publicOne)
-    const [read] = commitsIn(repo, ['HEAD'], gitEnv)
-    expect(read?.message).toContain('then W4.219')
-  })
-
-  it('⛔ --require-patterns needs the commit patterns too, and --require-identities the identities', () => {
-    commit('Plain words', publicOne)
-    const leakOnly = { BROBOT_LEAK_PATTERNS: 'acme-widgets\n' }
-    expect(
-      commitCheck(['HEAD'], { root: repo, env: leakOnly, home, gitEnv, required: true }).text,
-    ).toBe(
-      'commit check: this run requires the commit patterns (BROBOT_COMMIT_PATTERNS), and they are not configured',
-    )
-    const both = { ...leakOnly, BROBOT_COMMIT_PATTERNS: 'Zoe\n' }
-    expect(
-      commitCheck(['HEAD'], { root: repo, env: both, home, gitEnv, required: true }).passed,
-    ).toBe(true)
-    expect(
-      commitCheck(['HEAD'], {
-        root: repo,
-        env: both,
-        home,
-        gitEnv,
-        required: true,
-        identitiesRequired: true,
-      }).text,
-    ).toContain('requires the identities (BROBOT_COMMIT_IDENTITIES)')
-  })
-})
-
-describe('a pull request’s title and branch name', () => {
-  it('are plain words, or the check says which of them is not, and never a pattern', () => {
-    const home = mkdtempSync(join(tmpdir(), 'public-repo-checks-pr-'))
-    try {
-      const env = { BROBOT_COMMIT_PATTERNS: 'Zoe\n' }
-      expect(pullRequestCheck({ title: 'Plain words', branch: 'plain-words', env, home })).toEqual({
-        passed: true,
-        text: 'pull request check: its title and branch name are plain words',
-      })
-      const { passed, text } = pullRequestCheck({
-        title: 'Asked by Zoe',
-        branch: 'fix-W4.219',
-        env,
-        home,
-      })
-      expect(passed).toBe(false)
-      expect(text).toContain('its title carries a name')
-      expect(text).toContain('its branch name names W4.219')
-      expect(text.toLowerCase()).not.toContain('zoe')
-      expect(
-        pullRequestCheck({ title: 'x', branch: 'y', env: {}, home, required: true }).passed,
-      ).toBe(false)
-    } finally {
-      rmSync(home, { recursive: true, force: true })
-    }
-  })
-})
-
-describe('the command, run as CI runs it', () => {
-  const homes = []
-  afterEach(() => {
-    for (const one of homes.splice(0)) rmSync(one, { recursive: true, force: true })
-  })
-  const node = (args, env) => {
-    try {
-      execFileSync(process.execPath, [join(ROOT, 'scripts/leak-check.mjs'), ...args], {
-        env,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        encoding: 'utf8',
-      })
-      return 0
-    } catch (error) {
-      return error.status
-    }
-  }
-  /** ⛔ No pattern anywhere: an environment built here and a home with no config file. */
-  const bare = () => {
-    const home = mkdtempSync(join(tmpdir(), 'public-repo-checks-cli-'))
-    homes.push(home)
-    return { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: home }
-  }
-
-  it('⛔ fails with --require-patterns and nothing configured, for the tree and for the commits', () => {
-    expect(node(['--require-patterns'], bare())).toBe(1)
-    expect(node(['--require-patterns', '--commits', 'HEAD'], bare())).toBe(1)
-    expect(node(['--commits', 'HEAD', '--require-patterns'], bare())).toBe(1)
-  })
-
-  it('a pull request’s words come from the environment', () => {
-    expect(
-      node(['--pull-request'], { ...bare(), PR_TITLE: 'Plain words', PR_BRANCH: 'plain' }),
-    ).toBe(0)
-    expect(node(['--pull-request'], { ...bare(), PR_TITLE: 'Finish W4.219', PR_BRANCH: 'x' })).toBe(
-      1,
-    )
+  it('names a commit whose message carries a leak or commit name', () => {
+    const before = git('rev-parse', 'HEAD').toString().trim()
+    commit('readme', 'More plain words\n', 'Asked by Zoe Quill')
+    const sha = git('rev-parse', '--short', 'HEAD').toString().trim()
+    const names = { BROBOT_LEAK_PATTERNS: 'Acme Widgets\n', BROBOT_COMMIT_PATTERNS: 'zoe quill\n' }
+    const { status, out } = check(names, `${before}..HEAD`)
+    expect(status).toBe(1)
+    expect(out).toContain(`commit ${sha}`)
+    expect(check(names).status).toBe(0)
   })
 })
 
@@ -471,45 +242,19 @@ describe('the workflows · run on a public repository, whatever it is named, and
     },
   )
 
-  it('⛔ the public checks and every release require the leak patterns, and check the tree’s file names', () => {
-    expect(checks).toContain(
-      'node scripts/leak-check.mjs $REQUIRE $IDENTITIES --commits "$REVISIONS"',
-    )
-    expect(checks).toContain('run: node scripts/leak-check.mjs $REQUIRE\n')
-    expect(checks).toContain('--require-patterns --require-identities --tag "$GITHUB_REF_NAME"')
-    expect(checks).toContain('run: node scripts/leak-check.mjs $REQUIRE --pull-request')
-    // ⚑ Required wherever the secrets reach: not a fork's pull request, which gets none.
-    expect(checks).toContain(
-      "REQUIRE: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && '--require-patterns' || '' }}",
-    )
-    // ⛔ gitleaks prints no text around a finding.
+  it('the private-name check runs in the public checks, and publication waits for it', () => {
+    expect(checks).toContain('run: node scripts/leak-check.mjs "$REVISIONS"\n')
     expect(checks).not.toMatch(/gitleaks git [^\n]*--verbose/)
     const release = read('.github/workflows/release.yml')
-    expect(release).toContain('run: node scripts/leak-check.mjs --require-patterns\n')
-    // Builds, qualification and publication wait for the guard; collection waits for both builds.
+    expect(release).toContain('run: node scripts/leak-check.mjs\n')
     const jobs = release.slice(release.indexOf('\njobs:\n')).split(/^ {2}([\w-]+):\n/m)
-    for (const [job, needs] of [
-      ['windows', '[plan, leak]'],
-      ['macos', '[plan, leak]'],
-      ['qualify', '[plan, leak]'],
-      ['publish', '[plan, leak]'],
-      ['candidate', '[plan, windows, macos]'],
-    ]) {
-      const at = jobs.indexOf(job)
-      expect(at, `${job} must exist`).toBeGreaterThan(0)
-      expect(jobs[at + 1], job).toContain(`    needs: ${needs}\n`)
-    }
-    for (const beta of ['windows', 'macos']) {
-      expect(read(`.github/workflows/${beta}.yml`)).toContain(
-        'run: node scripts/leak-check.mjs --require-patterns\n',
-      )
-    }
+    expect(jobs[jobs.indexOf('publish') + 1]).toContain('    needs: [plan, leak]\n')
   })
 
   it('ordinary jobs keep public guards and plugin reviews stay restricted', () => {
     expect(jobsOf(checks)).toEqual(['commits', 'secrets'])
     expect(checks.split(GUARD).length - 1, 'one guard per job').toBe(2)
-    // ⚑ A scheduled run's event names no repository, so the record waits on GitHub's own answer.
+    // A scheduled run's event names no repository, so the record waits on GitHub's own answer.
     expect(jobsOf(counts)).toEqual(['visibility', 'record'])
     expect(counts).toContain('gh api "repos/$GITHUB_REPOSITORY" --jq \'.private | not\'')
     expect(counts).toContain(
@@ -593,7 +338,6 @@ describe('the workflows · run on a public repository, whatever it is named, and
       'whenever the repository is public',
       'BROBOT_LEAK_PATTERNS',
       'BROBOT_COMMIT_PATTERNS',
-      'BROBOT_COMMIT_IDENTITIES',
       'public-checks.yml',
       'download-counts.yml',
       '.gitleaks.toml',

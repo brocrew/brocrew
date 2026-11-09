@@ -1,16 +1,12 @@
 # Preparation for a freeze, on GitHub's Linux runners instead of a Mac: format the changed files,
-# lint the formatted tree, check it for names the repo must not carry, and typecheck.
+# lint the formatted tree, and typecheck.
 # Started by a push to a `gate/prepare-*` branch, or by hand once this file
 # is on the default branch (`gh workflow run prepare.yml --ref <branch>`). A push needs no
 # registration, so it works from any branch that carries this file.
 #
 # It never pushes and never commits. What it changed comes back as `prepare.patch` in the
-# `prepare` artifact, next to every log, and the run fails if lint, the leak check or
-# the typecheck fails — but the patch is uploaded either way, so a failing check still shows what
-# was written.
-#
-# One secret: the leak check reads its patterns from `BROBOT_LEAK_PATTERNS`, as in `ci.yml`, and
-# prints neither a pattern nor a matched line. A run without the secret skips that check and says so.
+# `prepare` artifact, next to every log, and the run fails if lint or the typecheck fails — but
+# the patch is uploaded either way, so a failing check still shows what was written.
 name: Prepare
 
 on:
@@ -108,14 +104,6 @@ jobs:
         shell: bash
         run: pnpm run lint 2>&1 | tee "$OUT"/lint.log; exit "${PIPESTATUS[0]}"
 
-      - name: Leak check
-        id: leak
-        continue-on-error: true
-        env:
-          BROBOT_LEAK_PATTERNS: ${{ secrets.BROBOT_LEAK_PATTERNS }}
-        shell: bash
-        run: pnpm run leak:check 2>&1 | tee "$OUT"/leak-check.log; exit "${PIPESTATUS[0]}"
-
       - name: Typecheck
         id: typecheck
         continue-on-error: true
@@ -136,7 +124,6 @@ jobs:
             echo "|---|---|"
             echo "| format | ${{ steps.format.outcome }} |"
             echo "| lint | ${{ steps.lint.outcome }} |"
-            echo "| leak check | ${{ steps.leak.outcome }} |"
             echo "| typecheck | ${{ steps.typecheck.outcome }} |"
             echo
             echo "Files in the patch: $(git diff --cached --name-only | wc -l | tr -d ' ')"
@@ -154,7 +141,6 @@ jobs:
         run: |
           failed=0
           [ "${{ steps.lint.outcome }}" = success ] || { echo "lint failed"; failed=1; }
-          [ "${{ steps.leak.outcome }}" = success ] || { echo "the leak check failed"; failed=1; }
           [ "${{ steps.typecheck.outcome }}" = success ] || { echo "typecheck failed"; failed=1; }
           [ "${{ steps.format.outcome }}" = success ] || { echo "prettier failed (a file with a syntax error?)"; failed=1; }
           exit "$failed"

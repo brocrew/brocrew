@@ -128,7 +128,6 @@
   "javascript|scripts/session-info-probe.mjs|scripts/window-controls-probe.mjs",
   "javascript|scripts/test/a-codex-card-step-writes-outside-the-folder.test.mjs|scripts/test/a-live-step-follows-what-was-ruled.test.mjs",
   "javascript|scripts/test/every-page-template-parses.test.mjs|scripts/test/page-ipc-census.test.mjs",
-  "javascript|scripts/test/leak-check-what-it-reads.test.mjs|scripts/test/leak-check.test.mjs",
   "javascript|scripts/test/mutation-census.test.mjs|scripts/test/mutation-census.test.mjs",
   "javascript|scripts/test/mutation-census.test.mjs|scripts/test/mutation-verdict.test.mjs",
   "javascript|scripts/test/mutation-verdict.test.mjs|scripts/test/mutation-verdict.test.mjs",

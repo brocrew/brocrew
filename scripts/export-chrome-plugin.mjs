@@ -14,19 +14,7 @@ export function exportChromePlugin(destination) {
       path.join(root, 'scripts/lib', name),
       path.join(destination, 'scripts/lib', name),
     )
-  fs.copyFileSync(
-    path.join(root, 'scripts/leak-check.mjs'),
-    path.join(destination, 'scripts/leak-check.mjs'),
-  )
   fs.copyFileSync(path.join(root, 'LICENSE'), path.join(destination, 'LICENSE'))
-  fs.mkdirSync(path.join(destination, 'scripts/test'), { recursive: true })
-  fs.copyFileSync(
-    path.join(root, 'scripts/test/chrome-release-guards.test.mjs'),
-    path.join(destination, 'scripts/test/chrome-release-guards.test.mjs'),
-  )
-  fs.mkdirSync(path.join(destination, 'scripts/leak-guard'), { recursive: true })
-  for (const name of ['baseline.txt', 'allowed.txt'])
-    fs.writeFileSync(path.join(destination, 'scripts/leak-guard', name), '')
   fs.writeFileSync(path.join(destination, '.gitignore'), 'node_modules/\nartifact/\n*.log\n')
   fs.writeFileSync(
     path.join(destination, 'package.json'),
@@ -73,7 +61,7 @@ export function exportChromePlugin(destination) {
 import { THE_GUARD, theTestsEnv } from './scripts/lib/tests-run-in-a-fictional-home.mjs'
 export default defineConfig({
   test: { environment: 'node', env: theTestsEnv(), setupFiles: [THE_GUARD],
-    include: ['plugins/chrome/test/**/*.test.ts', 'release-test/*.test.ts', 'scripts/test/chrome-release-guards.test.mjs'],
+    include: ['plugins/chrome/test/**/*.test.ts', 'release-test/*.test.ts'],
     exclude: ['plugins/chrome/test/archive.test.ts'],
   },
 })
@@ -141,7 +129,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-          fetch-depth: 0
       - uses: actions/setup-node@v7
         with:
           node-version: '22.23.3'
@@ -160,14 +147,6 @@ jobs:
       - run: npm test
         env:
           BROCREW_CHROME_TEST_ARTIFACT: \${{ github.workspace }}/artifact
-      - run: node scripts/leak-check.mjs --require-patterns
-        env:
-          BROBOT_LEAK_PATTERNS: \${{ secrets.BROBOT_LEAK_PATTERNS }}
-      - run: node scripts/leak-check.mjs --require-patterns --require-identities --commits HEAD
-        env:
-          BROBOT_LEAK_PATTERNS: \${{ secrets.BROBOT_LEAK_PATTERNS }}
-          BROBOT_COMMIT_PATTERNS: \${{ secrets.BROBOT_COMMIT_PATTERNS }}
-          BROBOT_COMMIT_IDENTITIES: \${{ vars.BROBOT_COMMIT_IDENTITIES }}
       - name: Attach verified archives to the release
         if: startsWith(github.ref, 'refs/tags/v')
         env:

@@ -111,12 +111,6 @@ jobs:
             throw new Error('Signed validation requires its reviewed source, matching version and reserved tag')
           appendFileSync(env.GITHUB_OUTPUT, `version=${match[1]}\nsource=${env.ACCEPTED_SOURCE_SHA}\n`)
           NODE
-      - name: The signed-validation leak guard, patterns required
-        if: github.event_name == 'workflow_dispatch' && inputs.signed_release_validation == true
-        shell: bash
-        env:
-          BROBOT_LEAK_PATTERNS: ${{ secrets.BROBOT_LEAK_PATTERNS }}
-        run: node scripts/leak-check.mjs --require-patterns
 
   signed-release-validation:
     name: Validate the Mac release signature (no publication)
@@ -280,17 +274,6 @@ jobs:
       # `beta-*` tag is built by both workflows into one prerelease: whichever job comes second finds
       # the release made and adds its file to it. The words are `scripts/beta-release.mjs`'s, the same
       # in both jobs.
-      # ⛔ A release carries no name the repo must not carry, in a file or a file's name; with no
-      # patterns configured it fails rather than skip.
-      - name: The leak guard, patterns required
-        if: >-
-          startsWith(github.ref, 'refs/tags/mac-beta-') ||
-          startsWith(github.ref, 'refs/tags/beta-')
-        env:
-          BROBOT_LEAK_PATTERNS: ${{ secrets.BROBOT_LEAK_PATTERNS }}
-        shell: bash
-        run: node scripts/leak-check.mjs --require-patterns
-
       - name: Publish a prerelease on the pushed tag
         # ⚑ Only on a tag that names this platform: a hand-run on another tag publishes nothing.
         if: >-

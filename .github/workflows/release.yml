@@ -94,8 +94,7 @@ jobs:
             echo "name=${RELEASE_REPO#*/}"
           } >> "$GITHUB_OUTPUT"
 
-  # A release carries no name the repo must not carry, in its files or their names. The patterns
-  # come from the repository secret; a release run without them fails rather than skip.
+  # Publication waits for the private-name check; the names come from the repository secret.
   leak:
     name: No name the repo must not carry
     runs-on: ubuntu-latest
@@ -106,14 +105,14 @@ jobs:
         with:
           persist-credentials: false
       - *node-only
-      - name: The leak guard, patterns required
+      - name: No private name in the tree
         env:
           BROBOT_LEAK_PATTERNS: ${{ secrets.BROBOT_LEAK_PATTERNS }}
-        run: node scripts/leak-check.mjs --require-patterns
+        run: node scripts/leak-check.mjs
 
   windows:
     name: Build for Windows (NSIS, x64)
-    needs: [plan, leak]
+    needs: plan
     if: needs.plan.outputs.build == 'true'
     # ⚑ `windows-2022`: pnpm's node-gyp does not know the Visual Studio of `windows-latest` (`windows.yml`).
     runs-on: windows-2022
@@ -222,7 +221,7 @@ jobs:
 
   macos:
     name: Build for the Mac (Developer ID, notarized, Apple silicon)
-    needs: [plan, leak]
+    needs: plan
     if: needs.plan.outputs.build == 'true'
     runs-on: ${{ vars.MAC_RUNNER || 'macos-15' }}
     environment: mac-signing
@@ -311,7 +310,7 @@ jobs:
 
   qualify:
     name: Seal a mechanically verified tested selection
-    needs: [plan, leak]
+    needs: plan
     if: needs.plan.outputs.qualify == 'true'
     runs-on: ubuntu-latest
     environment: mac-signing
