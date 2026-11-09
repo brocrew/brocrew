@@ -2,13 +2,13 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { AUTO_MEMORY_INDEX, ClaudeRuntime, claudeAutoMemoryDir } from '../src/claude'
 import {
+  AUTO_MEMORY_INDEX,
+  ClaudeRuntime,
+  claudeAutoMemoryDir,
   claudeKeychainTokenProvider,
-  provisionProviderHome,
-  type RuntimeEvent,
-  type SessionHandle,
-} from '../src/index'
+} from '../src/claude'
+import { provisionProviderHome, type RuntimeEvent, type SessionHandle } from '../src/index'
 
 /**
  * 322 · 🔴 **Which half of a Claude memory store is in the prompt, and which half is not.**

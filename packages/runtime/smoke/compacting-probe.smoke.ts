@@ -2,13 +2,8 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { ClaudeRuntime } from '../src/claude'
-import {
-  claudeKeychainTokenProvider,
-  provisionProviderHome,
-  type RuntimeEvent,
-  type SessionHandle,
-} from '../src/index'
+import { ClaudeRuntime, claudeKeychainTokenProvider } from '../src/claude'
+import { provisionProviderHome, type RuntimeEvent, type SessionHandle } from '../src/index'
 
 /**
  * 097 · **Does Claude really tell us it is compacting, and does our adapter say so?**

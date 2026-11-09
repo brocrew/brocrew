@@ -8,14 +8,10 @@ import {
   type CodexIncoming,
   type CodexLaunchContext,
   type CodexTransport,
-} from '../src/codex'
-import {
   codexAuthHealth,
   provisionCodexAuth,
-  provisionProviderHome,
-  type RuntimeEvent,
-  type SessionHandle,
-} from '../src/index'
+} from '../src/codex'
+import { provisionProviderHome, type RuntimeEvent, type SessionHandle } from '../src/index'
 import { bundledCodexBinary, bundledCodexTransportFactory } from './bundled-codex'
 import { runEvidence, runScratch } from './run-paths'
 

@@ -8,13 +8,8 @@ import {
   type SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk'
 import { expect, it } from 'vitest'
-import {
-  buildChildEnv,
-  claudeKeychainTokenProvider,
-  provisionProviderHome,
-  type RuntimeEvent,
-} from '../src/index'
-import { claudeAutoMemoryDir } from '../src/claude'
+import { buildChildEnv, provisionProviderHome, type RuntimeEvent } from '../src/index'
+import { claudeKeychainTokenProvider, claudeAutoMemoryDir } from '../src/claude'
 import { normalizeMessage } from '../src/claude/normalize'
 
 /**

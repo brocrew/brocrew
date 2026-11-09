@@ -2,8 +2,8 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { ClaudeRuntime } from '../src/claude'
-import { claudeKeychainTokenProvider, provisionProviderHome, type RuntimeEvent } from '../src/index'
+import { ClaudeRuntime, claudeKeychainTokenProvider } from '../src/claude'
+import { provisionProviderHome, type RuntimeEvent } from '../src/index'
 import { runScratch } from './run-paths'
 
 /**

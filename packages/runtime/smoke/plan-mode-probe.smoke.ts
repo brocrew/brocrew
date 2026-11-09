@@ -6,12 +6,12 @@ import { query } from '@anthropic-ai/claude-agent-sdk'
 import { expect, it } from 'vitest'
 import {
   buildChildEnv,
-  claudeKeychainTokenProvider,
   provisionProviderHome,
   type RuntimeEvent,
   type SessionHandle,
 } from '../src/index'
-import { ClaudeRuntime } from '../src/claude'
+import { claudeKeychainTokenProvider, ClaudeRuntime } from '../src/claude'
+
 
 /**
  * 140 · **Does `permissionMode: 'plan'` still put the pinned CLI into plan mode?**

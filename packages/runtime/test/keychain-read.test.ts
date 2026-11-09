@@ -34,7 +34,7 @@ const {
   defaultKeychainReader,
   defaultKeychainReaderAsync,
   defaultKeychainReaderForALaunch,
-} = await import('../src/index')
+} = await import('../src/claude/auth')
 
 /** The platform gate returns null off macOS, so it is pinned rather than left to the runner. */
 const realPlatform = process.platform

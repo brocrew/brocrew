@@ -13,9 +13,13 @@ import {
   pathsNaming,
   type Marker,
 } from '../../../scripts/lib/personal-home-guard.mjs'
-import { ClaudeRuntime, claudeProjectDirName, type ClaudeQuery } from '../src/claude'
 import {
+  ClaudeRuntime,
+  claudeProjectDirName,
+  type ClaudeQuery,
   claudeKeychainTokenProvider,
+} from '../src/claude'
+import {
   provisionProviderHome,
   type AgentInfo,
   type RuntimeEvent,

@@ -13,14 +13,10 @@ import {
   type CodexIncoming,
   type CodexTransport,
   type TransportFactory,
-} from '../src/codex'
-import {
   codexAuthHealth,
   provisionCodexAuth,
-  provisionProviderHome,
-  type RuntimeEvent,
-  type SessionHandle,
-} from '../src/index'
+} from '../src/codex'
+import { provisionProviderHome, type RuntimeEvent, type SessionHandle } from '../src/index'
 import { bundledCodexTransportFactory } from './bundled-codex'
 
 /**

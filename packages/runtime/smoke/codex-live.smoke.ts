@@ -12,17 +12,16 @@ import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import { describeScan, pathsNaming } from '../../../scripts/lib/personal-home-guard.mjs'
 import { writableUnasked } from '../../../scripts/lib/unasked-roots.mjs'
-import { CodexRuntime } from '../src/codex'
+import { CodexRuntime, codexAuthHealth, provisionCodexAuth } from '../src/codex'
 import {
   ResumeError,
-  codexAuthHealth,
-  provisionCodexAuth,
   provisionProviderHome,
   type PermissionDecision,
   type RuntimeEvent,
   type SessionHandle,
   type SessionRef,
 } from '../src/index'
+
 import { ProbeRunDeadlineExpired, probeRunDeadline, runBudgetMs } from './probe-run-deadline'
 import { runEvidence, runScratch } from './run-paths'
 import { bundledCodexTransportFactory } from './bundled-codex'

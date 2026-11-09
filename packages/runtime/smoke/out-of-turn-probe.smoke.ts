@@ -2,13 +2,13 @@ import { mkdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
-import { ClaudeRuntime, type ClaudeQuery, type QueryFactory } from '../src/claude'
 import {
+  ClaudeRuntime,
+  type ClaudeQuery,
+  type QueryFactory,
   claudeKeychainTokenProvider,
-  provisionProviderHome,
-  type RuntimeEvent,
-  type SessionHandle,
-} from '../src/index'
+} from '../src/claude'
+import { provisionProviderHome, type RuntimeEvent, type SessionHandle } from '../src/index'
 
 /**
  * 123 · **Does a burst of work that starts OUTSIDE a turn end with a `result` frame?**
