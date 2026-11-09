@@ -8,9 +8,6 @@
 //     --source-sha <sha> --evidence <dir> [--beta-registry packaged|legacy]
 // Public builds use the packaged registry. An older build with the legacy contract must name it.
 //
-// 695-visible: both apps start as a person starts them, window and all, because that start is what
-// this checks; it runs only on a GitHub-hosted runner, never on anyone's machine.
-//
 // It installs software and stops the BroBot processes it started, so it refuses to run anywhere but
 // a GitHub-hosted runner of brocrew/brocrew with no BroBot installed and no BroBot data. Nothing
 // reaches a provider: the Codex key is fictional and the model is a local scripted server, which
