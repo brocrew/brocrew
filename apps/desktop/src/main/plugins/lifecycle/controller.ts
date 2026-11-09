@@ -142,7 +142,10 @@ export class PluginLifecycleController {
       if (this.draining) return pending()
       return work()
     })
-    const tail = result.then(() => {}, () => {})
+    const tail = result.then(
+      () => {},
+      () => {},
+    )
     this.pluginWork.set(id, tail)
     void tail.then(() => {
       if (this.pluginWork.get(id) === tail) this.pluginWork.delete(id)
@@ -320,37 +323,38 @@ export class PluginLifecycleController {
   }
   /** Policy is a normal refusal, never a storage exception. Leave real disk errors to the fence. */
   private async mutationFence<T>(work: () => Promise<T>, id?: string): Promise<T> {
-    const locked = () => this.options.state.withExclusive(async () => {
-      // Preserve the existing storage-error path for the dormant v1 policy.
-      if (!this.requiresPreparedMutations()) return { ok: true, value: await work() } as const
-      const before = this.options.state.inspect()
-      try {
-        return { ok: true, value: await work() } as const
-      } catch (error) {
-        const after = this.options.state.inspect()
-        if (after.sequence !== before.sequence || after.pending !== null) throw error
-        if (
-          error instanceof PluginSupervisorError &&
-          ['policy-refused', 'source-mismatch', 'network', 'incompatible'].includes(error.code)
-        )
-          return { ok: false, error } as const
-        if (
-          error instanceof PluginVerificationError ||
-          error instanceof PluginDownloadError ||
-          error instanceof PluginListError
-        )
-          return {
-            ok: false,
-            error: new PluginSupervisorError(
-              (error instanceof PluginDownloadError && error.kind === 'transport') ||
-                (error instanceof PluginListError && error.state === 'fetch-error')
-                ? 'network'
-                : 'policy-refused',
-            ),
-          } as const
-        throw error
-      }
-    })
+    const locked = () =>
+      this.options.state.withExclusive(async () => {
+        // Preserve the existing storage-error path for the dormant v1 policy.
+        if (!this.requiresPreparedMutations()) return { ok: true, value: await work() } as const
+        const before = this.options.state.inspect()
+        try {
+          return { ok: true, value: await work() } as const
+        } catch (error) {
+          const after = this.options.state.inspect()
+          if (after.sequence !== before.sequence || after.pending !== null) throw error
+          if (
+            error instanceof PluginSupervisorError &&
+            ['policy-refused', 'source-mismatch', 'network', 'incompatible'].includes(error.code)
+          )
+            return { ok: false, error } as const
+          if (
+            error instanceof PluginVerificationError ||
+            error instanceof PluginDownloadError ||
+            error instanceof PluginListError
+          )
+            return {
+              ok: false,
+              error: new PluginSupervisorError(
+                (error instanceof PluginDownloadError && error.kind === 'transport') ||
+                  (error instanceof PluginListError && error.state === 'fetch-error')
+                  ? 'network'
+                  : 'policy-refused',
+              ),
+            } as const
+          throw error
+        }
+      })
     const outcome = await (id === undefined ? locked() : this.withPlugin(id, locked))
     if (!outcome.ok) throw outcome.error
     return outcome.value
@@ -522,10 +526,7 @@ export class PluginLifecycleController {
       if (state.pending?.next)
         unfinished = { install: state.pending.next, operationId: state.pending.request.operationId }
       const activations = state.installations
-      const names = new Set([
-        ...releases.map((one) => one.id),
-        ...state.guardIds,
-      ])
+      const names = new Set([...releases.map((one) => one.id), ...state.guardIds])
       return {
         cards: [...names].sort().map((id) => {
           const active = activations.find((one) => one.pluginId === id),
@@ -659,42 +660,52 @@ export class PluginLifecycleController {
       // Access comes from the current activation and its run. Attaching writes nothing, and a
       // plugin whose operation is pending is not in the committed set, so its old release is
       // never started mid-update.
-      await Promise.all(this.options.state.readWorkspaceAdmission().installations.map((installed) =>
-        this.withPlugin(installed.pluginId, async () => {
-          if (this.blocks.has(installed.pluginId) || this.current(installed.pluginId)?.incarnation !== installed.incarnation) return
-          workspace.installs.set(installed.pluginId, installed.installId)
-          let stage = 'vault-load'
-          try {
-            const checked = await this.vault.load(this.descriptor(installed))
-            if (this.blocks.has(installed.pluginId) || this.current(installed.pluginId)?.incarnation !== installed.incarnation) return
-            stage = 'start'
-            await this.ensureRunning(installed, checked)
-            this.startFailures.delete(installed.pluginId)
-            this.startDiagnostics.delete(installed.pluginId)
-          } catch (error) {
-            // One plugin that cannot start never hides the others. Its stage and cause reach
-            // the agents' plugin line; the real message goes to the person's log.
-            const code = (error as { code?: unknown } | null)?.code
-            const cause =
-              typeof code === 'string' && /^[a-z][a-z0-9-]{0,63}$/.test(code) ? code : 'unknown'
-            this.startFailures.set(installed.pluginId, `${stage}: ${cause}`)
-            this.startDiagnostics.set(
-              installed.pluginId,
-              pluginStartupDiagnostic(error) ??
-                this.runs.get(installed.pluginId)?.run.startupDiagnostic?.() ??
-                this.startDiagnostics.get(installed.pluginId) ?? {
-                  exitCode: null,
-                  signal: null,
-                  stderr: pluginStartupStderr(pluginFailureCause(error)),
-                },
+      await Promise.all(
+        this.options.state.readWorkspaceAdmission().installations.map((installed) =>
+          this.withPlugin(installed.pluginId, async () => {
+            if (
+              this.blocks.has(installed.pluginId) ||
+              this.current(installed.pluginId)?.incarnation !== installed.incarnation
             )
-            console.error(
-              `[plugins] attach could not start ${installed.pluginId} (${stage})`,
-              error,
-            )
-          }
-        }),
-      ))
+              return
+            workspace.installs.set(installed.pluginId, installed.installId)
+            let stage = 'vault-load'
+            try {
+              const checked = await this.vault.load(this.descriptor(installed))
+              if (
+                this.blocks.has(installed.pluginId) ||
+                this.current(installed.pluginId)?.incarnation !== installed.incarnation
+              )
+                return
+              stage = 'start'
+              await this.ensureRunning(installed, checked)
+              this.startFailures.delete(installed.pluginId)
+              this.startDiagnostics.delete(installed.pluginId)
+            } catch (error) {
+              // One plugin that cannot start never hides the others. Its stage and cause reach
+              // the agents' plugin line; the real message goes to the person's log.
+              const code = (error as { code?: unknown } | null)?.code
+              const cause =
+                typeof code === 'string' && /^[a-z][a-z0-9-]{0,63}$/.test(code) ? code : 'unknown'
+              this.startFailures.set(installed.pluginId, `${stage}: ${cause}`)
+              this.startDiagnostics.set(
+                installed.pluginId,
+                pluginStartupDiagnostic(error) ??
+                  this.runs.get(installed.pluginId)?.run.startupDiagnostic?.() ??
+                  this.startDiagnostics.get(installed.pluginId) ?? {
+                    exitCode: null,
+                    signal: null,
+                    stderr: pluginStartupStderr(pluginFailureCause(error)),
+                  },
+              )
+              console.error(
+                `[plugins] attach could not start ${installed.pluginId} (${stage})`,
+                error,
+              )
+            }
+          }),
+        ),
+      )
       this.agentScopeChanged()
       return handle
     } catch {
@@ -1142,68 +1153,67 @@ export class PluginLifecycleController {
       return prior.work.then(stopped)
     }
     const work = this.withPlugin('chrome', async () => {
-        const id = 'chrome',
-          install = this.current(id),
-          running = this.runs.get(id)
-        if (
-          this.draining ||
-          !install ||
-          !running ||
-          (runId !== undefined && running.run.runId !== runId) ||
-          running.installId !== install.installId ||
-          (this.blocks.has(id) && this.blocks.get(id) !== this.chromeToolRestartBlock)
-        )
-          return refuse()
-        const token = this.block(id)
-        this.chromeToolRestartBlock = token
-        this.cleanup.add(id)
-        // Prevent the intentional exit watcher from starting a competing revocation.
-        running.ended = true
-        if (!running.exitProven) {
-          try {
-            // Either exact stop or the retained positive exit witness is sufficient.
-            // A rejected exit witness cannot turn a still-pending stop into success.
-            const exited = running.run.exited.catch(() => new Promise<void>(() => {}))
-            await bounded(() =>
-              Promise.race([Promise.resolve().then(() => running.run.stop()), exited]),
-            )
-          } catch (error) {
-            // Keep the exact identity after a timeout. A later positive witness is
-            // a wakeup only; the bridge and this method recheck every admission fence.
-            void running.run.exited
-              .then(() => {
-                if (
-                  !this.draining &&
-                  this.runs.get(id) === running &&
-                  this.current(id)?.installId === install.installId &&
-                  this.blocks.get(id) === token
-                )
-                  this.options.onChromeHostExit?.(running.run.runId)
-              })
-              .catch(() => undefined)
-            throw error
-          }
-          running.exitProven = true
+      const id = 'chrome',
+        install = this.current(id),
+        running = this.runs.get(id)
+      if (
+        this.draining ||
+        !install ||
+        !running ||
+        (runId !== undefined && running.run.runId !== runId) ||
+        running.installId !== install.installId ||
+        (this.blocks.has(id) && this.blocks.get(id) !== this.chromeToolRestartBlock)
+      )
+        return refuse()
+      const token = this.block(id)
+      this.chromeToolRestartBlock = token
+      this.cleanup.add(id)
+      // Prevent the intentional exit watcher from starting a competing revocation.
+      running.ended = true
+      if (!running.exitProven) {
+        try {
+          // Either exact stop or the retained positive exit witness is sufficient.
+          // A rejected exit witness cannot turn a still-pending stop into success.
+          const exited = running.run.exited.catch(() => new Promise<void>(() => {}))
+          await bounded(() =>
+            Promise.race([Promise.resolve().then(() => running.run.stop()), exited]),
+          )
+        } catch (error) {
+          // Keep the exact identity after a timeout. A later positive witness is
+          // a wakeup only; the bridge and this method recheck every admission fence.
+          void running.run.exited
+            .then(() => {
+              if (
+                !this.draining &&
+                this.runs.get(id) === running &&
+                this.current(id)?.installId === install.installId &&
+                this.blocks.get(id) === token
+              )
+                this.options.onChromeHostExit?.(running.run.runId)
+            })
+            .catch(() => undefined)
+          throw error
         }
-        stopped()
-        // Exact host/descendant exit can now discharge the retained broker's execution barrier.
-        await this.revoke(install)
-        if (this.draining || this.runs.get(id) !== running || this.blocks.get(id) !== token)
-          return pending()
-        this.runs.delete(id)
-        this.agentScopeChanged()
-        this.attempted.delete(id)
-        await this.ensureRunning(install, running.package)
-        if (this.draining || this.blocks.get(id) !== token) return pending()
-        this.given(install)
-        this.cleanup.delete(id)
-        if (this.blocks.get(id) === token) this.blocks.delete(id)
-        this.agentScopeChanged()
-        if (this.chromeToolRestartBlock === token) this.chromeToolRestartBlock = undefined
-      })
-      .finally(() => {
-        if (this.chromeToolRestart?.work === work) this.chromeToolRestart = undefined
-      })
+        running.exitProven = true
+      }
+      stopped()
+      // Exact host/descendant exit can now discharge the retained broker's execution barrier.
+      await this.revoke(install)
+      if (this.draining || this.runs.get(id) !== running || this.blocks.get(id) !== token)
+        return pending()
+      this.runs.delete(id)
+      this.agentScopeChanged()
+      this.attempted.delete(id)
+      await this.ensureRunning(install, running.package)
+      if (this.draining || this.blocks.get(id) !== token) return pending()
+      this.given(install)
+      this.cleanup.delete(id)
+      if (this.blocks.get(id) === token) this.blocks.delete(id)
+      this.agentScopeChanged()
+      if (this.chromeToolRestartBlock === token) this.chromeToolRestartBlock = undefined
+    }).finally(() => {
+      if (this.chromeToolRestart?.work === work) this.chromeToolRestart = undefined
+    })
     this.chromeToolRestart = { runId, work }
     return work
   }
@@ -1363,38 +1373,40 @@ export class PluginLifecycleController {
     let logout: PluginRemovalOutcome['logout'] = 'unconfirmed'
     const token = this.block(id) // Synchronous denial before the queue, tombstone, or any consumer awaits.
     try {
-      await this.withPlugin(id, () => this.options.state.withExclusive(async () => {
-        const state = this.options.state.inspect()
-        const guard = state.guards.find((one) => one.pluginId === id)
-        if (!guard) {
-          absent = true
-          return refuse()
-        }
-        if (guard.phase === 'removed' && !state.pending && !this.cleanup.has(id)) return
-        // A new person retry may resume this same unfinished removal, including after reconnect.
-        // Never reuse a completed operation from an earlier installation for a new button press.
-        const pendingId =
-          state.pending?.request.consent.action === 'uninstall' &&
-          state.pending.next?.pluginId === id
-            ? state.pending.request.operationId
-            : operationId
-        const prior =
-          state.operations.find((one) => one.operation.request.operationId === operationId) ??
-          state.operations.find((one) => one.operation.request.operationId === pendingId)
-        if (prior) {
-          if (
-            prior.operation.request.consent.action !== 'uninstall' ||
-            prior.operation.request.consent.pluginId !== id
-          )
+      await this.withPlugin(id, () =>
+        this.options.state.withExclusive(async () => {
+          const state = this.options.state.inspect()
+          const guard = state.guards.find((one) => one.pluginId === id)
+          if (!guard) {
+            absent = true
             return refuse()
-          if (prior.status === 'completed') return
-          const effect = await this.effects.read(prior.operation.request.operationId)
-          if (!effect || !prior.operation.next) return pending()
-          logout = await this.finishRemoval(effect, prior.operation.next)
-          return
-        }
-        logout = await this.remove(id, operationId, null)
-      }))
+          }
+          if (guard.phase === 'removed' && !state.pending && !this.cleanup.has(id)) return
+          // A new person retry may resume this same unfinished removal, including after reconnect.
+          // Never reuse a completed operation from an earlier installation for a new button press.
+          const pendingId =
+            state.pending?.request.consent.action === 'uninstall' &&
+            state.pending.next?.pluginId === id
+              ? state.pending.request.operationId
+              : operationId
+          const prior =
+            state.operations.find((one) => one.operation.request.operationId === operationId) ??
+            state.operations.find((one) => one.operation.request.operationId === pendingId)
+          if (prior) {
+            if (
+              prior.operation.request.consent.action !== 'uninstall' ||
+              prior.operation.request.consent.pluginId !== id
+            )
+              return refuse()
+            if (prior.status === 'completed') return
+            const effect = await this.effects.read(prior.operation.request.operationId)
+            if (!effect || !prior.operation.next) return pending()
+            logout = await this.finishRemoval(effect, prior.operation.next)
+            return
+          }
+          logout = await this.remove(id, operationId, null)
+        }),
+      )
       if (this.blocks.get(id) === token) this.blocks.delete(id)
       this.agentScopeChanged()
       if (pluginAdapter(id)?.uninstall) return { data: 'deleted', logout }
@@ -1604,7 +1616,8 @@ export class PluginLifecycleController {
     const pending = this.options.state.inspect().pending
     const leftover = this.drained ? pending?.next?.pluginId : undefined
     const blockers: string[] = []
-    for (const id of this.pluginWork.keys()) blockers.push(`${id} has a lifecycle operation in progress`)
+    for (const id of this.pluginWork.keys())
+      blockers.push(`${id} has a lifecycle operation in progress`)
     if (pending !== null && leftover === undefined) {
       const { action, pluginId } = pending.request.consent
       blockers.push(`an unfinished ${action} of ${pluginId ?? 'plugins'}`)
