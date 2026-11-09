@@ -10,9 +10,9 @@ import {
   whyNoClaudeLogin,
   FakeRuntime,
   allProviderCapabilities,
-  claudeProjectDirName,
   type RuntimeEvent,
 } from '@brobot2/runtime'
+import { claudeProjectDirName } from '@brobot2/runtime/claude'
 import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'

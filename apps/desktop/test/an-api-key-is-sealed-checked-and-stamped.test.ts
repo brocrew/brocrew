@@ -2,7 +2,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AuthUnavailableError, type CodexKeyChange, type CodexKeyOutcome } from '@brobot2/runtime'
+import { AuthUnavailableError } from '@brobot2/runtime'
+import type { CodexKeyChange, CodexKeyOutcome } from '@brobot2/runtime/codex'
 import {
   API_KEY_MAX_LENGTH,
   ApiKeyUnreadableError,
@@ -12,8 +13,9 @@ import {
   whyNotAKey,
   type KeyCipher,
 } from '../src/main/runtime/api-keys'
-import { bringTheCodexKeyTo, prepareProviderHome } from '../src/main/runtime/provider-homes'
-import type { CodexKeySeam } from '../src/main/runtime/provider-homes'
+import { prepareProviderHome } from '../src/main/runtime/provider-homes'
+import { bringTheCodexKeyTo } from '../src/main/providers/codex'
+import type { CodexKeySeam } from '../src/main/providers/codex/types'
 
 /**
  * # 🔒 API keys · the sealed store, the check, and the Codex home's stamp
