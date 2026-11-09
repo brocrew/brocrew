@@ -9,6 +9,7 @@ import { createSessionStore } from '../src/main/db/session-store'
 import { windowWriterSampler } from '../src/main/db/window-writer-stamp'
 import { sameWindowWriter } from '../src/main/db/window-routing-reads'
 import { withWindowWriteFence } from '../src/main/db/window-write-fence'
+import { usageKeptIn } from '../src/main/provider-usage-file'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 const routes = { kind: 'routes' as const }
@@ -67,6 +68,18 @@ describe('window writer revisions follow the selected facts', () => {
     expect(sameWindowWriter(before, ended)).toBe(false)
     row('status', '{')
     expect(sameWindowWriter(ended, sample(routes))).toBe(false)
+  })
+
+  it('a write of the kept usage readings does not move the revision', () => {
+    const before = sample(routes)
+    usageKeptIn(db).write({
+      readings: {
+        claude: [{ window: 'seven_day', usedPercent: 1, resetsAt: null, at: 1 }],
+        codex: [],
+      },
+      seen: { claude: [], codex: [] },
+    })
+    expect(sameWindowWriter(before, sample(routes))).toBe(true)
   })
 
   it('includes old-row payload updates, reclassification, deletion and rolled-back changes', () => {

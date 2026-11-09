@@ -13,7 +13,7 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
-import { providerUsageFile, readKeptUsage, writeKeptUsage } from '../src/main/provider-usage-file'
+import { NO_USAGE_KEPT, usageKeptIn } from '../src/main/provider-usage-file'
 import {
   AN_ACCOUNT_ID,
   type KeptAccounts,
@@ -81,10 +81,7 @@ describe('a usage reading belongs to the account it was read on', () => {
       resolveCwd: (sessionId, requested) => resolveSessionCwd(userData, sessionId, requested),
       newSessionId: () => `sess_${String(++counter)}`,
       now: () => clock,
-      usageKept: {
-        read: () => readKeptUsage(providerUsageFile(userData)),
-        write: (usage) => writeKeptUsage(providerUsageFile(userData), usage),
-      },
+      usageKept: usageKeptIn(db),
       accountsKept,
       readProviderConfig: (_provider, home) => ({
         home,
@@ -143,8 +140,7 @@ describe('a usage reading belongs to the account it was read on', () => {
   const windows = (provider: Provider = 'claude') =>
     host.providerUsage()[provider].map((one) => one.window)
   const limits = () => host.limitsForAPerson().rows
-  const keptReadings = (provider: Provider = 'claude') =>
-    readKeptUsage(providerUsageFile(userData)).readings[provider]
+  const keptReadings = (provider: Provider = 'claude') => usageKeptIn(db).read().readings[provider]
   const restart = async (): Promise<void> => {
     await host.closeAll()
     clock += 25 * 60_000
@@ -425,7 +421,7 @@ describe('a usage reading belongs to the account it was read on', () => {
       const first = readKeptAccounts(providerAccountsFile(userData)).claude?.id
       await host.closeAll()
       rmSync(providerAccountsFile(userData))
-      rmSync(providerUsageFile(userData))
+      usageKeptIn(db).write(NO_USAGE_KEPT)
       clock += 25 * 60_000
       host = hostOn()
       await reading(await openOn(ONE, ACCOUNT_A), weekly(82))

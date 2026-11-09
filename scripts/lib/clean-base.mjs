@@ -225,7 +225,7 @@ export const MANIFEST = Object.freeze([
     name: 'provider-usage.json',
     expect: 'file',
     why: USAGE,
-    source: 'main/provider-usage-file.ts (providerUsageFile)',
+    source: 'main/provider-usage-file.ts (importProviderUsageFile)',
   },
   {
     name: 'provider-accounts.json',
@@ -265,7 +265,7 @@ export const TRANSCRIPT_RETENTION_PART =
 
 export const WORKSPACES_PART = /^workspaces?\.json\.(?:\d+|[0-9a-f]{12})\.tmp$/
 
-export const PROVIDER_USAGE_PART = /^provider-(?:usage|accounts)\.json\.(?:\d+|[0-9a-f]{12})\.tmp$/
+export const PROVIDER_USAGE_PART = /^provider-accounts\.json\.(?:\d+|[0-9a-f]{12})\.tmp$/
 
 /**
  * The name one write of what the app did about scheduled jobs goes to before it is renamed into

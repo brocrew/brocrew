@@ -140,8 +140,6 @@ describe('§1 · the source census — a new durable write under userData must n
       "'profile-execution.json'",
       // ⚑ The account the usage readings were read on. REMOVED with them (`USAGE`).
       "'provider-accounts.json'",
-      // ⚑ **F096 · each provider's newest usage readings**, kept across a restart. REMOVED (`USAGE`).
-      "'provider-usage.json'",
       // What the app already did about each stopped conversation's scheduled jobs. REMOVED with
       // the ledger whose conversations it is about (`LEDGER`).
       "'schedule-attempts.json'",
@@ -166,6 +164,7 @@ describe('§1 · the source census — a new durable write under userData must n
       // Shared skill folders and their import receipts are removed with the workspace.
       'OFF_SKILLS_DIRNAME',
       'PROVIDER_HOMES_DIRNAME',
+      'PROVIDER_USAGE_FILE',
       // The records of a restore, and the database a restore set aside (`RECOVERY`).
       'RECOVERY_DIRNAME',
       // ⚑ **D-016 · the files kept for pieces of work**, and this census is what put them in the

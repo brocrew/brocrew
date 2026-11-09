@@ -4,6 +4,8 @@ import {
   foreignKey,
   index,
   integer,
+  primaryKey,
+  real,
   sqliteTable,
   text,
   uniqueIndex,
@@ -747,4 +749,35 @@ export const archivedConversation = sqliteTable('archived_conversation', {
 export const signInChange = sqliteTable('sign_in_change', {
   provider: text('provider').primaryKey(),
   changedAt: integer('changed_at').notNull(),
+})
+
+export const providerUsageReading = sqliteTable(
+  'provider_usage_reading',
+  {
+    provider: text('provider').notNull(),
+    window: text('window').notNull(),
+    position: integer('position').notNull(),
+    usedPercent: real('used_percent'),
+    resetsAt: integer('resets_at'),
+    at: integer('at').notNull(),
+    account: text('account'),
+  },
+  (t) => [primaryKey({ columns: [t.provider, t.window] })],
+)
+
+export const providerUsageWindowSeen = sqliteTable(
+  'provider_usage_window_seen',
+  {
+    provider: text('provider').notNull(),
+    window: text('window').notNull(),
+    position: integer('position').notNull(),
+    first: integer('first').notNull(),
+    last: integer('last').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.provider, t.window] })],
+)
+
+export const providerUsageReadOn = sqliteTable('provider_usage_read_on', {
+  provider: text('provider').primaryKey(),
+  tag: text('tag').notNull(),
 })
