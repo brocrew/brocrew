@@ -2,24 +2,16 @@ import type { ManagedPluginMcpServer } from '../managed-plugin-mcp'
 import { observeManagedPlugins, type ManagedPluginObserver } from '../managed-plugin-observation'
 import { managedTranscriptSettings } from './app-transcript-retention'
 import { randomUUID } from 'node:crypto'
-import {
-  BUILT_IN_SKILLS_FAILURE,
-  claudeBuiltInSkillOptions,
-  verifyClaudeBuiltInSkills,
-} from '../built-in-skills'
+import { BUILT_IN_SKILLS_FAILURE } from '../built-in-skills'
+import { claudeBuiltInSkillOptions, verifyClaudeBuiltInSkills } from './built-in-skills'
 import { closeSync, existsSync, openSync, readdirSync, readSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 import { claudeMcpServersFor, forbiddenExternalSpellings } from './agent-tools'
 import type { ExternalMcpReach } from '../external-mcp'
-import {
-  boundInventory,
-  parametersOf,
-  qualifyWith,
-  CLAUDE_TOOL_NAMING,
-  type DeclaredToolset,
-} from '../tool-inventory'
+import { boundInventory, parametersOf, qualifyWith, type DeclaredToolset } from '../tool-inventory'
+import { CLAUDE_TOOL_NAMING } from './tool-naming'
 import { beyondItsRailsOf, type AgentToolset } from '../agent-tools'
 import type {
   AccountInfo,
@@ -145,11 +137,8 @@ import {
 } from './normalize'
 import { ToolAnswers, type ToolAnswer } from '../tool-answer'
 import { ClaudeMessageReceipts } from './message-receipts'
-import {
-  boundCommands,
-  CLAUDE_COMMAND_PREFIX,
-  type ProviderCommandAnswer,
-} from '../provider-commands'
+import { boundCommands, type ProviderCommandAnswer } from '../provider-commands'
+import { CLAUDE_COMMAND_PREFIX } from './command-prefix'
 import { wordsForACard } from '../words-on-a-card'
 import { BackgroundTasks } from './background-tasks'
 import { SessionCrons } from './session-crons'

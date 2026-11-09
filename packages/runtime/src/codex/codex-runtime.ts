@@ -1,6 +1,7 @@
 import { withManagedPluginMcp, type ManagedPluginMcpServer } from '../managed-plugin-mcp'
 import type { ManagedPluginObserver } from '../managed-plugin-observation'
-import { BUILT_IN_SKILLS_FAILURE, registerCodexBuiltInSkills } from '../built-in-skills'
+import { BUILT_IN_SKILLS_FAILURE } from '../built-in-skills'
+import { registerCodexBuiltInSkills } from './built-in-skills'
 import type { BuiltInSkillsContext, StartPhaseSink } from '../runtime'
 import { lstatSync, readFileSync, realpathSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -116,7 +117,8 @@ import {
   rateLimitUsage,
   readCodexSkill,
 } from './normalize'
-import { boundCommands, CODEX_COMMAND_PREFIX } from '../provider-commands'
+import { boundCommands } from '../provider-commands'
+import { CODEX_COMMAND_PREFIX } from './command-prefix'
 import {
   CHILD_STATE_UNKNOWN,
   type ChildInputOutcome,
@@ -142,7 +144,8 @@ import {
   codexDynamicToolsFor,
   type CodexToolCall,
 } from './agent-tools'
-import { boundInventory, parametersOf, CODEX_TOOL_NAMING } from '../tool-inventory'
+import { boundInventory, parametersOf } from '../tool-inventory'
+import { CODEX_TOOL_NAMING } from './tool-naming'
 import {
   CODEX_MEMORY_SETTINGS,
   ensureCodexMemoryConfig,
