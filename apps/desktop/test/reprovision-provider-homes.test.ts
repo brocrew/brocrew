@@ -139,8 +139,10 @@ describe('copying this install’s provider sign-ins', () => {
           }
           await beforeReturn?.()
           launches++
-          if (refuseReturnedHandle)
+          if (refuseReturnedHandle) {
+            refuseReturnedHandle = false
             throw new RejectedSessionLaunch(new Error('fictional native launch refusal'), handle, handle.close())
+          }
           return handle
         },
         resume: async (ref, options) => {
@@ -157,8 +159,10 @@ describe('copying this install’s provider sign-ins', () => {
           handle.awaitProcessExit = () => oldProcessExit
           await beforeReturn?.()
           launches++
-          if (refuseReturnedHandle)
+          if (refuseReturnedHandle) {
+            refuseReturnedHandle = false
             throw new RejectedSessionLaunch(new Error('fictional native launch refusal'), handle, handle.close())
+          }
           return handle
         },
       }),
