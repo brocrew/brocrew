@@ -5,7 +5,7 @@ import {
   neutralHostDeps,
 } from './lib/host-fixture'
 import { performance } from 'node:perf_hooks'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -20,10 +20,10 @@ import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import {
+  importProviderUsageFile,
   NO_USAGE_KEPT,
-  providerUsageFile,
-  readKeptUsage,
-  writeKeptUsage,
+  PROVIDER_USAGE_FILE,
+  usageKeptIn,
 } from '../src/main/provider-usage-file'
 import {
   USAGE_NEARS_ITS_LIMIT_AT,
@@ -41,8 +41,8 @@ import { ProviderDouble, anOpenGate } from './lib/provider-double'
  * Keep provider usage readings across restarts, expose them to agents and warn when a window
  * passes 80%, so a caller can stop work before reaching the account's limit.
  *
- *  - **§1 · the file** — `<userData>/provider-usage.json`, one reading per provider and window,
- *    checked as it is read.
+ *  - **§1 · the tables** — one reading per provider and window, and the old file's one-time
+ *    import.
  *  - **§2 · the host keeps it** — written when a number moves, read again by the next host, and
  *    forgotten when what the provider runs on changes, in this app or on the Mac.
  *  - **§3 · agents read it** — `list_profiles` without a profile carries each provider's readings.
@@ -100,21 +100,26 @@ const traceFixturePhase = <T>(phase: string, operation: () => T): T => {
   }
 }
 
-describe('§1 · the readings file', () => {
+describe('§1 · the readings, kept and imported', () => {
   let dir: string
+  let db: AppDatabase
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'brobot2-usage-file-'))
+    db = openDatabase(join(dir, 'brobot2.sqlite'))
+    applyMigrations(db, migrationsFolder)
   })
-  afterEach(() => rmSync(dir, { recursive: true, force: true }))
+  afterEach(() => {
+    db.close()
+    rmSync(dir, { recursive: true, force: true })
+  })
 
-  it('🔴 what is written is read back, per provider and window, with the windows seen', () => {
-    const file = providerUsageFile(dir)
-    expect(file).toBe(join(dir, 'provider-usage.json'))
+  it('🔴 what is written is read back, per provider and window in order, with the windows seen', () => {
+    expect(usageKeptIn(db).read()).toEqual(NO_USAGE_KEPT)
     const usage = {
       readings: {
         claude: [
           { window: 'seven_day', usedPercent: 34, resetsAt: 2_000_000, at: 1_000 },
-          { window: 'five_hour', usedPercent: null, resetsAt: null, at: 1_000 },
+          { window: 'five_hour', usedPercent: null, resetsAt: null, at: 1_000, account: 'a' },
         ],
         codex: [{ window: 'a 7-day window', usedPercent: 12.5, resetsAt: 3_000_000, at: 2_000 }],
       },
@@ -125,68 +130,48 @@ describe('§1 · the readings file', () => {
         ],
         codex: [],
       },
+      readOn: { codex: 'api-revision:3' },
     }
-    writeKeptUsage(file, usage)
-    expect(readKeptUsage(file)).toEqual(usage)
+    usageKeptIn(db).write(usage)
+    expect(usageKeptIn(db).read()).toEqual(usage)
   })
 
-  it('⛔ a missing file, one that is not JSON, and rows that are not readings read as none', () => {
-    const file = providerUsageFile(dir)
-    expect(readKeptUsage(file)).toEqual(NO_USAGE_KEPT)
+  it('⛔ the old file is imported once, skipping rows that are not readings; one not JSON is kept', () => {
+    const file = join(dir, PROVIDER_USAGE_FILE)
     writeFileSync(file, 'not json')
-    expect(readKeptUsage(file)).toEqual(NO_USAGE_KEPT)
+    importProviderUsageFile(db, dir)
+    expect(usageKeptIn(db).read()).toEqual(NO_USAGE_KEPT)
+    expect(readFileSync(file, 'utf8')).toBe('not json')
     writeFileSync(
       file,
       JSON.stringify({
         readings: {
           claude: [
             { window: 'seven_day', usedPercent: 34, resetsAt: 2_000_000, at: 1_000 },
-            { window: '', usedPercent: 1, resetsAt: null, at: 1 },
-            { window: 'x', usedPercent: -1, resetsAt: null, at: 1 },
             { window: 'y', usedPercent: 1, resetsAt: 'soon', at: 1 },
             { window: 'z', usedPercent: 1, resetsAt: null, at: 0 },
-            // ⛔ a time no date can hold: saying it would throw where the band and card say it
+            // A time no date can hold: saying it would throw where the band and card say it.
             { window: 'far', usedPercent: 99, resetsAt: 9e15, at: 1 },
             { window: 'seven_day', usedPercent: 99, resetsAt: null, at: 5 },
           ],
           codex: 'nothing',
-          gemini: [{ window: 'w', usedPercent: 1, resetsAt: null, at: 1 }],
         },
-        seen: {
-          claude: [
-            { window: 'seven_day', first: 1, last: 2 },
-            { window: 'backwards', first: 2, last: 1 },
-            { window: 'no-time', first: 0, last: 1 },
-          ],
-          codex: [{ window: '', first: 1, last: 1 }],
-        },
+        seen: { claude: [{ window: 'seven_day', first: 1, last: 2 }, { window: 'no-time' }] },
       }),
     )
-    expect(readKeptUsage(file)).toEqual({
+    importProviderUsageFile(db, dir)
+    expect(usageKeptIn(db).read()).toEqual({
       readings: {
-        claude: [{ window: 'seven_day', usedPercent: 34, resetsAt: 2_000_000, at: 1_000 }],
+        claude: [
+          { window: 'seven_day', usedPercent: 34, resetsAt: 2_000_000, at: 1_000 },
+          { window: 'y', usedPercent: 1, resetsAt: null, at: 1 },
+          { window: 'far', usedPercent: 99, resetsAt: null, at: 1 },
+        ],
         codex: [],
       },
       seen: { claude: [{ window: 'seven_day', first: 1, last: 2 }], codex: [] },
     })
-  })
-
-  it('⛔ no more than sixteen windows a provider are read', () => {
-    const file = providerUsageFile(dir)
-    writeFileSync(
-      file,
-      JSON.stringify({
-        readings: {
-          claude: Array.from({ length: MAX_USAGE_WINDOWS + 4 }, (_, i) => ({
-            window: `w${String(i)}`,
-            usedPercent: i,
-            resetsAt: null,
-            at: 1,
-          })),
-        },
-      }),
-    )
-    expect(readKeptUsage(file).readings.claude).toHaveLength(MAX_USAGE_WINDOWS)
+    expect(existsSync(file)).toBe(false)
   })
 })
 
@@ -218,10 +203,10 @@ describe('§2–§4 · on a host', () => {
       newSessionId: () => `sess_${String(++counter)}`,
       now: () => clock,
       usageKept: {
-        read: () => readKeptUsage(providerUsageFile(userData)),
+        read: () => usageKeptIn(db).read(),
         write: (usage) => {
           writes += 1
-          writeKeptUsage(providerUsageFile(userData), usage)
+          usageKeptIn(db).write(usage)
         },
       },
       readProviderConfig: fixtureProviderConfig,
@@ -260,8 +245,8 @@ describe('§2–§4 · on a host', () => {
     handle.simulateProviderUsage(readings)
     await pump()
   }
-  const kept = () => readKeptUsage(providerUsageFile(userData)).readings
-  const keptSeen = () => readKeptUsage(providerUsageFile(userData)).seen
+  const kept = () => usageKeptIn(db).read().readings
+  const keptSeen = () => usageKeptIn(db).read().seen
 
   describe('§2 · the host keeps the readings across a restart', () => {
     it('🔴 a reading is written when it arrives, and the next host starts with it', async () => {
@@ -352,13 +337,6 @@ describe('§2–§4 · on a host', () => {
       expect(kept().claude).toEqual([
         { window: 'seven_day', usedPercent: 3, resetsAt: clock + WEEK, at: clock },
       ])
-    })
-
-    it('⚑ a file that cannot be read starts the host with none, and the host runs on', () => {
-      writeFileSync(providerUsageFile(userData), '{ torn')
-      const fresh = hostOn()
-      expect(fresh.providerUsage()).toEqual({ claude: [], codex: [] })
-      void fresh.closeAll()
     })
   })
 
@@ -554,18 +532,6 @@ describe('§2–§4 · on a host', () => {
     })
   })
 
-  it('⚑ the file is what the host wrote, as JSON a person can read', async () => {
-    const handle = await open()
-    await reading(handle, [{ window: 'seven_day', usedPercent: 11, resetsAt: clock + WEEK }])
-    expect(JSON.parse(readFileSync(providerUsageFile(userData), 'utf8'))).toEqual({
-      readings: {
-        claude: [{ window: 'seven_day', usedPercent: 11, resetsAt: clock + WEEK, at: clock }],
-        codex: [],
-      },
-      seen: { claude: [{ window: 'seven_day', first: clock, last: clock }], codex: [] },
-    })
-  })
-
   describe('§5 · which windows arrive, and when — kept through a forget and a restart', () => {
     it('🔴 each window a frame names is noted first and last, and a login change keeps the note', async () => {
       const handle = await open()
@@ -710,7 +676,7 @@ describe('§2–§4 · on a host', () => {
       ])
       expect(limits()).toEqual([])
       // …and it is that sign-in the file names from now on.
-      expect(readKeptUsage(providerUsageFile(userData)).readOn).toEqual({ claude: OTHER })
+      expect(usageKeptIn(db).read().readOn).toEqual({ claude: OTHER })
       // Its own numbers warn as any reading does.
       await reading(handles.at(-1)!, weekly(84))
       expect(limits()).toMatchObject([{ provider: 'claude', window: 'seven_day' }])
@@ -748,7 +714,7 @@ describe('§2–§4 · on a host', () => {
       await reading(await open('codex'), [
         { window: 'a 7-day window', usedPercent: 90, resetsAt: clock + WEEK },
       ])
-      expect(readKeptUsage(providerUsageFile(userData)).readOn).toBeUndefined()
+      expect(usageKeptIn(db).read().readOn).toBeUndefined()
       await restart()
       expect(limits()).toEqual([])
       await reading(await openOn(ONE), [
@@ -764,26 +730,11 @@ describe('§2–§4 · on a host', () => {
       await reading(await openOn(ONE), weekly(82))
       await restart()
       await restart()
-      expect(readKeptUsage(providerUsageFile(userData))).toMatchObject({
+      expect(usageKeptIn(db).read()).toMatchObject({
         readings: { claude: [{ window: 'seven_day', usedPercent: 82 }] },
         readOn: { claude: ONE },
       })
       expect(host.providerUsage().claude).toMatchObject([{ unconfirmed: true }])
-    })
-
-    it('⛔ a tag in the file that is not one is not read', () => {
-      const file = providerUsageFile(userData)
-      for (const notOne of ['not hex!', 'c0ffee', `${ONE}00`, 7]) {
-        writeFileSync(
-          file,
-          JSON.stringify({
-            readings: { claude: [], codex: [] },
-            seen: { claude: [], codex: [] },
-            readOn: { claude: notOne, codex: ONE, other: ONE },
-          }),
-        )
-        expect(readKeptUsage(file).readOn).toEqual({ codex: ONE })
-      }
     })
 
     it('🔴 another sign-in in one run, which nobody noticed: a later conversation’s reading replaces what is held', async () => {
@@ -800,12 +751,12 @@ describe('§2–§4 · on a host', () => {
         { window: 'five_hour', usedPercent: 3, resetsAt: now + HOUR, at: now },
       ])
       expect(limits()).toEqual([])
-      expect(readKeptUsage(providerUsageFile(userData)).readOn).toEqual({ claude: OTHER })
+      expect(usageKeptIn(db).read().readOn).toEqual({ claude: OTHER })
 
       // ⛔ The conversation still on the sign-in before says that one's week again: not taken.
       await reading(older, weekly(83))
       expect(windows()).toEqual(['five_hour'])
-      expect(readKeptUsage(providerUsageFile(userData)).readOn).toEqual({ claude: OTHER })
+      expect(usageKeptIn(db).read().readOn).toEqual({ claude: OTHER })
 
       // …so a restart on the new sign-in confirms that sign-in's readings and no other's.
       await restart()
@@ -849,9 +800,9 @@ describe('§2–§4 · on a host', () => {
     it('⚑ the sign-in a reading was read on is kept when it alone moved', async () => {
       const same = weekly(82)
       await reading(await open(), same)
-      expect(readKeptUsage(providerUsageFile(userData)).readOn).toBeUndefined()
+      expect(usageKeptIn(db).read().readOn).toBeUndefined()
       await reading(await openOn(ONE), same)
-      expect(readKeptUsage(providerUsageFile(userData)).readOn).toEqual({ claude: ONE })
+      expect(usageKeptIn(db).read().readOn).toEqual({ claude: ONE })
     })
 
     it('🔴 forgotten after a restart, before any conversation reports: the readings and their sign-in leave the file', async () => {
@@ -861,7 +812,7 @@ describe('§2–§4 · on a host', () => {
         'claude',
       )
       expect(host.providerUsage().claude).toEqual([])
-      const file = readKeptUsage(providerUsageFile(userData))
+      const file = usageKeptIn(db).read()
       expect(file.readings.claude).toEqual([])
       expect(file.readOn).toBeUndefined()
       // What arrives next is this run's own, and warns on its own numbers.

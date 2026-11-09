@@ -6,6 +6,12 @@ import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import {
+  importProviderUsageFile,
+  NO_USAGE_KEPT,
+  PROVIDER_USAGE_FILE,
+  usageKeptIn,
+} from '../src/main/provider-usage-file'
+import {
   importSignInChangesFile,
   SIGN_IN_CHANGES_FILE,
   signInChangesIn,
@@ -52,6 +58,14 @@ const CASES: readonly Case[] = [
     rows: (database) => [...signInChangesIn(database).read()],
     change: (database) =>
       signInChangesIn(database).write(new Map<Provider, number>([['codex', 9]])),
+  },
+  {
+    name: 'provider usage',
+    file: PROVIDER_USAGE_FILE,
+    said: { readings: { claude: [{ window: 'w', usedPercent: 1, resetsAt: null, at: 1 }] } },
+    importFile: importProviderUsageFile,
+    rows: (database) => usageKeptIn(database).read(),
+    change: (database) => usageKeptIn(database).write(NO_USAGE_KEPT),
   },
 ]
 

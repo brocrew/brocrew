@@ -894,6 +894,48 @@ describe('a state file the candidate moved into its database', () => {
     expect(stateKept(before, withMovedFiles({}, tables), names).lost).toEqual([])
   })
 
+  it('rebuilds provider usage in its rows’ order, with an empty list for a provider without one', () => {
+    const usage = {
+      readings: {
+        claude: [
+          { window: 'five_hour', usedPercent: 3, resetsAt: null, at: 2 },
+          { window: 'seven_day', usedPercent: 40, resetsAt: 9, at: 2, account: 'a' },
+        ],
+        codex: [],
+      },
+      seen: { claude: [{ window: 'five_hour', first: 1, last: 2 }], codex: [] },
+    }
+    const tables = {
+      imported_side_file: [{ name: 'provider-usage.json' }],
+      provider_usage_reading: [
+        {
+          provider: 'claude',
+          window: 'seven_day',
+          position: 1,
+          used_percent: 40,
+          resets_at: 9,
+          at: 2,
+          account: 'a',
+        },
+        {
+          provider: 'claude',
+          window: 'five_hour',
+          position: 0,
+          used_percent: 3,
+          resets_at: null,
+          at: 2,
+          account: null,
+        },
+      ],
+      provider_usage_window_seen: [
+        { provider: 'claude', window: 'five_hour', position: 0, first: 1, last: 2 },
+      ],
+      provider_usage_read_on: [],
+    }
+    const was = { 'provider-usage.json': Buffer.from(JSON.stringify(usage)) }
+    expect(stateKept(was, withMovedFiles({}, tables), ['provider-usage.json']).lost).toEqual([])
+  })
+
   it('is lost when a row is missing, or when nothing marks it imported', () => {
     const marked = { imported_side_file: [{ name: 'archived.json' }], archived_conversation: [] }
     expect(stateKept(before, withMovedFiles({}, marked), names).lost).toEqual([
