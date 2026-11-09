@@ -57,40 +57,17 @@ export function createPluginCredential(): string {
   return randomBytes(32).toString('hex')
 }
 
-function containsCredential(value: unknown, credential: string): boolean {
-  const pending = [value]
-  const seen = new Set<object>()
-  while (pending.length) {
-    const item = pending.pop()
-    if (typeof item === 'string' && item.includes(credential)) return true
-    if (item && typeof item === 'object' && !seen.has(item)) {
-      seen.add(item)
-      for (const [key, child] of Object.entries(item)) {
-        if (key.includes(credential)) return true
-        pending.push(child)
-      }
-    }
-  }
-  return false
-}
-
 /** The downstream credential stays in this closure, outside provider configuration and diagnostics. */
 export function createPrivatePluginPort(options: {
   url: string
   credential: string
-  privateCredentials?: readonly string[]
   diagnostic?: PluginToolDiagnostic
 }): BrokerServer {
   const report = (reason: Parameters<PluginToolDiagnostic>[0]) =>
     reportPluginToolFailure(options.diagnostic, reason)
   const url = endpoint(options.url)
   const credential = options.credential
-  const privateCredentials = [credential, ...(options.privateCredentials ?? [])]
-  if (
-    privateCredentials.length > 3 ||
-    privateCredentials.some((one) => !/^[0-9a-f]{64}$/.test(one))
-  )
-    throw new Error(WORDS)
+  if (!/^[0-9a-f]{64}$/.test(credential)) throw new Error(WORDS)
   return {
     tool(request, signal) {
       let client: Client | undefined,
@@ -177,10 +154,6 @@ export function createPrivatePluginPort(options: {
           natural = true
           if (cancelled || signal.aborted) {
             report('cancelled')
-            return { ok: false }
-          }
-          if (privateCredentials.some((one) => containsCredential(reply, one))) {
-            report('credential-in-result')
             return { ok: false }
           }
           const checked = CallToolResultSchema.safeParse(reply)

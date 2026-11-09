@@ -39,7 +39,6 @@ const reasons = [
   'transport-call-failed',
   'transport-close-failed',
   'response-limit',
-  'credential-in-result',
   'result-invalid',
   'tool-error',
   'binding-failed',
