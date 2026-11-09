@@ -1,3 +1,4 @@
+import { nativeAccountTag } from './account-identity'
 import { withManagedPluginMcp, type ManagedPluginMcpServer } from '../managed-plugin-mcp'
 import type { ManagedPluginObserver } from '../managed-plugin-observation'
 import { BUILT_IN_SKILLS_FAILURE } from '../built-in-skills'
@@ -3634,7 +3635,7 @@ export class CodexSessionHandle implements SessionHandle {
   /** A confirmed native account; a key revision does not identify an account. */
   signInTag(): string | null {
     const account = this.launchAccount
-    return account == null || account === 'api-key' ? null : `native-account:${account}`
+    return account == null || account === 'api-key' ? null : nativeAccountTag(account)
   }
 
   /**
