@@ -1,30 +1,20 @@
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { NOT_STARTED_BECAUSE, type NotStartedBecause } from '@brobot2/runtime'
-import { MAX_INSTANT } from '../shared/clock'
+import { join } from 'node:path'
+import type { NotStartedBecause } from '@brobot2/runtime'
 import type { WakeAttempt } from '../shared/schedule-wake-admission'
+import type { AppDatabase } from './db/connection'
+import { importSideFile, objectIn } from './db/side-file-import'
 
 /**
- * **What this app has already done about each stopped conversation's scheduled jobs**, kept across
- * a restart: `<userData>/schedule-attempts.json`.
- *
- * A stopped conversation is started for a job whose time this app cannot know once, and told once
- * of a job that passed while it was stopped. Both are facts about what this app did, not about the
- * conversation's history, so they are kept here and not in its ledger: a start that was made is
- * not made again because the app restarted.
- *
- * ⚑ Read once, at the host's start, and written when an attempt or a notice is recorded. Written
- * beside it and renamed, so a reader never sees half a file. ⚑ A file that is missing or cannot be
- * read is read as nothing done: each such job then costs one more start. ⚑ The host makes no
- * start of its own while the file cannot be written, so a start is never made that the next launch
- * could not know of. ⚠️ A conversation the cap dropped is read as nothing done, and costs one more.
+ * What this app has already done about each stopped conversation's scheduled jobs, kept across a
+ * restart: a start that was made is not made again because the app restarted. The host makes no
+ * start of its own while this cannot be written.
  */
 
-/** The most conversations the file holds; past it, the ones recorded longest ago go. */
+/** The most conversations kept; past it, the ones recorded longest ago go. */
 export const MAX_ATTEMPT_CONVERSATIONS = 500
 /**
- * The most attempt records and notices one conversation's record holds, the newest. ⚑ The host
- * keeps only those about jobs its evidence still holds; this bounds the file whatever it holds.
+ * The most attempt records and notices one conversation's record holds, the newest. The host
+ * keeps only those about jobs its evidence still holds; this bounds the record whatever it holds.
  */
 export const MAX_ATTEMPTS_A_CONVERSATION = 5_000
 
@@ -81,100 +71,66 @@ export interface KeptAttempts {
 /** Nothing done yet. */
 export const NO_ATTEMPTS_KEPT: KeptAttempts = { conversations: {} }
 
-/** Where a data folder keeps its attempts. */
-export function scheduleAttemptsFile(userData: string): string {
-  return join(userData, 'schedule-attempts.json')
+/** The file older builds kept these in, imported once into `schedule_attempt`. */
+export const SCHEDULE_ATTEMPTS_FILE = 'schedule-attempts.json'
+
+export interface AttemptsKept {
+  read(): KeptAttempts
+  write(kept: KeptAttempts): void
 }
 
-const aRecord = (said: unknown): Record<string, unknown> =>
-  typeof said === 'object' && said !== null && !Array.isArray(said)
-    ? (said as Record<string, unknown>)
-    : {}
-
-const aTime = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= MAX_INSTANT
-
-const someText = (value: unknown, max: number): value is string =>
-  typeof value === 'string' && value.length > 0 && value.length <= max
-
-/**
- * What `file` holds, each part checked, or nothing done: a file that is missing, is not JSON, or
- * holds something else.
- */
-export function readKeptAttempts(file: string): KeptAttempts {
-  let said: unknown
-  try {
-    said = JSON.parse(readFileSync(file, 'utf8'))
-  } catch {
-    return NO_ATTEMPTS_KEPT
+export function scheduleAttemptsIn(database: AppDatabase): AttemptsKept {
+  const all = database.prepare('SELECT conversation_id AS id, record, at FROM schedule_attempt')
+  return {
+    read: () => ({
+      conversations: Object.fromEntries(
+        (all.all() as { id: string; record: string; at: number }[]).map(({ id, record, at }) => [
+          id,
+          { ...(JSON.parse(record) as Omit<ConversationAttempts, 'at'>), at },
+        ]),
+      ),
+    }),
+    write: database.transaction((kept: KeptAttempts) => replaceAttempts(database, kept)),
   }
-  const whole = aRecord(said)
-  const conversations: Record<string, ConversationAttempts> = {}
-  for (const [id, row] of Object.entries(aRecord(whole['conversations']))) {
-    if (!someText(id, 200)) continue
-    const { attempts, admittedAt, told, runs, notStartedSaid, resetUnmarkedAt, at } = aRecord(row)
-    if (!aTime(at)) continue
-    const kept: WakeAttempt[] = []
-    for (const one of Array.isArray(attempts) ? attempts : []) {
-      const { key, revision, attempted } = aRecord(one)
-      if (!someText(key, 2_000) || !someText(revision, 20_000) || typeof attempted !== 'boolean') {
-        continue
-      }
-      kept.push({ key, revision, attempted })
-    }
-    const notices: ToldNotice[] = []
-    for (const one of Array.isArray(told) ? told : []) {
-      const { id: noticeId, of, said: wasSaid } = aRecord(one)
-      if (!someText(noticeId, 8_000) || !someText(of, 4_000) || typeof wasSaid !== 'boolean') {
-        continue
-      }
-      notices.push({ id: noticeId, of, said: wasSaid })
-    }
-    const ran: Record<string, StartedFor> = {}
-    for (const [job, one] of Object.entries(aRecord(runs))) {
-      const { runAt, startedAt, unanswered } = aRecord(one)
-      if (someText(job, 4_000) && aTime(runAt) && aTime(startedAt) && aTime(unanswered)) {
-        ran[job] = { runAt, startedAt, unanswered }
-      }
-    }
-    const said: Record<string, NotStartedBecause> = {}
-    for (const [job, why] of Object.entries(aRecord(notStartedSaid))) {
-      const known = NOT_STARTED_BECAUSE.find((one) => one === why)
-      if (someText(job, 4_000) && known !== undefined) said[job] = known
-    }
-    conversations[id] = {
-      attempts: kept.slice(-MAX_ATTEMPTS_A_CONVERSATION),
-      admittedAt: aTime(admittedAt) ? admittedAt : null,
-      told: notices.slice(-MAX_ATTEMPTS_A_CONVERSATION),
-      runs: ran,
-      notStartedSaid: said,
-      ...(aTime(resetUnmarkedAt) ? { resetUnmarkedAt } : {}),
-      at,
-    }
-  }
-  return { conversations: newest(conversations) }
 }
 
-/** The conversations recorded most recently, at most {@link MAX_ATTEMPT_CONVERSATIONS}. */
-function newest(
-  conversations: Readonly<Record<string, ConversationAttempts>>,
-): Record<string, ConversationAttempts> {
-  const rows = Object.entries(conversations)
-  if (rows.length <= MAX_ATTEMPT_CONVERSATIONS) return { ...conversations }
-  return Object.fromEntries(
-    rows.sort(([, a], [, b]) => b.at - a.at).slice(0, MAX_ATTEMPT_CONVERSATIONS),
+function replaceAttempts(database: AppDatabase, kept: KeptAttempts): void {
+  database.prepare('DELETE FROM schedule_attempt').run()
+  const insert = database.prepare(
+    'INSERT INTO schedule_attempt (conversation_id, record, at) VALUES (?, ?, ?)',
   )
+  for (const [id, { at, ...record }] of Object.entries(kept.conversations))
+    insert.run(id, JSON.stringify(record), at)
+  database
+    .prepare(
+      `DELETE FROM schedule_attempt WHERE conversation_id NOT IN
+       (SELECT conversation_id FROM schedule_attempt ORDER BY at DESC LIMIT ?)`,
+    )
+    .run(MAX_ATTEMPT_CONVERSATIONS)
 }
 
-/** Write what is kept, replacing what the file held. */
-export function writeKeptAttempts(file: string, kept: KeptAttempts): void {
-  mkdirSync(dirname(file), { recursive: true })
-  const temporary = `${file}.${String(process.pid)}.tmp`
-  try {
-    writeFileSync(temporary, `${JSON.stringify({ conversations: newest(kept.conversations) })}\n`)
-    renameSync(temporary, file)
-  } catch (error) {
-    rmSync(temporary, { force: true })
-    throw error
-  }
+/** Imports `schedule-attempts.json` from `userData` once, skipping each record it cannot use. */
+export function importScheduleAttemptsFile(database: AppDatabase, userData: string): void {
+  importSideFile(database, join(userData, SCHEDULE_ATTEMPTS_FILE), (said) => {
+    const conversations: Record<string, ConversationAttempts> = {}
+    for (const [id, row] of Object.entries(objectIn(objectIn(said)['conversations']))) {
+      const record = objectIn(row)
+      const list = (value: unknown) => (Array.isArray(value) ? value : [])
+      if (typeof record['at'] !== 'number') continue
+      conversations[id] = {
+        attempts: list(record['attempts']),
+        admittedAt: typeof record['admittedAt'] === 'number' ? record['admittedAt'] : null,
+        told: list(record['told']),
+        runs: objectIn(record['runs']) as ConversationAttempts['runs'],
+        notStartedSaid: objectIn(
+          record['notStartedSaid'],
+        ) as ConversationAttempts['notStartedSaid'],
+        ...(typeof record['resetUnmarkedAt'] === 'number'
+          ? { resetUnmarkedAt: record['resetUnmarkedAt'] }
+          : {}),
+        at: record['at'],
+      }
+    }
+    replaceAttempts(database, { conversations })
+  })
 }

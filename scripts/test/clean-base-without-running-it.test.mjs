@@ -26,7 +26,6 @@ import {
   WORKSPACE,
   WORKSPACES,
   WORKSPACES_PART,
-  SCHEDULE_ATTEMPTS_PART,
   PROFILE_EXECUTION_PART,
 } from '../lib/clean-base.mjs'
 import { trustedAnchor } from '../lib/safe-remove.mjs'
@@ -140,9 +139,6 @@ describe('§1 · the source census — a new durable write under userData must n
       "'profile-execution.json'",
       // ⚑ The account the usage readings were read on. REMOVED with them (`USAGE`).
       "'provider-accounts.json'",
-      // What the app already did about each stopped conversation's scheduled jobs. REMOVED with
-      // the ledger whose conversations it is about (`LEDGER`).
-      "'schedule-attempts.json'",
       // The turns the app's quit, or a crash, cut, and what it did about each. REMOVED with the
       // ledger whose turns they are (`LEDGER`).
       "'turns-the-app-cut.json'",
@@ -174,6 +170,7 @@ describe('§1 · the source census — a new durable write under userData must n
       'RESOURCES_DIRNAME',
       // ⚑ **744's unsent drafts** (R100) — removed with the ledger their slots name (`DRAFTS`).
       'SAVED_DRAFTS_FILE',
+      'SCHEDULE_ATTEMPTS_FILE',
       'SHARED_SKILLS_DIRNAME',
       'SIGN_IN_CHANGES_FILE',
       'SKILLS_CONVERSION_FILE',
@@ -556,22 +553,18 @@ it('classifies private update staging as disposable updates, never durable state
   expect(plan.actions.some((action) => action.rel.startsWith('updates/'))).toBe(false)
 })
 
-describe('§10d · what the app did about scheduled jobs', () => {
-  it('⚑ goes with the ledger whose conversations it is about, a write a kill left too — and the pattern is the product’s own', () => {
-    expect(code('apps/desktop/src/main/schedule-attempts-file.ts')).toContain(
-      'const temporary = `${file}.${String(process.pid)}.tmp`',
-    )
-    expect(SCHEDULE_ATTEMPTS_PART.source).toBe('^schedule-attempts\\.json\\.\\d+\\.tmp$')
+describe('§10d · the file older builds kept scheduled-job attempts in', () => {
+  it('goes with the ledger whose conversations it is about', () => {
     const userData = plantUserData(fixture(), { profiles: HIS_PROFILES })
-    for (const name of ['schedule-attempts.json', 'schedule-attempts.json.4242.tmp']) {
-      writeFileSync(join(userData, name), '{}')
-    }
+    writeFileSync(join(userData, 'schedule-attempts.json'), '{}')
     const plan = planCleanBase(
       trustedAnchor(userData, { repoRoot: REPO, home: fixture(), env: {} }),
     )
-    for (const rel of ['schedule-attempts.json', 'schedule-attempts.json.4242.tmp']) {
-      expect(plan.actions).toContainEqual({ rel, expect: 'file', why: LEDGER })
-    }
+    expect(plan.actions).toContainEqual({
+      rel: 'schedule-attempts.json',
+      expect: 'file',
+      why: LEDGER,
+    })
   })
 })
 

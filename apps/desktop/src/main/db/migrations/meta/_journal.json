@@ -176,6 +176,13 @@
       "when": 1794242480291,
       "tag": "0024_provider_usage",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1794243316572,
+      "tag": "0025_schedule_attempts",
+      "breakpoints": true
     }
   ]
 }
