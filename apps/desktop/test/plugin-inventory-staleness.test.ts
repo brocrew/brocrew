@@ -104,10 +104,12 @@ function peer(hold = 'tools/list', format: 'json' | 'sse' = 'json') {
   }
 }
 
-it.each(['initialize', 'tools/list'])(
-  'accepts a slow %s response that keeps delivering real bytes past 1.5 seconds',
-  async (method) => {
-    const remote = peer(method)
+it.each(['initialize', 'tools/list'].flatMap((method) =>
+  (['json', 'sse'] as const).map((format) => ({ method, format })),
+))(
+  'accepts a slow $format $method response that keeps delivering real bytes past 1.5 seconds',
+  async ({ method, format }) => {
+    const remote = peer(method, format)
     const { attachment } = view()
     let outcome: unknown
     const work = admittedPluginTools(attachment, new Set(['echo']), () => {}).then(
