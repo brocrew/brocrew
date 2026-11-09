@@ -793,6 +793,33 @@ try {
   summary.failure = error.stack ?? String(error)
   console.error(summary.failure)
   process.exitCode = 1
+  if (model) {
+    try {
+      await writeFile(
+        join(evidenceRoot, 'model-failure.json'),
+        JSON.stringify({ log: model.log, requests: model.requests }, null, 2),
+      )
+    } catch (diagnosticError) {
+      summary.modelDiagnosticFailure = String(diagnosticError)
+    }
+  }
+  if (active?.cdp) {
+    try {
+      const turn = currentWorkspace?.fixture?.turns.at(-1)
+      const sessionId = turn?.steps.findLast((step) => step.sessionId)?.sessionId
+      if (sessionId) {
+        const history = await active.cdp.evaluate(
+          `return await window.api.runtime.latestHistory({sessionId:${JSON.stringify(sessionId)}})`,
+        )
+        await writeFile(
+          join(evidence, `${active.stage}-history-failure.json`),
+          JSON.stringify({ stage: active.stage, sessionId, turn, history }, null, 2),
+        )
+      }
+    } catch (diagnosticError) {
+      summary.historyDiagnosticFailure = String(diagnosticError)
+    }
+  }
   try {
     await run('/usr/sbin/screencapture', ['-x', join(evidence, 'failure-desktop.png')])
   } catch (diagnosticError) {
