@@ -197,6 +197,14 @@ it('🔴 a key an earlier version sealed is never opened: its start refuses in p
   expect(sealed.size).toBe(0)
 })
 
+it('⚑ a key saved again outranks a sealed row the save did not get to clear', async () => {
+  const store = { hasSealedApiKey: () => true, forgetSealedApiKey: () => {} }
+  const keys = new ApiKeys(userData, () => 5, store)
+  expect(await keys.set('codex', KEY)).toBeNull()
+  expect(keys.status('codex')).toMatchObject({ set: true, inUse: true })
+  expect(await keys.read('codex')).toBe(KEY)
+})
+
 describe('askTheProvider', () => {
   const answering = (status: number) =>
     vi.fn(async () => ({ status }) as Response) as unknown as typeof fetch &
