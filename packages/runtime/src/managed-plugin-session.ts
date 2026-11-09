@@ -50,7 +50,7 @@ function retained(
   )
   return [...next.servers, ...kept.map((one) => ({ ...one, retained: true as const }))]
 }
-export type ManagedPluginLaunchObservation = {
+type ManagedPluginLaunchObservation = {
   readonly launch: string
   readonly provider: string
   readonly stage: 'initial-read' | 'before-send-read' | 'provider-discovery' | 'provider-launch'

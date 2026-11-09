@@ -101,6 +101,7 @@ it.each(['empty', 'failed'] as const)(
     ).toEqual(Array.from({ length: 2 }, () => ({ stage: 'initial-read', outcome, serverCount: 0 })))
     expect(new Set(rows.map((row) => row.launch)).size).toBe(2)
     for (const row of rows) {
+      expect(row.provider).toBe('codex')
       expect(row.launch).toMatch(/^[a-f0-9]{32}$/)
       expect(row.incarnation).toMatch(/^[a-f0-9]{32}$/)
       if (outcome === 'failed') expect(row.failureStage).toBe('attachment-read')
@@ -165,6 +166,7 @@ it.each([true, false])(
     const configured = rows.find((row) => row.event === 'route-configured')!
     const discovery = rows.find((row) => row.event === 'launch-discovery')!
     expect(discovery).toMatchObject({
+      provider: 'codex',
       stage: 'provider-discovery',
       outcome: discovered ? 'discovered' : 'unavailable',
       incarnation: configured.incarnation,

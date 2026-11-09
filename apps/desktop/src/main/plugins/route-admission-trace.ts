@@ -1,4 +1,5 @@
 import { managedPluginFailure } from '@brobot2/runtime/plugin-failure'
+import { providerSchema, type Provider } from '@brobot2/shared'
 import { createHmac, randomBytes } from 'node:crypto'
 import { closeSync, fstatSync, ftruncateSync, openSync, writeSync } from 'node:fs'
 import { join } from 'node:path'
@@ -102,10 +103,10 @@ const launchOutcomes = [
   'timeout',
   'cancelled',
 ] as const
-export interface LaunchTraceDetail extends Aliases {
+interface LaunchTraceDetail extends Aliases {
   stage?: (typeof launchStages)[number]
   outcome?: (typeof launchOutcomes)[number]
-  provider?: 'claude' | 'codex'
+  provider?: Provider
   failureStage?: string
   configuredTools?: readonly string[]
   discoveredTools?: readonly string[]
@@ -224,7 +225,8 @@ export function recordRouteAdmissionTrace(root: string, event: RouteAdmissionEve
     }
     if (launchStages.includes(event.stage!)) row.stage = event.stage!
     if (launchOutcomes.includes(event.outcome!)) row.outcome = event.outcome!
-    if (event.provider === 'claude' || event.provider === 'codex') row.provider = event.provider
+    const provider = providerSchema.safeParse(event.provider)
+    if (provider.success) row.provider = provider.data
     if (event.failureStage !== undefined)
       row.failureStage = managedPluginFailure(
         { pluginStage: event.failureStage, pluginCause: 'unknown' },

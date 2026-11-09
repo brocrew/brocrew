@@ -1,6 +1,7 @@
 import { attachmentTraceId, createRouteAdmissionTrace } from './route-admission-trace'
 import { randomUUID, createHash } from 'node:crypto'
 import { z } from 'zod'
+import { providerSchema } from '@brobot2/shared'
 import type { ManagedPluginAttachment, ManagedPluginAttachmentSource } from '@brobot2/runtime'
 import type { PluginSupervisorAttachment } from './supervisor/client'
 
@@ -59,12 +60,12 @@ export class WorkspacePluginAttachments {
     let closed = false
     return {
       observe: (event) => {
+        const provider = providerSchema.safeParse(event.provider)
         const detail = {
           launch: event.launch,
           stage: event.stage,
           outcome: event.outcome,
-          provider:
-            event.provider === 'claude' || event.provider === 'codex' ? event.provider : undefined,
+          provider: provider.success ? provider.data : undefined,
           failureStage: event.failureStage,
         } as const
         if (event.discovery) {
