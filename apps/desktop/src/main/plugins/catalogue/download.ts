@@ -1,6 +1,6 @@
 import { pluginSha256 } from '../package-digests'
 /** Stop a silent archive transfer; real bytes restart this clock regardless of total duration. */
-export const PLUGIN_DOWNLOAD_STALL_MS = 30_000
+const PLUGIN_DOWNLOAD_STALL_MS = 30_000
 /** No URL/credential is ever logged. Integrity/policy failures must not masquerade as offline. */
 export class PluginDownloadError extends Error {
   constructor(

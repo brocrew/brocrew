@@ -300,6 +300,10 @@ export class PluginLifecycleController {
       throw new PluginSupervisorError('policy-refused')
     return { proof, release, checked, bytes }
   }
+  private mutationPreflight(id: string, operationId: string, transfer?: PluginArchiveTransfer) {
+    if (!idSchema.safeParse(id).success || !z.uuid().safeParse(operationId).success) return refuse()
+    return this.requiresPreparedMutations() ? this.mutationPackage(id, transfer) : undefined
+  }
   /** Policy is a normal refusal, never a storage exception. Leave real disk errors to the fence. */
   private async mutationFence<T>(work: () => Promise<T>): Promise<T> {
     const outcome = await this.options.state.withExclusive(async () => {
@@ -802,10 +806,8 @@ export class PluginLifecycleController {
         (expectedReleaseDigest !== undefined && offered.archive.sha256 !== expectedReleaseDigest))
     )
       return refuse()
-    if (!idSchema.safeParse(id).success || !z.uuid().safeParse(operationId).success) return refuse()
-    const preflight = this.requiresPreparedMutations()
-      ? await this.mutationPackage(id, transfer)
-      : undefined
+    const checking = this.mutationPreflight(id, operationId, transfer)
+    const preflight = checking ? await checking : undefined
     let token: symbol | undefined = this.requiresPreparedMutations() ? undefined : this.block(id)
     try {
       await this.mutationFence(async () => {
@@ -974,10 +976,8 @@ export class PluginLifecycleController {
       !this.catalogue().entries.find((release) => release.id === id)?.authors
     )
       return refuse()
-    if (!idSchema.safeParse(id).success || !z.uuid().safeParse(operationId).success) return refuse()
-    const preflight = this.requiresPreparedMutations()
-      ? await this.mutationPackage(id, transfer)
-      : undefined
+    const checking = this.mutationPreflight(id, operationId, transfer)
+    const preflight = checking ? await checking : undefined
     let token: symbol | undefined = this.requiresPreparedMutations() ? undefined : this.block(id)
     try {
       await this.mutationFence(async () => {

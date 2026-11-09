@@ -24,6 +24,20 @@ async function setup() {
   })
   return { f, client }
 }
+function holdPreviewDownload(f: Awaited<ReturnType<typeof disclosureFixture>>) {
+  let started!: () => void, fail!: (error: Error) => void
+  const begun = new Promise<void>((resolve) => {
+    started = resolve
+  })
+  f.download.mockImplementationOnce(
+    () =>
+      new Promise((_resolve, reject) => {
+        fail = reject
+        started()
+      }),
+  )
+  return { begun, fail: (error: Error) => fail(error) }
+}
 function progressing(
   archive: Uint8Array,
   signal: AbortSignal,
@@ -153,22 +167,12 @@ it('cancelling a pending review aborts its real owner-side download without publ
 
 it('invalidation still wins over a concurrent download stall and retains the original cause', async () => {
   const { f, client } = await setup()
-  let started!: () => void, fail!: (error: Error) => void
-  const begun = new Promise<void>((resolve) => {
-    started = resolve
-  })
-  f.download.mockImplementationOnce(
-    () =>
-      new Promise((_resolve, reject) => {
-        fail = reject
-        started()
-      }),
-  )
+  const held = holdPreviewDownload(f)
   const checked = expect(review(client, 'update')).rejects.toMatchObject({ code: 'policy-refused' })
   void checked.catch(() => {})
-  await begun
+  await held.begun
   client.cancelPreparations!()
-  fail(new PluginDownloadError('transport', undefined, true))
+  held.fail(new PluginDownloadError('transport', undefined, true))
   await checked
   expect(f.reviewFailures).toHaveBeenCalledWith(
     'update',
@@ -231,22 +235,12 @@ it('the confirmed update can fetch slowly without bypassing its consumed consent
 
 it('a late cancelled download failure cannot erase a replacement review consent', async () => {
   const { f, client } = await setup()
-  let started!: () => void, fail!: (error: Error) => void
-  const begun = new Promise<void>((resolve) => {
-    started = resolve
-  })
-  f.download.mockImplementationOnce(
-    () =>
-      new Promise((_resolve, reject) => {
-        fail = reject
-        started()
-      }),
-  )
+  const held = holdPreviewDownload(f)
   const old = expect(review(client, 'update')).rejects.toMatchObject({ code: 'policy-refused' })
   void old.catch(() => {})
-  await begun
+  await held.begun
   const shown = await review(client, 'update')
-  fail(new PluginDownloadError('transport'))
+  held.fail(new PluginDownloadError('transport'))
   await old
   await client.update!('chrome', shown.consent)
   expect(f.f.state.inspect().guards[0]?.release.version).toBe('1.0.2')
