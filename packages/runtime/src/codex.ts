@@ -90,8 +90,6 @@ export {
   replaceARefusedCodexCopy,
   reprovisionCodexAuth,
   codexAuthHealth,
-  assertCodexSqliteHomeContained,
   personalCodexAuthPath,
   codexAccountIn,
-  type CodexCopySource,
 } from './codex/auth'
