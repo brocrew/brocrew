@@ -648,6 +648,10 @@ export const STATE_RULES = {
 
 /** Files the candidate imports into its database, each rebuilt from its rows to be compared. */
 export const MOVED_INTO_TABLES = {
+  'drafts.json': (tables) => ({
+    version: 1,
+    drafts: (tables.draft ?? []).map((row) => JSON.parse(row.entry)),
+  }),
   'archived.json': (tables) => ({
     version: 1,
     archived: Object.fromEntries(

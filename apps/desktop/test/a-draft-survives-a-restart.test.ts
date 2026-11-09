@@ -1,10 +1,8 @@
 import type { HandedPath } from '../src/shared/attachment-contracts'
 import {
-  chmodSync,
   linkSync,
   mkdirSync,
   mkdtempSync,
-  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -17,11 +15,14 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, ref, type Ref } from 'vue'
+import { openDatabase, type AppDatabase } from '../src/main/db/connection'
+import { applyMigrations } from '../src/main/db/migrate'
 import {
   createDraftWriter,
+  importDraftsFile,
   keepDraftedPastes,
-  readDraftsFile,
   SAVED_DRAFTS_FILE,
+  savedDraftsBook,
 } from '../src/main/drafts-file'
 import { restoreSavedDrafts, savedDraftsFrom } from '../src/main/saved-drafts'
 import { pastedImagesRoot, sweepPastedImages } from '../src/main/runtime/pasted-image'
@@ -600,25 +601,33 @@ describe('§3 · the last run’s drafts are read BEFORE the window draws, bound
 // §4 · main's file
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
-describe('§4 · the file — in the app’s own userData, whole, and read as untrusted', () => {
+describe('§4 · the kept drafts — in the app’s own database, and read as untrusted', () => {
   let userData: string
+  let db: AppDatabase
   beforeEach(() => {
     userData = realpathSync(mkdtempSync(join(tmpdir(), 'brobot2-744-')))
+    db = openDatabase(join(userData, 'brobot2.sqlite'))
+    applyMigrations(db, join(HERE, '../src/main/db/migrations'))
   })
   afterEach(() => {
-    chmodSync(userData, 0o700)
+    if (db.open) db.close()
     rmSync(userData, { recursive: true, force: true })
   })
+  /** Every write to the drafts fails, as a full disk would make it. */
+  const savesFail = (): void => {
+    for (const operation of ['INSERT', 'UPDATE', 'DELETE'])
+      db.exec(`CREATE TRIGGER fail_${operation} BEFORE ${operation} ON draft
+        BEGIN SELECT RAISE(ABORT, 'fictional disk failure'); END`)
+  }
 
   const everyone = { exists: (): boolean => true }
   const readBack = async (
     deps: { exists: (id: string) => boolean } = everyone,
   ): Promise<SavedDrafts> => {
-    const file = await readDraftsFile(userData)
-    return restoreSavedDrafts(file.kind === 'book' ? file.raw : null, deps)
+    return restoreSavedDrafts(savedDraftsBook(db), deps)
   }
 
-  it('🔴 what is written comes back, and it is ONE file in the app’s own userData, readable by this user only', async () => {
+  it('🔴 what is written comes back', async () => {
     const present = join(userData, 'present.md')
     writeFileSync(present, 'x')
     const saved: SavedDrafts = {
@@ -627,18 +636,12 @@ describe('§4 · the file — in the app’s own userData, whole, and read as un
         { slot: draftKey(A), text: 'words for A', attached: [] },
       ],
     }
-    await createDraftWriter(userData).write(saved)
-
-    // ⛔ R100: kept in the app's own userData — one file, no part left behind
-    expect(readdirSync(userData).sort()).toEqual([SAVED_DRAFTS_FILE, 'present.md'])
-    // Windows uses access lists; chmod does not supply POSIX permission bits.
-    if (process.platform !== 'win32')
-      expect(statSync(join(userData, SAVED_DRAFTS_FILE)).mode & 0o777).toBe(0o600)
+    await createDraftWriter(db).write(saved)
     expect(await readBack()).toEqual(saved)
   })
 
   it('⚑ the control — a conversation that no longer exists is DROPPED at restore; the rest come back', async () => {
-    await createDraftWriter(userData).write({
+    await createDraftWriter(db).write({
       drafts: [
         { slot: NEW_CONVERSATION, text: 'launcher words', attached: [] },
         { slot: draftKey(A), text: 'words for A', attached: [] },
@@ -653,7 +656,7 @@ describe('§4 · the file — in the app’s own userData, whole, and read as un
     const present = join(userData, 'present.md')
     writeFileSync(present, 'x')
     const gone = join(userData, 'moved-away.md')
-    await createDraftWriter(userData).write({
+    await createDraftWriter(db).write({
       drafts: [{ slot: draftKey(A), text: '', attached: [FILE(present), FILE(gone)] }],
     })
     expect((await readBack()).drafts[0]!.attached).toEqual([
@@ -662,7 +665,7 @@ describe('§4 · the file — in the app’s own userData, whole, and read as un
     ])
   })
 
-  it('⛔ `missing` is never read FROM the file — it is decided afresh at each launch', async () => {
+  it('⛔ `missing` is never read from what was kept — it is decided afresh at each launch', async () => {
     const present = join(userData, 'present.md')
     writeFileSync(present, 'x')
     writeFileSync(
@@ -672,6 +675,7 @@ describe('§4 · the file — in the app’s own userData, whole, and read as un
         drafts: [{ slot: draftKey(A), text: '', attached: [{ ...FILE(present), missing: true }] }],
       }),
     )
+    importDraftsFile(db, userData)
     expect((await readBack()).drafts[0]!.attached).toEqual([FILE(present)])
   })
 
@@ -794,80 +798,45 @@ describe('§4 · the file — in the app’s own userData, whole, and read as un
     expect(shaped.drafts[0]!.attached).toEqual(twelve.slice(0, 10))
   })
 
-  it('⚑ absent is NO file; not JSON is no drafts — neither keeps the window from drawing', async () => {
-    expect(await readDraftsFile(userData)).toEqual({ kind: 'none' })
+  it('⚑ nothing kept is no drafts; an old file that is not JSON is kept and imports nothing', async () => {
+    expect((await readBack()).drafts).toEqual([])
     writeFileSync(join(userData, SAVED_DRAFTS_FILE), '{ half a file')
-    expect(await readDraftsFile(userData)).toEqual({ kind: 'none' })
+    importDraftsFile(db, userData)
+    expect((await readBack()).drafts).toEqual([])
+    expect(readFileSync(join(userData, SAVED_DRAFTS_FILE), 'utf8')).toBe('{ half a file')
   })
 
-  // Windows chmod cannot construct a POSIX permission denial.
-  it.skipIf(process.platform === 'win32')(
-    '⛔ a file that is THERE and cannot be read is UNREADABLE — answered, never thrown — and the window saves nothing over it',
-    async () => {
-      const file = join(userData, SAVED_DRAFTS_FILE)
-      writeFileSync(file, JSON.stringify({ version: 1, drafts: [] }))
-      chmodSync(file, 0o000)
-      try {
-        expect(await readDraftsFile(userData)).toEqual({ kind: 'unreadable', why: 'EACCES' })
-      } finally {
-        chmodSync(file, 0o600)
-      }
-    },
-  )
-
-  it('⚑ a file ANOTHER build wrote (another version) is read as a book, so this build restores and saves', async () => {
+  it('⚑ an old file ANOTHER build wrote (another version) is imported, so this build restores it', async () => {
     const raw = { version: 2, drafts: [{ slot: NEW_CONVERSATION, text: 'x', attached: [] }] }
     writeFileSync(join(userData, SAVED_DRAFTS_FILE), JSON.stringify(raw))
-    expect(await readDraftsFile(userData)).toEqual({ kind: 'book', raw })
+    importDraftsFile(db, userData)
+    expect((await readBack()).drafts).toEqual(raw.drafts)
   })
 
-  it('⚑ saves that arrive while one is written are coalesced to the NEWEST — the file ends on the last book', async () => {
-    const writer = createDraftWriter(userData)
-    const book = (text: string): SavedDrafts => ({
-      drafts: [{ slot: NEW_CONVERSATION, text, attached: [] }],
-    })
-    await Promise.all([
-      writer.write(book('one')),
-      writer.write(book('two')),
-      writer.write(book('three')),
-    ])
-    expect((await readBack()).drafts[0]!.text).toBe('three')
-    expect(readdirSync(userData)).toEqual([SAVED_DRAFTS_FILE])
-  })
-
-  it('⛔ a save that cannot be RENAMED into place leaves no part file and throws nothing at the renderer', async () => {
-    // ⚑ the part is written, and the rename fails onto a directory at the file's name
-    mkdirSync(join(userData, SAVED_DRAFTS_FILE))
+  it('⛔ a save that fails throws nothing at the renderer', async () => {
+    savesFail()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     try {
       await expect(
-        createDraftWriter(userData).write({
+        createDraftWriter(db).write({
           drafts: [{ slot: NEW_CONVERSATION, text: 'x', attached: [] }],
         }),
       ).resolves.toBeUndefined()
     } finally {
       warn.mockRestore()
     }
-    expect(readdirSync(userData)).toEqual([SAVED_DRAFTS_FILE])
   })
 
-  it('⚑ a part file an earlier run’s kill left is removed before this run’s first save — and nothing else is', async () => {
-    writeFileSync(join(userData, `${SAVED_DRAFTS_FILE}.0123456789ab.part`), 'words a kill left')
-    writeFileSync(
-      join(userData, `${SAVED_DRAFTS_FILE}.not-ours.part`),
-      'not a name this app writes',
-    )
-    await createDraftWriter(userData).write({
-      drafts: [{ slot: NEW_CONVERSATION, text: 'x', attached: [] }],
-    })
-    expect(readdirSync(userData).sort()).toEqual([
-      SAVED_DRAFTS_FILE,
-      `${SAVED_DRAFTS_FILE}.not-ours.part`,
-    ])
+  it('⛔ a save after the database closed is dropped, never thrown', async () => {
+    const writer = createDraftWriter(db)
+    db.close()
+    await expect(
+      writer.write({ drafts: [{ slot: NEW_CONVERSATION, text: 'x', attached: [] }] }),
+    ).resolves.toBeUndefined()
   })
 
   it('🔴 the quit WAITS for each asked window’s LAST book to be on disk — only a book marked `last` counts — and says so when one never comes', async () => {
-    const writer = createDraftWriter(userData)
+    const writer = createDraftWriter(db)
     writer.expectQuitSaves(0)
     expect(await writer.quitSaves(1_000)).toBe('saved')
 
@@ -895,10 +864,9 @@ describe('§4 · the file — in the app’s own userData, whole, and read as un
   })
 
   it('⛔ a last book that could NOT be written is reported as failed — never as saved', async () => {
-    const writer = createDraftWriter(userData)
+    const writer = createDraftWriter(db)
     await writer.write({ drafts: [] })
-    rmSync(join(userData, SAVED_DRAFTS_FILE))
-    mkdirSync(join(userData, SAVED_DRAFTS_FILE))
+    savesFail()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     try {
       writer.expectQuitSaves(1)
@@ -911,21 +879,6 @@ describe('§4 · the file — in the app’s own userData, whole, and read as un
     } finally {
       warn.mockRestore()
     }
-  })
-
-  it('⚑ …and a book still being written holds the quit even when no window was asked', async () => {
-    const writer = createDraftWriter(userData)
-    void writer.write({ drafts: [{ slot: NEW_CONVERSATION, text: 'mid-write', attached: [] }] })
-    writer.expectQuitSaves(0)
-    expect(await writer.quitSaves(1_000)).toBe('saved')
-    expect((await readBack()).drafts.map((draft) => draft.text)).toEqual(['mid-write'])
-  })
-
-  it('⚑ the read waits for the save in flight — a reloading window reads back what it just handed over', async () => {
-    const writer = createDraftWriter(userData)
-    void writer.write({ drafts: [{ slot: NEW_CONVERSATION, text: 'handed over', attached: [] }] })
-    await writer.settled()
-    expect((await readBack()).drafts.map((draft) => draft.text)).toEqual(['handed over'])
   })
 
   it('🔴 a picture a kept draft names is kept young before the start-up sweep — and a person’s own file is never touched', async () => {
@@ -941,7 +894,7 @@ describe('§4 · the file — in the app’s own userData, whole, and read as un
       writeFileSync(path, 'png')
       utimesSync(path, aWeekAgo, aWeekAgo)
     }
-    await createDraftWriter(userData).write({
+    await createDraftWriter(db).write({
       drafts: [
         {
           slot: draftKey(A),
@@ -952,17 +905,18 @@ describe('§4 · the file — in the app’s own userData, whole, and read as un
     })
     try {
       const now = Date.now()
-      expect(keepDraftedPastes(userData, now)).toBe(1)
+      expect(keepDraftedPastes(db, userData, now)).toBe(1)
       expect(Math.abs(statSync(picture).mtimeMs - now)).toBeLessThan(2_000)
       for (const untouched of [namedLikeOne, inTheFolder]) {
         expect(Math.abs(statSync(untouched).mtimeMs - aWeekAgo.getTime())).toBeLessThan(1)
       }
-      // ⚑ never fatal — a file whose entries are not what this build writes stamps nothing
-      writeFileSync(
-        join(userData, SAVED_DRAFTS_FILE),
-        JSON.stringify({ version: 1, drafts: [{ slot: 7, attached: [{ path: 7 }] }, null, 'x'] }),
-      )
-      expect(keepDraftedPastes(userData, now)).toBe(0)
+      // ⚑ never fatal — rows whose entries are not what this build writes stamp nothing
+      db.exec('DELETE FROM draft')
+      const row = db.prepare('INSERT INTO draft (slot, entry) VALUES (?, ?)')
+      row.run('a', JSON.stringify({ slot: 7, attached: [{ path: 7 }] }))
+      row.run('b', 'null')
+      row.run('c', '"x"')
+      expect(keepDraftedPastes(db, userData, now)).toBe(0)
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -980,13 +934,34 @@ describe('§4 · the file — in the app’s own userData, whole, and read as un
     if (attached !== picture) linkSync(picture, attached)
     const old = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000)
     utimesSync(picture, old, old)
-    await createDraftWriter(userData).write({
+    await createDraftWriter(db).write({
       drafts: [{ slot: draftKey(A), text: '', attached: [FILE(attached)] }],
     })
 
     const now = Date.now()
-    expect(keepDraftedPastes(userData, now)).toBe(1)
+    expect(keepDraftedPastes(db, userData, now)).toBe(1)
     expect(Math.abs(statSync(picture).mtimeMs - now)).toBeLessThan(2_000)
+    expect(await sweepPastedImages(root, now)).toBe(0)
+    expect(statSync(picture).isFile()).toBe(true)
+  })
+
+  it('a picture named only by an imported draft survives the first start-up sweep', async () => {
+    const root = pastedImagesRoot(userData)
+    mkdirSync(root)
+    const picture = join(realpathSync(root), `pasted-${'d'.repeat(32)}.png`)
+    writeFileSync(picture, 'png')
+    const old = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000)
+    utimesSync(picture, old, old)
+    writeFileSync(
+      join(userData, SAVED_DRAFTS_FILE),
+      JSON.stringify({
+        version: 1,
+        drafts: [{ slot: draftKey(A), text: '', attached: [FILE(picture)] }],
+      }),
+    )
+    importDraftsFile(db, userData)
+    const now = Date.now()
+    expect(keepDraftedPastes(db, userData, now)).toBe(1)
     expect(await sweepPastedImages(root, now)).toBe(0)
     expect(statSync(picture).isFile()).toBe(true)
   })
@@ -1020,16 +995,8 @@ describe('§5 · the wiring — `main.ts`, `RuntimeScreen` and main’s doors, w
     expect(index).toMatch(
       /ipcMain\.handle\('app:save-drafts', \(_event, saved: unknown\) => writer\.write\(saved\)\)/,
     )
-    expect(index).toMatch(
-      /const writer = createDraftWriter\(app\.getPath\('userData'\)\)\n\s+draftWriter = writer\n/,
-    )
-    expect(index).toMatch(
-      /await writer\.settled\(\)\n\s+const file = await readDraftsFile\(app\.getPath\('userData'\)\)\n/,
-    )
-    // ⚑ not read: answered `null`, and the window is NOT counted among those that keep drafts
-    expect(index).toMatch(
-      /if \(file\.kind === 'unreadable'\) \{\n\s+draftReaders\.delete\(reader\.id\)[\s\S]*?return null\n\s+\}\n/,
-    )
+    expect(index).toMatch(/const writer = createDraftWriter\(database\)\n\s+draftWriter = writer\n/)
+    expect(index).toMatch(/return restoreSavedDrafts\(savedDraftsBook\(database\), \{\n/)
     expect(index).toMatch(
       /reader\.once\('render-process-gone', forget\)\n\s+reader\.once\('destroyed', forget\)/,
     )
@@ -1050,7 +1017,7 @@ describe('§5 · the wiring — `main.ts`, `RuntimeScreen` and main’s doors, w
       /const outcome = await writer\.quitSaves\(QUIT_SAVE_WITHIN_MS\)\n\s+if \(outcome === 'unanswered'\) \{\n\s+throw /,
     )
     expect(index).toMatch(
-      /keepDraftedPastes\(userData, Date\.now\(\)\)\n\s+void sweepPastedImages\(pastedImagesRoot\(userData\), Date\.now\(\)\)/,
+      /keepDraftedPastes\(database, userData, Date\.now\(\)\)\n\s+void sweepPastedImages\(pastedImagesRoot\(userData\), Date\.now\(\)\)/,
     )
     // ⚑ …and the preload knocks on the two doors main opened, by the same names
     const preload = read('../src/preload/index.ts')
@@ -1089,11 +1056,11 @@ describe('§5 · the wiring — `main.ts`, `RuntimeScreen` and main’s doors, w
       from: [
         '../shared/runtime-ipc',
         '../shared/saved-drafts',
+        './db/connection',
+        './db/side-file-import',
         './runtime/pasted-image',
         './saved-drafts',
-        'node:crypto',
         'node:fs',
-        'node:fs/promises',
         'node:path',
       ],
       other: null,
@@ -1171,20 +1138,6 @@ describe('§7 · the quit keeps the unsent drafts in a step of its OWN — after
     expect(log.find((line) => line.startsWith('log:BroCrew shut down in'))).not.toContain(
       'unsent drafts',
     )
-  })
-
-  it('⛔ the drafts file READS only its own file — every read call is handed the drafts file’s path', () => {
-    const source = readFileSync(join(HERE, '../src/main/drafts-file.ts'), 'utf8')
-    const reads = [...source.matchAll(/\breadFile(?:Sync)?\(([^,]+),/g)].map((each) =>
-      each[1]!.trim(),
-    )
-    expect(reads).toEqual(['savedDraftsPath(userData)', 'savedDraftsPath(userData)'])
-    // ⚑ and from `node:fs` only what it uses: its own file, the pictures' folder, and `lutimes`
-    expect(source).toMatch(/^import \{ lutimesSync, readFileSync, realpathSync \} from 'node:fs'$/m)
-    expect(source).toMatch(
-      /^import \{ readdir, readFile, rename, rm, writeFile \} from 'node:fs\/promises'$/m,
-    )
-    expect(source).not.toMatch(/\butimesSync\b|createReadStream|\bopen(?:Sync)?\(/)
   })
 })
 

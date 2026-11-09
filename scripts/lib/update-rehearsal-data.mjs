@@ -583,7 +583,10 @@ export function whatTheDataLacks(data, made) {
   }
   let drafts
   try {
-    drafts = JSON.parse(data.state['drafts.json']?.toString('utf8') ?? '{}').drafts ?? []
+    drafts = [
+      ...(data.tables.draft ?? []).map((row) => JSON.parse(row.entry)),
+      ...(JSON.parse(data.state['drafts.json']?.toString('utf8') ?? '{}').drafts ?? []),
+    ]
   } catch {
     drafts = []
   }

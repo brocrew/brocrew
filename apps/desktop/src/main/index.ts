@@ -252,9 +252,10 @@ import {
 } from './runtime/pasted-image'
 import {
   createDraftWriter,
+  importDraftsFile,
   keepDraftedPastes,
   QUIT_SAVE_WITHIN_MS,
-  readDraftsFile,
+  savedDraftsBook,
   type DraftWriter,
 } from './drafts-file'
 import { restoreSavedDrafts } from './saved-drafts'
@@ -492,7 +493,7 @@ const draftReaders = new Set<number>()
 /**
  * Request each draft reader's final book after conversations close. Closing refuses sends
  * and starts in flight, returning their words to drafts before this request. IPC from each
- * window arrives in order, and the writer coalesces earlier saves to the newest book.
+ * window arrives in order, and each save is kept as it arrives.
  *
  * A command whose path check or launch outlives the close bound may still return its words
  * after the app exits; this function does not track those commands.
@@ -592,6 +593,7 @@ function initDatabase(): AppDatabase {
   importProviderUsageFile(database, app.getPath('userData'))
   importScheduleAttemptsFile(database, app.getPath('userData'))
   importTurnsTheAppCutFile(database, app.getPath('userData'))
+  importDraftsFile(database, app.getPath('userData'))
   try {
     const compaction = compactWhenMuchIsFree(database, freeBytesOn(app.getPath('userData')))
     if (compaction === 'compacted') console.info('BroCrew gave its free database space back')
@@ -722,7 +724,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
   // Touch images referenced by saved drafts synchronously before starting the asynchronous sweep,
   // so restored drafts keep their pictures. Sweep before a window opens, never on a timer that
   // could remove a picture while someone is composing. Removal failures do not block startup.
-  keepDraftedPastes(userData, Date.now())
+  keepDraftedPastes(database, userData, Date.now())
   void sweepPastedImages(pastedImagesRoot(userData), Date.now()).catch(() => 0)
 
   const store = timedMethods(
@@ -1513,33 +1515,24 @@ function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null
    */
   registerWindowControls(ipcMain, (event) => BrowserWindow.fromWebContents(event.sender))
   /**
-   * Restore unsent drafts before the renderer draws, then save the complete book after changes
-   * and at shutdown. `drafts-file.ts` persists it; `saved-drafts.ts` determines its contents.
-   * These handlers send no text to a conversation or provider: restoration checks conversation
-   * existence and path metadata, while saving writes `<userData>/drafts.json`.
+   * Restore unsent drafts before the renderer draws, then save the book after changes and at
+   * shutdown. `drafts-file.ts` keeps it in the database; `saved-drafts.ts` determines its contents.
+   * These handlers send no text to a conversation or provider.
    */
-  const writer = createDraftWriter(app.getPath('userData'))
+  const database = db
+  if (database === null) throw new Error('Database not initialised')
+  const writer = createDraftWriter(database)
   draftWriter = writer
-  ipcMain.handle('app:saved-drafts', async (event) => {
-    // ⚑ After any save in flight — a reloading window hands its book over and then asks for it back.
-    await writer.settled()
-    const file = await readDraftsFile(app.getPath('userData'))
+  ipcMain.handle('app:saved-drafts', (event) => {
     const reader = event.sender
-    if (file.kind === 'unreadable') {
-      draftReaders.delete(reader.id)
-      // ⛔ Answered, not thrown — a rejected handle prints a stack on every launch — and `null`
-      // means the window keeps nothing this run, so nothing is written over the file it could not see.
-      console.warn(`the unsent drafts were not read, so none will be kept this run: ${file.why}`)
-      return null
-    }
-    // ⚑ Counted until its renderer is gone — a crashed one answers nothing, and a reload reads again.
+    // Counted until its renderer is gone — a crashed one answers nothing, and a reload reads again.
     if (!draftReaders.has(reader.id)) {
       const forget = (): void => void draftReaders.delete(reader.id)
       reader.once('render-process-gone', forget)
       reader.once('destroyed', forget)
     }
     draftReaders.add(reader.id)
-    return restoreSavedDrafts(file.kind === 'book' ? file.raw : null, {
+    return restoreSavedDrafts(savedDraftsBook(database), {
       // ⚠️ No store yet means no answer — so nothing is dropped for want of one.
       exists: (sessionId) => recordedConversation?.(sessionId) ?? true,
     })
