@@ -25,11 +25,7 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import {
-  profileExecutionFile,
-  readProfileExecution,
-  writeProfileExecution,
-} from '../src/main/profile-execution-file'
+import { readProfileExecution, writeProfileExecution } from '../src/main/profile-execution-file'
 import { RuntimeHost, THE_APP_ITSELF, aTurnTheAppCutText } from './helpers/giver-notice-host'
 import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import {
@@ -271,8 +267,8 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
         ...(stops.services === true
           ? {
               profileExecution: {
-                read: () => readProfileExecution(profileExecutionFile(folder)),
-                write: (kept) => writeProfileExecution(profileExecutionFile(folder), kept),
+                read: () => readProfileExecution(db),
+                write: (kept) => writeProfileExecution(db, kept),
                 owned: true,
               },
             }
@@ -1049,7 +1045,7 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
         { by: 'a-person' },
       )
       if (svc === null) throw new Error('the service already exists')
-      writeProfileExecution(profileExecutionFile(userData), {
+      writeProfileExecution(now.db, {
         profiles: { [svc.id]: { kind: 'service', identityCreatedAt: svc.createdAt } },
       })
       if (opts.ask !== true) now.store.setDefaultApprovalMode('auto')

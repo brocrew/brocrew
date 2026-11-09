@@ -1,42 +1,14 @@
-import { statSync } from 'node:fs'
-import {
-  readProfileExecution,
-  MAX_PROFILE_EXECUTION_BYTES,
-  type ProfileExecutionRead,
-} from '../profile-execution-file'
+import type { ProfileExecutionRead } from '../profile-execution-file'
 import type { GraphNode, KindQuality } from '../../shared/team-profile-graph'
 
-export type GraphKindFile = { reading: ProfileExecutionRead; changing: boolean; readAt: number }
+/** How profiles run, as the graph read them in its own snapshot, and when. */
+export type GraphKindFile = { reading: ProfileExecutionRead; readAt: number }
 export type GraphKindEvidence = {
   complete: boolean
   serviceBirths: readonly string[]
   workerBirths: number
   earlierBirths: boolean
   serviceBindsCurrent: boolean
-}
-const fingerprint = (file: string): string => {
-  try {
-    const s = statSync(file, { bigint: true })
-    return `${s.dev}:${s.ino}:${s.size}:${s.mtimeNs}:${s.ctimeNs}`
-  } catch {
-    return 'absent'
-  }
-}
-export function readGraphKindFile(
-  file: string,
-  reserve: (bytes: number) => void,
-  now: () => number,
-): GraphKindFile {
-  const before = fingerprint(file)
-  let sourceBytes = 0
-  try {
-    sourceBytes = statSync(file).size
-  } catch {
-    /* The bounded reader reports absence or an unreadable file. */
-  }
-  reserve(sourceBytes > MAX_PROFILE_EXECUTION_BYTES ? 4096 : sourceBytes * 4 + 4096)
-  const reading = readProfileExecution(file)
-  return { reading, changing: before !== fingerprint(file), readAt: now() }
 }
 export function graphKindOf(
   identity: { id: string; createdAt: number },
@@ -50,7 +22,6 @@ export function graphKindOf(
     kindQuality,
     kindReadAt: file.readAt,
   })
-  if (file.changing) return unknown('unknown-changing')
   if (!file.reading.readable || file.reading.absent === true) return unknown('unknown-file')
   const entry = file.reading.kept.profiles[identity.id]
   if ((entry && entry.identityCreatedAt !== identity.createdAt) || evidence.earlierBirths)

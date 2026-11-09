@@ -20,7 +20,6 @@ import { openDatabase, type AppDatabase } from '../../src/main/db/connection'
 import { applyMigrations } from '../../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../../src/main/db/session-store'
 import {
-  profileExecutionFile,
   readProfileExecution,
   writeProfileExecution,
   type KeptProfileExecution,
@@ -177,6 +176,8 @@ export interface AServiceWorld {
   ): { readonly id: string; readonly createdAt: number }
   /** What the services list keeps for an identity. */
   kept(identity: string): ProfileExecution | undefined
+  /** The services list is lost: nothing kept, while the database still holds what it named. */
+  loseTheKept(): void
   conversationsRecorded(): number
   /** A conversation a person opens as `profile`, running, owning its root. */
   aPersonOpens(host: RuntimeHost, profile: string): Promise<string>
@@ -198,7 +199,7 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
   applyMigrations(db, migrationsDir)
   const hosts: RuntimeHost[] = []
   const issued = new FakeProviderSessions()
-  const fileIn = (): string => profileExecutionFile(folder)
+  let keptLost = false
   const world: AServiceWorld = {
     folder,
     db,
@@ -339,11 +340,11 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
           return super.listModels(context)
         }
       }
-      const switched = readProfileExecution(fileIn())
-      if (switched.readable) {
+      const switched = readProfileExecution(db)
+      if (switched.readable && !keptLost) {
         const { profiles } = switched.kept
         writeProfileExecution(
-          fileIn(),
+          db,
           (opts.servicesOn ?? true) ? { profiles } : { servicesOff: true, profiles },
         )
       }
@@ -382,7 +383,7 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
           files: [],
         }),
         profileExecution: {
-          read: () => readProfileExecution(fileIn()),
+          read: () => readProfileExecution(db),
           write: (kept: KeptProfileExecution) => {
             const field = world.writesFail
             const failing =
@@ -390,7 +391,7 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
               (field !== 'none' &&
                 Object.values(kept.profiles).some((entry) => entry[field] !== undefined))
             if (failing) throw new Error('the disk is full')
-            writeProfileExecution(fileIn(), kept)
+            writeProfileExecution(db, kept)
           },
           owned: opts.owned ?? true,
         },
@@ -410,9 +411,9 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
       )
       if (made === null) throw new Error(`${slug} already exists`)
       if (kind !== 'nothing kept') {
-        const read = readProfileExecution(fileIn())
+        const read = readProfileExecution(db)
         if (!read.readable) throw new Error(read.why)
-        writeProfileExecution(fileIn(), {
+        writeProfileExecution(db, {
           ...read.kept,
           profiles: {
             ...read.kept.profiles,
@@ -422,8 +423,12 @@ export function aServiceWorld(fixture: { holderReminders?: 'declined' } = {}): A
       }
       return { id: made.id, createdAt: made.createdAt }
     },
+    loseTheKept() {
+      keptLost = true
+      db.exec('DELETE FROM profile_execution; DELETE FROM profile_execution_state')
+    },
     kept(identity) {
-      const read = readProfileExecution(fileIn())
+      const read = readProfileExecution(db)
       if (!read.readable) throw new Error(read.why)
       return read.kept.profiles[identity]
     },

@@ -50,7 +50,6 @@ it('batches empty conversations and keeps every page on bounded seeks', () => {
   const reads: { sql: string; args: readonly unknown[] }[] = []
   const engine = new TeamProfileGraphEngine(
     f.file,
-    f.executionFile,
     () => graphCutoff,
     () => performance.now(),
     (sql, args) => {
@@ -149,7 +148,7 @@ it('keeps mixed generations, cutoffs, unknown bindings and route deduplication a
     .prepare('UPDATE provider_session SET agent_identity_id=? WHERE id=?')
     .run('aid:missing', 'missing')
   f.db.pragma('foreign_keys=ON')
-  const engine = new TeamProfileGraphEngine(f.file, f.executionFile, () => graphCutoff)
+  const engine = new TeamProfileGraphEngine(f.file, () => graphCutoff)
   owned.push(engine)
   const { header, nodes, edges } = complete(engine)
   expect(nodes.find(({ id }) => id === 'aid:sender')).toMatchObject({
@@ -184,7 +183,6 @@ for (const stop of ['deadline', 'cancellation'] as const)
       cancelled = false
     const engine = new TeamProfileGraphEngine(
       f.file,
-      f.executionFile,
       () => graphCutoff,
       () => now,
       (sql) => {
@@ -222,7 +220,6 @@ it('removes consumed session IDs before SQLite resumes a long conversation', () 
   let resumed = 0
   const engine = new TeamProfileGraphEngine(
     f.file,
-    f.executionFile,
     () => graphCutoff,
     () => performance.now(),
     (sql, args) => {
@@ -256,7 +253,7 @@ it('does not probe a future empty-ID session as an initial cursor sentinel', () 
   f.root('valid')
   f.session('', 'aid:valid', graphCutoff + 1)
   f.event('', 'message_sent', '{', 0, graphCutoff, 0)
-  const engine = new TeamProfileGraphEngine(f.file, f.executionFile, () => graphCutoff)
+  const engine = new TeamProfileGraphEngine(f.file, () => graphCutoff)
   owned.push(engine)
   expect(complete(engine).nodes).toMatchObject([
     { id: 'aid:valid', conversations: 1, messagesSent: 0 },

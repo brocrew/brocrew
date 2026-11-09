@@ -139,7 +139,7 @@ it('reads through the real graph worker with no main event fold and marks a conc
   const graphs = new TeamProfileGraphWindows((admission, failure) => {
     starts++
     return new TeamProfileGraphLifetime(
-      () => new Worker(bundled, { workerData: { file: f.file, executionFile: f.executionFile } }),
+      () => new Worker(bundled, { workerData: { file: f.file } }),
       () => performance.now(),
       undefined,
       admission,

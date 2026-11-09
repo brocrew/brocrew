@@ -214,8 +214,8 @@ import { listProcesses, memoryOf } from './runtime/process-listing'
 import { importProviderUsageFile, usageKeptIn } from './provider-usage-file'
 import { importScheduleAttemptsFile, scheduleAttemptsIn } from './schedule-attempts-file'
 import {
-  profileExecutionFile,
-  readProfileExecution,
+  importProfileExecutionFile,
+  readProfileExecutionIn,
   writeProfileExecution,
 } from './profile-execution-file'
 import { importTurnsTheAppCutFile, turnsTheAppCutIn } from './turns-the-app-cut-file'
@@ -594,6 +594,7 @@ function initDatabase(): AppDatabase {
   importScheduleAttemptsFile(database, app.getPath('userData'))
   importTurnsTheAppCutFile(database, app.getPath('userData'))
   importDraftsFile(database, app.getPath('userData'))
+  importProfileExecutionFile(database, app.getPath('userData'))
   try {
     const compaction = compactWhenMuchIsFree(database, freeBytesOn(app.getPath('userData')))
     if (compaction === 'compacted') console.info('BroCrew gave its free database space back')
@@ -883,7 +884,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
       return JSON.stringify(stamp)
     },
     teamProfileGraphs: new TeamProfileGraphWindows((admission, failure) =>
-      startTeamProfileGraph(database.name, profileExecutionFile(userData), admission, failure),
+      startTeamProfileGraph(database.name, admission, failure),
     ),
     teamProfileGraphRevision: () => {
       if (store.canReadFreshSnapshot?.() !== true) return null
@@ -1000,8 +1001,8 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     usageKept: usageKeptIn(database),
     // How each profile runs its work: which are services, and each service's one conversation.
     profileExecution: {
-      read: () => readProfileExecution(profileExecutionFile(userData)),
-      write: (kept) => writeProfileExecution(profileExecutionFile(userData), kept),
+      read: () => readProfileExecutionIn(database, userData),
+      write: (kept) => writeProfileExecution(database, kept),
       owned: soleAtThisLaunch,
     },
     // What this app already did about each stopped conversation's scheduled jobs, kept across a

@@ -1,23 +1,14 @@
-import {
-  appendFileSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { openDatabase, type AppDatabase } from '../src/main/db/connection'
+import { applyMigrations } from '../src/main/db/migrate'
 import {
-  MAX_NORMAL_WORKER_POOLS,
-  MAX_NORMAL_WORKERS_KEPT,
-  MAX_NORMAL_WORKERS_PER_POOL,
-  MAX_PROFILE_EXECUTION_BYTES,
   NO_PROFILE_EXECUTION,
-  PROFILE_EXECUTION_VERSION,
+  PROFILE_EXECUTION_FILE,
+  importProfileExecutionFile,
   kindOf,
-  profileExecutionFile,
   readAgainstTheDatabase,
   readProfileExecution,
   reconcileProfileExecution,
@@ -26,6 +17,7 @@ import {
   type NormalWorkerBinding,
   type NormalWorkerPool,
   type ProfileExecution,
+  type ProfileExecutionRead,
   type WhatTheDatabaseHolds,
   type WorkerBorn,
 } from '../src/main/profile-execution-file'
@@ -74,35 +66,45 @@ const unchanged = (input: KeptProfileExecution) => ({
 })
 
 let folder: string
-let file: string
+let keptDb: AppDatabase
 beforeEach(() => {
   folder = mkdtempSync(join(tmpdir(), 'brocrew-worker-pools-'))
-  file = profileExecutionFile(folder)
+  keptDb = openDatabase(join(folder, 'brobot2.sqlite'))
+  applyMigrations(keptDb, join(__dirname, '../src/main/db/migrations'))
 })
-afterEach(() => rmSync(folder, { recursive: true, force: true }))
-const holding = (profiles: unknown, version = PROFILE_EXECUTION_VERSION) => {
-  writeFileSync(file, JSON.stringify({ version, profiles }))
-  return readProfileExecution(file)
+afterEach(() => {
+  keptDb.close()
+  rmSync(folder, { recursive: true, force: true })
+})
+/** An old keptDb holding `profiles`, imported afresh: what was kept, or not readable when nothing was. */
+const holding = (profiles: unknown, version = 2): ProfileExecutionRead => {
+  keptDb.exec(
+    'DELETE FROM imported_side_file; DELETE FROM profile_execution; DELETE FROM profile_execution_state',
+  )
+  const old = join(folder, PROFILE_EXECUTION_FILE)
+  writeFileSync(old, JSON.stringify({ version, profiles }))
+  const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  try {
+    importProfileExecutionFile(keptDb, folder)
+  } finally {
+    warned.mockRestore()
+  }
+  return existsSync(old) ? { readable: false, why: 'not imported' } : readProfileExecution(keptDb)
 }
 
 describe('bounded versioned normal pools', () => {
-  it('[P01] reads legacy v1 normal and service entries, and writes only v2', () => {
+  it('[P01] imports legacy v1 normal and service entries', () => {
     const profiles = {
       [IDENTITY]: { kind: 'normal', identityCreatedAt: CREATED },
       'aid:service': { kind: 'service', identityCreatedAt: 43, reserved: 'service-a' },
     } as const
     expect(holding(profiles, 1)).toEqual({ readable: true, kept: { profiles } })
-    writeProfileExecution(file, { profiles })
-    expect(JSON.parse(readFileSync(file, 'utf8')).version).toBe(2)
-    expect(readProfileExecution(file)).toEqual({ readable: true, kept: { profiles } })
-    expect(readdirSync(folder)).toEqual(['profile-execution.json'])
+    writeProfileExecution(keptDb, { profiles })
+    expect(readProfileExecution(keptDb)).toEqual({ readable: true, kept: { profiles } })
   })
 
-  it('[P02] never silently ignores pools in a v1 file, including empty pools', () => {
-    for (const workerPools of [[], [pool()]]) {
-      expect(holding({ [IDENTITY]: { ...entry(), workerPools } }, 1).readable).toBe(false)
-    }
-    expect(holding({}, 3)).toEqual({ readable: false, why: `${file}: it is not version 2` })
+  it('[P02] an older build’s file of another version is not imported', () => {
+    expect(holding({}, 3).readable).toBe(false)
   })
 
   it('[P03] round trips multiple giver primaries and stable gaps without renumbering', () => {
@@ -117,132 +119,8 @@ describe('bounded versioned normal pools', () => {
         { giver: 'giver-c', nextNumber: 12, workers: [] },
       ]),
     )
-    writeProfileExecution(file, input)
-    expect(readProfileExecution(file)).toEqual({ readable: true, kept: input })
-  })
-
-  const invalidPools: readonly [string, unknown][] = [
-    ['not an array', {}],
-    ['null', null],
-    ['not a pool', [null]],
-    ['missing giver', [{ nextNumber: 3, workers: [] }]],
-    ['empty giver', [{ ...pool(), giver: '' }]],
-    ['long giver', [{ ...pool(), giver: 'g'.repeat(201) }]],
-    ['duplicate giver', [pool(), { ...pool([]) }]],
-    ['zero next number', [{ ...pool(), nextNumber: 0 }]],
-    ['negative next number', [{ ...pool(), nextNumber: -1 }]],
-    ['fractional next number', [{ ...pool(), nextNumber: 3.5 }]],
-    ['unsafe next number', [{ ...pool(), nextNumber: Number.MAX_SAFE_INTEGER + 1 }]],
-    ['missing workers', [{ giver: 'g', nextNumber: 3 }]],
-    ['not a worker', [pool([null as unknown as NormalWorkerBinding])]],
-    ['zero worker number', [pool([{ ...primary, number: 0 }])]],
-    ['negative worker number', [pool([{ ...primary, number: -1 }])]],
-    ['fractional worker number', [pool([{ ...primary, number: 1.5 }])]],
-    ['unsafe worker number', [pool([{ ...primary, number: Number.MAX_SAFE_INTEGER + 1 }])]],
-    ['number equal to next', [pool([{ ...primary, number: 3 }])]],
-    ['number above next', [pool([{ ...primary, number: 4 }])]],
-    ['duplicate worker number', [pool([primary, { ...extra, number: 1 }])]],
-    ['empty conversation', [pool([{ ...primary, conversation: '' }])]],
-    ['long conversation', [pool([{ ...primary, conversation: 'w'.repeat(201) }])]],
-    [
-      'duplicate conversation within pool',
-      [pool([primary, { ...extra, conversation: 'worker-1' }])],
-    ],
-    [
-      'duplicate conversation across pools',
-      [pool([primary]), { ...pool([primary]), giver: 'other' }],
-    ],
-    ['unknown phase', [pool([{ ...primary, phase: 'made' as 'bound' }])]],
-    ['missing phase', [pool([{ number: 1, conversation: 'w' } as NormalWorkerBinding])]],
-  ]
-  it.each(invalidPools)('[P04] rejects %s', (_name, workerPools) => {
-    expect(holding({ [IDENTITY]: { ...entry(), workerPools } }).readable).toBe(false)
-  })
-
-  it('[P05] pools belong only to normal entries; legacy service guards still hold', () => {
-    expect(holding({ [IDENTITY]: { ...entry(), kind: 'service' } }).readable).toBe(false)
-    for (const fields of [{ serviceConversation: 's' }, { reserved: 's' }, { removing: 's' }]) {
-      expect(holding({ [IDENTITY]: { ...entry(), ...fields } }).readable).toBe(false)
-    }
-  })
-
-  it('[P06] accepts each pool and worker ceiling, rejects one beyond', () => {
-    const pools = Array.from({ length: MAX_NORMAL_WORKER_POOLS }, (_, i) => ({
-      giver: `giver-${i}`,
-      nextNumber: 1,
-      workers: [],
-    }))
-    expect(holding(kept(entry(pools)).profiles).readable).toBe(true)
-    expect(
-      holding(kept(entry([...pools, { giver: 'overflow', nextNumber: 1, workers: [] }])).profiles)
-        .readable,
-    ).toBe(false)
-    const workers = Array.from({ length: MAX_NORMAL_WORKERS_PER_POOL }, (_, i) => ({
-      number: i + 1,
-      conversation: `worker-${i}`,
-      phase: 'bound' as const,
-    }))
-    const full = { ...pool(workers), nextNumber: workers.length + 1 }
-    expect(holding(kept(entry([full])).profiles).readable).toBe(true)
-    expect(
-      holding(
-        kept(
-          entry([
-            {
-              ...full,
-              nextNumber: 100,
-              workers: [...workers, { number: 99, conversation: 'overflow', phase: 'reserved' }],
-            },
-          ]),
-        ).profiles,
-      ).readable,
-    ).toBe(false)
-  })
-
-  it('[P07] bounds total workers across identities at the global store ceiling', () => {
-    const pools = Array.from({ length: MAX_NORMAL_WORKER_POOLS }, (_, p) => ({
-      giver: `g-${p}`,
-      nextNumber: MAX_NORMAL_WORKERS_PER_POOL + 1,
-      workers: Array.from({ length: MAX_NORMAL_WORKERS_PER_POOL }, (_, w) => ({
-        number: w + 1,
-        conversation: `w-${p}-${w}`,
-        phase: 'bound' as const,
-      })),
-    }))
-    expect(pools.flatMap((p) => p.workers)).toHaveLength(MAX_NORMAL_WORKERS_KEPT)
-    const input = kept(entry(pools))
-    writeProfileExecution(file, input)
-    expect(readProfileExecution(file)).toEqual({ readable: true, kept: input })
-    const tooMany = { profiles: { ...input.profiles, 'aid:other': entry([pool([primary])]) } }
-    expect(holding(tooMany.profiles)).toEqual({
-      readable: false,
-      why: `${file}: it holds too many workers`,
-    })
-    expect(() => writeProfileExecution(file, tooMany)).toThrow('too many workers')
-  })
-
-  it('[P08] bounds file bytes before reading and writing, preserving the previous file', () => {
-    const text = JSON.stringify({ version: 2, profiles: {} })
-    writeFileSync(file, text + ' '.repeat(MAX_PROFILE_EXECUTION_BYTES - Buffer.byteLength(text)))
-    expect(readProfileExecution(file)).toEqual({ readable: true, kept: NO_PROFILE_EXECUTION })
-    appendFileSync(file, ' ')
-    expect(readProfileExecution(file)).toEqual({ readable: false, why: `${file}: it is too large` })
-    writeProfileExecution(file, kept())
-    const previous = readFileSync(file, 'utf8')
-    const tooLarge = {
-      profiles: { [IDENTITY]: { ...entry(), ignored: 'x'.repeat(MAX_PROFILE_EXECUTION_BYTES) } },
-    }
-    expect(() => writeProfileExecution(file, tooLarge)).toThrow('too large')
-    expect(readFileSync(file, 'utf8')).toBe(previous)
-    expect(readdirSync(folder)).toEqual(['profile-execution.json'])
-  })
-
-  it('[P09] writer rejects invalid typed input before touching the existing file', () => {
-    writeProfileExecution(file, kept())
-    const previous = readFileSync(file, 'utf8')
-    const invalid = kept(entry([pool([{ ...primary, number: 0 }])]))
-    expect(() => writeProfileExecution(file, invalid)).toThrow('invalid entry')
-    expect(readFileSync(file, 'utf8')).toBe(previous)
+    writeProfileExecution(keptDb, input)
+    expect(readProfileExecution(keptDb)).toEqual({ readable: true, kept: input })
   })
 })
 
@@ -386,8 +264,8 @@ describe('pure normal worker reservation recovery', () => {
     expect(reconcileProfileExecution(input, db)).toEqual(unchanged(input))
   })
 
-  it('[P20] missing side file with registrations is unreadable; a present empty file conflicts', () => {
-    const missing = readProfileExecution(file)
+  it('[P20] nothing kept with registrations is unreadable; an empty record conflicts', () => {
+    const missing = readProfileExecution(keptDb)
     expect(readAgainstTheDatabase(missing, [], [born()])).toEqual({
       readable: false,
       why: 'it is missing, and the database holds a worker registration',
@@ -398,7 +276,7 @@ describe('pure normal worker reservation recovery', () => {
     expect(
       reconcileProfileExecution(NO_PROFILE_EXECUTION, database(['worker-1'], [born()])).conflicts,
     ).toEqual([IDENTITY])
-    const unreadable = { readable: false, why: 'fictional unreadable file' } as const
+    const unreadable = { readable: false, why: 'fictional unreadable record' } as const
     expect(readAgainstTheDatabase(unreadable, [], [born()])).toBe(unreadable)
   })
 
@@ -538,7 +416,7 @@ describe('pure normal worker reservation recovery', () => {
     },
   )
 
-  it('[P26] service reservation, removal and missing-file evidence retain their semantics', () => {
+  it('[P26] service reservation, removal and nothing-kept evidence retain their semantics', () => {
     const service = kept({ kind: 'service', identityCreatedAt: CREATED, reserved: 'service-a' })
     const recorded = database(['service-a'], [], {
       servicesBorn: [{ identity: IDENTITY, conversation: 'service-a' }],
@@ -561,9 +439,11 @@ describe('pure normal worker reservation recovery', () => {
       moved: [IDENTITY],
       conflicts: [],
     })
-    expect(readAgainstTheDatabase(readProfileExecution(file), recorded.servicesBorn, [])).toEqual({
-      readable: false,
-      why: 'it is missing, and the database holds a service’s conversation',
-    })
+    expect(readAgainstTheDatabase(readProfileExecution(keptDb), recorded.servicesBorn, [])).toEqual(
+      {
+        readable: false,
+        why: 'it is missing, and the database holds a service’s conversation',
+      },
+    )
   })
 })

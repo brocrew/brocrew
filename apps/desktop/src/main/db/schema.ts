@@ -804,3 +804,21 @@ export const draft = sqliteTable('draft', {
   slot: text('slot').primaryKey(),
   entry: text('entry').notNull(),
 })
+
+export const profileExecution = sqliteTable('profile_execution', {
+  identityId: text('identity_id').primaryKey(),
+  entry: text('entry').notNull(),
+})
+
+/** One row once how profiles run has been written; its absence is a workspace with none yet. */
+export const profileExecutionState = sqliteTable(
+  'profile_execution_state',
+  {
+    id: integer('id').primaryKey(),
+    servicesOff: integer('services_off').notNull(),
+  },
+  (t) => [
+    check('profile_execution_state_one_ck', sql`${t.id} = 1`),
+    check('profile_execution_state_off_ck', sql`${t.servicesOff} IN (0, 1)`),
+  ],
+)

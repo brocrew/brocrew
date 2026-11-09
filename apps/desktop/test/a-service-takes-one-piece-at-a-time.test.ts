@@ -1,7 +1,7 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import type { PieceRow } from '../src/shared/task-contracts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { profileExecutionFile, writeProfileExecution } from '../src/main/profile-execution-file'
+import { writeProfileExecution } from '../src/main/profile-execution-file'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import {
@@ -753,7 +753,7 @@ describe('a service takes one piece at a time', () => {
         profileId: 'browser-driver',
         service: true,
       })
-      writeProfileExecution(profileExecutionFile(world.folder), {
+      writeProfileExecution(world.db, {
         profiles: {
           [svc.id]: {
             kind: 'service',

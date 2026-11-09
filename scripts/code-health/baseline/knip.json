@@ -90,7 +90,6 @@
   "exports|apps/desktop/src/main/plugins/supervisor/protocol.ts|Wire",
   "exports|apps/desktop/src/main/plugins/supervisor/sqlite-adapter.ts|default",
   "exports|apps/desktop/src/main/plugins/tool-broker.ts|PLUGIN_BROKER_LIMITS",
-  "exports|apps/desktop/src/main/profile-execution-file.ts|MAX_PROFILES_KEPT",
   "exports|apps/desktop/src/main/providers/claude/api-key.ts|aLoginRunsWithoutAKey",
   "exports|apps/desktop/src/main/providers/claude/api-key.ts|checkClaudeKey",
   "exports|apps/desktop/src/main/providers/claude/child-work.ts|MAX_SIDECAR_BYTES",

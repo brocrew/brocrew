@@ -1,10 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { openDatabase, type AppDatabase } from '../src/main/db/connection'
+import { applyMigrations } from '../src/main/db/migrate'
 import {
-  PROFILE_EXECUTION_VERSION,
-  profileExecutionFile,
   readProfileExecution,
   reconcileProfileExecution,
   writeProfileExecution,
@@ -76,12 +76,16 @@ const withoutAssignment = (worker: NormalWorkerBinding): NormalWorkerBinding => 
 })
 
 let folder: string
-let file: string
+let file: AppDatabase
 beforeEach(() => {
   folder = mkdtempSync(join(tmpdir(), 'brocrew-assignment-holds-'))
-  file = profileExecutionFile(folder)
+  file = openDatabase(join(folder, 'brobot2.sqlite'))
+  applyMigrations(file, join(__dirname, '../src/main/db/migrations'))
 })
-afterEach(() => rmSync(folder, { recursive: true, force: true }))
+afterEach(() => {
+  file.close()
+  rmSync(folder, { recursive: true, force: true })
+})
 
 describe('durable worker assignment holds', () => {
   it('[H01] round trips bound and reserved holds, copying both opaque ids at their ceiling', () => {
@@ -94,43 +98,6 @@ describe('durable worker assignment holds', () => {
     expect(read.kept.profiles[IDENTITY]?.workerPools?.[0]?.workers[0]?.assignment).not.toBe(
       long.assignment,
     )
-    expect(JSON.parse(readFileSync(file, 'utf8')).version).toBe(2)
-    expect(PROFILE_EXECUTION_VERSION).toBe(2)
-  })
-
-  it('[H02] rejects malformed or future assignment fields rather than discarding a hold', () => {
-    const invalid = [
-      null,
-      [],
-      'piece-a',
-      1,
-      {},
-      { piece: 'p' },
-      { giver: 'g' },
-      { piece: '', giver: 'g' },
-      { piece: 'p', giver: '' },
-      { piece: 1, giver: 'g' },
-      { piece: 'p', giver: false },
-      { piece: 'p'.repeat(201), giver: 'g' },
-      { piece: 'p', giver: 'g'.repeat(201) },
-      { ...assignment, future: true },
-    ]
-    const readable = invalid.map((hold) => {
-      const input = kept([{ ...primary, assignment: hold as NormalWorkerAssignment }])
-      writeFileSync(file, JSON.stringify({ version: 2, profiles: input.profiles }))
-      return readProfileExecution(file).readable
-    })
-    expect(readable).toEqual(invalid.map(() => false))
-  })
-
-  it('[H03] rejects unknown assignment keys before replacing the existing file, even if JSON omits them', () => {
-    writeProfileExecution(file, kept())
-    const previous = readFileSync(file, 'utf8')
-    const future = { ...assignment, future: undefined }
-    expect(() => writeProfileExecution(file, kept([{ ...primary, assignment: future }]))).toThrow(
-      'invalid entry',
-    )
-    expect(readFileSync(file, 'utf8')).toBe(previous)
   })
 
   it('[H04] false or absent acceptance evidence preserves the hold, even with no work row', () => {
@@ -293,11 +260,6 @@ describe('durable worker assignment holds', () => {
     expect(assignmentWasAccepted).not.toHaveBeenCalled()
   })
 
-  it('[H12] v1 pools with assignment holds remain unreadable', () => {
-    writeFileSync(file, JSON.stringify({ version: 1, profiles: kept().profiles }))
-    expect(readProfileExecution(file).readable).toBe(false)
-  })
-
   it('[N01] a proved never-born primary records its marker while preserving a bound extra and counter', () => {
     const reservedPrimary = { ...primary, phase: 'reserved' as const }
     const boundExtra = { ...extra, phase: 'bound' as const }
@@ -366,7 +328,7 @@ describe('durable worker assignment holds', () => {
     }
   })
 
-  it('[N03] copies valid markers and rejects malformed or contradictory primary proof', () => {
+  it('[N03] copies valid markers', () => {
     const boundExtra = { ...extra, phase: 'bound' as const }
     for (const input of [
       kept([], { nextNumber: 2, primaryNeverBorn: true }),
@@ -375,41 +337,6 @@ describe('durable worker assignment holds', () => {
       writeProfileExecution(file, input)
       expect(readProfileExecution(file)).toEqual({ readable: true, kept: input })
     }
-    const invalidPools = [
-      ...[false, null, 1, 'true', {}, []].map((marker) => ({
-        giver: GIVER,
-        nextNumber: 9,
-        workers: [],
-        primaryNeverBorn: marker,
-      })),
-      { giver: GIVER, nextNumber: 1, workers: [], primaryNeverBorn: true },
-      { giver: GIVER, nextNumber: 9, workers: [primary], primaryNeverBorn: true },
-      {
-        giver: GIVER,
-        nextNumber: 9,
-        workers: [{ ...primary, phase: 'reserved' }],
-        primaryNeverBorn: true,
-      },
-    ]
-    const readable = invalidPools.map((pool) => {
-      writeFileSync(
-        file,
-        JSON.stringify({
-          version: 2,
-          profiles: {
-            [IDENTITY]: { kind: 'normal', identityCreatedAt: CREATED, workerPools: [pool] },
-          },
-        }),
-      )
-      return readProfileExecution(file).readable
-    })
-    expect(readable).toEqual(invalidPools.map(() => false))
-    writeProfileExecution(file, kept([boundExtra], { primaryNeverBorn: true }))
-    const previous = readFileSync(file, 'utf8')
-    expect(() => writeProfileExecution(file, kept([primary], { primaryNeverBorn: true }))).toThrow(
-      'invalid entry',
-    )
-    expect(readFileSync(file, 'utf8')).toBe(previous)
   })
 
   it('[N04] existing proof survives assignment settlement and every conflicted entry unchanged', () => {

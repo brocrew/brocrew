@@ -188,7 +188,7 @@ export const MANIFEST = Object.freeze([
     name: 'profile-execution.json',
     expect: 'file',
     why: LEDGER,
-    source: 'main/profile-execution-file.ts (profileExecutionFile)',
+    source: 'main/profile-execution-file.ts (importProfileExecutionFile)',
   },
   {
     name: 'api-keys.json',
@@ -269,13 +269,6 @@ export const TRANSCRIPT_RETENTION_PART =
 export const WORKSPACES_PART = /^workspaces?\.json\.(?:\d+|[0-9a-f]{12})\.tmp$/
 
 export const PROVIDER_USAGE_PART = /^provider-accounts\.json\.(?:\d+|[0-9a-f]{12})\.tmp$/
-
-/**
- * The name one write of how each profile runs its work goes to before it is renamed into place —
- * `<file>.<pid>.tmp`, in `apps/desktop/src/main/profile-execution-file.ts`. ⚠️ A kill inside a write
- * leaves one: it goes with the ledger whose profiles and conversations it names.
- */
-export const PROFILE_EXECUTION_PART = /^profile-execution\.json\.\d+\.tmp$/
 
 /**
  * A write of the saved API keys in progress, or a keys file that couldn't be read and was set aside
@@ -915,10 +908,6 @@ export function planCleanBase(anchor, { dropExports = false, keepAuth = false } 
     }
     if (PROVIDER_USAGE_PART.test(entry.name)) {
       actions.push({ rel: entry.name, expect: 'file', why: USAGE })
-      continue
-    }
-    if (PROFILE_EXECUTION_PART.test(entry.name)) {
-      actions.push({ rel: entry.name, expect: 'file', why: LEDGER })
       continue
     }
     if (API_KEYS_PART.test(entry.name)) {
