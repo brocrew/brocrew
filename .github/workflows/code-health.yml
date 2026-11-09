@@ -31,7 +31,6 @@ jobs:
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
       PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
-      BROCREW_A02_LAST_SHIPPED: ${{ vars.BROCREW_A02_LAST_SHIPPED }}
     steps:
       - uses: actions/checkout@v7
         with:
