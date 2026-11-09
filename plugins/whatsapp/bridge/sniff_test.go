@@ -253,7 +253,7 @@ func TestSniffAttachmentUsesTheBytesNotTheName(t *testing.T) {
 		{"text with NUL", "a.txt", []byte("a\x00b"), "", "", ""},
 		{"invalid utf8", "a.txt", []byte{0xff, 0xfe, 0xfd}, "", "", ""},
 		{"gif", "a.gif", []byte("GIF89a...."), "document", mimeOctet, "gif"},
-		{"empty zip", "a.zip", []byte{0x50, 0x4b, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, "", "", ""},
+		{"empty zip", "a.zip", []byte{0x50, 0x4b, 5, 6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, "document", "application/zip", "zip"},
 		{"empty", "a.txt", nil, "", "", ""},
 	}
 	for _, c := range cases {
