@@ -716,14 +716,14 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
     expect(await client.callTool({ name: 'echo', arguments: {} })).toMatchObject({ isError: true })
     expect(f.call).toHaveBeenCalledOnce()
   })
-  it('rechecks lease validity on discovery and calls, with no person/admin authority', async () => {
+  it('lease revocation ends discovery and calls, with no person/admin authority', async () => {
     const f = await live(),
       owner = lease(),
       req = request(f.local.sink.workspaceId)
     const [route] = await f.bridge.routes(owner, req)
     const client = await connected(route!)
     expect((await client.listTools()).tools).toHaveLength(1)
-    f.setValid(false)
+    f.revokeLease(owner)
     await expect(client.callTool({ name: 'echo', arguments: {} })).rejects.toThrow()
     expect(f.call).not.toHaveBeenCalled()
     expect(await f.bridge.routes(owner, req)).toEqual([])

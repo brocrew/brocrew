@@ -1,7 +1,6 @@
 import {
   attachmentTraceId,
   createRouteAdmissionTrace,
-  observeAdmission,
   type RouteAdmissionSink,
 } from '../route-admission-trace'
 import {
@@ -406,22 +405,6 @@ export function createLifecycleAgentBridge(options: {
             hostToolNames: [],
             occupiedNamespaces: [],
             occupiedQualifiedNames: [],
-            isAllowed: (who, use) => {
-              let active = false
-              try {
-                active = options.controller.withAgentScope(who.workspaceId, (scope, current) =>
-                  scope.entries.some(
-                    (item) =>
-                      item.is === 'admitted' &&
-                      item.view.installation.installId === view.installation.installId &&
-                      current(item.view),
-                  ),
-                )
-              } catch {
-                /* An unreadable admission is unavailable, as with standalone views. */
-              }
-              return active && binding.isAllowed(who, use)
-            },
           })
           const entry: Entry = {
             identity,
@@ -475,32 +458,7 @@ export function createLifecycleAgentBridge(options: {
           },
           request.incarnation,
         )
-        const route = await openRoute(
-          entry.broker,
-          agent,
-          (observer) => {
-            if (closed) {
-              observeAdmission(observer, { condition: 'bridge-closed' })
-              return false
-            }
-            if (!options.owner.valid(lease.id, lease.epoch)) {
-              observeAdmission(observer, { condition: 'lease-invalid' })
-              return false
-            }
-            if (!view.current(observer)) return false
-            if (retired.has(caller)) {
-              observeAdmission(observer, { condition: 'incarnation-retired' })
-              return false
-            }
-            if (entries.get(id) !== work) {
-              observeAdmission(observer, { condition: 'entry-replaced' })
-              return false
-            }
-            return true
-          },
-          diagnostic(id),
-          trace,
-        )
+        const route = await openRoute(entry.broker, agent, diagnostic(id), trace)
         trace.emit('route-issued')
         track(route)
         if (!live() || !entry.broker.status().available) {
@@ -837,6 +795,9 @@ export function createLifecycleAgentBridge(options: {
       retired.add(caller)
       sourceTrace(lease, request).emit('source-retired')
       cancelWarmups((one) => one.caller === caller)
+      for (const item of routes.values())
+        if (item.lease.id === lease.id && item.incarnation === request.incarnation)
+          void closeRoute(item.route).catch(() => undefined)
     }
     if (!request.release && (waiting >= 64 || retired.size >= 4096)) {
       reportPluginToolFailure(diagnostic('host'), 'attachment-capacity')

@@ -84,7 +84,7 @@ async function aWorkspace(
   )
   const listeners = new Set<(workspaceId: string) => void>()
   let unreadable = false
-  const checks: (() => boolean)[] = []
+  const opening: string[] = []
   const opened: string[] = []
   const closed: string[] = []
   const view = (workspaceId: string, id: string, one: PluginState): AgentAttachmentView => {
@@ -165,7 +165,7 @@ async function aWorkspace(
     diagnostic,
     answerWithinMs,
     binding: async (one) => (await state.get(one.installation.pluginId)!.binding) ?? binding,
-    openRoute: async (broker, scope, current, diagnostic) => {
+    openRoute: async (broker, scope, diagnostic) => {
       const id = broker.agent.discover(scope)[0]!.namespace.slice('plugin-'.length)
       const route = inertRoutes
         ? {
@@ -176,8 +176,8 @@ async function aWorkspace(
             },
             close: async () => {},
           }
-        : await openManagedPluginRoute(broker, scope, current, diagnostic)
-      checks.push(current!)
+        : await openManagedPluginRoute(broker, scope, diagnostic)
+      opening.push(id)
       await state.get(id)!.open
       opened.push(id)
       return {
@@ -198,7 +198,7 @@ async function aWorkspace(
     state,
     opened,
     closed,
-    checks,
+    opening,
     unreadable(value: boolean) {
       unreadable = value
     },
@@ -277,7 +277,7 @@ describe('a cold agent gets each plugin that is ready', () => {
     }
   })
 
-  it('a requested release retires an opening capability before its earlier read can finish', async () => {
+  it('a requested release closes an unpublished opening route before its earlier read answers', async () => {
     const w = await aWorkspace(['aster'])
     const held = deferred<void>()
     w.state.get('aster')!.open = held.promise
@@ -285,15 +285,16 @@ describe('a cold agent gets each plugin that is ready', () => {
     const l = lease(),
       r = request()
     const reading = w.bridge.agentRoutes(l, r)
-    await vi.waitFor(() => expect(w.checks).toHaveLength(1))
+    await vi.waitFor(() => expect(w.opening).toHaveLength(1))
     const releasing = w.bridge.agentRoutes(l, { ...r, release: true })
     try {
-      expect(w.checks[0]!()).toBe(false)
+      expect(w.opened).toEqual([])
     } finally {
       held.resolve()
       await releasing
     }
     expect((await reading).servers).toEqual([])
+    expect(w.closed).toEqual(['aster'])
   })
   it('discovery capacity never rejects a release of an already served caller', async () => {
     const w = await aWorkspace(['aster'])

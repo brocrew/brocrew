@@ -65,8 +65,7 @@ export async function live(
   const controller = sharedLifecycleWorkspaces(f.controller)
   const person = await controller.attach(f.local.sink)
   await controller.install(person, 'chrome')
-  let valid = true,
-    allowed = true
+  let allowed = true
   const revoked = new Set<string>()
   const call = vi.fn()
   const binding = vi.fn(async () => ({
@@ -104,7 +103,7 @@ export async function live(
   const diagnostic = vi.fn()
   const bridge = createLifecycleAgentBridge({
     controller,
-    owner: { valid: (id) => valid && !revoked.has(id) },
+    owner: { valid: (id) => !revoked.has(id) },
     binding,
     diagnostic,
     ...bridgeChange,
@@ -122,9 +121,6 @@ export async function live(
     revokeLease: (one: WorkspaceLease) => {
       revoked.add(one.id)
       bridge.revoke(one)
-    },
-    setValid: (v: boolean) => {
-      valid = v
     },
     allow: (v: boolean) => {
       allowed = v

@@ -68,9 +68,7 @@ const events = [
   'route-close-start',
   'route-close-complete',
   'http-bearer-refused',
-  'http-current-refused',
   'http-broker-refused',
-  'tool-current-refused',
 ] as const
 const identities = [
   'workspace',
