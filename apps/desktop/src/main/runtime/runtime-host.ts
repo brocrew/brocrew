@@ -158,7 +158,7 @@ export {
 export type { RuntimeEventSink, CallerIdentity, Caller } from './conversation-caller'
 import type { ProviderHomesReprovision } from '../../shared/runtime-ipc'
 import { providerKnowledge } from '../providers/index'
-import { legacyAccountRecordFormat, providerAuthPolicies } from '../providers/auth-definitions'
+import { legacyAccountRecordFormat, providerAuthPolicies } from '../providers/index'
 import type { IdentityFact, ProviderAuthPolicy } from '../providers/auth-policy'
 import { providerDefinitions } from '../providers/index'
 import {
@@ -36057,10 +36057,7 @@ export class RuntimeHost implements LiveHost {
       entries: window.entries.map((entry) => ({
         ordinal: entry.ordinal,
         at: entry.at,
-        event: transcriptEventForDisplay(
-          entry.event,
-          this.deps.store.recordedOne(sessionId)?.provider,
-        ),
+        event: transcriptEventForDisplay(entry.event, provider),
         ...(entry.event.type === 'assistant_message'
           ? { humanFinal: humanFinals.get(entry.ordinal) ?? null }
           : {}),

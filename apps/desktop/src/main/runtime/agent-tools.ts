@@ -24,7 +24,7 @@ import type { AgentModelChoice } from '../../shared/model-choice-contracts'
 import {
   providerAuthPolicies,
   legacyStartRefusalWords as A_START_ITS_SIGN_IN_REFUSED,
-} from '../providers/auth-definitions'
+} from '../providers/index'
 import { withNavigationLinks, NAVIGATION_TOOL_NAMES } from './tool-navigation-links'
 import { NAVIGATION_LINKS_DESCRIPTION } from '../../shared/links'
 import { workerLine } from '../worker-readings'
@@ -3290,7 +3290,7 @@ export const A_REFUSED_ROW_SHOWS = 169
  * why: it opens the sentence and is read whole in what a row shows ({@link A_REFUSED_ROW_SHOWS}).
  * `more` follows it, for whoever opens the whole answer.
  */
-export { legacyStartRefusalWords as A_START_ITS_SIGN_IN_REFUSED } from '../providers/auth-definitions'
+export { legacyStartRefusalWords as A_START_ITS_SIGN_IN_REFUSED } from '../providers/index'
 
 /**
  * A start refused because the agent's sign-in, or its Codex settings, could not be used. What a
@@ -7291,7 +7291,7 @@ export function agentToolsFor(
       description:
         // ⚑ **679 · *the id and the asker*** — what the question's own words hand the caller since
         // `679` (`questionText`); *"the id to quote"* was the whole of it while an id named one question.
-        `Answer a question you are asked — by a conversation you started, or by an agent that asked you by name — or say you cannot, with cannot_answer and why. The app sends you the question, the id to quote and the asked_by beside it; a request that is a person’s to settle is refused by name and no retry will pass. Your own words in one answer, or your reason, may be at most ${String(REPLY_SUMMARY_LIMIT)} units: put anything longer in a file and name its full path. By default an asker you started, or one started under it, reads your answer — or your reason — at once: if it is in the middle of a turn, that turn is ${ASKED_TO_STOP} for it, and no person is asked to approve that. ' + theRuleOfAStopForWords(undefined, 'it') + ' Its other questions stay open. A turn that waits on someone's answer, or that a person's own words started, is not interrupted. Give interrupt: false to let it finish that turn first. Any other asker reads your answer when its running turn ends.`,
+        `Answer a question you are asked — by a conversation you started, or by an agent that asked you by name — or say you cannot, with cannot_answer and why. The app sends you the question, the id to quote and the asked_by beside it; a request that is a person’s to settle is refused by name and no retry will pass. Your own words in one answer, or your reason, may be at most ${String(REPLY_SUMMARY_LIMIT)} units: put anything longer in a file and name its full path. By default an asker you started, or one started under it, reads your answer — or your reason — at once: if it is in the middle of a turn, that turn is ${ASKED_TO_STOP} for it, and no person is asked to approve that. ${theRuleOfAStopForWords(undefined, 'it')} Its other questions stay open. A turn that waits on someone's answer, or that a person's own words started, is not interrupted. Give interrupt: false to let it finish that turn first. Any other asker reads your answer when its running turn ends.`,
       /**
        * 🔴 **486 · the rails are the whole gate** (HO-031 §2.4).
        *
@@ -7341,7 +7341,7 @@ export function agentToolsFor(
             .boolean()
             .optional()
             .describe(
-              `false lets the asker finish the turn it is running before it reads your answer — for an answer it can use later; a turn can run for hours. Left out, or true: an asker you started, or one started under it, has its running turn ${ASKED_TO_STOP} so that it reads your answer now, unless that turn waits on someone's answer or a person's own words started it. ' + theRuleOfAStopForWords(undefined, 'it') + ' Its other questions stay open. Any other asker reads your answer when its running turn ends, whatever this says.`,
+              `false lets the asker finish the turn it is running before it reads your answer — for an answer it can use later; a turn can run for hours. Left out, or true: an asker you started, or one started under it, has its running turn ${ASKED_TO_STOP} so that it reads your answer now, unless that turn waits on someone's answer or a person's own words started it. ${theRuleOfAStopForWords(undefined, 'it')} Its other questions stay open. Any other asker reads your answer when its running turn ends, whatever this says.`,
             ),
           // 🔴 **477 · `satisfies` is the rail here, not a tidy-up** — see
           // {@link AnswerQuestionArguments}. An argument through which a model could name who
@@ -8357,9 +8357,7 @@ export function agentToolsFor(
        * one the asker was told could be.
        */
       description:
-        'Ask a question and get the answer back. Say who answers it: the conversation that gave you your work, a person, or another agent you name, by the piece it owns (W1.2) or its id. A question to the conversation that gave you your work or to a person is about a piece of work you are holding — your own conversation\u2019s work counts — so name the piece, or leave it out when you hold only one; the app knows who gave it to you, and a question about work a person gave you goes to a person. A question to another agent may name the piece it is about, or none. Any work stays yours and stays open — this is not reply_to_parent, which hands it back. This call does not wait: it returns as soon as the question is recorded and routed, and the answer reaches you later as a message, however long they take. An answer can ask the turn you are in to stop, so that you read it at once. ' +
-        theRuleOfAStopForWords(undefined, 'it') +
-        ' Your other questions stay open. If the one you asked cannot answer, or its conversation ends first, you are told that instead. withdraw_question takes a question back. Carry on from here.',
+        'Ask a question and get the answer back. Say who answers it: the conversation that gave you your work, a person, or another agent you name, by the piece it owns (W1.2) or its id. A question to the conversation that gave you your work or to a person is about a piece of work you are holding — your own conversation\u2019s work counts — so name the piece, or leave it out when you hold only one; the app knows who gave it to you, and a question about work a person gave you goes to a person. A question to another agent may name the piece it is about, or none. Any work stays yours and stays open — this is not reply_to_parent, which hands it back. This call does not wait: it returns as soon as the question is recorded and routed, and the answer reaches you later as a message, however long they take. An answer can ask the turn you are in to stop, so that you read it at once. On Claude, the command that turn is waiting on ends with it, and work you sent to the background keeps running; on Codex, the command you ran last in that turn ends with it unless you have used another tool since, and your other commands keep running. Your other questions stay open. If the one you asked cannot answer, or its conversation ends first, you are told that instead. withdraw_question takes a question back. Carry on from here.',
       /**
        * ⛔ **Advertised against a TYPE, so *documented* and *read* cannot drift apart** — see
        * {@link AskQuestionArguments}, including which addressee it does and does not take.

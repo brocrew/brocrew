@@ -13,9 +13,10 @@
     "connectionKind": "standard",
     "connections": {
       "contractVersion": 1,
-      "authMethods": ["sign-in", "api-key"],
-      "protocol": "claude-agent-sdk",
-      "versionSource": "sdk",
+      "authMethods": [
+        "sign-in",
+        "api-key"
+      ],
       "additionalConnections": false
     },
     "capabilities": {
@@ -101,15 +102,15 @@
     },
     "programName": "Claude Code",
     "signIn": {
-      "portScope": "profile",
       "profileScoped": false,
       "accountIsSignIn": false,
       "changeWords": "this computer has moved on to a different one since — a renewal counts",
-      "manualProbe": true,
-      "refusalCause": "auth",
-      "retryPattern": "^claude could not authenticate; retrying\\b"
+      "manualProbe": true
     },
-    "usageWindows": ["5-hour", "weekly"],
+    "usageWindows": [
+      "5-hour",
+      "weekly"
+    ],
     "commandPrefix": "/",
     "defaults": {
       "conversation": false,
@@ -119,43 +120,18 @@
       "autoNote": "⚠ approvals: Auto — nothing is asked",
       "grantReach": "reads",
       "protections": {
-        "ask": ["the-card-before-an-act"],
+        "ask": [
+          "the-card-before-an-act"
+        ],
         "auto": []
       }
-    },
-    "launch": {
-      "freshTimeoutMs": 15000,
-      "resumeTimeoutMs": 15000
     },
     "limitClearsOnSignInChange": true,
     "toolInstructionsInText": false,
     "identityPreamble": false,
     "contextPlacement": "system-prompt",
-    "config": {
-      "homeEnv": "CLAUDE_CONFIG_DIR",
-      "model": "programmatic — tools, the prompt, this session's own tools and any external servers granted to it, as MCP servers and the permission rules kept in this home's settings.json and in the project's .claude/settings.local.json are passed as SDK query() options; the adapter pins settingSources: [] and strictMcpConfig: true, so other file settings here are ignored by design.",
-      "authNote": "auth: Claude Code’s own login (the Keychain on a Mac, its own file on Windows) — the token is injected per launch, never written here",
-      "files": [
-        {
-          "name": ".claude.json",
-          "note": "the SDK's own state — not a file you edit to add tools"
-        },
-        {
-          "name": "settings.json",
-          "note": "this identity's own settings — its permission rules are read at every launch, and nothing else in it is loaded; a rule chosen to outlive one conversation is kept in the project's .claude/settings.local.json, where the CLI keeps it"
-        }
-      ]
-    },
     "apiKey": {
-      "issuer": "Anthropic",
-      "checkUrl": "https://api.anthropic.com/v1/models?limit=100",
-      "spendsToken": true,
-      "header": "x-api-key",
-      "prefix": "",
-      "extraHeaders": {
-        "anthropic-version": "2023-06-01"
-      },
-      "windowsLoginNeedsFile": true
+      "spendsToken": true
     },
     "words": {
       "refusedSignIn": "claude-sign-in",
@@ -170,9 +146,14 @@
         "saysNotReopened": true
       },
       "providerChoice": "'claude' runs the conversation through Claude.",
-      "interruptSummary": "the command that turn is waiting on ends with it, and work it sent to the background keeps running"
+      "interruptSummary": "the command that turn is waiting on ends with it, and work it sent to the background keeps running",
+      "interruptActionSummary": "the command it is waiting on, while work it sent to the background keeps running"
     },
-    "skillReminderPrefix": "brobot:"
+    "skillReminderPrefix": "brobot:",
+    "defaultModelByName": {
+      "model": "default",
+      "effort": "medium"
+    }
   },
   {
     "id": "codex",
@@ -188,9 +169,10 @@
     "connectionKind": "standard",
     "connections": {
       "contractVersion": 1,
-      "authMethods": ["sign-in", "api-key"],
-      "protocol": "codex-app-server",
-      "versionSource": "app-server",
+      "authMethods": [
+        "sign-in",
+        "api-key"
+      ],
       "additionalConnections": false
     },
     "capabilities": {
@@ -276,15 +258,14 @@
     },
     "programName": "Codex",
     "signIn": {
-      "portScope": "machine",
       "profileScoped": true,
       "accountIsSignIn": true,
       "changeWords": "its profile has been signed in to another account since",
-      "manualProbe": false,
-      "refusalCause": null,
-      "retryPattern": null
+      "manualProbe": false
     },
-    "usageWindows": ["weekly"],
+    "usageWindows": [
+      "weekly"
+    ],
     "commandPrefix": "$",
     "defaults": {
       "conversation": true,
@@ -294,49 +275,19 @@
       "autoNote": "⚠ approvals: Auto — nothing is asked · sandbox OFF",
       "grantReach": "writes",
       "protections": {
-        "ask": ["the-card-before-an-act", "the-sandbox-around-an-act"],
+        "ask": [
+          "the-card-before-an-act",
+          "the-sandbox-around-an-act"
+        ],
         "auto": []
       }
-    },
-    "launch": {
-      "freshTimeoutMs": 15000,
-      "resumeTimeoutMs": 60000
     },
     "limitClearsOnSignInChange": false,
     "toolInstructionsInText": true,
     "identityPreamble": true,
     "contextPlacement": "first-message",
-    "config": {
-      "homeEnv": "CODEX_HOME",
-      "model": "file-based — config.toml in this home is where Codex reads its own MCP servers and preferences, and where BroCrew switches this profile's memory on: features.memories, memories.dedicated_tools, memories.use_memories and memories.generate_memories are merged into the tables already there on every launch, and nothing else in the file is touched — and this session's own tools and the external MCP servers this identity was granted, and Codex's planning tool switched on are not in that file at all: they are declared on the wire when the conversation starts. The tools the app-server remembers, so a resumed conversation comes back with the same ones; the servers and the planning switch it does not, so BroCrew sends them again every time it reopens the conversation",
-      "authNote": null,
-      "files": [
-        {
-          "name": "auth.json",
-          "note": "the credential this profile runs on — copied from ~/.codex, or minted here by \"Sign in for this agent\""
-        },
-        {
-          "name": "config.toml",
-          "note": "MCP servers + preferences, and the memory keys above — Codex writes here too, so BroCrew merges and never rewrites it"
-        },
-        {
-          "name": "brobot-kept-tool-approvals.json",
-          "note": "MCP tools always allowed here — declared with their server at every launch, so Codex does not ask about them"
-        },
-        {
-          "name": "rules/default.rules",
-          "note": "Codex's own \"don't ask again for commands that start with …\" rules — Codex writes and reads them itself"
-        }
-      ]
-    },
     "apiKey": {
-      "issuer": "OpenAI",
-      "checkUrl": "https://api.openai.com/v1/models",
-      "spendsToken": false,
-      "header": "authorization",
-      "prefix": "Bearer ",
-      "extraHeaders": {},
-      "windowsLoginNeedsFile": false
+      "spendsToken": false
     },
     "words": {
       "refusedSignIn": "codex-sign-in",
@@ -351,8 +302,10 @@
         "saysNotReopened": false
       },
       "providerChoice": "'codex' runs the conversation through Codex.",
-      "interruptSummary": "the command that turn ran last ends with it unless it has used another tool since, and its other commands keep running"
+      "interruptSummary": "the command that turn ran last ends with it unless it has used another tool since, and its other commands keep running",
+      "interruptActionSummary": "every command that turn started, even one it left running"
     },
-    "skillReminderPrefix": ""
+    "skillReminderPrefix": "",
+    "defaultModelByName": null
   }
 ]
