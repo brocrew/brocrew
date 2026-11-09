@@ -788,7 +788,7 @@ describe('bounded plugin download (portable inert responses)', () => {
       fetcher.mockResolvedValueOnce(response)
       await expect(
         downloadPluginArchive(release, new AbortController().signal),
-      ).rejects.toMatchObject({ code: 'unavailable' })
+      ).rejects.toMatchObject({ code: 'policy-refused', cause: { kind: 'integrity' } })
     }
     fetcher.mockResolvedValueOnce(new Response('abc', { headers: { 'content-length': '3' } }))
     expect(

@@ -159,8 +159,13 @@ const PACKET_SEND_EXEMPTION = {
   bodySha256: '9e2c40d482fe25d52b6d3025900ccba33d4e26130f7003790b7d92d5e875471a',
   calls: [
     {
+      expression: "this.send({ kind: 'progress', id: packet.id, value })",
+      censusText: "if (!finished) this.send({ kind: 'progress', id: packet.id, value })",
+      count: 1,
+    },
+    {
       expression: "this.send({ kind: 'reply', id: packet.id, ok: true, value: value ?? null })",
-      censusText: "this.send({ kind: 'reply', id: packet.id, ok: true, value: value ?? null }),",
+      censusText: "this.send({ kind: 'reply', id: packet.id, ok: true, value: value ?? null })",
       count: 1,
     },
     {
@@ -171,14 +176,18 @@ const PACKET_SEND_EXEMPTION = {
                   value:
                     this.reportRefusals() &&
                     error instanceof PluginSupervisorError &&
-                    ['policy-refused', 'source-mismatch', 'incompatible', 'network'].includes(
-                      error.code,
-                    )
+                    [
+                      'policy-refused',
+                      'source-mismatch',
+                      'incompatible',
+                      'network',
+                      'download-stalled',
+                    ].includes(error.code)
                       ? { pluginRefusal: error.code }
                       : null,
                 })`,
       censusText:
-        "this.send({ kind: 'reply', id: packet.id, ok: false, value: this.reportRefusals() && error instanceof PluginSupervisorError && ['policy-refused', 'source-mismatch', 'incompatible', 'network'].includes( error.code, ) ? { pluginRefusal: error.code } : null, }),",
+        "this.send({ kind: 'reply', id: packet.id, ok: false, value: this.reportRefusals() && error instanceof PluginSupervisorError && [ 'policy-refused', 'source-mismatch', 'incompatible', 'network', 'download-stalled', ].includes(error.code) ? { pluginRefusal: error.code } : null, })",
       count: 1,
     },
     {
@@ -214,7 +223,7 @@ function checkedPacketSource(text: string): ts.SourceFile {
   return source
 }
 
-/** Remove only the three reviewed calls; the discovery itself stays unchanged. */
+/** Remove only the four reviewed calls; the discovery itself stays unchanged. */
 function turnCallsExceptReviewedPackets(files: readonly { path: string; text: string }[]) {
   const calls = turnDoorCalls(files)
   const packetFiles = files.filter((file) => file.path === PACKET_SEND_EXEMPTION.path)
@@ -811,19 +820,22 @@ describe('413 · words the person did not say', () => {
       },
     )
 
-    it('keeps a fourth send in the lifecycle transport in the census', () => {
-      const text = readFileSync(join(mainRoot, PACKET_SEND_EXEMPTION.path), 'utf8')
-      const extra = "this.send({ kind: 'reply', id: 'fictional-extra', ok: true, value: null })"
-      const changed = text.replace(
-        '  close(): void {',
-        `  extra(): void {\n    ${extra}\n  }\n  close(): void {`,
-      )
-      expect(
-        turnCallsExceptReviewedPackets([{ path: PACKET_SEND_EXEMPTION.path, text: changed }]).map(
-          (call) => call.call,
-        ),
-      ).toEqual([extra])
-    })
+    it.each(['reply', 'progress'])(
+      'keeps an unreviewed %s send in the lifecycle census',
+      (kind) => {
+        const text = readFileSync(join(mainRoot, PACKET_SEND_EXEMPTION.path), 'utf8')
+        const extra = `this.send({ kind: '${kind}', id: 'fictional-extra', ok: true, value: null })`
+        const changed = text.replace(
+          '  close(): void {',
+          `  extra(): void {\n    ${extra}\n  }\n  close(): void {`,
+        )
+        expect(
+          turnCallsExceptReviewedPackets([{ path: PACKET_SEND_EXEMPTION.path, text: changed }]).map(
+            (call) => call.call,
+          ),
+        ).toEqual([extra])
+      },
+    )
 
     it('keeps a turn callback stored on an unrelated class', () => {
       const calls = turnDoorCalls([
