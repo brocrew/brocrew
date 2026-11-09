@@ -88,7 +88,7 @@ export async function preparedPeer(root: string, digest: string, installed = fal
         const line = input.slice(0, end + 1)
         input = input.slice(end + 1)
         try {
-          const frame = unpack(key, 'request', line) as {
+          const frame = unpack(line) as {
             challenge: string
             sequence: number
             packet: { kind: string; id: string; value: Record<string, unknown> }
@@ -117,7 +117,7 @@ export async function preparedPeer(root: string, digest: string, installed = fal
               }
               if (!socket.destroyed)
                 socket.write(
-                  pack(key, 'response', {
+                  pack({
                     challenge,
                     sequence: ++sent,
                     packet: { kind: 'reply', id: frame.packet.id, ok, value },

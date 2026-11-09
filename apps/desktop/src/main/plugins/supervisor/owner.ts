@@ -199,7 +199,6 @@ export class PluginSupervisor {
     const owner = new PluginSupervisor(storage, options, {
       version: 1,
       epoch: randomUUID(),
-      key: secret(),
       phase: 'accepting',
       wire: options.wire ?? OWNER_WIRE,
     })
@@ -323,7 +322,7 @@ export class PluginSupervisor {
       let request: Request
       try {
         if (end !== bytes.length - 1) refuse()
-        request = Request.parse(unpack(this.record.key, 'request', bytes.toString('utf8', 0, end)))
+        request = Request.parse(unpack(bytes.toString('utf8', 0, end)))
         if (request.epoch !== this.record.epoch || request.challenge !== challenge) refuse()
       } catch {
         socket.destroy()
@@ -341,7 +340,7 @@ export class PluginSupervisor {
         ) {
           console.error('[plugins] owner refused a held connection for an unknown registration')
           socket.end(
-            pack(this.record.key, 'response', {
+            pack({
               nonce: request.nonce,
               epoch: this.record.epoch,
               ok: false,
@@ -360,7 +359,7 @@ export class PluginSupervisor {
             this.remove(lease, 'released')
         })
         socket.write(
-          pack(this.record.key, 'response', {
+          pack({
             nonce: request.nonce,
             epoch: this.record.epoch,
             ok: true,
@@ -398,7 +397,7 @@ export class PluginSupervisor {
             .then((value) => {
               if (!this.valid(lease.id, lease.epoch)) refuse()
               socket.end(
-                pack(this.record.key, 'response', {
+                pack({
                   nonce: request.nonce,
                   epoch: this.record.epoch,
                   ok: true,
@@ -408,7 +407,7 @@ export class PluginSupervisor {
             })
             .catch(() => {
               socket.end(
-                pack(this.record.key, 'response', {
+                pack({
                   nonce: request.nonce,
                   epoch: this.record.epoch,
                   ok: false,
@@ -432,7 +431,7 @@ export class PluginSupervisor {
         }
       }
       socket.end(
-        pack(this.record.key, 'response', {
+        pack({
           nonce: request.nonce,
           epoch: this.record.epoch,
           ...(result as object),

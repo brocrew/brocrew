@@ -193,7 +193,7 @@ export class SupervisorStorage {
   }
   /** Where the owner with this record listens ({@link localEndpoint}). */
   endpoint(record: OwnerRecord): string {
-    return localEndpoint(this.socket, 'owner', record.key)
+    return localEndpoint(this.socket, 'owner', record.epoch)
   }
   /** Only a fenced, clean successor may remove its own stale socket. A pipe ends with its server. */
   clearSocket(): void {
