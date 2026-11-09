@@ -52,6 +52,7 @@ it.each(['owner-check', 'rpc', 'schema'] as const)(
           'list-tool-health',
           'list-tool-cause',
           'list-startup-diagnostic',
+          'list-tool-starting',
         ].includes(kind)
       ) {
         lists.push(kind)
@@ -67,7 +68,7 @@ it.each(['owner-check', 'rpc', 'schema'] as const)(
       failure = error
     }
     spy.mockRestore()
-    expect(lists).toEqual(stage === 'owner-check' ? [] : ['list-startup-diagnostic'])
+    expect(lists).toEqual(stage === 'owner-check' ? [] : ['list-tool-starting'])
     expect(failure).toBeInstanceOf(PluginStartupError)
     expect(failure).toMatchObject({ catalogueStage: stage })
     if (stage === 'owner-check') {
