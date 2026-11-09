@@ -743,3 +743,8 @@ export const archivedConversation = sqliteTable('archived_conversation', {
   conversationId: text('conversation_id').primaryKey(),
   archivedAt: integer('archived_at').notNull(),
 })
+
+export const signInChange = sqliteTable('sign_in_change', {
+  provider: text('provider').primaryKey(),
+  changedAt: integer('changed_at').notNull(),
+})

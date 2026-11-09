@@ -657,6 +657,12 @@ export const MOVED_INTO_TABLES = {
       ]),
     ),
   }),
+  'sign-in-changes.json': (tables) => ({
+    version: 1,
+    changed: Object.fromEntries(
+      (tables.sign_in_change ?? []).map((row) => [row.provider, row.changed_at]),
+    ),
+  }),
 }
 
 /** `state` with each moved file the database marks as imported rebuilt from its rows. */

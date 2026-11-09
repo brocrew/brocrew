@@ -1,5 +1,5 @@
 import { neutralHostDeps, RecordingSink } from './lib/host-fixture'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -13,10 +13,9 @@ import { resourcesRoot } from '../src/main/resources/resources'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
-  readSignInChanges,
+  importSignInChangesFile,
   SIGN_IN_CHANGES_FILE,
   signInChangesIn,
-  writeSignInChanges,
 } from '../src/main/sign-in-changes'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
@@ -28,12 +27,10 @@ import { ProviderDouble, anOpenGate } from './lib/provider-double'
  * restart and says the receipt — on the 10-minute look, through the host, with one life asked.
  * What it does not reach:
  *
- *  - **§1 · the file of moments, read and written on its own** (`sign-in-changes.ts`). The host
- *    catches whatever the file does, so only a pure call sees it: a folder the write must not make,
- *    a temporary a failed write must not leave, a corrupt file read as no change without a throw,
- *    Codex's moment, and only a real moment taken.
+ *  - **§1 · the moments on their own** (`sign-in-changes.ts`): Codex's moment, and the old
+ *    file's one-time import, taking only real moments and keeping a file it cannot parse.
  *  - **§2 · a moment set aside at the launch is dropped from the file too.** The ahead-of-clock
- *    case asserts only the rows; a launch that set it aside and left it in the file passed.
+ *    case asserts only the rows; a launch that set it aside and left it kept passed.
  *  - **§3 · the look asks only a life that could find a change.** ⛔ Not one older than the last
  *    change noted, ⛔ not one already marked moved, ⛔ and not once the quit has begun. Each was
  *    removable: the look still found the switch a look or two later, or the quit's own clearing hid
@@ -52,87 +49,54 @@ describe('F095 · W4.172’s rest', () => {
   // §1 · the file of moments
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('§1 · the file of moments, on its own', () => {
+  describe('§1 · the moments, on their own', () => {
     let dir: string
+    let db: AppDatabase
     beforeEach(() => {
       dir = mkdtempSync(join(tmpdir(), 'brobot2-sign-in-changes-'))
+      db = openDatabase(join(dir, 'brobot2.sqlite'))
+      applyMigrations(db, migrationsFolder)
     })
     afterEach(() => {
       vi.restoreAllMocks()
+      db.close()
       rmSync(dir, { recursive: true, force: true })
     })
 
-    it('⛔ a write into a folder that is gone fails, and does not bring the folder back', () => {
-      const gone = join(dir, 'gone')
-      expect(() =>
-        writeSignInChanges(
-          join(gone, SIGN_IN_CHANGES_FILE),
-          new Map<Provider, number>([['claude', 1]]),
-        ),
-      ).toThrow()
-      expect(existsSync(gone)).toBe(false)
-      // ⚑ The control: into a folder that is there, the same write goes and reads back.
-      const file = join(dir, SIGN_IN_CHANGES_FILE)
-      writeSignInChanges(file, new Map<Provider, number>([['claude', 1]]))
-      expect(readSignInChanges(file).get('claude')).toBe(1)
-    })
-
-    it('⛔ a write whose rename fails leaves no temporary behind — one that goes leaves only the file', () => {
-      // ⛔ A folder, with something in it, at the file's own name: the rename onto it fails.
-      const file = join(dir, SIGN_IN_CHANGES_FILE)
-      mkdirSync(file)
-      writeFileSync(join(file, 'inside'), 'x')
-      expect(() => writeSignInChanges(file, new Map<Provider, number>([['claude', 1]]))).toThrow()
-      expect(readdirSync(dir)).toEqual([SIGN_IN_CHANGES_FILE])
-
-      // ⚑ The control: with the way clear, the write goes, and nothing but the file is left.
-      rmSync(file, { recursive: true, force: true })
-      writeSignInChanges(file, new Map<Provider, number>([['claude', 1]]))
-      expect(readdirSync(dir)).toEqual([SIGN_IN_CHANGES_FILE])
-      expect(readSignInChanges(file).get('claude')).toBe(1)
-    })
-
-    it('⛔ a file that is not JSON is no change seen, said, and not thrown — a file not there is said by nothing', () => {
-      const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
-      const file = join(dir, SIGN_IN_CHANGES_FILE)
-      // ⚑ The control: no file is no change, and no sentence.
-      expect(readSignInChanges(file).size).toBe(0)
-      expect(warned).not.toHaveBeenCalled()
-
-      writeFileSync(file, 'not json')
-      expect(() => readSignInChanges(file)).not.toThrow()
-      expect(readSignInChanges(file).size).toBe(0)
-      expect(warned).toHaveBeenCalledWith(expect.stringContaining('could not be read'))
-    })
-
-    it('🔴 Codex’s moment is kept and read, beside Claude’s', () => {
-      const file = join(dir, SIGN_IN_CHANGES_FILE)
-      writeSignInChanges(
-        file,
+    it('🔴 Codex’s moment is kept and read, beside Claude’s, and a write replaces them whole', () => {
+      const kept = signInChangesIn(db)
+      kept.write(
         new Map<Provider, number>([
           ['claude', 1_700_000_000_000],
           ['codex', 1_700_000_001_234],
         ]),
       )
-      const read = readSignInChanges(file)
+      const read = signInChangesIn(db).read()
       expect(read.get('codex')).toBe(1_700_000_001_234)
       expect(read.get('claude')).toBe(1_700_000_000_000)
+      kept.write(new Map<Provider, number>([['codex', 5]]))
+      expect([...kept.read()]).toEqual([['codex', 5]])
     })
 
-    it('⛔ only a real moment is taken: zero, a negative and a string are none — a positive number is one', () => {
+    it('⛔ the old file is imported once, taking only real moments, then deleted', () => {
       const file = join(dir, SIGN_IN_CHANGES_FILE)
       writeFileSync(
         file,
-        JSON.stringify({ version: 1, changed: { claude: 0, codex: '1700000000000' } }),
+        JSON.stringify({ version: 1, changed: { claude: 0, codex: 7, other: 9 } }),
       )
-      expect(readSignInChanges(file).size).toBe(0)
-      writeFileSync(file, JSON.stringify({ version: 1, changed: { claude: -5 } }))
-      expect(readSignInChanges(file).size).toBe(0)
-      // ⚑ The control: the same file with real moments reads both.
-      writeFileSync(file, JSON.stringify({ version: 1, changed: { claude: 5, codex: 7 } }))
-      const read = readSignInChanges(file)
-      expect(read.get('claude')).toBe(5)
-      expect(read.get('codex')).toBe(7)
+      importSignInChangesFile(db, dir)
+      expect([...signInChangesIn(db).read()]).toEqual([['codex', 7]])
+      expect(existsSync(file)).toBe(false)
+    })
+
+    it('⛔ an old file that is not JSON is kept, imports nothing, and does not throw', () => {
+      const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const file = join(dir, SIGN_IN_CHANGES_FILE)
+      writeFileSync(file, 'not json')
+      expect(() => importSignInChangesFile(db, dir)).not.toThrow()
+      expect(signInChangesIn(db).read().size).toBe(0)
+      expect(existsSync(file)).toBe(true)
+      expect(warned).toHaveBeenCalled()
     })
   })
 
@@ -170,7 +134,7 @@ describe('F095 · W4.172’s rest', () => {
         newSessionId: () => `sess_${String(++counter)}`,
         commandListWaitMs: 200,
         afterALimitResetsMs: 20,
-        signInChanges: signInChangesIn(userData),
+        signInChanges: signInChangesIn(db),
         readProviderConfig: (_provider, home) => ({
           home,
           homeEnv: 'CLAUDE_CONFIG_DIR',
@@ -305,10 +269,8 @@ describe('F095 · W4.172’s rest', () => {
 
     it('⛔ §2 · a kept moment still ahead of the clock is set aside and dropped from the file — a moment behind it stays', async () => {
       await host.closeAll()
-      const file = join(userData, SIGN_IN_CHANGES_FILE)
       const behind = Date.now() - 60_000
-      writeSignInChanges(
-        file,
+      signInChangesIn(db).write(
         new Map<Provider, number>([
           ['claude', Date.now() + 86_400_000],
           ['codex', behind],
@@ -324,7 +286,7 @@ describe('F095 · W4.172’s rest', () => {
       // ⚑ Set aside: the wall holds.
       expect(host.limitsForAPerson().rows).toHaveLength(1)
       // ⛔ …and gone from the file, so the next launch does not set it aside again forever.
-      const kept = readSignInChanges(file)
+      const kept = signInChangesIn(db).read()
       expect(kept.has('claude')).toBe(false)
       // ⚑ The control: the file was rewritten, not emptied — the moment behind the clock is kept.
       expect(kept.get('codex')).toBe(behind)
