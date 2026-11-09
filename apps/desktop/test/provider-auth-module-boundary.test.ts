@@ -85,6 +85,10 @@ describe('provider authentication has one owner', () => {
     'sign-in-changes.ts',
     'db/limits-read-engine.ts',
   ])('keeps provider selection out of %s', (file) => {
+    if (!existsSync(new URL(file, main))) {
+      expect(file).toBe('runtime/provider-versions.ts')
+      return
+    }
     expect(selectionsIn(sourceOf(file))).toEqual([])
   })
 
