@@ -177,6 +177,7 @@ beforeEach(() => {
 
 afterEach(() => {
   updates?.stop()
+  vi.unstubAllEnvs()
   if (platformDescriptor !== undefined)
     Object.defineProperty(process, 'platform', platformDescriptor)
   updates = null
@@ -226,6 +227,13 @@ for (const platform of ['win32', 'darwin'] as const) {
     })
   }
 }
+
+it.each(['1', undefined])('honours the rehearsal update-check flag %s', async (flag) => {
+  vi.stubEnv('BROCREW_SKIP_UPDATE_CHECK', flag)
+  start()
+  await ask(UPDATES_CHANNELS.checkNow)
+  expect(fake.checks).toBe(flag === '1' ? 0 : 1)
+})
 
 it('keeps a development build from checking even when the window asks', async () => {
   start(false)

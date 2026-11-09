@@ -177,6 +177,7 @@ jobs:
         shell: bash
         env:
           UPGRADE_PATH_TLS_DIR: upgrade-path-tls
+          BROCREW_SKIP_UPDATE_CHECK: '1'
         run: >-
           node scripts/upgrade-path.mjs --os windows
           --beta-tag "$WINDOWS_BETA" --beta-release upgrade-path-evidence/beta-release.json
@@ -252,6 +253,8 @@ jobs:
           "$HOME/.local/bin/claude" --version
 
       - name: Install the beta, make data with it, replace it with the candidate, and check
+        env:
+          BROCREW_SKIP_UPDATE_CHECK: '1'
         run: >-
           node scripts/upgrade-path.mjs --os mac
           --beta-tag "$MAC_BETA" --beta-release upgrade-path-evidence/beta-release.json

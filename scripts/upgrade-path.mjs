@@ -896,6 +896,9 @@ async function launch(stage, port) {
       join(evidence, `${stage}.stdout.log`),
       '--stderr',
       log,
+      ...(process.env.BROCREW_SKIP_UPDATE_CHECK === '1'
+        ? ['--env', 'BROCREW_SKIP_UPDATE_CHECK=1']
+        : []),
       installedExe,
       '--args',
       ...debugging,

@@ -140,6 +140,7 @@ export function startUpdates(options: {
       write: (chosen) => writeUpdateSettings(settings.file, chosen),
     },
     check: async (channel: UpdateChannel): Promise<FoundUpdate | null> => {
+      if (process.env.BROCREW_SKIP_UPDATE_CHECK === '1') return null
       const autoUpdater = await theUpdater()
       autoUpdater.allowPrerelease = channel === 'beta'
       const result = await autoUpdater.checkForUpdates()
