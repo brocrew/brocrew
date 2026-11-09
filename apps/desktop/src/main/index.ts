@@ -928,10 +928,10 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     },
     // Resolve the bundled Codex by absolute path, independent of PATH and the user's installed
     // version. Resolve per launch so a missing binary is reported on the command that needs it.
-    createRuntime: (provider, connection) => providerModules[provider].createRuntime(connection),
+    createRuntime: (provider) => providerModules[provider].createRuntime(),
     prepareProviderLaunch: (provider, profileId, connection) => {
       transcriptRetention?.beforeLaunch()
-      return providerModules[provider].prepareLaunch!(profileId, connection)
+      return providerModules[provider].prepareLaunch(profileId, connection)
     },
     connectionFor: (provider, connectionId) => {
       const connections = providerModules[provider].connections
@@ -944,9 +944,9 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     beforeProviderLaunch: async () => {
       transcriptRetention?.beforeLaunch()
     },
-    prepareProviderHome: async (provider, profileId, connection) => {
+    prepareProviderHome: async (provider, profileId) => {
       transcriptRetention?.beforeLaunch()
-      return providerModules[provider].home.prepare(profileId, connection)
+      return providerModules[provider].home.prepare(profileId)
     },
     prepareBuiltInSkills: ({ pack, ...input }) =>
       prepareBuiltInSkills({

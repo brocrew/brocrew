@@ -6,7 +6,7 @@ import {
 } from '@brobot2/runtime'
 import type { LaunchRefusal } from '../../shared/runtime-ipc'
 import { SUPPORTED_PROVIDERS } from '@brobot2/shared'
-import { providerAuthPolicies } from '../providers/auth-definitions'
+import { providerAuthPolicies } from '../providers/index'
 import { unavailableOf } from './session-unavailable'
 
 /**

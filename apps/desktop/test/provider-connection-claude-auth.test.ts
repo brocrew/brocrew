@@ -10,7 +10,7 @@ import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { resolveProviderConnection } from '../src/main/db/provider-connections'
-import { claudeRuntime, createClaudeModule } from '../src/main/providers/claude'
+import { createClaudeModule } from '../src/main/providers/claude'
 
 const native = vi.hoisted(() => ({
   queryFactory: vi.fn<(params: unknown) => ClaudeQuery>(),
@@ -81,6 +81,24 @@ afterEach(async () => {
   rmSync(dir, { recursive: true, force: true })
 })
 
+function moduleOn(key: () => string | null | Promise<string | null>) {
+  return createClaudeModule({
+    managedRoot: dir,
+    defaultProfile: 'fictional-profile',
+    homeOf: () => join(dir, 'claude'),
+    profiles: () => ['fictional-profile'],
+    assertMayOpen: () => {},
+  }, {
+    runtime: { program: () => '/fictional/claude', key },
+    home: {
+      key,
+      login: async () => native.login(),
+      provisionHome: (_root, home) => { mkdirSync(home, { recursive: true }) },
+    },
+    auth: {},
+  })
+}
+
 for (const operation of ['start', 'resume', 'models'] as const) {
   for (const method of ['sign-in', 'api-key'] as const) {
     it(`Claude ${operation}: keeps the selected ${method} method when the saved key changes during its read`, async () => {
@@ -102,14 +120,7 @@ for (const operation of ['start', 'resume', 'models'] as const) {
         keys.remove('claude')
         return key
       })
-      const runtime = claudeRuntime(
-        {
-          program: () => '/fictional/claude',
-          key: readKey,
-          launchLogin: async () => native.login(),
-        },
-        connection,
-      )
+      const { runtime } = await moduleOn(readKey).prepareLaunch('fictional-profile', connection)
       const options = { cwd: dir, providerHome: home }
       if (operation === 'models') {
         expect(await runtime.listModels(options)).toEqual([])
@@ -149,24 +160,7 @@ for (const operation of ['start', 'resume', 'models'] as const) {
     keys.remove('claude')
     const home = join(dir, 'claude')
     mkdirSync(home)
-    const runtime = claudeRuntime(
-      {
-        program: () => '/fictional/claude',
-        key: () => keys.read('claude'),
-        launchLogin: async () => native.login(),
-      },
-      connection,
-    )
-    const options = { cwd: dir, providerHome: home }
-    const pending =
-      operation === 'models'
-        ? runtime.listModels(options)
-        : operation === 'start'
-          ? runtime.start(options)
-          : runtime.resume(
-              { provider: 'claude', sessionId: 'fictional-native', cwd: dir, rotation: 0 },
-              options,
-            )
+    const pending = moduleOn(() => keys.read('claude')).prepareLaunch('fictional-profile', connection)
     await expect(pending).rejects.toThrow('The selected API key is unavailable')
     expect(native.queryFactory).not.toHaveBeenCalled()
     expect(native.login).not.toHaveBeenCalled()
@@ -204,7 +198,7 @@ for (const method of ['sign-in', 'api-key'] as const) {
         auth: {},
       },
     )
-    const prepared = await module.prepareLaunch!('fictional-profile', connection)
+    const prepared = await module.prepareLaunch('fictional-profile', connection)
     native.queryFactory.mockReturnValue(new Query())
     expect(await prepared.runtime.listModels({ providerHome: prepared.home })).toEqual([])
     expect(readKey).toHaveBeenCalledTimes(method === 'api-key' ? 1 : 0)

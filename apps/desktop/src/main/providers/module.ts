@@ -38,7 +38,7 @@ export interface HomeAuthOperations {
  * those folders, or first provide a profile registry. Existing conversations keep their paths.
  */
 export interface ProviderHomeStrategy {
-  prepare(profileId: string, connection?: ProviderConnection): Promise<string>
+  prepare(profileId: string): Promise<string>
 }
 
 /** Metadata only; providers retain all existing credential and state operations. */
@@ -63,8 +63,8 @@ export interface ProviderModule {
   readonly skills: import('./skill-policy').SkillPolicy
   readonly keptRules: import('./kept-rule-policy').KeptRulePolicy
   /** A fresh runtime for this launch; the program is resolved only when called. */
-  createRuntime(connection?: ProviderConnection): AgentRuntime
-  prepareLaunch?(
+  createRuntime(): AgentRuntime
+  prepareLaunch(
     profileId: string,
     connection?: ProviderConnection,
   ): Promise<PreparedProviderLaunch>

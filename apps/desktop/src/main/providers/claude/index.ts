@@ -1,4 +1,3 @@
-import type { ProviderConnection } from '@brobot2/shared'
 import { keptRules } from './kept-rules'
 import { authPolicy } from './auth-policy'
 import { machineLoginPresence } from './backing-login'
@@ -107,25 +106,8 @@ export async function prepareOnTheLogin(
   }
 }
 
-function keyForConnection(
-  key: ClaudeRuntimeSeams['key'],
-  connection?: ProviderConnection,
-): ClaudeRuntimeSeams['key'] {
-  if (connection === undefined) return key
-  if (connection.authMethod === 'sign-in') return () => null
-  return async () => {
-    const selected = await key?.()
-    if (selected == null || selected === '')
-      throw new AuthUnavailableError('claude', 'The selected API key is unavailable')
-    return selected
-  }
-}
-
-export function claudeRuntime(
-  seams: ClaudeRuntimeSeams,
-  connection?: ProviderConnection,
-): AgentRuntime {
-  const key = keyForConnection(seams.key, connection)
+export function claudeRuntime(seams: ClaudeRuntimeSeams): AgentRuntime {
+  const key = seams.key
   return new ClaudeRuntime(
     undefined,
     undefined,
@@ -146,11 +128,10 @@ export async function prepareClaudeHome(
   paths: ProviderHomePaths,
   profileId: string,
   seams: ClaudeHomeSeams,
-  connection?: ProviderConnection,
 ): Promise<string> {
   const home = await prepareStateHome(paths, profileId, seams.provisionHome)
 
-  const key = keyForConnection(seams.key, connection)
+  const key = seams.key
   const health = await (seams.health ?? (() => claudeHealth(key, claudeCommandFor(seams))))()
   if (!health.ok) {
     throw new AuthUnavailableError('claude', health.reason ?? 'Claude machine login unavailable')
@@ -251,11 +232,10 @@ export interface ClaudeModuleSeams {
 
 export const claudeModuleFactory = {
   runtime:
-    (seams: ClaudeRuntimeSeams): ((connection?: ProviderConnection) => AgentRuntime) =>
-    (connection) =>
-      claudeRuntime(seams, connection),
+    (seams: ClaudeRuntimeSeams): (() => AgentRuntime) =>
+    () => claudeRuntime(seams),
   home: (paths: ProviderHomePaths, seams: ClaudeHomeSeams): ProviderHomeStrategy => ({
-    prepare: (profileId, connection) => prepareClaudeHome(paths, profileId, seams, connection),
+    prepare: (profileId) => prepareClaudeHome(paths, profileId, seams),
   }),
   auth: claudeAuth,
 }
@@ -278,7 +258,10 @@ export function createClaudeModule(
     async prepareLaunch(profileId, connection) {
       let key: string | null
       try {
-        key = (await keyForConnection(seams.runtime.key ?? seams.home.key, connection)?.()) ?? null
+        const readKey = seams.runtime.key ?? seams.home.key
+        key = connection?.authMethod === 'sign-in' ? null : (await readKey?.()) ?? null
+        if (connection?.authMethod === 'api-key' && !key)
+          throw new AuthUnavailableError('claude', 'The selected API key is unavailable')
       } catch (error) {
         if (error instanceof ApiKeyUnreadableError)
           throw new AuthUnavailableError('claude', error.message)

@@ -58,7 +58,7 @@ function fixture(provider: Provider) {
   )
   const selected = modules[provider].connections!.resolve()
   return {
-    runtime: modules[provider].createRuntime(selected),
+    runtime: modules[provider].createRuntime(),
     resolve,
     key,
     selected,
