@@ -64,7 +64,10 @@ export interface ProviderModule {
   readonly keptRules: import('./kept-rule-policy').KeptRulePolicy
   /** A fresh runtime for this launch; the program is resolved only when called. */
   createRuntime(connection?: ProviderConnection): AgentRuntime
-  prepareLaunch?(profileId: string, connection?: ProviderConnection): Promise<PreparedProviderLaunch>
+  prepareLaunch?(
+    profileId: string,
+    connection?: ProviderConnection,
+  ): Promise<PreparedProviderLaunch>
   /** Bound by the desktop composition; legacy runtime-only constructions may omit it. */
   readonly connections?: ProviderConnectionOperations
   readonly home: ProviderHomeStrategy

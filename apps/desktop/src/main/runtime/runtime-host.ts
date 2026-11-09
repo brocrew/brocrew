@@ -21231,7 +21231,11 @@ export class RuntimeHost implements LiveHost {
     profileId: string,
     sessionId?: string,
     connection?: ProviderConnection,
-  ): Promise<{ readonly home: string; readonly loginRenewed: boolean; readonly runtime?: AgentRuntime }> {
+  ): Promise<{
+    readonly home: string
+    readonly loginRenewed: boolean
+    readonly runtime?: AgentRuntime
+  }> {
     const barrier = this.homeCopyBarriers.get(profileSignInKey(provider, profileId))
     const launch = sessionId === undefined ? undefined : this.slots.get(sessionId)?.launch
     if (barrier !== undefined) {
@@ -21386,12 +21390,11 @@ export class RuntimeHost implements LiveHost {
     const connection = recorded
       ? this.deps.connectionFor?.(input.provider, this.deps.store.connectionOf(id))
       : this.deps.connectionFor?.(input.provider)
-    const { home: providerHome, loginRenewed, runtime: preparedRuntime } = await this.prepareAHome(
-      input.provider,
-      profileId,
-      id,
-      connection,
-    )
+    const {
+      home: providerHome,
+      loginRenewed,
+      runtime: preparedRuntime,
+    } = await this.prepareAHome(input.provider, profileId, id, connection)
     // ⛔ **Asked again now the home exists, because the first answer was about a different disk**
     // (265 §4). The claim above covers every creation in THIS host; a variant laid down while we
     // waited — another BroBot tree over the same `userData`, or a person making the directory — is
@@ -21419,8 +21422,9 @@ export class RuntimeHost implements LiveHost {
     // The runtime first: it is made with the program it runs, so a program this computer lacks is
     // refused here in its own words, before a model list is asked whose failure would read as a
     // list that names no model.
-    const rawRuntime = preparedRuntime ?? (
-      connection === undefined
+    const rawRuntime =
+      preparedRuntime ??
+      (connection === undefined
         ? this.deps.createRuntime(input.provider)
         : this.deps.createRuntime(input.provider, connection))
     // 🔴 **D-042 · R1 — every start names its model and effort** (024's effort, 038's model): what
@@ -39112,8 +39116,9 @@ export class RuntimeHost implements LiveHost {
         await this.deps.beforeProviderLaunch()
         launch.signal.throwIfAborted()
       }
-      const runtime = preparedRuntime ?? (
-        connection === undefined
+      const runtime =
+        preparedRuntime ??
+        (connection === undefined
           ? this.deps.createRuntime(provider)
           : this.deps.createRuntime(provider, connection))
       const listing = runtime.listModels({ providerHome, signal: launch.signal })
@@ -40146,12 +40151,11 @@ export class RuntimeHost implements LiveHost {
       row.provider,
       this.deps.store.connectionOf(sessionId),
     )
-    const { home: providerHome, loginRenewed, runtime: preparedRuntime } = await this.prepareAHome(
-      row.provider,
-      profileId,
-      sessionId,
-      connection,
-    )
+    const {
+      home: providerHome,
+      loginRenewed,
+      runtime: preparedRuntime,
+    } = await this.prepareAHome(row.provider, profileId, sessionId, connection)
     // Null only for rows written before the mode was recorded, and for adopted ones we never
     // ran; those resume PROMPTING, which is the safe direction — never the other way round.
     const approvalMode = row.approvalMode ?? 'ask'
@@ -40190,8 +40194,9 @@ export class RuntimeHost implements LiveHost {
     const recordedModel = row.model ?? undefined
     // The runtime first, as a start makes it: a missing program is refused in its own words, never
     // as a list that names no model.
-    const rawRuntime = preparedRuntime ?? (
-      connection === undefined
+    const rawRuntime =
+      preparedRuntime ??
+      (connection === undefined
         ? this.deps.createRuntime(row.provider)
         : this.deps.createRuntime(row.provider, connection))
     const selected = await this.theSelectedModel(row.provider, row.profileId, profileId, {

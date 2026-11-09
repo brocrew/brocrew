@@ -35,7 +35,12 @@ import {
   type SessionHandle,
   type SessionRef,
 } from '../src/index'
-import { ClaudeRuntime, ClaudeSessionHandle, claudeProjectDirName, type ClaudeQuery } from '../src/claude'
+import {
+  ClaudeRuntime,
+  ClaudeSessionHandle,
+  claudeProjectDirName,
+  type ClaudeQuery,
+} from '../src/claude'
 import { TODO_TOOLS } from '../src/claude/todo-plan'
 import { MAX_PERMISSION_DETAIL_CHARS, runtimeEventSchema } from '../src/events'
 import { TheCliAnswersInOrder } from './the-cli-answers-in-order'

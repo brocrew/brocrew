@@ -13,10 +13,7 @@
     "connectionKind": "standard",
     "connections": {
       "contractVersion": 1,
-      "authMethods": [
-        "sign-in",
-        "api-key"
-      ],
+      "authMethods": ["sign-in", "api-key"],
       "additionalConnections": false
     },
     "capabilities": {
@@ -107,10 +104,7 @@
       "changeWords": "this computer has moved on to a different one since — a renewal counts",
       "manualProbe": true
     },
-    "usageWindows": [
-      "5-hour",
-      "weekly"
-    ],
+    "usageWindows": ["5-hour", "weekly"],
     "commandPrefix": "/",
     "defaults": {
       "conversation": false,
@@ -120,9 +114,7 @@
       "autoNote": "⚠ approvals: Auto — nothing is asked",
       "grantReach": "reads",
       "protections": {
-        "ask": [
-          "the-card-before-an-act"
-        ],
+        "ask": ["the-card-before-an-act"],
         "auto": []
       }
     },
@@ -169,10 +161,7 @@
     "connectionKind": "standard",
     "connections": {
       "contractVersion": 1,
-      "authMethods": [
-        "sign-in",
-        "api-key"
-      ],
+      "authMethods": ["sign-in", "api-key"],
       "additionalConnections": false
     },
     "capabilities": {
@@ -263,9 +252,7 @@
       "changeWords": "its profile has been signed in to another account since",
       "manualProbe": false
     },
-    "usageWindows": [
-      "weekly"
-    ],
+    "usageWindows": ["weekly"],
     "commandPrefix": "$",
     "defaults": {
       "conversation": true,
@@ -275,10 +262,7 @@
       "autoNote": "⚠ approvals: Auto — nothing is asked · sandbox OFF",
       "grantReach": "writes",
       "protections": {
-        "ask": [
-          "the-card-before-an-act",
-          "the-sandbox-around-an-act"
-        ],
+        "ask": ["the-card-before-an-act", "the-sandbox-around-an-act"],
         "auto": []
       }
     },

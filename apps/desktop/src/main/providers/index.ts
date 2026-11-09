@@ -75,7 +75,6 @@ export function providerAuthFromModules(modules: ProviderModules): ProviderAuthO
   return forwardAuth(providerRecord((provider) => modules[provider].auth))
 }
 
-
 /** Use the caches already bound by each provider; legacy runtime-only modules have no versions. */
 export function providerVersionsFromModules(
   modules: ProviderModules,

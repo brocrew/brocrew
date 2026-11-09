@@ -62,7 +62,9 @@ function fixture(provider: Provider) {
     resolve,
     key,
     selected,
-    change: () => { current = record(provider, 'api-key') },
+    change: () => {
+      current = record(provider, 'api-key')
+    },
   }
 }
 
@@ -77,7 +79,8 @@ for (const provider of ['claude', 'codex'] as const) {
   it(`${provider}: forwards the original handle and allocation callback after metadata changes`, async () => {
     const f = fixture(provider)
     const raw = await new FakeRuntime(provider).start({
-      cwd: '/fictional/fern', providerHome: '/fictional/state',
+      cwd: '/fictional/fern',
+      providerHome: '/fictional/state',
     })
     handles.push(raw)
     const start = vi.spyOn(f.runtime, 'start').mockImplementation(async (options) => {
@@ -86,7 +89,11 @@ for (const provider of ['claude', 'codex'] as const) {
       return raw
     })
     const callback = vi.fn()
-    const options = { cwd: '/fictional/fern', providerHome: '/fictional/state', onSessionCreated: callback }
+    const options = {
+      cwd: '/fictional/fern',
+      providerHome: '/fictional/state',
+      onSessionCreated: callback,
+    }
     const handle = await f.runtime.start(options)
     expect(handle).toBe(raw)
     expect(callback).toHaveBeenCalledExactlyOnceWith(raw)
@@ -114,7 +121,12 @@ for (const provider of ['claude', 'codex'] as const) {
 
   it(`${provider}: preserves the native typed resume refusal and its thread identity`, async () => {
     const f = fixture(provider)
-    const ref: SessionRef = { provider, sessionId: 'fictional-old', cwd: '/fictional/original', rotation: 0 }
+    const ref: SessionRef = {
+      provider,
+      sessionId: 'fictional-old',
+      cwd: '/fictional/original',
+      rotation: 0,
+    }
     const refusal = new ResumeError(ref, 'fictional missing rollout', { noSuchSession: true })
     const resume = vi.spyOn(f.runtime, 'resume').mockRejectedValueOnce(refusal)
     const context = { providerHome: '/fictional/state' }
@@ -128,45 +140,71 @@ for (const provider of ['claude', 'codex'] as const) {
     const f = fixture(provider)
     const controller = new AbortController()
     controller.abort()
-    await expect(f.runtime.start({
-      cwd: '/fictional/fern', providerHome: '/fictional/state', signal: controller.signal,
-    })).rejects.toThrow()
-    await expect(f.runtime.resume({
-      provider: provider === 'claude' ? 'codex' : 'claude', sessionId: 'fictional-old',
-      cwd: '/fictional/original', rotation: 0,
-    }, { providerHome: '/fictional/state' })).rejects.toBeInstanceOf(ResumeError)
+    await expect(
+      f.runtime.start({
+        cwd: '/fictional/fern',
+        providerHome: '/fictional/state',
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow()
+    await expect(
+      f.runtime.resume(
+        {
+          provider: provider === 'claude' ? 'codex' : 'claude',
+          sessionId: 'fictional-old',
+          cwd: '/fictional/original',
+          rotation: 0,
+        },
+        { providerHome: '/fictional/state' },
+      ),
+    ).rejects.toBeInstanceOf(ResumeError)
     expect(f.key).not.toHaveBeenCalled()
   })
 
   it(`${provider}: preserves an allocated native refusal and actual exit proof without replacement`, async () => {
     const f = fixture(provider)
     const handle = await new FakeRuntime(provider).start({
-      cwd: '/fictional/fern', providerHome: '/fictional/state',
+      cwd: '/fictional/fern',
+      providerHome: '/fictional/state',
     })
     handles.push(handle)
     let finish!: () => void
-    const exit = new Promise<void>((resolve) => { finish = resolve })
+    const exit = new Promise<void>((resolve) => {
+      finish = resolve
+    })
     Object.defineProperty(handle, 'awaitProcessExit', { value: () => exit })
-    const refused = new RejectedSessionLaunch(new Error('fictional handshake refusal'), handle, handle.close())
+    const refused = new RejectedSessionLaunch(
+      new Error('fictional handshake refusal'),
+      handle,
+      handle.close(),
+    )
     vi.spyOn(f.runtime, 'start').mockImplementation(async (options) => {
       options.onSessionCreated?.(handle)
       throw refused
     })
     const callback = vi.fn()
     try {
-      await expect(f.runtime.start({
-        cwd: '/fictional/fern', providerHome: '/fictional/state', onSessionCreated: callback,
-      })).rejects.toBe(refused)
+      await expect(
+        f.runtime.start({
+          cwd: '/fictional/fern',
+          providerHome: '/fictional/state',
+          onSessionCreated: callback,
+        }),
+      ).rejects.toBe(refused)
       expect(callback).toHaveBeenCalledExactlyOnceWith(handle)
       expect(refused.processExit).toBe(exit)
       let exited = false
-      void refused.terminated.then(() => { exited = true })
+      void refused.terminated.then(() => {
+        exited = true
+      })
       await Promise.resolve()
       expect(exited).toBe(false)
       finish()
       await refused.terminated
       expect(exited).toBe(true)
-    } finally { finish() }
+    } finally {
+      finish()
+    }
   })
 }
 

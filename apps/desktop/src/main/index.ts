@@ -928,8 +928,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
     },
     // Resolve the bundled Codex by absolute path, independent of PATH and the user's installed
     // version. Resolve per launch so a missing binary is reported on the command that needs it.
-    createRuntime: (provider, connection) =>
-      providerModules[provider].createRuntime(connection),
+    createRuntime: (provider, connection) => providerModules[provider].createRuntime(connection),
     prepareProviderLaunch: (provider, profileId, connection) => {
       transcriptRetention?.beforeLaunch()
       return providerModules[provider].prepareLaunch!(profileId, connection)

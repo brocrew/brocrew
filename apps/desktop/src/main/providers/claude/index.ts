@@ -121,7 +121,10 @@ function keyForConnection(
   }
 }
 
-export function claudeRuntime(seams: ClaudeRuntimeSeams, connection?: ProviderConnection): AgentRuntime {
+export function claudeRuntime(
+  seams: ClaudeRuntimeSeams,
+  connection?: ProviderConnection,
+): AgentRuntime {
   const key = keyForConnection(seams.key, connection)
   return new ClaudeRuntime(
     undefined,
@@ -288,9 +291,14 @@ export function createClaudeModule(
       const home = await prepareClaudeHome(paths, profileId, {
         ...seams.home,
         key: selectedKey,
-        health: seams.home.health ?? (() => claudeHealth(selectedKey, claudeCommandFor(seams.home), selectedLogin)),
+        health:
+          seams.home.health ??
+          (() => claudeHealth(selectedKey, claudeCommandFor(seams.home), selectedLogin)),
       })
-      return { home, runtime: claudeRuntime({ ...seams.runtime, key: selectedKey, launchLogin: selectedLogin }) }
+      return {
+        home,
+        runtime: claudeRuntime({ ...seams.runtime, key: selectedKey, launchLogin: selectedLogin }),
+      }
     },
     home: claudeModuleFactory.home(paths, seams.home),
     auth: claudeModuleFactory.auth(paths, seams.auth),

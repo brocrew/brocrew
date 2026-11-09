@@ -153,12 +153,15 @@ function keyForConnection(
   }
   return {
     change: (home, change) => key.change(home, change),
-    current: connection.authMethod === 'sign-in' ? () => null : async () => {
-      const selected = await key.current()
-      if (selected === null)
-        throw new AuthUnavailableError('codex', 'The selected API key is unavailable')
-      return selected
-    },
+    current:
+      connection.authMethod === 'sign-in'
+        ? () => null
+        : async () => {
+            const selected = await key.current()
+            if (selected === null)
+              throw new AuthUnavailableError('codex', 'The selected API key is unavailable')
+            return selected
+          },
   }
 }
 
@@ -351,10 +354,14 @@ export function createCodexModule(
           throw new AuthUnavailableError('codex', error.message)
         throw error
       }
-      const key = reader === undefined ? undefined : {
-        current: () => current,
-        change: (home: string, change: Parameters<CodexKeySeam['change']>[1]) => reader.change(home, change),
-      }
+      const key =
+        reader === undefined
+          ? undefined
+          : {
+              current: () => current,
+              change: (home: string, change: Parameters<CodexKeySeam['change']>[1]) =>
+                reader.change(home, change),
+            }
       const home = await prepareCodexHome(paths, profileId, { ...seams.home, key })
       return { home, runtime: codexRuntime(seams.runtime) }
     },
