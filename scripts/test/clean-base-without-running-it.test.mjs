@@ -26,7 +26,6 @@ import {
   WORKSPACE,
   WORKSPACES,
   WORKSPACES_PART,
-  PROFILE_EXECUTION_PART,
 } from '../lib/clean-base.mjs'
 import { trustedAnchor } from '../lib/safe-remove.mjs'
 import { defaultUserData, pastedImagesRoot } from '../lib/user-data.mjs'
@@ -134,9 +133,6 @@ describe('§1 · the source census — a new durable write under userData must n
       "'brobot2.sqlite'",
       "'exports'",
       "'one-host.sock'",
-      // Which profiles are services, and each service's one conversation. REMOVED with the ledger
-      // whose profiles and conversations it names (`LEDGER`).
-      "'profile-execution.json'",
       // ⚑ The account the usage readings were read on. REMOVED with them (`USAGE`).
       "'provider-accounts.json'",
       // ⚑ **The updater's, in a hidden launch's data folder** — its own switch and the Mac image it
@@ -156,6 +152,7 @@ describe('§1 · the source census — a new durable write under userData must n
       'DATABASE_FILE',
       // Shared skill folders and their import receipts are removed with the workspace.
       'OFF_SKILLS_DIRNAME',
+      'PROFILE_EXECUTION_FILE',
       'PROVIDER_HOMES_DIRNAME',
       'PROVIDER_USAGE_FILE',
       // The records of a restore, and the database a restore set aside (`RECOVERY`).
@@ -563,22 +560,18 @@ describe('§10d · the file older builds kept scheduled-job attempts in', () => 
   })
 })
 
-describe('§10e · how each profile runs its work', () => {
-  it('⚑ goes with the ledger whose profiles and conversations it names, a write a kill left too — and the pattern is the product’s own', () => {
-    expect(code('apps/desktop/src/main/profile-execution-file.ts')).toContain(
-      'const temporary = `${file}.${String(process.pid)}.tmp`',
-    )
-    expect(PROFILE_EXECUTION_PART.source).toBe('^profile-execution\\.json\\.\\d+\\.tmp$')
+describe('§10e · the file older builds kept how each profile runs in', () => {
+  it('goes with the ledger whose profiles and conversations it names', () => {
     const userData = plantUserData(fixture(), { profiles: HIS_PROFILES })
-    for (const name of ['profile-execution.json', 'profile-execution.json.4242.tmp']) {
-      writeFileSync(join(userData, name), '{}')
-    }
+    writeFileSync(join(userData, 'profile-execution.json'), '{}')
     const plan = planCleanBase(
       trustedAnchor(userData, { repoRoot: REPO, home: fixture(), env: {} }),
     )
-    for (const rel of ['profile-execution.json', 'profile-execution.json.4242.tmp']) {
-      expect(plan.actions).toContainEqual({ rel, expect: 'file', why: LEDGER })
-    }
+    expect(plan.actions).toContainEqual({
+      rel: 'profile-execution.json',
+      expect: 'file',
+      why: LEDGER,
+    })
   })
 })
 

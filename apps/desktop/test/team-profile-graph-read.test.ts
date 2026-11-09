@@ -1,7 +1,13 @@
 import { localClockReading, readLocalTimeFrom } from '../src/shared/local-time'
 import { afterEach, expect, it, vi } from 'vitest'
 import Database from 'better-sqlite3'
-import { writeFileSync, rmSync, existsSync } from 'node:fs'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import {
+  importProfileExecutionFile,
+  PROFILE_EXECUTION_FILE,
+  readProfileExecution,
+} from '../src/main/profile-execution-file'
 import { TeamProfileGraphEngine } from '../src/main/db/team-profile-graph-engine'
 import { graphContext, graphFixture } from './helpers/team-profile-graph-fixture'
 import { graphCutoff, graphOracle } from './fixtures/team-profile-graph-oracle'
@@ -20,7 +26,7 @@ afterEach(() => {
 function setup() {
   const f = graphFixture()
   owned.push(f)
-  const engine = new TeamProfileGraphEngine(f.file, f.executionFile, () => graphCutoff)
+  const engine = new TeamProfileGraphEngine(f.file, () => graphCutoff)
   owned.push(engine)
   return { ...f, engine }
 }
@@ -194,12 +200,11 @@ it('keeps provider/model pairing, ties and earlier-incarnation settings conserva
     source: 'conversation-setting',
   })
 })
-it('classifies only stable simple kind proofs and never repairs a file', () => {
+it('classifies only stable simple kind proofs and never repairs what is kept', () => {
   const f = setup()
   f.identity('aid:service')
   f.session('service', 'aid:service')
-  const file = {
-    version: 2,
+  f.kinds({
     profiles: {
       'aid:service': {
         kind: 'service',
@@ -207,12 +212,11 @@ it('classifies only stable simple kind proofs and never repairs a file', () => {
         serviceConversation: 'service',
       },
     },
-  }
-  writeFileSync(f.executionFile, JSON.stringify(file))
+  })
   expect(complete(f).nodes[0]?.kind).toBe('service')
   f.root('service')
   expect(complete(f).nodes[0]?.kindQuality).toBe('unknown-conflict')
-  writeFileSync(f.executionFile, 'malformed')
+  f.forgetKinds()
   expect(complete(f).nodes[0]?.kindQuality).toBe('unknown-file')
 })
 it('uses the computer calendar across DST and includes rolling range boundaries', () => {
@@ -370,7 +374,6 @@ it('returns one coherent pinned reading stale after an intervening external writ
     rosterReads = 0
   const engine = new TeamProfileGraphEngine(
     f.file,
-    f.executionFile,
     () => graphCutoff,
     () => performance.now(),
     (sql) => {
@@ -392,16 +395,38 @@ it('returns one coherent pinned reading stale after an intervening external writ
   expect(next.nodeCount).toBe(6)
 })
 
-it('keeps a missing kind file unknown and distinguishes a readable empty file without repairing either', () => {
+it('sees the kinds an older build’s file held once they are imported on the first start', () => {
+  const f = setup()
+  f.identity('aid:service')
+  f.session('service', 'aid:service')
+  f.forgetKinds()
+  writeFileSync(
+    join(f.directory, PROFILE_EXECUTION_FILE),
+    JSON.stringify({
+      version: 2,
+      profiles: {
+        'aid:service': {
+          kind: 'service',
+          identityCreatedAt: graphCutoff - 20 * 86_400_000,
+          serviceConversation: 'service',
+        },
+      },
+    }),
+  )
+  importProfileExecutionFile(f.db, f.directory)
+  expect(complete(f).nodes[0]).toMatchObject({ kind: 'service', kindQuality: 'stable-record' })
+})
+
+it('keeps nothing kept unknown and distinguishes an empty record without repairing either', () => {
   const f = setup()
   f.identity('aid:a')
   f.session('a', 'aid:a')
   f.root('a')
   expect(complete(f).nodes[0]).toMatchObject({ kind: 'normal', kindQuality: 'legacy-normal' })
-  rmSync(f.executionFile)
+  f.forgetKinds()
   expect(complete(f).nodes[0]).toMatchObject({ kind: 'unknown', kindQuality: 'unknown-file' })
-  expect(existsSync(f.executionFile)).toBe(false)
-  writeFileSync(f.executionFile, JSON.stringify({ version: 2, profiles: {} }))
+  expect(readProfileExecution(f.db)).toMatchObject({ absent: true })
+  f.kinds({ profiles: {} })
   expect(complete(f).nodes[0]).toMatchObject({ kind: 'normal', kindQuality: 'legacy-normal' })
 })
 

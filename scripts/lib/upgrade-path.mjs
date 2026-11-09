@@ -661,6 +661,16 @@ export const MOVED_INTO_TABLES = {
       ]),
     ),
   }),
+  'profile-execution.json': (tables) => {
+    const state = (tables.profile_execution_state ?? [])[0]
+    return {
+      version: 2,
+      ...(state?.services_off === 1 ? { servicesOff: true } : {}),
+      profiles: Object.fromEntries(
+        (tables.profile_execution ?? []).map((row) => [row.identity_id, JSON.parse(row.entry)]),
+      ),
+    }
+  },
   'provider-usage.json': (tables) => {
     // The beta's file listed both providers, each with an empty list when it had nothing.
     const byProvider = (rows, row) =>

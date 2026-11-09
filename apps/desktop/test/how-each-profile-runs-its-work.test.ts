@@ -20,9 +20,10 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import {
   kindOf,
   NO_PROFILE_EXECUTION,
-  PROFILE_EXECUTION_VERSION,
-  profileExecutionFile,
+  importProfileExecutionFile,
+  PROFILE_EXECUTION_FILE,
   readProfileExecution,
+  readProfileExecutionIn,
   readAgainstTheDatabase,
   reconcileProfileExecution,
   writeProfileExecution,
@@ -35,8 +36,8 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 
 /**
- * How each profile runs its work: `profile-execution.json`, which says which profiles are services
- * and which conversation is each service's one. Read, written, and settled against the database as
+ * How each profile runs its work: which profiles are services and which conversation is each
+ * service's one. Read, written, and settled against the database as
  * the host starts. Nothing here can make a service yet; these are its foundations.
  */
 
@@ -47,29 +48,43 @@ const migrationsDir = join(here, '../src/main/db/migrations')
 const NOW = 1_791_684_000_000
 
 let folder: string
+let keptDb: AppDatabase | undefined
 beforeEach(() => {
   folder = mkdtempSync(join(tmpdir(), 'brobot2-profile-execution-'))
 })
 afterEach(() => {
+  keptDb?.close()
+  keptDb = undefined
   rmSync(folder, { recursive: true, force: true })
 })
 
-const fileIn = (): string => profileExecutionFile(folder)
-const holding = (body: unknown): string => {
-  writeFileSync(fileIn(), typeof body === 'string' ? body : JSON.stringify(body))
-  return fileIn()
+/** The database this folder keeps how profiles run in. */
+const keptIn = (): AppDatabase => {
+  if (keptDb === undefined) {
+    keptDb = openDatabase(join(folder, 'brobot2.sqlite'))
+    applyMigrations(keptDb, migrationsDir)
+  }
+  return keptDb
+}
+/** An old file holding `body`, offered to the import. */
+const importing = (body: unknown): void => {
+  writeFileSync(
+    join(folder, PROFILE_EXECUTION_FILE),
+    typeof body === 'string' ? body : JSON.stringify(body),
+  )
+  importProfileExecutionFile(keptIn(), folder)
 }
 
-describe('reading and writing the file', () => {
-  it('a missing file holds nothing, and says it was missing', () => {
-    expect(readProfileExecution(fileIn())).toEqual({
+describe('reading, writing and importing', () => {
+  it('nothing written yet holds nothing, and says so', () => {
+    expect(readProfileExecution(keptIn())).toEqual({
       readable: true,
       kept: NO_PROFILE_EXECUTION,
       absent: true,
     })
   })
 
-  it('what is written is read back, and no temporary file is left beside it', () => {
+  it('what is written is read back', () => {
     const kept: KeptProfileExecution = {
       profiles: {
         'aid:browser-driver': {
@@ -81,99 +96,45 @@ describe('reading and writing the file', () => {
         'aid:reserving': { kind: 'service', identityCreatedAt: NOW + 2, reserved: 'sess_next' },
       },
     }
-    writeProfileExecution(fileIn(), kept)
-    expect(readProfileExecution(fileIn())).toEqual({ readable: true, kept })
-    expect(JSON.parse(readFileSync(fileIn(), 'utf8'))).toMatchObject({
-      version: PROFILE_EXECUTION_VERSION,
-    })
-    expect(readdirSync(folder)).toEqual(['profile-execution.json'])
+    writeProfileExecution(keptIn(), kept)
+    expect(readProfileExecution(keptIn())).toEqual({ readable: true, kept })
   })
 
-  it('a write replaces what the file held', () => {
-    writeProfileExecution(fileIn(), {
+  it('a write replaces what was kept', () => {
+    writeProfileExecution(keptIn(), {
       profiles: { 'aid:a': { kind: 'service', identityCreatedAt: NOW } },
     })
-    writeProfileExecution(fileIn(), NO_PROFILE_EXECUTION)
-    expect(readProfileExecution(fileIn())).toEqual({ readable: true, kept: NO_PROFILE_EXECUTION })
+    writeProfileExecution(keptIn(), NO_PROFILE_EXECUTION)
+    expect(readProfileExecution(keptIn())).toEqual({ readable: true, kept: NO_PROFILE_EXECUTION })
   })
 
   it.each([
-    ['not JSON', '{"version": 1, "profiles": {', 'it is not JSON'],
-    ['not an object', '[]', 'it holds no object'],
-    ['another version', { version: 3, profiles: {} }, 'it is not version 2'],
-    ['no profiles', { version: 1 }, 'it holds no profiles'],
-    [
-      'a kind this build does not know',
-      { version: 1, profiles: { 'aid:a': { kind: 'worker', identityCreatedAt: NOW } } },
-      'its entry for aid:a is not one this app writes',
-    ],
-    [
-      'an entry with no creation time',
-      { version: 1, profiles: { 'aid:a': { kind: 'service' } } },
-      'its entry for aid:a is not one this app writes',
-    ],
-    [
-      'a normal profile with a conversation of its own',
-      {
-        version: 1,
-        profiles: {
-          'aid:a': { kind: 'normal', identityCreatedAt: NOW, serviceConversation: 'sess_a' },
-        },
-      },
-      'its entry for aid:a is not one this app writes',
-    ],
-    [
-      'a normal profile with a reservation',
-      {
-        version: 1,
-        profiles: { 'aid:a': { kind: 'normal', identityCreatedAt: NOW, reserved: 'sess_a' } },
-      },
-      'its entry for aid:a is not one this app writes',
-    ],
-    [
-      'a delete of a conversation that is not the service’s',
-      {
-        version: 1,
-        profiles: {
-          'aid:a': {
-            kind: 'service',
-            identityCreatedAt: NOW,
-            serviceConversation: 'sess_a',
-            removing: 'sess_b',
-          },
-        },
-      },
-      'its entry for aid:a is not one this app writes',
-    ],
-    [
-      'a delete with no conversation to delete',
-      {
-        version: 1,
-        profiles: { 'aid:a': { kind: 'service', identityCreatedAt: NOW, removing: 'sess_a' } },
-      },
-      'its entry for aid:a is not one this app writes',
-    ],
-    [
-      'an empty conversation id',
-      {
-        version: 1,
-        profiles: { 'aid:a': { kind: 'service', identityCreatedAt: NOW, serviceConversation: '' } },
-      },
-      'its entry for aid:a is not one this app writes',
-    ],
-  ])('a file holding %s cannot be read, and says why', (_what, body, why) => {
-    const read = readProfileExecution(holding(body))
-    expect(read.readable).toBe(false)
-    if (read.readable) throw new Error('expected malformed execution state')
-    expect(read.why).toContain(fileIn())
-    expect(read.why).toContain(why)
+    ['not JSON', '{"version": 1, "profiles": {'],
+    ['not an object', '[]'],
+    ['another version', { version: 3, profiles: {} }],
+  ])('an old file holding %s imports nothing and is kept', (_what, body) => {
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    importing(body)
+    expect(warned).toHaveBeenCalled()
+    warned.mockRestore()
+    expect(readProfileExecution(keptIn())).toEqual({
+      readable: true,
+      kept: NO_PROFILE_EXECUTION,
+      absent: true,
+    })
+    expect(existsSync(join(folder, PROFILE_EXECUTION_FILE))).toBe(true)
   })
 
-  it('a file that cannot be opened cannot be read: it is never taken as empty', () => {
-    mkdirSync(fileIn())
-    const read = readProfileExecution(fileIn())
-    expect(read.readable).toBe(false)
-    expect(read.readable ? '' : read.why).toContain(`${fileIn()}: it could not be read (`)
+  it('an old v1 or v2 file is imported whole, with its services switch, and deleted', () => {
+    const profiles = {
+      'aid:a': { kind: 'service', identityCreatedAt: NOW, serviceConversation: 's' },
+    }
+    importing({ version: 1, servicesOff: true, profiles })
+    expect(readProfileExecution(keptIn())).toEqual({
+      readable: true,
+      kept: { servicesOff: true, profiles },
+    })
+    expect(existsSync(join(folder, PROFILE_EXECUTION_FILE))).toBe(false)
   })
 })
 
@@ -605,13 +566,13 @@ describe('the host takes the file as it starts', () => {
         ? {}
         : {
             profileExecution: {
-              read: () => readProfileExecution(fileIn()),
+              read: () => readProfileExecutionIn(keptIn(), folder),
               write: (kept: KeptProfileExecution) => {
                 const fails =
                   typeof opts.writesFail === 'function' ? opts.writesFail(kept) : opts.writesFail
                 if (fails === true) throw new Error('the disk is full')
                 writes += 1
-                writeProfileExecution(fileIn(), kept)
+                writeProfileExecution(keptIn(), kept)
               },
               owned: opts.owned ?? true,
             },
@@ -653,7 +614,7 @@ describe('the host takes the file as it starts', () => {
   }
 
   const kept = (identity: string): ProfileExecution | undefined => {
-    const read = readProfileExecution(fileIn())
+    const read = readProfileExecution(keptIn())
     if (!read.readable) throw new Error(read.why)
     return read.kept.profiles[identity]
   }
@@ -665,7 +626,7 @@ describe('the host takes the file as it starts', () => {
       anIdentity('writer')
       aServiceBornConversation('sess_browser', 'browser-driver')
       aServiceBornConversation('sess_settled', 'settled-service')
-      writeProfileExecution(fileIn(), {
+      writeProfileExecution(keptIn(), {
         profiles: {
           [svc.id]: { kind: 'service', identityCreatedAt: svc.createdAt, reserved: 'sess_browser' },
           [settledService.id]: {
@@ -675,11 +636,11 @@ describe('the host takes the file as it starts', () => {
           },
         },
       })
-      const before = readFileSync(fileIn(), 'utf8')
+      const before = readProfileExecution(keptIn())
       writes = 0
       const host = aHost({ owned: false })
       expect(writes).toBe(0)
-      expect(readFileSync(fileIn(), 'utf8')).toBe(before)
+      expect(readProfileExecution(keptIn())).toEqual(before)
       expect(host.profileKindOf('browser-driver')).toBe('unknown')
       expect(host.profileKindOf('settled-service')).toBe('service')
       expect(host.profileKindOf('writer')).toBe('normal')
@@ -694,7 +655,7 @@ describe('the host takes the file as it starts', () => {
     it('an agent with a kept entry is not removed, and one without is', () => {
       const svc = anIdentity('browser-driver')
       anIdentity('writer')
-      writeProfileExecution(fileIn(), {
+      writeProfileExecution(keptIn(), {
         profiles: { [svc.id]: { kind: 'service', identityCreatedAt: svc.createdAt } },
       })
       const host = aHost({ owned: false })
@@ -709,7 +670,7 @@ describe('the host takes the file as it starts', () => {
   describe('an identity removed and made again', () => {
     it('at the same moment, through the door that removes it, is not the service it was', () => {
       const svc = anIdentity('browser-driver')
-      writeProfileExecution(fileIn(), {
+      writeProfileExecution(keptIn(), {
         profiles: { [svc.id]: { kind: 'service', identityCreatedAt: svc.createdAt } },
       })
       const host = aHost()
@@ -725,7 +686,7 @@ describe('the host takes the file as it starts', () => {
 
     it('…and when its entry could not be dropped, the next start reads it unknown, never a service', () => {
       const svc = anIdentity('browser-driver')
-      writeProfileExecution(fileIn(), {
+      writeProfileExecution(keptIn(), {
         profiles: { [svc.id]: { kind: 'service', identityCreatedAt: svc.createdAt } },
       })
       const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -747,7 +708,7 @@ describe('the host takes the file as it starts', () => {
     it('a removal the database does not make leaves the entry as it was', () => {
       const svc = anIdentity('browser-driver')
       const entry = { kind: 'service', identityCreatedAt: svc.createdAt } as const
-      writeProfileExecution(fileIn(), { profiles: { [svc.id]: entry } })
+      writeProfileExecution(keptIn(), { profiles: { [svc.id]: entry } })
       const refusing = new Proxy(store, {
         get(target, key, receiver) {
           if (key === 'removeAgentIdentity') return () => false
@@ -765,13 +726,13 @@ describe('the host takes the file as it starts', () => {
 
     it('is not removed while which agents are services can’t be read', () => {
       anIdentity('writer')
-      writeFileSync(fileIn(), 'not json')
+      anIdentity('browser-driver')
+      aServiceBornConversation('sess_browser', 'browser-driver')
       const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const host = aHost()
-      warned.mockClear()
       expect(() => host.removeAgent('writer')).toThrow(/^Not removed: services list unreadable\.$/)
       // Why is the log's, never the window's.
-      expect(warned).toHaveBeenCalledWith(expect.stringContaining(`${fileIn()}: it is not JSON`))
+      expect(warned).toHaveBeenCalledWith(expect.stringContaining('it is missing'))
       expect(store.agentIdentities().some((one) => one.slug === 'writer')).toBe(true)
       warned.mockRestore()
     })
@@ -779,7 +740,7 @@ describe('the host takes the file as it starts', () => {
     it('is not removed when its entry can’t be marked first, and the disk’s error goes to the log', () => {
       const svc = anIdentity('browser-driver')
       const entry = { kind: 'service', identityCreatedAt: svc.createdAt } as const
-      writeProfileExecution(fileIn(), { profiles: { [svc.id]: entry } })
+      writeProfileExecution(keptIn(), { profiles: { [svc.id]: entry } })
       const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const host = aHost({ writesFail: true })
       expect(() => host.removeAgent('browser-driver')).toThrow(
@@ -855,7 +816,7 @@ describe('the host takes the file as it starts', () => {
       expect(host.profileKindOf('browser-driver')).toBe('unknown')
       expect(host.profileKindOf('writer')).toBe('unknown')
       expect(writes).toBe(0)
-      expect(existsSync(fileIn())).toBe(false)
+      expect(readProfileExecution(keptIn())).toMatchObject({ absent: true })
       expect(warned).toHaveBeenCalledWith(
         'runtime host could not read how its profiles run their work: it is missing, and the database holds a service’s conversation',
       )
@@ -887,7 +848,7 @@ describe('the host takes the file as it starts', () => {
   it('a service’s conversation its identity’s entry does not name leaves that kind unknown', () => {
     const svc = anIdentity('browser-driver')
     aServiceBornConversation('sess_browser', 'browser-driver')
-    writeProfileExecution(fileIn(), {
+    writeProfileExecution(keptIn(), {
       profiles: { [svc.id]: { kind: 'service', identityCreatedAt: svc.createdAt } },
     })
     expect(aHost().profileKindOf('browser-driver')).toBe('unknown')
@@ -898,13 +859,13 @@ describe('the host takes the file as it starts', () => {
     const host = aHost()
     expect(host.profileKindOf('writer')).toBe('normal')
     expect(host.profileKindOf('nobody-by-this-name')).toBe('normal')
-    expect(existsSync(fileIn())).toBe(false)
+    expect(readProfileExecution(keptIn())).toMatchObject({ absent: true })
   })
 
   it('a service kept for an identity is a service, by any spelling of its name', () => {
     const svc = anIdentity('browser-driver')
     aConversation('sess_browser', 'browser-driver')
-    writeProfileExecution(fileIn(), {
+    writeProfileExecution(keptIn(), {
       profiles: {
         [svc.id]: {
           kind: 'service',
@@ -920,7 +881,7 @@ describe('the host takes the file as it starts', () => {
 
   it('a name deleted and made again does not inherit the service it had, and the file is settled', () => {
     const old = anIdentity('browser-driver')
-    writeProfileExecution(fileIn(), {
+    writeProfileExecution(keptIn(), {
       profiles: { [old.id]: { kind: 'service', identityCreatedAt: old.createdAt } },
     })
     expect(store.removeAgentIdentity('browser-driver')).toBe(true)
@@ -931,12 +892,12 @@ describe('the host takes the file as it starts', () => {
 
     const host = aHost()
     expect(host.profileKindOf('browser-driver')).toBe('normal')
-    expect(readProfileExecution(fileIn())).toEqual({ readable: true, kept: NO_PROFILE_EXECUTION })
+    expect(readProfileExecution(keptIn())).toEqual({ readable: true, kept: NO_PROFILE_EXECUTION })
   })
 
   it('a reservation cut off before its conversation was made is dropped, and no conversation is made', () => {
     const svc = anIdentity('browser-driver')
-    writeProfileExecution(fileIn(), {
+    writeProfileExecution(keptIn(), {
       profiles: {
         [svc.id]: {
           kind: 'service',
@@ -948,7 +909,7 @@ describe('the host takes the file as it starts', () => {
     const before = conversationsRecorded()
     const host = aHost()
     expect(host.profileKindOf('browser-driver')).toBe('service')
-    expect(readProfileExecution(fileIn())).toEqual({
+    expect(readProfileExecution(keptIn())).toEqual({
       readable: true,
       kept: { profiles: { [svc.id]: { kind: 'service', identityCreatedAt: svc.createdAt } } },
     })
@@ -959,14 +920,14 @@ describe('the host takes the file as it starts', () => {
   it('a reservation cut off after its conversation was made is completed with that conversation', () => {
     const svc = anIdentity('browser-driver')
     aConversation('sess_browser', 'browser-driver')
-    writeProfileExecution(fileIn(), {
+    writeProfileExecution(keptIn(), {
       profiles: {
         [svc.id]: { kind: 'service', identityCreatedAt: svc.createdAt, reserved: 'sess_browser' },
       },
     })
     const before = conversationsRecorded()
     aHost()
-    expect(readProfileExecution(fileIn())).toEqual({
+    expect(readProfileExecution(keptIn())).toEqual({
       readable: true,
       kept: {
         profiles: {
@@ -988,34 +949,34 @@ describe('the host takes the file as it starts', () => {
       identityCreatedAt: svc.createdAt,
       serviceConversation: 'sess_lost',
     } as const
-    writeProfileExecution(fileIn(), { profiles: { [svc.id]: entry } })
+    writeProfileExecution(keptIn(), { profiles: { [svc.id]: entry } })
     const before = conversationsRecorded()
     const host = aHost()
     expect(host.profileKindOf('browser-driver')).toBe('unknown')
-    expect(readProfileExecution(fileIn())).toEqual({
+    expect(readProfileExecution(keptIn())).toEqual({
       readable: true,
       kept: { profiles: { [svc.id]: entry } },
     })
     expect(conversationsRecorded()).toBe(before)
   })
 
-  it('a file that cannot be read leaves every kind unknown, and is left as it was', () => {
+  it('an old file that cannot be imported leaves every kind unknown, and is kept', () => {
     anIdentity('writer')
     const torn = '{"version": 1, "profiles": {"aid:browser-dri'
-    writeFileSync(fileIn(), torn)
+    writeFileSync(join(folder, PROFILE_EXECUTION_FILE), torn)
     const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    importProfileExecutionFile(keptIn(), folder)
     const host = aHost()
     expect(host.profileKindOf('writer')).toBe('unknown')
     expect(host.profileKindOf('nobody-by-this-name')).toBe('unknown')
-    expect(readFileSync(fileIn(), 'utf8')).toBe(torn)
-    expect(warned).toHaveBeenCalledWith(expect.stringContaining(`${fileIn()}: it is not JSON`))
+    expect(readFileSync(join(folder, PROFILE_EXECUTION_FILE), 'utf8')).toBe(torn)
     warned.mockRestore()
   })
 
   it('a settled file that cannot be written still settles this run, and says so', () => {
     const svc = anIdentity('browser-driver')
     aConversation('sess_browser', 'browser-driver')
-    writeProfileExecution(fileIn(), {
+    writeProfileExecution(keptIn(), {
       profiles: {
         [svc.id]: { kind: 'service', identityCreatedAt: svc.createdAt, reserved: 'sess_browser' },
       },
@@ -1032,12 +993,12 @@ describe('the host takes the file as it starts', () => {
   it('a database that fails while the file is settled leaves every kind unknown, and the file as it was', () => {
     const svc = anIdentity('browser-driver')
     anIdentity('writer')
-    writeProfileExecution(fileIn(), {
+    writeProfileExecution(keptIn(), {
       profiles: {
         [svc.id]: { kind: 'service', identityCreatedAt: svc.createdAt, reserved: 'sess_torn' },
       },
     })
-    const before = readFileSync(fileIn(), 'utf8')
+    const before = readProfileExecution(keptIn())
     const failing = new Proxy(store, {
       get(target, key, receiver) {
         if (key === 'recordedOne') {
@@ -1056,7 +1017,7 @@ describe('the host takes the file as it starts', () => {
     const host = aHost({ store: failing })
     expect(host.profileKindOf('browser-driver')).toBe('unknown')
     expect(host.profileKindOf('writer')).toBe('unknown')
-    expect(readFileSync(fileIn(), 'utf8')).toBe(before)
+    expect(readProfileExecution(keptIn())).toEqual(before)
     expect(warned).toHaveBeenCalledWith(
       'runtime host could not settle how its profiles run their work: database disk image is malformed',
     )
@@ -1065,7 +1026,6 @@ describe('the host takes the file as it starts', () => {
 
   it('a host given no file reads every profile as normal', () => {
     anIdentity('writer')
-    writeFileSync(fileIn(), 'not json')
     expect(aHost({ withTheFile: false }).profileKindOf('writer')).toBe('normal')
   })
 })

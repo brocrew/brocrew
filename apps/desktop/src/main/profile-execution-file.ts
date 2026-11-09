@@ -1,48 +1,24 @@
-import {
-  closeSync,
-  fsyncSync,
-  mkdirSync,
-  openSync,
-  readSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
+import { existsSync } from 'node:fs'
+import type Database from 'better-sqlite3'
+import { importSideFile, objectIn } from './db/side-file-import'
 
 /**
- * **How each profile runs its work**, kept across a restart: `<userData>/profile-execution.json`.
+ * How each profile runs its work, kept across a restart: one `profile_execution` row per identity.
  *
- * A profile is `normal` (each giver's work in its own conversation, today's behaviour) or a
- * `service`: one conversation, shared by every caller in this workspace, that runs their pieces one
- * at a time. The kind is not a column of the identity table: a profile with no entry here is normal.
+ * A profile is `normal` (each giver's work in its own conversation) or a `service`: one
+ * conversation, shared by every caller in this workspace, that runs their pieces one at a time. A
+ * profile with no entry is normal.
  *
- * ⚑ **Keyed by identity AND its creation time, and retired before its identity goes.** An
- * identity's id is derived from its name, so a name deleted and made again has the same id, and may
- * have the same creation time. So the door that removes an identity marks its entry `retired` before
- * the row goes, and drops it after. An entry for another creation time is another identity's and is
- * dropped; a retired entry whose identity has the same creation time cannot be told from a removal
- * that failed, and that profile's kind is unknown.
+ * Entries are keyed by identity and its creation time, and retired before their identity goes: an
+ * identity's id is derived from its name, so a name deleted and made again can have the same id.
+ * A service's conversation, and a normal worker's, is reserved before it is made and completed
+ * after; {@link reconcileProfileExecution} settles what a restart finds in between.
  *
- * ⚑ **A service's conversation is reserved before it is made.** The file and the database cannot
- * commit together, so a reservation is written first, the conversation is made with that id, and
- * the reservation is completed. At the next start {@link reconcileProfileExecution} completes a
- * reservation whose conversation exists and drops one whose conversation does not. A service's
- * conversation a person deletes is marked `removing` first, and settled the same way.
- * Normal worker reservations additionally need an exact registration fact. Only a recorded
- * legacy primary may instead use the host's identity and giver-lineage proof. A conflicting
- * fact never permits that legacy fallback. Extra numbers are never reused; a proved never-born
- * primary may be reserved again. A normal pool's removal intent precedes deleting its giver
- * tree; only complete absence of that pool's conversations and birth facts settles the removal.
+ * With no `profile_execution_state` row, nothing has been written yet: every profile is normal only
+ * while the database holds no service's conversation or worker registration.
  *
- * ⛔ **A file that cannot be read is never read as "every profile is normal".** A service run as a
- * normal profile would start a second conversation on the shared thing; so an unreadable file is
- * a stated failure, and every profile's kind is unknown until it can be read.
- * ⚑ A missing file means every profile is normal only while the database holds no service's
- * conversation or worker registration; either says the file was lost, and every kind is unknown.
- *
- * ⛔ **Only the one app running on this data changes it** (the one-host gate's `sole`): two that
- * could each read and replace it would lose each other's writes.
+ * Only the one app running on this data changes it (the one-host gate's `sole`).
  */
 
 /** A profile's kind. */
@@ -91,7 +67,7 @@ export interface ProfileExecution {
   readonly retired?: true
 }
 
-/** What the file holds, by identity id. */
+/** What is kept, by identity id. */
 export interface KeptProfileExecution {
   readonly profiles: Readonly<Record<string, ProfileExecution>>
   /**
@@ -107,23 +83,16 @@ export type ProfileExecutionRead =
   | {
       readonly readable: true
       readonly kept: KeptProfileExecution
-      /** There was no file, so nothing is kept unless the database says otherwise. */
+      /** Nothing was written yet, so nothing is kept unless the database says otherwise. */
       readonly absent?: true
     }
   | { readonly readable: false; readonly why: string }
 
-/** Writes v2; reads v1 legacy entries as well. Older builds reject the v2 format. */
-export const PROFILE_EXECUTION_VERSION = 2
-
-/** The most profiles the file holds: far above any workspace. */
-export const MAX_PROFILES_KEPT = 10_000
+/** The old file's versions the import reads. */
+const PROFILE_EXECUTION_VERSIONS = [1, 2]
 
 export const MAX_NORMAL_WORKER_POOLS = 128
 export const MAX_NORMAL_WORKERS_PER_POOL = 64
-/** The store's global registration scan and the file share this ceiling. */
-export const MAX_NORMAL_WORKERS_KEPT = 8192
-/** Bound the read before allocating or parsing the file. */
-export const MAX_PROFILE_EXECUTION_BYTES = 8 * 1024 * 1024
 
 /** Nothing kept: every profile is normal. */
 export const NO_PROFILE_EXECUTION: KeptProfileExecution = { profiles: {} }
@@ -138,245 +107,75 @@ export function entryWithout(
   return copy
 }
 
-/** Where a data folder keeps it. */
-export function profileExecutionFile(userData: string): string {
-  return join(userData, 'profile-execution.json')
-}
+/** The file older builds kept this in, imported once. */
+export const PROFILE_EXECUTION_FILE = 'profile-execution.json'
 
-const aRecord = (said: unknown): Record<string, unknown> | null =>
-  typeof said === 'object' && said !== null && !Array.isArray(said)
-    ? (said as Record<string, unknown>)
-    : null
-
-const anId = (value: unknown): value is string =>
-  typeof value === 'string' && value.length > 0 && value.length <= 200
-
-const aTime = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
-
-/** One entry, checked; `null` when it is not one this build writes. */
-function anEntry(said: unknown, version: number): ProfileExecution | null {
-  const row = aRecord(said)
-  if (row === null) return null
-  const { kind, identityCreatedAt, serviceConversation, reserved, removing, retired, workerPools } =
-    row
-  if (kind !== 'normal' && kind !== 'service') return null
-  if (retired !== undefined && retired !== true) return null
-  if (!aTime(identityCreatedAt)) return null
-  if (serviceConversation !== undefined && !anId(serviceConversation)) return null
-  if (reserved !== undefined && !anId(reserved)) return null
-  if (removing !== undefined && !anId(removing)) return null
-  // ⛔ Only a service has a conversation of its own, made or reserved.
-  if (kind === 'normal' && (serviceConversation !== undefined || reserved !== undefined))
-    return null
-  // ⛔ Only the conversation a service has can be being removed.
-  if (removing !== undefined && removing !== serviceConversation) return null
-  // A v1 reader never knew workers: do not silently discard a downgraded pool.
-  if (version === 1 && Object.hasOwn(row, 'workerPools')) return null
-  if (workerPools !== undefined && kind !== 'normal') return null
-  const pools = workerPools === undefined ? undefined : normalWorkerPools(workerPools)
-  if (pools === null) return null
-  return {
-    kind,
-    identityCreatedAt,
-    ...(pools === undefined ? {} : { workerPools: pools }),
-    ...(serviceConversation === undefined ? {} : { serviceConversation }),
-    ...(reserved === undefined ? {} : { reserved }),
-    ...(removing === undefined ? {} : { removing }),
-    ...(retired === undefined ? {} : { retired }),
-  }
-}
-
-const aPositiveNumber = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isSafeInteger(value) && value > 0
-
-/** Unknown or partial hold fields cannot disappear into an apparently free worker. */
-function normalWorkerAssignment(said: unknown): NormalWorkerAssignment | null {
-  const assignment = aRecord(said)
-  if (assignment === null) return null
-  if (Object.keys(assignment).some((key) => key !== 'piece' && key !== 'giver')) return null
-  const { piece, giver } = assignment
-  return anId(piece) && anId(giver) ? { piece, giver } : null
-}
-
-/** Checked and copied, so callers cannot keep unknown fields or overlapping workers. */
-function normalWorkerPools(said: unknown): readonly NormalWorkerPool[] | null {
-  if (!Array.isArray(said) || said.length > MAX_NORMAL_WORKER_POOLS) return null
-  const givers = new Set<string>()
-  const conversations = new Set<string>()
-  const pools: NormalWorkerPool[] = []
-  for (const value of said) {
-    const pool = aRecord(value)
-    if (pool === null) return null
-    if (
-      Object.keys(pool).some(
-        (key) => !['giver', 'nextNumber', 'workers', 'primaryNeverBorn', 'removing'].includes(key),
-      )
-    )
-      return null
-    const { giver, nextNumber, workers, primaryNeverBorn, removing } = pool
-    if (!anId(giver) || givers.has(giver) || !aPositiveNumber(nextNumber)) return null
-    if (!Array.isArray(workers) || workers.length > MAX_NORMAL_WORKERS_PER_POOL) return null
-    if (primaryNeverBorn !== undefined && primaryNeverBorn !== true) return null
-    if (removing !== undefined && removing !== true) return null
-    if (primaryNeverBorn === true && nextNumber < 2) return null
-    givers.add(giver)
-    const numbers = new Set<number>()
-    const bindings: NormalWorkerBinding[] = []
-    for (const value of workers) {
-      const worker = aRecord(value)
-      if (worker === null) return null
-      const { number, conversation, phase, assignment } = worker
-      if (!aPositiveNumber(number) || number >= nextNumber || numbers.has(number)) return null
-      if (!anId(conversation) || conversations.has(conversation)) return null
-      if (phase !== 'reserved' && phase !== 'bound') return null
-      const hold = assignment === undefined ? undefined : normalWorkerAssignment(assignment)
-      if (hold === null) return null
-      numbers.add(number)
-      conversations.add(conversation)
-      bindings.push({
-        number,
-        conversation,
-        phase,
-        ...(hold === undefined ? {} : { assignment: hold }),
-      })
-    }
-    if (primaryNeverBorn === true && numbers.has(1)) return null
-    pools.push({
-      giver,
-      nextNumber,
-      workers: bindings,
-      ...(primaryNeverBorn === undefined ? {} : { primaryNeverBorn }),
-      ...(removing === undefined ? {} : { removing }),
-    })
-  }
-  return pools
-}
-
-/**
- * What `file` holds. A missing file holds nothing, and says it was missing; a file that is not
- * JSON, is of another version, or holds an entry this build does not write cannot be read, and says
- * why.
- */
-export function readProfileExecution(file: string): ProfileExecutionRead {
-  const unreadable = (why: string): ProfileExecutionRead => ({
-    readable: false,
-    why: `${file}: ${why}`,
-  })
-  let text: string
-  try {
-    const fd = openSync(file, 'r')
-    try {
-      const chunks: Buffer[] = []
-      let length = 0
-      for (;;) {
-        const bytes = Buffer.alloc(Math.min(64 * 1024, MAX_PROFILE_EXECUTION_BYTES + 1 - length))
-        const count = readSync(fd, bytes, 0, bytes.length, null)
-        if (count === 0) break
-        chunks.push(bytes.subarray(0, count))
-        length += count
-        if (length > MAX_PROFILE_EXECUTION_BYTES) return unreadable('it is too large')
-      }
-      text = Buffer.concat(chunks, length).toString('utf8')
-    } finally {
-      closeSync(fd)
-    }
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return { readable: true, kept: NO_PROFILE_EXECUTION, absent: true }
-    }
-    return unreadable(`it could not be read (${(error as Error).message})`)
-  }
-  let said: unknown
-  try {
-    said = JSON.parse(text)
-  } catch (error) {
-    return unreadable(`it is not JSON (${(error as Error).message})`)
-  }
-  const whole = aRecord(said)
-  if (whole === null) return unreadable('it holds no object')
-  const version = whole['version']
-  if (version !== 1 && version !== PROFILE_EXECUTION_VERSION) {
-    return unreadable(`it is not version ${String(PROFILE_EXECUTION_VERSION)}`)
-  }
-  const rows = aRecord(whole['profiles'])
-  if (rows === null) return unreadable('it holds no profiles')
-  // ⚑ `false` reads as on, as a missing switch does.
-  const servicesOff = whole['servicesOff']
-  if (servicesOff !== undefined && typeof servicesOff !== 'boolean') {
-    return unreadable('its services switch is not one this app writes')
-  }
-  const entries = Object.entries(rows)
-  if (entries.length > MAX_PROFILES_KEPT) return unreadable('it holds too many profiles')
-  const profiles: Record<string, ProfileExecution> = {}
-  let workersKept = 0
-  for (const [id, row] of entries) {
-    const entry = anEntry(row, version)
-    if (!anId(id) || entry === null) {
-      return unreadable(`its entry for ${anId(id) ? id : 'a profile'} is not one this app writes`)
-    }
-    for (const pool of entry.workerPools ?? []) workersKept += pool.workers.length
-    if (workersKept > MAX_NORMAL_WORKERS_KEPT) return unreadable('it holds too many workers')
-    profiles[id] = entry
-  }
-  return {
-    readable: true,
-    kept: servicesOff === true ? { servicesOff: true, profiles } : { profiles },
-  }
-}
-
-/**
- * Write what is kept, replacing what the file held: written beside it, flushed to disk, and
- * renamed, so a reader never sees half a file; then the rename itself is flushed, so a
- * conversation made after this returns is never newer on disk than its reservation.
- */
-export function writeProfileExecution(file: string, kept: KeptProfileExecution): void {
-  const body = `${JSON.stringify(
-    {
-      version: PROFILE_EXECUTION_VERSION,
-      ...(kept.servicesOff === true ? { servicesOff: true } : {}),
-      profiles: kept.profiles,
-    },
-    null,
-    2,
-  )}\n`
-  if (Buffer.byteLength(body, 'utf8') > MAX_PROFILE_EXECUTION_BYTES)
-    throw new Error('profile execution is too large')
-  const entries = Object.entries(kept.profiles)
-  if (
-    entries.length > MAX_PROFILES_KEPT ||
-    entries.some(([id, row]) => !anId(id) || anEntry(row, PROFILE_EXECUTION_VERSION) === null)
+/** What `database` keeps; the graph worker reads it in its own snapshot. */
+export function readProfileExecution(database: Database.Database): ProfileExecutionRead {
+  const state = database
+    .prepare('SELECT services_off AS off FROM profile_execution_state WHERE id = 1')
+    .get() as { off: number } | undefined
+  if (state === undefined) return { readable: true, kept: NO_PROFILE_EXECUTION, absent: true }
+  const rows = database.prepare('SELECT identity_id AS id, entry FROM profile_execution').all() as {
+    id: string
+    entry: string
+  }[]
+  const profiles = Object.fromEntries(
+    rows.map(({ id, entry }) => [id, JSON.parse(entry) as ProfileExecution]),
   )
-    throw new Error('profile execution holds an invalid entry')
-  let workersKept = 0
-  for (const [, entry] of entries) {
-    for (const pool of entry.workerPools ?? []) workersKept += pool.workers.length
-  }
-  if (workersKept > MAX_NORMAL_WORKERS_KEPT)
-    throw new Error('profile execution holds too many workers')
-  mkdirSync(dirname(file), { recursive: true })
-  const temporary = `${file}.${String(process.pid)}.tmp`
-  try {
-    const fd = openSync(temporary, 'w')
-    try {
-      writeFileSync(fd, body)
-      fsyncSync(fd)
-    } finally {
-      closeSync(fd)
-    }
-    renameSync(temporary, file)
-  } catch (error) {
-    rmSync(temporary, { force: true })
-    throw error
-  }
-  // Windows cannot flush a folder; flushing the file through a handle that may write puts its
-  // name on disk there (`recovery/files.ts`, `syncFolder`).
-  const flushed = process.platform === 'win32' ? openSync(file, 'r+') : openSync(dirname(file), 'r')
-  try {
-    fsyncSync(flushed)
-  } finally {
-    closeSync(flushed)
-  }
+  return { readable: true, kept: state.off === 1 ? { servicesOff: true, profiles } : { profiles } }
+}
+
+/**
+ * What the host reads: as {@link readProfileExecution}, except that an older build's file still
+ * waiting to be imported is unreadable, so every kind is unknown rather than normal.
+ */
+export function readProfileExecutionIn(
+  database: Database.Database,
+  userData: string,
+): ProfileExecutionRead {
+  const imported =
+    database
+      .prepare('SELECT 1 FROM imported_side_file WHERE name = ?')
+      .get(PROFILE_EXECUTION_FILE) !== undefined
+  if (!imported && existsSync(join(userData, PROFILE_EXECUTION_FILE)))
+    return { readable: false, why: `${PROFILE_EXECUTION_FILE} could not be imported` }
+  return readProfileExecution(database)
+}
+
+/** Keep `kept`, replacing what was kept, in one transaction. */
+export function writeProfileExecution(
+  database: Database.Database,
+  kept: KeptProfileExecution,
+): void {
+  database.transaction(() => replaceProfileExecution(database, kept))()
+}
+
+function replaceProfileExecution(database: Database.Database, kept: KeptProfileExecution): void {
+  database.prepare('DELETE FROM profile_execution').run()
+  const insert = database.prepare(
+    'INSERT INTO profile_execution (identity_id, entry) VALUES (?, ?)',
+  )
+  for (const [id, entry] of Object.entries(kept.profiles)) insert.run(id, JSON.stringify(entry))
+  database
+    .prepare(
+      `INSERT INTO profile_execution_state (id, services_off) VALUES (1, ?)
+       ON CONFLICT(id) DO UPDATE SET services_off = excluded.services_off`,
+    )
+    .run(kept.servicesOff === true ? 1 : 0)
+}
+
+/** Imports `profile-execution.json` (v1 or v2) from `userData` once, each entry as written. */
+export function importProfileExecutionFile(database: Database.Database, userData: string): void {
+  importSideFile(database, join(userData, PROFILE_EXECUTION_FILE), (said) => {
+    const whole = objectIn(said)
+    if (!PROFILE_EXECUTION_VERSIONS.includes(whole['version'] as number))
+      throw new Error('it is not a version this build imports')
+    replaceProfileExecution(database, {
+      profiles: objectIn(whole['profiles']) as Record<string, ProfileExecution>,
+      ...(whole['servicesOff'] === true ? { servicesOff: true } : {}),
+    })
+  })
 }
 
 /** A conversation only a service's start makes: no parent, and no root. */

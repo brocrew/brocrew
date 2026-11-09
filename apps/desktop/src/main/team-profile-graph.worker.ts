@@ -6,7 +6,7 @@ import {
   graphReadContext,
   TEAM_PROFILE_GRAPH_BOUNDS as B,
 } from '../shared/team-profile-graph'
-const options = z.strictObject({ file: z.string().min(1), executionFile: z.string().min(1) })
+const options = z.strictObject({ file: z.string().min(1) })
 const incoming = z.strictObject({
   type: z.literal('read'),
   id: z.number().int().positive().safe(),
@@ -17,8 +17,8 @@ const incoming = z.strictObject({
 if (parentPort !== null) {
   const port = parentPort
   try {
-    const { file, executionFile } = options.parse(workerData)
-    const engine = new TeamProfileGraphEngine(file, executionFile)
+    const { file } = options.parse(workerData)
+    const engine = new TeamProfileGraphEngine(file)
     let expiry: ReturnType<typeof setTimeout> | undefined
     const close = () => {
       if (expiry) clearTimeout(expiry)

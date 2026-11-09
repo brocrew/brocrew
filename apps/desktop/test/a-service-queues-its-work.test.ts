@@ -2,11 +2,7 @@ import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  profileExecutionFile,
-  readProfileExecution,
-  writeProfileExecution,
-} from '../src/main/profile-execution-file'
+import { readProfileExecution, writeProfileExecution } from '../src/main/profile-execution-file'
 import {
   DEFAULT_CAPABILITIES,
   skipTheLedger,
@@ -215,7 +211,7 @@ describe('a service queues the work it is given', () => {
       const { host, first } = await aServiceAndTwoCallers()
       accepted(await world.gives(host, first, 'browser-driver'))
       await host.closeAll()
-      writeFileSync(profileExecutionFile(world.folder), 'not json')
+      world.loseTheKept()
       const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const next = world.aHost()
       const caller = await world.aPersonOpens(next, 'caller')
@@ -228,7 +224,7 @@ describe('a service queues the work it is given', () => {
     it('…while an agent with no service’s conversation is given work as today', async () => {
       world.anAgent('browser-driver', 'nothing kept')
       world.anAgent('caller', 'nothing kept')
-      writeFileSync(profileExecutionFile(world.folder), 'not json')
+      world.loseTheKept()
       const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const host = world.aHost()
       const caller = await world.aPersonOpens(host, 'caller')
@@ -714,7 +710,7 @@ describe('a service queues the work it is given', () => {
         { by: 'a-person' },
       )
       if (svc === null) throw new Error('exists')
-      writeProfileExecution(profileExecutionFile(world.folder), {
+      writeProfileExecution(world.db, {
         profiles: { [svc.id]: { kind: 'service', identityCreatedAt: svc.createdAt } },
       })
       world.anAgent('caller', 'nothing kept')
@@ -897,7 +893,7 @@ describe('a service queues the work it is given', () => {
       const { host, first } = await aServiceAndTwoCallers()
       accepted(await world.gives(host, first, 'browser-driver'))
       await host.closeAll()
-      writeFileSync(profileExecutionFile(world.folder), 'not json')
+      world.loseTheKept()
       const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const next = world.aHost()
       await expect(world.aPersonOpens(next, 'browser-driver')).rejects.toThrow(
@@ -1039,7 +1035,7 @@ describe('a service queues the work it is given', () => {
       const one = await world.aPersonOpens(before, 'svc-one')
       const two = await world.aPersonOpens(before, 'svc-two')
       await before.closeAll()
-      writeProfileExecution(profileExecutionFile(world.folder), {
+      writeProfileExecution(world.db, {
         profiles: {
           [first.id]: {
             kind: 'service',
@@ -1097,7 +1093,7 @@ describe('a service queues the work it is given', () => {
       const busy = await aServiceAtWork(host, first)
       const given = accepted(await world.gives(host, first, 'browser-driver'))
       await host.closeAll()
-      writeFileSync(profileExecutionFile(world.folder), 'not json')
+      world.loseTheKept()
       const quiet = [
         vi.spyOn(console, 'info').mockImplementation(() => {}),
         vi.spyOn(console, 'warn').mockImplementation(() => {}),
@@ -1187,7 +1183,7 @@ describe('a service queues the work it is given', () => {
         profileId: 'born-service',
         service: true,
       })
-      writeProfileExecution(profileExecutionFile(world.folder), {
+      writeProfileExecution(world.db, {
         profiles: {
           [lost.id]: {
             kind: 'service',
@@ -1233,7 +1229,7 @@ describe('a service queues the work it is given', () => {
     const host = world.aHost()
     const caller = await world.aPersonOpens(host, 'caller')
     const given = accepted(await world.gives(host, caller, 'browser-driver'))
-    const read = readProfileExecution(profileExecutionFile(world.folder))
+    const read = readProfileExecution(world.db)
     expect(read.readable && read.kept.profiles[svc.id]?.serviceConversation).toBe(given.owner)
   })
 })

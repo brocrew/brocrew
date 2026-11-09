@@ -1,12 +1,13 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { composeProfileBundle } from '../src/main/runtime/factory-text'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import {
-  PROFILE_EXECUTION_VERSION,
-  profileExecutionFile,
+  importProfileExecutionFile,
+  PROFILE_EXECUTION_FILE,
   readProfileExecution,
 } from '../src/main/profile-execution-file'
 import type { GiveOutcome, RuntimeHost } from '../src/main/runtime/runtime-host'
@@ -58,7 +59,7 @@ describe('services a person turns on and off', () => {
   }
   const switchedOn = (): boolean =>
     (() => {
-      const read = readProfileExecution(profileExecutionFile(world.folder))
+      const read = readProfileExecution(world.db)
       return !read.readable || read.kept.servicesOff !== true
     })()
 
@@ -76,7 +77,16 @@ describe('services a person turns on and off', () => {
     })
 
     it('is on where the services list can’t be read, and the launch logs why', () => {
-      writeFileSync(profileExecutionFile(world.folder), 'not a list')
+      world.anAgent('browser-driver')
+      world.store.create({
+        id: 'sess_service',
+        provider: 'claude',
+        cwd: world.folder,
+        approvalMode: 'ask',
+        profileId: 'browser-driver',
+        service: true,
+      })
+      world.loseTheKept()
       const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
       const host = world.aHost()
       expect(host.agentIdentities().servicesOn).toBe(true)
@@ -92,13 +102,13 @@ describe('services a person turns on and off', () => {
       expect(switchedOn()).toBe(false)
     })
 
-    it('reads a switch written false as on, as a missing one', () => {
-      const file = profileExecutionFile(world.folder)
+    it('imports a switch an older build wrote false as on, as a missing one', () => {
       writeFileSync(
-        file,
-        JSON.stringify({ version: PROFILE_EXECUTION_VERSION, servicesOff: false, profiles: {} }),
+        join(world.folder, PROFILE_EXECUTION_FILE),
+        JSON.stringify({ version: 2, servicesOff: false, profiles: {} }),
       )
-      expect(readProfileExecution(file)).toEqual({ readable: true, kept: { profiles: {} } })
+      importProfileExecutionFile(world.db, world.folder)
+      expect(readProfileExecution(world.db)).toEqual({ readable: true, kept: { profiles: {} } })
     })
   })
 

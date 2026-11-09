@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
-import { profileExecutionFile, writeProfileExecution } from '../src/main/profile-execution-file'
+import { writeProfileExecution } from '../src/main/profile-execution-file'
 import { workerRegistrationOf } from '../src/main/worker-registration'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 
@@ -149,7 +149,7 @@ describe('a normal worker birth', () => {
       parentSessionId: 'new-giver',
       worker: { ...worker, number: 2 },
     })
-    writeProfileExecution(profileExecutionFile(world.folder), {
+    writeProfileExecution(world.db, {
       profiles: {
         [worker.identity]: {
           kind: 'normal',

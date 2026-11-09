@@ -15,6 +15,13 @@ import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { importDraftsFile, SAVED_DRAFTS_FILE, savedDraftsBook } from '../src/main/drafts-file'
 import {
+  importProfileExecutionFile,
+  NO_PROFILE_EXECUTION,
+  PROFILE_EXECUTION_FILE,
+  readProfileExecution,
+  writeProfileExecution,
+} from '../src/main/profile-execution-file'
+import {
   importProviderUsageFile,
   NO_USAGE_KEPT,
   PROVIDER_USAGE_FILE,
@@ -132,6 +139,14 @@ const CASES: readonly Case[] = [
     importFile: importDraftsFile,
     rows: (database) => savedDraftsBook(database),
     change: (database) => database.exec('DELETE FROM draft'),
+  },
+  {
+    name: 'how each profile runs',
+    file: PROFILE_EXECUTION_FILE,
+    said: { version: 2, profiles: { 'aid:a': { kind: 'service', identityCreatedAt: 1 } } },
+    importFile: importProfileExecutionFile,
+    rows: (database) => readProfileExecution(database),
+    change: (database) => writeProfileExecution(database, NO_PROFILE_EXECUTION),
   },
 ]
 
