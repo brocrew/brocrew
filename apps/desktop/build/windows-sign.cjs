@@ -112,7 +112,7 @@ function createSigner({ env = process.env, run = spawnSync, platform = process.p
         timeout: 180_000,
       },
     )
-    // CodeSignTool can report an error with exit code zero. Never echo its account-bearing output.
+    // CodeSignTool can report an error with exit code zero. GitHub masks are registered before signing.
     if (
       result.error ||
       result.status !== 0 ||
@@ -120,6 +120,8 @@ function createSigner({ env = process.env, run = spawnSync, platform = process.p
         `${result.stdout || ''}\n${result.stderr || ''}`,
       )
     ) {
+      if (result.stdout) process.stdout.write(result.stdout)
+      if (result.stderr) process.stderr.write(result.stderr)
       throw new Error('eSigner failed; packaging stopped before update metadata was generated')
     }
 

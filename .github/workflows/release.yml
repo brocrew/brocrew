@@ -165,6 +165,10 @@ jobs:
           set -euo pipefail
           signing=()
           if [ "$WINDOWS_SIGNING_ENABLED" = true ]; then
+            printf '::add-mask::%s\n' "$ES_PASSWORD"
+            printf '::add-mask::%s\n' "$ES_TOTP_SECRET"
+            printf '::add-mask::%s\n' "$CREDENTIAL_ID"
+            printf '::add-mask::%s\n' "$ES_USERNAME"
             signing+=(-c.win.signtoolOptions.publisherName=DEVERP)
           fi
           pnpm --filter @brobot2/desktop run build
