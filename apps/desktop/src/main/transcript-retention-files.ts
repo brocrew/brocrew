@@ -1,3 +1,4 @@
+import { isInside } from '@brobot2/shared/paths'
 import { link, lstat, mkdir, readdir, realpath, rename, rmdir, unlink } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { setImmediate } from 'node:timers/promises'
@@ -65,7 +66,12 @@ async function ownedRoot(userData: string): Promise<string | null> {
 }
 async function inside(root: string, path: string): Promise<boolean> {
   const rel = relative(root, path)
-  if (!rel || rel.startsWith('..') || resolve(root, rel) !== path) return false
+  if (
+    !isInside(root, path, { orSame: false }) ||
+    rel.startsWith('..') ||
+    resolve(root, rel) !== path
+  )
+    return false
   let parent = dirname(path)
   while (parent !== root) {
     if (!(await plainDirectory(parent))) return false

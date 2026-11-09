@@ -1,3 +1,4 @@
+import { isInside } from '@brobot2/shared/paths'
 import { createHash } from 'node:crypto'
 import {
   closeSync,
@@ -10,7 +11,7 @@ import {
   statSync,
   type BigIntStats,
 } from 'node:fs'
-import { isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { join, resolve } from 'node:path'
 import { SAVED_METHODS_MOST_METHOD_BYTES } from '../shared/saved-methods'
 import type {
   MethodBody,
@@ -64,16 +65,11 @@ function at(path: string): BigIntStats | null {
   }
 }
 
-function within(root: string, path: string): boolean {
-  const part = relative(root, path)
-  return part !== '' && part !== '..' && !part.startsWith(`..${sep}`) && !isAbsolute(part)
-}
-
 /** The methods folder, followed through any link the person made below the managed root. */
 function folderAt(inputs: MethodLibraryInputs): BigIntStats {
   const root = resolve(inputs.homesRoot)
   const folder = resolve(inputs.folder)
-  if (!within(root, folder)) throw new Refused('link')
+  if (!isInside(root, folder, { orSame: false })) throw new Refused('link')
   try {
     const directory = statSync(folder, { bigint: true })
     if (!directory.isDirectory()) throw new Refused('not-a-file', folder)

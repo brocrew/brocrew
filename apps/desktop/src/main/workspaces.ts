@@ -1,4 +1,5 @@
 import { writeAtomicallySync } from '@brobot2/runtime/atomic-write'
+import { isInside } from '@brobot2/shared/paths'
 import { PACKAGED_WORKSPACE_LIST } from './workspace-routing'
 import {
   packagedWorkspaceIsForbidden,
@@ -16,7 +17,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
-import { basename, dirname, join, resolve, sep } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import type { WorkspaceFolderVerdict, WorkspaceRow, WorkspaceState } from '../shared/workspaces'
 import {
   DATA_FOLDER,
@@ -513,5 +514,5 @@ export async function workspaceRows(options: {
 export function isWithin(path: string, folder: string): boolean {
   const inner = onTheDisk(resolve(path))
   const outer = onTheDisk(resolve(folder))
-  return inner === outer || inner.startsWith(outer.endsWith(sep) ? outer : `${outer}${sep}`)
+  return isInside(outer, inner)
 }

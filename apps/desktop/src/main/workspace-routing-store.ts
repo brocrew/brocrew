@@ -1,4 +1,5 @@
 import { writeAtomicallySync } from '@brobot2/runtime/atomic-write'
+import { isInside } from '@brobot2/shared/paths'
 import { createHash } from 'node:crypto'
 import {
   closeSync,
@@ -11,7 +12,7 @@ import {
   realpathSync,
   statSync,
 } from 'node:fs'
-import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
+import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 
 export const WORKSPACE_LIST_REFUSAL = "BroCrew couldn't read its list of workspaces."
 export const WORKSPACE_POLICY_FILE = 'workspace-policy.json'
@@ -161,19 +162,8 @@ export function canonicalWorkspacePath(folder: string): string {
 }
 
 export function withinWorkspace(folder: string, root: string): boolean {
-  const folded = (path: string): string => {
-    const absolute = resolve(path)
-    return process.platform === 'win32' || process.platform === 'darwin'
-      ? absolute.toLowerCase()
-      : absolute
-  }
-  const inside = (folder: string, root: string): boolean => {
-    const one = folded(folder),
-      other = folded(root)
-    return one === other || one.startsWith(other.endsWith(sep) ? other : `${other}${sep}`)
-  }
   return (
-    inside(folder, root) || inside(canonicalWorkspacePath(folder), canonicalWorkspacePath(root))
+    isInside(root, folder) || isInside(canonicalWorkspacePath(root), canonicalWorkspacePath(folder))
   )
 }
 

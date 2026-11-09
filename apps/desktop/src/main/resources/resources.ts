@@ -1,4 +1,5 @@
 import { writeAtomicallySync } from '@brobot2/runtime/atomic-write'
+import { isInside as within } from '@brobot2/shared/paths'
 import { refusalReason } from '../../shared/refusals'
 import { createHash } from 'node:crypto'
 import {
@@ -10,7 +11,7 @@ import {
   readSync,
   realpathSync,
 } from 'node:fs'
-import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, isAbsolute, join, resolve, sep } from 'node:path'
 import { openNotThroughALink } from '@brobot2/runtime'
 import type { RailPermanence, RefusalRemedy } from '../../shared/refusals'
 import {
@@ -240,12 +241,6 @@ export const MOST_BYTES_OF_ANY_FORM = Math.max(...Object.values(MOST_BYTES_OF_FO
 /** SHA-256, lowercase hex — what `work_resource_sha256_ck` is written to admit. */
 export function sha256Hex(bytes: Buffer): string {
   return createHash('sha256').update(bytes).digest('hex')
-}
-
-/** At or inside `root`. `relative`, never `startsWith`: `/a/b-evil` is not inside `/a/b`. */
-function within(root: string, path: string): boolean {
-  const rel = relative(root, path)
-  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
 }
 
 /**

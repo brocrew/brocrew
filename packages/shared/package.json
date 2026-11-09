@@ -14,6 +14,10 @@
     "./providers": {
       "types": "./src/providers.ts",
       "default": "./src/providers.ts"
+    },
+    "./paths": {
+      "types": "./src/paths.ts",
+      "default": "./src/paths.ts"
     }
   },
   "scripts": {

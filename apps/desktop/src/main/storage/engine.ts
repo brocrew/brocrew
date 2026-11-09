@@ -1,5 +1,6 @@
+import { isInside as insideData } from '@brobot2/shared/paths'
 import { lstat, opendir, realpath, statfs } from 'node:fs/promises'
-import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, join, relative, resolve, sep } from 'node:path'
 import { providerConversationDirectories } from '../providers/workspace-layout.mjs'
 import {
   STORAGE_PART_IDS,
@@ -42,10 +43,6 @@ export class StorageFailure extends Error {
 export const storageReason = (error: unknown): StorageError =>
   error instanceof StorageFailure ? error.reason : 'unavailable'
 const missing = (error: unknown): boolean => (error as NodeJS.ErrnoException).code === 'ENOENT'
-export function insideData(root: string, path: string): boolean {
-  const rel = relative(resolve(root), resolve(path))
-  return rel === '' || (!isAbsolute(rel) && rel !== '..' && !rel.startsWith(`..${sep}`))
-}
 
 /** This engine runs in a disposable worker. It never reads file contents or follows links. */
 export class StorageEngine {
@@ -381,3 +378,5 @@ export function failedOverview(error: StorageError): StorageOverview {
     error,
   }
 }
+
+export { insideData }

@@ -1,3 +1,4 @@
+import { isInside } from '@brobot2/shared/paths'
 import { constants, type BigIntStats } from 'node:fs'
 import { lstat, open, realpath, type FileHandle } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
@@ -50,11 +51,6 @@ const sameFile = (a: BigIntStats, b: BigIntStats): boolean => a.dev === b.dev &&
 const unchanged = (a: BigIntStats, b: BigIntStats): boolean =>
   sameFile(a, b) && a.size === b.size && a.mtimeNs === b.mtimeNs && a.ctimeNs === b.ctimeNs
 
-function insideThemeFolder(root: string, path: string): boolean {
-  const rest = relative(root, path)
-  return rest !== '' && rest !== '..' && !rest.startsWith(`..${sep}`) && !isAbsolute(rest)
-}
-
 interface DirectoryPin {
   readonly path: string
   readonly stat: BigIntStats
@@ -65,7 +61,7 @@ async function directories(
   path: string,
   files: ThemeReadFiles,
 ): Promise<readonly DirectoryPin[] | null> {
-  if (!insideThemeFolder(root, path)) return null
+  if (!isInside(root, path, { orSame: false })) return null
   const parts = relative(root, path).split(sep).slice(0, -1)
   const pins: DirectoryPin[] = []
   let at = root
@@ -146,7 +142,7 @@ export async function readThemeFile(
   files: ThemeReadFiles = THEME_READ_FILES,
 ): Promise<ThemeFileRead> {
   const path = resolve(root, file)
-  if (!insideThemeFolder(root, path)) return { ok: false, failure: 'outside' }
+  if (!isInside(root, path, { orSame: false })) return { ok: false, failure: 'outside' }
   try {
     const pins = await directories(root, path, files)
     if (!pins || !(await pinsStillHold(pins, files))) return { ok: false, failure: 'link' }

@@ -1,5 +1,6 @@
+import { isInside } from '@brobot2/shared/paths'
 import type { InstructionScope } from '../../shared/instruction-contracts'
-import { dirname, resolve, sep } from 'node:path'
+import { dirname, resolve } from 'node:path'
 
 /**
  * 🔴 **Which layer a provider-reported instruction file belongs to** (356 §3, from 357's verdict).
@@ -27,43 +28,6 @@ import { dirname, resolve, sep } from 'node:path'
  * already gave us — the panel's §3 change is *a label, not a path* (356 §3), and this is the label.
  */
 
-/**
- * ⚠️ **Case is compared exactly, and on APFS that is the SAFE direction.**
- *
- * `realpathSync` does not canonicalise case, so a home recorded as `/Users/Alex/…` and a provider
- * path spelled `/users/alex/…` name one directory and differ as strings. Case-folding them would
- * make this function claim a layer on a machine where the filesystem happens to be insensitive and
- * lose that claim on one where it is not — a label that depends on the volume. Comparing exactly
- * fails toward {@link InstructionScope} `unknown`, which is a sentence the panel can print honestly.
- */
-function inside(path: string, root: string): boolean {
-  if (root === '') return false
-  const base = resolve(root)
-  // `resolve('/')` is `/`, which already ends in the separator; every other base needs one so that
-  // `/homes/codex-old/AGENTS.md` is not read as living inside `/homes/codex`.
-  return resolve(path).startsWith(base.endsWith(sep) ? base : base + sep)
-}
-
-/**
- * Whether `directory` is `cwd` or one of its ancestors — the project chain, which is the set of
- * directories a provider walks root-to-cwd looking for instruction files.
- *
- * ⚠️ **An ancestor, not merely a prefix.** `<cwd>/sub/AGENTS.md` shares every character of `cwd` and
- * is NOT on the chain: nothing walks downward. A prefix test would label a file below the working
- * directory as project instructions that apply here, which is the same class of overclaim 357 found.
- */
-function onTheProjectChain(directory: string, cwd: string): boolean {
-  if (cwd === '') return false
-  let at = resolve(cwd)
-  for (;;) {
-    if (at === directory) return true
-    const up = dirname(at)
-    // `dirname('/')` is `/` — the fixed point that ends the walk at the filesystem root.
-    if (up === at) return false
-    at = up
-  }
-}
-
 /** The two facts a session was launched with, and the only two this decision may use. */
 export interface InstructionScopeContext {
   /** The app-owned per-profile provider home — the *who*. */
@@ -72,17 +36,11 @@ export interface InstructionScopeContext {
   cwd: string
 }
 
-/**
- * The layer `path` belongs to for a session launched in `context`.
- *
- * ⛔ **The profile home wins when the two overlap**, and the case is real rather than theoretical: a
- * provider home nested under the working directory would put every file in it on the project chain
- * as well, and the more specific answer is the true one — a file in the home is the profile's
- * however the directories happen to be arranged.
- */
+/** Profile home takes precedence when it overlaps the project chain. */
 export function instructionScope(path: string, context: InstructionScopeContext): InstructionScope {
   if (path === '') return 'unknown'
-  if (inside(path, context.providerHome)) return 'profile'
-  if (onTheProjectChain(dirname(resolve(path)), context.cwd)) return 'project'
+  if (context.providerHome !== '' && isInside(context.providerHome, path, { orSame: false }))
+    return 'profile'
+  if (context.cwd !== '' && isInside(dirname(resolve(path)), context.cwd)) return 'project'
   return 'unknown'
 }

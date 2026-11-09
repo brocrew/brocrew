@@ -1,4 +1,5 @@
 import { stageAtomicWriteSync } from '@brobot2/runtime/atomic-write'
+import { isInside as within } from '@brobot2/shared/paths'
 import {
   existsSync,
   lstatSync,
@@ -275,20 +276,6 @@ function stateOf(
   if (entries.length > 0) return 'read'
   if (read.refused.length > 0) return 'unreadable'
   return 'nothing-written'
-}
-
-/**
- * At or inside `root`. `relative`, never `startsWith`: `/a/b-evil` is not inside `/a/b`.
- *
- * ⚠️ **A copy of this three-line comparison, and `372` is the reason it is a copy** — the
- * resources module keeps its own `within` for the same reason. ⛔ **A shared guard exports its POLICY along
- * with its arithmetic**: `internal/confinement.ts`' `isWithin` carries the Claude adapter's
- * plan-file and memory allowances, and that ruling is not this door's. ⚑ What must not differ is
- * the arithmetic, and it does not.
- */
-function within(root: string, path: string): boolean {
-  const rel = relative(root, path)
-  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))
 }
 
 /**
