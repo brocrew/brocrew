@@ -72,8 +72,6 @@ function startFixture(fail, variant = 'V2F') {
       return app
     },
     registerChild: async () => {},
-    phaseStep: async (_root, _phase, work) => work(),
-    integrityCheckpoint: async () => {},
     waitDevtools: async (_port, window) => {
       if (fail === (window ? 'first-window' : 'devtools-port')) return new Promise(() => {})
     },

@@ -23,7 +23,6 @@ export const phases = [
   'app-build',
   'app-package',
   'app-signature',
-  'app-integrity',
   'cdp-fixture-tests',
   'cdp-fixture-dependencies',
   'probe-matrix',

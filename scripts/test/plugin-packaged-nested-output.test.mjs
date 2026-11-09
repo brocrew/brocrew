@@ -26,8 +26,6 @@ function journeyStartApp(spawn) {
     probeStep: async (_name, work) => work(),
     spawn,
     registerChild: async () => {},
-    phaseStep: async (_root, _phase, work) => work(),
-    integrityCheckpoint: async () => {},
     waitDevtools: async () => {},
     bounded: (work) => work,
     attach: async () => ({ evaluate: async () => true }),

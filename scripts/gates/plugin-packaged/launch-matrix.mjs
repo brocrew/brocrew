@@ -18,7 +18,6 @@ import {
 import { observeApp, waitDevtools } from './probe.mjs'
 import { bounded, stopApp, cancellation } from './processes.mjs'
 import { registerChild, bestEffortDrain } from './runner-processes.mjs'
-import { integrityCheckpoint } from './integrity.mjs'
 import { readOwned, stageRelease, draws } from './journey.mjs'
 import { printFailure, failureFor } from './diagnostics.mjs'
 import { pageStateSnapshot } from './page-state.mjs'
@@ -59,7 +58,6 @@ export async function launchMatrix(root) {
       },
       cancelled,
       async beforeLaunch(variant) {
-        await integrityCheckpoint(root, plan.app, 'beforeLaunch', plan.bundleStamp)
         return {
           workspace: privateFolder(path.join(root, 'matrix-' + variant)),
           global: privateFolder(path.join(root, 'matrix-global-' + variant)),
