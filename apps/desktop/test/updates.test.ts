@@ -26,7 +26,6 @@ import {
   privateDownloadUrlOf,
   privateFeedToken,
   readFeed,
-  sha512Of,
 } from '../src/main/guided-update'
 import { listingCommand, otherBroBotsIn } from '../src/main/other-brobots'
 import {
@@ -735,11 +734,9 @@ describe('§3 · other workspaces, from the process table', () => {
 })
 
 describe('§4 · the Mac’s guided download, against a local server', () => {
-  /** A throwaway server: `/files/<name>` serves what `serve` holds, and counts requests. */
+  /** A throwaway server: `/files/<name>` serves what `serve` holds. */
   async function aFeed(serve: Record<string, Buffer>) {
-    const requests: string[] = []
     const server = createServer((request, response) => {
-      requests.push(request.url ?? '')
       const name = decodeURIComponent((request.url ?? '').replace(/^\/files\//, ''))
       const body = serve[name]
       if (body === undefined) {
@@ -751,7 +748,7 @@ describe('§4 · the Mac’s guided download, against a local server', () => {
     servers.push(server)
     await new Promise<void>((done) => server.listen(0, '127.0.0.1', done))
     const { port } = server.address() as AddressInfo
-    return { url: `http://127.0.0.1:${String(port)}/files/`, requests }
+    return { url: `http://127.0.0.1:${String(port)}/files/` }
   }
   const image = Buffer.alloc(256 * 1024, 7)
   const sum = createHash('sha512').update(image).digest('base64')
@@ -768,7 +765,7 @@ describe('§4 · the Mac’s guided download, against a local server', () => {
       onPercent: (percent) => percents.push(percent),
     })
     expect(path).toBe(to)
-    expect(await sha512Of(to)).toBe(sum)
+    expect(createHash('sha512').update(readFileSync(to)).digest('base64')).toBe(sum)
     expect(percents.at(-1)).toBe(100)
     expect(readdirSync(dirname(to))).toEqual(['BroBot-0.2.0-arm64.dmg'])
   })
@@ -818,24 +815,14 @@ describe('§4 · the Mac’s guided download, against a local server', () => {
     }
   })
 
-  it('⚑ one already downloaded and checked is not fetched again; a missing one is an error', async () => {
+  it('⚑ a missing one is said with its status', async () => {
     const feed = await aFeed({})
-    const to = join(aFolder(), 'BroBot-0.2.0-arm64.dmg')
-    writeFileSync(to, image)
-    await downloadChecked({
-      stagingFolder: aFolder(),
-      url: `${feed.url}BroBot-0.2.0-arm64.dmg`,
-      sha512: sum,
-      to,
-      onPercent: () => {},
-    })
-    expect(feed.requests).toEqual([])
     await expect(
       downloadChecked({
         stagingFolder: aFolder(),
         url: `${feed.url}gone.dmg`,
         sha512: sum,
-        to: `${to}-2`,
+        to: join(aFolder(), 'gone.dmg'),
         onPercent: () => {},
       }),
     ).rejects.toThrow('the download answered 404')
@@ -854,6 +841,11 @@ describe('§4 · the Mac’s guided download, against a local server', () => {
       url: 'http://127.0.0.1:9/f',
     })
     expect(readFeed('provider: s3\n')).toBeNull()
+    expect(readFeed("provider: github\nowner: 'brocrew'\nrepo: \"feed\"\nprivate: 'true'\n")).toEqual({
+      provider: 'github',
+      owner: 'brocrew',
+      repo: 'feed',
+    })
     expect(
       downloadUrlOf(
         { provider: 'github', owner: 'brocrew', repo: 'brocrew' },

@@ -66,7 +66,6 @@
   "exports|apps/desktop/src/main/drafts-file.ts|DRAFTS_FILE_VERSION",
   "exports|apps/desktop/src/main/drafts-file.ts|DRAFTS_PART",
   "exports|apps/desktop/src/main/drafts-file.ts|savedDraftsPath",
-  "exports|apps/desktop/src/main/guided-update.ts|DOWNLOAD_STALLS_AFTER_MS",
   "exports|apps/desktop/src/main/instruction-source.ts|MAX_INSTRUCTION_BYTES",
   "exports|apps/desktop/src/main/launch-presentation.ts|launchModule.A_FOLDER_WITH_NO_NAME",
   "exports|apps/desktop/src/main/memory-watch.ts|MEMORY_INTERVAL_MS",

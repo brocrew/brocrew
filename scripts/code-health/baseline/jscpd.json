@@ -3183,8 +3183,6 @@
   "typescript|apps/desktop/test/two-sessions-of-one-agent.demo.test.ts|apps/desktop/test/two-sessions-of-one-agent.demo.test.ts",
   "typescript|apps/desktop/test/two-verbs-one-sentence.test.ts|packages/runtime/test/claude-agent-tools.test.ts",
   "typescript|apps/desktop/test/two-withdrawals-open-what-was-scoped.test.ts|apps/desktop/test/what-a-replacement-carries-and-what-it-leaves-behind.test.ts",
-  "typescript|apps/desktop/test/update-download-stage-ownership.test.ts|apps/desktop/test/update-download-stage-ownership.test.ts",
-  "typescript|apps/desktop/test/update-download-stage-ownership.test.ts|apps/desktop/test/update-downloads-use-private-staging.test.ts",
   "typescript|apps/desktop/test/updates.test.ts|scripts/lib/windows-update-test.mjs",
   "typescript|apps/desktop/test/user-homes.test.ts|apps/desktop/test/user-homes.test.ts",
   "typescript|apps/desktop/test/waiting-on-an-answer-is-not-stalled.test.ts|apps/desktop/test/waiting-on-an-answer-is-not-stalled.test.ts",

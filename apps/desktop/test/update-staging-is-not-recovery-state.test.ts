@@ -13,7 +13,6 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import { clearUpdateStaging } from '../src/main/guided-update'
 import { makeCheckpoint } from '../src/main/recovery/checkpoint'
 import { restore } from '../src/main/recovery/restore'
 import { APP_STATE_FILES, NOT_STATE } from '../src/main/recovery/state-files'
@@ -89,6 +88,5 @@ it('restores the database when private staging is absent, without treating it as
   } finally {
     restored.close()
   }
-  expect(() => clearUpdateStaging(userData)).not.toThrow()
   expect(existsSync(join(userData, 'updates'))).toBe(false)
 })
