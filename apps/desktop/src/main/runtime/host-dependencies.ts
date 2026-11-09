@@ -76,7 +76,6 @@ export interface RuntimeHostDeps {
   createRuntime(provider: Provider, connectionId?: string): AgentRuntime
   /** Resolve metadata before home/provider work; absence preserves legacy test/runtime wiring. */
   connectionFor?(provider: Provider, recordedConnection?: string | null): string
-  connectionRevision?(provider: Provider): number
   listConnections?(): readonly ProviderConnection[]
   /**
    * Provision the app-owned home for a provider IN A GIVEN PROFILE and return its path.

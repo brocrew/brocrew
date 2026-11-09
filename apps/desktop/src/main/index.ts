@@ -936,7 +936,6 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
       if (!connections) throw new Error('Provider connection services were not bound')
       return connections.resolve(connectionId).id
     },
-    connectionRevision: (provider) => apiKeys.revision(provider),
     listConnections: () =>
       Object.values(providerModules).flatMap((module) => module.connections?.list() ?? []),
     // Derive the profile from the session; keep its provider home under `HOME_FOLDER`.

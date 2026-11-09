@@ -21329,11 +21329,6 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  private assertConnectionUnchanged(provider: Provider, revision: number | undefined): void {
-    if (revision !== undefined && this.deps.connectionRevision?.(provider) !== revision)
-      throw new Error('The selected connection changed during preparation')
-  }
-
   private runtimeWithPlugins(
     runtime: AgentRuntime,
     provider: Provider,
@@ -21384,13 +21379,11 @@ export class RuntimeHost implements LiveHost {
     const connectionId = recorded
       ? this.deps.connectionFor?.(input.provider, this.deps.store.connectionOf(id))
       : this.deps.connectionFor?.(input.provider)
-    const connectionRevision = this.deps.connectionRevision?.(input.provider)
     const { home: providerHome, loginRenewed } = await this.prepareAHome(
       input.provider,
       profileId,
       id,
     )
-    this.assertConnectionUnchanged(input.provider, connectionRevision)
     // ⛔ **Asked again now the home exists, because the first answer was about a different disk**
     // (265 §4). The claim above covers every creation in THIS host; a variant laid down while we
     // waited — another BroBot tree over the same `userData`, or a person making the directory — is
@@ -21498,7 +21491,6 @@ export class RuntimeHost implements LiveHost {
       { provider: input.provider, kind: 'fresh' },
       (startPhases) => {
         if (builtInSkills && !builtInSkills.isCurrent()) throw new Error(BUILT_IN_SKILLS_FAILURE)
-        this.assertConnectionUnchanged(input.provider, connectionRevision)
         const runtime = this.runtimeWithPlugins(rawRuntime, input.provider, profileId)
         return runtime.start({
           startPhases,
@@ -39084,16 +39076,13 @@ export class RuntimeHost implements LiveHost {
     if (this.launches.closed) return { ok: false, reason: 'closing' }
     let providerHome: string
     let connectionId: string | undefined
-    let connectionRevision: number | undefined
     try {
       connectionId = this.deps.connectionFor?.(provider)
-      connectionRevision = this.deps.connectionRevision?.(provider)
       const preparation = this.launches.open(`${provider} model home preparation`)
       try {
         if (this.deps.beforeProviderLaunch) await this.deps.beforeProviderLaunch()
         preparation.signal.throwIfAborted()
         providerHome = await this.deps.prepareProviderHome(provider, profileId)
-        this.assertConnectionUnchanged(provider, connectionRevision)
       } finally {
         this.launches.finish(preparation)
       }
@@ -39114,7 +39103,6 @@ export class RuntimeHost implements LiveHost {
         await this.deps.beforeProviderLaunch()
         launch.signal.throwIfAborted()
       }
-      this.assertConnectionUnchanged(provider, connectionRevision)
       const runtime =
         connectionId === undefined
           ? this.deps.createRuntime(provider)
@@ -40149,13 +40137,11 @@ export class RuntimeHost implements LiveHost {
       row.provider,
       this.deps.store.connectionOf(sessionId),
     )
-    const connectionRevision = this.deps.connectionRevision?.(row.provider)
     const { home: providerHome, loginRenewed } = await this.prepareAHome(
       row.provider,
       profileId,
       sessionId,
     )
-    this.assertConnectionUnchanged(row.provider, connectionRevision)
     // Null only for rows written before the mode was recorded, and for adopted ones we never
     // ran; those resume PROMPTING, which is the safe direction — never the other way round.
     const approvalMode = row.approvalMode ?? 'ask'
@@ -40289,7 +40275,6 @@ export class RuntimeHost implements LiveHost {
           ).catch(() => null)
         }
         if (builtInSkills && !builtInSkills.isCurrent()) throw new Error(BUILT_IN_SKILLS_FAILURE)
-        this.assertConnectionUnchanged(row.provider, connectionRevision)
         const runtime = this.runtimeWithPlugins(rawRuntime, row.provider, row.profileId)
         return runtime.resume(row.ref, {
           startPhases,
