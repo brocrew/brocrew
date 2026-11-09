@@ -22,6 +22,7 @@ import type { ArchivedConversations } from '../archived-file'
 import type { InstructionContext, TheBuildRunning } from './factory-text'
 import type { MessagePathPlace } from '../message-paths'
 import type { LoginRenewalOperations } from '../providers/auth-types'
+import type { PreparedProviderLaunch } from '../providers/module'
 import type { ProviderAuthOps } from '../providers/auth-operations'
 import type { ApiKeys } from './api-keys'
 import type { ProtectedPlaceNotice } from '../../shared/work-folders'
@@ -77,6 +78,11 @@ export interface RuntimeHostDeps {
   /** Resolve metadata before home/provider work; absence preserves legacy test/runtime wiring. */
   connectionFor?(provider: Provider, recordedConnection?: string | null): ProviderConnection
   listConnections?(): readonly ProviderConnection[]
+  prepareProviderLaunch?(
+    provider: Provider,
+    profileId: string,
+    connection?: ProviderConnection,
+  ): Promise<PreparedProviderLaunch>
   /**
    * Provision the app-owned home for a provider IN A GIVEN PROFILE and return its path.
    * The profile is passed rather than pinned because it decides what the provider remembers:

@@ -21234,7 +21234,7 @@ export class RuntimeHost implements LiveHost {
     profileId: string,
     sessionId?: string,
     connection?: ProviderConnection,
-  ): Promise<{ readonly home: string; readonly loginRenewed: boolean }> {
+  ): Promise<{ readonly home: string; readonly loginRenewed: boolean; readonly runtime?: AgentRuntime }> {
     const barrier = this.homeCopyBarriers.get(profileSignInKey(provider, profileId))
     const launch = sessionId === undefined ? undefined : this.slots.get(sessionId)?.launch
     if (barrier !== undefined) {
@@ -21248,18 +21248,25 @@ export class RuntimeHost implements LiveHost {
     }
     await this.homeCopyJobs.get(profileSignInKey(provider, profileId))
     const renewedForIt = sessionId !== undefined && this.renewedForItsReopen.delete(sessionId)
-    const prepare = (): string | Promise<string> =>
-      connection === undefined
+    let runtime: AgentRuntime | undefined
+    const prepare = async (): Promise<string> => {
+      if (this.deps.prepareProviderLaunch !== undefined) {
+        const prepared = await this.deps.prepareProviderLaunch(provider, profileId, connection)
+        runtime = prepared.runtime
+        return prepared.home
+      }
+      return connection === undefined
         ? this.deps.prepareProviderHome(provider, profileId)
         : this.deps.prepareProviderHome(provider, profileId, connection)
+    }
     const renewal = this.deps.loginRenewal?.(provider)
     if (renewal === undefined || this.aKeyIsSaved(provider)) {
-      return { home: await prepare(), loginRenewed: renewedForIt }
+      return { home: await prepare(), loginRenewed: renewedForIt, runtime }
     }
     const prepared = await renewal.prepare(prepare, () =>
       this.withProviderLaunch(renewal.launchLabel, renewal.renew),
     )
-    return { home: prepared.home, loginRenewed: renewedForIt || prepared.loginRenewed }
+    return { home: prepared.home, loginRenewed: renewedForIt || prepared.loginRenewed, runtime }
   }
 
   private async theSkillsForALaunch(
@@ -21382,7 +21389,7 @@ export class RuntimeHost implements LiveHost {
     const connection = recorded
       ? this.deps.connectionFor?.(input.provider, this.deps.store.connectionOf(id))
       : this.deps.connectionFor?.(input.provider)
-    const { home: providerHome, loginRenewed } = await this.prepareAHome(
+    const { home: providerHome, loginRenewed, runtime: preparedRuntime } = await this.prepareAHome(
       input.provider,
       profileId,
       id,
@@ -21415,10 +21422,10 @@ export class RuntimeHost implements LiveHost {
     // The runtime first: it is made with the program it runs, so a program this computer lacks is
     // refused here in its own words, before a model list is asked whose failure would read as a
     // list that names no model.
-    const rawRuntime =
+    const rawRuntime = preparedRuntime ?? (
       connection === undefined
         ? this.deps.createRuntime(input.provider)
-        : this.deps.createRuntime(input.provider, connection)
+        : this.deps.createRuntime(input.provider, connection))
     // 🔴 **D-042 · R1 — every start names its model and effort** (024's effort, 038's model): what
     // the caller named, else this agent's default, else the last pair a person picked on this
     // provider, else the provider's own default BY NAME — {@link theSelectedModel}, after the home is
@@ -39076,6 +39083,7 @@ export class RuntimeHost implements LiveHost {
     // that ran short, said in words (`710`, {@link howAFailureReads}); the log keeps the errno.
     if (this.launches.closed) return { ok: false, reason: 'closing' }
     let providerHome: string
+    let preparedRuntime: AgentRuntime | undefined
     let connection: ProviderConnection | undefined
     try {
       connection = this.deps.connectionFor?.(provider)
@@ -39083,9 +39091,15 @@ export class RuntimeHost implements LiveHost {
       try {
         if (this.deps.beforeProviderLaunch) await this.deps.beforeProviderLaunch()
         preparation.signal.throwIfAborted()
-        providerHome = await (connection === undefined
-          ? this.deps.prepareProviderHome(provider, profileId)
-          : this.deps.prepareProviderHome(provider, profileId, connection))
+        if (this.deps.prepareProviderLaunch !== undefined) {
+          const prepared = await this.deps.prepareProviderLaunch(provider, profileId, connection)
+          providerHome = prepared.home
+          preparedRuntime = prepared.runtime
+        } else {
+          providerHome = await (connection === undefined
+            ? this.deps.prepareProviderHome(provider, profileId)
+            : this.deps.prepareProviderHome(provider, profileId, connection))
+        }
       } finally {
         this.launches.finish(preparation)
       }
@@ -39106,10 +39120,10 @@ export class RuntimeHost implements LiveHost {
         await this.deps.beforeProviderLaunch()
         launch.signal.throwIfAborted()
       }
-      const runtime =
+      const runtime = preparedRuntime ?? (
         connection === undefined
           ? this.deps.createRuntime(provider)
-          : this.deps.createRuntime(provider, connection)
+          : this.deps.createRuntime(provider, connection))
       const listing = runtime.listModels({ providerHome, signal: launch.signal })
       // Owned until the probe's own promise settles — both adapters close their child in a
       // `finally`, so that is the nearest thing to a termination receipt a probe has. Handed
@@ -40140,7 +40154,7 @@ export class RuntimeHost implements LiveHost {
       row.provider,
       this.deps.store.connectionOf(sessionId),
     )
-    const { home: providerHome, loginRenewed } = await this.prepareAHome(
+    const { home: providerHome, loginRenewed, runtime: preparedRuntime } = await this.prepareAHome(
       row.provider,
       profileId,
       sessionId,
@@ -40184,10 +40198,10 @@ export class RuntimeHost implements LiveHost {
     const recordedModel = row.model ?? undefined
     // The runtime first, as a start makes it: a missing program is refused in its own words, never
     // as a list that names no model.
-    const rawRuntime =
+    const rawRuntime = preparedRuntime ?? (
       connection === undefined
         ? this.deps.createRuntime(row.provider)
-        : this.deps.createRuntime(row.provider, connection)
+        : this.deps.createRuntime(row.provider, connection))
     const selected = await this.theSelectedModel(row.provider, row.profileId, profileId, {
       ...(recordedModel === undefined ? {} : { model: recordedModel }),
       ...(recordedEffort === undefined ? {} : { effort: recordedEffort }),

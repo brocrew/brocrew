@@ -10,7 +10,7 @@ import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
 import { resolveProviderConnection } from '../src/main/db/provider-connections'
-import { claudeRuntime } from '../src/main/providers/claude'
+import { claudeRuntime, createClaudeModule } from '../src/main/providers/claude'
 
 const native = vi.hoisted(() => ({
   queryFactory: vi.fn<(params: unknown) => ClaudeQuery>(),
@@ -27,7 +27,7 @@ vi.mock('@brobot2/runtime/claude', async (importOriginal) => {
         super(
           (params) => native.queryFactory(params), async () => true,
           native.login, async () => native.login(), native.spawn, args[5], 'linux',
-          args[7], args[8], async () => native.login(), args[10],
+          args[7], args[8], args[9], args[10],
         )
       }
     },
@@ -92,7 +92,7 @@ for (const operation of ['start', 'resume', 'models'] as const) {
         keys.remove('claude')
         return key
       })
-      const runtime = claudeRuntime({ program: () => '/fictional/claude', key: readKey }, connection)
+      const runtime = claudeRuntime({ program: () => '/fictional/claude', key: readKey, launchLogin: async () => native.login() }, connection)
       const options = { cwd: dir, providerHome: home }
       if (operation === 'models') {
         expect(await runtime.listModels(options)).toEqual([])
@@ -128,7 +128,7 @@ for (const operation of ['start', 'resume', 'models'] as const) {
     keys.remove('claude')
     const home = join(dir, 'claude')
     mkdirSync(home)
-    const runtime = claudeRuntime({ program: () => '/fictional/claude', key: () => keys.read('claude') }, connection)
+    const runtime = claudeRuntime({ program: () => '/fictional/claude', key: () => keys.read('claude'), launchLogin: async () => native.login() }, connection)
     const options = { cwd: dir, providerHome: home }
     const pending = operation === 'models' ? runtime.listModels(options)
       : operation === 'start' ? runtime.start(options)
@@ -137,5 +137,42 @@ for (const operation of ['start', 'resume', 'models'] as const) {
     expect(native.queryFactory).not.toHaveBeenCalled()
     expect(native.login).not.toHaveBeenCalled()
     expect(native.spawn).not.toHaveBeenCalled()
+  })
+}
+
+for (const method of ['sign-in', 'api-key'] as const) {
+  it(`prepares one Claude ${method} selection for the home and runtime`, async () => {
+    let saved: string | null = method === 'api-key' ? 'fictional-fern-key' : null
+    const readKey = vi.fn(async () => saved)
+    const readLogin = vi.fn(async () => 'fictional-login')
+    const connection = {
+      ...resolveProviderConnection(db, { provider: 'claude' }),
+      authMethod: method,
+    }
+    const module = createClaudeModule({
+      managedRoot: dir,
+      defaultProfile: 'fictional-profile',
+      homeOf: () => join(dir, 'claude'),
+      profiles: () => ['fictional-profile'],
+      assertMayOpen: () => {},
+    }, {
+      runtime: { program: () => '/fictional/claude', key: readKey },
+      home: {
+        key: readKey,
+        login: readLogin,
+        provisionHome: (_root, home) => {
+          mkdirSync(home, { recursive: true })
+          saved = method === 'api-key' ? null : 'fictional-willow-key'
+        },
+      },
+      auth: {},
+    })
+    const prepared = await module.prepareLaunch!('fictional-profile', connection)
+    native.queryFactory.mockReturnValue(new Query())
+    expect(await prepared.runtime.listModels({ providerHome: prepared.home, cwd: dir })).toEqual([])
+    expect(readKey).toHaveBeenCalledTimes(method === 'api-key' ? 1 : 0)
+    expect(readLogin).toHaveBeenCalledTimes(method === 'sign-in' ? 1 : 0)
+    expect(native.queryFactory).toHaveBeenCalledTimes(1)
+    expect(saved).toBe(method === 'api-key' ? null : 'fictional-willow-key')
   })
 }

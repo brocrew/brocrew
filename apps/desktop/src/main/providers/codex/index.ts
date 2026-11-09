@@ -341,6 +341,23 @@ export function createCodexModule(
     keptRules,
     discovery,
     createRuntime: codexModuleFactory.runtime(seams.runtime),
+    async prepareLaunch(profileId, connection) {
+      const reader = keyForConnection(seams.home.key, connection)
+      let current: Awaited<ReturnType<CodexKeySeam['current']>>
+      try {
+        current = (await reader?.current()) ?? null
+      } catch (error) {
+        if (error instanceof ApiKeyUnreadableError)
+          throw new AuthUnavailableError('codex', error.message)
+        throw error
+      }
+      const key = reader === undefined ? undefined : {
+        current: () => current,
+        change: (home: string, change: Parameters<CodexKeySeam['change']>[1]) => reader.change(home, change),
+      }
+      const home = await prepareCodexHome(paths, profileId, { ...seams.home, key })
+      return { home, runtime: codexRuntime(seams.runtime) }
+    },
     home: codexModuleFactory.home(paths, seams.home),
     auth: codexModuleFactory.auth(paths, seams.auth),
   }

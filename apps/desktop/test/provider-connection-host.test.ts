@@ -291,3 +291,17 @@ for (const provider of ['claude', 'codex'] as const) {
     expect(f.create).toHaveBeenLastCalledWith(provider, expect.objectContaining({ id: `${provider}:api-key`, authMethod: 'api-key' }))
   })
 }
+
+it('uses the prepared adapter runtime for a start', async () => {
+  const f = fixture()
+  const prepared = vi.fn(async (provider: Provider, profile: string, connection?: ProviderConnection) => ({
+    home: await f.prepare(provider, profile, connection),
+    runtime: f.create(provider, connection),
+  }))
+  Reflect.set(f.deps, 'prepareProviderLaunch', prepared)
+  const started = await host.createSession({ provider: 'claude', cwd: dir }, sink)
+  expect(started.ok).toBe(true)
+  const creations = f.create.mock.calls.length
+  expect(creations).toBe(prepared.mock.calls.length)
+  expect(f.rawRuntimes.some((runtime) => vi.mocked(runtime.start).mock.calls.length > 0)).toBe(true)
+})

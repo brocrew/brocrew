@@ -43,10 +43,12 @@ export interface ClaudeRuntimeSeams {
   readonly programFound?: () => string | null
   readonly key?: () => string | null | Promise<string | null>
   readonly managedRoot?: string
+  readonly launchLogin?: () => Promise<string | null>
 }
 export interface ClaudeHomeSeams {
   readonly provisionHome?: ProvisionHome
   readonly health?: () => AuthHealth | Promise<AuthHealth>
+  readonly login?: () => Promise<string | null>
   readonly key?: () => string | null | Promise<string | null>
   readonly programFound?: () => string | null
 }
@@ -67,10 +69,11 @@ function claudeCommandFor(seams: { readonly programFound?: () => string | null }
 async function claudeHealth(
   apiKey: (() => string | null | Promise<string | null>) | undefined,
   command: () => string,
+  login = claudeKeychainTokenProviderForALaunch(),
 ): Promise<AuthHealth> {
   try {
     return await claudeAuthHealthAsync(
-      claudeKeychainTokenProviderForALaunch(),
+      login,
       apiKey === undefined ? undefined : () => apiKey(),
       command,
     )
@@ -131,7 +134,7 @@ export function claudeRuntime(seams: ClaudeRuntimeSeams, connection?: ProviderCo
 
     () => whyNoClaudeLogin({ command: claudeCommandFor(seams) }),
     seams.program(),
-    claudeKeychainTokenProviderForALaunch(),
+    seams.launchLogin ?? claudeKeychainTokenProviderForALaunch(),
     seams.managedRoot,
   )
 }
@@ -269,6 +272,26 @@ export function createClaudeModule(
     keptRules,
     discovery,
     createRuntime: claudeModuleFactory.runtime(seams.runtime),
+    async prepareLaunch(profileId, connection) {
+      let key: string | null
+      try {
+        key = (await keyForConnection(seams.runtime.key ?? seams.home.key, connection)?.()) ?? null
+      } catch (error) {
+        if (error instanceof ApiKeyUnreadableError)
+          throw new AuthUnavailableError('claude', error.message)
+        throw error
+      }
+      const selectedKey = () => key
+      const readLogin = seams.home.login ?? claudeKeychainTokenProviderForALaunch()
+      let login: Promise<string | null> | undefined
+      const selectedLogin = () => (login ??= readLogin())
+      const home = await prepareClaudeHome(paths, profileId, {
+        ...seams.home,
+        key: selectedKey,
+        health: seams.home.health ?? (() => claudeHealth(selectedKey, claudeCommandFor(seams.home), selectedLogin)),
+      })
+      return { home, runtime: claudeRuntime({ ...seams.runtime, key: selectedKey, launchLogin: selectedLogin }) }
+    },
     home: claudeModuleFactory.home(paths, seams.home),
     auth: claudeModuleFactory.auth(paths, seams.auth),
   }
