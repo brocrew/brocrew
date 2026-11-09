@@ -1,30 +1,22 @@
+import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
 import { providerSchema, type Provider } from '@brobot2/shared'
-import { MAX_INSTANT } from '../shared/clock'
+import type { AppDatabase } from './db/connection'
+import { importSideFile, objectIn } from './db/side-file-import'
 
 /**
- * **The turns that were cut while they ran** — by this app's own quit, a crash, the provider's
- * program stopping, or a usage limit — and what this app did about each:
- * `<userData>/turns-the-app-cut.json`.
+ * The turns that were cut while they ran — by this app's own quit, a crash, the provider's program
+ * stopping, or a usage limit — and what this app did about each.
  *
- * A cut turn is continued at most once, and only on the account it ran on: a quit's or a crash's at
- * the next launch, a program's once the conversation is started again, a limit's after its reset.
- * So the cut is recorded with the account its life ran on, frozen, and each step taken about it is
- * written before the step is taken: a crash at any moment leaves a record the next launch reads as
- * "not done", "maybe done" or "done", and never one that lets it start or send twice.
+ * A cut turn is continued at most once, and only on the account it ran on. So the cut is recorded
+ * with the account its life ran on, frozen, and each step taken about it is committed before the
+ * step is taken: a crash at any moment leaves a record the next launch reads as "not done", "maybe
+ * done" or "done", and never one that lets it start or send twice.
  *
- * ⚑ `lives` names the account of each conversation's latest life, once known, with that life's own
+ * `lives` names the account of each conversation's latest life, once known, with that life's own
  * `launched` row: a crash's cut takes it at the next launch only if that row is the newest launch
- * before the cut turn, so that very life opened it. A cut's own `expected` never changes after it is
- * written.
- *
- * No email or credential is kept: accounts use existing account record IDs and runtimes supply
- * opaque sign-in or launch-only credential revisions. Old digest identities cannot prove a match.
- *
- * ⚑ Written beside it and renamed, so a reader never sees half a file. ⚑ A file that is missing or
- * cannot be read authorizes nothing: no cut is continued from it.
+ * before the cut turn. No email or credential is kept, only account record ids and opaque sign-in
+ * or launch-only revisions.
  */
 
 /** Why a cut was not, or will not be, continued. */
@@ -126,10 +118,8 @@ export const MAX_CUT_CONVERSATIONS = 500
 /** How long an ended or sent cut is kept, for a person to be told of later: a week. */
 export const CUT_KEPT_FOR_MS = 7 * 24 * 60 * 60_000
 
-/** Where a data folder keeps its cuts. */
-export function turnsTheAppCutFile(userData: string): string {
-  return join(userData, 'turns-the-app-cut.json')
-}
+/** The file older builds kept these in, imported once into `cut_turn` and `cut_life`. */
+export const TURNS_THE_APP_CUT_FILE = 'turns-the-app-cut.json'
 
 /** A new id for the words a cut's continuation is held under: a held message's own shape. */
 export const newNoticeId = (): string => `msg_${randomUUID()}`
@@ -137,113 +127,6 @@ export const newNoticeId = (): string => `msg_${randomUUID()}`
 /** Whether a cut has ended, sent or not. */
 export function isFinal(state: CutState): boolean {
   return typeof state !== 'string' || state === 'sent'
-}
-
-/** Old keyed/double-digest tags supply no evidence of the account now launching. */
-const legacyIdentity = (identity: string): boolean =>
-  /^[a-z]+(?:-launch)?:[0-9a-f]{32}$/.test(identity)
-
-const CUT_KINDS: readonly CutKind[] = ['quit', 'crash', 'program', 'limit']
-
-const aRecord = (said: unknown): Record<string, unknown> =>
-  typeof said === 'object' && said !== null && !Array.isArray(said)
-    ? (said as Record<string, unknown>)
-    : {}
-
-const aTime = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= MAX_INSTANT
-
-const aCount = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
-
-const someText = (value: unknown, max: number): value is string =>
-  typeof value === 'string' && value.length > 0 && value.length <= max
-
-function aState(said: unknown): CutState | null {
-  if (said === 'pending' || said === 'starting' || said === 'queued' || said === 'sent') {
-    return said
-  }
-  const why = aRecord(said)['ended']
-  const known = NOT_CONTINUED_BECAUSE.find((one) => one === why)
-  return known === undefined ? null : { ended: known }
-}
-
-/** What `file` holds, each part checked, or nothing: a file missing, not JSON, or holding else. */
-export function readKeptCuts(file: string): KeptCuts {
-  let said: unknown
-  try {
-    said = JSON.parse(readFileSync(file, 'utf8'))
-  } catch {
-    return NO_CUTS_KEPT
-  }
-  const whole = aRecord(said)
-  const lives: Record<string, LifeRecord> = {}
-  for (const [id, row] of Object.entries(aRecord(whole['lives']))) {
-    const { since, identity, generation, launched } = aRecord(row)
-    if (
-      someText(id, 200) &&
-      aTime(since) &&
-      someText(identity, 200) &&
-      !legacyIdentity(identity) &&
-      aCount(generation) &&
-      aCount(launched)
-    ) {
-      lives[id] = { since, identity, generation, launched }
-    }
-  }
-  const cuts: Record<string, CutRecord> = {}
-  for (const [id, row] of Object.entries(aRecord(whole['cuts']))) {
-    const r = aRecord(row)
-    const state = aState(r['state'])
-    const provider = providerSchema.safeParse(r['provider'])
-    if (
-      !someText(id, 200) ||
-      !someText(r['turn'], 200) ||
-      !aTime(r['generation']) ||
-      !CUT_KINDS.includes(r['kind'] as CutKind) ||
-      !(r['resetsAt'] === undefined || aTime(r['resetsAt'])) ||
-      !(r['inARow'] === undefined || aCount(r['inARow'])) ||
-      !aTime(r['cutAt']) ||
-      !provider.success ||
-      !someText(r['profile'], 200) ||
-      !(r['expected'] === null || someText(r['expected'], 200)) ||
-      !someText(r['noticeId'], 200) ||
-      typeof r['aPersonStartedIt'] !== 'boolean' ||
-      state === null ||
-      !aTime(r['at'])
-    ) {
-      continue
-    }
-    cuts[id] = {
-      turn: r['turn'],
-      generation: r['generation'],
-      kind: r['kind'] as CutKind,
-      cutAt: r['cutAt'],
-      ...(aTime(r['resetsAt']) ? { resetsAt: r['resetsAt'] } : {}),
-      ...(aCount(r['inARow']) ? { inARow: r['inARow'] } : {}),
-      provider: provider.data,
-      profile: r['profile'],
-      expected:
-        typeof r['expected'] === 'string' && legacyIdentity(r['expected']) ? null : r['expected'],
-      noticeId: r['noticeId'],
-      aPersonStartedIt: r['aPersonStartedIt'],
-      state,
-      at: r['at'],
-    }
-  }
-  return {
-    lives: newest(lives, (one) => one.since),
-    cuts: newest(cuts, (one) => one.at),
-  }
-}
-
-/** The records changed most recently, at most {@link MAX_CUT_CONVERSATIONS}. */
-function newest<T>(rows: Readonly<Record<string, T>>, at: (one: T) => number): Record<string, T> {
-  const entries = Object.entries(rows)
-  if (entries.length <= MAX_CUT_CONVERSATIONS) return { ...rows }
-  return Object.fromEntries(
-    entries.sort(([, a], [, b]) => at(b) - at(a)).slice(0, MAX_CUT_CONVERSATIONS),
-  )
 }
 
 /** What is kept, without the final cuts older than {@link CUT_KEPT_FOR_MS}. */
@@ -256,19 +139,101 @@ export function withoutOldCuts(kept: KeptCuts, now: number): KeptCuts {
   return { ...kept, cuts }
 }
 
-/** Write what is kept, replacing what the file held. */
-export function writeKeptCuts(file: string, kept: KeptCuts): void {
-  mkdirSync(dirname(file), { recursive: true })
-  const temporary = `${file}.${String(process.pid)}.tmp`
-  try {
-    const whole = {
-      lives: newest(kept.lives, (one) => one.since),
-      cuts: newest(kept.cuts, (one) => one.at),
-    }
-    writeFileSync(temporary, `${JSON.stringify(whole)}\n`, { mode: 0o600 })
-    renameSync(temporary, file)
-  } catch (error) {
-    rmSync(temporary, { force: true })
-    throw error
+export interface CutsKept {
+  read(): KeptCuts
+  write(kept: KeptCuts): void
+}
+
+export function turnsTheAppCutIn(database: AppDatabase): CutsKept {
+  const cuts = database.prepare('SELECT id, record FROM cut_turn')
+  const lives = database.prepare('SELECT conversation_id AS id, record FROM cut_life')
+  const rows = (statement: typeof cuts) =>
+    Object.fromEntries(
+      (statement.all() as { id: string; record: string }[]).map(({ id, record }) => [
+        id,
+        JSON.parse(record) as unknown,
+      ]),
+    )
+  return {
+    read: () => ({
+      lives: rows(lives) as Record<string, LifeRecord>,
+      cuts: rows(cuts) as Record<string, CutRecord>,
+    }),
+    write: database.transaction((kept: KeptCuts) => replaceCuts(database, kept)),
   }
+}
+
+function replaceCuts(database: AppDatabase, kept: KeptCuts): void {
+  database.prepare('DELETE FROM cut_turn').run()
+  database.prepare('DELETE FROM cut_life').run()
+  const cut = database.prepare('INSERT INTO cut_turn (id, record, at) VALUES (?, ?, ?)')
+  const life = database.prepare(
+    'INSERT INTO cut_life (conversation_id, record, since) VALUES (?, ?, ?)',
+  )
+  for (const [id, one] of Object.entries(kept.cuts)) cut.run(id, JSON.stringify(one), one.at)
+  for (const [id, one] of Object.entries(kept.lives)) life.run(id, JSON.stringify(one), one.since)
+  database
+    .prepare(
+      'DELETE FROM cut_turn WHERE id NOT IN (SELECT id FROM cut_turn ORDER BY at DESC LIMIT ?)',
+    )
+    .run(MAX_CUT_CONVERSATIONS)
+  database
+    .prepare(
+      `DELETE FROM cut_life WHERE conversation_id NOT IN
+       (SELECT conversation_id FROM cut_life ORDER BY since DESC LIMIT ?)`,
+    )
+    .run(MAX_CUT_CONVERSATIONS)
+}
+
+/** Old keyed/double-digest tags supply no evidence of the account now launching. */
+const legacyIdentity = (identity: unknown): boolean =>
+  typeof identity === 'string' && /^[a-z]+(?:-launch)?:[0-9a-f]{32}$/.test(identity)
+
+const CUT_STATES = ['pending', 'starting', 'queued', 'sent']
+
+/**
+ * Imports `turns-the-app-cut.json` from `userData` once. A cut or life it cannot use is skipped,
+ * which authorizes nothing; a life on a legacy identity is skipped and a cut's legacy `expected`
+ * becomes `null`, so neither can prove the account now launching.
+ */
+export function importTurnsTheAppCutFile(database: AppDatabase, userData: string): void {
+  importSideFile(database, join(userData, TURNS_THE_APP_CUT_FILE), (said) => {
+    const whole = objectIn(said)
+    const number = (value: unknown): value is number =>
+      typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    const text = (value: unknown): value is string => typeof value === 'string' && value !== ''
+    const lives: Record<string, LifeRecord> = {}
+    for (const [id, row] of Object.entries(objectIn(whole['lives']))) {
+      const { since, identity, generation, launched } = objectIn(row)
+      if (
+        [since, generation, launched].every(number) &&
+        text(identity) &&
+        !legacyIdentity(identity)
+      )
+        lives[id] = { since, identity, generation, launched } as LifeRecord
+    }
+    const cuts: Record<string, CutRecord> = {}
+    for (const [id, row] of Object.entries(objectIn(whole['cuts']))) {
+      const r = objectIn(row)
+      const ended = objectIn(r['state'])['ended']
+      const stateKnown =
+        CUT_STATES.includes(r['state'] as string) ||
+        NOT_CONTINUED_BECAUSE.includes(ended as NotContinuedBecause)
+      if (
+        !stateKnown ||
+        !providerSchema.safeParse(r['provider']).success ||
+        !['quit', 'crash', 'program', 'limit'].includes(r['kind'] as string) ||
+        ![r['turn'], r['profile'], r['noticeId']].every(text) ||
+        ![r['generation'], r['cutAt'], r['at']].every(number) ||
+        typeof r['aPersonStartedIt'] !== 'boolean' ||
+        !(r['expected'] === null || text(r['expected']))
+      )
+        continue
+      cuts[id] = {
+        ...r,
+        expected: legacyIdentity(r['expected']) ? null : r['expected'],
+      } as CutRecord
+    }
+    replaceCuts(database, { lives, cuts })
+  })
 }

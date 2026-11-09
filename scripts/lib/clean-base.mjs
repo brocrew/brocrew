@@ -195,7 +195,7 @@ export const MANIFEST = Object.freeze([
     name: 'turns-the-app-cut.json',
     expect: 'file',
     why: LEDGER,
-    source: 'main/turns-the-app-cut-file.ts (turnsTheAppCutFile)',
+    source: 'main/turns-the-app-cut-file.ts (importTurnsTheAppCutFile)',
   },
   {
     name: 'start-attempts.jsonl',
