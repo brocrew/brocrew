@@ -39,7 +39,6 @@ const causes = [
   'transport-closed',
   'connection-refused',
   'process-exited',
-  'stalled',
   'invalid-reply',
   'timeout',
   'cancelled',

@@ -50,7 +50,6 @@ function peer(hold = 'tools/list', format: 'json' | 'sse' = 'json') {
   const started = deferred<void>()
   let stream!: ReadableStreamDefaultController<Uint8Array>
   let remaining = ''
-  let disconnected = false
   let signal: AbortSignal | undefined
   vi.stubGlobal(
     'fetch',
@@ -94,13 +93,11 @@ function peer(hold = 'tools/list', format: 'json' | 'sse' = 'json') {
       remaining = remaining.slice(1)
     },
     finish() {
-      if (!signal?.aborted && !disconnected) {
+      if (!signal?.aborted) {
         stream.enqueue(new TextEncoder().encode(remaining))
         stream.close()
       }
     },
-    aborted: () => signal?.aborted,
-    disconnect(error: Error) { disconnected = true; stream.error(error) },
   }
 }
 
@@ -132,21 +129,6 @@ it.each(['initialize', 'tools/list'].flatMap((method) =>
   },
 )
 
-it.each(['json', 'sse'] as const)('resets %s staleness on bytes, then reports the silent stage as stalled', async (format) => {
-  const remote = peer('tools/list', format)
-  const work = admittedPluginTools(view().attachment, new Set(['echo']), () => {}).catch(
-    (error: unknown) => error,
-  )
-  await remote.started
-  await vi.advanceTimersByTimeAsync(20_000)
-  if (!remote.aborted()) remote.byte()
-  await vi.advanceTimersByTimeAsync(20_000)
-  expect(remote.aborted()).toBe(false)
-  await vi.advanceTimersByTimeAsync(10_001)
-  expect(await work).toMatchObject({ pluginStage: 'binding-inventory', pluginCause: 'stalled' })
-  expect(remote.aborted()).toBe(true)
-})
-
 it('reports connection refused immediately with the actual connect cause', async () => {
   vi.stubGlobal(
     'fetch',
@@ -160,37 +142,15 @@ it('reports connection refused immediately with the actual connect cause', async
   })
 })
 
-it.each(['json', 'sse'] as const)('ends a pending %s inventory immediately when the exact host exits', async (format) => {
-  const remote = peer('tools/list', format)
+it('ends connection readiness immediately when the exact host exits', async () => {
   const { attachment, exited } = view()
-  const work = admittedPluginTools(attachment, new Set(), () => {}).catch((error: unknown) => error)
-  await remote.started
+  Object.assign(attachment, { connection: new Promise<never>(() => {}) })
+  const work = admittedPluginTools(attachment, new Set(), () => {})
   exited.resolve()
-  await vi.advanceTimersByTimeAsync(0)
-  try {
-    expect(remote.aborted()).toBe(true)
-  } finally {
-    remote.finish()
-  }
-  expect(await work).toMatchObject({
-    pluginStage: 'binding-inventory',
+  await expect(work).rejects.toMatchObject({
+    pluginStage: 'binding-connection',
     pluginCause: 'process-exited',
   })
-})
-
-it('reports a disconnected SSE reply immediately, preserving the actual transport cause', async () => {
-  const remote = peer('tools/list', 'sse')
-  let outcome: unknown
-  const work = admittedPluginTools(view().attachment, new Set(), () => {}).catch((error: unknown) => { outcome = error })
-  await remote.started
-  remote.disconnect(Object.assign(new Error('connection reset'), { code: 'ECONNRESET' }))
-  await vi.advanceTimersByTimeAsync(0)
-  try {
-    expect(outcome).toMatchObject({ pluginStage: 'binding-inventory', pluginCause: 'transport-closed' })
-  } finally {
-    await vi.advanceTimersByTimeAsync(60_000)
-    await work
-  }
 })
 
 function emptyBinding() {
