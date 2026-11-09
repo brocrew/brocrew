@@ -81,7 +81,9 @@ for (const [name, importer, target, rule] of [
       config.options.tsConfig.fileName = path.join(dir, 'tsconfig.json')
       put(
         'tsconfig.json',
-        JSON.stringify({ compilerOptions: { module: 'ESNext', moduleResolution: 'Bundler' } }),
+        JSON.stringify({
+          compilerOptions: { allowJs: true, module: 'ESNext', moduleResolution: 'Bundler' },
+        }),
       )
       put('depcruise.cjs', `module.exports = ${JSON.stringify(config)}`)
       put('package.json', '{"type":"module"}')
