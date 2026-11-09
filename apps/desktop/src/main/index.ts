@@ -779,7 +779,7 @@ async function createRuntimeHost(database: AppDatabase): Promise<RuntimeHost> {
       personsOwn: SUPPORTED_PROVIDERS.map((provider) => userProviderHomePath(provider)),
     }
   }
-  const apiKeys = new ApiKeys(userData)
+  const apiKeys = new ApiKeys(userData, Date.now, store)
   // Quit cancels native provider service work without leaving a renewal child behind.
   const stopProviderServices = new AbortController()
   app.once('will-quit', () => stopProviderServices.abort())

@@ -994,6 +994,8 @@ export interface SessionStore extends OwnNotesStore {
   addHandAddedModel(provider: Provider, model: string, at: number): readonly string[]
   deleteHandAddedModel(provider: Provider, model: string, at: number): readonly string[]
   lastPicked(provider: Provider): ModelAndEffort | null
+  hasSealedApiKey(provider: Provider): boolean
+  forgetSealedApiKey(provider: Provider): void
   aPersonPicked(provider: Provider, pair: ModelAndEffort, at: number): void
   conversationsPerIdentity(): readonly IdentityHistory[]
   removeAgentIdentity(profileSlug: string): boolean
@@ -1414,6 +1416,8 @@ export const NULL_SESSION_STORE: SessionStore = {
   deleteHandAddedModel: () => [],
   lastPicked: () => null,
   aPersonPicked: () => {},
+  hasSealedApiKey: () => false,
+  forgetSealedApiKey: () => {},
   conversationsPerIdentity: () => [],
   removeAgentIdentity: () => false,
   spawnPolicy: () => ({ spawningEnabled: false }),
@@ -7143,6 +7147,14 @@ export function createSessionStore(
     },
     lastPicked(provider) {
       return modelListOf(provider).lastPicked
+    },
+    hasSealedApiKey(provider) {
+      return (
+        db.prepare('SELECT 1 FROM provider_api_key WHERE provider = ?').get(provider) !== undefined
+      )
+    },
+    forgetSealedApiKey(provider) {
+      db.prepare('DELETE FROM provider_api_key WHERE provider = ?').run(provider)
     },
     aPersonPicked(provider, pair, at) {
       writeTheList(provider, (held) => ({ ...held, lastPicked: pair }), at)

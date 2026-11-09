@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { providerAuthPolicies } from '../providers/auth-definitions'
 import { providerDescriptor, SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
 import type { ApiKeyCheck, ApiKeyStatus } from '../../shared/runtime-ipc'
+import type { SessionStore } from '../db/session-store'
 import { writeAtomically } from '../recovery/files'
 import { ApiKeyUnreadableError, SAVED_KEY_UNREADABLE } from '../providers/api-key-error'
 export { ApiKeyUnreadableError } from '../providers/api-key-error'
@@ -42,6 +43,11 @@ export class ApiKeys {
   constructor(
     userData: string,
     private readonly clock: () => number = Date.now,
+    /** A key an earlier version sealed: it is never opened, and can't be used until saved again. */
+    private readonly sealed: Pick<SessionStore, 'hasSealedApiKey' | 'forgetSealedApiKey'> = {
+      hasSealedApiKey: () => false,
+      forgetSealedApiKey: () => {},
+    },
   ) {
     this.path = join(userData, API_KEYS_FILE)
   }
@@ -54,7 +60,7 @@ export class ApiKeys {
     const entry = file?.keys[provider]
     if (entry !== undefined)
       return { provider, set: true, setAt: entry.setAt, inUse: true, ...spends }
-    if (!cantBeUsed(provider, file))
+    if (!this.cantBeUsed(provider, file))
       return { provider, set: false, setAt: null, inUse: false, ...spends }
     return {
       provider,
@@ -80,7 +86,7 @@ export class ApiKeys {
     const file = this.file()
     const entry = file?.keys[provider]
     if (entry !== undefined) return entry
-    if (cantBeUsed(provider, file)) throw new ApiKeyUnreadableError(provider)
+    if (this.cantBeUsed(provider, file)) throw new ApiKeyUnreadableError(provider)
     return null
   }
 
@@ -103,12 +109,13 @@ export class ApiKeys {
     } catch {
       return 'BroCrew couldn’t write the key to its data folder, so it was not saved. Try again.'
     }
+    this.sealed.forgetSealedApiKey(provider)
     return null
   }
 
   async remove(provider: Provider): Promise<boolean> {
     this.changed(provider)
-    let had = false
+    let had = this.sealed.hasSealedApiKey(provider)
     await this.change((file) => {
       const setAt = file.keys[provider]?.setAt
       if (setAt === undefined && !file.cantRead?.includes(provider)) return false
@@ -118,7 +125,12 @@ export class ApiKeys {
       had = true
       return true
     })
+    this.sealed.forgetSealedApiKey(provider)
     return had
+  }
+
+  private cantBeUsed(provider: Provider, file: KeysFile | null): boolean {
+    return cantBeUsed(provider, file) || this.sealed.hasSealedApiKey(provider)
   }
 
   private changed(provider: Provider): void {

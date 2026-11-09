@@ -178,6 +178,25 @@ it.skipIf(process.platform === 'win32')(
   },
 )
 
+it('🔴 a key an earlier version sealed is never opened: its start refuses in plain words until it is saved again or removed', async () => {
+  const sealed = new Set(['claude', 'codex'])
+  const store = {
+    hasSealedApiKey: (provider: string) => sealed.has(provider),
+    forgetSealedApiKey: (provider: string) => void sealed.delete(provider),
+  }
+  const keys = new ApiKeys(userData, () => 5, store)
+  for (const provider of ['claude', 'codex'] as const) {
+    expect(keys.status(provider)).toMatchObject(CANT_BE_USED)
+    await expect(keys.read(provider)).rejects.toThrow(ApiKeyUnreadableError)
+  }
+  expect(await keys.set('claude', KEY)).toBeNull()
+  expect(await keys.read('claude')).toBe(KEY)
+  expect(await keys.remove('codex')).toBe(true)
+  expect(await keys.read('codex')).toBeNull()
+  expect(keys.status('codex')).toMatchObject({ set: false, inUse: false })
+  expect(sealed.size).toBe(0)
+})
+
 describe('askTheProvider', () => {
   const answering = (status: number) =>
     vi.fn(async () => ({ status }) as Response) as unknown as typeof fetch &
