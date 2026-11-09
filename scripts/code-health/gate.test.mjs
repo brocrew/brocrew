@@ -169,17 +169,17 @@ test('A02 requested byte-LF metric is available', () => {
 test('A02 counts raw LF boundaries independently of decoding and trailing fragments', () =>
   a02Fixture(({ put, measure }) => {
     const cases = [
-      ['exact.json', Buffer.from('\n'.repeat(2000)), 2000],
-      ['over.json', Buffer.from('\n'.repeat(2001)), 2001],
-      ['fragment.json', Buffer.from('\n'.repeat(2000) + 'tail'), 2000],
-      ['crlf.json', Buffer.from('\r\n'.repeat(2001)), 2001],
-      ['mixed.json', Buffer.from('\r\n'.repeat(1000) + '\n'.repeat(1000) + 'tail'), 2000],
+      ['exact.ts', Buffer.from('\n'.repeat(2000)), 2000],
+      ['over.ts', Buffer.from('\n'.repeat(2001)), 2001],
+      ['fragment.ts', Buffer.from('\n'.repeat(2000) + 'tail'), 2000],
+      ['crlf.ts', Buffer.from('\r\n'.repeat(2001)), 2001],
+      ['mixed.ts', Buffer.from('\r\n'.repeat(1000) + '\n'.repeat(1000) + 'tail'), 2000],
       [
-        'invalid.json',
+        'invalid.ts',
         Buffer.concat([Buffer.from([255, 0, 254]), Buffer.from('\n'.repeat(2001))]),
         2001,
       ],
-      ['empty.json', Buffer.alloc(0), 0],
+      ['empty.ts', Buffer.alloc(0), 0],
     ]
     for (const [file, bytes] of cases) put(`apps/sample/data/${file}`, bytes)
     const result = measure()
@@ -220,15 +220,15 @@ test('A02 expands new packaging and recursive literal scripts with first regular
 test('A02 uniform exclusions, generated view and committed regular-mode inventory', () =>
   a02Fixture(({ directory, git, put, commit, measure }) => {
     for (const file of [
-      'apps/sample/test/large.json',
+      'apps/sample/test/large.ts',
       'apps/sample/src/example.test.ts',
-      'apps/sample/dist/large.json',
+      'apps/sample/dist/large.ts',
       'apps/sample/package-lock.json',
       'packages/runtime/src/codex/protocol/large.ts',
     ])
       put(file, '\n'.repeat(2001))
     put('apps/sample/src/generated.ts', '// AUTO-GENERATED\n' + '\n'.repeat(2001))
-    put('apps/sample/src/instructions.md', '\n'.repeat(2001))
+    put('apps/sample/src/large.ts', '\n'.repeat(2001))
     put('apps/sample/readme.md', '\n'.repeat(2001))
     const oid = git('hash-object', '-w', '--stdin')
     git('update-index', '--add', '--cacheinfo', `120000,${oid},apps/sample/src/link.ts`)
@@ -262,30 +262,30 @@ test('A02 uniform exclusions, generated view and committed regular-mode inventor
       ),
     )
     assert.ok(result.excluded.some((r) => r.reason === 'explicit generated header'))
-    put('apps/sample/data/new.json', '\n'.repeat(2001))
+    put('apps/sample/data/new.ts', '\n'.repeat(2001))
     assert.equal(measure({ source }).count, 1, 'committed release excludes new untracked path')
     // Remove the virtual index-only symlink before measuring working regular files.
     git('update-index', '--force-remove', 'apps/sample/src/link.ts')
     assert.equal(measure().count, 2)
-    git('add', 'apps/sample/src/instructions.md')
-    fs.rmSync(path.join(directory, 'apps/sample/src/instructions.md'))
+    git('add', 'apps/sample/src/large.ts')
+    fs.rmSync(path.join(directory, 'apps/sample/src/large.ts'))
     assert.throws(() => measure(), /selected file unreadable/)
   }))
 
 test('A02 equality, identity swaps and headroom remain count-only; legacy size stays separate', () =>
   a02Fixture(({ directory, put, measure }) => {
-    put('apps/sample/data/first.json', '\n'.repeat(2001))
+    put('apps/sample/data/first.ts', '\n'.repeat(2001))
     const ceiling = measure().count
     fs.renameSync(
-      path.join(directory, 'apps/sample/data/first.json'),
-      path.join(directory, 'apps/sample/data/replaced.json'),
+      path.join(directory, 'apps/sample/data/first.ts'),
+      path.join(directory, 'apps/sample/data/replaced.ts'),
     )
     assert.equal(a02Gate.compareProductCount(measure().count, ceiling).excess, 0)
-    put('apps/sample/data/replaced.json', '\n'.repeat(5000))
+    put('apps/sample/data/replaced.ts', '\n'.repeat(5000))
     assert.equal(a02Gate.compareProductCount(measure().count, ceiling).excess, 0)
-    put('apps/sample/data/replaced.json', '')
+    put('apps/sample/data/replaced.ts', '')
     assert.equal(a02Gate.compareProductCount(measure().count, ceiling).headroom, 1)
-    put('apps/sample/data/replaced.json', '\n'.repeat(2001))
+    put('apps/sample/data/replaced.ts', '\n'.repeat(2001))
     assert.equal(a02Gate.compareProductCount(measure().count, ceiling).excess, 0)
     assert.equal(a02Gate.compareProductCount(measure().count, 0).excess, 1)
     assert.equal(a02Gate.LINE_LIMIT, 1000)
@@ -405,3 +405,37 @@ test('A02 ordinary CLI reports unavailable shipment tuple as execution error 2',
   assert.match(result.stderr, /execution error, not a finding/)
   assert.match(result.stderr, /BROCREW_A02_LAST_SHIPPED/)
 })
+
+test('A02 excludes data, configuration, manifests and instructions through roots and closure', () =>
+  a02Fixture(({ directory, put, measure }) => {
+    const data = [
+      'apps/desktop/src/shared/agent-first-names.json',
+      'apps/sample/package.json', 'apps/sample/settings.yaml', 'apps/sample/settings.yml',
+      'apps/sample/settings.toml', 'apps/sample/Info.plist', 'apps/sample/app.entitlements',
+      'apps/sample/layout.xml', 'apps/sample/go.mod', 'apps/sample/Dockerfile',
+      'apps/sample/src/instructions.md', 'apps/sample/resources/built-in-skills/guide.md',
+      'plugins/sample/manifest.json', 'packages/sample/package.json',
+      'scripts/imported-data.json', 'scripts/imported-instructions.md',
+      'apps/desktop/build/settings.json', 'apps/desktop/build/instructions.md',
+    ]
+    const bytes = Buffer.from('name\n'.repeat(2001))
+    for (const file of data) put(file, bytes)
+    put('apps/sample/src/imports.ts', [
+      "import '../../../scripts/imported-data.json'",
+      "new URL('../../../scripts/imported-instructions.md', import.meta.url)",
+      "import '../../desktop/build/settings.json'",
+    ].join('\n'))
+    const before = measure()
+    assert.equal(before.count, 0, 'data must not become an oversized source finding')
+    for (const file of data) {
+      assert.ok(!before.files.some((r) => r.path === file), file)
+      assert.deepEqual(fs.readFileSync(path.join(directory, file)), bytes, file)
+    }
+    assert.ok(before.edges.some((e) => e.to === 'scripts/imported-data.json' && e.status === 'unselected suffix/name'))
+    put('apps/sample/src/actual.ts', '\n'.repeat(2000))
+    assert.equal(measure().count, 0)
+    put('apps/sample/src/actual.ts', '\n'.repeat(2001))
+    assert.equal(a02Gate.compareProductCount(measure().count, 0).excess, 1)
+    put('apps/sample/src/actual.ts', '\n'.repeat(2000))
+    assert.equal(measure().count, 0)
+  }))

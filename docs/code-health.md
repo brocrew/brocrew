@@ -95,26 +95,32 @@ reaching an SDK without the runtime barrel. They do not recreate the production 
 built app. CI, Windows and the packaged plugin-service smoke remain separate execution evidence.
 
 
-## Selected product files above 2,000 byte LF (A02)
+## Source files above 2,000 byte LF (A02)
 
-The independent `AUTO-A02` row counts distinct selected product paths containing strictly more
+The independent `AUTO-A02` row counts distinct selected source-code paths containing strictly more
 than 2,000 raw `0x0a` bytes. Exactly 2,000 passes; a final unterminated fragment adds none;
-CRLF contributes one LF byte. Recognized regular files include JSON/static data, NUL and
-invalid UTF-8 bytes. Counts use raw bytes. UTF-8 replacement decoding is only the existing
+CRLF contributes one LF byte. Recognized source files may contain NUL and invalid UTF-8 bytes. Counts use raw bytes. UTF-8 replacement decoding is only the existing
 generated-header and literal-reference discovery view.
 
-`A02_PROFILE` in the existing gate is the versioned population contract: recognized source/config
-suffixes under apps/packages/plugins, shipped instructions, validation/vendor/generated exclusions,
-and a handwritten `apps/desktop/build/` source/config/NSIS exception. New matching paths enter
-automatically. Relative literal imports/requires/new-URL references recursively add qualifying
-scripts/build targets, using the first regular exact/extension/index path in the documented order.
-Unsupported authored-extension mappings, package/computed imports and unresolved lexical hits
-remain diagnostic limitations. This is selected product, not all-repository or runtime closure.
+`A02_PROFILE` now uses selector `selected-source-v2`: source-code suffixes under apps/packages/plugins,
+including executable build scripts and NSIS `.nsh` installer source. JSON and other data/config formats
+(YAML, TOML, plist, entitlements, XML), manifests such as go.mod/Dockerfile and Markdown instructions
+are excluded regardless of their size or location. Executable source remains source: a `.js`/`.ts`
+build configuration is not static data merely because its filename contains “config”. This is a
+suffix-based source population, not semantic parsing of every file's contents.
+
+Validation/vendor/generated exclusions and the `apps/desktop/build/` source exception remain.
+Relative literal imports/requires/new-URL references recursively add qualifying scripts/build
+source targets using the first regular exact/extension/index path in the documented order. The same
+source-suffix predicate applies to roots, closure and packaging; importing data or placing it in a
+special directory cannot admit it. Unsupported authored-extension mappings, package/computed imports
+and unresolved lexical hits remain diagnostic limitations. This is selected source, not all-repository
+or runtime closure. The names JSON remains intact data; this rule does not split, move or shrink it.
 Symlink/submodule/nonregular entries are excluded and diagnosed consistently on both sides.
 Known selected regular files that cannot be read make measurement fail with exit 2.
 Nonignored qualifying untracked paths enter labeled local/dirty measurements; committed release
-and clean hosted measurements bind tracked source snapshots. The retained historical 23-path result
-is not an allowlist or an adopted count for this new selector.
+and clean hosted measurements bind tracked source snapshots. The historical selected-product-v1 result of 23 included data. Its profile/receipts and immutable
+storage6cd remain historical evidence; they are not a compatible ceiling for selected-source-v2.
 
 A02 permits equal-count replacements, giant growth without count growth, and reduction followed by
 return into unchanged shipment headroom. The separate legacy 1,000 physical-line/per-file rule
@@ -135,9 +141,11 @@ No candidate record or old constant is a fallback. The tuple is the operator's e
 shipment witness; ordinary CI does not rediscover the latest release or update repository variables.
 Record storage may postdate the measured shipment and is never represented as shipped source.
 
-Before the first candidate family: run the reviewed selector over the actual published source on an
-admitted lane, retain exact inventory/receipt hashes, and obtain independent review. Commit the
-real A02 record without placeholder budgets; Sara publishes its immutable witness on the reviewed
+For initial setup or a selection-profile correction, before the candidate family: run the reviewed selector over the actual published source on an
+admitted lane, retain exact inventory/receipt hashes, and obtain independent review. Use the corrected profile on the same actual published source and candidate; do not derive a new
+ceiling by subtracting an excluded data row from an old count. A mismatched old record must fail
+compatibility rather than fall back. Retain original receipts/storage unchanged; after independent
+derivation review, commit the real successor A02 record without placeholder budgets; Sara publishes its immutable witness on the reviewed
 Public-only branch `witness/a02-release-011-6cd8fcbb`, outside candidate/build prefixes. This push
 triggers Public checks; require their actual terminal success before tuple activation. Sara verifies
 the latest published source/tag/assets and immutable blob/SHA readback, then sets and reads back
