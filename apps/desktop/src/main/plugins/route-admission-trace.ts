@@ -246,11 +246,16 @@ export function recordRouteAdmissionTrace(root: string, event: RouteAdmissionEve
     if (typeof event.unknown === 'boolean') row.unknown = event.unknown
     const line = JSON.stringify(row) + '\n'
     const path = join(root, 'plugin-route-admission.log')
-    fd = openSync(path, 'a', 0o600)
+    try {
+      fd = openSync(path, 'r+')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      fd = openSync(path, 'wx', 0o600)
+    }
     const stat = fstatSync(fd)
     const full = stat.size + Buffer.byteLength(line) > 1024 * 1024
     if (full) ftruncateSync(fd, 0)
-    writeSync(fd, line)
+    writeSync(fd, line, full ? 0 : stat.size)
   } catch {
     /* Diagnostics never change admission. */
   } finally {
