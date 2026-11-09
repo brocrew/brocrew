@@ -449,7 +449,9 @@ export class PluginLifecycleController {
   }
   /** Another plugin's pending operation leaves this one as committed. */
   private current(id: string): Installation | undefined {
-    return this.options.state.committedActivation().entries.find((one) => one.pluginId === id)
+    return this.options.state
+      .readWorkspaceAdmission()
+      .installations.find((one) => one.pluginId === id)
   }
   admitted(
     handle: LifecycleWorkspace,

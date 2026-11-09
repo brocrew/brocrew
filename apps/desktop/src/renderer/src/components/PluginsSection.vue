@@ -27,7 +27,7 @@ const props = defineProps<{ client?: PluginsClient }>()
 const client = props.client ?? window.api?.plugins
 const cards = ref<PluginCard[]>([]),
   query = ref(''),
-  error = ref(''),
+  error = ref<string | { kind: 'chrome-restart' }>(''),
   removalNotice = ref(''),
   busy = ref(false),
   /** The plugin an install is starting, so the wait reads as progress, not a fault. */
@@ -150,6 +150,12 @@ function actionFailure(action: string, answer: PluginSettingsReply, consent = fa
 const current = (turn: number) => alive && turn === generation
 const failedRetries = ref(new Set<string>())
 const cannotStart = (card: PluginCard) => card.state === 'Unavailable'
+const errorNotice = computed(() => {
+  if (typeof error.value === 'string') return error.value
+  const chrome = cards.value.find((card) => card.id === 'chrome')
+  if (chrome && !cannotStart(chrome) && !chrome.toolsUnavailable) return ''
+  return `Chrome is still unavailable after the restart request. ${chrome?.toolsCause ? `${chrome.toolsCause}. Try again.` : pluginUnavailableNotice(chrome?.unavailableReason)}`
+})
 async function restartChrome() {
   if (busy.value) return
   const turn = ++generation
@@ -162,7 +168,7 @@ async function restartChrome() {
   const chrome = cards.value.find((card) => card.id === 'chrome')
   if (!answer.ok || !answer.cards) error.value = actionFailure('restart Chrome', answer)
   else if (!chrome || cannotStart(chrome) || chrome.toolsUnavailable)
-    error.value = `Chrome is still unavailable after the restart request. ${chrome?.toolsCause ? `${chrome.toolsCause}. Try again.` : pluginUnavailableNotice(chrome?.unavailableReason)}`
+    error.value = { kind: 'chrome-restart' }
 }
 async function retry(card: PluginCard) {
   if (busy.value) return
@@ -474,7 +480,9 @@ onUnmounted(() => {
     >
       Couldn't check for plugin updates. Check your connection and try again.
     </p>
-    <p v-if="error" role="status" class="plugin-error" data-cy="plugins-error">{{ error }}</p>
+    <p v-if="errorNotice" role="status" class="plugin-error" data-cy="plugins-error">
+      {{ errorNotice }}
+    </p>
     <p v-if="removalNotice" role="status" class="plugin-trust" data-cy="plugins-removal-notice">
       {{ removalNotice }}
     </p>

@@ -129,7 +129,9 @@ it('does not permanently revoke a contribution during another lifecycle writer l
 
 it('recovers once after host exit and stays usable during subsequent writer contention', async () => {
   const exited = deferred<void>()
-  const recover = vi.fn((view, stopped) => f.controller.restartChromeTools(view.runId, stopped))
+  const recover = vi.fn((view: { runId: string }, stopped: () => void): Promise<void> =>
+    f.controller.restartChromeTools(view.runId, stopped),
+  )
   const f = await live({ firstExit: exited.promise, recoverChromeHost: recover })
   const owner = lease(),
     req = request(f.local.sink.workspaceId)
@@ -138,7 +140,7 @@ it('recovers once after host exit and stays usable during subsequent writer cont
   await vi.waitFor(() => expect(recover).toHaveBeenCalledOnce())
   let route: Awaited<ReturnType<typeof f.bridge.routes>>[number] | undefined
   await vi.waitFor(async () => {
-    ;[route] = await f.bridge.routes(owner, req)
+    route = (await f.bridge.routes(owner, req))[0]
     expect(route).toBeDefined()
   })
   const entered = deferred<void>(),
