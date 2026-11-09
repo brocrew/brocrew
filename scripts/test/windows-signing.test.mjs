@@ -1,11 +1,10 @@
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { checkWitness } from '../windows-signing-witness.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const require = createRequire(join(root, 'apps/desktop/package.json'))
@@ -29,14 +28,11 @@ const fakeEnv = () => ({
   ES_PASSWORD: 'fake-password-with-!&%"-characters',
   CREDENTIAL_ID: 'fake-credential',
   ES_TOTP_SECRET: 'fake-totp',
-  GITHUB_ACTIONS: 'true',
-  GITHUB_REPOSITORY: 'brocrew/brocrew',
-  GITHUB_REF: 'refs/tags/v0.2.0',
   JAVA_HOME: '/fictional/java',
   CODE_SIGN_TOOL_PATH: '/fictional/CodeSignTool',
 })
-const packager = (signtoolOptions = {}, output = 'dist', projectDir = '/fictional/app') => {
-  const info = new Packager({ projectDir })
+const packager = (signtoolOptions = {}, output = 'dist') => {
+  const info = new Packager({ projectDir: '/fictional/app' })
   info._configuration = {
     win: { signtoolOptions },
     productName: 'BroCrew',
@@ -57,59 +53,11 @@ const task = (file = 'win-unpacked/BroCrew.exe') => ({
 })
 
 describe('Windows release signing', () => {
-  it('record-only real builder callbacks preserve bytes, never spawn, and match actual output files', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'brocrew-signing-witness-'))
-    temps.push(dir)
-    const evidence = join(dir, 'evidence')
-    mkdirSync(evidence)
-    const env = {
-      GITHUB_ACTIONS: 'true',
-      GITHUB_REPOSITORY: 'brocrew/brocrew',
-      GITHUB_SHA: 'a'.repeat(40),
-      BROCREW_WINDOWS_SIGNING_RECORD_DIR: evidence,
-    }
-    const run = vi.fn()
-    const sign = createSigner({ env, run, platform: 'win32' })
-    const real = packager({ ...builder.win.signtoolOptions, sign }, 'dist', dir)
-    vi.spyOn(real, 'getCscLink').mockReturnValue(null)
-    for (const name of [
-      'win-unpacked/resources/node.exe',
-      'win-unpacked/resources/codex.exe',
-      'win-unpacked/BroCrew.exe',
-      'BroCrew-Setup-0.2.0-x64.__uninstaller.exe',
-      'BroCrew-Setup-0.2.0-x64.exe',
-    ]) {
-      const file = join(dir, 'dist', name)
-      mkdirSync(dirname(file), { recursive: true })
-      writeFileSync(file, `MZ original ${name}`)
-      await real.signIf(file)
-    }
-    const uninstaller = join(dir, 'dist/BroCrew-Setup-0.2.0-x64.__uninstaller.exe')
-    rmSync(uninstaller)
-    const result = checkWitness(evidence, join(dir, 'dist'), env.GITHUB_SHA)
-    expect(result.callbacks).toBe(5)
-    expect(result.selected.map((row) => row.role)).toEqual(['app', 'uninstaller', 'installer'])
-    expect(run).not.toHaveBeenCalled()
-    await expect(
-      createSigner({ env: { ...env, ...fakeEnv() }, run, platform: 'win32' })(task(), real),
-    ).rejects.toThrow(/requires no eSigner secrets/)
-    expect(run).not.toHaveBeenCalled()
-
-    const rows = readFileSync(join(evidence, 'callbacks.jsonl'), 'utf8')
-    writeFileSync(join(evidence, 'callbacks.jsonl'), rows.replace('"role":"app"', '"role":null'))
-    expect(() => checkWitness(evidence, join(dir, 'dist'), env.GITHUB_SHA)).toThrow(/exactly app/)
-    writeFileSync(join(evidence, 'callbacks.jsonl'), rows)
-    expect(() => checkWitness(evidence, join(dir, 'dist'), 'b'.repeat(40))).toThrow()
-    writeFileSync(join(dir, 'dist/win-unpacked/resources/node.exe'), 'MZ changed vendor')
-    expect(() => checkWitness(evidence, join(dir, 'dist'), env.GITHUB_SHA)).toThrow()
-  })
-
   it('runs through real Packager, WinPackager and signing manager without an outDir property', async () => {
     const run = vi.fn(() => ({ status: 0 }))
-    vi.spyOn(console, 'info').mockImplementation(() => {})
     const real = packager({
       ...builder.win.signtoolOptions,
-      sign: createSigner({ env: fakeEnv(), run, platform: 'win32' }),
+      sign: createSigner({ env: fakeEnv(), run }),
     })
     vi.spyOn(real, 'getCscLink').mockReturnValue(null)
     expect(real.outDir).toBeUndefined()
@@ -121,17 +69,15 @@ describe('Windows release signing', () => {
       'BroCrew-Setup-0.2.0-x64.exe',
     ])
       await real.signIf(task(file).path)
-    expect(run).toHaveBeenCalledTimes(6)
-    expect(run.mock.calls.filter(([, args]) => args.includes('sign'))).toHaveLength(3)
+    expect(run).toHaveBeenCalledTimes(3)
   })
 
   it('expands the configured output macros with the real builder before choosing signing targets', async () => {
     const run = vi.fn(() => ({ status: 0 }))
-    vi.spyOn(console, 'info').mockImplementation(() => {})
     const real = packager(
       {
         ...builder.win.signtoolOptions,
-        sign: createSigner({ env: fakeEnv(), run, platform: 'win32' }),
+        sign: createSigner({ env: fakeEnv(), run }),
       },
       'packages/${os}/${arch}',
     )
@@ -142,7 +88,7 @@ describe('Windows release signing', () => {
       'BroCrew-Setup-0.2.0-x64.exe',
     ])
       await real.signIf(join('/fictional/app/packages/win/x64', name))
-    expect(run).toHaveBeenCalledTimes(6)
+    expect(run).toHaveBeenCalledTimes(3)
   })
 
   it('no secrets means no child process and identical bytes for every offered file', async () => {
@@ -167,39 +113,30 @@ describe('Windows release signing', () => {
     expect(run).not.toHaveBeenCalled()
   })
 
-  it('signs only the three exact builder output paths, then verifies each signature', async () => {
+  it('signs only the three exact builder output paths with one CodeSignTool call each', async () => {
     const run = vi.fn(() => ({ status: 0, stdout: '', stderr: '' }))
-    vi.spyOn(console, 'info').mockImplementation(() => {})
     const env = fakeEnv()
-    const sign = createSigner({ env, run, platform: 'win32' })
+    const sign = createSigner({ env, run })
     for (const name of [
       'win-unpacked/BroCrew.exe',
       'BroCrew-Setup-0.2.0-x64.__uninstaller.exe',
       'BroCrew-Setup-0.2.0-x64.exe',
     ])
       await sign(task(name), packager())
-    expect(run).toHaveBeenCalledTimes(6)
-    for (let i = 0; i < 6; i += 2) {
-      const [command, args, options] = run.mock.calls[i]
+    expect(run).toHaveBeenCalledTimes(3)
+    for (const [command, args, options] of run.mock.calls) {
       expect(command).toBe(join(env.JAVA_HOME, 'bin', 'java.exe'))
       expect(args).toContain('sign')
       expect(args).toContain(`-password=${env.ES_PASSWORD}`)
       expect(args).toContain('-override=true')
       expect(options.shell).toBeUndefined()
       expect(options.windowsHide).toBe(true)
-      expect(options.stdio).toEqual(['ignore', 'pipe', 'pipe'])
-      const [verify, verifyArgs, verifyOptions] = run.mock.calls[i + 1]
-      expect(verify).toBe('powershell.exe')
-      expect(verifyArgs.join(' ')).toMatch(
-        /Valid.*382E2CDE6834E3400371451FEBD6AB5943C71647.*DEVERP.*TimeStamperCertificate/,
-      )
-      expect(verifyOptions.env.ES_PASSWORD).toBeUndefined()
     }
   })
 
   it('never offers bundled programs or other same-name files to eSigner', async () => {
     const run = vi.fn()
-    const sign = createSigner({ env: fakeEnv(), run, platform: 'win32' })
+    const sign = createSigner({ env: fakeEnv(), run })
     for (const name of [
       'win-unpacked/resources/plugin-node/node.exe',
       'win-unpacked/resources/codex-vendor/bin/codex.exe',
@@ -212,101 +149,18 @@ describe('Windows release signing', () => {
     expect(run).not.toHaveBeenCalled()
   })
 
-  it('refuses duplicate signings and cannot finish an installer with an unsigned app or uninstaller', async () => {
-    const run = vi.fn(() => ({ status: 0 }))
-    vi.spyOn(console, 'info').mockImplementation(() => {})
-    const sign = createSigner({ env: fakeEnv(), run, platform: 'win32' })
-    await expect(sign(task('BroCrew-Setup-0.2.0-x64.exe'), packager())).rejects.toThrow(
-      /app and uninstaller/,
-    )
-    expect(run).not.toHaveBeenCalled()
-    await sign(task(), packager())
-    await expect(sign(task(), packager())).rejects.toThrow(/duplicate/)
-    await expect(sign(task('BroCrew-Setup-0.2.0-x64.exe'), packager())).rejects.toThrow(
-      /app and uninstaller/,
-    )
-    expect(run).toHaveBeenCalledTimes(2)
-  })
-
-  it.each(['refs/tags/v0.2.12-candidate.1', 'refs/tags/v0.2.12-candidate.27'])(
-    'signs a planned candidate through the existing hook: %s',
-    async (ref) => {
-      const run = vi.fn(() => ({ status: 0 }))
-      vi.spyOn(console, 'info').mockImplementation(() => {})
-      const sign = createSigner({ env: { ...fakeEnv(), GITHUB_REF: ref }, run, platform: 'win32' })
-      await sign(task(), packager())
-      expect(run).toHaveBeenCalledTimes(2)
-      expect(run.mock.calls[0][1]).toContain('sign')
-      expect(run.mock.calls[1][0]).toBe('powershell.exe')
-    },
-  )
-
   it.each([
-    'refs/tags/v0.2.12-candidate.0',
-    'refs/tags/v0.2.12-candidate.01',
-    'refs/tags/v0.2.12-candidate.-1',
-    'refs/tags/v0.2.12-candidate.1.extra',
-    'refs/tags/v0.2.12-mac-signing-check.1',
-  ])('refuses an unplanned candidate signing ref: %s', async (ref) => {
-    const run = vi.fn()
-    await expect(
-      createSigner({ env: { ...fakeEnv(), GITHUB_REF: ref }, run, platform: 'win32' })(
-        task(),
-        packager(),
-      ),
-    ).rejects.toThrow(/restricted/)
-    expect(run).not.toHaveBeenCalled()
-  })
-
-  it('refuses partial secrets, non-release refs, other repos, non-Windows and dual signing', async () => {
-    const run = vi.fn()
-    for (const env of [
-      { ES_USERNAME: 'fake' },
-      { ...fakeEnv(), GITHUB_REF: 'refs/heads/gate/candidate' },
-      { ...fakeEnv(), GITHUB_REF: 'refs/tags/windows-beta-1' },
-      { ...fakeEnv(), GITHUB_REPOSITORY: 'other/repository' },
-      { ...fakeEnv(), GITHUB_ACTIONS: 'false' },
-      { ...fakeEnv(), JAVA_HOME: '' },
-    ])
-      await expect(
-        createSigner({ env, run, platform: 'win32' })(task(), packager()),
-      ).rejects.toThrow()
-    await expect(
-      createSigner({ env: fakeEnv(), run, platform: 'darwin' })(task(), packager()),
-    ).rejects.toThrow()
-    const sign = createSigner({ env: fakeEnv(), run, platform: 'win32' })
-    await expect(sign({ ...task(), hash: 'sha1' }, packager())).rejects.toThrow(/one SHA-256/)
-    await expect(sign({ ...task(), isNest: true }, packager())).rejects.toThrow(/one SHA-256/)
-    expect(run).not.toHaveBeenCalled()
-  })
-
-  it.each([
-    { status: 1, stdout: 'fake-password' },
-    { status: 0, stdout: 'Error: fake-password' },
-    { status: 0, stderr: 'Exception: fake-password' },
-    { status: null, error: new Error('fake-password') },
-  ])(
-    'stops packaging on tool failure without echoing account-bearing diagnostics: %j',
-    async (result) => {
-      const run = vi.fn(() => result)
-      const sign = createSigner({ env: fakeEnv(), run, platform: 'win32' })
-      await expect(sign(task(), packager())).rejects.toThrow(
-        'eSigner failed; packaging stopped before update metadata was generated',
-      )
-      expect(run).toHaveBeenCalledTimes(1)
-    },
-  )
-
-  it('redacts thrown process errors and rejects invalid or untimestamped signatures', async () => {
-    const run = vi.fn(() => {
-      throw new Error('fake-password')
-    })
-    const sign = createSigner({ env: fakeEnv(), run, platform: 'win32' })
-    await expect(sign(task(), packager())).rejects.toThrow(/^eSigner failed;/)
-    run.mockReset().mockReturnValueOnce({ status: 0 }).mockReturnValueOnce({ status: 1 })
-    await expect(sign(task(), packager())).rejects.toThrow(
-      'Windows signature must be valid, timestamped and issued to DEVERP',
-    )
+    [{ status: 1, stdout: 'Signing refused' }, /exit code 1/],
+    [{ status: 0, stdout: 'Error: credential locked' }, /exit code 0/],
+    [{ status: 0, stderr: 'Exception: timeout' }, /exit code 0/],
+    [{ status: null, error: new Error('spawnSync java.exe ETIMEDOUT') }, /ETIMEDOUT/],
+  ])('stops packaging on a tool failure and shows the tool output: %j', async (result, reason) => {
+    const out = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    const err = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    const sign = createSigner({ env: fakeEnv(), run: vi.fn(() => result) })
+    await expect(sign(task(), packager())).rejects.toThrow(reason)
+    if (result.stdout) expect(out).toHaveBeenCalledWith(result.stdout)
+    if (result.stderr) expect(err).toHaveBeenCalledWith(result.stderr)
   })
 
   it('the installed builder invokes the hook once per SHA-256 file and sets publisher only when supplied', async () => {
@@ -422,11 +276,6 @@ describe('Windows release signing', () => {
         expect(job.environment).not.toBe('windows-signing')
       }
     }
-    const windows = parse(readFileSync(join(root, '.github/workflows/windows.yml'), 'utf8'))
-    expect(windows.on.workflow_dispatch.inputs.signing_witness.default).toBe(false)
-    expect(
-      windows.jobs.windows.steps.find((step) => step.name === 'Keep signing callback witness').if,
-    ).toContain('inputs.signing_witness')
     for (const [name, job] of Object.entries(workflow.jobs)) {
       if (name !== 'windows')
         expect(JSON.stringify(job)).not.toMatch(

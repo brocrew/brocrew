@@ -63,7 +63,6 @@
         "scripts/window-controls-probe.mjs",
         "scripts/window-opens-check.mjs",
         "scripts/windows-packaged-check.mjs",
-        "scripts/windows-signing-witness.mjs",
         "scripts/windows-update-test.mjs",
         "*.config.{ts,js,mjs,cjs}",
         "eslint.config.*",
