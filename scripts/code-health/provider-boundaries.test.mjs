@@ -84,6 +84,7 @@ for (const [name, importer, target, rule] of [
         JSON.stringify({ compilerOptions: { module: 'ESNext', moduleResolution: 'Bundler' } }),
       )
       put('depcruise.cjs', `module.exports = ${JSON.stringify(config)}`)
+      put('package.json', '{"type":"module"}')
       put(
         target,
         name === 'window types'
@@ -123,10 +124,11 @@ for (const [name, importer, target, rule] of [
         },
       )
       assert.equal(scan.error, undefined)
+      assert.notEqual(scan.stdout.trim(), '', scan.stderr)
       const graph = JSON.parse(scan.stdout)
       const violations = graph.summary.violations.map((v) => v.rule.name)
       assert.deepEqual(violations, rule === null ? [] : [rule], scan.stderr)
-      assert.equal(scan.status, rule === null ? 0 : 1)
+      assert.equal(scan.status, 0, scan.stderr)
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
     }

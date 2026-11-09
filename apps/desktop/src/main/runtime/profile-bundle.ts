@@ -1,3 +1,4 @@
+import type { BundlePublish } from '../providers/instruction-types'
 import { lstatSync, openSync, readSync, closeSync } from 'node:fs'
 import { join } from 'node:path'
 import { SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
@@ -56,17 +57,6 @@ export const BUNDLE_LEAF = Object.fromEntries(
  * every file it opens.
  */
 const MARKER_PROBE_BYTES = 256
-
-/**
- * 🔴 **What publishing did** — a path, or a refusal a person can act on.
- *
- * ⛔ **A returned value rather than a throw**, which is `341`'s shape for a rail and the reason it
- * is right here too: a launch does not fail because somebody owns their own override file. It
- * proceeds, the provider reads THEIR file, and the person is told that ours was not published.
- */
-export type BundlePublish =
-  | { readonly ok: true; readonly path: string; readonly bytes: number }
-  | { readonly ok: false; readonly path: string; readonly reason: 'unmanaged-override' }
 
 /**
  * ⛔ **Is the file at this path one this app wrote?** — by its first line, and by nothing else.

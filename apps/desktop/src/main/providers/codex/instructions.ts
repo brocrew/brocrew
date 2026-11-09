@@ -3,8 +3,7 @@ import { given } from './given'
 import { CODEX_MEMORY_SUMMARY } from '@brobot2/runtime/codex'
 import { readCodexAgentMemory, type CodexMemoryRead } from './memory'
 import { agentPreamble } from '../../runtime/agent-preamble'
-import type { InstructionInputs, SessionLaunchRead } from '../instruction-types'
-import type { BundlePublish } from '../../runtime/profile-bundle'
+import type { BundlePublish, InstructionInputs, SessionLaunchRead } from '../instruction-types'
 
 import { theProfileFileOf, composeSystemHint, BLOCK_SEPARATOR } from '../instruction-composition'
 
