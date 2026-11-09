@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { createFreshFile } from './internal/provider-home'
+import { createFreshFile } from './internal/provider-home.ts'
 import {
   closeSync,
   fchmodSync,

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { randomUUID } from 'node:crypto'
+import { rename, writeFile } from 'node:fs/promises'
 import {
   existsSync,
   mkdirSync,
@@ -11,7 +11,9 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
+import { writeWorkspaceFile } from '../src/main/themes/state'
+import { DOCK_LABEL_PART } from '../../../scripts/lib/clean-base.mjs'
 import type { NativeImage } from 'electron'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
@@ -540,12 +542,26 @@ describe('the file is read and written carefully', () => {
     },
   )
 
-  it('writes to an exclusive, unique temporary file, which the data-folder reset knows', async () => {
-    const source = readFileSync(join(__dirname, '../src/main/themes/state.ts'), 'utf8')
-    expect(source).toContain('const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`')
-    expect(source).toContain("open(temporary, 'wx', 0o600)")
-    const part = /^dock-label\.json\.\d+\.[0-9a-f-]{36}\.tmp$/
-    expect(part.test(`dock-label.json.4242.${randomUUID()}.tmp`)).toBe(true)
+  it('writes complete records through unique exclusive temporary names the reset knows', async () => {
+    const names: string[] = []
+    for (const name of ['ONE', 'TWO']) {
+      const text = `${JSON.stringify({ name })}\n`
+      await writeWorkspaceFile(folder, DOCK_LABEL_FILE, text, {
+        rename: async (from, to) => {
+          const temporary = String(from)
+          names.push(temporary)
+          expect(DOCK_LABEL_PART.test(basename(temporary))).toBe(true)
+          expect(readFileSync(temporary, 'utf8')).toBe(text)
+          await expect(writeFile(from, 'collision', { flag: 'wx' })).rejects.toMatchObject({
+            code: 'EEXIST',
+          })
+          await rename(from, to)
+        },
+      })
+    }
+    expect(new Set(names).size).toBe(2)
+    expect(await readDockLabelFile(folder)).toEqual({ name: 'TWO' })
+    expect(readdirSync(folder)).toEqual([DOCK_LABEL_FILE])
   })
 
   it('a folder that is not there is not made up: the read says nothing, the save is refused', async () => {

@@ -188,7 +188,7 @@ describe('the files a Codex home is given', () => {
 
   it('🔴 config.toml: a link put at its staged name as it is made sends nothing outside', () => {
     const target = join(outside, 'staged')
-    aLinkAsItIsMade((path) => path.startsWith(`${config()}.brobot-`), target)
+    aLinkAsItIsMade((path) => path.startsWith(`${config()}.`) && path.endsWith('.tmp'), target)
 
     expect(ensureCodexMemoryConfig(home).outcome).toBe('failed')
 
@@ -210,7 +210,10 @@ describe('the files a Codex home is given', () => {
 
   it('🔴 a kept tool approval: a link put at its staged name as it is made sends nothing outside', () => {
     const target = join(outside, 'staged')
-    aLinkAsItIsMade((path) => path.startsWith(`${keptToolApprovalsFile(home)}.brobot-`), target)
+    aLinkAsItIsMade(
+      (path) => path.startsWith(`${keptToolApprovalsFile(home)}.`) && path.endsWith('.tmp'),
+      target,
+    )
 
     expect(() => keepToolApproval(home, APPROVAL)).toThrow()
 
