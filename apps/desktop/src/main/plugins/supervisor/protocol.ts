@@ -121,6 +121,7 @@ export type Refusal =
   | 'source-mismatch'
   | 'network'
   | 'download-stalled'
+  | 'package-invalid'
 export const OwnerDiagnostic = z.strictObject({
   phase: z.enum(['accepting', 'draining', 'blocked', 'stopped', 'missing', 'unreadable']),
   stage: z.enum(['attach-record', 'hello', 'hold', 'detach', 'lease-lost', 'recovery']),
@@ -167,7 +168,13 @@ export class PluginSupervisorError extends Error {
         ? 'Plugin busy. Try again.'
         : code === 'incompatible'
           ? 'Update this copy of BroCrew to use this plugin.'
-          : 'Plugin unavailable. Try again.',
+          : code === 'download-stalled'
+            ? 'The plugin download stalled. Try again.'
+            : code === 'network'
+              ? "Couldn't download this plugin. Check your connection and try again."
+              : code === 'package-invalid'
+                ? "Couldn't verify this plugin package. Download it again or contact its publisher."
+                : 'Plugin unavailable. Try again.',
       options,
     )
     this.name = 'PluginSupervisorError'

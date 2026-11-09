@@ -46,9 +46,15 @@ it('keeps the page visible with a plain failure and Try again, then retries with
   await vi.waitFor(() => expect(m.all('plugin-configure')).toHaveLength(1))
   m.q('plugin-configure').click()
   await vi.waitFor(() => expect(f.openings).toHaveLength(1))
-  f.openings[0]!.finish({ ok: false, error: 'Plugin unavailable. Try again.' })
+  f.openings[0]!.finish({
+    ok: false,
+    error: 'Plugin unavailable. Try again.',
+    detail: 'The fictional page could not open.',
+  })
   await vi.waitFor(() => expect(m.all('plugin-configuration-retry')).toHaveLength(1))
-  expect(m.q('plugins-error').textContent).toBe('Plugin unavailable. Try again.')
+  expect(m.q('plugins-error').textContent).toBe(
+    "Couldn't open Fictional Fir Settings. The fictional page could not open. Try again.",
+  )
   expect(m.q('plugin-stage').textContent).toContain('Try again')
   m.q('plugin-configuration-retry').click()
   await vi.waitFor(() => expect(f.openings).toHaveLength(2))
@@ -72,7 +78,9 @@ it('shows an error and closes a timed-out page, with late success unable to rest
   expect(f.openings).toHaveLength(1)
   await vi.advanceTimersByTimeAsync(PLUGIN_CONFIGURATION_TIMEOUT)
   await nextTick()
-  expect(m.q('plugins-error').textContent).toBe('Plugin unavailable. Try again.')
+  expect(m.q('plugins-error').textContent).toBe(
+    "Couldn't open Fictional Fir Settings. The plugin Settings page took too long to open. Try again.",
+  )
   expect(m.q('plugin-configuration-retry').textContent?.trim()).toBe('Try again')
   expect(f.calls.some((call) => call.kind === 'close')).toBe(true)
   f.openings[0]!.finish({ ok: true })

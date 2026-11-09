@@ -28,7 +28,12 @@ it('turns a failed page into the plain error without exposing its cause', async 
   const result = await loadPluginConfiguration(async () => {
     throw new Error('fictional-private-view-path')
   }, new AbortController().signal)
-  expect(result).toEqual({ ok: false, error: 'Plugin unavailable. Try again.' })
+  expect(result).toEqual({
+    ok: false,
+    error: 'Plugin unavailable. Try again.',
+    detail: 'The Settings request failed before a reply was received.',
+  })
+  expect(JSON.stringify(result)).not.toContain('fictional-private-view-path')
 })
 it('times out a stuck Configure and ignores its late success', async () => {
   vi.useFakeTimers()
@@ -46,6 +51,7 @@ it('times out a stuck Configure and ignores its late success', async () => {
   expect(settled).toHaveBeenCalledExactlyOnceWith({
     ok: false,
     error: 'Plugin unavailable. Try again.',
+    detail: 'The plugin Settings page took too long to open.',
   })
   finish({ ok: true })
   await Promise.resolve()
@@ -61,4 +67,16 @@ it('cancels an opening page and removes its deadline', async () => {
   expect(await loading).toMatchObject({ ok: false })
   expect(open).not.toHaveBeenCalled()
   expect(vi.getTimerCount()).toBe(0)
+})
+
+it('preserves the returned public cause without substituting a consent failure', async () => {
+  const reply: PluginSettingsReply = {
+    ok: false,
+    error: 'Plugin unavailable. Try again.',
+    detail: 'The fictional page could not open.',
+    cause: 'page-load',
+  }
+  expect(await loadPluginConfiguration(async () => reply, new AbortController().signal)).toEqual(
+    reply,
+  )
 })

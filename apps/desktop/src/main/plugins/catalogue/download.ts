@@ -1,4 +1,5 @@
 import { pluginSha256 } from '../package-digests'
+import { PluginVerificationError } from '../verification-error'
 /** Stop a silent archive transfer; real bytes restart this clock regardless of total duration. */
 const PLUGIN_DOWNLOAD_STALL_MS = 30_000
 /** No URL/credential is ever logged. Integrity/policy failures must not masquerade as offline. */
@@ -12,6 +13,11 @@ export class PluginDownloadError extends Error {
   }
 }
 export function pluginDownloadFailure(error: unknown) {
+  if (
+    error instanceof PluginVerificationError ||
+    (error instanceof PluginDownloadError && error.kind === 'integrity')
+  )
+    return 'package-invalid' as const
   return error instanceof PluginDownloadError && error.kind === 'transport'
     ? error.stalled
       ? ('download-stalled' as const)

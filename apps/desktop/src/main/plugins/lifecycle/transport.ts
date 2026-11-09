@@ -118,6 +118,7 @@ export class PersonChannel {
                   'incompatible',
                   'network',
                   'download-stalled',
+                  'package-invalid',
                 ]),
               })
               .safeParse(packet.value)
@@ -154,6 +155,7 @@ export class PersonChannel {
                       'incompatible',
                       'network',
                       'download-stalled',
+                      'package-invalid',
                     ].includes(error.code)
                       ? { pluginRefusal: error.code }
                       : null,

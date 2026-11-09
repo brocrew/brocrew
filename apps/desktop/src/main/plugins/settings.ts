@@ -559,7 +559,13 @@ export function registerPluginSettings(
           const mutationFailure: PluginMutationFailure =
             code === 'incompatible'
               ? 'owner-incompatible'
-              : ['policy-refused', 'source-mismatch', 'network', 'download-stalled'].includes(code)
+              : [
+                    'policy-refused',
+                    'source-mismatch',
+                    'network',
+                    'download-stalled',
+                    'package-invalid',
+                  ].includes(code)
                 ? (code as PluginMutationFailure)
                 : 'unavailable'
           return { ...failure, mutationFailure }

@@ -90,7 +90,7 @@ it.each(['install', 'update'] as const)(
       wire = vi.spyOn(PersonChannel.prototype, 'call')
     f.download.mockResolvedValueOnce(Buffer.from('not the verified archive'))
     const before = await f.snapshot()
-    await expect(review(c, action)).rejects.toMatchObject({ code: 'policy-refused' })
+    await expect(review(c, action)).rejects.toMatchObject({ code: 'package-invalid' })
     expect(
       wire.mock.calls.filter(([x]) => (x as { kind?: string }).kind === 'prepare-mutation'),
     ).toHaveLength(0)
@@ -104,7 +104,7 @@ it.each(['transport', 'integrity'] as const)(
       c = await f.connect()
     f.download.mockRejectedValueOnce(new PluginDownloadError(kind))
     await expect(review(c, 'install')).rejects.toMatchObject({
-      code: kind === 'transport' ? 'network' : 'policy-refused',
+      code: kind === 'transport' ? 'network' : 'package-invalid',
     })
   },
 )

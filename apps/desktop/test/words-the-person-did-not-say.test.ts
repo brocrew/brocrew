@@ -182,12 +182,13 @@ const PACKET_SEND_EXEMPTION = {
                       'incompatible',
                       'network',
                       'download-stalled',
+                      'package-invalid',
                     ].includes(error.code)
                       ? { pluginRefusal: error.code }
                       : null,
                 })`,
       censusText:
-        "this.send({ kind: 'reply', id: packet.id, ok: false, value: this.reportRefusals() && error instanceof PluginSupervisorError && [ 'policy-refused', 'source-mismatch', 'incompatible', 'network', 'download-stalled', ].includes(error.code) ? { pluginRefusal: error.code } : null, })",
+        "this.send({ kind: 'reply', id: packet.id, ok: false, value: this.reportRefusals() && error instanceof PluginSupervisorError && [ 'policy-refused', 'source-mismatch', 'incompatible', 'network', 'download-stalled', 'package-invalid', ].includes(error.code) ? { pluginRefusal: error.code } : null, })",
       count: 1,
     },
     {

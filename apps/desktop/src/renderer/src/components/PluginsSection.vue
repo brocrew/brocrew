@@ -99,44 +99,64 @@ const listMessage = computed(() => {
   }
 })
 const unavailable = 'Plugin unavailable. Try again.'
-/** The refusal with what actually went wrong, when main said so. */
-function refusal(answer: PluginSettingsReply): string {
+function actionFailure(action: string, answer: PluginSettingsReply, consent = false): string {
   const detail = !answer.ok && 'detail' in answer ? answer.detail : undefined
-  return detail && detail !== unavailable ? `${unavailable} ${detail}` : unavailable
+  const cause = !answer.ok && 'mutationFailure' in answer ? answer.mutationFailure : undefined
+  const notice =
+    cause === 'policy-refused' && !consent
+      ? 'The plugin service refused this request. Try again.'
+      : cause
+        ? pluginMutationFailureNotice(cause)
+        : unavailable
+  if (!detail || detail === unavailable || detail === notice) return `Couldn't ${action}. ${notice}`
+  const next = cause && cause !== 'unavailable' ? notice : 'Try again.'
+  return `Couldn't ${action}. ${detail} ${next}`
 }
+const current = (turn: number) => alive && turn === generation
+let preparing: number | undefined
 const failedRetries = ref(new Set<string>())
 const cannotStart = (card: PluginCard) => card.state === 'Unavailable'
 async function restartChrome() {
   if (busy.value) return
-  generation++
+  const turn = ++generation
   busy.value = true
   error.value = ''
   const answer = await request({ kind: 'restart', id: 'chrome' })
-  if (!alive) return
+  if (!current(turn)) return
   busy.value = false
   if (answer.ok && answer.cards) cards.value = answer.cards
-  else error.value = refusal(answer)
+  const chrome = cards.value.find((card) => card.id === 'chrome')
+  if (!answer.ok || !answer.cards) error.value = actionFailure('restart Chrome', answer)
+  else if (!chrome || cannotStart(chrome) || chrome.toolsUnavailable)
+    error.value = `Chrome is still unavailable after the restart request. ${chrome?.toolsCause ? `${chrome.toolsCause}. Try again.` : pluginUnavailableNotice(chrome?.unavailableReason)}`
 }
 async function retry(card: PluginCard) {
   if (busy.value) return
+  const turn = ++generation
   busy.value = true
+  error.value = ''
   const answer = await request({ kind: 'retry', id: card.id })
-  if (!alive) return
+  if (!current(turn)) return
   busy.value = false
   if (answer.ok && answer.cards) cards.value = answer.cards
-  const current = cards.value.find((one) => one.id === card.id)
-  if (!answer.ok || !current || cannotStart(current)) failedRetries.value.add(card.id)
-  else failedRetries.value.delete(card.id)
+  const updated = cards.value.find((one) => one.id === card.id)
+  if (!answer.ok || !answer.cards || !updated || cannotStart(updated)) {
+    failedRetries.value.add(card.id)
+    error.value =
+      !answer.ok || !answer.cards
+        ? actionFailure(`start ${card.name} again`, answer)
+        : `Couldn't start ${card.name} again. ${pluginUnavailableNotice(updated?.unavailableReason)}`
+  } else failedRetries.value.delete(card.id)
 }
 async function request(input: PluginSettingsRequest): Promise<PluginSettingsReply> {
-  const failure: PluginSettingsReply =
+  const failure = (detail: string): PluginSettingsReply =>
     input.kind === 'list'
       ? { ok: false, listState: 'fetch-error' }
-      : { ok: false, error: unavailable }
+      : { ok: false, error: unavailable, detail }
   try {
-    return (await client?.request(input)) ?? failure
+    return (await client?.request(input)) ?? failure('The plugin service did not return a reply.')
   } catch {
-    return failure
+    return failure('The Settings request failed before a reply was received.')
   }
 }
 function bounds() {
@@ -154,34 +174,41 @@ function bounds() {
     height: Math.max(0, Math.min(y + Math.floor(box.height), clientHeight) - top),
   }
 }
-function configurationFailed() {
+function configurationFailed(answer: PluginSettingsReply, action: string) {
+  const turn = ++generation
+  const name = selected.value?.name ?? 'plugin'
   configurationAbort?.abort()
   screenId = null
   busy.value = false
   configurationState.value = 'error'
   observer?.disconnect()
-  void request({ kind: 'close' })
+  error.value = actionFailure(action, answer)
+  void request({ kind: 'close' }).then((closed) => {
+    if (current(turn) && !closed.ok)
+      error.value += ` ${actionFailure(`close ${name} Settings`, closed)}`
+  })
 }
 async function move() {
   const turn = generation,
     box = bounds()
-  if (selected.value && configurationState.value === 'ready' && box) {
+  const card = selected.value
+  if (card && configurationState.value === 'ready' && box) {
     const answer = await request({ kind: 'bounds', bounds: box })
-    if (alive && turn === generation && !answer.ok) {
-      configurationFailed()
-    }
+    if (current(turn) && !answer.ok) configurationFailed(answer, `resize ${card.name} Settings`)
   }
 }
 async function cancel() {
+  const name = selected.value?.name ?? 'plugin'
   reviews.value.clear()
-  generation++
+  const turn = ++generation
   configurationAbort?.abort()
   error.value = ''
   screenId = null
   selected.value = null
   busy.value = false
   observer?.disconnect()
-  await request({ kind: 'close' })
+  const answer = await request({ kind: 'close' })
+  if (current(turn) && !answer.ok) error.value = actionFailure(`close ${name} Settings`, answer)
 }
 async function configure(card: PluginCard) {
   if (busy.value) return
@@ -205,11 +232,15 @@ async function configure(card: PluginCard) {
         () => request({ kind: 'configure', id: card.id, screenId: ownScreen, bounds: box }),
         abort.signal,
       )
-    : { ok: false }
+    : ({
+        ok: false,
+        error: unavailable,
+        detail: 'Settings could not measure the plugin page.',
+      } as const)
   if (!alive || turn !== generation) return
   busy.value = false
   if (!answer.ok) {
-    configurationFailed()
+    configurationFailed(answer, `open ${card.name} Settings`)
     return
   }
   configurationState.value = 'ready'
@@ -221,24 +252,25 @@ async function configure(card: PluginCard) {
 async function preview(action: 'install' | 'update', card: PluginCard) {
   if (busy.value || card.mutationBlocked) return
   const turn = ++generation
+  preparing = turn
   busy.value = true
   error.value = ''
   reviews.value.clear()
   const answer = await request({ kind: 'prepare', action, id: card.id })
-  if (!alive || turn !== generation) return
+  if (!current(turn)) return
+  preparing = undefined
   busy.value = false
   const parsed = answer.ok ? PluginWindowReviewSchema.safeParse(answer.review) : null
   if (parsed?.success && parsed.data.id === card.id && parsed.data.action === action)
     reviews.value.set(card.id, parsed.data)
-  else
-    error.value =
-      !answer.ok && 'mutationFailure' in answer && answer.mutationFailure
-        ? pluginMutationFailureNotice(answer.mutationFailure)
-        : refusal(answer)
+  else error.value = actionFailure(`review ${action} of ${card.name}`, answer)
 }
 async function cancelReview() {
+  const turn = ++generation
   reviews.value.clear()
-  await request({ kind: 'close' })
+  error.value = ''
+  const answer = await request({ kind: 'close' })
+  if (current(turn) && !answer.ok) error.value = actionFailure('close the plugin review', answer)
 }
 async function change(kind: 'install' | 'update' | 'uninstall', card: PluginCard) {
   const shown = reviews.value.get(card.id)
@@ -254,12 +286,20 @@ async function change(kind: 'install' | 'update' | 'uninstall', card: PluginCard
   error.value = ''
   confirmation.value = null
   reviews.value.clear()
-  generation++
+  const turn = ++generation
   screenId = null
   selected.value = null
   observer?.disconnect()
   // Main closes the existing screen while preserving only this validated review.
-  if (!guarded) await request({ kind: 'close' })
+  if (!guarded) {
+    const closed = await request({ kind: 'close' })
+    if (!current(turn)) return
+    if (!closed.ok) {
+      busy.value = false
+      error.value = actionFailure(`close ${card.name} Settings before ${kind}`, closed)
+      return
+    }
+  }
   if (kind === 'install') starting.value = card.id
   const input: PluginSettingsRequest =
     kind === 'uninstall'
@@ -270,7 +310,7 @@ async function change(kind: 'install' | 'update' | 'uninstall', card: PluginCard
           ...(guarded && shown ? { consent: pluginDisplayedConsent(shown) } : {}),
         }
   const answer = await request(input)
-  if (!alive) return
+  if (!current(turn)) return
   starting.value = null
   busy.value = false
   if (answer.ok && answer.cards) {
@@ -282,26 +322,42 @@ async function change(kind: 'install' | 'update' | 'uninstall', card: PluginCard
           : `${card.name}'s local data was deleted. Logout was not confirmed. Open Linked devices on your phone and remove this device if it is still listed.`
     }
   } else {
-    error.value =
-      guarded && !answer.ok && 'mutationFailure' in answer && answer.mutationFailure
-        ? pluginMutationFailureNotice(answer.mutationFailure)
-        : refusal(answer)
+    error.value = actionFailure(`${kind} ${card.name}`, answer, guarded)
     if (guarded) {
       const listed = await request({ kind: 'list' })
-      if (alive && listed.ok && listed.cards) cards.value = listed.cards
+      if (!current(turn)) return
+      if (listed.ok && listed.cards) cards.value = listed.cards
+      else
+        error.value +=
+          ' The plugin list could not be refreshed. Open Plugins again to check its current status.'
     }
   }
 }
 onMounted(async () => {
   stopReviews =
     client?.onReviewInvalidated?.(() => {
+      if (!alive) return
+      if (preparing === generation || reviews.value.size > 0)
+        error.value =
+          'This plugin review is no longer current. Review it again before installing or updating.'
+      if (preparing === generation) {
+        generation++
+        preparing = undefined
+        busy.value = false
+      }
       reviews.value.clear()
     }) ?? (() => {})
   stop =
     client?.onClosed((closedScreen) => {
       if (selected.value && closedScreen === screenId) {
-        generation++
-        configurationFailed()
+        configurationFailed(
+          {
+            ok: false,
+            error: unavailable,
+            detail: 'The plugin Settings page closed unexpectedly.',
+          },
+          `keep ${selected.value.name} Settings open`,
+        )
       }
     }) ?? (() => {})
   window.addEventListener('resize', move)
@@ -394,7 +450,6 @@ onUnmounted(() => {
             Loading…
           </p>
           <template v-else>
-            <p role="alert" data-cy="plugins-error">{{ unavailable }}</p>
             <button
               class="bb-button"
               type="button"

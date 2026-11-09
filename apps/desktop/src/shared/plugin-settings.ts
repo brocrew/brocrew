@@ -114,9 +114,16 @@ export const PLUGIN_DISCLOSURE_WORDS = Object.freeze({
     "This change couldn't be confirmed. If the plugin now shows as installed or updated, it went through. Otherwise, review it again.",
   network: "Couldn't download this plugin. Check your connection and try again.",
   downloadStalled: 'The plugin download stalled. Try again.',
+  packageInvalid:
+    "Couldn't verify this plugin package. Download it again or contact its publisher.",
 })
 export type PluginMutationFailure =
-  PluginMutationBlocked | 'policy-refused' | 'network' | 'download-stalled' | 'unavailable'
+  | PluginMutationBlocked
+  | 'policy-refused'
+  | 'network'
+  | 'download-stalled'
+  | 'package-invalid'
+  | 'unavailable'
 // Person-control may wait 180 seconds for a cold plugin start; leave room for its page load.
 export const PLUGIN_CONFIGURATION_TIMEOUT = 200_000
 export const PLUGIN_STATES = [
@@ -260,6 +267,7 @@ export function pluginMutationFailureNotice(cause: PluginMutationFailure): strin
   if (cause === 'policy-refused') return PLUGIN_DISCLOSURE_WORDS.reviewAgain
   if (cause === 'network') return PLUGIN_DISCLOSURE_WORDS.network
   if (cause === 'download-stalled') return PLUGIN_DISCLOSURE_WORDS.downloadStalled
+  if (cause === 'package-invalid') return PLUGIN_DISCLOSURE_WORDS.packageInvalid
   return 'Plugin unavailable. Try again.'
 }
 /** Closed uninstall facts; remote removal is never inferred from deleting local data. */

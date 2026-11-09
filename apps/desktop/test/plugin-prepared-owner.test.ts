@@ -360,7 +360,7 @@ it('does not turn a pre-reservation verification refusal into storage corruption
       pluginId: 'chrome',
       releaseDigest: f.next.release.archive.sha256,
     }),
-  ).rejects.toMatchObject({ code: 'policy-refused' })
+  ).rejects.toMatchObject({ code: 'package-invalid' })
   expect(f.state.inspect()).toEqual(before.state)
   expect(f.events).toEqual(before.events)
   expect(f.starts()).toBe(before.starts)
@@ -432,7 +432,7 @@ it('advertises prepared mutation support only after the owner admits a v2 source
 
 it.each([
   { status: 503, code: 'network' },
-  { status: 200, code: 'policy-refused' },
+  { status: 200, code: 'package-invalid' },
 ] as const)(
   'classifies the real bounded archive path at HTTP $status before any reservation',
   async ({ status, code }) => {
@@ -494,7 +494,7 @@ it('rechecks retained archive bytes against the currently admitted release metad
       pluginId: 'chrome',
       releaseDigest: f.next.release.archive.sha256,
     }),
-  ).rejects.toMatchObject({ code: 'policy-refused' })
+  ).rejects.toMatchObject({ code: 'package-invalid' })
   expect(f.state.inspect()).toEqual(before.state)
   expect(f.events).toEqual(before.events)
   expect(f.starts()).toBe(before.starts)
