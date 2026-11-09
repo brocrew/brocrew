@@ -29445,12 +29445,9 @@ export class RuntimeHost implements LiveHost {
     // ⚑ A sign-in that belongs to one profile (Codex's) moves that profile's conversations only, and
     // no moment for the whole provider: the other profiles' accounts, limits and usage are as they were.
     const itsProfile = providerDescriptor(provider).signIn.profileScoped ? profileId : undefined
-    // ⚑ **F096 — a life that began no later than the one that saw the change holds the login from
-    // before it**, so its usage is the account before's ({@link readsAnOlderLogin}). ⛔ Decided per
-    // life, never by the moment this app noticed: a life started between the change and the notice
-    // runs on the new login. ⚑ One started between the reporter's start and the change is marked
-    // when it launched on the same login as a life marked here ({@link SessionHandle.signInTag}),
-    // and otherwise by its own turn gate when it next sends ({@link assertSignInCurrent}).
+    // Lives that began no later than the reporter used the previous login. Later lives can match
+    // a confirmed native account tag. Claude has no tag, so its later lives are marked only by
+    // their own turn gate when they next send (assertSignInCurrent).
     const olderLogins = new Set<string>()
     for (const { session } of this.slots.values()) {
       if (
